@@ -40,6 +40,20 @@
       <span class="text-gray">-</span>
     {% endif %}
   </td>
+  <td class="col--records">
+    <div class="record-blocks">
+      {% if session.recordSummaries and session.recordSummaries.length %}
+        {% for rec in session.recordSummaries %}
+          <a
+            href="{{ url('record_detail', domainId=session.domainId, rid=rec._id) }}"
+            class="record-block"
+            style="background-color: {{ rec.color }}"
+            title="{{ rec.cardId }} — {{ rec.label }}"
+          ></a>
+        {% endfor %}
+      {% endif %}
+    </div>
+  </td>
   <td class="col--route">
     {% if session.route %}
       {{ session.route }}

@@ -24,6 +24,95 @@ import {
     resolveLessonSessionDoc,
     touchLessonSession,
 } from '../lib/lessonSession';
+import RecordModel, { type RecordDoc } from '../model/record';
+
+function learnRecordProblemIds(card: { problems?: Array<{ pid?: string }> } | null | undefined): string[] {
+    const raw = (card?.problems || [])
+        .map((p) => p.pid)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0);
+    return raw.length > 0 ? raw : ['browse_judge'];
+}
+
+function learnRecordScoreFromDoc(doc: Pick<RecordDoc, 'problems'> | null | undefined): number {
+    if (!doc?.problems?.length) return 0;
+    return doc.problems.filter((p) => p.status === 'correct').length * 5;
+}
+
+async function ensureLearnRecordForCard(
+    cardDomainId: string,
+    uid: number,
+    querySessionId: string | undefined | null,
+    card: { docId: ObjectId; nodeId: string; problems?: Array<{ pid?: string }> },
+    baseDocId: number,
+    branch: string,
+): Promise<string | null> {
+    const sdoc = await resolveLessonSessionDoc(cardDomainId, uid, querySessionId || undefined);
+    if (!sdoc?._id) return null;
+    const trainingDocId = sdoc.lessonQueueTrainingDocId
+        ? String(sdoc.lessonQueueTrainingDocId).trim()
+        : undefined;
+    const rec = await RecordModel.ensureForCard(
+        cardDomainId,
+        uid,
+        sdoc._id,
+        card.docId.toString(),
+        card.nodeId || '',
+        baseDocId,
+        branch,
+        learnRecordProblemIds(card),
+        trainingDocId || undefined,
+    );
+    return rec._id.toHexString();
+}
+
+async function syncLearnPassToRecord(
+    cardDomainId: string,
+    uid: number,
+    querySessionId: string | undefined | null,
+    card: { docId: ObjectId; nodeId: string; problems?: Array<{ pid?: string }> },
+    baseDocId: number,
+    branch: string,
+    answerHistory: Array<{
+        problemId?: string;
+        correct?: boolean;
+        selected?: number;
+        timeSpent?: number;
+        attempts?: number;
+    }>,
+): Promise<number | null> {
+    const sdoc = await resolveLessonSessionDoc(cardDomainId, uid, querySessionId || undefined);
+    if (!sdoc?._id) return null;
+    const trainingDocId = sdoc.lessonQueueTrainingDocId
+        ? String(sdoc.lessonQueueTrainingDocId).trim()
+        : undefined;
+    const rec = await RecordModel.ensureForCard(
+        cardDomainId,
+        uid,
+        sdoc._id,
+        card.docId.toString(),
+        card.nodeId || '',
+        baseDocId,
+        branch,
+        learnRecordProblemIds(card),
+        trainingDocId || undefined,
+    );
+    for (const h of answerHistory) {
+        const pid = h.problemId;
+        if (!pid) continue;
+        const status =
+            h.correct === true ? ('correct' as const)
+            : h.correct === false ? ('wrong' as const)
+            : ('skipped' as const);
+        await RecordModel.patchProblem(cardDomainId, rec._id, pid, {
+            status,
+            selected: typeof h.selected === 'number' ? h.selected : undefined,
+            attempts: typeof h.attempts === 'number' ? h.attempts : undefined,
+            timeSpentMs: typeof h.timeSpent === 'number' ? h.timeSpent : undefined,
+        });
+    }
+    const fresh = await RecordModel.get(cardDomainId, rec._id);
+    return learnRecordScoreFromDoc(fresh);
+}
 
 function getBranchData(base: BaseDoc, branch: string): { nodes: BaseNode[]; edges: BaseEdge[] } {
     const branchName = branch || 'main';
@@ -1176,13 +1265,14 @@ async function buildSpaLessonSnapshotToday(
     if (currentCardIndex >= cardsForToday.length) return null;
     const currentItem = cardsForToday[currentCardIndex];
     const cardDomain = currentItem.domainId || finalDomainId;
+    const dudocSpaToday = await learn.getUserLearnState(cardDomain, { _id: uid, priv }) as any;
+    const branch = dudocSpaToday?.learnBranch || 'main';
     let baseCard: BaseDoc;
     try {
         baseCard = await requireSelectedLearnBase(cardDomain, uid, priv);
     } catch {
         return null;
     }
-    const branch = 'main';
     const currentCard = await CardModel.get(cardDomain, new ObjectId(currentItem.cardId));
     if (!currentCard) return null;
     const currentNode = (getBranchData(baseCard, branch).nodes || []).find((n: BaseNode) => n.id === currentItem.nodeId);
@@ -1196,6 +1286,14 @@ async function buildSpaLessonSnapshotToday(
         children: cardsForToday.map(c => ({ type: 'card' as const, id: c.cardId, title: c.cardTitle })),
     }];
     const sid = lessonSessionIdFromDoc(await SessionModel.get(finalDomainId, uid));
+    const learnRecordIdSpaToday = await ensureLearnRecordForCard(
+        cardDomain,
+        uid,
+        qSession,
+        currentCard as any,
+        baseCard.docId,
+        branch,
+    );
     return {
         card: currentCard,
         node: currentNode,
@@ -1215,6 +1313,7 @@ async function buildSpaLessonSnapshotToday(
         hasProblems: !!(currentCard?.problems?.length),
         lessonSessionId: sid,
         lessonSessionDomainId: finalDomainId,
+        learnRecordId: learnRecordIdSpaToday || '',
     };
 }
 
@@ -1275,6 +1374,14 @@ async function buildSpaLessonSnapshotNode(
     const currentCardList = await CardModel.getByNodeId(finalDomainId, base.docId, currentItem.nodeId);
     const currentIndexInNode = currentCardList.findIndex((c: any) => c.docId.toString() === currentItem.cardId);
     const sid = lessonSessionIdFromDoc(await SessionModel.get(finalDomainId, uid));
+    const learnRecordIdSpaNode = await ensureLearnRecordForCard(
+        finalDomainId,
+        uid,
+        qSession,
+        currentCard as any,
+        base.docId,
+        branch,
+    );
     return {
         card: currentCard,
         node: currentNode,
@@ -1297,6 +1404,7 @@ async function buildSpaLessonSnapshotNode(
         reviewCardId: '',
         lessonSessionId: sid,
         lessonSessionDomainId: finalDomainId,
+        learnRecordId: learnRecordIdSpaNode || '',
     };
 }
 
@@ -1387,6 +1495,15 @@ async function buildSpaLessonSnapshotAllDomains(
     const lessonCardTimesMs = [...Lcur.lessonCardTimesMs];
 
     const sid = lessonSessionIdFromDoc(await SessionModel.get(entryDomainId, uid));
+    const branchSpaAd = dudocCurrent?.learnBranch || 'main';
+    const learnRecordIdSpaAd = await ensureLearnRecordForCard(
+        currentDomainId,
+        uid,
+        qSession,
+        currentCard as any,
+        baseCurrent.docId,
+        branchSpaAd,
+    );
 
     return {
         card: currentCard,
@@ -1411,6 +1528,7 @@ async function buildSpaLessonSnapshotAllDomains(
         lessonCardTimesMs,
         lessonSessionId: sid,
         lessonSessionDomainId: entryDomainId,
+        learnRecordId: learnRecordIdSpaAd || '',
     };
 }
 
@@ -1563,6 +1681,15 @@ class LessonHandler extends Handler {
                 cardTitle: card.title || '',
             }];
 
+            const learnRecordId = await ensureLearnRecordForCard(
+                finalDomainId,
+                this.user._id,
+                qLessonSession,
+                card as any,
+                base.docId,
+                branch,
+            );
+
             this.response.template = 'lesson.html';
             this.response.body = {
                 card,
@@ -1583,6 +1710,7 @@ class LessonHandler extends Handler {
                 reviewCardId: queryReviewCardId,
                 lessonSessionId: lessonSessionIdFromDoc(await SessionModel.get(finalDomainId, this.user._id)),
                 lessonSessionDomainId: finalDomainId,
+                learnRecordId: learnRecordId || '',
             };
             return;
         }
@@ -1725,6 +1853,15 @@ class LessonHandler extends Handler {
                 branch,
             }, { silent: false });
 
+            const learnRecordIdNode = await ensureLearnRecordForCard(
+                finalDomainId,
+                this.user._id,
+                qLessonSession,
+                currentCard as any,
+                base.docId,
+                branch,
+            );
+
             this.response.template = 'lesson.html';
             this.response.body = {
                 card: currentCard,
@@ -1746,6 +1883,7 @@ class LessonHandler extends Handler {
                 reviewCardId: reviewCardId || '',
                 lessonSessionId: lessonSessionIdFromDoc(await SessionModel.get(finalDomainId, this.user._id)),
                 lessonSessionDomainId: finalDomainId,
+                learnRecordId: learnRecordIdNode || '',
             };
             return;
         }
@@ -1942,6 +2080,15 @@ class LessonHandler extends Handler {
                 children: cardsForToday.map(c => ({ type: 'card' as const, id: c.cardId, title: c.cardTitle })),
             }];
 
+            const learnRecordIdToday = await ensureLearnRecordForCard(
+                finalDomainId,
+                this.user._id,
+                qLessonSession,
+                currentCard as any,
+                base.docId,
+                branch,
+            );
+
             this.response.template = 'lesson.html';
             this.response.body = {
                 card: currentCard,
@@ -1960,6 +2107,7 @@ class LessonHandler extends Handler {
                 hasProblems: !!(currentCard?.problems?.length),
                 lessonSessionId: lessonSessionIdFromDoc(await SessionModel.get(finalDomainId, this.user._id)),
                 lessonSessionDomainId: finalDomainId,
+                learnRecordId: learnRecordIdToday || '',
             };
             return;
         }
@@ -2283,6 +2431,16 @@ class LessonHandler extends Handler {
         const lessonReviewCardIds = [...Lcur.lessonReviewCardIds];
         const lessonCardTimesMs = [...Lcur.lessonCardTimesMs];
 
+        const branchAllDom = (dudocCurrent as any)?.learnBranch || 'main';
+        const learnRecordIdAll = await ensureLearnRecordForCard(
+            currentDomainId,
+            this.user._id,
+            qAdSession,
+            currentCard as any,
+            baseCurrent.docId,
+            branchAllDom,
+        );
+
         this.response.template = 'lesson.html';
         this.response.body = {
             card: currentCard,
@@ -2306,6 +2464,7 @@ class LessonHandler extends Handler {
             lessonCardTimesMs,
             lessonSessionId: lessonSessionIdFromDoc(await SessionModel.get(entryDomainId, this.user._id)),
             lessonSessionDomainId: entryDomainId,
+            learnRecordId: learnRecordIdAll || '',
         };
     }
 
@@ -2349,7 +2508,20 @@ class LessonHandler extends Handler {
             await touchLessonSession(currentCardDomainId, this.user._id, { appRoute: 'learn', lessonReviewCardIds: reviewIds }, { silent: true });
         } else {
             await learn.setCardPassed(currentCardDomainId, this.user._id, currentCardId, currentCardNodeId);
-            const score = answerHistory.length * 5;
+            const qS = typeof body.session === 'string' ? body.session.trim() : '';
+            const dudocAd = await learn.getUserLearnState(currentCardDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
+            const branchAd = dudocAd?.learnBranch || 'main';
+            const baseDocAd = Number((card as any).baseDocId) || base.docId;
+            const recScoreAd = await syncLearnPassToRecord(
+                currentCardDomainId,
+                this.user._id,
+                qS,
+                card as any,
+                baseDocAd,
+                branchAd,
+                answerHistory,
+            );
+            const score = recScoreAd !== null ? recScoreAd : answerHistory.length * 5;
             await learn.addResult(currentCardDomainId, this.user._id, {
                 cardId: currentCardId,
                 nodeId: currentCardNodeId,
@@ -2475,7 +2647,26 @@ class LessonHandler extends Handler {
                 : (card.problems && card.problems.length > 0)
                     ? []
                     : [{ problemId: 'browse_judge', correct: true, selected: 0, timeSpent: totalTime || 0, attempts: 1 }];
-            const score = Array.isArray(finalAnswerHistory) ? finalAnswerHistory.length * 5 : 0;
+            const dudocLR = await learn.getUserLearnState(cardDomain, { _id: this.user._id, priv: this.user.priv }) as any;
+            const branchLR = dudocLR?.learnBranch || 'main';
+            let baseDocLR = Number((card as any).baseDocId);
+            if (!baseDocLR) {
+                const bLR = await BaseModel.getByDomain(cardDomain);
+                baseDocLR = bLR?.docId || 0;
+            }
+            if (!baseDocLR && cardDomain === finalDomainId) baseDocLR = base.docId;
+            const recScoreToday = await syncLearnPassToRecord(
+                cardDomain,
+                this.user._id,
+                qPass,
+                card as any,
+                baseDocLR,
+                branchLR,
+                finalAnswerHistory as any[],
+            );
+            const score = recScoreToday !== null
+                ? recScoreToday
+                : (Array.isArray(finalAnswerHistory) ? finalAnswerHistory.length * 5 : 0);
             await learn.addResult(cardDomain, this.user._id, {
                 cardId: currentCardId,
                 nodeId: currentCardNodeId,
@@ -2571,7 +2762,18 @@ class LessonHandler extends Handler {
                 await touchLessonSession(finalDomainId, this.user._id, { appRoute: 'learn', lessonReviewCardIds: reviewIds, lessonCardTimesMs: timesMs }, { silent: true });
             } else if (answerHistory.length > 0) {
                 await learn.setCardPassed(finalDomainId, this.user._id, currentCardId, currentCardNodeId);
-                const score = answerHistory.length * 5;
+                const baseDocN = Number((card as any).baseDocId) || base.docId;
+                const branchN = dudocPass?.learnBranch || 'main';
+                const recScoreN = await syncLearnPassToRecord(
+                    finalDomainId,
+                    this.user._id,
+                    qNodePass,
+                    card as any,
+                    baseDocN,
+                    branchN,
+                    answerHistory,
+                );
+                const score = recScoreN !== null ? recScoreN : answerHistory.length * 5;
                 await learn.addResult(finalDomainId, this.user._id, {
                     cardId: currentCardId,
                     nodeId: currentCardNodeId,
@@ -2595,12 +2797,24 @@ class LessonHandler extends Handler {
                 // 卡片 view「Know it」：无题目时当作判断题通过，记 pass 并写入 result（不跳 result 页，走下方下一张 / node-result）
                 await learn.setCardPassed(finalDomainId, this.user._id, currentCardId, currentCardNodeId);
                 const browseHistory = [{ problemId: 'browse_judge', correct: true, selected: 0, timeSpent: totalTime || 0, attempts: 1 }];
+                const baseDocBrowse = Number((card as any).baseDocId) || base.docId;
+                const branchBrowse = dudocPass?.learnBranch || 'main';
+                const recScoreBrowse = await syncLearnPassToRecord(
+                    finalDomainId,
+                    this.user._id,
+                    qNodePass,
+                    card as any,
+                    baseDocBrowse,
+                    branchBrowse,
+                    browseHistory,
+                );
+                const score = recScoreBrowse !== null ? recScoreBrowse : 5;
                 await learn.addResult(finalDomainId, this.user._id, {
                     cardId: currentCardId,
                     nodeId: currentCardNodeId,
                     answerHistory: browseHistory,
                     totalTime: totalTime || 0,
-                    score: 5,
+                    score,
                     createdAt: new Date(),
                 });
                 await bus.parallel('learn_result/add', finalDomainId);
@@ -2823,7 +3037,24 @@ class LessonHandler extends Handler {
             ? [{ problemId: 'browse_judge', correct: true, selected: 0, timeSpent: totalTime || 0, attempts: 1 }]
             : answerHistory;
 
-        const score = effectiveHistory.length * 5;
+        const qPassMain = typeof body.session === 'string' ? body.session.trim() : '';
+        let baseDocM = Number((card as any).baseDocId);
+        if (!baseDocM) {
+            const bM = await BaseModel.getByDomain(finalDomainId);
+            baseDocM = bM?.docId || base.docId;
+        }
+        const dudocM = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
+        const branchM = dudocM?.learnBranch || 'main';
+        const recScoreM = await syncLearnPassToRecord(
+            finalDomainId,
+            this.user._id,
+            qPassMain,
+            card as any,
+            baseDocM,
+            branchM,
+            effectiveHistory as any[],
+        );
+        const score = recScoreM !== null ? recScoreM : effectiveHistory.length * 5;
         const resultId = await learn.addResult(finalDomainId, this.user._id, {
             cardId: currentCardId,
             nodeId: currentCardNodeId,
