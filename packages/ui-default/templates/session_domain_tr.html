@@ -1,5 +1,5 @@
 {% import "components/user.html" as user with context %}
-<tr data-uid="{{ session.uid }}">
+<tr data-uid="{{ session.uid }}" data-sid="{{ session.sessionId }}">
   <td class="col--status session-status--border session-status--{{ session.status }}">
     <div class="col--status__text">
       <span class="icon session-status--icon session-status--icon-{{ session.status }}"></span>
@@ -27,6 +27,13 @@
   </td>
   <td class="col--record-type">
     <span class="typo">{{ session.recordTypeLabel }}</span>
+  </td>
+  <td class="col--card-progress">
+    {% if session.cardProgressText %}
+      <span class="session-card-progress typo">{{ session.cardProgressText }}</span>
+    {% else %}
+      <span class="text-gray">-</span>
+    {% endif %}
   </td>
   <td class="col--records">
     <div class="record-blocks">

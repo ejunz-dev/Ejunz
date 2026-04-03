@@ -119,7 +119,7 @@ export default class RecordModel {
             lastActivityAt: now,
         };
         await RecordModel.coll.insertOne(doc as any);
-        await SessionModel.addRecord(domainId, uid, doc._id);
+        await SessionModel.addRecord(domainId, uid, sessionMongoId, doc._id);
         bus.broadcast('record/change', doc);
         return doc;
     }

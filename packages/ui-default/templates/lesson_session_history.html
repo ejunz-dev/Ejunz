@@ -17,6 +17,7 @@
             <col class="col--status">
             <col class="col--branch">
             <col class="col--record-type">
+            <col class="col--card-progress">
             <col class="col--records">
             <col class="col--started-at">
             <col class="col--submit-at">
@@ -26,6 +27,7 @@
               <th class="col--status record-status--border">{{ _('Status') }}</th>
               <th class="col--branch">{{ _('session_col_branch') }}</th>
               <th class="col--record-type">{{ _('session_col_record_type') }}</th>
+              <th class="col--card-progress">{{ _('session_col_card_progress') }}</th>
               <th class="col--records">{{ _('record_col_short') }}</th>
               <th class="col--started-at">{{ _('session_col_started_at') }}</th>
               <th class="col--submit-at">{{ _('session_last_activity') }}</th>
@@ -48,6 +50,13 @@
               </td>
               <td class="col--record-type">
                 <span class="typo">{{ session.recordTypeLabel }}</span>
+              </td>
+              <td class="col--card-progress">
+                {% if session.cardProgressText %}
+                  <span class="session-card-progress typo">{{ session.cardProgressText }}</span>
+                {% else %}
+                  <span class="text-gray">-</span>
+                {% endif %}
               </td>
               <td class="col--records">
                 <div class="record-blocks">

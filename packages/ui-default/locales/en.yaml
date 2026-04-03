@@ -707,6 +707,7 @@ session_active_minutes: List users active within the last N minutes
 session_col_branch: Branch
 session_col_position: Card / node
 session_col_record_type: Practice type
+session_col_card_progress: Card progress
 session_col_route: Route
 session_col_started_at: Started at
 session_domain: Learn live

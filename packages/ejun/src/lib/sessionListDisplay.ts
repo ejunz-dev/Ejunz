@@ -47,11 +47,16 @@ export function effectiveLessonQueueYmd(doc: SessionDoc): string | null {
     return null;
 }
 
-/** Earliest UTC YYYY-MM-DD among lessonQueueDay, createdAt, and ObjectId timestamp (daily learn run anchor). */
+/**
+ * UTC day used to decide if a daily frozen queue is stale.
+ * Prefer explicit `lessonQueueDay` only (do not mix with ObjectId day): the same Mongo session row is reused
+ * across days, so `_id` creation date would falsely keep `timed_out` after "Start" clears the queue.
+ * If `lessonQueueDay` is missing, fall back to min(createdAt, ObjectId) for legacy rows that still have a queue.
+ */
 export function dailyRunAnchorYmd(doc: SessionDoc): string | null {
-    const parts: string[] = [];
     const raw = doc.lessonQueueDay;
-    if (typeof raw === 'string' && YMD_RE.test(raw.trim())) parts.push(raw.trim());
+    if (typeof raw === 'string' && YMD_RE.test(raw.trim())) return raw.trim();
+    const parts: string[] = [];
     if (doc.createdAt) parts.push(sessionUtcYmd(new Date(doc.createdAt).getTime()));
     try {
         parts.push(sessionUtcYmd(doc._id.getTimestamp().getTime()));
@@ -60,6 +65,16 @@ export function dailyRunAnchorYmd(doc: SessionDoc): string | null {
     }
     if (!parts.length) return null;
     return parts.reduce((a, b) => (a < b ? a : b));
+}
+
+/** Display string `current/total` (1-based) for live list rows; null when no frozen card queue. */
+export function formatSessionCardProgress(doc: SessionDoc): string | null {
+    const q = doc.lessonCardQueue ?? [];
+    const qLen = q.length;
+    if (qLen <= 0) return null;
+    const idx = typeof doc.cardIndex === 'number' ? doc.cardIndex : 0;
+    const current = idx >= qLen ? qLen : idx + 1;
+    return `${current}/${qLen}`;
 }
 
 export function deriveSessionLearnStatus(doc: SessionDoc, now = Date.now()): SessionListStatus {
@@ -80,8 +95,14 @@ export function deriveSessionLearnStatus(doc: SessionDoc, now = Date.now()): Ses
     const daily = doc.lessonMode === 'today';
     const todayYmd = sessionUtcYmd(now);
     if (daily) {
-        const anchor = dailyRunAnchorYmd(doc);
-        if (anchor && anchor < todayYmd) return 'timed_out';
+        const rawDay = doc.lessonQueueDay;
+        const explicitQueueDay = typeof rawDay === 'string' && YMD_RE.test(rawDay.trim()) ? rawDay.trim() : null;
+        if (qLen > 0) {
+            const anchor = dailyRunAnchorYmd(doc);
+            if (anchor && anchor < todayYmd) return 'timed_out';
+        } else if (explicitQueueDay && explicitQueueDay < todayYmd) {
+            return 'timed_out';
+        }
     }
 
     if (recentOnLesson) return 'in_progress';
