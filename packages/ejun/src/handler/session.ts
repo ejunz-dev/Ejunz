@@ -13,6 +13,11 @@ import { PERM, PRIV } from '../model/builtin';
 import type { RecordDoc } from '../model/record';
 import SessionModel, { type SessionDoc, type SessionPatch } from '../model/session';
 import user from '../model/user';
+import {
+    deriveSessionLearnStatus,
+    deriveSessionRecordType,
+    isLearnSessionRow,
+} from '../lib/sessionListDisplay';
 import { recordSummariesForSessionRow } from './record';
 
 /** JSON-safe session document for lesson WebSocket clients. */
@@ -26,11 +31,30 @@ export function sessionDocToWire(doc: SessionDoc | null): Record<string, unknown
     return d;
 }
 
-const ACTIVITY_MS = 5 * 60 * 1000;
-
-function rowStatus(doc: SessionDoc): 'active' | 'detached' {
-    const t = doc.lastActivityAt ? new Date(doc.lastActivityAt).getTime() : 0;
-    return Date.now() - t < ACTIVITY_MS ? 'active' : 'detached';
+function buildSessionListRow(
+    self: { translate: (k: string) => string; url: (name: string, kwargs?: Record<string, unknown>) => string },
+    doc: SessionDoc,
+    recordSummaries: Awaited<ReturnType<typeof recordSummariesForSessionRow>>,
+) {
+    const status = deriveSessionLearnStatus(doc);
+    const recordType = deriveSessionRecordType(doc);
+    let resumeUrl: string;
+    if (isLearnSessionRow(doc) && doc._id) {
+        const base = self.url('learn_lesson', { domainId: doc.domainId });
+        const sep = base.includes('?') ? '&' : '?';
+        resumeUrl = `${base}${sep}session=${encodeURIComponent(doc._id.toString())}`;
+    } else {
+        resumeUrl = self.url('session_domain', { domainId: doc.domainId });
+    }
+    return {
+        ...doc,
+        status,
+        recordType,
+        statusLabel: self.translate(`session_status_${status}`),
+        recordTypeLabel: self.translate(`session_record_type_${recordType}`),
+        resumeUrl,
+        recordSummaries,
+    };
 }
 
 function readPatch(body: any): SessionPatch {
@@ -53,7 +77,7 @@ function readPatch(body: any): SessionPatch {
     if (body.appRoute === 'learn' || body.appRoute === 'collect' || body.appRoute === 'flag') {
         patch.appRoute = body.appRoute;
     }
-    if (body.lessonMode === null || body.lessonMode === 'today' || body.lessonMode === 'node' || body.lessonMode === 'allDomains') {
+    if (body.lessonMode === null || body.lessonMode === 'today' || body.lessonMode === 'node') {
         patch.lessonMode = body.lessonMode;
     }
     if (body.currentLearnSectionIndex !== undefined) {
@@ -69,11 +93,6 @@ function readPatch(body: any): SessionPatch {
     if (body.lessonCardTimesMs !== undefined) {
         if (!Array.isArray(body.lessonCardTimesMs)) throw new ValidationError('lessonCardTimesMs must be an array');
         patch.lessonCardTimesMs = body.lessonCardTimesMs.map((x: unknown) => Number(x));
-    }
-    if (body.allDomainsEntryDomainId !== undefined) {
-        patch.allDomainsEntryDomainId = body.allDomainsEntryDomainId === null || body.allDomainsEntryDomainId === ''
-            ? null
-            : String(body.allDomainsEntryDomainId);
     }
     if (body.state === 'idle' || body.state === 'active') patch.state = body.state;
     if (body.progress !== undefined) {
@@ -131,11 +150,11 @@ export class SessionDomainHandler extends Handler {
             page,
             pageSize,
         );
-        const sessions = await Promise.all(rows.map(async (s) => ({
-            ...s,
-            status: rowStatus(s),
-            recordSummaries: await recordSummariesForSessionRow(domainId, s.recordIds),
-        })));
+        const sessions = await Promise.all(rows.map(async (s) => buildSessionListRow(
+            this,
+            s,
+            await recordSummariesForSessionRow(domainId, s.recordIds),
+        )));
         const userIds = [...new Set(rows.map((s) => s.uid))];
         const udict = await user.getList(domainId, userIds);
 
@@ -231,7 +250,7 @@ class SessionConnectionHandler extends ConnectionHandler {
     async sendSessionUpdate(sdoc: SessionDoc) {
         const udoc = await user.getById(this.args.domainId, sdoc.uid);
         const recordSummaries = await recordSummariesForSessionRow(this.args.domainId, sdoc.recordIds);
-        const session = { ...sdoc, status: rowStatus(sdoc), recordSummaries };
+        const session = buildSessionListRow(this, sdoc, recordSummaries);
         const key = String(sdoc.uid);
         this.queue.set(key, async () => ({
             html: await this.renderHTML('session_domain_tr.html', { session, udoc }),
