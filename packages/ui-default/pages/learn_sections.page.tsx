@@ -206,12 +206,20 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
     setSingleCardModal({ cardId: String(card.cardId), title: card.title || i18n('Unnamed Card') });
   }, []);
 
-  const confirmSingleCardMode = useCallback(() => {
+  const confirmSingleCardMode = useCallback(async () => {
     if (!singleCardModal) return;
-    const url = getLessonUrl(singleCardModal.cardId);
-    window.open(url, '_blank', 'noopener,noreferrer');
+    try {
+      const res: any = await request.post(`/d/${domainId}/learn/lesson/start`, {
+        mode: 'card',
+        cardId: singleCardModal.cardId,
+      });
+      const redir = res?.redirect ?? res?.body?.redirect ?? res?.data?.redirect;
+      window.open(redir || getLessonUrl(singleCardModal.cardId), '_blank', 'noopener,noreferrer');
+    } catch {
+      window.open(getLessonUrl(singleCardModal.cardId), '_blank', 'noopener,noreferrer');
+    }
     setSingleCardModal(null);
-  }, [singleCardModal, getLessonUrl]);
+  }, [singleCardModal, domainId, getLessonUrl]);
 
   const toggleCardExpand = useCallback((cardId: string) => {
     const id = String(cardId);

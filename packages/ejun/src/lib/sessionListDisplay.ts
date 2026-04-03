@@ -118,6 +118,8 @@ export function deriveSessionLearnStatus(doc: SessionDoc, now = Date.now()): Ses
     const onLearn = doc.route === 'learn';
     const recentOnLesson = onLearn && now - last < ON_LESSON_RECENT_MS;
 
+    if (doc.lessonMode === 'card' && idx >= 1) return 'finished';
+
     if (qLen > 0 && idx >= qLen) return 'finished';
 
     const daily = doc.lessonMode === 'today';
