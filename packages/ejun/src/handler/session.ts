@@ -175,12 +175,13 @@ class SessionConnectionHandler extends ConnectionHandler {
                 const udoc = await user.getById(q, +uidOrName)
                     || await user.getByUname(q, uidOrName)
                     || await user.getByEmail(q, uidOrName);
-                if (!udoc) {
-                    this.close(4000, `User not found: ${uidOrName}`);
-                    return;
-                }
-                this.watchUid = udoc._id;
-                if (this.watchUid !== this.user._id) {
+                if (udoc) {
+                    this.watchUid = udoc._id;
+                    if (this.watchUid !== this.user._id) {
+                        this.checkPerm(PERM.PERM_VIEW_RECORD);
+                    }
+                } else {
+                    this.watchUid = undefined;
                     this.checkPerm(PERM.PERM_VIEW_RECORD);
                 }
             } else {
