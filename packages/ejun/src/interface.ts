@@ -1020,6 +1020,7 @@ declare module './service/db' {
         'learn_consumption_stats': any;
         /** Per-domain user lesson/live progress (Learn/Collect/Flag). */
         'session': import('./model/session').SessionDoc;
+        'session_record': import('./model/record').RecordDoc;
         /** Agent chat / client conversation room. */
         'room': RoomDoc;
         'rating': any;
@@ -1055,6 +1056,7 @@ export interface Model {
     training: typeof import('./model/training').default,
     learn: typeof import('./model/learn').default,
     session: typeof import('./model/session').default,
+    record: typeof import('./model/record').default,
     rating: typeof import('./model/rating').default,
     scene: typeof import('./model/scene').default,
     sceneEvent: typeof import('./model/scene').SceneEventModel,
@@ -1107,6 +1109,7 @@ export interface EjunzGlobal {
 }
 
 export type { SessionDoc } from './model/session';
+export type { RecordDoc, RecordProblemState } from './model/record';
 
 export interface RoomDoc {
     _id: ObjectId;

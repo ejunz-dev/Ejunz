@@ -2,11 +2,11 @@
 {% block content %}
 {{ set(
   UiContext, 'socketUrl',
-  "session-conn?domainId=" + handler.args.domainId
-  + (("&uidOrName=" + sessionConnUidOrName) if sessionConnUidOrName else "")
+  "record-conn?domainId=" + handler.args.domainId
+  + (("&uidOrName=" + recordConnUidOrName) if recordConnUidOrName else "")
   + (("&minutes=" + (filterMinutes|string)) if filterMinutes else "")
 ) }}
-{{ set(UiContext, 'sessionUids', sessions.map(eval("s=>s.uid"))) }}
+{{ set(UiContext, 'recordRids', records.map(eval("r=>r._id.toString()"))) }}
 <div class="row">
   <div class="medium-12 columns">
     <form method="get">
@@ -15,7 +15,7 @@
           <h1 class="section__title">{{ _('Filter') }}</h1>
           <div class="section__tools">
             <button type="submit" class="primary button"><span class="icon icon-filter"></span> {{ _('Filter') }}</button>
-            <a href="{{ url('session_domain') }}" class="button">{{ _('Reset') }}</a>
+            <a href="{{ url('record_main') }}" class="button">{{ _('Reset') }}</a>
           </div>
         </div>
         <div class="section__body">
@@ -38,44 +38,42 @@
     </form>
     <div class="section">
       <div class="section__header">
-        <h1 class="section__title">{{ _('session_learn_list_title') }}</h1>
+        <h1 class="section__title">{{ _('record_main_list_title') }}</h1>
         <div class="section__tools">
-          <a href="{{ url('record_main') }}" class="button text-sm">{{ _('record_link_record_list') }}</a>
+          <a href="{{ url('session_domain') }}" class="button text-sm">{{ _('record_link_session_list') }}</a>
         </div>
       </div>
       <div class="section__body no-padding">
-      {% if not sessions.length %}
+      {% if not records.length %}
         {% if not filterUidOrName %}
-        {{ nothing.render(_('session_learn_empty')) }}
+        {{ nothing.render(_('record_main_empty')) }}
         {% else %}
-        {{ nothing.render(_('session_learn_empty_filter')) }}
+        {{ nothing.render(_('record_main_empty_filter')) }}
         {% endif %}
       {% else %}
-        <table class="data-table session_domain__table">
+        <table class="data-table record_main__table">
           <colgroup>
             <col class="col--status">
             <col class="col--user">
-            <col class="col--branch">
-            <col class="col--position">
-            <col class="col--records">
-            <col class="col--route">
+            <col class="col--case">
+            <col class="col--case">
             <col class="col--submit-at">
+            <col class="col--tools">
           </colgroup>
           <thead>
             <tr>
               <th class="col--status record-status--border">{{ _('Status') }}</th>
               <th class="col--user">{{ _('User') }}</th>
-              <th class="col--branch">{{ _('session_col_branch') }}</th>
-              <th class="col--position">{{ _('session_col_position') }}</th>
-              <th class="col--records">{{ _('record_col_short') }}</th>
-              <th class="col--route">{{ _('session_col_route') }}</th>
+              <th class="col--case">{{ _('record_col_card') }}</th>
+              <th class="col--case">{{ _('record_field_training') }}</th>
               <th class="col--submit-at">{{ _('session_last_activity') }}</th>
+              <th class="col--tools"></th>
             </tr>
           </thead>
           <tbody>
-          {%- for session in sessions -%}
-            {% set udoc = udict[session['uid']] %}
-            {% include 'session_domain_tr.html' %}
+          {%- for record in records -%}
+            {% set udoc = udict[record['uid']] %}
+            {% include 'record_main_tr.html' %}
           {%- endfor -%}
           </tbody>
         </table>
