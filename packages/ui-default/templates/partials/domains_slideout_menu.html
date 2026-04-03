@@ -3,13 +3,6 @@
   <header class="domains-slideout__header">{{ _('Joined Domains') }}</header>
   <div class="domains-slideout__scroll" role="region" aria-label="{{ _('Joined Domains') }}">
     <ul class="domains-slideout__list">
-      <li class="domains-slideout__item">
-        <a href="{{ url('user_learn', uid=handler.user._id) }}" class="domains-slideout__link">{{ _('All Domains Learn') }}</a>
-      </li>
-      <li class="domains-slideout__item">
-        <a href="{{ url('user_task', uid=handler.user._id) }}" class="domains-slideout__link">{{ _('My Task') }}</a>
-      </li>
-      <li class="domains-slideout__seperator" role="separator"></li>
       {%- set _user_domains = handler.user.joinedDomains|default(handler.user.domains)|default([]) -%}
       {%- for ddoc in _user_domains -%}
       <li class="domains-slideout__item">

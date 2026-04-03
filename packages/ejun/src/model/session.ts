@@ -3,7 +3,7 @@ import type { Context } from '../context';
 import db from '../service/db';
 import bus from '../service/bus';
 
-export type LessonMode = 'today' | 'node' | 'allDomains' | null;
+export type LessonMode = 'today' | 'node' | null;
 
 /** Frozen lesson order for the current session (base/training changes do not mutate until a new queue is started). */
 export interface LessonCardQueueItem {
@@ -32,14 +32,14 @@ export interface SessionDoc {
     currentLearnSectionId?: string;
     lessonReviewCardIds?: string[];
     lessonCardTimesMs?: number[];
-    /** Entry domain for learn allDomains mode (usually equals domainId on that row). */
-    allDomainsEntryDomainId?: string;
     /** Ordered cards for the active lesson run; set once per \"start\" until cleared or mode change. */
     lessonCardQueue?: LessonCardQueueItem[];
     /** For `node` mode: subtree root the queue was generated from. */
     lessonQueueAnchorNodeId?: string | null;
     lessonQueueBaseDocId?: number | null;
     lessonQueueTrainingDocId?: string | null;
+    /** UTC YYYY-MM-DD when `lessonCardQueue` was frozen for `today`. */
+    lessonQueueDay?: string | null;
     state?: 'idle' | 'active';
     progress?: Record<string, unknown>;
     recordIds?: ObjectId[];
@@ -62,11 +62,11 @@ export type SessionPatch = Partial<Pick<
     | 'currentLearnSectionId'
     | 'lessonReviewCardIds'
     | 'lessonCardTimesMs'
-    | 'allDomainsEntryDomainId'
     | 'lessonCardQueue'
     | 'lessonQueueAnchorNodeId'
     | 'lessonQueueBaseDocId'
     | 'lessonQueueTrainingDocId'
+    | 'lessonQueueDay'
     | 'state'
     | 'progress'
 >>;

@@ -70,6 +70,11 @@ export async function apply(ctx: Context) {
             }
             await ctx.parallel('task/daily');
         });
+        c.worker.addHandler('task.session.utc0', async () => {
+            const { settleStaleDailyLessonSessionsUtc } = await import('../lib/sessionDailySettle');
+            const n = await settleStaleDailyLessonSessionsUtc();
+            new Logger('task/session').info('settleStaleDailyLessonSessionsUtc: %d', n);
+        });
     });
 
     ctx.on('domain/delete', (domainId) => coll.deleteMany({ domainId }));
@@ -80,6 +85,14 @@ export async function apply(ctx: Context) {
             type: 'schedule',
             subType: 'task.daily',
             executeAfter: moment().add(1, 'day').hour(3).minute(0).second(0).millisecond(0).toDate(),
+            interval: [1, 'day'],
+        });
+    }
+    if (!await ScheduleModel.count({ type: 'schedule', subType: 'task.session.utc0' })) {
+        await ScheduleModel.add({
+            type: 'schedule',
+            subType: 'task.session.utc0',
+            executeAfter: moment.utc().startOf('day').add(1, 'day').toDate(),
             interval: [1, 'day'],
         });
     }

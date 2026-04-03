@@ -11,7 +11,6 @@ export interface MergedLessonState {
     currentLearnSectionId: string | undefined;
     lessonReviewCardIds: string[];
     lessonCardTimesMs: number[];
-    allDomainsEntryDomainId: string | undefined;
     lessonCardQueue: LessonCardQueueItem[];
     lessonQueueAnchorNodeId: string | undefined;
     lessonQueueBaseDocId: number | undefined;
@@ -29,7 +28,6 @@ export function mergeDomainLessonState(dudoc: any, sdoc: SessionDoc | null): Mer
             currentLearnSectionId: d.currentLearnSectionId as string | undefined,
             lessonReviewCardIds: Array.isArray(d.lessonReviewCardIds) ? [...d.lessonReviewCardIds] : [],
             lessonCardTimesMs: Array.isArray(d.lessonCardTimesMs) ? [...d.lessonCardTimesMs] : [],
-            allDomainsEntryDomainId: d.allDomainsEntryDomainId as string | undefined,
             lessonCardQueue: [],
             lessonQueueAnchorNodeId: undefined,
             lessonQueueBaseDocId: undefined,
@@ -54,7 +52,6 @@ export function mergeDomainLessonState(dudoc: any, sdoc: SessionDoc | null): Mer
         lessonCardTimesMs: Array.isArray(sdoc.lessonCardTimesMs)
             ? [...sdoc.lessonCardTimesMs]
             : (Array.isArray(d.lessonCardTimesMs) ? [...d.lessonCardTimesMs] : []),
-        allDomainsEntryDomainId: sdoc.allDomainsEntryDomainId ?? d.allDomainsEntryDomainId as string | undefined,
         lessonCardQueue: Array.isArray(sdoc.lessonCardQueue) ? [...sdoc.lessonCardQueue] : [],
         lessonQueueAnchorNodeId: (sdoc.lessonQueueAnchorNodeId !== undefined && sdoc.lessonQueueAnchorNodeId !== '')
             ? (sdoc.lessonQueueAnchorNodeId as string)
