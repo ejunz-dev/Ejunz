@@ -7,6 +7,8 @@ import { deriveSessionLearnStatus } from './sessionListDisplay';
 export interface MergedLessonState {
     lessonMode: LessonMode;
     lessonCardIndex: number;
+    /** From session.cardId when lessonMode is `card`. */
+    lessonCardId: string | undefined;
     lessonNodeId: string | undefined;
     currentLearnSectionIndex: number | undefined;
     currentLearnSectionId: string | undefined;
@@ -24,6 +26,7 @@ export function mergeDomainLessonState(dudoc: any, sdoc: SessionDoc | null): Mer
         return {
             lessonMode: d.lessonMode ?? null,
             lessonCardIndex: typeof d.lessonCardIndex === 'number' ? d.lessonCardIndex : 0,
+            lessonCardId: typeof d.lessonCardId === 'string' && d.lessonCardId ? d.lessonCardId : undefined,
             lessonNodeId: d.lessonNodeId as string | undefined,
             currentLearnSectionIndex: typeof d.currentLearnSectionIndex === 'number' ? d.currentLearnSectionIndex : undefined,
             currentLearnSectionId: d.currentLearnSectionId as string | undefined,
@@ -40,7 +43,10 @@ export function mergeDomainLessonState(dudoc: any, sdoc: SessionDoc | null): Mer
         lessonCardIndex: typeof sdoc.cardIndex === 'number'
             ? sdoc.cardIndex
             : (typeof d.lessonCardIndex === 'number' ? d.lessonCardIndex : 0),
-        lessonNodeId: (sdoc.nodeId !== undefined && sdoc.nodeId !== '')
+        lessonCardId: (typeof sdoc.cardId === 'string' && sdoc.cardId.trim())
+            ? sdoc.cardId.trim()
+            : (typeof d.lessonCardId === 'string' && d.lessonCardId ? d.lessonCardId : undefined),
+        lessonNodeId: (typeof sdoc.nodeId === 'string' && sdoc.nodeId !== '')
             ? sdoc.nodeId
             : d.lessonNodeId as string | undefined,
         currentLearnSectionIndex: typeof sdoc.currentLearnSectionIndex === 'number'

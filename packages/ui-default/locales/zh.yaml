@@ -815,6 +815,7 @@ lesson_history_col_time: 用时
 lesson_session_history_back: 返回学习首页
 lesson_session_history_detail_title: 各卡片答题明细
 lesson_session_history_hint: 该每日学习会话已超时，以下为该次练习的答题记录。
+lesson_session_history_hint_finished: 本会话已结束，以下为该次练习的答题记录。
 lesson_session_history_title: 学习会话（历史）
 Limit And Hint: 数据范围与提示
 Limitations: 限制
