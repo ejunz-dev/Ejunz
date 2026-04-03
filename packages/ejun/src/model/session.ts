@@ -42,6 +42,7 @@ export interface SessionDoc {
     lessonQueueTrainingDocId?: string | null;
     state?: 'idle' | 'active';
     progress?: Record<string, unknown>;
+    recordIds?: ObjectId[];
     lastActivityAt: Date;
     createdAt: Date;
     updatedAt: Date;
@@ -161,6 +162,28 @@ export default class SessionModel {
 
     static async deleteForUser(domainId: string, uid: number) {
         await this.coll.deleteOne({ domainId, uid });
+    }
+
+    static async addRecord(domainId: string, uid: number, recordId: ObjectId): Promise<SessionDoc | null> {
+        const now = new Date();
+        await this.coll.updateOne(
+            { domainId, uid },
+            {
+                $addToSet: { recordIds: recordId },
+                $set: { updatedAt: now, lastActivityAt: now },
+                $setOnInsert: {
+                    _id: new ObjectId(),
+                    domainId,
+                    uid,
+                    createdAt: now,
+                    state: 'active',
+                },
+            },
+            { upsert: true },
+        );
+        const doc = await this.get(domainId, uid);
+        if (doc) bus.broadcast('session/change', doc);
+        return doc;
     }
 }
 

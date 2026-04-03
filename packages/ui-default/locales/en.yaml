@@ -453,6 +453,8 @@ agent_domain: Agent
 agent_edit: Edit Agent
 All Domains Learn: All Domains Learn
 Average Rating: Average Rating
+Back to Room: Back to Room
+Back to Rooms: Back to Rooms
 Back to: Back to
 Base has no nodes: Base has no nodes
 Base Node: Base Node
@@ -477,6 +479,7 @@ Can be Extended For: Extension
 cards: cards
 Cards: Cards
 Chars: Chars
+Client Room Chat: Client Room Chat
 client_create: Create Client
 client_detail: Client Detail
 client_domain: Client
@@ -488,6 +491,7 @@ Contribution Wall: Contribution Wall
 Contributions in the past year: Contributions in the past year
 Contributions: Contributions
 Created at: Created at
+Delete Room: Delete Room
 discussion_create: Create Discussion
 discussion_detail: Discussion Detail
 discussion_edit: Discussion Edit
@@ -663,35 +667,51 @@ problems: problems
 Problems: Problems
 Publish Statistics: Publish Statistics
 Rating: Rating
+record_back_record_list: Back to answer records
+record_back_sessions: Back to sessions
+record_col_card: Card
+record_col_short: Records
+record_field_node: Node
+record_field_session: Session
+record_field_training: Training plan
+record_link_record_list: Answer records
+record_link_session_list: Learn sessions
+record_main_empty_filter: No records match the filter.
+record_main_empty: No card answer records in this time window.
+record_main_list_title: Card answer records (live)
 record_main: Record
-round_main: Round
-rounds: rounds
+record_no_problems: No problem rows yet.
+record_open_detail: Open
+record_page_title: Record
+record_problems_title: Problem status
+record_status_correct: Correct
+record_status_pending: Pending
+record_status_skipped: Skipped
+record_status_wrong: Wrong
 repo_config: Repo Config
 repo_create: Create Repo
 repo_detail: Repo Detail
 repo_doc: Repo Doc
 repo_edit: Edit Repo
 Role: Role
+Room ID: Room ID
+Room title: Room title
+room_domain: Rooms
+Rooms: Rooms
+round_main: Round
+rounds: rounds
 scene_create: Create Scene
 scene_detail: Scene Detail
 scene_domain: Scene
-session_domain: Learn live
-session_learn_list_title: Learn sessions (live)
-session_learn_empty: No recent learn activity in this domain.
-session_learn_empty_filter: No sessions match the filter.
 session_active_minutes: List users active within the last N minutes
 session_col_branch: Branch
 session_col_position: Card / node
 session_col_route: Route
+session_domain: Learn live
 session_last_activity: Last activity
-room_domain: Rooms
-Rooms: Rooms
-Back to Rooms: Back to Rooms
-Back to Room: Back to Room
-Room ID: Room ID
-Room title: Room title
-Delete Room: Delete Room
-Client Room Chat: Client Room Chat
+session_learn_empty_filter: No sessions match the filter.
+session_learn_empty: No recent learn activity in this domain.
+session_learn_list_title: Learn sessions (live)
 session_main: Session
 setting_customize: Customize
 setting_display: Display Preference

@@ -1,0 +1,60 @@
+{% import "components/user.html" as user with context %}
+{% extends "layout/basic.html" %}
+{% block content %}
+{% set rdoc = rdoc %}
+{{ set(UiContext, 'socketUrl', "record-detail-conn?domainId=" + rdoc.domainId + "&rid=" + rdoc._id) }}
+<div class="row">
+  <div class="medium-9 columns collapsed">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('record_page_title') }}</h1>
+        <div class="section__tools">
+          <a href="{{ url('record_main', domainId=rdoc.domainId) }}" class="button">
+            <span class="icon icon-back"></span> {{ _('record_back_record_list') }}
+          </a>
+        </div>
+      </div>
+    </div>
+    {% include 'record_detail_status.html' %}
+  </div>
+  <div class="medium-3 columns">
+    <div class="section side">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Information') }}</h1>
+      </div>
+      <div class="section__body typo no-media">
+        <dl class="large horizontal">
+          <dt>{{ _('User') }}</dt>
+          <dd>{% if udoc %}{{ user.render_inline(udoc, modbadge=false) }}{% else %}<span class="text-gray">-</span>{% endif %}</dd>
+          <dt>{{ _('record_col_card') }}</dt>
+          <dd>
+            {% if recordDisp.cardUrl and recordDisp.cardUrl != '#' %}
+              <a href="{{ recordDisp.cardUrl }}" class="typo">{{ recordDisp.cardTitle }}</a>
+            {% else %}
+              <span class="typo">{{ recordDisp.cardTitle }}</span>
+            {% endif %}
+          </dd>
+          <dt>{{ _('record_field_training') }}</dt>
+          <dd>
+            {% if recordDisp.trainingTitle %}
+              {% if recordDisp.trainingUrl and recordDisp.trainingUrl != '#' %}
+                <a href="{{ recordDisp.trainingUrl }}" class="typo">{{ recordDisp.trainingTitle }}</a>
+              {% else %}
+                <span class="typo">{{ recordDisp.trainingTitle }}</span>
+              {% endif %}
+            {% else %}
+              <span class="text-gray">-</span>
+            {% endif %}
+          </dd>
+          <dt>{{ _('record_field_session') }}</dt>
+          <dd><code class="text-sm">{{ rdoc.sessionId }}</code></dd>
+          <dt>{{ _('session_col_branch') }}</dt>
+          <dd>{{ rdoc.branch or '-' }}</dd>
+          <dt>{{ _('session_last_activity') }}</dt>
+          <dd>{% if rdoc.lastActivityAt %}{{ datetimeSpan(rdoc.lastActivityAt, false)|safe }}{% else %}-{% endif %}</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

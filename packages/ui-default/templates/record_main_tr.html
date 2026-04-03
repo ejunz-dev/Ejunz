@@ -1,0 +1,51 @@
+{% import "components/user.html" as user with context %}
+<tr data-rid="{{ record._id }}">
+  <td class="col--status record-status--border">
+    {% if record.summaryCode == 'pass' %}
+      {% set _icon = 'pass' %}
+    {% elif record.summaryCode == 'fail' %}
+      {% set _icon = 'fail' %}
+    {% elif record.summaryCode == 'pending' %}
+      {% set _icon = 'unknown' %}
+    {% else %}
+      {% set _icon = 'progress' %}
+    {% endif %}
+    <span class="icon record-status--icon {{ _icon }}"></span>
+    <span class="text-sm">{{ record.summaryLabel }}</span>
+  </td>
+  <td class="col--user">
+    {% if udoc %}
+      {{ user.render_inline(udoc, avatar=false, badge=false) }}
+    {% else %}
+      <span class="text-gray">-</span>
+    {% endif %}
+  </td>
+  <td class="col--case">
+    {% if record.cardUrl and record.cardUrl != '#' %}
+      <a href="{{ record.cardUrl }}" class="typo">{{ record.cardTitle }}</a>
+    {% else %}
+      <span class="typo">{{ record.cardTitle }}</span>
+    {% endif %}
+  </td>
+  <td class="col--case">
+    {% if record.trainingTitle %}
+      {% if record.trainingUrl and record.trainingUrl != '#' %}
+        <a href="{{ record.trainingUrl }}" class="typo">{{ record.trainingTitle }}</a>
+      {% else %}
+        <span class="typo">{{ record.trainingTitle }}</span>
+      {% endif %}
+    {% else %}
+      <span class="text-gray">-</span>
+    {% endif %}
+  </td>
+  <td class="col--submit-at">
+    {% if record.lastActivityAt %}
+      {{ datetimeSpan(record.lastActivityAt, false)|safe }}
+    {% else %}
+      -
+    {% endif %}
+  </td>
+  <td class="col--tools">
+    <a href="{{ url('record_detail', domainId=record.domainId, rid=record._id) }}" class="button compact">{{ _('record_open_detail') }}</a>
+  </td>
+</tr>

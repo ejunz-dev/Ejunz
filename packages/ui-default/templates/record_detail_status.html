@@ -1,0 +1,55 @@
+<div class="section visible" id="status">
+  <div class="section__header">
+    <h1 class="section__title">
+      <span class="icon record-status--icon progress"></span>
+      {{ _('record_problems_title') }}
+      <span class="text-gray text-sm font-mono">{{ rdoc.cardId }}</span>
+    </h1>
+  </div>
+  <div class="section__body no-padding">
+    <table class="data-table record_detail__table">
+      <colgroup>
+        <col class="col--case">
+        <col class="col--status">
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="col--case record-status--border">{{ _('Problem') }}</th>
+          <th class="col--status">{{ _('Status') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for p in rdoc.problems %}
+        <tr>
+          <td class="col--case record-status--border">
+            <code class="text-sm">{{ p.pid }}</code>
+          </td>
+          <td class="col--status">
+            {% if p.status == 'correct' %}
+              <span class="icon record-status--icon pass"></span>
+              <span class="record-status--text pass">{{ _('record_status_correct') }}</span>
+            {% elif p.status == 'wrong' %}
+              <span class="icon record-status--icon fail"></span>
+              <span class="record-status--text fail">{{ _('record_status_wrong') }}</span>
+            {% elif p.status == 'skipped' %}
+              <span class="icon record-status--icon unknown"></span>
+              <span class="record-status--text unknown">{{ _('record_status_skipped') }}</span>
+            {% else %}
+              <span class="icon record-status--icon progress"></span>
+              <span class="record-status--text progress">{{ _('record_status_pending') }}</span>
+            {% endif %}
+            {% if p.attempts is defined and p.attempts > 0 %}
+              <span class="text-gray text-sm float-right">×{{ p.attempts }}</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      {% if not rdoc.problems or rdoc.problems.length == 0 %}
+        <tr>
+          <td colspan="2" class="text-gray">{{ _('record_no_problems') }}</td>
+        </tr>
+      {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>

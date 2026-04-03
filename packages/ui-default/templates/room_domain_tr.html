@@ -36,7 +36,7 @@
     {% endif %}
   </td>
   <td class="col--records">
-    <div class="session-records-blocks">
+    <div class="record-blocks">
       {% if room.records %}
         {% for record in room.records %}
           {% set record_score = record.score|default(0) if record.score is defined else 0 %}
@@ -56,7 +56,7 @@
           {% endif %}
           <a 
             href="{{ url('round_detail', domainId=room.domainId, rid=record._id) }}"
-            class="session-record-block"
+            class="record-block"
             style="background-color: {{ record_color }}"
             title="Record {{ record._id.toString().substring(0, 8) }} - Score: {{ record_score }} - Status: {{ model.builtin.STATUS_TEXTS[record.status] if record.status is defined else 'Unknown' }}"
           ></a>
