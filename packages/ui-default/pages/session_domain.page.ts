@@ -35,6 +35,14 @@ const page = new NamedPage('session_domain', async () => {
     const dd = new DiffDOM();
 
     sock.onopen = () => {
+      const sids = (UiContext.sessionSids && UiContext.sessionSids.length)
+        ? UiContext.sessionSids
+        : Array.from($('.session_domain__table tbody tr[data-sid]')).map((tr) =>
+            $(tr).attr('data-sid')).filter(Boolean);
+      if (sids.length) {
+        sock.send(JSON.stringify({ sids }));
+        return;
+      }
       const uids = (UiContext.sessionUids && UiContext.sessionUids.length)
         ? UiContext.sessionUids
         : Array.from($('.session_domain__table tbody tr[data-uid]')).map((tr) =>
@@ -54,10 +62,13 @@ const page = new NamedPage('session_domain', async () => {
         if (!msg.html) return;
         const $newTr = $(msg.html);
         if (!$newTr.length) return;
+        const sid = $newTr.attr('data-sid');
         const uid = $newTr.attr('data-uid');
-        if (!uid) return;
         const $tbody = $('.session_domain__table tbody');
-        const $oldTr = $tbody.find(`tr[data-uid="${uid}"]`);
+        const $oldTr = sid
+          ? $tbody.find(`tr[data-sid="${sid}"]`)
+          : (uid ? $tbody.find(`tr[data-uid="${uid}"]`) : $());
+        if (!$oldTr.length && !sid && !uid) return;
         if ($oldTr.length) {
           $oldTr.trigger('vjContentRemove');
           dd.apply($oldTr[0], dd.diff($oldTr[0], $newTr[0]));

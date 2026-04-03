@@ -1,6 +1,7 @@
 import { ObjectId } from 'mongodb';
 import type { LessonCardQueueItem, LessonMode, SessionDoc, SessionPatch } from '../model/session';
 import SessionModel from '../model/session';
+import { deriveSessionLearnStatus } from './sessionListDisplay';
 
 /** Merged lesson resume fields: session row overrides legacy domain user fields when present. */
 export interface MergedLessonState {
@@ -68,6 +69,28 @@ export async function touchLessonSession(
     opts?: { silent?: boolean },
 ) {
     return SessionModel.touch(domainId, uid, patch, opts);
+}
+
+/**
+ * Latest daily (`today`) learn session that may be resumed from the learn home "start" action.
+ * Skips timed_out / finished / detached; only paused or in_progress.
+ */
+export async function findResumableDailyLearnSession(
+    domainId: string,
+    uid: number,
+): Promise<SessionDoc | null> {
+    const rows = await SessionModel.coll
+        .find({ domainId, uid, lessonMode: 'today' })
+        .sort({ lastActivityAt: -1 })
+        .limit(30)
+        .toArray();
+    const now = Date.now();
+    for (const row of rows) {
+        const doc = row as SessionDoc;
+        const st = deriveSessionLearnStatus(doc, now);
+        if (st === 'paused' || st === 'in_progress') return doc;
+    }
+    return null;
 }
 
 /** Load session row by `?session=<_id>` (must match domain + uid) or fall back to domain+uid row. */

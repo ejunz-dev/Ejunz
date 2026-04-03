@@ -1,3 +1,4 @@
+{% set page_name = "session_domain" %}
 {% extends "layout/basic.html" %}
 {% block content %}
 {{ set(
@@ -6,6 +7,7 @@
   + (("&uidOrName=" + sessionConnUidOrName) if sessionConnUidOrName else "")
 ) }}
 {{ set(UiContext, 'sessionUids', sessions.map(eval("s=>s.uid"))) }}
+{{ set(UiContext, 'sessionSids', sessions.map(eval("s=>s.sessionId"))) }}
 <div class="row">
   <div class="medium-12 columns">
     <form method="get">
@@ -50,6 +52,7 @@
             <col class="col--user">
             <col class="col--branch">
             <col class="col--record-type">
+            <col class="col--card-progress">
             <col class="col--records">
             <col class="col--started-at">
             <col class="col--submit-at">
@@ -60,6 +63,7 @@
               <th class="col--user">{{ _('User') }}</th>
               <th class="col--branch">{{ _('session_col_branch') }}</th>
               <th class="col--record-type">{{ _('session_col_record_type') }}</th>
+              <th class="col--card-progress">{{ _('session_col_card_progress') }}</th>
               <th class="col--records">{{ _('record_col_short') }}</th>
               <th class="col--started-at">{{ _('session_col_started_at') }}</th>
               <th class="col--submit-at">{{ _('session_last_activity') }}</th>
