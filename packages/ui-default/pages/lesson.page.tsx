@@ -49,13 +49,9 @@ type LessonUiState = {
   isAlonePractice: boolean;
   isSingleNodeMode: boolean;
   isTodayMode: boolean;
-  isAllDomainsMode: boolean;
   hasProblems: boolean;
   rootNodeId: string;
   rootNodeTitle: string;
-  allDomainsEntryDomainId: string;
-  domainProgress: Array<{ domainId: string; domainName: string; dailyGoal: number; todayCompleted: number; cardCount: number }>;
-  excludedDomains: Array<{ domainId: string; domainName: string; reason: 'no_daily_goal' | 'no_cards' }>;
   flatCards: Array<{ nodeId: string; cardId: string; nodeTitle: string; cardTitle: string; domainId?: string }>;
   nodeTree: LessonNodeTreeItem[];
   currentCardIndex: number;
@@ -109,13 +105,9 @@ function initLessonUiState(): LessonUiState {
     isAlonePractice: !!U.isAlonePractice,
     isSingleNodeMode: !!U.isSingleNodeMode,
     isTodayMode: !!U.isTodayMode,
-    isAllDomainsMode: !!U.isAllDomainsMode,
     hasProblems: !!U.hasProblems,
     rootNodeId: String(U.rootNodeId || ''),
     rootNodeTitle: String(U.rootNodeTitle || ''),
-    allDomainsEntryDomainId: String(U.allDomainsEntryDomainId || ''),
-    domainProgress: Array.isArray(U.domainProgress) ? U.domainProgress : [],
-    excludedDomains: Array.isArray(U.excludedDomains) ? U.excludedDomains : [],
     flatCards: Array.isArray(U.flatCards) ? U.flatCards : [],
     nodeTree: Array.isArray(U.nodeTree) ? U.nodeTree : [],
     currentCardIndex: typeof U.currentCardIndex === 'number' ? U.currentCardIndex : 0,
@@ -137,13 +129,9 @@ function LessonPage() {
     isAlonePractice,
     isSingleNodeMode,
     isTodayMode,
-    isAllDomainsMode,
     hasProblems,
     rootNodeId,
     rootNodeTitle,
-    allDomainsEntryDomainId,
-    domainProgress,
-    excludedDomains,
     flatCards,
     nodeTree,
     currentCardIndex,
@@ -152,10 +140,7 @@ function LessonPage() {
   } = lessonUi;
 
   const passSession = lessonSessionId ? { session: lessonSessionId } : {};
-  /** 全域课时 session 行挂在入口域；API 路径必须用该域，否则 resolveLessonSessionDoc 对不上 _id。 */
-  const lessonApiDomainId = isAllDomainsMode && allDomainsEntryDomainId
-    ? allDomainsEntryDomainId
-    : domainId;
+  const lessonApiDomainId = domainId;
 
   const [liveLessonSession, setLiveLessonSession] = useState<Record<string, unknown> | null>(null);
   const [nextCardFromPassedLoading, setNextCardFromPassedLoading] = useState(false);
@@ -419,15 +404,11 @@ function LessonPage() {
         ? (payload.lessonReviewCardIds as unknown[]).map(String)
         : prev.lessonReviewCardIds,
       reviewCardId: payload.reviewCardId != null ? String(payload.reviewCardId) : prev.reviewCardId,
-      domainProgress: Array.isArray(payload.domainProgress) ? payload.domainProgress as LessonUiState['domainProgress'] : prev.domainProgress,
-      excludedDomains: Array.isArray(payload.excludedDomains) ? payload.excludedDomains as LessonUiState['excludedDomains'] : prev.excludedDomains,
       isSingleNodeMode: typeof payload.isSingleNodeMode === 'boolean' ? payload.isSingleNodeMode : prev.isSingleNodeMode,
       isTodayMode: typeof payload.isTodayMode === 'boolean' ? payload.isTodayMode : prev.isTodayMode,
-      isAllDomainsMode: typeof payload.isAllDomainsMode === 'boolean' ? payload.isAllDomainsMode : prev.isAllDomainsMode,
       isAlonePractice: typeof payload.isAlonePractice === 'boolean' ? payload.isAlonePractice : prev.isAlonePractice,
       rootNodeId: typeof payload.rootNodeId === 'string' ? payload.rootNodeId : prev.rootNodeId,
       rootNodeTitle: typeof payload.rootNodeTitle === 'string' ? payload.rootNodeTitle : prev.rootNodeTitle,
-      allDomainsEntryDomainId: typeof payload.allDomainsEntryDomainId === 'string' ? payload.allDomainsEntryDomainId : prev.allDomainsEntryDomainId,
     }));
     const nextCard = payload.card != null ? normalizeCardFromServer(payload.card) : null;
     const probs = (nextCard?.problems || []).map(p => ({ ...p, cardId: nextCard!.docId }));
@@ -465,7 +446,7 @@ function LessonPage() {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  const showSidebarInNav = (isSingleNodeMode || isTodayMode || isAllDomainsMode) && nodeTree.length > 0;
+  const showSidebarInNav = (isSingleNodeMode || isTodayMode) && nodeTree.length > 0;
   useEffect(() => {
     if (!isMobile || !showSidebarInNav) return;
     const leftEl = document.getElementById('header-mobile-extra-left');
@@ -498,12 +479,10 @@ function LessonPage() {
     }
   }, [allProblems, problemQueue.length, answerHistory.length]);
 
-  const isNodeOrToday = isSingleNodeMode || isTodayMode || isAllDomainsMode;
-  const cardTimesStorageKey = isAllDomainsMode && allDomainsEntryDomainId
-    ? `lesson-card-times-${allDomainsEntryDomainId}-allDomains`
-    : domainId && rootNodeId
-      ? `lesson-card-times-${domainId}-${rootNodeId}`
-      : '';
+  const isNodeOrToday = isSingleNodeMode || isTodayMode;
+  const cardTimesStorageKey = domainId && rootNodeId
+    ? `lesson-card-times-${domainId}-${rootNodeId}`
+    : '';
 
   useEffect(() => {
     if (!cardTimesStorageKey || !isNodeOrToday) return;
@@ -543,8 +522,6 @@ function LessonPage() {
   const cumulativeMs = cardTimesMs.reduce((a, b) => a + b, 0) + (isNodeOrToday ? elapsedMs : 0);
   const currentCardCumulativeMs = elapsedMs + (cardTimesMs[currentCardIndex] ?? 0);
 
-  const [excludedDomainsCollapsed, setExcludedDomainsCollapsed] = useState(true);
-
   const renderNodeTreeItem = (item: { type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }, depth: number): React.ReactNode => {
     if (item.type === 'card') {
       const idx = cardIdToFlatIndex[item.id];
@@ -580,20 +557,6 @@ function LessonPage() {
           <span style={{ fontSize: '12px', color: '#999', flexShrink: 0 }}>{timeText}</span>
         </>
       );
-      if (isAllDomainsMode && allDomainsEntryDomainId && typeof idx === 'number') {
-        const sidAd = lessonSessionId
-          ? `?session=${encodeURIComponent(lessonSessionId)}`
-          : '';
-        return (
-          <a
-            key={`card-${item.id}`}
-            href={`/d/${allDomainsEntryDomainId}/learn/lesson${sidAd}`}
-            style={{ ...cardStyle, textDecoration: 'none', cursor: 'pointer' }}
-          >
-            {content}
-          </a>
-        );
-      }
       return (
         <div key={`card-${item.id}`} style={cardStyle}>
           {content}
@@ -601,7 +564,6 @@ function LessonPage() {
       );
     }
     const nodeItem = item as { type: 'node'; id: string; title: string; children: Array<{ type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }> };
-    const progress = isAllDomainsMode ? domainProgress.find((p) => p.domainId === nodeItem.id) : null;
     return (
       <div key={`node-${nodeItem.id}`} style={{ marginBottom: '4px' }}>
         <div style={{
@@ -616,11 +578,6 @@ function LessonPage() {
           flexWrap: 'wrap',
         }}>
           <span>{nodeItem.title || i18n('Unnamed Node')}</span>
-          {progress != null && (
-            <span style={{ fontSize: '12px', fontWeight: 500, color: '#666' }}>
-              {progress.todayCompleted} / {progress.dailyGoal}
-            </span>
-          )}
         </div>
         {(nodeItem.children || []).map((child, i) => (
           <React.Fragment key={i}>{renderNodeTreeItem(child as { type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }, depth + 1)}</React.Fragment>
@@ -716,7 +673,7 @@ function LessonPage() {
           sessionStorage.setItem(cardTimesStorageKey, JSON.stringify(nextTimes));
         } catch (_) {}
       }
-      const canSpaNextCard = isSingleNodeMode || isTodayMode || isAllDomainsMode;
+      const canSpaNextCard = isSingleNodeMode || isTodayMode;
       const result = await request.post(`/d/${lessonApiDomainId}/learn/lesson/pass`, {
         ...passSession,
         answerHistory: answerHistory.map(h => ({
@@ -727,13 +684,10 @@ function LessonPage() {
           attempts: h.attempts,
         })),
         totalTime: totalTimeMs,
-        isAlonePractice: isAlonePractice && !isSingleNodeMode && !isTodayMode && !isAllDomainsMode,
-        cardId: (isAlonePractice || isSingleNodeMode || isTodayMode || isAllDomainsMode) ? card.docId : undefined,
+        isAlonePractice: isAlonePractice && !isSingleNodeMode && !isTodayMode,
+        cardId: (isAlonePractice || isSingleNodeMode || isTodayMode) ? card.docId : undefined,
         singleNodeMode: isSingleNodeMode || undefined,
         todayMode: isTodayMode || undefined,
-        allDomainsMode: isAllDomainsMode || undefined,
-        allDomainsEntryDomainId: isAllDomainsMode ? allDomainsEntryDomainId : undefined,
-        domainId: isAllDomainsMode ? domainId : undefined,
         nodeId: isSingleNodeMode ? rootNodeId : undefined,
         spaNext: canSpaNextCard ? true : undefined,
       });
@@ -780,20 +734,17 @@ function LessonPage() {
           sessionStorage.setItem(cardTimesStorageKey, JSON.stringify(nextTimes));
         } catch (_) {}
       }
-      const canSpaNextBrowse = isSingleNodeMode || isTodayMode || isAllDomainsMode;
+      const canSpaNextBrowse = isSingleNodeMode || isTodayMode;
       const result = await request.post(`/d/${lessonApiDomainId}/learn/lesson/pass`, {
         ...passSession,
         answerHistory: [],
         totalTime: totalTimeMs,
-        isAlonePractice: isAlonePractice && !isSingleNodeMode && !isTodayMode && !isAllDomainsMode,
+        isAlonePractice: isAlonePractice && !isSingleNodeMode && !isTodayMode,
         cardId: card.docId,
         singleNodeMode: isSingleNodeMode || undefined,
         todayMode: isTodayMode || undefined,
-        allDomainsMode: isAllDomainsMode || undefined,
-        allDomainsEntryDomainId: isAllDomainsMode ? allDomainsEntryDomainId : undefined,
-        domainId: isAllDomainsMode ? domainId : undefined,
         nodeId: (isSingleNodeMode || isTodayMode) && rootNodeId ? rootNodeId : undefined,
-        noImpression: (isSingleNodeMode || isAlonePractice || isAllDomainsMode) ? noImpression : undefined,
+        noImpression: (isSingleNodeMode || isAlonePractice) ? noImpression : undefined,
         spaNext: canSpaNextBrowse ? true : undefined,
       });
       const { lesson: spaBrowseLesson, spaNext: spaBrowseNext, redirect: browseRedirect } = unwrapLearnPassResponse(result);
@@ -1114,7 +1065,7 @@ function LessonPage() {
                 type="button"
                 disabled={nextCardFromPassedLoading}
                 onClick={async () => {
-                  const canSpa = isSingleNodeMode || isTodayMode || isAllDomainsMode;
+                  const canSpa = isSingleNodeMode || isTodayMode;
                   if (!canSpa) {
                     const sid = lessonSessionId ? `?session=${encodeURIComponent(lessonSessionId)}` : '';
                     window.location.href = `/d/${domainId}/learn/lesson${sid}`;
@@ -1178,7 +1129,7 @@ function LessonPage() {
   }
 
   // 仅当「无题目」时使用卡片 view（Know it / No impression）；有题目的走下方题目刷题模式。单卡片模式无题目时与 node 模式无题目一致，也用卡片 view。
-  const useCardViewMode = (isSingleNodeMode || isTodayMode || isAllDomainsMode || isAlonePractice) && !hasProblems && allProblems.length === 0;
+  const useCardViewMode = (isSingleNodeMode || isTodayMode || isAlonePractice) && !hasProblems && allProblems.length === 0;
   let cardViewContent: React.ReactNode = null;
   if (useCardViewMode) {
     cardViewContent = (
@@ -1377,41 +1328,6 @@ function LessonPage() {
       ) : (
         nodeTree.map((root, i) => renderNodeTreeItem(root, 0))
       )}
-      {isAllDomainsMode && excludedDomains.length > 0 && (
-        <div style={{ marginTop: '16px', borderTop: '1px solid #e0e0e0', paddingTop: '12px' }}>
-          <button
-            type="button"
-            onClick={() => setExcludedDomainsCollapsed(!excludedDomainsCollapsed)}
-            style={{
-              width: '100%',
-              textAlign: 'left',
-              padding: '8px 10px',
-              fontSize: '13px',
-              fontWeight: 600,
-              color: '#666',
-              background: '#f5f5f5',
-              border: '1px solid #e0e0e0',
-              borderRadius: '6px',
-              cursor: 'pointer',
-            }}
-          >
-            {excludedDomainsCollapsed ? '▶ ' : '▼ '}
-            {i18n('Not participating') || '未参与'} ({excludedDomains.length})
-          </button>
-          {!excludedDomainsCollapsed && (
-            <div style={{ marginTop: '8px', fontSize: '12px', color: '#666' }}>
-              {excludedDomains.map((ex) => (
-                <div key={ex.domainId} style={{ padding: '4px 10px', marginBottom: '2px' }}>
-                  <span style={{ fontWeight: 500 }}>{ex.domainName}</span>
-                  <span style={{ marginLeft: '6px', color: '#999' }}>
-                    {ex.reason === 'no_daily_goal' ? (i18n('No daily goal set') || '未设置每日任务') : (i18n('No cards') || '暂无题目')}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </>
   );
 
@@ -1424,7 +1340,7 @@ function LessonPage() {
 
   // 卡片 view 与刷题模式共用侧边栏：有侧边栏时用同一布局；手机端侧栏为抽屉
   if (cardViewContent) {
-    const showSidebarHere = (isSingleNodeMode || isTodayMode || isAllDomainsMode) && nodeTree.length > 0;
+    const showSidebarHere = (isSingleNodeMode || isTodayMode) && nodeTree.length > 0;
     if (showSidebarHere) {
       if (isMobile) {
         return (
@@ -1556,7 +1472,7 @@ function LessonPage() {
           {i18n('Question')} {allProblems.length - problemQueue.length + 1} / {allProblems.length}
           {problemQueue.length > 0 && ` (${i18n('Remaining')}: ${problemQueue.length})`}
         </div>
-        {(isSingleNodeMode || isTodayMode || isAllDomainsMode) && (
+        {(isSingleNodeMode || isTodayMode) && (
           <div style={{ fontSize: '14px', color: '#2196f3', marginTop: '8px', fontWeight: 600 }}>
             {i18n('This card')}: {(elapsedMs / 1000).toFixed(1)}s
           </div>
@@ -1762,7 +1678,7 @@ function LessonPage() {
     </div>
   );
 
-  const showSidebar = (isSingleNodeMode || isTodayMode || isAllDomainsMode) && nodeTree.length > 0;
+  const showSidebar = (isSingleNodeMode || isTodayMode) && nodeTree.length > 0;
   if (showSidebar) {
     if (isMobile) {
       return (

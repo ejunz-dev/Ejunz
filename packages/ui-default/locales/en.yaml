@@ -706,13 +706,25 @@ scene_domain: Scene
 session_active_minutes: List users active within the last N minutes
 session_col_branch: Branch
 session_col_position: Card / node
+session_col_record_type: Practice type
 session_col_route: Route
+session_col_started_at: Started at
 session_domain: Learn live
 session_last_activity: Last activity
 session_learn_empty_filter: No sessions match the filter.
 session_learn_empty: No recent learn activity in this domain.
 session_learn_list_title: Learn sessions (live)
 session_main: Session
+session_record_type_daily: Daily practice
+session_record_type_other: Other
+session_record_type_single_card: Single-card practice
+session_record_type_single_node: Single-node practice
+session_status_active: Active
+session_status_detached: Offline
+session_status_finished: Finished
+session_status_in_progress: In progress
+session_status_paused: Paused
+session_status_timed_out: Timed out
 setting_customize: Customize
 setting_display: Display Preference
 setting_function: Function
