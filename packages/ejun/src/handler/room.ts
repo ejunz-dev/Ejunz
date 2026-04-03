@@ -308,21 +308,19 @@ class RoomDomainConnectionHandler extends ConnectionHandler {
             
             if (queryUidOrName) {
                 const udoc = await user.getById(finalDomainId, +queryUidOrName)
-                    || await user.getByUname(finalDomainId, queryUidOrName);
+                    || await user.getByUname(finalDomainId, queryUidOrName)
+                    || await user.getByEmail(finalDomainId, queryUidOrName);
                 if (udoc) {
                     this.uid = udoc._id;
+                    if (this.uid !== this.user._id) {
+                        this.checkPerm(PERM.PERM_VIEW_RECORD);
+                    }
                 } else {
-                    this.close(4000, `User not found: ${queryUidOrName}`);
-                    return;
-                }
-                // 如果查询的不是当前用户，需要权限
-                if (this.uid !== this.user._id) {
+                    this.uid = undefined;
                     this.checkPerm(PERM.PERM_VIEW_RECORD);
                 }
             } else {
-                // 没有指定 uidOrName，显示所有 session，需要权限
                 this.checkPerm(PERM.PERM_VIEW_RECORD);
-                // 不设置 this.uid，这样 onRoomChange 就不会按 uid 过滤
                 this.uid = undefined;
             }
             
