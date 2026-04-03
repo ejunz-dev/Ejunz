@@ -806,6 +806,16 @@ learn: 学习
 Learn: 学习
 Leave Edit Mode: 离开编辑模式
 Less: 少
+lesson_history_col_attempts: 次数
+lesson_history_col_correct: 正确答案
+lesson_history_col_node: 节点
+lesson_history_col_selected: 所选答案
+lesson_history_col_stem: 题目
+lesson_history_col_time: 用时
+lesson_session_history_back: 返回学习首页
+lesson_session_history_detail_title: 各卡片答题明细
+lesson_session_history_hint: 该每日学习会话已超时，以下为该次练习的答题记录。
+lesson_session_history_title: 学习会话（历史）
 Limit And Hint: 数据范围与提示
 Limitations: 限制
 Links: 链接
@@ -1023,6 +1033,9 @@ Recommended: 推荐
 record_back_record_list: 返回答题记录列表
 record_back_sessions: 返回会话列表
 record_col_card: 卡片
+record_col_session_question_idx: 题号
+record_col_session_type: 会话类型
+record_col_session: 会话
 record_col_short: 答题记录
 record_field_node: 节点
 record_field_session: 会话
@@ -1110,9 +1123,9 @@ Send: 发送
 Service Status: 服务状态
 session_active_minutes: 列出最近 N 分钟内有活动的用户
 session_col_branch: 分支
+session_col_card_progress: 卡片进度
 session_col_position: 卡片 / 节点
 session_col_record_type: 练习类型
-session_col_card_progress: 卡片进度
 session_col_route: 页面
 session_col_started_at: 开始时间
 session_domain: 会话
@@ -1131,16 +1144,6 @@ session_status_finished: 已结束
 session_status_in_progress: 进行中
 session_status_paused: 暂停中
 session_status_timed_out: 已超时
-lesson_session_history_title: 学习会话（历史）
-lesson_session_history_hint: 该每日学习会话已超时，以下为该次练习的答题记录。
-lesson_session_history_back: 返回学习首页
-lesson_session_history_detail_title: 各卡片答题明细
-lesson_history_col_node: 节点
-lesson_history_col_stem: 题目
-lesson_history_col_selected: 所选答案
-lesson_history_col_correct: 正确答案
-lesson_history_col_attempts: 次数
-lesson_history_col_time: 用时
 Set Role: 设置角色
 Set Roles for Selected User: 设置所选用户的角色
 Set Roles for selected users: 为所选用户设置角色

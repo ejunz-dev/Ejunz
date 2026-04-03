@@ -533,6 +533,16 @@ Joined at: Joined at
 Joined Domains: Joined Domains
 Learn: Learn
 Less: Less
+lesson_history_col_attempts: Attempts
+lesson_history_col_correct: Correct answer
+lesson_history_col_node: Node
+lesson_history_col_selected: Your choice
+lesson_history_col_stem: Problem
+lesson_history_col_time: Time spent
+lesson_session_history_back: Back to Learn
+lesson_session_history_detail_title: Answers by card
+lesson_session_history_hint: This daily session has timed out. Answer records from that run are listed below.
+lesson_session_history_title: Learn session (history)
 main: Home
 manage_config: System Configurations
 manage_dashboard: System Dashboard
@@ -670,6 +680,9 @@ Rating: Rating
 record_back_record_list: Back to answer records
 record_back_sessions: Back to sessions
 record_col_card: Card
+record_col_session_question_idx: "Q # (e.g. 3/6)"
+record_col_session_type: Session type
+record_col_session: Session
 record_col_short: Records
 record_field_node: Node
 record_field_session: Session
@@ -705,9 +718,9 @@ scene_detail: Scene Detail
 scene_domain: Scene
 session_active_minutes: List users active within the last N minutes
 session_col_branch: Branch
+session_col_card_progress: Card progress
 session_col_position: Card / node
 session_col_record_type: Practice type
-session_col_card_progress: Card progress
 session_col_route: Route
 session_col_started_at: Started at
 session_domain: Learn live
@@ -726,16 +739,6 @@ session_status_finished: Finished
 session_status_in_progress: In progress
 session_status_paused: Paused
 session_status_timed_out: Timed out
-lesson_session_history_title: Learn session (history)
-lesson_session_history_hint: This daily session has timed out. Answer records from that run are listed below.
-lesson_session_history_back: Back to Learn
-lesson_session_history_detail_title: Answers by card
-lesson_history_col_node: Node
-lesson_history_col_stem: Problem
-lesson_history_col_selected: Your choice
-lesson_history_col_correct: Correct answer
-lesson_history_col_attempts: Attempts
-lesson_history_col_time: Time spent
 setting_customize: Customize
 setting_display: Display Preference
 setting_function: Function

@@ -1,3 +1,4 @@
+import type { RecordDoc } from '../model/record';
 import type { SessionDoc } from '../model/session';
 
 const ON_LESSON_RECENT_MS = 3 * 60 * 1000;
@@ -75,6 +76,33 @@ export function formatSessionCardProgress(doc: SessionDoc): string | null {
     const idx = typeof doc.cardIndex === 'number' ? doc.cardIndex : 0;
     const current = idx >= qLen ? qLen : idx + 1;
     return `${current}/${qLen}`;
+}
+
+/**
+ * Slot of this answer record in its learn session: card index in `lessonCardQueue`, else order in `recordIds`.
+ * Example: third card in a six-card run → `3/6`.
+ */
+export function formatRecordProgressInSession(rd: RecordDoc, sess: SessionDoc | null): string | null {
+    if (!sess) return null;
+    const q = sess.lessonCardQueue ?? [];
+    const cardId = String(rd.cardId);
+    const nodeId = String(rd.nodeId || '');
+    const dom = rd.domainId;
+    if (q.length > 0) {
+        const idx = q.findIndex(
+            (it) => String(it.cardId) === cardId
+                && String(it.nodeId || '') === nodeId
+                && (!it.domainId || it.domainId === dom),
+        );
+        if (idx >= 0) return `${idx + 1}/${q.length}`;
+    }
+    const rids = sess.recordIds ?? [];
+    if (rids.length > 0) {
+        const myHex = rd._id.toHexString();
+        const pos = rids.findIndex((id) => id.toHexString() === myHex);
+        if (pos >= 0) return `${pos + 1}/${rids.length}`;
+    }
+    return null;
 }
 
 export function deriveSessionLearnStatus(doc: SessionDoc, now = Date.now()): SessionListStatus {
