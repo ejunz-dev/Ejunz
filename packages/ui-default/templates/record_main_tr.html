@@ -20,6 +20,29 @@
       <span class="text-gray">-</span>
     {% endif %}
   </td>
+  <td class="col--session">
+    {% if record.sessionDisplayId and record.sessionResumeUrl and record.sessionResumeUrl != '#' %}
+      <a href="{{ record.sessionResumeUrl }}" class="typo font-mono text-sm" title="{{ record.sessionIdHex }}">{{ record.sessionDisplayId }}</a>
+    {% elif record.sessionDisplayId %}
+      <span class="typo font-mono text-sm" title="{{ record.sessionIdHex }}">{{ record.sessionDisplayId }}</span>
+    {% else %}
+      <span class="text-gray">-</span>
+    {% endif %}
+  </td>
+  <td class="col--session-type">
+    {% if record.sessionTypeLabel %}
+      <span class="typo">{{ record.sessionTypeLabel }}</span>
+    {% else %}
+      <span class="text-gray">-</span>
+    {% endif %}
+  </td>
+  <td class="col--session-q">
+    {% if record.recordSessionProgress %}
+      <span class="session-card-progress typo">{{ record.recordSessionProgress }}</span>
+    {% else %}
+      <span class="text-gray">-</span>
+    {% endif %}
+  </td>
   <td class="col--case">
     {% if record.cardUrl and record.cardUrl != '#' %}
       <a href="{{ record.cardUrl }}" class="typo">{{ record.cardTitle }}</a>
