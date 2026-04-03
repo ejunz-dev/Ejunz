@@ -178,7 +178,7 @@ class RoundDetailHandler extends Handler {
 class RoundMainConnectionHandler extends ConnectionHandler {
     all = false;
     allDomain = false;
-    uid: number;
+    uid?: number;
     status: number;
     aid?: string;
     pretest = false;
@@ -213,19 +213,17 @@ class RoundMainConnectionHandler extends ConnectionHandler {
                 this.pretest = true;
                 this.uid = this.user._id;
             } else if (uidOrName) {
-                let udoc = await user.getById(finalDomainId, +uidOrName);
-                if (udoc) this.uid = udoc._id;
-                else {
-                    udoc = await user.getByUname(finalDomainId, uidOrName);
-                    if (udoc) this.uid = udoc._id;
-                    else {
-                        this.close(4000, `User not found: ${uidOrName}`);
-                        return;
-                    }
+                const udoc = await user.getById(finalDomainId, +uidOrName)
+                    || await user.getByUname(finalDomainId, uidOrName)
+                    || await user.getByEmail(finalDomainId, uidOrName);
+                if (udoc) {
+                    this.uid = udoc._id;
+                } else {
+                    this.checkPerm(PERM.PERM_VIEW_RECORD);
                 }
             }
-            
-            if (this.uid && this.uid !== this.user._id) {
+
+            if (typeof this.uid === 'number' && this.uid !== this.user._id) {
                 this.checkPerm(PERM.PERM_VIEW_RECORD);
             }
             
@@ -561,18 +559,22 @@ class TaskRoundMainConnectionHandler extends ConnectionHandler {
             if (queryAid) this.aid = queryAid;
             if (queryUidOrName) {
                 const udoc = await user.getById(finalDomainId, +queryUidOrName)
-                    || await user.getByUname(finalDomainId, queryUidOrName);
-            if (udoc) this.uid = udoc._id;
-                else {
-                    this.close(4000, `User not found: ${queryUidOrName}`);
-                    return;
+                    || await user.getByUname(finalDomainId, queryUidOrName)
+                    || await user.getByEmail(finalDomainId, queryUidOrName);
+                if (udoc) {
+                    this.uid = udoc._id;
+                    if (this.uid !== this.user._id) {
+                        this.checkPerm(PERM.PERM_VIEW_RECORD);
+                    }
+                } else {
+                    this.uid = undefined;
+                    this.checkPerm(PERM.PERM_VIEW_RECORD);
                 }
-        }
-        if (status) this.status = status;
-            this.noTemplate = noTemplate;
-        if (this.uid !== this.user._id) {
-            this.checkPerm(PERM.PERM_VIEW_RECORD);
+            } else {
+                this.checkPerm(PERM.PERM_VIEW_RECORD);
             }
+            if (status) this.status = status;
+            this.noTemplate = noTemplate;
             
             this.throttleQueueClear = throttle(this.queueClear, 100, { trailing: true });
         } catch (error: any) {
