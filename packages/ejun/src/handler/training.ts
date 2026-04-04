@@ -9,6 +9,13 @@ import { PRIV } from '../model/builtin';
 import { PERM } from '../model/builtin';
 import { BaseModel, CardModel } from '../model/base';
 import TrainingModel, { listBranchesForBase } from '../model/training';
+import {
+    loadTrainingMergedGraph,
+    makeTrainingNodeId,
+    makeTrainingRootId,
+    parseTrainingNodeId,
+    pickBranchData,
+} from '../lib/trainingMergedGraph';
 import UserModel from '../model/user';
 import moment from 'moment-timezone';
 import { getTodayUserDomainContribution } from '../lib/homepageRanking';
@@ -32,22 +39,6 @@ function normalizeDomainId(domainId: any, args: any): string {
     if (typeof domainId === 'string' && domainId) return domainId;
     const did = args?.domainId ?? (domainId as any)?._id ?? (domainId as any)?.domainId ?? 'system';
     return String(did || 'system');
-}
-
-function makeTrainingRootId(trainingDocId: string): string {
-    return `training_root_${trainingDocId}`;
-}
-
-function makeTrainingNodeId(baseDocId: number, nodeId: string): string {
-    return `t_${baseDocId}_${nodeId}`;
-}
-
-function parseTrainingNodeId(nodeId: string): { baseDocId: number; nodeId: string } | null {
-    const m = /^t_(\d+)_(.+)$/.exec(String(nodeId || ''));
-    if (!m) return null;
-    const baseDocId = Number(m[1]);
-    if (!Number.isSafeInteger(baseDocId) || baseDocId < 1) return null;
-    return { baseDocId, nodeId: String(m[2]) };
 }
 
 function stripTrainingPrefix(baseDocId: number, s: string): string {
@@ -208,15 +199,6 @@ function sanitizeBranchName(raw: string): string {
     return s;
 }
 
-function pickBranchData(base: BaseDoc, branch: string): { nodes: any[]; edges: any[] } {
-    const b = String(branch || 'main');
-    const bd: any = (base as any).branchData || {};
-    if (b === 'main') {
-        return { nodes: (base as any).nodes || [], edges: (base as any).edges || [] };
-    }
-    return { nodes: bd[b]?.nodes || [], edges: bd[b]?.edges || [] };
-}
-
 export class TrainingDomainHandler extends Handler<Context> {
     async get() {
         const trainings = await TrainingModel.getByDomain(this.domain._id);
@@ -372,75 +354,6 @@ export class TrainingCreateHandler extends Handler<Context> {
             trainingDocId: String(training.docId),
         });
     }
-}
-
-async function loadTrainingMergedGraph(
-    domainId: string,
-    training: TrainingDoc,
-): Promise<{ nodes: BaseNode[]; edges: BaseEdge[]; nodeCardsMap: Record<string, CardDoc[]> }> {
-    const sources = TrainingModel.resolvePlanSources(training);
-    const trainingDocId = String(training.docId);
-    const rootId = makeTrainingRootId(trainingDocId);
-
-    const allNodes: BaseNode[] = [{
-        id: rootId,
-        text: training.name || 'Training',
-        level: 0,
-        expanded: true,
-        order: 0,
-    } as any];
-    const allEdges: BaseEdge[] = [];
-    const nodeCardsMap: Record<string, CardDoc[]> = {};
-
-    for (const src of sources) {
-        const base = await BaseModel.get(domainId, src.baseDocId);
-        if (!base) continue;
-        const branch = src.targetBranch || 'main';
-        const { nodes, edges } = pickBranchData(base, branch);
-        const existingNodeIds = new Set((nodes || []).map((n: any) => String((n as any).id ?? '')));
-
-        for (const n of (nodes || [])) {
-            const rawId = String((n as any).id ?? '');
-            if (!rawId) continue;
-            const nid = makeTrainingNodeId(src.baseDocId, rawId);
-            const rawParentId = (n as any).parentId ? String((n as any).parentId) : '';
-            const parentId = rawParentId && existingNodeIds.has(rawParentId)
-                ? makeTrainingNodeId(src.baseDocId, rawParentId)
-                : rootId;
-            allNodes.push({
-                ...(n as any),
-                id: nid,
-                parentId,
-                level: Number((n as any).level || 0) + 1,
-            } as any);
-        }
-
-        for (const e of (edges || [])) {
-            const rawEid = String((e as any).id ?? '');
-            const rawS = String((e as any).source ?? '');
-            const rawT = String((e as any).target ?? '');
-            if (!rawS || !rawT) continue;
-            allEdges.push({
-                ...(e as any),
-                id: makeTrainingNodeId(src.baseDocId, rawEid || `${rawS}=>${rawT}`),
-                source: makeTrainingNodeId(src.baseDocId, rawS),
-                target: makeTrainingNodeId(src.baseDocId, rawT),
-            } as any);
-        }
-
-        const cards = await document.getMulti(domainId, document.TYPE_CARD, { baseDocId: src.baseDocId, branch } as any)
-            .sort({ order: 1, cid: 1 })
-            .toArray() as CardDoc[];
-        for (const c of cards) {
-            if (!c.nodeId) continue;
-            const tnid = makeTrainingNodeId(src.baseDocId, String(c.nodeId));
-            const cloned = { ...(c as any), nodeId: tnid };
-            if (!nodeCardsMap[tnid]) nodeCardsMap[tnid] = [];
-            nodeCardsMap[tnid].push(cloned);
-        }
-    }
-
-    return { nodes: allNodes, edges: allEdges, nodeCardsMap };
 }
 
 export class TrainingEditorHandler extends Handler<Context> {

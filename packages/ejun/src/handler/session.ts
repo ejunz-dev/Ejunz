@@ -27,7 +27,7 @@ export function sessionDocToWire(doc: SessionDoc | null): Record<string, unknown
     if (!doc) return null;
     const d: any = { ...doc };
     if (d._id && typeof d._id.toString === 'function') d._id = d._id.toString();
-    for (const k of ['createdAt', 'updatedAt', 'lastActivityAt']) {
+    for (const k of ['createdAt', 'updatedAt', 'lastActivityAt', 'lessonAbandonedAt']) {
         if (d[k] instanceof Date) d[k] = d[k].toISOString();
     }
     return d;
@@ -41,10 +41,13 @@ function buildSessionListRow(
     const status = deriveSessionLearnStatus(doc);
     const recordType = deriveSessionRecordType(doc);
     let resumeUrl: string;
+    // learn rows with _id: link to learn_lesson?session=… (history for timed_out / finished / abandoned)
     if (isLearnSessionRow(doc) && doc._id) {
         const base = self.url('learn_lesson', { domainId: doc.domainId });
         const sep = base.includes('?') ? '&' : '?';
         resumeUrl = `${base}${sep}session=${encodeURIComponent(doc._id.toString())}`;
+    } else if (isLearnSessionRow(doc)) {
+        resumeUrl = self.url('learn', { domainId: doc.domainId });
     } else {
         resumeUrl = self.url('session_domain', { domainId: doc.domainId });
     }

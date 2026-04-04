@@ -11,6 +11,7 @@ export type SessionListStatus =
     | 'paused'
     | 'finished'
     | 'timed_out'
+    | 'abandoned'
     | 'active'
     | 'detached';
 
@@ -106,6 +107,9 @@ export function formatRecordProgressInSession(rd: RecordDoc, sess: SessionDoc | 
 }
 
 export function deriveSessionLearnStatus(doc: SessionDoc, now = Date.now()): SessionListStatus {
+    if ((doc as { lessonAbandonedAt?: Date | null }).lessonAbandonedAt) {
+        return 'abandoned';
+    }
     if (!isLearnSessionRow(doc)) {
         const t = doc.lastActivityAt ? new Date(doc.lastActivityAt).getTime() : 0;
         return now - t < LEGACY_ACTIVITY_MS ? 'active' : 'detached';
