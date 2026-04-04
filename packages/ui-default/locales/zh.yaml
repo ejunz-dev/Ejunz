@@ -407,6 +407,7 @@ __langname: 简体中文
 'System tool (not Edge)': 系统工具，非 Edge
 'Table of contents': 目录
 'Table of Contents': 目录
+'Tap below to resume': 点击下方继续
 'Tap the day count above to continue in Learn, Collect, or Flag.': 点击上方天数可前往 Learn、Collect 或 Flag 继续学习。
 'The value `{1}` of {0} already exists.': '{0} 的值 `{1}` 已经存在。'
 'Thinking...': 正在思考...
@@ -415,6 +416,7 @@ __langname: 简体中文
 'This tool has no input parameters defined.': 该工具没有定义输入参数。
 'Time Spent': 用时
 'To review': 待复习
+'Today daily lesson in progress': 今日每日训练进行中
 'Today progress': 今日进度
 'Today remaining': 今日待完成
 'Today task': 今日任务
@@ -814,8 +816,8 @@ lesson_history_col_stem: 题目
 lesson_history_col_time: 用时
 lesson_session_history_back: 返回学习首页
 lesson_session_history_detail_title: 各卡片答题明细
-lesson_session_history_hint: 该每日学习会话已超时，以下为该次练习的答题记录。
 lesson_session_history_hint_finished: 本会话已结束，以下为该次练习的答题记录。
+lesson_session_history_hint: 该每日学习会话已超时，以下为该次练习的答题记录。
 lesson_session_history_title: 学习会话（历史）
 Limit And Hint: 数据范围与提示
 Limitations: 限制
@@ -1139,6 +1141,7 @@ session_record_type_daily: 每日练习
 session_record_type_other: 其他
 session_record_type_single_card: 单卡片练习
 session_record_type_single_node: 单节点练习
+session_status_abandoned: 已放弃
 session_status_active: 在线
 session_status_detached: 离线
 session_status_finished: 已结束

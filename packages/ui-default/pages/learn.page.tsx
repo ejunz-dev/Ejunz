@@ -99,11 +99,22 @@ function LearnPage() {
   const nextCard = (window as any).UiContext?.nextCard as { nodeId: string; cardId: string } | null;
   const sections = ((window as any).UiContext?.sections || []) as MapDAGNode[];
   const fullDag = ((window as any).UiContext?.fullDag || []) as MapDAGNode[];
+  const pathSectionsRaw = ((window as any).UiContext?.pathSections || []) as MapDAGNode[];
+  const pathFullDagRaw = ((window as any).UiContext?.pathFullDag || []) as MapDAGNode[];
+  const pathCurrentSectionId = String((window as any).UiContext?.pathCurrentSectionId || '').trim() || null;
+  /** When path payload exists, use full-training merged graph as Learning Path; else current base sections/fullDag. */
+  const useTrainingPath = pathSectionsRaw.length > 0;
+  const pathSectionsView = useTrainingPath ? pathSectionsRaw : sections;
+  const pathFullDagView = useTrainingPath ? pathFullDagRaw : fullDag;
+  const pathListLen = pathSectionsView.length;
   const currentSectionIndex = (window as any).UiContext?.currentSectionIndex as number | undefined;
   const passedCardIdsSet = new Set<string>((window as any).UiContext?.passedCardIds || []);
   const learnTrainings = ((window as any).UiContext?.learnTrainings || []) as LearnTrainingOption[];
   const selectedLearnTrainingDocId = String((window as any).UiContext?.selectedLearnTrainingDocId || '').trim() || null;
   const requireBaseSelection = !!(window as any).UiContext?.requireBaseSelection;
+  const todayLessonResumeUrl = String((window as any).UiContext?.todayLessonResumeUrl || '').trim();
+  const todayLessonCardProgressText = String((window as any).UiContext?.todayLessonCardProgressText || '').trim();
+  const hasTodayLessonResume = !!todayLessonResumeUrl;
   const selectedLearnTraining = selectedLearnTrainingDocId
     ? (learnTrainings.find((t) => String(t.docId) === String(selectedLearnTrainingDocId)) || null)
     : null;
@@ -117,11 +128,8 @@ function LearnPage() {
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(new Set());
   const [expandedCardIds, setExpandedCardIds] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'progress' | 'path'>('progress');
-  const [expandedMapSectionIds, setExpandedMapSectionIds] = useState<Set<string>>(() => {
-    const s = new Set<string>();
-    sections.forEach((sec) => s.add(sec._id));
-    return s;
-  });
+  /** Path view expands by section slot index so duplicate node _ids in custom order do not clash keys/expand state. */
+  const [expandedPathSectionSlots, setExpandedPathSectionSlots] = useState<Set<number>>(new Set());
   const [expandedPathCardIds, setExpandedPathCardIds] = useState<Set<string>>(new Set());
   const consecutiveBubbleRef = useRef<HTMLButtonElement>(null);
 
@@ -135,10 +143,10 @@ function LearnPage() {
   }, []);
 
   useEffect(() => {
-    if (sections.length > 0 && expandedMapSectionIds.size === 0) {
-      setExpandedMapSectionIds(new Set(sections.map((sec) => sec._id)));
+    if (pathListLen > 0 && expandedPathSectionSlots.size === 0) {
+      setExpandedPathSectionSlots(new Set(Array.from({ length: pathListLen }, (_, i) => i)));
     }
-  }, [sections.length]);
+  }, [pathListLen]);
 
   const toggleNodeExpand = useCallback((nodeKey: string) => {
     setExpandedNodeIds((prev) => {
@@ -222,6 +230,10 @@ function LearnPage() {
 
   const handleStart = useCallback(async () => {
     if (!domainId) return;
+    if (todayLessonResumeUrl) {
+      window.location.href = todayLessonResumeUrl;
+      return;
+    }
     try {
       const res: any = await request.post(`/d/${domainId}/learn/lesson/start`, { mode: 'today' });
       const redir = res?.redirect ?? res?.body?.redirect ?? res?.data?.redirect;
@@ -233,7 +245,7 @@ function LearnPage() {
       /* fall through */
     }
     window.location.href = `/d/${domainId}/learn/lesson`;
-  }, [domainId]);
+  }, [domainId, todayLessonResumeUrl]);
 
   const handleSaveGoal = useCallback(async () => {
     if (isSavingGoal) return;
@@ -911,6 +923,28 @@ function LearnPage() {
           </div>
         </div>
 
+        {hasTodayLessonResume && (
+          <div
+            style={{
+              marginBottom: '12px',
+              padding: '10px 14px',
+              borderRadius: '12px',
+              background: theme === 'dark' ? 'rgba(56, 189, 248, 0.12)' : 'rgba(14, 165, 233, 0.08)',
+              border: `1px solid ${theme === 'dark' ? 'rgba(56, 189, 248, 0.25)' : 'rgba(14, 165, 233, 0.2)'}`,
+              fontSize: '13px',
+              color: themeStyles.textPrimary,
+              lineHeight: 1.45,
+            }}
+          >
+            <div style={{ fontWeight: 600, marginBottom: '4px' }}>{i18n('Today daily lesson in progress')}</div>
+            <div style={{ color: themeStyles.textSecondary, fontSize: '12px' }}>
+              {todayLessonCardProgressText
+                ? `${i18n('Progress')}: ${todayLessonCardProgressText}`
+                : i18n('Tap below to resume')}
+            </div>
+          </div>
+        )}
+
         <button
           onClick={handleStart}
           type="button"
@@ -937,7 +971,7 @@ function LearnPage() {
             e.currentTarget.style.boxShadow = `0 4px 14px ${themeStyles.primaryGlow}`;
           }}
         >
-          {i18n('Start Learning')}
+          {hasTodayLessonResume ? i18n('Continue Learning') : i18n('Start Learning')}
         </button>
 
         <a
@@ -960,26 +994,30 @@ function LearnPage() {
       </>
         )}
 
-        {viewMode === 'path' && sections.length > 0 && (
+        {viewMode === 'path' && pathListLen > 0 && (
           <div style={{
             padding: '8px 0',
           }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {sections.map((section, sectionIndex) => {
-                const sectionCards = collectCardsUnder(section._id, sections, fullDag, new Set());
-                const isCurrentSection = typeof currentSectionIndex === 'number' && sectionIndex === currentSectionIndex;
-                const isExpanded = expandedMapSectionIds.has(section._id);
+              {pathSectionsView.map((section, sectionIndex) => {
+                const sectionCards = collectCardsUnder(section._id, pathSectionsView, pathFullDagView, new Set());
+                const isCurrentSection = useTrainingPath
+                  ? (pathCurrentSectionId
+                    ? section._id === pathCurrentSectionId
+                    : typeof currentSectionIndex === 'number' && sectionIndex === currentSectionIndex)
+                  : typeof currentSectionIndex === 'number' && sectionIndex === currentSectionIndex;
+                const isExpanded = expandedPathSectionSlots.has(sectionIndex);
                 const toggleSection = () => {
-                  setExpandedMapSectionIds((prev) => {
+                  setExpandedPathSectionSlots((prev) => {
                     const next = new Set(prev);
-                    if (next.has(section._id)) next.delete(section._id);
-                    else next.add(section._id);
+                    if (next.has(sectionIndex)) next.delete(sectionIndex);
+                    else next.add(sectionIndex);
                     return next;
                   });
                 };
                 return (
                   <div
-                    key={section._id}
+                    key={`learn-path-${sectionIndex}-${section._id}`}
                     style={{
                       background: themeStyles.bgCard,
                       borderRadius: '14px',

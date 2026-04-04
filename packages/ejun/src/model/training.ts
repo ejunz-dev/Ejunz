@@ -55,18 +55,8 @@ class TrainingModel {
         return document.getStatus(domainId, document.TYPE_TRAINING, id, uid);
     }
 
-    /** Legacy or partial doc → ordered plan sources. */
     static resolvePlanSources(training: Pick<TrainingDoc, 'planSources'> & Partial<any>): TrainingPlanSource[] {
-        if (training.planSources?.length) return training.planSources;
-        // Backward-compat fallback for legacy rows (if any exist).
-        if ((training as any).baseDocId) {
-            return [{
-                baseDocId: Number((training as any).baseDocId),
-                sourceBranch: String((training as any).sourceBranch || 'main'),
-                targetBranch: String((training as any).targetBranch || 'main'),
-            }];
-        }
-        return [];
+        return training.planSources?.length ? training.planSources : [];
     }
 
     /** Merge branch-diff sections from multiple bases (one subsection per diff chunk per source). */

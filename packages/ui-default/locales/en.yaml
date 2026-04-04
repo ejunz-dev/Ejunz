@@ -380,6 +380,7 @@ __langname: English
 'System tool (not Edge)': system (system tool, not Edge)
 'Table of contents': Table of contents
 'Table of Contents': Table of Contents
+'Tap below to resume': Tap below to resume
 'Tap the day count above to continue in Learn, Collect, or Flag.': Tap the day count above to continue in Learn, Collect, or Flag.
 'Thinking...': Thinking...
 'This branch is behind remote by {0} commit(s). Please use Pull to sync.': This branch is behind remote by {0} commit(s). Please use Pull to sync.
@@ -387,6 +388,7 @@ __langname: English
 'This tool has no input parameters defined.': This tool has no input parameters defined.
 'Time Spent': Time Spent
 'To review': To review
+'Today daily lesson in progress': Today's daily lesson in progress
 'Today progress': Today progress
 'Today remaining': Today remaining
 'Today task': Today task
@@ -541,8 +543,8 @@ lesson_history_col_stem: Problem
 lesson_history_col_time: Time spent
 lesson_session_history_back: Back to Learn
 lesson_session_history_detail_title: Answers by card
-lesson_session_history_hint: This daily session has timed out. Answer records from that run are listed below.
 lesson_session_history_hint_finished: This session has finished. Answer records from that run are listed below.
+lesson_session_history_hint: This daily session has timed out. Answer records from that run are listed below.
 lesson_session_history_title: Learn session (history)
 main: Home
 manage_config: System Configurations
@@ -734,6 +736,7 @@ session_record_type_daily: Daily practice
 session_record_type_other: Other
 session_record_type_single_card: Single-card practice
 session_record_type_single_node: Single-node practice
+session_status_abandoned: Abandoned
 session_status_active: Active
 session_status_detached: Offline
 session_status_finished: Finished
