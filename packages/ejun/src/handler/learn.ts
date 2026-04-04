@@ -22,6 +22,7 @@ import {
     abandonLearnSessionsAfterSettingsChange,
     appendLessonSessionToUrl,
     findResumableDailyLearnSession,
+    isLearnHomePlaceholderSession,
     isLessonSessionAbandoned,
     lessonSessionIdFromDoc,
     mergeDomainLessonState,
@@ -239,6 +240,17 @@ async function ensureLearnPageSessionId(domainId: string, uid: number): Promise<
         s = await touchLessonSession(domainId, uid, { appRoute: 'learn', route: 'learn' }, { silent: true });
     }
     return lessonSessionIdFromDoc(s);
+}
+
+/** Prefer upgrading learn-home placeholder row so we do not stack a second session per start action. */
+async function insertOrUpgradeLearnSession(domainId: string, uid: number, patch: SessionPatch): Promise<string> {
+    const latest = await SessionModel.get(domainId, uid);
+    if (latest && isLearnHomePlaceholderSession(latest)) {
+        const bumped = await SessionModel.touchById(domainId, uid, latest._id, patch, { silent: false });
+        return (bumped ?? latest)._id.toString();
+    }
+    const doc = await SessionModel.insertSession(domainId, uid, patch, { silent: false });
+    return doc._id.toString();
 }
 
 async function buildTodayDailyLessonResumeFields(domainId: string, uid: number): Promise<{
@@ -2333,7 +2345,7 @@ class LessonHandler extends Handler {
             const branchByN = new Map<number, string>();
             for (const s of planN) branchByN.set(s.baseDocId, s.targetBranch || 'main');
             const brN = hintBaseNode ? (branchByN.get(hintBaseNode) || 'main') : LEARN_GRAPH_BRANCH;
-            const doc = await SessionModel.insertSession(finalDomainId, this.user._id, {
+            sid = await insertOrUpgradeLearnSession(finalDomainId, this.user._id, {
                 appRoute: 'learn',
                 route: 'learn',
                 lessonMode: 'node',
@@ -2346,15 +2358,14 @@ class LessonHandler extends Handler {
                 baseDocId: hintBaseNode || undefined,
                 lessonQueueBaseDocId: hintBaseNode || null,
                 lessonQueueTrainingDocId: trainIdSt,
-            } as SessionPatch, { silent: false });
-            sid = doc._id.toString();
+            } as SessionPatch);
             redirectPath = `/d/${finalDomainId}/learn/lesson`;
         } else if (mode === 'card') {
             await requireSelectedTraining(finalDomainId, this.user._id, this.user.priv);
             const cardSt = await CardModel.get(finalDomainId, new ObjectId(cardIdStartRaw));
             if (!cardSt) throw new NotFoundError('Card not found');
             const brCard = cardStorageBranch(cardSt as any);
-            const doc = await SessionModel.insertSession(finalDomainId, this.user._id, {
+            sid = await insertOrUpgradeLearnSession(finalDomainId, this.user._id, {
                 appRoute: 'learn',
                 route: 'learn',
                 lessonMode: 'card',
@@ -2368,8 +2379,7 @@ class LessonHandler extends Handler {
                 baseDocId: cardSt.baseDocId,
                 lessonQueueBaseDocId: cardSt.baseDocId,
                 lessonQueueTrainingDocId: trainIdSt,
-            } as SessionPatch, { silent: false });
-            sid = doc._id.toString();
+            } as SessionPatch);
             redirectPath = `/d/${finalDomainId}/learn/lesson?cardId=${encodeURIComponent(cardIdStartRaw)}`;
         } else {
             const resumable = await findResumableDailyLearnSession(finalDomainId, this.user._id);
@@ -2383,7 +2393,7 @@ class LessonHandler extends Handler {
                 );
                 sid = (bumped ?? resumable)._id.toString();
             } else {
-                const doc = await SessionModel.insertSession(finalDomainId, this.user._id, {
+                sid = await insertOrUpgradeLearnSession(finalDomainId, this.user._id, {
                     appRoute: 'learn',
                     route: 'learn',
                     lessonMode: 'today',
@@ -2392,8 +2402,7 @@ class LessonHandler extends Handler {
                     lessonCardQueue: [],
                     lessonQueueAnchorNodeId: null,
                     lessonQueueDay: null,
-                } as SessionPatch, { silent: false });
-                sid = doc._id.toString();
+                } as SessionPatch);
             }
             redirectPath = `/d/${finalDomainId}/learn/lesson`;
         }
