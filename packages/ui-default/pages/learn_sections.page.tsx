@@ -68,6 +68,15 @@ function getTotalProblemCount(nodeId: string, sections: LearnDAGNode[], dag: Lea
   return directCount + childCount;
 }
 
+function coerceLearnIndex(v: unknown): number | null {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = parseInt(v, 10);
+    if (!Number.isNaN(n)) return n;
+  }
+  return null;
+}
+
 function getTheme(): 'light' | 'dark' {
   try {
     if ((window as any).Ejunz?.utils?.getTheme) {
@@ -85,16 +94,17 @@ function getTheme(): 'light' | 'dark' {
 function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentLearnSectionIndex }: LearnSectionsTreeProps) {
   const [selectedSectionIndex, setSelectedSectionIndex] = useState<number>(0);
   const [theme, setTheme] = useState<'light' | 'dark'>(getTheme);
+  const learnIdx = coerceLearnIndex(currentLearnSectionIndex);
 
   useEffect(() => {
     if (sections.length === 0) return;
-    const defaultIndex = typeof currentLearnSectionIndex === 'number' && currentLearnSectionIndex >= 0 && currentLearnSectionIndex < sections.length
-      ? currentLearnSectionIndex
+    const defaultIndex = learnIdx !== null && learnIdx >= 0 && learnIdx < sections.length
+      ? learnIdx
       : currentSectionId
         ? Math.max(0, sections.findIndex(s => s._id === currentSectionId))
         : 0;
     setSelectedSectionIndex(defaultIndex >= 0 ? defaultIndex : 0);
-  }, [sections, currentSectionId, currentLearnSectionIndex]);
+  }, [sections, currentSectionId, currentLearnSectionIndex, learnIdx]);
 
   useEffect(() => {
     const checkTheme = () => {
@@ -488,8 +498,8 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
       </div>
       {sections.map((section, index) => {
         const isSelected = selectedSectionIndex === index;
-        const isCurrent = typeof currentLearnSectionIndex === 'number'
-          ? index === currentLearnSectionIndex
+        const isCurrent = learnIdx !== null
+          ? index === learnIdx
           : currentSectionId === section._id && index === sections.findIndex(s => s._id === currentSectionId);
         return (
           <div
@@ -617,8 +627,8 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
               {selectedSection.title}
             </div>
             <div style={{ paddingLeft: isMobile ? '0' : '4px' }}>
-              {renderNode(selectedSection, 0, typeof currentLearnSectionIndex === 'number'
-                ? selectedSectionIndex === currentLearnSectionIndex
+              {renderNode(selectedSection, 0, learnIdx !== null
+                ? selectedSectionIndex === learnIdx
                 : currentSectionId === selectedSection._id && selectedSectionIndex === sections.findIndex(s => s._id === currentSectionId))}
             </div>
           </>
