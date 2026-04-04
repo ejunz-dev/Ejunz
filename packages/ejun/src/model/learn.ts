@@ -128,7 +128,11 @@ class LearnModel {
         );
     }
 
-    static async getResults(domainId: string, userId: number, filter: { createdAt?: { $gte: Date; $lte: Date } } = {}) {
+    static async getResults(
+        domainId: string,
+        userId: number,
+        filter: { createdAt?: { $gte?: Date; $lte?: Date; $lt?: Date } } = {},
+    ) {
         return collResult.find({ domainId, userId, ...filter }).toArray();
     }
 
