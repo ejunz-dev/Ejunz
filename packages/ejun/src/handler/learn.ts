@@ -42,6 +42,20 @@ function utcLessonQueueDayString(): string {
     return moment.utc().format('YYYY-MM-DD');
 }
 
+/** Card ids with a learn_result row today (UTC day) — used to advance daily queue, not repeat the same slice. */
+async function learnResultCardIdsTodayUtc(domainId: string, userId: number): Promise<Set<string>> {
+    const todayStart = moment.utc().startOf('day').toDate();
+    const todayEndInclusive = moment.utc().endOf('day').toDate();
+    const rows = await learn.getResults(domainId, userId, {
+        createdAt: { $gte: todayStart, $lte: todayEndInclusive },
+    });
+    const ids = new Set<string>();
+    for (const r of rows) {
+        if (r.cardId) ids.add(String(r.cardId));
+    }
+    return ids;
+}
+
 const LESSON_QUEUE_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** True if today's frozen queue matches current UTC calendar day (lessonQueueDay). */
@@ -305,6 +319,87 @@ function cycleList<T>(arr: T[], length: number): T[] {
     const out: T[] = [];
     for (let i = 0; i < length; i++) out.push(arr[i % arr.length]);
     return out;
+}
+
+function dagSubtreeUnderRootFromNodes(allDagNodes: LearnDAGNode[], rootId: string): LearnDAGNode[] {
+    const dag: LearnDAGNode[] = [];
+    const collectChildren = (parentId: string, collected: Set<string>) => {
+        if (collected.has(parentId)) return;
+        collected.add(parentId);
+        const children = allDagNodes.filter(n =>
+            n.requireNids && n.requireNids[n.requireNids.length - 1] === parentId && !collected.has(n._id)
+        );
+        for (const ch of children) {
+            dag.push(ch);
+            collectChildren(ch._id, collected);
+        }
+    };
+    collectChildren(rootId, new Set());
+    return dag;
+}
+
+/** Top-level training path section (ordered) that contains this card in the merged DAG. */
+function findSectionIndexForCardId(
+    sections: LearnDAGNode[],
+    allDagNodes: LearnDAGNode[],
+    cardId: string,
+): { index: number; sectionId: string } | null {
+    const want = String(cardId);
+    const nodeMap = new Map(allDagNodes.map(n => [n._id, n]));
+    sections.forEach(s => nodeMap.set(s._id, s));
+    for (let i = 0; i < sections.length; i++) {
+        const sec = sections[i];
+        const subDag = dagSubtreeUnderRootFromNodes(allDagNodes, sec._id);
+        const nodeIds = [sec._id, ...subDag.map(d => d._id)];
+        for (const nid of nodeIds) {
+            const n = nodeMap.get(nid);
+            if (!n) continue;
+            const cardList = (n.cards || []).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+            for (const c of cardList) {
+                if (String(c.cardId) === want) {
+                    return { index: i, sectionId: sec._id };
+                }
+            }
+        }
+    }
+    return null;
+}
+
+/** Persist learn home / section-order "learning start" from a card; call only when a daily session run ends (not each card). */
+async function syncLearnSectionProgressFromCard(
+    domainId: string,
+    uid: number,
+    priv: number,
+    training: TrainingDoc,
+    cardId: string,
+    translate: (k: string) => string,
+    opts?: { lessonSessionId?: ObjectId },
+): Promise<void> {
+    const cid = String(cardId || '').trim();
+    if (!cid) return;
+    const dudoc = await learn.getUserLearnState(domainId, { _id: uid, priv }) as any;
+    const built = await ensureTrainingLearnDAGCached(domainId, training, translate);
+    const orderedSections = applyUserSectionOrder(built.sections, dudoc?.learnSectionOrder);
+    const found = findSectionIndexForCardId(orderedSections, built.allDagNodes, cid);
+    if (!found) return;
+    const totalSections = orderedSections.length;
+    await learn.setUserLearnState(domainId, uid, {
+        currentLearnSectionIndex: found.index,
+        currentLearnSectionId: found.sectionId,
+        learnProgressPosition: Math.max(0, found.index),
+        learnProgressTotal: totalSections,
+        lessonUpdatedAt: new Date(),
+    });
+    const sectionPatch = {
+        appRoute: 'learn' as const,
+        currentLearnSectionIndex: found.index,
+        currentLearnSectionId: found.sectionId,
+    };
+    if (opts?.lessonSessionId) {
+        await SessionModel.touchById(domainId, uid, opts.lessonSessionId, sectionPatch, { silent: true });
+    } else {
+        await touchLessonSession(domainId, uid, sectionPatch, { silent: true });
+    }
 }
 
 async function getLearnTrainingSelection(domainId: string, uid: number, priv: number) {
@@ -2086,7 +2181,10 @@ class LessonHandler extends Handler {
                 branchByBaseToday.set(s.baseDocId, s.targetBranch || 'main');
             }
             const firstBaseToday = planSourcesToday[0]?.baseDocId ?? 0;
-            const useFrozenToday = sToday?.lessonMode === 'today'
+            const listStToday = sToday ? deriveSessionLearnStatus(sToday as SessionDoc) : null;
+            // Finished / timed_out / etc. must rebuild queue; otherwise same frozen slice repeats after "done for today".
+            const useFrozenToday = (listStToday === 'paused' || listStToday === 'in_progress')
+                && sToday?.lessonMode === 'today'
                 && Array.isArray(sToday.lessonCardQueue)
                 && sToday.lessonCardQueue.length > 0
                 && lessonTodayFrozenQueueIsValid(sToday);
@@ -2137,42 +2235,27 @@ class LessonHandler extends Handler {
                 currentSectionIndex = 0;
             }
 
-            let dag: LearnDAGNode[] = [];
-            if (finalSectionId) {
-                const collectChildren = (parentId: string, collected: Set<string>) => {
-                    if (collected.has(parentId)) return;
-                    collected.add(parentId);
-                    const children = allDagNodes.filter(n =>
-                        n.requireNids && n.requireNids[n.requireNids.length - 1] === parentId && !collected.has(n._id)
-                    );
-                    for (const ch of children) {
-                        dag.push(ch);
-                        collectChildren(ch._id, collected);
-                    }
-                };
-                collectChildren(finalSectionId, new Set());
-            }
-
             const todayFlatCards: Array<{ nodeId: string; cardId: string; nodeTitle: string; cardTitle: string; baseDocId?: number }> = [];
             const nodeMap = new Map(allDagNodes.map(n => [n._id, n]));
             sections.forEach(s => nodeMap.set(s._id, s));
-            // Include the current section itself; some bases are single-level and have no child DAG nodes.
-            const nodesForToday = finalSectionId
-                ? [{ _id: finalSectionId } as LearnDAGNode, ...dag]
-                : dag;
-            for (const node of nodesForToday) {
-                const n = nodeMap.get(node._id);
-                if (!n) continue;
-                const cardList = (n.cards || []).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-                for (const c of cardList) {
-                    const p = parseTrainingNodeId(n._id);
-                    todayFlatCards.push({
-                        nodeId: p ? p.nodeId : n._id,
-                        cardId: c.cardId,
-                        nodeTitle: n.title || '',
-                        cardTitle: c.title || '',
-                        baseDocId: p?.baseDocId,
-                    });
+            // Full path order (all sections), not only currentLearnSectionId subtree — otherwise daily goal tiles one node's cards.
+            for (const sec of sections) {
+                const subDag = dagSubtreeUnderRootFromNodes(allDagNodes, sec._id);
+                const nodesForSection = [{ _id: sec._id } as LearnDAGNode, ...subDag];
+                for (const node of nodesForSection) {
+                    const n = nodeMap.get(node._id);
+                    if (!n) continue;
+                    const cardList = (n.cards || []).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+                    for (const c of cardList) {
+                        const p = parseTrainingNodeId(n._id);
+                        todayFlatCards.push({
+                            nodeId: p ? p.nodeId : n._id,
+                            cardId: c.cardId,
+                            nodeTitle: n.title || '',
+                            cardTitle: c.title || '',
+                            baseDocId: p?.baseDocId,
+                        });
+                    }
                 }
             }
 
@@ -2185,8 +2268,20 @@ class LessonHandler extends Handler {
             }
             // Fallback: if no problem cards exist, allow "card view mode" (Know it / No impression) to continue learning.
             const candidateCards = cardsWithProblems.length > 0 ? cardsWithProblems : todayFlatCards;
+            const completedCardIdsTodayUtc = await learnResultCardIdsTodayUtc(finalDomainId, this.user._id);
+            const poolCards = candidateCards.filter((c) => !completedCardIdsTodayUtc.has(String(c.cardId)));
             const dailyGoalToday = Math.max(0, getModeDailyGoal(dudoc as any, 'learn'));
-            cardsForToday = dailyGoalToday > 0 ? cycleList(candidateCards, dailyGoalToday) : candidateCards;
+            if (dailyGoalToday > 0) {
+                if (poolCards.length >= dailyGoalToday) {
+                    cardsForToday = poolCards.slice(0, dailyGoalToday);
+                } else if (poolCards.length > 0) {
+                    cardsForToday = cycleList(poolCards, dailyGoalToday);
+                } else {
+                    cardsForToday = [];
+                }
+            } else {
+                cardsForToday = poolCards;
+            }
 
             if (cardsForToday.length === 0) {
                 if (sections.length > 0 && currentSectionIndex + 1 < sections.length) {
@@ -2562,6 +2657,19 @@ class LessonHandler extends Handler {
                     },
                     { silent: false },
                 );
+                // Learning start (section order): only when this daily session ends, not after each card.
+                const lastCardId = queue.length > 0 ? String(queue[queue.length - 1].cardId) : '';
+                if (lastCardId) {
+                    await syncLearnSectionProgressFromCard(
+                        finalDomainId,
+                        this.user._id,
+                        this.user.priv,
+                        trainingPass,
+                        lastCardId,
+                        (k) => this.translate(k),
+                        { lessonSessionId: sBr._id },
+                    );
+                }
                 this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn` };
             }
             return;
