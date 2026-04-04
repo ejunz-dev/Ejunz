@@ -12,6 +12,8 @@ export interface LessonCardQueueItem {
     cardId: string;
     nodeTitle?: string;
     cardTitle?: string;
+    /** Base doc id for the card; required on queue items when training has multiple sources. */
+    baseDocId?: number;
 }
 
 /** Per-user live progress in a domain. Mongo collection: session. */
@@ -40,6 +42,8 @@ export interface SessionDoc {
     lessonQueueTrainingDocId?: string | null;
     /** UTC YYYY-MM-DD when `lessonCardQueue` was frozen for `today`. */
     lessonQueueDay?: string | null;
+    /** Set when user changes learn settings (section order / daily goal); row is no longer resumable. */
+    lessonAbandonedAt?: Date | null;
     state?: 'idle' | 'active';
     progress?: Record<string, unknown>;
     recordIds?: ObjectId[];
@@ -67,6 +71,7 @@ export type SessionPatch = Partial<Pick<
     | 'lessonQueueBaseDocId'
     | 'lessonQueueTrainingDocId'
     | 'lessonQueueDay'
+    | 'lessonAbandonedAt'
     | 'state'
     | 'progress'
 >>;

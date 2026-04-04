@@ -17,6 +17,9 @@
   {{ set(UiContext, 'nextCard', nextCard) }}
   {{ set(UiContext, 'sections', sections) }}
   {{ set(UiContext, 'fullDag', fullDag) }}
+  {{ set(UiContext, 'pathSections', pathSections or []) }}
+  {{ set(UiContext, 'pathFullDag', pathFullDag or []) }}
+  {{ set(UiContext, 'pathCurrentSectionId', pathCurrentSectionId or '') }}
   {{ set(UiContext, 'currentSectionId', currentSectionId) }}
   {{ set(UiContext, 'currentSectionIndex', currentSectionIndex) }}
   {{ set(UiContext, 'passedCardIds', passedCardIds) }}
@@ -25,6 +28,9 @@
   {{ set(UiContext, 'learnTrainings', learnTrainings or []) }}
   {{ set(UiContext, 'selectedLearnTrainingDocId', selectedLearnTrainingDocId) }}
   {{ set(UiContext, 'requireBaseSelection', requireBaseSelection) }}
+  {{ set(UiContext, 'todayLessonResumableSessionId', todayLessonResumableSessionId or '') }}
+  {{ set(UiContext, 'todayLessonResumeUrl', todayLessonResumeUrl or '') }}
+  {{ set(UiContext, 'todayLessonCardProgressText', todayLessonCardProgressText or '') }}
 </script>
 <div class="row">
   <div class="medium-12 columns">
