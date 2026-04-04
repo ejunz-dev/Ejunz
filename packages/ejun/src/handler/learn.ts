@@ -3572,16 +3572,16 @@ class LearnBaseSelectHandler extends Handler {
 }
 
 export async function apply(ctx: Context) {
-    ctx.Route('learn', '/learn', LearnHandler);
-    ctx.Route('learn_set_base', '/learn/base', LearnHandler);
-    ctx.Route('learn_base_select', '/learn/training/select', LearnBaseSelectHandler);
-    ctx.Route('learn_set_daily_goal', '/learn/daily-goal', LearnHandler);
-    ctx.Route('learn_sections', '/learn/sections', LearnSectionsHandler);
+    ctx.Route('learn', '/learn', LearnHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('learn_set_base', '/learn/base', LearnHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('learn_base_select', '/learn/training/select', LearnBaseSelectHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('learn_set_daily_goal', '/learn/daily-goal', LearnHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('learn_sections', '/learn/sections', LearnSectionsHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_section_edit', '/learn/section/edit', LearnSectionEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_edit', '/learn/edit', LearnEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('learn_lesson', '/learn/lesson', LessonHandler);
-    ctx.Route('learn_lesson_result', '/learn/lesson/result/:resultId', LessonHandler);
-    ctx.Route('learn_lesson_pass', '/learn/lesson/pass', LessonHandler);
-    ctx.Route('learn_lesson_start', '/learn/lesson/start', LessonHandler);
-    ctx.Route('learn_lesson_node_result', '/learn/lesson/node-result', LessonNodeResultHandler);
+    ctx.Route('learn_lesson', '/learn/lesson', LessonHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('learn_lesson_result', '/learn/lesson/result/:resultId', LessonHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('learn_lesson_pass', '/learn/lesson/pass', LessonHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('learn_lesson_start', '/learn/lesson/start', LessonHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('learn_lesson_node_result', '/learn/lesson/node-result', LessonNodeResultHandler, PRIV.PRIV_USER_PROFILE);
 }
