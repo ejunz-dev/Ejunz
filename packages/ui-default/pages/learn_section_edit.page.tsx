@@ -56,8 +56,24 @@ function getTheme(): 'light' | 'dark' {
 
 const MOBILE_BREAKPOINT = 768;
 
+/** 与列表展示、handleSetLearningPoint 一致：先按 order 再 reverse，与 column-reverse 主列表对齐 */
+function orderSectionsForEdit(list: LearnDAGNode[]): LearnDAGNode[] {
+  if (!list?.length) return [];
+  const sorted = [...list].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  return [...sorted].reverse();
+}
+
+function coerceLearnIndex(v: unknown): number | null {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = parseInt(v, 10);
+    if (!Number.isNaN(n)) return n;
+  }
+  return null;
+}
+
 function LearnSectionEdit({ sections: initialSections, allSections: allSectionsProp = [], dag: dagProp = [], domainId, targetUid, targetUser, currentLearnSectionIndex: initialLearnIndex = null, currentLearnSectionId: initialLearnId = null }: LearnSectionEditProps) {
-  const [sections, setSections] = useState<LearnDAGNode[]>(initialSections || []);
+  const [sections, setSections] = useState<LearnDAGNode[]>(() => orderSectionsForEdit(initialSections || []));
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -70,21 +86,25 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
 
   const allSections = allSectionsProp || [];
   const dag = dagProp || [];
+  const sectionEditPostUrl = `/d/${domainId}/learn/section/edit${targetUid ? `?uid=${encodeURIComponent(String(targetUid))}` : ''}`;
 
   useEffect(() => {
-    if (typeof initialLearnIndex === 'number') setCurrentLearnSectionIndex(initialLearnIndex);
-    else if (initialLearnId && initialSections?.length) {
-      const idx = initialSections.findIndex(s => String(s._id) === String(initialLearnId));
-      if (idx >= 0) setCurrentLearnSectionIndex(idx);
+    const len = initialSections?.length ?? 0;
+    const n = coerceLearnIndex(initialLearnIndex);
+    if (n !== null && len > 0 && n >= 0 && n < len) {
+      setCurrentLearnSectionIndex(n);
+      return;
+    }
+    if (initialLearnId && len > 0) {
+      const ord = orderSectionsForEdit(initialSections || []);
+      const fi = ord.findIndex(s => String(s._id) === String(initialLearnId));
+      if (fi >= 0) setCurrentLearnSectionIndex(ord.length - 1 - fi);
     }
   }, [initialLearnIndex, initialLearnId, initialSections]);
 
   useEffect(() => {
-    if (initialSections && initialSections.length > 0) {
-      const sorted = [...initialSections].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-      setSections([...sorted].reverse());
-    }
-  }, []); // 仅挂载时同步，与 column-reverse 显示一致：顶部=第一个学习
+    setSections(orderSectionsForEdit(initialSections || []));
+  }, [initialSections]);
 
   useEffect(() => {
     const checkTheme = () => {
@@ -248,13 +268,15 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
       // 与「设置学习点」约定一致：sectionOrder[0]=先学(顶部)，顺序可含重复
       const sectionOrder = [...sections].reverse().map(s => String(s._id));
       const body: Record<string, unknown> = { sectionOrder };
-      if (typeof currentLearnSectionIndex === 'number') {
+      if (currentLearnSectionIndex != null && typeof currentLearnSectionIndex === 'number') {
         body.currentLearnSectionIndex = currentLearnSectionIndex;
       }
       if (targetUid && targetUid !== (window as any).UserContext?._id) {
         body.uid = targetUid;
       }
-      await request.post(`/d/${domainId}/learn/section/edit`, body);
+      const res: any = await request.post(sectionEditPostUrl, body);
+      const idx = res?.currentLearnSectionIndex;
+      if (typeof idx === 'number' && Number.isFinite(idx)) setCurrentLearnSectionIndex(idx);
       setSavedSectionIds(sectionOrder);
       UiNotification.success(i18n('Saved successfully') || '保存成功');
     } catch (err: any) {
@@ -262,7 +284,7 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
     } finally {
       setIsSaving(false);
     }
-  }, [domainId, sections, currentLearnSectionIndex]);
+  }, [domainId, sections, currentLearnSectionIndex, sectionEditPostUrl]);
 
   const handleSetLearningPoint = useCallback(async (index: number) => {
     if (index < 0 || index >= sections.length) return;
@@ -279,8 +301,9 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
       if (targetUid && targetUid !== (window as any).UserContext?._id) {
         body.uid = targetUid;
       }
-      await request.post(`/d/${domainId}/learn/section/edit`, body);
-      setCurrentLearnSectionIndex(learnSectionIndex);
+      const res: any = await request.post(sectionEditPostUrl, body);
+      const idx = typeof res?.currentLearnSectionIndex === 'number' ? res.currentLearnSectionIndex : learnSectionIndex;
+      setCurrentLearnSectionIndex(Number.isFinite(idx) ? idx : learnSectionIndex);
       setSavedSectionIds(sectionOrder);
       UiNotification.success(i18n('Learning point set') || '学习点已设置');
     } catch (err: any) {
@@ -288,7 +311,7 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
     } finally {
       setIsSaving(false);
     }
-  }, [domainId, sections, targetUid]);
+  }, [domainId, sections, targetUid, sectionEditPostUrl]);
 
   if (allSections.length === 0) {
     return (
