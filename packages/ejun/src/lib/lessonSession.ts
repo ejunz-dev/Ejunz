@@ -82,6 +82,21 @@ export function isLessonSessionAbandoned(doc: SessionDoc | null | undefined): bo
 }
 
 /**
+ * Learn home row created by `ensureLearnPageSessionId` (appRoute learn, no mode yet).
+ * Starting daily practice should upgrade this row instead of inserting a second document.
+ */
+export function isLearnHomePlaceholderSession(doc: SessionDoc | null | undefined): boolean {
+    if (!doc) return false;
+    if (doc.appRoute !== 'learn' && doc.route !== 'learn') return false;
+    if (isLessonSessionAbandoned(doc)) return false;
+    if (doc.lessonMode != null) return false;
+    const q = doc.lessonCardQueue;
+    if (Array.isArray(q) && q.length > 0) return false;
+    if (typeof doc.cardId === 'string' && doc.cardId.trim()) return false;
+    return true;
+}
+
+/**
  * After learn settings change (section order / daily goal): abandon only this user's **today** daily-lesson
  * session (`lessonMode: 'today'`, UTC calendar day). Node/card sessions and learn placeholder rows are untouched.
  *
