@@ -1,7 +1,6 @@
 import { ObjectId } from 'mongodb';
 import type { LessonCardQueueItem, LessonMode, SessionDoc, SessionPatch } from '../model/session';
 import SessionModel from '../model/session';
-import { deriveSessionLearnStatus, sessionUtcYmd } from './sessionListDisplay';
 
 /** Merged lesson resume fields: session row overrides legacy domain user fields when present. */
 export interface MergedLessonState {
@@ -81,6 +80,39 @@ export function isLessonSessionAbandoned(doc: SessionDoc | null | undefined): bo
     return !!(doc && (doc as SessionDoc & { lessonAbandonedAt?: Date | null }).lessonAbandonedAt);
 }
 
+const normSectionOrder = (arr: unknown): string[] =>
+    (Array.isArray(arr) ? arr : []).map((x) => String(x));
+
+/**
+ * Frozen `today` queue must match current domain learn settings; otherwise rebuild (section order / learning start / training).
+ */
+export function frozenTodayQueueMatchesLearnSettings(dudoc: any, s: SessionDoc): boolean {
+    const du = dudoc || {};
+    const ordDu = normSectionOrder(du.learnSectionOrder);
+    const rawSnap = (s as SessionDoc & { lessonQueueLearnSectionOrder?: string[] }).lessonQueueLearnSectionOrder;
+    const hasSnap = Array.isArray(rawSnap);
+    const ordS = hasSnap ? normSectionOrder(rawSnap) : null;
+    if (hasSnap) {
+        if (JSON.stringify(ordDu) !== JSON.stringify(ordS)) return false;
+    } else if (ordDu.length > 0) {
+        return false;
+    }
+    const trainDu = du.learnTrainingDocId != null ? String(du.learnTrainingDocId) : '';
+    const trainS = s.lessonQueueTrainingDocId != null ? String(s.lessonQueueTrainingDocId) : '';
+    if (trainDu && trainS && trainDu !== trainS) return false;
+    const di = typeof du.currentLearnSectionIndex === 'number' ? du.currentLearnSectionIndex : undefined;
+    const si = typeof s.currentLearnSectionIndex === 'number' ? s.currentLearnSectionIndex : undefined;
+    if (di !== undefined && (si === undefined || si !== di)) return false;
+    const did = typeof du.currentLearnSectionId === 'string' && du.currentLearnSectionId.trim()
+        ? du.currentLearnSectionId.trim()
+        : undefined;
+    const sid = typeof s.currentLearnSectionId === 'string' && s.currentLearnSectionId.trim()
+        ? s.currentLearnSectionId.trim()
+        : undefined;
+    if (did !== undefined && sid !== undefined && did !== sid) return false;
+    return true;
+}
+
 /**
  * Learn home row created by `ensureLearnPageSessionId` (appRoute learn, no mode yet).
  * Starting daily practice should upgrade this row instead of inserting a second document.
@@ -94,85 +126,6 @@ export function isLearnHomePlaceholderSession(doc: SessionDoc | null | undefined
     if (Array.isArray(q) && q.length > 0) return false;
     if (typeof doc.cardId === 'string' && doc.cardId.trim()) return false;
     return true;
-}
-
-/**
- * After learn settings change (section order / daily goal): abandon only this user's **today** daily-lesson
- * session (`lessonMode: 'today'`, UTC calendar day). Node/card sessions and learn placeholder rows are untouched.
- *
- * Only sets `lessonAbandonedAt` and `lastActivityAt` to the abandon time; does not clear queue, lessonMode,
- * or card fields (keeps list display accurate; resumption still blocked via resolve / deriveStatus).
- */
-export async function abandonLearnSessionsAfterSettingsChange(domainId: string, uid: number): Promise<void> {
-    const now = new Date();
-    const ymd = sessionUtcYmd();
-    const dayStart = new Date(`${ymd}T00:00:00.000Z`);
-    const dayEnd = new Date(`${ymd}T23:59:59.999Z`);
-    await SessionModel.coll.updateMany(
-        {
-            domainId,
-            uid,
-            lessonMode: 'today',
-            $and: [
-                {
-                    $or: [
-                        { lessonAbandonedAt: { $exists: false } },
-                        { lessonAbandonedAt: null },
-                    ],
-                },
-                {
-                    $or: [
-                        { lessonQueueDay: ymd },
-                        {
-                            $and: [
-                                {
-                                    $or: [
-                                        { lessonQueueDay: { $exists: false } },
-                                        { lessonQueueDay: null },
-                                        { lessonQueueDay: '' },
-                                    ],
-                                },
-                                {
-                                    $or: [
-                                        { 'lessonCardQueue.0': { $exists: true } },
-                                        { lastActivityAt: { $gte: dayStart, $lte: dayEnd } },
-                                    ],
-                                },
-                            ],
-                        },
-                    ],
-                },
-            ],
-        },
-        {
-            $set: {
-                lessonAbandonedAt: now,
-                lastActivityAt: now,
-            },
-        },
-    );
-}
-
-/**
- * Latest daily (`today`) learn session that may be resumed from the learn home "start" action.
- * Skips timed_out / finished / detached; only paused or in_progress.
- */
-export async function findResumableDailyLearnSession(
-    domainId: string,
-    uid: number,
-): Promise<SessionDoc | null> {
-    const rows = await SessionModel.coll
-        .find({ domainId, uid, lessonMode: 'today' })
-        .sort({ lastActivityAt: -1 })
-        .limit(30)
-        .toArray();
-    const now = Date.now();
-    for (const row of rows) {
-        const doc = row as SessionDoc;
-        const st = deriveSessionLearnStatus(doc, now);
-        if (st === 'paused' || st === 'in_progress') return doc;
-    }
-    return null;
 }
 
 /** Load session row by `?session=<_id>` (must match domain + uid) or fall back to domain+uid row. */
