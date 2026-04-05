@@ -156,6 +156,7 @@ export class SessionDomainHandler extends Handler {
             filterUid,
             page,
             pageSize,
+            { hideLearnHomePlaceholderShells: true },
         );
         const sessions = await Promise.all(rows.map(async (s) => buildSessionListRow(
             this,
