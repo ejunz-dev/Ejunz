@@ -152,6 +152,73 @@ function LessonPage() {
     return m;
   }, [flatCards]);
 
+  const getTheme = useCallback(() => {
+    try {
+      if ((window as any).Ejunz?.utils?.getTheme) {
+        return (window as any).Ejunz.utils.getTheme();
+      }
+      if ((window as any).UserContext?.theme) {
+        return (window as any).UserContext.theme === 'dark' ? 'dark' : 'light';
+      }
+    } catch (e) {
+      console.warn('Failed to get theme:', e);
+    }
+    return 'light';
+  }, []);
+
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => getTheme());
+
+  useEffect(() => {
+    const checkTheme = () => {
+      const next = getTheme();
+      if (next !== theme) setTheme(next);
+    };
+    checkTheme();
+    const interval = setInterval(checkTheme, 500);
+    return () => clearInterval(interval);
+  }, [theme, getTheme]);
+
+  const themeStyles = useMemo(() => {
+    const dark = theme === 'dark';
+    return {
+      bgPrimary: dark ? '#0f0f0f' : '#fff',
+      bgPage: dark
+        ? 'radial-gradient(ellipse 80% 50% at 50% 0%, rgba(76, 175, 80, 0.06) 0%, transparent 50%), #0f0f0f'
+        : '#fafafa',
+      bgCard: dark ? 'rgba(38, 39, 41, 0.92)' : '#fff',
+      bgSecondary: dark ? '#262729' : '#f5f5f5',
+      bgHover: dark ? '#3a3b3d' : '#f3f4f6',
+      textPrimary: dark ? '#f0f0f0' : '#333',
+      textSecondary: dark ? '#9ca3af' : '#666',
+      textTertiary: dark ? '#6b7280' : '#999',
+      border: dark ? 'rgba(255,255,255,0.1)' : '#e0e0e0',
+      accent: dark ? '#38bdf8' : '#2196f3',
+      accentMutedBg: dark ? 'rgba(56, 189, 248, 0.14)' : '#e3f2fd',
+      accentMutedFg: dark ? '#7dd3fc' : '#1976d2',
+      reviewBg: dark ? 'rgba(251, 146, 60, 0.16)' : '#fff3e0',
+      reviewFg: dark ? '#fdba74' : '#e65100',
+      doneBg: dark ? 'rgba(34, 197, 94, 0.14)' : '#e8f5e9',
+      doneFg: dark ? '#4ade80' : '#2e7d32',
+      liveSync: dark ? '#4ade80' : '#2e7d32',
+      success: dark ? '#4ade80' : '#4caf50',
+      successBg: dark ? 'rgba(34, 197, 94, 0.16)' : '#e8f5e9',
+      danger: '#f44336',
+      dangerBg: dark ? 'rgba(244, 67, 54, 0.16)' : '#ffebee',
+      orange: '#ff9800',
+      drawerScrim: 'rgba(0,0,0,0.45)',
+      stemColor: dark ? '#e5e5e5' : '#333',
+      bodyText: dark ? '#d1d5db' : '#555',
+      optionNeutral: dark ? '#262729' : '#fff',
+      optionBorderMuted: dark ? 'rgba(255,255,255,0.12)' : '#e0e0e0',
+      passedBannerBg: dark ? 'rgba(34, 197, 94, 0.12)' : '#e8f5e9',
+      passedBannerBorder: dark ? 'rgba(74, 222, 128, 0.45)' : '#4caf50',
+      passedTitle: dark ? '#86efac' : '#2e7d32',
+      modalShadow: dark ? '0 4px 24px rgba(0,0,0,0.55)' : '0 4px 20px rgba(0,0,0,0.15)',
+      whiteOnAccent: '#fff',
+      drawerAsideShadow: dark ? '2px 0 16px rgba(0,0,0,0.5)' : '2px 0 8px rgba(0,0,0,0.15)',
+    };
+  }, [theme]);
+
   useEffect(() => {
     const sockPath = String((window as any).UiContext?.sessionMeSocketQuery || '').trim();
     const wsPrefix = String((window as any).UiContext?.ws_prefix || '').trim();
@@ -539,8 +606,8 @@ function LessonPage() {
         marginBottom: '2px',
         fontSize: '13px',
         borderRadius: '6px',
-        backgroundColor: isCurrent ? '#e3f2fd' : inReview ? '#fff3e0' : isDone ? '#e8f5e9' : 'transparent',
-        color: isCurrent ? '#1976d2' : inReview ? '#e65100' : isDone ? '#2e7d32' : '#666',
+        backgroundColor: isCurrent ? themeStyles.accentMutedBg : inReview ? themeStyles.reviewBg : isDone ? themeStyles.doneBg : 'transparent',
+        color: isCurrent ? themeStyles.accentMutedFg : inReview ? themeStyles.reviewFg : isDone ? themeStyles.doneFg : themeStyles.textSecondary,
         fontWeight: isCurrent ? 600 : 400,
         display: 'flex',
         justifyContent: 'space-between',
@@ -551,10 +618,10 @@ function LessonPage() {
         <>
           <span>
             {isDone && <span style={{ marginRight: '6px' }}>✓</span>}
-            {inReview && <span style={{ marginRight: '6px', fontSize: '11px', color: '#e65100', fontWeight: 600 }}>{i18n('Review')}</span>}
+            {inReview && <span style={{ marginRight: '6px', fontSize: '11px', color: themeStyles.reviewFg, fontWeight: 600 }}>{i18n('Review')}</span>}
             {item.title || i18n('Unnamed Card')}
           </span>
-          <span style={{ fontSize: '12px', color: '#999', flexShrink: 0 }}>{timeText}</span>
+          <span style={{ fontSize: '12px', color: themeStyles.textTertiary, flexShrink: 0 }}>{timeText}</span>
         </>
       );
       return (
@@ -571,7 +638,7 @@ function LessonPage() {
           marginLeft: `${depth * 12}px`,
           fontSize: '13px',
           fontWeight: 600,
-          color: '#333',
+          color: themeStyles.textPrimary,
           display: 'flex',
           alignItems: 'center',
           gap: '8px',
@@ -889,10 +956,12 @@ function LessonPage() {
         margin: '0 auto',
         padding: '20px',
         textAlign: 'center',
+        minHeight: '100vh',
+        background: themeStyles.bgPage,
       }}>
         <div style={{
           padding: '40px',
-          color: '#999',
+          color: themeStyles.textTertiary,
         }}>
           {i18n('Saving progress...')}
         </div>
@@ -911,17 +980,19 @@ function LessonPage() {
         maxWidth: '900px',
         margin: '0 auto',
         padding: '20px',
+        minHeight: '100vh',
+        background: themeStyles.bgPage,
       }}>
         <div style={{
           marginBottom: '20px',
           padding: '16px',
-          backgroundColor: '#f5f5f5',
+          backgroundColor: themeStyles.bgSecondary,
           borderRadius: '8px',
         }}>
-          <div style={{ fontSize: '14px', color: '#666', marginBottom: '8px' }}>
+          <div style={{ fontSize: '14px', color: themeStyles.textSecondary, marginBottom: '8px' }}>
             {node.text || i18n('Unnamed Node')}
           </div>
-          <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0 }}>
+          <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, color: themeStyles.textPrimary }}>
             {card.title || i18n('Unnamed Card')}
           </h1>
         </div>
@@ -930,11 +1001,11 @@ function LessonPage() {
           <div style={{
             marginBottom: '30px',
             padding: '20px',
-            backgroundColor: '#fff',
+            backgroundColor: themeStyles.bgCard,
             borderRadius: '8px',
-            border: '1px solid #e0e0e0',
+            border: `1px solid ${themeStyles.border}`,
           }}>
-            <h2 style={{ fontSize: '18px', marginBottom: '12px', color: '#333' }}>
+            <h2 style={{ fontSize: '18px', marginBottom: '12px', color: themeStyles.textPrimary }}>
               {i18n('Content')}
             </h2>
             <div
@@ -942,7 +1013,7 @@ function LessonPage() {
               style={{
                 fontSize: '16px',
                 lineHeight: '1.6',
-                color: '#555',
+                color: themeStyles.bodyText,
               }}
               dangerouslySetInnerHTML={{ __html: renderedContent || card.content }}
             />
@@ -952,11 +1023,11 @@ function LessonPage() {
         <div style={{
           marginBottom: '30px',
           padding: '30px',
-          backgroundColor: '#fff',
+          backgroundColor: themeStyles.bgCard,
           borderRadius: '8px',
-          border: '1px solid #e0e0e0',
+          border: `1px solid ${themeStyles.border}`,
         }}>
-          <h2 style={{ fontSize: '20px', marginBottom: '20px', color: '#333' }}>
+          <h2 style={{ fontSize: '20px', marginBottom: '20px', color: themeStyles.textPrimary }}>
             {i18n('Practice Results')}
           </h2>
           <div style={{
@@ -964,31 +1035,31 @@ function LessonPage() {
             justifyContent: 'space-around',
             marginBottom: '30px',
             padding: '20px',
-            backgroundColor: '#f5f5f5',
+            backgroundColor: themeStyles.bgSecondary,
             borderRadius: '8px',
           }}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#4caf50', marginBottom: '8px' }}>
+              <div style={{ fontSize: '32px', fontWeight: 'bold', color: themeStyles.success, marginBottom: '8px' }}>
                 {correctCount}/{totalCount}
               </div>
-              <div style={{ fontSize: '14px', color: '#666' }}>{i18n('Correct')}</div>
+              <div style={{ fontSize: '14px', color: themeStyles.textSecondary }}>{i18n('Correct')}</div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#2196f3', marginBottom: '8px' }}>
+              <div style={{ fontSize: '32px', fontWeight: 'bold', color: themeStyles.accent, marginBottom: '8px' }}>
                 {accuracy}%
               </div>
-              <div style={{ fontSize: '14px', color: '#666' }}>{i18n('Accuracy')}</div>
+              <div style={{ fontSize: '14px', color: themeStyles.textSecondary }}>{i18n('Accuracy')}</div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#ff9800', marginBottom: '8px' }}>
+              <div style={{ fontSize: '32px', fontWeight: 'bold', color: themeStyles.orange, marginBottom: '8px' }}>
                 {(totalTimeMs / 1000).toFixed(1)}s
               </div>
-              <div style={{ fontSize: '14px', color: '#666' }}>{i18n('Total Time')}</div>
+              <div style={{ fontSize: '14px', color: themeStyles.textSecondary }}>{i18n('Total Time')}</div>
             </div>
           </div>
 
           <div style={{ marginTop: '20px' }}>
-            <h3 style={{ fontSize: '16px', marginBottom: '16px', color: '#333' }}>
+            <h3 style={{ fontSize: '16px', marginBottom: '16px', color: themeStyles.textPrimary }}>
               {i18n('Question Details')}
             </h3>
             {answerHistory.map((history, idx) => {
@@ -1003,32 +1074,32 @@ function LessonPage() {
                     padding: '16px',
                     marginBottom: '12px',
                     borderRadius: '6px',
-                    backgroundColor: history.correct ? '#e8f5e9' : '#ffebee',
-                    border: `1px solid ${history.correct ? '#4caf50' : '#f44336'}`,
+                    backgroundColor: history.correct ? themeStyles.successBg : themeStyles.dangerBg,
+                    border: `1px solid ${history.correct ? themeStyles.success : themeStyles.danger}`,
                   }}
                 >
-                  <div style={{ fontSize: '14px', fontWeight: '500', marginBottom: '8px' }}>
+                  <div style={{ fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: themeStyles.textPrimary }}>
                     {i18n('Question')} {idx + 1}: {history.problem.stem}
                   </div>
-                  <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>
+                  <div style={{ fontSize: '12px', color: themeStyles.textSecondary, marginBottom: '4px' }}>
                     {i18n('Time Spent')}: {(history.timeSpent / 1000).toFixed(1)}s
                     {idx > 0 && (
                       <> ({i18n('Cumulative')}: {(cumulativeTime / 1000).toFixed(1)}s)</>
                     )}
                   </div>
-                  <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>
+                  <div style={{ fontSize: '12px', color: themeStyles.textSecondary, marginBottom: '4px' }}>
                     {i18n('Attempts')}: {history.attempts}
                   </div>
-                  <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>
+                  <div style={{ fontSize: '12px', color: themeStyles.textSecondary, marginBottom: '4px' }}>
                     {i18n('Your Answer')}: {history.problem?.options?.[history.selected] || i18n('N/A')} 
                     {history.correct ? (
-                      <span style={{ color: '#4caf50', marginLeft: '8px' }}>✓</span>
+                      <span style={{ color: themeStyles.success, marginLeft: '8px' }}>✓</span>
                     ) : (
-                      <span style={{ color: '#f44336', marginLeft: '8px' }}>✗</span>
+                      <span style={{ color: themeStyles.danger, marginLeft: '8px' }}>✗</span>
                     )}
                   </div>
                   {!history.correct && (
-                    <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                    <div style={{ fontSize: '12px', color: themeStyles.textSecondary, marginTop: '4px' }}>
                       {i18n('Correct Answer')}: {history.problem?.options?.[history.problem?.answer] || i18n('N/A')}
                     </div>
                   )}
@@ -1045,16 +1116,16 @@ function LessonPage() {
           {!isAlonePractice && (
             <div style={{
               padding: '40px',
-              backgroundColor: '#e8f5e9',
+              backgroundColor: themeStyles.passedBannerBg,
               borderRadius: '12px',
-              border: '2px solid #4caf50',
+              border: `2px solid ${themeStyles.passedBannerBorder}`,
               marginBottom: '20px',
             }}>
-              <div style={{ fontSize: '48px', marginBottom: '20px' }}>✓</div>
-              <h2 style={{ fontSize: '28px', color: '#2e7d32', marginBottom: '16px' }}>
+              <div style={{ fontSize: '48px', marginBottom: '20px', color: themeStyles.passedTitle }}>✓</div>
+              <h2 style={{ fontSize: '28px', color: themeStyles.passedTitle, marginBottom: '16px' }}>
                 {i18n('Lesson Passed')}
               </h2>
-              <p style={{ fontSize: '16px', color: '#555', marginBottom: '30px' }}>
+              <p style={{ fontSize: '16px', color: themeStyles.bodyText, marginBottom: '30px' }}>
                 {i18n('Congratulations! You have completed all practice questions correctly.')}
               </p>
             </div>
@@ -1094,8 +1165,8 @@ function LessonPage() {
                   padding: '12px 32px',
                   border: 'none',
                   borderRadius: '6px',
-                  backgroundColor: '#2196f3',
-                  color: '#fff',
+                  backgroundColor: themeStyles.accent,
+                  color: themeStyles.whiteOnAccent,
                   cursor: nextCardFromPassedLoading ? 'not-allowed' : 'pointer',
                   fontSize: '16px',
                   fontWeight: 'bold',
@@ -1113,8 +1184,8 @@ function LessonPage() {
                 padding: '12px 32px',
                 border: 'none',
                 borderRadius: '6px',
-                backgroundColor: '#4caf50',
-                color: '#fff',
+                backgroundColor: themeStyles.success,
+                color: themeStyles.whiteOnAccent,
                 cursor: 'pointer',
                 fontSize: '16px',
                 fontWeight: 'bold',
@@ -1138,25 +1209,27 @@ function LessonPage() {
         width: '100%',
         margin: '0 auto',
         padding: '20px',
+        minHeight: '100%',
+        background: themeStyles.bgPage,
       }}>
         <div style={{
           marginBottom: '20px',
           padding: '16px',
-          backgroundColor: '#f5f5f5',
+          backgroundColor: themeStyles.bgSecondary,
           borderRadius: '8px',
         }}>
-          <div style={{ fontSize: '14px', color: '#666', marginBottom: '8px' }}>
+          <div style={{ fontSize: '14px', color: themeStyles.textSecondary, marginBottom: '8px' }}>
             {node.text || i18n('Unnamed Node')}
           </div>
-          <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', color: themeStyles.textPrimary }}>
             {card.title || i18n('Unnamed Card')}
             {(isAlonePractice ? (reviewCardId && String(card.docId) === reviewCardId) : (lessonReviewCardIds.includes(String(card.docId)) || (reviewCardId && String(card.docId) === reviewCardId))) && (
-              <span style={{ fontSize: '14px', fontWeight: 600, color: '#e65100', backgroundColor: '#fff3e0', padding: '4px 10px', borderRadius: '6px' }}>
+              <span style={{ fontSize: '14px', fontWeight: 600, color: themeStyles.reviewFg, backgroundColor: themeStyles.reviewBg, padding: '4px 10px', borderRadius: '6px' }}>
                 {i18n('Review')}
               </span>
             )}
           </h1>
-          <div style={{ fontSize: '14px', color: '#2196f3', marginTop: '8px', fontWeight: 600 }}>
+          <div style={{ fontSize: '14px', color: themeStyles.accent, marginTop: '8px', fontWeight: 600 }}>
             {i18n('This card')}: {(currentCardCumulativeMs / 1000).toFixed(1)}s
           </div>
         </div>
@@ -1167,13 +1240,13 @@ function LessonPage() {
               <div style={{
                 marginBottom: '24px',
                 padding: '20px',
-                backgroundColor: '#fff',
+                backgroundColor: themeStyles.bgCard,
                 borderRadius: '8px',
-                border: '1px solid #e0e0e0',
+                border: `1px solid ${themeStyles.border}`,
               }}>
                 <div
                   className="lesson-markdown-body"
-                  style={{ fontSize: '16px', lineHeight: '1.6', color: '#555' }}
+                  style={{ fontSize: '16px', lineHeight: '1.6', color: themeStyles.bodyText }}
                   dangerouslySetInnerHTML={{ __html: renderedCardFace || card.cardFace }}
                 />
               </div>
@@ -1181,9 +1254,9 @@ function LessonPage() {
             <div style={{
               marginBottom: '30px',
               padding: '30px',
-              backgroundColor: '#fff',
+              backgroundColor: themeStyles.bgCard,
               borderRadius: '8px',
-              border: '1px solid #e0e0e0',
+              border: `1px solid ${themeStyles.border}`,
               display: 'flex',
               gap: '16px',
               justifyContent: 'center',
@@ -1196,8 +1269,8 @@ function LessonPage() {
                   padding: '12px 28px',
                   border: 'none',
                   borderRadius: '8px',
-                  backgroundColor: '#4caf50',
-                  color: '#fff',
+                  backgroundColor: themeStyles.success,
+                  color: themeStyles.whiteOnAccent,
                   cursor: 'pointer',
                   fontSize: '16px',
                   fontWeight: 'bold',
@@ -1212,8 +1285,8 @@ function LessonPage() {
                   padding: '12px 28px',
                   border: 'none',
                   borderRadius: '8px',
-                  backgroundColor: '#ff9800',
-                  color: '#fff',
+                  backgroundColor: themeStyles.orange,
+                  color: themeStyles.whiteOnAccent,
                   cursor: 'pointer',
                   fontSize: '16px',
                   fontWeight: 'bold',
@@ -1229,16 +1302,16 @@ function LessonPage() {
               <div style={{
                 marginBottom: '24px',
                 padding: '20px',
-                backgroundColor: '#fff',
+                backgroundColor: themeStyles.bgCard,
                 borderRadius: '8px',
-                border: '1px solid #e0e0e0',
+                border: `1px solid ${themeStyles.border}`,
               }}>
-                <h2 style={{ fontSize: '18px', marginBottom: '12px', color: '#333' }}>
+                <h2 style={{ fontSize: '18px', marginBottom: '12px', color: themeStyles.textPrimary }}>
                   {i18n('Content')}
                 </h2>
                 <div
                   className="lesson-markdown-body"
-                  style={{ fontSize: '16px', lineHeight: '1.6', color: '#555' }}
+                  style={{ fontSize: '16px', lineHeight: '1.6', color: themeStyles.bodyText }}
                   dangerouslySetInnerHTML={{ __html: renderedContent || card.content }}
                 />
               </div>
@@ -1252,8 +1325,8 @@ function LessonPage() {
                   padding: '12px 32px',
                   border: 'none',
                   borderRadius: '8px',
-                  backgroundColor: '#2196f3',
-                  color: '#fff',
+                  backgroundColor: themeStyles.accent,
+                  color: themeStyles.whiteOnAccent,
                   cursor: browseSubmitting ? 'not-allowed' : 'pointer',
                   fontSize: '16px',
                   fontWeight: 'bold',
@@ -1270,21 +1343,21 @@ function LessonPage() {
 
   const sidebarInner = (
     <>
-      <div style={{ fontSize: '12px', color: '#999', marginBottom: '8px', textTransform: 'uppercase' }}>
+      <div style={{ fontSize: '12px', color: themeStyles.textTertiary, marginBottom: '8px', textTransform: 'uppercase' }}>
         {i18n('Progress')}
       </div>
-      <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: '#333' }}>
+      <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: themeStyles.textPrimary }}>
         {rootNodeTitle || i18n('Unnamed Node')}
       </div>
-      <div style={{ fontSize: '12px', color: '#666', marginBottom: '12px' }}>
+      <div style={{ fontSize: '12px', color: themeStyles.textSecondary, marginBottom: '12px' }}>
         {currentCardIndex + 1} / {flatCards.length} {i18n('cards')}
         {liveLessonSession && Array.isArray(liveLessonSession.lessonCardQueue) && (
-          <span style={{ display: 'block', fontSize: '11px', color: '#2e7d32', marginTop: '4px' }}>
+          <span style={{ display: 'block', fontSize: '11px', color: themeStyles.liveSync, marginTop: '4px' }}>
             {i18n('Live session') || '会话已同步'} · {(liveLessonSession.lessonCardQueue as unknown[]).length} {i18n('cards')}
           </span>
         )}
       </div>
-      <div style={{ fontSize: '12px', color: '#333', marginBottom: '12px', fontWeight: 600 }}>
+      <div style={{ fontSize: '12px', color: themeStyles.textPrimary, marginBottom: '12px', fontWeight: 600 }}>
         {i18n('Cumulative')}: {(cumulativeMs / 1000).toFixed(1)}s
       </div>
       {isTodayMode && rootNodeId === 'today' ? (
@@ -1301,8 +1374,8 @@ function LessonPage() {
               marginBottom: '2px',
               fontSize: '13px',
               borderRadius: '6px',
-              backgroundColor: isCurrent ? '#e3f2fd' : inReview ? '#fff3e0' : isDone ? '#e8f5e9' : 'transparent',
-              color: isCurrent ? '#1976d2' : inReview ? '#e65100' : isDone ? '#2e7d32' : '#666',
+              backgroundColor: isCurrent ? themeStyles.accentMutedBg : inReview ? themeStyles.reviewBg : isDone ? themeStyles.doneBg : 'transparent',
+              color: isCurrent ? themeStyles.accentMutedFg : inReview ? themeStyles.reviewFg : isDone ? themeStyles.doneFg : themeStyles.textSecondary,
               fontWeight: isCurrent ? 600 : 400,
               display: 'flex',
               justifyContent: 'space-between',
@@ -1314,13 +1387,13 @@ function LessonPage() {
                 <span>
                   {isDone && <span style={{ marginRight: '6px' }}>✓</span>}
                   {inReview && (
-                    <span style={{ marginRight: '6px', fontSize: '11px', color: '#e65100', fontWeight: 600 }}>
+                    <span style={{ marginRight: '6px', fontSize: '11px', color: themeStyles.reviewFg, fontWeight: 600 }}>
                       {i18n('Review')}
                     </span>
                   )}
                   {item.cardTitle || i18n('Unnamed Card')}
                 </span>
-                <span style={{ fontSize: '12px', color: '#999', flexShrink: 0 }}>{timeText}</span>
+                <span style={{ fontSize: '12px', color: themeStyles.textTertiary, flexShrink: 0 }}>{timeText}</span>
               </div>
             );
           })}
@@ -1333,8 +1406,8 @@ function LessonPage() {
 
   const asideBaseStyle: React.CSSProperties = {
     padding: '16px',
-    backgroundColor: '#fff',
-    borderRight: '1px solid #e0e0e0',
+    backgroundColor: themeStyles.bgCard,
+    borderRight: `1px solid ${themeStyles.border}`,
     overflowY: 'auto',
   };
 
@@ -1348,7 +1421,7 @@ function LessonPage() {
             {sidebarOpen && (
               <div
                 role="presentation"
-                style={{ position: 'fixed', inset: 0, zIndex: 1001, backgroundColor: 'rgba(0,0,0,0.4)' }}
+                style={{ position: 'fixed', inset: 0, zIndex: 1001, backgroundColor: themeStyles.drawerScrim }}
                 onClick={() => setSidebarOpen(false)}
                 aria-hidden
               />
@@ -1364,7 +1437,7 @@ function LessonPage() {
               zIndex: 1002,
               transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
               transition: 'transform 0.2s ease-out',
-              boxShadow: sidebarOpen ? '2px 0 8px rgba(0,0,0,0.15)' : 'none',
+              boxShadow: sidebarOpen ? themeStyles.drawerAsideShadow : 'none',
             }}>
               {sidebarInner}
               <button
@@ -1374,9 +1447,10 @@ function LessonPage() {
                   marginTop: '12px',
                   padding: '8px 16px',
                   width: '100%',
-                  border: '1px solid #e0e0e0',
+                  border: `1px solid ${themeStyles.border}`,
                   borderRadius: '6px',
-                  background: '#f5f5f5',
+                  background: themeStyles.bgSecondary,
+                  color: themeStyles.textPrimary,
                   cursor: 'pointer',
                   fontSize: '14px',
                 }}
@@ -1384,29 +1458,35 @@ function LessonPage() {
                 {i18n('Close')}
               </button>
             </aside>
-            <main style={{ flex: 1, overflowY: 'auto', paddingTop: '24px', paddingLeft: '12px', paddingRight: '12px', paddingBottom: '24px', minHeight: '100vh', backgroundColor: '#fafafa' }}>
+            <main style={{ flex: 1, overflowY: 'auto', paddingTop: '24px', paddingLeft: '12px', paddingRight: '12px', paddingBottom: '24px', minHeight: '100vh', background: themeStyles.bgPage }}>
               {cardViewContent}
             </main>
           </>
         );
       }
       return (
-        <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#fafafa' }}>
+        <div style={{ display: 'flex', minHeight: '100vh', background: themeStyles.bgPage }}>
           <aside style={{ width: '240px', flexShrink: 0, ...asideBaseStyle }}>
             {sidebarInner}
           </aside>
-          <main style={{ flex: 1, overflowY: 'auto' }}>
+          <main style={{ flex: 1, overflowY: 'auto', background: themeStyles.bgPage }}>
             {cardViewContent}
           </main>
         </div>
       );
     }
-    return <>{cardViewContent}</>;
+    return (
+      <div style={{ minHeight: '100vh', background: themeStyles.bgPage }}>
+        {cardViewContent}
+      </div>
+    );
   }
 
   if (!currentProblem && !allCorrect && answerHistory.length === 0) {
     return (
       <div style={{
+        minHeight: '100vh',
+        background: themeStyles.bgPage,
         maxWidth: '900px',
         margin: '0 auto',
         padding: '20px',
@@ -1414,7 +1494,7 @@ function LessonPage() {
       }}>
         <div style={{
           padding: '40px',
-          color: '#999',
+          color: themeStyles.textTertiary,
         }}>
           {i18n('No content or practice questions available.')}
         </div>
@@ -1428,6 +1508,8 @@ function LessonPage() {
     }
     return (
       <div style={{
+        minHeight: '100vh',
+        background: themeStyles.bgPage,
         maxWidth: '900px',
         margin: '0 auto',
         padding: '20px',
@@ -1435,7 +1517,7 @@ function LessonPage() {
       }}>
         <div style={{
           padding: '40px',
-          color: '#999',
+          color: themeStyles.textTertiary,
         }}>
           {i18n('Loading...')}
         </div>
@@ -1454,26 +1536,26 @@ function LessonPage() {
       <div style={{
         marginBottom: '20px',
         padding: '16px',
-        backgroundColor: '#f5f5f5',
+        backgroundColor: themeStyles.bgSecondary,
         borderRadius: '8px',
       }}>
-        <div style={{ fontSize: '14px', color: '#666', marginBottom: '8px' }}>
+        <div style={{ fontSize: '14px', color: themeStyles.textSecondary, marginBottom: '8px' }}>
           {node.text || i18n('Unnamed Node')}
         </div>
-        <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+        <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', color: themeStyles.textPrimary }}>
           {card.title || i18n('Unnamed Card')}
           {(isAlonePractice ? (reviewCardId && String(card.docId) === reviewCardId) : lessonReviewCardIds.includes(String(card.docId))) && (
-            <span style={{ fontSize: '14px', fontWeight: 600, color: '#e65100', backgroundColor: '#fff3e0', padding: '4px 10px', borderRadius: '6px' }}>
+            <span style={{ fontSize: '14px', fontWeight: 600, color: themeStyles.reviewFg, backgroundColor: themeStyles.reviewBg, padding: '4px 10px', borderRadius: '6px' }}>
               {i18n('Review')}
             </span>
           )}
         </h1>
-        <div style={{ fontSize: '12px', color: '#999', marginTop: '8px' }}>
+        <div style={{ fontSize: '12px', color: themeStyles.textTertiary, marginTop: '8px' }}>
           {i18n('Question')} {allProblems.length - problemQueue.length + 1} / {allProblems.length}
           {problemQueue.length > 0 && ` (${i18n('Remaining')}: ${problemQueue.length})`}
         </div>
         {(isSingleNodeMode || isTodayMode) && (
-          <div style={{ fontSize: '14px', color: '#2196f3', marginTop: '8px', fontWeight: 600 }}>
+          <div style={{ fontSize: '14px', color: themeStyles.accent, marginTop: '8px', fontWeight: 600 }}>
             {i18n('This card')}: {(elapsedMs / 1000).toFixed(1)}s
           </div>
         )}
@@ -1483,16 +1565,16 @@ function LessonPage() {
       <div style={{
         marginBottom: '30px',
         padding: isMobile ? '16px' : '30px',
-        backgroundColor: '#fff',
+        backgroundColor: themeStyles.bgCard,
         borderRadius: '8px',
-        border: '1px solid #e0e0e0',
+        border: `1px solid ${themeStyles.border}`,
       }}>
         <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
           <span style={{
             display: 'inline-block',
             padding: '4px 8px',
-            backgroundColor: '#2196f3',
-            color: '#fff',
+            backgroundColor: themeStyles.accent,
+            color: themeStyles.whiteOnAccent,
             borderRadius: '4px',
             fontSize: '12px',
             marginRight: '8px',
@@ -1505,10 +1587,10 @@ function LessonPage() {
               onClick={handlePeek}
               style={{
                 padding: '6px 14px',
-                border: '1px solid #ff9800',
+                border: `1px solid ${themeStyles.orange}`,
                 borderRadius: '6px',
-                backgroundColor: '#fff3e0',
-                color: '#e65100',
+                backgroundColor: themeStyles.reviewBg,
+                color: themeStyles.reviewFg,
                 cursor: 'pointer',
                 fontSize: '13px',
                 fontWeight: 500,
@@ -1521,8 +1603,8 @@ function LessonPage() {
             <span style={{
               display: 'inline-block',
               padding: '4px 8px',
-              backgroundColor: '#ff9800',
-              color: '#fff',
+              backgroundColor: themeStyles.orange,
+              color: themeStyles.whiteOnAccent,
               borderRadius: '4px',
               fontSize: '12px',
             }}>
@@ -1535,8 +1617,8 @@ function LessonPage() {
             <span style={{
               display: 'inline-block',
               padding: '4px 8px',
-              backgroundColor: isCorrect ? '#4caf50' : '#f44336',
-              color: '#fff',
+              backgroundColor: isCorrect ? themeStyles.success : themeStyles.danger,
+              color: themeStyles.whiteOnAccent,
               borderRadius: '4px',
               fontSize: '12px',
             }}>
@@ -1549,7 +1631,7 @@ function LessonPage() {
           fontSize: '18px',
           fontWeight: '500',
           marginBottom: '24px',
-          color: '#333',
+          color: themeStyles.stemColor,
           lineHeight: '1.6',
         }}>
           {currentProblem?.stem || i18n('No stem')}
@@ -1571,16 +1653,16 @@ function LessonPage() {
             let optionStyle: React.CSSProperties;
             if (showAnalysis) {
               if (isAnswer) {
-                optionStyle = { ...baseStyle, border: '2px solid #4caf50', backgroundColor: '#e8f5e9' };
+                optionStyle = { ...baseStyle, border: `2px solid ${themeStyles.success}`, backgroundColor: themeStyles.successBg };
               } else if (isSelected) {
-                optionStyle = { ...baseStyle, border: '2px solid #f44336', backgroundColor: '#ffebee' };
+                optionStyle = { ...baseStyle, border: `2px solid ${themeStyles.danger}`, backgroundColor: themeStyles.dangerBg };
               } else {
-                optionStyle = { ...baseStyle, border: '2px solid #e0e0e0', backgroundColor: '#fff', opacity: 0.6 };
+                optionStyle = { ...baseStyle, border: `2px solid ${themeStyles.optionBorderMuted}`, backgroundColor: themeStyles.optionNeutral, opacity: 0.6 };
               }
             } else if (isSelected) {
-              optionStyle = { ...baseStyle, border: '2px solid #2196f3', backgroundColor: '#e3f2fd' };
+              optionStyle = { ...baseStyle, border: `2px solid ${themeStyles.accent}`, backgroundColor: themeStyles.accentMutedBg };
             } else {
-              optionStyle = { ...baseStyle, border: '2px solid #e0e0e0', backgroundColor: '#fff' };
+              optionStyle = { ...baseStyle, border: `2px solid ${themeStyles.optionBorderMuted}`, backgroundColor: themeStyles.optionNeutral };
             }
 
             return (
@@ -1589,10 +1671,10 @@ function LessonPage() {
                 onClick={() => !isAnswered && handleAnswerSelect(displayIdx)}
                 style={optionStyle}
               >
-                <span style={{ marginRight: '10px', fontWeight: 'bold', fontSize: '16px' }}>
+                <span style={{ marginRight: '10px', fontWeight: 'bold', fontSize: '16px', color: themeStyles.textPrimary }}>
                   {String.fromCharCode(65 + displayIdx)}.
                 </span>
-                <span style={{ fontSize: '16px' }}>{option}</span>
+                <span style={{ fontSize: '16px', color: themeStyles.textPrimary }}>{option}</span>
               </div>
             );
           })}
@@ -1602,13 +1684,13 @@ function LessonPage() {
           <div style={{
             marginTop: '20px',
             padding: '16px',
-            backgroundColor: '#f5f5f5',
+            backgroundColor: themeStyles.bgSecondary,
             borderRadius: '6px',
             fontSize: '15px',
-            color: '#666',
+            color: themeStyles.textSecondary,
             lineHeight: '1.6',
           }}>
-            <strong style={{ color: '#333' }}>{i18n('Analysis')}:</strong> {currentProblem.analysis}
+            <strong style={{ color: themeStyles.textPrimary }}>{i18n('Analysis')}:</strong> {currentProblem.analysis}
           </div>
         )}
 
@@ -1620,7 +1702,7 @@ function LessonPage() {
               left: 0,
               right: 0,
               bottom: 0,
-              backgroundColor: 'rgba(0,0,0,0.5)',
+              backgroundColor: themeStyles.drawerScrim,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -1634,21 +1716,23 @@ function LessonPage() {
                 maxWidth: '640px',
                 maxHeight: '85vh',
                 overflow: 'auto',
-                backgroundColor: '#fff',
+                backgroundColor: themeStyles.bgCard,
                 borderRadius: '12px',
                 padding: '24px',
-                boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+                border: `1px solid ${themeStyles.border}`,
+                boxShadow: themeStyles.modalShadow,
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              <h3 style={{ margin: '0 0 16px', fontSize: '18px', color: '#333' }}>
+              <h3 style={{ margin: '0 0 16px', fontSize: '18px', color: themeStyles.textPrimary }}>
                 {i18n('Source card')}: {card.title || i18n('Unnamed Card')}
               </h3>
               <div
+                className="lesson-markdown-body"
                 style={{
                   fontSize: '15px',
                   lineHeight: '1.6',
-                  color: '#555',
+                  color: themeStyles.bodyText,
                   marginBottom: '20px',
                 }}
                 dangerouslySetInnerHTML={{ __html: renderedContent || card.content || '' }}
@@ -1661,8 +1745,8 @@ function LessonPage() {
                     padding: '10px 20px',
                     border: 'none',
                     borderRadius: '6px',
-                    backgroundColor: '#ff9800',
-                    color: '#fff',
+                    backgroundColor: themeStyles.orange,
+                    color: themeStyles.whiteOnAccent,
                     cursor: 'pointer',
                     fontSize: '14px',
                     fontWeight: 600,
@@ -1686,7 +1770,7 @@ function LessonPage() {
           {sidebarOpen && (
             <div
               role="presentation"
-              style={{ position: 'fixed', inset: 0, zIndex: 1001, backgroundColor: 'rgba(0,0,0,0.4)' }}
+              style={{ position: 'fixed', inset: 0, zIndex: 1001, backgroundColor: themeStyles.drawerScrim }}
               onClick={() => setSidebarOpen(false)}
               aria-hidden
             />
@@ -1702,7 +1786,7 @@ function LessonPage() {
             zIndex: 1002,
             transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
             transition: 'transform 0.2s ease-out',
-            boxShadow: sidebarOpen ? '2px 0 8px rgba(0,0,0,0.15)' : 'none',
+            boxShadow: sidebarOpen ? themeStyles.drawerAsideShadow : 'none',
           }}>
             {sidebarInner}
             <button
@@ -1712,9 +1796,10 @@ function LessonPage() {
                 marginTop: '12px',
                 padding: '8px 16px',
                 width: '100%',
-                border: '1px solid #e0e0e0',
+                border: `1px solid ${themeStyles.border}`,
                 borderRadius: '6px',
-                background: '#f5f5f5',
+                background: themeStyles.bgSecondary,
+                color: themeStyles.textPrimary,
                 cursor: 'pointer',
                 fontSize: '14px',
               }}
@@ -1722,25 +1807,29 @@ function LessonPage() {
               {i18n('Close')}
             </button>
           </aside>
-          <main style={{ flex: 1, overflowY: 'auto', paddingTop: '24px', paddingLeft: '12px', paddingRight: '12px', paddingBottom: '24px', minHeight: '100vh', backgroundColor: '#fafafa' }}>
+          <main style={{ flex: 1, overflowY: 'auto', paddingTop: '24px', paddingLeft: '12px', paddingRight: '12px', paddingBottom: '24px', minHeight: '100vh', background: themeStyles.bgPage }}>
             {mainContent}
           </main>
         </>
       );
     }
     return (
-      <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#fafafa' }}>
+      <div style={{ display: 'flex', minHeight: '100vh', background: themeStyles.bgPage }}>
         <aside style={{ width: '240px', flexShrink: 0, ...asideBaseStyle }}>
           {sidebarInner}
         </aside>
-        <main style={{ flex: 1, overflowY: 'auto' }}>
+        <main style={{ flex: 1, overflowY: 'auto', background: themeStyles.bgPage }}>
           {mainContent}
         </main>
       </div>
     );
   }
 
-  return mainContent;
+  return (
+    <div style={{ minHeight: '100vh', background: themeStyles.bgPage }}>
+      {mainContent}
+    </div>
+  );
 }
 
 const page = new NamedPage('lessonPage', async () => {
