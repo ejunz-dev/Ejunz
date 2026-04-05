@@ -1,5 +1,6 @@
 import type { RecordDoc } from '../model/record';
 import type { SessionDoc } from '../model/session';
+import { isLearnHomePlaceholderSession } from './lessonSession';
 
 const ON_LESSON_RECENT_MS = 3 * 60 * 1000;
 const LEGACY_ACTIVITY_MS = 5 * 60 * 1000;
@@ -24,6 +25,7 @@ export function isLearnSessionRow(doc: SessionDoc): boolean {
 
 export function deriveSessionRecordType(doc: SessionDoc): SessionListRecordType {
     if (!isLearnSessionRow(doc)) return 'other';
+    if (isLearnHomePlaceholderSession(doc)) return 'other';
     const mode = doc.lessonMode ?? null;
     if (mode === 'node') return 'single_node';
     if (mode === 'today') return 'daily';
@@ -111,6 +113,11 @@ export function deriveSessionLearnStatus(doc: SessionDoc, now = Date.now()): Ses
         return 'abandoned';
     }
     if (!isLearnSessionRow(doc)) {
+        const t = doc.lastActivityAt ? new Date(doc.lastActivityAt).getTime() : 0;
+        return now - t < LEGACY_ACTIVITY_MS ? 'active' : 'detached';
+    }
+
+    if (isLearnHomePlaceholderSession(doc)) {
         const t = doc.lastActivityAt ? new Date(doc.lastActivityAt).getTime() : 0;
         return now - t < LEGACY_ACTIVITY_MS ? 'active' : 'detached';
     }

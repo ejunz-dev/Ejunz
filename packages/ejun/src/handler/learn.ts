@@ -475,77 +475,6 @@ async function recentLearnSessionRows(domainId: string, uid: number, limit = 15)
         .toArray() as Promise<SessionDoc[]>;
 }
 
-async function ensureLearnPageSessionId(domainId: string, uid: number): Promise<string> {
-    const rows = await recentLearnSessionRows(domainId, uid);
-    if (rows.length === 0) {
-        const s = await SessionModel.insertSession(domainId, uid, { appRoute: 'learn', route: 'learn' }, { silent: true });
-        return lessonSessionIdFromDoc(s);
-    }
-    const s = rows[0];
-    // Ghost shell can be newer than the just-abandoned daily row (same-second insert). `get()` only sees the shell.
-    if (isRedundantLearnGhostShell(s)) {
-        const abandonedBelow = rows.find(
-            (r, i) => i > 0
-                && isLessonSessionAbandoned(r)
-                && r.appRoute === 'learn'
-                && r.route === 'learn',
-        );
-        if (abandonedBelow) {
-            await mergeLearnGhostRecordsIntoSessionAndDelete(domainId, uid, s, abandonedBelow._id);
-            if (isAbandonedDailySession(abandonedBelow)) {
-                const fresh = await SessionModel.insertSession(
-                    domainId,
-                    uid,
-                    { appRoute: 'learn', route: 'learn' },
-                    { silent: true },
-                );
-                return lessonSessionIdFromDoc(fresh);
-            }
-            const cleared = await SessionModel.touchById(
-                domainId,
-                uid,
-                abandonedBelow._id,
-                LEARN_PLACEHOLDER_REVIVE_PATCH,
-                { silent: true },
-            );
-            return lessonSessionIdFromDoc(cleared ?? abandonedBelow);
-        }
-    }
-    if (isLessonSessionAbandoned(s)) {
-        if (isAbandonedDailySession(s)) {
-            const ph = firstLearnHomePlaceholderInRows(rows);
-            if (ph) return lessonSessionIdFromDoc(ph);
-            const fresh = await SessionModel.insertSession(
-                domainId,
-                uid,
-                { appRoute: 'learn', route: 'learn' },
-                { silent: true },
-            );
-            return lessonSessionIdFromDoc(fresh);
-        }
-        const cleared = await SessionModel.touchById(
-            domainId,
-            uid,
-            s._id,
-            LEARN_PLACEHOLDER_REVIVE_PATCH,
-            { silent: true },
-        );
-        return lessonSessionIdFromDoc(cleared ?? s);
-    }
-    if (!s.appRoute && !s.route) {
-        const bumped = await touchLessonSession(domainId, uid, { appRoute: 'learn', route: 'learn' }, { silent: true });
-        return lessonSessionIdFromDoc(bumped ?? s);
-    }
-    return lessonSessionIdFromDoc(s);
-}
-
-async function ensureLearnHomeSessionId(domainId: string, uid: number, priv: number): Promise<string> {
-    const du = await learn.getUserLearnState(domainId, { _id: uid, priv }) as any;
-    const daily = await resolveLearnDailySessionDoc(domainId, uid, du);
-    if (daily?._id) return daily._id.toString();
-    return ensureLearnPageSessionId(domainId, uid);
-}
-
 /** Prefer upgrading learn-home placeholder row so we do not stack a second session per start action. */
 async function insertOrUpgradeLearnSession(domainId: string, uid: number, patch: SessionPatch): Promise<string> {
     const rows = await recentLearnSessionRows(domainId, uid);
@@ -1562,14 +1491,6 @@ class LearnHandler extends Handler {
                 currentLearnSectionId: null,
                 currentLearnSectionIndex: 0,
             });
-            await touchLessonSession(finalDomainId, this.user._id, {
-                appRoute: 'learn',
-                lessonMode: null,
-                nodeId: null,
-                cardIndex: null,
-                currentLearnSectionIndex: 0,
-                currentLearnSectionId: null,
-            }, { silent: true });
         }
         if (!trainings.length) {
             this.response.template = 'learn.html';
@@ -1583,7 +1504,7 @@ class LearnHandler extends Handler {
                 selectedLearnTrainingDocId: null,
                 requireTrainingSelection: false,
                 requireBaseSelection: false,
-                lessonSessionId: await ensureLearnHomeSessionId(finalDomainId, this.user._id, this.user.priv),
+                lessonSessionId: '',
                 ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
             };
             return;
@@ -1606,7 +1527,7 @@ class LearnHandler extends Handler {
                 completedSections: [],
                 completedCardsToday: [],
                 passedCardIds: [],
-                lessonSessionId: await ensureLearnHomeSessionId(finalDomainId, this.user._id, this.user.priv),
+                lessonSessionId: '',
                 ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
             };
             return;
@@ -1646,7 +1567,7 @@ class LearnHandler extends Handler {
                 selectedLearnTrainingDocId: trainingDocIdStr,
                 requireTrainingSelection: false,
                 requireBaseSelection: false,
-                lessonSessionId: await ensureLearnHomeSessionId(finalDomainId, this.user._id, this.user.priv),
+                lessonSessionId: '',
                 ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
             };
             return;
@@ -1676,11 +1597,6 @@ class LearnHandler extends Handler {
                 learnProgressPosition: Math.max(0, currentSectionIndex),
                 learnProgressTotal: totalSectionsForProgress,
             });
-            await touchLessonSession(finalDomainId, this.user._id, {
-                appRoute: 'learn',
-                currentLearnSectionIndex: currentSectionIndex,
-                currentLearnSectionId: finalSectionId,
-            }, { silent: true });
         } else if (sectionId) {
             const idx = sections.findIndex(s => s._id === sectionId);
             finalSectionId = sectionId;
@@ -1692,11 +1608,6 @@ class LearnHandler extends Handler {
                 learnProgressPosition: Math.max(0, currentSectionIndex),
                 learnProgressTotal: totalSectionsForProgress,
             });
-            await touchLessonSession(finalDomainId, this.user._id, {
-                appRoute: 'learn',
-                currentLearnSectionIndex: currentSectionIndex,
-                currentLearnSectionId: sectionId,
-            }, { silent: true });
         } else {
             // Section Order / learn settings live on domain.user; session merge can be stale — prefer dudoc and do not GET-overwrite from session id.
             const duIdx = normalizeDomainUserLearnIndex((dudoc as any).currentLearnSectionIndex);
@@ -1725,11 +1636,6 @@ class LearnHandler extends Handler {
                     learnProgressPosition: 0,
                     learnProgressTotal: totalSectionsForProgress,
                 });
-                await touchLessonSession(finalDomainId, this.user._id, {
-                    appRoute: 'learn',
-                    currentLearnSectionIndex: 0,
-                    currentLearnSectionId: finalSectionId,
-                }, { silent: true });
             }
         }
 
@@ -1923,7 +1829,7 @@ class LearnHandler extends Handler {
             selectedLearnTrainingDocId: trainingDocIdStr,
             requireTrainingSelection: false,
             requireBaseSelection: false,
-            lessonSessionId: await ensureLearnHomeSessionId(finalDomainId, this.user._id, this.user.priv),
+            lessonSessionId: '',
             ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
         };
     }

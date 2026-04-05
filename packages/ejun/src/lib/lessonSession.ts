@@ -114,7 +114,7 @@ export function frozenTodayQueueMatchesLearnSettings(dudoc: any, s: SessionDoc):
 }
 
 /**
- * Learn home row created by `ensureLearnPageSessionId` (appRoute learn, no mode yet).
+ * Learn shell row: `appRoute` learn, no `lessonMode` yet — may be created when user starts a lesson (e.g. `insertOrUpgradeLearnSession`), not on `/learn` GET.
  * Starting daily practice should upgrade this row instead of inserting a second document.
  */
 export function isLearnHomePlaceholderSession(doc: SessionDoc | null | undefined): boolean {
