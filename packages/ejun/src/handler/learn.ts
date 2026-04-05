@@ -150,6 +150,42 @@ async function resolveLearnDailySessionDoc(domainId: string, uid: number, dudoc:
     return doc;
 }
 
+/**
+ * Today’s in-progress / paused daily row: prefer `learnDailySessionId` pointer, else scan for a valid `today` row
+ * (same UTC `lessonQueueDay`, queue non-empty, `cardIndex` inside queue, not finished / timed out / abandoned).
+ */
+async function findResumableTodayLearnSessionDoc(domainId: string, uid: number, dudoc: any): Promise<SessionDoc | null> {
+    const tryDoc = (doc: SessionDoc | null | undefined): SessionDoc | null => {
+        if (!doc || isLessonSessionAbandoned(doc)) return null;
+        if (doc.lessonMode !== 'today') return null;
+        if (!lessonTodayFrozenQueueIsValid(doc)) return null;
+        const q = doc.lessonCardQueue ?? [];
+        const idx = typeof doc.cardIndex === 'number' ? doc.cardIndex : 0;
+        if (q.length === 0 || idx >= q.length) return null;
+        const st = deriveSessionLearnStatus(doc);
+        if (st === 'finished' || st === 'timed_out' || st === 'abandoned') return null;
+        return doc;
+    };
+
+    const fromPointer = tryDoc(await resolveLearnDailySessionDoc(domainId, uid, dudoc));
+    if (fromPointer) return fromPointer;
+
+    const ymd = utcLessonQueueDayString();
+    const candidates = await SessionModel.coll.find({
+        domainId,
+        uid,
+        lessonMode: 'today',
+        lessonQueueDay: ymd,
+        $or: [{ lessonAbandonedAt: null }, { lessonAbandonedAt: { $exists: false } }],
+    }).sort({ lastActivityAt: -1 }).limit(20).toArray() as SessionDoc[];
+
+    for (const doc of candidates) {
+        const ok = tryDoc(doc);
+        if (ok) return ok;
+    }
+    return null;
+}
+
 async function resolveLessonSessionForMerge(
     domainId: string,
     uid: number,
@@ -633,18 +669,31 @@ function sessionTodayProgressPatchFromDomainUser(dudoc: any): SessionPatch {
 }
 
 async function buildTodayDailyLessonResumeFields(
-    _domainId: string,
-    _uid: number,
-    _priv: number,
+    domainId: string,
+    uid: number,
+    priv: number,
 ): Promise<{
     todayLessonResumableSessionId: string | null;
     todayLessonResumeUrl: string | null;
     todayLessonCardProgressText: string | null;
 }> {
+    const dudoc = await learn.getUserLearnState(domainId, { _id: uid, priv }) as any;
+    const s = await findResumableTodayLearnSessionDoc(domainId, uid, dudoc);
+    if (!s || !frozenTodayQueueMatchesLearnSettings(dudoc, s)) {
+        return {
+            todayLessonResumableSessionId: null,
+            todayLessonResumeUrl: null,
+            todayLessonCardProgressText: null,
+        };
+    }
+    const sid = s._id.toString();
+    await setLearnDailySessionPointer(domainId, uid, sid);
+    const base = `/d/${domainId}/learn/lesson`;
+    const url = appendLessonSessionToUrl(base, sid);
     return {
-        todayLessonResumableSessionId: null,
-        todayLessonResumeUrl: null,
-        todayLessonCardProgressText: null,
+        todayLessonResumableSessionId: sid,
+        todayLessonResumeUrl: url,
+        todayLessonCardProgressText: formatSessionCardProgress(s),
     };
 }
 
@@ -2912,55 +2961,62 @@ class LessonHandler extends Handler {
             redirectPath = `/d/${finalDomainId}/learn/lesson?cardId=${encodeURIComponent(cardIdStartRaw)}`;
         } else {
             const trainingToday = await requireSelectedTraining(finalDomainId, this.user._id, this.user.priv);
-            const sBeforeToday = await resolveLearnDailySessionDoc(finalDomainId, this.user._id, dudocSt);
-            const excludeTodayPassedCards = !!(
-                sBeforeToday
-                && !isLessonSessionAbandoned(sBeforeToday)
-                && lessonTodayFrozenQueueIsValid(sBeforeToday)
-                && frozenTodayQueueMatchesLearnSettings(dudocSt, sBeforeToday)
-                && (sBeforeToday.lessonCardQueue?.length ?? 0) > 0
-            );
-            const progressToday = sessionTodayProgressPatchFromDomainUser(dudocSt);
-            let todayPatch: SessionPatch = {
-                appRoute: 'learn',
-                route: 'learn',
-                lessonMode: 'today',
-                nodeId: null,
-                cardIndex: 0,
-                lessonQueueAnchorNodeId: null,
-                lessonQueueTrainingDocId: trainIdSt,
-                lessonCardQueue: [],
-                ...progressToday,
-            };
-            try {
-                const builtStart = await buildTodayLessonQueueFromDomain(
-                    finalDomainId,
-                    this.user._id,
-                    dudocSt,
-                    trainingToday,
-                    (k: string) => this.translate(k),
-                    { excludeTodayPassedCards },
+            const resumableToday = await findResumableTodayLearnSessionDoc(finalDomainId, this.user._id, dudocSt);
+            if (resumableToday && frozenTodayQueueMatchesLearnSettings(dudocSt, resumableToday)) {
+                sid = resumableToday._id.toString();
+                await setLearnDailySessionPointer(finalDomainId, this.user._id, sid);
+                redirectPath = `/d/${finalDomainId}/learn/lesson`;
+            } else {
+                const sBeforeToday = await resolveLearnDailySessionDoc(finalDomainId, this.user._id, dudocSt);
+                const excludeTodayPassedCards = !!(
+                    sBeforeToday
+                    && !isLessonSessionAbandoned(sBeforeToday)
+                    && lessonTodayFrozenQueueIsValid(sBeforeToday)
+                    && frozenTodayQueueMatchesLearnSettings(dudocSt, sBeforeToday)
+                    && (sBeforeToday.lessonCardQueue?.length ?? 0) > 0
                 );
-                if (builtStart.queuePersist.length > 0) {
-                    todayPatch = {
-                        ...todayPatch,
-                        lessonCardQueue: builtStart.queuePersist,
-                        lessonQueueBaseDocId: builtStart.firstBaseToday || null,
-                        lessonQueueLearnSectionOrder: builtStart.sectionOrderSnapshot,
-                        lessonQueueDay: utcLessonQueueDayString(),
-                        currentLearnSectionIndex: builtStart.currentSectionIndex,
-                        currentLearnSectionId:
-                            builtStart.finalSectionId
-                            ?? builtStart.sections[builtStart.currentSectionIndex]?._id
-                            ?? null,
-                    };
+                const progressToday = sessionTodayProgressPatchFromDomainUser(dudocSt);
+                let todayPatch: SessionPatch = {
+                    appRoute: 'learn',
+                    route: 'learn',
+                    lessonMode: 'today',
+                    nodeId: null,
+                    cardIndex: 0,
+                    lessonQueueAnchorNodeId: null,
+                    lessonQueueTrainingDocId: trainIdSt,
+                    lessonCardQueue: [],
+                    ...progressToday,
+                };
+                try {
+                    const builtStart = await buildTodayLessonQueueFromDomain(
+                        finalDomainId,
+                        this.user._id,
+                        dudocSt,
+                        trainingToday,
+                        (k: string) => this.translate(k),
+                        { excludeTodayPassedCards },
+                    );
+                    if (builtStart.queuePersist.length > 0) {
+                        todayPatch = {
+                            ...todayPatch,
+                            lessonCardQueue: builtStart.queuePersist,
+                            lessonQueueBaseDocId: builtStart.firstBaseToday || null,
+                            lessonQueueLearnSectionOrder: builtStart.sectionOrderSnapshot,
+                            lessonQueueDay: utcLessonQueueDayString(),
+                            currentLearnSectionIndex: builtStart.currentSectionIndex,
+                            currentLearnSectionId:
+                                builtStart.finalSectionId
+                                ?? builtStart.sections[builtStart.currentSectionIndex]?._id
+                                ?? null,
+                        };
+                    }
+                } catch (e) {
+                    if (e instanceof NotFoundError) throw e;
                 }
-            } catch (e) {
-                if (e instanceof NotFoundError) throw e;
+                sid = await insertNewTodayLearnSession(finalDomainId, this.user._id, todayPatch);
+                await setLearnDailySessionPointer(finalDomainId, this.user._id, sid);
+                redirectPath = `/d/${finalDomainId}/learn/lesson`;
             }
-            sid = await insertNewTodayLearnSession(finalDomainId, this.user._id, todayPatch);
-            await setLearnDailySessionPointer(finalDomainId, this.user._id, sid);
-            redirectPath = `/d/${finalDomainId}/learn/lesson`;
         }
         this.response.body = {
             success: true,
