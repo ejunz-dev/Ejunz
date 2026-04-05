@@ -388,9 +388,12 @@ __langname: 简体中文
 'Server ID': 服务器 ID
 'Server Information': 服务器信息
 'Server': 服务器
+'Session type': 会话类型
 'Set as start': 设为学习起点
 'Show Answer': 显示答案
 'Single choice generated and saved': 单选题已生成并保存
+'Single-card session': 单卡片会话
+'Single-node session': 单节点会话
 'Skill branch': Skill 分支
 'Sort order updated, click Save to persist': 排序已更新，请点击"保存更改"按钮保存
 'Sort': 排序

@@ -362,8 +362,11 @@ __langname: English
 'Server ID': Server ID
 'Server Information': Server Information
 'Server': Server
+'Session type': Session type
 'Show Answer': Show Answer
 'Single choice generated and saved': Single choice generated and saved
+'Single-card session': Single-card session
+'Single-node session': Single-node session
 'Skill branch': Skill branch
 'Sort order updated, click Save to persist': Sort order updated, click Save to persist
 'Sort': Sort
@@ -765,6 +768,7 @@ training_edit: Training Edit
 training_list_empty: No training plans yet.
 training_main: Training
 Type: Type
+Uncompleted: Not completed
 Unnamed Card: Unnamed Card
 Unnamed Node: Unnamed Node
 user_detail: User Detail
