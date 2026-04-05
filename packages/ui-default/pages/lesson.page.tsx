@@ -8,6 +8,19 @@ import Notification from 'vj/components/notification';
 const BASE_OUTLINE_CARD_CACHE_PREFIX = 'base-outline-card-';
 const BASE_OUTLINE_IMAGES_CACHE_NAME = 'base-outline-images-v1';
 
+/**
+ * Lesson 文案：与 message 页相同，对固定字符串调用 i18n('…')。
+ * 若 window.LOCALES 尚未包含该键（例如 lang 包未重建），按 UserContext.viewLang 回退，避免界面上出现 key 名。
+ */
+function lessonT(key: string | undefined, zhFallback: string, enFallback: string): string {
+  const L = (typeof window !== 'undefined' && (window as any).LOCALES) as Record<string, string> | undefined;
+  if (key && L && Object.prototype.hasOwnProperty.call(L, key)) {
+    return i18n(key);
+  }
+  const lang = String((typeof window !== 'undefined' && (window as any).UserContext?.viewLang) || 'en').toLowerCase();
+  return lang.startsWith('zh') ? zhFallback : enFallback;
+}
+
 interface Problem {
   pid: string;
   type: 'single';
@@ -139,6 +152,15 @@ function LessonPage() {
     reviewCardId,
   } = lessonUi;
 
+  const hasLessonSidebar = (isSingleNodeMode || isTodayMode || isAlonePractice) && nodeTree.length > 0;
+
+  const splitQueueSidebars = flatCards.length > 0 && hasLessonSidebar;
+
+  const showCardQueueProgress = flatCards.length > 0
+    && (isSingleNodeMode || isTodayMode || isAlonePractice);
+
+  const showLessonSessionProgressCard = isSingleNodeMode || isTodayMode || isAlonePractice;
+
   const passSession = lessonSessionId ? { session: lessonSessionId } : {};
   const lessonApiDomainId = domainId;
 
@@ -216,6 +238,7 @@ function LessonPage() {
       modalShadow: dark ? '0 4px 24px rgba(0,0,0,0.55)' : '0 4px 20px rgba(0,0,0,0.15)',
       whiteOnAccent: '#fff',
       drawerAsideShadow: dark ? '2px 0 16px rgba(0,0,0,0.5)' : '2px 0 8px rgba(0,0,0,0.15)',
+      drawerAsideShadowRight: dark ? '-2px 0 16px rgba(0,0,0,0.5)' : '-2px 0 8px rgba(0,0,0,0.15)',
     };
   }, [theme]);
 
@@ -505,7 +528,8 @@ function LessonPage() {
 
   const MOBILE_BREAKPOINT = 768;
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [leftDrawerOpen, setLeftDrawerOpen] = useState(false);
+  const [rightDrawerOpen, setRightDrawerOpen] = useState(false);
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= MOBILE_BREAKPOINT);
@@ -513,28 +537,7 @@ function LessonPage() {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  const showSidebarInNav = (isSingleNodeMode || isTodayMode) && nodeTree.length > 0;
-  useEffect(() => {
-    if (!isMobile || !showSidebarInNav) return;
-    const leftEl = document.getElementById('header-mobile-extra-left');
-    if (!leftEl) return;
-    const wrapper = document.createElement('div');
-    leftEl.appendChild(wrapper);
-    ReactDOM.render(
-      <button
-        type="button"
-        onClick={() => setSidebarOpen(true)}
-        aria-label={i18n('Menu')}
-      >
-        ☰ {i18n('Progress')}
-      </button>,
-      wrapper,
-    );
-    return () => {
-      ReactDOM.unmountComponentAtNode(wrapper);
-      wrapper.remove();
-    };
-  }, [isMobile, showSidebarInNav]);
+  const showSidebarInNav = hasLessonSidebar;
 
   useEffect(() => {
     if (allProblems.length > 0 && problemQueue.length === 0 && answerHistory.length === 0) {
@@ -588,6 +591,159 @@ function LessonPage() {
 
   const cumulativeMs = cardTimesMs.reduce((a, b) => a + b, 0) + (isNodeOrToday ? elapsedMs : 0);
   const currentCardCumulativeMs = elapsedMs + (cardTimesMs[currentCardIndex] ?? 0);
+
+  /** 当前 lesson 会话类型（沿用站内已有键如 Today task，其余与 message 一致走 i18n + LOCALES 回退） */
+  const lessonSessionModeLabel = useMemo(() => {
+    if (isTodayMode && rootNodeId === 'today') return lessonT('Today task', '今日任务', 'Today task');
+    if (isTodayMode) return lessonT(undefined, '今日学习', 'Today session');
+    if (isSingleNodeMode) return lessonT('Single-node session', '单节点会话', 'Single-node session');
+    if (isAlonePractice) return lessonT('Single-card session', '单卡片会话', 'Single-card session');
+    return '';
+  }, [isTodayMode, rootNodeId, isSingleNodeMode, isAlonePractice]);
+
+  const lessonQueueDoneCount = useMemo(() => {
+    if (!showCardQueueProgress) return 0;
+    let n = 0;
+    flatCards.forEach((item, idx) => {
+      const inReview = lessonReviewCardIds.includes(String(item.cardId));
+      if (idx < currentCardIndex && !inReview) n += 1;
+    });
+    return n;
+  }, [showCardQueueProgress, flatCards, currentCardIndex, lessonReviewCardIds]);
+
+  const lessonQueuePendingCount = useMemo(() => {
+    if (!showCardQueueProgress) return 0;
+    return Math.max(0, flatCards.length - lessonQueueDoneCount);
+  }, [showCardQueueProgress, flatCards.length, lessonQueueDoneCount]);
+
+  const lessonSessionProgressCard = useMemo(() => {
+    if (!showLessonSessionProgressCard) return null;
+    const modeLabel = lessonSessionModeLabel || lessonT(undefined, '学习会话', 'Session');
+    const modeBlock = (
+      <div style={{ marginBottom: showCardQueueProgress ? '12px' : 0 }}>
+        <div style={{ fontSize: '12px', color: themeStyles.textTertiary, marginBottom: '4px' }}>
+          {lessonT('Session type', '会话类型', 'Session type')}
+        </div>
+        <div style={{ fontSize: '15px', fontWeight: 700, color: themeStyles.accent }}>
+          {modeLabel}
+        </div>
+      </div>
+    );
+    const cardShell = {
+      marginBottom: '24px',
+      padding: '20px 24px',
+      backgroundColor: themeStyles.bgCard,
+      borderRadius: '12px',
+      border: `1px solid ${themeStyles.border}`,
+      boxShadow: theme === 'dark' ? '0 2px 12px rgba(0,0,0,0.25)' : '0 2px 10px rgba(0,0,0,0.06)',
+    } as const;
+    if (!showCardQueueProgress) {
+      return (
+        <div style={cardShell}>
+          {modeBlock}
+        </div>
+      );
+    }
+    const total = flatCards.length;
+    const done = lessonQueueDoneCount;
+    const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+    return (
+      <div style={cardShell}>
+        {modeBlock}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', marginBottom: '12px', gap: '12px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '15px', fontWeight: 600, color: themeStyles.accent }}>
+            {done} / {total} {i18n('cards')} · {pct}%
+          </span>
+        </div>
+        <div style={{
+          height: '14px',
+          borderRadius: '999px',
+          backgroundColor: themeStyles.bgSecondary,
+          border: `1px solid ${themeStyles.border}`,
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            width: `${pct}%`,
+            height: '100%',
+            borderRadius: '999px',
+            background: `linear-gradient(90deg, ${themeStyles.accent}, ${themeStyles.success})`,
+            transition: 'width 0.35s ease',
+          }} />
+        </div>
+      </div>
+    );
+  }, [
+    showLessonSessionProgressCard,
+    showCardQueueProgress,
+    lessonSessionModeLabel,
+    flatCards.length,
+    lessonQueueDoneCount,
+    themeStyles,
+    theme,
+    i18n,
+  ]);
+
+  useEffect(() => {
+    if (!isMobile || !showSidebarInNav) return;
+    const leftEl = document.getElementById('header-mobile-extra-left');
+    const rightEl = document.getElementById('header-mobile-extra');
+    const openLeft = () => {
+      setLeftDrawerOpen(true);
+      setRightDrawerOpen(false);
+    };
+    const openRight = () => {
+      setRightDrawerOpen(true);
+      setLeftDrawerOpen(false);
+    };
+    const leftWrap = leftEl ? (() => {
+      const w = document.createElement('div');
+      leftEl.appendChild(w);
+      return w;
+    })() : null;
+    const rightWrap = splitQueueSidebars && rightEl ? (() => {
+      const w = document.createElement('div');
+      rightEl.appendChild(w);
+      return w;
+    })() : null;
+    if (leftWrap) {
+      const leftLabel = splitQueueSidebars
+        ? `${i18n('Uncompleted')} (${lessonQueuePendingCount})`
+        : i18n('Progress');
+      ReactDOM.render(
+        <button
+          type="button"
+          onClick={openLeft}
+          aria-label={leftLabel}
+        >
+          ☰ {leftLabel}
+        </button>,
+        leftWrap,
+      );
+    }
+    if (rightWrap) {
+      const rightLabel = `${i18n('Completed sections')} (${lessonQueueDoneCount})`;
+      ReactDOM.render(
+        <button
+          type="button"
+          onClick={openRight}
+          aria-label={rightLabel}
+        >
+          {rightLabel} ☰
+        </button>,
+        rightWrap,
+      );
+    }
+    return () => {
+      if (leftWrap) {
+        ReactDOM.unmountComponentAtNode(leftWrap);
+        leftWrap.remove();
+      }
+      if (rightWrap) {
+        ReactDOM.unmountComponentAtNode(rightWrap);
+        rightWrap.remove();
+      }
+    };
+  }, [isMobile, showSidebarInNav, splitQueueSidebars, lessonQueueDoneCount, lessonQueuePendingCount, i18n]);
 
   const renderNodeTreeItem = (item: { type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }, depth: number): React.ReactNode => {
     if (item.type === 'card') {
@@ -1212,6 +1368,7 @@ function LessonPage() {
         minHeight: '100%',
         background: themeStyles.bgPage,
       }}>
+        {lessonSessionProgressCard}
         <div style={{
           marginBottom: '20px',
           padding: '16px',
@@ -1341,68 +1498,204 @@ function LessonPage() {
     );
   }
 
-  const sidebarInner = (
+  const sidebarMeta = (
     <>
-      <div style={{ fontSize: '12px', color: themeStyles.textTertiary, marginBottom: '8px', textTransform: 'uppercase' }}>
-        {i18n('Progress')}
-      </div>
-      <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: themeStyles.textPrimary }}>
-        {rootNodeTitle || i18n('Unnamed Node')}
-      </div>
-      <div style={{ fontSize: '12px', color: themeStyles.textSecondary, marginBottom: '12px' }}>
-        {currentCardIndex + 1} / {flatCards.length} {i18n('cards')}
-        {liveLessonSession && Array.isArray(liveLessonSession.lessonCardQueue) && (
-          <span style={{ display: 'block', fontSize: '11px', color: themeStyles.liveSync, marginTop: '4px' }}>
-            {i18n('Live session') || '会话已同步'} · {(liveLessonSession.lessonCardQueue as unknown[]).length} {i18n('cards')}
-          </span>
-        )}
-      </div>
-      <div style={{ fontSize: '12px', color: themeStyles.textPrimary, marginBottom: '12px', fontWeight: 600 }}>
-        {i18n('Cumulative')}: {(cumulativeMs / 1000).toFixed(1)}s
-      </div>
-      {isTodayMode && rootNodeId === 'today' ? (
-        <div>
-          {flatCards.map((item, idx) => {
-            const inReview = lessonReviewCardIds.includes(String(item.cardId));
-            const isDone = idx < currentCardIndex && !inReview;
-            const isCurrent = idx === currentCardIndex;
-            let timeText = '—';
-            if (isCurrent) timeText = `${(currentCardCumulativeMs / 1000).toFixed(1)}s`;
-            else if (idx < cardTimesMs.length) timeText = `${(cardTimesMs[idx] / 1000).toFixed(1)}s`;
-            const cardStyle: React.CSSProperties = {
+      {!(isTodayMode && rootNodeId === 'today') && (
+        <div style={{ fontSize: '12px', color: themeStyles.textTertiary, marginBottom: '8px', textTransform: 'uppercase' }}>
+          {i18n('Progress')}
+        </div>
+      )}
+      {!(isTodayMode && rootNodeId === 'today') && (
+        <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: themeStyles.textPrimary }}>
+          {rootNodeTitle || i18n('Unnamed Node')}
+        </div>
+      )}
+      {!splitQueueSidebars && (
+        <div style={{ fontSize: '12px', color: themeStyles.textSecondary, marginBottom: '12px' }}>
+          {currentCardIndex + 1} / {flatCards.length} {i18n('cards')}
+          {!(isTodayMode && rootNodeId === 'today') && liveLessonSession && Array.isArray(liveLessonSession.lessonCardQueue) && (
+            <span style={{ display: 'block', fontSize: '11px', color: themeStyles.liveSync, marginTop: '4px' }}>
+              {i18n('Live session') || '会话已同步'} · {(liveLessonSession.lessonCardQueue as unknown[]).length} {i18n('cards')}
+            </span>
+          )}
+        </div>
+      )}
+      {!(isTodayMode && rootNodeId === 'today') && (
+        <div style={{ fontSize: '12px', color: themeStyles.textPrimary, marginBottom: '12px', fontWeight: 600 }}>
+          {i18n('Cumulative')}: {(cumulativeMs / 1000).toFixed(1)}s
+        </div>
+      )}
+    </>
+  );
+
+  const todayFlatListAll = isTodayMode && rootNodeId === 'today' ? (
+    <div>
+      {flatCards.map((item, idx) => {
+        const inReview = lessonReviewCardIds.includes(String(item.cardId));
+        const isDone = idx < currentCardIndex && !inReview;
+        const isCurrent = idx === currentCardIndex;
+        let timeText = '—';
+        if (isCurrent) timeText = `${(currentCardCumulativeMs / 1000).toFixed(1)}s`;
+        else if (idx < cardTimesMs.length) timeText = `${(cardTimesMs[idx] / 1000).toFixed(1)}s`;
+        const cardStyle: React.CSSProperties = {
+          padding: '6px 10px',
+          marginBottom: '2px',
+          fontSize: '13px',
+          borderRadius: '6px',
+          backgroundColor: isCurrent ? themeStyles.accentMutedBg : inReview ? themeStyles.reviewBg : isDone ? themeStyles.doneBg : 'transparent',
+          color: isCurrent ? themeStyles.accentMutedFg : inReview ? themeStyles.reviewFg : isDone ? themeStyles.doneFg : themeStyles.textSecondary,
+          fontWeight: isCurrent ? 600 : 400,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '8px',
+        };
+        return (
+          <div key={`today-card-${idx}-${String(item.cardId)}`} style={cardStyle}>
+            <span>
+              {isDone && <span style={{ marginRight: '6px' }}>✓</span>}
+              {inReview && (
+                <span style={{ marginRight: '6px', fontSize: '11px', color: themeStyles.reviewFg, fontWeight: 600 }}>
+                  {i18n('Review')}
+                </span>
+              )}
+              {item.cardTitle || i18n('Unnamed Card')}
+            </span>
+            <span style={{ fontSize: '12px', color: themeStyles.textTertiary, flexShrink: 0 }}>{timeText}</span>
+          </div>
+        );
+      })}
+    </div>
+  ) : null;
+
+  const todayFlatListDoneOnly = splitQueueSidebars ? (
+    <div>
+      {flatCards.map((item, idx) => {
+        const inReview = lessonReviewCardIds.includes(String(item.cardId));
+        const isDone = idx < currentCardIndex && !inReview;
+        if (!isDone) return null;
+        const timeText = idx < cardTimesMs.length ? `${(cardTimesMs[idx] / 1000).toFixed(1)}s` : '—';
+        return (
+          <div
+            key={`today-done-${idx}-${String(item.cardId)}`}
+            style={{
               padding: '6px 10px',
               marginBottom: '2px',
               fontSize: '13px',
               borderRadius: '6px',
-              backgroundColor: isCurrent ? themeStyles.accentMutedBg : inReview ? themeStyles.reviewBg : isDone ? themeStyles.doneBg : 'transparent',
-              color: isCurrent ? themeStyles.accentMutedFg : inReview ? themeStyles.reviewFg : isDone ? themeStyles.doneFg : themeStyles.textSecondary,
-              fontWeight: isCurrent ? 600 : 400,
+              backgroundColor: themeStyles.doneBg,
+              color: themeStyles.doneFg,
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
               gap: '8px',
-            };
-            return (
-              <div key={`today-card-${idx}-${String(item.cardId)}`} style={cardStyle}>
-                <span>
-                  {isDone && <span style={{ marginRight: '6px' }}>✓</span>}
-                  {inReview && (
-                    <span style={{ marginRight: '6px', fontSize: '11px', color: themeStyles.reviewFg, fontWeight: 600 }}>
-                      {i18n('Review')}
-                    </span>
-                  )}
-                  {item.cardTitle || i18n('Unnamed Card')}
-                </span>
-                <span style={{ fontSize: '12px', color: themeStyles.textTertiary, flexShrink: 0 }}>{timeText}</span>
-              </div>
-            );
-          })}
+            }}
+          >
+            <span>
+              <span style={{ marginRight: '6px' }}>✓</span>
+              {item.cardTitle || i18n('Unnamed Card')}
+            </span>
+            <span style={{ fontSize: '12px', color: themeStyles.textTertiary, flexShrink: 0 }}>{timeText}</span>
+          </div>
+        );
+      })}
+      {lessonQueueDoneCount === 0 && (
+        <div style={{ fontSize: '13px', color: themeStyles.textTertiary, padding: '8px 0' }}>
+          {i18n('No completed cards')}
         </div>
-      ) : (
-        nodeTree.map((root, i) => renderNodeTreeItem(root, 0))
       )}
+    </div>
+  ) : null;
+
+  const todayFlatListPendingOnly = splitQueueSidebars ? (
+    <div>
+      {flatCards.map((item, idx) => {
+        const inReview = lessonReviewCardIds.includes(String(item.cardId));
+        const isDone = idx < currentCardIndex && !inReview;
+        if (isDone) return null;
+        const isCurrent = idx === currentCardIndex;
+        let timeText = '—';
+        if (isCurrent) timeText = `${(currentCardCumulativeMs / 1000).toFixed(1)}s`;
+        else if (idx < cardTimesMs.length) timeText = `${(cardTimesMs[idx] / 1000).toFixed(1)}s`;
+        const cardStyle: React.CSSProperties = {
+          padding: '6px 10px',
+          marginBottom: '2px',
+          fontSize: '13px',
+          borderRadius: '6px',
+          backgroundColor: isCurrent ? themeStyles.accentMutedBg : inReview ? themeStyles.reviewBg : 'transparent',
+          color: isCurrent ? themeStyles.accentMutedFg : inReview ? themeStyles.reviewFg : themeStyles.textSecondary,
+          fontWeight: isCurrent ? 600 : 400,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '8px',
+        };
+        return (
+          <div key={`today-pending-${idx}-${String(item.cardId)}`} style={cardStyle}>
+            <span>
+              {inReview && (
+                <span style={{ marginRight: '6px', fontSize: '11px', color: themeStyles.reviewFg, fontWeight: 600 }}>
+                  {i18n('Review')}
+                </span>
+              )}
+              {item.cardTitle || i18n('Unnamed Card')}
+            </span>
+            <span style={{ fontSize: '12px', color: themeStyles.textTertiary, flexShrink: 0 }}>{timeText}</span>
+          </div>
+        );
+      })}
+    </div>
+  ) : null;
+
+  const sidebarInnerLeftSplit = (
+    <>
+      {sidebarMeta}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: '8px',
+        marginBottom: '8px',
+      }}>
+        <span style={{ fontSize: '12px', color: themeStyles.textTertiary, textTransform: 'uppercase' }}>
+          {i18n('Uncompleted')}
+        </span>
+        <span style={{ fontSize: '14px', fontWeight: 700, color: themeStyles.accent, flexShrink: 0 }}>
+          {lessonQueuePendingCount}
+        </span>
+      </div>
+      {todayFlatListPendingOnly}
     </>
   );
+
+  const sidebarInnerRightSplit = (
+    <>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: '8px',
+        marginBottom: '8px',
+      }}>
+        <span style={{ fontSize: '12px', color: themeStyles.textTertiary, textTransform: 'uppercase' }}>
+          {i18n('Completed sections')}
+        </span>
+        <span style={{ fontSize: '14px', fontWeight: 700, color: themeStyles.success, flexShrink: 0 }}>
+          {lessonQueueDoneCount}
+        </span>
+      </div>
+      {todayFlatListDoneOnly}
+    </>
+  );
+
+  const sidebarInner = (
+    <>
+      {sidebarMeta}
+      {isTodayMode && rootNodeId === 'today' ? todayFlatListAll : nodeTree.map((root, i) => renderNodeTreeItem(root, 0))}
+    </>
+  );
+
+  const sidebarInnerMainLeft = splitQueueSidebars ? sidebarInnerLeftSplit : sidebarInner;
 
   const asideBaseStyle: React.CSSProperties = {
     padding: '16px',
@@ -1411,18 +1704,42 @@ function LessonPage() {
     overflowY: 'auto',
   };
 
+  const asideRightBaseStyle: React.CSSProperties = {
+    padding: '16px',
+    backgroundColor: themeStyles.bgCard,
+    borderLeft: `1px solid ${themeStyles.border}`,
+    overflowY: 'auto',
+  };
+
+  const drawerCloseBtnStyle: React.CSSProperties = {
+    marginTop: '12px',
+    padding: '8px 16px',
+    width: '100%',
+    border: `1px solid ${themeStyles.border}`,
+    borderRadius: '6px',
+    background: themeStyles.bgSecondary,
+    color: themeStyles.textPrimary,
+    cursor: 'pointer',
+    fontSize: '14px',
+  };
+
+  const closeBothDrawers = () => {
+    setLeftDrawerOpen(false);
+    setRightDrawerOpen(false);
+  };
+
   // 卡片 view 与刷题模式共用侧边栏：有侧边栏时用同一布局；手机端侧栏为抽屉
   if (cardViewContent) {
-    const showSidebarHere = (isSingleNodeMode || isTodayMode) && nodeTree.length > 0;
+    const showSidebarHere = hasLessonSidebar;
     if (showSidebarHere) {
       if (isMobile) {
         return (
           <>
-            {sidebarOpen && (
+            {(leftDrawerOpen || rightDrawerOpen) && (
               <div
                 role="presentation"
                 style={{ position: 'fixed', inset: 0, zIndex: 1001, backgroundColor: themeStyles.drawerScrim }}
-                onClick={() => setSidebarOpen(false)}
+                onClick={closeBothDrawers}
                 aria-hidden
               />
             )}
@@ -1435,29 +1752,36 @@ function LessonPage() {
               width: '280px',
               maxWidth: '85vw',
               zIndex: 1002,
-              transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
+              transform: leftDrawerOpen ? 'translateX(0)' : 'translateX(-100%)',
               transition: 'transform 0.2s ease-out',
-              boxShadow: sidebarOpen ? themeStyles.drawerAsideShadow : 'none',
+              boxShadow: leftDrawerOpen ? themeStyles.drawerAsideShadow : 'none',
             }}>
-              {sidebarInner}
-              <button
-                type="button"
-                onClick={() => setSidebarOpen(false)}
-                style={{
-                  marginTop: '12px',
-                  padding: '8px 16px',
-                  width: '100%',
-                  border: `1px solid ${themeStyles.border}`,
-                  borderRadius: '6px',
-                  background: themeStyles.bgSecondary,
-                  color: themeStyles.textPrimary,
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                }}
-              >
+              {sidebarInnerMainLeft}
+              <button type="button" onClick={closeBothDrawers} style={drawerCloseBtnStyle}>
                 {i18n('Close')}
               </button>
             </aside>
+            {splitQueueSidebars && (
+              <aside style={{
+                ...asideRightBaseStyle,
+                position: 'fixed',
+                right: 0,
+                left: 'auto',
+                top: 0,
+                bottom: 0,
+                width: '280px',
+                maxWidth: '85vw',
+                zIndex: 1002,
+                transform: rightDrawerOpen ? 'translateX(0)' : 'translateX(100%)',
+                transition: 'transform 0.2s ease-out',
+                boxShadow: rightDrawerOpen ? themeStyles.drawerAsideShadowRight : 'none',
+              }}>
+                {sidebarInnerRightSplit}
+                <button type="button" onClick={closeBothDrawers} style={drawerCloseBtnStyle}>
+                  {i18n('Close')}
+                </button>
+              </aside>
+            )}
             <main style={{ flex: 1, overflowY: 'auto', paddingTop: '24px', paddingLeft: '12px', paddingRight: '12px', paddingBottom: '24px', minHeight: '100vh', background: themeStyles.bgPage }}>
               {cardViewContent}
             </main>
@@ -1467,11 +1791,16 @@ function LessonPage() {
       return (
         <div style={{ display: 'flex', minHeight: '100vh', background: themeStyles.bgPage }}>
           <aside style={{ width: '240px', flexShrink: 0, ...asideBaseStyle }}>
-            {sidebarInner}
+            {sidebarInnerMainLeft}
           </aside>
           <main style={{ flex: 1, overflowY: 'auto', background: themeStyles.bgPage }}>
             {cardViewContent}
           </main>
+          {splitQueueSidebars && (
+            <aside style={{ width: '240px', flexShrink: 0, ...asideRightBaseStyle }}>
+              {sidebarInnerRightSplit}
+            </aside>
+          )}
         </div>
       );
     }
@@ -1533,6 +1862,7 @@ function LessonPage() {
       margin: '0 auto',
       padding: contentPadding,
     }}>
+      {lessonSessionProgressCard}
       <div style={{
         marginBottom: '20px',
         padding: '16px',
@@ -1762,16 +2092,16 @@ function LessonPage() {
     </div>
   );
 
-  const showSidebar = (isSingleNodeMode || isTodayMode) && nodeTree.length > 0;
+  const showSidebar = hasLessonSidebar;
   if (showSidebar) {
     if (isMobile) {
       return (
         <>
-          {sidebarOpen && (
+          {(leftDrawerOpen || rightDrawerOpen) && (
             <div
               role="presentation"
               style={{ position: 'fixed', inset: 0, zIndex: 1001, backgroundColor: themeStyles.drawerScrim }}
-              onClick={() => setSidebarOpen(false)}
+              onClick={closeBothDrawers}
               aria-hidden
             />
           )}
@@ -1784,29 +2114,36 @@ function LessonPage() {
             width: '280px',
             maxWidth: '85vw',
             zIndex: 1002,
-            transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
+            transform: leftDrawerOpen ? 'translateX(0)' : 'translateX(-100%)',
             transition: 'transform 0.2s ease-out',
-            boxShadow: sidebarOpen ? themeStyles.drawerAsideShadow : 'none',
+            boxShadow: leftDrawerOpen ? themeStyles.drawerAsideShadow : 'none',
           }}>
-            {sidebarInner}
-            <button
-              type="button"
-              onClick={() => setSidebarOpen(false)}
-              style={{
-                marginTop: '12px',
-                padding: '8px 16px',
-                width: '100%',
-                border: `1px solid ${themeStyles.border}`,
-                borderRadius: '6px',
-                background: themeStyles.bgSecondary,
-                color: themeStyles.textPrimary,
-                cursor: 'pointer',
-                fontSize: '14px',
-              }}
-            >
+            {sidebarInnerMainLeft}
+            <button type="button" onClick={closeBothDrawers} style={drawerCloseBtnStyle}>
               {i18n('Close')}
             </button>
           </aside>
+          {splitQueueSidebars && (
+            <aside style={{
+              ...asideRightBaseStyle,
+              position: 'fixed',
+              right: 0,
+              left: 'auto',
+              top: 0,
+              bottom: 0,
+              width: '280px',
+              maxWidth: '85vw',
+              zIndex: 1002,
+              transform: rightDrawerOpen ? 'translateX(0)' : 'translateX(100%)',
+              transition: 'transform 0.2s ease-out',
+              boxShadow: rightDrawerOpen ? themeStyles.drawerAsideShadowRight : 'none',
+            }}>
+              {sidebarInnerRightSplit}
+              <button type="button" onClick={closeBothDrawers} style={drawerCloseBtnStyle}>
+                {i18n('Close')}
+              </button>
+            </aside>
+          )}
           <main style={{ flex: 1, overflowY: 'auto', paddingTop: '24px', paddingLeft: '12px', paddingRight: '12px', paddingBottom: '24px', minHeight: '100vh', background: themeStyles.bgPage }}>
             {mainContent}
           </main>
@@ -1816,11 +2153,16 @@ function LessonPage() {
     return (
       <div style={{ display: 'flex', minHeight: '100vh', background: themeStyles.bgPage }}>
         <aside style={{ width: '240px', flexShrink: 0, ...asideBaseStyle }}>
-          {sidebarInner}
+          {sidebarInnerMainLeft}
         </aside>
         <main style={{ flex: 1, overflowY: 'auto', background: themeStyles.bgPage }}>
           {mainContent}
         </main>
+        {splitQueueSidebars && (
+          <aside style={{ width: '240px', flexShrink: 0, ...asideRightBaseStyle }}>
+            {sidebarInnerRightSplit}
+          </aside>
+        )}
       </div>
     );
   }
