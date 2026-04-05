@@ -79,6 +79,33 @@ export type SessionPatch = Partial<Pick<
     | 'progress'
 >>;
 
+/**
+ * Matches learn-home shell rows (`isLearnHomePlaceholderSession` in lessonSession.ts): learn route, no mode,
+ * no card, empty queue, not abandoned. Used to hide them from the domain session admin list — they are not
+ * “practice sessions” (legacy shells from older flows or first lesson start before mode is set).
+ */
+export const MONGO_MATCH_LEARN_HOME_PLACEHOLDER_SHELL: Record<string, unknown> = {
+    $and: [
+        { $or: [{ appRoute: 'learn' }, { route: 'learn' }] },
+        { $or: [{ lessonAbandonedAt: null }, { lessonAbandonedAt: { $exists: false } }] },
+        { $or: [{ lessonMode: null }, { lessonMode: { $exists: false } }] },
+        {
+            $or: [
+                { lessonCardQueue: { $exists: false } },
+                { lessonCardQueue: null },
+                { lessonCardQueue: { $size: 0 } },
+            ],
+        },
+        {
+            $or: [
+                { cardId: { $exists: false } },
+                { cardId: null },
+                { cardId: '' },
+            ],
+        },
+    ],
+};
+
 function stripPatch(patch: SessionPatch): Record<string, unknown> {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(patch)) {
@@ -210,9 +237,13 @@ export default class SessionModel {
         uid: number | undefined,
         page: number,
         pageSize: number,
+        opts?: { hideLearnHomePlaceholderShells?: boolean },
     ) {
         const filter: Record<string, unknown> = { domainId };
         if (uid != null) (filter as any).uid = uid;
+        if (opts?.hideLearnHomePlaceholderShells) {
+            (filter as any).$nor = [MONGO_MATCH_LEARN_HOME_PLACEHOLDER_SHELL];
+        }
         const [rows, count] = await Promise.all([
             this.coll
                 .find(filter)
