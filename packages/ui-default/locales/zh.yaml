@@ -1,6 +1,7 @@
 
 
 __id: zh
+__interface: 1
 __langname: 简体中文
 ' (single choice)': （单选）
 ' Click "Set as start" to set where learning begins from.': 点击「设为学习起点」可设置学习起点。
@@ -53,6 +54,7 @@ __langname: 简体中文
 'Analysis (optional)': 解析（可选）
 'Analysis': 解析
 'Answer index invalid': 答案索引无效
+'Applies to next learn session': 将在新的今日学习会话开始时生效。
 'Are you sure you want to clear the Agent configuration?': 确定要清除 Agent 配置吗？
 'Are you sure you want to delete the Token? Connections using this Token will be disconnected.': 确定要删除 Token 吗？使用此 Token 的连接将断开。
 'Are you sure you want to delete this client?': 确定要删除此客户端吗？
@@ -74,6 +76,7 @@ __langname: 简体中文
 'Batch save failed': 批量保存失败
 'Behind remote by {0} commit(s)': 落后远程 {0} 个提交
 'Block': 块
+'Breadth learning mode': 广度学习模式
 'Cannot create: node does not exist': 无法创建：节点不存在
 'Cannot delete: invalid node ID': 无法删除：节点ID无效
 'Cannot import: node does not exist': 无法导入：节点不存在
@@ -153,6 +156,7 @@ __langname: 简体中文
 'Cut': 已剪切
 'Daily Goal': 每日目标
 'days': 天
+'Deep learning mode': 深度学习模式
 'Default message': 默认消息
 'Delete Client': 删除客户端
 'Delete problem': 删除题目
@@ -202,6 +206,7 @@ __langname: 简体中文
 'Failed to push to GitHub': '推送到 GitHub 失败'
 'Failed to save Agent configuration: {0}': '保存 Agent 配置失败: {0}'
 'Failed to save ASR configuration: {0}': '保存 ASR 配置失败: {0}'
+'Failed to save learn session mode': 保存学习模式失败
 'Failed to save TTS configuration: {0}': '保存 TTS 配置失败: {0}'
 'Failed to set learning point': 设置学习点失败
 'Failed to update Skill branch': 更新 Skill 分支失败
@@ -239,6 +244,8 @@ __langname: 简体中文
 'Last Connected Time': 最后连接时间
 'Last Connected': 最后连接
 'Last Disconnected Time': 最后断开时间
+'Learn session mode': 学习模式（下次会话）
+'Learn session': 学习会话
 'Learn Settings': 学习设置
 'Learning consumption': 学习消耗
 'Learning Path': 学习路径
@@ -349,6 +356,7 @@ __langname: 简体中文
 'Pushing...': 推送中...
 'Question Details': 题目详情
 'Question': 题目
+'Random learning mode': 随机学习模式
 'Recent Bases': 最近更新的知识库
 'Recent Cards': 最近更新的卡片
 'Recent Nodes': 最近更新的节点
@@ -422,6 +430,7 @@ __langname: 简体中文
 'Today daily lesson in progress': 今日每日训练进行中
 'Today progress': 今日进度
 'Today remaining': 今日待完成
+'Today session': 今日学习
 'Today task': 今日任务
 'Today': 今天
 'Token deleted successfully': Token 已删除

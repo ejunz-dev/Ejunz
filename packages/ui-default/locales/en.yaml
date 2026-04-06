@@ -1,6 +1,7 @@
 
 
 __id: en
+__interface: 1
 __langname: English
 ' (single choice)': ' (single choice)'
 ' Click "Set as start" to set where learning begins from.': Click "Set as start" to set where learning begins from.
@@ -38,6 +39,7 @@ __langname: English
 'Analysis (optional)': Analysis (optional)
 'Analysis': Analysis
 'Answer index invalid': Answer index invalid
+'Applies to next learn session': Used when you start a new today session.
 'Are you sure you want to clear the Agent configuration?': Are you sure you want to clear the Agent configuration?
 'Are you sure you want to delete the Token? Connections using this Token will be disconnected.': Are you sure you want to delete the Token? Connections using this Token will be disconnected.
 'Are you sure you want to delete this client?': Are you sure you want to delete this client?
@@ -58,6 +60,7 @@ __langname: English
 'Batch save failed': Batch save failed
 'Behind remote by {0} commit(s)': Behind remote by {0} commit(s)
 'Block': Block
+'Breadth learning mode': Breadth (rotate across sections)
 'Cancel': Cancel
 'Cannot create: node does not exist': 'Cannot create: node does not exist'
 'Cannot delete: invalid node ID': 'Cannot delete: invalid node ID'
@@ -136,6 +139,7 @@ __langname: English
 'Cut': Cut
 'Daily Goal': Daily Goal
 'days': days
+'Deep learning mode': Deep (finish each section in order)
 'Default message': Default message
 'Delete Client': Delete Client
 'Delete problem': Delete problem
@@ -182,6 +186,7 @@ __langname: English
 'Failed to push to GitHub': 'Failed to push to GitHub'
 'Failed to save Agent configuration: {0}': 'Failed to save Agent configuration: {0}'
 'Failed to save ASR configuration: {0}': 'Failed to save ASR configuration: {0}'
+'Failed to save learn session mode': Failed to save session mode
 'Failed to save TTS configuration: {0}': 'Failed to save TTS configuration: {0}'
 'Failed to set learning point': Failed to set learning point
 'Failed to update Skill branch': Failed to update Skill branch
@@ -219,6 +224,8 @@ __langname: English
 'Last Connected Time': Last Connected Time
 'Last Connected': Last Connected
 'Last Disconnected Time': Last Disconnected Time
+'Learn session mode': Session order (next daily run)
+'Learn session': Learn session
 'Learn Settings': Learn Settings
 'Learning consumption': Learning consumption
 'Learning Path': Learning Path
@@ -324,6 +331,7 @@ __langname: English
 'Pushing...': Pushing...
 'Question Details': Question Details
 'Question': Question
+'Random learning mode': Random shuffle
 'Recent Bases': Recent Bases
 'Recent Cards': Recent Cards
 'Recent Nodes': Recent Nodes
@@ -394,6 +402,7 @@ __langname: English
 'Today daily lesson in progress': Today's daily lesson in progress
 'Today progress': Today progress
 'Today remaining': Today remaining
+'Today session': Today session
 'Today task': Today task
 'Today': Today
 'Token deleted successfully': Token deleted successfully
