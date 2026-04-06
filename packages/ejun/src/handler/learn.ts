@@ -861,6 +861,7 @@ type TodayQueueFlatEntry = {
     nodeTitle: string;
     cardTitle: string;
     baseDocId?: number;
+    learnSectionOrderIndex: number;
 };
 
 function shuffleArray<T>(arr: T[]): T[] {
@@ -913,6 +914,104 @@ function dagSubtreeUnderRootFromNodes(allDagNodes: LearnDAGNode[], rootId: strin
     };
     collectChildren(rootId, new Set());
     return dag;
+}
+
+/** Unique card IDs across the whole training (each section root + subtree, section order). Same card universe as daily queue. */
+function collectTrainingScopeCardIdSet(sections: LearnDAGNode[], allDagNodes: LearnDAGNode[]): Set<string> {
+    const ids = new Set<string>();
+    if (sections.length === 0) return ids;
+    const nodeMap = new Map<string, LearnDAGNode>();
+    allDagNodes.forEach((n) => nodeMap.set(n._id, n));
+    sections.forEach((s) => nodeMap.set(s._id, s));
+    for (const sec of sections) {
+        const subDag = dagSubtreeUnderRootFromNodes(allDagNodes, sec._id);
+        const nodesForSection: LearnDAGNode[] = [{ _id: sec._id } as LearnDAGNode, ...subDag];
+        for (const node of nodesForSection) {
+            const n = nodeMap.get(node._id);
+            if (!n) continue;
+            for (const c of n.cards || []) {
+                if (c?.cardId) ids.add(String(c.cardId));
+            }
+        }
+    }
+    return ids;
+}
+
+function learnPassPlacementKey(slot: number, cardId: string): string {
+    return `${slot}:${String(cardId)}`;
+}
+
+/** Which section-order slot contains this merged DAG node; `hintSlot` disambiguates duplicate section roots. */
+function resolveLearnSectionSlotForMergedNode(
+    orderedSections: LearnDAGNode[],
+    allDagNodes: LearnDAGNode[],
+    mergedNodeId: string,
+    hintSlot?: number,
+): number {
+    const candidates: number[] = [];
+    for (let i = 0; i < orderedSections.length; i++) {
+        const rootId = orderedSections[i]._id;
+        if (mergedNodeId === rootId) {
+            candidates.push(i);
+            continue;
+        }
+        const sub = dagSubtreeUnderRootFromNodes(allDagNodes, rootId);
+        if (sub.some((n) => n._id === mergedNodeId)) candidates.push(i);
+    }
+    if (candidates.length === 0) return 0;
+    if (typeof hintSlot === 'number' && Number.isFinite(hintSlot) && hintSlot >= 0 && candidates.includes(hintSlot)) {
+        return hintSlot;
+    }
+    return Math.min(...candidates);
+}
+
+async function buildLearnPassedKeySet(domainId: string, userId: number): Promise<Set<string>> {
+    const docs = await learn.listPassedProgressDocs(domainId, userId);
+    const keys = new Set<string>();
+    for (const p of docs) {
+        const cid = p.cardId.toString();
+        const slot = (p as { learnSectionOrderIndex?: number }).learnSectionOrderIndex;
+        if (typeof slot === 'number' && slot >= 0) {
+            keys.add(learnPassPlacementKey(slot, cid));
+        }
+    }
+    return keys;
+}
+
+function collectLearnTrainingPlacementKeys(orderedSections: LearnDAGNode[], allDagNodes: LearnDAGNode[]): Set<string> {
+    const keys = new Set<string>();
+    for (let i = 0; i < orderedSections.length; i++) {
+        const ids = collectTrainingScopeCardIdSet([orderedSections[i]], allDagNodes);
+        for (const cid of ids) keys.add(learnPassPlacementKey(i, cid));
+    }
+    return keys;
+}
+
+function cardStringsToObjectIds(cardIdStrings: Iterable<string>): ObjectId[] {
+    const oids: ObjectId[] = [];
+    for (const id of cardIdStrings) {
+        try {
+            oids.push(new ObjectId(String(id)));
+        } catch {
+            /* skip invalid */
+        }
+    }
+    return oids;
+}
+
+async function clearPassedProgressFromLearnStartOnward(
+    domainId: string,
+    uid: number,
+    orderedSections: LearnDAGNode[],
+    allDagNodes: LearnDAGNode[],
+    startIndexInclusive: number,
+): Promise<void> {
+    if (startIndexInclusive < 0 || startIndexInclusive >= orderedSections.length) return;
+    for (let s = startIndexInclusive; s < orderedSections.length; s++) {
+        const ids = collectTrainingScopeCardIdSet([orderedSections[s]], allDagNodes);
+        const oids = cardStringsToObjectIds(ids);
+        await learn.deleteLearnProgressForSlotCards(domainId, uid, s, oids);
+    }
 }
 
 /**
@@ -1006,6 +1105,7 @@ async function buildTodayLessonQueueFromDomain(
                     nodeTitle: n.title || '',
                     cardTitle: c.title || '',
                     baseDocId: p?.baseDocId,
+                    learnSectionOrderIndex: typeof sec.order === 'number' ? sec.order : 0,
                 });
             }
         }
@@ -1018,7 +1118,14 @@ async function buildTodayLessonQueueFromDomain(
     const completedCardIdsTodayUtc = excludeTodayPassed
         ? await learnResultCardIdsTodayUtc(domainId, uid)
         : new Set<string>();
-    const poolCards = candidateCards.filter((c) => !completedCardIdsTodayUtc.has(String(c.cardId)));
+    let poolCards = candidateCards.filter((c) => !completedCardIdsTodayUtc.has(String(c.cardId)));
+    const passedEverKeys = await buildLearnPassedKeySet(domainId, uid);
+    const notPassedPool = poolCards.filter(
+        (c) => !passedEverKeys.has(learnPassPlacementKey(c.learnSectionOrderIndex, String(c.cardId))),
+    );
+    if (notPassedPool.length > 0) {
+        poolCards = notPassedPool;
+    }
     const dailyGoalToday = Math.max(0, getModeDailyGoal(dudoc as any, 'learn'));
     let cardsForToday: typeof todayFlatCards;
     if (dailyGoalToday > 0) {
@@ -1040,6 +1147,7 @@ async function buildTodayLessonQueueFromDomain(
         nodeTitle: c.nodeTitle,
         cardTitle: c.cardTitle,
         baseDocId: c.baseDocId,
+        learnSectionOrderIndex: c.learnSectionOrderIndex,
     }));
     const sectionOrderSnapshot = Array.isArray(learnSectionOrder)
         ? learnSectionOrder.map((id: unknown) => String(id))
@@ -1062,7 +1170,15 @@ async function buildTodayLessonQueueFromDomain(
 function queueItemsToTodayFlatCards(
     q: LessonCardQueueItem[],
     fallbackDomainId: string,
-): Array<{ nodeId: string; cardId: string; nodeTitle: string; cardTitle: string; domainId?: string; baseDocId?: number }> {
+): Array<{
+    nodeId: string;
+    cardId: string;
+    nodeTitle: string;
+    cardTitle: string;
+    domainId?: string;
+    baseDocId?: number;
+    learnSectionOrderIndex?: number;
+}> {
     return q.map((it) => ({
         nodeId: it.nodeId,
         cardId: it.cardId,
@@ -1070,6 +1186,7 @@ function queueItemsToTodayFlatCards(
         cardTitle: it.cardTitle || '',
         baseDocId: it.baseDocId,
         domainId: it.domainId || fallbackDomainId,
+        learnSectionOrderIndex: typeof it.learnSectionOrderIndex === 'number' ? it.learnSectionOrderIndex : undefined,
     }));
 }
 
@@ -1148,7 +1265,7 @@ interface SectionProgressItem {
 function getSectionProgress(
     sections: LearnDAGNode[],
     allDagNodes: LearnDAGNode[],
-    passedCardIds: Set<string>
+    passedPlacementKeys: Set<string>,
 ): { pending: SectionProgressItem[]; completed: SectionProgressItem[] } {
     const nodeMap = new Map<string, LearnDAGNode>();
     sections.forEach(s => nodeMap.set(String(s._id), s));
@@ -1174,7 +1291,9 @@ function getSectionProgress(
         const section = sections[i];
         const cards = collectCards(section._id, new Set());
         const total = cards.length;
-        const passed = cards.filter((c: any) => passedCardIds.has(String(c.cardId))).length;
+        const passed = cards.filter((c: any) =>
+            passedPlacementKeys.has(learnPassPlacementKey(i, String(c.cardId))),
+        ).length;
         const item: SectionProgressItem = {
             _id: section._id,
             title: section.title || 'Unnamed',
@@ -1740,6 +1859,8 @@ class LearnHandler extends Handler {
                 selectedLearnTrainingDocId: null,
                 requireTrainingSelection: false,
                 requireBaseSelection: false,
+                passedCardIds: [],
+                passedCardKeys: [],
                 lessonSessionId: '',
                 learnSessionMode: learnSessionModeUi,
                 ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
@@ -1764,6 +1885,7 @@ class LearnHandler extends Handler {
                 completedSections: [],
                 completedCardsToday: [],
                 passedCardIds: [],
+                passedCardKeys: [],
                 lessonSessionId: '',
                 learnSessionMode: learnSessionModeUi,
                 ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
@@ -1801,6 +1923,7 @@ class LearnHandler extends Handler {
                 completedSections: [],
                 completedCardsToday: [],
                 passedCardIds: [],
+                passedCardKeys: [],
                 learnTrainings,
                 selectedLearnTrainingDocId: trainingDocIdStr,
                 requireTrainingSelection: false,
@@ -1818,8 +1941,6 @@ class LearnHandler extends Handler {
         const savedSectionId = Lsec.currentLearnSectionId;
         const dailyGoal = getModeDailyGoal(dudoc as any, 'learn');
         const learnSectionOrder = (dudoc as any)?.learnSectionOrder;
-        const savedLearnProgressPosition = (dudoc as any)?.learnProgressPosition;
-        const savedLearnProgressTotal = (dudoc as any)?.learnProgressTotal;
         sections = applyUserSectionOrder(sections, learnSectionOrder);
         
         let finalSectionId: string | null = null;
@@ -1836,6 +1957,13 @@ class LearnHandler extends Handler {
                 learnProgressPosition: Math.max(0, currentSectionIndex),
                 learnProgressTotal: totalSectionsForProgress,
             });
+            await clearPassedProgressFromLearnStartOnward(
+                finalDomainId,
+                this.user._id,
+                sections,
+                allDagNodes,
+                currentSectionIndex,
+            );
         } else if (sectionId) {
             const idx = sections.findIndex(s => s._id === sectionId);
             finalSectionId = sectionId;
@@ -1847,6 +1975,13 @@ class LearnHandler extends Handler {
                 learnProgressPosition: Math.max(0, currentSectionIndex),
                 learnProgressTotal: totalSectionsForProgress,
             });
+            await clearPassedProgressFromLearnStartOnward(
+                finalDomainId,
+                this.user._id,
+                sections,
+                allDagNodes,
+                currentSectionIndex,
+            );
         } else {
             // Section Order / learn settings live on domain.user; session merge can be stale — prefer dudoc and do not GET-overwrite from session id.
             const duIdx = normalizeDomainUserLearnIndex((dudoc as any).currentLearnSectionIndex);
@@ -1928,7 +2063,7 @@ class LearnHandler extends Handler {
             collectChildren(firstSection._id, collected);
         }
 
-        const passedCardIds = await learn.getPassedCardIds(finalDomainId, this.user._id);
+        const passedPlacementKeys = await buildLearnPassedKeySet(finalDomainId, this.user._id);
 
         const flatCards: Array<{ nodeId: string; cardId: string; order: number; nodeIndex: number; cardIndex: number }> = [];
         dag.forEach((node, nodeIndex) => {
@@ -1943,14 +2078,12 @@ class LearnHandler extends Handler {
             });
         });
 
-        const totalCards = flatCards.length;
-
-        // Section progress numerator/denominator from learnProgressPosition / learnProgressTotal only.
-        const totalSections = sections.length;
-        const currentProgress = typeof savedLearnProgressPosition === 'number' && typeof savedLearnProgressTotal === 'number' && savedLearnProgressTotal > 0
-            ? Math.max(0, Math.min(savedLearnProgressPosition, savedLearnProgressTotal))
-            : 0;
-        const totalProgress = typeof savedLearnProgressTotal === 'number' && savedLearnProgressTotal > 0 ? savedLearnProgressTotal : 0;
+        const trainingPlacementKeys = collectLearnTrainingPlacementKeys(sections, allDagNodes);
+        const totalProgress = trainingPlacementKeys.size;
+        let currentProgress = 0;
+        for (const k of trainingPlacementKeys) {
+            if (passedPlacementKeys.has(k)) currentProgress += 1;
+        }
 
         const allResults = await learn.getResults(finalDomainId, this.user._id);
 
@@ -2005,20 +2138,25 @@ class LearnHandler extends Handler {
         const totalCheckinDays = learnActivityDates.length;
         const consecutiveDays = countConsecutiveCheckinDays(learnActivityDates);
 
+        const slotForCurrentSection = currentSectionIndex;
         const dagWithProgress = dag.map((node, nodeIndex) => ({
             ...node,
             cards: (node.cards || []).map((card, cardIndex) => {
-                const cardPassed = passedCardIds.has(card.cardId);
-                const currentCardGlobalIndex = flatCards.findIndex(c => 
-                    c.nodeIndex === nodeIndex && c.cardIndex === cardIndex
+                const cardPassed = passedPlacementKeys.has(
+                    learnPassPlacementKey(slotForCurrentSection, String(card.cardId)),
                 );
-                
+                const currentCardGlobalIndex = flatCards.findIndex(c =>
+                    c.nodeIndex === nodeIndex && c.cardIndex === cardIndex,
+                );
+
                 let isUnlocked = false;
                 if (currentCardGlobalIndex === 0) {
                     isUnlocked = true;
                 } else if (currentCardGlobalIndex > 0) {
                     const prevCard = flatCards[currentCardGlobalIndex - 1];
-                    isUnlocked = passedCardIds.has(prevCard.cardId);
+                    isUnlocked = passedPlacementKeys.has(
+                        learnPassPlacementKey(slotForCurrentSection, String(prevCard.cardId)),
+                    );
                 }
                 
                 return {
@@ -2031,13 +2169,13 @@ class LearnHandler extends Handler {
 
         let nextCard: { nodeId: string; cardId: string } | null = null;
         for (let i = 0; i < flatCards.length; i++) {
-            if (!passedCardIds.has(flatCards[i].cardId)) {
+            if (!passedPlacementKeys.has(learnPassPlacementKey(slotForCurrentSection, String(flatCards[i].cardId)))) {
                 nextCard = { nodeId: flatCards[i].nodeId, cardId: flatCards[i].cardId };
                 break;
             }
         }
 
-        // Do not auto-advance section on GET: passedCardIds is domain-global while flatCards is only the
+        // Do not auto-advance section on GET: placement pass state is per section slot while flatCards is only the
         // current section DAG — moving "Learning start" backward makes every earlier section look "fully
         // passed" and we would chain-advance + persist until the first section with a gap (e.g. ancient),
         // overwriting Section Order. Current section stays as set in domain.user / Section Order.
@@ -2054,7 +2192,7 @@ class LearnHandler extends Handler {
             baseDocId: null,
             currentProgress,
             totalProgress,
-            totalCards,
+            totalCards: totalProgress,
             totalCheckinDays,
             consecutiveDays,
             dailyGoal,
@@ -2063,7 +2201,11 @@ class LearnHandler extends Handler {
             completedSections,
             completedCardsToday,
             nextCard,
-            passedCardIds: Array.from(passedCardIds),
+            passedCardIds: [],
+            passedCardKeys: Array.from(passedPlacementKeys),
+            pathSections: sections,
+            pathFullDag: allDagNodes,
+            pathCurrentSectionId: finalSectionId,
             learnTrainings,
             selectedLearnTrainingDocId: trainingDocIdStr,
             requireTrainingSelection: false,
@@ -2674,13 +2816,33 @@ class LessonHandler extends Handler {
             const rootNode = nodeMap.get(lessonNodeId);
             if (!rootNode) throw new NotFoundError('Node not found');
 
+            const orderedSectionsNode = applyUserSectionOrder(trainSecNode, (dudoc as any)?.learnSectionOrder);
+            const hintNodeSlot =
+                typeof sNode?.lessonQueueLearnSectionOrderIndex === 'number'
+                && sNode.lessonQueueLearnSectionOrderIndex >= 0
+                    ? sNode.lessonQueueLearnSectionOrderIndex
+                    : undefined;
+            const resolvedSectionSlot = resolveLearnSectionSlotForMergedNode(
+                orderedSectionsNode,
+                allDagNodes,
+                lessonNodeId,
+                hintNodeSlot,
+            );
+
             const getChildNodes = (parentId: string): LearnDAGNode[] => {
                 return allDagNodes
                     .filter(n => n.requireNids && n.requireNids[n.requireNids.length - 1] === parentId)
                     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
             };
 
-            type NodeFlat = { nodeId: string; cardId: string; nodeTitle: string; cardTitle: string; baseDocId?: number };
+            type NodeFlat = {
+                nodeId: string;
+                cardId: string;
+                nodeTitle: string;
+                cardTitle: string;
+                baseDocId?: number;
+                learnSectionOrderIndex: number;
+            };
             const flatCards: NodeFlat[] = [];
             const nodeTree: Array<{ type: 'node'; id: string; title: string; children: Array<{ type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }> }> = [];
 
@@ -2699,6 +2861,7 @@ class LessonHandler extends Handler {
                         nodeTitle: node.title || '',
                         cardTitle: c.title || '',
                         baseDocId: cardBase,
+                        learnSectionOrderIndex: resolvedSectionSlot,
                     });
                     children.push({ type: 'card', id: c.cardId, title: c.title || '' });
                 }
@@ -2719,6 +2882,10 @@ class LessonHandler extends Handler {
                     : undefined;
                 for (const q of sNode!.lessonCardQueue!) {
                     const p = parseTrainingNodeId(q.nodeId);
+                    const slotQ =
+                        typeof q.learnSectionOrderIndex === 'number' && q.learnSectionOrderIndex >= 0
+                            ? q.learnSectionOrderIndex
+                            : resolvedSectionSlot;
                     flatCards.push({
                         nodeId: p ? p.nodeId : q.nodeId,
                         cardId: q.cardId,
@@ -2727,6 +2894,7 @@ class LessonHandler extends Handler {
                         baseDocId: (typeof q.baseDocId === 'number' && q.baseDocId > 0)
                             ? q.baseDocId
                             : (p?.baseDocId ?? sidB),
+                        learnSectionOrderIndex: slotQ,
                     });
                 }
                 nodeTree.push({
@@ -2749,6 +2917,7 @@ class LessonHandler extends Handler {
                     nodeTitle: fc.nodeTitle,
                     cardTitle: fc.cardTitle,
                     baseDocId: fc.baseDocId,
+                    learnSectionOrderIndex: fc.learnSectionOrderIndex,
                 }));
                 const trainId = (dudoc as any)?.learnTrainingDocId;
                 const persistBase = queueBaseHint || planSourcesNode[0]?.baseDocId || 0;
@@ -2762,6 +2931,7 @@ class LessonHandler extends Handler {
                         lessonQueueTrainingDocId: trainId ? String(trainId) : null,
                         lessonQueueDay: null,
                         branch: persistBranch,
+                        lessonQueueLearnSectionOrderIndex: resolvedSectionSlot,
                     }, { silent: true })
                     : touchLessonSession(finalDomainId, this.user._id, {
                         appRoute: 'learn',
@@ -2771,6 +2941,7 @@ class LessonHandler extends Handler {
                         lessonQueueTrainingDocId: trainId ? String(trainId) : null,
                         lessonQueueDay: null,
                         branch: persistBranch,
+                        lessonQueueLearnSectionOrderIndex: resolvedSectionSlot,
                     }, { silent: true });
                 await touchNodeQueue;
             }
@@ -3175,6 +3346,14 @@ class LessonHandler extends Handler {
 
         let sid: string;
         let redirectPath: string;
+        const rawLearnSlot = body.learnSectionOrderIndex;
+        const parsedLearnSlot =
+            typeof rawLearnSlot === 'number' && Number.isFinite(rawLearnSlot)
+                ? Math.trunc(rawLearnSlot)
+                : parseInt(String(rawLearnSlot ?? ''), 10);
+        const learnSectionOrderIndexStart =
+            !Number.isNaN(parsedLearnSlot) && parsedLearnSlot >= 0 ? parsedLearnSlot : null;
+
         if (mode === 'node') {
             const trainingNode = await requireSelectedTraining(finalDomainId, this.user._id, this.user.priv);
             const planN = TrainingModel.resolvePlanSources(trainingNode as any);
@@ -3195,6 +3374,7 @@ class LessonHandler extends Handler {
                 baseDocId: hintBaseNode || undefined,
                 lessonQueueBaseDocId: hintBaseNode || null,
                 lessonQueueTrainingDocId: trainIdSt,
+                lessonQueueLearnSectionOrderIndex: learnSectionOrderIndexStart,
             } as SessionPatch);
             redirectPath = `/d/${finalDomainId}/learn/lesson`;
         } else if (mode === 'card') {
@@ -3216,6 +3396,7 @@ class LessonHandler extends Handler {
                 baseDocId: cardSt.baseDocId,
                 lessonQueueBaseDocId: cardSt.baseDocId,
                 lessonQueueTrainingDocId: trainIdSt,
+                lessonQueueLearnSectionOrderIndex: learnSectionOrderIndexStart,
             } as SessionPatch);
             redirectPath = `/d/${finalDomainId}/learn/lesson?cardId=${encodeURIComponent(cardIdStartRaw)}`;
         } else {
@@ -3354,7 +3535,11 @@ class LessonHandler extends Handler {
                 return;
             }
             const currentCardNodeId = card.nodeId;
-            await learn.setCardPassed(cardDomain, this.user._id, currentCardId, currentCardNodeId);
+            const todayLearnSlot =
+                typeof slot.learnSectionOrderIndex === 'number' && slot.learnSectionOrderIndex >= 0
+                    ? slot.learnSectionOrderIndex
+                    : 0;
+            await learn.setCardPassed(cardDomain, this.user._id, currentCardId, currentCardNodeId, todayLearnSlot);
             const finalAnswerHistory = (Array.isArray(answerHistory) && answerHistory.length > 0)
                 ? answerHistory
                 : (card.problems && card.problems.length > 0)
@@ -3499,7 +3684,12 @@ class LessonHandler extends Handler {
             }
 
             if (currentCardNodeIdCE) {
-                await learn.setCardPassed(finalDomainId, this.user._id, currentCardIdCE, currentCardNodeIdCE);
+                const cardLearnSlot =
+                    typeof sCardEarly.lessonQueueLearnSectionOrderIndex === 'number'
+                    && sCardEarly.lessonQueueLearnSectionOrderIndex >= 0
+                        ? sCardEarly.lessonQueueLearnSectionOrderIndex
+                        : 0;
+                await learn.setCardPassed(finalDomainId, this.user._id, currentCardIdCE, currentCardNodeIdCE, cardLearnSlot);
             }
 
             const effectiveHistoryCE = isBrowseOnlyCE
@@ -3612,7 +3802,15 @@ class LessonHandler extends Handler {
                 if (!reviewIds.includes(currentCardId.toString())) reviewIds.push(currentCardId.toString());
                 await touchLessonSession(finalDomainId, this.user._id, { appRoute: 'learn', lessonReviewCardIds: reviewIds, lessonCardTimesMs: timesMs }, { silent: true });
             } else if (answerHistory.length > 0) {
-                await learn.setCardPassed(finalDomainId, this.user._id, currentCardId, currentCardNodeId);
+                const qCur = (sNodePass?.lessonCardQueue ?? [])[idxNode] as LessonCardQueueItem | undefined;
+                const nodePassSlot =
+                    typeof qCur?.learnSectionOrderIndex === 'number' && qCur.learnSectionOrderIndex >= 0
+                        ? qCur.learnSectionOrderIndex
+                        : (typeof sNodePass?.lessonQueueLearnSectionOrderIndex === 'number'
+                            && sNodePass.lessonQueueLearnSectionOrderIndex >= 0
+                            ? sNodePass.lessonQueueLearnSectionOrderIndex
+                            : 0);
+                await learn.setCardPassed(finalDomainId, this.user._id, currentCardId, currentCardNodeId, nodePassSlot);
                 const baseDocN = Number((card as any).baseDocId) || firstBasePass;
                 const branchN = cardStorageBranch(card as any) || branchByBasePass.get(baseDocN) || 'main';
                 const recScoreN = await syncLearnPassToRecord(
@@ -3646,7 +3844,15 @@ class LessonHandler extends Handler {
                 await touchLessonSession(finalDomainId, this.user._id, { appRoute: 'learn', lessonReviewCardIds: nextReviewIds, lessonCardTimesMs: timesMs }, { silent: true });
             } else {
                 // Card view "Know it": no problems -> synthetic browse_judge pass, record result, then next card / node-result (no result page).
-                await learn.setCardPassed(finalDomainId, this.user._id, currentCardId, currentCardNodeId);
+                const qKnow = (sNodePass?.lessonCardQueue ?? [])[idxNode] as LessonCardQueueItem | undefined;
+                const nodeKnowSlot =
+                    typeof qKnow?.learnSectionOrderIndex === 'number' && qKnow.learnSectionOrderIndex >= 0
+                        ? qKnow.learnSectionOrderIndex
+                        : (typeof sNodePass?.lessonQueueLearnSectionOrderIndex === 'number'
+                            && sNodePass.lessonQueueLearnSectionOrderIndex >= 0
+                            ? sNodePass.lessonQueueLearnSectionOrderIndex
+                            : 0);
+                await learn.setCardPassed(finalDomainId, this.user._id, currentCardId, currentCardNodeId, nodeKnowSlot);
                 const browseHistory = [{ problemId: 'browse_judge', correct: true, selected: 0, timeSpent: totalTime || 0, attempts: 1 }];
                 const baseDocBrowse = Number((card as any).baseDocId) || firstBasePass;
                 const branchBrowse = cardStorageBranch(card as any) || branchByBasePass.get(baseDocBrowse) || 'main';
@@ -3790,7 +3996,12 @@ class LessonHandler extends Handler {
             collectChildren(finalSectionId, collected);
         }
 
-        const passedCardIds = await learn.getPassedCardIds(finalDomainId, this.user._id);
+        const passedKeysPostPass = await buildLearnPassedKeySet(finalDomainId, this.user._id);
+        let sectionSlotPostPass = normalizeDomainUserLearnIndex(Lpm.currentLearnSectionIndex);
+        if (sectionSlotPostPass === null || sectionSlotPostPass < 0 || sectionSlotPostPass >= sections.length) {
+            sectionSlotPostPass = sections.findIndex((s) => s._id === finalSectionId);
+        }
+        if (sectionSlotPostPass < 0) sectionSlotPostPass = 0;
 
         const flatCards: Array<{ nodeId: string; cardId: string; order: number }> = [];
         for (const node of dag) {
@@ -3826,7 +4037,7 @@ class LessonHandler extends Handler {
             }
         } else {
             for (let i = 0; i < flatCards.length; i++) {
-                if (!passedCardIds.has(flatCards[i].cardId)) {
+                if (!passedKeysPostPass.has(learnPassPlacementKey(sectionSlotPostPass, String(flatCards[i].cardId)))) {
                     currentCard = flatCards[i];
                     break;
                 }
@@ -3867,7 +4078,19 @@ class LessonHandler extends Handler {
         }
 
         if (currentCardNodeId) {
-            await learn.setCardPassed(finalDomainId, this.user._id, currentCardId, currentCardNodeId);
+            const aloneLearnSlot =
+                isAlonePractice
+                && typeof sPostMain?.lessonQueueLearnSectionOrderIndex === 'number'
+                && sPostMain.lessonQueueLearnSectionOrderIndex >= 0
+                    ? sPostMain.lessonQueueLearnSectionOrderIndex
+                    : 0;
+            await learn.setCardPassed(
+                finalDomainId,
+                this.user._id,
+                currentCardId,
+                currentCardNodeId,
+                isAlonePractice ? aloneLearnSlot : sectionSlotPostPass,
+            );
         }
 
         const baseDocMain = baseNumericId(card.baseDocId) > 0 ? baseNumericId(card.baseDocId) : firstBasePass;
@@ -4230,6 +4453,7 @@ class LearnSectionEditHandler extends Handler {
     async postSaveOrder(domainId: string) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
         const targetUid = await this.resolveTargetUid(finalDomainId);
+        const dudocBefore = await learn.getUserLearnState(finalDomainId, { _id: targetUid, priv: this.user.priv }) as any;
         // Body may be missing on this.request.body (proxy/layer quirks) but fields are merged into args; also handle string JSON.
         let reqBody: any = this.request?.body;
         if (typeof reqBody === 'string') {
@@ -4256,7 +4480,7 @@ class LearnSectionEditHandler extends Handler {
         if (!trainingOrder) {
             throw new NotFoundError('No training selected');
         }
-        const { sections: refSectionsOrder } = await ensureTrainingLearnDAGCached(
+        const { sections: refSectionsOrder, allDagNodes: refAllDagNodes } = await ensureTrainingLearnDAGCached(
             finalDomainId,
             trainingOrder as TrainingDoc,
             (k: string) => this.translate(k),
@@ -4266,8 +4490,7 @@ class LearnSectionEditHandler extends Handler {
         }
 
         if (!sectionOrder.length) {
-            const dudocPrev = await learn.getUserLearnState(finalDomainId, { _id: targetUid, priv: this.user.priv }) as any;
-            const prev = dudocPrev?.learnSectionOrder;
+            const prev = dudocBefore?.learnSectionOrder;
             if (Array.isArray(prev) && prev.length) {
                 sectionOrder = prev.map((x: unknown) => String(x));
             }
@@ -4280,6 +4503,7 @@ class LearnSectionEditHandler extends Handler {
         let indexToUse = Number.isNaN(currentLearnSectionIndexParsed) || currentLearnSectionIndexParsed < 0 || currentLearnSectionIndexParsed >= totalSections
             ? null
             : currentLearnSectionIndexParsed;
+        const usedExplicitLearnIndexFromBody = indexToUse !== null;
         if (indexToUse === null) {
             const dudoc = await domain.getDomainUser(finalDomainId, { _id: targetUid, priv: this.user.priv });
             const sEd = await SessionModel.get(finalDomainId, targetUid);
@@ -4289,6 +4513,32 @@ class LearnSectionEditHandler extends Handler {
             else indexToUse = 0;
         }
         const currentLearnSectionIndexFinal = indexToUse;
+
+        const orderedSections = applyUserSectionOrder(refSectionsOrder, sectionOrder);
+        const prevIdStr = String(dudocBefore?.currentLearnSectionId ?? '').trim();
+        const prevIdxNorm = normalizeDomainUserLearnIndex(dudocBefore?.currentLearnSectionIndex);
+        const newIdStr = String(sectionOrder[currentLearnSectionIndexFinal] ?? '').trim();
+        const hadPriorStart =
+            Boolean(prevIdStr) ||
+            (prevIdxNorm !== null && prevIdxNorm >= 0 && prevIdxNorm < totalSections);
+        const hadExplicitLearnIndexInRequest =
+            reqBody &&
+            Object.prototype.hasOwnProperty.call(reqBody, 'currentLearnSectionIndex') &&
+            reqBody.currentLearnSectionIndex !== undefined &&
+            reqBody.currentLearnSectionIndex !== null;
+        const learnStartChanged =
+            (hadPriorStart &&
+                (newIdStr !== prevIdStr || prevIdxNorm !== currentLearnSectionIndexFinal)) ||
+            (!hadPriorStart && hadExplicitLearnIndexInRequest && usedExplicitLearnIndexFromBody);
+        if (learnStartChanged) {
+            await clearPassedProgressFromLearnStartOnward(
+                finalDomainId,
+                targetUid,
+                orderedSections,
+                refAllDagNodes,
+                currentLearnSectionIndexFinal,
+            );
+        }
 
         // sectionOrder[0] is first to learn; completed section count == currentLearnSectionIndex.
         const learnProgressPosition = Math.max(0, Math.min(currentLearnSectionIndexFinal, totalSections));
