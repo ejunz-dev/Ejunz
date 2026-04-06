@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import { i18n } from 'vj/utils';
@@ -60,6 +60,14 @@ interface LearnTrainingOption {
   baseDocId?: number;
 }
 
+type LearnSessionModeUi = 'deep' | 'breadth' | 'random';
+
+function normalizeLearnSessionModeFromUi(raw: unknown): LearnSessionModeUi {
+  const s = String(raw ?? 'deep').trim().toLowerCase();
+  if (s === 'breadth' || s === 'random') return s;
+  return 'deep';
+}
+
 function getChildren(nodeId: string, sections: MapDAGNode[], dag: MapDAGNode[]): MapDAGNode[] {
   const list: MapDAGNode[] = [];
   dag.forEach((n) => {
@@ -112,6 +120,10 @@ function LearnPage() {
   const learnTrainings = ((window as any).UiContext?.learnTrainings || []) as LearnTrainingOption[];
   const selectedLearnTrainingDocId = String((window as any).UiContext?.selectedLearnTrainingDocId || '').trim() || null;
   const requireBaseSelection = !!(window as any).UiContext?.requireBaseSelection;
+  const initialLearnSessionMode = useMemo(
+    () => normalizeLearnSessionModeFromUi((window as any).UiContext?.learnSessionMode),
+    [],
+  );
   const todayLessonResumeUrl = String((window as any).UiContext?.todayLessonResumeUrl || '').trim();
   const todayLessonCardProgressText = String((window as any).UiContext?.todayLessonCardProgressText || '').trim();
   const hasTodayLessonResume = !!todayLessonResumeUrl;
@@ -122,6 +134,8 @@ function LearnPage() {
   const [goal, setGoal] = useState(dailyGoal);
   const [isEditingGoal, setIsEditingGoal] = useState(false);
   const [isSavingGoal, setIsSavingGoal] = useState(false);
+  const [learnSessionMode, setLearnSessionMode] = useState<LearnSessionModeUi>(initialLearnSessionMode);
+  const [savingLearnSessionMode, setSavingLearnSessionMode] = useState(false);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
   const [showConsecutiveTip, setShowConsecutiveTip] = useState(false);
@@ -265,6 +279,24 @@ function LearnPage() {
       setIsSavingGoal(false);
     }
   }, [domainId, goal, isSavingGoal]);
+
+  const handleLearnSessionModeChange = useCallback(async (v: LearnSessionModeUi) => {
+    if (!domainId || savingLearnSessionMode || v === learnSessionMode) return;
+    const prev = learnSessionMode;
+    setLearnSessionMode(v);
+    setSavingLearnSessionMode(true);
+    try {
+      await request.post(`/d/${domainId}/learn/session-mode`, { learnSessionMode: v });
+      window.location.reload();
+    } catch (error: any) {
+      setLearnSessionMode(prev);
+      console.error('Failed to save learn session mode:', error);
+      const msg = error?.response?.data?.message ?? error?.response?.data?.error ?? error?.message ?? i18n('Failed to save learn session mode');
+      Notification.error(typeof msg === 'string' ? msg : (Array.isArray(msg) ? msg.join(' ') : i18n('Failed to save learn session mode')));
+    } finally {
+      setSavingLearnSessionMode(false);
+    }
+  }, [domainId, learnSessionMode, savingLearnSessionMode]);
 
   const progressPercentage = totalProgress > 0 ? Math.round((currentProgress / totalProgress) * 100) : 0;
 
@@ -778,6 +810,48 @@ function LearnPage() {
                 boxShadow: `0 0 12px ${themeStyles.accentGlow}`,
               }} />
             </div>
+            </div>
+
+            <div style={{
+              marginTop: '20px',
+              paddingTop: '16px',
+              borderTop: `1px solid ${themeStyles.border}`,
+            }}>
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                gap: '10px',
+                marginBottom: '6px',
+              }}>
+                <label htmlFor="learn-session-mode" style={{ fontSize: '13px', color: themeStyles.textSecondary, fontWeight: 500 }}>
+                  {i18n('Learn session mode')}
+                </label>
+                <select
+                  id="learn-session-mode"
+                  value={learnSessionMode}
+                  disabled={savingLearnSessionMode}
+                  onChange={(e) => handleLearnSessionModeChange(e.target.value as LearnSessionModeUi)}
+                  style={{
+                    padding: '6px 10px',
+                    fontSize: '13px',
+                    background: themeStyles.bgPrimary,
+                    border: `1px solid ${themeStyles.border}`,
+                    borderRadius: '8px',
+                    color: themeStyles.textPrimary,
+                    cursor: savingLearnSessionMode ? 'not-allowed' : 'pointer',
+                    opacity: savingLearnSessionMode ? 0.7 : 1,
+                    minWidth: '160px',
+                  }}
+                >
+                  <option value="deep">{i18n('Deep learning mode')}</option>
+                  <option value="breadth">{i18n('Breadth learning mode')}</option>
+                  <option value="random">{i18n('Random learning mode')}</option>
+                </select>
+              </div>
+              <div style={{ fontSize: '12px', color: themeStyles.textTertiary, lineHeight: 1.45 }}>
+                {i18n('Applies to next learn session')}
+              </div>
             </div>
 
             <div style={{

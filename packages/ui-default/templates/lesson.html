@@ -12,6 +12,7 @@
   {{ set(UiContext, 'cards', cards or []) }}
   {{ set(UiContext, 'currentIndex', currentIndex or 0) }}
   {{ set(UiContext, 'domainId', domainId) }}
+  {{ set(UiContext, 'lessonLearnSessionMode', lessonLearnSessionMode or '') }}
   {{ set(UiContext, 'lessonSessionId', lessonSessionId or '') }}
   {{ set(UiContext, 'sessionMeSocketQuery', 'session-me-conn?domainId=' + (lessonSessionDomainId or domainId)) }}
   {{ set(UiContext, 'baseDocId', baseDocId) }}

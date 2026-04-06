@@ -44,6 +44,8 @@ export interface SessionDoc {
     lessonQueueDay?: string | null;
     /** Copy of `domain.user.learnSectionOrder` when the daily queue was frozen; used to invalidate stale queues. */
     lessonQueueLearnSectionOrder?: string[];
+    /** `learnSessionMode` from domain.user when the daily queue was frozen (`deep` | `breadth` | `random`). */
+    lessonQueueLearnSessionMode?: string | null;
     /** Set when user changes learn settings (section order / daily goal); row is no longer resumable. */
     lessonAbandonedAt?: Date | null;
     state?: 'idle' | 'active';
@@ -74,6 +76,7 @@ export type SessionPatch = Partial<Pick<
     | 'lessonQueueTrainingDocId'
     | 'lessonQueueDay'
     | 'lessonQueueLearnSectionOrder'
+    | 'lessonQueueLearnSessionMode'
     | 'lessonAbandonedAt'
     | 'state'
     | 'progress'
