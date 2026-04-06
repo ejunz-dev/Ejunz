@@ -50,6 +50,14 @@ export interface SessionDoc {
     lessonQueueLearnSectionOrderIndex?: number | null;
     /** `learnSessionMode` from domain.user when the daily queue was frozen (`deep` | `breadth` | `random`). */
     lessonQueueLearnSessionMode?: string | null;
+    /** `learnSubMode` when the daily queue was frozen (`new_only` | `review_only` | `mixed`). */
+    lessonQueueLearnSubMode?: string | null;
+    /** `learnNewReviewRatio` when frozen (1–5, mixed mode). */
+    lessonQueueLearnNewReviewRatio?: number | null;
+    /** `learnMixedSchedule` when frozen (`mixed` mode). */
+    lessonQueueLearnMixedSchedule?: string | null;
+    /** Mixed-mode queue ordering algo revision (`lessonSession.LESSON_QUEUE_MIXED_LAYOUT_VERSION`). */
+    lessonQueueMixedLayoutVersion?: number | null;
     /** Set when user changes learn settings (section order / daily goal); row is no longer resumable. */
     lessonAbandonedAt?: Date | null;
     state?: 'idle' | 'active';
@@ -82,6 +90,10 @@ export type SessionPatch = Partial<Pick<
     | 'lessonQueueLearnSectionOrder'
     | 'lessonQueueLearnSectionOrderIndex'
     | 'lessonQueueLearnSessionMode'
+    | 'lessonQueueLearnSubMode'
+    | 'lessonQueueLearnNewReviewRatio'
+    | 'lessonQueueLearnMixedSchedule'
+    | 'lessonQueueMixedLayoutVersion'
     | 'lessonAbandonedAt'
     | 'state'
     | 'progress'
