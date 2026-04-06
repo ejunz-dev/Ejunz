@@ -281,21 +281,21 @@ function LearnPage() {
 
   useEffect(() => {
     if (!isMobile) return;
-    const onPending = () => { setLeftSidebarOpen(true); setRightSidebarOpen(false); };
-    const onCompleted = () => { setRightSidebarOpen(true); setLeftSidebarOpen(false); };
+    const openLeftSidebar = () => { setLeftSidebarOpen(true); setRightSidebarOpen(false); };
+    const openRightSidebar = () => { setRightSidebarOpen(true); setLeftSidebarOpen(false); };
     const leftEl = document.getElementById('header-mobile-extra-left');
     const rightEl = document.getElementById('header-mobile-extra');
     const leftWrap = leftEl ? (() => { const w = document.createElement('div'); leftEl.appendChild(w); return w; })() : null;
     const rightWrap = rightEl ? (() => { const w = document.createElement('div'); rightEl.appendChild(w); return w; })() : null;
     if (leftWrap) {
       ReactDOM.render(
-        <button type="button" onClick={onPending}>☰ {i18n('Pending sections')}</button>,
+        <button type="button" onClick={openLeftSidebar}>☰ {i18n('Completed cards')}</button>,
         leftWrap,
       );
     }
     if (rightWrap) {
       ReactDOM.render(
-        <button type="button" onClick={onCompleted}>{i18n('Completed cards')} ☰</button>,
+        <button type="button" onClick={openRightSidebar}>{i18n('Pending sections')} ☰</button>,
         rightWrap,
       );
     }
@@ -392,7 +392,7 @@ function LearnPage() {
                   textTransform: 'uppercase',
                   letterSpacing: '0.04em',
                 }}>
-                  {i18n('Pending sections')}
+                  {i18n('Completed cards')}
                 </span>
                 <button
                   type="button"
@@ -412,116 +412,57 @@ function LearnPage() {
                 </button>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {pendingNodeList.length === 0 ? (
+                {completedCardsToday.length === 0 ? (
                   <div style={{ fontSize: '13px', color: themeStyles.textTertiary, fontStyle: 'italic' }}>
-                    {i18n('No pending sections')}
+                    {i18n('No completed cards')}
                   </div>
                 ) : (
-                  pendingNodeList.map((node) => {
-                    const nodeKey = `${String(node._id)}-${node.orderIndex}`;
-                    const isNodeExpanded = expandedNodeIds.has(nodeKey);
-                    return (
-                      <div
-                        key={nodeKey}
-                        style={{
-                          borderRadius: '8px',
-                          background: themeStyles.bgPrimary,
-                          border: `1px solid ${themeStyles.border}`,
-                          overflow: 'hidden',
-                        }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => toggleNodeExpand(nodeKey)}
-                          style={{
-                            width: '100%',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            padding: isMobile ? '14px 12px' : '10px 12px',
-                            minHeight: isMobile ? '48px' : undefined,
-                            fontSize: '14px',
-                            fontWeight: 500,
-                            color: themeStyles.textPrimary,
-                            background: 'transparent',
-                            border: 'none',
-                            cursor: 'pointer',
-                            textAlign: 'left',
-                          }}
-                        >
-                          <span style={{ flexShrink: 0, color: themeStyles.textSecondary, fontSize: '12px' }}>
-                            {node.orderIndex}.
-                          </span>
-                          <span style={{ flex: 1 }}>{node.title}</span>
-                          <span style={{ fontSize: '12px', color: themeStyles.textTertiary }}>
-                            {isNodeExpanded ? '▼' : '▶'}
-                          </span>
-                        </button>
-                        {isNodeExpanded && node.cards && node.cards.length > 0 && (
-                          <div style={{ padding: '0 12px 8px', borderTop: `1px solid ${themeStyles.border}` }}>
-                            {node.cards.map((card, cardIndex) => {
-                              const cardNumber = `${node.orderIndex}.${cardIndex + 1}`;
-                              const cardKey = `${nodeKey}-${String(card.cardId)}`;
-                              const isCardExpanded = expandedCardIds.has(cardKey);
-                              const problems = card.problems || [];
-                              return (
-                                <div
-                                  key={cardKey}
-                                  style={{
-                                    marginTop: '6px',
-                                    padding: '6px 8px',
-                                    background: themeStyles.bgSecondary,
-                                    borderRadius: '6px',
-                                  }}
-                                >
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleCardStems(cardKey)}
-                                    style={{
-                                      width: '100%',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '6px',
-                                      padding: 0,
-                                      fontSize: '13px',
-                                      color: themeStyles.textPrimary,
-                                      background: 'transparent',
-                                      border: 'none',
-                                      cursor: 'pointer',
-                                      textAlign: 'left',
-                                    }}
-                                  >
-                                    <span style={{ flexShrink: 0, color: themeStyles.textSecondary, fontSize: '12px' }}>
-                                      {cardNumber}.
-                                    </span>
-                                    <span style={{ flex: 1 }}>{card.title}</span>
-                                    {problems.length > 0 && (
-                                      <span style={{ color: themeStyles.textTertiary, fontSize: '11px' }}>
-                                        {isCardExpanded ? '▼' : '▶'}
-                                      </span>
-                                    )}
-                                  </button>
-                                  {isCardExpanded && problems.length > 0 && (
-                                    <div style={{ marginTop: '6px', fontSize: '12px', color: themeStyles.textSecondary, whiteSpace: 'pre-wrap' }}>
-                                      {problems.map((p, idx) => {
-                                        const problemNumber = `${cardNumber}.${idx + 1}`;
-                                        return (
-                                          <div key={idx} style={{ marginBottom: '4px' }}>
-                                            <span style={{ color: themeStyles.textTertiary, marginRight: '6px' }}>{problemNumber}.</span>
-                                            {p.stem || ''}
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
+                  completedCardsToday.map((c) => (
+                    <button
+                      key={c.cardId}
+                      type="button"
+                      onClick={() => {
+                        if (c.resultId) {
+                          window.open(`/d/${domainId}/learn/lesson/result/${c.resultId}`, '_blank', 'noopener,noreferrer');
+                        }
+                      }}
+                      style={{
+                        padding: isMobile ? '14px 12px' : '10px 12px',
+                        minHeight: isMobile ? '48px' : undefined,
+                        fontSize: '14px',
+                        color: themeStyles.textSecondary,
+                        borderRadius: '8px',
+                        background: themeStyles.bgPrimary,
+                        border: `1px solid ${themeStyles.border}`,
+                        cursor: c.resultId ? 'pointer' : 'default',
+                        textAlign: 'left',
+                        width: '100%',
+                        transition: 'background 0.2s',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (c.resultId) e.currentTarget.style.background = themeStyles.bgHover;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = themeStyles.bgPrimary;
+                      }}
+                      title={c.resultId ? i18n('View result') : undefined}
+                    >
+                      <div style={{ fontWeight: 500, color: themeStyles.textPrimary }}>
+                        {c.cardTitle || i18n('Unnamed Card')}
                       </div>
-                    );
-                  })
+                      <div style={{ fontSize: '12px', color: themeStyles.textTertiary, marginTop: '4px' }}>
+                        {c.nodeTitle ? `${c.nodeTitle} · ` : ''}
+                        {c.completedAt
+                          ? (() => {
+                              const d = typeof c.completedAt === 'string' ? new Date(c.completedAt) : c.completedAt;
+                              const pad = (n: number) => String(n).padStart(2, '0');
+                              return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                            })()
+                          : ''}{' '}
+                        ✓
+                      </div>
+                    </button>
+                  ))
                 )}
               </div>
             </div>
@@ -530,7 +471,7 @@ function LearnPage() {
           <button
             type="button"
             onClick={() => setLeftSidebarOpen(true)}
-            title={i18n('Pending sections')}
+            title={i18n('Completed cards')}
             style={{
               width: '100%',
               padding: '16px 0',
@@ -1234,7 +1175,7 @@ function LearnPage() {
                   textTransform: 'uppercase',
                   letterSpacing: '0.04em',
                 }}>
-                  {i18n('Completed cards')}
+                  {i18n('Pending sections')}
                 </span>
                 <button
                   type="button"
@@ -1254,57 +1195,116 @@ function LearnPage() {
                 </button>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {completedCardsToday.length === 0 ? (
+                {pendingNodeList.length === 0 ? (
                   <div style={{ fontSize: '13px', color: themeStyles.textTertiary, fontStyle: 'italic' }}>
-                    {i18n('No completed cards')}
+                    {i18n('No pending sections')}
                   </div>
                 ) : (
-                  completedCardsToday.map((c) => (
-                    <button
-                      key={c.cardId}
-                      type="button"
-                      onClick={() => {
-                        if (c.resultId) {
-                          window.open(`/d/${domainId}/learn/lesson/result/${c.resultId}`, '_blank', 'noopener,noreferrer');
-                        }
-                      }}
-                      style={{
-                        padding: isMobile ? '14px 12px' : '10px 12px',
-                        minHeight: isMobile ? '48px' : undefined,
-                        fontSize: '14px',
-                        color: themeStyles.textSecondary,
-                        borderRadius: '8px',
-                        background: themeStyles.bgPrimary,
-                        border: `1px solid ${themeStyles.border}`,
-                        cursor: c.resultId ? 'pointer' : 'default',
-                        textAlign: 'left',
-                        width: '100%',
-                        transition: 'background 0.2s',
-                      }}
-                      onMouseEnter={(e) => {
-                        if (c.resultId) e.currentTarget.style.background = themeStyles.bgHover;
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = themeStyles.bgPrimary;
-                      }}
-                      title={c.resultId ? i18n('View result') : undefined}
-                    >
-                      <div style={{ fontWeight: 500, color: themeStyles.textPrimary }}>
-                        {c.cardTitle || i18n('Unnamed Card')}
+                  pendingNodeList.map((node) => {
+                    const nodeKey = `${String(node._id)}-${node.orderIndex}`;
+                    const isNodeExpanded = expandedNodeIds.has(nodeKey);
+                    return (
+                      <div
+                        key={nodeKey}
+                        style={{
+                          borderRadius: '8px',
+                          background: themeStyles.bgPrimary,
+                          border: `1px solid ${themeStyles.border}`,
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => toggleNodeExpand(nodeKey)}
+                          style={{
+                            width: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: isMobile ? '14px 12px' : '10px 12px',
+                            minHeight: isMobile ? '48px' : undefined,
+                            fontSize: '14px',
+                            fontWeight: 500,
+                            color: themeStyles.textPrimary,
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                          }}
+                        >
+                          <span style={{ flexShrink: 0, color: themeStyles.textSecondary, fontSize: '12px' }}>
+                            {node.orderIndex}.
+                          </span>
+                          <span style={{ flex: 1 }}>{node.title}</span>
+                          <span style={{ fontSize: '12px', color: themeStyles.textTertiary }}>
+                            {isNodeExpanded ? '▼' : '▶'}
+                          </span>
+                        </button>
+                        {isNodeExpanded && node.cards && node.cards.length > 0 && (
+                          <div style={{ padding: '0 12px 8px', borderTop: `1px solid ${themeStyles.border}` }}>
+                            {node.cards.map((card, cardIndex) => {
+                              const cardNumber = `${node.orderIndex}.${cardIndex + 1}`;
+                              const cardKey = `${nodeKey}-${String(card.cardId)}`;
+                              const isCardExpanded = expandedCardIds.has(cardKey);
+                              const problems = card.problems || [];
+                              return (
+                                <div
+                                  key={cardKey}
+                                  style={{
+                                    marginTop: '6px',
+                                    padding: '6px 8px',
+                                    background: themeStyles.bgSecondary,
+                                    borderRadius: '6px',
+                                  }}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleCardStems(cardKey)}
+                                    style={{
+                                      width: '100%',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '6px',
+                                      padding: 0,
+                                      fontSize: '13px',
+                                      color: themeStyles.textPrimary,
+                                      background: 'transparent',
+                                      border: 'none',
+                                      cursor: 'pointer',
+                                      textAlign: 'left',
+                                    }}
+                                  >
+                                    <span style={{ flexShrink: 0, color: themeStyles.textSecondary, fontSize: '12px' }}>
+                                      {cardNumber}.
+                                    </span>
+                                    <span style={{ flex: 1 }}>{card.title}</span>
+                                    {problems.length > 0 && (
+                                      <span style={{ color: themeStyles.textTertiary, fontSize: '11px' }}>
+                                        {isCardExpanded ? '▼' : '▶'}
+                                      </span>
+                                    )}
+                                  </button>
+                                  {isCardExpanded && problems.length > 0 && (
+                                    <div style={{ marginTop: '6px', fontSize: '12px', color: themeStyles.textSecondary, whiteSpace: 'pre-wrap' }}>
+                                      {problems.map((p, idx) => {
+                                        const problemNumber = `${cardNumber}.${idx + 1}`;
+                                        return (
+                                          <div key={idx} style={{ marginBottom: '4px' }}>
+                                            <span style={{ color: themeStyles.textTertiary, marginRight: '6px' }}>{problemNumber}.</span>
+                                            {p.stem || ''}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
-                      <div style={{ fontSize: '12px', color: themeStyles.textTertiary, marginTop: '4px' }}>
-                        {c.nodeTitle ? `${c.nodeTitle} · ` : ''}
-                        {c.completedAt
-                          ? (() => {
-                              const d = typeof c.completedAt === 'string' ? new Date(c.completedAt) : c.completedAt;
-                              const pad = (n: number) => String(n).padStart(2, '0');
-                              return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-                            })()
-                          : ''}{' '}
-                        ✓
-                      </div>
-                    </button>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -1313,7 +1313,7 @@ function LearnPage() {
           <button
             type="button"
             onClick={() => setRightSidebarOpen(true)}
-            title={i18n('Completed cards')}
+            title={i18n('Pending sections')}
             style={{
               width: '100%',
               padding: '16px 0',

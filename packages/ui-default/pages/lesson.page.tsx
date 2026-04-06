@@ -713,7 +713,7 @@ function LessonPage() {
     })() : null;
     if (leftWrap) {
       const leftLabel = splitQueueSidebars
-        ? `${i18n('Uncompleted')} (${lessonQueuePendingCount})`
+        ? `${i18n('Completed sections')} (${lessonQueueDoneCount})`
         : i18n('Progress');
       ReactDOM.render(
         <button
@@ -727,7 +727,7 @@ function LessonPage() {
       );
     }
     if (rightWrap) {
-      const rightLabel = `${i18n('Completed sections')} (${lessonQueueDoneCount})`;
+      const rightLabel = `${i18n('Uncompleted')} (${lessonQueuePendingCount})`;
       ReactDOM.render(
         <button
           type="button"
@@ -1717,7 +1717,9 @@ function LessonPage() {
     </>
   );
 
-  const sidebarInnerMainLeft = splitQueueSidebars ? sidebarInnerLeftSplit : sidebarInner;
+  /** 分栏时左侧为「已完成」，右侧为「未完成」+ 进度元信息 */
+  const lessonSidebarLeftColumn = splitQueueSidebars ? sidebarInnerRightSplit : sidebarInner;
+  const lessonSidebarRightColumn = splitQueueSidebars ? sidebarInnerLeftSplit : null;
 
   const asideBaseStyle: React.CSSProperties = {
     padding: '16px',
@@ -1778,12 +1780,12 @@ function LessonPage() {
               transition: 'transform 0.2s ease-out',
               boxShadow: leftDrawerOpen ? themeStyles.drawerAsideShadow : 'none',
             }}>
-              {sidebarInnerMainLeft}
+              {lessonSidebarLeftColumn}
               <button type="button" onClick={closeBothDrawers} style={drawerCloseBtnStyle}>
                 {i18n('Close')}
               </button>
             </aside>
-            {splitQueueSidebars && (
+            {splitQueueSidebars && lessonSidebarRightColumn && (
               <aside style={{
                 ...asideRightBaseStyle,
                 position: 'fixed',
@@ -1798,7 +1800,7 @@ function LessonPage() {
                 transition: 'transform 0.2s ease-out',
                 boxShadow: rightDrawerOpen ? themeStyles.drawerAsideShadowRight : 'none',
               }}>
-                {sidebarInnerRightSplit}
+                {lessonSidebarRightColumn}
                 <button type="button" onClick={closeBothDrawers} style={drawerCloseBtnStyle}>
                   {i18n('Close')}
                 </button>
@@ -1813,14 +1815,14 @@ function LessonPage() {
       return (
         <div style={{ display: 'flex', minHeight: '100vh', background: themeStyles.bgPage }}>
           <aside style={{ width: '240px', flexShrink: 0, ...asideBaseStyle }}>
-            {sidebarInnerMainLeft}
+            {lessonSidebarLeftColumn}
           </aside>
           <main style={{ flex: 1, overflowY: 'auto', background: themeStyles.bgPage }}>
             {cardViewContent}
           </main>
-          {splitQueueSidebars && (
+          {splitQueueSidebars && lessonSidebarRightColumn && (
             <aside style={{ width: '240px', flexShrink: 0, ...asideRightBaseStyle }}>
-              {sidebarInnerRightSplit}
+              {lessonSidebarRightColumn}
             </aside>
           )}
         </div>
@@ -2148,12 +2150,12 @@ function LessonPage() {
             transition: 'transform 0.2s ease-out',
             boxShadow: leftDrawerOpen ? themeStyles.drawerAsideShadow : 'none',
           }}>
-            {sidebarInnerMainLeft}
+            {lessonSidebarLeftColumn}
             <button type="button" onClick={closeBothDrawers} style={drawerCloseBtnStyle}>
               {i18n('Close')}
             </button>
           </aside>
-          {splitQueueSidebars && (
+          {splitQueueSidebars && lessonSidebarRightColumn && (
             <aside style={{
               ...asideRightBaseStyle,
               position: 'fixed',
@@ -2168,7 +2170,7 @@ function LessonPage() {
               transition: 'transform 0.2s ease-out',
               boxShadow: rightDrawerOpen ? themeStyles.drawerAsideShadowRight : 'none',
             }}>
-              {sidebarInnerRightSplit}
+              {lessonSidebarRightColumn}
               <button type="button" onClick={closeBothDrawers} style={drawerCloseBtnStyle}>
                 {i18n('Close')}
               </button>
@@ -2183,14 +2185,14 @@ function LessonPage() {
     return (
       <div style={{ display: 'flex', minHeight: '100vh', background: themeStyles.bgPage }}>
         <aside style={{ width: '240px', flexShrink: 0, ...asideBaseStyle }}>
-          {sidebarInnerMainLeft}
+          {lessonSidebarLeftColumn}
         </aside>
         <main style={{ flex: 1, overflowY: 'auto', background: themeStyles.bgPage }}>
           {mainContent}
         </main>
-        {splitQueueSidebars && (
+        {splitQueueSidebars && lessonSidebarRightColumn && (
           <aside style={{ width: '240px', flexShrink: 0, ...asideRightBaseStyle }}>
-            {sidebarInnerRightSplit}
+            {lessonSidebarRightColumn}
           </aside>
         )}
       </div>
