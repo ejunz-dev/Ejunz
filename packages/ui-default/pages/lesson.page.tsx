@@ -70,6 +70,7 @@ type LessonUiState = {
   currentCardIndex: number;
   lessonReviewCardIds: string[];
   reviewCardId: string;
+  lessonCardProvenanceLabel: string;
 };
 
 function normalizeCardFromServer(raw: unknown): Card {
@@ -126,6 +127,7 @@ function initLessonUiState(): LessonUiState {
     currentCardIndex: typeof U.currentCardIndex === 'number' ? U.currentCardIndex : 0,
     lessonReviewCardIds: Array.isArray(U.lessonReviewCardIds) ? U.lessonReviewCardIds.map(String) : [],
     reviewCardId: String(U.reviewCardId || ''),
+    lessonCardProvenanceLabel: String(U.lessonCardProvenanceLabel || ''),
   };
 }
 
@@ -150,6 +152,7 @@ function LessonPage() {
     currentCardIndex,
     lessonReviewCardIds,
     reviewCardId,
+    lessonCardProvenanceLabel,
   } = lessonUi;
 
   const hasLessonSidebar = (isSingleNodeMode || isTodayMode || isAlonePractice) && nodeTree.length > 0;
@@ -499,6 +502,9 @@ function LessonPage() {
       isAlonePractice: typeof payload.isAlonePractice === 'boolean' ? payload.isAlonePractice : prev.isAlonePractice,
       rootNodeId: typeof payload.rootNodeId === 'string' ? payload.rootNodeId : prev.rootNodeId,
       rootNodeTitle: typeof payload.rootNodeTitle === 'string' ? payload.rootNodeTitle : prev.rootNodeTitle,
+      lessonCardProvenanceLabel: typeof payload.lessonCardProvenanceLabel === 'string'
+        ? payload.lessonCardProvenanceLabel
+        : prev.lessonCardProvenanceLabel,
     }));
     const nextCard = payload.card != null ? normalizeCardFromServer(payload.card) : null;
     const probs = (nextCard?.problems || []).map(p => ({ ...p, cardId: nextCard!.docId }));
@@ -1145,9 +1151,17 @@ function LessonPage() {
           backgroundColor: themeStyles.bgSecondary,
           borderRadius: '8px',
         }}>
-          <div style={{ fontSize: '14px', color: themeStyles.textSecondary, marginBottom: '8px' }}>
-            {node.text || i18n('Unnamed Node')}
-          </div>
+          {(showLessonSessionProgressCard && lessonCardProvenanceLabel) ? (
+            <div style={{
+              fontSize: '12px',
+              color: themeStyles.textTertiary,
+              marginBottom: '8px',
+              lineHeight: 1.45,
+              wordBreak: 'break-word',
+            }}>
+              {lessonCardProvenanceLabel}
+            </div>
+          ) : null}
           <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, color: themeStyles.textPrimary }}>
             {card.title || i18n('Unnamed Card')}
           </h1>
@@ -1375,9 +1389,17 @@ function LessonPage() {
           backgroundColor: themeStyles.bgSecondary,
           borderRadius: '8px',
         }}>
-          <div style={{ fontSize: '14px', color: themeStyles.textSecondary, marginBottom: '8px' }}>
-            {node.text || i18n('Unnamed Node')}
-          </div>
+          {(showLessonSessionProgressCard && lessonCardProvenanceLabel) ? (
+            <div style={{
+              fontSize: '12px',
+              color: themeStyles.textTertiary,
+              marginBottom: '8px',
+              lineHeight: 1.45,
+              wordBreak: 'break-word',
+            }}>
+              {lessonCardProvenanceLabel}
+            </div>
+          ) : null}
           <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', color: themeStyles.textPrimary }}>
             {card.title || i18n('Unnamed Card')}
             {(isAlonePractice ? (reviewCardId && String(card.docId) === reviewCardId) : (lessonReviewCardIds.includes(String(card.docId)) || (reviewCardId && String(card.docId) === reviewCardId))) && (
@@ -1869,9 +1891,17 @@ function LessonPage() {
         backgroundColor: themeStyles.bgSecondary,
         borderRadius: '8px',
       }}>
-        <div style={{ fontSize: '14px', color: themeStyles.textSecondary, marginBottom: '8px' }}>
-          {node.text || i18n('Unnamed Node')}
-        </div>
+        {(showLessonSessionProgressCard && lessonCardProvenanceLabel) ? (
+          <div style={{
+            fontSize: '12px',
+            color: themeStyles.textTertiary,
+            marginBottom: '8px',
+            lineHeight: 1.45,
+            wordBreak: 'break-word',
+          }}>
+            {lessonCardProvenanceLabel}
+          </div>
+        ) : null}
         <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', color: themeStyles.textPrimary }}>
           {card.title || i18n('Unnamed Card')}
           {(isAlonePractice ? (reviewCardId && String(card.docId) === reviewCardId) : lessonReviewCardIds.includes(String(card.docId))) && (
