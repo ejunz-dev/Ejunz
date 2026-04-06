@@ -16,7 +16,7 @@ import { updateDomainRanking } from './domain';
 import { appendUserCheckinDay, countConsecutiveCheckinDays } from '../lib/checkin';
 import { getModeDailyGoal } from '../lib/learnModePrefs';
 import TrainingModel from '../model/training';
-import { isTrainingRootNodeId, loadTrainingMergedGraph, parseTrainingNodeId } from '../lib/trainingMergedGraph';
+import { isTrainingRootNodeId, loadTrainingMergedGraph, makeTrainingNodeId, parseTrainingNodeId } from '../lib/trainingMergedGraph';
 import SessionModel, { type LessonCardQueueItem, type SessionDoc, type SessionPatch } from '../model/session';
 import {
     appendLessonSessionToUrl,
@@ -306,6 +306,131 @@ async function nodeTitleForLearnCard(
 
 function cardStorageBranch(card: { branch?: string } | null | undefined): string {
     return typeof card?.branch === 'string' && card.branch.trim() ? card.branch.trim() : 'main';
+}
+
+function buildDagNodeLookup(sections: LearnDAGNode[], allDagNodes: LearnDAGNode[]): Map<string, LearnDAGNode> {
+    const m = new Map<string, LearnDAGNode>();
+    for (const n of sections || []) m.set(n._id, n);
+    for (const n of allDagNodes || []) m.set(n._id, n);
+    return m;
+}
+
+function mergedLearnNodeTitlesPath(dagLookup: Map<string, LearnDAGNode>, dagNode: LearnDAGNode): string[] {
+    const titles: string[] = [];
+    for (const pid of dagNode.requireNids || []) {
+        if (isTrainingRootNodeId(String(pid))) continue;
+        const p = dagLookup.get(String(pid));
+        const t = (p?.title || '').trim();
+        if (t) titles.push(t);
+    }
+    const selfT = (dagNode.title || '').trim();
+    if (selfT && titles[titles.length - 1] !== selfT) titles.push(selfT);
+    return titles;
+}
+
+function findDagNodeForMergedCard(
+    sections: LearnDAGNode[],
+    allDagNodes: LearnDAGNode[],
+    mergedNodeId: string,
+    cardId: string,
+): LearnDAGNode | null {
+    const dagLookup = buildDagNodeLookup(sections, allDagNodes);
+    const direct = dagLookup.get(mergedNodeId);
+    if (direct) return direct;
+    const cid = String(cardId);
+    const wantBase = parseTrainingNodeId(mergedNodeId)?.baseDocId;
+    for (const n of dagLookup.values()) {
+        if (!(n.cards || []).some((c) => String(c.cardId) === cid)) continue;
+        const pb = parseTrainingNodeId(n._id)?.baseDocId;
+        if (wantBase && pb === wantBase) return n;
+    }
+    for (const n of dagLookup.values()) {
+        if ((n.cards || []).some((c) => String(c.cardId) === cid)) return n;
+    }
+    return null;
+}
+
+function baseOutlineNodeTitlesPath(
+    base: BaseDoc | null | undefined,
+    branch: string,
+    rawNodeId: string,
+    translate: (key: string) => string,
+): string[] {
+    if (!base || !rawNodeId) return [];
+    const { nodes, edges } = getBranchData(base, branch);
+    const nodeMap = new Map<string, BaseNode>();
+    for (const n of nodes || []) nodeMap.set(String(n.id), n);
+    const parentMap = new Map<string, string>();
+    for (const e of edges || []) {
+        parentMap.set(String(e.target), String(e.source));
+    }
+    for (const n of nodes || []) {
+        const pid = (n as any).parentId;
+        if (pid && nodeMap.has(String(pid)) && !parentMap.has(String(n.id))) {
+            parentMap.set(String(n.id), String(pid));
+        }
+    }
+    const chain: string[] = [];
+    let cur: string | undefined = String(rawNodeId);
+    const seen = new Set<string>();
+    while (cur && nodeMap.has(cur) && !seen.has(cur)) {
+        seen.add(cur);
+        chain.push(cur);
+        cur = parentMap.get(cur);
+    }
+    return chain
+        .map((id) => {
+            const n = nodeMap.get(id);
+            return ((n?.text || '').trim() || translate('Unnamed Node'));
+        })
+        .reverse();
+}
+
+/** 训练计划名 - Base 名 - 合并 DAG / 大纲上的各层节点标题（用于 Lesson 页来源路径） */
+async function formatLessonCardProvenanceLabel(args: {
+    domainId: string;
+    translate: (key: string) => string;
+    training: TrainingDoc | null;
+    baseDoc: BaseDoc | null | undefined;
+    branch: string;
+    rawNodeId: string;
+    cardId: string;
+    /** 若调用方已加载合并 DAG，可传入以避免重复 ensure */
+    dagCache?: { sections: LearnDAGNode[]; allDagNodes: LearnDAGNode[] };
+}): Promise<string> {
+    const { domainId, translate, training, baseDoc, branch, rawNodeId, cardId, dagCache } = args;
+    const baseTitle = (baseDoc?.title || '').trim();
+    const trainingTitle = training ? (training.name || '').trim() : '';
+    const baseNum = baseDoc?.docId ?? 0;
+    if (!baseNum || !rawNodeId) {
+        return [trainingTitle, baseTitle].filter(Boolean).join(' - ');
+    }
+    const mergedNodeId = makeTrainingNodeId(baseNum, rawNodeId);
+    let nodeTitles: string[] = [];
+
+    if (training) {
+        try {
+            const bundle = dagCache ?? await ensureTrainingLearnDAGCached(domainId, training, translate);
+            const dagNode = findDagNodeForMergedCard(bundle.sections, bundle.allDagNodes, mergedNodeId, cardId);
+            if (dagNode) {
+                const dagLookup = buildDagNodeLookup(bundle.sections, bundle.allDagNodes);
+                nodeTitles = mergedLearnNodeTitlesPath(dagLookup, dagNode);
+            }
+        } catch (_) {
+            /* use outline fallback */
+        }
+    }
+
+    if (nodeTitles.length === 0 && baseDoc) {
+        nodeTitles = baseOutlineNodeTitlesPath(baseDoc, branch, rawNodeId, translate);
+    }
+
+    const parts = [trainingTitle, baseTitle, ...nodeTitles].filter(Boolean);
+    const deduped: string[] = [];
+    for (const p of parts) {
+        if (deduped.length === 0 || deduped[deduped.length - 1] !== p) deduped.push(p);
+    }
+    return deduped.join(' - ');
 }
 
 function learnRecordProblemIds(card: { problems?: Array<{ pid?: string }> } | null | undefined): string[] {
@@ -1997,6 +2122,15 @@ async function buildSpaLessonSnapshotToday(
         todayResolvedBase,
         cardStorageBranch(currentCard as any) || todayLessonBranch,
     );
+    const lessonCardProvenanceLabel = await formatLessonCardProvenanceLabel({
+        domainId: finalDomainId,
+        translate,
+        training,
+        baseDoc: baseDocToday,
+        branch: todayLessonBranch,
+        rawNodeId: String(currentItem.nodeId || ''),
+        cardId: String(currentItem.cardId || ''),
+    });
     const todayNodeTree = [{
         type: 'node' as const,
         id: 'today',
@@ -2024,6 +2158,7 @@ async function buildSpaLessonSnapshotToday(
         lessonSessionId: sessionHex,
         lessonSessionDomainId: finalDomainId,
         learnRecordId: learnRecordIdToday || '',
+        lessonCardProvenanceLabel,
     };
 }
 
@@ -2089,6 +2224,16 @@ async function buildSpaLessonSnapshotNode(
         cardBaseIdNode,
         br,
     );
+    const lessonCardProvenanceLabel = await formatLessonCardProvenanceLabel({
+        domainId: finalDomainId,
+        translate,
+        training,
+        baseDoc: baseOfCard,
+        branch: br,
+        rawNodeId: String(currentItem.nodeId || ''),
+        cardId: String(currentItem.cardId || ''),
+        dagCache: { sections, allDagNodes },
+    });
     return {
         card: currentCard,
         node: currentNode,
@@ -2111,6 +2256,7 @@ async function buildSpaLessonSnapshotNode(
         lessonSessionId: sid,
         lessonSessionDomainId: finalDomainId,
         learnRecordId: learnRecordIdSpaNode || '',
+        lessonCardProvenanceLabel,
     };
 }
 
@@ -2392,6 +2538,16 @@ class LessonHandler extends Handler {
                     cardBr,
                 );
 
+                const lessonCardProvenanceLabel = await formatLessonCardProvenanceLabel({
+                    domainId: finalDomainId,
+                    translate: (k) => this.translate(k),
+                    training,
+                    baseDoc: cardBase,
+                    branch: cardBr,
+                    rawNodeId: String(card.nodeId || ''),
+                    cardId: card.docId.toString(),
+                });
+
                 this.response.template = 'lesson.html';
                 this.response.body = {
                     card,
@@ -2413,6 +2569,7 @@ class LessonHandler extends Handler {
                     lessonSessionId: sidHex,
                     lessonSessionDomainId: finalDomainId,
                     learnRecordId: learnRecordId || '',
+                    lessonCardProvenanceLabel,
                 };
                 return;
             }
@@ -2631,6 +2788,17 @@ class LessonHandler extends Handler {
                 cardStorageBranch(currentCard as any) || nodeLessonBranch,
             );
 
+            const lessonCardProvenanceLabel = await formatLessonCardProvenanceLabel({
+                domainId: finalDomainId,
+                translate: (k) => this.translate(k),
+                training,
+                baseDoc: baseDocForNode,
+                branch: nodeLessonBranch,
+                rawNodeId: String(currentItem.nodeId || ''),
+                cardId: String(currentItem.cardId || ''),
+                dagCache: { sections: trainSecNode, allDagNodes },
+            });
+
             this.response.template = 'lesson.html';
             this.response.body = {
                 card: currentCard,
@@ -2653,6 +2821,7 @@ class LessonHandler extends Handler {
                 lessonSessionId: lessonSessionIdFromDoc(sNode ?? await SessionModel.get(finalDomainId, this.user._id)),
                 lessonSessionDomainId: finalDomainId,
                 learnRecordId: learnRecordIdNode || '',
+                lessonCardProvenanceLabel,
             };
             return;
         }
@@ -2869,6 +3038,16 @@ class LessonHandler extends Handler {
                 cardStorageBranch(currentCard as any) || todayLessonBranch,
             );
 
+            const lessonCardProvenanceLabel = await formatLessonCardProvenanceLabel({
+                domainId: finalDomainId,
+                translate: (k) => this.translate(k),
+                training,
+                baseDoc: baseDocToday,
+                branch: todayLessonBranch,
+                rawNodeId: String(currentItem.nodeId || ''),
+                cardId: String(currentItem.cardId || ''),
+            });
+
             this.response.template = 'lesson.html';
             this.response.body = {
                 card: currentCard,
@@ -2888,6 +3067,7 @@ class LessonHandler extends Handler {
                 lessonSessionId: sidToday,
                 lessonSessionDomainId: finalDomainId,
                 learnRecordId: learnRecordIdToday || '',
+                lessonCardProvenanceLabel,
             };
             return;
         }
