@@ -7,6 +7,8 @@ const collProgress = db.collection('learn_progress');
 const collResult = db.collection('learn_result');
 const collConsumptionStats = db.collection('learn_consumption_stats');
 
+export const LEARN_PROGRESS_SLOT_OUTSIDE_SECTION_ORDER = -1;
+
 export interface LearnDAGNode {
     _id: string;
     title: string;
@@ -111,21 +113,57 @@ class LearnModel {
         return new Set(list.map((p) => p.cardId.toString()));
     }
 
-    static async setCardPassed(domainId: string, userId: number, cardId: ObjectId, nodeId: string) {
+    /**
+     * 每条 `learn_progress` 必须带 `learnSectionOrderIndex`：学习路径为节序槽位 0..n；collect/flag 使用 `LEARN_PROGRESS_SLOT_OUTSIDE_SECTION_ORDER`。
+     */
+    static async setCardPassed(
+        domainId: string,
+        userId: number,
+        cardId: ObjectId,
+        nodeId: string,
+        learnSectionOrderIndex: number,
+    ) {
+        const doc = {
+            domainId,
+            userId,
+            cardId,
+            nodeId,
+            passed: true,
+            passedAt: new Date(),
+            learnSectionOrderIndex,
+        };
         return collProgress.updateOne(
-            { domainId, userId, cardId },
-            {
-                $set: {
-                    domainId,
-                    userId,
-                    cardId,
-                    nodeId,
-                    passed: true,
-                    passedAt: new Date(),
-                },
-            },
-            { upsert: true }
+            { domainId, userId, cardId, learnSectionOrderIndex },
+            { $set: doc },
+            { upsert: true },
         );
+    }
+
+    static async listPassedProgressDocs(domainId: string, userId: number) {
+        return collProgress
+            .find({ domainId, userId, passed: true })
+            .project({ cardId: 1, learnSectionOrderIndex: 1 })
+            .toArray();
+    }
+
+    static async deleteLearnProgressForSlotCards(domainId: string, userId: number, slot: number, cardObjectIds: ObjectId[]) {
+        if (!cardObjectIds.length) return;
+        await collProgress.deleteMany({ domainId, userId, learnSectionOrderIndex: slot, cardId: { $in: cardObjectIds } });
+    }
+
+    /** Remove learn_progress rows for the given cards (clears passed and any stored progress for those cards). */
+    static async clearPassedProgressForUserCards(domainId: string, userId: number, cardIdStrings: string[]) {
+        if (!cardIdStrings.length) return;
+        const oids: ObjectId[] = [];
+        for (const id of cardIdStrings) {
+            try {
+                oids.push(new ObjectId(id));
+            } catch {
+                /* skip invalid */
+            }
+        }
+        if (!oids.length) return;
+        await collProgress.deleteMany({ domainId, userId, cardId: { $in: oids } });
     }
 
     static async getResults(

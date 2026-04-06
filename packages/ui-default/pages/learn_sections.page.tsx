@@ -203,6 +203,7 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
       const res: any = await request.post(`/d/${domainId}/learn/lesson/start`, {
         mode: 'node',
         nodeId: singleNodeModal.nodeId,
+        learnSectionOrderIndex: selectedSectionIndex,
       });
       const redir = res?.redirect ?? res?.body?.redirect ?? res?.data?.redirect;
       window.open(redir || `/d/${domainId}/learn/lesson`, '_blank', 'noopener,noreferrer');
@@ -210,7 +211,7 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
       window.open(`/d/${domainId}/learn/lesson`, '_blank', 'noopener,noreferrer');
     }
     setSingleNodeModal(null);
-  }, [singleNodeModal, domainId]);
+  }, [singleNodeModal, domainId, selectedSectionIndex]);
 
   const openSingleCardModal = useCallback((card: LearnCard) => {
     setSingleCardModal({ cardId: String(card.cardId), title: card.title || i18n('Unnamed Card') });
@@ -222,6 +223,7 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
       const res: any = await request.post(`/d/${domainId}/learn/lesson/start`, {
         mode: 'card',
         cardId: singleCardModal.cardId,
+        learnSectionOrderIndex: selectedSectionIndex,
       });
       const redir = res?.redirect ?? res?.body?.redirect ?? res?.data?.redirect;
       window.open(redir || getLessonUrl(singleCardModal.cardId), '_blank', 'noopener,noreferrer');
@@ -229,19 +231,18 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
       window.open(getLessonUrl(singleCardModal.cardId), '_blank', 'noopener,noreferrer');
     }
     setSingleCardModal(null);
-  }, [singleCardModal, domainId, getLessonUrl]);
+  }, [singleCardModal, domainId, getLessonUrl, selectedSectionIndex]);
 
-  const toggleCardExpand = useCallback((cardId: string) => {
-    const id = String(cardId);
+  const toggleCardExpand = useCallback((placementKey: string) => {
     setExpandedCards(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(placementKey)) next.delete(placementKey);
+      else next.add(placementKey);
       return next;
     });
   }, []);
 
-  const renderNode = useCallback((node: LearnDAGNode, level: number, isRootCurrentSection = false) => {
+  const renderNode = useCallback((node: LearnDAGNode, level: number, isRootCurrentSection: boolean, sectionSlotIndex: number) => {
     const children = getChildren(node._id, sections, dag);
     const cards = node.cards || [];
     const hasContent = children.length > 0 || cards.length > 0;
@@ -355,11 +356,12 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
                 if (item.type === 'card') {
                   const card = item.data as LearnCard;
                   const cardIdStr = String(card.cardId);
+                  const cardPlacementKey = `${sectionSlotIndex}:${cardIdStr}`;
                   const problemCount = card.problemCount ?? (card.problems?.length ?? 0);
                   const problems = card.problems ?? [];
-                  const isCardExpanded = expandedCards.has(cardIdStr);
+                  const isCardExpanded = expandedCards.has(cardPlacementKey);
                   return (
-                    <div key={`card-${card.cardId}`} style={{ marginLeft: '24px', marginTop: '4px', marginBottom: '4px' }}>
+                    <div key={cardPlacementKey} style={{ marginLeft: '24px', marginTop: '4px', marginBottom: '4px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                         <div
                           onClick={(e) => { e.stopPropagation(); openSingleCardModal(card); }}
@@ -394,7 +396,7 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              toggleCardExpand(cardIdStr);
+                              toggleCardExpand(cardPlacementKey);
                             }}
                             style={{
                               display: 'inline-flex',
@@ -458,7 +460,7 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
                     </div>
                   );
                 }
-                return renderNode(item.data as LearnDAGNode, level + 1, false);
+                return renderNode(item.data as LearnDAGNode, level + 1, false, sectionSlotIndex);
               })}
             </div>
           </div>
@@ -629,7 +631,7 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
             <div style={{ paddingLeft: isMobile ? '0' : '4px' }}>
               {renderNode(selectedSection, 0, learnIdx !== null
                 ? selectedSectionIndex === learnIdx
-                : currentSectionId === selectedSection._id && selectedSectionIndex === sections.findIndex(s => s._id === currentSectionId))}
+                : currentSectionId === selectedSection._id && selectedSectionIndex === sections.findIndex(s => s._id === currentSectionId), selectedSectionIndex)}
             </div>
           </>
         ) : (
