@@ -57,8 +57,8 @@
 </head>
 <body>
   {% if not isIE(handler.request.headers['user-agent']) and not handler.session.legacy %}
-    <script type="text/javascript" src="/resource/{{ UiContext.constantVersion }}/entry.js"></script>
     <script type="text/javascript" src="{{ UiContext.cdn_prefix }}resource/{{ global.Ejunz.version['ui-default'] }}/lang-{{ _('__id') }}.js"></script>
+    <script type="text/javascript" src="{{ UiContext.cdn_prefix }}resource/{{ UiContext.constantVersion }}/entry.js"></script>
     <script type="text/javascript" src="{{ UiContext.cdn_prefix }}ejunz-{{ global.Ejunz.version['ui-default'] }}.js{% if process.env.DEV %}?version=dev{% endif %}"></script>
   {% endif %}
   {% block body %}{% endblock %}
