@@ -4,21 +4,16 @@ import { NamedPage } from 'vj/misc/Page';
 import { i18n, request } from 'vj/utils';
 import Notification from 'vj/components/notification';
 
-// 与 base outline 相同的缓存 key 和图片 Cache 名，便于复用 base 的缓存
+// Cache keys aligned with base outline (shared image Cache API).
 const BASE_OUTLINE_CARD_CACHE_PREFIX = 'base-outline-card-';
 const BASE_OUTLINE_IMAGES_CACHE_NAME = 'base-outline-images-v1';
 
-/**
- * Lesson 文案：与 message 页相同，对固定字符串调用 i18n('…')。
- * 若 window.LOCALES 尚未包含该键（例如 lang 包未重建），按 UserContext.viewLang 回退，避免界面上出现 key 名。
- */
-function lessonT(key: string | undefined, zhFallback: string, enFallback: string): string {
-  const L = (typeof window !== 'undefined' && (window as any).LOCALES) as Record<string, string> | undefined;
-  if (key && L && Object.prototype.hasOwnProperty.call(L, key)) {
-    return i18n(key);
-  }
-  const lang = String((typeof window !== 'undefined' && (window as any).UserContext?.viewLang) || 'en').toLowerCase();
-  return lang.startsWith('zh') ? zhFallback : enFallback;
+/** Same as message index.page.ts: copy lives in locales/*.yaml; call i18n() only. */
+function labelForFrozenLessonQueueMode(modeRaw: string | undefined): string {
+  const m = String(modeRaw ?? 'deep').trim().toLowerCase();
+  if (m === 'breadth') return i18n('Breadth learning mode');
+  if (m === 'random') return i18n('Random learning mode');
+  return i18n('Deep learning mode');
 }
 
 interface Problem {
@@ -71,6 +66,7 @@ type LessonUiState = {
   lessonReviewCardIds: string[];
   reviewCardId: string;
   lessonCardProvenanceLabel: string;
+  lessonLearnSessionMode: string;
 };
 
 function normalizeCardFromServer(raw: unknown): Card {
@@ -82,7 +78,7 @@ function normalizeCardFromServer(raw: unknown): Card {
   };
 }
 
-/** 与 jQuery.ajax JSON 解析结果兼容，并兼容框架在 body 里带 url 的跳转字段 */
+/** Unwrap jQuery.ajax-style JSON; supports redirect url in nested body/data. */
 function unwrapLearnPassResponse(raw: unknown) {
   const r = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
   const b = (r.body && typeof r.body === 'object' && !Array.isArray(r.body)) ? (r.body as Record<string, unknown>) : null;
@@ -128,6 +124,7 @@ function initLessonUiState(): LessonUiState {
     lessonReviewCardIds: Array.isArray(U.lessonReviewCardIds) ? U.lessonReviewCardIds.map(String) : [],
     reviewCardId: String(U.reviewCardId || ''),
     lessonCardProvenanceLabel: String(U.lessonCardProvenanceLabel || ''),
+    lessonLearnSessionMode: String(U.lessonLearnSessionMode || ''),
   };
 }
 
@@ -153,6 +150,7 @@ function LessonPage() {
     lessonReviewCardIds,
     reviewCardId,
     lessonCardProvenanceLabel,
+    lessonLearnSessionMode,
   } = lessonUi;
 
   const hasLessonSidebar = (isSingleNodeMode || isTodayMode || isAlonePractice) && nodeTree.length > 0;
@@ -285,7 +283,7 @@ function LessonPage() {
   const [renderedCardFace, setRenderedCardFace] = useState<string>('');
   const imageCacheRef = useRef<Cache | null>(null);
 
-  // 与 base outline 共用图片 Cache API
+  // Shared image Cache API with base outline.
   const initImageCache = useCallback(async () => {
     if ('caches' in window && !imageCacheRef.current) {
       try {
@@ -360,7 +358,7 @@ function LessonPage() {
     await Promise.all(imageUrls.map((url) => getCachedImage(url)));
   }, [initImageCache, getCachedImage]);
 
-  // 使用 base 的缓存：有缓存则用，无缓存则请求并写入缓存（与 base outline 一致）
+  // Use base outline cache: read-through on miss (same as base outline).
   useEffect(() => {
     const cardIdStr = card?.docId != null ? String(card.docId) : '';
     if (!cardIdStr) return;
@@ -399,7 +397,7 @@ function LessonPage() {
       }
     }
 
-    // 无缓存：请求 /markdown 后写入缓存（与 base 一致）
+    // Cold path: POST /markdown then store (same as base).
     fetch('/markdown', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -425,7 +423,7 @@ function LessonPage() {
       .catch(() => setRenderedContent(card.content));
   }, [card?.docId, card?.content, (card as Card).updateAt, replaceImagesWithCache, preloadAndCacheImages]);
 
-  // 卡面 markdown 渲染（与 Know it / No impression 一起展示）
+  // Card-face markdown (with Know it / No impression).
   useEffect(() => {
     if (!card?.cardFace) {
       setRenderedCardFace('');
@@ -505,6 +503,9 @@ function LessonPage() {
       lessonCardProvenanceLabel: typeof payload.lessonCardProvenanceLabel === 'string'
         ? payload.lessonCardProvenanceLabel
         : prev.lessonCardProvenanceLabel,
+      lessonLearnSessionMode: typeof payload.lessonLearnSessionMode === 'string'
+        ? payload.lessonLearnSessionMode
+        : prev.lessonLearnSessionMode,
     }));
     const nextCard = payload.card != null ? normalizeCardFromServer(payload.card) : null;
     const probs = (nextCard?.problems || []).map(p => ({ ...p, cardId: nextCard!.docId }));
@@ -575,7 +576,6 @@ function LessonPage() {
       const raw = sessionStorage.getItem(cardTimesStorageKey);
       const fromStorage = raw ? JSON.parse(raw) : [];
       const arr = Array.isArray(fromStorage) ? fromStorage : [];
-      // 优先用条目数不少于服务端的一方，避免刚提交的那张卡时间未及时从服务端返回时显示为 —
       if (arr.length >= serverArr.length) {
         setCardTimesMs(arr);
       } else if (serverArr.length > 0) {
@@ -598,12 +598,11 @@ function LessonPage() {
   const cumulativeMs = cardTimesMs.reduce((a, b) => a + b, 0) + (isNodeOrToday ? elapsedMs : 0);
   const currentCardCumulativeMs = elapsedMs + (cardTimesMs[currentCardIndex] ?? 0);
 
-  /** 当前 lesson 会话类型（沿用站内已有键如 Today task，其余与 message 一致走 i18n + LOCALES 回退） */
   const lessonSessionModeLabel = useMemo(() => {
-    if (isTodayMode && rootNodeId === 'today') return lessonT('Today task', '今日任务', 'Today task');
-    if (isTodayMode) return lessonT(undefined, '今日学习', 'Today session');
-    if (isSingleNodeMode) return lessonT('Single-node session', '单节点会话', 'Single-node session');
-    if (isAlonePractice) return lessonT('Single-card session', '单卡片会话', 'Single-card session');
+    if (isTodayMode && rootNodeId === 'today') return i18n('Today task');
+    if (isTodayMode) return i18n('Today session');
+    if (isSingleNodeMode) return i18n('Single-node session');
+    if (isAlonePractice) return i18n('Single-card session');
     return '';
   }, [isTodayMode, rootNodeId, isSingleNodeMode, isAlonePractice]);
 
@@ -624,14 +623,24 @@ function LessonPage() {
 
   const lessonSessionProgressCard = useMemo(() => {
     if (!showLessonSessionProgressCard) return null;
-    const modeLabel = lessonSessionModeLabel || lessonT(undefined, '学习会话', 'Session');
+    const modeLabel = lessonSessionModeLabel || i18n('Learn session');
     const modeBlock = (
       <div style={{ marginBottom: showCardQueueProgress ? '12px' : 0 }}>
         <div style={{ fontSize: '12px', color: themeStyles.textTertiary, marginBottom: '4px' }}>
-          {lessonT('Session type', '会话类型', 'Session type')}
+          {i18n('Session type')}
         </div>
-        <div style={{ fontSize: '15px', fontWeight: 700, color: themeStyles.accent }}>
-          {modeLabel}
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 10px' }}>
+          <span style={{ fontSize: '15px', fontWeight: 700, color: themeStyles.accent }}>
+            {modeLabel}
+          </span>
+          {isTodayMode && (
+            <>
+              <span style={{ fontSize: '14px', color: themeStyles.textTertiary }} aria-hidden>·</span>
+              <span style={{ fontSize: '14px', fontWeight: 600, color: themeStyles.textPrimary }}>
+                {labelForFrozenLessonQueueMode(lessonLearnSessionMode)}
+              </span>
+            </>
+          )}
         </div>
       </div>
     );
@@ -682,6 +691,8 @@ function LessonPage() {
     showLessonSessionProgressCard,
     showCardQueueProgress,
     lessonSessionModeLabel,
+    isTodayMode,
+    lessonLearnSessionMode,
     flatCards.length,
     lessonQueueDoneCount,
     themeStyles,
@@ -847,7 +858,7 @@ function LessonPage() {
           await dialog.open();
         }
       } catch (err) {
-        console.error('预览图片失败:', err);
+        console.error('Image preview failed:', err);
         Notification.error(i18n('Image preview failed'));
       }
     };
@@ -1369,7 +1380,7 @@ function LessonPage() {
     );
   }
 
-  // 仅当「无题目」时使用卡片 view（Know it / No impression）；有题目的走下方题目刷题模式。单卡片模式无题目时与 node 模式无题目一致，也用卡片 view。
+  // Card view when there are no problems; otherwise use problem queue below. Single-card without problems matches node-without-problems.
   const useCardViewMode = (isSingleNodeMode || isTodayMode || isAlonePractice) && !hasProblems && allProblems.length === 0;
   let cardViewContent: React.ReactNode = null;
   if (useCardViewMode) {
@@ -1537,7 +1548,7 @@ function LessonPage() {
           {currentCardIndex + 1} / {flatCards.length} {i18n('cards')}
           {!(isTodayMode && rootNodeId === 'today') && liveLessonSession && Array.isArray(liveLessonSession.lessonCardQueue) && (
             <span style={{ display: 'block', fontSize: '11px', color: themeStyles.liveSync, marginTop: '4px' }}>
-              {i18n('Live session') || '会话已同步'} · {(liveLessonSession.lessonCardQueue as unknown[]).length} {i18n('cards')}
+              {i18n('Live session') || 'Live session synced'} · {(liveLessonSession.lessonCardQueue as unknown[]).length} {i18n('cards')}
             </span>
           )}
         </div>
@@ -1717,7 +1728,7 @@ function LessonPage() {
     </>
   );
 
-  /** 分栏时左侧为「已完成」，右侧为「未完成」+ 进度元信息 */
+  /** Split sidebars: left done, right pending + progress meta. */
   const lessonSidebarLeftColumn = splitQueueSidebars ? sidebarInnerRightSplit : sidebarInner;
   const lessonSidebarRightColumn = splitQueueSidebars ? sidebarInnerLeftSplit : null;
 
@@ -1752,7 +1763,7 @@ function LessonPage() {
     setRightDrawerOpen(false);
   };
 
-  // 卡片 view 与刷题模式共用侧边栏：有侧边栏时用同一布局；手机端侧栏为抽屉
+  // Card view and problem mode share sidebar layout; mobile uses drawers.
   if (cardViewContent) {
     const showSidebarHere = hasLessonSidebar;
     if (showSidebarHere) {

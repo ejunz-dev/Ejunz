@@ -1,4 +1,5 @@
 import { ObjectId } from 'mongodb';
+import { getLearnSessionMode, normalizeLearnSessionMode } from './learnModePrefs';
 import type { LessonCardQueueItem, LessonMode, SessionDoc, SessionPatch } from '../model/session';
 import SessionModel from '../model/session';
 
@@ -110,6 +111,10 @@ export function frozenTodayQueueMatchesLearnSettings(dudoc: any, s: SessionDoc):
         ? s.currentLearnSectionId.trim()
         : undefined;
     if (did !== undefined && sid !== undefined && did !== sid) return false;
+    const normalizedDu = getLearnSessionMode(du);
+    const rawS = (s as SessionDoc & { lessonQueueLearnSessionMode?: string | null }).lessonQueueLearnSessionMode;
+    const normalizedS = normalizeLearnSessionMode(rawS);
+    if (normalizedDu !== normalizedS) return false;
     return true;
 }
 
