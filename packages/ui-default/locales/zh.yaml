@@ -245,6 +245,25 @@ __langname: 简体中文
 'Last Connected': 最后连接
 'Last Disconnected Time': 最后断开时间
 'Learn session mode': 学习模式（下次会话）
+'Learn sub mode': 学习副模式（下次会话）
+'Learn sub mode new only': 纯学新（仅学习起点节槽及之后的卡）
+'Learn sub mode review only': 纯复习（仅学习起点节槽之前的卡）
+'Learn sub mode mixed': 学新 + 复习
+'Learn new review ratio': 新卡与复习卡比例（新/旧只看学习起点前后节槽；复习总张数 ≈ 新段卡数 × N）
+'Learn mixed schedule': 学新+复习时的顺序
+'Learn mixed schedule review first': 先复习
+'Learn mixed schedule new first': 先学新
+'Learn mixed schedule shuffle': 随机打乱
+'Learn mixed schedule one one': 1+1（一新一旧）
+'Learn sub mode hint': 与上方学习顺序配合展开候选。新/旧仅由学习起点节槽决定：槽 < 起点为旧，槽 ≥ 起点为新（与认识/没印象、进度 pass 无关）。「学新+复习」下可选先复习、先学新、随机打乱或 1+1；比例表示新段每张卡对应 N 张旧段卡（先学新则整段新再接旧段）。新旧两段均从同一今日候选列表按节槽划分。若节前无卡则旧段为空。仅学新/仅复习只排对应段。
+'Learn today modes config': '主模式：{0} · 副模式：{1}'
+'Learn today card kind new': 新卡片
+'Learn today card kind review': 复习卡片
+'Lesson session new old counts': '{0} 张新 · {1} 张旧'
+'Learn queue card tag new': 新
+'Learn queue card tag old': 旧
+'Failed to save learn sub mode': 保存学习副模式失败
+'New vs review ratio label': '新 : 复习 = 1 : {0}'
 'Learn session': 学习会话
 'Learn Settings': 学习设置
 'Learning consumption': 学习消耗

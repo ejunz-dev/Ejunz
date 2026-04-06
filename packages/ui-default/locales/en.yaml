@@ -225,6 +225,25 @@ __langname: English
 'Last Connected': Last Connected
 'Last Disconnected Time': Last Disconnected Time
 'Learn session mode': Session order (next daily run)
+'Learn sub mode': Card mix (next daily run)
+'Learn sub mode new only': New only (cards at/after learning-start section slot)
+'Learn sub mode review only': Review only (cards before learning-start section slot)
+'Learn sub mode mixed': New + review
+'Learn new review ratio': Ratio (new vs old = section slot vs learning start only; review slots ≈ new-segment count × N)
+'Learn mixed schedule': Order (new + review)
+'Learn mixed schedule review first': Review first
+'Learn mixed schedule new first': New first
+'Learn mixed schedule shuffle': Shuffle
+'Learn mixed schedule one one': 1+1 (alternate new/review)
+'Learn sub mode hint': 'Candidates follow session order above. New vs old is only by learning-start section slot: slot < start = old, slot ≥ start = new (not tied to Know/Forget or pass rows). Mixed mode: review-first, new-first, shuffle, or 1+1; ratio = N old-segment pulls per new-segment card (new-first = new block then old block). Both segments are split from the same today candidate list by slot. If there are no pre-start cards, the old segment is empty.'
+'Learn today modes config': 'Main: {0} · Sub: {1}'
+'Learn today card kind new': New card
+'Learn today card kind review': Review card
+'Lesson session new old counts': '{0} new · {1} review'
+'Learn queue card tag new': New
+'Learn queue card tag old': Old
+'Failed to save learn sub mode': Failed to save learn sub mode
+'New vs review ratio label': 'New : review = 1 : {0}'
 'Learn session': Learn session
 'Learn Settings': Learn Settings
 'Learning consumption': Learning consumption

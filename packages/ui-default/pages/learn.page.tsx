@@ -62,10 +62,52 @@ interface LearnTrainingOption {
 
 type LearnSessionModeUi = 'deep' | 'breadth' | 'random';
 
+type LearnSubModeUi = 'new_only' | 'review_only' | 'mixed';
+
+type LearnMixedScheduleUi = 'review_first' | 'new_first' | 'shuffle' | 'one_one';
+
+/** Server `this.translate()` strings for learn sub mode (matches user UI language; avoids stale `window.LOCALES`). */
+interface LearnSubModeStringsFromServer {
+  label?: string;
+  optNewOnly?: string;
+  optReviewOnly?: string;
+  optMixed?: string;
+  hint?: string;
+  ratioAria?: string;
+  mixedScheduleAria?: string;
+  mixedScheduleReviewFirst?: string;
+  mixedScheduleNewFirst?: string;
+  mixedScheduleShuffle?: string;
+  mixedScheduleOneOne?: string;
+  failedSave?: string;
+  ratioOptionLabels?: string[];
+}
+
 function normalizeLearnSessionModeFromUi(raw: unknown): LearnSessionModeUi {
   const s = String(raw ?? 'deep').trim().toLowerCase();
   if (s === 'breadth' || s === 'random') return s;
   return 'deep';
+}
+
+function normalizeLearnSubModeFromUi(raw: unknown): LearnSubModeUi {
+  const s = String(raw ?? 'new_only').trim().toLowerCase().replace(/-/g, '_');
+  if (s === 'review_only' || s === 'review') return 'review_only';
+  if (s === 'mixed') return 'mixed';
+  return 'new_only';
+}
+
+function normalizeLearnNewReviewRatioFromUi(raw: unknown): number {
+  const n = parseInt(String(raw ?? '1'), 10);
+  if ([1, 2, 3, 4, 5].includes(n)) return n;
+  return 1;
+}
+
+function normalizeLearnMixedScheduleFromUi(raw: unknown): LearnMixedScheduleUi {
+  const s = String(raw ?? 'new_first').trim().toLowerCase().replace(/-/g, '_');
+  if (s === 'review_first' || s === 'reviewfirst') return 'review_first';
+  if (s === 'shuffle') return 'shuffle';
+  if (s === 'one_one' || s === 'oneone' || s === 'alternating') return 'one_one';
+  return 'new_first';
 }
 
 function getChildren(nodeId: string, sections: MapDAGNode[], dag: MapDAGNode[]): MapDAGNode[] {
@@ -117,11 +159,28 @@ function LearnPage() {
   const pathListLen = pathSectionsView.length;
   const currentSectionIndex = (window as any).UiContext?.currentSectionIndex as number | undefined;
   const passedCardKeysSet = new Set<string>((window as any).UiContext?.passedCardKeys || []);
+  const passedLegacyCardIdsSet = new Set<string>((window as any).UiContext?.passedLegacyCardIds || []);
   const learnTrainings = ((window as any).UiContext?.learnTrainings || []) as LearnTrainingOption[];
   const selectedLearnTrainingDocId = String((window as any).UiContext?.selectedLearnTrainingDocId || '').trim() || null;
   const requireBaseSelection = !!(window as any).UiContext?.requireBaseSelection;
   const initialLearnSessionMode = useMemo(
     () => normalizeLearnSessionModeFromUi((window as any).UiContext?.learnSessionMode),
+    [],
+  );
+  const initialLearnSubMode = useMemo(
+    () => normalizeLearnSubModeFromUi((window as any).UiContext?.learnSubMode),
+    [],
+  );
+  const initialLearnNewReviewRatio = useMemo(
+    () => normalizeLearnNewReviewRatioFromUi((window as any).UiContext?.learnNewReviewRatio),
+    [],
+  );
+  const initialLearnMixedSchedule = useMemo(
+    () => normalizeLearnMixedScheduleFromUi((window as any).UiContext?.learnMixedSchedule),
+    [],
+  );
+  const learnSubModeStrings = useMemo(
+    () => ((window as any).UiContext?.learnSubModeStrings || {}) as LearnSubModeStringsFromServer,
     [],
   );
   const todayLessonResumeUrl = String((window as any).UiContext?.todayLessonResumeUrl || '').trim();
@@ -136,6 +195,10 @@ function LearnPage() {
   const [isSavingGoal, setIsSavingGoal] = useState(false);
   const [learnSessionMode, setLearnSessionMode] = useState<LearnSessionModeUi>(initialLearnSessionMode);
   const [savingLearnSessionMode, setSavingLearnSessionMode] = useState(false);
+  const [learnSubMode, setLearnSubMode] = useState<LearnSubModeUi>(initialLearnSubMode);
+  const [learnNewReviewRatio, setLearnNewReviewRatio] = useState(initialLearnNewReviewRatio);
+  const [learnMixedSchedule, setLearnMixedSchedule] = useState<LearnMixedScheduleUi>(initialLearnMixedSchedule);
+  const [savingLearnSubPrefs, setSavingLearnSubPrefs] = useState(false);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
   const [showConsecutiveTip, setShowConsecutiveTip] = useState(false);
@@ -297,6 +360,40 @@ function LearnPage() {
       setSavingLearnSessionMode(false);
     }
   }, [domainId, learnSessionMode, savingLearnSessionMode]);
+
+  const persistLearnSubPrefs = useCallback(async (
+    nextSub: LearnSubModeUi,
+    nextRatio: number,
+    nextSchedule: LearnMixedScheduleUi,
+  ) => {
+    if (!domainId || savingLearnSubPrefs) return;
+    if (nextSub === learnSubMode && nextRatio === learnNewReviewRatio && nextSchedule === learnMixedSchedule) return;
+    const prevSub = learnSubMode;
+    const prevRatio = learnNewReviewRatio;
+    const prevSchedule = learnMixedSchedule;
+    setLearnSubMode(nextSub);
+    setLearnNewReviewRatio(nextRatio);
+    setLearnMixedSchedule(nextSchedule);
+    setSavingLearnSubPrefs(true);
+    try {
+      await request.post(`/d/${domainId}/learn/sub-mode`, {
+        learnSubMode: nextSub,
+        learnNewReviewRatio: nextRatio,
+        learnMixedSchedule: nextSchedule,
+      });
+      window.location.reload();
+    } catch (error: any) {
+      setLearnSubMode(prevSub);
+      setLearnNewReviewRatio(prevRatio);
+      setLearnMixedSchedule(prevSchedule);
+      console.error('Failed to save learn sub mode:', error);
+      const msg = error?.response?.data?.message ?? error?.response?.data?.error ?? error?.message
+        ?? (learnSubModeStrings.failedSave || i18n('Failed to save learn sub mode'));
+      Notification.error(typeof msg === 'string' ? msg : (Array.isArray(msg) ? msg.join(' ') : (learnSubModeStrings.failedSave || i18n('Failed to save learn sub mode'))));
+    } finally {
+      setSavingLearnSubPrefs(false);
+    }
+  }, [domainId, learnSubMode, learnNewReviewRatio, learnMixedSchedule, savingLearnSubPrefs, learnSubModeStrings.failedSave]);
 
   const progressPercentage = totalProgress > 0 ? Math.round((currentProgress / totalProgress) * 100) : 0;
 
@@ -852,6 +949,113 @@ function LearnPage() {
               <div style={{ fontSize: '12px', color: themeStyles.textTertiary, lineHeight: 1.45 }}>
                 {i18n('Applies to next learn session')}
               </div>
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                gap: '10px',
+                marginTop: '14px',
+                marginBottom: '6px',
+              }}>
+                <label htmlFor="learn-sub-mode" style={{ fontSize: '13px', color: themeStyles.textSecondary, fontWeight: 500 }}>
+                  {learnSubModeStrings.label || i18n('Learn sub mode')}
+                </label>
+                <select
+                  id="learn-sub-mode"
+                  value={learnSubMode}
+                  disabled={savingLearnSubPrefs || savingLearnSessionMode}
+                  onChange={(e) => {
+                    const v = normalizeLearnSubModeFromUi(e.target.value);
+                    void persistLearnSubPrefs(v, learnNewReviewRatio, learnMixedSchedule);
+                  }}
+                  style={{
+                    padding: '6px 10px',
+                    fontSize: '13px',
+                    background: themeStyles.bgPrimary,
+                    border: `1px solid ${themeStyles.border}`,
+                    borderRadius: '8px',
+                    color: themeStyles.textPrimary,
+                    cursor: savingLearnSubPrefs || savingLearnSessionMode ? 'not-allowed' : 'pointer',
+                    opacity: savingLearnSubPrefs || savingLearnSessionMode ? 0.7 : 1,
+                    minWidth: '200px',
+                  }}
+                >
+                  <option value="new_only">{learnSubModeStrings.optNewOnly || i18n('Learn sub mode new only')}</option>
+                  <option value="review_only">{learnSubModeStrings.optReviewOnly || i18n('Learn sub mode review only')}</option>
+                  <option value="mixed">{learnSubModeStrings.optMixed || i18n('Learn sub mode mixed')}</option>
+                </select>
+                {learnSubMode === 'mixed' && (
+                  <>
+                    <select
+                      id="learn-mixed-schedule"
+                      value={learnMixedSchedule}
+                      disabled={savingLearnSubPrefs || savingLearnSessionMode}
+                      onChange={(e) => {
+                        const v = normalizeLearnMixedScheduleFromUi(e.target.value);
+                        void persistLearnSubPrefs(learnSubMode, learnNewReviewRatio, v);
+                      }}
+                      aria-label={learnSubModeStrings.mixedScheduleAria || i18n('Learn mixed schedule')}
+                      style={{
+                        padding: '6px 10px',
+                        fontSize: '13px',
+                        background: themeStyles.bgPrimary,
+                        border: `1px solid ${themeStyles.border}`,
+                        borderRadius: '8px',
+                        color: themeStyles.textPrimary,
+                        cursor: savingLearnSubPrefs || savingLearnSessionMode ? 'not-allowed' : 'pointer',
+                        opacity: savingLearnSubPrefs || savingLearnSessionMode ? 0.7 : 1,
+                        minWidth: '180px',
+                      }}
+                    >
+                      <option value="review_first">
+                        {learnSubModeStrings.mixedScheduleReviewFirst || i18n('Learn mixed schedule review first')}
+                      </option>
+                      <option value="new_first">
+                        {learnSubModeStrings.mixedScheduleNewFirst || i18n('Learn mixed schedule new first')}
+                      </option>
+                      <option value="shuffle">
+                        {learnSubModeStrings.mixedScheduleShuffle || i18n('Learn mixed schedule shuffle')}
+                      </option>
+                      <option value="one_one">
+                        {learnSubModeStrings.mixedScheduleOneOne || i18n('Learn mixed schedule one one')}
+                      </option>
+                    </select>
+                    {learnMixedSchedule !== 'one_one' && (
+                      <select
+                        id="learn-new-review-ratio"
+                        value={String(learnNewReviewRatio)}
+                        disabled={savingLearnSubPrefs || savingLearnSessionMode}
+                        onChange={(e) => {
+                          const n = normalizeLearnNewReviewRatioFromUi(e.target.value);
+                          void persistLearnSubPrefs(learnSubMode, n, learnMixedSchedule);
+                        }}
+                        aria-label={learnSubModeStrings.ratioAria || i18n('Learn new review ratio')}
+                        style={{
+                          padding: '6px 10px',
+                          fontSize: '13px',
+                          background: themeStyles.bgPrimary,
+                          border: `1px solid ${themeStyles.border}`,
+                          borderRadius: '8px',
+                          color: themeStyles.textPrimary,
+                          cursor: savingLearnSubPrefs || savingLearnSessionMode ? 'not-allowed' : 'pointer',
+                          opacity: savingLearnSubPrefs || savingLearnSessionMode ? 0.7 : 1,
+                          minWidth: '140px',
+                        }}
+                      >
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <option key={n} value={String(n)}>
+                            {(learnSubModeStrings.ratioOptionLabels && learnSubModeStrings.ratioOptionLabels[n - 1])
+                              || i18n('New vs review ratio label', n)}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </>
+                )}
+              </div>
+              <div style={{ fontSize: '12px', color: themeStyles.textTertiary, lineHeight: 1.45 }}>
+                {learnSubModeStrings.hint || i18n('Learn sub mode hint')}
+              </div>
             </div>
 
             <div style={{
@@ -1107,7 +1311,8 @@ function LearnPage() {
                         {sectionCards.map((card) => {
                           const cardIdStr = String(card.cardId);
                           const pathPlacementKey = `${sectionIndex}:${cardIdStr}`;
-                          const pathCardPassed = passedCardKeysSet.has(pathPlacementKey);
+                          const pathCardPassed = passedCardKeysSet.has(pathPlacementKey)
+                            || passedLegacyCardIdsSet.has(cardIdStr);
                           const problemCount = card.problemCount ?? (card.problems?.length ?? 0);
                           const problems = card.problems ?? [];
                           const isCardExpanded = expandedPathCardIds.has(pathPlacementKey);

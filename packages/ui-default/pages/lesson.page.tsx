@@ -60,13 +60,31 @@ type LessonUiState = {
   hasProblems: boolean;
   rootNodeId: string;
   rootNodeTitle: string;
-  flatCards: Array<{ nodeId: string; cardId: string; nodeTitle: string; cardTitle: string; domainId?: string }>;
+  flatCards: Array<{
+    nodeId: string;
+    cardId: string;
+    nodeTitle: string;
+    cardTitle: string;
+    domainId?: string;
+    baseDocId?: number;
+    learnSectionOrderIndex?: number;
+    /** 今日任务：服务端按「起点前节 | 已掌握」标好的新/复习，侧栏 tag 优先用此字段。 */
+    lessonTodayQueueKind?: 'new' | 'review';
+  }>;
   nodeTree: LessonNodeTreeItem[];
   currentCardIndex: number;
   lessonReviewCardIds: string[];
   reviewCardId: string;
   lessonCardProvenanceLabel: string;
   lessonLearnSessionMode: string;
+  /** Today task only: server-translated "主模式… · 副模式…". */
+  lessonTodayModesConfigLine: string;
+  lessonTodayCardKind: 'new' | 'review' | '';
+  lessonTodayCardKindLabel: string;
+  /** Section-order slot of learning start; -1 = omit new/review queue breakdown (e.g. single-card practice). */
+  lessonSessionLearnStartSlot: number;
+  /** Server-translated "n 新 · m 旧" (avoids missing `window.LOCALES` before UI rebuild). */
+  lessonSessionQueueNewOldLabel: string;
 };
 
 function normalizeCardFromServer(raw: unknown): Card {
@@ -97,6 +115,49 @@ function lessonPayloadLooksValid(lesson: unknown): lesson is Record<string, unkn
   return typeof card === 'object' && card !== null;
 }
 
+/** 侧栏新/旧 tag：`window.LOCALES` 未更新时避免显示英文 key。 */
+function i18nLearnQueueCardTag(kind: 'new' | 'old'): string {
+  const key = kind === 'old' ? 'Learn queue card tag old' : 'Learn queue card tag new';
+  const t = i18n(key);
+  if (t !== key) return t;
+  const lang = String((window as any).UserContext?.locale || document.documentElement.lang || 'zh').toLowerCase();
+  if (lang.startsWith('en')) return kind === 'old' ? 'Old' : 'New';
+  return kind === 'old' ? '旧' : '新';
+}
+
+/** 今日任务：`lessonTodayQueueKind`（节槽 vs 学习起点）优先；缺省按节槽 < 学习起点为旧。 */
+function flatCardNewOldKind(
+  fc: LessonUiState['flatCards'][number] | undefined,
+  learnStartSlot: number,
+): 'new' | 'old' | null {
+  if (learnStartSlot < 0 || fc == null) return null;
+  if (fc.lessonTodayQueueKind === 'review') return 'old';
+  if (fc.lessonTodayQueueKind === 'new') return 'new';
+  const start = Math.max(0, learnStartSlot);
+  const slot = typeof fc.learnSectionOrderIndex === 'number' && fc.learnSectionOrderIndex >= 0
+    ? fc.learnSectionOrderIndex
+    : 0;
+  return slot < start ? 'old' : 'new';
+}
+
+/** 进度条旁新/旧行：优先服务端文案，其次 i18n，再按语言兜底。 */
+function lessonQueueNewOldLine(
+  serverLabel: string,
+  counts: { newN: number; reviewN: number } | null,
+): string {
+  const trimmed = String(serverLabel || '').trim();
+  if (trimmed) return trimmed;
+  if (!counts) return '';
+  const tpl = i18n('Lesson session new old counts');
+  const filled = tpl
+    .replace(/\{0\}/g, String(counts.newN))
+    .replace(/\{1\}/g, String(counts.reviewN));
+  if (filled !== 'Lesson session new old counts') return filled;
+  const lang = String((window as any).UserContext?.locale || document.documentElement.lang || 'zh').toLowerCase();
+  if (lang.startsWith('en')) return `${counts.newN} new · ${counts.reviewN} review`;
+  return `${counts.newN} 张新 · ${counts.reviewN} 张旧`;
+}
+
 function initLessonUiState(): LessonUiState {
   const U = (window as any).UiContext || {};
   const nodeRaw = U.node || {};
@@ -125,6 +186,11 @@ function initLessonUiState(): LessonUiState {
     reviewCardId: String(U.reviewCardId || ''),
     lessonCardProvenanceLabel: String(U.lessonCardProvenanceLabel || ''),
     lessonLearnSessionMode: String(U.lessonLearnSessionMode || ''),
+    lessonTodayModesConfigLine: String(U.lessonTodayModesConfigLine || ''),
+    lessonTodayCardKind: U.lessonTodayCardKind === 'review' ? 'review' : U.lessonTodayCardKind === 'new' ? 'new' : '',
+    lessonTodayCardKindLabel: String(U.lessonTodayCardKindLabel || ''),
+    lessonSessionLearnStartSlot: typeof U.lessonSessionLearnStartSlot === 'number' ? U.lessonSessionLearnStartSlot : -1,
+    lessonSessionQueueNewOldLabel: String(U.lessonSessionQueueNewOldLabel || ''),
   };
 }
 
@@ -151,6 +217,11 @@ function LessonPage() {
     reviewCardId,
     lessonCardProvenanceLabel,
     lessonLearnSessionMode,
+    lessonTodayModesConfigLine,
+    lessonTodayCardKind,
+    lessonTodayCardKindLabel,
+    lessonSessionLearnStartSlot,
+    lessonSessionQueueNewOldLabel,
   } = lessonUi;
 
   const hasLessonSidebar = (isSingleNodeMode || isTodayMode || isAlonePractice) && nodeTree.length > 0;
@@ -506,6 +577,23 @@ function LessonPage() {
       lessonLearnSessionMode: typeof payload.lessonLearnSessionMode === 'string'
         ? payload.lessonLearnSessionMode
         : prev.lessonLearnSessionMode,
+      lessonTodayModesConfigLine: typeof payload.lessonTodayModesConfigLine === 'string'
+        ? payload.lessonTodayModesConfigLine
+        : prev.lessonTodayModesConfigLine,
+      lessonTodayCardKind: payload.lessonTodayCardKind === 'review'
+        ? 'review'
+        : payload.lessonTodayCardKind === 'new'
+          ? 'new'
+          : prev.lessonTodayCardKind,
+      lessonTodayCardKindLabel: typeof payload.lessonTodayCardKindLabel === 'string'
+        ? payload.lessonTodayCardKindLabel
+        : prev.lessonTodayCardKindLabel,
+      lessonSessionLearnStartSlot: typeof payload.lessonSessionLearnStartSlot === 'number'
+        ? payload.lessonSessionLearnStartSlot
+        : prev.lessonSessionLearnStartSlot,
+      lessonSessionQueueNewOldLabel: typeof payload.lessonSessionQueueNewOldLabel === 'string'
+        ? payload.lessonSessionQueueNewOldLabel
+        : prev.lessonSessionQueueNewOldLabel,
     }));
     const nextCard = payload.card != null ? normalizeCardFromServer(payload.card) : null;
     const probs = (nextCard?.problems || []).map(p => ({ ...p, cardId: nextCard!.docId }));
@@ -621,6 +709,20 @@ function LessonPage() {
     return Math.max(0, flatCards.length - lessonQueueDoneCount);
   }, [showCardQueueProgress, flatCards.length, lessonQueueDoneCount]);
 
+  const lessonSessionNewOldCounts = useMemo(() => {
+    if (!showCardQueueProgress || flatCards.length === 0) return null;
+    if (!isTodayMode && !isSingleNodeMode) return null;
+    if (typeof lessonSessionLearnStartSlot !== 'number' || lessonSessionLearnStartSlot < 0) return null;
+    let newN = 0;
+    let reviewN = 0;
+    for (const c of flatCards) {
+      const k = flatCardNewOldKind(c, lessonSessionLearnStartSlot);
+      if (k === 'old') reviewN += 1;
+      else newN += 1;
+    }
+    return { newN, reviewN };
+  }, [showCardQueueProgress, flatCards, isTodayMode, isSingleNodeMode, lessonSessionLearnStartSlot]);
+
   const lessonSessionProgressCard = useMemo(() => {
     if (!showLessonSessionProgressCard) return null;
     const modeLabel = lessonSessionModeLabel || i18n('Learn session');
@@ -642,6 +744,17 @@ function LessonPage() {
             </>
           )}
         </div>
+        {isTodayMode && rootNodeId === 'today' && lessonTodayModesConfigLine ? (
+          <div style={{
+            fontSize: '12px',
+            color: themeStyles.textTertiary,
+            marginTop: '8px',
+            lineHeight: 1.5,
+            wordBreak: 'break-word',
+          }}>
+            {lessonTodayModesConfigLine}
+          </div>
+        ) : null}
       </div>
     );
     const cardShell = {
@@ -662,11 +775,14 @@ function LessonPage() {
     const total = flatCards.length;
     const done = lessonQueueDoneCount;
     const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+    const newOldLine = lessonQueueNewOldLine(lessonSessionQueueNewOldLabel, lessonSessionNewOldCounts);
+    const newOldPrefix = newOldLine ? `${newOldLine} · ` : '';
     return (
       <div style={cardShell}>
         {modeBlock}
         <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', marginBottom: '12px', gap: '12px', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '15px', fontWeight: 600, color: themeStyles.accent }}>
+            {newOldPrefix}
             {done} / {total} {i18n('cards')} · {pct}%
           </span>
         </div>
@@ -692,12 +808,62 @@ function LessonPage() {
     showCardQueueProgress,
     lessonSessionModeLabel,
     isTodayMode,
+    rootNodeId,
     lessonLearnSessionMode,
+    lessonTodayModesConfigLine,
     flatCards.length,
     lessonQueueDoneCount,
+    lessonSessionNewOldCounts,
+    lessonSessionQueueNewOldLabel,
     themeStyles,
     theme,
     i18n,
+  ]);
+
+  const showTodayLearnKindBadge = isTodayMode && rootNodeId === 'today' && !!lessonTodayCardKindLabel;
+  const todayLearnKindIsReview = lessonTodayCardKind === 'review';
+  const lessonProvenanceTopRow = useMemo(() => {
+    if (!showLessonSessionProgressCard || (!lessonCardProvenanceLabel && !showTodayLearnKindBadge)) return null;
+    return (
+      <div style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        gap: '8px',
+        fontSize: '12px',
+        color: themeStyles.textTertiary,
+        marginBottom: '8px',
+        lineHeight: 1.45,
+        wordBreak: 'break-word',
+      }}>
+        {showTodayLearnKindBadge ? (
+          <span
+            style={{
+              flexShrink: 0,
+              fontSize: '11px',
+              fontWeight: 700,
+              padding: '3px 8px',
+              borderRadius: '6px',
+              letterSpacing: '0.02em',
+              backgroundColor: todayLearnKindIsReview ? themeStyles.reviewBg : themeStyles.accentMutedBg,
+              color: todayLearnKindIsReview ? themeStyles.reviewFg : themeStyles.accentMutedFg,
+            }}
+          >
+            {lessonTodayCardKindLabel}
+          </span>
+        ) : null}
+        {lessonCardProvenanceLabel ? (
+          <span style={{ flex: '1 1 160px', minWidth: 0 }}>{lessonCardProvenanceLabel}</span>
+        ) : null}
+      </div>
+    );
+  }, [
+    showLessonSessionProgressCard,
+    lessonCardProvenanceLabel,
+    showTodayLearnKindBadge,
+    todayLearnKindIsReview,
+    lessonTodayCardKindLabel,
+    themeStyles,
   ]);
 
   useEffect(() => {
@@ -762,12 +928,38 @@ function LessonPage() {
     };
   }, [isMobile, showSidebarInNav, splitQueueSidebars, lessonQueueDoneCount, lessonQueuePendingCount, i18n]);
 
+  const showQueueNameNewOld = (isTodayMode || isSingleNodeMode)
+    && typeof lessonSessionLearnStartSlot === 'number'
+    && lessonSessionLearnStartSlot >= 0;
+
+  const queueNewOldTagBeforeName = (fc: LessonUiState['flatCards'][number] | undefined) => {
+    if (!showQueueNameNewOld || fc == null) return null;
+    const k = flatCardNewOldKind(fc, lessonSessionLearnStartSlot);
+    if (!k) return null;
+    const isOld = k === 'old';
+    return (
+      <span style={{
+        marginRight: '6px',
+        fontSize: '11px',
+        fontWeight: 600,
+        flexShrink: 0,
+        padding: '2px 6px',
+        borderRadius: '4px',
+        backgroundColor: isOld ? themeStyles.reviewBg : themeStyles.accentMutedBg,
+        color: isOld ? themeStyles.reviewFg : themeStyles.accentMutedFg,
+      }}>
+        {i18nLearnQueueCardTag(isOld ? 'old' : 'new')}
+      </span>
+    );
+  };
+
   const renderNodeTreeItem = (item: { type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }, depth: number): React.ReactNode => {
     if (item.type === 'card') {
       const idx = cardIdToFlatIndex[item.id];
       const inReview = lessonReviewCardIds.includes(item.id);
       const isDone = typeof idx === 'number' && idx < currentCardIndex && !inReview;
       const isCurrent = typeof idx === 'number' && idx === currentCardIndex;
+      const fc = typeof idx === 'number' ? flatCards[idx] : undefined;
       let timeText = '—';
       if (typeof idx === 'number') {
         if (isCurrent) timeText = `${(currentCardCumulativeMs / 1000).toFixed(1)}s`;
@@ -792,6 +984,7 @@ function LessonPage() {
           <span>
             {isDone && <span style={{ marginRight: '6px' }}>✓</span>}
             {inReview && <span style={{ marginRight: '6px', fontSize: '11px', color: themeStyles.reviewFg, fontWeight: 600 }}>{i18n('Review')}</span>}
+            {queueNewOldTagBeforeName(fc)}
             {item.title || i18n('Unnamed Card')}
           </span>
           <span style={{ fontSize: '12px', color: themeStyles.textTertiary, flexShrink: 0 }}>{timeText}</span>
@@ -1162,17 +1355,7 @@ function LessonPage() {
           backgroundColor: themeStyles.bgSecondary,
           borderRadius: '8px',
         }}>
-          {(showLessonSessionProgressCard && lessonCardProvenanceLabel) ? (
-            <div style={{
-              fontSize: '12px',
-              color: themeStyles.textTertiary,
-              marginBottom: '8px',
-              lineHeight: 1.45,
-              wordBreak: 'break-word',
-            }}>
-              {lessonCardProvenanceLabel}
-            </div>
-          ) : null}
+          {lessonProvenanceTopRow}
           <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, color: themeStyles.textPrimary }}>
             {card.title || i18n('Unnamed Card')}
           </h1>
@@ -1400,17 +1583,7 @@ function LessonPage() {
           backgroundColor: themeStyles.bgSecondary,
           borderRadius: '8px',
         }}>
-          {(showLessonSessionProgressCard && lessonCardProvenanceLabel) ? (
-            <div style={{
-              fontSize: '12px',
-              color: themeStyles.textTertiary,
-              marginBottom: '8px',
-              lineHeight: 1.45,
-              wordBreak: 'break-word',
-            }}>
-              {lessonCardProvenanceLabel}
-            </div>
-          ) : null}
+          {lessonProvenanceTopRow}
           <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', color: themeStyles.textPrimary }}>
             {card.title || i18n('Unnamed Card')}
             {(isAlonePractice ? (reviewCardId && String(card.docId) === reviewCardId) : (lessonReviewCardIds.includes(String(card.docId)) || (reviewCardId && String(card.docId) === reviewCardId))) && (
@@ -1567,9 +1740,6 @@ function LessonPage() {
         const inReview = lessonReviewCardIds.includes(String(item.cardId));
         const isDone = idx < currentCardIndex && !inReview;
         const isCurrent = idx === currentCardIndex;
-        let timeText = '—';
-        if (isCurrent) timeText = `${(currentCardCumulativeMs / 1000).toFixed(1)}s`;
-        else if (idx < cardTimesMs.length) timeText = `${(cardTimesMs[idx] / 1000).toFixed(1)}s`;
         const cardStyle: React.CSSProperties = {
           padding: '6px 10px',
           marginBottom: '2px',
@@ -1583,6 +1753,9 @@ function LessonPage() {
           alignItems: 'center',
           gap: '8px',
         };
+        let timeText = '—';
+        if (isCurrent) timeText = `${(currentCardCumulativeMs / 1000).toFixed(1)}s`;
+        else if (idx < cardTimesMs.length) timeText = `${(cardTimesMs[idx] / 1000).toFixed(1)}s`;
         return (
           <div key={`today-card-${idx}-${String(item.cardId)}`} style={cardStyle}>
             <span>
@@ -1592,6 +1765,7 @@ function LessonPage() {
                   {i18n('Review')}
                 </span>
               )}
+              {queueNewOldTagBeforeName(item)}
               {item.cardTitle || i18n('Unnamed Card')}
             </span>
             <span style={{ fontSize: '12px', color: themeStyles.textTertiary, flexShrink: 0 }}>{timeText}</span>
@@ -1626,6 +1800,7 @@ function LessonPage() {
           >
             <span>
               <span style={{ marginRight: '6px' }}>✓</span>
+              {queueNewOldTagBeforeName(item)}
               {item.cardTitle || i18n('Unnamed Card')}
             </span>
             <span style={{ fontSize: '12px', color: themeStyles.textTertiary, flexShrink: 0 }}>{timeText}</span>
@@ -1671,6 +1846,7 @@ function LessonPage() {
                   {i18n('Review')}
                 </span>
               )}
+              {queueNewOldTagBeforeName(item)}
               {item.cardTitle || i18n('Unnamed Card')}
             </span>
             <span style={{ fontSize: '12px', color: themeStyles.textTertiary, flexShrink: 0 }}>{timeText}</span>
@@ -1904,17 +2080,7 @@ function LessonPage() {
         backgroundColor: themeStyles.bgSecondary,
         borderRadius: '8px',
       }}>
-        {(showLessonSessionProgressCard && lessonCardProvenanceLabel) ? (
-          <div style={{
-            fontSize: '12px',
-            color: themeStyles.textTertiary,
-            marginBottom: '8px',
-            lineHeight: 1.45,
-            wordBreak: 'break-word',
-          }}>
-            {lessonCardProvenanceLabel}
-          </div>
-        ) : null}
+        {lessonProvenanceTopRow}
         <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', color: themeStyles.textPrimary }}>
           {card.title || i18n('Unnamed Card')}
           {(isAlonePractice ? (reviewCardId && String(card.docId) === reviewCardId) : lessonReviewCardIds.includes(String(card.docId))) && (
