@@ -18,6 +18,7 @@ export interface MergedLessonState {
     lessonQueueAnchorNodeId: string | undefined;
     lessonQueueBaseDocId: number | undefined;
     lessonQueueTrainingDocId: string | undefined;
+    lessonQueueLearnSectionOrderIndex: number | undefined;
 }
 
 export function mergeDomainLessonState(dudoc: any, sdoc: SessionDoc | null): MergedLessonState {
@@ -36,6 +37,7 @@ export function mergeDomainLessonState(dudoc: any, sdoc: SessionDoc | null): Mer
             lessonQueueAnchorNodeId: undefined,
             lessonQueueBaseDocId: undefined,
             lessonQueueTrainingDocId: undefined,
+            lessonQueueLearnSectionOrderIndex: undefined,
         };
     }
     return {
@@ -65,6 +67,9 @@ export function mergeDomainLessonState(dudoc: any, sdoc: SessionDoc | null): Mer
             : undefined,
         lessonQueueBaseDocId: typeof sdoc.lessonQueueBaseDocId === 'number' ? sdoc.lessonQueueBaseDocId : undefined,
         lessonQueueTrainingDocId: sdoc.lessonQueueTrainingDocId ?? undefined,
+        lessonQueueLearnSectionOrderIndex: typeof sdoc.lessonQueueLearnSectionOrderIndex === 'number'
+            ? sdoc.lessonQueueLearnSectionOrderIndex
+            : undefined,
     };
 }
 

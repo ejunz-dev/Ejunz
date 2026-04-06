@@ -116,7 +116,7 @@ function LearnPage() {
   const pathFullDagView = useTrainingPath ? pathFullDagRaw : fullDag;
   const pathListLen = pathSectionsView.length;
   const currentSectionIndex = (window as any).UiContext?.currentSectionIndex as number | undefined;
-  const passedCardIdsSet = new Set<string>((window as any).UiContext?.passedCardIds || []);
+  const passedCardKeysSet = new Set<string>((window as any).UiContext?.passedCardKeys || []);
   const learnTrainings = ((window as any).UiContext?.learnTrainings || []) as LearnTrainingOption[];
   const selectedLearnTrainingDocId = String((window as any).UiContext?.selectedLearnTrainingDocId || '').trim() || null;
   const requireBaseSelection = !!(window as any).UiContext?.requireBaseSelection;
@@ -147,11 +147,11 @@ function LearnPage() {
   const [expandedPathCardIds, setExpandedPathCardIds] = useState<Set<string>>(new Set());
   const consecutiveBubbleRef = useRef<HTMLButtonElement>(null);
 
-  const togglePathCardExpand = useCallback((cardId: string) => {
+  const togglePathCardExpand = useCallback((placementKey: string) => {
     setExpandedPathCardIds((prev) => {
       const next = new Set(prev);
-      if (next.has(cardId)) next.delete(cardId);
-      else next.add(cardId);
+      if (next.has(placementKey)) next.delete(placementKey);
+      else next.add(placementKey);
       return next;
     });
   }, []);
@@ -1016,11 +1016,18 @@ function LearnPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {pathSectionsView.map((section, sectionIndex) => {
                 const sectionCards = collectCardsUnder(section._id, pathSectionsView, pathFullDagView, new Set());
-                const isCurrentSection = useTrainingPath
-                  ? (pathCurrentSectionId
+                // 节序里可复制同一合并根 id，必须用槽位下标区分「当前」；不能单靠 pathCurrentSectionId/_id。
+                const hasValidCurrentIndex =
+                  typeof currentSectionIndex === 'number'
+                  && Number.isFinite(currentSectionIndex)
+                  && currentSectionIndex >= 0
+                  && currentSectionIndex < pathListLen;
+                const isCurrentSection = hasValidCurrentIndex
+                  ? sectionIndex === currentSectionIndex
+                  : useTrainingPath && pathCurrentSectionId
                     ? section._id === pathCurrentSectionId
-                    : typeof currentSectionIndex === 'number' && sectionIndex === currentSectionIndex)
-                  : typeof currentSectionIndex === 'number' && sectionIndex === currentSectionIndex;
+                      && sectionIndex === pathSectionsView.findIndex((s) => s._id === pathCurrentSectionId)
+                    : typeof currentSectionIndex === 'number' && sectionIndex === currentSectionIndex;
                 const isExpanded = expandedPathSectionSlots.has(sectionIndex);
                 const toggleSection = () => {
                   setExpandedPathSectionSlots((prev) => {
@@ -1099,14 +1106,18 @@ function LearnPage() {
                       }}>
                         {sectionCards.map((card) => {
                           const cardIdStr = String(card.cardId);
+                          const pathPlacementKey = `${sectionIndex}:${cardIdStr}`;
+                          const pathCardPassed = passedCardKeysSet.has(pathPlacementKey);
                           const problemCount = card.problemCount ?? (card.problems?.length ?? 0);
                           const problems = card.problems ?? [];
-                          const isCardExpanded = expandedPathCardIds.has(cardIdStr);
+                          const isCardExpanded = expandedPathCardIds.has(pathPlacementKey);
                           return (
-                            <div key={card.cardId} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <div key={pathPlacementKey} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                               <button
                                 type="button"
-                                onClick={(e) => { e.stopPropagation(); togglePathCardExpand(cardIdStr); }}
+                                title={pathCardPassed ? i18n('Done') : undefined}
+                                aria-label={pathCardPassed ? `${card.title || i18n('Unnamed Card')}, ${i18n('Done')}` : undefined}
+                                onClick={(e) => { e.stopPropagation(); togglePathCardExpand(pathPlacementKey); }}
                                 style={{
                                   display: 'inline-flex',
                                   alignItems: 'center',
@@ -1117,8 +1128,10 @@ function LearnPage() {
                                   fontWeight: 500,
                                   color: themeStyles.textPrimary,
                                   background: themeStyles.bgSecondary,
-                                  border: `1px solid ${themeStyles.border}`,
+                                  border: `1px solid ${pathCardPassed ? themeStyles.primary : themeStyles.border}`,
+                                  borderLeft: pathCardPassed ? `4px solid ${themeStyles.primary}` : undefined,
                                   borderRadius: '10px',
+                                  opacity: pathCardPassed ? 0.88 : 1,
                                   cursor: 'pointer',
                                   textAlign: 'left',
                                   width: '100%',
@@ -1132,6 +1145,19 @@ function LearnPage() {
                                 }}
                               >
                                 <span style={{ flex: 1 }}>{card.title || i18n('Unnamed Card')}</span>
+                                {pathCardPassed && (
+                                  <span
+                                    style={{
+                                      fontSize: '11px',
+                                      fontWeight: 700,
+                                      color: themeStyles.primary,
+                                      flexShrink: 0,
+                                    }}
+                                    aria-hidden
+                                  >
+                                    ✓
+                                  </span>
+                                )}
                                 {problemCount > 0 && (
                                   <span style={{
                                     display: 'inline-flex',
