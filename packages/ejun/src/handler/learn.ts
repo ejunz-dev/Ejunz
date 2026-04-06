@@ -14,7 +14,7 @@ import moment from 'moment-timezone';
 import bus from '../service/bus';
 import { updateDomainRanking } from './domain';
 import { appendUserCheckinDay, countConsecutiveCheckinDays } from '../lib/checkin';
-import { getModeDailyGoal } from '../lib/learnModePrefs';
+import { getLearnSessionMode, getModeDailyGoal, normalizeLearnSessionMode, type LearnSessionMode } from '../lib/learnModePrefs';
 import TrainingModel from '../model/training';
 import { isTrainingRootNodeId, loadTrainingMergedGraph, makeTrainingNodeId, parseTrainingNodeId } from '../lib/trainingMergedGraph';
 import SessionModel, { type LessonCardQueueItem, type SessionDoc, type SessionPatch } from '../model/session';
@@ -386,7 +386,7 @@ function baseOutlineNodeTitlesPath(
         .reverse();
 }
 
-/** 训练计划名 - Base 名 - 合并 DAG / 大纲上的各层节点标题（用于 Lesson 页来源路径） */
+/** Training title - Base title - merged DAG/outline node titles (lesson provenance line). */
 async function formatLessonCardProvenanceLabel(args: {
     domainId: string;
     translate: (key: string) => string;
@@ -395,7 +395,7 @@ async function formatLessonCardProvenanceLabel(args: {
     branch: string;
     rawNodeId: string;
     cardId: string;
-    /** 若调用方已加载合并 DAG，可传入以避免重复 ensure */
+    /** Preloaded merged DAG to skip redundant ensureTrainingLearnDAGCached. */
     dagCache?: { sections: LearnDAGNode[]; allDagNodes: LearnDAGNode[] };
 }): Promise<string> {
     const { domainId, translate, training, baseDoc, branch, rawNodeId, cardId, dagCache } = args;
@@ -696,7 +696,7 @@ async function insertOrUpgradeLearnSession(domainId: string, uid: number, patch:
 }
 
 /**
- * Only one daily row should look「进行中 / 暂停」per user: those are non-abandoned `today` sessions that are not finished
+ * Only one daily row should look in-progress/paused per user: non-abandoned `today` sessions that are not finished
  * (`cardIndex` still inside `lessonCardQueue`). Abandon all such rows before inserting a new daily run.
  */
 async function abandonInProgressOrPausedTodaySessions(domainId: string, uid: number): Promise<void> {
@@ -726,7 +726,7 @@ async function abandonInProgressOrPausedTodaySessions(domainId: string, uid: num
 }
 
 /**
- * Daily practice: every「开始学习」creates a **new** session document — never revive abandoned rows or upgrade placeholders.
+ * Daily practice: each start creates a **new** session document — never revive abandoned rows or upgrade placeholders.
  * Only runs ghost-shell merge (records → row below) so stray shells do not block a clean insert.
  */
 async function insertNewTodayLearnSession(domainId: string, uid: number, patch: SessionPatch): Promise<string> {
@@ -855,6 +855,49 @@ function cycleList<T>(arr: T[], length: number): T[] {
     return out;
 }
 
+type TodayQueueFlatEntry = {
+    nodeId: string;
+    cardId: string;
+    nodeTitle: string;
+    cardTitle: string;
+    baseDocId?: number;
+};
+
+function shuffleArray<T>(arr: T[]): T[] {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const t = a[i];
+        a[i] = a[j];
+        a[j] = t;
+    }
+    return a;
+}
+
+/** After collecting per-section card lists in depth-first order, reorder for breadth / random daily modes. */
+function mergeTodayFlatCardsBySessionMode(sectionBlocks: TodayQueueFlatEntry[][], mode: LearnSessionMode): TodayQueueFlatEntry[] {
+    if (mode === 'breadth') {
+        const out: TodayQueueFlatEntry[] = [];
+        let i = 0;
+        for (;;) {
+            let moved = false;
+            for (const block of sectionBlocks) {
+                if (i < block.length) {
+                    out.push(block[i]);
+                    moved = true;
+                }
+            }
+            if (!moved) break;
+            i++;
+        }
+        return out;
+    }
+    if (mode === 'random') {
+        return shuffleArray(sectionBlocks.flat());
+    }
+    return sectionBlocks.flat();
+}
+
 function dagSubtreeUnderRootFromNodes(allDagNodes: LearnDAGNode[], rootId: string): LearnDAGNode[] {
     const dag: LearnDAGNode[] = [];
     const collectChildren = (parentId: string, collected: Set<string>) => {
@@ -874,7 +917,7 @@ function dagSubtreeUnderRootFromNodes(allDagNodes: LearnDAGNode[], rootId: strin
 
 /**
  * Build today's card queue from training DAG + `learnSectionOrder` + learning start (`domain.user`).
- * Used by GET /learn/lesson and by post「开始学习」so the new session is created with `lessonCardQueue` already set.
+ * Used by GET /learn/lesson and POST /learn/lesson/start so the new session gets `lessonCardQueue` set immediately.
  */
 async function buildTodayLessonQueueFromDomain(
     domainId: string,
@@ -943,10 +986,12 @@ async function buildTodayLessonQueueFromDomain(
             ? []
             : [...sections.slice(startNorm), ...sections.slice(0, startNorm)];
 
-    const todayFlatCards: Array<{ nodeId: string; cardId: string; nodeTitle: string; cardTitle: string; baseDocId?: number }> = [];
     const nodeMap = new Map(allDagNodes.map(n => [n._id, n]));
     sections.forEach(s => nodeMap.set(s._id, s));
+    const sessionMode = getLearnSessionMode(duSec);
+    const sectionBlocks: TodayQueueFlatEntry[][] = [];
     for (const sec of sectionsForDailyPool) {
+        const block: TodayQueueFlatEntry[] = [];
         const subDag = dagSubtreeUnderRootFromNodes(allDagNodes, sec._id);
         const nodesForSection = [{ _id: sec._id } as LearnDAGNode, ...subDag];
         for (const node of nodesForSection) {
@@ -955,7 +1000,7 @@ async function buildTodayLessonQueueFromDomain(
             const cardList = (n.cards || []).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
             for (const c of cardList) {
                 const p = parseTrainingNodeId(n._id);
-                todayFlatCards.push({
+                block.push({
                     nodeId: p ? p.nodeId : n._id,
                     cardId: c.cardId,
                     nodeTitle: n.title || '',
@@ -964,7 +1009,9 @@ async function buildTodayLessonQueueFromDomain(
                 });
             }
         }
+        sectionBlocks.push(block);
     }
+    const todayFlatCards = mergeTodayFlatCardsBySessionMode(sectionBlocks, sessionMode);
 
     const candidateCards = todayFlatCards;
     const excludeTodayPassed = opts?.excludeTodayPassedCards !== false;
@@ -1558,6 +1605,9 @@ class LearnHandler extends Handler {
         if (this.request.path.includes('/daily-goal')) {
             return this.postSetDailyGoal(domainId);
         }
+        if (this.request.path.includes('/session-mode')) {
+            return this.postSetLearnSessionMode(domainId);
+        }
     }
 
     async postSetBase(domainId: string) {
@@ -1645,9 +1695,21 @@ class LearnHandler extends Handler {
         this.response.body = { success: true, dailyGoal };
     }
 
+    async postSetLearnSessionMode(domainId: string) {
+        const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
+        const body: any = this.request?.body || {};
+        const raw = String(body.learnSessionMode ?? body.mode ?? '').trim().toLowerCase();
+        const learnSessionMode = raw === 'breadth' || raw === 'random' ? raw : 'deep';
+        await learn.setUserLearnState(finalDomainId, this.user._id, { learnSessionMode });
+        await clearDailyPracticeSessionAfterSettingsChange(finalDomainId, this.user._id, this.user.priv);
+        this.response.body = { success: true, learnSessionMode };
+    }
+
     @param('sectionId', Types.String, true)
     async get(domainId: string, sectionId?: string) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
+        const dudocForLearnUi = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
+        const learnSessionModeUi = getLearnSessionMode(dudocForLearnUi);
         const { trainings, selectedTraining, selectedTrainingDocId } = await getLearnTrainingSelection(finalDomainId, this.user._id, this.user.priv);
         const learnTrainings = trainings.map((item: any) => ({
             docId: String(item.docId),
@@ -1679,6 +1741,7 @@ class LearnHandler extends Handler {
                 requireTrainingSelection: false,
                 requireBaseSelection: false,
                 lessonSessionId: '',
+                learnSessionMode: learnSessionModeUi,
                 ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
             };
             return;
@@ -1702,12 +1765,13 @@ class LearnHandler extends Handler {
                 completedCardsToday: [],
                 passedCardIds: [],
                 lessonSessionId: '',
+                learnSessionMode: learnSessionModeUi,
                 ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
             };
             return;
         }
 
-        const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
+        const dudoc = dudocForLearnUi;
         let sections: LearnDAGNode[] = [];
         let allDagNodes: LearnDAGNode[] = [];
         try {
@@ -1742,6 +1806,7 @@ class LearnHandler extends Handler {
                 requireTrainingSelection: false,
                 requireBaseSelection: false,
                 lessonSessionId: '',
+                learnSessionMode: learnSessionModeUi,
                 ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
             };
             return;
@@ -2004,6 +2069,7 @@ class LearnHandler extends Handler {
             requireTrainingSelection: false,
             requireBaseSelection: false,
             lessonSessionId: '',
+            learnSessionMode: learnSessionModeUi,
             ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
         };
     }
@@ -2159,6 +2225,9 @@ async function buildSpaLessonSnapshotToday(
         lessonSessionDomainId: finalDomainId,
         learnRecordId: learnRecordIdToday || '',
         lessonCardProvenanceLabel,
+        lessonLearnSessionMode: normalizeLearnSessionMode(
+            (sDaily as SessionDoc & { lessonQueueLearnSessionMode?: string | null }).lessonQueueLearnSessionMode,
+        ),
     };
 }
 
@@ -2257,6 +2326,7 @@ async function buildSpaLessonSnapshotNode(
         lessonSessionDomainId: finalDomainId,
         learnRecordId: learnRecordIdSpaNode || '',
         lessonCardProvenanceLabel,
+        lessonLearnSessionMode: '',
     };
 }
 
@@ -2570,6 +2640,7 @@ class LessonHandler extends Handler {
                     lessonSessionDomainId: finalDomainId,
                     learnRecordId: learnRecordId || '',
                     lessonCardProvenanceLabel,
+                    lessonLearnSessionMode: '',
                 };
                 return;
             }
@@ -2822,6 +2893,7 @@ class LessonHandler extends Handler {
                 lessonSessionDomainId: finalDomainId,
                 learnRecordId: learnRecordIdNode || '',
                 lessonCardProvenanceLabel,
+                lessonLearnSessionMode: '',
             };
             return;
         }
@@ -2976,6 +3048,7 @@ class LessonHandler extends Handler {
                     lessonQueueBaseDocId: firstBaseToday || null,
                     lessonQueueTrainingDocId: trainIdToday ? String(trainIdToday) : null,
                     lessonQueueLearnSectionOrder: sectionOrderSnapshot,
+                    lessonQueueLearnSessionMode: getLearnSessionMode(dudoc),
                     lessonQueueAnchorNodeId: null,
                     lessonMode: 'today',
                     lessonQueueDay: utcLessonQueueDayString(),
@@ -3048,6 +3121,11 @@ class LessonHandler extends Handler {
                 cardId: String(currentItem.cardId || ''),
             });
 
+            const todayLearnSessionModeOut = normalizeLearnSessionMode(
+                canReuseTodayFreeze
+                    ? (sToday as SessionDoc & { lessonQueueLearnSessionMode?: string | null }).lessonQueueLearnSessionMode
+                    : getLearnSessionMode(dudoc),
+            );
             this.response.template = 'lesson.html';
             this.response.body = {
                 card: currentCard,
@@ -3068,6 +3146,7 @@ class LessonHandler extends Handler {
                 lessonSessionDomainId: finalDomainId,
                 learnRecordId: learnRecordIdToday || '',
                 lessonCardProvenanceLabel,
+                lessonLearnSessionMode: todayLearnSessionModeOut,
             };
             return;
         }
@@ -3182,6 +3261,7 @@ class LessonHandler extends Handler {
                             lessonCardQueue: builtStart.queuePersist,
                             lessonQueueBaseDocId: builtStart.firstBaseToday || null,
                             lessonQueueLearnSectionOrder: builtStart.sectionOrderSnapshot,
+                            lessonQueueLearnSessionMode: getLearnSessionMode(dudocSt),
                             lessonQueueDay: utcLessonQueueDayString(),
                             currentLearnSectionIndex: builtStart.currentSectionIndex,
                             currentLearnSectionId:
@@ -4431,6 +4511,7 @@ export async function apply(ctx: Context) {
     ctx.Route('learn_set_base', '/learn/base', LearnHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_base_select', '/learn/training/select', LearnBaseSelectHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_set_daily_goal', '/learn/daily-goal', LearnHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('learn_set_session_mode', '/learn/session-mode', LearnHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_sections', '/learn/sections', LearnSectionsHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_section_edit', '/learn/section/edit', LearnSectionEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_edit', '/learn/edit', LearnEditHandler, PRIV.PRIV_USER_PROFILE);

@@ -2,6 +2,20 @@
 
 export type LearnFlowMode = 'learn' | 'collect' | 'flag';
 
+/** Order in which today's learn queue is built (new `today` session only; stored on domain.user). */
+export type LearnSessionMode = 'deep' | 'breadth' | 'random';
+
+export function normalizeLearnSessionMode(raw: unknown): LearnSessionMode {
+    const s = String(raw ?? '').trim().toLowerCase();
+    if (s === 'breadth' || s === 'random') return s;
+    return 'deep';
+}
+
+/** Default: deep learning (section-by-section depth-first card order). */
+export function getLearnSessionMode(dudoc: Record<string, unknown> | null | undefined): LearnSessionMode {
+    return normalizeLearnSessionMode(dudoc?.learnSessionMode);
+}
+
 /** Collect/Flag: fall back to learnBaseDocId when mode-specific base was never set (legacy). Learn uses training only. */
 export function getModeBaseDocId(
     dudoc: Record<string, unknown> | null | undefined,
