@@ -14,13 +14,24 @@ import moment from 'moment-timezone';
 import bus from '../service/bus';
 import { updateDomainRanking } from './domain';
 import { appendUserCheckinDay, countConsecutiveCheckinDays } from '../lib/checkin';
-import { getLearnSessionMode, getModeDailyGoal, normalizeLearnSessionMode, type LearnSessionMode } from '../lib/learnModePrefs';
+import {
+    getLearnMixedSchedule,
+    getLearnNewReviewRatio,
+    getLearnSessionMode,
+    getLearnSubMode,
+    getModeDailyGoal,
+    normalizeLearnMixedSchedule,
+    normalizeLearnSessionMode,
+    normalizeLearnSubMode,
+    type LearnSessionMode,
+} from '../lib/learnModePrefs';
 import TrainingModel from '../model/training';
 import { isTrainingRootNodeId, loadTrainingMergedGraph, makeTrainingNodeId, parseTrainingNodeId } from '../lib/trainingMergedGraph';
 import SessionModel, { type LessonCardQueueItem, type SessionDoc, type SessionPatch } from '../model/session';
 import {
     appendLessonSessionToUrl,
     frozenTodayQueueMatchesLearnSettings,
+    LESSON_QUEUE_MIXED_LAYOUT_VERSION,
     isLearnHomePlaceholderSession,
     isLessonSessionAbandoned,
     lessonSessionIdFromDoc,
@@ -69,20 +80,6 @@ function sessionTodaySectionFieldsMismatch(s: SessionDoc, patch: SessionPatch): 
     const idxDiff = (preI !== null || pinI !== null) && preI !== pinI;
     const idDiff = preId !== pinId;
     return idxDiff || idDiff;
-}
-
-/** Card ids with a learn_result row today (UTC day) — used to advance daily queue, not repeat the same slice. */
-async function learnResultCardIdsTodayUtc(domainId: string, userId: number): Promise<Set<string>> {
-    const todayStart = moment.utc().startOf('day').toDate();
-    const todayEndInclusive = moment.utc().endOf('day').toDate();
-    const rows = await learn.getResults(domainId, userId, {
-        createdAt: { $gte: todayStart, $lte: todayEndInclusive },
-    });
-    const ids = new Set<string>();
-    for (const r of rows) {
-        if (r.cardId) ids.add(String(r.cardId));
-    }
-    return ids;
 }
 
 const LESSON_QUEUE_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -899,6 +896,91 @@ function mergeTodayFlatCardsBySessionMode(sectionBlocks: TodayQueueFlatEntry[][]
     return sectionBlocks.flat();
 }
 
+function placementSlotOfTodayEntry(c: TodayQueueFlatEntry): number {
+    return typeof c.learnSectionOrderIndex === 'number' && c.learnSectionOrderIndex >= 0
+        ? c.learnSectionOrderIndex
+        : 0;
+}
+
+function partitionTodayQueueByLearnStartGeo(
+    pool: TodayQueueFlatEntry[],
+    learningStartSlot: number,
+): { newArmQueue: TodayQueueFlatEntry[]; oldArmQueue: TodayQueueFlatEntry[] } {
+    const start = Math.max(0, learningStartSlot);
+    const newArmQueue: TodayQueueFlatEntry[] = [];
+    const oldArmQueue: TodayQueueFlatEntry[] = [];
+    for (const c of pool) {
+        if (placementSlotOfTodayEntry(c) < start) oldArmQueue.push(c);
+        else newArmQueue.push(c);
+    }
+    return { newArmQueue, oldArmQueue };
+}
+
+/**
+ * `reviewNeeded` review slots: sequential R0.. while j < pool size, then cycle by modulo when the pool is shorter than needed.
+ * When the pool is longer than `reviewNeeded`, append the unused tail so every pool card still appears once in the session.
+ */
+function buildMixedReviewSlotsForRatio(
+    reviewCards: TodayQueueFlatEntry[],
+    reviewNeeded: number,
+): TodayQueueFlatEntry[] {
+    const R = reviewCards.length;
+    const out: TodayQueueFlatEntry[] = [];
+    for (let j = 0; j < reviewNeeded && R > 0; j++) {
+        const idx = j < R ? j : j % R;
+        out.push({ ...reviewCards[idx] });
+    }
+    if (R > reviewNeeded) {
+        for (let k = reviewNeeded; k < R; k++) {
+            out.push({ ...reviewCards[k] });
+        }
+    }
+    return out;
+}
+
+/** 先学新：整段新卡在前，再接复习段（复习张数 = 新卡数 × 比例 N）；与「1+1」交替穿插不同。 */
+function orderMixedNewFirstByRatio(
+    newCards: TodayQueueFlatEntry[],
+    reviewCards: TodayQueueFlatEntry[],
+    reviewPerNew: number,
+): TodayQueueFlatEntry[] {
+    const reviewNeeded = newCards.length * reviewPerNew;
+    const reviewPart = buildMixedReviewSlotsForRatio(reviewCards, reviewNeeded);
+    return [...newCards, ...reviewPart];
+}
+
+/** 先复习：复习段在前（同上规则），再接整段新卡。 */
+function orderMixedReviewFirstByRatio(
+    newCards: TodayQueueFlatEntry[],
+    reviewCards: TodayQueueFlatEntry[],
+    reviewPerNew: number,
+): TodayQueueFlatEntry[] {
+    const reviewNeeded = newCards.length * reviewPerNew;
+    const reviewPart = buildMixedReviewSlotsForRatio(reviewCards, reviewNeeded);
+    return [...reviewPart, ...newCards];
+}
+
+/** Strict alternation: new, review, new, review, … (starts with new when available). */
+function interleaveNewReviewOneOne(
+    newCards: TodayQueueFlatEntry[],
+    reviewCards: TodayQueueFlatEntry[],
+): TodayQueueFlatEntry[] {
+    const out: TodayQueueFlatEntry[] = [];
+    let ni = 0;
+    let ri = 0;
+    while (ni < newCards.length || ri < reviewCards.length) {
+        if (ni < newCards.length) {
+            out.push(newCards[ni]);
+            ni += 1;
+        }
+        if (ri < reviewCards.length) {
+            out.push(reviewCards[ri]);
+            ri += 1;
+        }
+    }
+    return out;
+}
+
 function dagSubtreeUnderRootFromNodes(allDagNodes: LearnDAGNode[], rootId: string): LearnDAGNode[] {
     const dag: LearnDAGNode[] = [];
     const collectChildren = (parentId: string, collected: Set<string>) => {
@@ -941,6 +1023,92 @@ function learnPassPlacementKey(slot: number, cardId: string): string {
     return `${slot}:${String(cardId)}`;
 }
 
+/** 进度里带槽位的 pass + 旧数据仅有 cardId、无 learnSectionOrderIndex 的 pass（否则今日队列会误判全未掌握）。 */
+type LearnPassedPlacementLookup = {
+    slotKeys: Set<string>;
+    legacyCardIds: Set<string>;
+};
+
+async function buildLearnPassedPlacementLookup(domainId: string, userId: number): Promise<LearnPassedPlacementLookup> {
+    const docs = await learn.listPassedProgressDocs(domainId, userId);
+    const slotKeys = new Set<string>();
+    const legacyCardIds = new Set<string>();
+    for (const p of docs) {
+        const cid = p.cardId.toString();
+        const slot = (p as { learnSectionOrderIndex?: number | null }).learnSectionOrderIndex;
+        if (typeof slot === 'number' && slot >= 0) {
+            slotKeys.add(learnPassPlacementKey(slot, cid));
+        } else {
+            legacyCardIds.add(cid);
+        }
+    }
+    return { slotKeys, legacyCardIds };
+}
+
+function learnIsPassedAtSlot(lookup: LearnPassedPlacementLookup, slot: number, cardId: string): boolean {
+    const cid = String(cardId);
+    if (lookup.slotKeys.has(learnPassPlacementKey(slot, cid))) return true;
+    if (lookup.legacyCardIds.has(cid)) return true;
+    return false;
+}
+
+function formatLessonTodaySubModeSummary(
+    translate: (key: string) => string,
+    subRaw: unknown,
+    ratioRaw: unknown,
+    mixedScheduleRaw?: unknown,
+): string {
+    const sub = normalizeLearnSubMode(subRaw);
+    const r = typeof ratioRaw === 'number' && [1, 2, 3, 4, 5].includes(ratioRaw) ? ratioRaw : 1;
+    if (sub === 'review_only') return translate('Learn sub mode review only');
+    if (sub === 'mixed') {
+        const sch = normalizeLearnMixedSchedule(mixedScheduleRaw);
+        const schLabel =
+            sch === 'review_first' ? translate('Learn mixed schedule review first')
+                : sch === 'shuffle' ? translate('Learn mixed schedule shuffle')
+                    : sch === 'one_one' ? translate('Learn mixed schedule one one')
+                        : translate('Learn mixed schedule new first');
+        if (sch === 'one_one') {
+            return `${translate('Learn sub mode mixed')} · ${schLabel}`;
+        }
+        const ratioLabel = translate('New vs review ratio label').replace(/\{0\}/g, String(r));
+        return `${translate('Learn sub mode mixed')} · ${schLabel} · ${ratioLabel}`;
+    }
+    return translate('Learn sub mode new only');
+}
+
+function lessonTodayCardKindForQueueItem(
+    item: { learnSectionOrderIndex?: number },
+    learningStartSlot: number,
+): 'new' | 'review' {
+    const slot = typeof item.learnSectionOrderIndex === 'number' && item.learnSectionOrderIndex >= 0
+        ? item.learnSectionOrderIndex
+        : 0;
+    const start = Math.max(0, learningStartSlot);
+    return slot < start ? 'review' : 'new';
+}
+
+function formatLessonSessionNewOldCountsLabel(
+    translate: LessonTranslate,
+    flatCards: Array<{ learnSectionOrderIndex?: number; cardId?: string }>,
+    learnStartSlot: number,
+): string {
+    if (learnStartSlot < 0 || flatCards.length === 0) return '';
+    const start = Math.max(0, learnStartSlot);
+    let newN = 0;
+    let reviewN = 0;
+    for (const c of flatCards) {
+        const slot = typeof c.learnSectionOrderIndex === 'number' && c.learnSectionOrderIndex >= 0
+            ? c.learnSectionOrderIndex
+            : 0;
+        if (slot < start) reviewN += 1;
+        else newN += 1;
+    }
+    return translate('Lesson session new old counts')
+        .replace(/\{0\}/g, String(newN))
+        .replace(/\{1\}/g, String(reviewN));
+}
+
 /** Which section-order slot contains this merged DAG node; `hintSlot` disambiguates duplicate section roots. */
 function resolveLearnSectionSlotForMergedNode(
     orderedSections: LearnDAGNode[],
@@ -965,18 +1133,6 @@ function resolveLearnSectionSlotForMergedNode(
     return Math.min(...candidates);
 }
 
-async function buildLearnPassedKeySet(domainId: string, userId: number): Promise<Set<string>> {
-    const docs = await learn.listPassedProgressDocs(domainId, userId);
-    const keys = new Set<string>();
-    for (const p of docs) {
-        const cid = p.cardId.toString();
-        const slot = (p as { learnSectionOrderIndex?: number }).learnSectionOrderIndex;
-        if (typeof slot === 'number' && slot >= 0) {
-            keys.add(learnPassPlacementKey(slot, cid));
-        }
-    }
-    return keys;
-}
 
 function collectLearnTrainingPlacementKeys(orderedSections: LearnDAGNode[], allDagNodes: LearnDAGNode[]): Set<string> {
     const keys = new Set<string>();
@@ -1024,7 +1180,6 @@ async function buildTodayLessonQueueFromDomain(
     dudoc: any,
     training: TrainingDoc,
     translate: (key: string) => string,
-    opts?: { excludeTodayPassedCards?: boolean },
 ): Promise<{
     branchByBaseToday: Map<number, string>;
     firstBaseToday: number;
@@ -1090,6 +1245,8 @@ async function buildTodayLessonQueueFromDomain(
     const sessionMode = getLearnSessionMode(duSec);
     const sectionBlocks: TodayQueueFlatEntry[][] = [];
     for (const sec of sectionsForDailyPool) {
+        const sectionSlotInOrder = sections.indexOf(sec);
+        const learnSlot = sectionSlotInOrder >= 0 ? sectionSlotInOrder : 0;
         const block: TodayQueueFlatEntry[] = [];
         const subDag = dagSubtreeUnderRootFromNodes(allDagNodes, sec._id);
         const nodesForSection = [{ _id: sec._id } as LearnDAGNode, ...subDag];
@@ -1105,7 +1262,7 @@ async function buildTodayLessonQueueFromDomain(
                     nodeTitle: n.title || '',
                     cardTitle: c.title || '',
                     baseDocId: p?.baseDocId,
-                    learnSectionOrderIndex: typeof sec.order === 'number' ? sec.order : 0,
+                    learnSectionOrderIndex: learnSlot,
                 });
             }
         }
@@ -1114,17 +1271,32 @@ async function buildTodayLessonQueueFromDomain(
     const todayFlatCards = mergeTodayFlatCardsBySessionMode(sectionBlocks, sessionMode);
 
     const candidateCards = todayFlatCards;
-    const excludeTodayPassed = opts?.excludeTodayPassedCards !== false;
-    const completedCardIdsTodayUtc = excludeTodayPassed
-        ? await learnResultCardIdsTodayUtc(domainId, uid)
-        : new Set<string>();
-    let poolCards = candidateCards.filter((c) => !completedCardIdsTodayUtc.has(String(c.cardId)));
-    const passedEverKeys = await buildLearnPassedKeySet(domainId, uid);
-    const notPassedPool = poolCards.filter(
-        (c) => !passedEverKeys.has(learnPassPlacementKey(c.learnSectionOrderIndex, String(c.cardId))),
+    const subMode = getLearnSubMode(duSec);
+    const newReviewRatio = getLearnNewReviewRatio(duSec);
+    const mixedSchedule = getLearnMixedSchedule(duSec);
+    const learningStartSlot =
+        currentSectionIndex >= 0 && currentSectionIndex < sections.length ? currentSectionIndex : 0;
+    const { newArmQueue, oldArmQueue } = partitionTodayQueueByLearnStartGeo(
+        candidateCards,
+        learningStartSlot,
     );
-    if (notPassedPool.length > 0) {
-        poolCards = notPassedPool;
+    let poolCards: TodayQueueFlatEntry[];
+    if (subMode === 'review_only') {
+        poolCards = oldArmQueue;
+    } else if (subMode === 'mixed') {
+        const newOrdered = newArmQueue;
+        const reviewOrdered = oldArmQueue;
+        if (mixedSchedule === 'one_one') {
+            poolCards = interleaveNewReviewOneOne(newOrdered, reviewOrdered);
+        } else if (mixedSchedule === 'review_first') {
+            poolCards = orderMixedReviewFirstByRatio(newOrdered, reviewOrdered, newReviewRatio);
+        } else if (mixedSchedule === 'shuffle') {
+            poolCards = shuffleArray(orderMixedNewFirstByRatio(newOrdered, reviewOrdered, newReviewRatio));
+        } else {
+            poolCards = orderMixedNewFirstByRatio(newOrdered, reviewOrdered, newReviewRatio);
+        }
+    } else {
+        poolCards = newArmQueue;
     }
     const dailyGoalToday = Math.max(0, getModeDailyGoal(dudoc as any, 'learn'));
     let cardsForToday: typeof todayFlatCards;
@@ -1265,7 +1437,7 @@ interface SectionProgressItem {
 function getSectionProgress(
     sections: LearnDAGNode[],
     allDagNodes: LearnDAGNode[],
-    passedPlacementKeys: Set<string>,
+    passedLookup: LearnPassedPlacementLookup,
 ): { pending: SectionProgressItem[]; completed: SectionProgressItem[] } {
     const nodeMap = new Map<string, LearnDAGNode>();
     sections.forEach(s => nodeMap.set(String(s._id), s));
@@ -1292,7 +1464,7 @@ function getSectionProgress(
         const cards = collectCards(section._id, new Set());
         const total = cards.length;
         const passed = cards.filter((c: any) =>
-            passedPlacementKeys.has(learnPassPlacementKey(i, String(c.cardId))),
+            learnIsPassedAtSlot(passedLookup, i, String(c.cardId)),
         ).length;
         const item: SectionProgressItem = {
             _id: section._id,
@@ -1727,6 +1899,9 @@ class LearnHandler extends Handler {
         if (this.request.path.includes('/session-mode')) {
             return this.postSetLearnSessionMode(domainId);
         }
+        if (this.request.path.includes('/sub-mode')) {
+            return this.postSetLearnSubMode(domainId);
+        }
     }
 
     async postSetBase(domainId: string) {
@@ -1824,11 +1999,47 @@ class LearnHandler extends Handler {
         this.response.body = { success: true, learnSessionMode };
     }
 
+    async postSetLearnSubMode(domainId: string) {
+        const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
+        const body: any = this.request?.body || {};
+        const learnSubMode = normalizeLearnSubMode(body.learnSubMode);
+        let learnNewReviewRatio = parseInt(String(body.learnNewReviewRatio ?? '1'), 10);
+        if (![1, 2, 3, 4, 5].includes(learnNewReviewRatio)) learnNewReviewRatio = 1;
+        const learnMixedSchedule = normalizeLearnMixedSchedule(body.learnMixedSchedule);
+        await learn.setUserLearnState(finalDomainId, this.user._id, {
+            learnSubMode,
+            learnNewReviewRatio,
+            learnMixedSchedule,
+        });
+        await clearDailyPracticeSessionAfterSettingsChange(finalDomainId, this.user._id, this.user.priv);
+        this.response.body = { success: true, learnSubMode, learnNewReviewRatio, learnMixedSchedule };
+    }
+
     @param('sectionId', Types.String, true)
     async get(domainId: string, sectionId?: string) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
         const dudocForLearnUi = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
         const learnSessionModeUi = getLearnSessionMode(dudocForLearnUi);
+        const learnSubModeUi = getLearnSubMode(dudocForLearnUi);
+        const learnNewReviewRatioUi = getLearnNewReviewRatio(dudocForLearnUi);
+        const learnMixedScheduleUi = getLearnMixedSchedule(dudocForLearnUi);
+        const learnSubModeStrings = {
+            label: this.translate('Learn sub mode'),
+            optNewOnly: this.translate('Learn sub mode new only'),
+            optReviewOnly: this.translate('Learn sub mode review only'),
+            optMixed: this.translate('Learn sub mode mixed'),
+            hint: this.translate('Learn sub mode hint'),
+            ratioAria: this.translate('Learn new review ratio'),
+            mixedScheduleAria: this.translate('Learn mixed schedule'),
+            mixedScheduleReviewFirst: this.translate('Learn mixed schedule review first'),
+            mixedScheduleNewFirst: this.translate('Learn mixed schedule new first'),
+            mixedScheduleShuffle: this.translate('Learn mixed schedule shuffle'),
+            mixedScheduleOneOne: this.translate('Learn mixed schedule one one'),
+            failedSave: this.translate('Failed to save learn sub mode'),
+            ratioOptionLabels: [1, 2, 3, 4, 5].map((n) =>
+                this.translate('New vs review ratio label').replace(/\{0\}/g, String(n)),
+            ),
+        };
         const { trainings, selectedTraining, selectedTrainingDocId } = await getLearnTrainingSelection(finalDomainId, this.user._id, this.user.priv);
         const learnTrainings = trainings.map((item: any) => ({
             docId: String(item.docId),
@@ -1861,8 +2072,13 @@ class LearnHandler extends Handler {
                 requireBaseSelection: false,
                 passedCardIds: [],
                 passedCardKeys: [],
+                passedLegacyCardIds: [],
                 lessonSessionId: '',
                 learnSessionMode: learnSessionModeUi,
+                learnSubMode: learnSubModeUi,
+                learnNewReviewRatio: learnNewReviewRatioUi,
+                learnMixedSchedule: learnMixedScheduleUi,
+                learnSubModeStrings,
                 ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
             };
             return;
@@ -1886,8 +2102,13 @@ class LearnHandler extends Handler {
                 completedCardsToday: [],
                 passedCardIds: [],
                 passedCardKeys: [],
+                passedLegacyCardIds: [],
                 lessonSessionId: '',
                 learnSessionMode: learnSessionModeUi,
+                learnSubMode: learnSubModeUi,
+                learnNewReviewRatio: learnNewReviewRatioUi,
+                learnMixedSchedule: learnMixedScheduleUi,
+                learnSubModeStrings,
                 ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
             };
             return;
@@ -1924,12 +2145,17 @@ class LearnHandler extends Handler {
                 completedCardsToday: [],
                 passedCardIds: [],
                 passedCardKeys: [],
+                passedLegacyCardIds: [],
                 learnTrainings,
                 selectedLearnTrainingDocId: trainingDocIdStr,
                 requireTrainingSelection: false,
                 requireBaseSelection: false,
                 lessonSessionId: '',
                 learnSessionMode: learnSessionModeUi,
+                learnSubMode: learnSubModeUi,
+                learnNewReviewRatio: learnNewReviewRatioUi,
+                learnMixedSchedule: learnMixedScheduleUi,
+                learnSubModeStrings,
                 ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
             };
             return;
@@ -2063,7 +2289,7 @@ class LearnHandler extends Handler {
             collectChildren(firstSection._id, collected);
         }
 
-        const passedPlacementKeys = await buildLearnPassedKeySet(finalDomainId, this.user._id);
+        const passedPlacementLookup = await buildLearnPassedPlacementLookup(finalDomainId, this.user._id);
 
         const flatCards: Array<{ nodeId: string; cardId: string; order: number; nodeIndex: number; cardIndex: number }> = [];
         dag.forEach((node, nodeIndex) => {
@@ -2082,7 +2308,12 @@ class LearnHandler extends Handler {
         const totalProgress = trainingPlacementKeys.size;
         let currentProgress = 0;
         for (const k of trainingPlacementKeys) {
-            if (passedPlacementKeys.has(k)) currentProgress += 1;
+            const colon = k.indexOf(':');
+            if (colon < 0) continue;
+            const slot = parseInt(k.slice(0, colon), 10);
+            if (!Number.isFinite(slot) || slot < 0) continue;
+            const cid = k.slice(colon + 1);
+            if (learnIsPassedAtSlot(passedPlacementLookup, slot, cid)) currentProgress += 1;
         }
 
         const allResults = await learn.getResults(finalDomainId, this.user._id);
@@ -2142,8 +2373,10 @@ class LearnHandler extends Handler {
         const dagWithProgress = dag.map((node, nodeIndex) => ({
             ...node,
             cards: (node.cards || []).map((card, cardIndex) => {
-                const cardPassed = passedPlacementKeys.has(
-                    learnPassPlacementKey(slotForCurrentSection, String(card.cardId)),
+                const cardPassed = learnIsPassedAtSlot(
+                    passedPlacementLookup,
+                    slotForCurrentSection,
+                    String(card.cardId),
                 );
                 const currentCardGlobalIndex = flatCards.findIndex(c =>
                     c.nodeIndex === nodeIndex && c.cardIndex === cardIndex,
@@ -2154,8 +2387,10 @@ class LearnHandler extends Handler {
                     isUnlocked = true;
                 } else if (currentCardGlobalIndex > 0) {
                     const prevCard = flatCards[currentCardGlobalIndex - 1];
-                    isUnlocked = passedPlacementKeys.has(
-                        learnPassPlacementKey(slotForCurrentSection, String(prevCard.cardId)),
+                    isUnlocked = learnIsPassedAtSlot(
+                        passedPlacementLookup,
+                        slotForCurrentSection,
+                        String(prevCard.cardId),
                     );
                 }
                 
@@ -2169,7 +2404,7 @@ class LearnHandler extends Handler {
 
         let nextCard: { nodeId: string; cardId: string } | null = null;
         for (let i = 0; i < flatCards.length; i++) {
-            if (!passedPlacementKeys.has(learnPassPlacementKey(slotForCurrentSection, String(flatCards[i].cardId)))) {
+            if (!learnIsPassedAtSlot(passedPlacementLookup, slotForCurrentSection, String(flatCards[i].cardId))) {
                 nextCard = { nodeId: flatCards[i].nodeId, cardId: flatCards[i].cardId };
                 break;
             }
@@ -2202,7 +2437,8 @@ class LearnHandler extends Handler {
             completedCardsToday,
             nextCard,
             passedCardIds: [],
-            passedCardKeys: Array.from(passedPlacementKeys),
+            passedCardKeys: Array.from(passedPlacementLookup.slotKeys),
+            passedLegacyCardIds: Array.from(passedPlacementLookup.legacyCardIds),
             pathSections: sections,
             pathFullDag: allDagNodes,
             pathCurrentSectionId: finalSectionId,
@@ -2212,6 +2448,10 @@ class LearnHandler extends Handler {
             requireBaseSelection: false,
             lessonSessionId: '',
             learnSessionMode: learnSessionModeUi,
+            learnSubMode: learnSubModeUi,
+            learnNewReviewRatio: learnNewReviewRatioUi,
+            learnMixedSchedule: learnMixedScheduleUi,
+            learnSubModeStrings,
             ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
         };
     }
@@ -2297,8 +2537,8 @@ async function buildSpaLessonSnapshotToday(
     if (isLessonSessionAbandoned(sDaily)) return null;
     const idx = typeof sDaily.cardIndex === 'number' ? sDaily.cardIndex : 0;
     if (idx >= q.length) return null;
-    const flatCards = queueItemsToTodayFlatCards(q, finalDomainId);
-    const currentItem = flatCards[idx];
+    const flatCardsBase = queueItemsToTodayFlatCards(q, finalDomainId);
+    const currentItem = flatCardsBase[idx];
     const currentCard = await CardModel.get(finalDomainId, new ObjectId(currentItem.cardId));
     if (!currentCard) return null;
     const planSpa = TrainingModel.resolvePlanSources(training as any);
@@ -2339,6 +2579,43 @@ async function buildSpaLessonSnapshotToday(
         rawNodeId: String(currentItem.nodeId || ''),
         cardId: String(currentItem.cardId || ''),
     });
+    const learningStartSlotSpa =
+        typeof sDaily.currentLearnSectionIndex === 'number' && sDaily.currentLearnSectionIndex >= 0
+            ? sDaily.currentLearnSectionIndex
+            : 0;
+    const flatCards = flatCardsBase.map((fc) => ({
+        ...fc,
+        lessonTodayQueueKind: lessonTodayCardKindForQueueItem(fc, learningStartSlotSpa),
+    }));
+    const lessonTodayCardKind = lessonTodayCardKindForQueueItem(
+        flatCards[idx],
+        learningStartSlotSpa,
+    );
+    const lessonTodayCardKindLabel = lessonTodayCardKind === 'review'
+        ? translate('Learn today card kind review')
+        : translate('Learn today card kind new');
+    const lessonSessionQueueNewOldLabel = formatLessonSessionNewOldCountsLabel(
+        translate,
+        flatCards,
+        learningStartSlotSpa,
+    );
+    const lessonLearnSubModeSummary = formatLessonTodaySubModeSummary(
+        translate,
+        (sDaily as SessionDoc & { lessonQueueLearnSubMode?: string | null }).lessonQueueLearnSubMode,
+        (sDaily as SessionDoc & { lessonQueueLearnNewReviewRatio?: number | null }).lessonQueueLearnNewReviewRatio,
+        (sDaily as SessionDoc & { lessonQueueLearnMixedSchedule?: string | null }).lessonQueueLearnMixedSchedule,
+    );
+    const spaSessionMode = normalizeLearnSessionMode(
+        (sDaily as SessionDoc & { lessonQueueLearnSessionMode?: string | null }).lessonQueueLearnSessionMode,
+    );
+    const mainModeLabelSpa = spaSessionMode === 'breadth'
+        ? translate('Breadth learning mode')
+        : spaSessionMode === 'random'
+            ? translate('Random learning mode')
+            : translate('Deep learning mode');
+    const lessonTodayModesConfigLine = translate('Learn today modes config')
+        .replace(/\{0\}/g, mainModeLabelSpa)
+        .replace(/\{1\}/g, lessonLearnSubModeSummary);
     const todayNodeTree = [{
         type: 'node' as const,
         id: 'today',
@@ -2367,9 +2644,12 @@ async function buildSpaLessonSnapshotToday(
         lessonSessionDomainId: finalDomainId,
         learnRecordId: learnRecordIdToday || '',
         lessonCardProvenanceLabel,
-        lessonLearnSessionMode: normalizeLearnSessionMode(
-            (sDaily as SessionDoc & { lessonQueueLearnSessionMode?: string | null }).lessonQueueLearnSessionMode,
-        ),
+        lessonLearnSessionMode: spaSessionMode,
+        lessonTodayModesConfigLine,
+        lessonTodayCardKind,
+        lessonTodayCardKindLabel,
+        lessonSessionLearnStartSlot: learningStartSlotSpa,
+        lessonSessionQueueNewOldLabel,
     };
 }
 
@@ -2395,6 +2675,10 @@ async function buildSpaLessonSnapshotNode(
         cardId: q.cardId,
         nodeTitle: q.nodeTitle || '',
         cardTitle: q.cardTitle || '',
+        baseDocId: typeof q.baseDocId === 'number' && q.baseDocId > 0 ? q.baseDocId : undefined,
+        learnSectionOrderIndex: typeof q.learnSectionOrderIndex === 'number' && q.learnSectionOrderIndex >= 0
+            ? q.learnSectionOrderIndex
+            : undefined,
     }));
     let currentCardIndex = typeof sNode.cardIndex === 'number' ? sNode.cardIndex : 0;
     if (currentCardIndex >= flatCards.length) return null;
@@ -2445,6 +2729,15 @@ async function buildSpaLessonSnapshotNode(
         cardId: String(currentItem.cardId || ''),
         dagCache: { sections, allDagNodes },
     });
+    const learnStartSlotNode =
+        typeof dudocSpaNode?.currentLearnSectionIndex === 'number' && dudocSpaNode.currentLearnSectionIndex >= 0
+            ? dudocSpaNode.currentLearnSectionIndex
+            : 0;
+    const lessonSessionQueueNewOldLabel = formatLessonSessionNewOldCountsLabel(
+        translate,
+        flatCards,
+        learnStartSlotNode,
+    );
     return {
         card: currentCard,
         node: currentNode,
@@ -2469,6 +2762,8 @@ async function buildSpaLessonSnapshotNode(
         learnRecordId: learnRecordIdSpaNode || '',
         lessonCardProvenanceLabel,
         lessonLearnSessionMode: '',
+        lessonSessionLearnStartSlot: learnStartSlotNode,
+        lessonSessionQueueNewOldLabel,
     };
 }
 
@@ -2783,6 +3078,11 @@ class LessonHandler extends Handler {
                     learnRecordId: learnRecordId || '',
                     lessonCardProvenanceLabel,
                     lessonLearnSessionMode: '',
+                    lessonTodayModesConfigLine: '',
+                    lessonTodayCardKind: '',
+                    lessonTodayCardKindLabel: '',
+                    lessonSessionLearnStartSlot: -1,
+                    lessonSessionQueueNewOldLabel: '',
                 };
                 return;
             }
@@ -3041,6 +3341,16 @@ class LessonHandler extends Handler {
                 dagCache: { sections: trainSecNode, allDagNodes },
             });
 
+            const nodeLearnStartSlot =
+                typeof (dudoc as any).currentLearnSectionIndex === 'number' && (dudoc as any).currentLearnSectionIndex >= 0
+                    ? (dudoc as any).currentLearnSectionIndex
+                    : 0;
+            const lessonSessionQueueNewOldLabel = formatLessonSessionNewOldCountsLabel(
+                (k) => this.translate(k),
+                flatCards,
+                nodeLearnStartSlot,
+            );
+
             this.response.template = 'lesson.html';
             this.response.body = {
                 card: currentCard,
@@ -3065,6 +3375,11 @@ class LessonHandler extends Handler {
                 learnRecordId: learnRecordIdNode || '',
                 lessonCardProvenanceLabel,
                 lessonLearnSessionMode: '',
+                lessonTodayModesConfigLine: '',
+                lessonTodayCardKind: '',
+                lessonTodayCardKindLabel: '',
+                lessonSessionLearnStartSlot: nodeLearnStartSlot,
+                lessonSessionQueueNewOldLabel,
             };
             return;
         }
@@ -3123,7 +3438,15 @@ class LessonHandler extends Handler {
             let currentSectionIndex: number;
             let finalSectionId: string | null;
             let sectionOrderSnapshot: string[];
-            let cardsForToday: Array<{ nodeId: string; cardId: string; nodeTitle: string; cardTitle: string; domainId?: string; baseDocId?: number }>;
+            let cardsForToday: Array<{
+                nodeId: string;
+                cardId: string;
+                nodeTitle: string;
+                cardTitle: string;
+                domainId?: string;
+                baseDocId?: number;
+                learnSectionOrderIndex?: number;
+            }>;
             let queuePersist: LessonCardQueueItem[];
             let todayQueueSlotIndex: number;
 
@@ -3149,20 +3472,12 @@ class LessonHandler extends Handler {
                 finalSectionId = csid || null;
                 todayQueueSlotIndex = Math.max(0, Math.min(idxRawFrozen, qFrozen.length - 1));
             } else {
-                const excludeTodayPassedCards = !!(
-                    sToday
-                    && !isLessonSessionAbandoned(sToday)
-                    && lessonTodayFrozenQueueIsValid(sToday)
-                    && frozenTodayQueueMatchesLearnSettings(dudoc, sToday)
-                    && (sToday.lessonCardQueue?.length ?? 0) > 0
-                );
                 const builtToday = await buildTodayLessonQueueFromDomain(
                     finalDomainId,
                     this.user._id,
                     dudoc,
                     training,
                     (k: string) => this.translate(k),
-                    { excludeTodayPassedCards },
                 );
                 branchByBaseToday = builtToday.branchByBaseToday;
                 firstBaseToday = builtToday.firstBaseToday;
@@ -3220,6 +3535,10 @@ class LessonHandler extends Handler {
                     lessonQueueTrainingDocId: trainIdToday ? String(trainIdToday) : null,
                     lessonQueueLearnSectionOrder: sectionOrderSnapshot,
                     lessonQueueLearnSessionMode: getLearnSessionMode(dudoc),
+                    lessonQueueLearnSubMode: getLearnSubMode(dudoc),
+                    lessonQueueLearnNewReviewRatio: getLearnNewReviewRatio(dudoc),
+                    lessonQueueLearnMixedSchedule: getLearnMixedSchedule(dudoc),
+                    lessonQueueMixedLayoutVersion: LESSON_QUEUE_MIXED_LAYOUT_VERSION,
                     lessonQueueAnchorNodeId: null,
                     lessonMode: 'today',
                     lessonQueueDay: utcLessonQueueDayString(),
@@ -3266,13 +3585,6 @@ class LessonHandler extends Handler {
                 : lessonSessionIdFromDoc(await SessionModel.get(finalDomainId, this.user._id));
             if (sidToday) await setLearnDailySessionPointer(finalDomainId, this.user._id, sidToday);
 
-            const todayNodeTree = [{
-                type: 'node' as const,
-                id: 'today',
-                title: this.translate('Today task') || 'Today task',
-                children: cardsForToday.map(c => ({ type: 'card' as const, id: c.cardId, title: c.cardTitle })),
-            }];
-
             const learnRecordIdToday = await ensureLearnRecordForCard(
                 finalDomainId,
                 this.user._id,
@@ -3297,6 +3609,57 @@ class LessonHandler extends Handler {
                     ? (sToday as SessionDoc & { lessonQueueLearnSessionMode?: string | null }).lessonQueueLearnSessionMode
                     : getLearnSessionMode(dudoc),
             );
+            const todaySubRawForLine = canReuseTodayFreeze
+                ? (sToday as SessionDoc & { lessonQueueLearnSubMode?: string | null }).lessonQueueLearnSubMode
+                : getLearnSubMode(dudoc);
+            const todayRatioRawForLine =
+                canReuseTodayFreeze
+                && typeof (sToday as SessionDoc & { lessonQueueLearnNewReviewRatio?: number | null }).lessonQueueLearnNewReviewRatio
+                    === 'number'
+                    ? (sToday as SessionDoc & { lessonQueueLearnNewReviewRatio?: number | null }).lessonQueueLearnNewReviewRatio as number
+                    : getLearnNewReviewRatio(dudoc);
+            const todayMixedScheduleRawForLine = canReuseTodayFreeze
+                ? (sToday as SessionDoc & { lessonQueueLearnMixedSchedule?: string | null }).lessonQueueLearnMixedSchedule
+                : getLearnMixedSchedule(dudoc);
+            const lessonLearnSubModeSummaryForLine = formatLessonTodaySubModeSummary(
+                (k) => this.translate(k),
+                todaySubRawForLine,
+                todayRatioRawForLine,
+                todayMixedScheduleRawForLine,
+            );
+            const mainModeLabelForLine = (() => {
+                const m = todayLearnSessionModeOut;
+                if (m === 'breadth') return this.translate('Breadth learning mode');
+                if (m === 'random') return this.translate('Random learning mode');
+                return this.translate('Deep learning mode');
+            })();
+            const lessonTodayModesConfigLine = this.translate('Learn today modes config')
+                .replace(/\{0\}/g, mainModeLabelForLine)
+                .replace(/\{1\}/g, lessonLearnSubModeSummaryForLine);
+            const learningStartSlotForKind =
+                currentSectionIndex >= 0 ? currentSectionIndex : 0;
+            const lessonTodayCardKind = lessonTodayCardKindForQueueItem(
+                currentItem,
+                learningStartSlotForKind,
+            );
+            const lessonTodayCardKindLabel = lessonTodayCardKind === 'review'
+                ? this.translate('Learn today card kind review')
+                : this.translate('Learn today card kind new');
+            const lessonSessionQueueNewOldLabel = formatLessonSessionNewOldCountsLabel(
+                (k) => this.translate(k),
+                cardsForToday,
+                learningStartSlotForKind,
+            );
+            const flatCardsOut = cardsForToday.map((c) => ({
+                ...c,
+                lessonTodayQueueKind: lessonTodayCardKindForQueueItem(c, learningStartSlotForKind),
+            }));
+            const todayNodeTree = [{
+                type: 'node' as const,
+                id: 'today',
+                title: this.translate('Today task') || 'Today task',
+                children: flatCardsOut.map(c => ({ type: 'card' as const, id: c.cardId, title: c.cardTitle })),
+            }];
             this.response.template = 'lesson.html';
             this.response.body = {
                 card: currentCard,
@@ -3309,7 +3672,7 @@ class LessonHandler extends Handler {
                 isTodayMode: true,
                 rootNodeId: 'today',
                 rootNodeTitle: this.translate('Today task') || 'Today task',
-                flatCards: cardsForToday,
+                flatCards: flatCardsOut,
                 nodeTree: todayNodeTree,
                 currentCardIndex,
                 hasProblems: !!(currentCard?.problems?.length),
@@ -3318,6 +3681,11 @@ class LessonHandler extends Handler {
                 learnRecordId: learnRecordIdToday || '',
                 lessonCardProvenanceLabel,
                 lessonLearnSessionMode: todayLearnSessionModeOut,
+                lessonTodayModesConfigLine,
+                lessonTodayCardKind,
+                lessonTodayCardKindLabel,
+                lessonSessionLearnStartSlot: learningStartSlotForKind,
+                lessonSessionQueueNewOldLabel,
             };
             return;
         }
@@ -3407,14 +3775,6 @@ class LessonHandler extends Handler {
                 await setLearnDailySessionPointer(finalDomainId, this.user._id, sid);
                 redirectPath = `/d/${finalDomainId}/learn/lesson`;
             } else {
-                const sBeforeToday = await resolveLearnDailySessionDoc(finalDomainId, this.user._id, dudocSt);
-                const excludeTodayPassedCards = !!(
-                    sBeforeToday
-                    && !isLessonSessionAbandoned(sBeforeToday)
-                    && lessonTodayFrozenQueueIsValid(sBeforeToday)
-                    && frozenTodayQueueMatchesLearnSettings(dudocSt, sBeforeToday)
-                    && (sBeforeToday.lessonCardQueue?.length ?? 0) > 0
-                );
                 const progressToday = sessionTodayProgressPatchFromDomainUser(dudocSt);
                 let todayPatch: SessionPatch = {
                     appRoute: 'learn',
@@ -3434,7 +3794,6 @@ class LessonHandler extends Handler {
                         dudocSt,
                         trainingToday,
                         (k: string) => this.translate(k),
-                        { excludeTodayPassedCards },
                     );
                     if (builtStart.queuePersist.length > 0) {
                         todayPatch = {
@@ -3443,6 +3802,10 @@ class LessonHandler extends Handler {
                             lessonQueueBaseDocId: builtStart.firstBaseToday || null,
                             lessonQueueLearnSectionOrder: builtStart.sectionOrderSnapshot,
                             lessonQueueLearnSessionMode: getLearnSessionMode(dudocSt),
+                            lessonQueueLearnSubMode: getLearnSubMode(dudocSt),
+                            lessonQueueLearnNewReviewRatio: getLearnNewReviewRatio(dudocSt),
+                            lessonQueueLearnMixedSchedule: getLearnMixedSchedule(dudocSt),
+                            lessonQueueMixedLayoutVersion: LESSON_QUEUE_MIXED_LAYOUT_VERSION,
                             lessonQueueDay: utcLessonQueueDayString(),
                             currentLearnSectionIndex: builtStart.currentSectionIndex,
                             currentLearnSectionId:
@@ -3996,7 +4359,7 @@ class LessonHandler extends Handler {
             collectChildren(finalSectionId, collected);
         }
 
-        const passedKeysPostPass = await buildLearnPassedKeySet(finalDomainId, this.user._id);
+        const passedLookupPostPass = await buildLearnPassedPlacementLookup(finalDomainId, this.user._id);
         let sectionSlotPostPass = normalizeDomainUserLearnIndex(Lpm.currentLearnSectionIndex);
         if (sectionSlotPostPass === null || sectionSlotPostPass < 0 || sectionSlotPostPass >= sections.length) {
             sectionSlotPostPass = sections.findIndex((s) => s._id === finalSectionId);
@@ -4037,7 +4400,7 @@ class LessonHandler extends Handler {
             }
         } else {
             for (let i = 0; i < flatCards.length; i++) {
-                if (!passedKeysPostPass.has(learnPassPlacementKey(sectionSlotPostPass, String(flatCards[i].cardId)))) {
+                if (!learnIsPassedAtSlot(passedLookupPostPass, sectionSlotPostPass, String(flatCards[i].cardId))) {
                     currentCard = flatCards[i];
                     break;
                 }
@@ -4762,6 +5125,7 @@ export async function apply(ctx: Context) {
     ctx.Route('learn_base_select', '/learn/training/select', LearnBaseSelectHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_set_daily_goal', '/learn/daily-goal', LearnHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_set_session_mode', '/learn/session-mode', LearnHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('learn_set_sub_mode', '/learn/sub-mode', LearnHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_sections', '/learn/sections', LearnSectionsHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_section_edit', '/learn/section/edit', LearnSectionEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_edit', '/learn/edit', LearnEditHandler, PRIV.PRIV_USER_PROFILE);
