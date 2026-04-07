@@ -2,6 +2,8 @@ import { ObjectId } from 'mongodb';
 import {
     getLearnSessionMode,
     getLearnNewReviewRatio,
+    getLearnNewReviewOrder,
+    normalizeLearnNewReviewOrder,
     normalizeLearnSessionMode,
 } from './learnModePrefs';
 import type { LessonCardQueueItem, LessonMode, SessionDoc, SessionPatch } from '../model/session';
@@ -143,6 +145,12 @@ export function frozenTodayQueueMatchesLearnSettings(dudoc: any, s: SessionDoc):
         return false;
     }
     if (rDu !== rawR) return false;
+
+    const oDu = getLearnNewReviewOrder(du);
+    const rawOrd = (s as SessionDoc & { lessonQueueLearnNewReviewOrder?: string | null }).lessonQueueLearnNewReviewOrder;
+    if (typeof rawOrd !== 'string' || !rawOrd.trim()) return false;
+    if (normalizeLearnNewReviewOrder(rawOrd) !== oDu) return false;
+
     const vS = (s as SessionDoc & { lessonQueueMixedLayoutVersion?: number | null }).lessonQueueMixedLayoutVersion;
     if (vS !== LESSON_QUEUE_MIXED_LAYOUT_VERSION) return false;
     return true;
