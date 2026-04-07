@@ -93,6 +93,7 @@ __langname: 简体中文
 'Clear Logs': 清空日志
 'Click a section on the left to add to the top of the order.': 点击左侧章节的加号添加到顺序列表顶部。
 'Click a section to add it to the top of the order list.': 点击章节右侧的加号可将其添加至顺序列表顶部。
+'Section Order': 学习路径节序
 'Click the "Create Client" button above to create a new client': 点击上方"创建客户端"按钮来创建新的客户端
 'Click to expand questions': 点击展开题目
 'Client Connection Logs': 客户端连接日志
@@ -245,6 +246,7 @@ __langname: 简体中文
 'Last Connected': 最后连接
 'Last Disconnected Time': 最后断开时间
 'Learn session mode': 学习模式（下次会话）
+'Learn session preferences': 学习会话设置
 'Learn ratio section label': 学习副模式 · 新旧比例（下次会话）
 'Learn ratio section hint': 主模式（深度/广度/随机）只影响今日队列里「新」段卡片的展开顺序。混合与纯新模式下每日目标指**新卡**张数；**纯复习**模式下同一每日目标表示要抽取的**复习卡**张数。混合模式：今日会话 = 新卡（按目标截断，不足则循环）+ 新卡数×N 张旧段复习（不足则循环，无旧段则不追加）。纯新 / 纯复习会省略另一臂。
 'Learn today ratio summary': 每张新卡配 {0} 张复习卡
@@ -254,7 +256,6 @@ __langname: 简体中文
 'New vs review ratio label review only': '纯复习（0 : 1，张数=每日目标）'
 'Learn path card loop count': 练{0}次
 'Learn path card loop count title': 学习路径该节槽下累计完成次数（每次完整做题计一次，复习排队优先次数少的卡片）
-'Learn daily goal new cards note': （仅新段）
 'Learn sub mode': 学习副模式（下次会话）
 'Learn sub mode new only': 纯学新（仅学习起点节槽及之后的卡）
 'Learn sub mode review only': 纯复习（仅学习起点节槽之前的卡）

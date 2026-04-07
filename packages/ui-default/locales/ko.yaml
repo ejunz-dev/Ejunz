@@ -25,6 +25,8 @@ __langname: 한국어
 'Field {0} validation failed.': '항목 {0} 검증 실패'
 'Last check-in': 마지막 체크인
 'Learning consumption': 학습 소모
+'Learn session preferences': 학습 세션 설정
+'Section Order': 학습 경로 순서
 'Max consecutive': 최대 연속
 'No': 아니오
 'Please generate token on': '다음에서 Token 생성:'
