@@ -82,6 +82,9 @@ interface LearnSubModeStringsFromServer {
   orderOptionShuffle?: string;
   pathCardLoopCountFmt?: string;
   pathCardLoopCountTitle?: string;
+  /** Server-translated (avoids stale client lang-*.js missing new keys). */
+  sectionOrderLink?: string;
+  sessionPreferences?: string;
 }
 
 function normalizeLearnSessionModeFromUi(raw: unknown): LearnSessionModeUi {
@@ -185,13 +188,15 @@ function LearnPage() {
     : null;
 
   const [goal, setGoal] = useState(dailyGoal);
-  const [isEditingGoal, setIsEditingGoal] = useState(false);
-  const [isSavingGoal, setIsSavingGoal] = useState(false);
   const [learnSessionMode, setLearnSessionMode] = useState<LearnSessionModeUi>(initialLearnSessionMode);
-  const [savingLearnSessionMode, setSavingLearnSessionMode] = useState(false);
   const [learnNewReviewRatio, setLearnNewReviewRatio] = useState(initialLearnNewReviewRatio);
   const [learnNewReviewOrder, setLearnNewReviewOrder] = useState<LearnNewReviewOrderUi>(initialLearnNewReviewOrder);
-  const [savingLearnSubPrefs, setSavingLearnSubPrefs] = useState(false);
+  const [learnPrefsOpen, setLearnPrefsOpen] = useState(false);
+  const [draftSessionMode, setDraftSessionMode] = useState<LearnSessionModeUi>(initialLearnSessionMode);
+  const [draftRatio, setDraftRatio] = useState(initialLearnNewReviewRatio);
+  const [draftOrder, setDraftOrder] = useState<LearnNewReviewOrderUi>(initialLearnNewReviewOrder);
+  const [draftDailyGoal, setDraftDailyGoal] = useState(dailyGoal);
+  const [savingLearnPrefs, setSavingLearnPrefs] = useState(false);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
   const [showConsecutiveTip, setShowConsecutiveTip] = useState(false);
@@ -317,82 +322,70 @@ function LearnPage() {
     window.location.href = `/d/${domainId}/learn/lesson`;
   }, [domainId, todayLessonResumeUrl]);
 
-  const handleSaveGoal = useCallback(async () => {
-    if (isSavingGoal) return;
-    setIsSavingGoal(true);
-    try {
-      await request.post(`/d/${domainId}/learn/daily-goal`, {
-        dailyGoal: goal,
-      });
-      setIsEditingGoal(false);
-      window.location.reload();
-    } catch (error: any) {
-      console.error('Failed to save daily goal:', error);
-      setGoal(0);
-      const msg = error?.response?.data?.message ?? error?.response?.data?.error ?? error?.message ?? i18n('Failed to save daily goal');
-      Notification.error(typeof msg === 'string' ? msg : (Array.isArray(msg) ? msg.join(' ') : i18n('Failed to save daily goal')));
-    } finally {
-      setIsSavingGoal(false);
-    }
-  }, [domainId, goal, isSavingGoal]);
+  const openLearnPrefsModal = useCallback(() => {
+    setDraftDailyGoal(goal);
+    setDraftSessionMode(learnSessionMode);
+    setDraftRatio(learnNewReviewRatio);
+    setDraftOrder(learnNewReviewOrder);
+    setLearnPrefsOpen(true);
+  }, [goal, learnSessionMode, learnNewReviewRatio, learnNewReviewOrder]);
 
-  const handleLearnSessionModeChange = useCallback(async (v: LearnSessionModeUi) => {
-    if (!domainId || savingLearnSessionMode || v === learnSessionMode) return;
-    const prev = learnSessionMode;
-    setLearnSessionMode(v);
-    setSavingLearnSessionMode(true);
-    try {
-      await request.post(`/d/${domainId}/learn/session-mode`, { learnSessionMode: v });
-      window.location.reload();
-    } catch (error: any) {
-      setLearnSessionMode(prev);
-      console.error('Failed to save learn session mode:', error);
-      const msg = error?.response?.data?.message ?? error?.response?.data?.error ?? error?.message ?? i18n('Failed to save learn session mode');
-      Notification.error(typeof msg === 'string' ? msg : (Array.isArray(msg) ? msg.join(' ') : i18n('Failed to save learn session mode')));
-    } finally {
-      setSavingLearnSessionMode(false);
+  const saveLearnPrefsModal = useCallback(async () => {
+    if (!domainId || savingLearnPrefs) return;
+    const goalChanged = draftDailyGoal !== goal;
+    const modeChanged = draftSessionMode !== learnSessionMode;
+    const ratioChanged = draftRatio !== learnNewReviewRatio;
+    const orderChanged = draftOrder !== learnNewReviewOrder;
+    const subChanged = ratioChanged || orderChanged;
+    if (!goalChanged && !modeChanged && !subChanged) {
+      setLearnPrefsOpen(false);
+      return;
     }
-  }, [domainId, learnSessionMode, savingLearnSessionMode]);
-
-  const persistLearnRatio = useCallback(async (nextRatio: number) => {
-    if (!domainId || savingLearnSubPrefs) return;
-    if (nextRatio === learnNewReviewRatio) return;
-    const prevRatio = learnNewReviewRatio;
-    setLearnNewReviewRatio(nextRatio);
-    setSavingLearnSubPrefs(true);
+    setSavingLearnPrefs(true);
     try {
-      await request.post(`/d/${domainId}/learn/sub-mode`, { learnNewReviewRatio: nextRatio });
+      if (goalChanged) {
+        await request.post(`/d/${domainId}/learn/daily-goal`, { dailyGoal: draftDailyGoal });
+      }
+      if (modeChanged) {
+        await request.post(`/d/${domainId}/learn/session-mode`, { learnSessionMode: draftSessionMode });
+      }
+      if (subChanged) {
+        const body: Record<string, unknown> = {};
+        if (ratioChanged) body.learnNewReviewRatio = draftRatio;
+        if (orderChanged) body.learnNewReviewOrder = draftOrder;
+        await request.post(`/d/${domainId}/learn/sub-mode`, body);
+      }
       window.location.reload();
     } catch (error: any) {
-      setLearnNewReviewRatio(prevRatio);
-      console.error('Failed to save learn ratio:', error);
+      console.error('Failed to save learn preferences:', error);
       const msg = error?.response?.data?.message ?? error?.response?.data?.error ?? error?.message
-        ?? (learnSubModeStrings.failedSave || i18n('Failed to save learn sub mode'));
-      Notification.error(typeof msg === 'string' ? msg : (Array.isArray(msg) ? msg.join(' ') : (learnSubModeStrings.failedSave || i18n('Failed to save learn sub mode'))));
+        ?? (learnSubModeStrings.failedSave || i18n('Failed to save daily goal'));
+      Notification.error(typeof msg === 'string' ? msg : (Array.isArray(msg) ? msg.join(' ') : String(msg)));
     } finally {
-      setSavingLearnSubPrefs(false);
+      setSavingLearnPrefs(false);
     }
-  }, [domainId, learnNewReviewRatio, savingLearnSubPrefs, learnSubModeStrings.failedSave]);
+  }, [
+    domainId,
+    savingLearnPrefs,
+    draftDailyGoal,
+    draftSessionMode,
+    draftRatio,
+    draftOrder,
+    goal,
+    learnSessionMode,
+    learnNewReviewRatio,
+    learnNewReviewOrder,
+    learnSubModeStrings.failedSave,
+  ]);
 
-  const persistLearnNewReviewOrder = useCallback(async (nextOrder: LearnNewReviewOrderUi) => {
-    if (!domainId || savingLearnSubPrefs) return;
-    if (nextOrder === learnNewReviewOrder) return;
-    const prevOrder = learnNewReviewOrder;
-    setLearnNewReviewOrder(nextOrder);
-    setSavingLearnSubPrefs(true);
-    try {
-      await request.post(`/d/${domainId}/learn/sub-mode`, { learnNewReviewOrder: nextOrder });
-      window.location.reload();
-    } catch (error: any) {
-      setLearnNewReviewOrder(prevOrder);
-      console.error('Failed to save learn new/review order:', error);
-      const msg = error?.response?.data?.message ?? error?.response?.data?.error ?? error?.message
-        ?? (learnSubModeStrings.failedSave || i18n('Failed to save learn sub mode'));
-      Notification.error(typeof msg === 'string' ? msg : (Array.isArray(msg) ? msg.join(' ') : (learnSubModeStrings.failedSave || i18n('Failed to save learn sub mode'))));
-    } finally {
-      setSavingLearnSubPrefs(false);
-    }
-  }, [domainId, learnNewReviewOrder, savingLearnSubPrefs, learnSubModeStrings.failedSave]);
+  useEffect(() => {
+    if (!learnPrefsOpen) return;
+    const onDocKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !savingLearnPrefs) setLearnPrefsOpen(false);
+    };
+    document.addEventListener('keydown', onDocKey);
+    return () => document.removeEventListener('keydown', onDocKey);
+  }, [learnPrefsOpen, savingLearnPrefs]);
 
   const progressPercentage = totalProgress > 0 ? Math.round((currentProgress / totalProgress) * 100) : 0;
 
@@ -777,7 +770,7 @@ function LearnPage() {
               <span style={{ fontSize: '13px', color: themeStyles.textSecondary, fontWeight: 500 }}>
                 {i18n('Total progress')}
               </span>
-                <span style={{ fontSize: '15px', fontWeight: 600, color: themeStyles.textPrimary }}>
+              <span style={{ fontSize: '15px', fontWeight: 600, color: themeStyles.textPrimary }}>
                 {currentProgress} / {totalProgress}
               </span>
             </div>
@@ -796,253 +789,230 @@ function LearnPage() {
                 boxShadow: `0 0 12px ${themeStyles.primaryGlow}`,
               }} />
             </div>
+            <div style={{ marginTop: '18px' }}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '10px',
+              }}>
+                <span style={{ fontSize: '13px', color: themeStyles.textSecondary, fontWeight: 500 }}>
+                  {i18n('Today progress')}
+                </span>
+                <span style={{ fontSize: '15px', fontWeight: 600, color: themeStyles.textPrimary }}>
+                  {todayCompletedCount} / {goal}
+                </span>
+              </div>
+              <div style={{
+                height: '12px',
+                background: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+                borderRadius: '6px',
+                overflow: 'hidden',
+              }}>
+                <div style={{
+                  width: `${goal > 0 ? Math.min(100, Math.round((todayCompletedCount / goal) * 100)) : 0}%`,
+                  height: '100%',
+                  background: `linear-gradient(90deg, ${themeStyles.accent} 0%, ${theme === 'dark' ? '#7dd3fc' : '#38bdf8'} 100%)`,
+                  borderRadius: '6px',
+                  transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                  boxShadow: `0 0 12px ${themeStyles.accentGlow}`,
+                }} />
+              </div>
+            </div>
           </div>
 
-          <div>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '10px',
-              flexWrap: 'wrap',
-              gap: '8px',
-            }}>
-              <span style={{ fontSize: '13px', color: themeStyles.textSecondary, fontWeight: 500 }}>
-                {i18n('Today progress')}
-              </span>
-              <span style={{ fontSize: '15px', fontWeight: 600, color: themeStyles.textPrimary }}>
-                {todayCompletedCount} / {goal}
-                <span style={{ fontSize: '11px', fontWeight: 500, color: themeStyles.textTertiary, marginLeft: '6px' }}>
-                  {i18n('Learn daily goal new cards note')}
-                </span>
-              </span>
-              {!isEditingGoal ? (
-                <button
-                  onClick={() => setIsEditingGoal(true)}
-                  type="button"
+            {learnPrefsOpen && (
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="learn-prefs-modal-title"
+                style={{
+                  position: 'fixed',
+                  inset: 0,
+                  zIndex: 10000,
+                  background: 'rgba(0,0,0,0.45)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '16px',
+                }}
+                onClick={() => !savingLearnPrefs && setLearnPrefsOpen(false)}
+              >
+                <div
+                  onClick={(e) => e.stopPropagation()}
                   style={{
-                    padding: '5px 12px',
-                    fontSize: '12px',
-                    background: 'transparent',
+                    width: '100%',
+                    maxWidth: '420px',
+                    maxHeight: 'min(90vh, 640px)',
+                    overflow: 'auto',
+                    background: themeStyles.bgCard,
+                    borderRadius: '16px',
                     border: `1px solid ${themeStyles.border}`,
-                    borderRadius: '8px',
-                    color: themeStyles.textSecondary,
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = themeStyles.accent;
-                    e.currentTarget.style.color = themeStyles.accent;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = themeStyles.border;
-                    e.currentTarget.style.color = themeStyles.textSecondary;
+                    boxShadow: theme === 'dark' ? '0 12px 48px rgba(0,0,0,0.55)' : '0 8px 32px rgba(0,0,0,0.12)',
+                    padding: '20px',
                   }}
                 >
-                  {i18n('Edit')} {i18n('Daily Goal')}
-                </button>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                  <input
-                    type="number"
-                    value={goal}
-                    onChange={(e) => setGoal(Math.max(0, parseInt(e.target.value, 10) || 0))}
-                    min={0}
-                    style={{
-                      width: '56px',
-                      padding: '5px 10px',
-                      fontSize: '13px',
-                      background: themeStyles.bgPrimary,
-                      border: `1px solid ${themeStyles.border}`,
-                      borderRadius: '8px',
-                      color: themeStyles.textPrimary,
-                    }}
-                  />
-                  <span style={{ fontSize: '12px', color: themeStyles.textSecondary }}>{i18n('cards')}</span>
-                  <button
-                    onClick={handleSaveGoal}
-                    disabled={isSavingGoal}
-                    type="button"
-                    style={{
-                      padding: '5px 12px',
-                      fontSize: '12px',
-                      background: themeStyles.primary,
-                      border: 'none',
-                      borderRadius: '8px',
-                      color: '#fff',
-                      cursor: isSavingGoal ? 'not-allowed' : 'pointer',
-                      opacity: isSavingGoal ? 0.7 : 1,
-                    }}
+                  <div
+                    id="learn-prefs-modal-title"
+                    style={{ fontSize: '16px', fontWeight: 600, color: themeStyles.textPrimary, marginBottom: '16px' }}
                   >
-                    {isSavingGoal ? i18n('Saving...') : i18n('Save')}
-                  </button>
-                  <button
-                    onClick={() => { setIsEditingGoal(false); setGoal(dailyGoal); }}
-                    type="button"
-                    style={{
-                      padding: '5px 12px',
-                      fontSize: '12px',
-                      background: 'transparent',
-                      border: `1px solid ${themeStyles.border}`,
-                      borderRadius: '8px',
-                      color: themeStyles.textPrimary,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {i18n('Cancel')}
-                  </button>
+                    {learnSubModeStrings.sessionPreferences || i18n('Learn session preferences')}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <label htmlFor="learn-prefs-daily-goal" style={{ fontSize: '13px', color: themeStyles.textSecondary, fontWeight: 500 }}>
+                        {i18n('Daily Goal')}
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <input
+                          id="learn-prefs-daily-goal"
+                          type="number"
+                          min={0}
+                          value={draftDailyGoal}
+                          disabled={savingLearnPrefs}
+                          onChange={(e) => setDraftDailyGoal(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                          style={{
+                            width: '72px',
+                            padding: '8px 10px',
+                            fontSize: '13px',
+                            background: themeStyles.bgPrimary,
+                            border: `1px solid ${themeStyles.border}`,
+                            borderRadius: '8px',
+                            color: themeStyles.textPrimary,
+                          }}
+                        />
+                        <span style={{ fontSize: '13px', color: themeStyles.textSecondary }}>{i18n('cards')}</span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <label htmlFor="learn-prefs-session-mode" style={{ fontSize: '13px', color: themeStyles.textSecondary, fontWeight: 500 }}>
+                        {i18n('Learn session mode')}
+                      </label>
+                      <select
+                        id="learn-prefs-session-mode"
+                        value={draftSessionMode}
+                        disabled={savingLearnPrefs}
+                        onChange={(e) => setDraftSessionMode(e.target.value as LearnSessionModeUi)}
+                        style={{
+                          padding: '8px 10px',
+                          fontSize: '13px',
+                          background: themeStyles.bgPrimary,
+                          border: `1px solid ${themeStyles.border}`,
+                          borderRadius: '8px',
+                          color: themeStyles.textPrimary,
+                          width: '100%',
+                        }}
+                      >
+                        <option value="deep">{i18n('Deep learning mode')}</option>
+                        <option value="breadth">{i18n('Breadth learning mode')}</option>
+                        <option value="random">{i18n('Random learning mode')}</option>
+                      </select>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <label htmlFor="learn-prefs-ratio" style={{ fontSize: '13px', color: themeStyles.textSecondary, fontWeight: 500 }}>
+                        {learnSubModeStrings.label || i18n('Learn ratio section label')}
+                      </label>
+                      <select
+                        id="learn-prefs-ratio"
+                        value={String(draftRatio)}
+                        disabled={savingLearnPrefs}
+                        onChange={(e) => setDraftRatio(normalizeLearnNewReviewRatioFromUi(e.target.value))}
+                        aria-label={learnSubModeStrings.ratioAria || i18n('Learn new review ratio')}
+                        style={{
+                          padding: '8px 10px',
+                          fontSize: '13px',
+                          background: themeStyles.bgPrimary,
+                          border: `1px solid ${themeStyles.border}`,
+                          borderRadius: '8px',
+                          color: themeStyles.textPrimary,
+                          width: '100%',
+                        }}
+                      >
+                        {LEARN_NEW_REVIEW_RATIO_UI_VALUES.map((n, i) => (
+                          <option key={n} value={String(n)}>
+                            {(learnSubModeStrings.ratioOptionLabels && learnSubModeStrings.ratioOptionLabels[i])
+                              || (n === 0 ? i18n('New vs review ratio label new only')
+                                : n === -1 ? i18n('New vs review ratio label review only')
+                                  : i18n('New vs review ratio label', n))}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <label htmlFor="learn-prefs-order" style={{ fontSize: '13px', color: themeStyles.textSecondary, fontWeight: 500 }}>
+                        {learnSubModeStrings.orderLabel || i18n('Learn new review order label')}
+                      </label>
+                      <select
+                        id="learn-prefs-order"
+                        value={draftOrder}
+                        disabled={savingLearnPrefs}
+                        onChange={(e) => setDraftOrder(normalizeLearnNewReviewOrderFromUi(e.target.value))}
+                        aria-label={learnSubModeStrings.orderAria || i18n('Learn new review order aria')}
+                        style={{
+                          padding: '8px 10px',
+                          fontSize: '13px',
+                          background: themeStyles.bgPrimary,
+                          border: `1px solid ${themeStyles.border}`,
+                          borderRadius: '8px',
+                          color: themeStyles.textPrimary,
+                          width: '100%',
+                        }}
+                      >
+                        <option value="new_first">
+                          {learnSubModeStrings.orderOptionNewFirst || i18n('Learn new review order new first')}
+                        </option>
+                        <option value="old_first">
+                          {learnSubModeStrings.orderOptionOldFirst || i18n('Learn new review order old first')}
+                        </option>
+                        <option value="shuffle">
+                          {learnSubModeStrings.orderOptionShuffle || i18n('Learn new review order shuffle')}
+                        </option>
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'flex-end',
+                    gap: '10px',
+                    marginTop: '20px',
+                  }}>
+                    <button
+                      type="button"
+                      disabled={savingLearnPrefs}
+                      onClick={() => setLearnPrefsOpen(false)}
+                      style={{
+                        padding: '8px 14px',
+                        fontSize: '13px',
+                        background: 'transparent',
+                        border: `1px solid ${themeStyles.border}`,
+                        borderRadius: '8px',
+                        color: themeStyles.textPrimary,
+                        cursor: savingLearnPrefs ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {i18n('Cancel')}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={savingLearnPrefs}
+                      onClick={() => { void saveLearnPrefsModal(); }}
+                      style={{
+                        padding: '8px 14px',
+                        fontSize: '13px',
+                        background: themeStyles.primary,
+                        border: 'none',
+                        borderRadius: '8px',
+                        color: '#fff',
+                        cursor: savingLearnPrefs ? 'not-allowed' : 'pointer',
+                        opacity: savingLearnPrefs ? 0.8 : 1,
+                      }}
+                    >
+                      {savingLearnPrefs ? i18n('Saving...') : i18n('Save')}
+                    </button>
+                  </div>
                 </div>
-              )}
-            </div>
-            <div style={{
-              height: '12px',
-              background: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-              borderRadius: '6px',
-              overflow: 'hidden',
-            }}>
-              <div style={{
-                width: `${goal > 0 ? Math.min(100, Math.round((todayCompletedCount / goal) * 100)) : 0}%`,
-                height: '100%',
-                background: `linear-gradient(90deg, ${themeStyles.accent} 0%, ${theme === 'dark' ? '#7dd3fc' : '#38bdf8'} 100%)`,
-                borderRadius: '6px',
-                transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-                boxShadow: `0 0 12px ${themeStyles.accentGlow}`,
-              }} />
-            </div>
-            </div>
-
-            <div style={{
-              marginTop: '20px',
-              paddingTop: '16px',
-              borderTop: `1px solid ${themeStyles.border}`,
-            }}>
-              <div style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                alignItems: 'center',
-                gap: '10px',
-                marginBottom: '6px',
-              }}>
-                <label htmlFor="learn-session-mode" style={{ fontSize: '13px', color: themeStyles.textSecondary, fontWeight: 500 }}>
-                  {i18n('Learn session mode')}
-                </label>
-                <select
-                  id="learn-session-mode"
-                  value={learnSessionMode}
-                  disabled={savingLearnSessionMode}
-                  onChange={(e) => handleLearnSessionModeChange(e.target.value as LearnSessionModeUi)}
-                  style={{
-                    padding: '6px 10px',
-                    fontSize: '13px',
-                    background: themeStyles.bgPrimary,
-                    border: `1px solid ${themeStyles.border}`,
-                    borderRadius: '8px',
-                    color: themeStyles.textPrimary,
-                    cursor: savingLearnSessionMode ? 'not-allowed' : 'pointer',
-                    opacity: savingLearnSessionMode ? 0.7 : 1,
-                    minWidth: '160px',
-                  }}
-                >
-                  <option value="deep">{i18n('Deep learning mode')}</option>
-                  <option value="breadth">{i18n('Breadth learning mode')}</option>
-                  <option value="random">{i18n('Random learning mode')}</option>
-                </select>
               </div>
-              <div style={{ fontSize: '12px', color: themeStyles.textTertiary, lineHeight: 1.45 }}>
-                {i18n('Applies to next learn session')}
-              </div>
-              <div style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                alignItems: 'center',
-                gap: '10px',
-                marginTop: '14px',
-                marginBottom: '6px',
-              }}>
-                <label htmlFor="learn-new-review-ratio" style={{ fontSize: '13px', color: themeStyles.textSecondary, fontWeight: 500 }}>
-                  {learnSubModeStrings.label || i18n('Learn ratio section label')}
-                </label>
-                <select
-                  id="learn-new-review-ratio"
-                  value={String(learnNewReviewRatio)}
-                  disabled={savingLearnSubPrefs || savingLearnSessionMode}
-                  onChange={(e) => {
-                    const n = normalizeLearnNewReviewRatioFromUi(e.target.value);
-                    void persistLearnRatio(n);
-                  }}
-                  aria-label={learnSubModeStrings.ratioAria || i18n('Learn new review ratio')}
-                  style={{
-                    padding: '6px 10px',
-                    fontSize: '13px',
-                    background: themeStyles.bgPrimary,
-                    border: `1px solid ${themeStyles.border}`,
-                    borderRadius: '8px',
-                    color: themeStyles.textPrimary,
-                    cursor: savingLearnSubPrefs || savingLearnSessionMode ? 'not-allowed' : 'pointer',
-                    opacity: savingLearnSubPrefs || savingLearnSessionMode ? 0.7 : 1,
-                    minWidth: '160px',
-                  }}
-                >
-                  {LEARN_NEW_REVIEW_RATIO_UI_VALUES.map((n, i) => (
-                    <option key={n} value={String(n)}>
-                      {(learnSubModeStrings.ratioOptionLabels && learnSubModeStrings.ratioOptionLabels[i])
-                        || (n === 0 ? i18n('New vs review ratio label new only')
-                          : n === -1 ? i18n('New vs review ratio label review only')
-                            : i18n('New vs review ratio label', n))}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div style={{ fontSize: '12px', color: themeStyles.textTertiary, lineHeight: 1.45 }}>
-                {learnSubModeStrings.hint || i18n('Learn ratio section hint')}
-              </div>
-              <div style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                alignItems: 'center',
-                gap: '10px',
-                marginTop: '14px',
-                marginBottom: '6px',
-              }}>
-                <label htmlFor="learn-new-review-order" style={{ fontSize: '13px', color: themeStyles.textSecondary, fontWeight: 500 }}>
-                  {learnSubModeStrings.orderLabel || i18n('Learn new review order label')}
-                </label>
-                <select
-                  id="learn-new-review-order"
-                  value={learnNewReviewOrder}
-                  disabled={savingLearnSubPrefs || savingLearnSessionMode}
-                  onChange={(e) => {
-                    const v = normalizeLearnNewReviewOrderFromUi(e.target.value);
-                    void persistLearnNewReviewOrder(v);
-                  }}
-                  aria-label={learnSubModeStrings.orderAria || i18n('Learn new review order aria')}
-                  style={{
-                    padding: '6px 10px',
-                    fontSize: '13px',
-                    background: themeStyles.bgPrimary,
-                    border: `1px solid ${themeStyles.border}`,
-                    borderRadius: '8px',
-                    color: themeStyles.textPrimary,
-                    cursor: savingLearnSubPrefs || savingLearnSessionMode ? 'not-allowed' : 'pointer',
-                    opacity: savingLearnSubPrefs || savingLearnSessionMode ? 0.7 : 1,
-                    minWidth: '200px',
-                  }}
-                >
-                  <option value="new_first">
-                    {learnSubModeStrings.orderOptionNewFirst || i18n('Learn new review order new first')}
-                  </option>
-                  <option value="old_first">
-                    {learnSubModeStrings.orderOptionOldFirst || i18n('Learn new review order old first')}
-                  </option>
-                  <option value="shuffle">
-                    {learnSubModeStrings.orderOptionShuffle || i18n('Learn new review order shuffle')}
-                  </option>
-                </select>
-              </div>
-              <div style={{ fontSize: '12px', color: themeStyles.textTertiary, lineHeight: 1.45 }}>
-                {learnSubModeStrings.orderHint || i18n('Learn new review order hint')}
-              </div>
-            </div>
+            )}
 
             <div style={{
             marginTop: '24px',
@@ -1194,8 +1164,37 @@ function LearnPage() {
           onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
           onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.9'; }}
         >
-          {i18n('Section Order')}
+          {learnSubModeStrings.sectionOrderLink || i18n('Section Order')}
         </a>
+        <button
+          type="button"
+          onClick={openLearnPrefsModal}
+          disabled={savingLearnPrefs}
+          style={{
+            display: 'block',
+            textAlign: 'center',
+            marginTop: '8px',
+            fontSize: '14px',
+            color: themeStyles.accent,
+            textDecoration: 'none',
+            opacity: savingLearnPrefs ? 0.5 : 0.9,
+            transition: 'opacity 0.2s',
+            background: 'none',
+            border: 'none',
+            width: '100%',
+            cursor: savingLearnPrefs ? 'not-allowed' : 'pointer',
+            padding: 0,
+            fontFamily: 'inherit',
+          }}
+          onMouseEnter={(e) => {
+            if (!savingLearnPrefs) e.currentTarget.style.opacity = '1';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.opacity = savingLearnPrefs ? '0.5' : '0.9';
+          }}
+        >
+          {learnSubModeStrings.sessionPreferences || i18n('Learn session preferences')}
+        </button>
       </>
         )}
 
