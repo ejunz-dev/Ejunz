@@ -63,12 +63,13 @@ export function mergeDailyNewReviewArms<
     return [...newArm, ...reviewArm];
 }
 
-const RATIO_CHOICES = new Set([1, 2, 3, 4, 5]);
+/** 1:0 = new only; 0:1 = review only (count = daily goal); 1:N = mixed (review ≈ new×N). */
+const LEARN_NEW_REVIEW_RATIO_VALUES = new Set([-1, 0, 1, 2, 3, 4, 5]);
 
 /** Old-segment cards appended after daily **new** slice: count = newCount × N; pool cycles when shorter. */
 export function getLearnNewReviewRatio(dudoc: Record<string, unknown> | null | undefined): number {
     const n = parseInt(String(dudoc?.learnNewReviewRatio ?? '1'), 10);
-    return RATIO_CHOICES.has(n) ? n : 1;
+    return LEARN_NEW_REVIEW_RATIO_VALUES.has(n) ? n : 1;
 }
 
 export function normalizeLearnSessionMode(raw: unknown): LearnSessionMode {

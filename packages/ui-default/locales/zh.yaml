@@ -246,8 +246,12 @@ __langname: 简体中文
 'Last Disconnected Time': 最后断开时间
 'Learn session mode': 学习模式（下次会话）
 'Learn ratio section label': 学习副模式 · 新旧比例（下次会话）
-'Learn ratio section hint': 主模式（深度/广度/随机）只影响今日队列里「新」段卡片的展开顺序。每日目标仅计入新卡张数；一次今日会话总张数 = 新卡（按目标截断，新卡池不足则循环）+ 新卡数×N 张旧段复习卡（旧卡池不足则循环，没有旧段则不追加）。
+'Learn ratio section hint': 主模式（深度/广度/随机）只影响今日队列里「新」段卡片的展开顺序。混合与纯新模式下每日目标指**新卡**张数；**纯复习**模式下同一每日目标表示要抽取的**复习卡**张数。混合模式：今日会话 = 新卡（按目标截断，不足则循环）+ 新卡数×N 张旧段复习（不足则循环，无旧段则不追加）。纯新 / 纯复习会省略另一臂。
 'Learn today ratio summary': 每张新卡配 {0} 张复习卡
+'Learn today ratio summary new only': 仅新题（本次不排复习）
+'Learn today ratio summary review only': 仅复习（张数沿用每日目标）
+'New vs review ratio label new only': '纯新题（1 : 0）'
+'New vs review ratio label review only': '纯复习（0 : 1，张数=每日目标）'
 'Learn path card loop count': 练{0}次
 'Learn path card loop count title': 学习路径该节槽下累计完成次数（每次完整做题计一次，复习排队优先次数少的卡片）
 'Learn daily goal new cards note': （仅新段）
