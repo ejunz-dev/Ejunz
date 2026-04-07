@@ -988,6 +988,9 @@ page.training.detail.status.locked: 已锁定
 page.training.detail.status.open: 开放
 page.training.detail.task_list: 任务列表
 page.training.domain.doc_id_label: 'docId：'
+page.training.domain.manage_bases: 知识库绑定
+page.training.bases_edit.title: 编辑绑定的知识库
+page.training.bases_edit.blurb: 调整绑定的知识库顺序（上移/下移）、添加或移除绑定。新加入的知识库会按训练计划同名分支准备快照；从列表中移除不会删除原知识库上的训练分支数据。
 page.training.domain.edit: 编辑
 page.training.domain.first_group_line: 首组 docId {0} · {1} → {2}
 page.training.domain.multi_plan_sources: '{0} 组知识库；'
@@ -1288,6 +1291,8 @@ training_detail: 训练计划详情
 training_domain: 训练
 training_edit: 编辑训练计划
 training_list_empty: 暂无训练计划
+training_editor.upload.invalid_node: 无法解析训练节点 ID，无法上传文件。请刷新页面后重试。
+training_editor.upload.card_base_unresolved: 无法确定卡片所属知识库，无法上传文件。请刷新页面后重试。
 Type: 类型
 UI Language: 用户界面语言
 Uncompleted: 未完成

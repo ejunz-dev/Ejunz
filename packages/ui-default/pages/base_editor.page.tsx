@@ -70,6 +70,67 @@ interface CardFileInfo {
   lastModified?: Date | string;
 }
 
+/** Merged training editor node id: `t_{baseDocId}_{rawNodeId}` */
+function parseTrainingNodeIdForFiles(nodeId: string): { baseDocId: number; nodeId: string } | null {
+  const m = /^t_(\d+)_(.+)$/.exec(String(nodeId || ''));
+  if (!m) return null;
+  const baseDocId = Number(m[1]);
+  if (!Number.isSafeInteger(baseDocId) || baseDocId < 1) return null;
+  return { baseDocId, nodeId: m[2] };
+}
+
+function resolveCardBaseDocIdFromNodeMap(cardId: string): number | null {
+  const map = (typeof window !== 'undefined' && (window as any).UiContext?.nodeCardsMap) || {};
+  for (const nid of Object.keys(map)) {
+    const arr = map[nid];
+    if (!Array.isArray(arr)) continue;
+    for (const c of arr) {
+      if (!c) continue;
+      const cid = (c as any).docId ?? (c as any)._id;
+      if (cid != null && String(cid) === String(cardId) && (c as any).baseDocId != null) {
+        const n = Number((c as any).baseDocId);
+        if (Number.isFinite(n) && n >= 1) return n;
+      }
+    }
+  }
+  return null;
+}
+
+/** Map training-editor paths `/trainingOid/node|card|...` to `/numericBaseDocId/...` for `/base/*` file APIs. */
+function rewriteTrainingPlanFilePath(path: string): string {
+  const trainingBranch = String((typeof window !== 'undefined' && (window as any).UiContext?.trainingTargetBranch) || 'main');
+  const qIndex = path.indexOf('?');
+  const pathname = qIndex >= 0 ? path.slice(0, qIndex) : path;
+  const query = qIndex >= 0 ? path.slice(qIndex + 1) : '';
+  const params = new URLSearchParams(query);
+  const segs = pathname.split('/').filter(Boolean);
+  if (segs.length < 3) return path;
+
+  if (segs[1] === 'node') {
+    const mergedNodeId = decodeURIComponent(segs[2]);
+    const parsed = parseTrainingNodeIdForFiles(mergedNodeId);
+    if (!parsed) return path;
+    const tail = segs.slice(3).join('/');
+    const newPath = `/${parsed.baseDocId}/node/${encodeURIComponent(parsed.nodeId)}${tail ? `/${tail}` : ''}`;
+    params.set('branch', trainingBranch);
+    const q = params.toString();
+    return `${newPath}${q ? `?${q}` : ''}`;
+  }
+
+  if (segs[1] === 'card') {
+    const cId = segs[2];
+    const baseDocId = resolveCardBaseDocIdFromNodeMap(cId);
+    if (!baseDocId) return path;
+    const tail = segs.slice(3).join('/');
+    const newPath = `/${baseDocId}/card/${cId}${tail ? `/${tail}` : ''}`;
+    params.delete('branch');
+    const q = params.toString();
+    return `${newPath}${q ? `?${q}` : ''}`;
+  }
+
+  return path;
+}
+
 interface Card {
   docId: string;
   cid: number;
@@ -1407,9 +1468,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         : `/d/${domainId}/base/data`;
     try {
       const qs: Record<string, string> = {};
-      if (docId && basePath === 'base') qs.docId = docId;
+      if (docId && (basePath === 'base' || basePath === 'training')) qs.docId = docId;
       const refBranch = (window as any).UiContext?.currentBranch;
-      if (refBranch) qs.branch = refBranch;
+      if (refBranch && basePath !== 'training') qs.branch = refBranch;
       const newData: any = await request.get(apiPath, qs);
       if (newData?.nodes != null || newData?.edges != null) {
         setBase(prev => {
@@ -1452,11 +1513,24 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     }
     const files = Array.from(fileList);
     const domainId = (window as any).UiContext?.domainId || 'system';
-    const branch = (window as any).UiContext?.currentBranch || 'main';
+    const trainingBranch = String((window as any).UiContext?.trainingTargetBranch || 'main');
+    const branch = basePath === 'training' ? trainingBranch : ((window as any).UiContext?.currentBranch || 'main');
 
     if (pendingNodeUploadRef.current) {
       const { nodeId } = pendingNodeUploadRef.current;
-      const url = `/d/${domainId}/base/${docId}/node/${nodeId}/files?branch=${encodeURIComponent(branch)}`;
+      let url: string;
+      if (basePath === 'training') {
+        const parsed = parseTrainingNodeIdForFiles(nodeId);
+        if (!parsed) {
+          Notification.error(i18n('training_editor.upload.invalid_node'));
+          e.target.value = '';
+          pendingNodeUploadRef.current = null;
+          return;
+        }
+        url = `/d/${domainId}/base/${parsed.baseDocId}/node/${encodeURIComponent(parsed.nodeId)}/files?branch=${encodeURIComponent(branch)}`;
+      } else {
+        url = `/d/${domainId}/base/${docId}/node/${nodeId}/files?branch=${encodeURIComponent(branch)}`;
+      }
       try {
         await uploadFiles(url, files, {});
         await refetchEditorData();
@@ -1466,7 +1540,20 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       pendingNodeUploadRef.current = null;
     } else if (pendingCardUploadRef.current) {
       const pending = pendingCardUploadRef.current;
-      const url = `/d/${domainId}/base/${docId}/card/${pending.cardId}/files`;
+      let url: string;
+      if (basePath === 'training') {
+        const fromNode = pending.nodeId ? parseTrainingNodeIdForFiles(pending.nodeId) : null;
+        const baseDocId = fromNode?.baseDocId ?? resolveCardBaseDocIdFromNodeMap(pending.cardId);
+        if (!baseDocId) {
+          Notification.error(i18n('training_editor.upload.card_base_unresolved'));
+          e.target.value = '';
+          pendingCardUploadRef.current = null;
+          return;
+        }
+        url = `/d/${domainId}/base/${baseDocId}/card/${pending.cardId}/files`;
+      } else {
+        url = `/d/${domainId}/base/${docId}/card/${pending.cardId}/files`;
+      }
       try {
         await uploadFiles(url, files, {});
         await refetchEditorData();
@@ -1476,7 +1563,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       pendingCardUploadRef.current = null;
     }
     e.target.value = '';
-  }, [docId, refetchEditorData]);
+  }, [basePath, docId, refetchEditorData]);
 
   const handleFilePreviewClick = useCallback(async (e: React.MouseEvent<HTMLAnchorElement>, link: string, filename: string, size: number) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey) return;
@@ -1816,12 +1903,12 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   
   const getBaseUrl = useCallback((path: string, docId?: string): string => {
     const domainId = (window as any).UiContext?.domainId || 'system';
-    
-    // File endpoints are implemented only under original `/base/*` routes.
-    // In training editor we keep non-file endpoints under `/training/*`,
-    // but route file ops back to `/base/*` to avoid missing backend handlers.
+
+    // File endpoints only exist under `/base/:docId/...` where docId is numeric base doc id.
+    // Training editor uses training ObjectId in path segments; rewrite to real base + node id + training branch.
     if (basePath === 'training' && (path.includes('/files') || path.includes('/file/'))) {
-      return `/d/${domainId}/base${path}`;
+      const rewritten = rewriteTrainingPlanFilePath(path);
+      return `/d/${domainId}/base${rewritten}`;
     }
     return `/d/${domainId}/${basePath}${path}`;
   }, [basePath]);

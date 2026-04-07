@@ -39,6 +39,9 @@
                                     <a class="button" href="{{ url('training_editor', domainId=domainId, trainingDocId=t.docId) }}">
                                         {{ _('page.training.domain.edit') }}
                                     </a>
+                                    <a class="button" href="{{ url('training_bases', domainId=domainId, trainingDocId=t.docId) }}">
+                                        {{ _('page.training.domain.manage_bases') }}
+                                    </a>
                                     <form method="post" action="{{ url('training_delete', domainId=domainId, docId=t.docId) }}" style="display:inline;margin-left:.5rem;" onsubmit="return window.confirm('{{ _('Delete this training plan? This cannot be undone.') }}');">
                                         <button type="submit" class="button" style="background:#d1242f;border-color:#d1242f;color:#fff;">
                                             {{ _('Delete') }}

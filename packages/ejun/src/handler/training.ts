@@ -156,6 +156,71 @@ function parsePlanSourcesPayload(raw: unknown): TrainingPlanSource[] {
     });
 }
 
+/** Create training-named branch + clone main cards when absent (used on training create and when adding a base to an existing plan). */
+async function materializeTrainingBranches(
+    domainId: string,
+    userId: number,
+    ip: string,
+    baseBranchName: string,
+    planSources: TrainingPlanSource[],
+    basesToMaterialize: Set<number>,
+) {
+    const baseByDocId = new Map<number, BaseDoc>();
+    for (const s of planSources) {
+        if (!basesToMaterialize.has(s.baseDocId)) continue;
+        const b = await BaseModel.get(domainId, s.baseDocId);
+        if (!b) throw new ValidationError('planSources');
+        baseByDocId.set(s.baseDocId, b);
+    }
+    for (const ps of planSources) {
+        if (!basesToMaterialize.has(ps.baseDocId)) continue;
+        const base = baseByDocId.get(ps.baseDocId);
+        if (!base) throw new ValidationError('planSources');
+
+        const main = pickBranchData(base, 'main');
+        const bd: any = (base as any).branchData || {};
+        if (!bd[baseBranchName]) {
+            bd[baseBranchName] = {
+                nodes: JSON.parse(JSON.stringify(main.nodes || [])),
+                edges: JSON.parse(JSON.stringify(main.edges || [])),
+            };
+            await document.set(domainId, document.TYPE_BASE, ps.baseDocId, {
+                branchData: bd,
+                updateAt: new Date(),
+            } as any);
+        }
+
+        const existing = await document.getMulti(domainId, document.TYPE_CARD, {
+            baseDocId: ps.baseDocId,
+            branch: baseBranchName,
+        } as any).limit(1).toArray();
+        if (existing.length) continue;
+
+        const mainCards = await document.getMulti(domainId, document.TYPE_CARD, {
+            baseDocId: ps.baseDocId,
+            $or: [{ branch: 'main' }, { branch: { $exists: false } }],
+        } as any).toArray() as any[];
+        for (const c of mainCards) {
+            const newCardDocId = await CardModel.create(
+                domainId,
+                ps.baseDocId,
+                String(c.nodeId),
+                userId,
+                String(c.title || ''),
+                String(c.content || ''),
+                ip,
+                (c as any).problems,
+                (c as any).order,
+                baseBranchName,
+            );
+            await CardModel.update(domainId, newCardDocId, {
+                cardFace: (c as any).cardFace,
+                files: (c as any).files,
+            } as any);
+        }
+    }
+}
+
 function parseDagPayload(raw: unknown): TrainingDagNode[] | undefined {
     if (raw === undefined || raw === null || String(raw).trim() === '') return undefined;
     let data = raw;
@@ -279,56 +344,15 @@ export class TrainingCreateHandler extends Handler<Context> {
         const baseBranchName = sanitizeBranchName(trainingName);
         if (!baseBranchName) throw new ValidationError('name');
 
-        // Also create a same-named branch on each selected source base (from main),
-        // so the original base keeps a "training branch" snapshot for management/sync.
-        for (const ps of planSources) {
-            const base = baseByDocId.get(ps.baseDocId);
-            if (!base) throw new ValidationError('planSources');
-
-            const main = pickBranchData(base, 'main');
-            const bd: any = (base as any).branchData || {};
-            if (!bd[baseBranchName]) {
-                bd[baseBranchName] = {
-                    nodes: JSON.parse(JSON.stringify(main.nodes || [])),
-                    edges: JSON.parse(JSON.stringify(main.edges || [])),
-                };
-                await document.set(this.domain._id, document.TYPE_BASE, ps.baseDocId, {
-                    branchData: bd,
-                    updateAt: new Date(),
-                } as any);
-            }
-
-            // Clone main-branch cards into the new training branch if that branch has no cards yet.
-            // This is a one-time cost at create time and keeps training editor reading/writing only `targetBranch`.
-            const existing = await document.getMulti(this.domain._id, document.TYPE_CARD, {
-                baseDocId: ps.baseDocId,
-                branch: baseBranchName,
-            } as any).limit(1).toArray();
-            if (existing.length) continue;
-
-            const mainCards = await document.getMulti(this.domain._id, document.TYPE_CARD, {
-                baseDocId: ps.baseDocId,
-                $or: [{ branch: 'main' }, { branch: { $exists: false } }],
-            } as any).toArray() as any[];
-            for (const c of mainCards) {
-                const newCardDocId = await CardModel.create(
-                    this.domain._id,
-                    ps.baseDocId,
-                    String(c.nodeId),
-                    this.user._id,
-                    String(c.title || ''),
-                    String(c.content || ''),
-                    this.request.ip,
-                    (c as any).problems,
-                    (c as any).order,
-                    baseBranchName,
-                );
-                await CardModel.update(this.domain._id, newCardDocId, {
-                    cardFace: (c as any).cardFace,
-                    files: (c as any).files,
-                } as any);
-            }
-        }
+        const allBaseIds = new Set(planSources.map((s) => s.baseDocId));
+        await materializeTrainingBranches(
+            this.domain._id,
+            this.user._id,
+            this.request.ip,
+            baseBranchName,
+            planSources,
+            allBaseIds,
+        );
 
         planSources = planSources.map((s) => ({
             baseDocId: s.baseDocId,
@@ -356,6 +380,95 @@ export class TrainingCreateHandler extends Handler<Context> {
     }
 }
 
+export class TrainingBasesEditHandler extends Handler<Context> {
+    @param('trainingDocId', Types.String)
+    async get(domainId: string, trainingDocId: string) {
+        const did = normalizeDomainId(domainId, (this as any).args);
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        if (!trainingDocId || !ObjectId.isValid(trainingDocId)) throw new ValidationError('docId');
+        const tid = new ObjectId(trainingDocId);
+        const training = await TrainingModel.get(did, tid);
+        if (!training) throw new NotFoundError('training');
+        if (training.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        }
+        const bases = await loadBases(did);
+        const basesMeta = bases.map((b) => ({
+            docId: b.docId,
+            title: b.title || String(b.docId),
+            branches: listBranchesForBase(b),
+        }));
+        const sources = TrainingModel.resolvePlanSources(training);
+        const initialPlan = sources.map((s) => ({ baseDocId: s.baseDocId }));
+        this.response.template = 'training_bases_edit.html';
+        this.response.body = {
+            domainId: did,
+            trainingDocId: String(training.docId),
+            training,
+            basesMeta,
+            basesMetaJson: JSON.stringify(basesMeta),
+            initialPlanSourcesJson: JSON.stringify(initialPlan),
+        };
+    }
+
+    @param('trainingDocId', Types.String)
+    async post(domainId: string, trainingDocId: string) {
+        const did = normalizeDomainId(domainId, (this as any).args);
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        if (!trainingDocId || !ObjectId.isValid(trainingDocId)) throw new ValidationError('docId');
+        const tid = new ObjectId(trainingDocId);
+        const training = await TrainingModel.get(did, tid);
+        if (!training) throw new NotFoundError('training');
+        if (training.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        }
+        const { planSources: planSourcesRaw } = this.request.body || {};
+        const parsed = parsePlanSourcesPayload(planSourcesRaw);
+        const oldSources = TrainingModel.resolvePlanSources(training);
+        const baseBranchNameRaw = oldSources.length
+            ? String(oldSources[0].targetBranch || '').trim()
+            : sanitizeBranchName(String(training.name || '').trim());
+        if (!baseBranchNameRaw) throw new ValidationError('planSources');
+
+        const ids = parsed.map((r) => r.baseDocId);
+        if (new Set(ids).size !== ids.length) {
+            throw new ValidationError('planSources');
+        }
+
+        const normalized: TrainingPlanSource[] = parsed.map((s) => ({
+            baseDocId: s.baseDocId,
+            sourceBranch: 'main',
+            targetBranch: baseBranchNameRaw,
+        }));
+
+        for (const s of normalized) {
+            const b = await BaseModel.get(did, s.baseDocId);
+            if (!b) throw new ValidationError('planSources');
+        }
+
+        const oldIds = new Set(oldSources.map((s) => s.baseDocId));
+        const toMaterialize = new Set(
+            normalized.filter((s) => !oldIds.has(s.baseDocId)).map((s) => s.baseDocId),
+        );
+        if (toMaterialize.size) {
+            await materializeTrainingBranches(
+                did,
+                this.user._id,
+                this.request.ip,
+                baseBranchNameRaw,
+                normalized,
+                toMaterialize,
+            );
+        }
+
+        await TrainingModel.update(did, tid, { planSources: normalized });
+        this.response.redirect = this.url('training_editor', {
+            domainId: did,
+            trainingDocId: String(tid),
+        });
+    }
+}
+
 export class TrainingEditorHandler extends Handler<Context> {
     @param('trainingDocId', Types.String)
     async get(domainId: string, trainingDocId: string) {
@@ -371,6 +484,10 @@ export class TrainingEditorHandler extends Handler<Context> {
 
         const { nodes, edges, nodeCardsMap } = await loadTrainingMergedGraph(did, training);
         const todayContribution = await computeTrainingTodayContribution(did, this.user._id, training as any, nodes);
+        const _sources = TrainingModel.resolvePlanSources(training);
+        const trainingTargetBranch = _sources.length
+            ? String(_sources[0].targetBranch || '').trim() || 'main'
+            : 'main';
         this.response.template = 'training_editor.html';
         this.response.body = {
             base: {
@@ -386,6 +503,7 @@ export class TrainingEditorHandler extends Handler<Context> {
             files: [],
             domainId: did,
             editorMode: 'training',
+            trainingTargetBranch,
             trainingDocId: String(training.docId),
             todayContribution,
             todayContributionAllDomains: todayContribution,
@@ -1103,6 +1221,7 @@ export async function apply(ctx: Context) {
     ctx.Route('training_delete', '/training/:docId/delete', TrainingDeleteHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('training_domain', '/training', TrainingDomainHandler);
     ctx.Route('training_editor', '/training/:trainingDocId/editor', TrainingEditorHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('training_bases', '/training/:trainingDocId/bases', TrainingBasesEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('training_get', '/training/get', TrainingGetHandler, PRIV.PRIV_USER_PROFILE);
 
     // Training endpoints: shared storage in source base branches.
