@@ -11,10 +11,9 @@
   {{ set(UiContext, 'consecutiveDays', consecutiveDays) }}
   {{ set(UiContext, 'dailyGoal', dailyGoal) }}
   {{ set(UiContext, 'learnSessionMode', learnSessionMode or 'deep') }}
-  {{ set(UiContext, 'learnSubMode', learnSubMode or 'new_only') }}
   {{ set(UiContext, 'learnNewReviewRatio', learnNewReviewRatio or 1) }}
-  {{ set(UiContext, 'learnMixedSchedule', learnMixedSchedule or 'new_first') }}
   {{ set(UiContext, 'learnSubModeStrings', learnSubModeStrings or {}) }}
+  {{ set(UiContext, 'learnPathCardPractiseCounts', learnPathCardPractiseCounts or {}) }}
   {{ set(UiContext, 'todayCompletedCount', todayCompletedCount) }}
   {{ set(UiContext, 'pendingNodeList', pendingNodeList) }}
   {{ set(UiContext, 'completedSections', completedSections) }}
@@ -25,6 +24,7 @@
   {{ set(UiContext, 'pathSections', pathSections or []) }}
   {{ set(UiContext, 'pathFullDag', pathFullDag or []) }}
   {{ set(UiContext, 'pathCurrentSectionId', pathCurrentSectionId or '') }}
+  {{ set(UiContext, 'pathCurrentLearnStartCardId', pathCurrentLearnStartCardId or '') }}
   {{ set(UiContext, 'currentSectionId', currentSectionId) }}
   {{ set(UiContext, 'currentSectionIndex', currentSectionIndex) }}
   {{ set(UiContext, 'passedCardIds', passedCardIds) }}

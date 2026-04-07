@@ -1,12 +1,8 @@
 import { ObjectId } from 'mongodb';
 import {
     getLearnSessionMode,
-    getLearnMixedSchedule,
     getLearnNewReviewRatio,
-    getLearnSubMode,
     normalizeLearnSessionMode,
-    normalizeLearnMixedSchedule,
-    normalizeLearnSubMode,
 } from './learnModePrefs';
 import type { LessonCardQueueItem, LessonMode, SessionDoc, SessionPatch } from '../model/session';
 import SessionModel from '../model/session';
@@ -98,7 +94,7 @@ const normSectionOrder = (arr: unknown): string[] =>
     (Array.isArray(arr) ? arr : []).map((x) => String(x));
 
 /** Bump when mixed-mode ordering algorithm changes (invalidates frozen today queues). */
-export const LESSON_QUEUE_MIXED_LAYOUT_VERSION = 9;
+export const LESSON_QUEUE_MIXED_LAYOUT_VERSION = 14;
 
 /**
  * Frozen `today` queue must match current domain learn settings; otherwise rebuild (section order / learning start / training).
@@ -127,35 +123,28 @@ export function frozenTodayQueueMatchesLearnSettings(dudoc: any, s: SessionDoc):
         ? s.currentLearnSectionId.trim()
         : undefined;
     if (did !== undefined && sid !== undefined && did !== sid) return false;
+    const dCard =
+        typeof (du as { currentLearnStartCardId?: unknown }).currentLearnStartCardId === 'string'
+        && String((du as { currentLearnStartCardId: string }).currentLearnStartCardId).trim()
+            ? String((du as { currentLearnStartCardId: string }).currentLearnStartCardId).trim()
+            : null;
+    const sCardRaw = (s as SessionDoc & { lessonQueueLearnStartCardId?: string | null }).lessonQueueLearnStartCardId;
+    const sCard =
+        typeof sCardRaw === 'string' && sCardRaw.trim() ? sCardRaw.trim() : null;
+    if (dCard !== sCard) return false;
     const normalizedDu = getLearnSessionMode(du);
     const rawS = (s as SessionDoc & { lessonQueueLearnSessionMode?: string | null }).lessonQueueLearnSessionMode;
     const normalizedS = normalizeLearnSessionMode(rawS);
     if (normalizedDu !== normalizedS) return false;
 
-    const subDu = getLearnSubMode(du);
-    const rawSubS = (s as SessionDoc & { lessonQueueLearnSubMode?: string | null }).lessonQueueLearnSubMode;
-    const subS =
-        rawSubS !== undefined && rawSubS !== null && String(rawSubS).trim() !== ''
-            ? normalizeLearnSubMode(rawSubS)
-            : 'new_only';
-    if (subDu !== subS) return false;
-    if (subDu === 'mixed' && subS === 'mixed') {
-        const rDu = getLearnNewReviewRatio(du);
-        const rawR = (s as SessionDoc & { lessonQueueLearnNewReviewRatio?: number | null }).lessonQueueLearnNewReviewRatio;
-        if (typeof rawR !== 'number' || ![1, 2, 3, 4, 5].includes(rawR)) {
-            return false;
-        }
-        if (rDu !== rawR) return false;
-        const schDu = getLearnMixedSchedule(du);
-        const rawSchS = (s as SessionDoc & { lessonQueueLearnMixedSchedule?: string | null }).lessonQueueLearnMixedSchedule;
-        if (rawSchS === undefined || rawSchS === null || String(rawSchS).trim() === '') {
-            return false;
-        }
-        const schS = normalizeLearnMixedSchedule(rawSchS);
-        if (schDu !== schS) return false;
-        const vS = (s as SessionDoc & { lessonQueueMixedLayoutVersion?: number | null }).lessonQueueMixedLayoutVersion;
-        if (vS !== LESSON_QUEUE_MIXED_LAYOUT_VERSION) return false;
+    const rDu = getLearnNewReviewRatio(du);
+    const rawR = (s as SessionDoc & { lessonQueueLearnNewReviewRatio?: number | null }).lessonQueueLearnNewReviewRatio;
+    if (typeof rawR !== 'number' || ![1, 2, 3, 4, 5].includes(rawR)) {
+        return false;
     }
+    if (rDu !== rawR) return false;
+    const vS = (s as SessionDoc & { lessonQueueMixedLayoutVersion?: number | null }).lessonQueueMixedLayoutVersion;
+    if (vS !== LESSON_QUEUE_MIXED_LAYOUT_VERSION) return false;
     return true;
 }
 
