@@ -1376,6 +1376,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   }, [docId]);
   
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
+  const selectedFileRef = useRef<FileItem | null>(null);
   const [fileContent, setFileContent] = useState<string>('');
   const [isCommitting, setIsCommitting] = useState(false);
   const [isMultiSelectMode, setIsMultiSelectMode] = useState<boolean>(false);
@@ -3282,8 +3283,52 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             
             (window as any).UiContext.nodeCardsMap = { ...(window as any).UiContext?.nodeCardsMap };
             setNodeCardsMapVersion(prev => prev + 1);
-            
-            
+
+            if (cardIdMap.size > 0) {
+              const q = new URLSearchParams(window.location.search);
+              const qCard = q.get('cardId');
+              if (qCard && cardIdMap.has(qCard)) {
+                q.set('cardId', cardIdMap.get(qCard)!);
+                window.history.replaceState(window.history.state, '', `${window.location.pathname}?${q.toString()}`);
+              }
+              const sel = selectedFileRef.current;
+              if (
+                sel &&
+                sel.type === 'card' &&
+                sel.cardId &&
+                cardIdMap.has(String(sel.cardId))
+              ) {
+                const realCardId = cardIdMap.get(String(sel.cardId))!;
+                const realNodeId =
+                  (sel.nodeId && nodeIdMap.has(String(sel.nodeId))
+                    ? nodeIdMap.get(String(sel.nodeId))!
+                    : sel.nodeId) || '';
+                const maps = (window as any).UiContext?.nodeCardsMap || {};
+                const cardRow =
+                  realNodeId && maps[realNodeId]
+                    ? (maps[realNodeId] as Card[]).find((c: Card) => String(c.docId) === String(realCardId))
+                    : null;
+                const newId = `card-${realCardId}`;
+                const updated: FileItem = {
+                  ...sel,
+                  id: newId,
+                  cardId: realCardId,
+                  nodeId: realNodeId || sel.nodeId,
+                  parentId: realNodeId || sel.parentId,
+                  name: cardRow?.title ?? sel.name,
+                };
+                selectedFileRef.current = updated;
+                setSelectedFile(updated);
+                for (const key of [sel.id, `card-${sel.cardId}`, String(sel.cardId)]) {
+                  if (originalContentsRef.current.has(key)) {
+                    const v = originalContentsRef.current.get(key)!;
+                    originalContentsRef.current.delete(key);
+                    originalContentsRef.current.set(newId, v);
+                  }
+                }
+              }
+            }
+
             for (const nodeCreate of batchSaveData.nodeCreates) {
               pendingCreatesRef.current.delete(nodeCreate.tempId);
             }
@@ -3506,7 +3551,15 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       if (hasContentChanges) {
         const changes = Array.from(allChanges.values());
         changes.forEach(change => {
-          originalContentsRef.current.set(change.file.id, change.content);
+          let id = change.file.id;
+          if (
+            change.file.type === 'card' &&
+            change.file.cardId &&
+            cardIdMap.has(String(change.file.cardId))
+          ) {
+            id = `card-${cardIdMap.get(String(change.file.cardId))!}`;
+          }
+          originalContentsRef.current.set(id, change.content);
         });
       }
     } catch (error: any) {
@@ -7992,7 +8045,6 @@ ${editorShellPath}
 
   
   const selectedFileIdRef = useRef<string | null>(null);
-  const selectedFileRef = useRef<FileItem | null>(null);
   const isInitializingRef = useRef(false);
   
   
@@ -11734,6 +11786,7 @@ ${editorShellPath}
                     const editorPath = getBaseUrl(`/${openSeg}/branch/${encodeURIComponent(currentBranch)}/editor`);
                     window.open(editorPath, '_blank');
                     await refetchEditorData();
+                    selectedFileRef.current = null;
                     setSelectedFile(null);
                   } catch (err: any) {
                     Notification.error(err?.message || 'Migration failed');
