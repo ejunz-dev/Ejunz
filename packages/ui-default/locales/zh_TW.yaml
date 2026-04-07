@@ -21,6 +21,8 @@ __langname: 正體中文
 'Failed to generate token: {0}': '生成 token 失敗: {0}'
 'Last check-in': 上次打卡
 'Learning consumption': 學習消耗
+'Learn session preferences': 學習會話設定
+'Section Order': 學習路徑節序
 'Max consecutive': 最長連續
 'No': 否
 'Tap the day count above to continue in Learn, Collect, or Flag.': 點擊上方天數可前往 Learn、Collect 或 Flag 繼續學習。

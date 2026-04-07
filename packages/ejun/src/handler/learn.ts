@@ -2283,6 +2283,8 @@ class LearnHandler extends Handler {
             orderOptionShuffle: this.translate('Learn new review order shuffle'),
             pathCardLoopCountFmt: this.translate('Learn path card loop count'),
             pathCardLoopCountTitle: this.translate('Learn path card loop count title'),
+            sectionOrderLink: this.translate('Section Order'),
+            sessionPreferences: this.translate('Learn session preferences'),
         };
         const rawPathPractise = dudocForLearnUi?.learnPathCardPractiseCounts;
         const learnPathCardPractiseCountsPayload =
