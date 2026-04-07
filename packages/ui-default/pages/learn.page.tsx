@@ -62,6 +62,8 @@ interface LearnTrainingOption {
 
 type LearnSessionModeUi = 'deep' | 'breadth' | 'random';
 
+type LearnNewReviewOrderUi = 'new_first' | 'old_first' | 'shuffle';
+
 /** Server `this.translate()` strings for learn new vs review ratio (matches user UI language). */
 interface LearnSubModeStringsFromServer {
   label?: string;
@@ -69,6 +71,12 @@ interface LearnSubModeStringsFromServer {
   ratioAria?: string;
   failedSave?: string;
   ratioOptionLabels?: string[];
+  orderLabel?: string;
+  orderHint?: string;
+  orderAria?: string;
+  orderOptionNewFirst?: string;
+  orderOptionOldFirst?: string;
+  orderOptionShuffle?: string;
   pathCardLoopCountFmt?: string;
   pathCardLoopCountTitle?: string;
 }
@@ -83,6 +91,12 @@ function normalizeLearnNewReviewRatioFromUi(raw: unknown): number {
   const n = parseInt(String(raw ?? '1'), 10);
   if ([1, 2, 3, 4, 5].includes(n)) return n;
   return 1;
+}
+
+function normalizeLearnNewReviewOrderFromUi(raw: unknown): LearnNewReviewOrderUi {
+  const s = String(raw ?? 'new_first').trim().toLowerCase().replace(/-/g, '_');
+  if (s === 'old_first' || s === 'shuffle') return s;
+  return 'new_first';
 }
 
 function getChildren(nodeId: string, sections: MapDAGNode[], dag: MapDAGNode[]): MapDAGNode[] {
@@ -147,6 +161,10 @@ function LearnPage() {
     () => normalizeLearnNewReviewRatioFromUi((window as any).UiContext?.learnNewReviewRatio),
     [],
   );
+  const initialLearnNewReviewOrder = useMemo(
+    () => normalizeLearnNewReviewOrderFromUi((window as any).UiContext?.learnNewReviewOrder),
+    [],
+  );
   const learnSubModeStrings = useMemo(
     () => ((window as any).UiContext?.learnSubModeStrings || {}) as LearnSubModeStringsFromServer,
     [],
@@ -168,6 +186,7 @@ function LearnPage() {
   const [learnSessionMode, setLearnSessionMode] = useState<LearnSessionModeUi>(initialLearnSessionMode);
   const [savingLearnSessionMode, setSavingLearnSessionMode] = useState(false);
   const [learnNewReviewRatio, setLearnNewReviewRatio] = useState(initialLearnNewReviewRatio);
+  const [learnNewReviewOrder, setLearnNewReviewOrder] = useState<LearnNewReviewOrderUi>(initialLearnNewReviewOrder);
   const [savingLearnSubPrefs, setSavingLearnSubPrefs] = useState(false);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
@@ -350,6 +369,26 @@ function LearnPage() {
       setSavingLearnSubPrefs(false);
     }
   }, [domainId, learnNewReviewRatio, savingLearnSubPrefs, learnSubModeStrings.failedSave]);
+
+  const persistLearnNewReviewOrder = useCallback(async (nextOrder: LearnNewReviewOrderUi) => {
+    if (!domainId || savingLearnSubPrefs) return;
+    if (nextOrder === learnNewReviewOrder) return;
+    const prevOrder = learnNewReviewOrder;
+    setLearnNewReviewOrder(nextOrder);
+    setSavingLearnSubPrefs(true);
+    try {
+      await request.post(`/d/${domainId}/learn/sub-mode`, { learnNewReviewOrder: nextOrder });
+      window.location.reload();
+    } catch (error: any) {
+      setLearnNewReviewOrder(prevOrder);
+      console.error('Failed to save learn new/review order:', error);
+      const msg = error?.response?.data?.message ?? error?.response?.data?.error ?? error?.message
+        ?? (learnSubModeStrings.failedSave || i18n('Failed to save learn sub mode'));
+      Notification.error(typeof msg === 'string' ? msg : (Array.isArray(msg) ? msg.join(' ') : (learnSubModeStrings.failedSave || i18n('Failed to save learn sub mode'))));
+    } finally {
+      setSavingLearnSubPrefs(false);
+    }
+  }, [domainId, learnNewReviewOrder, savingLearnSubPrefs, learnSubModeStrings.failedSave]);
 
   const progressPercentage = totalProgress > 0 ? Math.round((currentProgress / totalProgress) * 100) : 0;
 
@@ -950,6 +989,52 @@ function LearnPage() {
               </div>
               <div style={{ fontSize: '12px', color: themeStyles.textTertiary, lineHeight: 1.45 }}>
                 {learnSubModeStrings.hint || i18n('Learn ratio section hint')}
+              </div>
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                gap: '10px',
+                marginTop: '14px',
+                marginBottom: '6px',
+              }}>
+                <label htmlFor="learn-new-review-order" style={{ fontSize: '13px', color: themeStyles.textSecondary, fontWeight: 500 }}>
+                  {learnSubModeStrings.orderLabel || i18n('Learn new review order label')}
+                </label>
+                <select
+                  id="learn-new-review-order"
+                  value={learnNewReviewOrder}
+                  disabled={savingLearnSubPrefs || savingLearnSessionMode}
+                  onChange={(e) => {
+                    const v = normalizeLearnNewReviewOrderFromUi(e.target.value);
+                    void persistLearnNewReviewOrder(v);
+                  }}
+                  aria-label={learnSubModeStrings.orderAria || i18n('Learn new review order aria')}
+                  style={{
+                    padding: '6px 10px',
+                    fontSize: '13px',
+                    background: themeStyles.bgPrimary,
+                    border: `1px solid ${themeStyles.border}`,
+                    borderRadius: '8px',
+                    color: themeStyles.textPrimary,
+                    cursor: savingLearnSubPrefs || savingLearnSessionMode ? 'not-allowed' : 'pointer',
+                    opacity: savingLearnSubPrefs || savingLearnSessionMode ? 0.7 : 1,
+                    minWidth: '200px',
+                  }}
+                >
+                  <option value="new_first">
+                    {learnSubModeStrings.orderOptionNewFirst || i18n('Learn new review order new first')}
+                  </option>
+                  <option value="old_first">
+                    {learnSubModeStrings.orderOptionOldFirst || i18n('Learn new review order old first')}
+                  </option>
+                  <option value="shuffle">
+                    {learnSubModeStrings.orderOptionShuffle || i18n('Learn new review order shuffle')}
+                  </option>
+                </select>
+              </div>
+              <div style={{ fontSize: '12px', color: themeStyles.textTertiary, lineHeight: 1.45 }}>
+                {learnSubModeStrings.orderHint || i18n('Learn new review order hint')}
               </div>
             </div>
 
