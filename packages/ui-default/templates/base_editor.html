@@ -31,6 +31,9 @@
   {{ set(UiContext, 'collectDailyGoal', collectDailyGoal) }}
   {{ set(UiContext, 'collectTodayCompletedCount', collectTodayCompletedCount or 0) }}
   {% endif %}
+  {% if trainingTargetBranch is defined and trainingTargetBranch %}
+  {{ set(UiContext, 'trainingTargetBranch', trainingTargetBranch) }}
+  {% endif %}
   {% set _socketPrefix = 'base/ws?domainId=' %}
   {% if _editor_mode == 'training' %}
     {% set _socketPrefix = 'training/ws?domainId=' %}

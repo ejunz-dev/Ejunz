@@ -1,0 +1,64 @@
+{% set page_name = "training_bases_edit" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+    <div class="columns">
+        <div class="section">
+            <div class="section__header">
+                <h1 class="section__title">{{ _('page.training.bases_edit.title') }}</h1>
+            </div>
+            <div class="section__body training-bases-edit">
+                <p class="typo secondary training-bases-edit__blurb">{{ _('page.training.bases_edit.blurb') }}</p>
+                <p class="typo training-bases-edit__plan-name"><strong>{{ training.name }}</strong></p>
+                <form id="training-bases-edit-form" method="post" action="{{ url('training_bases', domainId=domainId, trainingDocId=trainingDocId) }}" data-tpe-form data-preview-url="{{ url('training_preview', domainId=domainId) }}">
+                    <input type="hidden" name="name" value="{{ training.name | e }}">
+                    {% set hide_plan_editor = true %}
+                    <script type="application/json" id="tpe-meta">{{ basesMetaJson | safe }}</script>
+                    <script type="application/json" id="tpe-options">{"disableBranch": true, "reorderSrcRows": true, "basesOnlyEdit": true}</script>
+                    <script type="application/json" id="tpe-initial-plan">{{ initialPlanSourcesJson | safe }}</script>
+                    <script type="application/json" id="tpe-initial-sections">[]</script>
+                    {% include "partials/training_plan_visual_editor.html" %}
+                    <div class="row training-bases-edit__actions">
+                        <button type="submit" class="button primary training-bases-edit__submit">{{ _('page.training.btn.save') }}</button>
+                        <a class="button training-bases-edit__cancel" href="{{ url('training_domain', domainId=domainId) }}">{{ _('page.training.btn.cancel') }}</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+<style>
+.training-bases-edit__blurb {
+  margin: 0 0 1rem;
+  max-width: 52rem;
+  line-height: 1.6;
+}
+.training-bases-edit__plan-name {
+  margin: 0 0 1.25rem;
+}
+.training-bases-edit__plan-name strong {
+  display: inline-block;
+  padding: 10px 16px;
+  border-radius: 12px;
+  font-weight: 600;
+  background: rgba(85, 182, 226, 0.14);
+  border: 1px solid rgba(85, 182, 226, 0.35);
+  color: inherit;
+}
+.theme--dark .training-bases-edit__plan-name strong {
+  background: rgba(85, 182, 226, 0.12);
+  border-color: rgba(85, 182, 226, 0.42);
+}
+.training-bases-edit__actions {
+  margin-top: 1.35rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.training-bases-edit__actions .button {
+  border-radius: 12px;
+  padding: 10px 22px;
+}
+</style>
+{% endblock %}
