@@ -636,6 +636,9 @@ page.training.btn.delete_plan: Delete training plan
 page.training.btn.edit: Edit
 page.training.btn.save: Save
 page.training.btn.view: View
+page.training.domain.manage_bases: Manage bases
+page.training.bases_edit.title: Bound knowledge bases
+page.training.bases_edit.blurb: Reorder bound bases (move up/down), add or remove links. New bases get the training branch snapshot; removing a base from the list does not delete branch data on that knowledge base.
 page.training.create.blurb_training: Create a training by cloning Base data into a new branch named after the training. On this training page, edit the cloned branch's nodes/cards/problems directly.
 page.training.create.blurb: Use the visual editor below to add multiple knowledge bases and load problems from branch diffs; search for bases, drag to reorder sections and problems, and check boxes to set section prerequisites (the server builds the DAG). No manual JSON required.
 page.training.create.title: New training plan
@@ -813,6 +816,8 @@ training_detail: Training Detail
 training_domain: Training Plans
 training_edit: Training Edit
 training_list_empty: No training plans yet.
+training_editor.upload.invalid_node: Invalid training node ID for file upload. Try refreshing the page.
+training_editor.upload.card_base_unresolved: Could not determine which knowledge base this card belongs to. Try refreshing the page.
 training_main: Training
 Type: Type
 Uncompleted: Not completed

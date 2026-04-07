@@ -24,11 +24,11 @@
 } %}
 <div class="tpe-root">
   <div class="row">
-    <p class="field__label" style="margin-bottom:8px;">{{ _('page.training.editor.sources_heading') }}</p>
+    <p class="field__label tpe-sources-label">{{ _('page.training.editor.sources_heading') }}</p>
     <div class="tpe-toolbar">
-      <input type="search" class="textbox tpe-meta-search" placeholder="{{ _('page.training.editor.search_placeholder') | e }}" autocomplete="off" style="max-width:320px">
+      <input type="search" class="textbox tpe-meta-search" placeholder="{{ _('page.training.editor.search_placeholder') | e }}" autocomplete="off">
     </div>
-    <div id="tpe-src-rows" class="tpe-src-rows"></div>
+    <div id="tpe-src-rows" class="tpe-src-rows tpe-src-rows-stack"></div>
     <button type="button" class="button" id="tpe-add-src">{{ _('page.training.editor.add_base_group') }}</button>
     <input type="hidden" name="planSources" id="tpe-plan-sources" value="">
   </div>
@@ -45,21 +45,172 @@
   <script type="application/json" id="tpe-i18n">{{ tpe_i18n | json | safe }}</script>
 </div>
 <style>
-.tpe-src-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 12px; padding: 12px; border: 1px solid rgba(0,0,0,.12); border-radius: 8px; background: #fafafa; }
-.tpe-src-row label { flex: 1 1 160px; margin: 0; }
-.tpe-sec-card { margin: 14px 0; padding: 14px; border: 1px solid rgba(0,0,0,.12); border-radius: 10px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+/* Training plan editor: theme tokens (light default, dark via html.theme--dark) */
+.tpe-root {
+  --tpe-surface: #f3f5f7;
+  --tpe-surface-elevated: #ffffff;
+  --tpe-border: rgba(0, 0, 0, 0.1);
+  --tpe-border-strong: rgba(0, 0, 0, 0.14);
+  --tpe-focus-ring: rgba(85, 182, 226, 0.35);
+  --tpe-muted: #eef1f4;
+  --tpe-muted-row: #e8ebf0;
+  --tpe-handle: #6b7280;
+  --tpe-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --tpe-radius: 12px;
+  --tpe-radius-sm: 10px;
+  --tpe-remove-fg: #b42318;
+  --tpe-remove-bg: rgba(180, 35, 24, 0.06);
+  --tpe-remove-border: rgba(180, 35, 24, 0.35);
+}
+
+.theme--dark .tpe-root {
+  --tpe-surface: #25262b;
+  --tpe-surface-elevated: #2e3036;
+  --tpe-border: rgba(255, 255, 255, 0.1);
+  --tpe-border-strong: rgba(255, 255, 255, 0.14);
+  --tpe-focus-ring: rgba(85, 182, 226, 0.45);
+  --tpe-muted: #32333a;
+  --tpe-muted-row: #363840;
+  --tpe-handle: #9ca3af;
+  --tpe-shadow: 0 2px 14px rgba(0, 0, 0, 0.35);
+  --tpe-remove-fg: #fca5a5;
+  --tpe-remove-bg: rgba(239, 68, 68, 0.12);
+  --tpe-remove-border: rgba(248, 113, 113, 0.4);
+}
+
+.tpe-root .tpe-sources-label {
+  margin-bottom: 10px;
+}
+
+.tpe-root .tpe-toolbar {
+  margin-bottom: 14px;
+}
+
+.tpe-root .tpe-meta-search.textbox {
+  max-width: 400px;
+  width: 100%;
+  border-radius: var(--tpe-radius-sm);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tpe-root .tpe-meta-search.textbox:focus {
+  box-shadow: 0 0 0 3px var(--tpe-focus-ring);
+}
+
+.theme--dark .tpe-root .tpe-meta-search.textbox {
+  border-color: #3d4047;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.theme--dark .tpe-root .tpe-meta-search.textbox:focus {
+  border-color: #55b6e2;
+}
+
+#tpe-src-rows.tpe-src-rows-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+#tpe-add-src.button {
+  border-radius: var(--tpe-radius-sm);
+  padding: 10px 16px;
+}
+
+.tpe-src-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 16px;
+  border: 1px solid var(--tpe-border);
+  border-radius: var(--tpe-radius);
+  background: var(--tpe-surface);
+  box-shadow: var(--tpe-shadow);
+}
+
+.tpe-src-row label { flex: 1 1 180px; margin: 0; }
+
+.tpe-src-row .select {
+  border-radius: var(--tpe-radius-sm);
+  min-height: 40px;
+}
+
+.tpe-src-reorder {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.tpe-src-row .tpe-src-dir-btn {
+  min-width: 4.25rem;
+  padding: 6px 12px;
+  line-height: 1.25;
+  border-radius: var(--tpe-radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.tpe-src-row .tpe-src-dir-btn.button {
+  background: var(--tpe-surface-elevated);
+  border: 1px solid var(--tpe-border-strong);
+  color: #374151;
+}
+
+.tpe-src-row .tpe-src-dir-btn.button:not(.disabled):hover {
+  background: var(--tpe-muted);
+  border-color: #55b6e2;
+  color: #111827;
+}
+
+.theme--dark .tpe-src-row .tpe-src-dir-btn.button {
+  background: #2d2f36;
+  border-color: #454950;
+  color: #e4e6eb;
+}
+
+.theme--dark .tpe-src-row .tpe-src-dir-btn.button:not(.disabled):hover {
+  background: #383b44;
+  border-color: #55b6e2;
+  color: #fff;
+}
+
+.tpe-src-row .tpe-row-remove {
+  border-radius: var(--tpe-radius-sm);
+  padding: 8px 14px;
+  align-self: center;
+  color: var(--tpe-remove-fg);
+  background: var(--tpe-remove-bg);
+  border-color: var(--tpe-remove-border);
+}
+
+.tpe-src-row .tpe-row-remove:not(.disabled):hover {
+  filter: brightness(1.08);
+}
+
+.tpe-sec-card {
+  margin: 14px 0;
+  padding: 16px;
+  border: 1px solid var(--tpe-border);
+  border-radius: var(--tpe-radius);
+  background: var(--tpe-surface-elevated);
+  box-shadow: var(--tpe-shadow);
+}
 .tpe-sec-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
-.tpe-sec-handle { cursor: grab; user-select: none; padding: 4px 6px; color: #888; font-size: 18px; line-height: 1; }
-.tpe-sec-head input.tpe-sec-title { flex: 1 1 220px; font-weight: 600; }
+.tpe-sec-handle { cursor: grab; user-select: none; padding: 4px 6px; color: var(--tpe-handle); font-size: 18px; line-height: 1; }
+.tpe-sec-head input.tpe-sec-title { flex: 1 1 220px; font-weight: 600; border-radius: 8px; }
 .tpe-sec-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
-.tpe-prereq { font-size: 13px; margin: 8px 0; padding: 8px; background: #f3f4f6; border-radius: 6px; }
+.tpe-prereq { font-size: 13px; margin: 8px 0; padding: 10px 12px; background: var(--tpe-muted); border-radius: var(--tpe-radius-sm); border: 1px solid var(--tpe-border); }
 .tpe-prereq label { margin-right: 12px; cursor: pointer; white-space: nowrap; }
 .tpe-prob-list { min-height: 24px; margin: 0; padding: 0; list-style: none; }
-.tpe-prob-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; padding: 8px 10px; background: #f0f0f0; border-radius: 6px; }
-.tpe-prob-handle { cursor: grab; user-select: none; color: #888; }
-.tpe-prob-row input.tpe-p-title { flex: 1 1 200px; min-width: 120px; }
-.tpe-prob-row input.tpe-p-src { width: 72px; }
-.tpe-prob-row input.tpe-p-pid { width: 96px; }
+.tpe-prob-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; padding: 10px 12px; background: var(--tpe-muted-row); border-radius: var(--tpe-radius-sm); border: 1px solid var(--tpe-border); }
+.tpe-prob-handle { cursor: grab; user-select: none; color: var(--tpe-handle); }
+.tpe-prob-row input.tpe-p-title { flex: 1 1 200px; min-width: 120px; border-radius: 8px; }
+.tpe-prob-row input.tpe-p-src { width: 72px; border-radius: 8px; }
+.tpe-prob-row input.tpe-p-pid { width: 96px; border-radius: 8px; }
 .tpe-prob-row.tc-dragging { opacity: 0.55; }
 </style>
 <script>
@@ -75,6 +226,8 @@
 
   var opts = jsonEl('tpe-options') || {};
   var disableBranch = !!opts.disableBranch;
+  var reorderSrcRows = !!opts.reorderSrcRows;
+  var basesOnlyEdit = !!opts.basesOnlyEdit;
 
   var meta = jsonEl('tpe-meta') || [];
   var previewUrl = form.getAttribute('data-preview-url') || '';
@@ -167,7 +320,13 @@
     row.className = 'tpe-src-row';
     // Default to the first Base (if available) to avoid required select being empty.
     var sel = prefill.baseDocId != null ? String(prefill.baseDocId) : (meta[0] && meta[0].docId ? String(meta[0].docId) : '');
-    row.innerHTML =
+    var reorderHtml = reorderSrcRows
+      ? '<div class="tpe-src-reorder">'
+        + '<button type="button" class="button tpe-src-dir-btn tpe-src-up">' + escHtml(I.moveUp || '↑') + '</button>'
+        + '<button type="button" class="button tpe-src-dir-btn tpe-src-down">' + escHtml(I.moveDown || '↓') + '</button>'
+        + '</div>'
+      : '';
+    row.innerHTML = reorderHtml +
       '<label class="field"><span class="field__label">' + escHtml(I.baseLabel) + '</span><select class="select tpe-row-base" required>' + baseOptionsHtml(sel) + '</select></label>' +
       (disableBranch ? '' : ('<label class="field"><span class="field__label">' + escHtml(I.branchLabel || '') + '</span><select class="select tpe-row-branch"></select></label>')) +
       '<button type="button" class="button tpe-row-remove">' + escHtml(I.removeRow) + '</button>';
@@ -196,6 +355,24 @@
       syncPlanHidden();
     });
     if (!disableBranch) row.querySelector('.tpe-row-branch').addEventListener('change', syncPlanHidden);
+    if (reorderSrcRows) {
+      var up = row.querySelector('.tpe-src-up');
+      var down = row.querySelector('.tpe-src-down');
+      if (up) up.addEventListener('click', function () {
+        var prev = row.previousElementSibling;
+        if (prev && prev.classList.contains('tpe-src-row')) {
+          rowsEl.insertBefore(row, prev);
+          syncPlanHidden();
+        }
+      });
+      if (down) down.addEventListener('click', function () {
+        var next = row.nextElementSibling;
+        if (next && next.classList.contains('tpe-src-row')) {
+          rowsEl.insertBefore(next, row);
+          syncPlanHidden();
+        }
+      });
+    }
     rowsEl.appendChild(row);
     syncPlanHidden();
   }
@@ -522,6 +699,11 @@
 
   form.addEventListener('submit', function () {
     syncPlanHidden();
+    if (basesOnlyEdit) {
+      if (secHidden) secHidden.disabled = true;
+      if (dagHidden) dagHidden.disabled = true;
+      return;
+    }
     state.sections.forEach(function (s, i) { normalizePrereqs(i); });
     if (!state.sections.length) {
       secHidden.value = '[]';
