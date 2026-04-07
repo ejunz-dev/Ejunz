@@ -11,7 +11,7 @@
   {{ set(UiContext, 'consecutiveDays', consecutiveDays) }}
   {{ set(UiContext, 'dailyGoal', dailyGoal) }}
   {{ set(UiContext, 'learnSessionMode', learnSessionMode or 'deep') }}
-  {{ set(UiContext, 'learnNewReviewRatio', learnNewReviewRatio or 1) }}
+  {{ set(UiContext, 'learnNewReviewRatio', learnNewReviewRatio if learnNewReviewRatio is defined else 1) }}
   {{ set(UiContext, 'learnNewReviewOrder', learnNewReviewOrder or 'new_first') }}
   {{ set(UiContext, 'learnSubModeStrings', learnSubModeStrings or {}) }}
   {{ set(UiContext, 'learnPathCardPractiseCounts', learnPathCardPractiseCounts or {}) }}

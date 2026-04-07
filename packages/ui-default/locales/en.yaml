@@ -226,8 +226,12 @@ __langname: English
 'Last Disconnected Time': Last Disconnected Time
 'Learn session mode': Session order (next daily run)
 'Learn ratio section label': Sub mode · new/review ratio (next daily run)
-'Learn ratio section hint': Main mode (deep/breadth/random) only affects ordering of **new-segment** cards in the daily queue. Daily goal counts **new** cards only. Each daily session length = new slice (goal cap, cycle new pool if short) plus (new count × N) **old-segment** review pulls (cycle old pool if short; if there is no old segment, append none).
+'Learn ratio section hint': Main mode (deep/breadth/random) only affects ordering of **new-segment** cards in the daily queue. Daily goal counts **new** cards in mixed and new-only modes; in **review-only** mode the same number is how many **review** cards to draw. Each mixed daily session length = new slice (goal cap, cycle new pool if short) plus (new count × N) **old-segment** review pulls (cycle old pool if short; if there is no old segment, append none). New-only and review-only modes skip the other arm.
 'Learn today ratio summary': '{0} review card(s) per new card'
+'Learn today ratio summary new only': 'New only (no review in this run)'
+'Learn today ratio summary review only': 'Review only — count follows daily goal'
+'New vs review ratio label new only': 'New only (1 : 0)'
+'New vs review ratio label review only': 'Review only (0 : 1, count = daily goal)'
 'Learn path card loop count': '×{0}'
 'Learn path card loop count title': Times this card was completed on the learning path (each full attempt counts; review queue prefers lower counts)
 'Learn daily goal new cards note': (new segment only)

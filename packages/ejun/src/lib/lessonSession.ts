@@ -141,7 +141,7 @@ export function frozenTodayQueueMatchesLearnSettings(dudoc: any, s: SessionDoc):
 
     const rDu = getLearnNewReviewRatio(du);
     const rawR = (s as SessionDoc & { lessonQueueLearnNewReviewRatio?: number | null }).lessonQueueLearnNewReviewRatio;
-    if (typeof rawR !== 'number' || ![1, 2, 3, 4, 5].includes(rawR)) {
+    if (typeof rawR !== 'number' || ![-1, 0, 1, 2, 3, 4, 5].includes(rawR)) {
         return false;
     }
     if (rDu !== rawR) return false;

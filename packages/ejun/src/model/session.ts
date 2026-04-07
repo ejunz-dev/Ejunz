@@ -56,7 +56,7 @@ export interface SessionDoc {
     lessonQueueLearnSessionMode?: string | null;
     /** `learnSubMode` when the daily queue was frozen (`new_only` | `review_only` | `mixed`). */
     lessonQueueLearnSubMode?: string | null;
-    /** `learnNewReviewRatio` when frozen (1–5, mixed mode). */
+    /** `learnNewReviewRatio` when frozen (0=new only, -1=review only @ daily goal, 1–5=mixed). */
     lessonQueueLearnNewReviewRatio?: number | null;
     /** `learnNewReviewOrder` when frozen (`new_first` | `old_first` | `shuffle`). */
     lessonQueueLearnNewReviewOrder?: string | null;
