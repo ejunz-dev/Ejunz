@@ -62,25 +62,15 @@ interface LearnTrainingOption {
 
 type LearnSessionModeUi = 'deep' | 'breadth' | 'random';
 
-type LearnSubModeUi = 'new_only' | 'review_only' | 'mixed';
-
-type LearnMixedScheduleUi = 'review_first' | 'new_first' | 'shuffle' | 'one_one';
-
-/** Server `this.translate()` strings for learn sub mode (matches user UI language; avoids stale `window.LOCALES`). */
+/** Server `this.translate()` strings for learn new vs review ratio (matches user UI language). */
 interface LearnSubModeStringsFromServer {
   label?: string;
-  optNewOnly?: string;
-  optReviewOnly?: string;
-  optMixed?: string;
   hint?: string;
   ratioAria?: string;
-  mixedScheduleAria?: string;
-  mixedScheduleReviewFirst?: string;
-  mixedScheduleNewFirst?: string;
-  mixedScheduleShuffle?: string;
-  mixedScheduleOneOne?: string;
   failedSave?: string;
   ratioOptionLabels?: string[];
+  pathCardLoopCountFmt?: string;
+  pathCardLoopCountTitle?: string;
 }
 
 function normalizeLearnSessionModeFromUi(raw: unknown): LearnSessionModeUi {
@@ -89,25 +79,10 @@ function normalizeLearnSessionModeFromUi(raw: unknown): LearnSessionModeUi {
   return 'deep';
 }
 
-function normalizeLearnSubModeFromUi(raw: unknown): LearnSubModeUi {
-  const s = String(raw ?? 'new_only').trim().toLowerCase().replace(/-/g, '_');
-  if (s === 'review_only' || s === 'review') return 'review_only';
-  if (s === 'mixed') return 'mixed';
-  return 'new_only';
-}
-
 function normalizeLearnNewReviewRatioFromUi(raw: unknown): number {
   const n = parseInt(String(raw ?? '1'), 10);
   if ([1, 2, 3, 4, 5].includes(n)) return n;
   return 1;
-}
-
-function normalizeLearnMixedScheduleFromUi(raw: unknown): LearnMixedScheduleUi {
-  const s = String(raw ?? 'new_first').trim().toLowerCase().replace(/-/g, '_');
-  if (s === 'review_first' || s === 'reviewfirst') return 'review_first';
-  if (s === 'shuffle') return 'shuffle';
-  if (s === 'one_one' || s === 'oneone' || s === 'alternating') return 'one_one';
-  return 'new_first';
 }
 
 function getChildren(nodeId: string, sections: MapDAGNode[], dag: MapDAGNode[]): MapDAGNode[] {
@@ -152,6 +127,7 @@ function LearnPage() {
   const pathSectionsRaw = ((window as any).UiContext?.pathSections || []) as MapDAGNode[];
   const pathFullDagRaw = ((window as any).UiContext?.pathFullDag || []) as MapDAGNode[];
   const pathCurrentSectionId = String((window as any).UiContext?.pathCurrentSectionId || '').trim() || null;
+  const pathCurrentLearnStartCardId = String((window as any).UiContext?.pathCurrentLearnStartCardId || '').trim() || null;
   /** When path payload exists, use full-training merged graph as Learning Path; else current base sections/fullDag. */
   const useTrainingPath = pathSectionsRaw.length > 0;
   const pathSectionsView = useTrainingPath ? pathSectionsRaw : sections;
@@ -167,20 +143,16 @@ function LearnPage() {
     () => normalizeLearnSessionModeFromUi((window as any).UiContext?.learnSessionMode),
     [],
   );
-  const initialLearnSubMode = useMemo(
-    () => normalizeLearnSubModeFromUi((window as any).UiContext?.learnSubMode),
-    [],
-  );
   const initialLearnNewReviewRatio = useMemo(
     () => normalizeLearnNewReviewRatioFromUi((window as any).UiContext?.learnNewReviewRatio),
     [],
   );
-  const initialLearnMixedSchedule = useMemo(
-    () => normalizeLearnMixedScheduleFromUi((window as any).UiContext?.learnMixedSchedule),
-    [],
-  );
   const learnSubModeStrings = useMemo(
     () => ((window as any).UiContext?.learnSubModeStrings || {}) as LearnSubModeStringsFromServer,
+    [],
+  );
+  const learnPathCardPractiseCounts = useMemo(
+    () => ((window as any).UiContext?.learnPathCardPractiseCounts || {}) as Record<string, number>,
     [],
   );
   const todayLessonResumeUrl = String((window as any).UiContext?.todayLessonResumeUrl || '').trim();
@@ -195,9 +167,7 @@ function LearnPage() {
   const [isSavingGoal, setIsSavingGoal] = useState(false);
   const [learnSessionMode, setLearnSessionMode] = useState<LearnSessionModeUi>(initialLearnSessionMode);
   const [savingLearnSessionMode, setSavingLearnSessionMode] = useState(false);
-  const [learnSubMode, setLearnSubMode] = useState<LearnSubModeUi>(initialLearnSubMode);
   const [learnNewReviewRatio, setLearnNewReviewRatio] = useState(initialLearnNewReviewRatio);
-  const [learnMixedSchedule, setLearnMixedSchedule] = useState<LearnMixedScheduleUi>(initialLearnMixedSchedule);
   const [savingLearnSubPrefs, setSavingLearnSubPrefs] = useState(false);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
@@ -361,39 +331,25 @@ function LearnPage() {
     }
   }, [domainId, learnSessionMode, savingLearnSessionMode]);
 
-  const persistLearnSubPrefs = useCallback(async (
-    nextSub: LearnSubModeUi,
-    nextRatio: number,
-    nextSchedule: LearnMixedScheduleUi,
-  ) => {
+  const persistLearnRatio = useCallback(async (nextRatio: number) => {
     if (!domainId || savingLearnSubPrefs) return;
-    if (nextSub === learnSubMode && nextRatio === learnNewReviewRatio && nextSchedule === learnMixedSchedule) return;
-    const prevSub = learnSubMode;
+    if (nextRatio === learnNewReviewRatio) return;
     const prevRatio = learnNewReviewRatio;
-    const prevSchedule = learnMixedSchedule;
-    setLearnSubMode(nextSub);
     setLearnNewReviewRatio(nextRatio);
-    setLearnMixedSchedule(nextSchedule);
     setSavingLearnSubPrefs(true);
     try {
-      await request.post(`/d/${domainId}/learn/sub-mode`, {
-        learnSubMode: nextSub,
-        learnNewReviewRatio: nextRatio,
-        learnMixedSchedule: nextSchedule,
-      });
+      await request.post(`/d/${domainId}/learn/sub-mode`, { learnNewReviewRatio: nextRatio });
       window.location.reload();
     } catch (error: any) {
-      setLearnSubMode(prevSub);
       setLearnNewReviewRatio(prevRatio);
-      setLearnMixedSchedule(prevSchedule);
-      console.error('Failed to save learn sub mode:', error);
+      console.error('Failed to save learn ratio:', error);
       const msg = error?.response?.data?.message ?? error?.response?.data?.error ?? error?.message
         ?? (learnSubModeStrings.failedSave || i18n('Failed to save learn sub mode'));
       Notification.error(typeof msg === 'string' ? msg : (Array.isArray(msg) ? msg.join(' ') : (learnSubModeStrings.failedSave || i18n('Failed to save learn sub mode'))));
     } finally {
       setSavingLearnSubPrefs(false);
     }
-  }, [domainId, learnSubMode, learnNewReviewRatio, learnMixedSchedule, savingLearnSubPrefs, learnSubModeStrings.failedSave]);
+  }, [domainId, learnNewReviewRatio, savingLearnSubPrefs, learnSubModeStrings.failedSave]);
 
   const progressPercentage = totalProgress > 0 ? Math.round((currentProgress / totalProgress) * 100) : 0;
 
@@ -813,6 +769,9 @@ function LearnPage() {
               </span>
               <span style={{ fontSize: '15px', fontWeight: 600, color: themeStyles.textPrimary }}>
                 {todayCompletedCount} / {goal}
+                <span style={{ fontSize: '11px', fontWeight: 500, color: themeStyles.textTertiary, marginLeft: '6px' }}>
+                  {i18n('Learn daily goal new cards note')}
+                </span>
               </span>
               {!isEditingGoal ? (
                 <button
@@ -957,17 +916,18 @@ function LearnPage() {
                 marginTop: '14px',
                 marginBottom: '6px',
               }}>
-                <label htmlFor="learn-sub-mode" style={{ fontSize: '13px', color: themeStyles.textSecondary, fontWeight: 500 }}>
-                  {learnSubModeStrings.label || i18n('Learn sub mode')}
+                <label htmlFor="learn-new-review-ratio" style={{ fontSize: '13px', color: themeStyles.textSecondary, fontWeight: 500 }}>
+                  {learnSubModeStrings.label || i18n('Learn ratio section label')}
                 </label>
                 <select
-                  id="learn-sub-mode"
-                  value={learnSubMode}
+                  id="learn-new-review-ratio"
+                  value={String(learnNewReviewRatio)}
                   disabled={savingLearnSubPrefs || savingLearnSessionMode}
                   onChange={(e) => {
-                    const v = normalizeLearnSubModeFromUi(e.target.value);
-                    void persistLearnSubPrefs(v, learnNewReviewRatio, learnMixedSchedule);
+                    const n = normalizeLearnNewReviewRatioFromUi(e.target.value);
+                    void persistLearnRatio(n);
                   }}
+                  aria-label={learnSubModeStrings.ratioAria || i18n('Learn new review ratio')}
                   style={{
                     padding: '6px 10px',
                     fontSize: '13px',
@@ -977,84 +937,19 @@ function LearnPage() {
                     color: themeStyles.textPrimary,
                     cursor: savingLearnSubPrefs || savingLearnSessionMode ? 'not-allowed' : 'pointer',
                     opacity: savingLearnSubPrefs || savingLearnSessionMode ? 0.7 : 1,
-                    minWidth: '200px',
+                    minWidth: '160px',
                   }}
                 >
-                  <option value="new_only">{learnSubModeStrings.optNewOnly || i18n('Learn sub mode new only')}</option>
-                  <option value="review_only">{learnSubModeStrings.optReviewOnly || i18n('Learn sub mode review only')}</option>
-                  <option value="mixed">{learnSubModeStrings.optMixed || i18n('Learn sub mode mixed')}</option>
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <option key={n} value={String(n)}>
+                      {(learnSubModeStrings.ratioOptionLabels && learnSubModeStrings.ratioOptionLabels[n - 1])
+                        || i18n('New vs review ratio label', n)}
+                    </option>
+                  ))}
                 </select>
-                {learnSubMode === 'mixed' && (
-                  <>
-                    <select
-                      id="learn-mixed-schedule"
-                      value={learnMixedSchedule}
-                      disabled={savingLearnSubPrefs || savingLearnSessionMode}
-                      onChange={(e) => {
-                        const v = normalizeLearnMixedScheduleFromUi(e.target.value);
-                        void persistLearnSubPrefs(learnSubMode, learnNewReviewRatio, v);
-                      }}
-                      aria-label={learnSubModeStrings.mixedScheduleAria || i18n('Learn mixed schedule')}
-                      style={{
-                        padding: '6px 10px',
-                        fontSize: '13px',
-                        background: themeStyles.bgPrimary,
-                        border: `1px solid ${themeStyles.border}`,
-                        borderRadius: '8px',
-                        color: themeStyles.textPrimary,
-                        cursor: savingLearnSubPrefs || savingLearnSessionMode ? 'not-allowed' : 'pointer',
-                        opacity: savingLearnSubPrefs || savingLearnSessionMode ? 0.7 : 1,
-                        minWidth: '180px',
-                      }}
-                    >
-                      <option value="review_first">
-                        {learnSubModeStrings.mixedScheduleReviewFirst || i18n('Learn mixed schedule review first')}
-                      </option>
-                      <option value="new_first">
-                        {learnSubModeStrings.mixedScheduleNewFirst || i18n('Learn mixed schedule new first')}
-                      </option>
-                      <option value="shuffle">
-                        {learnSubModeStrings.mixedScheduleShuffle || i18n('Learn mixed schedule shuffle')}
-                      </option>
-                      <option value="one_one">
-                        {learnSubModeStrings.mixedScheduleOneOne || i18n('Learn mixed schedule one one')}
-                      </option>
-                    </select>
-                    {learnMixedSchedule !== 'one_one' && (
-                      <select
-                        id="learn-new-review-ratio"
-                        value={String(learnNewReviewRatio)}
-                        disabled={savingLearnSubPrefs || savingLearnSessionMode}
-                        onChange={(e) => {
-                          const n = normalizeLearnNewReviewRatioFromUi(e.target.value);
-                          void persistLearnSubPrefs(learnSubMode, n, learnMixedSchedule);
-                        }}
-                        aria-label={learnSubModeStrings.ratioAria || i18n('Learn new review ratio')}
-                        style={{
-                          padding: '6px 10px',
-                          fontSize: '13px',
-                          background: themeStyles.bgPrimary,
-                          border: `1px solid ${themeStyles.border}`,
-                          borderRadius: '8px',
-                          color: themeStyles.textPrimary,
-                          cursor: savingLearnSubPrefs || savingLearnSessionMode ? 'not-allowed' : 'pointer',
-                          opacity: savingLearnSubPrefs || savingLearnSessionMode ? 0.7 : 1,
-                          minWidth: '140px',
-                        }}
-                      >
-                        {[1, 2, 3, 4, 5].map((n) => (
-                          <option key={n} value={String(n)}>
-                            {(learnSubModeStrings.ratioOptionLabels && learnSubModeStrings.ratioOptionLabels[n - 1])
-                              || i18n('New vs review ratio label', n)}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </>
-                )}
               </div>
               <div style={{ fontSize: '12px', color: themeStyles.textTertiary, lineHeight: 1.45 }}>
-                {learnSubModeStrings.hint || i18n('Learn sub mode hint')}
+                {learnSubModeStrings.hint || i18n('Learn ratio section hint')}
               </div>
             </div>
 
@@ -1232,6 +1127,11 @@ function LearnPage() {
                     ? section._id === pathCurrentSectionId
                       && sectionIndex === pathSectionsView.findIndex((s) => s._id === pathCurrentSectionId)
                     : typeof currentSectionIndex === 'number' && sectionIndex === currentSectionIndex;
+                const startCardAnchorsThisSection =
+                  !!pathCurrentLearnStartCardId
+                  && isCurrentSection
+                  && sectionCards.some((c) => String(c.cardId) === pathCurrentLearnStartCardId);
+                const highlightSectionChrome = isCurrentSection && !startCardAnchorsThisSection;
                 const isExpanded = expandedPathSectionSlots.has(sectionIndex);
                 const toggleSection = () => {
                   setExpandedPathSectionSlots((prev) => {
@@ -1247,7 +1147,7 @@ function LearnPage() {
                     style={{
                       background: themeStyles.bgCard,
                       borderRadius: '14px',
-                      border: `1px solid ${isCurrentSection ? themeStyles.primary : themeStyles.border}`,
+                      border: `1px solid ${highlightSectionChrome ? themeStyles.primary : themeStyles.border}`,
                       overflow: 'hidden',
                       boxShadow: theme === 'dark' ? '0 2px 12px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.06)',
                     }}
@@ -1276,8 +1176,8 @@ function LearnPage() {
                           width: '28px',
                           height: '28px',
                           borderRadius: '50%',
-                          background: isCurrentSection ? themeStyles.primary : themeStyles.bgSecondary,
-                          color: isCurrentSection ? '#fff' : themeStyles.textSecondary,
+                          background: highlightSectionChrome ? themeStyles.primary : themeStyles.bgSecondary,
+                          color: highlightSectionChrome ? '#fff' : themeStyles.textSecondary,
                           fontSize: '13px',
                           fontWeight: 700,
                           display: 'inline-flex',
@@ -1288,7 +1188,7 @@ function LearnPage() {
                           {sectionIndex + 1}
                         </span>
                         {section.title || i18n('Unnamed Section')}
-                        {isCurrentSection && (
+                        {highlightSectionChrome && (
                           <span style={{ fontSize: '12px', color: themeStyles.primary, fontWeight: 500 }}>
                             ({i18n('Current')})
                           </span>
@@ -1311,17 +1211,36 @@ function LearnPage() {
                         {sectionCards.map((card) => {
                           const cardIdStr = String(card.cardId);
                           const pathPlacementKey = `${sectionIndex}:${cardIdStr}`;
+                          const pathCardLoopCountRaw = learnPathCardPractiseCounts[pathPlacementKey];
+                          const pathCardLoopCount =
+                            typeof pathCardLoopCountRaw === 'number' && Number.isFinite(pathCardLoopCountRaw)
+                              ? pathCardLoopCountRaw
+                              : 0;
                           const pathCardPassed = passedCardKeysSet.has(pathPlacementKey)
                             || passedLegacyCardIdsSet.has(cardIdStr);
+                          const isLearnStartCard = isCurrentSection && !!pathCurrentLearnStartCardId
+                            && cardIdStr === pathCurrentLearnStartCardId;
                           const problemCount = card.problemCount ?? (card.problems?.length ?? 0);
                           const problems = card.problems ?? [];
                           const isCardExpanded = expandedPathCardIds.has(pathPlacementKey);
+                          const cardAriaBase = card.title || i18n('Unnamed Card');
+                          const cardAria = [
+                            cardAriaBase,
+                            pathCardPassed ? i18n('Done') : '',
+                            isLearnStartCard ? i18n('Current') : '',
+                          ].filter(Boolean).join(', ');
                           return (
                             <div key={pathPlacementKey} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                               <button
                                 type="button"
-                                title={pathCardPassed ? i18n('Done') : undefined}
-                                aria-label={pathCardPassed ? `${card.title || i18n('Unnamed Card')}, ${i18n('Done')}` : undefined}
+                                title={
+                                  pathCardPassed
+                                    ? i18n('Done')
+                                    : isLearnStartCard
+                                      ? i18n('Current')
+                                      : undefined
+                                }
+                                aria-label={cardAria}
                                 onClick={(e) => { e.stopPropagation(); togglePathCardExpand(pathPlacementKey); }}
                                 style={{
                                   display: 'inline-flex',
@@ -1333,10 +1252,16 @@ function LearnPage() {
                                   fontWeight: 500,
                                   color: themeStyles.textPrimary,
                                   background: themeStyles.bgSecondary,
-                                  border: `1px solid ${pathCardPassed ? themeStyles.primary : themeStyles.border}`,
-                                  borderLeft: pathCardPassed ? `4px solid ${themeStyles.primary}` : undefined,
+                                  border: isLearnStartCard
+                                    ? `2px solid ${themeStyles.primary}`
+                                    : `1px solid ${pathCardPassed ? themeStyles.primary : themeStyles.border}`,
+                                  borderLeft: isLearnStartCard
+                                    ? `4px solid ${themeStyles.primary}`
+                                    : pathCardPassed
+                                      ? `4px solid ${themeStyles.primary}`
+                                      : undefined,
                                   borderRadius: '10px',
-                                  opacity: pathCardPassed ? 0.88 : 1,
+                                  opacity: pathCardPassed && !isLearnStartCard ? 0.88 : 1,
                                   cursor: 'pointer',
                                   textAlign: 'left',
                                   width: '100%',
@@ -1349,7 +1274,14 @@ function LearnPage() {
                                   e.currentTarget.style.background = themeStyles.bgSecondary;
                                 }}
                               >
-                                <span style={{ flex: 1 }}>{card.title || i18n('Unnamed Card')}</span>
+                                <span style={{ flex: 1, display: 'inline-flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                  {card.title || i18n('Unnamed Card')}
+                                  {isLearnStartCard && (
+                                    <span style={{ fontSize: '12px', color: themeStyles.primary, fontWeight: 600 }}>
+                                      ({i18n('Current')})
+                                    </span>
+                                  )}
+                                </span>
                                 {pathCardPassed && (
                                   <span
                                     style={{
@@ -1363,6 +1295,29 @@ function LearnPage() {
                                     ✓
                                   </span>
                                 )}
+                                <span
+                                  title={learnSubModeStrings.pathCardLoopCountTitle || i18n('Learn path card loop count title')}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    minWidth: '22px',
+                                    height: '22px',
+                                    padding: '0 8px',
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                    color: themeStyles.textSecondary,
+                                    backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                                    border: `1px solid ${themeStyles.border}`,
+                                    borderRadius: '11px',
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  {(learnSubModeStrings.pathCardLoopCountFmt ?? '×{0}').replace(
+                                    /\{0\}/g,
+                                    String(pathCardLoopCount),
+                                  )}
+                                </span>
                                 {problemCount > 0 && (
                                   <span style={{
                                     display: 'inline-flex',

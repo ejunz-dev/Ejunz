@@ -85,6 +85,11 @@ type LessonUiState = {
   lessonSessionLearnStartSlot: number;
   /** Server-translated "n 新 · m 旧" (avoids missing `window.LOCALES` before UI rebuild). */
   lessonSessionQueueNewOldLabel: string;
+  /** Keys `slot:cardId` → times this card was completed on the learning path (domain.user). */
+  learnPathCardPractiseCounts: Record<string, number>;
+  /** Server `translate('Lesson path card practise count')` — avoids missing `window.LOCALES` entry. */
+  lessonPathCardPractiseCountFmt: string;
+  lessonPathCardPractiseCountTitle: string;
 };
 
 function normalizeCardFromServer(raw: unknown): Card {
@@ -140,6 +145,29 @@ function flatCardNewOldKind(
   return slot < start ? 'old' : 'new';
 }
 
+/** Match server `learnPassPlacementKey` / `learnPathCardPractiseCounts` keys. */
+function pathLoopCountForFlatCard(
+  fc: LessonUiState['flatCards'][number] | undefined,
+  counts: Record<string, number>,
+): number {
+  if (!fc) return 0;
+  const slot = typeof fc.learnSectionOrderIndex === 'number' && fc.learnSectionOrderIndex >= 0
+    ? fc.learnSectionOrderIndex
+    : 0;
+  const key = `${slot}:${String(fc.cardId)}`;
+  const n = counts[key];
+  return typeof n === 'number' && Number.isFinite(n) ? n : 0;
+}
+
+function normalizeLearnPathPractiseCountsMap(raw: unknown): Record<string, number> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === 'number' && Number.isFinite(v)) out[k] = v;
+  }
+  return out;
+}
+
 /** 进度条旁新/旧行：优先服务端文案，其次 i18n，再按语言兜底。 */
 function lessonQueueNewOldLine(
   serverLabel: string,
@@ -191,6 +219,9 @@ function initLessonUiState(): LessonUiState {
     lessonTodayCardKindLabel: String(U.lessonTodayCardKindLabel || ''),
     lessonSessionLearnStartSlot: typeof U.lessonSessionLearnStartSlot === 'number' ? U.lessonSessionLearnStartSlot : -1,
     lessonSessionQueueNewOldLabel: String(U.lessonSessionQueueNewOldLabel || ''),
+    learnPathCardPractiseCounts: normalizeLearnPathPractiseCountsMap(U.learnPathCardPractiseCounts),
+    lessonPathCardPractiseCountFmt: String(U.lessonPathCardPractiseCountFmt || ''),
+    lessonPathCardPractiseCountTitle: String(U.lessonPathCardPractiseCountTitle || ''),
   };
 }
 
@@ -222,6 +253,9 @@ function LessonPage() {
     lessonTodayCardKindLabel,
     lessonSessionLearnStartSlot,
     lessonSessionQueueNewOldLabel,
+    learnPathCardPractiseCounts,
+    lessonPathCardPractiseCountFmt,
+    lessonPathCardPractiseCountTitle,
   } = lessonUi;
 
   const hasLessonSidebar = (isSingleNodeMode || isTodayMode || isAlonePractice) && nodeTree.length > 0;
@@ -594,6 +628,17 @@ function LessonPage() {
       lessonSessionQueueNewOldLabel: typeof payload.lessonSessionQueueNewOldLabel === 'string'
         ? payload.lessonSessionQueueNewOldLabel
         : prev.lessonSessionQueueNewOldLabel,
+      learnPathCardPractiseCounts: payload.learnPathCardPractiseCounts != null
+        && typeof payload.learnPathCardPractiseCounts === 'object'
+        && !Array.isArray(payload.learnPathCardPractiseCounts)
+        ? normalizeLearnPathPractiseCountsMap(payload.learnPathCardPractiseCounts)
+        : prev.learnPathCardPractiseCounts,
+      lessonPathCardPractiseCountFmt: typeof payload.lessonPathCardPractiseCountFmt === 'string'
+        ? payload.lessonPathCardPractiseCountFmt
+        : prev.lessonPathCardPractiseCountFmt,
+      lessonPathCardPractiseCountTitle: typeof payload.lessonPathCardPractiseCountTitle === 'string'
+        ? payload.lessonPathCardPractiseCountTitle
+        : prev.lessonPathCardPractiseCountTitle,
     }));
     const nextCard = payload.card != null ? normalizeCardFromServer(payload.card) : null;
     const probs = (nextCard?.problems || []).map(p => ({ ...p, cardId: nextCard!.docId }));
@@ -685,6 +730,25 @@ function LessonPage() {
 
   const cumulativeMs = cardTimesMs.reduce((a, b) => a + b, 0) + (isNodeOrToday ? elapsedMs : 0);
   const currentCardCumulativeMs = elapsedMs + (cardTimesMs[currentCardIndex] ?? 0);
+
+  const showPathCardPractiseCount = isSingleNodeMode || isTodayMode || isAlonePractice;
+  const currentPathCardLoopCount = useMemo(
+    () => pathLoopCountForFlatCard(flatCards[currentCardIndex], learnPathCardPractiseCounts),
+    [flatCards, currentCardIndex, learnPathCardPractiseCounts],
+  );
+  const pathCardLoopCountText = useMemo(() => {
+    const fromServer = (lessonPathCardPractiseCountFmt || '').trim();
+    const tpl = fromServer || i18n('Lesson path card practise count');
+    if (tpl.includes('{0}')) return tpl.replace(/\{0\}/g, String(currentPathCardLoopCount));
+    return `${tpl} ${currentPathCardLoopCount}`;
+  }, [currentPathCardLoopCount, lessonPathCardPractiseCountFmt]);
+
+  const pathCardPractiseTooltip = useMemo(() => {
+    const s = (lessonPathCardPractiseCountTitle || '').trim();
+    if (s) return s;
+    const t = i18n('Lesson path card practise count title');
+    return t !== 'Lesson path card practise count title' ? t : undefined;
+  }, [lessonPathCardPractiseCountTitle]);
 
   const lessonSessionModeLabel = useMemo(() => {
     if (isTodayMode && rootNodeId === 'today') return i18n('Today task');
@@ -953,6 +1017,16 @@ function LessonPage() {
     );
   };
 
+  /** 左右队列侧栏：路径练习次数（仅数字）与用时并列 */
+  const sidebarQueuePathLoopAndTime = (pathLoopCount: number, timeText: string) => (
+    <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '8px', flexShrink: 0 }}>
+      <span style={{ fontSize: '12px', color: themeStyles.textTertiary, fontVariantNumeric: 'tabular-nums' }}>
+        {pathLoopCount}
+      </span>
+      <span style={{ fontSize: '12px', color: themeStyles.textTertiary }}>{timeText}</span>
+    </span>
+  );
+
   const renderNodeTreeItem = (item: { type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }, depth: number): React.ReactNode => {
     if (item.type === 'card') {
       const idx = cardIdToFlatIndex[item.id];
@@ -987,7 +1061,10 @@ function LessonPage() {
             {queueNewOldTagBeforeName(fc)}
             {item.title || i18n('Unnamed Card')}
           </span>
-          <span style={{ fontSize: '12px', color: themeStyles.textTertiary, flexShrink: 0 }}>{timeText}</span>
+          {sidebarQueuePathLoopAndTime(
+            pathLoopCountForFlatCard(fc, learnPathCardPractiseCounts),
+            timeText,
+          )}
         </>
       );
       return (
@@ -1595,6 +1672,14 @@ function LessonPage() {
           <div style={{ fontSize: '14px', color: themeStyles.accent, marginTop: '8px', fontWeight: 600 }}>
             {i18n('This card')}: {(currentCardCumulativeMs / 1000).toFixed(1)}s
           </div>
+          {showPathCardPractiseCount ? (
+            <div
+              style={{ fontSize: '13px', color: themeStyles.textSecondary, marginTop: '6px', fontWeight: 500 }}
+              title={pathCardPractiseTooltip}
+            >
+              {pathCardLoopCountText}
+            </div>
+          ) : null}
         </div>
 
         {!browseFlipped ? (
@@ -1768,7 +1853,7 @@ function LessonPage() {
               {queueNewOldTagBeforeName(item)}
               {item.cardTitle || i18n('Unnamed Card')}
             </span>
-            <span style={{ fontSize: '12px', color: themeStyles.textTertiary, flexShrink: 0 }}>{timeText}</span>
+            {sidebarQueuePathLoopAndTime(pathLoopCountForFlatCard(item, learnPathCardPractiseCounts), timeText)}
           </div>
         );
       })}
@@ -1803,7 +1888,7 @@ function LessonPage() {
               {queueNewOldTagBeforeName(item)}
               {item.cardTitle || i18n('Unnamed Card')}
             </span>
-            <span style={{ fontSize: '12px', color: themeStyles.textTertiary, flexShrink: 0 }}>{timeText}</span>
+            {sidebarQueuePathLoopAndTime(pathLoopCountForFlatCard(item, learnPathCardPractiseCounts), timeText)}
           </div>
         );
       })}
@@ -1849,7 +1934,7 @@ function LessonPage() {
               {queueNewOldTagBeforeName(item)}
               {item.cardTitle || i18n('Unnamed Card')}
             </span>
-            <span style={{ fontSize: '12px', color: themeStyles.textTertiary, flexShrink: 0 }}>{timeText}</span>
+            {sidebarQueuePathLoopAndTime(pathLoopCountForFlatCard(item, learnPathCardPractiseCounts), timeText)}
           </div>
         );
       })}
@@ -2093,11 +2178,19 @@ function LessonPage() {
           {i18n('Question')} {allProblems.length - problemQueue.length + 1} / {allProblems.length}
           {problemQueue.length > 0 && ` (${i18n('Remaining')}: ${problemQueue.length})`}
         </div>
-        {(isSingleNodeMode || isTodayMode) && (
+        {(isSingleNodeMode || isTodayMode || isAlonePractice) && (
           <div style={{ fontSize: '14px', color: themeStyles.accent, marginTop: '8px', fontWeight: 600 }}>
             {i18n('This card')}: {(elapsedMs / 1000).toFixed(1)}s
           </div>
         )}
+        {showPathCardPractiseCount ? (
+          <div
+            style={{ fontSize: '13px', color: themeStyles.textSecondary, marginTop: '6px', fontWeight: 500 }}
+            title={pathCardPractiseTooltip}
+          >
+            {pathCardLoopCountText}
+          </div>
+        ) : null}
       </div>
 
 

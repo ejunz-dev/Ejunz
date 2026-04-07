@@ -245,6 +245,12 @@ __langname: 简体中文
 'Last Connected': 最后连接
 'Last Disconnected Time': 最后断开时间
 'Learn session mode': 学习模式（下次会话）
+'Learn ratio section label': 学习副模式 · 新旧比例（下次会话）
+'Learn ratio section hint': 主模式（深度/广度/随机）只影响今日队列里「新」段卡片的展开顺序。每日目标仅计入新卡张数；一次今日会话总张数 = 新卡（按目标截断，新卡池不足则循环）+ 新卡数×N 张旧段复习卡（旧卡池不足则循环，没有旧段则不追加）。
+'Learn today ratio summary': 每张新卡配 {0} 张复习卡
+'Learn path card loop count': 练{0}次
+'Learn path card loop count title': 学习路径该节槽下累计完成次数（每次完整做题计一次，复习排队优先次数少的卡片）
+'Learn daily goal new cards note': （仅新段）
 'Learn sub mode': 学习副模式（下次会话）
 'Learn sub mode new only': 纯学新（仅学习起点节槽及之后的卡）
 'Learn sub mode review only': 纯复习（仅学习起点节槽之前的卡）
@@ -255,11 +261,13 @@ __langname: 简体中文
 'Learn mixed schedule new first': 先学新
 'Learn mixed schedule shuffle': 随机打乱
 'Learn mixed schedule one one': 1+1（一新一旧）
-'Learn sub mode hint': 与上方学习顺序配合展开候选。新/旧仅由学习起点节槽决定：槽 < 起点为旧，槽 ≥ 起点为新（与认识/没印象、进度 pass 无关）。「学新+复习」下可选先复习、先学新、随机打乱或 1+1；比例表示新段每张卡对应 N 张旧段卡（先学新则整段新再接旧段）。新旧两段均从同一今日候选列表按节槽划分。若节前无卡则旧段为空。仅学新/仅复习只排对应段。
+'Learn sub mode hint': 与「学习副模式 · 新旧比例」相同说明（见该处提示）。
 'Learn today modes config': '主模式：{0} · 副模式：{1}'
 'Learn today card kind new': 新卡片
 'Learn today card kind review': 复习卡片
 'Lesson session new old counts': '{0} 张新 · {1} 张旧'
+'Lesson path card practise count': 已过 {0} 次
+'Lesson path card practise count title': 本卡片在当前节槽累计完整过关次数（每次在本课完整过关计一次，与学习路径统计一致）
 'Learn queue card tag new': 新
 'Learn queue card tag old': 旧
 'Failed to save learn sub mode': 保存学习副模式失败

@@ -32,6 +32,7 @@ interface LearnSectionsTreeProps {
   domainId: string;
   currentSectionId: string | null;
   currentLearnSectionIndex: number | null;
+  currentLearnStartCardId: string | null;
 }
 
 function buildNodeMap(sections: LearnDAGNode[], dag: LearnDAGNode[]) {
@@ -91,7 +92,7 @@ function getTheme(): 'light' | 'dark' {
   return 'light';
 }
 
-function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentLearnSectionIndex }: LearnSectionsTreeProps) {
+function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentLearnSectionIndex, currentLearnStartCardId }: LearnSectionsTreeProps) {
   const [selectedSectionIndex, setSelectedSectionIndex] = useState<number>(0);
   const [theme, setTheme] = useState<'light' | 'dark'>(getTheme);
   const learnIdx = coerceLearnIndex(currentLearnSectionIndex);
@@ -242,12 +243,11 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
     });
   }, []);
 
-  const renderNode = useCallback((node: LearnDAGNode, level: number, isRootCurrentSection: boolean, sectionSlotIndex: number) => {
+  const renderNode = useCallback((node: LearnDAGNode, level: number, _isRootCurrentSection: boolean, sectionSlotIndex: number) => {
     const children = getChildren(node._id, sections, dag);
     const cards = node.cards || [];
     const hasContent = children.length > 0 || cards.length > 0;
     const expanded = expandedNodes.has(node._id);
-    const isCurrentSection = isRootCurrentSection;
     const totalProblemCount = getTotalProblemCount(node._id, sections, dag);
 
     const allChildren: Array<{ type: 'node' | 'card'; id: string; order: number; data: LearnDAGNode | LearnCard }> = [
@@ -272,10 +272,10 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
               }}
               onClick={(e) => { e.stopPropagation(); openSingleNodeModal(node); }}
               onMouseEnter={(e) => {
-                if (!isCurrentSection) e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                e.currentTarget.style.backgroundColor = themeStyles.bgHover;
               }}
               onMouseLeave={(e) => {
-                if (!isCurrentSection) e.currentTarget.style.backgroundColor = 'transparent';
+                e.currentTarget.style.backgroundColor = 'transparent';
               }}
             >
               {hasContent ? (
@@ -306,9 +306,9 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
               <div
                 style={{
                   flex: 1,
-                  color: isCurrentSection ? themeStyles.accent : themeStyles.textPrimary,
+                  color: themeStyles.textPrimary,
                   fontSize: '14px',
-                  fontWeight: isCurrentSection ? '600' : 'normal',
+                  fontWeight: 'normal',
                   lineHeight: '1.5',
                   display: 'flex',
                   alignItems: 'center',
@@ -316,11 +316,6 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
                 }}
               >
                 {node.title}
-                {isCurrentSection && (
-                  <span style={{ color: '#4CAF50', fontSize: '0.8em' }}>
-                    ({i18n('Current Progress')})
-                  </span>
-                )}
                 {totalProblemCount > 0 && (
                   <span
                     style={{
@@ -360,20 +355,28 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
                   const problemCount = card.problemCount ?? (card.problems?.length ?? 0);
                   const problems = card.problems ?? [];
                   const isCardExpanded = expandedCards.has(cardPlacementKey);
+                  const isLearnPointCard =
+                    learnIdx !== null
+                    && sectionSlotIndex === learnIdx
+                    && currentLearnStartCardId != null
+                    && cardIdStr === currentLearnStartCardId;
                   return (
                     <div key={cardPlacementKey} style={{ marginLeft: '24px', marginTop: '4px', marginBottom: '4px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                         <div
                           onClick={(e) => { e.stopPropagation(); openSingleCardModal(card); }}
                           style={{
-                            display: 'inline-block',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
                             padding: '4px 8px',
                             fontSize: '12px',
                             color: themeStyles.accent,
                             textDecoration: 'none',
                             borderRadius: '4px',
-                            backgroundColor: themeStyles.cardBg,
-                            border: `1px solid ${themeStyles.cardBorder}`,
+                            backgroundColor: isLearnPointCard ? (theme === 'dark' ? 'rgba(76, 175, 80, 0.12)' : 'rgba(76, 175, 80, 0.08)') : themeStyles.cardBg,
+                            border: isLearnPointCard ? '2px solid #4CAF50' : `1px solid ${themeStyles.cardBorder}`,
+                            boxShadow: isLearnPointCard ? '0 0 0 1px rgba(76, 175, 80, 0.35)' : undefined,
                             cursor: 'pointer',
                             transition: 'all 0.2s',
                             maxWidth: 'fit-content',
@@ -389,6 +392,11 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
                           title={card.title}
                         >
                           {card.title || i18n('Unnamed Card')}
+                          {isLearnPointCard && (
+                            <span style={{ color: '#4CAF50', fontSize: '0.85em', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                              ({i18n('Current Progress')})
+                            </span>
+                          )}
                         </div>
                         {problemCount > 0 && (
                           <button
@@ -467,7 +475,7 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
         )}
       </div>
     );
-  }, [sections, dag, expandedNodes, expandedCards, currentSectionId, toggleExpand, toggleCardExpand, getLearnUrl, getLessonUrl, openSingleCardModal, openSingleNodeModal, themeStyles]);
+  }, [sections, dag, expandedNodes, expandedCards, currentSectionId, toggleExpand, toggleCardExpand, getLearnUrl, getLessonUrl, openSingleCardModal, openSingleNodeModal, themeStyles, learnIdx, currentLearnStartCardId]);
 
   if (!sections || sections.length === 0) {
     return (
@@ -817,6 +825,9 @@ const page = new NamedPage('learnSectionsPage', async () => {
     const domainId = (window as any).UiContext?.domainId || 'system';
     const currentSectionId = (window as any).UiContext?.currentSectionId || null;
     const currentLearnSectionIndex = (window as any).UiContext?.currentLearnSectionIndex ?? null;
+    const rawStartCard = (window as any).UiContext?.currentLearnStartCardId;
+    const currentLearnStartCardId =
+      typeof rawStartCard === 'string' && rawStartCard.trim() ? rawStartCard.trim() : null;
 
     ReactDOM.render(
       <LearnSectionsTree
@@ -825,6 +836,7 @@ const page = new NamedPage('learnSectionsPage', async () => {
         domainId={domainId}
         currentSectionId={currentSectionId}
         currentLearnSectionIndex={currentLearnSectionIndex}
+        currentLearnStartCardId={currentLearnStartCardId}
       />,
       container
     );

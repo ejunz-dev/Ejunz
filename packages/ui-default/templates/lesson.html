@@ -38,6 +38,9 @@
   {{ set(UiContext, 'lessonCardTimesMs', lessonCardTimesMs or []) }}
   {{ set(UiContext, 'reviewCardId', reviewCardId or '') }}
   {{ set(UiContext, 'lessonCardProvenanceLabel', lessonCardProvenanceLabel or '') }}
+  {{ set(UiContext, 'learnPathCardPractiseCounts', learnPathCardPractiseCounts or {}) }}
+  {{ set(UiContext, 'lessonPathCardPractiseCountFmt', lessonPathCardPractiseCountFmt or '') }}
+  {{ set(UiContext, 'lessonPathCardPractiseCountTitle', lessonPathCardPractiseCountTitle or '') }}
 </script>
 <div id="lesson-container"></div>
 {% endblock %}

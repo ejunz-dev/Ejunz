@@ -227,6 +227,32 @@ class LearnModel {
         return domain.setUserInDomain(domainId, uid, update);
     }
 
+    /** 学习路径槽位+卡片维度的练习次数（与 `learn_progress` 的 slot 语义一致），用于路径展示与复习优先级。 */
+    static async incPathCardPractiseCount(domainId: string, userId: number, sectionSlot: number, cardId: string) {
+        const slot = Math.max(0, sectionSlot);
+        const cid = String(cardId);
+        const path = `learnPathCardPractiseCounts.${slot}:${cid}`;
+        return domain.updateUserInDomain(domainId, userId, { $inc: { [path]: 1 } });
+    }
+
+    /**
+     * 移除路径练习次数（`slot:cardId` 与 `learnPassPlacementKey` / pass 槽位一致）。
+     * 学习起点后移等与 `deleteLearnProgressForSlotCards` 同范围时调用。
+     */
+    static async unsetPathCardPractiseCountKeys(domainId: string, userId: number, placementKeys: string[]) {
+        const uniq = [...new Set(placementKeys.map((k) => String(k)))];
+        if (!uniq.length) return;
+        const chunkSize = 500;
+        for (let i = 0; i < uniq.length; i += chunkSize) {
+            const part = uniq.slice(i, i + chunkSize);
+            const $unset: Record<string, string> = {};
+            for (const k of part) {
+                $unset[`learnPathCardPractiseCounts.${k}`] = '';
+            }
+            await domain.updateUserInDomain(domainId, userId, { $unset });
+        }
+    }
+
     static async getUserLearnState(domainId: string, udoc: { _id: number; priv: number }) {
         return domain.getDomainUser(domainId, udoc);
     }

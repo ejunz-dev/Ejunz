@@ -16,6 +16,8 @@ export interface LessonCardQueueItem {
     baseDocId?: number;
     /** Slot in `learnSectionOrder` (duplicate sections differ by index, not only by root id). */
     learnSectionOrderIndex?: number;
+    /** Daily queue only: whether this item was placed in the **new** arm or **review** arm (may cross geographic slot). */
+    todayQueueRole?: 'new' | 'review';
 }
 
 /** Per-user live progress in a domain. Mongo collection: session. */
@@ -46,6 +48,8 @@ export interface SessionDoc {
     lessonQueueDay?: string | null;
     /** Copy of `domain.user.learnSectionOrder` when the daily queue was frozen; used to invalidate stale queues. */
     lessonQueueLearnSectionOrder?: string[];
+    /** Copy of `domain.user.currentLearnStartCardId` when the daily queue was frozen (card-granular start within the section). */
+    lessonQueueLearnStartCardId?: string | null;
     /** Section slot when starting single-card / node lesson (disambiguates duplicate roots). */
     lessonQueueLearnSectionOrderIndex?: number | null;
     /** `learnSessionMode` from domain.user when the daily queue was frozen (`deep` | `breadth` | `random`). */
@@ -88,6 +92,7 @@ export type SessionPatch = Partial<Pick<
     | 'lessonQueueTrainingDocId'
     | 'lessonQueueDay'
     | 'lessonQueueLearnSectionOrder'
+    | 'lessonQueueLearnStartCardId'
     | 'lessonQueueLearnSectionOrderIndex'
     | 'lessonQueueLearnSessionMode'
     | 'lessonQueueLearnSubMode'

@@ -225,6 +225,12 @@ __langname: English
 'Last Connected': Last Connected
 'Last Disconnected Time': Last Disconnected Time
 'Learn session mode': Session order (next daily run)
+'Learn ratio section label': Sub mode · new/review ratio (next daily run)
+'Learn ratio section hint': Main mode (deep/breadth/random) only affects ordering of **new-segment** cards in the daily queue. Daily goal counts **new** cards only. Each daily session length = new slice (goal cap, cycle new pool if short) plus (new count × N) **old-segment** review pulls (cycle old pool if short; if there is no old segment, append none).
+'Learn today ratio summary': '{0} review card(s) per new card'
+'Learn path card loop count': '×{0}'
+'Learn path card loop count title': Times this card was completed on the learning path (each full attempt counts; review queue prefers lower counts)
+'Learn daily goal new cards note': (new segment only)
 'Learn sub mode': Card mix (next daily run)
 'Learn sub mode new only': New only (cards at/after learning-start section slot)
 'Learn sub mode review only': Review only (cards before learning-start section slot)
@@ -235,11 +241,13 @@ __langname: English
 'Learn mixed schedule new first': New first
 'Learn mixed schedule shuffle': Shuffle
 'Learn mixed schedule one one': 1+1 (alternate new/review)
-'Learn sub mode hint': 'Candidates follow session order above. New vs old is only by learning-start section slot: slot < start = old, slot ≥ start = new (not tied to Know/Forget or pass rows). Mixed mode: review-first, new-first, shuffle, or 1+1; ratio = N old-segment pulls per new-segment card (new-first = new block then old block). Both segments are split from the same today candidate list by slot. If there are no pre-start cards, the old segment is empty.'
+'Learn sub mode hint': Same as Learn ratio section hint.
 'Learn today modes config': 'Main: {0} · Sub: {1}'
 'Learn today card kind new': New card
 'Learn today card kind review': Review card
 'Lesson session new old counts': '{0} new · {1} review'
+'Lesson path card practise count': 'Passed {0} time(s)'
+'Lesson path card practise count title': Times this card was fully passed at the current section slot (each full pass in this lesson counts once; same counter as on the learning path)
 'Learn queue card tag new': New
 'Learn queue card tag old': Old
 'Failed to save learn sub mode': Failed to save learn sub mode
