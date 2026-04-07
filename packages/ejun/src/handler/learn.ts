@@ -1204,8 +1204,14 @@ function mergeTodayOldReviewPool(
 }
 
 function formatLessonTodayRatioSummary(translate: (key: string) => string, ratioRaw: unknown): string {
-    const r = typeof ratioRaw === 'number' && [1, 2, 3, 4, 5].includes(ratioRaw) ? ratioRaw : 1;
-    return translate('Learn today ratio summary').replace(/\{0\}/g, String(r));
+    if (typeof ratioRaw === 'number') {
+        if (ratioRaw === 0) return translate('Learn today ratio summary new only');
+        if (ratioRaw === -1) return translate('Learn today ratio summary review only');
+        if ([1, 2, 3, 4, 5].includes(ratioRaw)) {
+            return translate('Learn today ratio summary').replace(/\{0\}/g, String(ratioRaw));
+        }
+    }
+    return translate('Learn today ratio summary').replace(/\{0\}/g, String(1));
 }
 
 function lessonTodayCardKindForQueueItem(
@@ -1475,22 +1481,42 @@ async function buildTodayLessonQueueFromDomain(
     const dailyGoalToday = Math.max(0, getModeDailyGoal(dudoc as any, 'learn'));
 
     let newChosen: TodayQueueFlatEntry[];
-    if (dailyGoalToday > 0) {
-        if (newFlat.length >= dailyGoalToday) {
-            newChosen = newFlat.slice(0, dailyGoalToday);
-        } else if (newFlat.length > 0) {
-            newChosen = cycleList(newFlat, dailyGoalToday);
+    let oldPart: TodayQueueFlatEntry[];
+
+    if (newReviewRatio === -1) {
+        newChosen = [];
+        if (dailyGoalToday > 0) {
+            if (oldFlat.length >= dailyGoalToday) {
+                oldPart = oldFlat.slice(0, dailyGoalToday);
+            } else if (oldFlat.length > 0) {
+                oldPart = cycleList(oldFlat, dailyGoalToday);
+            } else {
+                oldPart = [];
+            }
         } else {
-            newChosen = [];
+            oldPart = [...oldFlat];
         }
     } else {
-        newChosen = [...newFlat];
-    }
+        if (dailyGoalToday > 0) {
+            if (newFlat.length >= dailyGoalToday) {
+                newChosen = newFlat.slice(0, dailyGoalToday);
+            } else if (newFlat.length > 0) {
+                newChosen = cycleList(newFlat, dailyGoalToday);
+            } else {
+                newChosen = [];
+            }
+        } else {
+            newChosen = [...newFlat];
+        }
 
-    const newCount = newChosen.length;
-    const oldNeeded = oldFlat.length > 0 ? newCount * newReviewRatio : 0;
-    const oldPart =
-        oldNeeded > 0 ? buildMixedReviewSlotsForRatio(oldFlat, oldNeeded) : [];
+        const newCount = newChosen.length;
+        const oldNeeded =
+            newReviewRatio === 0 || oldFlat.length === 0
+                ? 0
+                : newCount * newReviewRatio;
+        oldPart =
+            oldNeeded > 0 ? buildMixedReviewSlotsForRatio(oldFlat, oldNeeded) : [];
+    }
     type TodayPoolCard = TodayQueueFlatEntry & { todayQueueRole: 'new' | 'review' };
     const newReviewOrder = getLearnNewReviewOrder(duSec);
     const newReviewShuffleSeed = `${domainId}:${uid}:${utcLessonQueueDayString()}`;
@@ -2206,7 +2232,7 @@ class LearnHandler extends Handler {
         const patch: Record<string, unknown> = {};
         if (body.learnNewReviewRatio !== undefined && body.learnNewReviewRatio !== null) {
             let learnNewReviewRatio = parseInt(String(body.learnNewReviewRatio), 10);
-            if (![1, 2, 3, 4, 5].includes(learnNewReviewRatio)) learnNewReviewRatio = 1;
+            if (![-1, 0, 1, 2, 3, 4, 5].includes(learnNewReviewRatio)) learnNewReviewRatio = 1;
             patch.learnNewReviewRatio = learnNewReviewRatio;
         }
         if (body.learnNewReviewOrder !== undefined && body.learnNewReviewOrder !== null
@@ -2242,9 +2268,13 @@ class LearnHandler extends Handler {
             hint: this.translate('Learn ratio section hint'),
             ratioAria: this.translate('Learn new review ratio'),
             failedSave: this.translate('Failed to save learn sub mode'),
-            ratioOptionLabels: [1, 2, 3, 4, 5].map((n) =>
-                this.translate('New vs review ratio label').replace(/\{0\}/g, String(n)),
-            ),
+            ratioOptionLabels: [
+                this.translate('New vs review ratio label new only'),
+                this.translate('New vs review ratio label review only'),
+                ...[1, 2, 3, 4, 5].map((n) =>
+                    this.translate('New vs review ratio label').replace(/\{0\}/g, String(n)),
+                ),
+            ],
             orderLabel: this.translate('Learn new review order label'),
             orderHint: this.translate('Learn new review order hint'),
             orderAria: this.translate('Learn new review order aria'),

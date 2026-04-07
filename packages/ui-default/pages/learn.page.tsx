@@ -64,6 +64,9 @@ type LearnSessionModeUi = 'deep' | 'breadth' | 'random';
 
 type LearnNewReviewOrderUi = 'new_first' | 'old_first' | 'shuffle';
 
+/** Values in dropdown order (must match server `ratioOptionLabels`). */
+const LEARN_NEW_REVIEW_RATIO_UI_VALUES = [0, -1, 1, 2, 3, 4, 5] as const;
+
 /** Server `this.translate()` strings for learn new vs review ratio (matches user UI language). */
 interface LearnSubModeStringsFromServer {
   label?: string;
@@ -89,6 +92,7 @@ function normalizeLearnSessionModeFromUi(raw: unknown): LearnSessionModeUi {
 
 function normalizeLearnNewReviewRatioFromUi(raw: unknown): number {
   const n = parseInt(String(raw ?? '1'), 10);
+  if (n === -1 || n === 0) return n;
   if ([1, 2, 3, 4, 5].includes(n)) return n;
   return 1;
 }
@@ -979,10 +983,12 @@ function LearnPage() {
                     minWidth: '160px',
                   }}
                 >
-                  {[1, 2, 3, 4, 5].map((n) => (
+                  {LEARN_NEW_REVIEW_RATIO_UI_VALUES.map((n, i) => (
                     <option key={n} value={String(n)}>
-                      {(learnSubModeStrings.ratioOptionLabels && learnSubModeStrings.ratioOptionLabels[n - 1])
-                        || i18n('New vs review ratio label', n)}
+                      {(learnSubModeStrings.ratioOptionLabels && learnSubModeStrings.ratioOptionLabels[i])
+                        || (n === 0 ? i18n('New vs review ratio label new only')
+                          : n === -1 ? i18n('New vs review ratio label review only')
+                            : i18n('New vs review ratio label', n))}
                     </option>
                   ))}
                 </select>
