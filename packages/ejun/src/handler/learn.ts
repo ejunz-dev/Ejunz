@@ -15,9 +15,12 @@ import bus from '../service/bus';
 import { updateDomainRanking } from './domain';
 import { appendUserCheckinDay, countConsecutiveCheckinDays } from '../lib/checkin';
 import {
+    getLearnNewReviewOrder,
     getLearnNewReviewRatio,
     getLearnSessionMode,
     getModeDailyGoal,
+    mergeDailyNewReviewArms,
+    normalizeLearnNewReviewOrder,
     normalizeLearnSessionMode,
     type LearnSessionMode,
 } from '../lib/learnModePrefs';
@@ -1489,10 +1492,22 @@ async function buildTodayLessonQueueFromDomain(
     const oldPart =
         oldNeeded > 0 ? buildMixedReviewSlotsForRatio(oldFlat, oldNeeded) : [];
     type TodayPoolCard = TodayQueueFlatEntry & { todayQueueRole: 'new' | 'review' };
-    const cardsForToday: TodayPoolCard[] = [
-        ...newChosen.map((c) => ({ ...c, todayQueueRole: 'new' as const })),
-        ...oldPart.map((c) => ({ ...c, todayQueueRole: 'review' as const })),
-    ];
+    const newReviewOrder = getLearnNewReviewOrder(duSec);
+    const newReviewShuffleSeed = `${domainId}:${uid}:${utcLessonQueueDayString()}`;
+    const newTagged: Array<TodayQueueFlatEntry & { todayQueueRole: 'new' }> = newChosen.map((c) => ({
+        ...c,
+        todayQueueRole: 'new' as const,
+    }));
+    const reviewTagged: Array<TodayQueueFlatEntry & { todayQueueRole: 'review' }> = oldPart.map((c) => ({
+        ...c,
+        todayQueueRole: 'review' as const,
+    }));
+    const cardsForToday: TodayPoolCard[] = mergeDailyNewReviewArms(
+        newTagged,
+        reviewTagged,
+        newReviewOrder,
+        newReviewShuffleSeed,
+    );
 
     const queuePersist: LessonCardQueueItem[] = cardsForToday.map((c) => ({
         domainId,
@@ -2188,11 +2203,31 @@ class LearnHandler extends Handler {
     async postSetLearnSubMode(domainId: string) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
         const body: any = this.request?.body || {};
-        let learnNewReviewRatio = parseInt(String(body.learnNewReviewRatio ?? '1'), 10);
-        if (![1, 2, 3, 4, 5].includes(learnNewReviewRatio)) learnNewReviewRatio = 1;
-        await learn.setUserLearnState(finalDomainId, this.user._id, { learnNewReviewRatio });
+        const patch: Record<string, unknown> = {};
+        if (body.learnNewReviewRatio !== undefined && body.learnNewReviewRatio !== null) {
+            let learnNewReviewRatio = parseInt(String(body.learnNewReviewRatio), 10);
+            if (![1, 2, 3, 4, 5].includes(learnNewReviewRatio)) learnNewReviewRatio = 1;
+            patch.learnNewReviewRatio = learnNewReviewRatio;
+        }
+        if (body.learnNewReviewOrder !== undefined && body.learnNewReviewOrder !== null
+            && String(body.learnNewReviewOrder).trim() !== '') {
+            patch.learnNewReviewOrder = normalizeLearnNewReviewOrder(body.learnNewReviewOrder);
+        }
+        if (Object.keys(patch).length === 0) {
+            this.response.body = { success: false, error: 'No valid fields' };
+            return;
+        }
+        await learn.setUserLearnState(finalDomainId, this.user._id, patch);
         await clearDailyPracticeSessionAfterSettingsChange(finalDomainId, this.user._id, this.user.priv);
-        this.response.body = { success: true, learnNewReviewRatio };
+        const dudocFresh = await learn.getUserLearnState(finalDomainId, {
+            _id: this.user._id,
+            priv: this.user.priv,
+        }) as any;
+        this.response.body = {
+            success: true,
+            learnNewReviewRatio: getLearnNewReviewRatio(dudocFresh),
+            learnNewReviewOrder: getLearnNewReviewOrder(dudocFresh),
+        };
     }
 
     @param('sectionId', Types.String, true)
@@ -2201,6 +2236,7 @@ class LearnHandler extends Handler {
         const dudocForLearnUi = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
         const learnSessionModeUi = getLearnSessionMode(dudocForLearnUi);
         const learnNewReviewRatioUi = getLearnNewReviewRatio(dudocForLearnUi);
+        const learnNewReviewOrderUi = getLearnNewReviewOrder(dudocForLearnUi);
         const learnSubModeStrings = {
             label: this.translate('Learn ratio section label'),
             hint: this.translate('Learn ratio section hint'),
@@ -2209,6 +2245,12 @@ class LearnHandler extends Handler {
             ratioOptionLabels: [1, 2, 3, 4, 5].map((n) =>
                 this.translate('New vs review ratio label').replace(/\{0\}/g, String(n)),
             ),
+            orderLabel: this.translate('Learn new review order label'),
+            orderHint: this.translate('Learn new review order hint'),
+            orderAria: this.translate('Learn new review order aria'),
+            orderOptionNewFirst: this.translate('Learn new review order new first'),
+            orderOptionOldFirst: this.translate('Learn new review order old first'),
+            orderOptionShuffle: this.translate('Learn new review order shuffle'),
             pathCardLoopCountFmt: this.translate('Learn path card loop count'),
             pathCardLoopCountTitle: this.translate('Learn path card loop count title'),
         };
@@ -2253,6 +2295,7 @@ class LearnHandler extends Handler {
                 lessonSessionId: '',
                 learnSessionMode: learnSessionModeUi,
                 learnNewReviewRatio: learnNewReviewRatioUi,
+                learnNewReviewOrder: learnNewReviewOrderUi,
                 learnSubModeStrings,
                 learnPathCardPractiseCounts: learnPathCardPractiseCountsPayload,
                 ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
@@ -2282,6 +2325,7 @@ class LearnHandler extends Handler {
                 lessonSessionId: '',
                 learnSessionMode: learnSessionModeUi,
                 learnNewReviewRatio: learnNewReviewRatioUi,
+                learnNewReviewOrder: learnNewReviewOrderUi,
                 learnSubModeStrings,
                 learnPathCardPractiseCounts: learnPathCardPractiseCountsPayload,
                 ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
@@ -2328,6 +2372,7 @@ class LearnHandler extends Handler {
                 lessonSessionId: '',
                 learnSessionMode: learnSessionModeUi,
                 learnNewReviewRatio: learnNewReviewRatioUi,
+                learnNewReviewOrder: learnNewReviewOrderUi,
                 learnSubModeStrings,
                 learnPathCardPractiseCounts: learnPathCardPractiseCountsPayload,
                 ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
@@ -2646,6 +2691,7 @@ class LearnHandler extends Handler {
             lessonSessionId: '',
             learnSessionMode: learnSessionModeUi,
             learnNewReviewRatio: learnNewReviewRatioUi,
+            learnNewReviewOrder: learnNewReviewOrderUi,
             learnSubModeStrings,
             learnPathCardPractiseCounts: learnPathCardPractiseCountsPayload,
             ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
@@ -3838,6 +3884,7 @@ class LessonHandler extends Handler {
                     lessonQueueLearnStartCardId: builtToday.effectiveLearnStartCardId ?? null,
                     lessonQueueLearnSessionMode: getLearnSessionMode(dudoc),
                     lessonQueueLearnNewReviewRatio: getLearnNewReviewRatio(dudoc),
+                    lessonQueueLearnNewReviewOrder: getLearnNewReviewOrder(dudoc),
                     lessonQueueMixedLayoutVersion: LESSON_QUEUE_MIXED_LAYOUT_VERSION,
                     lessonQueueAnchorNodeId: null,
                     lessonMode: 'today',
@@ -4097,6 +4144,7 @@ class LessonHandler extends Handler {
                             lessonQueueLearnSectionOrder: builtStart.sectionOrderSnapshot,
                             lessonQueueLearnSessionMode: getLearnSessionMode(dudocSt),
                             lessonQueueLearnNewReviewRatio: getLearnNewReviewRatio(dudocSt),
+                            lessonQueueLearnNewReviewOrder: getLearnNewReviewOrder(dudocSt),
                             lessonQueueMixedLayoutVersion: LESSON_QUEUE_MIXED_LAYOUT_VERSION,
                             lessonQueueDay: utcLessonQueueDayString(),
                             currentLearnSectionIndex: builtStart.currentSectionIndex,

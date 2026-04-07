@@ -236,6 +236,12 @@ __langname: English
 'Learn sub mode review only': Review only (cards before learning-start section slot)
 'Learn sub mode mixed': New + review
 'Learn new review ratio': Ratio (new vs old = section slot vs learning start only; review slots ≈ new-segment count × N)
+'Learn new review order label': New vs review sequence (next daily run)
+'Learn new review order hint': After counts are chosen, controls whether **review** runs before, after, or shuffled with **new** in the frozen queue. Same UTC day keeps the same shuffle order.
+'Learn new review order aria': New versus review order in the daily queue
+'Learn new review order new first': New first, then review (default)
+'Learn new review order old first': Review first, then new
+'Learn new review order shuffle': Shuffle new and review
 'Learn mixed schedule': Order (new + review)
 'Learn mixed schedule review first': Review first
 'Learn mixed schedule new first': New first

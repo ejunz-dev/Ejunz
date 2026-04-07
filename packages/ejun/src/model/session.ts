@@ -58,6 +58,8 @@ export interface SessionDoc {
     lessonQueueLearnSubMode?: string | null;
     /** `learnNewReviewRatio` when frozen (1–5, mixed mode). */
     lessonQueueLearnNewReviewRatio?: number | null;
+    /** `learnNewReviewOrder` when frozen (`new_first` | `old_first` | `shuffle`). */
+    lessonQueueLearnNewReviewOrder?: string | null;
     /** `learnMixedSchedule` when frozen (`mixed` mode). */
     lessonQueueLearnMixedSchedule?: string | null;
     /** Mixed-mode queue ordering algo revision (`lessonSession.LESSON_QUEUE_MIXED_LAYOUT_VERSION`). */
@@ -97,6 +99,7 @@ export type SessionPatch = Partial<Pick<
     | 'lessonQueueLearnSessionMode'
     | 'lessonQueueLearnSubMode'
     | 'lessonQueueLearnNewReviewRatio'
+    | 'lessonQueueLearnNewReviewOrder'
     | 'lessonQueueLearnMixedSchedule'
     | 'lessonQueueMixedLayoutVersion'
     | 'lessonAbandonedAt'

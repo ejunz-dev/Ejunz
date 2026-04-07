@@ -256,6 +256,12 @@ __langname: 简体中文
 'Learn sub mode review only': 纯复习（仅学习起点节槽之前的卡）
 'Learn sub mode mixed': 学新 + 复习
 'Learn new review ratio': 新卡与复习卡比例（新/旧只看学习起点前后节槽；复习总张数 ≈ 新段卡数 × N）
+'Learn new review order label': 新旧顺序（下次今日会话）
+'Learn new review order hint': 在新卡张数与复习张数确定之后，决定冻结队列里「复习段」相对「新学段」是先做、后做还是打混；不改变张数与比例。打乱顺序在同一 UTC 日内保持稳定。
+'Learn new review order aria': 今日队列中新卡与复习卡的先后与打乱方式
+'Learn new review order new first': 先新后旧（默认）
+'Learn new review order old first': 先旧后新
+'Learn new review order shuffle': 新旧打乱
 'Learn mixed schedule': 学新+复习时的顺序
 'Learn mixed schedule review first': 先复习
 'Learn mixed schedule new first': 先学新
