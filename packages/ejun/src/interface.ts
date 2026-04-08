@@ -1018,6 +1018,7 @@ declare module './service/db' {
         'learn_progress': any;
         'learn_result': any;
         'learn_consumption_stats': any;
+        'develop_branch_daily': any;
         /** Per-domain user lesson/live progress (Learn). */
         'session': import('./model/session').SessionDoc;
         'session_record': import('./model/record').RecordDoc;

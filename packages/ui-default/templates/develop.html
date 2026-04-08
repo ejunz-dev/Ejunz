@@ -1,0 +1,19 @@
+{% set page_name = "developPage" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<script>
+  {{ set(UiContext, 'domainId', domainId) }}
+  {{ set(UiContext, 'developPool', developPool or []) }}
+  {{ set(UiContext, 'learnBases', learnBases or []) }}
+  {{ set(UiContext, 'developDateUtc', developDateUtc or '') }}
+  {{ set(UiContext, 'developTotalCheckinDays', developTotalCheckinDays or 0) }}
+  {{ set(UiContext, 'developConsecutiveDays', developConsecutiveDays or 0) }}
+  {{ set(UiContext, 'developCheckedInToday', developCheckedInToday) }}
+  {{ set(UiContext, 'developAllGoalsMet', developAllGoalsMet) }}
+</script>
+<div class="row">
+  <div class="medium-12 columns">
+    <div id="develop-container"></div>
+  </div>
+</div>
+{% endblock %}
