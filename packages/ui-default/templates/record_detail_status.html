@@ -1,4 +1,32 @@
 <div class="section visible" id="status">
+  {% if rdoc.recordKind == 'develop_save' %}
+  <div class="section__header">
+    <h1 class="section__title">
+      <span class="icon record-status--icon progress"></span>
+      {{ _('record_develop_changes_title') }}
+    </h1>
+  </div>
+  <div class="section__body typo">
+    {% if developChangeRows and developChangeRows.length %}
+      <ul class="no-bullet" style="margin: 0; padding-left: 0; list-style: none;">
+        {% for row in developChangeRows %}
+          <li style="margin-bottom: 8px;">
+            <strong>{{ row.opLabel }}</strong>{% if row.detail %}：{{ row.detail }}{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% elif developCountSummaries and developCountSummaries.length %}
+      <p class="text-gray text-sm" style="margin-bottom: 12px;">{{ _('record_develop_changes_summary_hint') }}</p>
+      <ul class="no-bullet" style="margin: 0; padding-left: 0; list-style: none;">
+        {% for line in developCountSummaries %}
+          <li style="margin-bottom: 6px;">{{ line }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-gray">{{ _('record_develop_changes_empty') }}</p>
+    {% endif %}
+  </div>
+  {% else %}
   <div class="section__header">
     <h1 class="section__title">
       <span class="icon record-status--icon progress"></span>
@@ -52,4 +80,5 @@
       </tbody>
     </table>
   </div>
+  {% endif %}
 </div>

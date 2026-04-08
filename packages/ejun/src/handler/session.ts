@@ -1,6 +1,6 @@
 import { throttle } from 'lodash';
 import type { Context } from '../context';
-import { ValidationError } from '../error';
+import { NotFoundError, ValidationError } from '../error';
 import { ObjectId } from 'mongodb';
 import {
     ConnectionHandler,
@@ -10,14 +10,32 @@ import {
     subscribe,
     Types,
 } from '../service/server';
+import {
+    clearDevelopDailySessionPointer,
+    DEVELOP_SESSION_REUSE_MS,
+    developSessionNotSettledMongoFilter,
+} from '../lib/developSessionResume';
+import {
+    computeDevelopRunQueueProgress,
+    developBranchKey,
+    developRunTerminalTotals,
+    isEntireDevelopPoolGoalsMetToday,
+    loadDevelopRunQueuePool,
+    loadUserDevelopPool,
+} from '../lib/developPoolShared';
 import { PERM, PRIV } from '../model/builtin';
+import { BaseModel } from '../model/base';
+import DomainModel from '../model/domain';
 import type { RecordDoc } from '../model/record';
 import SessionModel, { type SessionDoc, type SessionPatch } from '../model/session';
 import user from '../model/user';
 import {
+    deriveSessionKind,
     deriveSessionLearnStatus,
     deriveSessionRecordType,
-    formatSessionCardProgress,
+    formatSessionProgressDisplay,
+    isDevelopSessionRow,
+    isDevelopSessionSettled,
     isLearnSessionRow,
 } from '../lib/sessionListDisplay';
 import { recordSummariesForSessionRow } from './record';
@@ -40,12 +58,23 @@ function buildSessionListRow(
 ) {
     const status = deriveSessionLearnStatus(doc);
     const recordType = deriveSessionRecordType(doc);
+    const sessionKind = deriveSessionKind(doc);
     let resumeUrl: string;
     // learn rows with _id: link to learn_lesson?session=… (history for timed_out / finished / abandoned)
     if (isLearnSessionRow(doc) && doc._id) {
         const base = self.url('learn_lesson', { domainId: doc.domainId });
         const sep = base.includes('?') ? '&' : '?';
         resumeUrl = `${base}${sep}session=${encodeURIComponent(doc._id.toString())}`;
+    } else if (isDevelopSessionRow(doc) && doc._id) {
+        if (status === 'finished') {
+            const base = self.url('develop_session_history', { domainId: doc.domainId });
+            const sep = base.includes('?') ? '&' : '?';
+            resumeUrl = `${base}${sep}session=${encodeURIComponent(doc._id.toString())}`;
+        } else {
+            const base = self.url('develop_editor', { domainId: doc.domainId });
+            const sep = base.includes('?') ? '&' : '?';
+            resumeUrl = `${base}${sep}session=${encodeURIComponent(doc._id.toString())}`;
+        }
     } else if (isLearnSessionRow(doc)) {
         resumeUrl = self.url('learn', { domainId: doc.domainId });
     } else {
@@ -58,9 +87,12 @@ function buildSessionListRow(
         recordType,
         statusLabel: self.translate(`session_status_${status}`),
         recordTypeLabel: self.translate(`session_record_type_${recordType}`),
+        sessionKind,
+        sessionKindLabel: self.translate(`session_kind_${sessionKind}`),
         resumeUrl,
         recordSummaries,
-        cardProgressText: formatSessionCardProgress(doc),
+        cardProgressText: formatSessionProgressDisplay(doc),
+        progressText: formatSessionProgressDisplay(doc),
     };
 }
 
@@ -81,7 +113,7 @@ function readPatch(body: any): SessionPatch {
         patch.cardIndex = n;
     }
     if (typeof body.route === 'string') patch.route = body.route;
-    if (body.appRoute === 'learn') {
+    if (body.appRoute === 'learn' || body.appRoute === 'develop') {
         patch.appRoute = body.appRoute;
     }
     if (body.lessonMode === null || body.lessonMode === 'today' || body.lessonMode === 'node') {
@@ -111,18 +143,169 @@ function readPatch(body: any): SessionPatch {
     return patch;
 }
 
+function mergeSessionProgressWithDevelopRun(
+    prevRaw: unknown,
+    run: { completed: number; total: number },
+): Record<string, unknown> {
+    const prev = prevRaw && typeof prevRaw === 'object' && !Array.isArray(prevRaw)
+        ? { ...(prevRaw as Record<string, unknown>) }
+        : {};
+    prev.developRun = run;
+    return prev;
+}
+
+/** POST JSON: allocate or reuse a develop-pool editor session (`appRoute: develop`). */
+class DevelopSessionStartHandler extends Handler {
+    async post(domainId: string) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
+        const body = this.request.body || {};
+        const baseDocId = Number(body.baseDocId);
+        if (!Number.isFinite(baseDocId) || baseDocId <= 0) {
+            throw new ValidationError('Invalid baseDocId');
+        }
+        const branch = typeof body.branch === 'string' && body.branch.trim() ? body.branch.trim() : 'main';
+        const base = await BaseModel.get(finalDomainId, baseDocId);
+        if (!base) throw new NotFoundError('Base not found');
+        if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+
+        const pendingPool = await loadDevelopRunQueuePool(
+            this.ctx.db.db,
+            finalDomainId,
+            this.user._id,
+            this.user.priv,
+        );
+        const poolKey = developBranchKey(baseDocId, branch);
+        if (!pendingPool.length) {
+            throw new ValidationError(this.translate('Develop run queue empty today'));
+        }
+        if (!pendingPool.some((e) => developBranchKey(e.baseDocId, e.branch) === poolKey)) {
+            throw new ValidationError(this.translate('Develop start goals done today'));
+        }
+
+        const cutoff = new Date(Date.now() - DEVELOP_SESSION_REUSE_MS);
+        const recent = await SessionModel.coll
+            .find({
+                domainId: finalDomainId,
+                uid: this.user._id,
+                appRoute: 'develop',
+                baseDocId,
+                branch,
+                lastActivityAt: { $gte: cutoff },
+                $and: [
+                    { $or: [{ lessonAbandonedAt: null }, { lessonAbandonedAt: { $exists: false } }] },
+                    developSessionNotSettledMongoFilter,
+                ],
+            })
+            .sort({ lastActivityAt: -1 })
+            .limit(1)
+            .toArray();
+        const existing = recent[0] as SessionDoc | undefined;
+
+        const run = computeDevelopRunQueueProgress(pendingPool, baseDocId, branch);
+
+        if (existing) {
+            const progress = run
+                ? mergeSessionProgressWithDevelopRun(existing.progress, run)
+                : (existing.progress && typeof existing.progress === 'object' && !Array.isArray(existing.progress)
+                    ? { ...(existing.progress as Record<string, unknown>) }
+                    : {});
+            const bumped = await SessionModel.touchById(
+                finalDomainId,
+                this.user._id,
+                existing._id,
+                run ? { progress } : {},
+                { silent: false },
+            );
+            const doc = bumped ?? existing;
+            this.response.body = { success: true, sessionId: doc._id.toString(), reused: true };
+            return;
+        }
+
+        const doc = await SessionModel.insertSession(finalDomainId, this.user._id, {
+            appRoute: 'develop',
+            route: 'develop',
+            baseDocId,
+            branch,
+        });
+        if (run) {
+            const progress = mergeSessionProgressWithDevelopRun(doc.progress, run);
+            await SessionModel.touchById(finalDomainId, this.user._id, doc._id, { progress }, { silent: false });
+        }
+        this.response.body = { success: true, sessionId: doc._id.toString(), reused: false };
+    }
+}
+
+/** POST JSON: settle today’s develop session after every pool row with daily goals has met them. */
+class DevelopSessionSettleHandler extends Handler {
+    async post(domainId: string) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
+        const body = this.request.body || {};
+        const sessionHex = typeof body.sessionId === 'string' ? body.sessionId.trim() : '';
+        if (!sessionHex || !ObjectId.isValid(sessionHex)) {
+            throw new ValidationError(this.translate('Invalid session'));
+        }
+
+        const okPool = await isEntireDevelopPoolGoalsMetToday(
+            this.ctx.db.db,
+            finalDomainId,
+            this.user._id,
+            this.user.priv,
+        );
+        if (!okPool) {
+            throw new ValidationError(this.translate('Develop settle pool incomplete'));
+        }
+
+        const sess = await SessionModel.coll.findOne({
+            _id: new ObjectId(sessionHex),
+            domainId: finalDomainId,
+            uid: this.user._id,
+            appRoute: 'develop',
+        }) as SessionDoc | null;
+        if (!sess) throw new NotFoundError(this.translate('Session not found'));
+        if ((sess as { lessonAbandonedAt?: Date | null }).lessonAbandonedAt) {
+            throw new NotFoundError(this.translate('Session not found'));
+        }
+        if (isDevelopSessionSettled(sess)) {
+            throw new ValidationError(this.translate('Develop settle already'));
+        }
+
+        const prevRaw = sess.progress;
+        const prev = prevRaw && typeof prevRaw === 'object' && !Array.isArray(prevRaw)
+            ? { ...(prevRaw as Record<string, unknown>) }
+            : {};
+        prev.developSettledAt = new Date();
+        const fullPool = await loadUserDevelopPool(finalDomainId, this.user._id, this.user.priv);
+        const term = developRunTerminalTotals(sess.progress, fullPool.length);
+        if (term) prev.developRun = term;
+        await SessionModel.touchById(finalDomainId, this.user._id, sess._id, { progress: prev });
+
+        const dudoc = await DomainModel.getDomainUser(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
+        const ptr = typeof dudoc?.developDailySessionId === 'string' ? dudoc.developDailySessionId.trim() : '';
+        if (ptr === sessionHex) await clearDevelopDailySessionPointer(finalDomainId, this.user._id);
+
+        const histBase = this.url('develop_session_history', { domainId: finalDomainId });
+        const sep = histBase.includes('?') ? '&' : '?';
+        const redirect = `${histBase}${sep}session=${encodeURIComponent(sessionHex)}`;
+        this.response.body = { success: true, redirect };
+    }
+}
+
 /** GET / POST own progress (JSON, for lesson client). */
 class SessionMeHandler extends Handler {
     async get(domainId: string) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        const doc = await SessionModel.get(domainId, this.user._id);
+        const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
+        const doc = await SessionModel.get(finalDomainId, this.user._id);
         this.response.body = { session: doc };
     }
 
     async post(domainId: string) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
         const patch = readPatch(this.request.body);
-        const doc = await SessionModel.touch(domainId, this.user._id, patch);
+        const doc = await SessionModel.touch(finalDomainId, this.user._id, patch);
         this.response.body = { session: doc };
     }
 }
@@ -316,6 +499,8 @@ class SessionMeLessonConnectionHandler extends ConnectionHandler {
 
 export async function apply(ctx: Context) {
     ctx.Route('session_me', '/session/me', SessionMeHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('session_develop_start', '/session/develop/start', DevelopSessionStartHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('session_develop_settle', '/session/develop/settle', DevelopSessionSettleHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('session_domain', '/session', SessionDomainHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Connection('session_conn', '/session-conn', SessionConnectionHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Connection('session_me_conn', '/session-me-conn', SessionMeLessonConnectionHandler, PRIV.PRIV_USER_PROFILE);

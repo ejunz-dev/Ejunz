@@ -25,12 +25,15 @@
       <span class="text-gray">-</span>
     {% endif %}
   </td>
+  <td class="col--session-kind">
+    <span class="typo">{{ session.sessionKindLabel }}</span>
+  </td>
   <td class="col--record-type">
     <span class="typo">{{ session.recordTypeLabel }}</span>
   </td>
   <td class="col--card-progress">
-    {% if session.cardProgressText %}
-      <span class="session-card-progress typo">{{ session.cardProgressText }}</span>
+    {% if session.progressText %}
+      <span class="session-card-progress typo">{{ session.progressText }}</span>
     {% else %}
       <span class="text-gray">-</span>
     {% endif %}

@@ -15,6 +15,36 @@ export type RecordProblemState = {
     updatedAt?: Date;
 };
 
+/** Learn: one row per card attempt (`learn_card` or omitted). Develop: one row per successful editor batch-save. */
+export type RecordKind = 'learn_card' | 'develop_save';
+
+export type DevelopSaveChangeOp =
+    | 'node_create'
+    | 'node_update'
+    | 'node_delete'
+    | 'card_create'
+    | 'card_update'
+    | 'card_delete'
+    | 'edge_create'
+    | 'edge_delete';
+
+export type DevelopSaveChangeLine = { op: DevelopSaveChangeOp; label?: string };
+
+export type DevelopSaveMeta = {
+    nodeCreates: number;
+    nodeUpdates: number;
+    nodeDeletes: number;
+    cardCreates: number;
+    cardUpdates: number;
+    cardDeletes: number;
+    edgeCreates: number;
+    edgeDeletes: number;
+    cardUpdatedIds: string[];
+    cardCreatedIds: string[];
+    /** Human-readable lines for record detail (capped at insert time). */
+    changeLines?: DevelopSaveChangeLine[];
+};
+
 export interface RecordDoc {
     _id: ObjectId;
     domainId: string;
@@ -26,6 +56,8 @@ export interface RecordDoc {
     branch: string;
     trainingDocId?: string | null;
     problems: RecordProblemState[];
+    recordKind?: RecordKind;
+    developMeta?: DevelopSaveMeta;
     createdAt: Date;
     updatedAt: Date;
     lastActivityAt: Date;
@@ -79,6 +111,7 @@ export default class RecordModel {
             uid,
             sessionId: sessionMongoId,
             cardId,
+            $or: [{ recordKind: { $exists: false } }, { recordKind: 'learn_card' }],
         });
         if (existing) {
             const ex = existing as RecordDoc;
@@ -113,7 +146,41 @@ export default class RecordModel {
             baseDocId,
             branch,
             ...(tid ? { trainingDocId: tid } : {}),
+            recordKind: 'learn_card',
             problems,
+            createdAt: now,
+            updatedAt: now,
+            lastActivityAt: now,
+        };
+        await RecordModel.coll.insertOne(doc as any);
+        await SessionModel.addRecord(domainId, uid, sessionMongoId, doc._id);
+        bus.broadcast('record/change', doc);
+        return doc;
+    }
+
+    /** One audit row per editor save; uses a synthetic `cardId` so it does not collide with learn_card uniqueness. */
+    static async insertDevelopSaveRecord(
+        domainId: string,
+        uid: number,
+        sessionMongoId: ObjectId,
+        baseDocId: number,
+        branch: string,
+        meta: DevelopSaveMeta,
+    ): Promise<RecordDoc> {
+        const now = new Date();
+        const syntheticCardId = new ObjectId().toHexString();
+        const doc: RecordDoc = {
+            _id: new ObjectId(),
+            domainId,
+            uid,
+            sessionId: sessionMongoId,
+            cardId: syntheticCardId,
+            nodeId: '',
+            baseDocId,
+            branch,
+            problems: [],
+            recordKind: 'develop_save',
+            developMeta: meta,
             createdAt: now,
             updatedAt: now,
             lastActivityAt: now,
@@ -159,9 +226,26 @@ export default class RecordModel {
 
 export async function apply(ctx: Context) {
     ctx.on('domain/delete', (domainId) => RecordModel.coll.deleteMany({ domainId }));
+    await db.clearIndexes(RecordModel.coll, ['domain_uid_session_card']);
+    // Partial indexes cannot use `$exists: false` on MongoDB (rejected as unsupported $not). Backfill
+    // legacy learn rows so uniqueness applies only to `recordKind: 'learn_card'`.
+    if (process.env.NODE_APP_INSTANCE === '0') {
+        await RecordModel.coll.updateMany(
+            {
+                $or: [{ recordKind: { $exists: false } }, { recordKind: null }],
+                recordKind: { $ne: 'develop_save' },
+            },
+            { $set: { recordKind: 'learn_card' } },
+        );
+    }
     await db.ensureIndexes(
         RecordModel.coll,
-        { key: { domainId: 1, uid: 1, sessionId: 1, cardId: 1 }, name: 'domain_uid_session_card', unique: true },
+        {
+            key: { domainId: 1, uid: 1, sessionId: 1, cardId: 1 },
+            name: 'domain_uid_session_card_learn',
+            unique: true,
+            partialFilterExpression: { recordKind: 'learn_card' },
+        },
         { key: { domainId: 1, _id: 1 }, name: 'domain_id' },
         { key: { sessionId: 1 }, name: 'sessionId' },
     );

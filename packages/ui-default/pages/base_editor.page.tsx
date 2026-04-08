@@ -927,7 +927,7 @@ function getSubtreeIntentRows(
 
 type SavedEditorLayout = {
   explorerMode: 'tree' | 'pending' | 'branches' | 'git';
-  nodeSidePanelTab: 'intent' | 'files';
+  nodeSidePanelTab: 'intent' | 'files' | 'develop_queue';
   rightPanelOpen: boolean;
   aiBottomOpen: boolean;
   explorerPanelWidth: number;
@@ -939,7 +939,7 @@ function readSavedBaseEditorUiPrefs(editorAiHidden: boolean): SavedEditorLayout 
   const raw =
     (typeof window !== 'undefined' && (window as any).UiContext?.baseEditorUiPrefs) || null;
   const modes = new Set(['tree', 'pending', 'branches', 'git']);
-  const tabs = new Set(['intent', 'files']);
+  const tabs = new Set(['intent', 'files', 'develop_queue']);
 
   let explorerMode: SavedEditorLayout['explorerMode'] = 'tree';
   if (raw && typeof raw.explorerMode === 'string') {
@@ -1017,6 +1017,166 @@ type DevelopEditorContextWire = {
   }>;
 };
 
+function normDevelopBranch(b: string | undefined): string {
+  return typeof b === 'string' && b.trim() ? b.trim() : 'main';
+}
+
+function resolveDevelopQueueRowStats(
+  ctx: DevelopEditorContextWire,
+  baseDocId: number,
+  branch: string,
+): {
+  baseTitle: string;
+  dailyNodeGoal: number;
+  dailyCardGoal: number;
+  dailyProblemGoal: number;
+  todayNodes: number;
+  todayCards: number;
+  todayProblems: number;
+} {
+  const br = normDevelopBranch(branch);
+  const c = ctx.current;
+  if (c.baseDocId === baseDocId && normDevelopBranch(c.branch) === br) {
+    return {
+      baseTitle: c.baseTitle,
+      dailyNodeGoal: c.dailyNodeGoal,
+      dailyCardGoal: c.dailyCardGoal,
+      dailyProblemGoal: c.dailyProblemGoal,
+      todayNodes: c.todayNodes,
+      todayCards: c.todayCards,
+      todayProblems: c.todayProblems,
+    };
+  }
+  const o = ctx.othersIncomplete.find(
+    (r) => r.baseDocId === baseDocId && normDevelopBranch(r.branch) === br,
+  );
+  if (o) {
+    return {
+      baseTitle: o.baseTitle,
+      dailyNodeGoal: o.dailyNodeGoal,
+      dailyCardGoal: o.dailyCardGoal,
+      dailyProblemGoal: o.dailyProblemGoal,
+      todayNodes: o.todayNodes,
+      todayCards: o.todayCards,
+      todayProblems: o.todayProblems,
+    };
+  }
+  return {
+    baseTitle: `Base ${baseDocId}`,
+    dailyNodeGoal: 0,
+    dailyCardGoal: 0,
+    dailyProblemGoal: 0,
+    todayNodes: 0,
+    todayCards: 0,
+    todayProblems: 0,
+  };
+}
+
+function developQueueGoalCaption(cur: number, goal: number, unsetLabel: string): string {
+  if (goal > 0) return `${cur}/${goal}`;
+  return `${cur}/${unsetLabel}`;
+}
+
+function BaseEditorDevelopQueueList({
+  items,
+  currentIndex,
+  devCtx,
+  themeStyles,
+  theme,
+  busyIndex,
+  onGo,
+}: {
+  items: Array<{ baseDocId: number; branch: string }>;
+  currentIndex: number;
+  devCtx: DevelopEditorContextWire;
+  themeStyles: any;
+  theme: 'light' | 'dark';
+  busyIndex: number | null;
+  onGo: (baseDocId: number, branch: string, idx: number) => void;
+}) {
+  const unset = i18n('Develop goal unset');
+  const track = theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+  return (
+    <div style={{ flex: 1, overflow: 'auto', padding: '10px 12px', minHeight: 0 }}>
+      <div style={{ fontSize: 11, color: themeStyles.textSecondary, marginBottom: 10, lineHeight: 1.4 }}>
+        {i18n('Develop queue sidebar hint')}
+      </div>
+      <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {items.map((item, idx) => {
+          const st = resolveDevelopQueueRowStats(devCtx, item.baseDocId, item.branch);
+          const isCurrent = idx === currentIndex;
+          const busy = busyIndex !== null;
+          const cap = (cur: number, goal: number) => developQueueGoalCaption(cur, goal, unset);
+          return (
+            <li key={`${item.baseDocId}-${item.branch}-${idx}`}>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onGo(item.baseDocId, item.branch, idx)}
+                style={{
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '10px 10px',
+                  borderRadius: 8,
+                  border: `1px solid ${isCurrent ? themeStyles.accent : themeStyles.borderSecondary}`,
+                  background: isCurrent
+                    ? (theme === 'dark' ? 'rgba(56, 189, 248, 0.12)' : 'rgba(14, 165, 233, 0.08)')
+                    : themeStyles.bgSecondary,
+                  color: themeStyles.textPrimary,
+                  cursor: busy ? 'wait' : 'pointer',
+                  opacity: busy && busyIndex !== idx ? 0.65 : 1,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontWeight: 700, fontSize: 12, flex: 1, minWidth: 0 }}>
+                    <span style={{ color: themeStyles.textTertiary, fontWeight: 600, marginRight: 6 }}>{idx + 1}.</span>
+                    {st.baseTitle}
+                    <span style={{ color: themeStyles.textSecondary, fontWeight: 500 }}>{` · ${normDevelopBranch(item.branch)}`}</span>
+                  </span>
+                  {isCurrent ? (
+                    <span style={{ fontSize: 10, fontWeight: 700, color: themeStyles.accent, flexShrink: 0 }}>{i18n('Develop queue current')}</span>
+                  ) : null}
+                </div>
+                <div style={{ fontSize: 10, color: themeStyles.textSecondary, lineHeight: 1.5, marginBottom: 6 }}>
+                  <span style={{ color: themeStyles.statNode }}>{i18n('Develop today nodes')} {cap(st.todayNodes, st.dailyNodeGoal)}</span>
+                  <span style={{ margin: '0 5px', color: themeStyles.textTertiary }}>|</span>
+                  <span style={{ color: themeStyles.statCard }}>{i18n('Develop today cards')} {cap(st.todayCards, st.dailyCardGoal)}</span>
+                  <span style={{ margin: '0 5px', color: themeStyles.textTertiary }}>|</span>
+                  <span style={{ color: themeStyles.statProblem }}>{i18n('Develop today problems')} {cap(st.todayProblems, st.dailyProblemGoal)}</span>
+                </div>
+                <div style={{ height: 3, borderRadius: 2, background: track, overflow: 'hidden' }}>
+                  <div
+                    style={{
+                      width: `${(() => {
+                        const parts: number[] = [];
+                        if (st.dailyNodeGoal > 0) {
+                          parts.push(Math.min(100, (st.todayNodes / st.dailyNodeGoal) * 100));
+                        }
+                        if (st.dailyCardGoal > 0) {
+                          parts.push(Math.min(100, (st.todayCards / st.dailyCardGoal) * 100));
+                        }
+                        if (st.dailyProblemGoal > 0) {
+                          parts.push(Math.min(100, (st.todayProblems / st.dailyProblemGoal) * 100));
+                        }
+                        if (!parts.length) return 0;
+                        return Math.round(parts.reduce((a, b) => a + b, 0) / parts.length);
+                      })()}%`,
+                      height: '100%',
+                      background: themeStyles.accent,
+                      borderRadius: 1,
+                      transition: 'width 0.2s ease',
+                    }}
+                  />
+                </div>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
 export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docId: string | undefined; initialData: BaseDoc; basePath?: string }) {
   
   const getTheme = useCallback(() => {
@@ -1058,6 +1218,86 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     () => ((window as any).UiContext?.developEditorContext as DevelopEditorContextWire) ?? null,
   );
   const [developSwitchModalOpen, setDevelopSwitchModalOpen] = useState(false);
+  const [developSettleBusy, setDevelopSettleBusy] = useState(false);
+  /** Develop-pool editor: ensure `?session=` points at an `appRoute: develop` row for batch-save audit records. */
+  useEffect(() => {
+    if (basePath !== 'base') return;
+    if (!developEditorContext) return;
+    const docIdNum = docId ? Number(docId) : NaN;
+    if (!Number.isFinite(docIdNum) || docIdNum <= 0) return;
+    if (new URLSearchParams(window.location.search).get('session')) return;
+
+    let cancelled = false;
+    const domainId = (window as any).UiContext?.domainId || 'system';
+    const branch = (window as any).UiContext?.currentBranch || 'main';
+    request
+      .post(`/d/${domainId}/session/develop/start`, { baseDocId: docIdNum, branch })
+      .then((res: { sessionId?: string }) => {
+        if (cancelled || !res?.sessionId) return;
+        if (new URLSearchParams(window.location.search).get('session')) return;
+        const next = new URLSearchParams(window.location.search);
+        next.set('session', res.sessionId);
+        window.history.replaceState(
+          window.history.state,
+          '',
+          `${window.location.pathname}?${next.toString()}`,
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [developEditorContext, basePath, docId]);
+
+  const [developRunQueueState, setDevelopRunQueueState] = useState<{
+    items: Array<{ baseDocId: number; branch: string }>;
+    currentIndex: number;
+  } | null>(null);
+
+  const [developQueueNavBusy, setDevelopQueueNavBusy] = useState<number | null>(null);
+  const [editorRightPanelTab, setEditorRightPanelTab] = useState<'problems' | 'develop_queue'>('problems');
+
+  const navigateDevelopQueueItem = useCallback(async (baseDocId: number, branch: string, queueIndex: number) => {
+    const d = (window as any).UiContext?.domainId || 'system';
+    setDevelopQueueNavBusy(queueIndex);
+    try {
+      const res: any = await request.post(`/d/${d}/session/develop/start`, { baseDocId, branch });
+      const sessionId = res?.sessionId ?? res?.body?.sessionId;
+      if (typeof sessionId === 'string' && sessionId.trim()) {
+        window.location.href = `/d/${d}/develop/editor?session=${encodeURIComponent(sessionId.trim())}`;
+        return;
+      }
+      Notification.error(i18n('Develop start failed'));
+    } catch (e: any) {
+      const msg = e?.response?.data?.message ?? e?.message ?? i18n('Develop start failed');
+      Notification.error(typeof msg === 'string' ? msg : String(msg));
+    } finally {
+      setDevelopQueueNavBusy(null);
+    }
+  }, []);
+
+  /** Strip legacy `developRun` from the query string; queue state lives in sessionStorage only. */
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const sp = new URLSearchParams(window.location.search);
+    if (!sp.has('developRun')) return;
+    sp.delete('developRun');
+    const qs = sp.toString();
+    window.history.replaceState(
+      window.history.state,
+      '',
+      window.location.pathname + (qs ? `?${qs}` : ''),
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!developRunQueueState?.items.length) {
+      setEditorRightPanelTab('problems');
+    }
+  }, [developRunQueueState]);
+
+  const showDevelopQueueInPanels = !!(developEditorContext && developRunQueueState && developRunQueueState.items.length > 0);
+
   const contributionWsRef = useRef<any>(null);
   const saveHandlerRef = useRef<() => void>(() => {});
   const editorAiHidden = false;
@@ -1285,7 +1525,44 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
   const migrationResult = useMemo(() => migrateOrderFields(initialData), [initialData]);
   const [base, setBase] = useState<BaseDoc>(() => migrationResult.base);
-  
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !developEditorContext || basePath !== 'base') {
+      setDevelopRunQueueState(null);
+      return;
+    }
+    const domainId = (window as any).UiContext?.domainId || 'system';
+    const branch = String(
+      base.currentBranch || (window as any).UiContext?.currentBranch || 'main',
+    ).trim() || 'main';
+    const docNum = docId ? Number(docId) : NaN;
+    let norm: Array<{ baseDocId: number; branch: string }> = [];
+    try {
+      const raw = sessionStorage.getItem(`developRunQueue:${domainId}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          norm = parsed
+            .filter((x: any) => x && Number.isFinite(Number(x.baseDocId)))
+            .map((x: any) => ({
+              baseDocId: Number(x.baseDocId),
+              branch: String(x.branch || 'main').trim() || 'main',
+            }));
+        }
+      }
+    } catch {
+      norm = [];
+    }
+    if (norm.length === 0) {
+      setDevelopRunQueueState(null);
+      return;
+    }
+    const idx = Number.isFinite(docNum)
+      ? norm.findIndex((s) => s.baseDocId === docNum && s.branch === branch)
+      : -1;
+    setDevelopRunQueueState({ items: norm, currentIndex: idx });
+  }, [docId, developEditorContext, basePath, base.currentBranch]);
+
   useEffect(() => {
     if (migrationResult.needsSave) {
       const saveMigration = async () => {
@@ -1518,9 +1795,14 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [fileListRowMenu, setFileListRowMenu] = useState<{ x: number; y: number; downloadUrl: string; deleteUrl: string; filename: string } | null>(null);
   const [nodeFileListEditMode, setNodeFileListEditMode] = useState(false);
   const [selectedFileListRowKeys, setSelectedFileListRowKeys] = useState<Set<string>>(new Set());
-  const [nodeSidePanelTab, setNodeSidePanelTab] = useState<'intent' | 'files'>(
+  const [nodeSidePanelTab, setNodeSidePanelTab] = useState<'intent' | 'files' | 'develop_queue'>(
     () => savedEditorLayout.nodeSidePanelTab,
   );
+  useEffect(() => {
+    if (!showDevelopQueueInPanels && nodeSidePanelTab === 'develop_queue') {
+      setNodeSidePanelTab('intent');
+    }
+  }, [showDevelopQueueInPanels, nodeSidePanelTab]);
   const [pendingNodeIntents, setPendingNodeIntents] = useState<Map<string, string>>(new Map());
   const [nodeIntentDraft, setNodeIntentDraft] = useState('');
   const cardFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -2521,7 +2803,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         edgeCreates: [],
         edgeDeletes: [],
       };
-      
+      const developSid = new URLSearchParams(window.location.search).get('session');
+      if (developSid && developEditorContext && basePath === 'base') {
+        batchSaveData.developSessionId = developSid;
+      }
+
       const nodeIdMap = new Map<string, string>();
       const cardIdMap = new Map<string, string>();
       let createCountBeforeSave = 0;
@@ -3387,7 +3673,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     } finally {
       setIsCommitting(false);
     }
-  }, [pendingChanges, pendingNodeIntents, pendingDragChanges, pendingRenames, pendingDeletes, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, pendingDeleteProblemIds, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.nodes, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion, explorerMode, nodeSidePanelTab, rightPanelOpen, aiBottomOpen, explorerPanelWidth, problemsPanelWidth, aiPanelHeight, editorAiHidden]);
+  }, [pendingChanges, pendingNodeIntents, pendingDragChanges, pendingRenames, pendingDeletes, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, pendingDeleteProblemIds, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.nodes, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion, explorerMode, nodeSidePanelTab, rightPanelOpen, aiBottomOpen, explorerPanelWidth, problemsPanelWidth, aiPanelHeight, editorAiHidden, developEditorContext, basePath]);
 
   useEffect(() => {
     saveHandlerRef.current = handleSaveAll;
@@ -11759,6 +12045,19 @@ ${editorShellPath}
               </div>
             );
           };
+          const onDevelopEditorRoute = typeof window !== 'undefined'
+            && /\/develop\/editor(\/|$)/.test(window.location.pathname);
+          const developSessionForSettle = typeof window !== 'undefined'
+            ? new URLSearchParams(window.location.search).get('session')
+            : null;
+          const showDevelopSettle = Boolean(
+            onDevelopEditorRoute
+            && developSessionForSettle
+            && devCtx
+            && devCtx.current.goalsMet
+            && devCtx.othersIncomplete.length === 0,
+          );
+
           const developPoolCardFullWidth = devCtx ? (
             <div style={{
               ...cardStyle,
@@ -11838,6 +12137,46 @@ ${editorShellPath}
                       }}
                     >
                       →
+                    </button>
+                  ) : showDevelopSettle ? (
+                    <button
+                      type="button"
+                      title={i18n('Develop editor settle')}
+                      aria-label={i18n('Develop editor settle')}
+                      disabled={developSettleBusy}
+                      onClick={async () => {
+                        const sid = new URLSearchParams(window.location.search).get('session');
+                        if (!sid) return;
+                        const d = (window as any).UiContext?.domainId || 'system';
+                        setDevelopSettleBusy(true);
+                        try {
+                          const res: any = await request.post(`/d/${d}/session/develop/settle`, { sessionId: sid });
+                          if (res?.redirect) {
+                            window.location.href = res.redirect;
+                            return;
+                          }
+                          Notification.error(i18n('Develop settle failed'));
+                        } catch (e: any) {
+                          Notification.error(e?.message || i18n('Develop settle failed'));
+                        } finally {
+                          setDevelopSettleBusy(false);
+                        }
+                      }}
+                      style={{
+                        flexShrink: 0,
+                        padding: '4px 10px',
+                        fontSize: 11,
+                        fontWeight: 600,
+                        lineHeight: 1.2,
+                        borderRadius: 6,
+                        border: `1px solid ${themeStyles.borderSecondary}`,
+                        background: themeStyles.success,
+                        color: '#fff',
+                        cursor: developSettleBusy ? 'wait' : 'pointer',
+                        opacity: developSettleBusy ? 0.75 : 1,
+                      }}
+                    >
+                      {developSettleBusy ? '…' : i18n('Develop editor settle')}
                     </button>
                   ) : (
                     <span
@@ -12189,6 +12528,21 @@ ${editorShellPath}
                           cursor: 'pointer',
                         }}
                       >{i18n('Files')}</button>
+                      {showDevelopQueueInPanels && developEditorContext ? (
+                        <button
+                          type="button"
+                          onClick={() => setNodeSidePanelTab('develop_queue')}
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: '12px',
+                            border: `1px solid ${themeStyles.borderSecondary}`,
+                            borderRadius: '4px',
+                            background: nodeSidePanelTab === 'develop_queue' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                            color: nodeSidePanelTab === 'develop_queue' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                            cursor: 'pointer',
+                          }}
+                        >{i18n('Develop queue tab')}</button>
+                      ) : null}
                     </div>
                     {nodeSidePanelTab === 'intent' ? (
                       <div style={{ flex: 1, overflow: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -12238,6 +12592,16 @@ ${editorShellPath}
                           )}
                         </div>
                       </div>
+                    ) : nodeSidePanelTab === 'develop_queue' && showDevelopQueueInPanels && developEditorContext && developRunQueueState ? (
+                      <BaseEditorDevelopQueueList
+                        items={developRunQueueState.items}
+                        currentIndex={developRunQueueState.currentIndex}
+                        devCtx={developEditorContext}
+                        themeStyles={themeStyles}
+                        theme={theme}
+                        busyIndex={developQueueNavBusy}
+                        onGo={navigateDevelopQueueItem}
+                      />
                     ) : (
                     <>
                     <div style={{
@@ -13132,14 +13496,72 @@ ${editorShellPath}
           {isMobile && (
             <div style={{
               display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
+              alignItems: 'flex-start',
+              gap: '8px',
               padding: '8px 10px',
               borderBottom: `1px solid ${themeStyles.borderPrimary}`,
               backgroundColor: themeStyles.bgSecondary,
               flexShrink: 0,
             }}>
-              <span style={{ fontWeight: 600, fontSize: '14px', color: themeStyles.textPrimary }}>本卡片的练习题</span>
+              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {showDevelopQueueInPanels && developEditorContext && developRunQueueState ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (rightPanelOpen && editorRightPanelTab === 'problems') {
+                          setRightPanelOpen(false);
+                        } else {
+                          setEditorRightPanelTab('problems');
+                          setRightPanelOpen(true);
+                        }
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        border: `1px solid ${themeStyles.borderSecondary}`,
+                        borderRadius: 6,
+                        background: rightPanelOpen && editorRightPanelTab === 'problems' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                        color: rightPanelOpen && editorRightPanelTab === 'problems' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                        cursor: 'pointer',
+                        textAlign: 'center',
+                      }}
+                    >{i18n('Base editor problems tab')}</button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (rightPanelOpen && editorRightPanelTab === 'develop_queue') {
+                          setRightPanelOpen(false);
+                        } else {
+                          setEditorRightPanelTab('develop_queue');
+                          setRightPanelOpen(true);
+                        }
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        border: `1px solid ${themeStyles.borderSecondary}`,
+                        borderRadius: 6,
+                        background: rightPanelOpen && editorRightPanelTab === 'develop_queue' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                        color: rightPanelOpen && editorRightPanelTab === 'develop_queue' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                        cursor: 'pointer',
+                        textAlign: 'center',
+                      }}
+                    >
+                      {i18n('Develop queue tab')}
+                      {developRunQueueState.currentIndex >= 0
+                        ? ` ${developRunQueueState.currentIndex + 1}/${developRunQueueState.items.length}`
+                        : ` · ${developRunQueueState.items.length}`}
+                    </button>
+                  </>
+                ) : (
+                  <span style={{ fontWeight: 600, fontSize: '14px', color: themeStyles.textPrimary }}>本卡片的练习题</span>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => setRightPanelOpen(false)}
@@ -13152,6 +13574,7 @@ ${editorShellPath}
                   color: themeStyles.textTertiary,
                   lineHeight: 1,
                   padding: '0 4px',
+                  flexShrink: 0,
                 }}
                 aria-label="关闭"
               >
@@ -13161,17 +13584,32 @@ ${editorShellPath}
           )}
           {!isMobile && (
             <div style={{
-              padding: '12px 16px',
+              padding: '10px 14px',
               borderBottom: `1px solid ${themeStyles.borderPrimary}`,
               background: themeStyles.bgSecondary,
-              fontWeight: 'bold',
               color: themeStyles.textPrimary,
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
               flexShrink: 0,
+              gap: 8,
             }}>
-              <span>本卡片的练习题</span>
+              {showDevelopQueueInPanels && developEditorContext && developRunQueueState ? (
+                <span style={{ fontWeight: 'bold', minWidth: 0 }}>
+                  {editorRightPanelTab === 'develop_queue' ? (
+                    <>
+                      {i18n('Develop queue tab')}
+                      {developRunQueueState.currentIndex >= 0
+                        ? ` ${developRunQueueState.currentIndex + 1}/${developRunQueueState.items.length}`
+                        : ` · ${developRunQueueState.items.length}`}
+                    </>
+                  ) : (
+                    '本卡片的练习题'
+                  )}
+                </span>
+              ) : (
+                <span style={{ fontWeight: 'bold' }}>本卡片的练习题</span>
+              )}
               <button
                 type="button"
                 onClick={() => setRightPanelOpen(false)}
@@ -13181,6 +13619,7 @@ ${editorShellPath}
                   fontSize: '18px',
                   cursor: 'pointer',
                   color: themeStyles.textTertiary,
+                  flexShrink: 0,
                 }}
                 aria-label="关闭"
               >
@@ -13189,7 +13628,17 @@ ${editorShellPath}
             </div>
           )}
           <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            {selectedFile?.type === 'card' ? (
+            {showDevelopQueueInPanels && developEditorContext && developRunQueueState && editorRightPanelTab === 'develop_queue' ? (
+              <BaseEditorDevelopQueueList
+                items={developRunQueueState.items}
+                currentIndex={developRunQueueState.currentIndex}
+                devCtx={developEditorContext}
+                themeStyles={themeStyles}
+                theme={theme}
+                busyIndex={developQueueNavBusy}
+                onGo={navigateDevelopQueueItem}
+              />
+            ) : selectedFile?.type === 'card' ? (
                 problemsBody
               ) : (
                 <div style={{
@@ -13228,14 +13677,21 @@ ${editorShellPath}
               }}>
                 <button
                   type="button"
-                  onClick={() => setRightPanelOpen((prev) => !prev)}
+                  onClick={() => {
+                    if (rightPanelOpen && editorRightPanelTab === 'problems') {
+                      setRightPanelOpen(false);
+                    } else {
+                      setEditorRightPanelTab('problems');
+                      setRightPanelOpen(true);
+                    }
+                  }}
                   style={{
                     width: '34px',
                     height: '34px',
                     border: `1px solid ${themeStyles.borderSecondary}`,
                     borderRadius: '3px',
-                    backgroundColor: rightPanelOpen ? themeStyles.bgButtonActive : themeStyles.bgButton,
-                    color: rightPanelOpen ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                    backgroundColor: rightPanelOpen && editorRightPanelTab === 'problems' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                    color: rightPanelOpen && editorRightPanelTab === 'problems' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
                     cursor: 'pointer',
                     flexShrink: 0,
                     fontSize: '11px',
@@ -13246,6 +13702,39 @@ ${editorShellPath}
                 >
                   题
                 </button>
+                {showDevelopQueueInPanels && developEditorContext && developRunQueueState ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (rightPanelOpen && editorRightPanelTab === 'develop_queue') {
+                        setRightPanelOpen(false);
+                      } else {
+                        setEditorRightPanelTab('develop_queue');
+                        setRightPanelOpen(true);
+                      }
+                    }}
+                    style={{
+                      width: '34px',
+                      height: '34px',
+                      border: `1px solid ${themeStyles.borderSecondary}`,
+                      borderRadius: '3px',
+                      backgroundColor: rightPanelOpen && editorRightPanelTab === 'develop_queue' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                      color: rightPanelOpen && editorRightPanelTab === 'develop_queue' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                      fontSize: '11px',
+                      fontWeight: 600,
+                    }}
+                    title={`${i18n('Develop queue tab')}${
+                      developRunQueueState.currentIndex >= 0
+                        ? ` ${developRunQueueState.currentIndex + 1}/${developRunQueueState.items.length}`
+                        : ` · ${developRunQueueState.items.length}`
+                    }`}
+                    aria-label={i18n('Develop queue tab')}
+                  >
+                    队
+                  </button>
+                ) : null}
               </div>
             )}
           </>
@@ -13261,7 +13750,7 @@ const getBaseUrl = (path: string, docId: string): string => {
   return `/d/${domainId}/base/${docId}${path}`;
 };
 
-const page = new NamedPage(['base_editor', 'base_editor_branch', 'base_skill_editor', 'base_skill_editor_branch'], async (pageName) => {
+const page = new NamedPage(['base_editor', 'base_editor_branch', 'base_skill_editor', 'base_skill_editor_branch', 'develop_editor'], async (pageName) => {
   try {
     
     const isSkill = pageName === 'base_skill_editor' || pageName === 'base_skill_editor_branch';

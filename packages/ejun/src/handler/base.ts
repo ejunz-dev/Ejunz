@@ -24,7 +24,16 @@ import { loadBaseEditorUiPrefs, sanitizeBaseEditorUiPrefs } from '../lib/baseEdi
 import { computeMaxNodeLayers, countMainLevelChildNodes, loadCardStatsByBaseDocId } from '../lib/baseListStats';
 import { getTodayUserDomainContribution } from '../lib/homepageRanking';
 import { incDevelopBranchDaily } from '../lib/developBranchDaily';
-import { buildDevelopEditorContextWire, loadUserDevelopPool } from '../lib/developPoolShared';
+import {
+    buildDevelopEditorContextWire,
+    computeDevelopRunQueueProgress,
+    loadDevelopRunQueuePool,
+    loadUserDevelopPool,
+    resolveDevelopRunProgressForSession,
+} from '../lib/developPoolShared';
+import RecordModel, { type DevelopSaveChangeLine } from '../model/record';
+import SessionModel, { type SessionDoc } from '../model/session';
+import { isDevelopSessionSettled } from '../lib/sessionListDisplay';
 
 const exec = promisify(execCb);
 const execFile = promisify(execFileCb);
@@ -1117,6 +1126,137 @@ export class BaseEditorHandler extends Handler {
     }
 }
 
+export type BuildBaseEditorPageBodyArgs = {
+    domainId: string;
+    base: BaseDoc;
+    requestedBranch: string;
+    uid: number;
+    priv: number;
+    domainName: string;
+    db: { collection: (n: string) => any };
+    makeEditorUrl: (docId: number, branch: string) => string;
+    workspaceFromQuery?: string;
+};
+
+/** Shared HTML payload for `base_editor.html` (normal base URL or `/develop/editor?session=`). */
+export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs): Promise<Record<string, unknown>> {
+    const {
+        domainId, base, requestedBranch, uid, priv, domainName, db, makeEditorUrl,
+        workspaceFromQuery = '',
+    } = args;
+
+    let nodes: BaseNode[] = [];
+    let edges: BaseEdge[] = [];
+
+    const branchData = getBranchData(base, requestedBranch);
+    nodes = branchData.nodes || [];
+    edges = branchData.edges || [];
+
+    const currentBaseBranch = (base as any)?.currentBranch || 'main';
+    if (requestedBranch !== currentBaseBranch) {
+        await document.set(domainId, document.TYPE_BASE, base.docId, { currentBranch: requestedBranch });
+    }
+
+    if (nodes.length === 0) {
+        const rootNode: Omit<BaseNode, 'id'> = { text: domainName || '知识库', level: 0 };
+        await BaseModel.addNode(domainId, base.docId, rootNode, undefined, requestedBranch);
+        const updated = await BaseModel.get(domainId, base.docId);
+        if (updated) {
+            const updatedBranchData = getBranchData(updated, requestedBranch);
+            nodes = updatedBranchData.nodes || [];
+            edges = updatedBranchData.edges || [];
+        }
+    }
+
+    const docCardFilter: any = { baseDocId: base.docId };
+    if (requestedBranch === 'main') {
+        docCardFilter.$or = [{ branch: 'main' }, { branch: { $exists: false } }];
+    } else {
+        docCardFilter.branch = requestedBranch;
+    }
+    const allCards = await document.getMulti(domainId, TYPE_CARD, docCardFilter)
+        .sort({ order: 1, cid: 1 })
+        .toArray() as CardDoc[];
+    const nodeCardsMap: Record<string, CardDoc[]> = {};
+    for (const card of allCards) {
+        if (card.nodeId) {
+            if (!nodeCardsMap[card.nodeId]) nodeCardsMap[card.nodeId] = [];
+            nodeCardsMap[card.nodeId].push(card);
+        }
+    }
+    for (const nodeId of Object.keys(nodeCardsMap)) {
+        nodeCardsMap[nodeId].sort((a, b) =>
+            (a.order ?? 999999) - (b.order ?? 999999) || (a.cid - b.cid));
+    }
+
+    const branches = Array.isArray((base as any)?.branches) ? (base as any).branches : ['main'];
+    if (!branches.includes('main')) branches.unshift('main');
+
+    const baseForContrib = { ...base, nodes };
+    const [contrib, todayAllDomains] = await Promise.all([
+        buildContributionDataForDomain(domainId, uid, domainName, baseForContrib),
+        buildTodayContributionAllDomains(uid),
+    ]);
+    const { todayContribution, contributions, contributionDetails } = contrib;
+
+    let baseExpandState: string[] = [];
+    try {
+        const coll = db.collection('base.userExpand');
+        const doc = await coll.findOne({ domainId, baseDocId: base.docId, uid });
+        baseExpandState = Array.isArray(doc?.expandedNodeIds) ? doc.expandedNodeIds : [];
+    } catch {
+        // ignore
+    }
+
+    const baseEditorUiPrefs = await loadBaseEditorUiPrefs(
+        db,
+        domainId,
+        base.docId,
+        requestedBranch,
+        uid,
+    );
+
+    const nodeIds = new Set(nodes.map((n: BaseNode) => n.id));
+    const workspaceNodeId = workspaceFromQuery && nodeIds.has(workspaceFromQuery) ? workspaceFromQuery : '';
+
+    const userTok = await fetchUserGithubToken(domainId, uid);
+    const userGithubTokenConfigured = !!userTok;
+
+    const developEditorContext = await buildDevelopEditorContextWire({
+        db,
+        domainId,
+        uid,
+        pool: await loadUserDevelopPool(domainId, uid, priv),
+        baseDocId: base.docId,
+        branch: requestedBranch,
+        getBaseTitle: async (docId) => {
+            const b = await BaseModel.get(domainId, docId);
+            return b ? ((b.title || '').trim() || String(docId)) : `Base ${docId}`;
+        },
+        makeEditorUrl,
+    });
+
+    return {
+        base: { ...base, nodes, edges },
+        currentBranch: requestedBranch,
+        branches,
+        nodeCardsMap,
+        files: base.files || [],
+        domainId,
+        editorMode: 'base',
+        todayContribution,
+        todayContributionAllDomains: todayAllDomains,
+        contributions,
+        contributionDetails,
+        baseExpandState,
+        baseEditorUiPrefs,
+        workspaceNodeId,
+        githubRepo: (base.githubRepo || '') as string,
+        userGithubTokenConfigured,
+        developEditorContext,
+    };
+}
+
 export class BaseEditorDocHandler extends Handler {
     base?: BaseDoc;
 
@@ -1135,119 +1275,20 @@ export class BaseEditorDocHandler extends Handler {
 
         this.response.template = 'base_editor.html';
 
-        let nodes: BaseNode[] = [];
-        let edges: BaseEdge[] = [];
-
-        const branchData = getBranchData(base, requestedBranch);
-        nodes = branchData.nodes || [];
-        edges = branchData.edges || [];
-
-        const currentBaseBranch = (base as any)?.currentBranch || 'main';
-        if (requestedBranch !== currentBaseBranch) {
-            await document.set(domainId, document.TYPE_BASE, base.docId, { currentBranch: requestedBranch });
-        }
-
-        if (nodes.length === 0) {
-            const rootNode: Omit<BaseNode, 'id'> = { text: (this as any).domain?.name || '知识库', level: 0 };
-            await BaseModel.addNode(domainId, base.docId, rootNode, undefined, requestedBranch);
-            const updated = await BaseModel.get(domainId, base.docId);
-            if (updated) {
-                const updatedBranchData = getBranchData(updated, requestedBranch);
-                nodes = updatedBranchData.nodes || [];
-                edges = updatedBranchData.edges || [];
-            }
-        }
-
-        const docCardFilter: any = { baseDocId: base.docId };
-        if (requestedBranch === 'main') {
-            docCardFilter.$or = [{ branch: 'main' }, { branch: { $exists: false } }];
-        } else {
-            docCardFilter.branch = requestedBranch;
-        }
-        const allCards = await document.getMulti(domainId, TYPE_CARD, docCardFilter)
-            .sort({ order: 1, cid: 1 })
-            .toArray() as CardDoc[];
-        const nodeCardsMap: Record<string, CardDoc[]> = {};
-        for (const card of allCards) {
-            if (card.nodeId) {
-                if (!nodeCardsMap[card.nodeId]) nodeCardsMap[card.nodeId] = [];
-                nodeCardsMap[card.nodeId].push(card);
-            }
-        }
-        for (const nodeId of Object.keys(nodeCardsMap)) {
-            nodeCardsMap[nodeId].sort((a, b) =>
-                (a.order ?? 999999) - (b.order ?? 999999) || (a.cid - b.cid));
-        }
-
-        const branches = Array.isArray((base as any)?.branches) ? (base as any).branches : ['main'];
-        if (!branches.includes('main')) branches.unshift('main');
-
+        const workspaceFromQuery = (this.request.query?.workspace as string) || '';
         const uid = this.user._id;
         const domainName = (this as any).domain?.name || domainId;
-        const baseForContrib = { ...base, nodes };
-        const [contrib, todayAllDomains] = await Promise.all([
-            buildContributionDataForDomain(domainId, uid, domainName, baseForContrib),
-            buildTodayContributionAllDomains(uid),
-        ]);
-        const { todayContribution, contributions, contributionDetails } = contrib;
-
-        let baseExpandState: string[] = [];
-        try {
-            const coll = this.ctx.db.db.collection('base.userExpand');
-            const doc = await coll.findOne({ domainId, baseDocId: base.docId, uid });
-            baseExpandState = Array.isArray(doc?.expandedNodeIds) ? doc.expandedNodeIds : [];
-        } catch {
-            // ignore
-        }
-
-        const baseEditorUiPrefs = await loadBaseEditorUiPrefs(
-            this.ctx.db.db,
+        this.response.body = await buildBaseEditorPageBody({
             domainId,
-            base.docId,
+            base,
             requestedBranch,
             uid,
-        );
-
-        const workspaceFromQuery = (this.request.query?.workspace as string) || '';
-        const nodeIds = new Set(nodes.map((n: BaseNode) => n.id));
-        const workspaceNodeId = workspaceFromQuery && nodeIds.has(workspaceFromQuery) ? workspaceFromQuery : '';
-
-        const userTok = await fetchUserGithubToken(domainId, uid);
-        const userGithubTokenConfigured = !!userTok;
-
-        const developEditorContext = await buildDevelopEditorContextWire({
+            priv: this.user.priv,
+            domainName,
             db: this.ctx.db.db,
-            domainId,
-            uid,
-            pool: await loadUserDevelopPool(domainId, uid, this.user.priv),
-            baseDocId: base.docId,
-            branch: requestedBranch,
-            getBaseTitle: async (docId) => {
-                const b = await BaseModel.get(domainId, docId);
-                return b ? ((b.title || '').trim() || String(docId)) : `Base ${docId}`;
-            },
             makeEditorUrl: (docId, br) => this.url('base_editor_branch', { domainId, docId, branch: br }),
+            workspaceFromQuery,
         });
-
-        this.response.body = {
-            base: { ...base, nodes, edges },
-            currentBranch: requestedBranch,
-            branches,
-            nodeCardsMap,
-            files: base.files || [],
-            domainId,
-            editorMode: 'base',
-            todayContribution,
-            todayContributionAllDomains: todayAllDomains,
-            contributions,
-            contributionDetails,
-            baseExpandState,
-            baseEditorUiPrefs,
-            workspaceNodeId,
-            githubRepo: (base.githubRepo || '') as string,
-            userGithubTokenConfigured,
-            developEditorContext,
-        };
     }
 }
 
@@ -4123,6 +4164,136 @@ export interface BatchSaveOptions {
     getBranch: (base: BaseDoc) => string;
 }
 
+const DEVELOP_SAVE_CHANGE_LOG_CAP = 48;
+
+function truncDevelopSaveLabel(s: string, maxLen: number): string {
+    const t = String(s || '').trim().replace(/\s+/g, ' ');
+    if (t.length <= maxLen) return t;
+    return `${t.slice(0, maxLen)}…`;
+}
+
+function buildDevelopSaveChangeLines(data: Record<string, unknown>): DevelopSaveChangeLine[] {
+    const out: DevelopSaveChangeLine[] = [];
+    const push = (op: DevelopSaveChangeLine['op'], label?: string) => {
+        if (out.length >= DEVELOP_SAVE_CHANGE_LOG_CAP) return;
+        out.push(label ? { op, label: truncDevelopSaveLabel(label, 120) } : { op });
+    };
+    for (const n of (data.nodeCreates as { text?: string }[] | undefined) || []) {
+        push('node_create', n?.text);
+    }
+    for (const n of (data.nodeUpdates as { text?: string; nodeId?: string }[] | undefined) || []) {
+        push('node_update', n?.text || n?.nodeId);
+    }
+    for (const id of (data.nodeDeletes as string[] | undefined) || []) {
+        push('node_delete', id);
+    }
+    for (const c of (data.cardCreates as { title?: string }[] | undefined) || []) {
+        push('card_create', c?.title);
+    }
+    for (const c of (data.cardUpdates as { title?: string; cardId?: string }[] | undefined) || []) {
+        push('card_update', c?.title || c?.cardId);
+    }
+    for (const id of (data.cardDeletes as string[] | undefined) || []) {
+        push('card_delete', id);
+    }
+    for (const e of (data.edgeCreates as { source?: string; target?: string }[] | undefined) || []) {
+        push('edge_create', `${e?.source || ''} → ${e?.target || ''}`);
+    }
+    for (const id of (data.edgeDeletes as string[] | undefined) || []) {
+        push('edge_delete', id);
+    }
+    return out;
+}
+
+/** After each save, recompute develop run progress from today’s pending queue and the session’s base/branch. */
+async function refreshDevelopSessionRunProgressAfterBatchSave(
+    db: { collection: (n: string) => any },
+    domainId: string,
+    uid: number,
+    priv: number,
+    developSessionIdHex: string,
+): Promise<void> {
+    if (!ObjectId.isValid(developSessionIdHex)) return;
+    const sid = new ObjectId(developSessionIdHex);
+    const cur = await SessionModel.coll.findOne({
+        _id: sid,
+        domainId,
+        uid,
+        appRoute: 'develop',
+    }) as SessionDoc | null;
+    if (!cur) return;
+    if (isDevelopSessionSettled(cur)) return;
+    const baseDocId = Number(cur.baseDocId);
+    if (!Number.isFinite(baseDocId) || baseDocId <= 0) return;
+    const branch = cur.branch && String(cur.branch).trim() ? String(cur.branch).trim() : 'main';
+    const run = await resolveDevelopRunProgressForSession(
+        db, domainId, uid, priv, baseDocId, branch, cur.progress,
+    );
+    if (!run) return;
+    const prevRaw = cur.progress;
+    const prev = prevRaw && typeof prevRaw === 'object' && !Array.isArray(prevRaw)
+        ? { ...(prevRaw as Record<string, unknown>) }
+        : {};
+    prev.developRun = run;
+    await SessionModel.touchById(domainId, uid, sid, { progress: prev });
+}
+
+async function appendDevelopSaveRecordAfterBatchSave(
+    domainId: string,
+    uid: number,
+    docId: number,
+    branch: string,
+    developSessionIdHex: string,
+    data: Record<string, unknown>,
+    cardIdMap: Map<string, string>,
+    changeLines: DevelopSaveChangeLine[],
+): Promise<void> {
+    if (!developSessionIdHex || !ObjectId.isValid(developSessionIdHex)) return;
+    const sess = await SessionModel.coll.findOne({
+        _id: new ObjectId(developSessionIdHex),
+        domainId,
+        uid,
+        appRoute: 'develop',
+    }) as SessionDoc | null;
+    if (!sess) return;
+    if (isDevelopSessionSettled(sess)) return;
+    if (Number(sess.baseDocId) !== Number(docId)) return;
+    const brSes = sess.branch && String(sess.branch).trim() ? String(sess.branch).trim() : 'main';
+    if (brSes !== branch) return;
+
+    const nodeCreates = (data.nodeCreates as unknown[] | undefined)?.length ?? 0;
+    const nodeUpdates = (data.nodeUpdates as unknown[] | undefined)?.length ?? 0;
+    const nodeDeletes = (data.nodeDeletes as unknown[] | undefined)?.length ?? 0;
+    const cardCreates = (data.cardCreates as unknown[] | undefined)?.length ?? 0;
+    const cardUpdates = (data.cardUpdates as unknown[] | undefined)?.length ?? 0;
+    const cardDeletes = (data.cardDeletes as unknown[] | undefined)?.length ?? 0;
+    const edgeCreates = (data.edgeCreates as unknown[] | undefined)?.length ?? 0;
+    const edgeDeletes = (data.edgeDeletes as unknown[] | undefined)?.length ?? 0;
+    const total = nodeCreates + nodeUpdates + nodeDeletes + cardCreates + cardUpdates + cardDeletes + edgeCreates + edgeDeletes;
+    if (total === 0) return;
+
+    const cu = (data.cardUpdates as Array<{ cardId?: string }> | undefined) || [];
+    const cardUpdatedIds = cu.map((x) => String(x.cardId || '')).filter(Boolean);
+    const cc = (data.cardCreates as Array<{ tempId?: string }> | undefined) || [];
+    const cardCreatedIds = cc
+        .map((c) => (c.tempId ? cardIdMap.get(c.tempId) : undefined))
+        .filter((x): x is string => typeof x === 'string' && x.length > 0);
+
+    await RecordModel.insertDevelopSaveRecord(domainId, uid, sess._id, docId, branch, {
+        nodeCreates,
+        nodeUpdates,
+        nodeDeletes,
+        cardCreates,
+        cardUpdates,
+        cardDeletes,
+        edgeCreates,
+        edgeDeletes,
+        cardUpdatedIds,
+        cardCreatedIds,
+        ...(changeLines.length ? { changeLines } : {}),
+    });
+}
+
 export class BaseBatchSaveHandler extends Handler {
     protected getBatchSaveOptions(): BatchSaveOptions {
         return {
@@ -4375,7 +4546,8 @@ export class BaseBatchSaveHandler extends Handler {
         
         (this.ctx.emit as any)('base/update', docId, null, branch);
 
-        if (errors.length === 0) {
+        const batchSuccess = errors.length === 0;
+        if (batchSuccess) {
             const incNodes = nodeCreates.length + nodeUpdates.length;
             const incCards = cardCreates.length + cardUpdates.length;
             let incProblems = 0;
@@ -4396,8 +4568,40 @@ export class BaseBatchSaveHandler extends Handler {
             }
         }
 
+        const developSessionRaw = typeof data.developSessionId === 'string' ? data.developSessionId.trim() : '';
+        const developChangeLines = buildDevelopSaveChangeLines(data as Record<string, unknown>);
+        if (batchSuccess && developSessionRaw && opts.type === 'base') {
+            try {
+                await refreshDevelopSessionRunProgressAfterBatchSave(
+                    this.ctx.db.db,
+                    actualDomainId,
+                    this.user._id,
+                    this.user.priv,
+                    developSessionRaw,
+                );
+            } catch (err: any) {
+                logger.warn('refreshDevelopSessionRunProgressAfterBatchSave failed: %s', err?.message || err);
+            }
+        }
+        if (batchSuccess && developSessionRaw && opts.type === 'base') {
+            try {
+                await appendDevelopSaveRecordAfterBatchSave(
+                    actualDomainId,
+                    this.user._id,
+                    docId,
+                    branch,
+                    developSessionRaw,
+                    data,
+                    cardIdMap,
+                    developChangeLines,
+                );
+            } catch (err: any) {
+                logger.warn('appendDevelopSaveRecordAfterBatchSave failed: %s', err?.message || err);
+            }
+        }
+
         this.response.body = {
-            success: errors.length === 0,
+            success: batchSuccess,
             errors,
             nodeIdMap: Object.fromEntries(nodeIdMap),
             cardIdMap: Object.fromEntries(cardIdMap),
