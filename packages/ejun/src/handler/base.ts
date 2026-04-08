@@ -4978,14 +4978,6 @@ class BaseBranchDeleteHandler extends Handler {
         if (!base) throw new NotFoundError('Base not found');
         if (!this.user.own(base)) this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
 
-        // Training-owned branch cannot be deleted from base; delete the training plan instead.
-        const trainings = await document.getMulti(domainId, document.TYPE_TRAINING, {
-            planSources: { $elemMatch: { baseDocId: docId, targetBranch: branchName } },
-        } as any).limit(5).toArray() as any[];
-        if (trainings.length) {
-            throw new ForbiddenError('This branch is managed by a training plan. Please delete the corresponding training plan first.');
-        }
-
         const branches: string[] = Array.isArray((base as any).branches) ? [...(base as any).branches] : ['main'];
         const nextBranches = branches.filter((b) => String(b) !== branchName);
         const nextBranchData: any = { ...((base as any).branchData || {}) };

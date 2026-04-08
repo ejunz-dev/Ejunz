@@ -33,9 +33,6 @@ export interface LearnDAGDoc {
     updateAt: Date;
 }
 
-/** Learn-page DAG merged from the selected training (same merged graph as the editor); not cached per single base only. */
-export const TRAINING_LEARN_DAG_BRANCH = 'training_merged';
-
 class LearnModel {
     static collDAG = collDAG;
     static collProgress = collProgress;
@@ -47,15 +44,6 @@ class LearnModel {
             domainId,
             baseDocId,
             branch,
-        });
-        return doc as LearnDAGDoc | null;
-    }
-
-    static async getTrainingLearnDAG(domainId: string, trainingDocId: ObjectId): Promise<LearnDAGDoc | null> {
-        const doc = await collDAG.findOne({
-            domainId,
-            trainingDocId,
-            branch: TRAINING_LEARN_DAG_BRANCH,
         });
         return doc as LearnDAGDoc | null;
     }
@@ -81,28 +69,6 @@ class LearnModel {
             { domainId, baseDocId, branch },
             { $set },
             { upsert: true }
-        );
-    }
-
-    static async setTrainingLearnDAG(
-        domainId: string,
-        trainingDocId: ObjectId,
-        data: { sections: LearnDAGNode[]; dag: LearnDAGNode[]; version: number; updateAt: Date },
-    ) {
-        const $set: Record<string, unknown> = {
-            domainId,
-            trainingDocId,
-            branch: TRAINING_LEARN_DAG_BRANCH,
-            baseDocId: 0,
-            sections: data.sections,
-            dag: data.dag,
-            version: data.version,
-            updateAt: data.updateAt,
-        };
-        return collDAG.updateOne(
-            { domainId, trainingDocId, branch: TRAINING_LEARN_DAG_BRANCH },
-            { $set },
-            { upsert: true },
         );
     }
 

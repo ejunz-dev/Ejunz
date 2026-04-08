@@ -54,10 +54,10 @@ interface MapDAGNode {
   order?: number;
 }
 
-interface LearnTrainingOption {
-  docId: string;
-  name?: string;
-  baseDocId?: number;
+interface LearnBaseLearnOption {
+  docId: number;
+  title?: string;
+  branches?: string[];
 }
 
 type LearnSessionModeUi = 'deep' | 'breadth' | 'random';
@@ -149,7 +149,7 @@ function LearnPage() {
   const pathFullDagRaw = ((window as any).UiContext?.pathFullDag || []) as MapDAGNode[];
   const pathCurrentSectionId = String((window as any).UiContext?.pathCurrentSectionId || '').trim() || null;
   const pathCurrentLearnStartCardId = String((window as any).UiContext?.pathCurrentLearnStartCardId || '').trim() || null;
-  /** When path payload exists, use full-training merged graph as Learning Path; else current base sections/fullDag. */
+  /** When path payload exists, prefer pathSections/pathFullDag from server (full outline); else current sections/fullDag. */
   const useTrainingPath = pathSectionsRaw.length > 0;
   const pathSectionsView = useTrainingPath ? pathSectionsRaw : sections;
   const pathFullDagView = useTrainingPath ? pathFullDagRaw : fullDag;
@@ -157,8 +157,12 @@ function LearnPage() {
   const currentSectionIndex = (window as any).UiContext?.currentSectionIndex as number | undefined;
   const passedCardKeysSet = new Set<string>((window as any).UiContext?.passedCardKeys || []);
   const passedLegacyCardIdsSet = new Set<string>((window as any).UiContext?.passedLegacyCardIds || []);
-  const learnTrainings = ((window as any).UiContext?.learnTrainings || []) as LearnTrainingOption[];
-  const selectedLearnTrainingDocId = String((window as any).UiContext?.selectedLearnTrainingDocId || '').trim() || null;
+  const learnBases = ((window as any).UiContext?.learnBases || []) as LearnBaseLearnOption[];
+  const selectedLearnBaseDocId =
+    (window as any).UiContext?.selectedLearnBaseDocId != null && (window as any).UiContext?.selectedLearnBaseDocId !== ''
+      ? Number((window as any).UiContext.selectedLearnBaseDocId)
+      : null;
+  const learnBranchUi = String((window as any).UiContext?.learnBranch || 'main').trim() || 'main';
   const requireBaseSelection = !!(window as any).UiContext?.requireBaseSelection;
   const initialLearnSessionMode = useMemo(
     () => normalizeLearnSessionModeFromUi((window as any).UiContext?.learnSessionMode),
@@ -183,9 +187,10 @@ function LearnPage() {
   const todayLessonResumeUrl = String((window as any).UiContext?.todayLessonResumeUrl || '').trim();
   const todayLessonCardProgressText = String((window as any).UiContext?.todayLessonCardProgressText || '').trim();
   const hasTodayLessonResume = !!todayLessonResumeUrl;
-  const selectedLearnTraining = selectedLearnTrainingDocId
-    ? (learnTrainings.find((t) => String(t.docId) === String(selectedLearnTrainingDocId)) || null)
-    : null;
+  const selectedLearnBase =
+    selectedLearnBaseDocId != null && Number.isFinite(selectedLearnBaseDocId) && selectedLearnBaseDocId > 0
+      ? (learnBases.find((b) => Number(b.docId) === Number(selectedLearnBaseDocId)) || null)
+      : null;
 
   const [goal, setGoal] = useState(dailyGoal);
   const [learnSessionMode, setLearnSessionMode] = useState<LearnSessionModeUi>(initialLearnSessionMode);
@@ -646,16 +651,16 @@ function LearnPage() {
           }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: '12px', color: themeStyles.textSecondary, marginBottom: '2px' }}>
-                {i18n('Current training (Learn)')}
+                {i18n('Current knowledge base (Learn)')}
               </div>
               <div style={{ fontSize: '14px', color: themeStyles.textPrimary, fontWeight: 600, wordBreak: 'break-word' }}>
-                {selectedLearnTraining
-                  ? (selectedLearnTraining.name || i18n('Untitled training'))
+                {selectedLearnBase
+                  ? `${selectedLearnBase.title || String(selectedLearnBase.docId)} · ${learnBranchUi}`
                   : i18n('Pending selection')}
               </div>
             </div>
             <a
-              href={`/d/${domainId}/learn/training/select?redirect=${encodeURIComponent(`/d/${domainId}/learn`)}`}
+              href={`/d/${domainId}/learn/base/select?redirect=${encodeURIComponent(`/d/${domainId}/learn`)}`}
               style={{
                 padding: '8px 12px',
                 borderRadius: '8px',
@@ -731,13 +736,13 @@ function LearnPage() {
             boxShadow: theme === 'dark' ? '0 4px 24px rgba(0,0,0,0.4)' : '0 2px 12px rgba(0,0,0,0.06)',
           }}>
             <div style={{ fontSize: '16px', fontWeight: 600, color: themeStyles.textPrimary, marginBottom: '8px' }}>
-              {i18n('Select a training before learning')}
+              {i18n('Select a knowledge base before learning')}
             </div>
             <div style={{ fontSize: '13px', color: themeStyles.textSecondary, marginBottom: '16px' }}>
-              {i18n('Choose one training plan and save your learning setting first.')}
+              {i18n('Choose a base and branch, then save to continue learning.')}
             </div>
             <a
-              href={`/d/${domainId}/learn/training/select?redirect=${encodeURIComponent(`/d/${domainId}/learn`)}`}
+              href={`/d/${domainId}/learn/base/select?redirect=${encodeURIComponent(`/d/${domainId}/learn`)}`}
               style={{
                 display: 'inline-block',
                 padding: '10px 16px',
@@ -748,7 +753,7 @@ function LearnPage() {
                 textDecoration: 'none',
               }}
             >
-              {i18n('Select Learn Training')}
+              {i18n('Select learn base')}
             </a>
           </div>
         ) : viewMode === 'progress' && (

@@ -1053,7 +1053,6 @@ export interface Model {
     workflow: typeof import('./model/workflow').default,
     workflowNode: typeof import('./model/workflow_node').default,
     workflowTimer: typeof import('./model/workflow_timer').default,
-    training: typeof import('./model/training').default,
     learn: typeof import('./model/learn').default,
     session: typeof import('./model/session').default,
     record: typeof import('./model/record').default,
