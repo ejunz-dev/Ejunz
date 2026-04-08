@@ -19,9 +19,19 @@ import user from '../model/user';
 import {
     deriveSessionRecordType,
     formatRecordProgressInSession,
+    isDevelopSessionRow,
 } from '../lib/sessionListDisplay';
 
 export function summarizeRecordDoc(r: RecordDoc): { code: string; color: string; label: string } {
+    if (r.recordKind === 'develop_save') {
+        const m = r.developMeta;
+        const n = m
+            ? (m.nodeCreates + m.nodeUpdates + m.nodeDeletes
+                + m.cardCreates + m.cardUpdates + m.cardDeletes
+                + m.edgeCreates + m.edgeDeletes)
+            : 0;
+        return { code: 'develop', color: '#0366d6', label: n > 0 ? `Editor save (${n})` : 'Editor save' };
+    }
     const probs = r.problems || [];
     if (!probs.length) return { code: 'pending', color: '#9fa0a0', label: 'Pending' };
     if (probs.some(p => p.status === 'wrong')) return { code: 'fail', color: '#fb5555', label: 'Wrong' };
@@ -81,7 +91,12 @@ async function buildRecordMainListRow(
     let sessionDisplayId = '';
     if (sessionIdHex) {
         sessionDisplayId = sessionIdHex.length > 8 ? `…${sessionIdHex.slice(-8)}` : sessionIdHex;
-        const base = buildUrl('learn_lesson', { domainId: rd.domainId });
+        let base: string;
+        if (sess && isDevelopSessionRow(sess)) {
+            base = buildUrl('develop_editor', { domainId: rd.domainId });
+        } else {
+            base = buildUrl('learn_lesson', { domainId: rd.domainId });
+        }
         const sep = base.includes('?') ? '&' : '?';
         sessionResumeUrl = `${base}${sep}session=${encodeURIComponent(sessionIdHex)}`;
     }
@@ -110,6 +125,16 @@ async function enrichRecordRowDisplay(
     rd: RecordDoc,
     buildUrl: (name: string, kwargs: Record<string, unknown>) => string,
 ): Promise<RecordRowDisplay> {
+    if (rd.recordKind === 'develop_save') {
+        const m = rd.developMeta;
+        const parts: string[] = [];
+        if (m) {
+            if (m.cardUpdates) parts.push(`${m.cardUpdates} card Δ`);
+            if (m.cardCreates) parts.push(`${m.cardCreates} card +`);
+            if (m.nodeUpdates || m.nodeCreates) parts.push(`${m.nodeUpdates + m.nodeCreates} node`);
+        }
+        return { cardTitle: parts.length ? `Save (${parts.join(', ')})` : 'Editor save', cardUrl: '#' };
+    }
     const domainId = rd.domainId;
     const branch = rd.branch && rd.branch.length > 0 ? rd.branch : 'main';
     const baseDocId = typeof rd.baseDocId === 'number' && rd.baseDocId > 0 ? rd.baseDocId : 0;
@@ -405,6 +430,36 @@ class RecordListConnectionHandler extends ConnectionHandler {
     }
 }
 
+function buildDevelopRecordDetailAugment(
+    rdoc: RecordDoc,
+    translate: (k: string) => string,
+): { developChangeRows: Array<{ opLabel: string; detail: string }>; developCountSummaries: string[] } {
+    const developChangeRows: Array<{ opLabel: string; detail: string }> = [];
+    const developCountSummaries: string[] = [];
+    if (rdoc.recordKind === 'develop_save' && rdoc.developMeta?.changeLines?.length) {
+        for (const line of rdoc.developMeta.changeLines) {
+            developChangeRows.push({
+                opLabel: translate(`record_develop_op_${line.op}`),
+                detail: line.label || '',
+            });
+        }
+    } else if (rdoc.recordKind === 'develop_save' && rdoc.developMeta) {
+        const m = rdoc.developMeta;
+        const add = (n: number, key: string) => {
+            if (n > 0) developCountSummaries.push(translate(key).replace(/\{0\}/g, String(n)));
+        };
+        add(m.nodeCreates, 'record_develop_count_node_create');
+        add(m.nodeUpdates, 'record_develop_count_node_update');
+        add(m.nodeDeletes, 'record_develop_count_node_delete');
+        add(m.cardCreates, 'record_develop_count_card_create');
+        add(m.cardUpdates, 'record_develop_count_card_update');
+        add(m.cardDeletes, 'record_develop_count_card_delete');
+        add(m.edgeCreates, 'record_develop_count_edge_create');
+        add(m.edgeDeletes, 'record_develop_count_edge_delete');
+    }
+    return { developChangeRows, developCountSummaries };
+}
+
 class RecordDetailHandler extends Handler {
     rdoc!: RecordDoc;
 
@@ -420,8 +475,18 @@ class RecordDetailHandler extends Handler {
     async get(domainId: string, rid: ObjectId) {
         const udoc = await user.getById(domainId, this.rdoc.uid);
         const disp = await enrichRecordRowDisplay(this.rdoc, (name, kwargs) => this.url(name, kwargs as any));
+        const { developChangeRows, developCountSummaries } = buildDevelopRecordDetailAugment(
+            this.rdoc,
+            (k) => this.translate(k),
+        );
         this.response.template = 'record_detail.html';
-        this.response.body = { rdoc: this.rdoc, udoc, recordDisp: disp };
+        this.response.body = {
+            rdoc: this.rdoc,
+            udoc,
+            recordDisp: disp,
+            developChangeRows,
+            developCountSummaries,
+        };
     }
 }
 
@@ -451,8 +516,16 @@ class RecordDetailConnectionHandler extends ConnectionHandler {
     }
 
     async sendUpdate(d: RecordDoc) {
+        const { developChangeRows, developCountSummaries } = buildDevelopRecordDetailAugment(
+            d,
+            (k) => this.translate(k),
+        );
         this.send({
-            status_html: await this.renderHTML('record_detail_status.html', { rdoc: d }),
+            status_html: await this.renderHTML('record_detail_status.html', {
+                rdoc: d,
+                developChangeRows,
+                developCountSummaries,
+            }),
         });
     }
 

@@ -5,7 +5,7 @@ import { isLearnHomePlaceholderSession } from './lessonSession';
 const ON_LESSON_RECENT_MS = 3 * 60 * 1000;
 const LEGACY_ACTIVITY_MS = 5 * 60 * 1000;
 
-export type SessionListRecordType = 'daily' | 'single_card' | 'single_node' | 'other';
+export type SessionListRecordType = 'daily' | 'single_card' | 'single_node' | 'develop' | 'other';
 
 export type SessionListStatus =
     | 'in_progress'
@@ -17,13 +17,35 @@ export type SessionListStatus =
     | 'detached';
 
 export function isLearnSessionRow(doc: SessionDoc): boolean {
+    if (doc.appRoute === 'develop' || doc.route === 'develop') return false;
     return doc.appRoute === 'learn'
         || doc.route === 'learn'
         || !!(doc.lessonCardQueue && doc.lessonCardQueue.length)
         || doc.lessonMode != null;
 }
 
+export function isDevelopSessionRow(doc: SessionDoc): boolean {
+    return doc.appRoute === 'develop' || doc.route === 'develop';
+}
+
+export function getDevelopSessionSettledAt(doc: SessionDoc | null | undefined): Date | null {
+    const p = doc?.progress as Record<string, unknown> | undefined;
+    if (!p || typeof p !== 'object') return null;
+    const v = p.developSettledAt;
+    if (v instanceof Date) return v;
+    if (typeof v === 'string') {
+        const d = new Date(v);
+        return Number.isNaN(d.getTime()) ? null : d;
+    }
+    return null;
+}
+
+export function isDevelopSessionSettled(doc: SessionDoc | null | undefined): boolean {
+    return getDevelopSessionSettledAt(doc) != null;
+}
+
 export function deriveSessionRecordType(doc: SessionDoc): SessionListRecordType {
+    if (isDevelopSessionRow(doc)) return 'develop';
     if (!isLearnSessionRow(doc)) return 'other';
     if (isLearnHomePlaceholderSession(doc)) return 'other';
     const mode = doc.lessonMode ?? null;
@@ -81,6 +103,26 @@ export function formatSessionCardProgress(doc: SessionDoc): string | null {
     return `${current}/${qLen}`;
 }
 
+/** Session list progress column: develop run queue (completed/total); learn = card queue progress. */
+export function formatSessionProgressDisplay(doc: SessionDoc): string | null {
+    if (isDevelopSessionRow(doc)) {
+        const dr = doc.progress?.developRun as { completed?: unknown; total?: unknown } | undefined;
+        const total = Number(dr?.total);
+        const completed = Number(dr?.completed);
+        if (Number.isFinite(total) && total > 0 && Number.isFinite(completed) && completed >= 0 && completed <= total) {
+            return `${completed}/${total}`;
+        }
+        return null;
+    }
+    return formatSessionCardProgress(doc);
+}
+
+export type SessionKindUi = 'learn' | 'develop';
+
+export function deriveSessionKind(doc: SessionDoc): SessionKindUi {
+    return isDevelopSessionRow(doc) ? 'develop' : 'learn';
+}
+
 /**
  * Slot of this answer record in its learn session: card index in `lessonCardQueue`, else order in `recordIds`.
  * Example: third card in a six-card run → `3/6`.
@@ -109,6 +151,13 @@ export function formatRecordProgressInSession(rd: RecordDoc, sess: SessionDoc | 
 }
 
 export function deriveSessionLearnStatus(doc: SessionDoc, now = Date.now()): SessionListStatus {
+    if (isDevelopSessionRow(doc)) {
+        if ((doc as { lessonAbandonedAt?: Date | null }).lessonAbandonedAt) return 'abandoned';
+        if (isDevelopSessionSettled(doc)) return 'finished';
+        const t = doc.lastActivityAt ? new Date(doc.lastActivityAt).getTime() : 0;
+        if (now - t < ON_LESSON_RECENT_MS) return 'in_progress';
+        return 'paused';
+    }
     if ((doc as { lessonAbandonedAt?: Date | null }).lessonAbandonedAt) {
         return 'abandoned';
     }

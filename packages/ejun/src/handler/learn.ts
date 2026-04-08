@@ -42,6 +42,7 @@ import {
     deriveSessionLearnStatus,
     deriveSessionRecordType,
     formatSessionCardProgress,
+    formatSessionProgressDisplay,
     isLearnSessionRow,
 } from '../lib/sessionListDisplay';
 import RecordModel, { type RecordDoc } from '../model/record';
@@ -3034,8 +3035,11 @@ class LessonHandler extends Handler {
                         statusLabel: this.translate(histLabelKey),
                         recordType: rt,
                         recordTypeLabel: this.translate(`session_record_type_${rt}`),
+                        sessionKind: 'learn',
+                        sessionKindLabel: this.translate('session_kind_learn'),
                         recordSummaries,
-                        cardProgressText: formatSessionCardProgress(sExpired as SessionDoc),
+                        cardProgressText: formatSessionProgressDisplay(sExpired as SessionDoc),
+                        progressText: formatSessionProgressDisplay(sExpired as SessionDoc),
                     },
                     recordHistoryRows,
                     learnHomeUrl: this.url('learn', { domainId: finalDomainId }),

@@ -852,7 +852,7 @@ develop: 开发
 'Develop': 开发
 'Develop branch': 分支
 'Develop add row': 添加一项
-'Develop edit pool hint': 选择知识库与分支，并设置每日节点、卡片、题目目标；保存后主页面会显示今日进度。
+'Develop edit pool hint': 选择知识库与分支，并设置每日节点、卡片、题目目标；用 ↑↓ 调整顺序后保存。「开始开发」将按该顺序进入编辑器。
 'Develop edit pool': 编辑开发池
 'Develop goal unset': —
 'Develop no pool hint': 还没有开发池条目。点击上方「编辑」添加知识库与分支及每日目标。
@@ -874,6 +874,22 @@ develop: 开发
 'Develop save failed': 保存失败
 'Develop save pool': 保存开发池
 'Develop start': 开始开发
+'Develop start failed': 无法开始开发会话，请稍后重试
+'Develop pool order hint': 列表顺序即为开发顺序；在「编辑」中用 ↑↓ 调整后保存。
+'Develop pool skip done hint': 已达今日目标的库不会进入「开始开发」队列。
+'Develop row today goals met': 今日目标已完成
+'Develop run queue empty today': 今日待开发任务已全部完成。
+'Develop start goals done today': 该知识库今日目标已完成，无需再进入开发队列。
+'Develop start no pending': 今日待开发任务已全部完成；若有未结束的会话可先继续。
+'Develop move up': 上移
+'Develop move down': 下移
+'Develop run queue': 开发队列
+'Develop queue tab': 队列
+'Develop queue sidebar hint': 点击一项将打开对应知识库的开发会话（未保存的修改请先保存）。
+'Develop queue current': 当前
+'Base editor problems tab': 练习题
+'Develop run next': 下一个
+'Develop run clear': 结束队列
 'Develop today cards': 卡片
 'Develop today nodes': 节点
 'Develop today problems': 题目
@@ -886,6 +902,15 @@ develop: 开发
 'Develop editor all pool goals met': 开发池内所有条目今日目标均已完成。
 'Develop editor switch modal title': 今日尚未完成目标的开发池条目
 'Develop editor switch modal hint': 点击下方条目进入对应编辑器；进度为当前 UTC 日。
+'Develop editor settle': 结算
+'Develop settle failed': 结算失败。
+'Develop settle pool incomplete': 开发池内尚有条目未达成今日目标，无法结算。
+'Develop settle already': 该开发会话已结算。
+develop_session_history_title: 开发会话（历史）
+develop_session_history_back: 返回开发首页
+develop_session_history_hint_finished: 本会话已结算，以下为该次开发中的保存记录。
+develop_session_history_detail_title: 各次保存明细
+session_develop_list_title: 开发会话（列表）
 Leave Edit Mode: 离开编辑模式
 Less: 少
 lesson_history_col_attempts: 次数
@@ -1045,6 +1070,25 @@ record_main_empty_filter: 没有符合条件的记录。
 record_main_empty: 该时间范围内暂无答题记录。
 record_main_list_title: 各卡答题记录（实时）
 record_main: 答题记录
+record_develop_changes_empty: 暂无明细。
+record_develop_changes_summary_hint: 以下为按类型汇总条数（旧记录可能没有逐条说明）。
+record_develop_changes_title: 本次保存的改动
+record_develop_count_card_create: 新建卡片 × {0}
+record_develop_count_card_delete: 删除卡片 × {0}
+record_develop_count_card_update: 更新卡片 × {0}
+record_develop_count_edge_create: 新建连线 × {0}
+record_develop_count_edge_delete: 删除连线 × {0}
+record_develop_count_node_create: 新建节点 × {0}
+record_develop_count_node_delete: 删除节点 × {0}
+record_develop_count_node_update: 更新节点 × {0}
+record_develop_op_card_create: 新建卡片
+record_develop_op_card_delete: 删除卡片
+record_develop_op_card_update: 更新卡片
+record_develop_op_edge_create: 新建连线
+record_develop_op_edge_delete: 删除连线
+record_develop_op_node_create: 新建节点
+record_develop_op_node_delete: 删除节点
+record_develop_op_node_update: 更新节点
 record_no_problems: 暂无子题条目。
 record_open_detail: 查看
 record_page_title: 答题记录
@@ -1124,6 +1168,9 @@ session_active_minutes: 列出最近 N 分钟内有活动的用户
 session_col_branch: 分支
 session_col_card_progress: 卡片进度
 session_col_position: 卡片 / 节点
+session_col_progress: 进度
+session_col_records: 记录
+session_col_session_kind: 类型
 session_col_record_type: 练习类型
 session_col_route: 页面
 session_col_started_at: 开始时间
@@ -1132,11 +1179,14 @@ session_last_activity: 最近活动
 session_learn_empty_filter: 没有符合条件的会话。
 session_learn_empty: 当前域内暂无近期学习活动。
 session_learn_list_title: 学习会话（实时）
+session_kind_develop: 开发
+session_kind_learn: 学习
 session_main: 会话
 session_record_type_daily: 每日练习
 session_record_type_other: 其他
 session_record_type_single_card: 单卡片练习
 session_record_type_single_node: 单节点练习
+session_record_type_develop: 开发编辑
 session_status_abandoned: 已放弃
 session_status_active: 在线
 session_status_detached: 离线
