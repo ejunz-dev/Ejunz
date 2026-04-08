@@ -6,7 +6,6 @@ __langname: 正體中文
 '{0} days ago': '{0}天前'
 '{0} discussions': '''{0} 條討論'''
 '{0} more cards to go': 還差 {0} 張卡片
-'{0} more nodes to go': 還差 {0} 個節點
 '{0} more times to go': 還差 {0} 次
 '↓ # Comments': ↓ 評論數
 '↓ # Enrollees': ↓ 參與人數
@@ -25,7 +24,6 @@ __langname: 正體中文
 'Section Order': 學習路徑節序
 'Max consecutive': 最長連續
 'No': 否
-'Tap the day count above to continue in Learn, Collect, or Flag.': 點擊上方天數可前往 Learn、Collect 或 Flag 繼續學習。
 'Today': 今天
 'Yes': 是
 "Confirm deleting {0} selected base(s)?": "確定要刪除選中的 {0} 個倉庫嗎？"

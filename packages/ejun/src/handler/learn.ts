@@ -18,8 +18,8 @@ import {
     getLearnNewReviewOrder,
     getLearnNewReviewRatio,
     getLearnSessionMode,
-    getModeBaseDocId,
-    getModeDailyGoal,
+    getLearnBaseDocId,
+    getLearnDailyGoal,
     mergeDailyNewReviewArms,
     normalizeLearnNewReviewOrder,
     normalizeLearnSessionMode,
@@ -1074,7 +1074,7 @@ async function maybeSyncLearnStartCardAfterPassForSlot(
     const dudoc = await learn.getUserLearnState(domainId, { _id: uid, priv }) as any;
     const duIdx = normalizeDomainUserLearnIndex(dudoc.currentLearnSectionIndex);
     if (duIdx === null || duIdx < 0 || passedSlot !== duIdx) return;
-    const learnBaseDocId = getModeBaseDocId(dudoc, 'learn');
+    const learnBaseDocId = getLearnBaseDocId(dudoc);
     if (learnBaseDocId === null) return;
     const br = learnBranchFromDudoc(dudoc);
     const { sections: secB, allDagNodes: dagB } = await ensureLearnBaseDAGCached(domainId, learnBaseDocId, br, translate);
@@ -1347,7 +1347,7 @@ async function buildTodayLessonQueueFromDomain(
     /** Resolved first card of the geographic "new" segment (matches anchor in `domain.user.currentLearnStartCardId` when set). */
     effectiveLearnStartCardId: string | null;
 }> {
-    const learnBaseDocId = getModeBaseDocId(dudoc, 'learn');
+    const learnBaseDocId = getLearnBaseDocId(dudoc);
     if (learnBaseDocId === null) {
         throw new ValidationError('Please select a knowledge base for learning first');
     }
@@ -1443,7 +1443,7 @@ async function buildTodayLessonQueueFromDomain(
         practiseCounts,
     );
     const newReviewRatio = getLearnNewReviewRatio(duSec);
-    const dailyGoalToday = Math.max(0, getModeDailyGoal(dudoc as any, 'learn'));
+    const dailyGoalToday = Math.max(0, getLearnDailyGoal(dudoc as any));
 
     let newChosen: TodayQueueFlatEntry[];
     let oldPart: TodayQueueFlatEntry[];
@@ -1570,7 +1570,7 @@ async function getLearnPageBaseSelection(domainId: string, uid: number, priv: nu
         };
     }
     const dudoc = await learn.getUserLearnState(domainId, { _id: uid, priv }) as any;
-    const selectedBaseDocId = getModeBaseDocId(dudoc, 'learn');
+    const selectedBaseDocId = getLearnBaseDocId(dudoc);
     const learnBranch = learnBranchFromDudoc(dudoc);
     const selectedBase = selectedBaseDocId !== null
         ? (bases.find((b) => Number(b.docId) === selectedBaseDocId) || null)
@@ -2231,7 +2231,7 @@ class LearnHandler extends Handler {
         const Lsec = mergeDomainLessonState(dudoc, sdocMain);
         const savedSectionIndex = normalizeDomainUserLearnIndex(Lsec.currentLearnSectionIndex);
         const savedSectionId = Lsec.currentLearnSectionId;
-        const dailyGoal = getModeDailyGoal(dudoc as any, 'learn');
+        const dailyGoal = getLearnDailyGoal(dudoc as any);
         const learnSectionOrder = (dudoc as any)?.learnSectionOrder;
         sections = applyUserSectionOrder(sections, learnSectionOrder);
         
@@ -2629,7 +2629,7 @@ async function buildSpaLessonSnapshotToday(
     qSession: string | undefined,
 ): Promise<Record<string, unknown> | null> {
     const dudocSpaToday = await learn.getUserLearnState(finalDomainId, { _id: uid, priv }) as any;
-    const learnBid = getModeBaseDocId(dudocSpaToday, 'learn');
+    const learnBid = getLearnBaseDocId(dudocSpaToday);
     if (learnBid === null) return null;
     const learnBr = learnBranchFromDudoc(dudocSpaToday);
     const sDaily = await resolveLearnDailySessionDoc(finalDomainId, uid, dudocSpaToday);
@@ -2760,7 +2760,7 @@ async function buildSpaLessonSnapshotNode(
     qSession: string | undefined,
 ): Promise<Record<string, unknown> | null> {
     const dudocSpaNodePre = await learn.getUserLearnState(finalDomainId, { _id: uid, priv }) as any;
-    const learnBidNode = getModeBaseDocId(dudocSpaNodePre, 'learn');
+    const learnBidNode = getLearnBaseDocId(dudocSpaNodePre);
     const learnBrNode = learnBranchFromDudoc(dudocSpaNodePre);
     if (learnBidNode === null) return null;
     const sNode = await resolveLessonSessionDoc(finalDomainId, uid, qSession || undefined);
@@ -4025,7 +4025,7 @@ class LessonHandler extends Handler {
         const spaNext = body.spaNext === true || body.spaNext === 'true';
 
         const dudocPassMain = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
-        const firstBasePass = getModeBaseDocId(dudocPassMain, 'learn') ?? 0;
+        const firstBasePass = getLearnBaseDocId(dudocPassMain) ?? 0;
         const branchLearnPass = learnBranchFromDudoc(dudocPassMain);
 
         const isTodayMode = body.todayMode === true;
@@ -4528,7 +4528,7 @@ class LessonHandler extends Handler {
             return;
         }
 
-        const bidPm = getModeBaseDocId(dudocPassMain, 'learn');
+        const bidPm = getLearnBaseDocId(dudocPassMain);
         if (bidPm === null) {
             throw new ValidationError(this.translate('Please select a knowledge base for learning first'));
         }
@@ -4799,7 +4799,7 @@ class LessonHandler extends Handler {
         }
 
         const dudocRes = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
-        const baseDocResNum = getModeBaseDocId(dudocRes, 'learn');
+        const baseDocResNum = getLearnBaseDocId(dudocRes);
         const baseDocRes = baseNumericId(card.baseDocId) > 0
             ? baseNumericId(card.baseDocId)
             : (baseDocResNum ?? 0);
@@ -4866,7 +4866,7 @@ class LessonNodeResultHandler extends Handler {
         if (!nodeId) throw new ValidationError('nodeId is required');
 
         const dudocNr = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
-        const baseNr = getModeBaseDocId(dudocNr, 'learn');
+        const baseNr = getLearnBaseDocId(dudocNr);
         if (baseNr === null) throw new ValidationError(this.translate('Please select a knowledge base for learning first'));
         const brNr = learnBranchFromDudoc(dudocNr);
 

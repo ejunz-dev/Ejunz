@@ -34,7 +34,7 @@ import user from '../model/user';
 import {
     Handler, param, query, requireSudo, Types,
 } from '../service/server';
-import { getModeDailyGoal } from '../lib/learnModePrefs';
+import { getLearnDailyGoal } from '../lib/learnModePrefs';
 import learn from '../model/learn';
 import moment from 'moment-timezone';
 import { camelCase, md5 } from '../utils';
@@ -95,32 +95,13 @@ export class HomeHandler extends Handler {
         const learnDates: string[] = Array.isArray((dudoc as any)?.learnActivityDates)
             ? (dudoc as any).learnActivityDates.map((x: unknown) => String(x))
             : [];
-        const collectDates: string[] = Array.isArray((dudoc as any)?.collectActivityDates)
-            ? (dudoc as any).collectActivityDates.map((x: unknown) => String(x))
-            : [];
-        const flagDates: string[] = Array.isArray((dudoc as any)?.flagActivityDates)
-            ? (dudoc as any).flagActivityDates.map((x: unknown) => String(x))
-            : [];
 
         const learnSet = new Set(learnDates);
-        const collectSet = new Set(collectDates);
-        const flagSet = new Set(flagDates);
 
         const todayKey = moment.utc().format('YYYY-MM-DD');
-        const learnDailyGoal = getModeDailyGoal(dudoc as any, 'learn');
-        const collectDailyGoal = getModeDailyGoal(dudoc as any, 'collect');
-        const flagDailyGoal = getModeDailyGoal(dudoc as any, 'flag');
+        const learnDailyGoal = getLearnDailyGoal(dudoc as any);
 
-        // Use the same source as "This domain today" widget:
-        // - contribution.nodes -> flag
-        // - contribution.cards -> collect
-        // - consumption.cards -> learn
-        const [contribution, consumption] = await Promise.all([
-            getTodayUserDomainContribution(domainId, this.user._id, todayKey),
-            getTodayUserDomainConsumption(this.ctx.db.db, domainId, this.user._id, todayKey),
-        ]);
-        const flagTodayCompleted = contribution.nodes;
-        const collectTodayCompleted = contribution.cards;
+        const consumption = await getTodayUserDomainConsumption(this.ctx.db.db, domainId, this.user._id, todayKey);
         const learnTodayCompleted = consumption.cards;
 
         const modeDone = (goal: number, completed: number) => (goal > 0 ? completed >= goal : completed > 0);
@@ -131,17 +112,9 @@ export class HomeHandler extends Handler {
 
         return {
             userUname: this.user.uname,
-            flagDays: flagSet.size,
-            collectDays: collectSet.size,
             learnDays: learnSet.size,
-            flagUrl: `/d/${domainId}/flag`,
-            collectUrl: `/d/${domainId}/collect`,
             learnUrl: `/d/${domainId}/learn`,
-            flagTodayDone: modeDone(flagDailyGoal, flagTodayCompleted),
-            collectTodayDone: modeDone(collectDailyGoal, collectTodayCompleted),
             learnTodayDone: modeDone(learnDailyGoal, learnTodayCompleted),
-            flagTodayRemaining: modeRemaining(flagDailyGoal, flagTodayCompleted),
-            collectTodayRemaining: modeRemaining(collectDailyGoal, collectTodayCompleted),
             learnTodayRemaining: modeRemaining(learnDailyGoal, learnTodayCompleted),
         };
     }

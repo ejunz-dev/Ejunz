@@ -50,17 +50,6 @@
       <span class="typo">{{ record.cardTitle }}</span>
     {% endif %}
   </td>
-  <td class="col--case">
-    {% if record.trainingTitle %}
-      {% if record.trainingUrl and record.trainingUrl != '#' %}
-        <a href="{{ record.trainingUrl }}" class="typo">{{ record.trainingTitle }}</a>
-      {% else %}
-        <span class="typo">{{ record.trainingTitle }}</span>
-      {% endif %}
-    {% else %}
-      <span class="text-gray">-</span>
-    {% endif %}
-  </td>
   <td class="col--submit-at">
     {% if record.lastActivityAt %}
       {{ datetimeSpan(record.lastActivityAt, false)|safe }}

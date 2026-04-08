@@ -3,9 +3,9 @@ import learn from '../model/learn';
 
 const CHECKIN_ACTIVITY_DATES_MAX = 500;
 
-export type CheckinActivityField = 'learnActivityDates' | 'collectActivityDates';
+export type CheckinActivityField = 'learnActivityDates';
 
-/** 与 flag 的 countConsecutiveFlagDays 一致：从今天起连续落在 activityDates 中的 UTC 自然日数 */
+/** 从今天起连续落在 activityDates 中的 UTC 自然日数 */
 export function countConsecutiveCheckinDays(activityDates: string[]): number {
     if (!activityDates.length) return 0;
     const dateSet = new Set(activityDates);
@@ -20,7 +20,7 @@ export function countConsecutiveCheckinDays(activityDates: string[]): number {
     return n;
 }
 
-/** 域用户文档中追加一条 UTC 打卡日（learn / collect 各自字段，与 flagActivityDates 独立） */
+/** 域用户文档中追加一条 UTC 打卡日（learn） */
 export async function appendUserCheckinDay(
     domainId: string,
     uid: number,
