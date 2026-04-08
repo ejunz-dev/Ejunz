@@ -24,6 +24,7 @@ import { loadBaseEditorUiPrefs, sanitizeBaseEditorUiPrefs } from '../lib/baseEdi
 import { computeMaxNodeLayers, countMainLevelChildNodes, loadCardStatsByBaseDocId } from '../lib/baseListStats';
 import { getTodayUserDomainContribution } from '../lib/homepageRanking';
 import { incDevelopBranchDaily } from '../lib/developBranchDaily';
+import { buildDevelopEditorContextWire, loadUserDevelopPool } from '../lib/developPoolShared';
 
 const exec = promisify(execCb);
 const execFile = promisify(execFileCb);
@@ -1214,6 +1215,20 @@ export class BaseEditorDocHandler extends Handler {
         const userTok = await fetchUserGithubToken(domainId, uid);
         const userGithubTokenConfigured = !!userTok;
 
+        const developEditorContext = await buildDevelopEditorContextWire({
+            db: this.ctx.db.db,
+            domainId,
+            uid,
+            pool: await loadUserDevelopPool(domainId, uid, this.user.priv),
+            baseDocId: base.docId,
+            branch: requestedBranch,
+            getBaseTitle: async (docId) => {
+                const b = await BaseModel.get(domainId, docId);
+                return b ? ((b.title || '').trim() || String(docId)) : `Base ${docId}`;
+            },
+            makeEditorUrl: (docId, br) => this.url('base_editor_branch', { domainId, docId, branch: br }),
+        });
+
         this.response.body = {
             base: { ...base, nodes, edges },
             currentBranch: requestedBranch,
@@ -1231,6 +1246,7 @@ export class BaseEditorDocHandler extends Handler {
             workspaceNodeId,
             githubRepo: (base.githubRepo || '') as string,
             userGithubTokenConfigured,
+            developEditorContext,
         };
     }
 }
@@ -5758,6 +5774,28 @@ export class BaseConnectionHandler extends ConnectionHandler {
         this.subscriptions = [];
     }
 
+    private async buildDevelopEditorContextPayload(domainId: string, base: BaseDoc) {
+        const branch = (base as any).currentBranch || 'main';
+        try {
+            return await buildDevelopEditorContextWire({
+                db: this.ctx.db.db,
+                domainId,
+                uid: this.user._id,
+                pool: await loadUserDevelopPool(domainId, this.user._id, this.user.priv),
+                baseDocId: base.docId,
+                branch,
+                getBaseTitle: async (docId) => {
+                    const b = await BaseModel.get(domainId, docId);
+                    return b ? ((b.title || '').trim() || String(docId)) : `Base ${docId}`;
+                },
+                makeEditorUrl: (docId, br) => this.url('base_editor_branch', { domainId, docId, branch: br }),
+            });
+        } catch (e) {
+            logger.error('Failed to build develop editor context:', e);
+            return null;
+        }
+    }
+
     private async sendInitialData(domainId: string, base: BaseDoc) {
         try {
             const branch = (base as any).currentBranch || 'main';
@@ -5765,8 +5803,11 @@ export class BaseConnectionHandler extends ConnectionHandler {
             const branchData = getBranchData(base, branch);
             const baseWithNodes = { ...base, nodes: branchData.nodes };
             const domainName = (this as any).domain?.name || domainId;
-            const contrib = await buildContributionDataForDomain(domainId, this.user._id, domainName, baseWithNodes);
-            const todayAllDomains = await buildTodayContributionAllDomains(this.user._id);
+            const [contrib, todayAllDomains, developEditorContext] = await Promise.all([
+                buildContributionDataForDomain(domainId, this.user._id, domainName, baseWithNodes),
+                buildTodayContributionAllDomains(this.user._id),
+                this.buildDevelopEditorContextPayload(domainId, base),
+            ]);
 
             this.send({
                 type: 'init',
@@ -5776,6 +5817,7 @@ export class BaseConnectionHandler extends ConnectionHandler {
                 todayContributionAllDomains: todayAllDomains,
                 contributions: contrib.contributions,
                 contributionDetails: contrib.contributionDetails,
+                developEditorContext,
             });
         } catch (err) {
             logger.error('Failed to send initial data:', err);
@@ -5792,8 +5834,11 @@ export class BaseConnectionHandler extends ConnectionHandler {
             const branchData = getBranchData(base, branch);
             const baseWithNodes = { ...base, nodes: branchData.nodes };
             const domainName = (this as any).domain?.name || domainId;
-            const contrib = await buildContributionDataForDomain(domainId, this.user._id, domainName, baseWithNodes);
-            const todayAllDomains = await buildTodayContributionAllDomains(this.user._id);
+            const [contrib, todayAllDomains, developEditorContext] = await Promise.all([
+                buildContributionDataForDomain(domainId, this.user._id, domainName, baseWithNodes),
+                buildTodayContributionAllDomains(this.user._id),
+                this.buildDevelopEditorContextPayload(domainId, base),
+            ]);
 
             this.send({
                 type: 'update',
@@ -5804,6 +5849,7 @@ export class BaseConnectionHandler extends ConnectionHandler {
                 todayContributionAllDomains: todayAllDomains,
                 contributions: contrib.contributions,
                 contributionDetails: contrib.contributionDetails,
+                developEditorContext,
             });
         } catch (err) {
             logger.error('Failed to send update:', err);

@@ -8,16 +8,14 @@ import { ValidationError } from '../error';
 import type { BaseDoc } from '../interface';
 import { developBranchKey, developTodayUtcYmd, getDevelopBranchDailyMany } from '../lib/developBranchDaily';
 import { appendUserCheckinDay, countConsecutiveCheckinDays } from '../lib/checkin';
+import {
+    developPoolHasAnyGoal,
+    developRowGoalsMet,
+    normalizeDevelopPool,
+    type DevelopPoolEntryWire,
+} from '../lib/developPoolShared';
 
-const MAX_POOL = 24;
-
-export type DevelopPoolEntryWire = {
-    baseDocId: number;
-    branch: string;
-    dailyNodeGoal: number;
-    dailyCardGoal: number;
-    dailyProblemGoal: number;
-};
+export type { DevelopPoolEntryWire };
 
 function branchesForDevelopBase(base: BaseDoc): string[] {
     const s = new Set<string>(['main']);
@@ -35,45 +33,11 @@ function branchesForDevelopBase(base: BaseDoc): string[] {
     return [...s];
 }
 
-function normalizePool(raw: unknown): DevelopPoolEntryWire[] {
-    if (!Array.isArray(raw)) return [];
-    const out: DevelopPoolEntryWire[] = [];
-    const seen = new Set<string>();
-    for (const row of raw) {
-        if (!row || typeof row !== 'object') continue;
-        const baseDocId = parseInt(String((row as any).baseDocId ?? ''), 10);
-        if (!Number.isFinite(baseDocId) || baseDocId <= 0) continue;
-        const branch = typeof (row as any).branch === 'string' && (row as any).branch.trim()
-            ? (row as any).branch.trim()
-            : 'main';
-        const k = `${baseDocId}::${branch}`;
-        if (seen.has(k)) continue;
-        seen.add(k);
-        const dailyNodeGoal = Math.max(0, parseInt(String((row as any).dailyNodeGoal ?? 0), 10) || 0);
-        const dailyCardGoal = Math.max(0, parseInt(String((row as any).dailyCardGoal ?? 0), 10) || 0);
-        const dailyProblemGoal = Math.max(0, parseInt(String((row as any).dailyProblemGoal ?? 0), 10) || 0);
-        out.push({ baseDocId, branch, dailyNodeGoal, dailyCardGoal, dailyProblemGoal });
-        if (out.length >= MAX_POOL) break;
-    }
-    return out;
-}
-
-function developPoolHasAnyGoal(pool: DevelopPoolEntryWire[]): boolean {
-    return pool.some((e) => e.dailyNodeGoal > 0 || e.dailyCardGoal > 0 || e.dailyProblemGoal > 0);
-}
-
 type DevelopRowWithStats = DevelopPoolEntryWire & {
     todayNodes: number;
     todayCards: number;
     todayProblems: number;
 };
-
-function developRowGoalsMet(row: DevelopRowWithStats): boolean {
-    if (row.dailyNodeGoal > 0 && row.todayNodes < row.dailyNodeGoal) return false;
-    if (row.dailyCardGoal > 0 && row.todayCards < row.dailyCardGoal) return false;
-    if (row.dailyProblemGoal > 0 && row.todayProblems < row.dailyProblemGoal) return false;
-    return true;
-}
 
 function allDevelopGoalsMet(rows: DevelopRowWithStats[]): boolean {
     if (!rows.length) return false;
@@ -109,7 +73,7 @@ class DevelopHandler extends Handler {
         }
 
         const dudoc = await DomainModel.getDomainUser(finalDomainId, { _id: this.user._id, priv: this.user.priv });
-        const developPool = normalizePool((dudoc as any)?.developPool);
+        const developPool = normalizeDevelopPool((dudoc as any)?.developPool);
 
         const bases = await BaseModel.getAll(finalDomainId);
         bases.sort((a, b) => {
@@ -183,7 +147,7 @@ class DevelopHandler extends Handler {
             return;
         }
 
-        const developPool = normalizePool((dudoc as any)?.developPool);
+        const developPool = normalizeDevelopPool((dudoc as any)?.developPool);
         if (!developPool.length || !developPoolHasAnyGoal(developPool)) {
             throw new ValidationError(this.translate('Develop check-in need goals set'));
         }
@@ -223,7 +187,7 @@ class DevelopHandler extends Handler {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         const body: any = this.request.body || {};
-        const pool = normalizePool(body.pool);
+        const pool = normalizeDevelopPool(body.pool);
         for (const e of pool) {
             const b = await BaseModel.get(finalDomainId, e.baseDocId);
             if (!b) {
