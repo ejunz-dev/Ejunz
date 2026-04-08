@@ -34,8 +34,6 @@ export function summarizeRecordDoc(r: RecordDoc): { code: string; color: string;
 type RecordRowDisplay = {
     cardTitle: string;
     cardUrl: string;
-    trainingTitle: string;
-    trainingUrl: string;
 };
 
 function recordCardOutlineUrl(
@@ -100,8 +98,6 @@ async function buildRecordMainListRow(
         summaryColor: s.color,
         cardTitle: disp.cardTitle,
         cardUrl: disp.cardUrl,
-        trainingTitle: disp.trainingTitle,
-        trainingUrl: disp.trainingUrl,
         sessionIdHex,
         sessionDisplayId,
         sessionResumeUrl,
@@ -131,25 +127,7 @@ async function enrichRecordRowDisplay(
         }
     }
 
-    let trainingTitle = '';
-    let trainingUrl = '#';
-    if (baseDocId) {
-        try {
-            const b = await BaseModel.get(domainId, baseDocId);
-            if (b) {
-                const t = (b.title || '').trim();
-                trainingTitle = t || String(baseDocId);
-                trainingUrl = buildUrl('base_outline_doc_branch', {
-                    domainId,
-                    docId: String(baseDocId),
-                    branch,
-                }) || '#';
-            }
-        } catch {
-        }
-    }
-
-    return { cardTitle, cardUrl, trainingTitle, trainingUrl };
+    return { cardTitle, cardUrl };
 }
 
 function nodesOnBranch(base: BaseDoc, branch: string): BaseNode[] {

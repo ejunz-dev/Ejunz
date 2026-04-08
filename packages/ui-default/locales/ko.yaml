@@ -7,7 +7,6 @@ __langname: 한국어
 '{0} discussions': '''{0} 토론'''
 '{0} is a moderator of this domain.': '''{}가 그룹의 관리자입니다.'''
 '{0} more cards to go': '카드 {0}개 더 필요'
-'{0} more nodes to go': '노드 {0}개 더 필요'
 '{0} more times to go': '{0}회 더 필요'
 '↓ # Comments': ↓ 답글
 '↓ # Enrollees': ↓ 등록
@@ -30,7 +29,6 @@ __langname: 한국어
 'Max consecutive': 최대 연속
 'No': 아니오
 'Please generate token on': '다음에서 Token 생성:'
-'Tap the day count above to continue in Learn, Collect, or Flag.': 위의 일수를 눌러 Learn, Collect 또는 Flag로 이동하세요.
 'Today': 오늘
 'Yes': 예
 "Confirm deleting {0} selected base(s)?": "선택한 {0}개의 베이스를 삭제하시겠습니까?"

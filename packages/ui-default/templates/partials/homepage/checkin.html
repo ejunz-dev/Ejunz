@@ -16,22 +16,6 @@
         <p><a href="{{ url('domain_join', domainId=checkin.domainId) }}" class="button primary">{{ _('Join Domain') }}</a></p>
       {% elif checkin.learnDays is defined %}
         <p style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;">
-          <span>{{ _('Flag') }} <a href="{{ checkin.flagUrl }}"><strong>{{ checkin.flagDays }}</strong></a> {{ _('days') }}</span>
-          {% if checkin.flagTodayDone %}
-            <span style="color:#4caf50;">{{ _('Checked in') }}</span>
-          {% else %}
-            <span class="text-gray">{{ _('{0} more nodes to go').format(checkin.flagTodayRemaining) }}</span>
-          {% endif %}
-        </p>
-        <p style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;">
-          <span>{{ _('Collect') }} <a href="{{ checkin.collectUrl }}"><strong>{{ checkin.collectDays }}</strong></a> {{ _('days') }}</span>
-          {% if checkin.collectTodayDone %}
-            <span style="color:#4caf50;">{{ _('Checked in') }}</span>
-          {% else %}
-            <span class="text-gray">{{ _('{0} more cards to go').format(checkin.collectTodayRemaining) }}</span>
-          {% endif %}
-        </p>
-        <p style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;">
           <span>{{ _('Learn') }} <a href="{{ checkin.learnUrl }}"><strong>{{ checkin.learnDays }}</strong></a> {{ _('days') }}</span>
           {% if checkin.learnTodayDone %}
             <span style="color:#4caf50;">{{ _('Checked in') }}</span>

@@ -31,8 +31,8 @@ export interface SessionDoc {
     nodeId?: string;
     cardIndex?: number;
     route?: string;
-    /** Which lesson app owns this row (learn / collect / flag). */
-    appRoute?: 'learn' | 'collect' | 'flag';
+    /** Which lesson app owns this row. */
+    appRoute?: 'learn';
     lessonMode?: LessonMode;
     currentLearnSectionIndex?: number;
     currentLearnSectionId?: string;

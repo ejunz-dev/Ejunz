@@ -1027,31 +1027,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   });
   const contributionWsRef = useRef<any>(null);
   const saveHandlerRef = useRef<() => void>(() => {});
-  const nodesIntentOnly = useMemo(
-    () => String((window as any).UiContext?.editorUiMode || '') === 'flag_nodes_intent',
-    [],
-  );
-  const collectCardsProblemsOnly = useMemo(
-    () => String((window as any).UiContext?.editorUiMode || '') === 'collect_cards_problems',
-    [],
-  );
-  const editorAiHidden = nodesIntentOnly || collectCardsProblemsOnly;
+  const editorAiHidden = false;
   const savedEditorLayout = readSavedBaseEditorUiPrefs(editorAiHidden);
-
-  const [flagGoalProgress, setFlagGoalProgress] = useState<{ goal: number; nodeIds: string[] }>(() => {
-    const ctx = (window as any).UiContext;
-    const goal = Number(ctx?.flagDailyGoal) || 0;
-    const ids = Array.isArray(ctx?.flagProgressNodeIds) ? ctx.flagProgressNodeIds.map((x: unknown) => String(x)) : [];
-    return { goal, nodeIds: ids };
-  });
-
-  const [collectGoalProgress, setCollectGoalProgress] = useState<{ goal: number; completed: number }>(() => {
-    const ctx = (window as any).UiContext;
-    return {
-      goal: Number(ctx?.collectDailyGoal) || 0,
-      completed: Number(ctx?.collectTodayCompletedCount) || 0,
-    };
-  });
 
   const [explorerMode, setExplorerMode] = useState<'tree' | 'pending' | 'branches' | 'git'>(
     () => savedEditorLayout.explorerMode,
@@ -2012,12 +1989,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         
         const allChildren: Array<{ type: 'node' | 'card'; id: string; order: number; data: any; isPending?: boolean }> = [
           ...childNodes.map(n => ({ type: 'node' as const, id: n.id, order: n.order, data: n.node, isPending: false })),
-          ...(nodesIntentOnly
-            ? []
-            : [
-                ...nodeCards.map(c => ({ type: 'card' as const, id: c.docId, order: c.order || 0, data: c, isPending: false })),
-                ...pendingCards,
-              ]),
+          ...nodeCards.map(c => ({ type: 'card' as const, id: c.docId, order: c.order || 0, data: c, isPending: false })),
+          ...pendingCards,
           ...pendingNodes,
         ];
         
@@ -2075,7 +2048,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       });
 
     return items;
-  }, [base.nodes, base.edges, nodeCardsMapVersion, expandedNodes, pendingChanges, pendingRenames, pendingDragChanges, pendingDeletes, pendingNodeIntents, clipboard, workspaceNodeId, nodesIntentOnly, collectCardsProblemsOnly]);
+  }, [base.nodes, base.edges, nodeCardsMapVersion, expandedNodes, pendingChanges, pendingRenames, pendingDragChanges, pendingDeletes, pendingNodeIntents, clipboard, workspaceNodeId]);
 
   useEffect(() => {
     fileTreeRef.current = fileTree;
@@ -2221,7 +2194,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     
     
     if (file.type === 'node') {
-      setNodeSidePanelTab(collectCardsProblemsOnly ? 'files' : 'intent');
+      setNodeSidePanelTab('intent');
       setSelectedFile(file);
       selectedFileRef.current = file;
       if (!skipUrlUpdate && file.nodeId) {
@@ -2296,7 +2269,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       }
       setFileContent(content);
     });
-  }, [base.nodes, selectedFile, editorInstance, fileContent, pendingChanges, isMultiSelectMode, fileTree, selectedItems, collectCardsProblemsOnly]);
+  }, [base.nodes, selectedFile, editorInstance, fileContent, pendingChanges, isMultiSelectMode, fileTree, selectedItems]);
 
   
   useEffect(() => {
@@ -2455,28 +2428,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const handleSaveAll = useCallback(async () => {
     if (isCommitting) {
       return;
-    }
-
-    if (nodesIntentOnly) {
-      const nodeIdsRequiringIntent = new Set<string>();
-      for (const n of base.nodes) {
-        if (pendingDeletes.has(n.id)) continue;
-        nodeIdsRequiringIntent.add(n.id);
-      }
-      pendingCreatesRef.current.forEach((create, tempId) => {
-        if (create.type !== 'node') return;
-        if (pendingDeletes.has(tempId)) return;
-        nodeIdsRequiringIntent.add(tempId);
-      });
-      for (const nodeId of nodeIdsRequiringIntent) {
-        const intentStr = pendingNodeIntents.has(nodeId)
-          ? String(pendingNodeIntents.get(nodeId) ?? '').trim()
-          : String(base.nodes.find((n) => n.id === nodeId)?.intent ?? '').trim();
-        if (!intentStr) {
-          Notification.warn(i18n('Every node must have an Intent before saving.'));
-          return;
-        }
-      }
     }
 
     setIsCommitting(true);
@@ -3039,21 +2990,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         }
       }
 
-      if (nodesIntentOnly) {
-        batchSaveData.cardCreates = [];
-        batchSaveData.cardUpdates = [];
-        batchSaveData.cardDeletes = [];
-      }
-      // Collect：禁止改 DAG（节点/边），允许卡片与题目的增删改
-      if (collectCardsProblemsOnly) {
-        batchSaveData.nodeCreates = [];
-        batchSaveData.nodeUpdates = [];
-        batchSaveData.nodeDeletes = [];
-        batchSaveData.edgeCreates = [];
-        batchSaveData.edgeDeletes = [];
-      }
-
-      
       const hasAnyChanges = 
         batchSaveData.nodeCreates.length > 0 ||
         batchSaveData.nodeUpdates.length > 0 ||
@@ -3241,33 +3177,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             if (response.errors && response.errors.length > 0) {
               Notification.warn(i18n('Save completed, but {0} error(s) occurred', response.errors.length));
             }
-            if (nodesIntentOnly && docId) {
-              try {
-                const flagProgressNodeIds: string[] = [];
-                for (const [nodeId, intent] of pendingNodeIntents.entries()) {
-                  const resolved = nodeId.startsWith('temp-node-') && nodeIdMap.has(nodeId)
-                    ? nodeIdMap.get(nodeId)!
-                    : nodeId;
-                  if (resolved.startsWith('temp-node-')) continue;
-                  const node = base.nodes.find((n: BaseNode) => n.id === nodeId);
-                  const original = node?.intent ?? '';
-                  if (intent === original) continue;
-                  flagProgressNodeIds.push(resolved);
-                }
-                const syncRes: any = await request.post(`/d/${domainId}/flag/base/${Number(docId)}/sync-learn`, {
-                  operation: 'syncDag',
-                  nodeIds: flagProgressNodeIds,
-                });
-                if (syncRes && Array.isArray(syncRes.flagProgressNodeIds)) {
-                  setFlagGoalProgress(prev => ({
-                    goal: Number(syncRes.flagDailyGoal) || prev.goal,
-                    nodeIds: syncRes.flagProgressNodeIds.map((x: unknown) => String(x)),
-                  }));
-                }
-              } catch (_e) {
-                console.warn('[BaseEditor] flag sync-learn failed', _e);
-              }
-            }
           } else {
             throw new Error(response.errors?.join(', ') || i18n('Batch save failed'));
           }
@@ -3341,41 +3250,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         + problemChangesCount
         + pendingIntentSaveCount;
 
-      let collectCardIdsForSync: string[] = [];
-      if (collectCardsProblemsOnly && hasAnyChanges) {
-        const seen = new Set<string>();
-        for (const c of batchSaveData.cardCreates) {
-          const rid = cardIdMap.get(c.tempId);
-          if (rid && !String(rid).startsWith('temp-card-')) seen.add(String(rid));
-        }
-        for (const u of batchSaveData.cardUpdates) {
-          const raw = String((u as any).cardId || '');
-          const id = String(cardIdMap.get(raw) || raw);
-          if (id && !id.startsWith('temp-card-')) seen.add(id);
-        }
-        collectCardIdsForSync = Array.from(seen);
-      }
-
-      // Collect 编辑器：保存结束后刷新「今日进度」（domain.user.collectProgressCardIds，与 Flag 的 flagProgressNodeIds 同类）
-      if (collectCardsProblemsOnly && docId) {
-        try {
-          const syncRes: any = await request.post(`/d/${domainId}/collect/base/${Number(docId)}/sync-learn`, {
-            operation: 'syncDag',
-            cardIds: collectCardIdsForSync,
-          });
-          const goal = Number(syncRes?.collectDailyGoal);
-          const completed = Number(syncRes?.collectTodayCompletedCount);
-          if (!Number.isNaN(completed)) {
-            setCollectGoalProgress({
-              goal: Number.isNaN(goal) ? 0 : goal,
-              completed,
-            });
-          }
-        } catch (_e) {
-          console.warn('[BaseEditor] collect sync-learn / progress refresh failed', _e);
-        }
-      }
-      
       Notification.success(`保存成功，共 ${totalChanges} 项更改`);
 
       try {
@@ -3477,7 +3351,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     } finally {
       setIsCommitting(false);
     }
-  }, [pendingChanges, pendingNodeIntents, pendingDragChanges, pendingRenames, pendingDeletes, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, pendingDeleteProblemIds, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.nodes, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion, nodesIntentOnly, collectCardsProblemsOnly, explorerMode, nodeSidePanelTab, rightPanelOpen, aiBottomOpen, explorerPanelWidth, problemsPanelWidth, aiPanelHeight, editorAiHidden]);
+  }, [pendingChanges, pendingNodeIntents, pendingDragChanges, pendingRenames, pendingDeletes, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, pendingDeleteProblemIds, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.nodes, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion, explorerMode, nodeSidePanelTab, rightPanelOpen, aiBottomOpen, explorerPanelWidth, problemsPanelWidth, aiPanelHeight, editorAiHidden]);
 
   useEffect(() => {
     saveHandlerRef.current = handleSaveAll;
@@ -9627,7 +9501,7 @@ ${editorShellPath}
           {contextMenu.file.type === 'node' ? (
             <>
               {/* Paste (when clipboard has content) */}
-              {clipboard && !nodesIntentOnly && (
+              {clipboard && (
                 <>
                   <div
                     style={{
@@ -9674,15 +9548,7 @@ ${editorShellPath}
                       setContextMenu(null);
                       return;
                     }
-                    if (nodesIntentOnly) {
-                      const flagDomainId = (window as any).UiContext?.domainId || 'system';
-                      path = `/d/${flagDomainId}/flag/base/${baseIdSeg}/branch/${encodeURIComponent(currentBranch)}/editor`;
-                    } else if (collectCardsProblemsOnly) {
-                      const collectDomainId = (window as any).UiContext?.domainId || 'system';
-                      path = `/d/${collectDomainId}/collect/base/${baseIdSeg}/branch/${encodeURIComponent(currentBranch)}/editor`;
-                    } else {
-                      path = getBaseUrl(`/${baseIdSeg}/branch/${currentBranch}/editor`);
-                    }
+                    path = getBaseUrl(`/${baseIdSeg}/branch/${currentBranch}/editor`);
                   }
                   window.open(path + '?workspace=' + ws, '_blank');
                   setContextMenu(null);
@@ -9750,7 +9616,7 @@ ${editorShellPath}
                   >
                     剪切选中项 ({selectedItems.size})
                   </div>
-                  {!collectCardsProblemsOnly && (
+                  {(
                   <>
                   <div
                     style={{
@@ -9778,7 +9644,7 @@ ${editorShellPath}
                 </>
               )}
               </>
-              {!nodesIntentOnly && (
+              {(
               <>
               <div
                 style={{
@@ -9799,7 +9665,7 @@ ${editorShellPath}
               </div>
               </>
               )}
-              {!collectCardsProblemsOnly && (
+              {(
               <>
               <div
                 style={{
@@ -9927,7 +9793,7 @@ ${editorShellPath}
               </div>
               </>
               )}
-              {!nodesIntentOnly && (
+              {(
               <>
               <div
                 style={{ position: 'relative' }}
@@ -10055,7 +9921,7 @@ ${editorShellPath}
               </div>
               </>
               )}
-              {!collectCardsProblemsOnly && (
+              {(
               <div
                 style={{
                   padding: '6px 16px',
@@ -10074,7 +9940,7 @@ ${editorShellPath}
                 新建多个子 Node
               </div>
               )}
-              {!nodesIntentOnly && (
+              {(
               <>
               <div
                 style={{
@@ -10093,7 +9959,7 @@ ${editorShellPath}
               >
                 导入
               </div>
-              {!collectCardsProblemsOnly && basePath !== 'base/skill' && docId && contextMenu.file.nodeId && !String(contextMenu.file.nodeId).startsWith('temp-node-') && (
+              {basePath !== 'base/skill' && docId && contextMenu.file.nodeId && !String(contextMenu.file.nodeId).startsWith('temp-node-') && (
                 <div
                   style={{
                     padding: '6px 16px',
@@ -10140,7 +10006,7 @@ ${editorShellPath}
               >
                 排序
               </div>
-              {!nodesIntentOnly && (
+              {(
               <>
               <div
                 style={{
@@ -10344,7 +10210,7 @@ ${editorShellPath}
               >
                 重命名
               </div>
-              {!nodesIntentOnly && !collectCardsProblemsOnly && (
+              {(
               <div style={{ padding: '6px 16px', cursor: 'pointer', fontSize: '13px', color: themeStyles.textPrimary }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = themeStyles.bgHover; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }} onClick={() => handleConvertCardToNode(contextMenu.file)}>转换为 node</div>
               )}
               <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
@@ -10399,7 +10265,7 @@ ${editorShellPath}
               >
                 剪切
               </div>
-              {!collectCardsProblemsOnly && (
+              {(
               <>
               <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
               <div
@@ -10483,7 +10349,7 @@ ${editorShellPath}
                   >
                     剪切选中项 ({selectedItems.size})
                   </div>
-                  {!collectCardsProblemsOnly && (
+                  {(
                   <>
                   <div
                     style={{
@@ -10629,7 +10495,7 @@ ${editorShellPath}
                   </div>
                 )}
               </div>
-              {!collectCardsProblemsOnly && (
+              {(
               <>
               <div
                 style={{ position: 'relative' }}
@@ -10959,7 +10825,7 @@ ${editorShellPath}
           onClick={(e) => e.stopPropagation()}
           onContextMenu={(e) => e.preventDefault()}
         >
-          {!collectCardsProblemsOnly && (
+          {(
           <>
           <div
             style={{
@@ -10980,7 +10846,7 @@ ${editorShellPath}
           </div>
           </>
           )}
-          {!nodesIntentOnly && !collectCardsProblemsOnly && (
+          {(
           <>
           <div
             style={{
@@ -11001,7 +10867,7 @@ ${editorShellPath}
           </div>
           </>
           )}
-          {!collectCardsProblemsOnly && (
+          {(
           <>
           <div
             style={{
@@ -11022,7 +10888,7 @@ ${editorShellPath}
           </div>
           </>
           )}
-          {!nodesIntentOnly && !collectCardsProblemsOnly && (
+          {(
           <>
           <div
             style={{
@@ -11801,94 +11667,6 @@ ${editorShellPath}
 
         {/* */}
         {(() => {
-          if (nodesIntentOnly) {
-            const g = flagGoalProgress.goal;
-            const n = flagGoalProgress.nodeIds.length;
-            const pct = g > 0 ? Math.min(100, Math.round((n / g) * 100)) : 0;
-            return (
-              <div
-                style={{
-                  flexShrink: 0,
-                  padding: isMobile ? '6px 10px 8px' : '12px 16px',
-                  borderBottom: `1px solid ${themeStyles.borderPrimary}`,
-                  backgroundColor: themeStyles.bgSecondary,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: isMobile ? '8px' : '10px',
-                }}
-              >
-                <span style={{ fontSize: isMobile ? '12px' : '13px', fontWeight: 600, color: themeStyles.textPrimary }}>
-                  {i18n('Today\'s goal progress')}
-                </span>
-                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: isMobile ? '16px' : '18px', fontWeight: 700, color: themeStyles.statNode }}>
-                    {n} / {g}
-                  </span>
-                  <span style={{ fontSize: isMobile ? '11px' : '12px', color: themeStyles.textSecondary }}>
-                    {i18n('nodes')}
-                  </span>
-                </div>
-                <div style={{
-                  height: isMobile ? '8px' : '10px',
-                  background: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-                  borderRadius: '5px',
-                  overflow: 'hidden',
-                }}>
-                  <div style={{
-                    width: `${pct}%`,
-                    height: '100%',
-                    background: themeStyles.accent,
-                    borderRadius: '5px',
-                    transition: 'width 0.25s ease',
-                  }} />
-                </div>
-              </div>
-            );
-          }
-          if (collectCardsProblemsOnly) {
-            const g = collectGoalProgress.goal;
-            const c = collectGoalProgress.completed;
-            const pct = g > 0 ? Math.min(100, Math.round((c / g) * 100)) : 0;
-            return (
-              <div
-                style={{
-                  flexShrink: 0,
-                  padding: isMobile ? '6px 10px 8px' : '12px 16px',
-                  borderBottom: `1px solid ${themeStyles.borderPrimary}`,
-                  backgroundColor: themeStyles.bgSecondary,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: isMobile ? '8px' : '10px',
-                }}
-              >
-                <span style={{ fontSize: isMobile ? '12px' : '13px', fontWeight: 600, color: themeStyles.textPrimary }}>
-                  {i18n('Today progress')}
-                </span>
-                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: isMobile ? '16px' : '18px', fontWeight: 700, color: themeStyles.statCard }}>
-                    {c} / {g}
-                  </span>
-                  <span style={{ fontSize: isMobile ? '11px' : '12px', color: themeStyles.textSecondary }}>
-                    {i18n('cards')}
-                  </span>
-                </div>
-                <div style={{
-                  height: isMobile ? '8px' : '10px',
-                  background: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-                  borderRadius: '5px',
-                  overflow: 'hidden',
-                }}>
-                  <div style={{
-                    width: `${pct}%`,
-                    height: '100%',
-                    background: themeStyles.accent,
-                    borderRadius: '5px',
-                    transition: 'width 0.25s ease',
-                  }} />
-                </div>
-              </div>
-            );
-          }
           const todayContribution = contributionData.todayContribution;
           const todayAll = contributionData.todayContributionAllDomains;
           const domainId = (window as any).UiContext?.domainId || (window as any).UiContext?.base?.domainId;
@@ -12116,7 +11894,7 @@ ${editorShellPath}
                       backgroundColor: themeStyles.bgSecondary,
                     }}>
                       <span style={{ fontWeight: 600, color: themeStyles.textPrimary, fontSize: '13px', marginRight: 8 }}>{node?.text || selectedFile.nodeId}</span>
-                      {!collectCardsProblemsOnly && (
+                      {(
                       <button
                         type="button"
                         onClick={() => setNodeSidePanelTab('intent')}
@@ -12145,7 +11923,7 @@ ${editorShellPath}
                         }}
                       >{i18n('Files')}</button>
                     </div>
-                    {nodeSidePanelTab === 'intent' && !collectCardsProblemsOnly ? (
+                    {nodeSidePanelTab === 'intent' ? (
                       <div style={{ flex: 1, overflow: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: 20 }}>
                         <div>
                           <div style={{ fontSize: '12px', fontWeight: 600, color: themeStyles.textSecondary, marginBottom: 8 }}>{i18n('This node')}</div>
@@ -13216,7 +12994,7 @@ const getBaseUrl = (path: string, docId: string): string => {
   return `/d/${domainId}/base/${docId}${path}`;
 };
 
-const page = new NamedPage(['base_editor', 'base_editor_branch', 'base_skill_editor', 'base_skill_editor_branch', 'flag_editor', 'flag_editor_branch', 'collect_editor', 'collect_editor_branch'], async (pageName) => {
+const page = new NamedPage(['base_editor', 'base_editor_branch', 'base_skill_editor', 'base_skill_editor_branch'], async (pageName) => {
   try {
     
     const isSkill = pageName === 'base_skill_editor' || pageName === 'base_skill_editor_branch';

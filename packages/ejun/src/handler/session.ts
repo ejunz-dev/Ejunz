@@ -81,7 +81,7 @@ function readPatch(body: any): SessionPatch {
         patch.cardIndex = n;
     }
     if (typeof body.route === 'string') patch.route = body.route;
-    if (body.appRoute === 'learn' || body.appRoute === 'collect' || body.appRoute === 'flag') {
+    if (body.appRoute === 'learn') {
         patch.appRoute = body.appRoute;
     }
     if (body.lessonMode === null || body.lessonMode === 'today' || body.lessonMode === 'node') {
