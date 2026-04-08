@@ -43,8 +43,6 @@ function copyResourceUrl(el) {
     markdownLink = `@[${resourceName}](${url})`;
   } else if (/\/homework\/[a-zA-Z0-9]+$/.test(url)) {
     markdownLink = `@[${resourceName}](${url})`;
-  } else if (/\/training\/[a-zA-Z0-9]+$/.test(url)) {
-    markdownLink = `@[${resourceName}](${url})`;
   } else if (/\/repo\/\d+\/file\/.+/.test(url)) {
     markdownLink = `@[${resourceName}](${url})`;
   }
@@ -68,7 +66,7 @@ function copyResourceUrl(el) {
 
 
 <div class="row" style="display: flex; flex-wrap: nowrap; align-items: flex-start;">
-  {% if docs or problems or htdocs or tdocs or ctdocs or repos %}
+  {% if docs or problems or htdocs or ctdocs or repos %}
   <div class="medium-3 columns">
     {% if docs %}
     <div class="section">
@@ -134,26 +132,6 @@ function copyResourceUrl(el) {
     </div>
     {% endif %}
 
-    {% if tdocs|length > 0 %}
-    <div class="section">
-      <div class="section__header">
-        <h4>{{ _("Problems Related Training Plans") }}</h4>
-      </div>
-      <ul>
-        {% for tdoc in tdocs %}
-        <li>
-          <a class="discussion-node-tag media-link resource-link" 
-             data-resource="{{ tdoc.title }}"
-             href="javascript:void(0)"
-             onclick="copyResourceUrl(this)">
-            <span class="v-center icon icon-training"></span> {{ tdoc.title }}
-          </a>
-        </li>
-        {% endfor %}
-      </ul>
-    </div>
-    {% endif %}
-
     {% if ctdocs|length > 0 %}
     <div class="section">
       <div class="section__header">
@@ -179,7 +157,7 @@ function copyResourceUrl(el) {
   </div>
   {% endif %}
 
-  <div class="medium-{% if docs or problems or htdocs or tdocs or ctdocs or repos %}8{% else %}12{% endif %} columns">
+  <div class="medium-{% if docs or problems or htdocs or ctdocs or repos %}8{% else %}12{% endif %} columns">
     <div class="section">
       <div class="section__header">
         <h2 class="section__title">

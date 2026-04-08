@@ -10,7 +10,6 @@ __langname: English
 '(No content)': (No content)
 '{0} days ago': '{0} days ago'
 '{0} more cards to go': Need {0} more cards
-'{0} more nodes to go': Need {0} more nodes
 '{0} more times to go': Need {0} more practices
 '{0} parts': '{0} parts'
 '{0} units': '{0} units'
@@ -89,7 +88,6 @@ __langname: English
 'Clipboard unavailable': Clipboard unavailable
 'Close and retry': Close and retry
 'Collapse': Collapse
-'Collect': Collect
 'Collecting data...': Collecting data...
 'Commit Message': Commit Message
 'commits': commits
@@ -129,8 +127,6 @@ __langname: English
 'Created Clients': Created Clients
 'Created Time': Created Time
 'Cumulative': Cumulative
-'Current base (Collect)': Current base (Collect)
-'Current base (Flag)': Current base (Flag)
 'Current base (Learn)': Current base (Learn)
 'Current base structure': Current base structure
 'Current Progress': Current Progress
@@ -193,7 +189,6 @@ __langname: English
 'File Mode': File Mode
 'File view': File view
 'Final message will be': Final message will be
-'Flag': Flag
 'Folder description': Folder description
 'Folder/Directory': Folder/Directory
 'Free Scroll': Free Scroll
@@ -430,7 +425,6 @@ __langname: English
 'Table of contents': Table of contents
 'Table of Contents': Table of Contents
 'Tap below to resume': Tap below to resume
-'Tap the day count above to continue in Learn, Collect, or Flag.': Tap the day count above to continue in Learn, Collect, or Flag.
 'Thinking...': Thinking...
 'This branch is behind remote by {0} commit(s). Please use Pull to sync.': This branch is behind remote by {0} commit(s). Please use Pull to sync.
 'This section requires completion of the following sections first': This section requires completion of the following sections first
@@ -627,94 +621,6 @@ Nodes: Nodes
 Offline: Offline
 Online: Online
 page.problem_detail.sidebar.show_category: Click to Show
-page.training_detail.invalid_when_not_enrolled: You cannot view problem details unless enrolled.
-page.training_detail.see_other_user_detail: You are viewing user {0} training details.
-page.training.btn.back_list: Back to list
-page.training.btn.cancel: Cancel
-page.training.btn.create: Create
-page.training.btn.delete_plan: Delete training plan
-page.training.btn.edit: Edit
-page.training.btn.save: Save
-page.training.btn.view: View
-page.training.domain.manage_bases: Manage bases
-page.training.bases_edit.title: Bound knowledge bases
-page.training.bases_edit.blurb: Reorder bound bases (move up/down), add or remove links. New bases get the training branch snapshot; removing a base from the list does not delete branch data on that knowledge base.
-page.training.create.blurb_training: Create a training by cloning Base data into a new branch named after the training. On this training page, edit the cloned branch's nodes/cards/problems directly.
-page.training.create.blurb: Use the visual editor below to add multiple knowledge bases and load problems from branch diffs; search for bases, drag to reorder sections and problems, and check boxes to set section prerequisites (the server builds the DAG). No manual JSON required.
-page.training.create.title: New training plan
-page.training.detail.col.ac: AC
-page.training.detail.col.difficulty: Difficulty
-page.training.detail.col.title: Problem
-page.training.detail.col.tried: Tried
-page.training.detail.created_by: Created By
-page.training.detail.edit: Edit
-page.training.detail.enrollees: Enrollees
-page.training.detail.help: Help
-page.training.detail.logged_in_hint: You are signed in and can follow this training plan on this page.
-page.training.detail.login_hint: Please sign in to view training progress.
-page.training.detail.no_problems: No problems in this section yet.
-page.training.detail.note_title: 'NOTE:'
-page.training.detail.plan_source_item: 'Base {0}: {1} → {2}'
-page.training.detail.prereq_prefix: 'Complete section(s) '
-page.training.detail.prereq_sep: ', '
-page.training.detail.prereq_suffix: ' first (progress may show 0% until learning data is connected).'
-page.training.detail.status.invalid: Invalid
-page.training.detail.status.locked: Locked
-page.training.detail.status.open: Open
-page.training.detail.task_list: Task list
-page.training.domain.doc_id_label: 'docId:'
-page.training.domain.edit: Edit
-page.training.domain.first_group_line: 'First group docId {0} · {1} → {2}'
-page.training.domain.multi_plan_sources: '{0} base groups;'
-page.training.domain.new_plan: New training plan
-page.training.domain.title: Training plans
-page.training.domain.view: View
-page.training.edit.advanced_json: 'Advanced: edit JSON (read-only snapshots)'
-page.training.edit.confirm_delete: Delete this training plan?
-page.training.edit.field.enroll_count: Display enroll count
-page.training.edit.field.intro_detail: Intro quote (detail page)
-page.training.edit.field.intro_placeholder: A quote shown at the top of the detail page
-page.training.edit.label_plan_sources: planSources
-page.training.edit.label_sections_readonly: sections (read-only snapshot; save uses the visual editor above)
-page.training.edit.title: Edit training plan
-page.training.editor.add_base_group: Add base group
-page.training.editor.add_empty_section: Insert empty section
-page.training.editor.alert_load_failed: Failed to load.
-page.training.editor.alert_need_base: Keep at least one valid knowledge base group.
-page.training.editor.base_label: Base
-page.training.editor.chapter_default_title: New section
-page.training.editor.chapter_desc_ph: Section description (optional)
-page.training.editor.chapter_nth: 'Section {0}'
-page.training.editor.chapter_title_ph: Section title
-page.training.editor.delete_problem: Delete
-page.training.editor.delete_section: Delete this section
-page.training.editor.drag_sort_section: Drag to reorder sections
-page.training.editor.insert_below_section: Insert section below
-page.training.editor.insert_problem_row: + Insert problem row
-page.training.editor.load_from_diff: Load problems from branch diff
-page.training.editor.load_hint: Loading merges groups into multiple sections; reorder sections, problems, and prerequisites below.
-page.training.editor.move_down: Move down
-page.training.editor.move_up: Move up
-page.training.editor.oj_ph: OJ
-page.training.editor.pid_ph: Problem ID
-page.training.editor.prereq_label: 'Must complete first:'
-page.training.editor.problem_title_ph: Problem title
-page.training.editor.remove_row: Remove
-page.training.editor.search_placeholder: Search base title or docId…
-page.training.editor.select_base: Select knowledge base
-page.training.editor.source_branch: Source branch
-page.training.editor.sources_heading: Knowledge base sources (multiple allowed)
-page.training.editor.target_branch: Branch
-page.training.field.description: Description
-page.training.field.intro_quote_placeholder: 'Default: Every great goal starts with a tiny step.'
-page.training.field.intro_quote: Intro quote
-page.training.field.name_placeholder: Training plan title
-page.training.field.name: Name
-page.training.mode.label: Mode
-page.training.mode.plan: Plan mode
-page.training.mode.training: Training mode
-page.training.quote_left: '"'
-page.training.quote_right: '"'
 pager_first: « First
 pager_last: Last »
 pager_next: Next ›
@@ -727,7 +633,6 @@ perm_problem_solution: Problem Solutions
 perm_problem: Problems
 perm_ranking: Ranking
 perm_record: Records
-perm_training: Trainings
 Problem ID: Problem ID
 problems: problems
 Problems: Problems
@@ -742,7 +647,6 @@ record_col_session: Session
 record_col_short: Records
 record_field_node: Node
 record_field_session: Session
-record_field_training: Training plan
 record_link_record_list: Answer records
 record_link_session_list: Learn sessions
 record_main_empty_filter: No records match the filter.
@@ -811,14 +715,6 @@ timeago_locale: en_US
 tool_domain: Tool
 tool_market: Tool Market
 Total: Total
-training_create: Training Create
-training_detail: Training Detail
-training_domain: Training Plans
-training_edit: Training Edit
-training_list_empty: No training plans yet.
-training_editor.upload.invalid_node: Invalid training node ID for file upload. Try refreshing the page.
-training_editor.upload.card_base_unresolved: Could not determine which knowledge base this card belongs to. Try refreshing the page.
-training_main: Training
 Type: Type
 Uncompleted: Not completed
 Unnamed Card: Unnamed Card

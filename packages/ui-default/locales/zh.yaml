@@ -16,7 +16,6 @@ __langname: 简体中文
 '{0} is a moderator of this domain.': '{}是这个域的管理者之一。'
 '{0} limit exceeded (limit: {2} operations in {1} seconds).': '{0} 超过频率限制。限制：{1} 秒内最多 {2} 次操作。'
 '{0} more cards to go': 还差 {0} 张卡片
-'{0} more nodes to go': 还差 {0} 个节点
 '{0} more times to go': 还差 {0} 次
 '{0} parts': '{0} 个部分'
 '{0} units': '{0} 个单元'
@@ -105,7 +104,6 @@ __langname: 简体中文
 'Clipboard unavailable': 剪贴板不可用
 'Close and retry': 关闭并重新作答
 'Collapse': 折叠
-'Collect': 收集
 'Collecting data...': 正在收集数据...
 'Commit Message': 提交消息
 'commits': 提交
@@ -146,8 +144,6 @@ __langname: 简体中文
 'Created Clients': 已创建的客户端
 'Created Time': 创建时间
 'Cumulative': 累计
-'Current base (Collect)': 当前知识库（收集）
-'Current base (Flag)': 当前知识库（打卡）
 'Current base (Learn)': 当前知识库（学习）
 'Current base structure': 当前知识库结构
 'Current dataset: {0}': '当前测试数据: {0}'
@@ -214,7 +210,6 @@ __langname: 简体中文
 'File Mode': 文件模式
 'File view': 文件视图
 'Final message will be': 最终消息将是
-'Flag': 锚点
 'Folder description': 文件夹描述
 'Folder/Directory': 文件夹/目录
 'Format: category 1, sub category 1.1, sub category 1.2, ..., sub category 1.x, ..., category n, sub category n.1, sub category n.2, ..., sub category n.m, ...': 格式：分类1, 子分类1.1, 子分类1.2, ..., 子分类1.x, ..., 分类n, 子分类n.1, 子分类n.2, ..., 子分类n.m, ...
@@ -457,7 +452,6 @@ __langname: 简体中文
 'Table of contents': 目录
 'Table of Contents': 目录
 'Tap below to resume': 点击下方继续
-'Tap the day count above to continue in Learn, Collect, or Flag.': 点击上方天数可前往 Learn、Collect 或 Flag 继续学习。
 'The value `{1}` of {0} already exists.': '{0} 的值 `{1}` 已经存在。'
 'Thinking...': 正在思考...
 'This branch is behind remote by {0} commit(s). Please use Pull to sync.': 此分支落后远程 {0} 个提交。请使用 Pull 同步。
@@ -639,7 +633,6 @@ client_logs: 连接日志
 Close: 关闭
 CLOSE: 关闭
 collapse: 收缩
-collect: 收集
 Comment: 评论
 Comments: 评论
 CommonMark Syntax: CommonMark 语法
@@ -786,7 +779,6 @@ Field {0} validation failed. ({2}): 字段 {0} 验证失败。 ({2})
 Field {0} validation failed.: 字段 {0} 验证失败。
 File Version (Optional): 文件版本（可选）
 Filter: 过滤
-flag: 锚点
 Footer: 页脚
 Forgot Password and/or Username: 忘记密码和/或用户名
 Forgot password or username?: 忘记密码或者用户名？
@@ -957,92 +949,6 @@ OS Info: 系统信息
 Output Format: 输出格式
 Owner: 所有者
 page.problem_detail.sidebar.show_category: 点击显示
-page.training.btn.back_list: 返回列表
-page.training.btn.cancel: 取消
-page.training.btn.create: 创建
-page.training.btn.delete_plan: 删除训练计划
-page.training.btn.edit: 编辑
-page.training.btn.save: 保存
-page.training.btn.view: 查看
-page.training.create.blurb_training: 创建训练时会把 Base 的数据克隆到一个新分支，分支名与训练名称一致。在该训练页面你可以直接编辑节点/卡片/题目。
-page.training.create.blurb: 用下方可视化编辑器添加多组知识库、加载分支差异题目；可搜索 Base、拖拽调整章节与题目顺序，并用勾选设置章节依赖（后台自动生成 DAG）。无需手填 JSON。
-page.training.create.title: 新建训练计划
-page.training.detail.col.ac: AC
-page.training.detail.col.difficulty: 难度
-page.training.detail.col.title: 题目
-page.training.detail.col.tried: 尝试
-page.training.detail.created_by: 创建者
-page.training.detail.edit: 编辑
-page.training.detail.enrollees: 报名人数
-page.training.detail.help: 帮助
-page.training.detail.logged_in_hint: 你已登录，可跟进本站训练计划进度（展示页）。
-page.training.detail.login_hint: 请登录后加入训练计划。
-page.training.detail.no_problems: 本节暂无题目
-page.training.detail.note_title: '注：'
-page.training.detail.plan_source_item: 知识库 {0}：{1} → {2}
-page.training.detail.prereq_prefix: 需先完成章节 
-page.training.detail.prereq_sep: 、
-page.training.detail.prereq_suffix: （当前进度展示可为 0%，后续接入学习进度数据）。
-page.training.detail.status.invalid: 无效
-page.training.detail.status.locked: 已锁定
-page.training.detail.status.open: 开放
-page.training.detail.task_list: 任务列表
-page.training.domain.doc_id_label: 'docId：'
-page.training.domain.manage_bases: 知识库绑定
-page.training.bases_edit.title: 编辑绑定的知识库
-page.training.bases_edit.blurb: 调整绑定的知识库顺序（上移/下移）、添加或移除绑定。新加入的知识库会按训练计划同名分支准备快照；从列表中移除不会删除原知识库上的训练分支数据。
-page.training.domain.edit: 编辑
-page.training.domain.first_group_line: 首组 docId {0} · {1} → {2}
-page.training.domain.multi_plan_sources: '{0} 组知识库；'
-page.training.domain.new_plan: 新建训练计划
-page.training.domain.title: 训练
-page.training.domain.view: 查看
-page.training.edit.advanced_json: 高级：直接编辑 JSON
-page.training.edit.confirm_delete: 确定删除该训练计划？
-page.training.edit.field.enroll_count: 展示用报名人数
-page.training.edit.field.intro_detail: 顶部引言（详情页）
-page.training.edit.field.intro_placeholder: 任意一句展示在详情顶部的引言
-page.training.edit.label_plan_sources: planSources
-page.training.edit.label_sections_readonly: sections（只读快照，保存以可视化为准）
-page.training.edit.title: 编辑训练计划
-page.training.editor.add_base_group: 添加一组 Base
-page.training.editor.add_empty_section: 插入空章节
-page.training.editor.alert_load_failed: 加载失败
-page.training.editor.alert_need_base: 请至少保留一组有效的知识库
-page.training.editor.base_label: Base
-page.training.editor.chapter_default_title: 新章节
-page.training.editor.chapter_desc_ph: 章节说明（可选）
-page.training.editor.chapter_nth: 第 {0} 章
-page.training.editor.chapter_title_ph: 章节标题
-page.training.editor.delete_problem: 删除
-page.training.editor.delete_section: 删本章
-page.training.editor.drag_sort_section: 拖拽排序章节
-page.training.editor.insert_below_section: 下方插章
-page.training.editor.insert_problem_row: + 插入题目行
-page.training.editor.load_from_diff: 从分支差异加载题目
-page.training.editor.load_hint: 加载会把各组合并成多章；可在下方调整章节顺序、题目顺序与章节依赖。
-page.training.editor.move_down: 下移
-page.training.editor.move_up: 上移
-page.training.editor.oj_ph: OJ
-page.training.editor.pid_ph: 题号
-page.training.editor.prereq_label: 需先完成：
-page.training.editor.problem_title_ph: 题目标题
-page.training.editor.remove_row: 移除
-page.training.editor.search_placeholder: 搜索知识库标题或 docId…
-page.training.editor.select_base: 选择知识库
-page.training.editor.source_branch: 起始分支
-page.training.editor.sources_heading: 知识库来源（可多条）
-page.training.editor.target_branch: 分支
-page.training.field.description: 描述
-page.training.field.intro_quote_placeholder: 默认：任何一个伟大的目标，都有一个微不足道的开始。
-page.training.field.intro_quote: 顶部引言
-page.training.field.name_placeholder: 训练计划标题
-page.training.field.name: 名称
-page.training.mode.label: 模式
-page.training.mode.plan: 训练计划模式
-page.training.mode.training: Training 模式
-page.training.quote_left: 「
-page.training.quote_right: 」
 pager_first: « 第一页
 pager_last: 末页 »
 pager_next: 下一页 ›
@@ -1095,7 +1001,6 @@ record_col_session: 会话
 record_col_short: 答题记录
 record_field_node: 节点
 record_field_session: 会话
-record_field_training: 训练方案
 record_link_record_list: 答题记录
 record_link_session_list: 学习会话
 record_main_empty_filter: 没有符合条件的记录。
@@ -1286,13 +1191,6 @@ Title: 标题
 tool_domain: 工具
 tool_market: 工具市场
 Total: 总计
-training_create: 新建训练计划
-training_detail: 训练计划详情
-training_domain: 训练
-training_edit: 编辑训练计划
-training_list_empty: 暂无训练计划
-training_editor.upload.invalid_node: 无法解析训练节点 ID，无法上传文件。请刷新页面后重试。
-training_editor.upload.card_base_unresolved: 无法确定卡片所属知识库，无法上传文件。请刷新页面后重试。
 Type: 类型
 UI Language: 用户界面语言
 Uncompleted: 未完成

@@ -80,7 +80,7 @@ class LearnModel {
     }
 
     /**
-     * 每条 `learn_progress` 必须带 `learnSectionOrderIndex`：学习路径为节序槽位 0..n；collect/flag 使用 `LEARN_PROGRESS_SLOT_OUTSIDE_SECTION_ORDER`。
+     * 每条 `learn_progress` 必须带 `learnSectionOrderIndex`：学习路径为节序槽位 0..n。
      */
     static async setCardPassed(
         domainId: string,

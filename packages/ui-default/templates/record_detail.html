@@ -34,18 +34,6 @@
               <span class="typo">{{ recordDisp.cardTitle }}</span>
             {% endif %}
           </dd>
-          <dt>{{ _('record_field_training') }}</dt>
-          <dd>
-            {% if recordDisp.trainingTitle %}
-              {% if recordDisp.trainingUrl and recordDisp.trainingUrl != '#' %}
-                <a href="{{ recordDisp.trainingUrl }}" class="typo">{{ recordDisp.trainingTitle }}</a>
-              {% else %}
-                <span class="typo">{{ recordDisp.trainingTitle }}</span>
-              {% endif %}
-            {% else %}
-              <span class="text-gray">-</span>
-            {% endif %}
-          </dd>
           <dt>{{ _('record_field_session') }}</dt>
           <dd><code class="text-sm">{{ rdoc.sessionId }}</code></dd>
           <dt>{{ _('session_col_branch') }}</dt>
