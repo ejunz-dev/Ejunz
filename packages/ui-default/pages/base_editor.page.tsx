@@ -988,6 +988,35 @@ function readSavedBaseEditorUiPrefs(editorAiHidden: boolean): SavedEditorLayout 
   };
 }
 
+type DevelopEditorContextWire = {
+  dateUtc: string;
+  current: {
+    baseDocId: number;
+    branch: string;
+    baseTitle: string;
+    editorUrl: string;
+    dailyNodeGoal: number;
+    dailyCardGoal: number;
+    dailyProblemGoal: number;
+    todayNodes: number;
+    todayCards: number;
+    todayProblems: number;
+    goalsMet: boolean;
+  };
+  othersIncomplete: Array<{
+    baseDocId: number;
+    branch: string;
+    baseTitle: string;
+    dailyNodeGoal: number;
+    dailyCardGoal: number;
+    dailyProblemGoal: number;
+    todayNodes: number;
+    todayCards: number;
+    todayProblems: number;
+    editorUrl: string;
+  }>;
+};
+
 export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docId: string | undefined; initialData: BaseDoc; basePath?: string }) {
   
   const getTheme = useCallback(() => {
@@ -1025,6 +1054,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       contributionDetails: ctx?.contributionDetails || {},
     };
   });
+  const [developEditorContext, setDevelopEditorContext] = useState<DevelopEditorContextWire | null>(
+    () => ((window as any).UiContext?.developEditorContext as DevelopEditorContextWire) ?? null,
+  );
+  const [developSwitchModalOpen, setDevelopSwitchModalOpen] = useState(false);
   const contributionWsRef = useRef<any>(null);
   const saveHandlerRef = useRef<() => void>(() => {});
   const editorAiHidden = false;
@@ -1097,6 +1130,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                     ? msg.contributionDetails
                     : prev.contributionDetails,
                 }));
+              }
+              if (Object.prototype.hasOwnProperty.call(msg, 'developEditorContext')) {
+                setDevelopEditorContext(msg.developEditorContext ?? null);
               }
               request.get(apiPath, editorApiQs).then((newData: any) => {
                 if (closed || !newData || (!newData.nodes && !newData.edges)) return;
@@ -11690,53 +11726,284 @@ ${editorShellPath}
               <span style={{ color, fontWeight: 600, fontSize: isMobile ? '12px' : '14px' }}>{value}</span>
             </span>
           );
-          return (
-            <div
-              style={{
-                flexShrink: 0,
-                padding: isMobile ? '6px 10px 8px' : '12px 16px',
-                borderBottom: `1px solid ${themeStyles.borderPrimary}`,
-                backgroundColor: themeStyles.bgSecondary,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: isMobile ? '6px' : '10px',
-              }}
+          const devCtx = developEditorContext;
+          const developGoalCaption = (cur: number, goal: number) => {
+            if (goal > 0) return `${cur}/${goal}`;
+            return `${cur}/${i18n('Develop goal unset')}`;
+          };
+          const DevelopGoalBar = ({
+            label, cur, goal, barColor,
+          }: { label: string; cur: number; goal: number; barColor: string }) => {
+            const unset = goal <= 0;
+            const caption = developGoalCaption(cur, goal);
+            const pct = !unset && goal > 0 ? Math.min(100, Math.round((cur / goal) * 100)) : 0;
+            const track = theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+            return (
+              <div style={{ marginBottom: isMobile ? 4 : 5 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 2 }}>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: themeStyles.textPrimary }}>{label}</span>
+                  <span style={{ fontSize: 10, color: themeStyles.textSecondary }}>{caption}</span>
+                </div>
+                {!unset ? (
+                  <div style={{
+                    height: 4,
+                    borderRadius: 2,
+                    background: track,
+                    overflow: 'hidden',
+                    border: `1px solid ${themeStyles.borderSecondary}`,
+                  }}
+                  >
+                    <div style={{ width: `${pct}%`, height: '100%', background: barColor, borderRadius: 1, transition: 'width 0.2s ease' }} />
+                  </div>
+                ) : null}
+              </div>
+            );
+          };
+          const developPoolCardFullWidth = devCtx ? (
+            <div style={{
+              ...cardStyle,
+              flex: '1 1 100%',
+              maxWidth: '100%',
+              padding: isMobile ? '6px 8px' : '8px 12px',
+              borderRadius: isMobile ? 6 : 8,
+            }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px' }}>
-                <span style={{ fontSize: isMobile ? '12px' : '13px', fontWeight: 600, color: themeStyles.textPrimary }}>
-                  {i18n('Today\'s contribution')}
+              <div style={{
+                display: 'flex',
+                alignItems: 'baseline',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '4px 10px',
+                marginBottom: 6,
+              }}
+              >
+                <span style={{ fontSize: 11, fontWeight: 600, color: themeStyles.textPrimary }}>
+                  {i18n('Develop editor pool progress')}
                 </span>
-                {contributionLink && (
-                  <a href={contributionLink} style={{ fontSize: isMobile ? '11px' : '12px', color: themeStyles.accent, textDecoration: 'none' }}>
-                    {i18n('View all')} →
-                  </a>
-                )}
+                <span style={{ fontSize: 10, color: themeStyles.textTertiary, whiteSpace: 'nowrap' }}>
+                  {devCtx.current.baseTitle}
+                  <span style={{ color: themeStyles.textSecondary }}>{` · ${devCtx.current.branch}`}</span>
+                  <span style={{ marginLeft: 6 }}>{devCtx.dateUtc}</span>
+                </span>
               </div>
-              <div style={{ display: 'flex', gap: isMobile ? '8px' : '12px', flexWrap: 'wrap' }}>
-                <div style={cardStyle}>
-                  <div style={{ fontSize: isMobile ? '10px' : '11px', color: themeStyles.textSecondary, marginBottom: isMobile ? '4px' : '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    {i18n('Total today (all domains)')}
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: isMobile ? '8px 12px' : '12px 16px', alignItems: 'center' }}>
-                    <Stat label={i18n('Nodes')} value={formatNum(todayAll.nodes)} color={themeStyles.statNode} />
-                    <Stat label={i18n('Cards')} value={formatNum(todayAll.cards)} color={themeStyles.statCard} />
-                    <Stat label={i18n('Problems')} value={formatNum(todayAll.problems)} color={themeStyles.statProblem} />
-                    <Stat label={i18n('Chars')} value={formatNum(chars(todayAll))} color={themeStyles.textSecondary} />
-                  </div>
+              <DevelopGoalBar label={i18n('Develop today nodes')} cur={devCtx.current.todayNodes} goal={devCtx.current.dailyNodeGoal} barColor={themeStyles.statNode} />
+              <DevelopGoalBar label={i18n('Develop today cards')} cur={devCtx.current.todayCards} goal={devCtx.current.dailyCardGoal} barColor={themeStyles.statCard} />
+              <DevelopGoalBar label={i18n('Develop today problems')} cur={devCtx.current.todayProblems} goal={devCtx.current.dailyProblemGoal} barColor={themeStyles.statProblem} />
+              {devCtx.current.goalsMet ? (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-end',
+                  gap: 8,
+                  marginTop: 4,
+                  paddingTop: 6,
+                  borderTop: `1px solid ${themeStyles.borderSecondary}`,
+                }}
+                >
+                  <span
+                    title={i18n('Develop editor goals complete')}
+                    aria-label={i18n('Develop editor goals complete')}
+                    style={{
+                      color: themeStyles.success,
+                      fontSize: 15,
+                      fontWeight: 700,
+                      lineHeight: 1,
+                      cursor: 'default',
+                      userSelect: 'none',
+                    }}
+                  >
+                    ✓
+                  </span>
+                  {devCtx.othersIncomplete.length > 0 ? (
+                    <button
+                      type="button"
+                      title={i18n('Develop editor switch other base')}
+                      aria-label={i18n('Develop editor switch other base')}
+                      onClick={() => setDevelopSwitchModalOpen(true)}
+                      style={{
+                        flexShrink: 0,
+                        width: 26,
+                        height: 26,
+                        padding: 0,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 15,
+                        lineHeight: 1,
+                        borderRadius: 6,
+                        border: `1px solid ${themeStyles.borderSecondary}`,
+                        background: themeStyles.accent,
+                        color: '#fff',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      →
+                    </button>
+                  ) : (
+                    <span
+                      title={i18n('Develop editor all pool goals met')}
+                      aria-label={i18n('Develop editor all pool goals met')}
+                      style={{ fontSize: 11, color: themeStyles.textTertiary, cursor: 'default', userSelect: 'none' }}
+                    >
+                      ○
+                    </span>
+                  )}
                 </div>
-                <div style={cardStyle}>
-                  <div style={{ fontSize: isMobile ? '10px' : '11px', color: themeStyles.textSecondary, marginBottom: isMobile ? '4px' : '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    {i18n('This domain today')}
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: isMobile ? '8px 12px' : '12px 16px', alignItems: 'center' }}>
-                    <Stat label={i18n('Nodes')} value={formatNum(todayContribution.nodes)} color={themeStyles.statNode} />
-                    <Stat label={i18n('Cards')} value={formatNum(todayContribution.cards)} color={themeStyles.statCard} />
-                    <Stat label={i18n('Problems')} value={formatNum(todayContribution.problems)} color={themeStyles.statProblem} />
-                    <Stat label={i18n('Chars')} value={formatNum(chars(todayContribution))} color={themeStyles.textSecondary} />
-                  </div>
-                </div>
-              </div>
+              ) : null}
             </div>
+          ) : null;
+
+          return (
+            <>
+              {devCtx ? (
+                <div
+                  style={{
+                    flexShrink: 0,
+                    padding: isMobile ? '4px 8px 6px' : '6px 12px 8px',
+                    borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+                    backgroundColor: themeStyles.bgSecondary,
+                  }}
+                >
+                  {developPoolCardFullWidth}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    flexShrink: 0,
+                    padding: isMobile ? '6px 10px 8px' : '12px 16px',
+                    borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+                    backgroundColor: themeStyles.bgSecondary,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: isMobile ? '6px' : '10px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px' }}>
+                    <span style={{ fontSize: isMobile ? '12px' : '13px', fontWeight: 600, color: themeStyles.textPrimary }}>
+                      {i18n('Today\'s contribution')}
+                    </span>
+                    {contributionLink && (
+                      <a href={contributionLink} style={{ fontSize: isMobile ? '11px' : '12px', color: themeStyles.accent, textDecoration: 'none' }}>
+                        {i18n('View all')} →
+                      </a>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: isMobile ? '8px' : '12px', flexWrap: 'wrap' }}>
+                    <div style={cardStyle}>
+                      <div style={{ fontSize: isMobile ? '10px' : '11px', color: themeStyles.textSecondary, marginBottom: isMobile ? '4px' : '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        {i18n('Total today (all domains)')}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: isMobile ? '8px 12px' : '12px 16px', alignItems: 'center' }}>
+                        <Stat label={i18n('Nodes')} value={formatNum(todayAll.nodes)} color={themeStyles.statNode} />
+                        <Stat label={i18n('Cards')} value={formatNum(todayAll.cards)} color={themeStyles.statCard} />
+                        <Stat label={i18n('Problems')} value={formatNum(todayAll.problems)} color={themeStyles.statProblem} />
+                        <Stat label={i18n('Chars')} value={formatNum(chars(todayAll))} color={themeStyles.textSecondary} />
+                      </div>
+                    </div>
+                    <div style={cardStyle}>
+                      <div style={{ fontSize: isMobile ? '10px' : '11px', color: themeStyles.textSecondary, marginBottom: isMobile ? '4px' : '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        {i18n('This domain today')}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: isMobile ? '8px 12px' : '12px 16px', alignItems: 'center' }}>
+                        <Stat label={i18n('Nodes')} value={formatNum(todayContribution.nodes)} color={themeStyles.statNode} />
+                        <Stat label={i18n('Cards')} value={formatNum(todayContribution.cards)} color={themeStyles.statCard} />
+                        <Stat label={i18n('Problems')} value={formatNum(todayContribution.problems)} color={themeStyles.statProblem} />
+                        <Stat label={i18n('Chars')} value={formatNum(chars(todayContribution))} color={themeStyles.textSecondary} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {developSwitchModalOpen && devCtx && devCtx.othersIncomplete.length > 0 ? (
+                <>
+                  <div
+                    role="presentation"
+                    style={{
+                      position: 'fixed',
+                      inset: 0,
+                      zIndex: 12000,
+                      background: 'rgba(0,0,0,0.45)',
+                    }}
+                    onClick={() => setDevelopSwitchModalOpen(false)}
+                  />
+                  <div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label={i18n('Develop editor switch modal title')}
+                    style={{
+                      position: 'fixed',
+                      left: '50%',
+                      top: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      zIndex: 12001,
+                      width: 'min(520px, calc(100vw - 24px))',
+                      maxHeight: 'min(80vh, 640px)',
+                      overflow: 'auto',
+                      background: themeStyles.bgPrimary,
+                      border: `1px solid ${themeStyles.borderSecondary}`,
+                      borderRadius: 12,
+                      boxShadow: theme === 'dark' ? '0 12px 40px rgba(0,0,0,0.5)' : '0 8px 32px rgba(0,0,0,0.12)',
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div style={{ padding: 16, borderBottom: `1px solid ${themeStyles.borderPrimary}` }}>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: themeStyles.textPrimary }}>{i18n('Develop editor switch modal title')}</div>
+                      <div style={{ fontSize: 12, color: themeStyles.textSecondary, marginTop: 6 }}>{i18n('Develop editor switch modal hint')}</div>
+                    </div>
+                    <div style={{ padding: 12 }}>
+                      {devCtx.othersIncomplete.map((row) => (
+                        <button
+                          key={`${row.baseDocId}-${row.branch}`}
+                          type="button"
+                          onClick={() => { window.location.href = row.editorUrl; }}
+                          style={{
+                            display: 'block',
+                            width: '100%',
+                            textAlign: 'left',
+                            padding: '8px 10px',
+                            marginBottom: 6,
+                            borderRadius: 8,
+                            border: `1px solid ${themeStyles.borderSecondary}`,
+                            background: themeStyles.bgSecondary,
+                            color: themeStyles.textPrimary,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <div style={{ fontWeight: 600, marginBottom: 4, fontSize: 12 }}>
+                            {row.baseTitle}
+                            <span style={{ color: themeStyles.textSecondary, fontWeight: 500 }}>{` · ${row.branch}`}</span>
+                          </div>
+                          <div style={{ fontSize: 10, color: themeStyles.textSecondary, lineHeight: 1.45 }}>
+                            <span style={{ color: themeStyles.statNode }}>{i18n('Develop today nodes')} {developGoalCaption(row.todayNodes, row.dailyNodeGoal)}</span>
+                            <span style={{ margin: '0 6px', color: themeStyles.textTertiary }}>|</span>
+                            <span style={{ color: themeStyles.statCard }}>{i18n('Develop today cards')} {developGoalCaption(row.todayCards, row.dailyCardGoal)}</span>
+                            <span style={{ margin: '0 6px', color: themeStyles.textTertiary }}>|</span>
+                            <span style={{ color: themeStyles.statProblem }}>{i18n('Develop today problems')} {developGoalCaption(row.todayProblems, row.dailyProblemGoal)}</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ padding: 12, borderTop: `1px solid ${themeStyles.borderPrimary}` }}>
+                      <button
+                        type="button"
+                        onClick={() => setDevelopSwitchModalOpen(false)}
+                        style={{
+                          width: '100%',
+                          padding: 10,
+                          borderRadius: 8,
+                          border: `1px solid ${themeStyles.borderSecondary}`,
+                          background: 'transparent',
+                          color: themeStyles.textPrimary,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {i18n('Cancel')}
+                      </button>
+                    </div>
+                  </div>
+                </>
+              ) : null}
+            </>
           );
         })()}
 
