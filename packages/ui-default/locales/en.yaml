@@ -584,7 +584,7 @@ develop: Develop
 'Develop': Develop
 'Develop branch': Branch
 'Develop add row': Add entry
-'Develop edit pool hint': Pick bases and branches, set daily node / card / problem goals. The overview updates after you save.
+'Develop edit pool hint': Pick bases and branches, set daily goals. Use ↑↓ to set order, then save. Start develop follows this order.
 'Develop edit pool': Edit develop pool
 'Develop goal unset': —
 'Develop no pool hint': No entries yet. Tap Edit to add bases, branches, and daily goals.
@@ -606,6 +606,22 @@ develop: Develop
 'Develop save failed': Save failed
 'Develop save pool': Save pool
 'Develop start': Start develop
+'Develop start failed': Could not start develop session. Please try again.
+'Develop pool order hint': Order shown here is the run order; adjust with ↑↓ in Edit, then save.
+'Develop pool skip done hint': Bases that already met today’s goals are skipped by Start develop.
+'Develop row today goals met': Today’s goals done
+'Develop run queue empty today': No develop tasks left for today.
+'Develop start goals done today': This base already met today’s goals and is out of the develop run queue.
+'Develop start no pending': All today’s develop tasks are done; resume an open session if needed.
+'Develop move up': Move up
+'Develop move down': Move down
+'Develop run queue': Develop queue
+'Develop queue tab': Queue
+'Develop queue sidebar hint': Click a row to open that base in a develop session (save pending edits first).
+'Develop queue current': Current
+'Base editor problems tab': Problems
+'Develop run next': Next base
+'Develop run clear': End queue
 'Develop today cards': Cards
 'Develop today nodes': Nodes
 'Develop today problems': Problems
@@ -618,6 +634,15 @@ develop: Develop
 'Develop editor all pool goals met': All develop pool entries have met their goals today.
 'Develop editor switch modal title': Bases still below today’s goals
 'Develop editor switch modal hint': Open the editor for another pool entry; progress is for the current UTC day.
+'Develop editor settle': Settle session
+'Develop settle failed': Could not settle this session.
+'Develop settle pool incomplete': Not every develop pool entry has met today’s goals yet.
+'Develop settle already': This develop session has already been settled.
+develop_session_history_title: Develop session (history)
+develop_session_history_back: Back to Develop
+develop_session_history_hint_finished: This develop session has been settled. Save records from that run are listed below.
+develop_session_history_detail_title: Save records (by batch)
+session_develop_list_title: Develop sessions (live)
 Less: Less
 lesson_history_col_attempts: Attempts
 lesson_history_col_correct: Correct answer
@@ -693,6 +718,25 @@ record_main_empty_filter: No records match the filter.
 record_main_empty: No card answer records in this time window.
 record_main_list_title: Card answer records (live)
 record_main: Record
+record_develop_changes_empty: No change details.
+record_develop_changes_summary_hint: Counts by operation type (older saves may not list each change).
+record_develop_changes_title: Changes in this save
+record_develop_count_card_create: New cards × {0}
+record_develop_count_card_delete: Deleted cards × {0}
+record_develop_count_card_update: Updated cards × {0}
+record_develop_count_edge_create: New edges × {0}
+record_develop_count_edge_delete: Deleted edges × {0}
+record_develop_count_node_create: New nodes × {0}
+record_develop_count_node_delete: Deleted nodes × {0}
+record_develop_count_node_update: Updated nodes × {0}
+record_develop_op_card_create: New card
+record_develop_op_card_delete: Deleted card
+record_develop_op_card_update: Updated card
+record_develop_op_edge_create: New edge
+record_develop_op_edge_delete: Deleted edge
+record_develop_op_node_create: New node
+record_develop_op_node_delete: Deleted node
+record_develop_op_node_update: Updated node
 record_no_problems: No problem rows yet.
 record_open_detail: Open
 record_page_title: Record
@@ -720,6 +764,9 @@ session_active_minutes: List users active within the last N minutes
 session_col_branch: Branch
 session_col_card_progress: Card progress
 session_col_position: Card / node
+session_col_progress: Progress
+session_col_records: Records
+session_col_session_kind: Type
 session_col_record_type: Practice type
 session_col_route: Route
 session_col_started_at: Started at
@@ -728,11 +775,14 @@ session_last_activity: Last activity
 session_learn_empty_filter: No sessions match the filter.
 session_learn_empty: No recent learn activity in this domain.
 session_learn_list_title: Learn sessions (live)
+session_kind_develop: Develop
+session_kind_learn: Learn
 session_main: Session
 session_record_type_daily: Daily practice
 session_record_type_other: Other
 session_record_type_single_card: Single-card practice
 session_record_type_single_node: Single-node practice
+session_record_type_develop: Develop editor
 session_status_abandoned: Abandoned
 session_status_active: Active
 session_status_detached: Offline
