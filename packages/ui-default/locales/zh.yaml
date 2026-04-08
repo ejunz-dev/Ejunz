@@ -880,6 +880,12 @@ develop: 开发
 'Develop today progress': 今日进度（UTC，保存时累计）
 'Develop unknown base': 知识库不存在
 'Develop utc day': UTC 日期
+'Develop editor pool progress': 开发池 · 本知识库今日进度
+'Develop editor goals complete': 当前池条目的今日目标已完成。
+'Develop editor switch other base': 去其他知识库继续
+'Develop editor all pool goals met': 开发池内所有条目今日目标均已完成。
+'Develop editor switch modal title': 今日尚未完成目标的开发池条目
+'Develop editor switch modal hint': 点击下方条目进入对应编辑器；进度为当前 UTC 日。
 Leave Edit Mode: 离开编辑模式
 Less: 少
 lesson_history_col_attempts: 次数

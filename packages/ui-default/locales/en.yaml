@@ -612,6 +612,12 @@ develop: Develop
 'Develop today progress': Today (UTC, increments on save)
 'Develop unknown base': Base not found
 'Develop utc day': UTC date
+'Develop editor pool progress': Develop pool (today · this branch)
+'Develop editor goals complete': Daily goals for this pool entry are met.
+'Develop editor switch other base': Continue on another base
+'Develop editor all pool goals met': All develop pool entries have met their goals today.
+'Develop editor switch modal title': Bases still below today’s goals
+'Develop editor switch modal hint': Open the editor for another pool entry; progress is for the current UTC day.
 Less: Less
 lesson_history_col_attempts: Attempts
 lesson_history_col_correct: Correct answer

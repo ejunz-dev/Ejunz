@@ -15,6 +15,9 @@
   {{ set(UiContext, 'todayContributionAllDomains', todayContributionAllDomains or { nodes: 0, cards: 0, problems: 0, nodeChars: 0, cardChars: 0, problemChars: 0 }) }}
   {{ set(UiContext, 'contributions', contributions or []) }}
   {{ set(UiContext, 'contributionDetails', contributionDetails or {}) }}
+  {% if developEditorContext is defined and developEditorContext %}
+  {{ set(UiContext, 'developEditorContext', developEditorContext) }}
+  {% endif %}
   {{ set(UiContext, 'baseExpandState', baseExpandState or []) }}
   {{ set(UiContext, 'baseEditorUiPrefs', baseEditorUiPrefs or {}) }}
   {{ set(UiContext, 'workspaceNodeId', workspaceNodeId or '') }}
