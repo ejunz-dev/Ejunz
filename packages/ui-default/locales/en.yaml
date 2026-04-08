@@ -61,6 +61,8 @@ __langname: English
 'Block': Block
 'Breadth learning mode': Breadth (rotate across sections)
 'Cancel': Cancel
+'Edit': Edit
+'Remove': Remove
 'Cannot create: node does not exist': 'Cannot create: node does not exist'
 'Cannot delete: invalid node ID': 'Cannot delete: invalid node ID'
 'Cannot import: node does not exist': 'Cannot import: node does not exist'
@@ -578,6 +580,38 @@ Independent Node: Independent Node
 Joined at: Joined at
 Joined Domains: Joined Domains
 Learn: Learn
+develop: Develop
+'Develop': Develop
+'Develop branch': Branch
+'Develop add row': Add entry
+'Develop edit pool hint': Pick bases and branches, set daily node / card / problem goals. The overview updates after you save.
+'Develop edit pool': Edit develop pool
+'Develop goal unset': —
+'Develop no pool hint': No entries yet. Tap Edit to add bases, branches, and daily goals.
+'Develop progress overview': Goals & today’s progress
+'Develop goal cards': Card goal
+'Develop goal nodes': Node goal
+'Develop goal problems': Problem goal
+'Develop invalid branch': Branch does not exist on this base
+'Develop no bases': No knowledge bases in this domain yet. Create a base first.
+'Develop pick branch': Choose a base branch
+'Develop check-in blocked': Check in after all daily goals in the pool are met
+'Develop check-in done': Checked in today
+'Develop check-in failed': Check-in failed
+'Develop check-in goals not met': Not all daily goals are completed yet
+'Develop check-in need goals set': Set at least one daily goal greater than zero
+'Develop check-in need pool': Add pool entries under Edit first
+'Develop check-in': Daily check-in
+'Develop pool': Develop pool
+'Develop save failed': Save failed
+'Develop save pool': Save pool
+'Develop start': Start develop
+'Develop today cards': Cards
+'Develop today nodes': Nodes
+'Develop today problems': Problems
+'Develop today progress': Today (UTC, increments on save)
+'Develop unknown base': Base not found
+'Develop utc day': UTC date
 Less: Less
 lesson_history_col_attempts: Attempts
 lesson_history_col_correct: Correct answer

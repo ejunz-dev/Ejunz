@@ -23,6 +23,7 @@ import UserModel from '../model/user';
 import { loadBaseEditorUiPrefs, sanitizeBaseEditorUiPrefs } from '../lib/baseEditorUiPrefs';
 import { computeMaxNodeLayers, countMainLevelChildNodes, loadCardStatsByBaseDocId } from '../lib/baseListStats';
 import { getTodayUserDomainContribution } from '../lib/homepageRanking';
+import { incDevelopBranchDaily } from '../lib/developBranchDaily';
 
 const exec = promisify(execCb);
 const execFile = promisify(execFileCb);
@@ -4357,7 +4358,28 @@ export class BaseBatchSaveHandler extends Handler {
         }
         
         (this.ctx.emit as any)('base/update', docId, null, branch);
-        
+
+        if (errors.length === 0) {
+            const incNodes = nodeCreates.length + nodeUpdates.length;
+            const incCards = cardCreates.length + cardUpdates.length;
+            let incProblems = 0;
+            for (const cc of cardCreates) {
+                if (Array.isArray(cc.problems)) incProblems += cc.problems.length;
+            }
+            for (const cu of cardUpdates) {
+                if (cu.problems !== undefined && Array.isArray(cu.problems)) {
+                    incProblems += cu.problems.length;
+                }
+            }
+            if (incNodes || incCards || incProblems) {
+                await incDevelopBranchDaily(this.ctx.db.db, actualDomainId, this.user._id, branch, docId, {
+                    nodes: incNodes,
+                    cards: incCards,
+                    problems: incProblems,
+                });
+            }
+        }
+
         this.response.body = {
             success: errors.length === 0,
             errors,

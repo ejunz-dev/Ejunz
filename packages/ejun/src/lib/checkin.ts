@@ -3,7 +3,7 @@ import learn from '../model/learn';
 
 const CHECKIN_ACTIVITY_DATES_MAX = 500;
 
-export type CheckinActivityField = 'learnActivityDates';
+export type CheckinActivityField = 'learnActivityDates' | 'developActivityDates';
 
 /** 从今天起连续落在 activityDates 中的 UTC 自然日数 */
 export function countConsecutiveCheckinDays(activityDates: string[]): number {

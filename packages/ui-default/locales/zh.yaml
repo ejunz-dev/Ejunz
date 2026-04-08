@@ -848,6 +848,38 @@ LaTeX Expressions: LaTeX 表达式
 Learn More: 了解更多
 learn: 学习
 Learn: 学习
+develop: 开发
+'Develop': 开发
+'Develop branch': 分支
+'Develop add row': 添加一项
+'Develop edit pool hint': 选择知识库与分支，并设置每日节点、卡片、题目目标；保存后主页面会显示今日进度。
+'Develop edit pool': 编辑开发池
+'Develop goal unset': —
+'Develop no pool hint': 还没有开发池条目。点击上方「编辑」添加知识库与分支及每日目标。
+'Develop progress overview': 今日目标与进度
+'Develop goal cards': 卡片目标
+'Develop goal nodes': 节点目标
+'Develop goal problems': 题目目标
+'Develop invalid branch': 该知识库下不存在所选分支
+'Develop no bases': 当前域内还没有知识库，请先创建知识库。
+'Develop pick branch': 选择要进入的编辑器
+'Develop check-in blocked': 完成开发池内全部当日目标后可打卡
+'Develop check-in done': 今日已打卡
+'Develop check-in failed': 打卡失败
+'Develop check-in goals not met': 当日目标尚未全部完成
+'Develop check-in need goals set': 请至少为一项设置大于 0 的每日目标
+'Develop check-in need pool': 请先在「编辑」中添加开发池条目
+'Develop check-in': 每日打卡
+'Develop pool': 开发池
+'Develop save failed': 保存失败
+'Develop save pool': 保存开发池
+'Develop start': 开始开发
+'Develop today cards': 卡片
+'Develop today nodes': 节点
+'Develop today problems': 题目
+'Develop today progress': 今日进度（UTC，保存时累计）
+'Develop unknown base': 知识库不存在
+'Develop utc day': UTC 日期
 Leave Edit Mode: 离开编辑模式
 Less: 少
 lesson_history_col_attempts: 次数
