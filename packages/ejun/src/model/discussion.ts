@@ -271,14 +271,23 @@ export async function getVnode(domainId: string, type: number, id: string, uid?:
         return { ...pdoc, type, id: pdoc.docId };
     }
     if ([document.TYPE_CONTEST, document.TYPE_TRAINING].includes(type as any)) {
-        const model = type === document.TYPE_TRAINING ? training : contest;
         if (!ObjectId.isValid(id)) throw new DiscussionNodeNotFoundError(id);
         const _id = new ObjectId(id);
-        const tdoc = await model.get(domainId, _id);
-        if (!tdoc) throw new DiscussionNodeNotFoundError(id);
-        if (uid) {
-            const tsdoc = await model.getStatus(domainId, _id, uid);
-            tdoc.attend = tsdoc?.attend || tsdoc?.enroll;
+        let tdoc: any;
+        if (type === document.TYPE_TRAINING) {
+            tdoc = await document.get(domainId, document.TYPE_TRAINING, _id);
+            if (!tdoc) throw new DiscussionNodeNotFoundError(id);
+            if (uid) {
+                const tsdoc = await document.getStatus(domainId, document.TYPE_TRAINING, _id, uid);
+                tdoc.attend = tsdoc?.attend || tsdoc?.enroll;
+            }
+        } else {
+            tdoc = await contest.get(domainId, _id);
+            if (!tdoc) throw new DiscussionNodeNotFoundError(id);
+            if (uid) {
+                const tsdoc = await contest.getStatus(domainId, _id, uid);
+                tdoc.attend = tsdoc?.attend || tsdoc?.enroll;
+            }
         }
         return {
             ...tdoc, type, id: _id, hidden: false,

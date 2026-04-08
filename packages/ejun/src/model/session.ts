@@ -5,14 +5,14 @@ import bus from '../service/bus';
 
 export type LessonMode = 'today' | 'node' | 'card' | null;
 
-/** Frozen lesson order for the current session (base/training changes do not mutate until a new queue is started). */
+/** Frozen lesson order for the current session (base/branch changes do not mutate until a new queue is started). */
 export interface LessonCardQueueItem {
     domainId: string;
     nodeId: string;
     cardId: string;
     nodeTitle?: string;
     cardTitle?: string;
-    /** Base doc id for the card; required on queue items when training has multiple sources. */
+    /** Base doc id for the card (learn queue items). */
     baseDocId?: number;
     /** Slot in `learnSectionOrder` (duplicate sections differ by index, not only by root id). */
     learnSectionOrderIndex?: number;
@@ -43,7 +43,8 @@ export interface SessionDoc {
     /** For `node` mode: subtree root the queue was generated from. */
     lessonQueueAnchorNodeId?: string | null;
     lessonQueueBaseDocId?: number | null;
-    lessonQueueTrainingDocId?: string | null;
+    /** Learn flow: branch used when the daily queue was frozen (invalidates stale queues on change). */
+    lessonQueueLearnBranch?: string | null;
     /** UTC YYYY-MM-DD when `lessonCardQueue` was frozen for `today`. */
     lessonQueueDay?: string | null;
     /** Copy of `domain.user.learnSectionOrder` when the daily queue was frozen; used to invalidate stale queues. */
@@ -91,7 +92,7 @@ export type SessionPatch = Partial<Pick<
     | 'lessonCardQueue'
     | 'lessonQueueAnchorNodeId'
     | 'lessonQueueBaseDocId'
-    | 'lessonQueueTrainingDocId'
+    | 'lessonQueueLearnBranch'
     | 'lessonQueueDay'
     | 'lessonQueueLearnSectionOrder'
     | 'lessonQueueLearnStartCardId'

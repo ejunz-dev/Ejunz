@@ -78,7 +78,6 @@ inject('Nav', 'agent_domain', { prefix: 'agent' });
 inject('Nav', 'session_domain', { prefix: 'session' }, PERM.PERM_VIEW_RECORD);
 inject('Nav', 'record_main', { prefix: 'record' }, PERM.PERM_VIEW_RECORD);
 inject('Nav', 'discussion_main', { prefix: 'discussion' });
-inject('Nav', 'training_domain', { prefix: 'training' });
 // inject('Nav', 'workflow_domain', { prefix: 'workflow' });
 
 

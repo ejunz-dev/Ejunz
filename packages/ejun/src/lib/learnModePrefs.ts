@@ -83,7 +83,7 @@ export function getLearnSessionMode(dudoc: Record<string, unknown> | null | unde
     return normalizeLearnSessionMode(dudoc?.learnSessionMode);
 }
 
-/** Collect/Flag: fall back to learnBaseDocId when mode-specific base was never set (legacy). Learn uses training only. */
+/** Collect/Flag: fall back to learnBaseDocId when mode-specific base was never set (legacy). Learn stores selection in learnBaseDocId. */
 export function getModeBaseDocId(
     dudoc: Record<string, unknown> | null | undefined,
     mode: LearnFlowMode,
@@ -93,7 +93,7 @@ export function getModeBaseDocId(
         Number.isFinite(Number(legacyRaw)) && Number(legacyRaw) > 0 ? Number(legacyRaw) : null;
 
     if (mode === 'learn') {
-        return null;
+        return legacy;
     }
 
     const key = mode === 'collect' ? 'collectBaseDocId' : 'flagBaseDocId';
