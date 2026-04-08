@@ -1,10 +1,11 @@
-{% set page_name = "learn_training_select" %}
+{% set page_name = "learn_base_select" %}
 {% extends "layout/basic.html" %}
 {% block content %}
 <script>
   {{ set(UiContext, 'domainId', domainId) }}
-  {{ set(UiContext, 'trainings', trainings or []) }}
-  {{ set(UiContext, 'selectedTrainingDocId', selectedTrainingDocId) }}
+  {{ set(UiContext, 'learnBases', learnBases or []) }}
+  {{ set(UiContext, 'selectedLearnBaseDocId', selectedLearnBaseDocId) }}
+  {{ set(UiContext, 'learnBranch', learnBranch or 'main') }}
   {{ set(UiContext, 'redirect', redirect or url('learn', { domainId: domainId })) }}
 </script>
 <div class="row">

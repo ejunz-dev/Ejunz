@@ -15,7 +15,6 @@ import type { BaseDoc, BaseNode, CardDoc } from '../interface';
 import { BaseModel, CardModel } from '../model/base';
 import RecordModel, { type RecordDoc, type RecordProblemState } from '../model/record';
 import SessionModel, { type SessionDoc } from '../model/session';
-import TrainingModel from '../model/training';
 import user from '../model/user';
 import {
     deriveSessionRecordType,
@@ -111,21 +110,6 @@ async function buildRecordMainListRow(
     };
 }
 
-async function resolveRecordTrainingDocId(rd: RecordDoc): Promise<string | null> {
-    const direct = rd.trainingDocId;
-    if (direct && String(direct).trim()) return String(direct).trim();
-    try {
-        const sess = await SessionModel.coll.findOne({
-            _id: rd.sessionId,
-            domainId: rd.domainId,
-        });
-        const t = sess?.lessonQueueTrainingDocId;
-        if (t && String(t).trim()) return String(t).trim();
-    } catch {
-    }
-    return null;
-}
-
 async function enrichRecordRowDisplay(
     rd: RecordDoc,
     buildUrl: (name: string, kwargs: Record<string, unknown>) => string,
@@ -149,20 +133,20 @@ async function enrichRecordRowDisplay(
 
     let trainingTitle = '';
     let trainingUrl = '#';
-    try {
-        const tid = await resolveRecordTrainingDocId(rd);
-        if (tid && ObjectId.isValid(tid)) {
-            const tr = await TrainingModel.get(domainId, tid);
-            if (tr) {
-                const name = (tr as { name?: string }).name;
-                trainingTitle = (typeof name === 'string' && name.length > 0) ? name : tid;
-                trainingUrl = buildUrl('training_editor', {
+    if (baseDocId) {
+        try {
+            const b = await BaseModel.get(domainId, baseDocId);
+            if (b) {
+                const t = (b.title || '').trim();
+                trainingTitle = t || String(baseDocId);
+                trainingUrl = buildUrl('base_outline_doc_branch', {
                     domainId,
-                    trainingDocId: new ObjectId(tid),
-                });
+                    docId: String(baseDocId),
+                    branch,
+                }) || '#';
             }
+        } catch {
         }
-    } catch {
     }
 
     return { cardTitle, cardUrl, trainingTitle, trainingUrl };

@@ -70,67 +70,6 @@ interface CardFileInfo {
   lastModified?: Date | string;
 }
 
-/** Merged training editor node id: `t_{baseDocId}_{rawNodeId}` */
-function parseTrainingNodeIdForFiles(nodeId: string): { baseDocId: number; nodeId: string } | null {
-  const m = /^t_(\d+)_(.+)$/.exec(String(nodeId || ''));
-  if (!m) return null;
-  const baseDocId = Number(m[1]);
-  if (!Number.isSafeInteger(baseDocId) || baseDocId < 1) return null;
-  return { baseDocId, nodeId: m[2] };
-}
-
-function resolveCardBaseDocIdFromNodeMap(cardId: string): number | null {
-  const map = (typeof window !== 'undefined' && (window as any).UiContext?.nodeCardsMap) || {};
-  for (const nid of Object.keys(map)) {
-    const arr = map[nid];
-    if (!Array.isArray(arr)) continue;
-    for (const c of arr) {
-      if (!c) continue;
-      const cid = (c as any).docId ?? (c as any)._id;
-      if (cid != null && String(cid) === String(cardId) && (c as any).baseDocId != null) {
-        const n = Number((c as any).baseDocId);
-        if (Number.isFinite(n) && n >= 1) return n;
-      }
-    }
-  }
-  return null;
-}
-
-/** Map training-editor paths `/trainingOid/node|card|...` to `/numericBaseDocId/...` for `/base/*` file APIs. */
-function rewriteTrainingPlanFilePath(path: string): string {
-  const trainingBranch = String((typeof window !== 'undefined' && (window as any).UiContext?.trainingTargetBranch) || 'main');
-  const qIndex = path.indexOf('?');
-  const pathname = qIndex >= 0 ? path.slice(0, qIndex) : path;
-  const query = qIndex >= 0 ? path.slice(qIndex + 1) : '';
-  const params = new URLSearchParams(query);
-  const segs = pathname.split('/').filter(Boolean);
-  if (segs.length < 3) return path;
-
-  if (segs[1] === 'node') {
-    const mergedNodeId = decodeURIComponent(segs[2]);
-    const parsed = parseTrainingNodeIdForFiles(mergedNodeId);
-    if (!parsed) return path;
-    const tail = segs.slice(3).join('/');
-    const newPath = `/${parsed.baseDocId}/node/${encodeURIComponent(parsed.nodeId)}${tail ? `/${tail}` : ''}`;
-    params.set('branch', trainingBranch);
-    const q = params.toString();
-    return `${newPath}${q ? `?${q}` : ''}`;
-  }
-
-  if (segs[1] === 'card') {
-    const cId = segs[2];
-    const baseDocId = resolveCardBaseDocIdFromNodeMap(cId);
-    if (!baseDocId) return path;
-    const tail = segs.slice(3).join('/');
-    const newPath = `/${baseDocId}/card/${cId}${tail ? `/${tail}` : ''}`;
-    params.delete('branch');
-    const q = params.toString();
-    return `${newPath}${q ? `?${q}` : ''}`;
-  }
-
-  return path;
-}
-
 interface Card {
   docId: string;
   cid: number;
@@ -987,7 +926,7 @@ function getSubtreeIntentRows(
 }
 
 type SavedEditorLayout = {
-  explorerMode: 'tree' | 'pending' | 'branches' | 'git' | 'training';
+  explorerMode: 'tree' | 'pending' | 'branches' | 'git';
   nodeSidePanelTab: 'intent' | 'files';
   rightPanelOpen: boolean;
   aiBottomOpen: boolean;
@@ -999,12 +938,13 @@ type SavedEditorLayout = {
 function readSavedBaseEditorUiPrefs(editorAiHidden: boolean): SavedEditorLayout {
   const raw =
     (typeof window !== 'undefined' && (window as any).UiContext?.baseEditorUiPrefs) || null;
-  const modes = new Set(['tree', 'pending', 'branches', 'git', 'training']);
+  const modes = new Set(['tree', 'pending', 'branches', 'git']);
   const tabs = new Set(['intent', 'files']);
 
   let explorerMode: SavedEditorLayout['explorerMode'] = 'tree';
-  if (raw && typeof raw.explorerMode === 'string' && modes.has(raw.explorerMode)) {
-    explorerMode = raw.explorerMode as SavedEditorLayout['explorerMode'];
+  if (raw && typeof raw.explorerMode === 'string') {
+    const rawMode = raw.explorerMode === 'training' ? 'tree' : raw.explorerMode;
+    if (modes.has(rawMode)) explorerMode = rawMode as SavedEditorLayout['explorerMode'];
   }
 
   let nodeSidePanelTab: SavedEditorLayout['nodeSidePanelTab'] = 'intent';
@@ -1113,59 +1053,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     };
   });
 
-  const [explorerMode, setExplorerMode] = useState<'tree' | 'pending' | 'branches' | 'git' | 'training'>(
+  const [explorerMode, setExplorerMode] = useState<'tree' | 'pending' | 'branches' | 'git'>(
     () => savedEditorLayout.explorerMode,
   );
-  const [trainingManageLoading, setTrainingManageLoading] = useState(false);
-  const [trainingManageList, setTrainingManageList] = useState<Array<{
-    docId: string;
-    name: string;
-    targetBranch?: string;
-    baseDocId?: number;
-    planSources?: Array<{ baseDocId: number; sourceBranch: string; targetBranch: string }>;
-  }>>([]);
-  const [trainingManageDoc, setTrainingManageDoc] = useState<any>(null);
-
-  useEffect(() => {
-    let alive = true;
-    async function load() {
-      if (!(explorerMode === 'training' && basePath === 'training' && docId)) return;
-      setTrainingManageLoading(true);
-      try {
-        const branch = String((window as any).UiContext?.currentBranch || 'main');
-        const urlParams = new URLSearchParams(window.location.search);
-        const trainingDocId = urlParams.get('trainingDocId') || '';
-        if (trainingDocId) {
-          const r2 = await request.get(getBaseUrl(`/get?docId=${encodeURIComponent(trainingDocId)}`));
-          if (!alive) return;
-          setTrainingManageDoc((r2 as any)?.training || null);
-          const sources = Array.isArray((r2 as any)?.training?.planSources) ? (r2 as any).training.planSources : [];
-          setTrainingManageList([{
-            docId: String((r2 as any)?.training?.docId || trainingDocId),
-            name: String((r2 as any)?.training?.name || trainingDocId),
-            targetBranch: String((r2 as any)?.training?.targetBranch || branch),
-            baseDocId: Number((r2 as any)?.training?.baseDocId) || undefined,
-            planSources: sources,
-          }]);
-          return;
-        }
-        const r = await request.get(getBaseUrl(`/for-base?docId=${encodeURIComponent(String(docId))}&branch=${encodeURIComponent(branch)}`));
-        if (!alive) return;
-        const list = Array.isArray((r as any)?.trainings) ? (r as any).trainings : [];
-        setTrainingManageList(list);
-        setTrainingManageDoc(null);
-      } catch {
-        if (!alive) return;
-        setTrainingManageList([]);
-        setTrainingManageDoc(null);
-      } finally {
-        if (!alive) return;
-        setTrainingManageLoading(false);
-      }
-    }
-    load();
-    return () => { alive = false; };
-  }, [explorerMode, basePath, docId]);
   const [gitRemoteStatus, setGitRemoteStatus] = useState<any>(null);
   const [gitStatusLoading, setGitStatusLoading] = useState(false);
   const [gitRepoDraft, setGitRepoDraft] = useState(() => String((window as any).UiContext?.githubRepo || ''));
@@ -1198,13 +1088,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     let closed = false;
     const apiPath = basePath === 'base/skill'
       ? `/d/${domainId}/base/skill/data`
-      : basePath === 'training'
-        ? `/d/${domainId}/training/data`
-        : `/d/${domainId}/base/data`;
+      : `/d/${domainId}/base/data`;
     const editorApiQs: Record<string, string> = {};
     if (docId) editorApiQs.docId = docId;
     const editorBranch = (window as any).UiContext?.currentBranch;
-    if (basePath !== 'training' && editorBranch) editorApiQs.branch = editorBranch;
+    if (editorBranch) editorApiQs.branch = editorBranch;
 
     const connect = async () => {
       try {
@@ -1463,14 +1351,12 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const domainId = (window as any).UiContext?.domainId || 'system';
     const apiPath = basePath === 'base/skill'
       ? `/d/${domainId}/base/skill/data`
-      : basePath === 'training'
-        ? `/d/${domainId}/training/data`
-        : `/d/${domainId}/base/data`;
+      : `/d/${domainId}/base/data`;
     try {
       const qs: Record<string, string> = {};
-      if (docId && (basePath === 'base' || basePath === 'training')) qs.docId = docId;
+      if (docId && basePath === 'base') qs.docId = docId;
       const refBranch = (window as any).UiContext?.currentBranch;
-      if (refBranch && basePath !== 'training') qs.branch = refBranch;
+      if (refBranch) qs.branch = refBranch;
       const newData: any = await request.get(apiPath, qs);
       if (newData?.nodes != null || newData?.edges != null) {
         setBase(prev => {
@@ -1513,24 +1399,12 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     }
     const files = Array.from(fileList);
     const domainId = (window as any).UiContext?.domainId || 'system';
-    const trainingBranch = String((window as any).UiContext?.trainingTargetBranch || 'main');
-    const branch = basePath === 'training' ? trainingBranch : ((window as any).UiContext?.currentBranch || 'main');
+    const branch = (window as any).UiContext?.currentBranch || 'main';
 
     if (pendingNodeUploadRef.current) {
       const { nodeId } = pendingNodeUploadRef.current;
       let url: string;
-      if (basePath === 'training') {
-        const parsed = parseTrainingNodeIdForFiles(nodeId);
-        if (!parsed) {
-          Notification.error(i18n('training_editor.upload.invalid_node'));
-          e.target.value = '';
-          pendingNodeUploadRef.current = null;
-          return;
-        }
-        url = `/d/${domainId}/base/${parsed.baseDocId}/node/${encodeURIComponent(parsed.nodeId)}/files?branch=${encodeURIComponent(branch)}`;
-      } else {
-        url = `/d/${domainId}/base/${docId}/node/${nodeId}/files?branch=${encodeURIComponent(branch)}`;
-      }
+      url = `/d/${domainId}/base/${docId}/node/${nodeId}/files?branch=${encodeURIComponent(branch)}`;
       try {
         await uploadFiles(url, files, {});
         await refetchEditorData();
@@ -1541,19 +1415,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     } else if (pendingCardUploadRef.current) {
       const pending = pendingCardUploadRef.current;
       let url: string;
-      if (basePath === 'training') {
-        const fromNode = pending.nodeId ? parseTrainingNodeIdForFiles(pending.nodeId) : null;
-        const baseDocId = fromNode?.baseDocId ?? resolveCardBaseDocIdFromNodeMap(pending.cardId);
-        if (!baseDocId) {
-          Notification.error(i18n('training_editor.upload.card_base_unresolved'));
-          e.target.value = '';
-          pendingCardUploadRef.current = null;
-          return;
-        }
-        url = `/d/${domainId}/base/${baseDocId}/card/${pending.cardId}/files`;
-      } else {
-        url = `/d/${domainId}/base/${docId}/card/${pending.cardId}/files`;
-      }
+      url = `/d/${domainId}/base/${docId}/card/${pending.cardId}/files`;
       try {
         await uploadFiles(url, files, {});
         await refetchEditorData();
@@ -1903,13 +1765,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   
   const getBaseUrl = useCallback((path: string, docId?: string): string => {
     const domainId = (window as any).UiContext?.domainId || 'system';
-
-    // File endpoints only exist under `/base/:docId/...` where docId is numeric base doc id.
-    // Training editor uses training ObjectId in path segments; rewrite to real base + node id + training branch.
-    if (basePath === 'training' && (path.includes('/files') || path.includes('/file/'))) {
-      const rewritten = rewriteTrainingPlanFilePath(path);
-      return `/d/${domainId}/base${rewritten}`;
-    }
     return `/d/${domainId}/${basePath}${path}`;
   }, [basePath]);
 
@@ -1953,23 +1808,12 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       nodeMap.set(node.id, { node, children: [] });
     });
 
-    if (basePath === 'training') {
-      // Training merged graph uses node.parentId for tree structure.
-      base.nodes.forEach((node: any) => {
-        const pid = node?.parentId ? String(node.parentId) : '';
-        if (!pid) return;
-        const parent = nodeMap.get(pid);
-        if (parent) parent.children.push(String(node.id));
-      });
-    } else {
-      // Base/collect/flag: keep legacy behavior (edges as a hierarchy hint).
-      base.edges.forEach((edge) => {
-        const parent = nodeMap.get(edge.source);
-        if (parent) {
-          parent.children.push(edge.target);
-        }
-      });
-    }
+    base.edges.forEach((edge) => {
+      const parent = nodeMap.get(edge.source);
+      if (parent) {
+        parent.children.push(edge.target);
+      }
+    });
     
     
     nodeMap.forEach((nodeData) => {
@@ -1983,14 +1827,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     });
 
     base.nodes.forEach((node: any) => {
-      if (basePath === 'training') {
-        const pid = node?.parentId ? String(node.parentId) : '';
-        const hasParent = !!(pid && nodeMap.has(pid));
-        if (!hasParent) rootNodes.push(String(node.id));
-      } else {
-        const hasParent = base.edges.some((edge) => edge.target === node.id);
-        if (!hasParent) rootNodes.push(node.id);
-      }
+      const hasParent = base.edges.some((edge) => edge.target === node.id);
+      if (!hasParent) rootNodes.push(node.id);
     });
 
     if (workspaceNodeId && nodeMap.has(workspaceNodeId)) {
@@ -2953,9 +2791,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             currentBase = await request.get(
               basePath === 'base/skill'
                 ? `/d/${domainId}/base/skill/data`
-                : basePath === 'training'
-                  ? `/d/${domainId}/training/data`
-                  : `/d/${domainId}/base/data`,
+                : `/d/${domainId}/base/data`,
               fetchQs,
             );
           } catch (error: any) {
@@ -3153,23 +2989,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         });
         
         
-        const trainingRootId =
-          basePath === 'training'
-            ? String((base.nodes || []).find((n: any) => String((n as any).id || '').startsWith('training_root_'))?.id || '')
-            : '';
-        const isProtectedTrainingBaseRoot = (nodeId: string) => {
-          if (basePath !== 'training') return false;
-          if (!trainingRootId) return false;
-          const n = (base.nodes || []).find((x: any) => String((x as any).id) === String(nodeId));
-          return !!(n && String((n as any).parentId || '') === trainingRootId);
-        };
-
         const realNodeDeletes = nodeDeletes
           .filter(del => del.id && !String(del.id).startsWith('temp-node-'))
           .filter(del => {
             const id = String(del.id || '');
             if (!id) return false;
-            if (isProtectedTrainingBaseRoot(id)) return false;
             return true;
           });
         
@@ -3195,16 +3019,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           });
         }
 
-        // Notify if user tried deleting training base root nodes
-        if (basePath === 'training' && trainingRootId) {
-          const attempted = nodeDeletes
-            .filter(del => del.id && !String(del.id).startsWith('temp-node-'))
-            .map(del => String(del.id || ''))
-            .filter(id => id && isProtectedTrainingBaseRoot(id));
-          if (attempted.length > 0) {
-            Notification.error(i18n('Root node cannot be deleted'));
-          }
-        }
       }
 
       
@@ -3595,9 +3409,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           const response = await request.get(
             basePath === 'base/skill'
               ? `/d/${domainId}/base/skill/data`
-              : basePath === 'training'
-                ? `/d/${domainId}/training/data`
-                : `/d/${domainId}/base/data`,
+              : `/d/${domainId}/base/data`,
             postSaveQs,
           );
           setBase(response);
@@ -4167,7 +3979,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       id: tempId,
       text: i18n('New node'),
       order: maxOrder + 1,
-      ...(basePath === 'training' ? { parentId: parentNodeId } : {}),
     };
     
     
@@ -4211,17 +4022,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const handleNewRootNode = useCallback(() => {
     const tempId = `temp-node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    // In training editor, treat "root node" creation as creating a child under training root.
-    if (basePath === 'training') {
-      const trainingRootId = String((base.nodes || []).find((n: any) => String((n as any).id || '').startsWith('training_root_'))?.id || '');
-      if (trainingRootId) {
-        handleNewChildNode(trainingRootId);
-        setEmptyAreaContextMenu(null);
-        return;
-      }
-    }
-    
-    
     const rootNodes = base.nodes.filter(node => 
       !base.edges.some(edge => edge.target === node.id)
     );
@@ -4264,7 +4064,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     });
     
     setEmptyAreaContextMenu(null);
-  }, [base.nodes, base.edges, basePath, handleNewChildNode]);
+  }, [base.nodes, base.edges, handleNewChildNode]);
 
   const handleNewSiblingNodePlacement = useCallback((
     referenceNodeId: string,
@@ -4352,7 +4152,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         id: tempId,
         text: i18n('New node'),
         order: newOrder,
-        ...(basePath === 'training' ? { parentId } : {}),
       };
       const newEdge: BaseEdge = {
         id: `temp-edge-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -4506,7 +4305,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       id: tempId,
       text: i18n('New node'),
       order: newOrder,
-      ...(basePath === 'training' ? { parentId: parentNodeId } : {}),
     };
     const newEdge: BaseEdge = {
       id: `temp-edge-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -4895,7 +4693,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     if (!clipboard || clipboard.items.length === 0) return;
 
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
-    const isTraining = basePath === 'training';
     if (!targetNodeId) return;
 
     
@@ -4944,16 +4741,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         };
         nodesToCopy.push(newNode);
 
-        
-        if (isTraining) {
-          const children = base.nodes.filter((n: any) => String(n?.parentId || '') === String(nodeId));
-          children.forEach((ch) => collectNodes(String((ch as any).id)));
-        } else {
-          const childEdges = base.edges.filter(e => e.source === nodeId);
-          childEdges.forEach(edge => {
-            collectNodes(edge.target);
-          });
-        }
+        const childEdges = base.edges.filter(e => e.source === nodeId);
+        childEdges.forEach(edge => {
+          collectNodes(edge.target);
+        });
       };
 
       collectNodes(sourceNodeId);
@@ -4980,21 +4771,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       
       const rootNewId = nodeIdMap.get(sourceNodeId);
       if (rootNewId) {
-        if (isTraining) {
-          // Training tree relies on parentId; copy subtree keeping parentId relationships.
-          const rootNode = nodesToCopy.find((n: any) => String((n as any).id) === String(rootNewId));
-          if (rootNode) (rootNode as any).parentId = targetNodeId;
-          for (const n of nodesToCopy) {
-            if (String((n as any).id) === String(rootNewId)) continue;
-            const oldNodeId = Array.from(nodeIdMap.entries()).find(([_, newId]) => newId === (n as any).id)?.[0];
-            const old = oldNodeId ? base.nodes.find((x: any) => String((x as any).id) === String(oldNodeId)) : null;
-            const oldParentId = old?.parentId ? String((old as any).parentId) : '';
-            const mappedParent = oldParentId && nodeIdMap.has(oldParentId) ? nodeIdMap.get(oldParentId) : rootNewId;
-            (n as any).parentId = String(mappedParent || rootNewId);
-          }
-        }
-        
-        
         const edgeExists = updatedEdges.some(e => e.source === targetNodeId && e.target === rootNewId);
         if (!edgeExists) {
           updatedEdges.push({
@@ -5119,20 +4895,14 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           if (!pendingCreatesRef.current.has(newNode.id)) {
             
             let parentNodeId: string = targetNodeId;
-            if (isTraining) {
-              const old = base.nodes.find((x: any) => String((x as any).id) === String(oldNodeId)) as any;
-              const oldParentId = old?.parentId ? String(old.parentId) : '';
-              if (oldParentId) parentNodeId = nodeIdMap.get(oldParentId) || targetNodeId;
+            const originalParentEdge = base.edges.find(e => e.target === oldNodeId);
+            if (originalParentEdge) {
+              const newParentId = nodeIdMap.get(originalParentEdge.source);
+              parentNodeId = newParentId || targetNodeId;
             } else {
-              const originalParentEdge = base.edges.find(e => e.target === oldNodeId);
-              if (originalParentEdge) {
-                const newParentId = nodeIdMap.get(originalParentEdge.source);
-                parentNodeId = newParentId || targetNodeId;
-              } else {
-                parentNodeId = targetNodeId;
-              }
+              parentNodeId = targetNodeId;
             }
-            
+
             pendingCreatesRef.current.set(newNode.id, {
               type: 'node',
               nodeId: parentNodeId,
@@ -5202,12 +4972,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       }
 
       const newCardId = `temp-card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const targetChildNodes = isTraining
-        ? (base.nodes.filter((n: any) => String(n?.parentId || '') === String(targetNodeId)) as any)
-        : (base.edges
-          .filter((e: BaseEdge) => e.source === targetNodeId)
-          .map((e: BaseEdge) => base.nodes.find((n: BaseNode) => n.id === e.target))
-          .filter(Boolean) as BaseNode[]);
+      const targetChildNodes = base.edges
+        .filter((e: BaseEdge) => e.source === targetNodeId)
+        .map((e: BaseEdge) => base.nodes.find((n: BaseNode) => n.id === e.target))
+        .filter(Boolean) as BaseNode[];
       const maxCardOrder = nodeCardsMap[targetNodeId]?.length > 0
         ? Math.max(...nodeCardsMap[targetNodeId].map((c: Card) => c.order || 0))
         : 0;
@@ -6177,7 +5945,6 @@ ${editorShellPath}
           const tempNode: BaseNode = {
             id: tempId,
             text: op.text || i18n('New node'),
-            ...(basePath === 'training' && op.parentId ? { parentId: String(op.parentId) } : {}),
           };
           
           setBase(prev => ({
@@ -8515,51 +8282,27 @@ ${editorShellPath}
                 <path d="M6 6h4M6 8.5h4M6 11h3" />
               </svg>
             </button>
-            {basePath !== 'training' ? (
-              <button
-                onClick={() => setExplorerMode('branches')}
-                style={{
-                  width: '34px',
-                  height: '34px',
-                  border: `1px solid ${themeStyles.borderSecondary}`,
-                  borderRadius: '3px',
-                  backgroundColor: explorerMode === 'branches' ? themeStyles.bgButtonActive : themeStyles.bgButton,
-                  color: explorerMode === 'branches' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
-                  cursor: 'pointer',
-                  flexShrink: 0,
-                }}
-                title="查看分支并跳转"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <circle cx="4" cy="3.5" r="1.5" />
-                  <circle cx="4" cy="12.5" r="1.5" />
-                  <circle cx="12" cy="8" r="1.5" />
-                  <path d="M5.5 4.3L10.5 7.2M5.5 11.7l5-2.9" />
-                </svg>
-              </button>
-            ) : null}
-            {basePath === 'training' && docId ? (
-              <button
-                type="button"
-                onClick={() => setExplorerMode('training')}
-                style={{
-                  width: '34px',
-                  height: '34px',
-                  border: `1px solid ${themeStyles.borderSecondary}`,
-                  borderRadius: '3px',
-                  backgroundColor: explorerMode === 'training' ? themeStyles.bgButtonActive : themeStyles.bgButton,
-                  color: explorerMode === 'training' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
-                  cursor: 'pointer',
-                  flexShrink: 0,
-                }}
-                title="Training 管理"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="M3 3.5h10M3 8h10M3 12.5h10" />
-                  <path d="M5 3.5v9" />
-                </svg>
-              </button>
-            ) : null}
+            <button
+              onClick={() => setExplorerMode('branches')}
+              style={{
+                width: '34px',
+                height: '34px',
+                border: `1px solid ${themeStyles.borderSecondary}`,
+                borderRadius: '3px',
+                backgroundColor: explorerMode === 'branches' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                color: explorerMode === 'branches' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+              title="查看分支并跳转"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <circle cx="4" cy="3.5" r="1.5" />
+                <circle cx="4" cy="12.5" r="1.5" />
+                <circle cx="12" cy="8" r="1.5" />
+                <path d="M5.5 4.3L10.5 7.2M5.5 11.7l5-2.9" />
+              </svg>
+            </button>
             {basePath === 'base' && docId ? (
               <button
                 type="button"
@@ -9011,74 +8754,6 @@ ${editorShellPath}
                     </a>
                   );
                 })}
-              </div>
-            </div>
-          ) : explorerMode === 'training' && basePath === 'training' && docId ? (
-            <div style={{ padding: '8px', fontSize: '12px', color: themeStyles.textPrimary }}>
-              <div style={{ fontWeight: 600, color: themeStyles.textSecondary, marginBottom: '8px', padding: '0 8px' }}>
-                Training · 分支 {currentBranch || 'main'}
-              </div>
-              <div style={{ padding: '0 8px' }}>
-                {trainingManageLoading ? (
-                  <div style={{ color: themeStyles.textSecondary }}>加载中…</div>
-                ) : trainingManageList.length ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {trainingManageList.map((t) => {
-                      const sources = Array.isArray(t.planSources) ? t.planSources : [];
-                      return (
-                        <div
-                          key={t.docId}
-                          style={{
-                            border: `1px solid ${themeStyles.borderSecondary}`,
-                            borderRadius: '6px',
-                            background: themeStyles.bgSecondary,
-                            padding: '10px',
-                          }}
-                        >
-                          <div style={{ fontWeight: 600, marginBottom: '6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {t.name || t.docId}
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            {sources.map((s) => {
-                              const href = getBaseUrl(`/${s.baseDocId}/editor?trainingDocId=${encodeURIComponent(String(t.docId))}`);
-                              const isHere = Number(s.baseDocId) === Number(docId);
-                              return (
-                                <a
-                                  key={`${t.docId}-${s.baseDocId}`}
-                                  href={isHere ? undefined : href}
-                                  onClick={isHere ? (e) => e.preventDefault() : undefined}
-                                  style={{
-                                    textDecoration: 'none',
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    gap: '8px',
-                                    padding: '6px 8px',
-                                    borderRadius: '4px',
-                                    border: `1px solid ${themeStyles.borderSecondary}`,
-                                    background: isHere ? themeStyles.bgSelected : themeStyles.bgButton,
-                                    color: isHere ? themeStyles.textOnPrimary : themeStyles.textPrimary,
-                                  }}
-                                  title={isHere ? '当前 Base' : '前往该训练计划下的 Base'}
-                                >
-                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    base #{s.baseDocId}
-                                  </span>
-                                  <span style={{ opacity: 0.85 }}>
-                                    {isHere ? '当前' : '前往'}
-                                  </span>
-                                </a>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div style={{ color: themeStyles.textSecondary }}>
-                    未找到引用该 Base + 分支的训练计划。你可以先去 /training 创建。
-                  </div>
-                )}
               </div>
             </div>
           ) : explorerMode === 'git' && basePath === 'base' && docId ? (
@@ -12059,9 +11734,7 @@ ${editorShellPath}
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: isMobile ? '1 1 100%' : undefined }}>
             <a
-              href={basePath === 'training'
-                ? getBaseUrl(`/${docId}/editor${window.location.search || ''}`)
-                : getBaseUrl(`/${docId}/branch/${base.currentBranch || 'main'}`)}
+              href={getBaseUrl(`/${docId}/branch/${base.currentBranch || 'main'}`)}
               style={{
                 padding: isMobile ? '10px 12px' : '4px 8px',
                 minHeight: isMobile ? '44px' : undefined,
@@ -13543,12 +13216,11 @@ const getBaseUrl = (path: string, docId: string): string => {
   return `/d/${domainId}/base/${docId}${path}`;
 };
 
-const page = new NamedPage(['base_editor', 'base_editor_branch', 'base_skill_editor', 'base_skill_editor_branch', 'training_editor', 'training_editor_branch', 'flag_editor', 'flag_editor_branch', 'collect_editor', 'collect_editor_branch'], async (pageName) => {
+const page = new NamedPage(['base_editor', 'base_editor_branch', 'base_skill_editor', 'base_skill_editor_branch', 'flag_editor', 'flag_editor_branch', 'collect_editor', 'collect_editor_branch'], async (pageName) => {
   try {
     
     const isSkill = pageName === 'base_skill_editor' || pageName === 'base_skill_editor_branch';
-    const isTraining = pageName === 'training_editor' || pageName === 'training_editor_branch';
-    const containerId = isSkill ? '#skill-editor-mode' : (isTraining ? '#training-editor-mode' : '#base-editor-mode');
+    const containerId = isSkill ? '#skill-editor-mode' : '#base-editor-mode';
     const $container = $(containerId);
     if (!$container.length) {
       return;
@@ -13563,9 +13235,7 @@ const page = new NamedPage(['base_editor', 'base_editor_branch', 'base_skill_edi
       
       const apiPath = isSkill
         ? `/d/${domainId}/base/skill/data`
-        : isTraining
-          ? `/d/${domainId}/training/data`
-          : `/d/${domainId}/base/data`;
+        : `/d/${domainId}/base/data`;
       const initQs: Record<string, string> = {};
       if (docId) initQs.docId = docId;
       const initBranch = (window as any).UiContext?.currentBranch;
@@ -13581,9 +13251,9 @@ const page = new NamedPage(['base_editor', 'base_editor_branch', 'base_skill_edi
       return;
     }
 
-    const trainingBasePath = isTraining ? 'training' : (isSkill ? 'base/skill' : 'base');
+    const editorBasePath = isSkill ? 'base/skill' : 'base';
     ReactDOM.render(
-      <BaseEditorMode docId={initialData.docId || ''} initialData={initialData} basePath={trainingBasePath} />,
+      <BaseEditorMode docId={initialData.docId || ''} initialData={initialData} basePath={editorBasePath} />,
       $container[0]
     );
   } catch (error: any) {

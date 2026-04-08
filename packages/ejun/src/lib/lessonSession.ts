@@ -23,7 +23,7 @@ export interface MergedLessonState {
     lessonCardQueue: LessonCardQueueItem[];
     lessonQueueAnchorNodeId: string | undefined;
     lessonQueueBaseDocId: number | undefined;
-    lessonQueueTrainingDocId: string | undefined;
+    lessonQueueLearnBranch: string | undefined;
     lessonQueueLearnSectionOrderIndex: number | undefined;
 }
 
@@ -42,7 +42,7 @@ export function mergeDomainLessonState(dudoc: any, sdoc: SessionDoc | null): Mer
             lessonCardQueue: [],
             lessonQueueAnchorNodeId: undefined,
             lessonQueueBaseDocId: undefined,
-            lessonQueueTrainingDocId: undefined,
+            lessonQueueLearnBranch: undefined,
             lessonQueueLearnSectionOrderIndex: undefined,
         };
     }
@@ -72,7 +72,10 @@ export function mergeDomainLessonState(dudoc: any, sdoc: SessionDoc | null): Mer
             ? (sdoc.lessonQueueAnchorNodeId as string)
             : undefined,
         lessonQueueBaseDocId: typeof sdoc.lessonQueueBaseDocId === 'number' ? sdoc.lessonQueueBaseDocId : undefined,
-        lessonQueueTrainingDocId: sdoc.lessonQueueTrainingDocId ?? undefined,
+        lessonQueueLearnBranch:
+            typeof sdoc.lessonQueueLearnBranch === 'string' && sdoc.lessonQueueLearnBranch.trim()
+                ? sdoc.lessonQueueLearnBranch.trim()
+                : undefined,
         lessonQueueLearnSectionOrderIndex: typeof sdoc.lessonQueueLearnSectionOrderIndex === 'number'
             ? sdoc.lessonQueueLearnSectionOrderIndex
             : undefined,
@@ -96,10 +99,10 @@ const normSectionOrder = (arr: unknown): string[] =>
     (Array.isArray(arr) ? arr : []).map((x) => String(x));
 
 /** Bump when mixed-mode ordering algorithm changes (invalidates frozen today queues). */
-export const LESSON_QUEUE_MIXED_LAYOUT_VERSION = 14;
+export const LESSON_QUEUE_MIXED_LAYOUT_VERSION = 15;
 
 /**
- * Frozen `today` queue must match current domain learn settings; otherwise rebuild (section order / learning start / training).
+ * Frozen `today` queue must match current domain learn settings; otherwise rebuild (section order / learning start / branch).
  */
 export function frozenTodayQueueMatchesLearnSettings(dudoc: any, s: SessionDoc): boolean {
     const du = dudoc || {};
@@ -112,9 +115,19 @@ export function frozenTodayQueueMatchesLearnSettings(dudoc: any, s: SessionDoc):
     } else if (ordDu.length > 0) {
         return false;
     }
-    const trainDu = du.learnTrainingDocId != null ? String(du.learnTrainingDocId) : '';
-    const trainS = s.lessonQueueTrainingDocId != null ? String(s.lessonQueueTrainingDocId) : '';
-    if (trainDu && trainS && trainDu !== trainS) return false;
+    const branchDu =
+        typeof du.learnBranch === 'string' && String(du.learnBranch).trim()
+            ? String(du.learnBranch).trim()
+            : 'main';
+    const branchS =
+        s.lessonQueueLearnBranch != null && String(s.lessonQueueLearnBranch).trim()
+            ? String(s.lessonQueueLearnBranch).trim()
+            : null;
+    if (branchS !== null) {
+        if (branchDu !== branchS) return false;
+    } else if (branchDu !== 'main') {
+        return false;
+    }
     const di = typeof du.currentLearnSectionIndex === 'number' ? du.currentLearnSectionIndex : undefined;
     const si = typeof s.currentLearnSectionIndex === 'number' ? s.currentLearnSectionIndex : undefined;
     if (di !== undefined && (si === undefined || si !== di)) return false;
