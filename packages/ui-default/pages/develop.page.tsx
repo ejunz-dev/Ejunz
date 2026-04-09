@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
+import moment from 'moment';
 import { NamedPage } from 'vj/misc/Page';
 import { i18n } from 'vj/utils';
 import { request } from 'vj/utils';
 import Notification from 'vj/components/notification';
+import { ContributionWall, type ContributionDetail } from '../components/ContributionWall';
 
 type LearnBaseOption = { docId: number; title?: string; branches?: string[] };
 
@@ -34,6 +36,20 @@ function rowInDevelopRunQueue(row: DisplayRow): boolean {
   if (!rowHasDailyGoal(row)) return true;
   return !row.todayGoalsMet;
 }
+
+type DevelopWallRecordRow = {
+  recordId: string;
+  baseDocId: number;
+  branch: string;
+  recordUrl: string;
+  timeUtc: string;
+  summaryLines: string[];
+};
+
+type DevelopWallDayDetail = ContributionDetail & {
+  checkedIn?: boolean;
+  records?: DevelopWallRecordRow[];
+};
 
 function statRatio(cur: number, goal: number): { pct: number; done: boolean } {
   if (goal > 0) {
@@ -93,6 +109,15 @@ function DevelopPage() {
   const developCheckedInToday = !!(window as any).UiContext?.developCheckedInToday;
   const developAllGoalsMet = !!(window as any).UiContext?.developAllGoalsMet;
   const todayDevelopResumeUrl = String((window as any).UiContext?.todayDevelopResumeUrl || '').trim();
+  const developWallContributions = ((window as any).UiContext?.developWallContributions || []) as Array<{
+    date: string;
+    type: 'node' | 'card' | 'problem';
+    count: number;
+  }>;
+  const developWallContributionDetails = ((window as any).UiContext?.developWallContributionDetails || {}) as Record<
+    string,
+    DevelopWallDayDetail[]
+  >;
 
   const initialRows = ((window as any).UiContext?.developPool || []) as Array<PoolEntry & {
     baseTitle?: string;
@@ -123,6 +148,19 @@ function DevelopPage() {
     [displayPool],
   );
 
+  const completedWithPoolIndex = useMemo(
+    () => displayPool
+      .map((row, idx) => ({ row, idx }))
+      .filter(({ row }) => row.todayGoalsMet && rowHasDailyGoal(row)),
+    [displayPool],
+  );
+  const pendingWithPoolIndex = useMemo(
+    () => displayPool
+      .map((row, idx) => ({ row, idx }))
+      .filter(({ row }) => !(row.todayGoalsMet && rowHasDailyGoal(row))),
+    [displayPool],
+  );
+
   const [editDraft, setEditDraft] = useState<PoolEntry[]>([]);
   const [saving, setSaving] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -130,6 +168,45 @@ function DevelopPage() {
   const [checkinSubmitting, setCheckinSubmitting] = useState(false);
   const [developStartBusy, setDevelopStartBusy] = useState(false);
   const consecutiveBubbleRef = useRef<HTMLButtonElement>(null);
+
+  const sidebarWidth = 220;
+  const collapsedWidth = 36;
+  const MOBILE_BREAKPOINT = 768;
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT);
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= MOBILE_BREAKPOINT);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    const openLeftSidebar = () => { setLeftSidebarOpen(true); setRightSidebarOpen(false); };
+    const openRightSidebar = () => { setRightSidebarOpen(true); setLeftSidebarOpen(false); };
+    const leftEl = document.getElementById('header-mobile-extra-left');
+    const rightEl = document.getElementById('header-mobile-extra');
+    const leftWrap = leftEl ? (() => { const w = document.createElement('div'); leftEl.appendChild(w); return w; })() : null;
+    const rightWrap = rightEl ? (() => { const w = document.createElement('div'); rightEl.appendChild(w); return w; })() : null;
+    if (leftWrap) {
+      ReactDOM.render(
+        <button type="button" onClick={openLeftSidebar}>☰ {i18n('Develop sidebar completed today')}</button>,
+        leftWrap,
+      );
+    }
+    if (rightWrap) {
+      ReactDOM.render(
+        <button type="button" onClick={openRightSidebar}>{i18n('Develop sidebar pending today')} ☰</button>,
+        rightWrap,
+      );
+    }
+    return () => {
+      if (leftWrap) { ReactDOM.unmountComponentAtNode(leftWrap); leftWrap.remove(); }
+      if (rightWrap) { ReactDOM.unmountComponentAtNode(rightWrap); rightWrap.remove(); }
+    };
+  }, [isMobile]);
 
   const getTheme = () => {
     try {
@@ -144,13 +221,33 @@ function DevelopPage() {
     bgPage: theme === 'dark' ? 'radial-gradient(ellipse 80% 50% at 50% 0%, rgba(76, 175, 80, 0.06) 0%, transparent 50%), #0f0f0f' : '#fafbfc',
     bgCard: theme === 'dark' ? 'rgba(38, 39, 41, 0.92)' : '#fff',
     bgPrimary: theme === 'dark' ? '#0f0f0f' : '#fff',
+    bgSecondary: theme === 'dark' ? '#323334' : '#f6f8fa',
     textPrimary: theme === 'dark' ? '#f0f0f0' : '#1a1a1a',
     textSecondary: theme === 'dark' ? '#9ca3af' : '#6b7280',
+    textTertiary: theme === 'dark' ? '#9ca3af' : '#6b7280',
     border: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
     primary: theme === 'dark' ? '#22c55e' : '#16a34a',
     primaryGlow: theme === 'dark' ? 'rgba(34, 197, 94, 0.35)' : 'rgba(22, 163, 74, 0.25)',
     accent: theme === 'dark' ? '#38bdf8' : '#0ea5e9',
+    statNode: theme === 'dark' ? '#64b5f6' : '#2196F3',
+    statCard: theme === 'dark' ? '#81c784' : '#4CAF50',
+    statProblem: theme === 'dark' ? '#ffb74d' : '#FF9800',
   }), [theme]);
+
+  const getLatestWallDate = useCallback(() => {
+    const dates = Object.keys(developWallContributionDetails);
+    if (dates.length === 0) return null;
+    return dates.sort((a, b) => moment(b).valueOf() - moment(a).valueOf())[0];
+  }, [developWallContributionDetails]);
+
+  const [selectedWallDate, setSelectedWallDate] = useState<string | null>(() => getLatestWallDate());
+
+  useEffect(() => {
+    if (selectedWallDate == null && Object.keys(developWallContributionDetails).length > 0) {
+      const k = getLatestWallDate();
+      if (k) setSelectedWallDate(k);
+    }
+  }, [developWallContributionDetails, getLatestWallDate, selectedWallDate]);
 
   const poolCount = displayPool.length;
 
@@ -325,6 +422,80 @@ function DevelopPage() {
 
   const hasBases = learnBases.length > 0;
 
+  const renderDevelopPoolRow = (row: DisplayRow, poolIndex: number) => {
+    const b = baseMeta.get(row.baseDocId);
+    const title = (row.baseTitle || (b?.title || '').trim() || String(row.baseDocId));
+    const doneToday = !!row.todayGoalsMet && rowHasDailyGoal(row);
+    return (
+      <div
+        key={`viz-${poolIndex}-${row.baseDocId}-${row.branch}`}
+        style={{
+          padding: isMobile ? 12 : 14,
+          borderRadius: 12,
+          border: `1px solid ${doneToday ? themeStyles.primary : themeStyles.border}`,
+          background: doneToday
+            ? (theme === 'dark' ? 'rgba(34, 197, 94, 0.08)' : 'rgba(22, 163, 74, 0.06)')
+            : (theme === 'dark' ? 'rgba(0,0,0,0.22)' : '#f9fafb'),
+          opacity: doneToday ? 0.92 : 1,
+        }}
+      >
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: themeStyles.accent }}>
+              #
+              {poolIndex + 1}
+            </span>
+            {doneToday ? (
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color: themeStyles.primary,
+                  padding: '2px 6px',
+                  borderRadius: 6,
+                  border: `1px solid ${themeStyles.primary}`,
+                  background: theme === 'dark' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(22, 163, 74, 0.1)',
+                }}
+              >
+                {i18n('Develop row today goals met')}
+              </span>
+            ) : null}
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: themeStyles.textPrimary, lineHeight: 1.3 }}>
+            {title}
+          </div>
+          <div style={{ fontSize: 11, color: themeStyles.textSecondary, marginTop: 2 }}>
+            {i18n('Develop branch')}
+            :
+            {' '}
+            <span style={{ color: themeStyles.accent, fontWeight: 600 }}>{row.branch}</span>
+          </div>
+        </div>
+        <MiniProgress
+          label={i18n('Develop today nodes')}
+          cur={row.todayNodes}
+          goal={row.dailyNodeGoal}
+          theme={theme}
+          themeStyles={themeStyles}
+        />
+        <MiniProgress
+          label={i18n('Develop today cards')}
+          cur={row.todayCards}
+          goal={row.dailyCardGoal}
+          theme={theme}
+          themeStyles={themeStyles}
+        />
+        <MiniProgress
+          label={i18n('Develop today problems')}
+          cur={row.todayProblems}
+          goal={row.dailyProblemGoal}
+          theme={theme}
+          themeStyles={themeStyles}
+        />
+      </div>
+    );
+  };
+
   const btnRowStyle = {
     display: 'flex',
     gap: 10,
@@ -357,14 +528,242 @@ function DevelopPage() {
     boxShadow: poolCount ? `0 4px 14px ${themeStyles.primaryGlow}` : 'none',
   };
 
+  const leftSidebarPx = isMobile ? 0 : (leftSidebarOpen ? sidebarWidth : collapsedWidth);
+  const rightSidebarPx = isMobile ? 0 : (rightSidebarOpen ? sidebarWidth : collapsedWidth);
+  /** Symmetric flex slots so the main column stays horizontally centered when only one sidebar is expanded. */
+  const desktopSidebarSlotPx = isMobile ? 0 : Math.max(leftSidebarPx, rightSidebarPx);
+
   return (
+    <>
     <div style={{
-      minHeight: '100vh',
+      minHeight: isMobile ? '100dvh' : '100vh',
       background: themeStyles.bgPage,
       fontFamily: '"SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-      padding: '24px 16px 48px',
+      display: 'flex',
+      flexDirection: 'row',
+      position: 'relative',
+      boxSizing: 'border-box',
+      width: '100vw',
+      maxWidth: '100vw',
+      marginLeft: 'calc(50% - 50vw)',
+      marginRight: 'calc(50% - 50vw)',
     }}>
-      <div style={{ maxWidth: 880, margin: '0 auto' }}>
+      {isMobile && leftSidebarOpen && (
+        <div
+          role="presentation"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1001,
+            backgroundColor: 'rgba(0,0,0,0.4)',
+          }}
+          onClick={() => setLeftSidebarOpen(false)}
+        />
+      )}
+      {isMobile && rightSidebarOpen && (
+        <div
+          role="presentation"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1001,
+            backgroundColor: 'rgba(0,0,0,0.4)',
+          }}
+          onClick={() => setRightSidebarOpen(false)}
+        />
+      )}
+
+      {isMobile ? (
+        <aside style={{
+          position: 'fixed' as const,
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: '280px',
+          maxWidth: '85vw',
+          zIndex: 1002,
+          transform: leftSidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
+          transition: 'transform 0.2s ease',
+          boxShadow: leftSidebarOpen ? (theme === 'dark' ? '4px 0 16px rgba(0,0,0,0.4)' : '4px 0 16px rgba(0,0,0,0.1)') : 'none',
+          paddingTop: 'env(safe-area-inset-top, 0px)',
+          display: 'flex',
+          flexDirection: 'row',
+          background: themeStyles.bgSecondary,
+          borderRight: `1px solid ${themeStyles.border}`,
+          overflow: 'hidden',
+        }}
+        >
+          {leftSidebarOpen ? (
+            <div style={{
+              flex: 1,
+              padding: '12px 16px 20px',
+              overflowY: 'auto',
+              minWidth: 0,
+              WebkitOverflowScrolling: 'touch',
+            } as React.CSSProperties}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 12,
+                paddingBottom: 8,
+                borderBottom: `1px solid ${themeStyles.border}`,
+              }}>
+                <span style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: themeStyles.textSecondary,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}>
+                  {i18n('Develop sidebar completed today')}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setLeftSidebarOpen(false)}
+                  style={{
+                    padding: '8px 12px',
+                    minHeight: 44,
+                    fontSize: 12,
+                    background: 'transparent',
+                    border: `1px solid ${themeStyles.border}`,
+                    borderRadius: 6,
+                    color: themeStyles.textSecondary,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {i18n('Close')}
+                </button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {completedWithPoolIndex.length === 0 ? (
+                  <div style={{ fontSize: 13, color: themeStyles.textTertiary, fontStyle: 'italic', lineHeight: 1.45 }}>
+                    {i18n('Develop sidebar no completed')}
+                  </div>
+                ) : (
+                  completedWithPoolIndex.map(({ row, idx }) => renderDevelopPoolRow(row, idx))
+                )}
+              </div>
+            </div>
+          ) : null}
+        </aside>
+      ) : (
+        <div
+          style={{
+            flexShrink: 0,
+            alignSelf: 'stretch',
+            width: desktopSidebarSlotPx,
+            position: 'relative',
+            transition: 'width 0.25s ease',
+            boxSizing: 'border-box',
+          }}
+        >
+          <aside style={{
+            position: 'absolute' as const,
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: leftSidebarPx,
+            transition: 'width 0.25s ease',
+            boxSizing: 'border-box',
+            display: 'flex',
+            flexDirection: 'row',
+            background: themeStyles.bgSecondary,
+            borderRight: `1px solid ${themeStyles.border}`,
+            overflow: 'hidden',
+          }}
+          >
+            {leftSidebarOpen ? (
+              <div style={{
+                flex: 1,
+                padding: '20px 16px',
+                overflowY: 'auto',
+                minWidth: 0,
+                WebkitOverflowScrolling: 'touch',
+              } as React.CSSProperties}>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: 12,
+                  paddingBottom: 8,
+                  borderBottom: `1px solid ${themeStyles.border}`,
+                }}>
+                  <span style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: themeStyles.textSecondary,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                  }}>
+                    {i18n('Develop sidebar completed today')}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setLeftSidebarOpen(false)}
+                    style={{
+                      padding: '4px 8px',
+                      fontSize: 12,
+                      background: 'transparent',
+                      border: `1px solid ${themeStyles.border}`,
+                      borderRadius: 6,
+                      color: themeStyles.textSecondary,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {completedWithPoolIndex.length === 0 ? (
+                    <div style={{ fontSize: 13, color: themeStyles.textTertiary, fontStyle: 'italic', lineHeight: 1.45 }}>
+                      {i18n('Develop sidebar no completed')}
+                    </div>
+                  ) : (
+                    completedWithPoolIndex.map(({ row, idx }) => renderDevelopPoolRow(row, idx))
+                  )}
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setLeftSidebarOpen(true)}
+                title={i18n('Develop sidebar completed today')}
+                style={{
+                  width: '100%',
+                  padding: '16px 0',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: 18,
+                  color: themeStyles.textSecondary,
+                  opacity: 0.7,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'opacity 0.2s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.7'; }}
+              >
+                →
+              </button>
+            )}
+          </aside>
+        </div>
+      )}
+
+      <main style={{
+        flex: 1,
+        minWidth: 0,
+        padding: isMobile
+          ? '24px max(12px, env(safe-area-inset-right, 0px)) max(32px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px))'
+          : '32px 24px 48px',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+      }}>
+        <div style={{ maxWidth: 1040, width: '100%', margin: '0 auto' }}>
         <div style={{
           background: themeStyles.bgCard,
           border: `1px solid ${themeStyles.border}`,
@@ -525,24 +924,29 @@ function DevelopPage() {
             {checkinSubmitting ? i18n('Saving...') : checkinButtonLabel}
           </button>
 
-          <h2 style={{ fontSize: 15, fontWeight: 600, color: themeStyles.textPrimary, margin: '8px 0 14px' }}>
+          <p style={{ fontSize: 12, color: themeStyles.textSecondary, margin: '16px 0 0', lineHeight: 1.5, textAlign: 'center' }}>
             {i18n('Develop progress overview')}
-          </h2>
+            {' · '}
+            <span style={{ color: themeStyles.textTertiary }}>{i18n('Develop sidebar completed today')}</span>
+            {' / '}
+            <span style={{ color: themeStyles.textTertiary }}>{i18n('Develop sidebar pending today')}</span>
+          </p>
           {poolCount > 0 ? (
-            <p style={{ fontSize: 12, color: themeStyles.textSecondary, margin: '-8px 0 14px', lineHeight: 1.5 }}>
+            <p style={{ fontSize: 12, color: themeStyles.textSecondary, margin: '8px 0 0', lineHeight: 1.5 }}>
               {i18n('Develop pool order hint')}
             </p>
           ) : null}
           {poolCount > 0 && pendingRunPool.length < displayPool.length ? (
-            <p style={{ fontSize: 12, color: themeStyles.accent, margin: '-4px 0 14px', lineHeight: 1.5 }}>
+            <p style={{ fontSize: 12, color: themeStyles.accent, margin: '4px 0 0', lineHeight: 1.5 }}>
               {i18n('Develop pool skip done hint')}
             </p>
           ) : null}
 
           {!hasBases ? (
-            <p style={{ color: themeStyles.textSecondary, fontSize: 14 }}>{i18n('Develop no bases')}</p>
+            <p style={{ color: themeStyles.textSecondary, fontSize: 14, marginTop: 16 }}>{i18n('Develop no bases')}</p>
           ) : poolCount === 0 ? (
             <div style={{
+              marginTop: 16,
               padding: 28,
               borderRadius: 14,
               border: `1px dashed ${themeStyles.border}`,
@@ -553,82 +957,340 @@ function DevelopPage() {
             }}>
               {i18n('Develop no pool hint')}
             </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {displayPool.map((row, idx) => {
-                const b = baseMeta.get(row.baseDocId);
-                const title = (row.baseTitle || (b?.title || '').trim() || String(row.baseDocId));
+          ) : null}
 
-                const doneToday = !!row.todayGoalsMet && rowHasDailyGoal(row);
-                return (
-                  <div
-                    key={`viz-${idx}-${row.baseDocId}-${row.branch}`}
-                    style={{
-                      padding: 16,
-                      borderRadius: 14,
-                      border: `1px solid ${doneToday ? themeStyles.primary : themeStyles.border}`,
-                      background: doneToday
-                        ? (theme === 'dark' ? 'rgba(34, 197, 94, 0.08)' : 'rgba(22, 163, 74, 0.06)')
-                        : (theme === 'dark' ? 'rgba(0,0,0,0.22)' : '#f9fafb'),
-                      opacity: doneToday ? 0.92 : 1,
-                    }}
-                  >
-                    <div style={{ marginBottom: 12 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: themeStyles.accent }}>
-                          #{idx + 1}
-                        </span>
-                        {doneToday ? (
-                          <span
-                            style={{
-                              fontSize: 11,
-                              fontWeight: 700,
-                              color: themeStyles.primary,
-                              padding: '2px 8px',
-                              borderRadius: 8,
-                              border: `1px solid ${themeStyles.primary}`,
-                              background: theme === 'dark' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(22, 163, 74, 0.1)',
-                            }}
-                          >
-                            {i18n('Develop row today goals met')}
+          <div style={{
+            marginTop: 8,
+            marginBottom: 8,
+            paddingTop: 20,
+            borderTop: `1px solid ${themeStyles.border}`,
+          }}
+          >
+            <h2 style={{ fontSize: 15, fontWeight: 600, color: themeStyles.textPrimary, margin: '0 0 10px' }}>
+              {i18n('Develop domain contribution wall')}
+            </h2>
+            <ContributionWall
+              contributions={developWallContributions}
+              theme={theme}
+              contributionDetails={developWallContributionDetails as Record<string, ContributionDetail[]>}
+              onDateClick={(d) => setSelectedWallDate(d)}
+              pastYearCaption={i18n('Develop domain contribution wall caption')}
+              compact
+            />
+            {selectedWallDate && developWallContributionDetails[selectedWallDate]?.[0] ? (
+              <div style={{
+                marginTop: 18,
+                padding: 16,
+                background: themeStyles.bgSecondary,
+                borderRadius: 10,
+                border: `1px solid ${themeStyles.border}`,
+              }}
+              >
+                <h3 style={{ fontSize: 14, fontWeight: 700, color: themeStyles.textPrimary, margin: '0 0 12px' }}>
+                  {i18n('Contributions on {0}', moment(selectedWallDate).format('YYYY-MM-DD'))}
+                </h3>
+                {(() => {
+                  const row = developWallContributionDetails[selectedWallDate]![0]!;
+                  const hasCounts = row.nodes > 0 || row.cards > 0 || row.problems > 0;
+                  return (
+                    <>
+                      {row.checkedIn ? (
+                        <div style={{
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: themeStyles.primary,
+                          marginBottom: 10,
+                        }}
+                        >
+                          {i18n('Develop wall checked in')}
+                        </div>
+                      ) : null}
+                      <div style={{
+                        display: 'flex',
+                        gap: 16,
+                        flexWrap: 'wrap',
+                        fontSize: 13,
+                        color: themeStyles.textSecondary,
+                        marginBottom: 12,
+                      }}
+                      >
+                        {row.nodes > 0 ? (
+                          <span>
+                            <span style={{ color: themeStyles.statNode, fontWeight: 700 }}>{row.nodes}</span>
+                            {' '}
+                            {i18n('nodes')}
                           </span>
                         ) : null}
+                        {row.cards > 0 ? (
+                          <span>
+                            <span style={{ color: themeStyles.statCard, fontWeight: 700 }}>{row.cards}</span>
+                            {' '}
+                            {i18n('cards')}
+                          </span>
+                        ) : null}
+                        {row.problems > 0 ? (
+                          <span>
+                            <span style={{ color: themeStyles.statProblem, fontWeight: 700 }}>{row.problems}</span>
+                            {' '}
+                            {i18n('problems')}
+                          </span>
+                        ) : null}
+                        {!hasCounts && !row.checkedIn ? (
+                          <span style={{ color: themeStyles.textTertiary }}>{i18n('No contributions')}</span>
+                        ) : null}
+                        {!hasCounts && row.checkedIn ? (
+                          <span style={{ color: themeStyles.textTertiary }}>{i18n('Develop wall checkin only saves')}</span>
+                        ) : null}
                       </div>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: themeStyles.textPrimary }}>
-                        {title}
+                      <div style={{ fontSize: 13, fontWeight: 600, color: themeStyles.textPrimary, marginBottom: 8 }}>
+                        {i18n('Develop wall records')}
                       </div>
-                      <div style={{ fontSize: 12, color: themeStyles.textSecondary, marginTop: 2 }}>
-                        {i18n('Develop branch')}: <span style={{ color: themeStyles.accent, fontWeight: 600 }}>{row.branch}</span>
-                      </div>
-                    </div>
-                    <MiniProgress
-                      label={i18n('Develop today nodes')}
-                      cur={row.todayNodes}
-                      goal={row.dailyNodeGoal}
-                      theme={theme}
-                      themeStyles={themeStyles}
-                    />
-                    <MiniProgress
-                      label={i18n('Develop today cards')}
-                      cur={row.todayCards}
-                      goal={row.dailyCardGoal}
-                      theme={theme}
-                      themeStyles={themeStyles}
-                    />
-                    <MiniProgress
-                      label={i18n('Develop today problems')}
-                      cur={row.todayProblems}
-                      goal={row.dailyProblemGoal}
-                      theme={theme}
-                      themeStyles={themeStyles}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                      {row.records && row.records.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          {row.records.map((rec) => (
+                            <div
+                              key={rec.recordId}
+                              style={{
+                                padding: '10px 12px',
+                                borderRadius: 8,
+                                border: `1px solid ${themeStyles.border}`,
+                                background: themeStyles.bgCard,
+                              }}
+                            >
+                              <a
+                                href={rec.recordUrl}
+                                style={{ fontWeight: 600, color: themeStyles.accent, textDecoration: 'none', fontSize: 13 }}
+                              >
+                                {selectedWallDate
+                                  ? (rec.timeUtc
+                                      ? `${moment(selectedWallDate).format('YYYY-MM-DD')} ${rec.timeUtc} UTC`
+                                      : `${moment(selectedWallDate).format('YYYY-MM-DD')} UTC`)
+                                  : (rec.timeUtc ? `${rec.timeUtc} UTC` : '')}
+                              </a>
+                              <ul style={{
+                                margin: '8px 0 0',
+                                paddingLeft: 18,
+                                fontSize: 12,
+                                color: themeStyles.textSecondary,
+                                lineHeight: 1.45,
+                              }}
+                              >
+                                {rec.summaryLines.map((line, li) => (
+                                  <li key={li} style={{ marginBottom: 2 }}>{line}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 12, color: themeStyles.textTertiary }}>{i18n('Develop wall no records')}</div>
+                      )}
+                    </>
+                  );
+                })()}
+                <button
+                  type="button"
+                  onClick={() => setSelectedWallDate(null)}
+                  style={{
+                    marginTop: 14,
+                    padding: '6px 12px',
+                    fontSize: 12,
+                    borderRadius: 8,
+                    border: `1px solid ${themeStyles.border}`,
+                    background: themeStyles.bgCard,
+                    color: themeStyles.textSecondary,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {i18n('Close')}
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
-      </div>
+        </div>
+      </main>
+
+      {isMobile ? (
+        <aside style={{
+          position: 'fixed' as const,
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: '280px',
+          maxWidth: '85vw',
+          zIndex: 1002,
+          transform: rightSidebarOpen ? 'translateX(0)' : 'translateX(100%)',
+          transition: 'transform 0.2s ease',
+          boxShadow: rightSidebarOpen ? (theme === 'dark' ? '-4px 0 16px rgba(0,0,0,0.4)' : '-4px 0 16px rgba(0,0,0,0.1)') : 'none',
+          paddingTop: 'env(safe-area-inset-top, 0px)',
+          display: 'flex',
+          flexDirection: 'row',
+          background: themeStyles.bgCard,
+          borderLeft: `1px solid ${themeStyles.border}`,
+          overflow: 'hidden',
+        }}
+        >
+          {rightSidebarOpen ? (
+            <div style={{
+              flex: 1,
+              padding: '12px 16px 20px',
+              overflowY: 'auto',
+              minWidth: 0,
+              WebkitOverflowScrolling: 'touch',
+            } as React.CSSProperties}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 12,
+                paddingBottom: 8,
+                borderBottom: `1px solid ${themeStyles.border}`,
+              }}>
+                <span style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: themeStyles.textSecondary,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}>
+                  {i18n('Develop sidebar pending today')}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setRightSidebarOpen(false)}
+                  style={{
+                    padding: '8px 12px',
+                    minHeight: 44,
+                    fontSize: 12,
+                    background: 'transparent',
+                    border: `1px solid ${themeStyles.border}`,
+                    borderRadius: 6,
+                    color: themeStyles.textSecondary,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {i18n('Close')}
+                </button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {pendingWithPoolIndex.length === 0 ? (
+                  <div style={{ fontSize: 13, color: themeStyles.textTertiary, fontStyle: 'italic', lineHeight: 1.45 }}>
+                    {i18n('Develop sidebar no pending')}
+                  </div>
+                ) : (
+                  pendingWithPoolIndex.map(({ row, idx }) => renderDevelopPoolRow(row, idx))
+                )}
+              </div>
+            </div>
+          ) : null}
+        </aside>
+      ) : (
+        <div
+          style={{
+            flexShrink: 0,
+            alignSelf: 'stretch',
+            width: desktopSidebarSlotPx,
+            position: 'relative',
+            transition: 'width 0.25s ease',
+            boxSizing: 'border-box',
+          }}
+        >
+          <aside style={{
+            position: 'absolute' as const,
+            right: 0,
+            top: 0,
+            bottom: 0,
+            width: rightSidebarPx,
+            transition: 'width 0.25s ease',
+            boxSizing: 'border-box',
+            display: 'flex',
+            flexDirection: 'row',
+            background: themeStyles.bgCard,
+            borderLeft: `1px solid ${themeStyles.border}`,
+            overflow: 'hidden',
+          }}
+          >
+            {rightSidebarOpen ? (
+              <div style={{
+                flex: 1,
+                padding: '20px 16px',
+                overflowY: 'auto',
+                minWidth: 0,
+                WebkitOverflowScrolling: 'touch',
+              } as React.CSSProperties}>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: 12,
+                  paddingBottom: 8,
+                  borderBottom: `1px solid ${themeStyles.border}`,
+                }}>
+                  <span style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: themeStyles.textSecondary,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                  }}>
+                    {i18n('Develop sidebar pending today')}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setRightSidebarOpen(false)}
+                    style={{
+                      padding: '4px 8px',
+                      fontSize: 12,
+                      background: 'transparent',
+                      border: `1px solid ${themeStyles.border}`,
+                      borderRadius: 6,
+                      color: themeStyles.textSecondary,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {pendingWithPoolIndex.length === 0 ? (
+                    <div style={{ fontSize: 13, color: themeStyles.textTertiary, fontStyle: 'italic', lineHeight: 1.45 }}>
+                      {i18n('Develop sidebar no pending')}
+                    </div>
+                  ) : (
+                    pendingWithPoolIndex.map(({ row, idx }) => renderDevelopPoolRow(row, idx))
+                  )}
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setRightSidebarOpen(true)}
+                title={i18n('Develop sidebar pending today')}
+                style={{
+                  width: '100%',
+                  padding: '16px 0',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: 18,
+                  color: themeStyles.textSecondary,
+                  opacity: 0.7,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'opacity 0.2s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.7'; }}
+              >
+                ←
+              </button>
+            )}
+          </aside>
+        </div>
+      )}
+    </div>
 
       {editModalOpen && (
         <div
@@ -867,7 +1529,7 @@ function DevelopPage() {
         </div>
       )}
 
-    </div>
+    </>
   );
 }
 

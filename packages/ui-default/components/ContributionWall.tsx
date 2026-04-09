@@ -25,9 +25,18 @@ export interface ContributionWallProps {
   contributionDetails: Record<string, ContributionDetail[]>;
   onDateClick?: (date: string) => void;
   compact?: boolean;
+  /** When set, replaces the default “contributions in the past year” line above the canvas. */
+  pastYearCaption?: string;
 }
 
-export function ContributionWall({ contributions, theme, contributionDetails, onDateClick, compact = false }: ContributionWallProps) {
+export function ContributionWall({
+  contributions,
+  theme,
+  contributionDetails,
+  onDateClick,
+  compact = false,
+  pastYearCaption,
+}: ContributionWallProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const themeColors = useMemo(() => {
@@ -169,7 +178,7 @@ export function ContributionWall({ contributions, theme, contributionDetails, on
   return (
     <div style={{ padding }}>
       <div style={{ marginBottom: compact ? '6px' : '10px', fontSize: compact ? '12px' : '14px', color: themeColors.textSecondary }}>
-        {i18n('Contributions in the past year')}
+        {pastYearCaption ?? i18n('Contributions in the past year')}
       </div>
       <div style={{ position: 'relative', display: 'inline-block' }}>
         <canvas ref={canvasRef} style={{ border: `1px solid ${themeColors.border}`, borderRadius: '4px' }} />
