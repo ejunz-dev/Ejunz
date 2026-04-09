@@ -16,6 +16,7 @@ import { BaseModel, CardModel } from '../model/base';
 import RecordModel, { type RecordDoc, type RecordProblemState } from '../model/record';
 import SessionModel, { type SessionDoc } from '../model/session';
 import user from '../model/user';
+import { buildDevelopRecordDetailAugment } from '../lib/developRecordSummarize';
 import {
     deriveSessionRecordType,
     formatRecordProgressInSession,
@@ -428,36 +429,6 @@ class RecordListConnectionHandler extends ConnectionHandler {
     async cleanup() {
         this.queue.clear();
     }
-}
-
-function buildDevelopRecordDetailAugment(
-    rdoc: RecordDoc,
-    translate: (k: string) => string,
-): { developChangeRows: Array<{ opLabel: string; detail: string }>; developCountSummaries: string[] } {
-    const developChangeRows: Array<{ opLabel: string; detail: string }> = [];
-    const developCountSummaries: string[] = [];
-    if (rdoc.recordKind === 'develop_save' && rdoc.developMeta?.changeLines?.length) {
-        for (const line of rdoc.developMeta.changeLines) {
-            developChangeRows.push({
-                opLabel: translate(`record_develop_op_${line.op}`),
-                detail: line.label || '',
-            });
-        }
-    } else if (rdoc.recordKind === 'develop_save' && rdoc.developMeta) {
-        const m = rdoc.developMeta;
-        const add = (n: number, key: string) => {
-            if (n > 0) developCountSummaries.push(translate(key).replace(/\{0\}/g, String(n)));
-        };
-        add(m.nodeCreates, 'record_develop_count_node_create');
-        add(m.nodeUpdates, 'record_develop_count_node_update');
-        add(m.nodeDeletes, 'record_develop_count_node_delete');
-        add(m.cardCreates, 'record_develop_count_card_create');
-        add(m.cardUpdates, 'record_develop_count_card_update');
-        add(m.cardDeletes, 'record_develop_count_card_delete');
-        add(m.edgeCreates, 'record_develop_count_edge_create');
-        add(m.edgeDeletes, 'record_develop_count_edge_delete');
-    }
-    return { developChangeRows, developCountSummaries };
 }
 
 class RecordDetailHandler extends Handler {

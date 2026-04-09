@@ -589,6 +589,10 @@ develop: Develop
 'Develop goal unset': —
 'Develop no pool hint': No entries yet. Tap Edit to add bases, branches, and daily goals.
 'Develop progress overview': Goals & today’s progress
+'Develop sidebar completed today': Completed today
+'Develop sidebar pending today': Pending today
+'Develop sidebar no completed': No base has completed all of today’s goals yet.
+'Develop sidebar no pending': Nothing pending in the pool for today.
 'Develop goal cards': Card goal
 'Develop goal nodes': Node goal
 'Develop goal problems': Problem goal
@@ -643,6 +647,13 @@ develop_session_history_back: Back to Develop
 develop_session_history_hint_finished: This develop session has been settled. Save records from that run are listed below.
 develop_session_history_detail_title: Save records (by batch)
 session_develop_list_title: Develop sessions (live)
+'Develop domain contribution wall': Develop contribution (this domain)
+'Develop domain contribution wall caption': Saves counted toward daily goals in this domain (UTC). Darker cells mean more edits; dots may also mark check-ins or editor sessions with no saves yet.
+'Develop wall checked in': Checked in today’s develop goals for this domain.
+'Develop wall records': Editor save records for this day (UTC)
+'Develop wall no records': No develop save records for this day.
+'Develop session': Session
+'Develop wall checkin only saves': Check-in only — no branch save counts recorded for this day.
 Less: Less
 lesson_history_col_attempts: Attempts
 lesson_history_col_correct: Correct answer

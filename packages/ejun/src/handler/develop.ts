@@ -1,4 +1,5 @@
 import type { Context } from '../context';
+import moment from 'moment-timezone';
 import { ObjectId } from 'mongodb';
 import { Handler, query, Types } from '../service/server';
 import { PRIV, PERM } from '../model/builtin';
@@ -18,6 +19,7 @@ import {
     normalizeDevelopPool,
     type DevelopPoolEntryWire,
 } from '../lib/developPoolShared';
+import { buildDevelopDomainWallPayload } from '../lib/developDomainWall';
 import { buildTodayDevelopResumeFields, clearDevelopSessionsAfterPoolChange } from '../lib/developSessionResume';
 import {
     deriveSessionRecordType,
@@ -247,6 +249,20 @@ class DevelopHandler extends Handler {
             },
         );
 
+        const sinceWallYmd = moment.utc().subtract(364, 'days').format('YYYY-MM-DD');
+        const domainNameWall = (this as any).domain?.name || finalDomainId;
+        const developWall = await buildDevelopDomainWallPayload(
+            this.ctx.db.db,
+            finalDomainId,
+            domainNameWall,
+            this.user._id,
+            developActivityDates,
+            sinceWallYmd,
+            date,
+            (name, kwargs) => this.url(name, kwargs as any),
+            (key) => this.translate(key),
+        );
+
         this.response.template = 'develop.html';
         this.response.body = {
             domainId: finalDomainId,
@@ -259,6 +275,8 @@ class DevelopHandler extends Handler {
             developAllGoalsMet,
             todayDevelopResumableSessionId: resume.todayDevelopResumableSessionId ?? '',
             todayDevelopResumeUrl: resume.todayDevelopResumeUrl ?? '',
+            developWallContributions: developWall.developWallContributions,
+            developWallContributionDetails: developWall.developWallContributionDetails,
         };
     }
 
