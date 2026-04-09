@@ -799,7 +799,7 @@ session_col_position: Card / node
 session_col_progress: Progress
 session_col_records: Records
 session_col_session_kind: Type
-session_col_record_type: Practice type
+session_col_record_type: Session type
 session_col_route: Route
 session_col_started_at: Started at
 session_domain: Learn live
@@ -808,7 +808,7 @@ session_learn_empty_filter: No sessions match the filter.
 session_learn_empty: No recent learn activity in this domain.
 session_learn_list_title: Learn sessions (live)
 session_kind_develop: Develop
-session_kind_agent: Agent chat
+session_kind_agent: Agent
 session_kind_learn: Learn
 session_main: Session
 session_record_type_daily: Daily practice
@@ -816,7 +816,7 @@ session_record_type_other: Other
 session_record_type_single_card: Single-card practice
 session_record_type_single_node: Single-node practice
 session_record_type_develop: Develop editor
-session_record_type_agent: Agent chat
+session_record_type_agent: Chat
 session_status_abandoned: Abandoned
 session_status_active: Active
 session_status_detached: Offline

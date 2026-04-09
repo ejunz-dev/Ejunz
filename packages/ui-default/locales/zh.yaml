@@ -1203,7 +1203,7 @@ session_col_position: 卡片 / 节点
 session_col_progress: 进度
 session_col_records: 记录
 session_col_session_kind: 类型
-session_col_record_type: 练习类型
+session_col_record_type: 会话类型
 session_col_route: 页面
 session_col_started_at: 开始时间
 session_domain: 会话
@@ -1212,7 +1212,7 @@ session_learn_empty_filter: 没有符合条件的会话。
 session_learn_empty: 当前域内暂无近期学习活动。
 session_learn_list_title: 学习会话（实时）
 session_kind_develop: 开发
-session_kind_agent: 智能体对话
+session_kind_agent: 智能体
 session_kind_learn: 学习
 session_main: 会话
 session_record_type_daily: 每日练习
@@ -1220,7 +1220,7 @@ session_record_type_other: 其他
 session_record_type_single_card: 单卡片练习
 session_record_type_single_node: 单节点练习
 session_record_type_develop: 开发编辑
-session_record_type_agent: 智能体对话
+session_record_type_agent: 对话
 session_status_abandoned: 已放弃
 session_status_active: 在线
 session_status_detached: 离线
