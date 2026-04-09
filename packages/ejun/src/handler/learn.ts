@@ -1914,25 +1914,6 @@ interface BaseNodeWithCards {
 }
 
 class LearnHandler extends Handler {
-    async after(domainId: string) {
-        if (this.request.json || !this.response.template) return;
-        
-        this.response.body.overrideNav = [
-            {
-                name: 'homepage',
-                args: {},
-                displayName: this.translate('Home'),
-                checker: () => true,
-            },
-            {
-                name: 'learn_sections',
-                args: {},
-                displayName: this.translate('Sections'),
-                checker: () => true,
-            },
-        ];
-    }
-
     async post(domainId: string) {
         if (this.request.path.includes('/base')) {
             return this.postSetBase(domainId);
@@ -2549,31 +2530,6 @@ class LearnHandler extends Handler {
 }
 
 class LearnEditHandler extends Handler {
-    async after(domainId: string) {
-        if (this.request.json || !this.response.template) return;
-        
-        this.response.body.overrideNav = [
-            {
-                name: 'homepage',
-                args: {},
-                displayName: this.translate('Home'),
-                checker: () => true,
-            },
-            {
-                name: 'learn',
-                args: {},
-                displayName: this.translate('Learn'),
-                checker: () => true,
-            },
-            {
-                name: 'learn_sections',
-                args: {},
-                displayName: this.translate('Sections'),
-                checker: () => true,
-            },
-        ];
-    }
-
     async get(domainId: string) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
         const base = await requireLearnPageBase(finalDomainId, this.user._id, this.user.priv);
@@ -2890,25 +2846,6 @@ async function tryLessonSpaSnapshotForHandler(
 }
 
 class LessonHandler extends Handler {
-    async after(domainId: string) {
-        if (this.request.json || !this.response.template) return;
-        
-        this.response.body.overrideNav = [
-            {
-                name: 'homepage',
-                args: {},
-                displayName: this.translate('Home'),
-                checker: () => true,
-            },
-            {
-                name: 'learn',
-                args: {},
-                displayName: this.translate('Learn'),
-                checker: () => true,
-            },
-        ];
-    }
-
     async post(domainId: string) {
         if (this.request.path.endsWith('/pass')) {
             return this.postPass(domainId);
@@ -4856,14 +4793,6 @@ class LessonHandler extends Handler {
 }
 
 class LessonNodeResultHandler extends Handler {
-    async after(domainId: string) {
-        if (this.request.json || !this.response.template) return;
-        this.response.body.overrideNav = [
-            { name: 'homepage', args: {}, displayName: this.translate('Home'), checker: () => true },
-            { name: 'learn', args: {}, displayName: this.translate('Learn'), checker: () => true },
-        ];
-    }
-
     async get(domainId: string) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
         const nodeId = this.request.query?.nodeId as string | undefined;
@@ -5004,39 +4933,6 @@ class LessonNodeResultHandler extends Handler {
 }
 
 class LearnSectionEditHandler extends Handler {
-    async after(domainId: string) {
-        if (this.request.json || !this.response.template) return;
-        
-        const uidParam = this.request.query?.uid;
-        const uid = uidParam ? parseInt(String(uidParam), 10) : this.user._id;
-        this.response.body.overrideNav = [
-            {
-                name: 'homepage',
-                args: {},
-                displayName: this.translate('Home'),
-                checker: () => true,
-            },
-            {
-                name: 'learn',
-                args: {},
-                displayName: this.translate('Learn'),
-                checker: () => true,
-            },
-            {
-                name: 'learn_sections',
-                args: {},
-                displayName: this.translate('Sections'),
-                checker: () => true,
-            },
-            {
-                name: 'learn_section_edit',
-                args: { query: { uid: String(uid) } },
-                displayName: this.translate('Section Order'),
-                checker: () => true,
-            },
-        ];
-    }
-
     async post(domainId: string) {
         return this.postSaveOrder(domainId);
     }
@@ -5255,37 +5151,6 @@ class LearnSectionEditHandler extends Handler {
 }
 
 class LearnSectionsHandler extends Handler {
-    async after(domainId: string) {
-        if (this.request.json || !this.response.template) return;
-        
-        this.response.body.overrideNav = [
-            {
-                name: 'homepage',
-                args: {},
-                displayName: this.translate('Home'),
-                checker: () => true,
-            },
-            {
-                name: 'learn',
-                args: {},
-                displayName: this.translate('Learn'),
-                checker: () => true,
-            },
-            {
-                name: 'learn_sections',
-                args: {},
-                displayName: this.translate('Sections'),
-                checker: () => true,
-            },
-            {
-                name: 'learn_section_edit',
-                args: {},
-                displayName: this.translate('Section Order'),
-                checker: () => true,
-            },
-        ];
-    }
-
     async get(domainId: string) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
         const { selectedBase: baseSec } = await getLearnPageBaseSelection(finalDomainId, this.user._id, this.user.priv);
