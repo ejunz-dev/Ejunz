@@ -921,8 +921,8 @@ lesson_history_col_stem: 题目
 lesson_history_col_time: 用时
 lesson_session_history_back: 返回学习首页
 lesson_session_history_detail_title: 各卡片答题明细
-lesson_session_history_hint_finished: 本会话已结束，以下为该次练习的答题记录。
-lesson_session_history_hint: 该每日学习会话已超时，以下为该次练习的答题记录。
+lesson_session_history_hint_finished: 本会话已结束，以下为该次练习的记录。
+lesson_session_history_hint: 该每日学习会话已超时，以下为该次练习的记录。
 lesson_session_history_title: 学习会话（历史）
 Limit And Hint: 数据范围与提示
 Limitations: 限制
@@ -1055,21 +1055,21 @@ ranking: 排名
 Ranking: 排名
 Rating: 评分
 Recommended: 推荐
-record_back_record_list: 返回答题记录列表
+record_back_record_list: 返回记录列表
 record_back_sessions: 返回会话列表
 record_col_card: 卡片
 record_col_session_question_idx: 题号
 record_col_session_type: 会话类型
 record_col_session: 会话
-record_col_short: 答题记录
+record_col_short: 记录
 record_field_node: 节点
 record_field_session: 会话
-record_link_record_list: 答题记录
+record_link_record_list: 记录
 record_link_session_list: 学习会话
 record_main_empty_filter: 没有符合条件的记录。
-record_main_empty: 该时间范围内暂无答题记录。
-record_main_list_title: 各卡答题记录（实时）
-record_main: 答题记录
+record_main_empty: 该时间范围内暂无记录。
+record_main_list_title: 各卡记录（实时）
+record_main: 记录
 record_develop_changes_empty: 暂无明细。
 record_develop_changes_summary_hint: 以下为按类型汇总条数（旧记录可能没有逐条说明）。
 record_develop_changes_title: 本次保存的改动
@@ -1091,7 +1091,7 @@ record_develop_op_node_delete: 删除节点
 record_develop_op_node_update: 更新节点
 record_no_problems: 暂无子题条目。
 record_open_detail: 查看
-record_page_title: 答题记录
+record_page_title: 记录
 record_problems_title: 子题状态
 record_status_correct: 正确
 record_status_pending: 未答
