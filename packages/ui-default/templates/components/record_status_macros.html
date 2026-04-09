@@ -3,7 +3,7 @@
   <div class="col--status__text">
     <span class="icon record-status--icon {{ model.builtin.STATUS_CODES[rdoc.status] }}"></span>
     <a 
-      href="{{ url('round_detail', rid=rdoc[rid_key], domainId=rdoc.domainId) if allDomain else url('round_detail', rid=rdoc[rid_key]) }}"
+      href="{{ url('record_detail', rid=rdoc[rid_key], domainId=rdoc.domainId) if allDomain else url('record_detail', rid=rdoc[rid_key]) }}"
       class="record-status--text {{ model.builtin.STATUS_CODES[rdoc.status] }}"
     >
       {% if typeof(rdoc['score']) == 'number' %}
@@ -25,7 +25,7 @@
   <div class="col--status__text">
     <span class="icon record-status--icon {{ model.builtin.STATUS_CODES[rdoc.status] }}"></span>
     <a 
-      href="{{ url('round_detail', rid=rdoc[rid_key], domainId=rdoc.domainId|default(handler.args.domainId)) }}"
+      href="{{ url('record_detail', rid=rdoc[rid_key], domainId=rdoc.domainId|default(handler.args.domainId)) }}"
       class="record-status--text {{ model.builtin.STATUS_CODES[rdoc.status] }}"
     >
       {% if typeof(rdoc['score']) == 'number' %}

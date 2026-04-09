@@ -6,10 +6,10 @@
   <div class="medium-9 columns collapsed">
     <div class="section">
       <div class="section__header">
-        <h1 class="section__title">{{ room.title or ('Room ' + room._id.toString().substring(0, 8)) }}</h1>
+        <h1 class="section__title">{{ chatSession.title or (_('session_chat_detail') + ' ' + chatSession._id.toString().substring(0, 8)) }}</h1>
         <div class="section__tools">
-          <a href="{{ url('room_domain', domainId=room.domainId) }}" class="button">
-            <span class="icon icon-back"></span> {{ _('Back to Rooms') }}
+          <a href="{{ url('session_chat_domain', domainId=chatSession.domainId) }}" class="button">
+            <span class="icon icon-back"></span> {{ _('session_chat_back_list') }}
           </a>
         </div>
       </div>
@@ -22,7 +22,7 @@
               <div class="section" style="margin-bottom: 20px; border: 1px solid #ddd; border-radius: 4px; padding: 15px;">
                 <div class="section__header">
                   <h3 class="section__title">
-                    <a href="{{ url('task_round_detail', domainId=r.domainId, rid=r._id) }}">
+                    <a href="{{ url('record_detail', domainId=r.domainId, rid=r._id) }}">
                       {{ _('Record') }} #{{ loop.index }}
                     </a>
                     {% if r.status == STATUS.STATUS_TASK_WAITING %}
@@ -42,7 +42,7 @@
                     {% endif %}
                   </h3>
                   <div class="section__tools">
-                    <a href="{{ url('task_round_detail', domainId=r.domainId, rid=r._id) }}" class="button compact">
+                    <a href="{{ url('record_detail', domainId=r.domainId, rid=r._id) }}" class="button compact">
                       <span class="icon icon-eye"></span> {{ _('View Details') }}
                     </a>
                   </div>
@@ -102,7 +102,7 @@
           </div>
         {% else %}
           <div class="typo">
-            <p class="text-gray">{{ _('No records in this room.') }}</p>
+            <p class="text-gray">{{ _('session_chat_no_records') }}</p>
           </div>
         {% endif %}
       </div>
@@ -115,13 +115,13 @@
       </div>
       <div class="section__body typo no-media">
         <dl class="large horizontal">
-          <dt>{{ _('Room ID') }}</dt>
-          <dd><code>{{ room._id.toString() }}</code></dd>
+          <dt>{{ _('session_chat_id_label') }}</dt>
+          <dd><code>{{ chatSession._id.toString() }}</code></dd>
           <dt>{{ _('Agent') }}</dt>
           <dd>
-            {% if room.agentId %}
-              <a href="{{ url('agent_detail', domainId=room.domainId, aid=room.agentId) }}">
-                {{ room.agentId }}
+            {% if chatSession.agentId %}
+              <a href="{{ url('agent_detail', domainId=chatSession.domainId, aid=chatSession.agentId) }}">
+                {{ chatSession.agentId }}
               </a>
             {% else %}
               <span class="text-gray">-</span>
@@ -129,45 +129,45 @@
           </dd>
           <dt>{{ _('Records') }}</dt>
           <dd>
-            <span class="badge">{{ (room.roundIds|length) if room.roundIds else 0 }}</span>
+            <span class="badge">{{ (chatSession.recordIds|length) if chatSession.recordIds else 0 }}</span>
           </dd>
           <dt>{{ _('Created At') }}</dt>
-          <dd>{{ datetimeSpan(room.createdAt, false)|safe if room.createdAt else datetimeSpan(room._id, false)|safe }}</dd>
+          <dd>{{ datetimeSpan(chatSession.createdAt, false)|safe if chatSession.createdAt else datetimeSpan(chatSession._id, false)|safe }}</dd>
           <dt>{{ _('Updated At') }}</dt>
-          <dd>{{ datetimeSpan(room.updatedAt, false)|safe if room.updatedAt else '-' }}</dd>
+          <dd>{{ datetimeSpan(chatSession.updatedAt, false)|safe if chatSession.updatedAt else '-' }}</dd>
         </dl>
       </div>
     </div>
-    {% if room.type == 'client' and room.status == 'active' %}
+    {% if chatSession.type == 'client' and chatSession.status == 'active' %}
       <div class="section side">
         <div class="section__header">
           <h1 class="section__title">{{ _('Actions') }}</h1>
         </div>
         <div class="section__body">
-          <a href="{{ url('room_chat', domainId=room.domainId, sid=room._id) }}" class="button primary" style="width: 100%; text-align: center;">
-            <span class="icon icon-comment"></span> {{ _('Enter Chat') }}
+          <a href="{{ url('session_chat_live', domainId=chatSession.domainId, sid=chatSession._id) }}" class="button primary" style="width: 100%; text-align: center;">
+            <span class="icon icon-comment"></span> {{ _('session_chat_enter') }}
           </a>
         </div>
       </div>
     {% endif %}
-    {% if room.uid == handler.user._id %}
+    {% if chatSession.uid == handler.user._id %}
       <div class="section side">
         <div class="section__header">
           <h1 class="section__title">{{ _('Actions') }}</h1>
         </div>
         <div class="section__body">
-          <form method="post" action="{{ url('room_detail', domainId=room.domainId, sid=room._id) }}">
+          <form method="post" action="{{ url('session_chat_detail', domainId=chatSession.domainId, sid=chatSession._id) }}">
             <div class="form__group">
               <label>
                 {{ _('Title') }}
-                <input name="title" type="text" class="textbox" value="{{ room.title or '' }}" placeholder="{{ _('Room title') }}">
+                <input name="title" type="text" class="textbox" value="{{ chatSession.title or '' }}" placeholder="{{ _('session_chat_title_placeholder') }}">
               </label>
             </div>
             <button type="submit" class="button primary">{{ _('Update Title') }}</button>
           </form>
-          <form method="post" action="{{ url('room_detail', domainId=room.domainId, sid=room._id) }}" style="margin-top: 15px;" onsubmit="return confirm('{{ _('Are you sure you want to delete this room?') }}');">
+          <form method="post" action="{{ url('session_chat_detail', domainId=chatSession.domainId, sid=chatSession._id) }}" style="margin-top: 15px;" onsubmit="return confirm('{{ _('session_chat_delete_confirm') }}');">
             <input type="hidden" name="operation" value="delete">
-            <button type="submit" name="operation" value="delete" class="button danger">{{ _('Delete Room') }}</button>
+            <button type="submit" name="operation" value="delete" class="button danger">{{ _('session_chat_delete') }}</button>
           </form>
         </div>
       </div>
@@ -175,4 +175,3 @@
   </div>
 </div>
 {% endblock %}
-

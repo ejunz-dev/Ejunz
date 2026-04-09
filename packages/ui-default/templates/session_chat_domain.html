@@ -1,14 +1,14 @@
-{% set page_name = "room_domain" %}
+{% set page_name = "session_chat_domain" %}
 {% extends "layout/basic.html" %}
 {% block content %}
 {{ set(
   UiContext, 'socketUrl',
-  "room-conn?domainId=" + handler.args.domainId
+  "session/chat-conn?domainId=" + handler.args.domainId
   + (("&aid=" + filterAid) if filterAid else "")
   + (("&uidOrName=" + filterUidOrName) if filterUidOrName else "")
   + (("&status=" + filterStatus) if filterStatus else "")
 ) }}
-{{ set(UiContext, 'sids', rooms.map(eval("s=>s._id.toString()"))) }}
+{{ set(UiContext, 'sids', chatSessions.map(eval("s=>s._id.toString()"))) }}
 <div class="row">
   <div class="medium-12 columns">
     <form method="get">
@@ -17,7 +17,7 @@
           <h1 class="section__title">{{ _('Filter') }}</h1>
           <div class="section__tools">
             <button type="submit" class="primary button"><span class="icon icon-filter"></span> {{ _('Filter') }}</button>
-            <a href="{{ url('room_domain') }}" class="button">{{ _('Reset') }}</a>
+            <a href="{{ url('session_chat_domain') }}" class="button">{{ _('Reset') }}</a>
           </div>
         </div>
         <div class="section__body">
@@ -51,17 +51,17 @@
     </form>
     <div class="section">
       <div class="section__header">
-        <h1 class="section__title">{{ _('Rooms') }}</h1>
+        <h1 class="section__title">{{ _('session_chat_domain') }}</h1>
       </div>
       <div class="section__body no-padding">
-      {% if not rooms.length %}
+      {% if not chatSessions.length %}
         {% if not filterAid and not filterUidOrName and not filterStatus %}
-        {{ nothing.render('Oh, there is no room!') }}
+        {{ nothing.render('session_chat_none') }}
         {% else %}
-        {{ nothing.render('Oh, there are no rooms that match the filter!') }}
+        {{ nothing.render('session_chat_none_filter') }}
         {% endif %}
       {% else %}
-        <table class="data-table room_domain__table">
+        <table class="data-table session_chat_domain__table">
           <colgroup>
             <col class="col--status">
             <col class="col--agent">
@@ -79,10 +79,10 @@
             </tr>
           </thead>
           <tbody>
-          {%- for room in rooms -%}
-            {% set udoc = udict[room['uid']] %}
-            {% set adoc = adict[room['agentId']] if room['agentId'] and adict else null %}
-            {% include 'room_domain_tr.html' %}
+          {%- for chatSession in chatSessions -%}
+            {% set udoc = udict[chatSession['uid']] %}
+            {% set adoc = adict[chatSession['agentId']] if chatSession['agentId'] and adict else null %}
+            {% include 'session_chat_domain_tr.html' %}
           {%- endfor -%}
           </tbody>
         </table>

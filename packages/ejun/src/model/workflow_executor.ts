@@ -10,6 +10,7 @@ import AgentModel from './agent';
 import message from './message';
 import ClientModel from './client';
 import { getAssignedTools } from '../handler/agent';
+import SessionModel from './session';
 
 const logger = new Logger('model/workflow_executor');
 
@@ -333,8 +334,7 @@ export class WorkflowExecutor {
             systemMessage = systemMessage + toolsInfo;
         }
 
-        const RoomModel = require('./room').default;
-        const roomId = await RoomModel.add(
+        const chatSessionId = await SessionModel.addAgentChatSession(
             context.domainId,
             agentId,
             0, // workflow 执行使用系统用户
@@ -343,15 +343,15 @@ export class WorkflowExecutor {
             undefined,
         );
 
-        const roundModel = require('./round').default;
-        const taskRoundId = await roundModel.addTask(
+        const recordModel = require('./record').default;
+        const taskRecordId = await recordModel.insertAgentTask(
             context.domainId,
             agentId,
             0, // workflow 执行使用系统用户
             prompt,
-            roomId,
+            chatSessionId,
         );
-        await RoomModel.addRound(context.domainId, roomId, taskRoundId);
+        await SessionModel.appendAgentChatSessionRecord(context.domainId, chatSessionId, taskRecordId);
 
         const contextData = {
             apiKey: (domainInfo as any)['apiKey'] || '',
@@ -369,7 +369,7 @@ export class WorkflowExecutor {
             systemMessage,
         };
 
-        await RoomModel.update(context.domainId, roomId, {
+        await SessionModel.updateAgentChatSession(context.domainId, chatSessionId, {
             context: contextData,
         });
 
@@ -377,8 +377,8 @@ export class WorkflowExecutor {
         const taskModel = require('./task').default;
         const taskData = {
             type: 'task',
-            roundId: taskRoundId,
-            roomId,
+            recordId: taskRecordId,
+            agentChatSessionId: chatSessionId,
             domainId: context.domainId,
             agentId: agentId,
             uid: 0, // workflow 执行使用系统用户
@@ -397,13 +397,13 @@ export class WorkflowExecutor {
         };
         logger.info(`Creating task for workflow:`, {
             type: taskData.type,
-            roundId: taskRoundId.toString(),
+            recordId: taskRecordId.toString(),
             agentId,
             domainId: context.domainId,
             workflowConfig: taskData.workflowConfig,
         });
         const taskId = await taskModel.add(taskData);
-        logger.info(`Task created successfully: taskId=${taskId.toString()}, roundId=${taskRoundId.toString()}, agentId=${agentId}`);
+        logger.info(`Task created successfully: taskId=${taskId.toString()}, recordId=${taskRecordId.toString()}, agentId=${agentId}`);
 
         // 等待任务完成
         return new Promise((resolve, reject) => {
@@ -423,7 +423,7 @@ export class WorkflowExecutor {
                 if (resolved) return;
                 
                 const status = rdoc.status;
-                logger.info(`Checking task status: ${status} for round ${rdoc._id.toString()}`);
+                logger.info(`Checking task status: ${status} for record ${rdoc._id.toString()}`);
                 
                 // 只检查最终状态：DELIVERED 或错误状态
                 const isComplete = status === STATUS.STATUS_TASK_DELIVERED 
@@ -442,16 +442,16 @@ export class WorkflowExecutor {
                     dispose();
                     clearInterval(pollInterval);
 
-                    const fullRound = await roundModel.get(context.domainId, taskRoundId);
-                    if (!fullRound) {
-                        logger.error(`Round ${taskRoundId.toString()} not found`);
-                        reject(new Error(`Round not found: ${taskRoundId.toString()}`));
+                    const fullRecordDoc = await recordModel.get(context.domainId, taskRecordId);
+                    if (!fullRecordDoc) {
+                        logger.error(`Record ${taskRecordId.toString()} not found`);
+                        reject(new Error(`Record not found: ${taskRecordId.toString()}`));
                         return;
                     }
 
                     // 获取最终消息
-                    if (fullRound.agentMessages && fullRound.agentMessages.length > 0) {
-                        const assistantMessages = fullRound.agentMessages.filter((m: any) => m.role === 'assistant');
+                    if (fullRecordDoc.agentMessages && fullRecordDoc.agentMessages.length > 0) {
+                        const assistantMessages = fullRecordDoc.agentMessages.filter((m: any) => m.role === 'assistant');
                         if (assistantMessages.length > 0) {
                             finalContent = assistantMessages[assistantMessages.length - 1].content || '';
                         }
@@ -491,8 +491,8 @@ export class WorkflowExecutor {
 
             // 监听任务完成事件
             const handler = async (rdoc: any) => {
-                if (rdoc._id.toString() === taskRoundId.toString()) {
-                    logger.info(`Round change event received for task ${taskRoundId.toString()}, status: ${rdoc.status}`);
+                if (rdoc._id.toString() === taskRecordId.toString()) {
+                    logger.info(`Record change event received for task ${taskRecordId.toString()}, status: ${rdoc.status}`);
                     await checkTaskComplete(rdoc);
                 }
             };
@@ -504,7 +504,7 @@ export class WorkflowExecutor {
                     return;
                 }
                 try {
-                    const rdoc = await roundModel.get(context.domainId, taskRoundId);
+                    const rdoc = await recordModel.get(context.domainId, taskRecordId);
                     if (rdoc) {
                         await checkTaskComplete(rdoc);
                     }
@@ -514,10 +514,10 @@ export class WorkflowExecutor {
             }, 2000);
 
             // 使用 ctx.on 来监听事件，它会返回一个 dispose 函数
-            const dispose = this.ctx.on('round/change' as any, handler);
+            const dispose = this.ctx.on('record/change' as any, handler);
             
             // 立即检查一次当前状态
-            roundModel.get(context.domainId, taskRoundId).then(rdoc => {
+            recordModel.get(context.domainId, taskRecordId).then(rdoc => {
                 if (rdoc) {
                     checkTaskComplete(rdoc);
                 }

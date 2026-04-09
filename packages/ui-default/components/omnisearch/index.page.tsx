@@ -1,7 +1,7 @@
 import { debounce } from 'lodash';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { STATUS_CODES } from 'vj/constant/round';
+import { STATUS_CODES } from 'vj/constant/record_status';
 import { AutoloadPage } from 'vj/misc/Page';
 import {
   api, i18n, request,

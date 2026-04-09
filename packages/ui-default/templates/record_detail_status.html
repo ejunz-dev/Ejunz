@@ -26,6 +26,59 @@
       <p class="text-gray">{{ _('record_develop_changes_empty') }}</p>
     {% endif %}
   </div>
+  {% elif rdoc.recordKind == 'agent' %}
+  <div class="section__header">
+    <h1 class="section__title">{{ _('Agent Task Record') }}</h1>
+    <div class="section__tools">
+      {% if adoc %}
+      <a href="{{ url('agent_chat', domainId=rdoc.domainId, aid=adoc.aid, query={'recordId': rdoc._id.toString()}) }}" class="button">
+        <span class="icon icon-comment"></span> {{ _('Continue Chat') }}
+      </a>
+      {% endif %}
+    </div>
+  </div>
+  <div class="section__body typo">
+    {% if rdoc.agentError %}
+    <div class="alert alert--error">
+      <strong>{{ _('Error') }}:</strong> {{ rdoc.agentError.message }}
+      {% if rdoc.agentError.code %}<br><small>{{ _('Code') }}: {{ rdoc.agentError.code }}</small>{% endif %}
+    </div>
+    {% endif %}
+    {% if rdoc.agentMessages and rdoc.agentMessages.length %}
+    <div class="chat-history" style="max-height: 600px; overflow-y: auto; border: 1px solid #ddd; padding: 15px; border-radius: 4px;">
+      {% for msg in rdoc.agentMessages %}
+      <div class="chat-message" style="margin-bottom: 15px; padding: 10px; background: {% if msg.role == 'user' %}#e3f2fd{% elif msg.role == 'assistant' %}#f5f5f5{% else %}#fff3e0{% endif %}; border-radius: 4px;">
+        <div style="font-weight: bold; margin-bottom: 5px; color: #666;">
+          {% if msg.role == 'user' %}<span class="icon icon-user"></span> {{ _('User') }}
+          {% elif msg.role == 'assistant' %}<span class="icon icon-bot"></span> {{ _('Assistant') }}
+          {% elif msg.role == 'tool' %}<span class="icon icon-tool"></span> {{ _('Tool') }}: {{ msg.toolName or 'Unknown' }}
+          {% endif %}
+          <small style="float: right;">{{ datetimeSpan(msg.timestamp)|safe if msg.timestamp else '' }}</small>
+        </div>
+        <div style="white-space: pre-wrap; word-wrap: break-word;">
+          {% if msg.role == 'tool' %}
+            <pre style="background: #fff; padding: 8px; border-radius: 3px; overflow-x: auto;"><code>{{ msg.content }}</code></pre>
+          {% elif msg.tool_calls %}
+            <div style="background: #fff; padding: 8px; border-radius: 3px;">
+              <strong>{{ _('Tool Call') }}:</strong>
+              {% for tool_call in msg.tool_calls %}
+              <div style="margin-top: 5px;"><code>{{ tool_call.function.name }}</code>
+                <pre style="margin-top: 5px; background: #f5f5f5; padding: 5px; border-radius: 3px;">{{ tool_call.function.arguments }}</pre>
+              </div>
+              {% endfor %}
+            </div>
+            {% if msg.content %}<div style="margin-top: 8px;">{{ msg.content|markdown|safe }}</div>{% endif %}
+          {% else %}
+            {{ msg.content|markdown|safe }}
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-gray">{{ _('No chat history available.') }}</p>
+    {% endif %}
+  </div>
   {% else %}
   <div class="section__header">
     <h1 class="section__title">

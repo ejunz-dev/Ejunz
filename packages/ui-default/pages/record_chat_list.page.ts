@@ -1,12 +1,11 @@
 import $ from 'jquery';
 import UserSelectAutoComplete from 'vj/components/autocomplete/UserSelectAutoComplete';
-import Notification from 'vj/components/notification';
 import { NamedPage } from 'vj/misc/Page';
-import { getAvailableLangs, request, tpl } from 'vj/utils';
+import 'vj/components/session_chat/session_chat.page.styl';
 
 let globalSock: any = null;
 
-const page = new NamedPage(['round_main', 'task_round_main'], async () => {
+const page = new NamedPage('session_chat_domain', async () => {
   const cleanupOldConnection = () => {
     if (globalSock) {
       try {
@@ -44,8 +43,13 @@ const page = new NamedPage(['round_main', 'task_round_main'], async () => {
     const dd = new DiffDOM();
 
     sock.onopen = () => {
-      if (UiContext.rids && UiContext.rids.length) {
-        sock.send(JSON.stringify({ rids: UiContext.rids }));
+      const sids = (UiContext.sids && UiContext.sids.length) 
+        ? UiContext.sids 
+        : Array.from($('.session_chat_domain__table tbody tr[data-sid]')).map((tr) => 
+            $(tr).attr('data-sid')
+          ).filter(Boolean);
+      if (sids.length) {
+        sock.send(JSON.stringify({ sids }));
       }
     };
     
@@ -61,8 +65,10 @@ const page = new NamedPage(['round_main', 'task_round_main'], async () => {
         if (!msg.html) return;
         const $newTr = $(msg.html);
         if (!$newTr.length) return;
-        const rid = $newTr.attr('data-rid');
-        const $oldTr = $(`.record_main__table tr[data-rid="${rid}"]`);
+        const sid = $newTr.attr('data-sid');
+        if (!sid) return;
+        const $tbody = $('.session_chat_domain__table tbody');
+        const $oldTr = $tbody.find(`tr[data-sid="${sid}"]`);
         if ($oldTr.length) {
           $oldTr.trigger('vjContentRemove');
           dd.apply($oldTr[0], dd.diff($oldTr[0], $newTr[0]));
@@ -72,8 +78,11 @@ const page = new NamedPage(['round_main', 'task_round_main'], async () => {
             || new URLSearchParams(window.location.search).get('nopush')) {
             return;
           }
-          $('.record_main__table tbody').prepend($newTr);
-          $('.record_main__table tbody tr:last').remove();
+          $tbody.prepend($newTr);
+          const $allRows = $tbody.find('tr');
+          if ($allRows.length > 20) {
+            $allRows.eq($allRows.length - 1).remove();
+          }
           $newTr.trigger('vjContentNew');
         }
       } catch (e) {
@@ -107,23 +116,11 @@ const page = new NamedPage(['round_main', 'task_round_main'], async () => {
     $(window).on('beforeunload', cleanup);
     $(window).on('pagehide', cleanup);
   }
+  
   UserSelectAutoComplete.getOrConstruct($('[name="uidOrName"]'), {
     clearDefaultValue: false,
   });
-  const langs = UiContext.domain.langs?.split(',').map((i) => i.trim()).filter((i) => i);
-  const availableLangs = getAvailableLangs(langs?.length ? langs : undefined);
-  Object.keys(availableLangs).map(
-    (i) => ($('select[name="lang"]').append(tpl`<option value="${i}" key="${i}">${availableLangs[i].display}</option>`)));
-  const lang = new URL(window.location.href).searchParams.get('lang');
-  if (lang) $('select[name="lang"]').val(lang);
-
-  for (const operation of ['rerun', 'cancel']) {
-    $(document).on('click', `[name="operation"][value="${operation}"]`, (ev) => {
-      ev.preventDefault();
-      const action = $(ev.target).closest('form').attr('action');
-      request.post(action, { operation }).catch((e) => Notification.error(e));
-    });
-  }
 });
 
 export default page;
+
