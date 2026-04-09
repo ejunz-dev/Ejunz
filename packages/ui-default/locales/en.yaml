@@ -580,6 +580,18 @@ Independent Node: Independent Node
 Joined at: Joined at
 Joined Domains: Joined Domains
 Learn: Learn
+'Learn tab learn wall': Learn wall
+'Learn domain learn wall': Learn activity (this domain)
+'Learn domain learn wall caption': Daily practice from stats and card completions (UTC). Darker cells mean more activity; dots may mark check-ins or open sessions. Day detail lists learn sessions; each line links to that session’s history.
+'Learn wall checked in': Checked in today’s learn activity for this domain.
+'Learn wall checkin only saves': Check-in only — no counted practice for this day.
+'Learn wall sessions': Sessions this day (UTC)
+'Learn wall no sessions': No sessions for this day.
+'Learn wall session record count': '{0} record(s)'
+Learn wall result untitled card: Unnamed card
+Learn wall result score: 'Score: {0}'
+Learn wall result problems_done: '{0} problems'
+Learn wall result time_sec: 'Time {0}s'
 develop: Develop
 'Develop': Develop
 'Develop branch': Branch

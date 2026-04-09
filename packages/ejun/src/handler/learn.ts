@@ -52,6 +52,7 @@ import {
     summarizeRecordDoc,
 } from './record';
 import { sessionDocToWire } from './session';
+import { buildLearnDomainWallPayload } from '../lib/learnDomainWall';
 
 function utcLessonQueueDayString(): string {
     return moment.utc().format('YYYY-MM-DD');
@@ -2440,6 +2441,21 @@ class LearnHandler extends Handler {
         const totalCheckinDays = learnActivityDates.length;
         const consecutiveDays = countConsecutiveCheckinDays(learnActivityDates);
 
+        const sinceLearnWallYmd = moment.utc().subtract(364, 'days').format('YYYY-MM-DD');
+        const untilLearnWallYmd = moment.utc().format('YYYY-MM-DD');
+        const domainNameLearnWall = (this as any).domain?.name || finalDomainId;
+        const learnWall = await buildLearnDomainWallPayload(
+            this.ctx.db.db,
+            finalDomainId,
+            domainNameLearnWall,
+            this.user._id,
+            learnActivityDates,
+            sinceLearnWallYmd,
+            untilLearnWallYmd,
+            (name, kwargs) => this.url(name, kwargs as any),
+            (key) => this.translate(key),
+        );
+
         const slotForCurrentSection = currentSectionIndex;
         const dagWithProgress = dag.map((node, nodeIndex) => ({
             ...node,
@@ -2524,6 +2540,8 @@ class LearnHandler extends Handler {
             learnSubModeStrings,
             learnPathCardPractiseCounts: learnPathCardPractiseCountsPayload,
             ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
+            learnWallContributions: learnWall.learnWallContributions,
+            learnWallContributionDetails: learnWall.learnWallContributionDetails,
         };
     }
 
