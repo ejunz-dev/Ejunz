@@ -300,30 +300,85 @@ export default class SessionModel {
             .toArray();
     }
 
+    /** Mongo filter for domain session admin list (live list + filters). */
+    static buildSessionListMongoFilter(
+        domainId: string,
+        uid: number | undefined,
+        opts?: { hideLearnHomePlaceholderShells?: boolean; sessionKind?: 'learn' | 'develop' | 'agent' },
+    ): Record<string, unknown> {
+        const filter: Record<string, unknown> = { domainId };
+        if (uid != null) (filter as any).uid = uid;
+        const kind = opts?.sessionKind;
+        const hide = !!opts?.hideLearnHomePlaceholderShells;
+
+        if (kind === 'agent') {
+            (filter as any).appRoute = 'agent';
+            Object.assign(filter, agentChatSessionKindFilter());
+            return filter;
+        }
+
+        if (hide) {
+            (filter as any).$nor = [MONGO_MATCH_LEARN_HOME_PLACEHOLDER_SHELL];
+        }
+
+        if (kind === 'develop') {
+            (filter as any).$or = [{ appRoute: 'develop' }, { route: 'develop' }];
+            return filter;
+        }
+
+        if (kind === 'learn') {
+            (filter as any).$and = [
+                {
+                    $nor: [
+                        { appRoute: 'agent' },
+                        { route: 'agent' },
+                        { appRoute: 'develop' },
+                        { route: 'develop' },
+                    ],
+                },
+                {
+                    $or: [
+                        { appRoute: 'learn' },
+                        { route: 'learn' },
+                        { lessonMode: { $exists: true, $ne: null } },
+                        { 'lessonCardQueue.0': { $exists: true } },
+                    ],
+                },
+            ];
+            return filter;
+        }
+
+        return filter;
+    }
+
+    static async findSortedForSessionList(
+        domainId: string,
+        uid: number | undefined,
+        opts?: { hideLearnHomePlaceholderShells?: boolean; sessionKind?: 'learn' | 'develop' | 'agent' },
+    ): Promise<SessionDoc[]> {
+        const filter = this.buildSessionListMongoFilter(domainId, uid, opts);
+        return this.coll
+            .find(filter as Filter<SessionDoc>)
+            .sort({ lastActivityAt: -1 })
+            .toArray();
+    }
+
     static async listPage(
         domainId: string,
         uid: number | undefined,
         page: number,
         pageSize: number,
-        opts?: { hideLearnHomePlaceholderShells?: boolean; appRoute?: 'agent' },
+        opts?: { hideLearnHomePlaceholderShells?: boolean; sessionKind?: 'learn' | 'develop' | 'agent' },
     ) {
-        const filter: Record<string, unknown> = { domainId };
-        if (uid != null) (filter as any).uid = uid;
-        if (opts?.appRoute === 'agent') {
-            (filter as any).appRoute = 'agent';
-            Object.assign(filter, agentChatSessionKindFilter());
-        }
-        if (opts?.hideLearnHomePlaceholderShells && opts?.appRoute !== 'agent') {
-            (filter as any).$nor = [MONGO_MATCH_LEARN_HOME_PLACEHOLDER_SHELL];
-        }
+        const filter = this.buildSessionListMongoFilter(domainId, uid, opts);
         const [rows, count] = await Promise.all([
             this.coll
-                .find(filter)
+                .find(filter as Filter<SessionDoc>)
                 .sort({ lastActivityAt: -1 })
                 .skip((page - 1) * pageSize)
                 .limit(pageSize)
                 .toArray(),
-            this.coll.countDocuments(filter),
+            this.coll.countDocuments(filter as Filter<SessionDoc>),
         ]);
         return { rows, count };
     }

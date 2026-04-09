@@ -38,6 +38,8 @@ import {
     isDevelopSessionRow,
     isDevelopSessionSettled,
     isLearnSessionRow,
+    type SessionListRecordType,
+    type SessionListStatus,
 } from '../lib/sessionListDisplay';
 import { recordSummariesForSessionRow } from './record';
 
@@ -313,11 +315,40 @@ class SessionMeHandler extends Handler {
     }
 }
 
+function parseSessionListKind(s?: string): 'learn' | 'develop' | 'agent' | undefined {
+    if (s === 'learn' || s === 'develop' || s === 'agent') return s;
+    return undefined;
+}
+
+function parseSessionListRecordType(s?: string): SessionListRecordType | undefined {
+    const allowed: SessionListRecordType[] = ['daily', 'single_card', 'single_node', 'develop', 'agent', 'other'];
+    if (s && allowed.includes(s as SessionListRecordType)) return s as SessionListRecordType;
+    return undefined;
+}
+
+function parseSessionListStatus(s?: string): SessionListStatus | undefined {
+    const allowed: SessionListStatus[] = [
+        'in_progress', 'paused', 'finished', 'timed_out', 'abandoned', 'active', 'detached',
+    ];
+    if (s && allowed.includes(s as SessionListStatus)) return s as SessionListStatus;
+    return undefined;
+}
+
 /** Live learn session list (HTML). */
 export class SessionDomainHandler extends Handler {
     @query('page', Types.PositiveInt, true)
     @query('uidOrName', Types.UidOrName, true)
-    async get(domainId: string, page = 1, uidOrName?: string) {
+    @query('kind', Types.String, true)
+    @query('recordType', Types.String, true)
+    @query('status', Types.String, true)
+    async get(
+        domainId: string,
+        page = 1,
+        uidOrName?: string,
+        kindRaw?: string,
+        recordTypeRaw?: string,
+        statusRaw?: string,
+    ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         let filterUid: number | undefined;
         /** Only pass a user filter to `/session-conn` when it resolved; invalid strings (e.g. domain id) would close the socket with 4000. */
@@ -337,15 +368,35 @@ export class SessionDomainHandler extends Handler {
             this.checkPerm(PERM.PERM_VIEW_RECORD);
         }
         const pageSize = 20;
-        const { rows, count } = await SessionModel.listPage(
-            domainId,
-            filterUid,
-            page,
-            pageSize,
-            {
-                hideLearnHomePlaceholderShells: true,
-            },
-        );
+        const kind = parseSessionListKind(kindRaw?.trim() || undefined);
+        const recordType = parseSessionListRecordType(recordTypeRaw?.trim() || undefined);
+        const listStatus = parseSessionListStatus(statusRaw?.trim() || undefined);
+        const mongoListOpts = { hideLearnHomePlaceholderShells: true as const, sessionKind: kind };
+
+        const qp = new URLSearchParams();
+        if (uidOrName) qp.set('uidOrName', uidOrName);
+        if (kind) qp.set('kind', kind);
+        if (recordType) qp.set('recordType', recordType);
+        if (listStatus) qp.set('status', listStatus);
+        const sessionListFilterQuery = qp.toString();
+
+        let rows: SessionDoc[];
+        let count: number;
+        if (recordType != null || listStatus != null) {
+            const all = await SessionModel.findSortedForSessionList(domainId, filterUid, mongoListOpts);
+            const filtered = all.filter((d) => {
+                if (recordType != null && deriveSessionRecordType(d) !== recordType) return false;
+                if (listStatus != null && deriveSessionLearnStatus(d) !== listStatus) return false;
+                return true;
+            });
+            count = filtered.length;
+            rows = filtered.slice((page - 1) * pageSize, page * pageSize);
+        } else {
+            const paged = await SessionModel.listPage(domainId, filterUid, page, pageSize, mongoListOpts);
+            rows = paged.rows;
+            count = paged.count;
+        }
+
         const sessions = await Promise.all(rows.map(async (s) => buildSessionListRow(
             this,
             s,
@@ -353,6 +404,8 @@ export class SessionDomainHandler extends Handler {
         )));
         const userIds = [...new Set(rows.map((s) => s.uid))];
         const udict = await user.getList(domainId, userIds);
+
+        const hasActiveFilters = !!(uidOrName || kind || recordType || listStatus);
 
         this.response.template = 'session_domain.html';
         this.response.body = {
@@ -362,6 +415,11 @@ export class SessionDomainHandler extends Handler {
             count,
             pageCount: Math.ceil(count / pageSize) || 1,
             filterUidOrName: uidOrName,
+            filterKind: kind || '',
+            filterRecordType: recordType || '',
+            filterStatus: listStatus || '',
+            sessionListFilterQuery,
+            hasActiveFilters,
             sessionConnUidOrName,
             udict,
         };
