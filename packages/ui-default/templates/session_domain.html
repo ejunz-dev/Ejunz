@@ -27,6 +27,48 @@
                 <input name="uidOrName" type="text" class="textbox" value="{{ filterUidOrName }}" autocomplete="off" data-autofocus>
               </label>
             </div>
+            <div class="medium-4 columns">
+              <label>
+                {{ _('session_filter_kind') }}
+                <select name="kind" class="textbox">
+                  <option value="">{{ _('session_filter_any') }}</option>
+                  <option value="learn" {% if filterKind == 'learn' %}selected{% endif %}>{{ _('session_kind_learn') }}</option>
+                  <option value="develop" {% if filterKind == 'develop' %}selected{% endif %}>{{ _('session_kind_develop') }}</option>
+                  <option value="agent" {% if filterKind == 'agent' %}selected{% endif %}>{{ _('session_kind_agent') }}</option>
+                </select>
+              </label>
+            </div>
+            <div class="medium-4 columns">
+              <label>
+                {{ _('session_filter_record_type') }}
+                <select name="recordType" class="textbox">
+                  <option value="">{{ _('session_filter_any') }}</option>
+                  <option value="daily" {% if filterRecordType == 'daily' %}selected{% endif %}>{{ _('session_record_type_daily') }}</option>
+                  <option value="single_card" {% if filterRecordType == 'single_card' %}selected{% endif %}>{{ _('session_record_type_single_card') }}</option>
+                  <option value="single_node" {% if filterRecordType == 'single_node' %}selected{% endif %}>{{ _('session_record_type_single_node') }}</option>
+                  <option value="develop" {% if filterRecordType == 'develop' %}selected{% endif %}>{{ _('session_record_type_develop') }}</option>
+                  <option value="agent" {% if filterRecordType == 'agent' %}selected{% endif %}>{{ _('session_record_type_agent') }}</option>
+                  <option value="other" {% if filterRecordType == 'other' %}selected{% endif %}>{{ _('session_record_type_other') }}</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div class="row" style="margin-top: 12px;">
+            <div class="medium-4 columns end">
+              <label>
+                {{ _('session_filter_status') }}
+                <select name="status" class="textbox">
+                  <option value="">{{ _('session_filter_any') }}</option>
+                  <option value="in_progress" {% if filterStatus == 'in_progress' %}selected{% endif %}>{{ _('session_status_in_progress') }}</option>
+                  <option value="paused" {% if filterStatus == 'paused' %}selected{% endif %}>{{ _('session_status_paused') }}</option>
+                  <option value="finished" {% if filterStatus == 'finished' %}selected{% endif %}>{{ _('session_status_finished') }}</option>
+                  <option value="timed_out" {% if filterStatus == 'timed_out' %}selected{% endif %}>{{ _('session_status_timed_out') }}</option>
+                  <option value="abandoned" {% if filterStatus == 'abandoned' %}selected{% endif %}>{{ _('session_status_abandoned') }}</option>
+                  <option value="active" {% if filterStatus == 'active' %}selected{% endif %}>{{ _('session_status_active') }}</option>
+                  <option value="detached" {% if filterStatus == 'detached' %}selected{% endif %}>{{ _('session_status_detached') }}</option>
+                </select>
+              </label>
+            </div>
           </div>
         </div>
       </div>
@@ -40,7 +82,7 @@
       </div>
       <div class="section__body no-padding">
       {% if not sessions.length %}
-        {% if not filterUidOrName %}
+        {% if not hasActiveFilters %}
         {{ nothing.render(_('session_learn_empty')) }}
         {% else %}
         {{ nothing.render(_('session_learn_empty_filter')) }}
@@ -80,14 +122,12 @@
         <ul class="pager">
           {% if page > 1 %}
           <li>
-            <a class="pager__item prev link" href="?page={{ page - 1 }}{{
-              (('&uidOrName=' + filterUidOrName) if filterUidOrName else '') }}">{{ _('pager_prev') }}</a>
+            <a class="pager__item prev link" href="?{% if sessionListFilterQuery %}{{ sessionListFilterQuery | replace('&', '&amp;') }}&amp;{% endif %}page={{ page - 1 }}">{{ _('pager_prev') }}</a>
           </li>
           {% endif %}
           {% if page < pageCount %}
           <li>
-            <a class="pager__item next link" href="?page={{ page + 1 }}{{
-              (('&uidOrName=' + filterUidOrName) if filterUidOrName else '') }}">{{ _('pager_next') }}</a>
+            <a class="pager__item next link" href="?{% if sessionListFilterQuery %}{{ sessionListFilterQuery | replace('&', '&amp;') }}&amp;{% endif %}page={{ page + 1 }}">{{ _('pager_next') }}</a>
           </li>
           {% endif %}
         </ul>
