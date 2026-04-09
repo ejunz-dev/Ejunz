@@ -11,7 +11,7 @@
         </div>
       </div>
       <div class="section__body">
-        <p class="typo">{{ _('develop_session_history_hint_finished') }}</p>
+        <p class="typo">{% if session.status == 'timed_out' %}{{ _('develop_session_history_hint_timed_out') }}{% elif session.status == 'abandoned' %}{{ _('develop_session_history_hint_abandoned') }}{% else %}{{ _('develop_session_history_hint_finished') }}{% endif %}</p>
         <table class="data-table session_domain__table">
           <colgroup>
             <col class="col--status">

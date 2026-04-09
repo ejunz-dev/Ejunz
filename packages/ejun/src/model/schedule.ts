@@ -71,9 +71,13 @@ export async function apply(ctx: Context) {
             await ctx.parallel('task/daily');
         });
         c.worker.addHandler('task.session.utc0', async () => {
-            const { settleStaleDailyLessonSessionsUtc } = await import('../lib/sessionDailySettle');
-            const n = await settleStaleDailyLessonSessionsUtc();
-            new Logger('task/session').info('settleStaleDailyLessonSessionsUtc: %d', n);
+            const { settleStaleSessionsAtUtc0 } = await import('../lib/sessionDailySettle');
+            const r = await settleStaleSessionsAtUtc0();
+            new Logger('task/session').info(
+                'settleStaleSessionsAtUtc0: learn=%d develop=%d',
+                r.learn,
+                r.develop,
+            );
         });
     });
 

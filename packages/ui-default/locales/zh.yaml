@@ -925,6 +925,8 @@ develop: 开发
 develop_session_history_title: 开发会话（历史）
 develop_session_history_back: 返回开发首页
 develop_session_history_hint_finished: 本会话已结算，以下为该次开发中的保存记录。
+develop_session_history_hint_timed_out: 该开发会话已因跨 UTC 日超时，以下为该次开发中的保存记录。
+develop_session_history_hint_abandoned: 该开发会话已放弃，以下为该次开发中的保存记录。
 develop_session_history_detail_title: 各次保存明细
 session_develop_list_title: 开发会话（列表）
 'Develop domain contribution wall': 本域开发贡献

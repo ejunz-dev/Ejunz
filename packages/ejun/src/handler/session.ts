@@ -66,7 +66,7 @@ function buildSessionListRow(
         const sep = base.includes('?') ? '&' : '?';
         resumeUrl = `${base}${sep}session=${encodeURIComponent(doc._id.toString())}`;
     } else if (isDevelopSessionRow(doc) && doc._id) {
-        if (status === 'finished') {
+        if (status === 'finished' || status === 'timed_out' || status === 'abandoned') {
             const base = self.url('develop_session_history', { domainId: doc.domainId });
             const sep = base.includes('?') ? '&' : '?';
             resumeUrl = `${base}${sep}session=${encodeURIComponent(doc._id.toString())}`;

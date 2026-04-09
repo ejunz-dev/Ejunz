@@ -657,6 +657,8 @@ develop: Develop
 develop_session_history_title: Develop session (history)
 develop_session_history_back: Back to Develop
 develop_session_history_hint_finished: This develop session has been settled. Save records from that run are listed below.
+develop_session_history_hint_timed_out: This develop session timed out (new UTC day). Save records from that run are listed below.
+develop_session_history_hint_abandoned: This develop session was abandoned. Save records from that run are listed below.
 develop_session_history_detail_title: Save records (by batch)
 session_develop_list_title: Develop sessions (live)
 'Develop domain contribution wall': Develop contribution (this domain)
