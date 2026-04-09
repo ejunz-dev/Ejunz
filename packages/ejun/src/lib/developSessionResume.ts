@@ -4,6 +4,7 @@ import SessionModel, { type SessionDoc } from '../model/session';
 import { developBranchKey, developTodayUtcYmd } from './developBranchDaily';
 import { loadDevelopRunQueuePool, type DevelopPoolEntryWire } from './developPoolShared';
 import { isDevelopSessionRow, isDevelopSessionSettled } from './sessionListDisplay';
+import { isSessionStalePastUtcCalendarDay } from './sessionUtcDaily';
 
 /** Same window as `DevelopSessionStartHandler` session reuse. */
 export const DEVELOP_SESSION_REUSE_MS = 8 * 3600 * 1000;
@@ -52,6 +53,7 @@ function isDevelopSessionResumable(
     if (isDevelopSessionSettled(doc)) return false;
     if ((doc as { lessonAbandonedAt?: Date | null }).lessonAbandonedAt) return false;
     if (!developSessionInPool(doc, poolKeys)) return false;
+    if (isSessionStalePastUtcCalendarDay(doc, now)) return false;
     const last = doc.lastActivityAt ? new Date(doc.lastActivityAt).getTime() : 0;
     if (last < now - DEVELOP_SESSION_REUSE_MS) return false;
     return true;
@@ -88,6 +90,10 @@ export async function resolveDevelopDailySessionDoc(domainId: string, uid: numbe
         return null;
     }
     if (isDevelopSessionSettled(doc)) {
+        await clearDevelopDailySessionPointer(domainId, uid);
+        return null;
+    }
+    if (isSessionStalePastUtcCalendarDay(doc, Date.now())) {
         await clearDevelopDailySessionPointer(domainId, uid);
         return null;
     }

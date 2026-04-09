@@ -111,7 +111,7 @@ async function setLearnDailySessionPointer(domainId: string, uid: number, sessio
 /**
  * Single source for “today’s daily practice” row: `domain.user` pointer + UTC calendar day.
  * Clears pointer when the day rolls over (lazy on read), session missing, abandoned, finished, or timed_out.
- * Batch cleanup of old session rows + pointers: `settleStaleDailyLessonSessionsUtc` (`task.session.utc0`).
+ * Batch cleanup of old session rows + pointers: `settleStaleSessionsAtUtc0` (`task.session.utc0`; learn queues + develop pointers).
  */
 async function resolveLearnDailySessionDoc(domainId: string, uid: number, dudoc: any): Promise<SessionDoc | null> {
     const todayYmd = utcLessonQueueDayString();

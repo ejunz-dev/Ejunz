@@ -63,8 +63,8 @@ function developSessionWallUrl(
     sessionHex: string,
     status: ReturnType<typeof deriveSessionLearnStatus>,
 ): string {
-    const finished = status === 'finished';
-    const route = finished ? 'develop_session_history' : 'develop_editor';
+    const toHistory = status === 'finished' || status === 'timed_out' || status === 'abandoned';
+    const route = toHistory ? 'develop_session_history' : 'develop_editor';
     const base = buildUrl(route, { domainId });
     const sep = base.includes('?') ? '&' : '?';
     return `${base}${sep}session=${encodeURIComponent(sessionHex)}`;
