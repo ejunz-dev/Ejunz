@@ -930,8 +930,11 @@ session_develop_list_title: 开发会话（列表）
 'Develop domain contribution wall': 本域开发贡献
 'Develop domain contribution wall caption': 本知识库内累计到每日目标的开发与保存次数（UTC）。色块越深表示当日节点/卡片/题目编辑越多；也可能因打卡或仅有编辑器活动而点亮。
 'Develop wall checked in': 当日已在本域完成开发打卡。
-'Develop wall records': 当日开发保存记录（UTC）
-'Develop wall no records': 当日无开发保存记录。
+'Develop wall sessions': 当日开发会话（UTC）
+'Develop wall no sessions': 当日无开发会话。
+'Develop wall session base line': '{0}（{1}）：{2} 条记录'
+'Develop wall session no saves': 当日该会话下无编辑器保存记录。
+'Develop wall base fallback title': '知识库 {0}'
 'Develop session': 会话
 'Develop wall checkin only saves': 当日仅有打卡，未在统计中计入分支保存次数。
 Leave Edit Mode: 离开编辑模式

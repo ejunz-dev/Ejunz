@@ -662,8 +662,11 @@ session_develop_list_title: Develop sessions (live)
 'Develop domain contribution wall': Develop contribution (this domain)
 'Develop domain contribution wall caption': Saves counted toward daily goals in this domain (UTC). Darker cells mean more edits; dots may also mark check-ins or editor sessions with no saves yet.
 'Develop wall checked in': Checked in today’s develop goals for this domain.
-'Develop wall records': Editor save records for this day (UTC)
-'Develop wall no records': No develop save records for this day.
+'Develop wall sessions': Develop sessions this day (UTC)
+'Develop wall no sessions': No develop sessions for this day.
+'Develop wall session base line': '{0} ({1}): {2} record(s)'
+'Develop wall session no saves': No editor saves in this session on this day.
+'Develop wall base fallback title': 'Base {0}'
 'Develop session': Session
 'Develop wall checkin only saves': Check-in only — no branch save counts recorded for this day.
 Less: Less

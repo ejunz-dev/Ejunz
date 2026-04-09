@@ -1,7 +1,8 @@
 import moment from 'moment-timezone';
+import { ObjectId } from 'mongodb';
 import SessionModel, { type SessionDoc } from '../model/session';
 import RecordModel, { type RecordDoc } from '../model/record';
-import { developSaveRecordSummaryLines } from './developRecordSummarize';
+import { deriveSessionLearnStatus, formatSessionProgressDisplay } from './sessionListDisplay';
 
 type Db = {
     collection: (n: string) => {
@@ -9,14 +10,19 @@ type Db = {
     };
 };
 
-export type DevelopWallRecordWire = {
-    recordId: string;
+export type DevelopWallBaseRecordCountWire = {
     baseDocId: number;
     branch: string;
-    recordUrl: string;
-    /** UTC time of save, e.g. 14:05 */
+    recordCount: number;
+};
+
+export type DevelopWallSessionWire = {
+    sessionId: string;
+    sessionHistoryUrl: string;
     timeUtc: string;
-    summaryLines: string[];
+    statusLabel: string;
+    progressText: string | null;
+    baseBreakdown: DevelopWallBaseRecordCountWire[];
 };
 
 export type DevelopWallDayDetailWire = {
@@ -26,7 +32,7 @@ export type DevelopWallDayDetailWire = {
     cards: number;
     problems: number;
     checkedIn: boolean;
-    records: DevelopWallRecordWire[];
+    sessions: DevelopWallSessionWire[];
 };
 
 function ymdUtc(d: Date | undefined | null): string | null {
@@ -51,9 +57,22 @@ function hasAggregateTotals(
     return !!v && v.nodes + v.cards + v.problems > 0;
 }
 
+function developSessionWallUrl(
+    buildUrl: (routeName: string, kwargs?: Record<string, unknown>) => string,
+    domainId: string,
+    sessionHex: string,
+    status: ReturnType<typeof deriveSessionLearnStatus>,
+): string {
+    const finished = status === 'finished';
+    const route = finished ? 'develop_session_history' : 'develop_editor';
+    const base = buildUrl(route, { domainId });
+    const sep = base.includes('?') ? '&' : '?';
+    return `${base}${sep}session=${encodeURIComponent(sessionHex)}`;
+}
+
 /**
  * Past-year develop activity in one domain: branch-daily counters, check-in days, session touches
- * for the heatmap; per-day detail lists develop_save records with change summaries.
+ * for the heatmap; per-day detail lists develop sessions with per-base save counts.
  */
 export async function buildDevelopDomainWallPayload(
     db: Db,
@@ -102,6 +121,9 @@ export async function buildDevelopDomainWallPayload(
         .sort({ lastActivityAt: -1 })
         .toArray() as SessionDoc[];
 
+    const sessionByHex = new Map<string, SessionDoc>();
+    for (const s of sessions) sessionByHex.set(s._id.toHexString(), s);
+
     const sessionsByDate = new Map<string, Map<string, SessionDoc>>();
     const addSessionToDate = (dateStr: string | null, sess: SessionDoc) => {
         if (!dateStr || !inRange(dateStr, sinceYmd, untilYmd)) return;
@@ -120,24 +142,33 @@ export async function buildDevelopDomainWallPayload(
             domainId,
             uid,
             recordKind: 'develop_save',
-            createdAt: { $gte: yearStart },
+            $or: [{ createdAt: { $gte: yearStart } }, { lastActivityAt: { $gte: yearStart } }],
         })
-        .sort({ createdAt: -1 })
         .toArray() as RecordDoc[];
 
-    const recordsByDate = new Map<string, RecordDoc[]>();
+    /** day -> sessionHex -> "baseDocId\0branch" -> count */
+    const recordAggByDaySessionBase = new Map<string, Map<string, Map<string, number>>>();
+    const bump = (dayYmd: string, sessionHex: string, baseDocId: number, branch: string) => {
+        if (!inRange(dayYmd, sinceYmd, untilYmd) || !sessionHex) return;
+        const bKey = `${baseDocId}\0${branch}`;
+        if (!recordAggByDaySessionBase.has(dayYmd)) recordAggByDaySessionBase.set(dayYmd, new Map());
+        const byS = recordAggByDaySessionBase.get(dayYmd)!;
+        if (!byS.has(sessionHex)) byS.set(sessionHex, new Map());
+        const byB = byS.get(sessionHex)!;
+        byB.set(bKey, (byB.get(bKey) || 0) + 1);
+    };
+
     for (const rd of developRecords) {
-        const dateStr = ymdUtc(rd.createdAt);
-        if (!dateStr || !inRange(dateStr, sinceYmd, untilYmd)) continue;
-        if (!recordsByDate.has(dateStr)) recordsByDate.set(dateStr, []);
-        recordsByDate.get(dateStr)!.push(rd);
-    }
-    for (const [, list] of recordsByDate) {
-        list.sort((a, b) => {
-            const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-            const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-            return tb - ta;
-        });
+        const sid = rd.sessionId ? rd.sessionId.toHexString() : '';
+        if (!sid) continue;
+        const br = rd.branch && String(rd.branch).trim() ? String(rd.branch).trim() : 'main';
+        const bid = Number(rd.baseDocId) || 0;
+        const days = new Set<string>();
+        const la = ymdUtc(rd.lastActivityAt);
+        const cr = ymdUtc(rd.createdAt);
+        if (la && inRange(la, sinceYmd, untilYmd)) days.add(la);
+        if (cr && inRange(cr, sinceYmd, untilYmd)) days.add(cr);
+        for (const d of days) bump(d, sid, bid, br);
     }
 
     const contributions: Array<{ date: string; type: 'node' | 'card' | 'problem'; count: number }> = [];
@@ -164,22 +195,72 @@ export async function buildDevelopDomainWallPayload(
         ...aggregate.keys(),
         ...checkInSet,
         ...sessionsByDate.keys(),
-        ...recordsByDate.keys(),
+        ...recordAggByDaySessionBase.keys(),
     ]);
 
     const developWallContributionDetails: Record<string, DevelopWallDayDetailWire[]> = {};
     for (const date of allDates) {
         if (!inRange(date, sinceYmd, untilYmd)) continue;
         const agg = aggregate.get(date) || { nodes: 0, cards: 0, problems: 0 };
-        const dayRecords = recordsByDate.get(date) || [];
-        const recordsWire: DevelopWallRecordWire[] = dayRecords.map((rd) => ({
-            recordId: rd._id.toHexString(),
-            baseDocId: Number(rd.baseDocId) || 0,
-            branch: rd.branch && String(rd.branch).trim() ? String(rd.branch).trim() : 'main',
-            recordUrl: buildUrl('record_detail', { domainId, rid: rd._id.toHexString() }),
-            timeUtc: hmUtc(rd.createdAt),
-            summaryLines: developSaveRecordSummaryLines(rd, translate),
-        }));
+        const bySession = recordAggByDaySessionBase.get(date) || new Map<string, Map<string, number>>();
+        const sessionHexes = [...new Set([
+            ...bySession.keys(),
+            ...(sessionsByDate.get(date) ? [...sessionsByDate.get(date)!.keys()] : []),
+        ])];
+
+        const rows: Array<{ hex: string; sess: SessionDoc | null; sortTs: number; baseBreakdown: DevelopWallBaseRecordCountWire[] }> = [];
+        for (const hex of sessionHexes) {
+            let sess = sessionByHex.get(hex) || null;
+            if (!sess) {
+                try {
+                    const one = await SessionModel.coll.findOne({
+                        _id: new ObjectId(hex),
+                        domainId,
+                        uid,
+                    }) as SessionDoc | null;
+                    sess = one;
+                } catch {
+                    sess = null;
+                }
+            }
+            const baseMap = bySession.get(hex) || new Map<string, number>();
+            const baseBreakdown: DevelopWallBaseRecordCountWire[] = [];
+            for (const [bKey, recordCount] of baseMap) {
+                const i = bKey.indexOf('\0');
+                const bidStr = i >= 0 ? bKey.slice(0, i) : bKey;
+                const branch = i >= 0 ? bKey.slice(i + 1) : 'main';
+                baseBreakdown.push({
+                    baseDocId: Number(bidStr) || 0,
+                    branch,
+                    recordCount,
+                });
+            }
+            baseBreakdown.sort((a, b) => {
+                if (b.recordCount !== a.recordCount) return b.recordCount - a.recordCount;
+                if (a.baseDocId !== b.baseDocId) return a.baseDocId - b.baseDocId;
+                return a.branch.localeCompare(b.branch);
+            });
+            const sortTs = sess?.lastActivityAt
+                ? new Date(sess.lastActivityAt).getTime()
+                : 0;
+            rows.push({ hex, sess, sortTs, baseBreakdown });
+        }
+        rows.sort((a, b) => b.sortTs - a.sortTs);
+
+        const sessionsWire: DevelopWallSessionWire[] = [];
+        for (const { hex, sess, baseBreakdown } of rows) {
+            if (!sess) continue;
+            const st = deriveSessionLearnStatus(sess);
+            sessionsWire.push({
+                sessionId: hex,
+                sessionHistoryUrl: developSessionWallUrl(buildUrl, domainId, hex, st),
+                timeUtc: hmUtc(sess.lastActivityAt),
+                statusLabel: translate(`session_status_${st}`),
+                progressText: formatSessionProgressDisplay(sess),
+                baseBreakdown,
+            });
+        }
+
         developWallContributionDetails[date] = [{
             domainId,
             domainName,
@@ -187,7 +268,7 @@ export async function buildDevelopDomainWallPayload(
             cards: agg.cards,
             problems: agg.problems,
             checkedIn: checkInSet.has(date),
-            records: recordsWire,
+            sessions: sessionsWire,
         }];
     }
 
