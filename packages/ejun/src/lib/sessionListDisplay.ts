@@ -1,6 +1,14 @@
 import type { RecordDoc } from '../model/record';
 import type { SessionDoc } from '../model/session';
 import { isLearnHomePlaceholderSession } from './lessonSession';
+import { isSessionStalePastUtcCalendarDay } from './sessionUtcDaily';
+
+export {
+    dailyRunAnchorYmd,
+    effectiveLessonQueueYmd,
+    isSessionStalePastUtcCalendarDay,
+    sessionUtcYmd,
+} from './sessionUtcDaily';
 
 const ON_LESSON_RECENT_MS = 3 * 60 * 1000;
 const LEGACY_ACTIVITY_MS = 5 * 60 * 1000;
@@ -52,45 +60,6 @@ export function deriveSessionRecordType(doc: SessionDoc): SessionListRecordType 
     if (mode === 'node') return 'single_node';
     if (mode === 'today') return 'daily';
     return 'single_card';
-}
-
-/** UTC calendar day `YYYY-MM-DD` for a timestamp (default: now). */
-export function sessionUtcYmd(ts: number = Date.now()): string {
-    const d = new Date(ts);
-    const y = d.getUTCFullYear();
-    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(d.getUTCDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-}
-
-const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-/** Effective UTC day for a daily-lesson queue (explicit `lessonQueueDay` or row `createdAt`). */
-export function effectiveLessonQueueYmd(doc: SessionDoc): string | null {
-    const raw = doc.lessonQueueDay;
-    if (typeof raw === 'string' && YMD_RE.test(raw.trim())) return raw.trim();
-    if (doc.createdAt) return sessionUtcYmd(new Date(doc.createdAt).getTime());
-    return null;
-}
-
-/**
- * UTC day used to decide if a daily frozen queue is stale.
- * Prefer explicit `lessonQueueDay` only (do not mix with ObjectId day): the same Mongo session row is reused
- * across days, so `_id` creation date would falsely keep `timed_out` after "Start" clears the queue.
- * If `lessonQueueDay` is missing, fall back to min(createdAt, ObjectId) for legacy rows that still have a queue.
- */
-export function dailyRunAnchorYmd(doc: SessionDoc): string | null {
-    const raw = doc.lessonQueueDay;
-    if (typeof raw === 'string' && YMD_RE.test(raw.trim())) return raw.trim();
-    const parts: string[] = [];
-    if (doc.createdAt) parts.push(sessionUtcYmd(new Date(doc.createdAt).getTime()));
-    try {
-        parts.push(sessionUtcYmd(doc._id.getTimestamp().getTime()));
-    } catch {
-        /* ignore */
-    }
-    if (!parts.length) return null;
-    return parts.reduce((a, b) => (a < b ? a : b));
 }
 
 /** Display string `current/total` (1-based) for live list rows; null when no frozen card queue. */
@@ -154,6 +123,7 @@ export function deriveSessionLearnStatus(doc: SessionDoc, now = Date.now()): Ses
     if (isDevelopSessionRow(doc)) {
         if ((doc as { lessonAbandonedAt?: Date | null }).lessonAbandonedAt) return 'abandoned';
         if (isDevelopSessionSettled(doc)) return 'finished';
+        if (isSessionStalePastUtcCalendarDay(doc, now)) return 'timed_out';
         const t = doc.lastActivityAt ? new Date(doc.lastActivityAt).getTime() : 0;
         if (now - t < ON_LESSON_RECENT_MS) return 'in_progress';
         return 'paused';
@@ -183,17 +153,7 @@ export function deriveSessionLearnStatus(doc: SessionDoc, now = Date.now()): Ses
     if (qLen > 0 && idx >= qLen) return 'finished';
 
     const daily = doc.lessonMode === 'today';
-    const todayYmd = sessionUtcYmd(now);
-    if (daily) {
-        const rawDay = doc.lessonQueueDay;
-        const explicitQueueDay = typeof rawDay === 'string' && YMD_RE.test(rawDay.trim()) ? rawDay.trim() : null;
-        if (qLen > 0) {
-            const anchor = dailyRunAnchorYmd(doc);
-            if (anchor && anchor < todayYmd) return 'timed_out';
-        } else if (explicitQueueDay && explicitQueueDay < todayYmd) {
-            return 'timed_out';
-        }
-    }
+    if (daily && isSessionStalePastUtcCalendarDay(doc, now)) return 'timed_out';
 
     if (recentOnLesson) return 'in_progress';
 

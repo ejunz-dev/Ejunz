@@ -22,6 +22,7 @@ import {
 import { buildDevelopDomainWallPayload } from '../lib/developDomainWall';
 import { buildTodayDevelopResumeFields, clearDevelopSessionsAfterPoolChange } from '../lib/developSessionResume';
 import {
+    deriveSessionLearnStatus,
     deriveSessionRecordType,
     formatSessionProgressDisplay,
     isDevelopSessionSettled,
@@ -76,11 +77,12 @@ class DevelopSessionEditorHandler extends Handler {
         if (!sess) {
             throw new NotFoundError(this.translate('Session not found'));
         }
-        if ((sess as { lessonAbandonedAt?: Date | null }).lessonAbandonedAt) {
-            throw new NotFoundError(this.translate('Session not found'));
-        }
-        if (isDevelopSessionSettled(sess)) {
-            throw new NotFoundError(this.translate('Session not found'));
+        const histSt = deriveSessionLearnStatus(sess);
+        if (histSt === 'timed_out' || histSt === 'finished' || histSt === 'abandoned') {
+            const histBase = this.url('develop_session_history', { domainId });
+            const sep = histBase.includes('?') ? '&' : '?';
+            this.response.redirect = `${histBase}${sep}session=${encodeURIComponent(sid)}`;
+            return;
         }
         const baseDocId = Number(sess.baseDocId);
         if (!Number.isFinite(baseDocId) || baseDocId <= 0) {
@@ -129,7 +131,11 @@ class DevelopSessionHistoryHandler extends Handler {
             appRoute: 'develop',
         }) as SessionDoc | null;
         if (!sess) throw new NotFoundError(this.translate('Session not found'));
-        if (!isDevelopSessionSettled(sess)) {
+        const historySt = deriveSessionLearnStatus(sess);
+        const allowHistory = isDevelopSessionSettled(sess)
+            || historySt === 'timed_out'
+            || historySt === 'abandoned';
+        if (!allowHistory) {
             throw new NotFoundError(this.translate('Session not found'));
         }
 
@@ -149,14 +155,22 @@ class DevelopSessionHistoryHandler extends Handler {
             };
         });
         const rt = deriveSessionRecordType(sess);
+        const isAbandoned = historySt === 'abandoned';
+        const isTimedOut = historySt === 'timed_out';
+        const histStatus = isAbandoned ? ('abandoned' as const) : isTimedOut ? ('timed_out' as const) : ('finished' as const);
+        const histLabelKey = isAbandoned
+            ? 'session_status_abandoned'
+            : isTimedOut
+                ? 'session_status_timed_out'
+                : 'session_status_finished';
         this.response.template = 'develop_session_history.html';
         this.response.body = {
             domainId,
             page_name: 'develop_session_history',
             session: {
                 ...sess,
-                status: 'finished' as const,
-                statusLabel: this.translate('session_status_finished'),
+                status: histStatus,
+                statusLabel: this.translate(histLabelKey),
                 recordType: rt,
                 recordTypeLabel: this.translate(`session_record_type_${rt}`),
                 sessionKind: 'develop' as const,
