@@ -37,18 +37,24 @@ function rowInDevelopRunQueue(row: DisplayRow): boolean {
   return !row.todayGoalsMet;
 }
 
-type DevelopWallRecordRow = {
-  recordId: string;
+type DevelopWallBaseRecordCount = {
   baseDocId: number;
   branch: string;
-  recordUrl: string;
+  recordCount: number;
+};
+
+type DevelopWallSessionRow = {
+  sessionId: string;
+  sessionHistoryUrl: string;
   timeUtc: string;
-  summaryLines: string[];
+  statusLabel: string;
+  progressText: string | null;
+  baseBreakdown: DevelopWallBaseRecordCount[];
 };
 
 type DevelopWallDayDetail = ContributionDetail & {
   checkedIn?: boolean;
-  records?: DevelopWallRecordRow[];
+  sessions?: DevelopWallSessionRow[];
 };
 
 function statRatio(cur: number, goal: number): { pct: number; done: boolean } {
@@ -1043,13 +1049,13 @@ function DevelopPage() {
                         ) : null}
                       </div>
                       <div style={{ fontSize: 13, fontWeight: 600, color: themeStyles.textPrimary, marginBottom: 8 }}>
-                        {i18n('Develop wall records')}
+                        {i18n('Develop wall sessions')}
                       </div>
-                      {row.records && row.records.length > 0 ? (
+                      {(row.sessions && row.sessions.length > 0) ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                          {row.records.map((rec) => (
+                          {(row.sessions || []).map((se) => (
                             <div
-                              key={rec.recordId}
+                              key={se.sessionId}
                               style={{
                                 padding: '10px 12px',
                                 borderRadius: 8,
@@ -1058,32 +1064,60 @@ function DevelopPage() {
                               }}
                             >
                               <a
-                                href={rec.recordUrl}
-                                style={{ fontWeight: 600, color: themeStyles.accent, textDecoration: 'none', fontSize: 13 }}
+                                href={se.sessionHistoryUrl}
+                                style={{
+                                  fontWeight: 600,
+                                  color: themeStyles.accent,
+                                  textDecoration: 'none',
+                                  fontSize: 13,
+                                  display: 'inline-block',
+                                }}
                               >
                                 {selectedWallDate
-                                  ? (rec.timeUtc
-                                      ? `${moment(selectedWallDate).format('YYYY-MM-DD')} ${rec.timeUtc} UTC`
+                                  ? (se.timeUtc
+                                      ? `${moment(selectedWallDate).format('YYYY-MM-DD')} ${se.timeUtc} UTC`
                                       : `${moment(selectedWallDate).format('YYYY-MM-DD')} UTC`)
-                                  : (rec.timeUtc ? `${rec.timeUtc} UTC` : '')}
+                                  : (se.timeUtc ? `${se.timeUtc} UTC` : '')}
                               </a>
-                              <ul style={{
-                                margin: '8px 0 0',
-                                paddingLeft: 18,
+                              <div style={{
+                                marginTop: 6,
                                 fontSize: 12,
                                 color: themeStyles.textSecondary,
                                 lineHeight: 1.45,
                               }}
                               >
-                                {rec.summaryLines.map((line, li) => (
-                                  <li key={li} style={{ marginBottom: 2 }}>{line}</li>
-                                ))}
-                              </ul>
+                                {se.statusLabel}
+                                {se.progressText ? ` · ${se.progressText}` : ''}
+                              </div>
+                              {se.baseBreakdown.length > 0 ? (
+                                <ul style={{
+                                  margin: '8px 0 0',
+                                  paddingLeft: 18,
+                                  fontSize: 12,
+                                  color: themeStyles.textSecondary,
+                                  lineHeight: 1.45,
+                                }}
+                                >
+                                  {se.baseBreakdown.map((b) => {
+                                    const title = baseMeta.get(b.baseDocId)?.title?.trim()
+                                      || i18n('Develop wall base fallback title', b.baseDocId);
+                                    return (
+                                      <li key={`${b.baseDocId}-${b.branch}`} style={{ marginBottom: 2 }}>
+                                        {i18n('Develop wall session base line', title, b.branch, b.recordCount)}
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              ) : (
+                                <div style={{ marginTop: 6, fontSize: 12, color: themeStyles.textTertiary }}>
+                                  {i18n('Develop wall session no saves')}
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
                       ) : (
-                        <div style={{ fontSize: 12, color: themeStyles.textTertiary }}>{i18n('Develop wall no records')}</div>
+                        <div style={{ fontSize: 12, color: themeStyles.textTertiary }}>{i18n('Develop wall no sessions')}</div>
                       )}
                     </>
                   );
