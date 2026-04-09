@@ -1,9 +1,11 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import ReactDOM from 'react-dom';
+import moment from 'moment';
 import { NamedPage } from 'vj/misc/Page';
 import { i18n } from 'vj/utils';
 import { request } from 'vj/utils';
 import Notification from 'vj/components/notification';
+import { ContributionWall, type ContributionDetail } from '../components/ContributionWall';
 
 interface SectionProgress {
   _id: string;
@@ -66,6 +68,22 @@ type LearnNewReviewOrderUi = 'new_first' | 'old_first' | 'shuffle';
 
 /** Values in dropdown order (must match server `ratioOptionLabels`). */
 const LEARN_NEW_REVIEW_RATIO_UI_VALUES = [0, -1, 1, 2, 3, 4, 5] as const;
+
+type LearnWallSessionRow = {
+  sessionId: string;
+  sessionHistoryUrl: string;
+  timeUtc: string;
+  recordCount: number;
+  statusLabel: string;
+  progressText: string | null;
+  baseDocId: number;
+  branch: string;
+};
+
+type LearnWallDayDetail = ContributionDetail & {
+  checkedIn?: boolean;
+  sessions?: LearnWallSessionRow[];
+};
 
 /** Server `this.translate()` strings for learn new vs review ratio (matches user UI language). */
 interface LearnSubModeStringsFromServer {
@@ -187,6 +205,15 @@ function LearnPage() {
   const todayLessonResumeUrl = String((window as any).UiContext?.todayLessonResumeUrl || '').trim();
   const todayLessonCardProgressText = String((window as any).UiContext?.todayLessonCardProgressText || '').trim();
   const hasTodayLessonResume = !!todayLessonResumeUrl;
+  const learnWallContributions = ((window as any).UiContext?.learnWallContributions || []) as Array<{
+    date: string;
+    type: 'node' | 'card' | 'problem';
+    count: number;
+  }>;
+  const learnWallContributionDetails = ((window as any).UiContext?.learnWallContributionDetails || {}) as Record<
+    string,
+    LearnWallDayDetail[]
+  >;
   const selectedLearnBase =
     selectedLearnBaseDocId != null && Number.isFinite(selectedLearnBaseDocId) && selectedLearnBaseDocId > 0
       ? (learnBases.find((b) => Number(b.docId) === Number(selectedLearnBaseDocId)) || null)
@@ -207,11 +234,26 @@ function LearnPage() {
   const [showConsecutiveTip, setShowConsecutiveTip] = useState(false);
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(new Set());
   const [expandedCardIds, setExpandedCardIds] = useState<Set<string>>(new Set());
-  const [viewMode, setViewMode] = useState<'progress' | 'path'>('progress');
+  const [viewMode, setViewMode] = useState<'progress' | 'path' | 'contributions'>('progress');
   /** Path view expands by section slot index so duplicate node _ids in custom order do not clash keys/expand state. */
   const [expandedPathSectionSlots, setExpandedPathSectionSlots] = useState<Set<number>>(new Set());
   const [expandedPathCardIds, setExpandedPathCardIds] = useState<Set<string>>(new Set());
   const consecutiveBubbleRef = useRef<HTMLButtonElement>(null);
+
+  const getLatestLearnWallDate = useCallback(() => {
+    const dates = Object.keys(learnWallContributionDetails);
+    if (dates.length === 0) return null;
+    return dates.sort((a, b) => moment(b).valueOf() - moment(a).valueOf())[0];
+  }, [learnWallContributionDetails]);
+
+  const [selectedLearnWallDate, setSelectedLearnWallDate] = useState<string | null>(() => getLatestLearnWallDate());
+
+  useEffect(() => {
+    if (selectedLearnWallDate == null && Object.keys(learnWallContributionDetails).length > 0) {
+      const k = getLatestLearnWallDate();
+      if (k) setSelectedLearnWallDate(k);
+    }
+  }, [learnWallContributionDetails, getLatestLearnWallDate, selectedLearnWallDate]);
 
   const togglePathCardExpand = useCallback((placementKey: string) => {
     setExpandedPathCardIds((prev) => {
@@ -306,6 +348,9 @@ function LearnPage() {
     primaryGlow: theme === 'dark' ? 'rgba(34, 197, 94, 0.35)' : 'rgba(22, 163, 74, 0.25)',
     accent: theme === 'dark' ? '#38bdf8' : '#0ea5e9',
     accentGlow: theme === 'dark' ? 'rgba(56, 189, 248, 0.25)' : 'rgba(14, 165, 233, 0.2)',
+    statNode: theme === 'dark' ? '#64b5f6' : '#2196F3',
+    statCard: theme === 'dark' ? '#81c784' : '#4CAF50',
+    statProblem: theme === 'dark' ? '#ffb74d' : '#FF9800',
   };
 
   const handleStart = useCallback(async () => {
@@ -631,7 +676,7 @@ function LearnPage() {
         alignItems: 'center',
       }}>
       <div style={{
-        maxWidth: '520px',
+        maxWidth: viewMode === 'contributions' ? 720 : 520,
         width: '100%',
         display: 'flex',
         flexDirection: 'column',
@@ -690,9 +735,9 @@ function LearnPage() {
             onClick={() => setViewMode('progress')}
             style={{
               flex: 1,
-              padding: '10px 16px',
+              padding: isMobile ? '10px 8px' : '10px 12px',
               minHeight: isMobile ? '48px' : undefined,
-              fontSize: '14px',
+              fontSize: isMobile ? '12px' : '14px',
               fontWeight: 600,
               border: 'none',
               borderRadius: '8px',
@@ -710,9 +755,9 @@ function LearnPage() {
             onClick={() => setViewMode('path')}
             style={{
               flex: 1,
-              padding: '10px 16px',
+              padding: isMobile ? '10px 8px' : '10px 12px',
               minHeight: isMobile ? '48px' : undefined,
-              fontSize: '14px',
+              fontSize: isMobile ? '12px' : '14px',
               fontWeight: 600,
               border: 'none',
               borderRadius: '8px',
@@ -725,9 +770,29 @@ function LearnPage() {
           >
             {i18n('Learning Path')}
           </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('contributions')}
+            style={{
+              flex: 1,
+              padding: isMobile ? '10px 8px' : '10px 12px',
+              minHeight: isMobile ? '48px' : undefined,
+              fontSize: isMobile ? '12px' : '14px',
+              fontWeight: 600,
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              background: viewMode === 'contributions' ? themeStyles.bgCard : 'transparent',
+              color: viewMode === 'contributions' ? themeStyles.textPrimary : themeStyles.textSecondary,
+              boxShadow: viewMode === 'contributions' ? (theme === 'dark' ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 6px rgba(0,0,0,0.08)') : 'none',
+              transition: 'all 0.2s',
+            }}
+          >
+            {i18n('Learn tab learn wall')}
+          </button>
         </div>
 
-        {requireBaseSelection ? (
+        {requireBaseSelection && viewMode !== 'contributions' ? (
           <div style={{
             padding: isMobile ? '20px 16px' : '24px',
             background: themeStyles.bgCard,
@@ -756,7 +821,7 @@ function LearnPage() {
               {i18n('Select learn base')}
             </a>
           </div>
-        ) : viewMode === 'progress' && (
+        ) : !requireBaseSelection && viewMode === 'progress' ? (
         <>
         <div style={{
           padding: isMobile ? '20px 16px' : '28px',
@@ -1201,7 +1266,7 @@ function LearnPage() {
           {learnSubModeStrings.sessionPreferences || i18n('Learn session preferences')}
         </button>
       </>
-        )}
+        ) : null}
 
         {viewMode === 'path' && pathListLen > 0 && (
           <div style={{
@@ -1471,6 +1536,176 @@ function LearnPage() {
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {viewMode === 'contributions' && (
+          <div style={{
+            padding: isMobile ? '16px 14px' : '20px 18px',
+            background: themeStyles.bgCard,
+            borderRadius: 16,
+            border: `1px solid ${themeStyles.border}`,
+            boxShadow: theme === 'dark' ? '0 4px 24px rgba(0,0,0,0.35)' : '0 2px 12px rgba(0,0,0,0.06)',
+          }}
+          >
+            <h2 style={{
+              fontSize: 15,
+              fontWeight: 600,
+              color: themeStyles.textPrimary,
+              margin: '0 0 10px',
+            }}
+            >
+              {i18n('Learn domain learn wall')}
+            </h2>
+            <ContributionWall
+              contributions={learnWallContributions}
+              theme={theme}
+              contributionDetails={learnWallContributionDetails as Record<string, ContributionDetail[]>}
+              onDateClick={(d) => setSelectedLearnWallDate(d)}
+              pastYearCaption={i18n('Learn domain learn wall caption')}
+              compact
+            />
+            {selectedLearnWallDate && learnWallContributionDetails[selectedLearnWallDate]?.[0] ? (
+              <div style={{
+                marginTop: 18,
+                padding: 16,
+                background: themeStyles.bgSecondary,
+                borderRadius: 10,
+                border: `1px solid ${themeStyles.border}`,
+              }}
+              >
+                <h3 style={{ fontSize: 14, fontWeight: 700, color: themeStyles.textPrimary, margin: '0 0 12px' }}>
+                  {i18n('Contributions on {0}', moment(selectedLearnWallDate).format('YYYY-MM-DD'))}
+                </h3>
+                {(() => {
+                  const row = learnWallContributionDetails[selectedLearnWallDate]![0]!;
+                  const hasCounts = row.nodes > 0 || row.cards > 0 || row.problems > 0;
+                  return (
+                    <>
+                      {row.checkedIn ? (
+                        <div style={{
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: themeStyles.primary,
+                          marginBottom: 10,
+                        }}
+                        >
+                          {i18n('Learn wall checked in')}
+                        </div>
+                      ) : null}
+                      <div style={{
+                        display: 'flex',
+                        gap: 16,
+                        flexWrap: 'wrap',
+                        fontSize: 13,
+                        color: themeStyles.textSecondary,
+                        marginBottom: 12,
+                      }}
+                      >
+                        {row.nodes > 0 ? (
+                          <span>
+                            <span style={{ color: themeStyles.statNode, fontWeight: 700 }}>{row.nodes}</span>
+                            {' '}
+                            {i18n('nodes')}
+                          </span>
+                        ) : null}
+                        {row.cards > 0 ? (
+                          <span>
+                            <span style={{ color: themeStyles.statCard, fontWeight: 700 }}>{row.cards}</span>
+                            {' '}
+                            {i18n('cards')}
+                          </span>
+                        ) : null}
+                        {row.problems > 0 ? (
+                          <span>
+                            <span style={{ color: themeStyles.statProblem, fontWeight: 700 }}>{row.problems}</span>
+                            {' '}
+                            {i18n('problems')}
+                          </span>
+                        ) : null}
+                        {!hasCounts && !row.checkedIn ? (
+                          <span style={{ color: themeStyles.textTertiary }}>{i18n('No contributions')}</span>
+                        ) : null}
+                        {!hasCounts && row.checkedIn ? (
+                          <span style={{ color: themeStyles.textTertiary }}>{i18n('Learn wall checkin only saves')}</span>
+                        ) : null}
+                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: themeStyles.textPrimary, marginBottom: 8 }}>
+                        {i18n('Learn wall sessions')}
+                      </div>
+                      {(row.sessions && row.sessions.length > 0) ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          {(row.sessions || []).map((se) => (
+                            <div
+                              key={se.sessionId}
+                              style={{
+                                padding: '10px 12px',
+                                borderRadius: 8,
+                                border: `1px solid ${themeStyles.border}`,
+                                background: themeStyles.bgCard,
+                              }}
+                            >
+                              <a
+                                href={se.sessionHistoryUrl}
+                                style={{
+                                  fontWeight: 600,
+                                  color: themeStyles.accent,
+                                  textDecoration: 'none',
+                                  fontSize: 13,
+                                  display: 'inline-block',
+                                }}
+                              >
+                                {selectedLearnWallDate
+                                  ? (se.timeUtc
+                                      ? `${moment(selectedLearnWallDate).format('YYYY-MM-DD')} ${se.timeUtc} UTC`
+                                      : `${moment(selectedLearnWallDate).format('YYYY-MM-DD')} UTC`)
+                                  : (se.timeUtc ? `${se.timeUtc} UTC` : '')}
+                              </a>
+                              <div style={{
+                                marginTop: 6,
+                                fontSize: 12,
+                                color: themeStyles.textSecondary,
+                                lineHeight: 1.45,
+                              }}
+                              >
+                                {se.statusLabel}
+                                {se.progressText ? ` · ${se.progressText}` : ''}
+                              </div>
+                              <div style={{
+                                marginTop: 4,
+                                fontSize: 12,
+                                color: themeStyles.textTertiary,
+                              }}
+                              >
+                                {i18n('Learn wall session record count', se.recordCount)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 12, color: themeStyles.textTertiary }}>{i18n('Learn wall no sessions')}</div>
+                      )}
+                    </>
+                  );
+                })()}
+                <button
+                  type="button"
+                  onClick={() => setSelectedLearnWallDate(null)}
+                  style={{
+                    marginTop: 14,
+                    padding: '6px 12px',
+                    fontSize: 12,
+                    borderRadius: 8,
+                    border: `1px solid ${themeStyles.border}`,
+                    background: themeStyles.bgCard,
+                    color: themeStyles.textSecondary,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {i18n('Close')}
+                </button>
+              </div>
+            ) : null}
           </div>
         )}
       </div>
