@@ -803,6 +803,10 @@ session_col_record_type: Session type
 session_col_route: Route
 session_col_started_at: Started at
 session_domain: Learn live
+session_filter_any: Any
+session_filter_kind: Session category
+session_filter_record_type: Session type
+session_filter_status: Status
 session_last_activity: Last activity
 session_learn_empty_filter: No sessions match the filter.
 session_learn_empty: No recent learn activity in this domain.

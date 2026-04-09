@@ -1207,6 +1207,10 @@ session_col_record_type: 会话类型
 session_col_route: 页面
 session_col_started_at: 开始时间
 session_domain: 会话
+session_filter_any: 全部
+session_filter_kind: 会话类别
+session_filter_record_type: 会话类型
+session_filter_status: 状态
 session_last_activity: 最近活动
 session_learn_empty_filter: 没有符合条件的会话。
 session_learn_empty: 当前域内暂无近期学习活动。
