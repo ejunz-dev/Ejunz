@@ -170,24 +170,6 @@ class DevelopSessionHistoryHandler extends Handler {
 }
 
 class DevelopHandler extends Handler {
-    async after(domainId: string) {
-        if (this.request.json || !this.response.template) return;
-        this.response.body.overrideNav = [
-            {
-                name: 'homepage',
-                args: {},
-                displayName: this.translate('Home'),
-                checker: () => true,
-            },
-            {
-                name: 'learn',
-                args: {},
-                displayName: this.translate('Learn'),
-                checker: () => true,
-            },
-        ];
-    }
-
     async get(domainId: string) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
