@@ -1,7 +1,31 @@
-import { ObjectId } from 'mongodb';
+import {
+    Filter,
+    MatchKeysAndValues,
+    ObjectId,
+    OnlyFieldsOfType,
+    PushOperator,
+    UpdateFilter,
+    type FindOptions,
+} from 'mongodb';
 import type { Context } from '../context';
+import type { AgentChatSessionDoc } from '../interface';
+import { NotFoundError } from '../error';
 import db from '../service/db';
 import bus from '../service/bus';
+import { Logger } from '../logger';
+import { MaybeArray, NumberKeys } from '../typeutils';
+const logger = new Logger('model/session');
+
+/** Match agent chat rows by `agentSessionKind`. */
+export function agentChatSessionKindFilter(
+    kind?: 'chat' | 'client' | { $in: ('chat' | 'client')[] },
+): Record<string, unknown> {
+    if (kind == null || (typeof kind === 'object' && '$in' in kind)) {
+        const inArr = (kind as { $in: ('chat' | 'client')[] } | undefined)?.$in ?? (['chat', 'client'] as const);
+        return { agentSessionKind: { $in: inArr } };
+    }
+    return { agentSessionKind: kind };
+}
 
 export type LessonMode = 'today' | 'node' | 'card' | null;
 
@@ -31,8 +55,18 @@ export interface SessionDoc {
     nodeId?: string;
     cardIndex?: number;
     route?: string;
-    /** Which app owns this row (`learn` = lesson shell; `develop` = base editor develop-pool session). */
-    appRoute?: 'learn' | 'develop';
+    /** Which app owns this row (`learn` | `develop` | `agent`). */
+    appRoute?: 'learn' | 'develop' | 'agent';
+    /** Agent chat: agent id string (same as Agent doc). */
+    agentId?: string;
+    /** Agent conversation: `chat` (web) or `client` (Edge). */
+    agentSessionKind?: 'chat' | 'client';
+    /** Optional title for agent conversation list. */
+    title?: string;
+    /** Arbitrary JSON context (tools, systemMessage snapshot, etc.). */
+    context?: any;
+    /** When session kind is `client`, bound Edge client id. */
+    clientId?: number;
     lessonMode?: LessonMode;
     currentLearnSectionIndex?: number;
     currentLearnSectionId?: string;
@@ -106,6 +140,11 @@ export type SessionPatch = Partial<Pick<
     | 'lessonAbandonedAt'
     | 'state'
     | 'progress'
+    | 'agentId'
+    | 'agentSessionKind'
+    | 'title'
+    | 'context'
+    | 'clientId'
 >>;
 
 /**
@@ -266,11 +305,15 @@ export default class SessionModel {
         uid: number | undefined,
         page: number,
         pageSize: number,
-        opts?: { hideLearnHomePlaceholderShells?: boolean },
+        opts?: { hideLearnHomePlaceholderShells?: boolean; appRoute?: 'agent' },
     ) {
         const filter: Record<string, unknown> = { domainId };
         if (uid != null) (filter as any).uid = uid;
-        if (opts?.hideLearnHomePlaceholderShells) {
+        if (opts?.appRoute === 'agent') {
+            (filter as any).appRoute = 'agent';
+            Object.assign(filter, agentChatSessionKindFilter());
+        }
+        if (opts?.hideLearnHomePlaceholderShells && opts?.appRoute !== 'agent') {
             (filter as any).$nor = [MONGO_MATCH_LEARN_HOME_PLACEHOLDER_SHELL];
         }
         const [rows, count] = await Promise.all([
@@ -287,6 +330,206 @@ export default class SessionModel {
 
     static async deleteForUser(domainId: string, uid: number) {
         await this.coll.deleteMany({ domainId, uid });
+    }
+
+    /**
+     * Session row whose `_id` is the agent conversation id (`session_record.sessionId` after insert).
+     */
+    static async ensureAgentChatSession(
+        domainId: string,
+        uid: number,
+        chatSessionId: ObjectId,
+        agentId: string,
+    ): Promise<SessionDoc> {
+        const doc = await this.coll.findOne({
+            _id: chatSessionId,
+            domainId,
+            uid,
+            appRoute: 'agent',
+            ...agentChatSessionKindFilter(),
+        });
+        if (!doc) {
+            throw new NotFoundError('Agent conversation not found');
+        }
+        const now = new Date();
+        await this.coll.updateOne(
+            { _id: doc._id, domainId, uid },
+            { $set: { lastActivityAt: now, updatedAt: now, agentId } },
+        );
+        const out = await this.coll.findOne({ _id: doc._id, domainId, uid });
+        if (out) bus.broadcast('session/change', out as SessionDoc);
+        return out as SessionDoc;
+    }
+
+    /** Map agent conversation session → template / WS view. */
+    static toAgentChatSessionView(doc: SessionDoc | null): AgentChatSessionDoc | null {
+        const kind = doc?.agentSessionKind;
+        if (!doc || !kind) return null;
+        const ids = doc.recordIds || [];
+        return {
+            _id: doc._id,
+            domainId: doc.domainId,
+            agentId: doc.agentId!,
+            uid: doc.uid,
+            recordIds: ids,
+            type: kind,
+            title: doc.title,
+            context: doc.context ?? {},
+            createdAt: doc.createdAt,
+            updatedAt: doc.updatedAt,
+            lastActivityAt: doc.lastActivityAt,
+            ...(doc.clientId !== undefined ? { clientId: doc.clientId } : {}),
+        };
+    }
+
+    private static normalizeAgentChatSessionQuery(domainId: string, query: Record<string, unknown>): Record<string, unknown> {
+        const q = { ...query };
+        const t = q.type as 'chat' | 'client' | undefined;
+        delete q.type;
+        return {
+            domainId,
+            appRoute: 'agent',
+            ...(t ? agentChatSessionKindFilter(t) : agentChatSessionKindFilter()),
+            ...q,
+        };
+    }
+
+    static async getAgentChatSession(domainId: string, _id: ObjectId): Promise<AgentChatSessionDoc | null> {
+        const doc = await this.coll.findOne({
+            _id,
+            domainId,
+            appRoute: 'agent',
+            ...agentChatSessionKindFilter(),
+        });
+        return SessionModel.toAgentChatSessionView(doc as SessionDoc);
+    }
+
+    static async addAgentChatSession(
+        domainId: string,
+        agentId: string,
+        uid: number,
+        kind: 'chat' | 'client',
+        title?: string,
+        context?: any,
+        clientId?: number,
+    ): Promise<ObjectId> {
+        const now = new Date();
+        const doc = {
+            _id: new ObjectId(),
+            domainId,
+            uid,
+            appRoute: 'agent' as const,
+            route: 'agent',
+            agentSessionKind: kind,
+            agentId,
+            recordIds: [] as ObjectId[],
+            title: title ?? `Chat ${now.toLocaleString()}`,
+            context: context ?? {},
+            state: 'active' as const,
+            createdAt: now,
+            updatedAt: now,
+            lastActivityAt: now,
+            ...(clientId !== undefined ? { clientId } : {}),
+        } as SessionDoc;
+        await this.coll.insertOne(doc as any);
+        bus.broadcast('session/change', doc);
+        const v = SessionModel.toAgentChatSessionView(doc);
+        if (v) (bus as any).broadcast('agent_chat_session/change', v);
+        return doc._id;
+    }
+
+    static async appendAgentChatSessionRecord(
+        domainId: string,
+        chatSessionId: ObjectId,
+        recordId: ObjectId,
+    ): Promise<AgentChatSessionDoc | null> {
+        const now = new Date();
+        const updated = await this.coll.findOneAndUpdate(
+            {
+                _id: chatSessionId,
+                domainId,
+                appRoute: 'agent',
+                ...agentChatSessionKindFilter(),
+            },
+            {
+                $addToSet: { recordIds: recordId },
+                $set: { updatedAt: now, lastActivityAt: now },
+            },
+            { returnDocument: 'after' },
+        );
+        const raw = unwrapFindOneSession(updated);
+        if (raw) {
+            bus.broadcast('session/change', raw);
+            const v = SessionModel.toAgentChatSessionView(raw);
+            if (v) (bus as any).broadcast('agent_chat_session/change', v);
+            return v;
+        }
+        return null;
+    }
+
+    static findAgentChatSessions(domainId: string, query: Record<string, unknown>, options?: FindOptions) {
+        const q = SessionModel.normalizeAgentChatSessionQuery(domainId, query);
+        return this.coll.find(q as Filter<SessionDoc>, options);
+    }
+
+    static countAgentChatSessions(domainId: string, query: Record<string, unknown>) {
+        const q = SessionModel.normalizeAgentChatSessionQuery(domainId, query);
+        return this.coll.countDocuments(q as Filter<SessionDoc>);
+    }
+
+    static async updateAgentChatSession(
+        domainId: string,
+        _id: MaybeArray<ObjectId>,
+        $set?: MatchKeysAndValues<AgentChatSessionDoc>,
+        $push?: PushOperator<AgentChatSessionDoc>,
+        $unset?: OnlyFieldsOfType<AgentChatSessionDoc, any, true | '' | 1>,
+        $inc?: Partial<Record<NumberKeys<AgentChatSessionDoc>, number>>,
+    ): Promise<AgentChatSessionDoc | null> {
+        const mappedSet = $set ? { ...($set as Record<string, unknown>) } : undefined;
+        if (mappedSet?.type !== undefined) {
+            mappedSet.agentSessionKind = mappedSet.type;
+            delete mappedSet.type;
+        }
+        const $update: UpdateFilter<SessionDoc> = {};
+        if (mappedSet && Object.keys(mappedSet).length) $update.$set = mappedSet as any;
+        if ($push && Object.keys($push).length) $update.$push = $push as any;
+        if ($unset && Object.keys($unset).length) $update.$unset = $unset as any;
+        if ($inc && Object.keys($inc).length) $update.$inc = $inc as any;
+        const base = {
+            domainId,
+            appRoute: 'agent',
+            ...agentChatSessionKindFilter(),
+        };
+        if (_id instanceof Array) {
+            await this.coll.updateMany({ _id: { $in: _id }, ...base }, $update);
+            return null;
+        }
+        if (Object.keys($update).length) {
+            const updated = await this.coll.findOneAndUpdate(
+                { _id, ...base },
+                $update,
+                { returnDocument: 'after' },
+            );
+            const raw = unwrapFindOneSession(updated);
+            if (raw) {
+                bus.broadcast('session/change', raw);
+                const v = SessionModel.toAgentChatSessionView(raw);
+                if (v) (bus as any).broadcast('agent_chat_session/change', v);
+                return v;
+            }
+            return null;
+        }
+        const doc = await this.coll.findOne({ _id, ...base }, { readPreference: 'primary' });
+        return SessionModel.toAgentChatSessionView(doc as SessionDoc);
+    }
+
+    static async deleteAgentChatSession(domainId: string, _id: ObjectId) {
+        return this.coll.deleteOne({
+            _id,
+            domainId,
+            appRoute: 'agent',
+            ...agentChatSessionKindFilter(),
+        });
     }
 
     static async addRecord(
@@ -315,6 +558,25 @@ export async function apply(ctx: Context) {
         SessionModel.coll,
         { key: { domainId: 1, uid: 1, lastActivityAt: -1 }, name: 'domain_uid' },
         { key: { domainId: 1, lastActivityAt: -1 }, name: 'domain_activity' },
+        { key: { domainId: 1, appRoute: 1, agentSessionKind: 1, uid: 1, _id: -1 }, name: 'agent_chat_sessions' },
+        { key: { domainId: 1, appRoute: 1, agentId: 1, uid: 1, _id: -1 }, name: 'agent_chat_by_agent' },
+        { key: { domainId: 1, appRoute: 1, clientId: 1, lastActivityAt: -1 }, name: 'agent_chat_client_activity' },
     );
+
+    const TIMEOUT_MS = 5 * 60 * 1000;
+    setInterval(async () => {
+        try {
+            const timeoutThreshold = new Date(Date.now() - TIMEOUT_MS);
+            const n = await SessionModel.coll.countDocuments({
+                appRoute: 'agent',
+                ...agentChatSessionKindFilter('client'),
+                lastActivityAt: { $lt: timeoutThreshold },
+            });
+            if (n > 0) logger.debug('Found %d stale client agent sessions (detached heuristic)', n);
+        } catch (e) {
+            logger.error('Agent session timeout check: %O', e);
+        }
+    }, 30000);
+
     (global.Ejunz.model as any).session = SessionModel;
 }

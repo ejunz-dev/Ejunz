@@ -1,14 +1,11 @@
-import {
-    escapeRegExp,
-} from 'lodash';
-import { Filter, ObjectId } from 'mongodb';
+import { ObjectId } from 'mongodb';
 import type { Context } from '../context';
 import {
     BadRequestError, ContestNotAttendedError, ContestNotEndedError, ContestNotFoundError, ContestNotLiveError,
     FileLimitExceededError, HackFailedError, NoProblemError, NotFoundError,
     PermissionError, ProblemAlreadyExistError, ProblemAlreadyUsedByContestError, ProblemConfigError,
     ProblemIsReferencedError, ProblemNotAllowLanguageError, ProblemNotAllowPretestError, ProblemNotFoundError,
-    RoundNotFoundError, SolutionNotFoundError, ValidationError,DiscussionNotFoundError
+    SolutionNotFoundError, ValidationError,DiscussionNotFoundError
 } from '../error';
 import {
     Handler, ConnectionHandler, param, post, query, route, Types, subscribe,
@@ -17,10 +14,7 @@ import Agent from '../model/agent';
 import { PERM, PRIV, STATUS } from '../model/builtin';
 import { AgentDoc } from '../interface';
 import domain from '../model/domain';
-import { User } from '../model/user';
 import system from '../model/system';
-import parser from '@ejunz/utils/lib/search';
-import { RepoSearchOptions } from '../interface';
 import user from '../model/user';
 import request from 'superagent';
 import { randomstring } from '@ejunz/utils';
@@ -35,10 +29,8 @@ import * as document from '../model/document';
 import NodeModel from '../model/node';
 import { callToolViaWorker } from './worker';
 import { getDomainMarketToolsForAgent } from './tool';
-import round from '../model/round';
-import RoomModel from '../model/room';
-import { RoundDoc } from '../interface';
-
+import RecordModel from '../model/record';
+import SessionModel from '../model/session';
 const AgentLogger = new Logger('agent');
 export const parseCategory = (value: string) => value.replace(/，/g, ',').split(',').map((e) => e.trim());
 
@@ -49,14 +41,14 @@ async function callToolWithFallback(
     domainId: string,
     agentId?: string,
     uid?: number,
-    taskRoundId?: ObjectId,
+    taskRecordId?: ObjectId,
     useWorker: boolean = true,
 ): Promise<any> {
     if (useWorker) {
         try {
             const ctx = (global as any).app || (global as any).Ejunz;
             if (ctx) {
-                return await callToolViaWorker(ctx, toolName, args, domainId, agentId, uid, taskRoundId);
+                return await callToolViaWorker(ctx, toolName, args, domainId, agentId, uid, taskRecordId);
             }
         } catch (e) {
             AgentLogger.warn(`Worker tool call failed, falling back to direct call: ${toolName}`, e);
@@ -269,157 +261,13 @@ Directly output the updated work rules memory, use concise and clear format (can
     }
 }
 
-function buildQuery(udoc: User) {
-    const q: Filter<AgentDoc> = {};
-    if (!udoc.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN)) {
-        q.$or = [
-            { hidden: false },
-            { owner: udoc._id },
-            { maintainer: udoc._id },
-        ];
-    }
-    return q;
-}
-
-const defaultSearch = async (domainId: string, q: string, options?: RepoSearchOptions) => {
-    const escaped = escapeRegExp(q.toLowerCase());
-    const projection: (keyof AgentDoc)[] = ['domainId', 'docId', 'aid'];
-    const $regex = new RegExp(q.length >= 2 ? escaped : `\\A${escaped}`, 'gmi');
-    const filter = { $or: [{ aid: { $regex } }, { title: { $regex } }, { tag: q }] };
-    const adocs = await Agent.getMulti(domainId, filter, projection)
-        .skip(options.skip || 0).limit(options.limit || system.get('pagination.problem')).toArray();
-    if (!options.skip) {
-        let adoc = await Agent.get(domainId, Number.isSafeInteger(+q) ? +q : q, projection);
-        if (adoc) adocs.unshift(adoc);
-        else if (/^R\d+$/.test(q)) {
-            adoc = await Agent.get(domainId, +q.substring(1), projection);
-            if (adoc) adocs.unshift(adoc);
-        }
-    }
-    return {
-        hits: Array.from(new Set(adocs.map((i) => `${i.domainId}/${i.docId}`))),
-        total: Math.max(adocs.length, await Agent.count(domainId, filter)),
-        countRelation: 'eq',
-    };
-};
-
-export interface QueryContext {
-    query: Filter<AgentDoc>;
-    sort: string[];
-    pcountRelation: string;
-    parsed: ReturnType<typeof parser.parse>;
-    category: string[];
-    text: string;
-    total: number;
-    fail: boolean;
-}
-
+/** Former `/agent` catalog; redirects to domain session list. */
 export class AgentMainHandler extends Handler {
-    queryContext: QueryContext = {
-        query: {},
-        sort: [],
-        pcountRelation: 'eq',
-        parsed: null,
-        category: [],
-        text: '',
-        total: 0,
-        fail: false,
-    };
-
-    @param('page', Types.PositiveInt, true)
-    @param('q', Types.Content, true)
-    @param('limit', Types.PositiveInt, true)
-    @param('pjax', Types.Boolean)
-    @param('quick', Types.Boolean)
-    async get(domainId: string, page = 1, q = '', limit: number, pjax = false, quick = false) {
-        this.response.template = 'agent_domain.html';
-        if (!limit || limit > this.ctx.setting.get('pagination.problem') || page > 1) limit = this.ctx.setting.get('pagination.problem');
-        
-
-        this.queryContext.query = buildQuery(this.user);
-
-        const query = this.queryContext.query;
-        const psdict = {};
-        const search = defaultSearch;
-        const parsed = parser.parse(q, {
-            keywords: ['category', 'difficulty'],
-            offsets: false,
-            alwaysArray: true,
-            tokenize: true,
-        });
-
-        const category = parsed.category || [];
-        const text = (parsed.text || []).join(' ');
-
-        if (parsed.difficulty?.every((i) => Number.isSafeInteger(+i))) {
-            query.difficulty = { $in: parsed.difficulty.map(Number) };
-        }
-        if (category.length) query.$and = category.map((tag) => ({ tag }));
-        if (text) category.push(text);
-        if (category.length) this.UiContext.extraTitleContent = category.join(',');
-
-        let total = 0;
-        if (text) {
-            const result = await search(domainId, q, { skip: (page - 1) * limit, limit });
-            total = result.total;
-            this.queryContext.pcountRelation = result.countRelation;
-            if (!result.hits.length) this.queryContext.fail = true;
-            query.$and ||= [];
-            query.$and.push({
-                $or: result.hits.map((i) => {
-                    const [did, docId] = i.split('/');
-                    return { domainId: did, docId: +docId };
-                }),
-            });
-            this.queryContext.sort = result.hits;
-        }
-
-
-        const sort = this.queryContext.sort;
-        await (this.ctx as any).parallel('agent/list', query, this, sort);
-
-        let [adocs, ppcount, pcount] = this.queryContext.fail
-            ? [[], 0, 0]
-            : await Agent.list(
-                domainId, query, sort.length ? 1 : page, limit,
-                quick ? ['title', 'aid', 'domainId', 'docId'] : undefined,
-                this.user._id,
-            );
-
-        
-
-
-        if (total) {
-            pcount = total;
-            ppcount = Math.ceil(total / limit);
-        }
-        if (sort.length) adocs = adocs.sort((a, b) => sort.indexOf(`${a.domainId}/${a.docId}`) - sort.indexOf(`${b.domainId}/${b.docId}`));
-        if (text && pcount > adocs.length) pcount = adocs.length;
-
-       
-
-        if (pjax) {
-            this.response.body = {
-                title: this.renderTitle(this.translate('agent_domain')),
-                fragments: (await Promise.all([
-                    this.renderHTML('partials/agent_list.html', {
-                        page, ppcount, pcount, adocs, psdict, qs: q,
-                    }),
-                ])).map((i) => ({ html: i })),
-            };
-        } else {
-            this.response.body = {
-                page,
-                pcount,
-                ppcount,
-                pcountRelation: this.queryContext.pcountRelation,
-                adocs,
-                psdict,
-                qs: q,
-            };
-        }
+    async get(domainId: string) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.response.redirect = this.url('session_domain', { domainId });
     }
-}   
+}
 
 
 
@@ -431,7 +279,7 @@ export interface AgentChatEventCallbacks {
     onToolResult?: (tool: string, result: any) => void;
     onDone?: (message: string, history: string) => void;
     onError?: (error: string) => void;
-    taskRoundId?: ObjectId; // 可选的 task record ID，用于跟踪任务
+    taskRecordId?: ObjectId; // 可选的 task record ID，用于跟踪任务
 }
 
 export async function processAgentChatInternal(
@@ -440,7 +288,7 @@ export async function processAgentChatInternal(
     history: ChatMessage[] | string,
     callbacks: AgentChatEventCallbacks,
 ): Promise<void> {
-    const taskRoundId = callbacks.taskRoundId;
+    const taskRecordId = callbacks.taskRecordId;
     let toolCallCount = 0;
     let accumulatedContent = '';
     
@@ -450,10 +298,10 @@ export async function processAgentChatInternal(
     
     try {
         // 不再更新record，所有record更新都由worker处理
-        // 如果taskRoundId存在，说明这是Client Handler的特殊情况，但即使如此也不应该更新record
-        if (taskRoundId) {
-            AgentLogger.info('processAgentChatInternal: taskRoundId provided, but record updates are handled by worker', {
-                roundId: taskRoundId.toString(),
+        // 如果taskRecordId存在，说明这是Client Handler的特殊情况，但即使如此也不应该更新record
+        if (taskRecordId) {
+            AgentLogger.info('processAgentChatInternal: taskRecordId provided, but record updates are handled by worker', {
+                recordId: taskRecordId.toString(),
             });
         }
         const domainInfo = await domain.get(adoc.domainId);
@@ -840,7 +688,7 @@ export async function processAgentChatInternal(
                                                 AgentLogger.debug('processAgentChatInternal: tool call detected', {
                                                     toolName: firstToolName,
                                                     toolCallCount,
-                                                    roundId: taskRoundId?.toString(),
+                                                    recordId: taskRecordId?.toString(),
                                                 });
 
                                                 let toolResult: any;
@@ -850,7 +698,7 @@ export async function processAgentChatInternal(
                                                         : parsedArgs;
                                                     const agentId = (adoc as any).aid || (adoc as any)._id?.toString();
                                                     const uid = (adoc as any).uid || (adoc as any).owner;
-                                                    toolResult = await callToolWithFallback(firstToolName, toolArgs, adoc.domainId, agentId, uid, callbacks.taskRoundId);
+                                                    toolResult = await callToolWithFallback(firstToolName, toolArgs, adoc.domainId, agentId, uid, callbacks.taskRecordId);
                                                     AgentLogger.info(`Tool ${firstToolName} returned (internal)`, { resultLength: JSON.stringify(toolResult).length });
                                                 } catch (toolError: any) {
                                                     AgentLogger.error(`Tool ${firstToolName} failed (internal):`, toolError);
@@ -863,7 +711,7 @@ export async function processAgentChatInternal(
                                                     AgentLogger.error('processAgentChatInternal: tool call failed', {
                                                         toolName: firstToolName,
                                                         error: toolError.message || String(toolError),
-                                                        roundId: taskRoundId?.toString(),
+                                                        recordId: taskRecordId?.toString(),
                                                     });
                                                 }
 
@@ -872,7 +720,7 @@ export async function processAgentChatInternal(
                                                 // 不再更新record，所有record更新都由worker处理
                                                 AgentLogger.debug('processAgentChatInternal: tool result received', {
                                                     toolName: firstToolName,
-                                                    roundId: taskRoundId?.toString(),
+                                                    recordId: taskRecordId?.toString(),
                                                 });
 
                                                 const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
@@ -1330,23 +1178,23 @@ export class AgentChatHandler extends Handler {
         const udoc = await user.getById(domainId, adoc.owner);
         
         // 聊天模式：新建或指定 session（默认进入聊天模式，不再显示列表模式）
-        let currentRoomId: ObjectId | undefined = sid;
-        let roundHistory: any[] = [];
+        let currentChatSessionId: ObjectId | undefined = sid;
+        let recordHistory: any[] = [];
         
         if (sid) {
-            const sdoc = await RoomModel.get(domainId, sid);
+            const sdoc = await SessionModel.getAgentChatSession(domainId, sid);
             if (sdoc && sdoc.agentId === (adoc.aid || adoc.docId?.toString() || adoc.aid) && sdoc.uid === this.user._id) {
-                if (sdoc.roundIds && sdoc.roundIds.length > 0) {
+                if (sdoc.recordIds && sdoc.recordIds.length > 0) {
                     try {
-                        const roundsMap = await round.getList(domainId, sdoc.roundIds);
-                        const roundsList = sdoc.roundIds.map((rid: ObjectId) => roundsMap[rid.toString()]).filter(Boolean);
-                        for (const rdoc of roundsList) {
+                        const agentRecordsById = await RecordModel.getList(domainId, sdoc.recordIds);
+                        const agentRecordsOrdered = sdoc.recordIds.map((rid: ObjectId) => agentRecordsById[rid.toString()]).filter(Boolean);
+                        for (const rdoc of agentRecordsOrdered) {
                             if (rdoc) {
                                 const r = rdoc as any;
                                 if (r.agentMessages && Array.isArray(r.agentMessages)) {
                                     for (const msg of r.agentMessages) {
                                         if (msg.role === 'user' || msg.role === 'assistant' || msg.role === 'tool') {
-                                            roundHistory.push({
+                                            recordHistory.push({
                                                 role: msg.role,
                                                 content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || ''),
                                                 tool_calls: msg.tool_calls,
@@ -1365,28 +1213,30 @@ export class AgentChatHandler extends Handler {
                 }
             } else {
                 // Session 无效，重置为新建模式
-                currentRoomId = undefined;
+                currentChatSessionId = undefined;
             }
         }
 
-        const rooms = await RoomModel.getMulti(domainId, {
+        const chatSessions = (await SessionModel.findAgentChatSessions(domainId, {
             agentId: adoc.aid || adoc.docId?.toString() || adoc.aid,
             uid: this.user._id,
         }, {
             sort: { _id: -1 },
             limit: 50,
-        }).toArray();
+        }).toArray())
+            .map((d) => SessionModel.toAgentChatSessionView(d)!)
+            .filter(Boolean);
         
-        const allRoundIds = rooms.flatMap(s => s.roundIds || []);
-        const roundsMap = allRoundIds.length > 0
-            ? await round.getList(domainId, allRoundIds)
+        const allRecordIds = chatSessions.flatMap(s => s.recordIds || []);
+        const recordsMap = allRecordIds.length > 0
+            ? await RecordModel.getList(domainId, allRecordIds)
             : {};
         
-        const roomsWithRounds = rooms.map(s => ({
+        const chatSessionsWithRecords = chatSessions.map(s => ({
             ...s,
-            rounds: (s.roundIds || []).map(rid => roundsMap[rid.toString()]).filter(Boolean),
-            lastRound: (s.roundIds || []).length > 0 
-                ? roundsMap[(s.roundIds || [])[s.roundIds.length - 1].toString()]
+            agentRecords: (s.recordIds || []).map(rid => recordsMap[rid.toString()]).filter(Boolean),
+            lastAgentRecord: (s.recordIds || []).length > 0 
+                ? recordsMap[(s.recordIds || [])[s.recordIds.length - 1].toString()]
                 : null,
         }));
 
@@ -1446,9 +1296,9 @@ export class AgentChatHandler extends Handler {
             apiUrl,
             edgesWithTools,
             mode: 'chat', // 聊天模式
-            roomId: currentRoomId?.toString(),
-            roundHistory,
-            rooms: roomsWithRounds,
+            chatSessionId: currentChatSessionId?.toString(),
+            recordHistory,
+            chatSessions: chatSessionsWithRecords,
         };
     }
 
@@ -1458,7 +1308,7 @@ export class AgentChatHandler extends Handler {
             domainId, 
             aid, 
             hasMessage: !!this.request.body?.message,
-            createTaskRound: this.request.body?.createTaskRound !== false,
+            createTaskRecord: this.request.body?.createTaskRecord !== false,
             NODE_APP_INSTANCE: process.env.NODE_APP_INSTANCE 
         });
         this.response.template = null;
@@ -1477,13 +1327,13 @@ export class AgentChatHandler extends Handler {
         const history = this.request.body?.history || '[]';
         const stream = this.request.query?.stream === 'true' || this.request.body?.stream === true;
         // 强制所有请求都创建task，必须通过worker处理
-        const createTaskRound = true;
+        const createTaskRecord = true;
         
         AgentLogger.info('POST /agent/:aid/chat: parameters parsed', { 
             domainId, 
             aid, 
             messageLength: message?.length || 0,
-            createTaskRound,
+            createTaskRecord,
             stream,
             NODE_APP_INSTANCE: process.env.NODE_APP_INSTANCE 
         });
@@ -1515,24 +1365,24 @@ export class AgentChatHandler extends Handler {
             chatHistory = [];
         }
         
-        let roomId: ObjectId | undefined;
-        const roomIdParam = this.request.body?.roomId ?? this.request.body?.sessionId;
-        if (roomIdParam) {
+        let chatSessionId: ObjectId | undefined;
+        const chatSessionIdParam = this.request.body?.chatSessionId;
+        if (chatSessionIdParam) {
             try {
-                roomId = new ObjectId(roomIdParam);
-                const sdoc = await RoomModel.get(domainId, roomId);
+                chatSessionId = new ObjectId(chatSessionIdParam);
+                const sdoc = await SessionModel.getAgentChatSession(domainId, chatSessionId);
                 if (!sdoc || sdoc.agentId !== (adoc.aid || adoc.docId?.toString() || adoc.aid) || sdoc.uid !== this.user._id) {
-                    AgentLogger.warn('Invalid room ID or room does not belong to user/agent', { roomId: roomIdParam });
-                    roomId = undefined;
+                    AgentLogger.warn('Invalid chat session or access denied', { chatSessionId: chatSessionIdParam });
+                    chatSessionId = undefined;
                 }
             } catch (e) {
-                AgentLogger.warn('Invalid room ID format', { roomId: roomIdParam, error: e });
-                roomId = undefined;
+                AgentLogger.warn('Invalid chat session id format', { chatSessionId: chatSessionIdParam, error: e });
+                chatSessionId = undefined;
             }
         }
         
-        if (!roomId) {
-            roomId = await RoomModel.add(
+        if (!chatSessionId) {
+            chatSessionId = await SessionModel.addAgentChatSession(
                 domainId,
                 adoc.aid || adoc.docId?.toString() || adoc.aid,
                 this.user._id,
@@ -1540,20 +1390,20 @@ export class AgentChatHandler extends Handler {
                 undefined,
                 undefined,
             );
-            AgentLogger.info('Created new room', { roomId: roomId.toString(), domainId, agentId: adoc.aid, type: 'chat' });
+            AgentLogger.info('Created new agent chat session', { chatSessionId: chatSessionId.toString(), domainId, agentId: adoc.aid, type: 'chat' });
         }
         
-        const sdoc = await RoomModel.get(domainId, roomId);
+        const sdoc = await SessionModel.getAgentChatSession(domainId, chatSessionId);
         let sessionContext = sdoc?.context || {};
         
-        let taskRoundId: ObjectId | undefined;
+        let taskRecordId: ObjectId | undefined;
         AgentLogger.info('POST chat: checking task creation', { 
-            createTaskRound, 
+            createTaskRecord,
             chatHistoryLength: chatHistory?.length || 0,
         });
-        if (createTaskRound) {
-            if (!roomId) {
-                roomId = await RoomModel.add(
+        if (createTaskRecord) {
+            if (!chatSessionId) {
+                chatSessionId = await SessionModel.addAgentChatSession(
                     domainId,
                     adoc.aid || adoc.docId?.toString() || adoc.aid,
                     this.user._id,
@@ -1561,22 +1411,22 @@ export class AgentChatHandler extends Handler {
                     undefined,
                     undefined,
                 );
-                AgentLogger.info('Auto-created room for record: roomId=%s, type=chat', roomId.toString());
+                AgentLogger.info('Auto-created chat session for record: chatSessionId=%s, type=chat', chatSessionId.toString());
             }
             
             AgentLogger.info('POST chat: creating task record');
-            taskRoundId = await round.addTask(
+            taskRecordId = await RecordModel.insertAgentTask(
                 domainId,
                 adoc.aid || adoc.docId.toString(),
                 this.user._id,
                 message,
-                roomId,
+                chatSessionId,
                 bubbleId,
             );
             
-            await RoomModel.addRound(domainId, roomId, taskRoundId);
+            await SessionModel.appendAgentChatSessionRecord(domainId, chatSessionId, taskRecordId);
             
-            AgentLogger.info('POST chat: task record created', { taskRoundId: taskRoundId?.toString(), roomId: roomId.toString() });
+            AgentLogger.info('POST chat: task record created', { taskRecordId: taskRecordId?.toString(), chatSessionId: chatSessionId.toString() });
             
             // 收集完整的上下文信息，供 worker 使用
             const domainInfo = await domain.get(domainId);
@@ -1682,23 +1532,23 @@ export class AgentChatHandler extends Handler {
             };
             
             // 更新 session 的 context（保存最新的上下文信息）
-            await RoomModel.update(domainId, roomId, {
+            await SessionModel.updateAgentChatSession(domainId, chatSessionId, {
                 context,
             });
             
             // 创建 task 任务，包含完整的上下文信息
             const taskModel = require('../model/task').default;
             AgentLogger.info('POST chat: calling TaskModel.add', { 
-                roundId: taskRoundId.toString(), 
-                roomId: roomId.toString(),
+                recordId: taskRecordId.toString(), 
+                agentChatSessionId: chatSessionId.toString(),
                 agentId: adoc.aid || adoc.docId.toString(),
                 assistantbubbleId,
                 NODE_APP_INSTANCE: process.env.NODE_APP_INSTANCE 
             });
             const taskId = await taskModel.add({
                 type: 'task',
-                roundId: taskRoundId,
-                roomId,
+                recordId: taskRecordId,
+                agentChatSessionId: chatSessionId,
                 domainId,
                 agentId: adoc.aid || adoc.docId.toString(),
                 uid: this.user._id,
@@ -1712,7 +1562,7 @@ export class AgentChatHandler extends Handler {
             });
             AgentLogger.info('POST chat: TaskModel.add completed', { 
                 taskId: taskId.toString(), 
-                roundId: taskRoundId.toString(),
+                recordId: taskRecordId.toString(),
                 NODE_APP_INSTANCE: process.env.NODE_APP_INSTANCE 
             });
             
@@ -1722,26 +1572,26 @@ export class AgentChatHandler extends Handler {
             
             // 任务已创建，返回任务 ID，由 worker 处理
             const responseBody = {
-                taskRoundId: taskRoundId.toString(),
-                roomId: roomId.toString(),
+                taskRecordId: taskRecordId.toString(),
+                chatSessionId: chatSessionId.toString(),
                 message: 'Task created, processing by worker',
             };
-            AgentLogger.info('POST chat: returning taskRoundId', responseBody);
+            AgentLogger.info('POST chat: returning taskRecordId', responseBody);
             this.response.body = responseBody;
             return;
         }
 
         // 所有请求都必须创建task并通过worker处理，不再支持直接处理模式
-        AgentLogger.error('POST chat: createTaskRound must be true, all requests must go through worker');
+        AgentLogger.error('POST chat: createTaskRecord must be true, all requests must go through worker');
         this.response.body = { error: 'All requests must create task and be processed by worker' };
         return;
     }
 }
 
 /**
- * Handler for fetching agent rooms list (JSON API)
+ * Handler for fetching agent chat sessions list (JSON API)
  */
-export class AgentChatRoomsListHandler extends Handler {
+export class AgentChatSessionsListHandler extends Handler {
     @param('aid', Types.String)
     async get(domainId: string, aid: string) {
         await this.checkPriv(PRIV.PRIV_USER_PROFILE);
@@ -1752,50 +1602,52 @@ export class AgentChatRoomsListHandler extends Handler {
             throw new NotFoundError(`Agent not found for ${typeof normalizedId === 'number' ? 'docId' : 'aid'}: ${normalizedId}`);
         }
 
-        const rooms = await RoomModel.getMulti(domainId, {
+        const sessions = (await SessionModel.findAgentChatSessions(domainId, {
             agentId: adoc.aid || adoc.docId?.toString() || adoc.aid,
             uid: this.user._id,
         }, {
             sort: { _id: -1 },
             limit: 50,
-        }).toArray();
+        }).toArray())
+            .map((d) => SessionModel.toAgentChatSessionView(d)!)
+            .filter(Boolean);
         
-        const allRoundIds = rooms.flatMap(s => s.roundIds || []);
-        const roundsMap = allRoundIds.length > 0
-            ? await round.getList(domainId, allRoundIds)
+        const allRecordIds = sessions.flatMap(s => s.recordIds || []);
+        const recordsMap = allRecordIds.length > 0
+            ? await RecordModel.getList(domainId, allRecordIds)
             : {};
         
-        const roomsWithRounds = rooms.map(s => ({
+        const chatSessions = sessions.map(s => ({
             ...s,
             _id: s._id.toString(),
-            rounds: (s.roundIds || []).map(rid => {
-                const r = roundsMap[rid.toString()];
+            agentRecords: (s.recordIds || []).map(rid => {
+                const r = recordsMap[rid.toString()];
                 return r ? {
                     ...r,
                     _id: (r as any)._id ? (r as any)._id.toString() : rid.toString(),
                 } : null;
             }).filter(Boolean),
-            lastRound: (s.roundIds || []).length > 0 
+            lastAgentRecord: (s.recordIds || []).length > 0 
                 ? (() => {
-                    const lastRid = s.roundIds[s.roundIds.length - 1];
-                    const r = roundsMap[lastRid.toString()] as any;
+                    const lastRid = s.recordIds[s.recordIds.length - 1];
+                    const r = recordsMap[lastRid.toString()] as any;
                     return r ? {
                         ...r,
                         _id: r._id ? r._id.toString() : lastRid.toString(),
                     } : null;
                 })()
                 : null,
-            roundIds: (s.roundIds || []).map(rid => rid.toString()),
+            recordIds: (s.recordIds || []).map(rid => rid.toString()),
         }));
 
         this.response.template = null;
         this.response.body = {
-            rooms: roomsWithRounds,
+            chatSessions,
         };
     }
 }
 
-export class AgentChatRoomHistoryHandler extends Handler {
+export class AgentChatSessionHistoryHandler extends Handler {
     @param('aid', Types.String)
     @param('sid', Types.ObjectId)
     async get(domainId: string, aid: string, sid: ObjectId) {
@@ -1807,24 +1659,24 @@ export class AgentChatRoomHistoryHandler extends Handler {
             throw new NotFoundError(`Agent not found for ${typeof normalizedId === 'number' ? 'docId' : 'aid'}: ${normalizedId}`);
         }
 
-        const sdoc = await RoomModel.get(domainId, sid);
+        const sdoc = await SessionModel.getAgentChatSession(domainId, sid);
         if (!sdoc || sdoc.agentId !== (adoc.aid || adoc.docId?.toString() || adoc.aid) || sdoc.uid !== this.user._id) {
-            throw new NotFoundError('Room not found or access denied');
+            throw new NotFoundError('Chat session not found or access denied');
         }
 
-        const roundHistory: any[] = [];
-        if (sdoc.roundIds && sdoc.roundIds.length > 0) {
-            const roundsMap = await round.getList(domainId, sdoc.roundIds);
-            const roundsList = sdoc.roundIds.map(rid => roundsMap[rid.toString()]).filter(Boolean);
+        const recordHistory: any[] = [];
+        if (sdoc.recordIds && sdoc.recordIds.length > 0) {
+            const agentRecordsById = await RecordModel.getList(domainId, sdoc.recordIds);
+            const agentRecordsOrdered = sdoc.recordIds.map(rid => agentRecordsById[rid.toString()]).filter(Boolean);
             
             // 提取所有消息并按时间排序
-            for (const rdoc of roundsList) {
+            for (const rdoc of agentRecordsOrdered) {
                 if (rdoc) {
                     const r = rdoc as any;
                     if (r.agentMessages && Array.isArray(r.agentMessages)) {
                         for (const msg of r.agentMessages) {
                             if (msg.role === 'user' || msg.role === 'assistant' || msg.role === 'tool') {
-                                roundHistory.push({
+                                recordHistory.push({
                                     role: msg.role,
                                     content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || ''),
                                     tool_calls: msg.tool_calls,
@@ -1841,16 +1693,16 @@ export class AgentChatRoomHistoryHandler extends Handler {
 
         this.response.template = null;
         this.response.body = {
-            roomId: sid.toString(),
-            roundHistory,
+            chatSessionId: sid.toString(),
+            recordHistory,
         };
     }
 }
 
-export class AgentChatRoomConnectionHandler extends ConnectionHandler {
-    private lastSentRoundHash?: Map<string, string>; // Track last sent record hash per rid to avoid duplicates
-    private subscribedRids: Set<string> = new Set();
-    private subscriptions: Array<{ dispose: () => void; rid: string }> = [];
+export class AgentChatSessionConnectionHandler extends ConnectionHandler {
+    private lastSentRecordHash?: Map<string, string>;
+    private subscribedRecordIds: Set<string> = new Set();
+    private subscriptions: Array<{ dispose: () => void; recordId: string }> = [];
     private domainId: string = '';
     private aid: string = '';
     adoc?: AgentDoc;
@@ -1886,11 +1738,11 @@ export class AgentChatRoomConnectionHandler extends ConnectionHandler {
             
             this.adoc = adoc;
             
-            AgentLogger.info('Agent chat room connected', { domainId: finalDomainId, aid: finalAid, userId: this.user._id });
+            AgentLogger.info('Agent chat session WebSocket connected', { domainId: finalDomainId, aid: finalAid, userId: this.user._id });
             
-            this.send({ type: 'room_connected', domainId: finalDomainId, aid: finalAid });
+            this.send({ type: 'agent_chat_session_connected', domainId: finalDomainId, aid: finalAid });
         } catch (error: any) {
-            AgentLogger.error('Agent chat room prepare error:', error);
+            AgentLogger.error('Agent chat session WebSocket prepare error:', error);
             try {
                 this.close(4000, error.message || String(error));
             } catch (e) {
@@ -1907,10 +1759,10 @@ export class AgentChatRoomConnectionHandler extends ConnectionHandler {
                 return;
             }
             
-            if (msg.type === 'subscribe_round' && msg.rid) {
-                await this.subscribeRound(msg.rid);
-            } else if (msg.type === 'unsubscribe_round' && msg.rid) {
-                this.unsubscribeRound(msg.rid);
+            if (msg.type === 'subscribe_record' && msg.recordId) {
+                await this.subscribeRecord(msg.recordId);
+            } else if (msg.type === 'unsubscribe_record' && msg.recordId) {
+                this.unsubscribeRecord(msg.recordId);
             } else {
                 AgentLogger.warn('Unknown message type:', msg.type);
                 this.send({ type: 'error', error: `Unknown message type: ${msg.type}` });
@@ -1922,21 +1774,19 @@ export class AgentChatRoomConnectionHandler extends ConnectionHandler {
         }
     }
 
-    private async subscribeRound(rid: string) {
-        if (this.subscribedRids.has(rid)) {
-            AgentLogger.debug('Record already subscribed:', { rid });
+    private async subscribeRecord(recordId: string) {
+        if (this.subscribedRecordIds.has(recordId)) {
+            AgentLogger.debug('Record already subscribed:', { recordId });
             return;
         }
         
         try {
-            // 订阅 bubble/stream 事件（流式内容，不更新 Record）
             const streamDispose = this.ctx.on('bubble/stream' as any, async (data: any) => {
-                if (data.rid === rid && data.domainId === this.domainId) {
+                if (data.recordId === recordId && data.domainId === this.domainId) {
                     try {
-                        // 直接推送流式内容给前端，不经过 Record
                         this.send({
                             type: 'bubble_stream',
-                            rid,
+                            recordId,
                             bubbleId: data.bubbleId,
                             content: data.content,
                             isNew: data.isNew || false,
@@ -1947,26 +1797,26 @@ export class AgentChatRoomConnectionHandler extends ConnectionHandler {
                 }
             });
             
-            this.subscriptions.push({ dispose: streamDispose, rid });
+            this.subscriptions.push({ dispose: streamDispose, recordId });
             if (!this.domainId || !this.aid) {
                 AgentLogger.error('Session not properly initialized', { domainId: this.domainId, aid: this.aid });
                 this.send({ type: 'error', error: 'Session not properly initialized' });
                 return;
             }
             
-            AgentLogger.debug('Subscribing to record', { rid, domainId: this.domainId, aid: this.aid });
+            AgentLogger.debug('Subscribing to record', { recordId, domainId: this.domainId, aid: this.aid });
             
-            const rdoc = await round.get(this.domainId, new ObjectId(rid));
+            const rdoc = await RecordModel.get(this.domainId, new ObjectId(recordId));
             if (!rdoc) {
-                AgentLogger.warn('Record not found', { rid, domainId: this.domainId });
-                this.send({ type: 'error', error: `Record not found: ${rid}` });
+                AgentLogger.warn('Record not found', { recordId, domainId: this.domainId });
+                this.send({ type: 'error', error: `Record not found: ${recordId}` });
                 return;
             }
             
             const r = rdoc as any;
             if (!r.agentId || r.agentId !== this.aid) {
-                AgentLogger.warn('Record does not belong to agent', { rid, recordAgentId: r.agentId, sessionAid: this.aid });
-                this.send({ type: 'error', error: `Record does not belong to this agent: ${rid}` });
+                AgentLogger.warn('Record does not belong to agent', { recordId, recordAgentId: r.agentId, sessionAid: this.aid });
+                this.send({ type: 'error', error: `Record does not belong to this agent: ${recordId}` });
                 return;
             }
             
@@ -1974,13 +1824,13 @@ export class AgentChatRoomConnectionHandler extends ConnectionHandler {
                 this.checkPerm(PERM.PERM_VIEW_RECORD);
             }
             
-            this.subscribedRids.add(rid);
+            this.subscribedRecordIds.add(recordId);
             const [adoc, udoc] = await Promise.all([
                 this.aid ? Agent.get(this.domainId, this.aid).catch(() => null) : Promise.resolve(null),
                 user.getById(this.domainId, r.uid),
             ]);
             
-            const roundData: any = {
+            const recordSnapshot: any = {
                 _id: r._id?.toString(),
                 domainId: r.domainId,
                 uid: r.uid,
@@ -1998,16 +1848,16 @@ export class AgentChatRoomConnectionHandler extends ConnectionHandler {
                 updatedAt: r.updatedAt,
             };
             
-            AgentLogger.debug('Sending initial round update', { 
-                rid, 
-                roundKeys: Object.keys(roundData),
-                agentMessagesCount: (roundData.agentMessages || []).length 
+            AgentLogger.debug('Sending initial record update', { 
+                recordId, 
+                recordKeys: Object.keys(recordSnapshot),
+                agentMessagesCount: (recordSnapshot.agentMessages || []).length 
             });
             
             this.send({
-                type: 'round_update',
-                rid,
-                round: roundData,
+                type: 'record_update',
+                recordId,
+                record: recordSnapshot,
                 adoc,
                 udoc,
             });
@@ -2027,31 +1877,30 @@ export class AgentChatRoomConnectionHandler extends ConnectionHandler {
             };
             
             // Get initial status
-            const initialRound = await round.get(this.domainId, new ObjectId(rid));
-            if (initialRound) {
-                previousStatus = (initialRound as any).status;
+            const initialRecordDoc = await RecordModel.get(this.domainId, new ObjectId(recordId));
+            if (initialRecordDoc) {
+                previousStatus = (initialRecordDoc as any).status;
             }
             
-            const dispose = this.ctx.on('round/change' as any, async (rdoc: any) => {
+            const dispose = this.ctx.on('record/change' as any, async (rdoc: any) => {
                 const r = rdoc as any;
                 AgentLogger.debug('Record change event received in session', {
-                    rid: r._id?.toString(),
-                    subscribedRid: rid,
+                    recordId: r._id?.toString(),
+                    subscribedRecordId: recordId,
                     agentId: r.agentId,
                     sessionAid: this.aid,
-                    matches: r._id?.toString() === rid && r.agentId === this.aid,
+                    matches: r._id?.toString() === recordId && r.agentId === this.aid,
                 });
                 
-                if (r._id.toString() === rid && r.agentId === this.aid) {
-                    // 重新从数据库获取完整的 record，确保所有字段都存在
+                if (r._id.toString() === recordId && r.agentId === this.aid) {
                     try {
-                        const fullRound = await round.get(this.domainId, new ObjectId(rid));
-                        if (!fullRound) {
-                            AgentLogger.warn('Round not found when sending update', { rid });
+                        const fullRecordDoc = await RecordModel.get(this.domainId, new ObjectId(recordId));
+                        if (!fullRecordDoc) {
+                            AgentLogger.warn('Record not found when sending update', { recordId });
                             return;
                         }
                         
-                        const r = fullRound as any;
+                        const r = fullRecordDoc as any;
                         const currentStatus = r.status;
                         
                         // Detect status changes for message lifecycle events
@@ -2062,25 +1911,24 @@ export class AgentChatRoomConnectionHandler extends ConnectionHandler {
                         
                         // Send message_start event when transitioning from terminal/inactive to active
                         if ((previousStatus === undefined || wasTerminal || !wasActive) && isActive) {
-                            AgentLogger.debug('Sending message_start event', { rid, previousStatus, currentStatus });
+                            AgentLogger.debug('Sending message_start event', { recordId, previousStatus, currentStatus });
                             this.send({
                                 type: 'message_start',
-                                rid,
+                                recordId,
                                 bubbleId: r.agentMessages && r.agentMessages.length > 0 
                                     ? r.agentMessages[r.agentMessages.length - 1]?.bubbleId 
                                     : undefined,
                             });
                         }
                         
-                        // Send message_complete event when transitioning from active to terminal
                         if (wasActive && isTerminal) {
-                            AgentLogger.debug('Sending message_complete event', { rid, previousStatus, currentStatus });
+                            AgentLogger.debug('Sending message_complete event', { recordId, previousStatus, currentStatus });
                             const lastMessage = r.agentMessages && r.agentMessages.length > 0 
                                 ? r.agentMessages[r.agentMessages.length - 1] 
                                 : null;
                             this.send({
                                 type: 'message_complete',
-                                rid,
+                                recordId,
                                 bubbleId: lastMessage?.bubbleId,
                                 status: currentStatus,
                             });
@@ -2097,22 +1945,22 @@ export class AgentChatRoomConnectionHandler extends ConnectionHandler {
                                 return `${m.role}:${m.bubbleId || ''}:${contentHash}:${m.bubbleState || ''}`;
                             })
                             .join('|');
-                        const roundContentHash = createHash('md5').update(`${messagesHash}:${r.status}:${r.agentToolCallCount || 0}`).digest('hex').substring(0, 16);
+                        const recordContentHash = createHash('md5').update(`${messagesHash}:${r.status}:${r.agentToolCallCount || 0}`).digest('hex').substring(0, 16);
                         
-                        if (!this.lastSentRoundHash) {
-                            this.lastSentRoundHash = new Map<string, string>();
+                        if (!this.lastSentRecordHash) {
+                            this.lastSentRecordHash = new Map<string, string>();
                         }
-                        const lastHash = this.lastSentRoundHash.get(rid);
-                        if (lastHash === roundContentHash) {
-                            AgentLogger.debug('Skipping duplicate round update (content unchanged)', { 
-                                rid, 
-                                contentHash: roundContentHash 
+                        const lastHash = this.lastSentRecordHash.get(recordId);
+                        if (lastHash === recordContentHash) {
+                            AgentLogger.debug('Skipping duplicate record update (content unchanged)', { 
+                                recordId, 
+                                contentHash: recordContentHash 
                             });
                             return;
                         }
-                        this.lastSentRoundHash.set(rid, roundContentHash);
+                        this.lastSentRecordHash.set(recordId, recordContentHash);
                         
-                        const roundData: any = {
+                        const recordSnapshot: any = {
                             _id: r._id?.toString(),
                             domainId: r.domainId,
                             uid: r.uid,
@@ -2130,11 +1978,11 @@ export class AgentChatRoomConnectionHandler extends ConnectionHandler {
                             updatedAt: r.updatedAt,
                         };
                         
-                        AgentLogger.debug('Sending round update to client', { 
-                            rid, 
-                            roundKeys: Object.keys(roundData),
-                            agentMessagesCount: (roundData.agentMessages || []).length,
-                            contentHash: roundContentHash
+                        AgentLogger.debug('Sending record update to client', { 
+                            recordId, 
+                            recordKeys: Object.keys(recordSnapshot),
+                            agentMessagesCount: (recordSnapshot.agentMessages || []).length,
+                            contentHash: recordContentHash
                         });
                         
                         const [adoc, udoc] = await Promise.all([
@@ -2143,36 +1991,36 @@ export class AgentChatRoomConnectionHandler extends ConnectionHandler {
                         ]);
                         
                         this.send({
-                            type: 'round_update',
-                            rid,
-                            round: roundData,
+                            type: 'record_update',
+                            recordId,
+                            record: recordSnapshot,
                             adoc,
                             udoc,
                         });
-                        AgentLogger.debug('Round update sent to client', { rid });
+                        AgentLogger.debug('Record update sent to client', { recordId });
                     } catch (error: any) {
-                        AgentLogger.error('Error sending round update:', error);
+                        AgentLogger.error('Error sending record update:', error);
                     }
                 }
             });
             
-            this.subscriptions.push({ dispose, rid });
+            this.subscriptions.push({ dispose, recordId });
             
-            AgentLogger.debug('Subscribed to record', { rid, domainId: this.domainId, aid: this.aid });
+            AgentLogger.debug('Subscribed to record', { recordId, domainId: this.domainId, aid: this.aid });
         } catch (error: any) {
             AgentLogger.error('Error subscribing to record:', error);
             this.send({ type: 'error', error: error.message || String(error) });
         }
     }
 
-    private unsubscribeRound(rid: string) {
-        if (!this.subscribedRids.has(rid)) {
+    private unsubscribeRecord(recordId: string) {
+        if (!this.subscribedRecordIds.has(recordId)) {
             return;
         }
         
-        this.subscribedRids.delete(rid);
+        this.subscribedRecordIds.delete(recordId);
         
-        const subscription = this.subscriptions.find((sub) => sub.rid === rid);
+        const subscription = this.subscriptions.find((sub) => sub.recordId === recordId);
         
         if (subscription) {
             subscription.dispose();
@@ -2182,7 +2030,7 @@ export class AgentChatRoomConnectionHandler extends ConnectionHandler {
             }
         }
         
-        AgentLogger.debug('Unsubscribed from record', { rid });
+        AgentLogger.debug('Unsubscribed from record', { recordId });
     }
 
     async cleanup() {
@@ -2194,7 +2042,7 @@ export class AgentChatRoomConnectionHandler extends ConnectionHandler {
             }
         }
         this.subscriptions = [];
-        this.subscribedRids.clear();
+        this.subscribedRecordIds.clear();
         AgentLogger.info('Agent chat session cleaned up', { domainId: this.domainId, aid: this.aid });
     }
 }
@@ -4269,10 +4117,10 @@ export async function apply(ctx: Context) {
     ctx.Route('agent_create', '/agent/create', AgentEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_detail', '/agent/:aid', AgentDetailHandler);
     ctx.Route('agent_edge_config', '/agent/:aid/edge-config', AgentEdgeConfigHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('agent_chat_rooms_list', '/agent/:aid/chat/rooms', AgentChatRoomsListHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('agent_chat_room_history', '/agent/:aid/chat/room/:sid/history', AgentChatRoomHistoryHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('agent_chat_sessions_list', '/agent/:aid/chat/sessions', AgentChatSessionsListHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('agent_chat_session_history', '/agent/:aid/chat/session/:sid/history', AgentChatSessionHistoryHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_chat', '/agent/:aid/chat', AgentChatHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Connection('agent_chat_room', '/agent-chat-room', AgentChatRoomConnectionHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Connection('agent_chat_session', '/agent-chat-session', AgentChatSessionConnectionHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_edit', '/agent/:aid/edit', AgentEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_mcp_status', '/agent/:aid/mcp-tools/status', AgentMcpStatusHandler);
     ctx.Route('agent_api', '/api/agent', AgentApiHandler);

@@ -5,10 +5,9 @@
   {{ set(UiContext, 'aid', adoc.aid) }}
   {{ set(UiContext, 'STATUS', model.builtin.STATUS) }}
   {{ set(UiContext, 'mode', mode|default('list')) }}
-  {{ set(UiContext, 'roomId', roomId|default('')) }}
-  {{ set(UiContext, 'sessionId', roomId|default('')) }}
-  {% if roundHistory is defined %}
-  {{ set(UiContext, 'roundHistory', roundHistory) }}
+  {{ set(UiContext, 'chatSessionId', chatSessionId|default('')) }}
+  {% if recordHistory is defined %}
+  {{ set(UiContext, 'recordHistory', recordHistory) }}
   {% endif %}
 </script>
 
@@ -20,7 +19,7 @@
   <div class="medium-3 columns agent-chat-sidebar-column" id="agentChatSidebarColumn">
     <div class="section side">
       <div class="section__header" style="display: flex; justify-content: space-between; align-items: center;">
-        <h2 class="section__title">{{ _('Rooms') }}</h2>
+        <h2 class="section__title">{{ _('session_chat_domain') }}</h2>
         <div style="display: flex; align-items: center; gap: 4px;">
           <button type="button" class="button agent-chat-sidebar-close" id="agentChatSidebarClose" style="padding: 4px 8px; min-width: auto;" title="{{ _('Close') }}" aria-label="{{ _('Close') }}">
             <span class="icon icon-close"></span>
@@ -32,24 +31,24 @@
       </div>
       <div class="section__body" style="max-height: calc(100vh - 200px); overflow-y: auto;">
         <div id="sessionListSidebar">
-          {% if rooms and rooms.length > 0 %}
+          {% if chatSessions and chatSessions.length > 0 %}
           <div class="session-list">
-            {% for room in rooms %}
-            <div class="session-item-sidebar" data-room-id="{{ room._id.toString() }}" 
-                 style="border: 1px solid #ddd; border-radius: 4px; padding: 12px; margin-bottom: 8px; cursor: pointer; {% if roomId == room._id.toString() %}background-color: #f0f0f0; border-color: #007bff;{% endif %}">
+            {% for chatSession in chatSessions %}
+            <div class="session-item-sidebar" data-chat-session-id="{{ chatSession._id.toString() }}" 
+                 style="border: 1px solid #ddd; border-radius: 4px; padding: 12px; margin-bottom: 8px; cursor: pointer; {% if chatSessionId == chatSession._id.toString() %}background-color: #f0f0f0; border-color: #007bff;{% endif %}">
               <div style="flex: 1;">
                 <h4 style="margin: 0 0 5px 0; font-size: 0.95em; font-weight: 600;">
-                  {{ room.title or ('Room ' + room._id.toString().substring(0, 8)) }}
+                  {{ chatSession.title or (_('session_chat_detail') + ' ' + chatSession._id.toString().substring(0, 8)) }}
                 </h4>
-                {% if room.lastRound and room.lastRound.agentMessages %}
-                  {% set lastMsg = room.lastRound.agentMessages[room.lastRound.agentMessages.length - 1] %}
+                {% if chatSession.lastAgentRecord and chatSession.lastAgentRecord.agentMessages %}
+                  {% set lastMsg = chatSession.lastAgentRecord.agentMessages[chatSession.lastAgentRecord.agentMessages.length - 1] %}
                   <p style="margin: 5px 0; color: #666; font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                     {{ lastMsg.content|truncate(60) }}
                   </p>
                 {% endif %}
                 <div style="font-size: 0.8em; color: #999; margin-top: 5px;">
-                  <span>{{ (room.roundIds|length) if room.roundIds else 0 }} {{ _('rounds') }}</span>
-                  <span style="margin-left: 8px;">{{ datetimeSpan(room.updatedAt, false)|safe if room.updatedAt else datetimeSpan(room._id, false)|safe }}</span>
+                  <span>{{ (chatSession.recordIds|length) if chatSession.recordIds else 0 }} {{ _('record_col_short') }}</span>
+                  <span style="margin-left: 8px;">{{ datetimeSpan(chatSession.updatedAt, false)|safe if chatSession.updatedAt else datetimeSpan(chatSession._id, false)|safe }}</span>
                 </div>
               </div>
             </div>
@@ -57,7 +56,7 @@
           </div>
           {% else %}
           <div class="typo">
-            <p class="text-gray" style="font-size: 0.9em;">{{ _('No rooms yet.') }}</p>
+            <p class="text-gray" style="font-size: 0.9em;">{{ _('session_chat_none') }}</p>
           </div>
           {% endif %}
         </div>
@@ -76,8 +75,8 @@
         </span>
         <div class="section__tools" style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
           {% if mode == 'chat' %}
-          <button type="button" id="agentChatSidebarToggle" class="button agent-chat-sidebar-toggle" title="{{ _('Rooms') }}" aria-label="{{ _('Rooms') }}">
-            <span class="icon icon-menu"></span> {{ _('Rooms') }}
+          <button type="button" id="agentChatSidebarToggle" class="button agent-chat-sidebar-toggle" title="{{ _('session_chat_domain') }}" aria-label="{{ _('session_chat_domain') }}">
+            <span class="icon icon-menu"></span> {{ _('session_chat_domain') }}
           </button>
           <a href="{{ url('agent_detail', domainId=domainId, aid=adoc.aid) }}" class="button" id="backToAgentBtn">
             <span class="icon icon-back"></span> {{ _('Back to Agent') }}
@@ -98,24 +97,24 @@
               <span class="icon icon-add"></span> {{ _('New Chat') }}
             </button>
           </div>
-          {% if rooms and rooms.length > 0 %}
+          {% if chatSessions and chatSessions.length > 0 %}
           <div class="session-list">
-            {% for room in rooms %}
-            <div class="session-item" data-room-id="{{ room._id.toString() }}" style="border: 1px solid #ddd; border-radius: 4px; padding: 15px; margin-bottom: 10px; cursor: pointer;">
+            {% for chatSession in chatSessions %}
+            <div class="session-item" data-chat-session-id="{{ chatSession._id.toString() }}" style="border: 1px solid #ddd; border-radius: 4px; padding: 15px; margin-bottom: 10px; cursor: pointer;">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div style="flex: 1;">
                   <h3 style="margin: 0 0 5px 0; font-size: 1.1em;">
-                    {{ room.title or ('Room ' + room._id.toString().substring(0, 8)) }}
+                    {{ chatSession.title or (_('session_chat_detail') + ' ' + chatSession._id.toString().substring(0, 8)) }}
                   </h3>
-                  {% if room.lastRound and room.lastRound.agentMessages %}
-                    {% set lastMsg = room.lastRound.agentMessages[room.lastRound.agentMessages.length - 1] %}
+                  {% if chatSession.lastAgentRecord and chatSession.lastAgentRecord.agentMessages %}
+                    {% set lastMsg = chatSession.lastAgentRecord.agentMessages[chatSession.lastAgentRecord.agentMessages.length - 1] %}
                     <p style="margin: 5px 0; color: #666; font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                       {{ lastMsg.content|truncate(100) }}
                     </p>
                   {% endif %}
                   <div style="font-size: 0.85em; color: #999; margin-top: 5px;">
-                    <span>{{ (room.roundIds|length) if room.roundIds else 0 }} {{ _('rounds') }}</span>
-                    <span style="margin-left: 10px;">{{ datetimeSpan(room.updatedAt, false)|safe if room.updatedAt else datetimeSpan(room._id, false)|safe }}</span>
+                    <span>{{ (chatSession.recordIds|length) if chatSession.recordIds else 0 }} {{ _('record_col_short') }}</span>
+                    <span style="margin-left: 10px;">{{ datetimeSpan(chatSession.updatedAt, false)|safe if chatSession.updatedAt else datetimeSpan(chatSession._id, false)|safe }}</span>
                   </div>
                 </div>
                 <div>
@@ -127,7 +126,7 @@
           </div>
           {% else %}
           <div class="typo">
-            <p class="text-gray">{{ _('No rooms yet. Click "New Chat" to start a conversation.') }}</p>
+            <p class="text-gray">{{ _('agent_chat_empty_sessions') }}</p>
           </div>
           {% endif %}
         </div>

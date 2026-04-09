@@ -1021,9 +1021,10 @@ declare module './service/db' {
         'develop_branch_daily': any;
         /** Per-domain user lesson/live progress (Learn). */
         'session': import('./model/session').SessionDoc;
-        'session_record': import('./model/record').RecordDoc;
-        /** Agent chat / client conversation room. */
-        'room': RoomDoc;
+        'session_record': import('./model/record').SessionRecordDoc;
+        /** Judge / worker submission rows (Mongo `record`, not session_record). */
+        'record': import('@ejunz/common/types').RecordDoc;
+        'record_history': any;
         'rating': any;
     }
 }
@@ -1109,34 +1110,35 @@ export interface EjunzGlobal {
 }
 
 export type { SessionDoc } from './model/session';
-export type { RecordDoc, RecordProblemState } from './model/record';
+export type { SessionRecordDoc, RecordProblemState } from './model/record';
 
-export interface RoomDoc {
+/** Agent conversation row projected from `session` (appRoute agent + agent session kind). */
+export interface AgentChatSessionDoc {
     _id: ObjectId;
     domainId: string;
     agentId: string;
     uid: number;
-    roundIds: ObjectId[];
-    recordIds?: ObjectId[];
+    recordIds: ObjectId[];
     type: 'client' | 'chat';
     title?: string;
     context?: any;
     createdAt: Date;
     updatedAt: Date;
     lastActivityAt?: Date;
-    clientId?: number; 
+    clientId?: number;
 }
 
 declare module '@ejunz/common/types' {
-    export interface RoundDoc {
-        // Task fields (when lang === 'task')
+    /** Mongo `record` collection (judge / worker submission, including agent task rows). */
+    export interface RecordDoc extends RecordPayload {
+        _id: import('mongodb').ObjectId;
         agentId?: string;
-        roomId?: ObjectId;
+        agentChatSessionId?: import('mongodb').ObjectId;
         agentMessages?: Array<{
             role: 'user' | 'assistant' | 'tool';
             content: string;
             timestamp: Date;
-            bubbleId?: string; // Unique message ID for deduplication
+            bubbleId?: string;
             toolName?: string;
             toolResult?: any;
             tool_call_id?: string;

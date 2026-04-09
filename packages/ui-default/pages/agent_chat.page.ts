@@ -1,16 +1,16 @@
 import { NamedPage } from 'vj/misc/Page';
 
-let roomWebSocket: any = null;
-let roomSocketConnected = false;
-let roomConnectPromise: Promise<void> | null = null;
-let currentRoomId: string | null = null;
+let agentChatSocket: any = null;
+let agentChatSocketConnected = false;
+let agentChatConnectPromise: Promise<void> | null = null;
+let currentChatSessionId: string | null = null;
 
 const page = new NamedPage('agent_chat', async () => {
   try {
   const UiContext = (window as any).UiContext;
   const domainId = UiContext?.domainId;
   const mode = UiContext?.mode || 'list';
-  const roomId = UiContext?.roomId || UiContext?.sessionId || '';
+  const serverChatSessionId = UiContext?.chatSessionId || '';
   const aid = UiContext?.aid;
   
   if (!domainId || !aid) {
@@ -54,43 +54,43 @@ const page = new NamedPage('agent_chat', async () => {
     }
   };
 
-  // Shared function definitions for connectToRoom, sendMessage, etc. (must be defined before list mode)
-  const connectToRoom = async (): Promise<void> => {
-    if (roomSocketConnected && roomWebSocket) {
+  // Shared function definitions for connectSessionChatSocket, sendMessage, etc. (must be defined before list mode)
+  const connectSessionChatSocket = async (): Promise<void> => {
+    if (agentChatSocketConnected && agentChatSocket) {
       return;
     }
     
-    if (roomConnectPromise) {
-      return roomConnectPromise;
+    if (agentChatConnectPromise) {
+      return agentChatConnectPromise;
     }
     
-    roomConnectPromise = new Promise<void>((resolve, reject) => {
-      const wsUrl = `agent-chat-room?domainId=${domainId}&aid=${urlAid}`;
+    agentChatConnectPromise = new Promise<void>((resolve, reject) => {
+      const wsUrl = `agent-chat-session?domainId=${domainId}&aid=${urlAid}`;
       
       let connectionTimeout: NodeJS.Timeout | null = null;
-      let roomConnectedReceived = false;
+      let agentChatConnectedReceived = false;
       let wsOpened = false;
       
-      // Set timeout for receiving room_connected message (30 seconds after WebSocket opens)
-      const setRoomTimeout = () => {
+      // Set timeout for receiving agent_chat_session_connected message (30 seconds after WebSocket opens)
+      const setAgentChatConnectTimeout = () => {
         if (connectionTimeout) {
           clearTimeout(connectionTimeout);
           connectionTimeout = null;
         }
         connectionTimeout = setTimeout(() => {
-          if (!roomConnectedReceived) {
-            console.error('[AgentChat] Timeout waiting for room_connected message');
-            if (roomWebSocket) {
+          if (!agentChatConnectedReceived) {
+            console.error('[AgentChat] Timeout waiting for agent_chat_session_connected message');
+            if (agentChatSocket) {
               try {
-                roomWebSocket.close();
+                agentChatSocket.close();
               } catch (e) {
                 // ignore
               }
             }
-            roomWebSocket = null;
-            roomSocketConnected = false;
-            roomConnectPromise = null;
-            reject(new Error('Timeout waiting for room_connected message (30s)'));
+            agentChatSocket = null;
+            agentChatSocketConnected = false;
+            agentChatConnectPromise = null;
+            reject(new Error('Timeout waiting for agent_chat_session_connected message (30s)'));
           }
         }, 30000); // 30 seconds after WebSocket opens
       };
@@ -102,14 +102,14 @@ const page = new NamedPage('agent_chat', async () => {
           maxReconnectionDelay: 10000,
           maxRetries: 100,
         });
-        roomWebSocket = sock;
-        roomSocketConnected = false;
+        agentChatSocket = sock;
+        agentChatSocketConnected = false;
         
         sock.onopen = () => {
           wsOpened = true;
-          console.log('[AgentChat] WebSocket opened, waiting for room_connected...');
+          console.log('[AgentChat] WebSocket opened, waiting for agent_chat_session_connected...');
           // Start timeout after WebSocket opens (not before)
-          setRoomTimeout();
+          setAgentChatConnectTimeout();
         };
         
         sock.onmessage = (_, data: string) => {
@@ -139,56 +139,56 @@ const page = new NamedPage('agent_chat', async () => {
             // Log all received messages for debugging
             console.log('[AgentChat] WebSocket: message received', {
               type: msg.type,
-              rid: msg.rid,
+              recordId: msg.recordId,
               bubbleId: msg.bubbleId,
               timestamp: new Date().toISOString(),
             });
             
-            if (msg.type === 'room_connected') {
+            if (msg.type === 'agent_chat_session_connected') {
               if (connectionTimeout) {
                 clearTimeout(connectionTimeout);
                 connectionTimeout = null;
               }
-              roomSocketConnected = true;
-              roomConnectedReceived = true;
+              agentChatSocketConnected = true;
+              agentChatConnectedReceived = true;
               console.log('[AgentChat] Session connected message received, connection ready');
               resolve();
             } else if (msg.type === 'message_start') {
               handleBubbleStart(msg);
             } else if (msg.type === 'message_complete') {
               console.log('[AgentChat] WebSocket: received message_complete', {
-                rid: msg.rid,
+                recordId: msg.recordId,
                 bubbleId: msg.bubbleId,
                 timestamp: new Date().toISOString(),
               });
               handleBubbleComplete(msg);
             } else if (msg.type === 'bubble_stream') {
               console.log('[AgentChat] WebSocket: received bubble_stream', {
-                rid: msg.rid,
+                recordId: msg.recordId,
                 bubbleId: msg.bubbleId,
                 contentLength: msg.content ? msg.content.length : 0,
                 isNew: msg.isNew,
                 timestamp: new Date().toISOString(),
               });
               handleBubbleStream(msg);
-            } else if (msg.type === 'round_update') {
-              console.log('[AgentChat] WebSocket: received round_update', {
-                rid: msg.rid,
+            } else if (msg.type === 'record_update') {
+              console.log('[AgentChat] WebSocket: received record_update', {
+                recordId: msg.recordId,
                 timestamp: new Date().toISOString(),
-                recordKeys: msg.round ? Object.keys(msg.round) : [],
+                recordKeys: msg.record ? Object.keys(msg.record) : [],
               });
-              handleRoundUpdate(msg);
+              handleRecordUpdate(msg);
             } else if (msg.type === 'error') {
               console.error('[AgentChat] Session error:', msg.error);
-              // If we haven't received room_connected yet, this is a connection error
-              if (!roomConnectedReceived) {
+              // If we haven't received agent_chat_session_connected yet, this is a connection error
+              if (!agentChatConnectedReceived) {
                 if (connectionTimeout) {
                   clearTimeout(connectionTimeout);
                   connectionTimeout = null;
                 }
-                roomWebSocket = null;
-                roomSocketConnected = false;
-                roomConnectPromise = null;
+                agentChatSocket = null;
+                agentChatSocketConnected = false;
+                agentChatConnectPromise = null;
                 reject(new Error('Session error: ' + (msg.error || 'Unknown error')));
               }
             }
@@ -203,13 +203,13 @@ const page = new NamedPage('agent_chat', async () => {
             connectionTimeout = null;
           }
           console.log('[AgentChat] WebSocket session closed:', code, reason);
-          roomWebSocket = null;
-          roomSocketConnected = false;
-          roomConnectPromise = null;
+          agentChatSocket = null;
+          agentChatSocketConnected = false;
+          agentChatConnectPromise = null;
           
-          // If connection was closed before receiving room_connected, reject the promise
+          // If connection was closed before receiving agent_chat_session_connected, reject the promise
           // Code >= 4000 indicates an error (see socket component)
-          if (!roomConnectedReceived) {
+          if (!agentChatConnectedReceived) {
             const errorMsg = code && code >= 4000 
               ? `WebSocket connection error: code=${code}, reason=${reason || 'unknown'}`
               : `WebSocket closed before session connected: code=${code}, reason=${reason || 'unknown'}`;
@@ -221,16 +221,16 @@ const page = new NamedPage('agent_chat', async () => {
           clearTimeout(connectionTimeout);
           connectionTimeout = null;
         }
-        roomConnectPromise = null;
+        agentChatConnectPromise = null;
         console.error('[AgentChat] Failed to import WebSocket:', error);
         reject(error);
       });
     });
     
-    return roomConnectPromise;
+    return agentChatConnectPromise;
   };
   
-  let currentRoundId: string | null = null;
+  let currentRecordId: string | null = null;
   
   // Frontend bubble state (UI state, independent from backend)
   enum FrontendBubbleState {
@@ -397,10 +397,9 @@ const page = new NamedPage('agent_chat', async () => {
   
   // Handle bubble start event (from backend)
   function handleBubbleStart(msg: any) {
-    const { rid, bubbleId } = msg;
+    const { recordId, bubbleId } = msg;
     if (bubbleId) {
-      // Backend event: bubble started streaming
-      updateBackendState(bubbleId, BackendBubbleState.STREAMING, 'backend_bubble_start', { rid });
+      updateBackendState(bubbleId, BackendBubbleState.STREAMING, 'backend_bubble_start', { recordId });
       // Sync frontend state if needed
       syncFrontendStateFromBackend(bubbleId);
     }
@@ -408,13 +407,12 @@ const page = new NamedPage('agent_chat', async () => {
   
   // Handle bubble complete event (from backend)
   function handleBubbleComplete(msg: any) {
-    const { rid, bubbleId } = msg;
+    const { recordId, bubbleId } = msg;
     if (bubbleId) {
-      // Backend event: bubble completed
-      updateBackendState(bubbleId, BackendBubbleState.COMPLETED, 'backend_bubble_complete', { rid });
+      updateBackendState(bubbleId, BackendBubbleState.COMPLETED, 'backend_bubble_complete', { recordId });
       
       // CRITICAL: When backend completes, check if we can immediately mark as completed
-      // This prevents subsequent round_update events from triggering unnecessary processing
+      // This prevents subsequent record_update events from triggering unnecessary processing
       const stateInfo = bubbleStates.get(bubbleId);
       if (stateInfo) {
         const timeSinceLastUpdate = Date.now() - stateInfo.lastContentUpdateTime;
@@ -438,8 +436,8 @@ const page = new NamedPage('agent_chat', async () => {
   const INACTIVE_TIMEOUT_MS = 3000; // If no update for 3 seconds during streaming, enter pending_complete
   const UPDATE_THRESHOLD_MS = 500;  // If no update for 500ms, consider it stable
   
-  // Track last processed record state to skip duplicate round_update events
-  const lastRoundState = new Map<string, { contentHash: string; messageCount: number; status: number; lastUpdateTime: number }>(); // rid -> state
+  // Track last processed record state to skip duplicate record_update events
+  const lastRecordState = new Map<string, { contentHash: string; messageCount: number; status: number; lastUpdateTime: number }>();
   
   // Track message lifecycle: messages that have started and completed (for backward compatibility)
   const activebubbleIds = new Set<string>(); // Messages currently being streamed
@@ -710,7 +708,7 @@ const page = new NamedPage('agent_chat', async () => {
       }
       
       const timeSinceLastUpdate = Date.now() - currentStateInfo.lastContentUpdateTime;
-      const lastState = lastRoundState.get(currentRoundId || '');
+      const lastState = lastRecordState.get(currentRecordId || '');
       const timeSinceLastRecordUpdate = (lastState && 'lastUpdateTime' in lastState && lastState.lastUpdateTime) ? Date.now() - lastState.lastUpdateTime : Infinity;
       
       console.log('[AgentChat] setupInactiveTimeout: timeout fired', {
@@ -724,12 +722,12 @@ const page = new NamedPage('agent_chat', async () => {
       });
       
       // Only transition if still streaming and backend is still streaming
-      // CRITICAL: Also check if we've received any round_update events recently
+      // CRITICAL: Also check if we've received any record_update events recently
       // If backend is still sending updates (even if content unchanged), don't timeout
       if (currentStateInfo.frontendState === FrontendBubbleState.STREAMING &&
           currentStateInfo.backendState === BackendBubbleState.STREAMING) {
         // Only enter pending_complete if no update for INACTIVE_TIMEOUT_MS
-        // AND no recent round_update events (check if lastRoundState was updated recently)
+        // AND no recent record_update events (check if lastRecordState was updated recently)
         if (timeSinceLastUpdate >= INACTIVE_TIMEOUT_MS && timeSinceLastRecordUpdate >= INACTIVE_TIMEOUT_MS) {
           console.log('[AgentChat] setupInactiveTimeout: entering PENDING_COMPLETE due to inactivity', {
             bubbleId,
@@ -1075,11 +1073,11 @@ const page = new NamedPage('agent_chat', async () => {
     const chatMessages = document.getElementById('chatMessages');
     if (!chatMessages) return;
     
-    let loadingIndicator = document.getElementById('roomLoadingIndicator');
+    let loadingIndicator = document.getElementById('agentChatLoadingIndicator');
     if (loading) {
       if (!loadingIndicator) {
         loadingIndicator = document.createElement('div');
-        loadingIndicator.id = 'roomLoadingIndicator';
+        loadingIndicator.id = 'agentChatLoadingIndicator';
         loadingIndicator.style.cssText = 'text-align: center; padding: 20px; color: #666;';
         loadingIndicator.innerHTML = `
           <div style="display: inline-block;">
@@ -1103,14 +1101,14 @@ const page = new NamedPage('agent_chat', async () => {
   }
   
   // Update session list highlight state (immediate update, no API wait)
-  function updateRoomHighlight(activeRoomId: string | null) {
+  function updateChatSessionHighlight(activeSessionId: string | null) {
     const sessionListSidebar = document.getElementById('sessionListSidebar');
     if (!sessionListSidebar) return;
     
     const sessionItems = sessionListSidebar.querySelectorAll('.session-item-sidebar');
     sessionItems.forEach(item => {
-      const sid = item.getAttribute('data-room-id');
-      const isActive = sid === activeRoomId;
+      const sid = item.getAttribute('data-chat-session-id');
+      const isActive = sid === activeSessionId;
       const element = item as HTMLElement;
       
       // Only set border highlight, don't change background color
@@ -1125,18 +1123,18 @@ const page = new NamedPage('agent_chat', async () => {
   }
   
   // Switch to specified session (no page refresh)
-  async function switchToRoom(targetRoomId: string) {
+  async function switchToChatSession(targetSessionId: string) {
     const chatMessages = document.getElementById('chatMessages');
     if (!chatMessages) return;
     
-    if (currentRoomId === targetRoomId) {
+    if (currentChatSessionId === targetSessionId) {
       return;
     }
     
-    updateRoomHighlight(targetRoomId);
+    updateChatSessionHighlight(targetSessionId);
     
-    const previousRoomId = currentRoomId;
-    currentRoomId = targetRoomId;
+    const previousSessionId = currentChatSessionId;
+    currentChatSessionId = targetSessionId;
     
     try {
       // Show loading state
@@ -1147,7 +1145,7 @@ const page = new NamedPage('agent_chat', async () => {
       setLoadingState(true, '正在加载会话历史...');
       
       // Fetch history records for this session
-      const response = await fetch(`/d/${domainId}/agent/${urlAid}/chat/room/${targetRoomId}/history`, {
+      const response = await fetch(`/d/${domainId}/agent/${urlAid}/chat/session/${targetSessionId}/history`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
@@ -1158,28 +1156,27 @@ const page = new NamedPage('agent_chat', async () => {
         console.error('[AgentChat] Failed to load session history:', response.status);
         setLoadingState(false);
         // If failed, fall back to page navigation
-        window.location.href = `/d/${domainId}/agent/${urlAid}/chat?sid=${targetRoomId}`;
+        window.location.href = `/d/${domainId}/agent/${urlAid}/chat?sid=${targetSessionId}`;
         return;
       }
       
       const data = await response.json();
-      const roundHistory = data.roundHistory || [];
+      const recordHistory = data.recordHistory || [];
       
-      const newUrl = `/d/${domainId}/agent/${urlAid}/chat?sid=${targetRoomId}`;
-      window.history.pushState({ mode: 'chat', roomId: targetRoomId }, '', newUrl);
+      const newUrl = `/d/${domainId}/agent/${urlAid}/chat?sid=${targetSessionId}`;
+      window.history.pushState({ mode: 'chat', chatSessionId: targetSessionId }, '', newUrl);
       
       if (UiContext) {
-        UiContext.roomId = targetRoomId;
-        UiContext.sessionId = targetRoomId;
+        UiContext.chatSessionId = targetSessionId;
       }
       
       // Hide loading state
       setLoadingState(false);
       
       // Load history records
-      if (roundHistory && Array.isArray(roundHistory) && roundHistory.length > 0) {
+      if (recordHistory && Array.isArray(recordHistory) && recordHistory.length > 0) {
         // Group messages: merge tool calls with results, separate before/after messages
-        const groupedMessages = groupMessages(roundHistory);
+        const groupedMessages = groupMessages(recordHistory);
         
         // Render all messages sequentially to ensure proper order
         for (const processedMsg of groupedMessages) {
@@ -1245,33 +1242,33 @@ const page = new NamedPage('agent_chat', async () => {
       }
       
       // Update left sidebar session list (maintain highlight state)
-      await updateRoomListSidebar();
-      updateRoomHighlight(targetRoomId);
+      await updateChatSessionListSidebar();
+      updateChatSessionHighlight(targetSessionId);
       
       // Reconnect WebSocket (if needed)
-      if (roomWebSocket) {
-        roomWebSocket.close();
-        roomSocketConnected = false;
+      if (agentChatSocket) {
+        agentChatSocket.close();
+        agentChatSocketConnected = false;
       }
-      await connectToRoom();
+      await connectSessionChatSocket();
       
     } catch (error: any) {
-      console.error('[AgentChat] Error switching room:', error);
+      console.error('[AgentChat] Error switching chat session:', error);
       setLoadingState(false);
-      currentRoomId = previousRoomId;
-      updateRoomHighlight(previousRoomId);
-      window.location.href = `/d/${domainId}/agent/${urlAid}/chat?sid=${targetRoomId}`;
+      currentChatSessionId = previousSessionId;
+      updateChatSessionHighlight(previousSessionId);
+      window.location.href = `/d/${domainId}/agent/${urlAid}/chat?sid=${targetSessionId}`;
     }
   }
   
   // Function to update session list sidebar (must be defined before sendMessage)
-  async function updateRoomListSidebar() {
+  async function updateChatSessionListSidebar() {
     const sessionListSidebar = document.getElementById('sessionListSidebar');
     if (!sessionListSidebar) return;
     
     try {
       // Fetch latest session list (JSON API)
-      const response = await fetch(`/d/${domainId}/agent/${urlAid}/chat/rooms`, {
+      const response = await fetch(`/d/${domainId}/agent/${urlAid}/chat/sessions`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
@@ -1284,30 +1281,30 @@ const page = new NamedPage('agent_chat', async () => {
       }
       
       const data = await response.json();
-      const rooms = data.rooms || data.sessions || [];
+      const chatSessions = data.chatSessions || [];
       
-      if (rooms.length === 0) {
-        sessionListSidebar.innerHTML = '<div class="typo"><p class="text-gray" style="font-size: 0.9em;">No rooms yet.</p></div>';
+      if (chatSessions.length === 0) {
+        sessionListSidebar.innerHTML = '<div class="typo"><p class="text-gray" style="font-size: 0.9em;">No sessions yet.</p></div>';
         return;
       }
       
       let html = '<div class="session-list">';
-      for (const room of rooms) {
-        const itemRoomId = room._id;
-        const isActive = itemRoomId === currentRoomId;
-        const title = room.title || `Room ${itemRoomId.substring(0, 8)}`;
-        const roundCount = (room.roundIds || []).length;
+      for (const s of chatSessions) {
+        const itemSessionId = s._id;
+        const isActive = itemSessionId === currentChatSessionId;
+        const title = s.title || `Session ${itemSessionId.substring(0, 8)}`;
+        const recordCount = (s.recordIds || []).length;
         
         let lastMsgPreview = '';
-        if (room.lastRound && room.lastRound.agentMessages) {
-          const lastMsg = room.lastRound.agentMessages[room.lastRound.agentMessages.length - 1];
+        if (s.lastAgentRecord && s.lastAgentRecord.agentMessages) {
+          const lastMsg = s.lastAgentRecord.agentMessages[s.lastAgentRecord.agentMessages.length - 1];
           if (lastMsg && lastMsg.content) {
             const content = typeof lastMsg.content === 'string' ? lastMsg.content : JSON.stringify(lastMsg.content);
             lastMsgPreview = content.length > 60 ? content.substring(0, 60) + '...' : content;
           }
         }
         
-        const updatedAt = room.updatedAt || room._id;
+        const updatedAt = s.updatedAt || s._id;
         const updatedAtStr = new Date(updatedAt).toLocaleString('zh-CN', { 
           month: 'short', 
           day: 'numeric', 
@@ -1316,13 +1313,13 @@ const page = new NamedPage('agent_chat', async () => {
         });
         
         html += `
-          <div class="session-item-sidebar" data-room-id="${itemRoomId}" 
+          <div class="session-item-sidebar" data-chat-session-id="${itemSessionId}" 
                style="border: 1px solid #ddd; border-radius: 4px; padding: 12px; margin-bottom: 8px; cursor: pointer; ${isActive ? 'border-color: #007bff; border-width: 2px;' : ''}">
             <div style="flex: 1;">
               <h4 style="margin: 0 0 5px 0; font-size: 0.95em; font-weight: 600;">${title}</h4>
               ${lastMsgPreview ? `<p style="margin: 5px 0; color: #666; font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${lastMsgPreview}</p>` : ''}
               <div style="font-size: 0.8em; color: #999; margin-top: 5px;">
-                <span>${roundCount} records</span>
+                <span>${recordCount} records</span>
                 <span style="margin-left: 8px;">${updatedAtStr}</span>
               </div>
             </div>
@@ -1336,16 +1333,16 @@ const page = new NamedPage('agent_chat', async () => {
       // Rebind click events (no refresh switching)
       const sessionItems = sessionListSidebar.querySelectorAll('.session-item-sidebar');
       sessionItems.forEach(item => {
-        const sid = item.getAttribute('data-room-id');
+        const sid = item.getAttribute('data-chat-session-id');
         if (sid) {
           item.addEventListener('click', async () => {
-            await switchToRoom(sid);
+            await switchToChatSession(sid);
             document.body.classList.remove('agent-chat-sidebar-open'); // close mobile drawer after select
           });
         }
       });
     } catch (error: any) {
-      console.error('[AgentChat] Error updating room list:', error);
+      console.error('[AgentChat] Error updating session list:', error);
     }
   }
   
@@ -1373,8 +1370,8 @@ const page = new NamedPage('agent_chat', async () => {
     const chatMessages = document.getElementById('chatMessages');
     if (!chatMessages) return;
     
-    const { rid, bubbleId, content, isNew } = msg;
-    if (!rid || !bubbleId || content === undefined) {
+    const { recordId, bubbleId, content, isNew } = msg;
+    if (!recordId || !bubbleId || content === undefined) {
       console.warn('[AgentChat] Invalid bubble_stream message:', msg);
       return;
     }
@@ -1489,37 +1486,37 @@ const page = new NamedPage('agent_chat', async () => {
     }
   };
   
-  const handleRoundUpdate = async (msg: any) => {
+  const handleRecordUpdate = async (msg: any) => {
     const chatMessages = document.getElementById('chatMessages');
     if (!chatMessages) {
-      console.warn('[AgentChat] handleRoundUpdate: chatMessages not found');
+      console.warn('[AgentChat] handleRecordUpdate: chatMessages not found');
       return;
     }
     
-    if (!msg.rid) {
-      console.warn('[AgentChat] handleRoundUpdate: Invalid record update message: missing rid', msg);
+    if (!msg.recordId) {
+      console.warn('[AgentChat] handleRecordUpdate: missing recordId', msg);
       return;
     }
     
-    console.log('[AgentChat] handleRoundUpdate: received', {
-      rid: msg.rid,
+    console.log('[AgentChat] handleRecordUpdate: received', {
+      recordId: msg.recordId,
       timestamp: new Date().toISOString(),
-      recordKeys: msg.round ? Object.keys(msg.round) : [],
-      agentMessagesCount: msg.round?.agentMessages?.length || 0,
+      recordKeys: msg.record ? Object.keys(msg.record) : [],
+      agentMessagesCount: msg.record?.agentMessages?.length || 0,
     });
     
-    const record = msg.round || {};
-    const rid = msg.rid;
+    const record = msg.record || {};
+    const rid = msg.recordId;
     
-    if (currentRoundId !== rid) {
-      console.log('[AgentChat] handleRoundUpdate: currentRoundId changed', {
-        oldRoundId: currentRoundId,
-        newRoundId: rid,
+    if (currentRecordId !== rid) {
+      console.log('[AgentChat] handleRecordUpdate: currentRecordId changed', {
+        oldRecordId: currentRecordId,
+        newRecordId: rid,
       });
-      currentRoundId = rid;
+      currentRecordId = rid;
     }
     
-    // EARLY EXIT: Check if this round_update is a duplicate (same content hash and message count)
+    // EARLY EXIT: duplicate record_update (same content hash and message count)
     if (record.agentMessages && Array.isArray(record.agentMessages)) {
       const messageCount = record.agentMessages.length;
       const status = record.status;
@@ -1531,18 +1528,18 @@ const page = new NamedPage('agent_chat', async () => {
         .join('|');
       const recordContentHash = allContentHashes ? contentHash(allContentHashes) : '';
       
-      const lastState = lastRoundState.get(rid);
+      const lastState = lastRecordState.get(rid);
       if (lastState && 
           lastState.contentHash === recordContentHash && 
           lastState.messageCount === messageCount &&
           lastState.status === status) {
         // Record content unchanged, skip processing to prevent duplicate markdown rendering
-        console.log('[AgentChat] Skipping duplicate round_update:', { rid, contentHash: recordContentHash, messageCount });
+        console.log('[AgentChat] Skipping duplicate record_update:', { rid, contentHash: recordContentHash, messageCount });
         return;
       }
       
       // Update last processed state (including timestamp to track when we last received an update)
-      lastRoundState.set(rid, { contentHash: recordContentHash, messageCount, status, lastUpdateTime: Date.now() });
+      lastRecordState.set(rid, { contentHash: recordContentHash, messageCount, status, lastUpdateTime: Date.now() });
     }
     
     // Check if task is streaming (before processing messages)
@@ -1946,7 +1943,7 @@ const page = new NamedPage('agent_chat', async () => {
               const toolCalls = msgData.tool_calls;
             
             // CRITICAL: If task is completed, only update existing messages, never create new ones
-            // This prevents duplicates when multiple round_update events arrive after completion
+            // This prevents duplicates when multiple record_update events arrive after completion
             if (isCompleted && !displayedbubbleIds.has(bubbleId)) {
               // Task is completed and message not in displayedbubbleIds, check DOM first
               const existingInDOM = Array.from(chatMessages.children).find(
@@ -1970,7 +1967,7 @@ const page = new NamedPage('agent_chat', async () => {
             }
             
             // CRITICAL: If backend is completed and task is completed, skip if content hasn't changed
-            // This prevents duplicate processing of repeated round_update events after completion
+            // This prevents duplicate processing of repeated record_update events after completion
             if (isCompleted && backendStateCheck === BackendBubbleState.COMPLETED) {
               // Check if content actually changed
               const existingMsg = Array.from(chatMessages.children).find(
@@ -2002,7 +1999,7 @@ const page = new NamedPage('agent_chat', async () => {
             if (isCompleted) {
               // Task is completed, mark backend state as COMPLETED
               if (currentBackendState !== BackendBubbleState.COMPLETED) {
-                updateBackendState(bubbleId, BackendBubbleState.COMPLETED, 'round_update_completed', {
+                updateBackendState(bubbleId, BackendBubbleState.COMPLETED, 'record_update_completed', {
                   content: content,
                   messageState: messageState,
                   isCompleted: isCompleted,
@@ -2013,7 +2010,7 @@ const page = new NamedPage('agent_chat', async () => {
             } else if (messageState === 'completed') {
               // Message is explicitly marked as completed (even if task is not completed yet)
               if (currentBackendState !== BackendBubbleState.COMPLETED) {
-                updateBackendState(bubbleId, BackendBubbleState.COMPLETED, 'round_update_completed', {
+                updateBackendState(bubbleId, BackendBubbleState.COMPLETED, 'record_update_completed', {
                   content: content,
                   messageState: messageState,
                   isCompleted: isCompleted,
@@ -2022,11 +2019,11 @@ const page = new NamedPage('agent_chat', async () => {
               }
             } else if (messageState === 'streaming' || (isStreaming && messageState !== 'completed')) {
               // Message is streaming, update backend state to STREAMING
-              // This handles the case where round_update arrives before message_start event
+              // This handles the case where record_update arrives before message_start event
               if (currentBackendState === BackendBubbleState.UNKNOWN || currentBackendState === BackendBubbleState.COMPLETED) {
                 // Only update if unknown, or if we're receiving streaming content after completion (shouldn't happen, but handle it)
                 if (currentBackendState === BackendBubbleState.UNKNOWN) {
-                  updateBackendState(bubbleId, BackendBubbleState.STREAMING, 'round_update_streaming', {
+                  updateBackendState(bubbleId, BackendBubbleState.STREAMING, 'record_update_streaming', {
                     content: content,
                     isStreaming: isStreaming,
                     messageState: messageState,
@@ -2037,7 +2034,7 @@ const page = new NamedPage('agent_chat', async () => {
             
             // Mark bubble as receiving content update (reset pending_complete if needed, reset inactive timeout)
             // CRITICAL: Only mark update if content actually changed or we're streaming
-            // This prevents unnecessary processing of duplicate round_update events
+            // This prevents unnecessary processing of duplicate record_update events
             if (content && content.trim()) {
               // Check if content actually changed before marking as update
               const existingMsg = Array.from(chatMessages.children).find(
@@ -2334,7 +2331,7 @@ const page = new NamedPage('agent_chat', async () => {
                 
                 // During streaming, do not overwrite content; handleBubbleStream updates incrementally
                 // For pending_complete or completed, update content if changed
-                // CRITICAL: Never overwrite non-empty bubble content with empty - prevents "清空全部气泡" from malformed round_update
+                // CRITICAL: Never overwrite non-empty bubble content with empty - prevents "清空全部气泡" from malformed record_update
                 if (isStreaming) {
                   markBubbleContentUpdate(bubbleId);
                 } else if (isPendingComplete) {
@@ -2347,7 +2344,7 @@ const page = new NamedPage('agent_chat', async () => {
                   }
                 } else if (content && isCompletedState) {
                   // Task and bubble are completed, only update if content actually changed
-                  // CRITICAL: This prevents duplicate markdown rendering from repeated round_update events
+                  // CRITICAL: This prevents duplicate markdown rendering from repeated record_update events
                   if (contentChanged) {
                     if (contentDiv && contentDiv instanceof HTMLElement) {
                       await renderMarkdownWithTracking(bubbleId, content, contentDiv);
@@ -2421,7 +2418,7 @@ const page = new NamedPage('agent_chat', async () => {
             }
             
             // Check 1.2: If message exists in DOM (created by bubble_stream), skip creating new one
-            // This prevents duplicate bubbles when both bubble_stream and round_update events arrive
+            // This prevents duplicate bubbles when both bubble_stream and record_update events arrive
             // Note: The update logic above (lines 1991-2070) should handle updating existing messages
             // This check is just to prevent duplicate creation
             const existingInDOMForCreation = Array.from(chatMessages.children).find(
@@ -2686,7 +2683,7 @@ const page = new NamedPage('agent_chat', async () => {
     if (record.status !== undefined) {
       if (isTerminalTaskStatus(record.status)) {
         setLoading(false);
-        currentRoundId = null;
+        currentRecordId = null;
         
         // When task is complete, render markdown for the last assistant message
         const lastAssistantMessage = Array.from(chatMessages.children)
@@ -3190,9 +3187,9 @@ const page = new NamedPage('agent_chat', async () => {
           bubbleId: userbubbleId,
           assistantbubbleId: assistantBubbleId, // Send assistant bubbleId to backend (lowercase to match backend)
           history: [],
-          createTaskRound: true,
-          // If currentRoomId is null, don't pass sessionId, let backend create new session
-          ...(currentRoomId ? { roomId: currentRoomId } : {}),
+          createTaskRecord: true,
+          // If currentChatSessionId is null, don't pass sessionId, let backend create new session
+          ...(currentChatSessionId ? { chatSessionId: currentChatSessionId } : {}),
         }),
       });
 
@@ -3204,46 +3201,45 @@ const page = new NamedPage('agent_chat', async () => {
       }
 
       const responseData = await response.json();
-      const taskRoundId = responseData.taskRoundId;
-      const newRoomId = responseData.roomId ?? responseData.sessionId;
+      const taskRecordId = responseData.taskRecordId;
+      const newChatSessionIdFromResponse = responseData.chatSessionId;
       
-      if (!taskRoundId) {
+      if (!taskRecordId) {
         console.error('[AgentChat] Task created but record ID missing', responseData);
         addMessage('error', 'Task created but record ID missing: ' + JSON.stringify(responseData));
         setLoading(false);
         return;
       }
 
-      if (newRoomId && newRoomId !== currentRoomId) {
-        currentRoomId = newRoomId;
-        const newUrl = `/d/${domainId}/agent/${urlAid}/chat?sid=${newRoomId}`;
-        window.history.pushState({ mode: 'chat', roomId: newRoomId }, '', newUrl);
+      if (newChatSessionIdFromResponse && newChatSessionIdFromResponse !== currentChatSessionId) {
+        currentChatSessionId = newChatSessionIdFromResponse;
+        const newUrl = `/d/${domainId}/agent/${urlAid}/chat?sid=${newChatSessionIdFromResponse}`;
+        window.history.pushState({ mode: 'chat', chatSessionId: newChatSessionIdFromResponse }, '', newUrl);
         if (UiContext) {
-          UiContext.roomId = newRoomId;
-          UiContext.sessionId = newRoomId;
+          UiContext.chatSessionId = newChatSessionIdFromResponse;
         }
         
         // Update left sidebar session list
-        await updateRoomListSidebar();
+        await updateChatSessionListSidebar();
       }
 
 
       // Ensure session is connected
       try {
-        await connectToRoom();
+        await connectSessionChatSocket();
         
-        if (!roomSocketConnected || !roomWebSocket) {
-          throw new Error('Room connection failed');
+        if (!agentChatSocketConnected || !agentChatSocket) {
+          throw new Error('Chat session connection failed');
         }
         
         // Subscribe to new record via session
-        roomWebSocket.send(JSON.stringify({
-          type: 'subscribe_round',
-          rid: taskRoundId,
+        agentChatSocket.send(JSON.stringify({
+          type: 'subscribe_record',
+          recordId: taskRecordId,
         }));
       } catch (error: any) {
-        console.error('[AgentChat] Failed to connect to room or subscribe:', error);
-        addMessage('error', 'Failed to connect to room: ' + (error.message || String(error)));
+        console.error('[AgentChat] Failed to connect to chat session or subscribe:', error);
+        addMessage('error', 'Failed to connect to chat session: ' + (error.message || String(error)));
         setLoading(false);
       }
 
@@ -3275,7 +3271,7 @@ const page = new NamedPage('agent_chat', async () => {
         if (chatMode) {
           chatMode.style.display = 'block';
           // Reset sessionId, indicating this is a new session
-          currentRoomId = null;
+          currentChatSessionId = null;
           // Clear chat messages
           const chatMessages = document.getElementById('chatMessages');
           if (chatMessages) {
@@ -3296,7 +3292,7 @@ const page = new NamedPage('agent_chat', async () => {
     // Click session item: navigate to corresponding session URL
     sessionItems.forEach(item => {
       item.addEventListener('click', () => {
-        const sid = item.getAttribute('data-room-id');
+        const sid = item.getAttribute('data-chat-session-id');
         if (sid) {
           window.location.href = `/d/${domainId}/agent/${urlAid}/chat?sid=${sid}`;
         }
@@ -3318,7 +3314,7 @@ const page = new NamedPage('agent_chat', async () => {
     }
     
     // Connect to session WebSocket
-    connectToRoom().then(() => {
+    connectSessionChatSocket().then(() => {
     });
     
     // Set send button event (use one-time event to avoid duplicate binding)
@@ -3346,7 +3342,7 @@ const page = new NamedPage('agent_chat', async () => {
   
   // Show chat mode
   chatMode.style.display = 'block';
-  currentRoomId = roomId || null;
+  currentChatSessionId = serverChatSessionId || null;
   
   // Left sidebar plus button: clear chat box and create new session
   const newChatBtnSidebar = document.getElementById('newChatBtnSidebar');
@@ -3355,24 +3351,23 @@ const page = new NamedPage('agent_chat', async () => {
       // Clear chat messages
       chatMessages.innerHTML = '';
       // Reset sessionId, indicating this is a new session
-      currentRoomId = null;
+      currentChatSessionId = null;
       // Update URL, remove sid parameter
       const newUrl = `/d/${domainId}/agent/${urlAid}/chat`;
-      window.history.pushState({ mode: 'chat', roomId: null }, '', newUrl);
+      window.history.pushState({ mode: 'chat', chatSessionId: null }, '', newUrl);
       if (UiContext) {
-        UiContext.roomId = '';
-        UiContext.sessionId = '';
+        UiContext.chatSessionId = '';
       }
       // Update left sidebar session list (remove current session highlight)
-      updateRoomListSidebar();
+      updateChatSessionListSidebar();
     });
   }
 
   // Load history records (if any)
-  const roundHistory = UiContext?.roundHistory || [];
-  if (roundHistory && Array.isArray(roundHistory) && roundHistory.length > 0) {
+  const recordHistory = UiContext?.recordHistory || [];
+  if (recordHistory && Array.isArray(recordHistory) && recordHistory.length > 0) {
     // Group messages: merge tool calls with results, separate before/after messages
-    const groupedMessages = groupMessages(roundHistory);
+    const groupedMessages = groupMessages(recordHistory);
     
     // Render all messages sequentially to ensure proper order
     for (const processedMsg of groupedMessages) {
@@ -3423,9 +3418,9 @@ const page = new NamedPage('agent_chat', async () => {
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 
-  // Use shared connectToRoom function (already defined in list mode)
+  // Use shared connectSessionChatSocket function (already defined in list mode)
   try {
-  await connectToRoom();
+  await connectSessionChatSocket();
   } catch (error: any) {
     console.error('[AgentChat] Failed to connect to session during initialization:', error);
     // Don't block page loading if connection fails
@@ -3443,12 +3438,12 @@ const page = new NamedPage('agent_chat', async () => {
   // Bind click events for initially rendered session items (if in template)
   const initialSessionItems = document.querySelectorAll('.session-item-sidebar');
   initialSessionItems.forEach(item => {
-    const sid = item.getAttribute('data-room-id');
+    const sid = item.getAttribute('data-chat-session-id');
     if (sid) {
       item.addEventListener('click', async (e) => {
         e.preventDefault();
         e.stopPropagation();
-        await switchToRoom(sid);
+        await switchToChatSession(sid);
         closeMobileSidebar(); // on mobile, close drawer after selecting session
       });
     }
@@ -3458,17 +3453,16 @@ const page = new NamedPage('agent_chat', async () => {
   window.addEventListener('popstate', async (event) => {
     const urlParams = new URLSearchParams(window.location.search);
     const sid = urlParams.get('sid');
-    if (sid && sid !== currentRoomId) {
-      await switchToRoom(sid);
-    } else if (!sid && currentRoomId) {
+    if (sid && sid !== currentChatSessionId) {
+      await switchToChatSession(sid);
+    } else if (!sid && currentChatSessionId) {
       // If no sid in URL, clear chat box
-      currentRoomId = null;
+      currentChatSessionId = null;
       chatMessages.innerHTML = '';
       if (UiContext) {
-        UiContext.roomId = '';
-        UiContext.sessionId = '';
+        UiContext.chatSessionId = '';
       }
-      await updateRoomListSidebar();
+      await updateChatSessionListSidebar();
     }
   });
 

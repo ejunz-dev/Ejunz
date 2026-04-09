@@ -1,7 +1,7 @@
 import $ from 'jquery';
 import UserSelectAutoComplete from 'vj/components/autocomplete/UserSelectAutoComplete';
 import { NamedPage } from 'vj/misc/Page';
-import 'vj/components/room/room.page.styl';
+import 'vj/components/session_row/session_row.page.styl';
 
 let globalSock: any = null;
 

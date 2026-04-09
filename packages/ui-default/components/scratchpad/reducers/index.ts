@@ -1,7 +1,7 @@
 import { combineReducers } from 'redux';
 import editor from './editor';
 import pretest from './pretest';
-import rounds from './rounds';
+import scratchpadRecords from './scratchpad_records';
 import state from './state';
 import ui from './ui';
 
@@ -9,7 +9,7 @@ const reducer = combineReducers({
   ui,
   editor,
   pretest,
-  records: rounds,
+  records: scratchpadRecords,
   state,
 });
 

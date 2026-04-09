@@ -10,20 +10,28 @@ import {
     subscribe,
     Types,
 } from '../service/server';
-import { PERM, PRIV } from '../model/builtin';
+import { PERM, PRIV, STATUS_TEXTS } from '../model/builtin';
 import type { BaseDoc, BaseNode, CardDoc } from '../interface';
 import { BaseModel, CardModel } from '../model/base';
-import RecordModel, { type RecordDoc, type RecordProblemState } from '../model/record';
+import RecordModel, { type SessionRecordDoc, type RecordProblemState } from '../model/record';
 import SessionModel, { type SessionDoc } from '../model/session';
 import user from '../model/user';
+import Agent from '../model/agent';
 import { buildDevelopRecordDetailAugment } from '../lib/developRecordSummarize';
 import {
     deriveSessionRecordType,
     formatRecordProgressInSession,
+    isAgentSessionRow,
     isDevelopSessionRow,
 } from '../lib/sessionListDisplay';
 
-export function summarizeRecordDoc(r: RecordDoc): { code: string; color: string; label: string } {
+export function summarizeRecordDoc(r: SessionRecordDoc): { code: string; color: string; label: string } {
+    if (r.recordKind === 'agent') {
+        const label = typeof r.status === 'number' && STATUS_TEXTS[r.status as keyof typeof STATUS_TEXTS]
+            ? STATUS_TEXTS[r.status as keyof typeof STATUS_TEXTS]
+            : 'Agent task';
+        return { code: 'agent', color: '#0366d6', label };
+    }
     if (r.recordKind === 'develop_save') {
         const m = r.developMeta;
         const n = m
@@ -64,7 +72,7 @@ function recordCardOutlineUrl(
     return `${pathUrl}${sep}cardId=${encodeURIComponent(cardIdHex)}`;
 }
 
-async function loadSessionDocForRecord(rd: RecordDoc): Promise<SessionDoc | null> {
+async function loadSessionDocForRecord(rd: SessionRecordDoc): Promise<SessionDoc | null> {
     try {
         const doc = await SessionModel.coll.findOne({
             _id: rd.sessionId,
@@ -78,7 +86,7 @@ async function loadSessionDocForRecord(rd: RecordDoc): Promise<SessionDoc | null
 }
 
 async function buildRecordMainListRow(
-    rd: RecordDoc,
+    rd: SessionRecordDoc,
     buildUrl: (name: string, kwargs: Record<string, unknown>) => string,
     translate: (k: string) => string,
 ) {
@@ -92,14 +100,17 @@ async function buildRecordMainListRow(
     let sessionDisplayId = '';
     if (sessionIdHex) {
         sessionDisplayId = sessionIdHex.length > 8 ? `…${sessionIdHex.slice(-8)}` : sessionIdHex;
-        let base: string;
-        if (sess && isDevelopSessionRow(sess)) {
-            base = buildUrl('develop_editor', { domainId: rd.domainId });
+        if (sess && isAgentSessionRow(sess) && sess.agentSessionKind) {
+            sessionResumeUrl = buildUrl('session_chat_detail', { domainId: rd.domainId, sid: sess._id });
+        } else if (sess && isDevelopSessionRow(sess)) {
+            const base = buildUrl('develop_editor', { domainId: rd.domainId });
+            const sep = base.includes('?') ? '&' : '?';
+            sessionResumeUrl = `${base}${sep}session=${encodeURIComponent(sessionIdHex)}`;
         } else {
-            base = buildUrl('learn_lesson', { domainId: rd.domainId });
+            const base = buildUrl('learn_lesson', { domainId: rd.domainId });
+            const sep = base.includes('?') ? '&' : '?';
+            sessionResumeUrl = `${base}${sep}session=${encodeURIComponent(sessionIdHex)}`;
         }
-        const sep = base.includes('?') ? '&' : '?';
-        sessionResumeUrl = `${base}${sep}session=${encodeURIComponent(sessionIdHex)}`;
     }
     if (sess) {
         const rt = deriveSessionRecordType(sess);
@@ -123,9 +134,17 @@ async function buildRecordMainListRow(
 }
 
 async function enrichRecordRowDisplay(
-    rd: RecordDoc,
+    rd: SessionRecordDoc,
     buildUrl: (name: string, kwargs: Record<string, unknown>) => string,
 ): Promise<RecordRowDisplay> {
+    if (rd.recordKind === 'agent') {
+        const preview = (rd.code || '').replace(/\s+/g, ' ').trim();
+        const title = preview.length > 80 ? `${preview.slice(0, 80)}…` : (preview || 'Agent task');
+        return {
+            cardTitle: title,
+            cardUrl: buildUrl('record_detail', { domainId: rd.domainId, rid: rd._id }),
+        };
+    }
     if (rd.recordKind === 'develop_save') {
         const m = rd.developMeta;
         const parts: string[] = [];
@@ -163,7 +182,7 @@ function nodesOnBranch(base: BaseDoc, branch: string): BaseNode[] {
     return [];
 }
 
-async function nodeTitleForRecord(rd: RecordDoc): Promise<string> {
+async function nodeTitleForRecord(rd: SessionRecordDoc): Promise<string> {
     const bid = typeof rd.baseDocId === 'number' && rd.baseDocId > 0 ? rd.baseDocId : 0;
     if (!bid || !rd.nodeId) return rd.nodeId || '';
     const base = await BaseModel.get(rd.domainId, bid);
@@ -193,13 +212,13 @@ export type LessonHistoryProblemRow = {
 };
 
 export type LessonHistoryRecordRow = {
-    rdoc: RecordDoc;
+    rdoc: SessionRecordDoc;
     recordDisp: RecordRowDisplay;
     nodeTitle: string;
     problems: LessonHistoryProblemRow[];
 };
 
-async function problemRowsForRecord(rd: RecordDoc): Promise<LessonHistoryProblemRow[]> {
+async function problemRowsForRecord(rd: SessionRecordDoc): Promise<LessonHistoryProblemRow[]> {
     let card: CardDoc | null = null;
     if (ObjectId.isValid(rd.cardId)) {
         try {
@@ -248,7 +267,7 @@ export async function buildSessionRecordHistoryRows(
     const recordsMap = await RecordModel.getList(domainId, ridList);
     const out: LessonHistoryRecordRow[] = [];
     for (const oid of ridList) {
-        const r = recordsMap[oid.toHexString()] as RecordDoc | undefined;
+        const r = recordsMap[oid.toHexString()] as SessionRecordDoc | undefined;
         if (!r) continue;
         const recordDisp = await enrichRecordRowDisplay(r, buildUrl);
         const nodeTitle = await nodeTitleForRecord(r);
@@ -282,7 +301,7 @@ export async function recordSummariesForSessionRow(
     const recordsMap = await RecordModel.getList(domainId, ridList);
     const out: Array<{ _id: ObjectId; cardId: string; color: string; label: string; code: string }> = [];
     for (const oid of ridList) {
-        const r = recordsMap[oid.toHexString()] as RecordDoc | undefined;
+        const r = recordsMap[oid.toHexString()] as SessionRecordDoc | undefined;
         if (!r) continue;
         const s = summarizeRecordDoc(r);
         out.push({ _id: r._id, cardId: r.cardId, color: s.color, label: s.label, code: s.code });
@@ -321,7 +340,7 @@ class RecordMainHandler extends Handler {
             coll.countDocuments(filter),
         ]);
         const records = await Promise.all(rawRows.map(async (r) => buildRecordMainListRow(
-            r as RecordDoc,
+            r as SessionRecordDoc,
             (name, kwargs) => this.url(name, kwargs as any),
             (k) => this.translate(k),
         )));
@@ -401,13 +420,13 @@ class RecordListConnectionHandler extends ConnectionHandler {
     }
 
     @subscribe('record/change')
-    async onRecordListChange(rdoc: RecordDoc) {
+    async onRecordListChange(rdoc: SessionRecordDoc) {
         if (rdoc.domainId !== this.args.domainId) return;
         if (this.watchUid != null && rdoc.uid !== this.watchUid) return;
         await this.sendRecordRow(rdoc);
     }
 
-    async sendRecordRow(rdoc: RecordDoc) {
+    async sendRecordRow(rdoc: SessionRecordDoc) {
         const udoc = await user.getById(this.args.domainId, rdoc.uid);
         const record = await buildRecordMainListRow(
             rdoc,
@@ -432,7 +451,7 @@ class RecordListConnectionHandler extends ConnectionHandler {
 }
 
 class RecordDetailHandler extends Handler {
-    rdoc!: RecordDoc;
+    rdoc!: SessionRecordDoc;
 
     @param('rid', Types.ObjectId)
     async prepare(domainId: string, rid: ObjectId) {
@@ -450,6 +469,14 @@ class RecordDetailHandler extends Handler {
             this.rdoc,
             (k) => this.translate(k),
         );
+        let adoc: any = null;
+        if (this.rdoc.recordKind === 'agent' && this.rdoc.agentId) {
+            try {
+                adoc = await Agent.get(domainId, this.rdoc.agentId);
+            } catch {
+                adoc = null;
+            }
+        }
         this.response.template = 'record_detail.html';
         this.response.body = {
             rdoc: this.rdoc,
@@ -457,6 +484,7 @@ class RecordDetailHandler extends Handler {
             recordDisp: disp,
             developChangeRows,
             developCountSummaries,
+            adoc,
         };
     }
 }
@@ -476,7 +504,7 @@ class RecordDetailConnectionHandler extends ConnectionHandler {
             }
             if (doc.uid !== this.user._id) this.checkPerm(PERM.PERM_VIEW_RECORD);
             this.rid = rid.toString();
-            this.throttleSend = throttle((d: RecordDoc) => this.sendUpdate(d), 400, { trailing: true });
+            this.throttleSend = throttle((d: SessionRecordDoc) => this.sendUpdate(d), 400, { trailing: true });
             await this.sendUpdate(doc);
         } catch (e: any) {
             try {
@@ -486,7 +514,7 @@ class RecordDetailConnectionHandler extends ConnectionHandler {
         }
     }
 
-    async sendUpdate(d: RecordDoc) {
+    async sendUpdate(d: SessionRecordDoc) {
         const { developChangeRows, developCountSummaries } = buildDevelopRecordDetailAugment(
             d,
             (k) => this.translate(k),
@@ -501,7 +529,7 @@ class RecordDetailConnectionHandler extends ConnectionHandler {
     }
 
     @subscribe('record/change')
-    async onRecordDetailChange(doc: RecordDoc) {
+    async onRecordDetailChange(doc: SessionRecordDoc) {
         if (doc.domainId !== this.args.domainId) return;
         if (doc._id.toString() !== this.rid) return;
         this.throttleSend(doc);

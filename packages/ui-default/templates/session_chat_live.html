@@ -1,10 +1,10 @@
-{% set page_name = "room_chat" %}
+{% set page_name = "session_chat_live" %}
 {% extends "layout/basic.html" %}
 {% block content %}
 <script>
   {{ set(UiContext, 'domainId', handler.args.domainId) }}
-  {{ set(UiContext, 'socketUrl', "room-conn?domainId=" + handler.args.domainId + "&sid=" + room._id.toString()) }}
-  {{ set(UiContext, 'sids', [room._id.toString()]) }}
+  {{ set(UiContext, 'socketUrl', "session/chat-conn?domainId=" + handler.args.domainId + "&sid=" + chatSession._id.toString()) }}
+  {{ set(UiContext, 'sids', [chatSession._id.toString()]) }}
   {{ set(UiContext, 'STATUS', model.builtin.STATUS) }}
 </script>
 <div class="row">
@@ -12,18 +12,18 @@
     <div class="section">
       <div class="section__header">
         <h1 class="section__title">
-          {% if room.title %}
-            {{ room.title }}
+          {% if chatSession.title %}
+            {{ chatSession.title }}
           {% else %}
-            {{ _('Client Room Chat') }} - {{ room._id.toString().substring(0, 8) }}
+            {{ _('session_chat_live') }} - {{ chatSession._id.toString().substring(0, 8) }}
           {% endif %}
         </h1>
         <div class="section__tools">
-          <a href="{{ url('room_detail', domainId=room.domainId, sid=room._id) }}" class="button">
-            <span class="icon icon-back"></span> {{ _('Back to Room') }}
+          <a href="{{ url('session_chat_detail', domainId=chatSession.domainId, sid=chatSession._id) }}" class="button">
+            <span class="icon icon-back"></span> {{ _('session_chat_back_detail') }}
           </a>
-          <a href="{{ url('room_domain', domainId=room.domainId) }}" class="button">
-            <span class="icon icon-list"></span> {{ _('Back to Rooms') }}
+          <a href="{{ url('session_chat_domain', domainId=chatSession.domainId) }}" class="button">
+            <span class="icon icon-list"></span> {{ _('session_chat_back_list') }}
           </a>
         </div>
       </div>
