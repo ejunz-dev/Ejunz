@@ -848,6 +848,18 @@ LaTeX Expressions: LaTeX 表达式
 Learn More: 了解更多
 learn: 学习
 Learn: 学习
+'Learn tab learn wall': 学习墙
+'Learn domain learn wall': 本域学习墙
+'Learn domain learn wall caption': 本域内每日学习练习与答题结果统计（UTC）。色块越深表示节点/卡片/题目活动越多；也可能因打卡或打开过学习会话而点亮。选日后按学习会话列出，每行日期链到该会话历史。
+'Learn wall checked in': 当日已在本域完成学习打卡。
+'Learn wall checkin only saves': 当日仅有打卡，无计入统计的练习数据。
+'Learn wall sessions': 当日学习会话（UTC）
+'Learn wall no sessions': 当日无学习会话。
+'Learn wall session record count': '{0} 条记录'
+Learn wall result untitled card: 未命名卡片
+Learn wall result score: '得分：{0}'
+Learn wall result problems_done: '{0} 道题'
+Learn wall result time_sec: '用时 {0} 秒'
 develop: 开发
 'Develop': 开发
 'Develop branch': 分支
