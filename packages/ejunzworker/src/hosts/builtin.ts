@@ -4,7 +4,7 @@ import {
     TaskModel,
 } from 'ejun';
 import { McpClient } from 'ejun/src/model/agent';
-import RoundModel from 'ejun/src/model/round';
+import RecordModel from 'ejun/src/model/record';
 import { getConfig } from '../config';
 import logger from '../log';
 import superagent from 'superagent';
@@ -52,40 +52,40 @@ export async function apply(ctx: EjunzContext) {
                 return;
             }
             
-            const { roundId, recordId, domainId, agentId, uid, message, history, context, workflowConfig, _id: taskId } = t;
-            const rid = roundId ?? recordId;
+            const { domainId, agentId, uid, message, history, context, workflowConfig, _id: taskId } = t;
+            const rid = t.recordId;
             if (!rid) {
-                logger.error('Task missing roundId/recordId: taskId=%s', taskId?.toString());
-                throw new Error('Task missing roundId/recordId');
+                logger.error('Task missing recordId: taskId=%s', taskId?.toString());
+                throw new Error('Task missing recordId');
             }
             
             const startTime = Date.now();
             const STATUS = require('ejun/src/model/builtin').STATUS;
             
             try {
-                const currentRound = await RoundModel.get(domainId, rid);
-                if (!currentRound) {
-                    logger.error('Round not found: roundId=%s, taskId=%s', rid?.toString(), taskId?.toString());
-                    throw new Error(`Round not found: ${rid?.toString()}`);
+                const currentRecordDoc = await RecordModel.get(domainId, rid);
+                if (!currentRecordDoc) {
+                    logger.error('Agent record not found: recordId=%s, taskId=%s', rid?.toString(), taskId?.toString());
+                    throw new Error(`Agent record not found: ${rid?.toString()}`);
                 }
                 
-                const currentStatus = (currentRound as any).status as number | undefined;
+                const currentStatus = (currentRecordDoc as any).status as number | undefined;
                 if (currentStatus !== undefined && currentStatus !== STATUS.STATUS_TASK_WAITING) {
-                    logger.warn('Task already being processed or completed: roundId=%s, taskId=%s, currentStatus=%d, skipping', 
+                    logger.warn('Task already being processed or completed: recordId=%s, taskId=%s, currentStatus=%d, skipping', 
                         rid?.toString(), 
                         taskId?.toString(),
                         currentStatus);
                     return;
                 }
                 
-                await RoundModel.updateTask(domainId, rid, {
+                await RecordModel.updateAgentTask(domainId, rid, {
                     status: STATUS.STATUS_TASK_FETCHED,
                 });
                 
                 if (!context || !context.apiKey || !context.systemMessage) {
                     logger.error('Task missing required context information', {
                         taskId: taskId?.toString(),
-                        roundId: rid?.toString(),
+                        recordId: rid?.toString(),
                         hasContext: !!context,
                         hasApiKey: !!context?.apiKey,
                         hasSystemMessage: !!context?.systemMessage,
@@ -93,7 +93,7 @@ export async function apply(ctx: EjunzContext) {
                     throw new Error('Task missing required context information');
                 }
                 
-                await RoundModel.updateTask(domainId, rid, {
+                await RecordModel.updateAgentTask(domainId, rid, {
                     status: STATUS.STATUS_TASK_PROCESSING,
                 });
                 
@@ -326,8 +326,8 @@ export async function apply(ctx: EjunzContext) {
                     const updateRecordContent = async (content: string, toolCalls?: any[]) => {
                         try {
                             if (!currentBubbleId) {
-                                const currentRound = await RoundModel.get(domainId, rid);
-                                const currentMessages = (currentRound as any)?.agentMessages || [];
+                                const currentRecordDoc = await RecordModel.get(domainId, rid);
+                                const currentMessages = (currentRecordDoc as any)?.agentMessages || [];
                                 const lastMessage = currentMessages[currentMessages.length - 1];
                                 
                                 if (lastMessage && lastMessage.role === 'assistant' && lastMessage.bubbleId) {
@@ -343,14 +343,14 @@ export async function apply(ctx: EjunzContext) {
                                     
                                     const bus = require('ejun/src/service/bus').default;
                                     bus.broadcast('bubble/stream', {
-                                        rid: rid.toString(),
+                                        recordId: rid.toString(),
                                         domainId,
                                         bubbleId: currentBubbleId,
                                         content: '',
                                         isNew: true,
                                     });
                                     
-                                    await RoundModel.updateTask(domainId, rid, {
+                                    await RecordModel.updateAgentTask(domainId, rid, {
                                         agentMessages: [{
                                             role: 'assistant',
                                             content: content || '',
@@ -367,7 +367,7 @@ export async function apply(ctx: EjunzContext) {
                             
                             if (!currentBubbleId) {
                                 logger.error('updateRecordContent: currentBubbleId is empty', {
-                                    roundId: rid.toString(),
+                                    recordId: rid.toString(),
                                     contentLength: content ? content.length : 0,
                                 });
                                 return;
@@ -375,7 +375,7 @@ export async function apply(ctx: EjunzContext) {
                             
                             const bus = require('ejun/src/service/bus').default;
                             bus.broadcast('bubble/stream', {
-                                rid: rid.toString(),
+                                recordId: rid.toString(),
                                 domainId,
                                 bubbleId: currentBubbleId,
                                 content: content,
@@ -385,7 +385,7 @@ export async function apply(ctx: EjunzContext) {
                         } catch (e) {
                             logger.error(`[气泡 ${currentBubbleId ? currentBubbleId.substring(0, 8) : 'unknown'}] updateRecordContent 错误:`, {
                                 error: e,
-                                roundId: rid.toString(),
+                                recordId: rid.toString(),
                                 bubbleId: currentBubbleId,
                                 contentLength: content ? content.length : 0,
                             });
@@ -459,7 +459,7 @@ export async function apply(ctx: EjunzContext) {
                                                 accumulatedContent += delta.content;
                                                 updateRecordContent(accumulatedContent, toolCalls.length > 0 ? toolCalls : undefined).catch((err) => {
                                                     logger.error('updateRecordContent 调用失败', {
-                                                        roundId: rid.toString(),
+                                                        recordId: rid.toString(),
                                                         error: err,
                                                     });
                                                 });
@@ -557,8 +557,8 @@ export async function apply(ctx: EjunzContext) {
                     if (accumulatedContent) {
                         let finalBubbleId = currentBubbleId;
                         if (!finalBubbleId) {
-                            const currentRound = await RoundModel.get(domainId, rid);
-                            const currentMessages = (currentRound as any)?.agentMessages || [];
+                            const currentRecordDoc = await RecordModel.get(domainId, rid);
+                            const currentMessages = (currentRecordDoc as any)?.agentMessages || [];
                             const lastMessage = currentMessages[currentMessages.length - 1];
                             if (lastMessage && lastMessage.role === 'assistant' && lastMessage.bubbleId) {
                                 finalBubbleId = lastMessage.bubbleId;
@@ -568,7 +568,7 @@ export async function apply(ctx: EjunzContext) {
                         if (finalBubbleId) {
                             const bus = require('ejun/src/service/bus').default;
                             bus.broadcast('bubble/stream', {
-                                rid: rid.toString(),
+                                recordId: rid.toString(),
                                 domainId,
                                 bubbleId: finalBubbleId,
                                 content: accumulatedContent,
@@ -576,7 +576,7 @@ export async function apply(ctx: EjunzContext) {
                             });
                         } else {
                             logger.warn('Cannot send final bubble_stream: no bubbleId available', { 
-                                roundId: rid.toString() 
+                                recordId: rid.toString() 
                             });
                         }
                     }
@@ -586,8 +586,8 @@ export async function apply(ctx: EjunzContext) {
                     if (hasToolCalls) {
                         const toolCall = toolCalls[0];
                         if (accumulatedContent) {
-                            const currentRound = await RoundModel.get(domainId, rid);
-                            const currentMessages = (currentRound as any)?.agentMessages || [];
+                            const currentRecordDoc = await RecordModel.get(domainId, rid);
+                            const currentMessages = (currentRecordDoc as any)?.agentMessages || [];
                             let lastAssistantIndex = -1;
                             for (let k = currentMessages.length - 1; k >= 0; k--) {
                                 if (currentMessages[k].role === 'assistant') {
@@ -604,11 +604,11 @@ export async function apply(ctx: EjunzContext) {
                                     [`agentMessages.${lastAssistantIndex}.contentHash`]: contentHash,
                                     [`agentMessages.${lastAssistantIndex}.bubbleState`]: 'completed',
                                 };
-                                await RoundModel.update(domainId, rid, $setContent);
+                                await RecordModel.rawAgentUpdate(domainId, rid, $setContent);
                             }
                         }
-                        const currentRoundForToolCalls = await RoundModel.get(domainId, rid);
-                        const messagesForToolCalls = (currentRoundForToolCalls as any)?.agentMessages || [];
+                        const currentRecordDocForToolCalls = await RecordModel.get(domainId, rid);
+                        const messagesForToolCalls = (currentRecordDocForToolCalls as any)?.agentMessages || [];
                         let lastAssistantIdx = -1;
                         for (let k = messagesForToolCalls.length - 1; k >= 0; k--) {
                             if (messagesForToolCalls[k].role === 'assistant') {
@@ -617,7 +617,7 @@ export async function apply(ctx: EjunzContext) {
                             }
                         }
                         if (lastAssistantIdx >= 0) {
-                            const toolCallsForRound = [{
+                            const toolCallsForAssistant = [{
                                 id: toolCall.id,
                                 type: 'function',
                                 function: {
@@ -625,8 +625,8 @@ export async function apply(ctx: EjunzContext) {
                                     arguments: toolCall.function?.arguments || '',
                                 },
                             }];
-                            await RoundModel.update(domainId, rid, {
-                                [`agentMessages.${lastAssistantIdx}.tool_calls`]: toolCallsForRound,
+                            await RecordModel.rawAgentUpdate(domainId, rid, {
+                                [`agentMessages.${lastAssistantIdx}.tool_calls`]: toolCallsForAssistant,
                             } as any);
                         }
                         const toolName = toolCall.function?.name;
@@ -675,7 +675,7 @@ export async function apply(ctx: EjunzContext) {
                                 score = Math.max(0, score - 20);
                             }
                             
-                            await RoundModel.updateTask(domainId, rid, {
+                            await RecordModel.updateAgentTask(domainId, rid, {
                                 agentToolCallCount: toolCallCount,
                                 agentMessages: [{
                                     role: 'tool',
@@ -717,7 +717,7 @@ export async function apply(ctx: EjunzContext) {
                                 code: errorCode,
                             };
                             
-                            await RoundModel.updateTask(domainId, rid, {
+                            await RecordModel.updateAgentTask(domainId, rid, {
                                 status: errorStatus,
                                 score,
                                 agentToolCallCount: toolCallCount,
@@ -771,8 +771,8 @@ export async function apply(ctx: EjunzContext) {
                         accumulatedContent = '';
                     } else {
                         if (accumulatedContent) {
-                            const currentRound = await RoundModel.get(domainId, rid);
-                            const currentMessages = (currentRound as any)?.agentMessages || [];
+                            const currentRecordDoc = await RecordModel.get(domainId, rid);
+                            const currentMessages = (currentRecordDoc as any)?.agentMessages || [];
                             const lastMessage = currentMessages[currentMessages.length - 1];
                             
                             const { createHash, randomUUID } = require('crypto');
@@ -786,9 +786,9 @@ export async function apply(ctx: EjunzContext) {
                                     [`agentMessages.${currentMessages.length - 1}.contentHash`]: contentHash,
                                     [`agentMessages.${currentMessages.length - 1}.bubbleState`]: 'completed',
                                 };
-                                await RoundModel.update(domainId, rid, updateData);
+                                await RecordModel.rawAgentUpdate(domainId, rid, updateData);
                             } else {
-                                await RoundModel.updateTask(domainId, rid, {
+                                await RecordModel.updateAgentTask(domainId, rid, {
                                     agentMessages: [{
                                         role: 'assistant',
                                         content: accumulatedContent,
@@ -799,7 +799,7 @@ export async function apply(ctx: EjunzContext) {
                                     }],
                                 });
                                 logger.warn('Bubble completed but message not found, created new message', { 
-                                    roundId: rid.toString(), 
+                                    recordId: rid.toString(), 
                                     bubbleId: bubbleIdToUse,
                                     contentLength: accumulatedContent.length,
                                 });
@@ -811,7 +811,7 @@ export async function apply(ctx: EjunzContext) {
                         
                         const bus = require('ejun/src/service/bus').default;
                         bus.broadcast('task/agent-completed', {
-                            roundId: rid.toString(),
+                            recordId: rid.toString(),
                             domainId,
                             taskId: taskId?.toString(),
                         });
@@ -823,18 +823,18 @@ export async function apply(ctx: EjunzContext) {
                 const endTime = Date.now();
                 const elapsedTime = endTime - startTime;
                 
-                await RoundModel.updateTask(domainId, rid, {
+                await RecordModel.updateAgentTask(domainId, rid, {
                     status: STATUS.STATUS_TASK_PENDING,
                     time: elapsedTime,
                     agentToolCallCount: toolCallCount,
                 });
                 
                 if (hasToolError && errorStatus) {
-                    await RoundModel.updateTask(domainId, rid, {
+                    await RecordModel.updateAgentTask(domainId, rid, {
                         status: errorStatus,
                     });
                 } else {
-                    await RoundModel.updateTask(domainId, rid, {
+                    await RecordModel.updateAgentTask(domainId, rid, {
                         status: STATUS.STATUS_TASK_DELIVERED,
                         score: 100,
                 });
@@ -848,7 +848,7 @@ export async function apply(ctx: EjunzContext) {
                         const endTime = Date.now();
                         const elapsedTime = endTime - startTime;
                         const STATUS = require('ejun/src/model/builtin').STATUS;
-                        await RoundModel.updateTask(domainId, rid, {
+                        await RecordModel.updateAgentTask(domainId, rid, {
                             status: STATUS.STATUS_TASK_ERROR_SYSTEM,
                             score: 0,
                             time: elapsedTime,

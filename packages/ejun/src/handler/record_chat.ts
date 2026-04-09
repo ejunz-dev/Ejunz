@@ -9,46 +9,44 @@ import {
     Handler, ConnectionHandler, param, post, query, subscribe, Types,
 } from '../service/server';
 import { PERM, PRIV, STATUS } from '../model/builtin';
-import RoomModel from '../model/room';
-import { RoomDoc, RoundDoc } from '../interface';
-import round from '../model/round';
+import SessionModel from '../model/session';
+import type { AgentChatSessionDoc } from '../interface';
+import RecordModel, { type SessionRecordDoc } from '../model/record';
 import user from '../model/user';
 import Agent from '../model/agent';
 import domain from '../model/domain';
-import { buildProjection } from '../utils';
-
-export class RoomConnectionTracker {
+export class AgentChatSessionConnectionTracker {
     private static activeConnections = new Map<string, Set<ConnectionHandler>>();
 
-    static add(roomIdHex: string, handler: ConnectionHandler) {
-        if (!this.activeConnections.has(roomIdHex)) {
-            this.activeConnections.set(roomIdHex, new Set());
+    static add(sessionIdHex: string, handler: ConnectionHandler) {
+        if (!this.activeConnections.has(sessionIdHex)) {
+            this.activeConnections.set(sessionIdHex, new Set());
         }
-        this.activeConnections.get(roomIdHex)!.add(handler);
+        this.activeConnections.get(sessionIdHex)!.add(handler);
     }
 
-    static remove(roomIdHex: string, handler: ConnectionHandler) {
-        const handlers = this.activeConnections.get(roomIdHex);
+    static remove(sessionIdHex: string, handler: ConnectionHandler) {
+        const handlers = this.activeConnections.get(sessionIdHex);
         if (handlers) {
             handlers.delete(handler);
             if (handlers.size === 0) {
-                this.activeConnections.delete(roomIdHex);
+                this.activeConnections.delete(sessionIdHex);
             }
         }
     }
 
-    static isActive(roomIdHex: string): boolean {
-        return this.activeConnections.has(roomIdHex) && 
-               this.activeConnections.get(roomIdHex)!.size > 0;
+    static isActive(sessionIdHex: string): boolean {
+        return this.activeConnections.has(sessionIdHex) && 
+               this.activeConnections.get(sessionIdHex)!.size > 0;
     }
 }
 
-async function getRoomStatus(
+async function getAgentChatSessionStatus(
     domainId: string,
-    sdoc: RoomDoc,
+    sdoc: AgentChatSessionDoc,
 ): Promise<'working' | 'active' | 'detached'> {
-    if (sdoc.roundIds && sdoc.roundIds.length > 0) {
-        const records = await round.getList(domainId, sdoc.roundIds);
+    if (sdoc.recordIds && sdoc.recordIds.length > 0) {
+        const records = await RecordModel.getList(domainId, sdoc.recordIds);
         const hasWorkingTask = Object.values(records).some((r: any) => {
             return r.status === STATUS.STATUS_TASK_PROCESSING || 
                    r.status === STATUS.STATUS_TASK_PENDING;
@@ -81,8 +79,8 @@ async function getRoomStatus(
         }
     }
 
-    const roomIdHex = sdoc._id.toString();
-    if (RoomConnectionTracker.isActive(roomIdHex)) {
+    const sessionIdHex = sdoc._id.toString();
+    if (AgentChatSessionConnectionTracker.isActive(sessionIdHex)) {
         return 'active';
     }
 
@@ -95,7 +93,7 @@ async function getRoomStatus(
     return 'detached';
 }
 
-export class RoomDomainHandler extends Handler {
+export class SessionChatDomainHandler extends Handler {
     @query('page', Types.PositiveInt, true)
     @query('aid', Types.String, true)
     @query('uidOrName', Types.UidOrName, true)
@@ -134,36 +132,37 @@ export class RoomDomainHandler extends Handler {
             }
         }
         
-        const [rooms, count] = await Promise.all([
-            RoomModel.getMulti(domainId, query, {
+        const [sessionsRaw, count] = await Promise.all([
+            SessionModel.findAgentChatSessions(domainId, query, {
                 sort: { _id: -1 },
                 limit: 20,
                 skip: (page - 1) * 20,
             }).toArray(),
-            RoomModel.count(domainId, query),
+            SessionModel.countAgentChatSessions(domainId, query),
         ]);
+        const chatSessions = sessionsRaw.map((d) => SessionModel.toAgentChatSessionView(d)!).filter(Boolean);
         
-        const roundIds = rooms.flatMap(s => s.roundIds || []);
-        const records = roundIds.length > 0 
-            ? await round.getList(domainId, roundIds)
+        const recordIdList = chatSessions.flatMap(s => s.recordIds || []);
+        const records = recordIdList.length > 0 
+            ? await RecordModel.getList(domainId, recordIdList)
             : {};
         
-        const roomsWithRecords = await Promise.all(rooms.map(async (s) => {
-            const roomRecords = (s.roundIds || []).map(rid => records[rid.toString()]).filter(Boolean);
-            const roomStatus = await getRoomStatus(domainId, s);
+        const chatSessionsWithRecords = await Promise.all(chatSessions.map(async (s) => {
+            const sessionRecords = (s.recordIds || []).map(rid => records[rid.toString()]).filter(Boolean);
+            const sessionStatus = await getAgentChatSessionStatus(domainId, s);
             return {
                 ...s,
-                records: roomRecords,
-                status: roomStatus,
+                records: sessionRecords,
+                status: sessionStatus,
             };
         }));
         
-        let filteredRooms = roomsWithRecords;
+        let filteredSessions = chatSessionsWithRecords;
         if (status) {
-            filteredRooms = roomsWithRecords.filter(s => s.status === status);
+            filteredSessions = chatSessionsWithRecords.filter(s => s.status === status);
         }
         
-        const agentIds = [...new Set(rooms.map((s: any) => s.agentId).filter(Boolean))];
+        const agentIds = [...new Set(chatSessions.map((s: any) => s.agentId).filter(Boolean))];
         let adict: Record<string, any> = {};
         if (agentIds.length > 0) {
             const agentDocs = await Promise.all(
@@ -179,20 +178,20 @@ export class RoomDomainHandler extends Handler {
             adict = Object.fromEntries(agentDocs);
         }
         
-        const userIds = [...new Set(rooms.map((s: any) => s.uid))];
+        const userIds = [...new Set(chatSessions.map((s: any) => s.uid))];
         const udict = await user.getList(domainId, userIds);
         
-        const roomsWithRecordsArray = filteredRooms.map(s => ({
+        const chatSessionsForTemplate = filteredSessions.map(s => ({
             ...s,
             records: s.records || [],
         }));
 
-        this.response.template = 'room_domain.html';
+        this.response.template = 'session_chat_domain.html';
         this.response.body = {
-            rooms: roomsWithRecordsArray,
+            chatSessions: chatSessionsForTemplate,
             page,
-            count: status ? filteredRooms.length : count,
-            pageCount: Math.ceil((status ? filteredRooms.length : count) / 20),
+            count: status ? filteredSessions.length : count,
+            pageCount: Math.ceil((status ? filteredSessions.length : count) / 20),
             adict,
             udict,
             filterAid: aid,
@@ -202,33 +201,33 @@ export class RoomDomainHandler extends Handler {
     }
 }
 
-export class RoomDetailHandler extends Handler {
+export class SessionChatDetailHandler extends Handler {
     @param('sid', Types.ObjectId)
     async get(domainId: string, sid: ObjectId) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        const sdoc = await RoomModel.get(domainId, sid);
+        const sdoc = await SessionModel.getAgentChatSession(domainId, sid);
         if (!sdoc) {
-            throw new NotFoundError('Room not found');
+            throw new NotFoundError('Chat session not found');
         }
         if (sdoc.uid !== this.user._id) {
             this.checkPerm(PERM.PERM_VIEW_RECORD);
         }
         
-        const records = sdoc.roundIds && sdoc.roundIds.length > 0
-            ? await round.getList(domainId, sdoc.roundIds)
+        const records = sdoc.recordIds && sdoc.recordIds.length > 0
+            ? await RecordModel.getList(domainId, sdoc.recordIds)
             : {};
         
         const recordsList = Object.values(records).sort((a: any, b: any) => 
             a._id.getTimestamp().getTime() - b._id.getTimestamp().getTime()
         );
         
-        const roomStatus = await getRoomStatus(domainId, sdoc);
+        const sessionStatus = await getAgentChatSessionStatus(domainId, sdoc);
         
-        this.response.template = 'room_detail.html';
+        this.response.template = 'session_chat_detail.html';
         this.response.body = {
-            room: {
+            chatSession: {
                 ...sdoc,
-                status: roomStatus,
+                status: sessionStatus,
             },
             records: recordsList,
         };
@@ -241,25 +240,25 @@ export class RoomDetailHandler extends Handler {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
         if (operation === 'delete') {
-            const sdoc = await RoomModel.get(domainId, sid);
+            const sdoc = await SessionModel.getAgentChatSession(domainId, sid);
             if (!sdoc) {
-                throw new NotFoundError('Room not found');
+                throw new NotFoundError('Chat session not found');
             }
             if (sdoc.uid !== this.user._id) {
-                throw new PermissionError('You can only delete your own rooms');
+                throw new PermissionError('You can only delete your own chat sessions');
             }
             
-            await RoomModel.delete(domainId, sid);
-            this.response.redirect = this.url('room_domain', { domainId });
+            await SessionModel.deleteAgentChatSession(domainId, sid);
+            this.response.redirect = this.url('session_chat_domain', { domainId });
             return;
         }
         
-        const sdoc = await RoomModel.get(domainId, sid);
+        const sdoc = await SessionModel.getAgentChatSession(domainId, sid);
         if (!sdoc) {
-            throw new NotFoundError('Room not found');
+            throw new NotFoundError('Chat session not found');
         }
         if (sdoc.uid !== this.user._id) {
-            throw new PermissionError('You can only update your own rooms');
+            throw new PermissionError('You can only update your own chat sessions');
         }
         
         const update: any = { updatedAt: new Date() };
@@ -267,12 +266,12 @@ export class RoomDetailHandler extends Handler {
             update.title = title;
         }
         
-        await RoomModel.update(domainId, sid, update);
-        this.response.redirect = this.url('room_detail', { domainId, sid });
+        await SessionModel.updateAgentChatSession(domainId, sid, update);
+        this.response.redirect = this.url('session_chat_detail', { domainId, sid });
     }
 }
 
-class RoomDomainConnectionHandler extends ConnectionHandler {
+class SessionChatDomainConnectionHandler extends ConnectionHandler {
     aid?: string;
     uid?: number;
     sid?: ObjectId;
@@ -331,15 +330,14 @@ class RoomDomainConnectionHandler extends ConnectionHandler {
             if (querySid) {
                 try {
                     this.sid = new ObjectId(querySid);
-                    const sdoc = await RoomModel.get(finalDomainId, this.sid);
+                    const sdoc = await SessionModel.getAgentChatSession(finalDomainId, this.sid);
                     if (sdoc) {
-                        // 发送初始的record更新
-                        const roundIds = sdoc.roundIds || [];
-                        for (const roundId of roundIds) {
+                        const recordIds = sdoc.recordIds || [];
+                        for (const recordId of recordIds) {
                             try {
-                                const rdoc = await round.get(finalDomainId, roundId);
+                                const rdoc = await RecordModel.get(finalDomainId, recordId);
                                 if (rdoc) {
-                                    await this.sendRoundUpdate(sdoc, rdoc);
+                                    await this.sendRecordUpdate(sdoc, rdoc);
                                 }
                             } catch (e) {
                                 // ignore
@@ -351,15 +349,14 @@ class RoomDomainConnectionHandler extends ConnectionHandler {
                 }
             } else if (sid) {
                 this.sid = sid;
-                const sdoc = await RoomModel.get(finalDomainId, sid);
+                const sdoc = await SessionModel.getAgentChatSession(finalDomainId, sid);
                 if (sdoc) {
-                    // 发送初始的record更新
-                    const roundIds = sdoc.roundIds || [];
-                    for (const roundId of roundIds) {
+                    const recordIds = sdoc.recordIds || [];
+                    for (const recordId of recordIds) {
                         try {
-                            const rdoc = await round.get(finalDomainId, roundId);
+                            const rdoc = await RecordModel.get(finalDomainId, recordId);
                             if (rdoc) {
-                                await this.sendRoundUpdate(sdoc, rdoc);
+                                await this.sendRecordUpdate(sdoc, rdoc);
                             }
                         } catch (e) {
                             // ignore
@@ -379,13 +376,16 @@ class RoomDomainConnectionHandler extends ConnectionHandler {
     async message(msg: { sids: string[] }) {
         if (!(msg.sids instanceof Array)) return;
         const sids = msg.sids.map((id) => new ObjectId(id));
-        const sdocs = await RoomModel.getMulti(this.args.domainId, { _id: { $in: sids } })
+        const sdocsRaw = await SessionModel.findAgentChatSessions(this.args.domainId, { _id: { $in: sids } })
             .toArray();
-        for (const sdoc of sdocs) this.onRoomChange(sdoc);
+        for (const raw of sdocsRaw) {
+            const sdoc = SessionModel.toAgentChatSessionView(raw);
+            if (sdoc) await this.onAgentChatSessionChange(sdoc);
+        }
     }
 
-    @subscribe('room/change')
-    async onRoomChange(sdoc: RoomDoc) {
+    @subscribe('agent_chat_session/change')
+    async onAgentChatSessionChange(sdoc: AgentChatSessionDoc) {
         if (sdoc.domainId !== this.args.domainId) return;
         if (typeof this.uid === 'number') {
             if (sdoc.uid !== this.uid) return;
@@ -394,26 +394,25 @@ class RoomDomainConnectionHandler extends ConnectionHandler {
         }
         if (this.aid && sdoc.agentId !== this.aid) return;
 
-        await this.sendRoomUpdate(sdoc);
+        await this.sendChatSessionUpdate(sdoc);
     }
 
-    @subscribe('round/change')
-    async onRoundChange(rdoc: RoundDoc) {
+    @subscribe('record/change')
+    async onRecordAgentChange(rdoc: SessionRecordDoc) {
         const r = rdoc as any;
-        if (!r.agentId) return;
+        if (r.recordKind !== 'agent' || !r.agentId) return;
         if (r.domainId !== this.args.domainId) return;
         // 如果指定了 uid，只处理该用户的 record；否则处理所有 record
         if (typeof this.uid === 'number' && r.uid !== this.uid) return;
         if (this.aid && r.agentId !== this.aid) return;
 
-        const sdocs = await RoomModel.getMulti(this.args.domainId, {
-            $or: [
-                { roundIds: r._id },
-                { recordIds: r._id },
-            ],
+        const sdocsRaw = await SessionModel.findAgentChatSessions(this.args.domainId, {
+            recordIds: r._id,
         } as any).toArray();
 
-        for (const sdoc of sdocs) {
+        for (const raw of sdocsRaw) {
+            const sdoc = SessionModel.toAgentChatSessionView(raw);
+            if (!sdoc) continue;
             // 如果指定了 uid，只处理该用户的 session；否则处理所有 session
             if (typeof this.uid === 'number' && sdoc.uid !== this.uid) continue;
             if (this.aid && sdoc.agentId !== this.aid) continue;
@@ -422,36 +421,35 @@ class RoomDomainConnectionHandler extends ConnectionHandler {
             if (this.sid) {
                 // 如果指定了sid，只发送该session的record更新
                 if (sdoc._id.equals(this.sid)) {
-                    await this.sendRoundUpdate(sdoc, r);
+                    await this.sendRecordUpdate(sdoc, r);
                 }
             } else {
-                // 否则发送session更新（用于列表页面）
-                await this.sendRoomUpdate(sdoc);
+                await this.sendChatSessionUpdate(sdoc);
             }
         }
     }
     
-    async sendRoundUpdate(sdoc: RoomDoc, rdoc: RoundDoc) {
+    async sendRecordUpdate(sdoc: AgentChatSessionDoc, rdoc: SessionRecordDoc) {
         const r = rdoc as any;
         // 获取完整的record信息（包括agentMessages）
-        const fullRecord = await round.get(this.args.domainId, r._id);
+        const fullRecord = await RecordModel.get(this.args.domainId, r._id);
         
         this.send({
-            type: 'round_update',
-            rid: r._id.toString(),
-            round: fullRecord,
+            type: 'record_update',
+            recordId: r._id.toString(),
+            record: fullRecord,
         });
     }
 
-    async sendRoomUpdate(sdoc: RoomDoc) {
-        const roundIds = sdoc.roundIds || [];
-        const records = roundIds.length > 0 
-            ? await round.getList(this.args.domainId, roundIds, [
+    async sendChatSessionUpdate(sdoc: AgentChatSessionDoc) {
+        const recordIds = sdoc.recordIds || [];
+        const records = recordIds.length > 0 
+            ? await RecordModel.getList(this.args.domainId, recordIds, [
                 '_id', 'status', 'score', 'domainId', 'uid', 'agentId',
             ] as any)
             : {};
         
-        const sessionRecords = roundIds.map(rid => {
+        const sessionRecords = recordIds.map(rid => {
             const r = records[rid.toString()];
             if (r) {
                 const recordWithId = r as any;
@@ -463,7 +461,7 @@ class RoomDomainConnectionHandler extends ConnectionHandler {
             return null;
         }).filter(Boolean);
         
-        const status = await getRoomStatus(this.args.domainId, sdoc);
+        const status = await getAgentChatSessionStatus(this.args.domainId, sdoc);
         
         let adoc = null;
         if (sdoc.agentId) {
@@ -476,15 +474,15 @@ class RoomDomainConnectionHandler extends ConnectionHandler {
         
         const udoc = await user.getById(this.args.domainId, sdoc.uid);
 
-        const roomWithData = {
+        const chatSessionWithData = {
             ...sdoc,
             status,
             records: sessionRecords,
         };
 
         this.queueSend(sdoc._id.toHexString(), async () => ({
-            html: await this.renderHTML('room_domain_tr.html', {
-                room: roomWithData,
+            html: await this.renderHTML('session_chat_domain_tr.html', {
+                chatSession: chatSessionWithData,
                 adoc,
                 udoc,
             }),
@@ -506,24 +504,24 @@ class RoomDomainConnectionHandler extends ConnectionHandler {
     }
 }
 
-export class RoomChatHandler extends Handler {
+export class SessionChatLiveHandler extends Handler {
     @param('sid', Types.ObjectId)
     async get(domainId: string, sid: ObjectId) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        const sdoc = await RoomModel.get(domainId, sid);
+        const sdoc = await SessionModel.getAgentChatSession(domainId, sid);
         if (!sdoc) {
-            throw new NotFoundError('Room not found');
+            throw new NotFoundError('Chat session not found');
         }
         if (sdoc.uid !== this.user._id) {
             this.checkPerm(PERM.PERM_VIEW_RECORD);
         }
         
         if (sdoc.type !== 'client') {
-            throw new PermissionError('Only client-type rooms can be accessed via chat interface');
+            throw new PermissionError('Only client-type sessions can be accessed via this chat page');
         }
         
-        const records = sdoc.roundIds && sdoc.roundIds.length > 0
-            ? await round.getList(domainId, sdoc.roundIds)
+        const records = sdoc.recordIds && sdoc.recordIds.length > 0
+            ? await RecordModel.getList(domainId, sdoc.recordIds)
             : {};
         
         const recordsList = Object.values(records).sort((a: any, b: any) => 
@@ -544,9 +542,9 @@ export class RoomChatHandler extends Handler {
         const domainInfo = await domain.get(domainId);
         const apiKey = (domainInfo as any)?.['apiKey'] || '';
         
-        this.response.template = 'room_chat.html';
+        this.response.template = 'session_chat_live.html';
         this.response.body = {
-            room: sdoc,
+            chatSession: sdoc,
             records: recordsList,
             adoc,
             apiKey,
@@ -558,16 +556,16 @@ export class RoomChatHandler extends Handler {
         this.response.template = null;
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
-        const sdoc = await RoomModel.get(domainId, sid);
+        const sdoc = await SessionModel.getAgentChatSession(domainId, sid);
         if (!sdoc) {
-            throw new NotFoundError('Room not found');
+            throw new NotFoundError('Chat session not found');
         }
         if (sdoc.uid !== this.user._id) {
             this.checkPerm(PERM.PERM_VIEW_RECORD);
         }
         
         if (sdoc.type !== 'client') {
-            throw new PermissionError('Only client-type rooms can send messages via chat interface');
+            throw new PermissionError('Only client-type sessions can send messages here');
         }
         
         const message = this.request.body?.message;
@@ -578,7 +576,7 @@ export class RoomChatHandler extends Handler {
         
         // 获取agent信息
         if (!sdoc.agentId) {
-            this.response.body = { error: 'Room has no agent' };
+            this.response.body = { error: 'Chat session has no agent' };
             return;
         }
         
@@ -590,15 +588,15 @@ export class RoomChatHandler extends Handler {
         }
         
         // 构建history（从session的records中提取）
-        const records = sdoc.roundIds && sdoc.roundIds.length > 0
-            ? await round.getList(domainId, sdoc.roundIds)
+        const records = sdoc.recordIds && sdoc.recordIds.length > 0
+            ? await RecordModel.getList(domainId, sdoc.recordIds)
             : {};
         
         const recordsList = Object.values(records).sort((a: any, b: any) => 
             a._id.getTimestamp().getTime() - b._id.getTimestamp().getTime()
         );
         
-        // 从records中提取历史消息（与AgentChatHandler保持一致）
+        // 从 records 中提取历史消息（与 AgentChatHandler 保持一致）
         const history: any[] = [];
         for (const r of recordsList) {
             if ((r as any).agentMessages && Array.isArray((r as any).agentMessages)) {
@@ -620,7 +618,7 @@ export class RoomChatHandler extends Handler {
             return;
         }
         
-        const taskRoundId = await round.addTask(
+        const taskRecordId = await RecordModel.insertAgentTask(
             domainId,
             adoc.aid || adoc.docId.toString(),
             this.user._id,
@@ -628,10 +626,10 @@ export class RoomChatHandler extends Handler {
             sid, // 使用现有的session
         );
         
-        await RoomModel.addRound(domainId, sid, taskRoundId);
+        await SessionModel.appendAgentChatSessionRecord(domainId, sid, taskRecordId);
         
         // 更新session的最后活动时间
-        await RoomModel.update(domainId, sid, {
+        await SessionModel.updateAgentChatSession(domainId, sid, {
             lastActivityAt: new Date(),
         });
         
@@ -688,15 +686,15 @@ export class RoomChatHandler extends Handler {
             systemMessage,
         };
         
-        await RoomModel.update(domainId, sid, {
+        await SessionModel.updateAgentChatSession(domainId, sid, {
             context,
         });
         
         const taskModel = require('../model/task').default;
         await taskModel.add({
             type: 'task',
-            roundId: taskRoundId,
-            roomId: sid,
+            recordId: taskRecordId,
+            agentChatSessionId: sid,
             domainId,
             agentId: adoc.aid || adoc.docId.toString(),
             uid: this.user._id,
@@ -707,17 +705,17 @@ export class RoomChatHandler extends Handler {
         });
         
         this.response.body = {
-            taskRoundId: taskRoundId.toString(),
-            roomId: sid.toString(),
+            taskRecordId: taskRecordId.toString(),
+            chatSessionId: sid.toString(),
             message: 'Task created, processing by worker',
         };
     }
 }
 
 export async function apply(ctx: Context) {
-    ctx.Route('room_domain', '/room', RoomDomainHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('room_detail', '/room/:sid', RoomDetailHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('room_chat', '/room/:sid/chat', RoomChatHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Connection('room_domain_conn', '/room-conn', RoomDomainConnectionHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('session_chat_live', '/session/chat/:sid/chat', SessionChatLiveHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('session_chat_detail', '/session/chat/:sid', SessionChatDetailHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('session_chat_domain', '/session/chat', SessionChatDomainHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Connection('session_chat_conn', '/session/chat-conn', SessionChatDomainConnectionHandler, PRIV.PRIV_USER_PROFILE);
 }
 

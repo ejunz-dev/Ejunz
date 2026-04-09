@@ -1,4 +1,4 @@
-import type { RecordDoc } from '../model/record';
+import type { SessionRecordDoc } from '../model/record';
 import type { SessionDoc } from '../model/session';
 import { isLearnHomePlaceholderSession } from './lessonSession';
 import { isSessionStalePastUtcCalendarDay } from './sessionUtcDaily';
@@ -13,7 +13,7 @@ export {
 const ON_LESSON_RECENT_MS = 3 * 60 * 1000;
 const LEGACY_ACTIVITY_MS = 5 * 60 * 1000;
 
-export type SessionListRecordType = 'daily' | 'single_card' | 'single_node' | 'develop' | 'other';
+export type SessionListRecordType = 'daily' | 'single_card' | 'single_node' | 'develop' | 'agent' | 'other';
 
 export type SessionListStatus =
     | 'in_progress'
@@ -36,6 +36,10 @@ export function isDevelopSessionRow(doc: SessionDoc): boolean {
     return doc.appRoute === 'develop' || doc.route === 'develop';
 }
 
+export function isAgentSessionRow(doc: SessionDoc): boolean {
+    return doc.appRoute === 'agent' || doc.route === 'agent';
+}
+
 export function getDevelopSessionSettledAt(doc: SessionDoc | null | undefined): Date | null {
     const p = doc?.progress as Record<string, unknown> | undefined;
     if (!p || typeof p !== 'object') return null;
@@ -54,6 +58,7 @@ export function isDevelopSessionSettled(doc: SessionDoc | null | undefined): boo
 
 export function deriveSessionRecordType(doc: SessionDoc): SessionListRecordType {
     if (isDevelopSessionRow(doc)) return 'develop';
+    if (isAgentSessionRow(doc)) return 'agent';
     if (!isLearnSessionRow(doc)) return 'other';
     if (isLearnHomePlaceholderSession(doc)) return 'other';
     const mode = doc.lessonMode ?? null;
@@ -86,17 +91,19 @@ export function formatSessionProgressDisplay(doc: SessionDoc): string | null {
     return formatSessionCardProgress(doc);
 }
 
-export type SessionKindUi = 'learn' | 'develop';
+export type SessionKindUi = 'learn' | 'develop' | 'agent';
 
 export function deriveSessionKind(doc: SessionDoc): SessionKindUi {
-    return isDevelopSessionRow(doc) ? 'develop' : 'learn';
+    if (isDevelopSessionRow(doc)) return 'develop';
+    if (isAgentSessionRow(doc)) return 'agent';
+    return 'learn';
 }
 
 /**
  * Slot of this answer record in its learn session: card index in `lessonCardQueue`, else order in `recordIds`.
  * Example: third card in a six-card run → `3/6`.
  */
-export function formatRecordProgressInSession(rd: RecordDoc, sess: SessionDoc | null): string | null {
+export function formatRecordProgressInSession(rd: SessionRecordDoc, sess: SessionDoc | null): string | null {
     if (!sess) return null;
     const q = sess.lessonCardQueue ?? [];
     const cardId = String(rd.cardId);

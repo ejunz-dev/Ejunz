@@ -9,7 +9,7 @@ import type {
     MessageDoc, User,
 } from '../interface';
 import type { DocType } from '../model/document';
-import type { RecordDoc } from '../model/record';
+import type { SessionRecordDoc } from '../model/record';
 import type { SessionDoc } from '../model/session';
 
 export type Disposable = () => void;
@@ -98,7 +98,7 @@ export interface EventMap {
     // Learn events
     'learn_result/add': (domainId: string) => VoidReturn;
     'session/change': (doc: SessionDoc) => VoidReturn;
-    'record/change': (doc: RecordDoc) => VoidReturn;
+    'record/change': (doc: SessionRecordDoc) => VoidReturn;
 }
 
 export function apply(ctx: Context) {

@@ -1,8 +1,8 @@
-import type { RecordDoc } from '../model/record';
+import type { SessionRecordDoc } from '../model/record';
 
 /** Shared by record detail page and develop contribution wall. */
 export function buildDevelopRecordDetailAugment(
-    rdoc: RecordDoc,
+    rdoc: SessionRecordDoc,
     translate: (k: string) => string,
 ): { developChangeRows: Array<{ opLabel: string; detail: string }>; developCountSummaries: string[] } {
     const developChangeRows: Array<{ opLabel: string; detail: string }> = [];
@@ -31,7 +31,7 @@ export function buildDevelopRecordDetailAugment(
     return { developChangeRows, developCountSummaries };
 }
 
-export function developSaveRecordSummaryLines(rdoc: RecordDoc, translate: (k: string) => string): string[] {
+export function developSaveRecordSummaryLines(rdoc: SessionRecordDoc, translate: (k: string) => string): string[] {
     const { developChangeRows, developCountSummaries } = buildDevelopRecordDetailAugment(rdoc, translate);
     const lines: string[] = [];
     for (const row of developChangeRows) {

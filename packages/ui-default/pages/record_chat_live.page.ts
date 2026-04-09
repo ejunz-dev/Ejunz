@@ -1,28 +1,28 @@
 import { NamedPage } from 'vj/misc/Page';
 
-let roomWebSocket: any = null;
-let roomConnected = false;
-let currentRoomId: string | null = null;
+let sessionWs: any = null;
+let sessionWsConnected = false;
+let currentChatSessionId: string | null = null;
 
-const page = new NamedPage('room_chat', async () => {
+const page = new NamedPage('session_chat_live', async () => {
   const UiContext = (window as any).UiContext;
   const domainId = UiContext?.domainId;
   const socketUrl = UiContext?.socketUrl;
   const sids = UiContext?.sids || [];
   
   if (!domainId) {
-    console.error('[RoomChat] Missing domainId');
+    console.error('[SessionChatLive] Missing domainId');
     return;
   }
 
   const wsPrefix = UiContext?.ws_prefix || '/';
   
-  const urlMatch = window.location.pathname.match(/\/room\/([^\/]+)\/chat/);
-  const roomId = urlMatch ? urlMatch[1] : null;
-  currentRoomId = roomId;
+  const urlMatch = window.location.pathname.match(/\/session\/chat\/([^/]+)\/chat(?:\/|$)/);
+  const chatSessionIdFromUrl = urlMatch ? urlMatch[1] : null;
+  currentChatSessionId = chatSessionIdFromUrl;
   
-  if (!roomId) {
-    console.error('[RoomChat] Missing roomId');
+  if (!chatSessionIdFromUrl) {
+    console.error('[SessionChatLive] Missing chat session id in URL');
     return;
   }
 
@@ -31,16 +31,16 @@ const page = new NamedPage('room_chat', async () => {
   const sendButton = document.getElementById('sendButton') as HTMLButtonElement;
   
   if (!chatMessages || !chatInput || !sendButton) {
-    console.error('[RoomChat] Missing required DOM elements');
+    console.error('[SessionChatLive] Missing required DOM elements');
     return;
   }
 
   // 加载历史消息（参考agent_chat的实现）
   async function loadHistory() {
     try {
-      const response = await fetch(`/d/${domainId}/room/${roomId}`);
+      const response = await fetch(`/d/${domainId}/session/chat/${chatSessionIdFromUrl}`);
       if (!response.ok) {
-        console.error('[RoomChat] Failed to load room:', response.statusText);
+        console.error('[SessionChatLive] Failed to load session:', response.statusText);
         return;
       }
       
@@ -95,9 +95,9 @@ const page = new NamedPage('room_chat', async () => {
       }
       
       scrollToBottom();
-      console.log('[RoomChat] History loaded:', allMessages.length, 'messages');
+      console.log('[SessionChatLive] History loaded:', allMessages.length, 'messages');
     } catch (error: any) {
-      console.error('[RoomChat] Error loading history:', error);
+      console.error('[SessionChatLive] Error loading history:', error);
     }
   }
 
@@ -108,54 +108,54 @@ const page = new NamedPage('room_chat', async () => {
 
   // 连接WebSocket以接收实时更新
   async function connectWebSocket() {
-    if (roomConnected && roomWebSocket) {
+    if (sessionWsConnected && sessionWs) {
       return;
     }
     
     if (!socketUrl) {
-      console.warn('[RoomChat] No socketUrl, skipping WebSocket connection');
+      console.warn('[SessionChatLive] No socketUrl, skipping WebSocket connection');
       return;
     }
     
     try {
       const { default: WebSocket } = await import('../components/socket');
       const sock = new WebSocket(wsPrefix + socketUrl, false, true);
-      roomWebSocket = sock;
-      roomConnected = false;
+      sessionWs = sock;
+      sessionWsConnected = false;
       
       sock.onopen = () => {
-        console.log('[RoomChat] WebSocket connected');
-        roomConnected = true;
+        console.log('[SessionChatLive] WebSocket connected');
+        sessionWsConnected = true;
       };
       
       sock.onmessage = (_, data: string) => {
         try {
           const msg = JSON.parse(data);
-          console.log('[RoomChat] WebSocket message:', msg);
+          console.log('[SessionChatLive] WebSocket message:', msg);
           
-          if (msg.type === 'round_update' && msg.rid) {
+          if (msg.type === 'record_update' && msg.recordId) {
             handleRecordUpdate(msg);
           } else if (msg.type === 'error') {
-            console.error('[RoomChat] WebSocket error:', msg.error);
+            console.error('[SessionChatLive] WebSocket error:', msg.error);
           }
         } catch (error: any) {
-          console.error('[RoomChat] Error processing WebSocket message:', error);
+          console.error('[SessionChatLive] Error processing WebSocket message:', error);
         }
       };
       
       sock.onclose = () => {
-        console.log('[RoomChat] WebSocket closed');
-        roomWebSocket = null;
-        roomConnected = false;
+        console.log('[SessionChatLive] WebSocket closed');
+        sessionWs = null;
+        sessionWsConnected = false;
         // 尝试重连
         setTimeout(() => {
-          if (currentRoomId) {
+          if (currentChatSessionId) {
             connectWebSocket();
           }
         }, 3000);
       };
     } catch (error: any) {
-      console.error('[RoomChat] Error connecting WebSocket:', error);
+      console.error('[SessionChatLive] Error connecting WebSocket:', error);
     }
   }
 
@@ -186,16 +186,16 @@ const page = new NamedPage('room_chat', async () => {
   
   // 处理record更新（参考agent_chat的实现，但支持所有消息类型）
   function handleRecordUpdate(msg: any) {
-    if (!msg.rid) {
-      console.warn('[RoomChat] Invalid record update message: missing rid', msg);
+    if (!msg.recordId) {
+      console.warn('[SessionChatLive] Invalid record_update: missing recordId', msg);
       return;
     }
     
     const record = msg.record || {};
-    const rid = msg.rid;
+    const rid = msg.recordId;
     
     if (currentRecordId !== rid) {
-      console.log('[RoomChat] New record detected:', rid);
+      console.log('[SessionChatLive] New record detected:', rid);
       currentRecordId = rid;
     }
     
@@ -305,7 +305,7 @@ const page = new NamedPage('room_chat', async () => {
     
     if (record.status !== undefined) {
       if (isTerminalTaskStatus(record.status)) {
-        console.log('[RoomChat] Task completed, status:', record.status);
+        console.log('[SessionChatLive] Task completed, status:', record.status);
         setLoading(false);
         currentRecordId = null;
       }
@@ -474,7 +474,7 @@ const page = new NamedPage('room_chat', async () => {
     setLoading(true);
     
     try {
-      const response = await fetch(`/d/${domainId}/room/${roomId}/chat`, {
+      const response = await fetch(`/d/${domainId}/session/chat/${chatSessionIdFromUrl}/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -496,11 +496,11 @@ const page = new NamedPage('room_chat', async () => {
       }
       
       const responseData = await response.json();
-      console.log('[RoomChat] Message sent:', responseData);
-      const taskRoundId = responseData.taskRoundId;
+      console.log('[SessionChatLive] Message sent:', responseData);
+      const taskRecordId = responseData.taskRecordId;
       
-      if (!taskRoundId) {
-        console.error('[RoomChat] Task created but record ID missing', responseData);
+      if (!taskRecordId) {
+        console.error('[SessionChatLive] Task created but record ID missing', responseData);
         // 移除临时用户消息
         tempElement.remove();
         displayedbubbleIds.delete(tempMsgId);
@@ -511,12 +511,12 @@ const page = new NamedPage('room_chat', async () => {
       }
       
       // 记录临时消息ID，等待WebSocket返回真实record时替换
-      pendingUserMessages.set(taskRoundId, tempMsgId);
+      pendingUserMessages.set(taskRecordId, tempMsgId);
       
-      // 消息已发送，等待WebSocket更新（通过round_update消息）
+      // 消息已发送，等待 WebSocket 的 record_update
       // setLoading会在任务完成时通过handleRecordUpdate设置为false
     } catch (error: any) {
-      console.error('[RoomChat] Error sending message:', error);
+      console.error('[SessionChatLive] Error sending message:', error);
       // 移除临时用户消息
       tempElement.remove();
       displayedbubbleIds.delete(tempMsgId);

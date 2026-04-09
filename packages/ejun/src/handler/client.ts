@@ -11,8 +11,8 @@ import EdgeTokenModel from '../model/edge_token';
 import { EdgeServerConnectionHandler } from './edge';
 import AgentModel, { McpClient } from '../model/agent';
 import type { EdgeBridgeEnvelope } from '../service/bus';
-import RoomModel from '../model/room';
-import round from '../model/round';
+import SessionModel from '../model/session';
+import RecordModel from '../model/record';
 import domain from '../model/domain';
 import * as document from '../model/document';
 import { PRIV, STATUS } from '../model/builtin';
@@ -1189,10 +1189,10 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
     private currentAsrAudioBuffers: Buffer[] = [];
     private currentTtsAudioBuffers: Buffer[] = [];
     private currentConversationId: number | null = null;
-    private currentRoomId: ObjectId | null = null;
-    private subscribedRoundIds: Set<string> = new Set();
-    private pendingAgentDoneRounds: Map<string, { taskRoundId: string; message: string }> = new Map();
-    private sentContentRoundIds: Set<string> = new Set(); // 跟踪已经发送过内容的记录ID，防止重复发送
+    private currentAgentChatSessionId: ObjectId | null = null;
+    private subscribedRecordIds: Set<string> = new Set();
+    private pendingAgentDoneByRecord: Map<string, { taskRecordId: string; message: string }> = new Map();
+    private sentAgentContentRecordIds: Set<string> = new Set(); // 跟踪已经发送过内容的记录ID，防止重复发送
     // Promise resolver for waiting TTS playback completion before tool calls
     private ttsPlaybackWaitPromise: { resolve: () => void; reject: (error: Error) => void } | null = null;
     private outboundBridgeDisposer: (() => void) | null = null;
@@ -1389,16 +1389,15 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         }
         
         // 如果已经有session，检查是否有效
-        if (this.currentRoomId && this.tokenDomainId) {
+        if (this.currentAgentChatSessionId && this.tokenDomainId) {
             try {
-                const sdoc = await RoomModel.get(this.tokenDomainId, this.currentRoomId);
+                const sdoc = await SessionModel.getAgentChatSession(this.tokenDomainId, this.currentAgentChatSessionId);
                 if (sdoc && sdoc.type === 'client' && sdoc.clientId === this.clientId) {
-                    // 更新最后活动时间
-                    await RoomModel.update(this.tokenDomainId, this.currentRoomId, {
+                    await SessionModel.updateAgentChatSession(this.tokenDomainId, this.currentAgentChatSessionId, {
                         lastActivityAt: new Date(),
                     });
-                    logger.info('Client room already exists, updated lastActivityAt: clientId=%d, roomId=%s', 
-                        this.clientId, this.currentRoomId.toString());
+                    logger.info('Client chat session exists, updated lastActivityAt: clientId=%d, chatSessionId=%s', 
+                        this.clientId, this.currentAgentChatSessionId.toString());
                     return;
                 }
             } catch (error: any) {
@@ -1413,23 +1412,24 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             return;
         }
         try {
-            const existingSessions = await RoomModel.getMulti(this.tokenDomainId, {
+            const existingSessions = (await SessionModel.findAgentChatSessions(this.tokenDomainId, {
                 type: 'client',
                 clientId: this.clientId,
                 lastActivityAt: { $gte: fiveMinutesAgo },
             }, {
                 sort: { lastActivityAt: -1 },
                 limit: 1,
-            }).toArray();
+            }).toArray())
+                .map((d) => SessionModel.toAgentChatSessionView(d)!)
+                .filter(Boolean);
             
             if (existingSessions.length > 0) {
                 const sdoc = existingSessions[0];
-                this.currentRoomId = sdoc._id;
-                // 更新最后活动时间
-                await RoomModel.update(this.tokenDomainId!, sdoc._id, {
+                this.currentAgentChatSessionId = sdoc._id;
+                await SessionModel.updateAgentChatSession(this.tokenDomainId!, sdoc._id, {
                     lastActivityAt: new Date(),
                 });
-                logger.info('Reused existing client room: clientId=%d, roomId=%s', 
+                logger.info('Reused existing client chat session: clientId=%d, chatSessionId=%s', 
                     this.clientId, sdoc._id.toString());
                 return;
             }
@@ -1445,18 +1445,18 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         }
         
         const recordUid = this.client.owner;
-        const roomId = await RoomModel.add(
+        const chatSessionId = await SessionModel.addAgentChatSession(
             this.tokenDomainId!,
             agentId,
             recordUid,
             'client',
-            `Client ${this.clientId} Room`,
+            `Client ${this.clientId} chat`,
             undefined,
             this.clientId,
         );
-        this.currentRoomId = roomId;
-        logger.info('Created new client room: clientId=%d, roomId=%s', 
-            this.clientId, roomId.toString());
+        this.currentAgentChatSessionId = chatSessionId;
+        logger.info('Created new client chat session: clientId=%d, chatSessionId=%s', 
+            this.clientId, chatSessionId.toString());
     }
 
     async message(msg: any) {
@@ -2556,19 +2556,19 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                                 addClientLog(this.clientId, 'info', 'All TTS audio generation completed');
                                 
                                 // TTS generation finished, release all pending agent/done events
-                                for (const [recordId, recordInfo] of this.pendingAgentDoneRounds.entries()) {
+                                for (const [recordId, recordInfo] of this.pendingAgentDoneByRecord.entries()) {
                                     logger.info('Sending agent/done after TTS completion: clientId=%d, rid=%s', 
                                         this.clientId, recordId);
                                     this.sendEvent('agent/done', [{
-                                        taskRoundId: recordInfo.taskRoundId,
+                                        taskRecordId: recordInfo.taskRecordId,
                                         message: recordInfo.message,
                                     }]);
                                     this.sendEvent('client/agent/done', [{
-                                        taskRoundId: recordInfo.taskRoundId,
+                                        taskRecordId: recordInfo.taskRecordId,
                                         message: recordInfo.message,
                                     }]);
                                 }
-                                this.pendingAgentDoneRounds.clear();
+                                this.pendingAgentDoneByRecord.clear();
                             }
                         } else if (message.type === 'error') {
                             const errorMsg = message.error?.message || 'TTS task failed';
@@ -2684,7 +2684,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         await this.handleAgentChat({
             message,
             history: msg.history || [],
-            createTaskRound: msg.createTaskRound !== false,
+            createTaskRecord: msg.createTaskRecord !== false,
             isSystemMessage,
         });
     }
@@ -3021,7 +3021,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         const message = msg.message;
         const history = msg.history || [];
         // 强制所有请求都创建task，必须通过worker处理
-        const createTaskRound = true;
+        const createTaskRecord = true;
 
         if (!message || typeof message !== 'string') {
             logger.warn('handleAgentChat: Invalid message: clientId=%d, message=%o', this.clientId, message);
@@ -3030,48 +3030,48 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             return;
         }
 
-        if (createTaskRound) {
+        if (createTaskRecord) {
             // 所有请求都必须通过worker处理，创建task让worker处理
             const recordUid = this.client.owner; // Use cached owner, don't query
             
-            let roomId = this.currentRoomId;
-            if (!roomId) {
-                roomId = await RoomModel.add(
+            let chatSessionId = this.currentAgentChatSessionId;
+            if (!chatSessionId) {
+                chatSessionId = await SessionModel.addAgentChatSession(
                     this.domain._id,
                     agentConfig.agentId,
                     recordUid,
                     'client',
-                    `Client ${this.clientId} Room`,
+                    `Client ${this.clientId} chat`,
                     undefined,
                     this.clientId,
                 );
-                this.currentRoomId = roomId;
+                this.currentAgentChatSessionId = chatSessionId;
             }
             
-            const taskRoundId = await round.addTask(
+            const taskRecordId = await RecordModel.insertAgentTask(
                 this.domain._id,
                 agentConfig.agentId,
                 recordUid,
                 message,
-                roomId,
+                chatSessionId,
             );
-            await RoomModel.addRound(this.domain._id, roomId, taskRoundId);
+            await SessionModel.appendAgentChatSessionRecord(this.domain._id, chatSessionId, taskRecordId);
             
             // 不再设置状态为PROCESSING，让worker处理
             // 不再直接调用processAgentChatInternal，worker会处理所有逻辑
             
             // Subscribe to record immediately to receive updates from worker
-            this.subscribeRound(taskRoundId.toString(), agentConfig.agentId);
+            this.subscribeAgentRecord(taskRecordId.toString(), agentConfig.agentId);
             
             // Send task_created event immediately (stage 1 response)
             this.sendEvent('agent/task_created', [{
-                taskRoundId: taskRoundId.toString(),
-                roomId: roomId.toString(),
+                taskRecordId: taskRecordId.toString(),
+                chatSessionId: chatSessionId.toString(),
                 message: 'Task created, processing by worker',
             }]);
             
-            logger.info('Task created for client, worker will handle: clientId=%d, taskRoundId=%s', 
-                this.clientId, taskRoundId.toString());
+            logger.info('Task created for client, worker will handle: clientId=%d, taskRecordId=%s', 
+                this.clientId, taskRecordId.toString());
             
             // Load agent info and create task asynchronously (don't block response)
             (async () => {
@@ -3131,8 +3131,8 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                     const taskModel = require('../model/task').default;
                     await taskModel.add({
                         type: 'task',
-                        roundId: taskRoundId,
-                        roomId,
+                        recordId: taskRecordId,
+                        agentChatSessionId: chatSessionId,
                         domainId: this.domain._id,
                         agentId: agentConfig.agentId,
                         uid: recordUid,
@@ -3142,8 +3142,8 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                         priority: 0,
                     });
                     
-                    logger.info('Task created for worker: clientId=%d, taskRoundId=%s', 
-                        this.clientId, taskRoundId.toString());
+                    logger.info('Task created for worker: clientId=%d, taskRecordId=%s', 
+                        this.clientId, taskRecordId.toString());
                 } catch (error: any) {
                     logger.error('Failed to create task: %s', error.message);
                     this.sendEvent('agent/error', [{ message: error.message }]);
@@ -3155,13 +3155,13 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                 try {
                     if (!this.tokenDomainId) return;
                     // Update session last activity
-                    await RoomModel.update(this.tokenDomainId, roomId, {
+                    await SessionModel.updateAgentChatSession(this.tokenDomainId, chatSessionId, {
                         lastActivityAt: new Date(),
                     });
                     
-                    await RoomModel.addRound(this.tokenDomainId, roomId, taskRoundId);
+                    await SessionModel.appendAgentChatSessionRecord(this.tokenDomainId, chatSessionId, taskRecordId);
                 } catch (error: any) {
-                    logger.error('Failed to update room: %s', error.message);
+                    logger.error('Failed to update chat session: %s', error.message);
                 }
             })();
             
@@ -3169,20 +3169,20 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         }
 
         // 所有请求都必须创建task并通过worker处理，不再支持直接处理模式
-        logger.error('handleAgentChat: createTaskRound must be true, all requests must go through worker: clientId=%d', this.clientId);
+        logger.error('handleAgentChat: createTaskRecord must be true, all requests must go through worker: clientId=%d', this.clientId);
         this.sendEvent('agent/error', [{ message: 'All requests must create task and be processed by worker' }]);
         return;
     }
 
-    private subscribeRound(rid: string, agentId: string) {
-        if (this.subscribedRoundIds.has(rid)) {
+    private subscribeAgentRecord(rid: string, agentId: string) {
+        if (this.subscribedRecordIds.has(rid)) {
             logger.debug('Record already subscribed: clientId=%d, rid=%s', this.clientId, rid);
             return;
         }
         
-        this.subscribedRoundIds.add(rid);
+        this.subscribedRecordIds.add(rid);
         
-        const dispose = this.ctx.on('round/change' as any, async (rdoc: any) => {
+        const dispose = this.ctx.on('record/change' as any, async (rdoc: any) => {
             const r = rdoc as any;
             if (!r || !r._id) return;
             
@@ -3197,7 +3197,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             }
             
             try {
-                const fullRecord = await round.get(this.domain._id, new ObjectId(rid));
+                const fullRecord = await RecordModel.get(this.domain._id, new ObjectId(rid));
                 if (!fullRecord) {
                     logger.warn('Record not found when processing update: clientId=%d, rid=%s', this.clientId, rid);
                     return;
@@ -3210,7 +3210,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                 
                 if (recordData.status === STATUS.STATUS_TASK_DELIVERED && assistantMessages.length > 0) {
                     // 检查是否已经发送过内容，防止重复发送
-                    if (this.sentContentRoundIds.has(rid)) {
+                    if (this.sentAgentContentRecordIds.has(rid)) {
                         logger.debug('Content already sent for record, skipping: clientId=%d, rid=%s', this.clientId, rid);
                         return;
                     }
@@ -3220,7 +3220,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                     
                     if (content) {
                         // 标记为已发送，防止重复
-                        this.sentContentRoundIds.add(rid);
+                        this.sentAgentContentRecordIds.add(rid);
                         
                         logger.info('Sending agent reply to client: clientId=%d, rid=%s, content length=%d', 
                             this.clientId, rid, content.length);
@@ -3228,30 +3228,30 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                         this.sendEvent('agent/content', [content]);
                         
                         if (this.client?.settings?.tts) {
-                            this.pendingAgentDoneRounds.set(rid, {
-                                taskRoundId: rid,
+                            this.pendingAgentDoneByRecord.set(rid, {
+                                taskRecordId: rid,
                                 message: content,
                             });
                             
                             await this.addTtsText(content).catch((error: any) => {
                                 logger.warn('Failed to generate TTS for agent reply: %s', error.message);
-                                this.pendingAgentDoneRounds.delete(rid);
+                                this.pendingAgentDoneByRecord.delete(rid);
                                 this.sendEvent('agent/done', [{
-                                    taskRoundId: rid,
+                                    taskRecordId: rid,
                                     message: content,
                                 }]);
                                 this.sendEvent('client/agent/done', [{
-                                    taskRoundId: rid,
+                                    taskRecordId: rid,
                                     message: content,
                                 }]);
                             });
                         } else {
                             this.sendEvent('agent/done', [{
-                                taskRoundId: rid,
+                                taskRecordId: rid,
                                 message: content,
                             }]);
                             this.sendEvent('client/agent/done', [{
-                                taskRoundId: rid,
+                                taskRecordId: rid,
                                 message: content,
                             }]);
                         }
@@ -3372,9 +3372,9 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         this.subscriptions = [];
         
         // Clear record tracking sets
-        this.subscribedRoundIds.clear();
-        this.sentContentRoundIds.clear();
-        this.pendingAgentDoneRounds.clear();
+        this.subscribedRecordIds.clear();
+        this.sentAgentContentRecordIds.clear();
+        this.pendingAgentDoneByRecord.clear();
         
         if (this.clientId && this.accepted) {
             ClientConnectionHandler.active.delete(this.clientId);
@@ -3403,14 +3403,14 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             }
         }
         
-        // 更新session的最后活动时间（断开连接时）
-        if (this.currentRoomId && this.clientId && this.tokenDomainId) {
+        // 更新 session 的最后活动时间（断开连接时）
+        if (this.currentAgentChatSessionId && this.clientId && this.tokenDomainId) {
             try {
-                await RoomModel.update(this.tokenDomainId, this.currentRoomId, {
+                await SessionModel.updateAgentChatSession(this.tokenDomainId, this.currentAgentChatSessionId, {
                     lastActivityAt: new Date(),
                 });
-                logger.info('Updated room lastActivityAt on disconnect: clientId=%d, roomId=%s', 
-                    this.clientId, this.currentRoomId.toString());
+                logger.info('Updated chat session lastActivityAt on disconnect: clientId=%d, chatSessionId=%s', 
+                    this.clientId, this.currentAgentChatSessionId.toString());
             } catch (error: any) {
                 logger.warn('Failed to update session lastActivityAt on disconnect: %s', error.message);
             }
@@ -3849,7 +3849,7 @@ export async function apply(ctx: Context) {
                 msg = {
                     message: JSON.stringify(msg),
                     history: msg.history || [],
-                    createTaskRound: msg.createTaskRound !== false,
+                    createTaskRecord: msg.createTaskRecord !== false,
                 };
             }
             

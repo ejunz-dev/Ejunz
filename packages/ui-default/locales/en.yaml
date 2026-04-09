@@ -501,8 +501,6 @@ agent_domain: Agent
 agent_edit: Edit Agent
 All Domains Learn: All Domains Learn
 Average Rating: Average Rating
-Back to Room: Back to Room
-Back to Rooms: Back to Rooms
 Back to: Back to
 Base has no nodes: Base has no nodes
 Base Node: Base Node
@@ -527,7 +525,6 @@ Can be Extended For: Extension
 cards: cards
 Cards: Cards
 Chars: Chars
-Client Room Chat: Client Room Chat
 client_create: Create Client
 client_detail: Client Detail
 client_domain: Client
@@ -539,7 +536,6 @@ Contribution Wall: Contribution Wall
 Contributions in the past year: Contributions in the past year
 Contributions: Contributions
 Created at: Created at
-Delete Room: Delete Room
 discussion_create: Create Discussion
 discussion_detail: Discussion Detail
 discussion_edit: Discussion Edit
@@ -779,12 +775,20 @@ repo_detail: Repo Detail
 repo_doc: Repo Doc
 repo_edit: Edit Repo
 Role: Role
-Room ID: Room ID
-Room title: Room title
-room_domain: Rooms
-Rooms: Rooms
-round_main: Round
-rounds: rounds
+session_chat_domain: Agent sessions
+session_chat_detail: Agent session
+session_chat_live: Agent chat
+session_chat_none: No chat sessions yet.
+session_chat_none_filter: No chat sessions match the filter.
+session_chat_back_list: Back to sessions
+session_chat_back_detail: Back to detail
+session_chat_no_records: No records in this session.
+session_chat_id_label: Session ID
+session_chat_enter: Open chat
+session_chat_title_placeholder: Session title
+session_chat_delete_confirm: Delete this chat session?
+session_chat_delete: Delete session
+agent_chat_empty_sessions: No sessions yet. Click "New Chat" to start.
 scene_create: Create Scene
 scene_detail: Scene Detail
 scene_domain: Scene
@@ -804,6 +808,7 @@ session_learn_empty_filter: No sessions match the filter.
 session_learn_empty: No recent learn activity in this domain.
 session_learn_list_title: Learn sessions (live)
 session_kind_develop: Develop
+session_kind_agent: Agent chat
 session_kind_learn: Learn
 session_main: Session
 session_record_type_daily: Daily practice
@@ -811,6 +816,7 @@ session_record_type_other: Other
 session_record_type_single_card: Single-card practice
 session_record_type_single_node: Single-node practice
 session_record_type_develop: Develop editor
+session_record_type_agent: Agent chat
 session_status_abandoned: Abandoned
 session_status_active: Active
 session_status_detached: Offline

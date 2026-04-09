@@ -7,11 +7,11 @@ import { Context } from '../context';
 import {
     BadRequestError, ValidationError,
 } from '../error';
-import { RoundDoc, Task } from '../interface';
+import { RecordDoc, Task } from '../interface';
 import { Logger } from '../logger';
 import * as builtin from '../model/builtin';
 import { STATUS } from '../model/builtin';
-import round from '../model/round';
+import RecordModel from '../model/record';
 import * as setting from '../model/setting';
 import task, { Consumer } from '../model/task';
 import bus from '../service/bus';
@@ -32,7 +32,7 @@ function parseCaseResult(body: TestCase): Required<TestCase> {
 }
 
 function processPayload(body: Partial<JudgeResultBody>) {
-    const $set: Partial<RoundDoc> = {};
+    const $set: Partial<RecordDoc> = {};
     const $push: any = {};
     const $unset: any = {};
     const $inc: any = {};
@@ -80,14 +80,14 @@ export class WorkerResultCallbackContext {
             $set, $push, $unset, $inc,
         } = processPayload(body);
         if (this.meta?.rejudge === 'controlled') {
-            await round.collHistory.updateOne({
+            await RecordModel.judgeHistoryColl.updateOne({
                 _id: this.relatedId,
             }, {
                 $set, $push, $unset, $inc,
             }, { upsert: true });
         } else {
-            const rdoc = await round.update(this.task.domainId, new ObjectId(this.task.rid as string), $set, $push, $unset, $inc);
-            if (rdoc) this.ctx.broadcast('round/change', rdoc, $set, $push, body);
+            const rdoc = await RecordModel.judgeUpdate(this.task.domainId, new ObjectId(this.task.rid as string), $set, $push, $unset, $inc);
+            if (rdoc) this.ctx.broadcast('judge_record/change', rdoc, $set, $push, body);
         }
     }
 
@@ -95,8 +95,8 @@ export class WorkerResultCallbackContext {
         const {
             $set, $push, $unset, $inc,
         } = processPayload(body);
-        const rdoc = await round.update(domainId, rid, $set, $push, $unset, $inc);
-        if (rdoc) bus.broadcast('round/change', rdoc, $set, $push, body);
+        const rdoc = await RecordModel.judgeUpdate(domainId, rid, $set, $push, $unset, $inc);
+        if (rdoc) bus.broadcast('judge_record/change', rdoc, $set, $push, body);
     }
 
     next(body: Partial<JudgeResultBody>) {
@@ -104,9 +104,9 @@ export class WorkerResultCallbackContext {
         return this.operationPromise;
     }
 
-    static async postWorker(rdoc: RoundDoc, context?: WorkerResultCallbackContext) {
+    static async postWorker(rdoc: RecordDoc, context?: WorkerResultCallbackContext) {
         // Worker 完成后的处理逻辑
-        await bus.broadcast('round/worker', rdoc, true, null, context);
+        await bus.broadcast('judge_record/worker', rdoc, true, null, context);
     }
 
     async _end(body: Partial<JudgeResultBody>) {
@@ -116,7 +116,7 @@ export class WorkerResultCallbackContext {
         $set.judger = body.judger ?? 1;
 
         if (this.meta?.rejudge === 'controlled') {
-            await round.collHistory.updateOne({
+            await RecordModel.judgeHistoryColl.updateOne({
                 _id: this.relatedId,
             }, {
                 $set, $push, $unset,
@@ -125,9 +125,9 @@ export class WorkerResultCallbackContext {
             return;
         }
 
-        const rdoc = await round.update(this.task.domainId, new ObjectId(this.task.rid as string), $set, $push, $unset);
+        const rdoc = await RecordModel.judgeUpdate(this.task.domainId, new ObjectId(this.task.rid as string), $set, $push, $unset);
         if (rdoc) {
-            bus.broadcast('round/change', rdoc, null, null, body); // trigger a full update
+            bus.broadcast('judge_record/change', rdoc, null, null, body); // trigger a full update
             await WorkerResultCallbackContext.postWorker(rdoc, this);
         }
         this.resolve(rdoc);
@@ -138,9 +138,9 @@ export class WorkerResultCallbackContext {
         const $unset: any = { progress: '' };
         $set.judgeAt = new Date();
         $set.judger = body.judger ?? 1;
-        const rdoc = await round.update(domainId, rid, $set, $push, $unset);
+        const rdoc = await RecordModel.judgeUpdate(domainId, rid, $set, $push, $unset);
         if (rdoc) {
-            bus.broadcast('round/change', rdoc, null, null, body); // trigger a full update
+            bus.broadcast('judge_record/change', rdoc, null, null, body); // trigger a full update
             await WorkerResultCallbackContext.postWorker(rdoc);
         }
     }
@@ -153,8 +153,8 @@ export class WorkerResultCallbackContext {
 
     reset() {
         return this.operationPromise.then(async () => {
-            const rdoc = await round.reset(this.task.domainId, this.task.rid, false);
-            this.ctx.broadcast('round/change', rdoc);
+            const rdoc = await RecordModel.judgeReset(this.task.domainId, this.task.rid, false);
+            this.ctx.broadcast('judge_record/change', rdoc);
             return task.add(this.task);
         });
     }
@@ -165,7 +165,7 @@ export class WorkerResultCallbackContext {
 }
 
 /** @deprecated use WorkerResultCallbackContext.postWorker instead */
-export const postWorker = (rdoc: RoundDoc) => WorkerResultCallbackContext.postWorker(rdoc);
+export const postWorker = (rdoc: RecordDoc) => WorkerResultCallbackContext.postWorker(rdoc);
 
 export class WorkerConnectionHandler extends ConnectionHandler {
     category = '#worker';
@@ -242,7 +242,7 @@ export class ToolCallResultCallbackContext {
     private operationPromise = Promise.resolve(null);
     private result: any = null;
 
-    constructor(public ctx: Context, public readonly task: Omit<Task, '_id'> & { type: string; taskRoundId?: ObjectId }) {
+    constructor(public ctx: Context, public readonly task: Omit<Task, '_id'> & { type: string; taskRecordId?: ObjectId }) {
         this.finishPromise = new Promise((resolve) => {
             this.resolve = resolve;
         });
@@ -296,13 +296,13 @@ export async function callToolViaWorker(
     domainId: string,
     agentId?: string,
     uid?: number,
-    taskRoundId?: ObjectId,
+    taskRecordId?: ObjectId,
     priority: number = 0,
 ): Promise<any> {
     // 创建任务
     const taskId = await task.add({
         type: 'tool_call',
-        taskRoundId,
+        taskRecordId,
         toolName,
         args,
         domainId,

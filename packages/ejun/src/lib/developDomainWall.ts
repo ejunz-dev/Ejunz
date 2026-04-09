@@ -1,7 +1,7 @@
 import moment from 'moment-timezone';
 import { ObjectId } from 'mongodb';
 import SessionModel, { type SessionDoc } from '../model/session';
-import RecordModel, { type RecordDoc } from '../model/record';
+import RecordModel, { type SessionRecordDoc } from '../model/record';
 import { deriveSessionLearnStatus, formatSessionProgressDisplay } from './sessionListDisplay';
 
 type Db = {
@@ -144,7 +144,7 @@ export async function buildDevelopDomainWallPayload(
             recordKind: 'develop_save',
             $or: [{ createdAt: { $gte: yearStart } }, { lastActivityAt: { $gte: yearStart } }],
         })
-        .toArray() as RecordDoc[];
+        .toArray() as SessionRecordDoc[];
 
     /** day -> sessionHex -> "baseDocId\0branch" -> count */
     const recordAggByDaySessionBase = new Map<string, Map<string, Map<string, number>>>();

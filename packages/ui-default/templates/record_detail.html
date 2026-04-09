@@ -2,7 +2,11 @@
 {% extends "layout/basic.html" %}
 {% block content %}
 {% set rdoc = rdoc %}
-{{ set(UiContext, 'socketUrl', "record-detail-conn?domainId=" + rdoc.domainId + "&rid=" + rdoc._id) }}
+{% if rdoc.recordKind == 'agent' and typeof(rdoc.status) === 'number' and rdoc.status in [STATUS.STATUS_TASK_WAITING, STATUS.STATUS_TASK_FETCHED, STATUS.STATUS_TASK_PROCESSING, STATUS.STATUS_TASK_PENDING] %}
+  {{ set(UiContext, 'socketUrl', "record-detail-conn?domainId=" + rdoc.domainId + "&rid=" + rdoc._id) }}
+{% elif rdoc.recordKind != 'agent' %}
+  {{ set(UiContext, 'socketUrl', "record-detail-conn?domainId=" + rdoc.domainId + "&rid=" + rdoc._id) }}
+{% endif %}
 <div class="row">
   <div class="medium-9 columns collapsed">
     <div class="section">

@@ -1,7 +1,7 @@
 import moment from 'moment-timezone';
 import { ObjectId } from 'mongodb';
 import learn from '../model/learn';
-import RecordModel, { type RecordDoc } from '../model/record';
+import RecordModel, { type SessionRecordDoc } from '../model/record';
 import SessionModel, { type SessionDoc } from '../model/session';
 import { deriveSessionLearnStatus, formatSessionProgressDisplay } from './sessionListDisplay';
 
@@ -209,7 +209,7 @@ export async function buildLearnDomainWallPayload(
             recordKind: { $ne: 'develop_save' },
             $or: [{ lastActivityAt: { $gte: yearStart } }, { createdAt: { $gte: yearStart } }],
         })
-        .toArray() as RecordDoc[];
+        .toArray() as SessionRecordDoc[];
 
     for (const rd of learnCardRecords) {
         const sid = rd.sessionId ? rd.sessionId.toHexString() : '';

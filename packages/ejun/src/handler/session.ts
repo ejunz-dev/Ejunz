@@ -26,7 +26,7 @@ import {
 import { PERM, PRIV } from '../model/builtin';
 import { BaseModel } from '../model/base';
 import DomainModel from '../model/domain';
-import type { RecordDoc } from '../model/record';
+import type { SessionRecordDoc } from '../model/record';
 import SessionModel, { type SessionDoc, type SessionPatch } from '../model/session';
 import user from '../model/user';
 import {
@@ -34,6 +34,7 @@ import {
     deriveSessionLearnStatus,
     deriveSessionRecordType,
     formatSessionProgressDisplay,
+    isAgentSessionRow,
     isDevelopSessionRow,
     isDevelopSessionSettled,
     isLearnSessionRow,
@@ -61,7 +62,9 @@ function buildSessionListRow(
     const sessionKind = deriveSessionKind(doc);
     let resumeUrl: string;
     // learn rows with _id: link to learn_lesson?session=… (history for timed_out / finished / abandoned)
-    if (isLearnSessionRow(doc) && doc._id) {
+    if (isAgentSessionRow(doc) && doc.agentSessionKind) {
+        resumeUrl = self.url('session_chat_detail', { domainId: doc.domainId, sid: doc._id });
+    } else if (isLearnSessionRow(doc) && doc._id) {
         const base = self.url('learn_lesson', { domainId: doc.domainId });
         const sep = base.includes('?') ? '&' : '?';
         resumeUrl = `${base}${sep}session=${encodeURIComponent(doc._id.toString())}`;
@@ -113,7 +116,7 @@ function readPatch(body: any): SessionPatch {
         patch.cardIndex = n;
     }
     if (typeof body.route === 'string') patch.route = body.route;
-    if (body.appRoute === 'learn' || body.appRoute === 'develop') {
+    if (body.appRoute === 'learn' || body.appRoute === 'develop' || body.appRoute === 'agent') {
         patch.appRoute = body.appRoute;
     }
     if (body.lessonMode === null || body.lessonMode === 'today' || body.lessonMode === 'node') {
@@ -310,7 +313,7 @@ class SessionMeHandler extends Handler {
     }
 }
 
-/** Live learn session list (HTML), same idea as room_domain. */
+/** Live learn session list (HTML). */
 export class SessionDomainHandler extends Handler {
     @query('page', Types.PositiveInt, true)
     @query('uidOrName', Types.UidOrName, true)
@@ -339,7 +342,9 @@ export class SessionDomainHandler extends Handler {
             filterUid,
             page,
             pageSize,
-            { hideLearnHomePlaceholderShells: true },
+            {
+                hideLearnHomePlaceholderShells: true,
+            },
         );
         const sessions = await Promise.all(rows.map(async (s) => buildSessionListRow(
             this,
@@ -414,7 +419,9 @@ class SessionConnectionHandler extends ConnectionHandler {
             for (const sid of msg.sids) {
                 if (!ObjectId.isValid(sid)) continue;
                 const doc = await SessionModel.coll.findOne({ _id: new ObjectId(sid), domainId });
-                if (doc) await this.sendSessionUpdate(doc as SessionDoc);
+                if (doc) {
+                    await this.sendSessionUpdate(doc as SessionDoc);
+                }
             }
             return;
         }
@@ -422,7 +429,9 @@ class SessionConnectionHandler extends ConnectionHandler {
         const uids = msg.uids.map((id) => Number(id)).filter((n) => Number.isFinite(n));
         for (const uid of uids) {
             const docs = await SessionModel.coll.find({ domainId, uid }).toArray();
-            for (const doc of docs) await this.sendSessionUpdate(doc as SessionDoc);
+            for (const doc of docs) {
+                await this.sendSessionUpdate(doc as SessionDoc);
+            }
         }
     }
 
@@ -434,7 +443,7 @@ class SessionConnectionHandler extends ConnectionHandler {
     }
 
     @subscribe('record/change')
-    async onRecordChange(rdoc: RecordDoc) {
+    async onRecordChange(rdoc: SessionRecordDoc) {
         if (rdoc.domainId !== this.args.domainId) return;
         const q: Record<string, unknown> = {
             domainId: this.args.domainId,

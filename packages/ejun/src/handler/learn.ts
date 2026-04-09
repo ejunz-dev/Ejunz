@@ -45,7 +45,7 @@ import {
     formatSessionProgressDisplay,
     isLearnSessionRow,
 } from '../lib/sessionListDisplay';
-import RecordModel, { type RecordDoc } from '../model/record';
+import RecordModel, { type SessionRecordDoc } from '../model/record';
 import {
     buildSessionRecordHistoryRows,
     lessonHistoryRowsToWire,
@@ -432,7 +432,7 @@ function learnRecordProblemIds(card: { problems?: Array<{ pid?: string }> } | nu
     return raw.length > 0 ? raw : ['browse_judge'];
 }
 
-function learnRecordScoreFromDoc(doc: Pick<RecordDoc, 'problems'> | null | undefined): number {
+function learnRecordScoreFromDoc(doc: Pick<SessionRecordDoc, 'problems'> | null | undefined): number {
     if (!doc?.problems?.length) return 0;
     return doc.problems.filter((p) => p.status === 'correct').length * 5;
 }
@@ -547,21 +547,21 @@ async function mergeLearnGhostRecordsIntoSessionAndDelete(
         .toArray();
     const idsToAddToTarget: ObjectId[] = [];
     for (const rec of ghostRecords) {
-        const cardId = String((rec as RecordDoc).cardId || '');
+        const cardId = String((rec as SessionRecordDoc).cardId || '');
         const dup = await RecordModel.coll.findOne({
             domainId,
             uid,
             sessionId: targetSessionId,
             cardId,
         });
-        if (dup && !dup._id.equals((rec as RecordDoc)._id)) {
-            await RecordModel.coll.deleteOne({ _id: (rec as RecordDoc)._id, domainId });
+        if (dup && !dup._id.equals((rec as SessionRecordDoc)._id)) {
+            await RecordModel.coll.deleteOne({ _id: (rec as SessionRecordDoc)._id, domainId });
         } else {
             await RecordModel.coll.updateOne(
-                { _id: (rec as RecordDoc)._id, domainId },
+                { _id: (rec as SessionRecordDoc)._id, domainId },
                 { $set: { sessionId: targetSessionId, updatedAt: now, lastActivityAt: now } },
             );
-            idsToAddToTarget.push((rec as RecordDoc)._id);
+            idsToAddToTarget.push((rec as SessionRecordDoc)._id);
         }
     }
     if (idsToAddToTarget.length > 0) {
