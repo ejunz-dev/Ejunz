@@ -7,7 +7,7 @@ import { MethodNotAllowedError } from '@ejunz/framework';
 import DomainModel from '../model/domain';
 import { BaseModel } from '../model/base';
 import { NotFoundError, ValidationError } from '../error';
-import SessionModel, { type SessionDoc } from '../model/session';
+import SessionModel, { readDevelopEditorNav, type SessionDoc } from '../model/session';
 import { buildBaseEditorPageBody } from './base';
 import type { BaseDoc } from '../interface';
 import { developBranchKey, developTodayUtcYmd, getDevelopBranchDailyMany } from '../lib/developBranchDaily';
@@ -94,6 +94,20 @@ class DevelopSessionEditorHandler extends Handler {
 
         const requestedBranch = sess.branch && String(sess.branch).trim() ? String(sess.branch).trim() : 'main';
         const workspaceFromQuery = (this.request.query?.workspace as string) || '';
+        const q = this.request.query || {};
+        const hasCardInUrl = typeof q.cardId === 'string' && q.cardId.trim().length > 0;
+        const hasNodeInUrl = typeof q.nodeId === 'string' && q.nodeId.trim().length > 0;
+        const savedNav = readDevelopEditorNav(sess);
+        if (!hasCardInUrl && !hasNodeInUrl && savedNav && (savedNav.cardId || savedNav.nodeId)) {
+            const sp = new URLSearchParams();
+            sp.set('session', sid);
+            const ws = (workspaceFromQuery || savedNav.workspace || '').trim();
+            if (ws) sp.set('workspace', ws);
+            if (savedNav.cardId) sp.set('cardId', savedNav.cardId);
+            else if (savedNav.nodeId) sp.set('nodeId', savedNav.nodeId);
+            this.response.redirect = `/d/${encodeURIComponent(domainId)}/develop/editor?${sp.toString()}`;
+            return;
+        }
 
         this.response.template = 'base_editor.html';
         const domainName = (this as any).domain?.name || domainId;

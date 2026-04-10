@@ -14,6 +14,8 @@ import db from '../service/db';
 import bus from '../service/bus';
 import { Logger } from '../logger';
 import { MaybeArray, NumberKeys } from '../typeutils';
+import { deriveSessionLearnStatus, isDevelopSessionSettled } from '../lib/sessionListDisplay';
+
 const logger = new Logger('model/session');
 
 /** Match agent chat rows by `agentSessionKind`. */
@@ -102,6 +104,10 @@ export interface SessionDoc {
     /** Set when user changes learn settings (section order / daily goal); row is no longer resumable. */
     lessonAbandonedAt?: Date | null;
     state?: 'idle' | 'active';
+    /**
+     * Opaque progress bag. Develop editor may store `developEditorNav`:
+     * `{ cardId?, nodeId?, workspace? }` to restore `/develop/editor?session=` URL on next open.
+     */
     progress?: Record<string, unknown>;
     recordIds?: ObjectId[];
     lastActivityAt: Date;
@@ -189,6 +195,34 @@ function unwrapFindOneSession(updated: unknown): SessionDoc | null {
     }
     return updated as SessionDoc;
 }
+
+/** Last editor URL fragment on `session.progress.developEditorNav` (develop editor resume). */
+export type DevelopEditorNavWire = { cardId?: string; nodeId?: string; workspace?: string };
+
+export function readDevelopEditorNav(sess: SessionDoc): DevelopEditorNavWire | null {
+    const p = sess.progress as Record<string, unknown> | undefined;
+    const raw = p?.developEditorNav;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const o = raw as Record<string, unknown>;
+    const cardId = typeof o.cardId === 'string' ? o.cardId.trim() : '';
+    const nodeId = typeof o.nodeId === 'string' ? o.nodeId.trim() : '';
+    const workspace = typeof o.workspace === 'string' ? o.workspace.trim() : '';
+    if (!cardId && !nodeId) return null;
+    const out: DevelopEditorNavWire = {};
+    if (cardId) out.cardId = cardId;
+    if (nodeId) out.nodeId = nodeId;
+    if (workspace) out.workspace = workspace;
+    return out;
+}
+
+export type PersistDevelopEditorNavInput = {
+    sessionHex: string;
+    cardId?: string;
+    nodeId?: string;
+    workspace?: string;
+    /** When set (e.g. base `/base/ws` docId), session must belong to this base. */
+    expectedBaseDocId?: number;
+};
 
 export default class SessionModel {
     static coll = db.collection('session');
@@ -604,6 +638,71 @@ export default class SessionModel {
         const doc = await this.coll.findOne({ _id: sessionObjectId, domainId, uid });
         if (doc) bus.broadcast('session/change', doc);
         return doc as SessionDoc | null;
+    }
+
+    /**
+     * Persist develop editor URL state on the session document (via POST /base/save or /base/batch-save `developEditorNav`).
+     */
+    static async persistDevelopEditorNav(
+        domainId: string,
+        uid: number,
+        input: PersistDevelopEditorNavInput,
+    ): Promise<void> {
+        const sessionHex = (input.sessionHex || '').trim();
+        if (!sessionHex || !ObjectId.isValid(sessionHex)) return;
+
+        const trimCap = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+        const cardId = trimCap(input.cardId, 64);
+        const nodeId = trimCap(input.nodeId, 256);
+        const workspace = trimCap(input.workspace, 512);
+        if (!cardId && !nodeId) return;
+
+        const sess = await this.coll.findOne({
+            _id: new ObjectId(sessionHex),
+            domainId,
+            uid,
+            appRoute: 'develop',
+        }) as SessionDoc | null;
+        if (!sess) return;
+
+        if (input.expectedBaseDocId != null) {
+            const bid = Number(sess.baseDocId);
+            if (!Number.isFinite(bid) || bid !== input.expectedBaseDocId) return;
+        }
+
+        if (isDevelopSessionSettled(sess)) return;
+        const histSt = deriveSessionLearnStatus(sess);
+        if (histSt === 'timed_out' || histSt === 'finished' || histSt === 'abandoned') return;
+
+        const prevRaw = sess.progress;
+        const prev = prevRaw && typeof prevRaw === 'object' && !Array.isArray(prevRaw)
+            ? { ...(prevRaw as Record<string, unknown>) }
+            : {};
+        const prevNavRaw = prev.developEditorNav;
+        const prevNav = prevNavRaw && typeof prevNavRaw === 'object' && !Array.isArray(prevNavRaw)
+            ? (prevNavRaw as Record<string, unknown>)
+            : {};
+        const developEditorNav: Record<string, string> = {};
+        if (cardId) {
+            developEditorNav.cardId = cardId;
+            if (nodeId) developEditorNav.nodeId = nodeId;
+        } else if (nodeId) {
+            developEditorNav.nodeId = nodeId;
+        }
+        const wsMerged = workspace || (typeof prevNav.workspace === 'string' ? prevNav.workspace.trim() : '');
+        if (wsMerged) developEditorNav.workspace = wsMerged;
+        if (Object.keys(developEditorNav).length === 0) {
+            delete prev.developEditorNav;
+        } else {
+            prev.developEditorNav = developEditorNav;
+        }
+        await this.touchById(
+            domainId,
+            uid,
+            sess._id,
+            { progress: prev as SessionDoc['progress'] } as any,
+            { silent: true },
+        );
     }
 }
 
