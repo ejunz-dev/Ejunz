@@ -1914,8 +1914,23 @@ export class BaseSaveHandler extends Handler {
 
     async post(domainId: string) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        
-        const specifiedDocId = readOptionalRequestBaseDocId(this.request);
+
+        const data = this.request.body || {};
+        const specifiedDocIdEarly = readOptionalRequestBaseDocId(this.request);
+
+        if (data.sidecarOnly === true) {
+            if (!specifiedDocIdEarly) throw new BadRequestError('docId is required for sidecarOnly save');
+            const baseOnly = await BaseModel.get(domainId, specifiedDocIdEarly);
+            if (!baseOnly) throw new NotFoundError('Base not found');
+            if (!this.user.own(baseOnly)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            const docIdOnly = baseOnly.docId;
+            const branchOnly = data.branch?.trim() || (baseOnly as any).currentBranch || 'main';
+            await persistBaseEditorSaveSidecars(this, domainId, docIdOnly, branchOnly, data as Record<string, unknown>);
+            this.response.body = { success: true, hasNonPositionChanges: false };
+            return;
+        }
+
+        const specifiedDocId = specifiedDocIdEarly;
         let base: BaseDoc | null = null;
         let docId: number;
 
@@ -1939,7 +1954,9 @@ export class BaseSaveHandler extends Handler {
             }
         }
 
-        const data = this.request.body || {};
+        const branchForSidecars = data.branch?.trim() || (base as any).currentBranch || 'main';
+        await persistBaseEditorSaveSidecars(this, domainId, docId, branchForSidecars, data as Record<string, unknown>);
+
         let { nodes, edges, layout, viewport, theme, operationDescription } = data;
         
         const isExpandOnlySave = operationDescription === '自动保存展开状态' || operationDescription === '自动保存 outline 展开状态';
@@ -4600,6 +4617,8 @@ export class BaseBatchSaveHandler extends Handler {
             }
         }
 
+        await persistBaseEditorSaveSidecars(this, actualDomainId, docId, branch, data as Record<string, unknown>);
+
         this.response.body = {
             success: batchSuccess,
             errors,
@@ -5803,6 +5822,8 @@ class BaseGithubConfigHandler extends Handler {
 export class BaseConnectionHandler extends ConnectionHandler {
     private docId?: number;
     private bid?: string;
+    /** Domain id resolved in prepare (for develop editor nav over WS). */
+    private wsDomainId?: string;
     private subscriptions: Array<{ dispose: () => void }> = [];
 
     @param('docId', Types.String, true)
@@ -5826,6 +5847,7 @@ export class BaseConnectionHandler extends ConnectionHandler {
             this.close(1000, 'domainId is required');
             return;
         }
+        this.wsDomainId = finalDomainId;
 
         const base = await resolveBaseByDocIdOrBid(finalDomainId, finalDocToken);
 
@@ -6403,44 +6425,46 @@ export class BaseExpandStateHandler extends Handler {
     }
 }
 
-/**
- * Per-user editor layout (tabs, panel sizes) for a base doc + branch. Loaded via UiContext.baseEditorUiPrefs.
- */
-export class BaseEditorUiPrefsHandler extends Handler {
-    protected async getBase(domainId: string, docId: number): Promise<BaseDoc | null> {
-        return BaseModel.get(domainId, docId);
-    }
-
-    @post('docId', Types.PositiveInt)
-    @post('branch', Types.String, true)
-    @post('prefs', Types.Any, true)
-    async post(domainId: string, docId: number, branch?: string, prefs?: unknown) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        const baseDocId = Number(docId);
-        const base = await this.getBase(domainId, baseDocId);
-        if (!base) throw new NotFoundError('Base not found');
-        if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
-
-        const branchNorm = branch && String(branch).trim() ? String(branch).trim() : 'main';
-        const sanitized = sanitizeBaseEditorUiPrefs(prefs);
-
-        const coll = this.ctx.db.db.collection('base.userEditorUi');
+/** Optional payloads on POST /base/save or /base/batch-save: UI prefs + develop session editor location. */
+async function persistBaseEditorSaveSidecars(
+    h: Handler,
+    domainId: string,
+    baseDocId: number,
+    branchInput: string,
+    data: Record<string, unknown>,
+): Promise<void> {
+    const branchNorm = branchInput && String(branchInput).trim() ? String(branchInput).trim() : 'main';
+    if (Object.prototype.hasOwnProperty.call(data, 'editorUiPrefs')) {
+        const sanitized = sanitizeBaseEditorUiPrefs(data.editorUiPrefs);
+        const coll = h.ctx.db.db.collection('base.userEditorUi');
         await coll.updateOne(
-            { domainId, baseDocId, branch: branchNorm, uid: this.user._id },
+            { domainId, baseDocId, branch: branchNorm, uid: h.user._id },
             {
                 $set: {
                     domainId,
                     baseDocId,
                     branch: branchNorm,
-                    uid: this.user._id,
+                    uid: h.user._id,
                     prefs: sanitized,
                     updateAt: new Date(),
                 },
             },
             { upsert: true },
         );
-
-        this.response.body = { success: true };
+    }
+    const nav = data.developEditorNav;
+    if (nav && typeof nav === 'object' && !Array.isArray(nav)) {
+        const o = nav as Record<string, unknown>;
+        const sessionHex = String(o.session ?? '').trim();
+        if (sessionHex) {
+            await SessionModel.persistDevelopEditorNav(domainId, h.user._id, {
+                sessionHex,
+                cardId: typeof o.cardId === 'string' ? o.cardId : undefined,
+                nodeId: typeof o.nodeId === 'string' ? o.nodeId : undefined,
+                workspace: typeof o.workspace === 'string' ? o.workspace : undefined,
+                expectedBaseDocId: baseDocId,
+            });
+        }
     }
 }
 
@@ -6459,7 +6483,6 @@ export async function apply(ctx: Context) {
     ctx.Route('base_batch_save', '/base/batch-save', BaseBatchSaveHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_migrate_node_to_new', '/base/migrate-node-to-new', BaseMigrateNodeToNewHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_expand_state', '/base/expand-state', BaseExpandStateHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_editor_ui_prefs', '/base/editor-ui-prefs', BaseEditorUiPrefsHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_card', '/base/card', BaseCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_card_update', '/base/card/:cardId', BaseCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_branch_create', '/base/branch', BaseBranchCreateHandler, PRIV.PRIV_USER_PROFILE);

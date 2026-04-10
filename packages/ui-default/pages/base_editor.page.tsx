@@ -2661,6 +2661,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     };
   }, [fileTree, selectedFile, handleSelectFile]);
 
+
   
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -2835,6 +2836,49 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       if (developSid && developEditorContext && basePath === 'base') {
         batchSaveData.developSessionId = developSid;
       }
+
+      const baseDocIdNumForSave = docId ? Number(docId) : NaN;
+      const saveBranch = batchSaveData.branch;
+      const editorUiPrefsPayload =
+        Number.isFinite(baseDocIdNumForSave) && baseDocIdNumForSave > 0
+          ? {
+              explorerMode,
+              nodeSidePanelTab,
+              rightPanelOpen,
+              aiBottomOpen: editorAiHidden ? false : aiBottomOpen,
+              explorerPanelWidth,
+              problemsPanelWidth,
+              aiPanelHeight,
+            }
+          : null;
+
+      let developEditorNavPayload: { session: string; cardId?: string; nodeId?: string; workspace?: string } | null = null;
+      if (basePath === 'base' && /\/develop\/editor(?:\/|$)/.test(window.location.pathname)) {
+        const spNav = new URLSearchParams(window.location.search);
+        const sessionHexNav = (spNav.get('session') || '').trim();
+        if (sessionHexNav && selectedFile) {
+          let navCardId = '';
+          let navNodeId = '';
+          if (selectedFile.type === 'card' && selectedFile.cardId) {
+            navCardId = String(selectedFile.cardId);
+            if (selectedFile.nodeId) navNodeId = String(selectedFile.nodeId);
+          } else if (selectedFile.type === 'node' && selectedFile.nodeId) {
+            navNodeId = String(selectedFile.nodeId);
+          }
+          if (navCardId || navNodeId) {
+            const wsNav = (spNav.get('workspace') || '').trim();
+            developEditorNavPayload = {
+              session: sessionHexNav,
+              ...(navCardId ? { cardId: navCardId } : {}),
+              ...(navNodeId ? { nodeId: navNodeId } : {}),
+              ...(wsNav ? { workspace: wsNav } : {}),
+            };
+          }
+        }
+      }
+
+      if (editorUiPrefsPayload) batchSaveData.editorUiPrefs = editorUiPrefsPayload;
+      if (developEditorNavPayload) batchSaveData.developEditorNav = developEditorNavPayload;
 
       const nodeIdMap = new Map<string, string>();
       const cardIdMap = new Map<string, string>();
@@ -3603,25 +3647,22 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       Notification.success(`保存成功，共 ${totalChanges} 项更改`);
 
       try {
-        const baseDocIdNum = docId ? Number(docId) : NaN;
-        if (Number.isFinite(baseDocIdNum) && baseDocIdNum > 0) {
-          const branch = (window as any).UiContext?.currentBranch || 'main';
-          await request.post(getBaseUrl('/editor-ui-prefs'), {
-            docId: baseDocIdNum,
-            branch,
-            prefs: {
-              explorerMode,
-              nodeSidePanelTab,
-              rightPanelOpen,
-              aiBottomOpen: editorAiHidden ? false : aiBottomOpen,
-              explorerPanelWidth,
-              problemsPanelWidth,
-              aiPanelHeight,
-            },
+        if (
+          !hasAnyChanges &&
+          Number.isFinite(baseDocIdNumForSave) &&
+          baseDocIdNumForSave > 0 &&
+          (editorUiPrefsPayload || developEditorNavPayload)
+        ) {
+          await request.post(getBaseUrl('/save'), {
+            docId: baseDocIdNumForSave,
+            branch: saveBranch,
+            sidecarOnly: true,
+            ...(editorUiPrefsPayload ? { editorUiPrefs: editorUiPrefsPayload } : {}),
+            ...(developEditorNavPayload ? { developEditorNav: developEditorNavPayload } : {}),
           });
         }
       } catch (_persistUi) {
-        /* layout persistence is best-effort */
+        /* layout / develop nav persistence is best-effort */
       }
       
       if (hasCreateChanges || hasAnyChanges) {
