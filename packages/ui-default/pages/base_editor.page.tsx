@@ -103,6 +103,11 @@ interface PendingChange {
   originalContent: string;
 }
 
+/** Line-ending normalization so save/switch does not treat CRLF as unsaved edits. */
+function normalizeCardContentForCompare(s: string | undefined | null): string {
+  return String(s ?? '').replace(/\r\n/g, '\n');
+}
+
 interface PendingRename {
   file: FileItem;
   newName: string;
@@ -2530,9 +2535,20 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     let pendingChangeToSave: { file: FileItem; content: string; originalContent: string } | null = null;
     if (selectedFile && selectedFile.type === 'card' && editorInstance) {
       try {
-        const currentContent = editorInstance.value() || fileContent;
-        const originalContent = originalContentsRef.current.get(selectedFile.id) || '';
-        if (currentContent !== originalContent) {
+        const norm = normalizeCardContentForCompare;
+        const currentContent = editorInstance.value() ?? fileContent;
+        const nodeCards = (window as any).UiContext?.nodeCardsMap?.[selectedFile.nodeId || ''] || [];
+        const cardRow = nodeCards.find((c: Card) => String(c.docId) === String(selectedFile.cardId));
+        const mapContent = cardRow ? (cardRow.content ?? '') : null;
+        const refOriginal =
+          originalContentsRef.current.get(selectedFile.id)
+          ?? originalContentsRef.current.get(`card-${selectedFile.cardId}`)
+          ?? originalContentsRef.current.get(String(selectedFile.cardId))
+          ?? '';
+        const dirtyVsMap = mapContent !== null && norm(currentContent) !== norm(mapContent);
+        const dirtyVsRefFallback = mapContent === null && norm(currentContent) !== norm(refOriginal);
+        if (dirtyVsMap || dirtyVsRefFallback) {
+          const originalContent = mapContent !== null ? mapContent : refOriginal;
           pendingChangeToSave = { file: selectedFile, content: currentContent, originalContent };
         }
       } catch (error) {
@@ -2565,26 +2581,28 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         const nodeCards = (window as any).UiContext?.nodeCardsMap?.[file.nodeId || ''] || [];
         const card = nodeCards.find((c: Card) => c.docId === file.cardId);
         content = card?.content || '';
-      }
-      
-      
-      if (!originalContentsRef.current.has(file.id)) {
+        /** Always sync baseline to the source we display (avoids false "pending" after save when ref was stale). */
         originalContentsRef.current.set(file.id, content);
+        if (file.cardId) {
+          const cid = String(file.cardId);
+          originalContentsRef.current.set(`card-${cid}`, content);
+          originalContentsRef.current.set(cid, content);
+        }
       }
     }
     
-    startTransition(() => {
-      if (pendingChangeToSave) {
-        setPendingChanges(prev => {
-          const newMap = new Map(prev);
-          newMap.set(pendingChangeToSave!.file.id, {
-            file: pendingChangeToSave!.file,
-            content: pendingChangeToSave!.content,
-            originalContent: pendingChangeToSave!.originalContent,
-          });
-          return newMap;
+    if (pendingChangeToSave) {
+      setPendingChanges((prev) => {
+        const newMap = new Map(prev);
+        newMap.set(pendingChangeToSave!.file.id, {
+          file: pendingChangeToSave!.file,
+          content: pendingChangeToSave!.content,
+          originalContent: pendingChangeToSave!.originalContent,
         });
-      }
+        return newMap;
+      });
+    }
+    startTransition(() => {
       setFileContent(content);
     });
   }, [base.nodes, selectedFile, editorInstance, fileContent, pendingChanges, isMultiSelectMode, fileTree, selectedItems]);
@@ -2754,14 +2772,24 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     let allChanges = new Map(pendingChanges);
     if (selectedFile && selectedFile.type === 'card' && editorInstance) {
       try {
-        const currentContent = editorInstance.value() || fileContent;
-        const originalContent = originalContentsRef.current.get(selectedFile.id) || '';
-        
-        if (currentContent !== originalContent) {
+        const norm = normalizeCardContentForCompare;
+        const currentContent = editorInstance.value() ?? fileContent;
+        const nodeCards = (window as any).UiContext?.nodeCardsMap?.[selectedFile.nodeId || ''] || [];
+        const cardRow = nodeCards.find((c: Card) => String(c.docId) === String(selectedFile.cardId));
+        const mapContent = cardRow ? (cardRow.content ?? '') : null;
+        const refOriginal =
+          originalContentsRef.current.get(selectedFile.id)
+          ?? originalContentsRef.current.get(`card-${selectedFile.cardId}`)
+          ?? originalContentsRef.current.get(String(selectedFile.cardId))
+          ?? '';
+        const dirtyVsMap = mapContent !== null && norm(currentContent) !== norm(mapContent);
+        const dirtyVsRefFallback = mapContent === null && norm(currentContent) !== norm(refOriginal);
+        if (dirtyVsMap || dirtyVsRefFallback) {
+          const originalContent = mapContent !== null ? mapContent : refOriginal;
           allChanges.set(selectedFile.id, {
             file: selectedFile,
             content: currentContent,
-            originalContent: originalContent,
+            originalContent,
           });
         }
       } catch (error) {
@@ -3609,6 +3637,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             postSaveQs,
           );
           setBase(response);
+          if ((window as any).UiContext && response?.nodeCardsMap != null) {
+            (window as any).UiContext.nodeCardsMap = response.nodeCardsMap;
+          }
         } catch (error) {
         }
         
@@ -3646,15 +3677,20 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       if (hasContentChanges) {
         const changes = Array.from(allChanges.values());
         changes.forEach(change => {
-          let id = change.file.id;
-          if (
-            change.file.type === 'card' &&
-            change.file.cardId &&
-            cardIdMap.has(String(change.file.cardId))
-          ) {
-            id = `card-${cardIdMap.get(String(change.file.cardId))!}`;
+          if (change.file.type !== 'card' || !change.file.cardId) {
+            originalContentsRef.current.set(change.file.id, change.content);
+            return;
           }
-          originalContentsRef.current.set(id, change.content);
+          let primaryId = change.file.id;
+          if (cardIdMap.has(String(change.file.cardId))) {
+            primaryId = `card-${cardIdMap.get(String(change.file.cardId))!}`;
+          }
+          const cid = cardIdMap.has(String(change.file.cardId))
+            ? String(cardIdMap.get(String(change.file.cardId)))
+            : String(change.file.cardId);
+          originalContentsRef.current.set(primaryId, change.content);
+          originalContentsRef.current.set(`card-${cid}`, change.content);
+          originalContentsRef.current.set(cid, change.content);
         });
       }
     } catch (error: any) {
