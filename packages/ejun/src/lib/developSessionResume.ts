@@ -172,7 +172,7 @@ export async function buildTodayDevelopResumeFields(
     };
 }
 
-/** After develop pool edits: drop pointer and mark active develop sessions abandoned (like learn daily settings). */
+
 export async function clearDevelopSessionsAfterPoolChange(domainId: string, uid: number): Promise<void> {
     await clearDevelopDailySessionPointer(domainId, uid);
     const now = new Date();
@@ -181,7 +181,10 @@ export async function clearDevelopSessionsAfterPoolChange(domainId: string, uid:
             domainId,
             uid,
             appRoute: 'develop',
-            $or: [{ lessonAbandonedAt: { $exists: false } }, { lessonAbandonedAt: null }],
+            $and: [
+                { $or: [{ lessonAbandonedAt: { $exists: false } }, { lessonAbandonedAt: null }] },
+                developSessionNotSettledMongoFilter,
+            ],
         },
         { $set: { lessonAbandonedAt: now, lastActivityAt: now } },
     );

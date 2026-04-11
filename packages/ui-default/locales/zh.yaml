@@ -892,6 +892,7 @@ develop: 开发
 'Develop row today goals met': 今日目标已完成
 'Develop run queue empty today': 今日待开发任务已全部完成。
 'Develop start goals done today': 该知识库今日目标已完成，无需再进入开发队列。
+'Develop start base not in pool': 该知识库/分支不在你的开发任务列表中。
 'Develop start no pending': 今日待开发任务已全部完成；若有未结束的会话可先继续。
 'Develop move up': 上移
 'Develop move down': 下移
