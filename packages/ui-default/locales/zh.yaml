@@ -903,6 +903,10 @@ develop: 开发
 'Outline editor start needs node': 从大纲进入编辑器需要指定节点。
 'Outline editor start invalid node': 该节点不在当前分支下。
 'Outline editor popup blocked': 浏览器拦截了新标签页，请允许本站弹出窗口后重试。
+'Outline learn single card': 单卡片学习
+'Outline learn single node': 单节点学习
+'Outline learn start failed': 无法开始学习，请重试。
+'Outline learn invalid card': 该卡片 ID 无效，无法开始学习。
 'Develop start no pending': 今日待开发任务已全部完成；若有未结束的会话可先继续。
 'Develop move up': 上移
 'Develop move down': 下移
