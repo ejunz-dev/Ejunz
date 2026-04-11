@@ -1,7 +1,7 @@
 import type { Db } from 'mongodb';
 
 const EXPLORER_MODES = new Set(['tree', 'pending', 'branches', 'git']);
-const NODE_SIDE_TABS = new Set(['intent', 'files', 'develop_queue']);
+const NODE_SIDE_TABS = new Set(['files']);
 
 const EXPLORER_W_MIN = 180;
 const EXPLORER_W_MAX = 640;

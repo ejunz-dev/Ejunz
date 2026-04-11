@@ -1736,9 +1736,6 @@ export class BaseNodeHandler extends Handler {
         if (body.order !== undefined) {
             updates.order = body.order;
         }
-        if (body.intent !== undefined) {
-            updates.intent = body.intent;
-        }
 
         if (Object.keys(updates).length === 0) {
             this.response.body = { success: true };
@@ -4427,7 +4424,6 @@ export class BaseBatchSaveHandler extends Handler {
                         parentId: realParentId,
                     };
                     if (nodeCreate.order != null) nodePayload.order = nodeCreate.order;
-                    if (nodeCreate.intent !== undefined) nodePayload.intent = nodeCreate.intent;
                     const result = await BaseModel.addNode(
                         actualDomainId,
                         docId,
@@ -4458,7 +4454,6 @@ export class BaseBatchSaveHandler extends Handler {
                 const updates: Partial<BaseNode> = {};
                 if (nodeUpdate.text != null) updates.text = nodeUpdate.text;
                 if (nodeUpdate.order != null) updates.order = nodeUpdate.order;
-                if (nodeUpdate.intent !== undefined) updates.intent = nodeUpdate.intent;
                 if (Object.keys(updates).length === 0) continue;
                 await BaseModel.updateNode(actualDomainId, docId, nodeUpdate.nodeId, updates, branch);
             } catch (error: any) {
