@@ -411,6 +411,7 @@ __langname: 简体中文
 'Save changes': 保存更改
 'Save completed, but {0} error(s) occurred': 保存完成，但有 {0} 个错误
 'Save failed': 保存失败
+'Save failed not logged in': 未登录，保存失败。
 'Save sort failed': 保存排序失败
 'Save successful, {0} changes': 保存成功，共 {0} 项更改
 'Save TTS Configuration': 保存 TTS 配置
@@ -888,6 +889,7 @@ develop: 开发
 'Develop start': 开始开发
 'Develop continue': 继续开发
 'Develop session closed reload hint': 该开发会话已结束或不可用，将刷新页面以查看最新状态。
+'Save not logged in refresh then login': 未登录或登录已失效。请刷新页面后重新登录，再继续保存。
 'Develop start failed': 无法开始开发会话，请稍后重试
 'Develop pool order hint': 列表顺序即为开发顺序；在「编辑」中用 ↑↓ 调整后保存。
 'Develop pool skip done hint': 已达今日目标的库不会进入「开始开发」队列。
