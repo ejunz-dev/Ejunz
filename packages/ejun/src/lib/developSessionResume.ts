@@ -3,7 +3,7 @@ import DomainModel from '../model/domain';
 import SessionModel, { type SessionDoc } from '../model/session';
 import { developBranchKey, developTodayUtcYmd } from './developBranchDaily';
 import { loadDevelopRunQueuePool, type DevelopPoolEntryWire } from './developPoolShared';
-import { isDevelopSessionRow, isDevelopSessionSettled } from './sessionListDisplay';
+import { deriveSessionLearnStatus, isDevelopSessionRow, isDevelopSessionSettled } from './sessionListDisplay';
 import { isSessionStalePastUtcCalendarDay } from './sessionUtcDaily';
 
 /** Same window as `DevelopSessionStartHandler` session reuse. */
@@ -172,6 +172,36 @@ export async function buildTodayDevelopResumeFields(
     };
 }
 
+/**
+ * Whether the user has any open develop session today (in progress or paused per
+ * {@link deriveSessionLearnStatus}; excludes settled, abandoned, timed out).
+ */
+export async function hasDevelopSessionInProgressOrPaused(
+    domainId: string,
+    uid: number,
+    now = Date.now(),
+): Promise<boolean> {
+    const docs = await SessionModel.coll
+        .find({
+            domainId,
+            uid,
+            appRoute: 'develop',
+            $and: [
+                { $or: [{ lessonAbandonedAt: null }, { lessonAbandonedAt: { $exists: false } }] },
+                developSessionNotSettledMongoFilter,
+            ],
+        })
+        .sort({ lastActivityAt: -1 })
+        .limit(40)
+        .toArray() as SessionDoc[];
+
+    for (const doc of docs) {
+        if (!isDevelopSessionRow(doc)) continue;
+        const st = deriveSessionLearnStatus(doc, now);
+        if (st === 'in_progress' || st === 'paused') return true;
+    }
+    return false;
+}
 
 export async function clearDevelopSessionsAfterPoolChange(domainId: string, uid: number): Promise<void> {
     await clearDevelopDailySessionPointer(domainId, uid);
