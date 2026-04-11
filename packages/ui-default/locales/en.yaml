@@ -624,6 +624,7 @@ develop: Develop
 'Develop row today goals met': Today’s goals done
 'Develop run queue empty today': No develop tasks left for today.
 'Develop start goals done today': This base already met today’s goals and is out of the develop run queue.
+'Develop start base not in pool': This base/branch is not in your develop pool.
 'Develop start no pending': All today’s develop tasks are done; resume an open session if needed.
 'Develop move up': Move up
 'Develop move down': Move down

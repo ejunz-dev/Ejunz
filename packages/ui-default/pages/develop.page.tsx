@@ -352,7 +352,8 @@ function DevelopPage() {
   const startDevelopOrdered = useCallback(async () => {
     if (!domainId || displayPool.length === 0 || developStartBusy) return;
     setDevelopStartBusy(true);
-    const queue = pendingRunPool.map((r) => ({
+    const runQueue = pendingRunPool.length > 0 ? pendingRunPool : displayPool;
+    const queue = runQueue.map((r) => ({
       baseDocId: r.baseDocId,
       branch: r.branch || 'main',
     }));
@@ -389,7 +390,7 @@ function DevelopPage() {
     } finally {
       setDevelopStartBusy(false);
     }
-  }, [domainId, displayPool.length, pendingRunPool, developStartBusy, todayDevelopResumeUrl]);
+  }, [domainId, displayPool, pendingRunPool, developStartBusy, todayDevelopResumeUrl]);
 
   const hasAnyGoal = useMemo(
     () => displayPool.some((r) => r.dailyNodeGoal > 0 || r.dailyCardGoal > 0 || r.dailyProblemGoal > 0),
@@ -887,20 +888,12 @@ function DevelopPage() {
             </button>
             <button
               type="button"
-              disabled={
-                developStartBusy
-                || (!todayDevelopResumeUrl && pendingRunPool.length === 0)
-                || !poolCount
-              }
+              disabled={developStartBusy || !poolCount}
               onClick={() => { void startDevelopOrdered(); }}
               style={{
                 ...primaryBtn,
-                cursor: poolCount && !developStartBusy && (todayDevelopResumeUrl || pendingRunPool.length > 0)
-                  ? 'pointer'
-                  : 'not-allowed',
-                opacity: poolCount && !developStartBusy && (todayDevelopResumeUrl || pendingRunPool.length > 0)
-                  ? 1
-                  : 0.85,
+                cursor: poolCount && !developStartBusy ? 'pointer' : 'not-allowed',
+                opacity: poolCount && !developStartBusy ? 1 : 0.85,
               }}
             >
               {developStartBusy ? '…' : i18n('Develop start')}
