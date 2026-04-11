@@ -33,7 +33,12 @@ import {
 } from '../lib/developPoolShared';
 import RecordModel, { type DevelopSaveChangeLine } from '../model/record';
 import SessionModel, { type SessionDoc } from '../model/session';
-import { deriveSessionLearnStatus, isDevelopSessionRow, isDevelopSessionSettled } from '../lib/sessionListDisplay';
+import {
+    deriveSessionLearnStatus,
+    inferDevelopSessionKind,
+    isDevelopSessionRow,
+    isDevelopSessionSettled,
+} from '../lib/sessionListDisplay';
 
 /** Machine token in {@link BadRequestError} params for API clients (see `request.ajax` in ui-default). */
 const DEVELOP_SESSION_CLOSED_CODE = 'DEVELOP_SESSION_CLOSED';
@@ -1139,9 +1144,9 @@ export class BaseEditorHandler extends Handler {
             uid,
         );
 
-        const workspaceFromQuery = (this.request.query?.workspace as string) || '';
         const nodeIds = new Set(nodes.map((n: BaseNode) => n.id));
-        const workspaceNodeId = workspaceFromQuery && nodeIds.has(workspaceFromQuery) ? workspaceFromQuery : '';
+        const qNode = (this.request.query?.nodeId as string) || '';
+        const editorRootNodeId = qNode && nodeIds.has(qNode) ? qNode : '';
 
         this.response.body = {
             base: { ...base, nodes, edges },
@@ -1157,7 +1162,7 @@ export class BaseEditorHandler extends Handler {
             contributionDetails,
             baseExpandState,
             baseEditorUiPrefs,
-            workspaceNodeId,
+            editorRootNodeId,
             
             ...(opts.editorMode === 'skill' ? { page_name: 'base_skill_editor_branch' } : {}),
         };
@@ -1173,14 +1178,18 @@ export type BuildBaseEditorPageBodyArgs = {
     domainName: string;
     db: { collection: (n: string) => any };
     makeEditorUrl: (docId: number, branch: string) => string;
-    workspaceFromQuery?: string;
+    /** Optional `?nodeId=` — restrict explorer tree to this subtree root when valid. */
+    rootNodeIdFromQuery?: string;
+    /** `none` = 大纲单节点 develop 会话，不展示每日队列 / 结算 UI。 */
+    developPoolUiMode?: 'full' | 'none';
 };
 
 /** Shared HTML payload for `base_editor.html` (normal base URL or `/develop/editor?session=`). */
 export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs): Promise<Record<string, unknown>> {
     const {
         domainId, base, requestedBranch, uid, priv, domainName, db, makeEditorUrl,
-        workspaceFromQuery = '',
+        rootNodeIdFromQuery = '',
+        developPoolUiMode = 'full',
     } = args;
 
     let nodes: BaseNode[] = [];
@@ -1255,24 +1264,26 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
     );
 
     const nodeIds = new Set(nodes.map((n: BaseNode) => n.id));
-    const workspaceNodeId = workspaceFromQuery && nodeIds.has(workspaceFromQuery) ? workspaceFromQuery : '';
+    const editorRootNodeId = rootNodeIdFromQuery && nodeIds.has(rootNodeIdFromQuery) ? rootNodeIdFromQuery : '';
 
     const userTok = await fetchUserGithubToken(domainId, uid);
     const userGithubTokenConfigured = !!userTok;
 
-    const developEditorContext = await buildDevelopEditorContextWire({
-        db,
-        domainId,
-        uid,
-        pool: await loadUserDevelopPool(domainId, uid, priv),
-        baseDocId: base.docId,
-        branch: requestedBranch,
-        getBaseTitle: async (docId) => {
-            const b = await BaseModel.get(domainId, docId);
-            return b ? ((b.title || '').trim() || String(docId)) : `Base ${docId}`;
-        },
-        makeEditorUrl,
-    });
+    const developEditorContext = developPoolUiMode === 'none'
+        ? null
+        : await buildDevelopEditorContextWire({
+            db,
+            domainId,
+            uid,
+            pool: await loadUserDevelopPool(domainId, uid, priv),
+            baseDocId: base.docId,
+            branch: requestedBranch,
+            getBaseTitle: async (docId) => {
+                const b = await BaseModel.get(domainId, docId);
+                return b ? ((b.title || '').trim() || String(docId)) : `Base ${docId}`;
+            },
+            makeEditorUrl,
+        });
 
     return {
         base: { ...base, nodes, edges },
@@ -1288,7 +1299,7 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
         contributionDetails,
         baseExpandState,
         baseEditorUiPrefs,
-        workspaceNodeId,
+        editorRootNodeId,
         githubRepo: (base.githubRepo || '') as string,
         userGithubTokenConfigured,
         developEditorContext,
@@ -1309,23 +1320,12 @@ export class BaseEditorDocHandler extends Handler {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
 
         const base = this.base!;
-        const requestedBranch = branch && String(branch).trim() ? branch : 'main';
-
-        this.response.template = 'base_editor.html';
-
-        const workspaceFromQuery = (this.request.query?.workspace as string) || '';
-        const uid = this.user._id;
-        const domainName = (this as any).domain?.name || domainId;
-        this.response.body = await buildBaseEditorPageBody({
+        const requestedBranch = branch && String(branch).trim() ? branch.trim() : 'main';
+        const docSeg = (base.bid && String(base.bid).trim()) || String(base.docId);
+        this.response.redirect = this.url('base_outline_doc_branch', {
             domainId,
-            base,
-            requestedBranch,
-            uid,
-            priv: this.user.priv,
-            domainName,
-            db: this.ctx.db.db,
-            makeEditorUrl: (docId, br) => this.url('base_editor_branch', { domainId, docId, branch: br }),
-            workspaceFromQuery,
+            docId: docSeg,
+            branch: requestedBranch,
         });
     }
 }
@@ -4275,6 +4275,7 @@ async function refreshDevelopSessionRunProgressAfterBatchSave(
     }) as SessionDoc | null;
     if (!cur) return;
     if (isDevelopSessionSettled(cur)) return;
+    if (inferDevelopSessionKind(cur) === 'outline_node') return;
     const baseDocId = Number(cur.baseDocId);
     if (!Number.isFinite(baseDocId) || baseDocId <= 0) return;
     const branch = cur.branch && String(cur.branch).trim() ? String(cur.branch).trim() : 'main';
@@ -6070,7 +6071,7 @@ export class BaseConnectionHandler extends ConnectionHandler {
                     const b = await BaseModel.get(domainId, docId);
                     return b ? ((b.title || '').trim() || String(docId)) : `Base ${docId}`;
                 },
-                makeEditorUrl: (docId, br) => this.url('base_editor_branch', { domainId, docId, branch: br }),
+                makeEditorUrl: (docId, br) => this.url('base_outline_doc_branch', { domainId, docId: String(docId), branch: br }),
             });
         } catch (e) {
             logger.error('Failed to build develop editor context:', e);
@@ -6518,7 +6519,6 @@ async function persistBaseEditorSaveSidecars(
                 sessionHex,
                 cardId: typeof o.cardId === 'string' ? o.cardId : undefined,
                 nodeId: typeof o.nodeId === 'string' ? o.nodeId : undefined,
-                workspace: typeof o.workspace === 'string' ? o.workspace : undefined,
                 expectedBaseDocId: baseDocId,
             });
         }

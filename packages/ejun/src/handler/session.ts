@@ -24,6 +24,7 @@ import {
 } from '../lib/developPoolShared';
 import { PERM, PRIV } from '../model/builtin';
 import { BaseModel } from '../model/base';
+import { getBranchData } from './base';
 import DomainModel from '../model/domain';
 import type { SessionRecordDoc } from '../model/record';
 import SessionModel, { type SessionDoc, type SessionPatch } from '../model/session';
@@ -32,7 +33,9 @@ import {
     deriveSessionKind,
     deriveSessionLearnStatus,
     deriveSessionRecordType,
+    developSessionRecordTypeLabelKey,
     formatSessionProgressDisplay,
+    inferDevelopSessionKind,
     isAgentSessionRow,
     isDevelopSessionRow,
     isDevelopSessionSettled,
@@ -60,6 +63,10 @@ function buildSessionListRow(
 ) {
     const status = deriveSessionLearnStatus(doc);
     const recordType = deriveSessionRecordType(doc);
+    const developLabelKey = developSessionRecordTypeLabelKey(doc);
+    const recordTypeLabel = developLabelKey
+        ? self.translate(developLabelKey)
+        : self.translate(`session_record_type_${recordType}`);
     const sessionKind = deriveSessionKind(doc);
     let resumeUrl: string;
     // learn rows with _id: link to learn_lesson?session=… (history for timed_out / finished / abandoned)
@@ -69,16 +76,21 @@ function buildSessionListRow(
         const base = self.url('learn_lesson', { domainId: doc.domainId });
         const sep = base.includes('?') ? '&' : '?';
         resumeUrl = `${base}${sep}session=${encodeURIComponent(doc._id.toString())}`;
-    } else if (isDevelopSessionRow(doc) && doc._id) {
-        if (status === 'finished' || status === 'timed_out' || status === 'abandoned') {
-            const base = self.url('develop_session_history', { domainId: doc.domainId });
-            const sep = base.includes('?') ? '&' : '?';
-            resumeUrl = `${base}${sep}session=${encodeURIComponent(doc._id.toString())}`;
-        } else {
-            const base = self.url('develop_editor', { domainId: doc.domainId });
-            const sep = base.includes('?') ? '&' : '?';
-            resumeUrl = `${base}${sep}session=${encodeURIComponent(doc._id.toString())}`;
-        }
+        } else if (isDevelopSessionRow(doc) && doc._id) {
+            if (status === 'finished' || status === 'timed_out' || status === 'abandoned') {
+                const base = self.url('develop_session_history', { domainId: doc.domainId });
+                const sep = base.includes('?') ? '&' : '?';
+                resumeUrl = `${base}${sep}session=${encodeURIComponent(doc._id.toString())}`;
+            } else {
+                const base = self.url('develop_editor', { domainId: doc.domainId });
+                const sep = base.includes('?') ? '&' : '?';
+                let u = `${base}${sep}session=${encodeURIComponent(doc._id.toString())}`;
+                const nid = typeof doc.nodeId === 'string' ? doc.nodeId.trim() : '';
+                if (nid && inferDevelopSessionKind(doc) === 'outline_node') {
+                    u += `&nodeId=${encodeURIComponent(nid)}`;
+                }
+                resumeUrl = u;
+            }
     } else if (isLearnSessionRow(doc)) {
         resumeUrl = self.url('learn', { domainId: doc.domainId });
     } else {
@@ -90,7 +102,7 @@ function buildSessionListRow(
         status,
         recordType,
         statusLabel: self.translate(`session_status_${status}`),
-        recordTypeLabel: self.translate(`session_record_type_${recordType}`),
+        recordTypeLabel,
         sessionKind,
         sessionKindLabel: self.translate(`session_kind_${sessionKind}`),
         resumeUrl,
@@ -173,35 +185,81 @@ class DevelopSessionStartHandler extends Handler {
         if (!base) throw new NotFoundError('Base not found');
         if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
 
+        const fromOutline = body.fromOutline === true;
+        const nodeId = typeof body.nodeId === 'string' ? body.nodeId.trim() : '';
+
+        if (fromOutline) {
+            if (!nodeId) {
+                throw new ValidationError(this.translate('Outline editor start needs node'));
+            }
+            const { nodes } = getBranchData(base, branch);
+            if (!nodes.some((n) => n.id === nodeId)) {
+                throw new ValidationError(this.translate('Outline editor start invalid node'));
+            }
+        }
+
         const fullPool = await loadUserDevelopPool(finalDomainId, this.user._id, this.user.priv);
         const poolKey = developBranchKey(baseDocId, branch);
-        if (!fullPool.length) {
-            throw new ValidationError(this.translate('Develop run queue empty today'));
-        }
-        if (!fullPool.some((e) => developBranchKey(e.baseDocId, e.branch) === poolKey)) {
-            throw new ValidationError(this.translate('Develop start base not in pool'));
+        if (!fromOutline) {
+            if (!fullPool.length) {
+                throw new ValidationError(this.translate('Develop run queue empty today'));
+            }
+            if (!fullPool.some((e) => developBranchKey(e.baseDocId, e.branch) === poolKey)) {
+                throw new ValidationError(this.translate('Develop start base not in pool'));
+            }
         }
 
         const cutoff = new Date(Date.now() - DEVELOP_SESSION_REUSE_MS);
-        const recent = await SessionModel.coll
-            .find({
-                domainId: finalDomainId,
-                uid: this.user._id,
-                appRoute: 'develop',
-                baseDocId,
-                branch,
-                lastActivityAt: { $gte: cutoff },
-                $and: [
-                    { $or: [{ lessonAbandonedAt: null }, { lessonAbandonedAt: { $exists: false } }] },
-                    developSessionNotSettledMongoFilter,
+        const emptyNodeId = {
+            $or: [
+                { nodeId: { $exists: false } },
+                { nodeId: null },
+                { nodeId: '' },
+            ],
+        } as const;
+        const reuseFilter: Record<string, unknown> = {
+            domainId: finalDomainId,
+            uid: this.user._id,
+            appRoute: 'develop',
+            baseDocId,
+            branch,
+            lastActivityAt: { $gte: cutoff },
+            $and: [
+                { $or: [{ lessonAbandonedAt: null }, { lessonAbandonedAt: { $exists: false } }] },
+                developSessionNotSettledMongoFilter,
+            ],
+        };
+        if (fromOutline) {
+            reuseFilter.nodeId = nodeId;
+            (reuseFilter.$and as unknown[]).push({
+                $or: [
+                    { developSessionKind: 'outline_node' },
+                    { developSessionKind: { $exists: false } },
                 ],
-            })
+            });
+        } else {
+            (reuseFilter.$and as unknown[]).push(emptyNodeId);
+            (reuseFilter.$and as unknown[]).push({
+                $or: [
+                    { developSessionKind: 'daily' },
+                    {
+                        $and: [
+                            { developSessionKind: { $exists: false } },
+                            emptyNodeId,
+                        ],
+                    },
+                ],
+            });
+        }
+        const recent = await SessionModel.coll
+            .find(reuseFilter)
             .sort({ lastActivityAt: -1 })
             .limit(1)
             .toArray();
         const existing = recent[0] as SessionDoc | undefined;
 
-        const run = computeDevelopRunQueueProgress(fullPool, baseDocId, branch);
+        const inPool = fullPool.some((e) => developBranchKey(e.baseDocId, e.branch) === poolKey);
+        const run = !fromOutline && inPool ? computeDevelopRunQueueProgress(fullPool, baseDocId, branch) : null;
 
         if (existing) {
             const progress = run
@@ -226,6 +284,8 @@ class DevelopSessionStartHandler extends Handler {
             route: 'develop',
             baseDocId,
             branch,
+            developSessionKind: fromOutline ? 'outline_node' : 'daily',
+            ...(fromOutline && nodeId ? { nodeId } : {}),
         });
         if (run) {
             const progress = mergeSessionProgressWithDevelopRun(doc.progress, run);
@@ -265,6 +325,9 @@ class DevelopSessionSettleHandler extends Handler {
         if (!sess) throw new NotFoundError(this.translate('Session not found'));
         if ((sess as { lessonAbandonedAt?: Date | null }).lessonAbandonedAt) {
             throw new NotFoundError(this.translate('Session not found'));
+        }
+        if (inferDevelopSessionKind(sess) === 'outline_node') {
+            throw new ValidationError(this.translate('Develop settle outline session'));
         }
         if (isDevelopSessionSettled(sess)) {
             throw new ValidationError(this.translate('Develop settle already'));
@@ -379,7 +442,12 @@ export class SessionDomainHandler extends Handler {
         if (recordType != null || listStatus != null) {
             const all = await SessionModel.findSortedForSessionList(domainId, filterUid, mongoListOpts);
             const filtered = all.filter((d) => {
-                if (recordType != null && deriveSessionRecordType(d) !== recordType) return false;
+                if (recordType != null) {
+                    const matchRt = recordType === 'develop'
+                        ? isDevelopSessionRow(d)
+                        : deriveSessionRecordType(d) === recordType;
+                    if (!matchRt) return false;
+                }
                 if (listStatus != null && deriveSessionLearnStatus(d) !== listStatus) return false;
                 return true;
             });

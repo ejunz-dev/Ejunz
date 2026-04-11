@@ -629,6 +629,12 @@ develop: Develop
 'Develop run queue empty today': No develop tasks left for today.
 'Develop start goals done today': This base already met today’s goals and is out of the develop run queue.
 'Develop start base not in pool': This base/branch is not in your develop pool.
+'Outline editor start session': Start editor session…
+'Outline editor start failed': Could not start an editor session. Try again.
+'Outline editor start invalid base': Invalid knowledge base for this outline.
+'Outline editor start needs node': A node id is required to start an editor session from the outline.
+'Outline editor start invalid node': That node is not part of this branch.
+'Outline editor popup blocked': The browser blocked the new tab. Allow popups for this site and try again.
 'Develop start no pending': All today’s develop tasks are done; resume an open session if needed.
 'Develop move up': Move up
 'Develop move down': Move down
@@ -655,6 +661,7 @@ develop: Develop
 'Develop settle failed': Could not settle this session.
 'Develop settle pool incomplete': Not every develop pool entry has met today’s goals yet.
 'Develop settle already': This develop session has already been settled.
+'Develop settle outline session': Outline single-node editor sessions cannot be settled like the daily develop run; close the tab or view history after the UTC day rolls over.
 develop_session_history_title: Develop session (history)
 develop_session_history_back: Back to Develop
 develop_session_history_hint_finished: This develop session has been settled. Save records from that run are listed below.
@@ -825,6 +832,8 @@ session_record_type_other: Other
 session_record_type_single_card: Single-card practice
 session_record_type_single_node: Single-node practice
 session_record_type_develop: Develop editor
+session_record_type_develop_daily: Daily develop
+session_record_type_develop_outline: Outline single-node editing
 session_record_type_agent: Chat
 session_status_abandoned: Abandoned
 session_status_active: Active
