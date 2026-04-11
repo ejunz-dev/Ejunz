@@ -1,4 +1,4 @@
-import { ObjectId } from 'mongodb';
+import { Filter, ObjectId } from 'mongodb';
 import type { Context } from '../context';
 import {
     BadRequestError, ContestNotAttendedError, ContestNotEndedError, ContestNotFoundError, ContestNotLiveError,
@@ -32,6 +32,11 @@ import { getDomainMarketToolsForAgent } from './tool';
 import RecordModel from '../model/record';
 import SessionModel from '../model/session';
 const AgentLogger = new Logger('agent');
+
+function escapeRegExp(s: string) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export const parseCategory = (value: string) => value.replace(/，/g, ',').split(',').map((e) => e.trim());
 
 // Tool call: try worker first, then direct MCP
@@ -261,11 +266,45 @@ Directly output the updated work rules memory, use concise and clear format (can
     }
 }
 
-/** Former `/agent` catalog; redirects to domain session list. */
+/** GET `/agent` — domain agent catalog (list + search). */
 export class AgentMainHandler extends Handler {
-    async get(domainId: string) {
+    async get(raw: string | Record<string, unknown>) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        this.response.redirect = this.url('session_domain', { domainId });
+        const finalDomainId = typeof raw === 'string' ? raw : (raw as any)?.domainId || this.args.domainId;
+        if (!finalDomainId || typeof finalDomainId !== 'string') {
+            throw new ValidationError('domainId');
+        }
+        const args = typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+        const rawPage = args.page;
+        const page = Math.max(1, parseInt(String(Array.isArray(rawPage) ? rawPage[0] : rawPage ?? '1'), 10) || 1);
+        const rawQ = args.q;
+        const qs = typeof rawQ === 'string' ? rawQ : (Array.isArray(rawQ) && rawQ.length ? String(rawQ[0]) : '');
+        const pageSize = 20;
+        const mongoQuery: Filter<AgentDoc> = {};
+        const trimmed = qs.trim();
+        if (trimmed) {
+            const rx = escapeRegExp(trimmed);
+            (mongoQuery as any).$or = [
+                { title: { $regex: rx, $options: 'i' } },
+                { content: { $regex: rx, $options: 'i' } },
+            ];
+        }
+        const [adocs, ppcount, count] = await Agent.list(
+            finalDomainId,
+            mongoQuery,
+            page,
+            pageSize,
+            [...Agent.PROJECTION_LIST, 'files'] as any,
+        );
+        this.response.template = 'agent_domain.html';
+        this.response.body = {
+            page_name: 'agent_domain',
+            adocs,
+            page,
+            ppcount,
+            count,
+            qs,
+        };
     }
 }
 
