@@ -121,15 +121,45 @@ export const request = {
                 : message) as any;
               err.rawMessage = error.message;
               err.params = error.params;
+              err.httpStatus = jqXHR.status;
               reject(err);
-            } else reject(new Error(jqXHR.responseJSON.error.message));
+            } else {
+              const err = new Error(jqXHR.responseJSON.error.message) as any;
+              err.rawMessage = jqXHR.responseJSON.error.message;
+              err.httpStatus = jqXHR.status;
+              if (jqXHR.responseJSON.error.params) err.params = jqXHR.responseJSON.error.params;
+              reject(err);
+            }
           } else if (errorThrown instanceof Error) {
             reject(errorThrown);
           } else {
             reject(new Error(textStatus));
           }
         })
-        .done(resolve);
+        .done((data: any, _textStatus: string, jqXHR: any) => {
+          /** Koa may return HTTP 200 with JSON `{ UserFacingError, error }` instead of 4xx. */
+          if (data && typeof data === 'object' && data.UserFacingError && data.error?.message) {
+            const { error } = data;
+            const status = jqXHR && typeof jqXHR.status === 'number' ? jqXHR.status : undefined;
+            if (error.params) {
+              const message = i18n(error.message, ...error.params);
+              const err = new Error(message === error.message && error.params.length
+                ? `${error.message}: ${error.params.join(' ')}`
+                : message) as any;
+              err.rawMessage = error.message;
+              err.params = error.params;
+              err.httpStatus = status;
+              reject(err);
+              return;
+            }
+            const err = new Error(error.message) as any;
+            err.rawMessage = error.message;
+            err.httpStatus = status;
+            reject(err);
+            return;
+          }
+          resolve(data);
+        });
     }).catch((e: Error) => {
       e.stack = stack;
       throw e;
