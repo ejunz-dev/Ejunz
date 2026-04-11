@@ -148,6 +148,7 @@ __langname: English
 'Disconnected': Disconnected
 'Doc': Doc
 'Done': Done
+'Download': Download
 'Download Audio': Download Audio
 'Download Recording': Download Recording
 'Drag items to reorder': Drag items to reorder
@@ -356,6 +357,19 @@ __langname: English
 'Preview image': Preview image
 'Previous': Previous
 'Problem generated, please review': Problem generated, please review
+'Problem kind single': Single choice
+'Problem kind multi': Multiple choice
+'Problem kind true false': True / false
+'Problem kind flip': Flip card
+'Problem field type': Question type
+'Problem option slots': Option slots
+'Problem multi all correct': All correct selections required to pass
+'Problem face A label': Side A (shown first)
+'Problem face B label': Side B (after flip)
+'Problem face A placeholder': Front text
+'Problem face B placeholder': Back text
+'Problem answer true': True
+'Problem answer false': False
 'Provider (MCP)': Provider (MCP)
 'Provider': Provider
 'Pulling from GitHub...': Pulling from GitHub...

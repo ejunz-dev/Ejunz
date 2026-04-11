@@ -3,6 +3,8 @@ import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import { i18n, request } from 'vj/utils';
 import Notification from 'vj/components/notification';
+import type { Problem, ProblemSingle } from 'ejun/src/interface';
+import { problemKind } from 'ejun/src/model/problem';
 
 // Cache keys aligned with base outline (shared image Cache API).
 const BASE_OUTLINE_CARD_CACHE_PREFIX = 'base-outline-card-';
@@ -14,15 +16,6 @@ function labelForFrozenLessonQueueMode(modeRaw: string | undefined): string {
   if (m === 'breadth') return i18n('Breadth learning mode');
   if (m === 'random') return i18n('Random learning mode');
   return i18n('Deep learning mode');
-}
-
-interface Problem {
-  pid: string;
-  type: 'single';
-  stem: string;
-  options: string[];
-  answer: number;
-  analysis?: string;
 }
 
 interface Card {
@@ -545,10 +538,12 @@ function LessonPage() {
   }, [card?.docId, card?.cardFace, replaceImagesWithCache]);
 
   const allProblems = useMemo(() => {
-    return (card.problems || []).map(p => ({ ...p, cardId: card.docId }));
+    return (card.problems || [])
+      .filter((p) => problemKind(p) === 'single')
+      .map((p) => ({ ...(p as ProblemSingle), cardId: card.docId }));
   }, [card]);
 
-  const [problemQueue, setProblemQueue] = useState<Array<Problem & { cardId: string }>>(allProblems);
+  const [problemQueue, setProblemQueue] = useState<Array<ProblemSingle & { cardId: string }>>(allProblems);
   const [currentProblemIndex, setCurrentProblemIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
@@ -556,7 +551,7 @@ function LessonPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAnalysis, setShowAnalysis] = useState(false);
   const hasCalledPassRef = useRef(false);
-  const [answerHistory, setAnswerHistory] = useState<Array<{ problem: Problem & { cardId: string }; selected: number; correct: boolean; timeSpent: number; attempts: number }>>([]);
+  const [answerHistory, setAnswerHistory] = useState<Array<{ problem: ProblemSingle & { cardId: string }; selected: number; correct: boolean; timeSpent: number; attempts: number }>>([]);
   const [problemStartTime, setProblemStartTime] = useState<number>(Date.now());
   const [problemAttempts, setProblemAttempts] = useState<Record<string, number>>({});
   const sessionStartTimeRef = useRef<number>(Date.now());
@@ -641,7 +636,9 @@ function LessonPage() {
         : prev.lessonPathCardPractiseCountTitle,
     }));
     const nextCard = payload.card != null ? normalizeCardFromServer(payload.card) : null;
-    const probs = (nextCard?.problems || []).map(p => ({ ...p, cardId: nextCard!.docId }));
+    const probs = (nextCard?.problems || [])
+      .filter((p) => problemKind(p) === 'single')
+      .map((p) => ({ ...(p as ProblemSingle), cardId: nextCard!.docId }));
     setProblemQueue(probs);
     setCurrentProblemIndex(0);
     setSelectedAnswer(null);
