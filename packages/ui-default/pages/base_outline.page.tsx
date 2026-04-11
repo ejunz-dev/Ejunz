@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
-import { request } from 'vj/utils';
+import { request, i18n } from 'vj/utils';
 
 interface BaseNode {
   id: string;
@@ -754,6 +754,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
 
   const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
   const branchDropdownRef = useRef<HTMLDivElement>(null);
+  const [outlineStartBusy, setOutlineStartBusy] = useState(false);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -1567,9 +1568,52 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
 
  
   const handleNodeClick = useCallback((nodeId: string) => {
-   
-    console.log('Node clicked:', nodeId);
+    void nodeId;
   }, []);
+
+  const startEditorSessionFromOutline = useCallback(async (nodeId: string) => {
+    if (!nodeId || outlineStartBusy) return;
+    const rawDomainId = (window as any).UiContext?.domainId;
+    const domainId = typeof rawDomainId === 'object'
+      ? (rawDomainId?._id ? String(rawDomainId._id) : 'system')
+      : (rawDomainId ? String(rawDomainId) : 'system');
+    const baseDocNum = Number((base as any).docId ?? docId);
+    if (!Number.isFinite(baseDocNum) || baseDocNum <= 0) {
+      Notification.error(i18n('Outline editor start invalid base'));
+      return;
+    }
+    const branch = base.currentBranch || 'main';
+    setOutlineStartBusy(true);
+    try {
+      const res: any = await request.post(`/d/${domainId}/session/develop/start`, {
+        baseDocId: baseDocNum,
+        branch,
+        fromOutline: true,
+        nodeId,
+      });
+      const sessionId = res?.sessionId ?? res?.body?.sessionId;
+      if (typeof sessionId !== 'string' || !sessionId.trim()) {
+        Notification.error(i18n('Outline editor start failed'));
+        return;
+      }
+      const sp = new URLSearchParams({
+        session: sessionId.trim(),
+        nodeId,
+      });
+      const editorUrl = `/d/${domainId}/develop/editor?${sp.toString()}`;
+      const opened = window.open(editorUrl, '_blank');
+      if (opened) {
+        opened.opener = null;
+      } else {
+        Notification.error(i18n('Outline editor popup blocked'));
+      }
+    } catch (e: any) {
+      const msg = e?.message ?? i18n('Outline editor start failed');
+      Notification.error(typeof msg === 'string' ? msg : String(msg));
+    } finally {
+      setOutlineStartBusy(false);
+    }
+  }, [base.currentBranch, base, docId, outlineStartBusy]);
 
  
   const initImageCache = useCallback(async () => {
@@ -3019,42 +3063,6 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
             </div>
           )}
         </div>
-        <a
-          href={(() => {
-            const rawDomainId = (window as any).UiContext?.domainId;
-            const domainId = typeof rawDomainId === 'object'
-              ? (rawDomainId?._id ? String(rawDomainId._id) : 'system')
-              : (rawDomainId ? String(rawDomainId) : 'system');
-           
-            if (basePath === 'base/skill') {
-              return `/d/${domainId}/base/skill/editor`;
-            }
-           
-            const rawUiDocId = (window as any).UiContext?.base?.docId;
-            const uiDocId = typeof rawUiDocId === 'object'
-              ? (rawUiDocId?._id ? String(rawUiDocId._id) : '')
-              : (rawUiDocId ? String(rawUiDocId) : '');
-            const branch = base.currentBranch || 'main';
-            return `/d/${domainId}/base/${uiDocId}/branch/${branch}/editor`;
-          })()}
-          style={{
-            padding: '6px 12px',
-            border: `1px solid ${themeStyles.borderPrimary}`,
-            borderRadius: '4px',
-            background: themeStyles.bgButton,
-            color: themeStyles.textPrimary,
-            textDecoration: 'none',
-            cursor: 'pointer',
-            fontWeight: 'bold',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-          }}
-          title="进入编辑器模式"
-        >
-          <span>.</span>
-          <span>编辑器</span>
-        </a>
         {/* <button
           onClick={() => setShowCachePanel(!showCachePanel)}
           style={{
@@ -3942,6 +3950,39 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
               </>
             ) : (
               <>
+                {contextMenu.file.type === 'node' && contextMenu.file.nodeId && basePath !== 'base/skill' ? (
+                  <>
+                    <div
+                      style={{
+                        padding: isMobile ? '12px 16px' : '6px 16px',
+                        cursor: outlineStartBusy ? 'wait' : 'pointer',
+                        fontSize: isMobile ? '15px' : '13px',
+                        color: themeStyles.textPrimary,
+                        userSelect: 'none',
+                        WebkitUserSelect: 'none',
+                        opacity: outlineStartBusy ? 0.65 : 1,
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isMobile && !outlineStartBusy) {
+                          e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isMobile) {
+                          e.currentTarget.style.backgroundColor = 'transparent';
+                        }
+                      }}
+                      onClick={() => {
+                        const nid = contextMenu.file.nodeId;
+                        if (nid) void startEditorSessionFromOutline(nid);
+                        setContextMenu(null);
+                      }}
+                    >
+                      {i18n('Outline editor start session')}
+                    </div>
+                    <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
+                  </>
+                ) : null}
                 <div
                   style={{
                     padding: isMobile ? '12px 16px' : '6px 16px',

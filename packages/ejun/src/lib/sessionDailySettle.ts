@@ -3,7 +3,7 @@ import type { SessionDoc } from '../model/session';
 import SessionModel from '../model/session';
 import bus from '../service/bus';
 import { deleteUserCache } from '../model/user';
-import { developSessionNotSettledMongoFilter } from './developSessionResume';
+import { developDailySessionKindMongo, developSessionNotSettledMongoFilter } from './developSessionResume';
 import { isSessionStalePastUtcCalendarDay } from './sessionUtcDaily';
 
 /**
@@ -74,6 +74,7 @@ export async function settleStaleDevelopSessionPointersUtc(): Promise<number> {
         $and: [
             { $or: [{ lessonAbandonedAt: null }, { lessonAbandonedAt: { $exists: false } }] },
             developSessionNotSettledMongoFilter,
+            developDailySessionKindMongo,
         ],
     });
     for await (const raw of cursor) {

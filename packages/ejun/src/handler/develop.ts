@@ -28,7 +28,9 @@ import {
 import {
     deriveSessionLearnStatus,
     deriveSessionRecordType,
+    developSessionRecordTypeLabelKey,
     formatSessionProgressDisplay,
+    inferDevelopSessionKind,
     isDevelopSessionSettled,
 } from '../lib/sessionListDisplay';
 import { buildSessionRecordHistoryRows, summarizeRecordDoc } from './record';
@@ -97,7 +99,6 @@ class DevelopSessionEditorHandler extends Handler {
         if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
 
         const requestedBranch = sess.branch && String(sess.branch).trim() ? String(sess.branch).trim() : 'main';
-        const workspaceFromQuery = (this.request.query?.workspace as string) || '';
         const q = this.request.query || {};
         const hasCardInUrl = typeof q.cardId === 'string' && q.cardId.trim().length > 0;
         const hasNodeInUrl = typeof q.nodeId === 'string' && q.nodeId.trim().length > 0;
@@ -105,8 +106,6 @@ class DevelopSessionEditorHandler extends Handler {
         if (!hasCardInUrl && !hasNodeInUrl && savedNav && (savedNav.cardId || savedNav.nodeId)) {
             const sp = new URLSearchParams();
             sp.set('session', sid);
-            const ws = (workspaceFromQuery || savedNav.workspace || '').trim();
-            if (ws) sp.set('workspace', ws);
             if (savedNav.cardId) sp.set('cardId', savedNav.cardId);
             else if (savedNav.nodeId) sp.set('nodeId', savedNav.nodeId);
             this.response.redirect = `/d/${encodeURIComponent(domainId)}/develop/editor?${sp.toString()}`;
@@ -115,6 +114,11 @@ class DevelopSessionEditorHandler extends Handler {
 
         this.response.template = 'base_editor.html';
         const domainName = (this as any).domain?.name || domainId;
+        const qNode = typeof q.nodeId === 'string' ? q.nodeId.trim() : '';
+        const sessNodeId = typeof (sess as { nodeId?: string }).nodeId === 'string'
+            ? String((sess as { nodeId?: string }).nodeId).trim()
+            : '';
+        const rootNodeIdFromQuery = qNode || sessNodeId;
         const editorBody = await buildBaseEditorPageBody({
             domainId,
             base,
@@ -123,8 +127,9 @@ class DevelopSessionEditorHandler extends Handler {
             priv: this.user.priv,
             domainName,
             db: this.ctx.db.db,
-            makeEditorUrl: (docId, br) => this.url('base_editor_branch', { domainId, docId, branch: br }),
-            workspaceFromQuery,
+            makeEditorUrl: (docId, br) => this.url('base_outline_doc_branch', { domainId, docId: String(docId), branch: br }),
+            rootNodeIdFromQuery,
+            developPoolUiMode: inferDevelopSessionKind(sess) === 'outline_node' ? 'none' : 'full',
         });
         this.response.body = {
             ...editorBody,
@@ -173,6 +178,10 @@ class DevelopSessionHistoryHandler extends Handler {
             };
         });
         const rt = deriveSessionRecordType(sess);
+        const developLabelKey = developSessionRecordTypeLabelKey(sess);
+        const recordTypeLabel = developLabelKey
+            ? this.translate(developLabelKey)
+            : this.translate(`session_record_type_${rt}`);
         const isAbandoned = historySt === 'abandoned';
         const isTimedOut = historySt === 'timed_out';
         const histStatus = isAbandoned ? ('abandoned' as const) : isTimedOut ? ('timed_out' as const) : ('finished' as const);
@@ -190,7 +199,7 @@ class DevelopSessionHistoryHandler extends Handler {
                 status: histStatus,
                 statusLabel: this.translate(histLabelKey),
                 recordType: rt,
-                recordTypeLabel: this.translate(`session_record_type_${rt}`),
+                recordTypeLabel,
                 sessionKind: 'develop' as const,
                 sessionKindLabel: this.translate('session_kind_develop'),
                 recordSummaries,
@@ -256,7 +265,11 @@ class DevelopHandler extends Handler {
                 todayCards: st.cards,
                 todayProblems: st.problems,
                 todayGoalsMet,
-                editorUrl: this.url('base_editor_branch', { domainId: finalDomainId, docId: e.baseDocId, branch: e.branch }),
+                editorUrl: this.url('base_outline_doc_branch', {
+                    domainId: finalDomainId,
+                    docId: String(e.baseDocId),
+                    branch: e.branch,
+                }),
             };
         });
 

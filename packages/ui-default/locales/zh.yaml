@@ -897,6 +897,12 @@ develop: 开发
 'Develop run queue empty today': 今日待开发任务已全部完成。
 'Develop start goals done today': 该知识库今日目标已完成，无需再进入开发队列。
 'Develop start base not in pool': 该知识库/分支不在你的开发任务列表中。
+'Outline editor start session': 开始编辑会话…
+'Outline editor start failed': 无法开始编辑会话，请重试。
+'Outline editor start invalid base': 当前大纲对应的知识库无效。
+'Outline editor start needs node': 从大纲进入编辑器需要指定节点。
+'Outline editor start invalid node': 该节点不在当前分支下。
+'Outline editor popup blocked': 浏览器拦截了新标签页，请允许本站弹出窗口后重试。
 'Develop start no pending': 今日待开发任务已全部完成；若有未结束的会话可先继续。
 'Develop move up': 上移
 'Develop move down': 下移
@@ -923,6 +929,7 @@ develop: 开发
 'Develop settle failed': 结算失败。
 'Develop settle pool incomplete': 开发池内尚有条目未达成今日目标，无法结算。
 'Develop settle already': 该开发会话已结算。
+'Develop settle outline session': 单节点（大纲）编辑会话不能按每日开发池结算，请直接关闭或跨日后查看历史。
 develop_session_history_title: 开发会话（历史）
 develop_session_history_back: 返回开发首页
 develop_session_history_hint_finished: 本会话已结算，以下为该次开发中的保存记录。
@@ -1229,6 +1236,8 @@ session_record_type_other: 其他
 session_record_type_single_card: 单卡片练习
 session_record_type_single_node: 单节点练习
 session_record_type_develop: 开发编辑
+session_record_type_develop_daily: 每日开发
+session_record_type_develop_outline: 大纲单节点编辑
 session_record_type_agent: 对话
 session_status_abandoned: 已放弃
 session_status_active: 在线
