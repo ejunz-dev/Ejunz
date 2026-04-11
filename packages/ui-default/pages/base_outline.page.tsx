@@ -376,10 +376,11 @@ const OutlineView = ({
     const docId = (window as any).UiContext?.base?.docId;
     const bid = (window as any).UiContext?.base?.bid;
     
-    if (docId) {
-      return `/d/${domainId}/${basePath}/${docId}/branch/${branch}/node/${nodeId}/cards?cardId=${card.docId}`;
-    } else if (bid) {
-      return `/d/${domainId}/${basePath}/bid/${bid}/branch/${branch}/node/${nodeId}/cards?cardId=${card.docId}`;
+    const docSeg = docId != null && String(docId).trim()
+      ? String(docId).trim()
+      : (bid && String(bid).trim() ? String(bid).trim() : '');
+    if (docSeg) {
+      return `/d/${domainId}/${basePath}/${encodeURIComponent(docSeg)}/branch/${branch}/node/${nodeId}/cards?cardId=${card.docId}`;
     }
     return '#';
   }, [basePath]);
@@ -1600,7 +1601,9 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         session: sessionId.trim(),
         nodeId,
       });
-      const editorUrl = `/d/${domainId}/develop/editor?${sp.toString()}`;
+      const bid = (base as any)?.bid;
+      const docSeg = bid && String(bid).trim() ? String(bid).trim() : String(baseDocNum);
+      const editorUrl = `/d/${domainId}/base/${encodeURIComponent(docSeg)}/branch/${encodeURIComponent(branch)}/editor?${sp.toString()}`;
       const opened = window.open(editorUrl, '_blank');
       if (opened) {
         opened.opener = null;
@@ -3721,10 +3724,11 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                     const nodeId = selectedCard.nodeId || '';
                     const cardId = selectedCard.docId;
                     
-                    if (baseDocId) {
-                      return `/d/${domainId}/base/${baseDocId}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit?returnUrl=${encodeURIComponent(window.location.href)}`;
-                    } else if (basebid) {
-                      return `/d/${domainId}/base/bid/${basebid}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit?returnUrl=${encodeURIComponent(window.location.href)}`;
+                    const docSeg = baseDocId != null && String(baseDocId).trim()
+                      ? String(baseDocId).trim()
+                      : (basebid && String(basebid).trim() ? String(basebid).trim() : '');
+                    if (docSeg) {
+                      return `/d/${domainId}/base/${encodeURIComponent(docSeg)}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit?returnUrl=${encodeURIComponent(window.location.href)}`;
                     }
                     return '#';
                   })()}

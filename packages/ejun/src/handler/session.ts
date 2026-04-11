@@ -19,15 +19,16 @@ import {
     computeDevelopRunQueueProgress,
     developBranchKey,
     developRunTerminalTotals,
-    isEntireDevelopPoolGoalsMetToday,
     loadUserDevelopPool,
 } from '../lib/developPoolShared';
+import { readDevelopSessionDeadlineMs } from '../lib/sessionUtcDaily';
 import { PERM, PRIV } from '../model/builtin';
 import { BaseModel } from '../model/base';
 import { getBranchData } from './base';
 import DomainModel from '../model/domain';
 import type { SessionRecordDoc } from '../model/record';
 import SessionModel, { type SessionDoc, type SessionPatch } from '../model/session';
+import system from '../model/system';
 import user from '../model/user';
 import {
     deriveSessionKind,
@@ -35,7 +36,6 @@ import {
     deriveSessionRecordType,
     developSessionRecordTypeLabelKey,
     formatSessionProgressDisplay,
-    inferDevelopSessionKind,
     isAgentSessionRow,
     isDevelopSessionRow,
     isDevelopSessionSettled,
@@ -56,7 +56,7 @@ export function sessionDocToWire(doc: SessionDoc | null): Record<string, unknown
     return d;
 }
 
-function buildSessionListRow(
+async function buildSessionListRow(
     self: { translate: (k: string) => string; url: (name: string, kwargs?: Record<string, unknown>) => string },
     doc: SessionDoc,
     recordSummaries: Awaited<ReturnType<typeof recordSummariesForSessionRow>>,
@@ -76,21 +76,31 @@ function buildSessionListRow(
         const base = self.url('learn_lesson', { domainId: doc.domainId });
         const sep = base.includes('?') ? '&' : '?';
         resumeUrl = `${base}${sep}session=${encodeURIComponent(doc._id.toString())}`;
-        } else if (isDevelopSessionRow(doc) && doc._id) {
-            if (status === 'finished' || status === 'timed_out' || status === 'abandoned') {
-                const base = self.url('develop_session_history', { domainId: doc.domainId });
-                const sep = base.includes('?') ? '&' : '?';
-                resumeUrl = `${base}${sep}session=${encodeURIComponent(doc._id.toString())}`;
-            } else {
-                const base = self.url('develop_editor', { domainId: doc.domainId });
-                const sep = base.includes('?') ? '&' : '?';
-                let u = `${base}${sep}session=${encodeURIComponent(doc._id.toString())}`;
-                const nid = typeof doc.nodeId === 'string' ? doc.nodeId.trim() : '';
-                if (nid && inferDevelopSessionKind(doc) === 'outline_node') {
-                    u += `&nodeId=${encodeURIComponent(nid)}`;
+    } else if (isDevelopSessionRow(doc) && doc._id) {
+        if (status === 'finished' || status === 'timed_out' || status === 'abandoned') {
+            const base = self.url('develop_session_history', { domainId: doc.domainId });
+            const sep = base.includes('?') ? '&' : '?';
+            resumeUrl = `${base}${sep}session=${encodeURIComponent(doc._id.toString())}`;
+        } else {
+            const br = doc.branch && String(doc.branch).trim() ? String(doc.branch).trim() : 'main';
+            const baseDocId = Number(doc.baseDocId);
+            let docSeg = '';
+            if (Number.isFinite(baseDocId) && baseDocId > 0) {
+                const baseDoc = await BaseModel.get(doc.domainId, baseDocId);
+                if (baseDoc) {
+                    const bid = (baseDoc as { bid?: string }).bid;
+                    docSeg = bid && String(bid).trim() ? String(bid).trim() : String(baseDoc.docId);
                 }
-                resumeUrl = u;
             }
+            if (!docSeg) docSeg = String(doc.baseDocId ?? '');
+            const editorBase = self.url('base_editor_branch', {
+                domainId: doc.domainId,
+                docId: docSeg,
+                branch: br,
+            });
+            const sep = editorBase.includes('?') ? '&' : '?';
+            resumeUrl = `${editorBase}${sep}session=${encodeURIComponent(doc._id.toString())}`;
+        }
     } else if (isLearnSessionRow(doc)) {
         resumeUrl = self.url('learn', { domainId: doc.domainId });
     } else {
@@ -261,17 +271,28 @@ class DevelopSessionStartHandler extends Handler {
         const inPool = fullPool.some((e) => developBranchKey(e.baseDocId, e.branch) === poolKey);
         const run = !fromOutline && inPool ? computeDevelopRunQueueProgress(fullPool, baseDocId, branch) : null;
 
+        const ttlSecRaw = Number(system.get('session.saved_expire_seconds'));
+        const ttlSec = Number.isFinite(ttlSecRaw) && ttlSecRaw > 0 ? ttlSecRaw : 3600 * 24 * 30;
+
         if (existing) {
-            const progress = run
-                ? mergeSessionProgressWithDevelopRun(existing.progress, run)
-                : (existing.progress && typeof existing.progress === 'object' && !Array.isArray(existing.progress)
-                    ? { ...(existing.progress as Record<string, unknown>) }
-                    : {});
+            let progress: Record<string, unknown> = existing.progress && typeof existing.progress === 'object'
+                && !Array.isArray(existing.progress)
+                ? { ...(existing.progress as Record<string, unknown>) }
+                : {};
+            if (run) {
+                progress = mergeSessionProgressWithDevelopRun(progress, run);
+            }
+            const needDeadline = !readDevelopSessionDeadlineMs(existing);
+            if (needDeadline) {
+                progress.developSessionDeadlineAt = new Date(existing.createdAt.getTime() + ttlSec * 1000);
+            }
+            const reusePatch: SessionPatch = {};
+            if (run || needDeadline) reusePatch.progress = progress;
             const bumped = await SessionModel.touchById(
                 finalDomainId,
                 this.user._id,
                 existing._id,
-                run ? { progress } : {},
+                reusePatch,
                 { silent: false },
             );
             const doc = bumped ?? existing;
@@ -287,10 +308,16 @@ class DevelopSessionStartHandler extends Handler {
             developSessionKind: fromOutline ? 'outline_node' : 'daily',
             ...(fromOutline && nodeId ? { nodeId } : {}),
         });
+        const deadline = new Date(doc.createdAt.getTime() + ttlSec * 1000);
+        let progress: Record<string, unknown> = doc.progress && typeof doc.progress === 'object'
+            && !Array.isArray(doc.progress)
+            ? { ...(doc.progress as Record<string, unknown>) }
+            : {};
+        progress.developSessionDeadlineAt = deadline;
         if (run) {
-            const progress = mergeSessionProgressWithDevelopRun(doc.progress, run);
-            await SessionModel.touchById(finalDomainId, this.user._id, doc._id, { progress }, { silent: false });
+            progress = mergeSessionProgressWithDevelopRun(progress, run);
         }
+        await SessionModel.touchById(finalDomainId, this.user._id, doc._id, { progress }, { silent: false });
         this.response.body = { success: true, sessionId: doc._id.toString(), reused: false };
     }
 }
@@ -306,16 +333,6 @@ class DevelopSessionSettleHandler extends Handler {
             throw new ValidationError(this.translate('Invalid session'));
         }
 
-        const okPool = await isEntireDevelopPoolGoalsMetToday(
-            this.ctx.db.db,
-            finalDomainId,
-            this.user._id,
-            this.user.priv,
-        );
-        if (!okPool) {
-            throw new ValidationError(this.translate('Develop settle pool incomplete'));
-        }
-
         const sess = await SessionModel.coll.findOne({
             _id: new ObjectId(sessionHex),
             domainId: finalDomainId,
@@ -325,9 +342,6 @@ class DevelopSessionSettleHandler extends Handler {
         if (!sess) throw new NotFoundError(this.translate('Session not found'));
         if ((sess as { lessonAbandonedAt?: Date | null }).lessonAbandonedAt) {
             throw new NotFoundError(this.translate('Session not found'));
-        }
-        if (inferDevelopSessionKind(sess) === 'outline_node') {
-            throw new ValidationError(this.translate('Develop settle outline session'));
         }
         if (isDevelopSessionSettled(sess)) {
             throw new ValidationError(this.translate('Develop settle already'));
@@ -579,7 +593,7 @@ class SessionConnectionHandler extends ConnectionHandler {
     async sendSessionUpdate(sdoc: SessionDoc) {
         const udoc = await user.getById(this.args.domainId, sdoc.uid);
         const recordSummaries = await recordSummariesForSessionRow(this.args.domainId, sdoc.recordIds);
-        const session = buildSessionListRow(this, sdoc, recordSummaries);
+        const session = await buildSessionListRow(this, sdoc, recordSummaries);
         const key = sdoc._id.toString();
         this.queue.set(key, async () => ({
             html: await this.renderHTML('session_domain_tr.html', { session, udoc }),

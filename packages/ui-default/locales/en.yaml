@@ -657,6 +657,11 @@ develop: Develop
 'Develop editor all pool goals met': All develop pool entries have met their goals today.
 'Develop editor switch modal title': Bases still below today’s goals
 'Develop editor switch modal hint': Open the editor for another pool entry; progress is for the current UTC day.
+'Develop session contribution': This session (saved edits)
+'Develop editor end session': End session
+'Develop session deadline hint': "This editor session auto-closes at (local time):"
+'Develop session started label': "Started (local time):"
+'Develop session elapsed label': "Elapsed:"
 'Develop editor settle': Settle session
 'Develop settle failed': Could not settle this session.
 'Develop settle pool incomplete': Not every develop pool entry has met today’s goals yet.
