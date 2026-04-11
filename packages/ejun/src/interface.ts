@@ -1018,7 +1018,7 @@ declare module './service/db' {
         'learn_consumption_stats': any;
         'develop_branch_daily': any;
         /** Per-domain user lesson/live progress (Learn). */
-        'session': import('./model/session').SessionDoc;
+        'session': SessionDoc;
         'session_record': import('./model/record').SessionRecordDoc;
         /** Judge / worker submission rows (Mongo `record`, not session_record). */
         'record': import('@ejunz/common/types').RecordDoc;
@@ -1107,10 +1107,105 @@ export interface EjunzGlobal {
     locales: Record<string, Record<string, string> & Record<symbol, Record<string, string>>>;
 }
 
-export type { SessionDoc } from './model/session';
 export type { SessionRecordDoc, RecordProblemState } from './model/record';
 
-/** Agent conversation row projected from `session` (appRoute agent + agent session kind). */
+export type LessonMode = 'today' | 'node' | 'card' | null;
+
+export interface LessonCardQueueItem {
+    domainId: string;
+    nodeId: string;
+    cardId: string;
+    nodeTitle?: string;
+    cardTitle?: string;
+    baseDocId?: number;
+    learnSectionOrderIndex?: number;
+    todayQueueRole?: 'new' | 'review';
+}
+
+export interface SessionDoc {
+    _id: ObjectId;
+    domainId: string;
+    uid: number;
+    baseDocId?: number;
+    branch?: string;
+    cardId?: string;
+    nodeId?: string;
+    cardIndex?: number;
+    route?: string;
+    appRoute?: 'learn' | 'develop' | 'agent';
+    developSessionKind?: 'daily' | 'outline_node';
+    agentId?: string;
+    agentSessionKind?: 'chat' | 'client';
+    title?: string;
+    context?: any;
+    clientId?: number;
+    lessonMode?: LessonMode;
+    currentLearnSectionIndex?: number;
+    currentLearnSectionId?: string;
+    lessonReviewCardIds?: string[];
+    lessonCardTimesMs?: number[];
+    lessonCardQueue?: LessonCardQueueItem[];
+    lessonQueueAnchorNodeId?: string | null;
+    lessonQueueBaseDocId?: number | null;
+    lessonQueueLearnBranch?: string | null;
+    lessonQueueDay?: string | null;
+    lessonQueueLearnSectionOrder?: string[];
+    lessonQueueLearnStartCardId?: string | null;
+    lessonQueueLearnSectionOrderIndex?: number | null;
+    lessonQueueLearnSessionMode?: string | null;
+    lessonQueueLearnSubMode?: string | null;
+    lessonQueueLearnNewReviewRatio?: number | null;
+    lessonQueueLearnNewReviewOrder?: string | null;
+    lessonQueueLearnMixedSchedule?: string | null;
+    lessonQueueMixedLayoutVersion?: number | null;
+    lessonAbandonedAt?: Date | null;
+    state?: 'idle' | 'active';
+    progress?: Record<string, unknown>;
+    recordIds?: ObjectId[];
+    lastActivityAt: Date;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export type SessionPatch = Partial<Pick<
+    SessionDoc,
+    | 'baseDocId'
+    | 'branch'
+    | 'cardId'
+    | 'nodeId'
+    | 'cardIndex'
+    | 'route'
+    | 'appRoute'
+    | 'developSessionKind'
+    | 'lessonMode'
+    | 'currentLearnSectionIndex'
+    | 'currentLearnSectionId'
+    | 'lessonReviewCardIds'
+    | 'lessonCardTimesMs'
+    | 'lessonCardQueue'
+    | 'lessonQueueAnchorNodeId'
+    | 'lessonQueueBaseDocId'
+    | 'lessonQueueLearnBranch'
+    | 'lessonQueueDay'
+    | 'lessonQueueLearnSectionOrder'
+    | 'lessonQueueLearnStartCardId'
+    | 'lessonQueueLearnSectionOrderIndex'
+    | 'lessonQueueLearnSessionMode'
+    | 'lessonQueueLearnSubMode'
+    | 'lessonQueueLearnNewReviewRatio'
+    | 'lessonQueueLearnNewReviewOrder'
+    | 'lessonQueueLearnMixedSchedule'
+    | 'lessonQueueMixedLayoutVersion'
+    | 'lessonAbandonedAt'
+    | 'state'
+    | 'progress'
+    | 'agentId'
+    | 'agentSessionKind'
+    | 'title'
+    | 'context'
+    | 'clientId'
+>>;
+
 export interface AgentChatSessionDoc {
     _id: ObjectId;
     domainId: string;
