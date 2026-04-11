@@ -8,7 +8,7 @@ import {
     type FindOptions,
 } from 'mongodb';
 import type { Context } from '../context';
-import type { AgentChatSessionDoc, BaseDoc } from '../interface';
+import type { AgentChatSessionDoc, BaseDoc, SessionDoc, SessionPatch } from '../interface';
 import { NotFoundError } from '../error';
 import db from '../service/db';
 import bus from '../service/bus';
@@ -19,7 +19,6 @@ import { BaseModel } from './base';
 
 const logger = new Logger('model/session');
 
-/** Match agent chat rows by `agentSessionKind`. */
 export function agentChatSessionKindFilter(
     kind?: 'chat' | 'client' | { $in: ('chat' | 'client')[] },
 ): Record<string, unknown> {
@@ -30,141 +29,13 @@ export function agentChatSessionKindFilter(
     return { agentSessionKind: kind };
 }
 
-export type LessonMode = 'today' | 'node' | 'card' | null;
-
-/** Frozen lesson order for the current session (base/branch changes do not mutate until a new queue is started). */
-export interface LessonCardQueueItem {
-    domainId: string;
-    nodeId: string;
-    cardId: string;
-    nodeTitle?: string;
-    cardTitle?: string;
-    /** Base doc id for the card (learn queue items). */
-    baseDocId?: number;
-    /** Slot in `learnSectionOrder` (duplicate sections differ by index, not only by root id). */
-    learnSectionOrderIndex?: number;
-    /** Daily queue only: whether this item was placed in the **new** arm or **review** arm (may cross geographic slot). */
-    todayQueueRole?: 'new' | 'review';
-}
-
-/** Per-user live progress in a domain. Mongo collection: session. */
-export interface SessionDoc {
-    _id: ObjectId;
-    domainId: string;
-    uid: number;
-    baseDocId?: number;
-    branch?: string;
-    cardId?: string;
-    nodeId?: string;
-    cardIndex?: number;
-    route?: string;
-    /** Which app owns this row (`learn` | `develop` | `agent`). */
-    appRoute?: 'learn' | 'develop' | 'agent';
-    /**
-     * Develop 编辑器：`daily` = 从 develop 每日队列进入；`outline_node` = 从大纲单节点进入。
-     * 缺省且 `nodeId` 非空时由 {@link inferDevelopSessionKind} 视为 `outline_node`。
-     */
-    developSessionKind?: 'daily' | 'outline_node';
-    /** Agent chat: agent id string (same as Agent doc). */
-    agentId?: string;
-    /** Agent conversation: `chat` (web) or `client` (Edge). */
-    agentSessionKind?: 'chat' | 'client';
-    /** Optional title for agent conversation list. */
-    title?: string;
-    /** Arbitrary JSON context (tools, systemMessage snapshot, etc.). */
-    context?: any;
-    /** When session kind is `client`, bound Edge client id. */
-    clientId?: number;
-    lessonMode?: LessonMode;
-    currentLearnSectionIndex?: number;
-    currentLearnSectionId?: string;
-    lessonReviewCardIds?: string[];
-    lessonCardTimesMs?: number[];
-    /** Ordered cards for the active lesson run; set once per \"start\" until cleared or mode change. */
-    lessonCardQueue?: LessonCardQueueItem[];
-    /** For `node` mode: subtree root the queue was generated from. */
-    lessonQueueAnchorNodeId?: string | null;
-    lessonQueueBaseDocId?: number | null;
-    /** Learn flow: branch used when the daily queue was frozen (invalidates stale queues on change). */
-    lessonQueueLearnBranch?: string | null;
-    /** UTC YYYY-MM-DD when `lessonCardQueue` was frozen for `today`. */
-    lessonQueueDay?: string | null;
-    /** Copy of `domain.user.learnSectionOrder` when the daily queue was frozen; used to invalidate stale queues. */
-    lessonQueueLearnSectionOrder?: string[];
-    /** Copy of `domain.user.currentLearnStartCardId` when the daily queue was frozen (card-granular start within the section). */
-    lessonQueueLearnStartCardId?: string | null;
-    /** Section slot when starting single-card / node lesson (disambiguates duplicate roots). */
-    lessonQueueLearnSectionOrderIndex?: number | null;
-    /** `learnSessionMode` from domain.user when the daily queue was frozen (`deep` | `breadth` | `random`). */
-    lessonQueueLearnSessionMode?: string | null;
-    /** `learnSubMode` when the daily queue was frozen (`new_only` | `review_only` | `mixed`). */
-    lessonQueueLearnSubMode?: string | null;
-    /** `learnNewReviewRatio` when frozen (0=new only, -1=review only @ daily goal, 1–5=mixed). */
-    lessonQueueLearnNewReviewRatio?: number | null;
-    /** `learnNewReviewOrder` when frozen (`new_first` | `old_first` | `shuffle`). */
-    lessonQueueLearnNewReviewOrder?: string | null;
-    /** `learnMixedSchedule` when frozen (`mixed` mode). */
-    lessonQueueLearnMixedSchedule?: string | null;
-    /** Mixed-mode queue ordering algo revision (`lessonSession.LESSON_QUEUE_MIXED_LAYOUT_VERSION`). */
-    lessonQueueMixedLayoutVersion?: number | null;
-    /** Set when user changes learn settings (section order / daily goal); row is no longer resumable. */
-    lessonAbandonedAt?: Date | null;
-    state?: 'idle' | 'active';
-    /**
-     * Opaque progress bag. Develop editor stores `developEditorUrl`: last browser path+query for this session
-     * (`/d/{domain}/base/.../branch/.../editor?...` or `/d/{domain}/develop/editor?...`).
-     */
-    progress?: Record<string, unknown>;
-    recordIds?: ObjectId[];
-    lastActivityAt: Date;
-    createdAt: Date;
-    updatedAt: Date;
-}
-
-export type SessionPatch = Partial<Pick<
+export type {
+    LessonCardQueueItem,
+    LessonMode,
     SessionDoc,
-    | 'baseDocId'
-    | 'branch'
-    | 'cardId'
-    | 'nodeId'
-    | 'cardIndex'
-    | 'route'
-    | 'appRoute'
-    | 'developSessionKind'
-    | 'lessonMode'
-    | 'currentLearnSectionIndex'
-    | 'currentLearnSectionId'
-    | 'lessonReviewCardIds'
-    | 'lessonCardTimesMs'
-    | 'lessonCardQueue'
-    | 'lessonQueueAnchorNodeId'
-    | 'lessonQueueBaseDocId'
-    | 'lessonQueueLearnBranch'
-    | 'lessonQueueDay'
-    | 'lessonQueueLearnSectionOrder'
-    | 'lessonQueueLearnStartCardId'
-    | 'lessonQueueLearnSectionOrderIndex'
-    | 'lessonQueueLearnSessionMode'
-    | 'lessonQueueLearnSubMode'
-    | 'lessonQueueLearnNewReviewRatio'
-    | 'lessonQueueLearnNewReviewOrder'
-    | 'lessonQueueLearnMixedSchedule'
-    | 'lessonQueueMixedLayoutVersion'
-    | 'lessonAbandonedAt'
-    | 'state'
-    | 'progress'
-    | 'agentId'
-    | 'agentSessionKind'
-    | 'title'
-    | 'context'
-    | 'clientId'
->>;
+    SessionPatch,
+} from '../interface';
 
-/**
- * Matches learn-home shell rows (`isLearnHomePlaceholderSession` in lessonSession.ts): learn route, no mode,
- * no card, empty queue, not abandoned. Used to hide them from the domain session admin list — they are not
- * “practice sessions” (legacy shells from older flows or first lesson start before mode is set).
- */
 export const MONGO_MATCH_LEARN_HOME_PLACEHOLDER_SHELL: Record<string, unknown> = {
     $and: [
         { $or: [{ appRoute: 'learn' }, { route: 'learn' }] },
@@ -203,7 +74,6 @@ function unwrapFindOneSession(updated: unknown): SessionDoc | null {
     return updated as SessionDoc;
 }
 
-/** Full saved editor URL for develop sessions (`progress.developEditorUrl`). */
 export function readDevelopEditorUrl(sess: SessionDoc | null | undefined): string {
     const p = sess?.progress as Record<string, unknown> | undefined;
     const raw = p?.developEditorUrl;
@@ -218,10 +88,6 @@ async function resolveBaseFromEditorPathDocSeg(domainId: string, docSeg: string)
     return BaseModel.getBybid(domainId, docSeg);
 }
 
-/**
- * True if `locationUrl` is a develop editor URL under this domain with matching `session` query
- * (`/d/{domainId}/develop/editor?...`).
- */
 function validateDevelopEditorEntryLocation(domainId: string, locationUrl: string, sessionHex: string): boolean {
     const loc = locationUrl.trim().slice(0, 2048);
     const m = /^\/d\/([^/]+)\/develop\/editor(?:\/)?(?:\?|$)/.exec(loc);
@@ -231,10 +97,6 @@ function validateDevelopEditorEntryLocation(domainId: string, locationUrl: strin
     return sp.get('session') === sessionHex;
 }
 
-/**
- * True if `locationUrl` is `/d/{domainId}/base/{docSeg}/branch/{branch}/editor?...` with matching `session`,
- * and resolves to `expectedBaseDocId` on `expectedBranch`; or `/d/{domainId}/develop/editor?...` with matching session.
- */
 export async function validateDevelopEditorStoredLocation(
     domainId: string,
     locationUrl: string,
@@ -261,7 +123,6 @@ export async function validateDevelopEditorStoredLocation(
 
 export type DevelopSessionEditTotalsWire = { nodes: number; cards: number; problems: number };
 
-/** Cumulative node/card/problem edit counts for the current develop editor session (`progress.developSessionEditTotals`). */
 export function readDevelopSessionEditTotals(sess: SessionDoc | null | undefined): DevelopSessionEditTotalsWire {
     const p = sess?.progress as Record<string, unknown> | undefined;
     const raw = p?.developSessionEditTotals;
@@ -292,12 +153,10 @@ export default class SessionModel {
         return q;
     }
 
-    /** Most recently active row for this user in the domain (may be one of several session documents). */
     static async get(domainId: string, uid: number): Promise<SessionDoc | null> {
         return this.coll.findOne({ domainId, uid }, { sort: { lastActivityAt: -1 } });
     }
 
-    /** New session row (does not merge into an existing domain+uid document). */
     static async insertSession(
         domainId: string,
         uid: number,
@@ -320,7 +179,6 @@ export default class SessionModel {
         return doc;
     }
 
-    /** Update a specific session by id (must belong to domain + uid). */
     static async touchById(
         domainId: string,
         uid: number,
@@ -344,11 +202,6 @@ export default class SessionModel {
         return doc;
     }
 
-    /**
-     * Upsert progress on the latest session row for (domainId, uid), bump lastActivityAt.
-     * Uses findOneAndUpdate + sort so multiple rows per user do not pick an arbitrary document.
-     * @param opts.silent — skip bus broadcast (high-frequency lesson steps).
-     */
     static async touch(
         domainId: string,
         uid: number,
@@ -386,7 +239,6 @@ export default class SessionModel {
             .toArray();
     }
 
-    /** Mongo filter for domain session admin list (live list + filters). */
     static buildSessionListMongoFilter(
         domainId: string,
         uid: number | undefined,
@@ -473,9 +325,6 @@ export default class SessionModel {
         await this.coll.deleteMany({ domainId, uid });
     }
 
-    /**
-     * Session row whose `_id` is the agent conversation id (`session_record.sessionId` after insert).
-     */
     static async ensureAgentChatSession(
         domainId: string,
         uid: number,
@@ -502,7 +351,6 @@ export default class SessionModel {
         return out as SessionDoc;
     }
 
-    /** Map agent conversation session → template / WS view. */
     static toAgentChatSessionView(doc: SessionDoc | null): AgentChatSessionDoc | null {
         const kind = doc?.agentSessionKind;
         if (!doc || !kind) return null;
@@ -638,9 +486,9 @@ export default class SessionModel {
         if ($inc && Object.keys($inc).length) $update.$inc = $inc as any;
         const base = {
             domainId,
-            appRoute: 'agent',
+            appRoute: 'agent' as const,
             ...agentChatSessionKindFilter(),
-        };
+        } as Filter<SessionDoc>;
         if (_id instanceof Array) {
             await this.coll.updateMany({ _id: { $in: _id }, ...base }, $update);
             return null;
@@ -692,10 +540,6 @@ export default class SessionModel {
         return doc as SessionDoc | null;
     }
 
-    /**
-     * Persist last develop base editor URL (`progress.developEditorUrl`) from client pathname+search.
-     * Caller must pass a URL that passes {@link validateDevelopEditorStoredLocation}.
-     */
     static async persistDevelopEditorUrl(
         domainId: string,
         uid: number,
