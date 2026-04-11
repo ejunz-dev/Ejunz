@@ -3568,7 +3568,12 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             ...(developEditorNavPayload ? { developEditorNav: developEditorNavPayload } : {}),
           });
         }
-      } catch (_persistUi) {
+      } catch (_persistUi: any) {
+        if (_persistUi?.params?.[0] === 'DEVELOP_SESSION_CLOSED') {
+          Notification.warn(i18n('Develop session closed reload hint'));
+          window.location.reload();
+          return;
+        }
         /* layout / develop nav persistence is best-effort */
       }
       
@@ -3642,6 +3647,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         });
       }
     } catch (error: any) {
+      if (error?.params?.[0] === 'DEVELOP_SESSION_CLOSED') {
+        Notification.warn(i18n('Develop session closed reload hint'));
+        window.location.reload();
+        return;
+      }
       const msg = (error?.message || '').toLowerCase();
       const rawMsg = (error?.rawMessage || '').toLowerCase();
       const isNotLoggedIn = msg.includes('not logged in') || rawMsg.includes("you're not logged in");

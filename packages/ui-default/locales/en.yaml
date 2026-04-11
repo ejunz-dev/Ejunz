@@ -619,6 +619,7 @@ develop: Develop
 'Develop save pool': Save pool
 'Develop start': Start develop
 'Develop continue': Continue develop
+'Develop session closed reload hint': This develop session has ended or is no longer editable. Reloading…
 'Develop start failed': Could not start develop session. Please try again.
 'Develop pool order hint': Order shown here is the run order; adjust with ↑↓ in Edit, then save.
 'Develop pool skip done hint': Bases that already met today’s goals are skipped by Start develop.
