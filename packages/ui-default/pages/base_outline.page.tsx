@@ -756,6 +756,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
   const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
   const branchDropdownRef = useRef<HTMLDivElement>(null);
   const [outlineStartBusy, setOutlineStartBusy] = useState(false);
+  const [learnOutlineBusy, setLearnOutlineBusy] = useState(false);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -1572,12 +1573,16 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     void nodeId;
   }, []);
 
-  const startEditorSessionFromOutline = useCallback(async (nodeId: string) => {
-    if (!nodeId || outlineStartBusy) return;
+  const outlineUiDomainId = useCallback((): string => {
     const rawDomainId = (window as any).UiContext?.domainId;
-    const domainId = typeof rawDomainId === 'object'
+    return typeof rawDomainId === 'object'
       ? (rawDomainId?._id ? String(rawDomainId._id) : 'system')
       : (rawDomainId ? String(rawDomainId) : 'system');
+  }, []);
+
+  const startEditorSessionFromOutline = useCallback(async (nodeId: string) => {
+    if (!nodeId || outlineStartBusy) return;
+    const domainId = outlineUiDomainId();
     const baseDocNum = Number((base as any).docId ?? docId);
     if (!Number.isFinite(baseDocNum) || baseDocNum <= 0) {
       Notification.error(i18n('Outline editor start invalid base'));
@@ -1616,7 +1621,71 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     } finally {
       setOutlineStartBusy(false);
     }
-  }, [base.currentBranch, base, docId, outlineStartBusy]);
+  }, [base.currentBranch, base, docId, outlineStartBusy, outlineUiDomainId]);
+
+  const startSingleCardLearnFromOutline = useCallback(async (cardIdRaw: string | undefined) => {
+    const cardId = String(cardIdRaw || '').trim();
+    if (!cardId || learnOutlineBusy) return;
+    if (!/^[a-f0-9]{24}$/i.test(cardId)) {
+      Notification.error(i18n('Outline learn invalid card'));
+      return;
+    }
+    const domainId = outlineUiDomainId();
+    setLearnOutlineBusy(true);
+    try {
+      const res: any = await request.post(`/d/${domainId}/learn/lesson/start`, {
+        mode: 'card',
+        cardId,
+      });
+      const redir = res?.redirect ?? res?.body?.redirect ?? res?.data?.redirect;
+      const url = redir || `/d/${domainId}/learn/lesson?cardId=${encodeURIComponent(cardId)}`;
+      const opened = window.open(url, '_blank', 'noopener,noreferrer');
+      if (opened) {
+        opened.opener = null;
+      } else {
+        Notification.error(i18n('Outline editor popup blocked'));
+      }
+    } catch (e: any) {
+      const msg = e?.message ?? i18n('Outline learn start failed');
+      Notification.error(typeof msg === 'string' ? msg : String(msg));
+    } finally {
+      setLearnOutlineBusy(false);
+    }
+  }, [learnOutlineBusy, outlineUiDomainId]);
+
+  const startSingleNodeLearnFromOutline = useCallback(async (nodeId: string | undefined) => {
+    const nid = String(nodeId || '').trim();
+    if (!nid || learnOutlineBusy) return;
+    const baseDocNum = Number((base as any).docId ?? docId);
+    if (!Number.isFinite(baseDocNum) || baseDocNum <= 0) {
+      Notification.error(i18n('Outline editor start invalid base'));
+      return;
+    }
+    const branch = base.currentBranch || 'main';
+    const domainId = outlineUiDomainId();
+    setLearnOutlineBusy(true);
+    try {
+      const res: any = await request.post(`/d/${domainId}/learn/lesson/start`, {
+        mode: 'node',
+        nodeId: nid,
+        baseDocId: baseDocNum,
+        branch,
+      });
+      const redir = res?.redirect ?? res?.body?.redirect ?? res?.data?.redirect;
+      const url = redir || `/d/${domainId}/learn/lesson`;
+      const opened = window.open(url, '_blank', 'noopener,noreferrer');
+      if (opened) {
+        opened.opener = null;
+      } else {
+        Notification.error(i18n('Outline editor popup blocked'));
+      }
+    } catch (e: any) {
+      const msg = e?.message ?? i18n('Outline learn start failed');
+      Notification.error(typeof msg === 'string' ? msg : String(msg));
+    } finally {
+      setLearnOutlineBusy(false);
+    }
+  }, [learnOutlineBusy, outlineUiDomainId, base, docId]);
 
  
   const initImageCache = useCallback(async () => {
@@ -3917,6 +3986,45 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           >
             {contextMenu.file.type === 'card' ? (
               <>
+                {basePath !== 'base/skill' && contextMenu.file.cardId ? (
+                  <>
+                    <div
+                      style={{
+                        padding: isMobile ? '12px 16px' : '6px 16px',
+                        cursor: learnOutlineBusy ? 'wait' : 'pointer',
+                        fontSize: isMobile ? '15px' : '13px',
+                        color: themeStyles.textPrimary,
+                        userSelect: 'none',
+                        WebkitUserSelect: 'none',
+                        opacity: learnOutlineBusy ? 0.65 : 1,
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isMobile && !learnOutlineBusy) {
+                          e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isMobile) {
+                          e.currentTarget.style.backgroundColor = 'transparent';
+                        }
+                      }}
+                      onTouchStart={(e) => {
+                        if (!learnOutlineBusy) e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                      }}
+                      onTouchEnd={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }}
+                      onClick={() => {
+                        const cid = contextMenu.file.cardId;
+                        if (cid) void startSingleCardLearnFromOutline(cid);
+                        setContextMenu(null);
+                      }}
+                    >
+                      {i18n('Outline learn single card')}
+                    </div>
+                    <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
+                  </>
+                ) : null}
                 <div
                   style={{
                     padding: isMobile ? '12px 16px' : '6px 16px',
@@ -3983,6 +4091,34 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                       }}
                     >
                       {i18n('Outline editor start session')}
+                    </div>
+                    <div
+                      style={{
+                        padding: isMobile ? '12px 16px' : '6px 16px',
+                        cursor: learnOutlineBusy ? 'wait' : 'pointer',
+                        fontSize: isMobile ? '15px' : '13px',
+                        color: themeStyles.textPrimary,
+                        userSelect: 'none',
+                        WebkitUserSelect: 'none',
+                        opacity: learnOutlineBusy ? 0.65 : 1,
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isMobile && !learnOutlineBusy) {
+                          e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isMobile) {
+                          e.currentTarget.style.backgroundColor = 'transparent';
+                        }
+                      }}
+                      onClick={() => {
+                        const nid = contextMenu.file.nodeId;
+                        if (nid) void startSingleNodeLearnFromOutline(nid);
+                        setContextMenu(null);
+                      }}
+                    >
+                      {i18n('Outline learn single node')}
                     </div>
                     <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
                   </>
