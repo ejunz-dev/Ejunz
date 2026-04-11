@@ -1,6 +1,6 @@
 import { ObjectId } from 'mongodb';
 import type { Context } from '../context';
-import { Handler, param, route, post, Types, ConnectionHandler } from '../service/server';
+import { Handler, param, route, post, Types, ConnectionHandler, subscribe } from '../service/server';
 import { NotFoundError, ForbiddenError, BadRequestError, ValidationError, FileLimitExceededError, FileUploadError, FileExistsError } from '../error';
 import { PRIV, PERM } from '../model/builtin';
 import { BaseModel, CardModel, TYPE_CARD } from '../model/base';
@@ -33,7 +33,7 @@ import {
 } from '../lib/developPoolShared';
 import RecordModel, { type DevelopSaveChangeLine } from '../model/record';
 import SessionModel, { type SessionDoc } from '../model/session';
-import { isDevelopSessionSettled } from '../lib/sessionListDisplay';
+import { isDevelopSessionRow, isDevelopSessionSettled } from '../lib/sessionListDisplay';
 
 const exec = promisify(execCb);
 const execFile = promisify(execFileCb);
@@ -5881,6 +5881,18 @@ export class BaseConnectionHandler extends ConnectionHandler {
         });
         this.subscriptions.push({ dispose: dispose2 });
 
+    }
+
+    /** When develop-pool session rows change status, refresh contribution payload (incl. developEditorContext). */
+    @subscribe('session/change')
+    async onSessionChangeForBaseEditor(doc: SessionDoc) {
+        if (!this.wsDomainId || this.docId == null) return;
+        if (doc.domainId !== this.wsDomainId) return;
+        if (doc.uid !== this.user._id) return;
+        if (!isDevelopSessionRow(doc)) return;
+        const bid = Number(doc.baseDocId);
+        if (!Number.isFinite(bid) || bid <= 0 || bid !== Number(this.docId)) return;
+        await this.sendUpdate(this.wsDomainId);
     }
 
     async message(msg: any) {
