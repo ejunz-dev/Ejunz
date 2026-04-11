@@ -1,6 +1,7 @@
 import { ObjectId } from 'mongodb';
 import DomainModel from '../model/domain';
 import SessionModel, { type SessionDoc } from '../model/session';
+import bus from '../service/bus';
 import { developBranchKey, developTodayUtcYmd } from './developBranchDaily';
 import { loadDevelopRunQueuePool, type DevelopPoolEntryWire } from './developPoolShared';
 import { deriveSessionLearnStatus, isDevelopSessionRow, isDevelopSessionSettled } from './sessionListDisplay';
@@ -206,16 +207,23 @@ export async function hasDevelopSessionInProgressOrPaused(
 export async function clearDevelopSessionsAfterPoolChange(domainId: string, uid: number): Promise<void> {
     await clearDevelopDailySessionPointer(domainId, uid);
     const now = new Date();
+    const abandonFilter = {
+        domainId,
+        uid,
+        appRoute: 'develop' as const,
+        $and: [
+            { $or: [{ lessonAbandonedAt: { $exists: false } }, { lessonAbandonedAt: null }] },
+            developSessionNotSettledMongoFilter,
+        ],
+    };
+    const toAbandon = await SessionModel.coll.find(abandonFilter).project({ _id: 1 }).toArray();
+    if (!toAbandon.length) return;
     await SessionModel.coll.updateMany(
-        {
-            domainId,
-            uid,
-            appRoute: 'develop',
-            $and: [
-                { $or: [{ lessonAbandonedAt: { $exists: false } }, { lessonAbandonedAt: null }] },
-                developSessionNotSettledMongoFilter,
-            ],
-        },
+        { _id: { $in: toAbandon.map((d) => d._id) } },
         { $set: { lessonAbandonedAt: now, lastActivityAt: now } },
     );
+    for (const row of toAbandon) {
+        const fresh = await SessionModel.coll.findOne({ _id: row._id, domainId, uid }) as SessionDoc | null;
+        if (fresh) bus.broadcast('session/change', fresh);
+    }
 }
