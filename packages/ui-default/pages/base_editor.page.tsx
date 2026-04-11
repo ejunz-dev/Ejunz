@@ -3481,7 +3481,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               Notification.warn(i18n('Save completed, but {0} error(s) occurred', response.errors.length));
             }
           } else {
-            throw new Error(response.errors?.join(', ') || i18n('Batch save failed'));
+            const r = response as { url?: string; errors?: string[] };
+            if (typeof r.url === 'string' && r.url && /\/login(\?|#|$)/i.test(r.url)) {
+              throw Object.assign(new Error("You're not logged in."), { rawMessage: "You're not logged in." });
+            }
+            throw new Error(r.errors?.join(', ') || i18n('Batch save failed'));
           }
         } catch (error: any) {
           throw error;
@@ -3653,14 +3657,18 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         return;
       }
       const msg = (error?.message || '').toLowerCase();
-      const rawMsg = (error?.rawMessage || '').toLowerCase();
-      const isNotLoggedIn = msg.includes('not logged in') || rawMsg.includes("you're not logged in");
+      const rawMsg = String(error?.rawMessage || '');
+      const rawLower = rawMsg.toLowerCase();
+      const isNotLoggedIn =
+        msg.includes('not logged in')
+        || rawLower.includes("you're not logged in")
+        || rawLower.includes('privilegeerror')
+        || msg.includes('privilegeerror')
+        || msg.includes('您没有登录')
+        || msg.includes('没有登录')
+        || msg.includes('未登录');
       if (isNotLoggedIn) {
-        Notification.warn(i18n('Login expired, please log in again.'));
-        const redirect = encodeURIComponent(window.location.pathname + window.location.search);
-        const domainId = (window as any).UiContext?.domainId;
-        const loginPath = domainId ? `/d/${domainId}/login` : '/login';
-        window.location.href = `${loginPath}?redirect=${redirect}`;
+        Notification.warn(i18n('Save failed not logged in'));
         return;
       }
       Notification.error(i18n('Save failed') + ': ' + (error?.message || i18n('Unknown error')));
