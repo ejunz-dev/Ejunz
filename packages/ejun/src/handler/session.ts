@@ -20,7 +20,6 @@ import {
     developBranchKey,
     developRunTerminalTotals,
     isEntireDevelopPoolGoalsMetToday,
-    loadDevelopRunQueuePool,
     loadUserDevelopPool,
 } from '../lib/developPoolShared';
 import { PERM, PRIV } from '../model/builtin';
@@ -174,18 +173,13 @@ class DevelopSessionStartHandler extends Handler {
         if (!base) throw new NotFoundError('Base not found');
         if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
 
-        const pendingPool = await loadDevelopRunQueuePool(
-            this.ctx.db.db,
-            finalDomainId,
-            this.user._id,
-            this.user.priv,
-        );
+        const fullPool = await loadUserDevelopPool(finalDomainId, this.user._id, this.user.priv);
         const poolKey = developBranchKey(baseDocId, branch);
-        if (!pendingPool.length) {
+        if (!fullPool.length) {
             throw new ValidationError(this.translate('Develop run queue empty today'));
         }
-        if (!pendingPool.some((e) => developBranchKey(e.baseDocId, e.branch) === poolKey)) {
-            throw new ValidationError(this.translate('Develop start goals done today'));
+        if (!fullPool.some((e) => developBranchKey(e.baseDocId, e.branch) === poolKey)) {
+            throw new ValidationError(this.translate('Develop start base not in pool'));
         }
 
         const cutoff = new Date(Date.now() - DEVELOP_SESSION_REUSE_MS);
@@ -207,7 +201,7 @@ class DevelopSessionStartHandler extends Handler {
             .toArray();
         const existing = recent[0] as SessionDoc | undefined;
 
-        const run = computeDevelopRunQueueProgress(pendingPool, baseDocId, branch);
+        const run = computeDevelopRunQueueProgress(fullPool, baseDocId, branch);
 
         if (existing) {
             const progress = run

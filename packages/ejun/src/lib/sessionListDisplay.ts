@@ -128,8 +128,8 @@ export function formatRecordProgressInSession(rd: SessionRecordDoc, sess: Sessio
 
 export function deriveSessionLearnStatus(doc: SessionDoc, now = Date.now()): SessionListStatus {
     if (isDevelopSessionRow(doc)) {
-        if ((doc as { lessonAbandonedAt?: Date | null }).lessonAbandonedAt) return 'abandoned';
         if (isDevelopSessionSettled(doc)) return 'finished';
+        if ((doc as { lessonAbandonedAt?: Date | null }).lessonAbandonedAt) return 'abandoned';
         if (isSessionStalePastUtcCalendarDay(doc, now)) return 'timed_out';
         const t = doc.lastActivityAt ? new Date(doc.lastActivityAt).getTime() : 0;
         if (now - t < ON_LESSON_RECENT_MS) return 'in_progress';
