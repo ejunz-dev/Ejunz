@@ -18,6 +18,18 @@
   {% if developEditorContext is defined and developEditorContext %}
   {{ set(UiContext, 'developEditorContext', developEditorContext) }}
   {% endif %}
+  {% if developSessionEditTotals is defined %}
+  {{ set(UiContext, 'developSessionEditTotals', developSessionEditTotals) }}
+  {% endif %}
+  {% if developSessionDeadlineIso is defined and developSessionDeadlineIso %}
+  {{ set(UiContext, 'developSessionDeadlineIso', developSessionDeadlineIso) }}
+  {% endif %}
+  {% if developSessionStartedAtIso is defined and developSessionStartedAtIso %}
+  {{ set(UiContext, 'developSessionStartedAtIso', developSessionStartedAtIso) }}
+  {% endif %}
+  {% if editorDevelopSessionKind is defined and editorDevelopSessionKind %}
+  {{ set(UiContext, 'editorDevelopSessionKind', editorDevelopSessionKind) }}
+  {% endif %}
   {{ set(UiContext, 'baseExpandState', baseExpandState or []) }}
   {{ set(UiContext, 'baseEditorUiPrefs', baseEditorUiPrefs or {}) }}
   {{ set(UiContext, 'editorRootNodeId', editorRootNodeId or '') }}
@@ -27,7 +39,11 @@
   {{ set(UiContext, 'editorUiMode', editorUiMode) }}
   {% endif %}
   {% set _socketPrefix = 'base/ws?domainId=' %}
-  {{ set(UiContext, 'socketUrl', _socketPrefix + (domainId or (base and base.domainId) or '') + '&docId=' + (base.docId.toString() if base and base.docId else '')) }}
+  {% set _sessws = '' %}
+  {% if developEditorSessionHex is defined and developEditorSessionHex %}
+  {% set _sessws = '&developEditorSession=' + developEditorSessionHex %}
+  {% endif %}
+  {{ set(UiContext, 'socketUrl', _socketPrefix + (domainId or (base and base.domainId) or '') + '&docId=' + (base.docId.toString() if base and base.docId else '') + _sessws) }}
 </script>
 <div class="row base-editor-page">
   <div class="large-12 columns base-editor-page__col">

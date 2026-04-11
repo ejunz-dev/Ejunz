@@ -70,6 +70,28 @@ function isDevelopRoute(doc: SessionDoc): boolean {
  *
  * Does not inspect abandoned / settled / finished; callers gate those first.
  */
+/** Wall-clock end of develop editor session (aligned with login cookie `saved_expire_seconds`). */
+export function readDevelopSessionDeadlineMs(doc: SessionDoc | null | undefined): number | null {
+    if (!doc) return null;
+    const p = doc.progress as Record<string, unknown> | undefined;
+    if (!p || typeof p !== 'object') return null;
+    const v = p.developSessionDeadlineAt;
+    if (v instanceof Date) {
+        const t = v.getTime();
+        return Number.isNaN(t) ? null : t;
+    }
+    if (typeof v === 'string' && v.trim()) {
+        const t = new Date(v.trim()).getTime();
+        return Number.isNaN(t) ? null : t;
+    }
+    return null;
+}
+
+export function isDevelopSessionPastDeadline(doc: SessionDoc | null | undefined, now: number = Date.now()): boolean {
+    const t = readDevelopSessionDeadlineMs(doc);
+    return t != null && now > t;
+}
+
 export function isSessionStalePastUtcCalendarDay(doc: SessionDoc, now: number = Date.now()): boolean {
     const todayYmd = sessionUtcYmd(now);
     if (isDevelopRoute(doc)) {

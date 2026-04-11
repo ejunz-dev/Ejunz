@@ -1,12 +1,18 @@
 import type { SessionRecordDoc } from '../model/record';
 import type { SessionDoc } from '../model/session';
 import { isLearnHomePlaceholderSession } from './lessonSession';
-import { isSessionStalePastUtcCalendarDay } from './sessionUtcDaily';
+import {
+    isDevelopSessionPastDeadline,
+    isSessionStalePastUtcCalendarDay,
+    readDevelopSessionDeadlineMs,
+} from './sessionUtcDaily';
 
 export {
     dailyRunAnchorYmd,
     effectiveLessonQueueYmd,
+    isDevelopSessionPastDeadline,
     isSessionStalePastUtcCalendarDay,
+    readDevelopSessionDeadlineMs,
     sessionUtcYmd,
 } from './sessionUtcDaily';
 
@@ -152,7 +158,8 @@ export function deriveSessionLearnStatus(doc: SessionDoc, now = Date.now()): Ses
     if (isDevelopSessionRow(doc)) {
         if (isDevelopSessionSettled(doc)) return 'finished';
         if ((doc as { lessonAbandonedAt?: Date | null }).lessonAbandonedAt) return 'abandoned';
-        if (isSessionStalePastUtcCalendarDay(doc, now)) return 'timed_out';
+        if (isDevelopSessionPastDeadline(doc, now)) return 'timed_out';
+        if (!readDevelopSessionDeadlineMs(doc) && isSessionStalePastUtcCalendarDay(doc, now)) return 'timed_out';
         const t = doc.lastActivityAt ? new Date(doc.lastActivityAt).getTime() : 0;
         if (now - t < ON_LESSON_RECENT_MS) return 'in_progress';
         return 'paused';

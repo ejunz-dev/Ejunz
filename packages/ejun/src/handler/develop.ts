@@ -7,7 +7,13 @@ import { MethodNotAllowedError } from '@ejunz/framework';
 import DomainModel from '../model/domain';
 import { BaseModel } from '../model/base';
 import { NotFoundError, ValidationError } from '../error';
-import SessionModel, { readDevelopEditorNav, type SessionDoc } from '../model/session';
+import SessionModel, {
+    readDevelopEditorUrl,
+    readDevelopSessionEditTotals,
+    validateDevelopEditorStoredLocation,
+    type SessionDoc,
+} from '../model/session';
+import { readDevelopSessionDeadlineMs } from '../lib/sessionUtcDaily';
 import { buildBaseEditorPageBody } from './base';
 import type { BaseDoc } from '../interface';
 import { developBranchKey, developTodayUtcYmd, getDevelopBranchDailyMany } from '../lib/developBranchDaily';
@@ -102,14 +108,46 @@ class DevelopSessionEditorHandler extends Handler {
         const q = this.request.query || {};
         const hasCardInUrl = typeof q.cardId === 'string' && q.cardId.trim().length > 0;
         const hasNodeInUrl = typeof q.nodeId === 'string' && q.nodeId.trim().length > 0;
-        const savedNav = readDevelopEditorNav(sess);
-        if (!hasCardInUrl && !hasNodeInUrl && savedNav && (savedNav.cardId || savedNav.nodeId)) {
+
+        if (inferDevelopSessionKind(sess) === 'outline_node') {
+            const savedEditorUrl = readDevelopEditorUrl(sess);
+            if (!hasCardInUrl && !hasNodeInUrl && savedEditorUrl) {
+                const locOk = await validateDevelopEditorStoredLocation(
+                    domainId,
+                    savedEditorUrl,
+                    sid,
+                    baseDocId,
+                    requestedBranch,
+                );
+                if (locOk) {
+                    this.response.redirect = savedEditorUrl;
+                    return;
+                }
+            }
+            const docSeg = (base as { bid?: string }).bid && String((base as { bid?: string }).bid).trim()
+                ? String((base as { bid?: string }).bid).trim()
+                : String(base.docId);
             const sp = new URLSearchParams();
             sp.set('session', sid);
-            if (savedNav.cardId) sp.set('cardId', savedNav.cardId);
-            else if (savedNav.nodeId) sp.set('nodeId', savedNav.nodeId);
-            this.response.redirect = `/d/${encodeURIComponent(domainId)}/develop/editor?${sp.toString()}`;
+            if (hasCardInUrl) sp.set('cardId', String(q.cardId).trim());
+            if (hasNodeInUrl) sp.set('nodeId', String(q.nodeId).trim());
+            this.response.redirect = `/d/${encodeURIComponent(domainId)}/base/${encodeURIComponent(docSeg)}/branch/${encodeURIComponent(requestedBranch)}/editor?${sp.toString()}`;
             return;
+        }
+
+        const savedDailyUrl = readDevelopEditorUrl(sess);
+        if (!hasCardInUrl && !hasNodeInUrl && savedDailyUrl) {
+            const locOk = await validateDevelopEditorStoredLocation(
+                domainId,
+                savedDailyUrl,
+                sid,
+                baseDocId,
+                requestedBranch,
+            );
+            if (locOk) {
+                this.response.redirect = savedDailyUrl;
+                return;
+            }
         }
 
         this.response.template = 'base_editor.html';
@@ -131,9 +169,17 @@ class DevelopSessionEditorHandler extends Handler {
             rootNodeIdFromQuery,
             developPoolUiMode: inferDevelopSessionKind(sess) === 'outline_node' ? 'none' : 'full',
         });
+        const deadlineMs = readDevelopSessionDeadlineMs(sess);
+        const createdAt = sess.createdAt instanceof Date
+            ? sess.createdAt
+            : new Date(sess.createdAt as Date);
         this.response.body = {
             ...editorBody,
             page_name: 'develop_editor',
+            editorDevelopSessionKind: 'daily' as const,
+            developSessionEditTotals: readDevelopSessionEditTotals(sess),
+            developSessionDeadlineIso: deadlineMs != null ? new Date(deadlineMs).toISOString() : null,
+            developSessionStartedAtIso: Number.isNaN(createdAt.getTime()) ? null : createdAt.toISOString(),
         };
     }
 }

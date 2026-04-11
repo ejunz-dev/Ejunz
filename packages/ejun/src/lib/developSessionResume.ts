@@ -10,7 +10,7 @@ import {
     isDevelopSessionRow,
     isDevelopSessionSettled,
 } from './sessionListDisplay';
-import { isSessionStalePastUtcCalendarDay } from './sessionUtcDaily';
+import { isDevelopSessionPastDeadline, isSessionStalePastUtcCalendarDay } from './sessionUtcDaily';
 
 /** Same window as `DevelopSessionStartHandler` session reuse. */
 export const DEVELOP_SESSION_REUSE_MS = 8 * 3600 * 1000;
@@ -76,6 +76,7 @@ function isDevelopSessionResumable(
 ): doc is SessionDoc {
     if (!doc || !isDevelopSessionRow(doc)) return false;
     if (inferDevelopSessionKind(doc) === 'outline_node') return false;
+    if (isDevelopSessionPastDeadline(doc, now)) return false;
     if (isDevelopSessionSettled(doc)) return false;
     if ((doc as { lessonAbandonedAt?: Date | null }).lessonAbandonedAt) return false;
     if (!developSessionInPool(doc, poolKeys)) return false;
@@ -119,7 +120,7 @@ export async function resolveDevelopDailySessionDoc(domainId: string, uid: numbe
         await clearDevelopDailySessionPointer(domainId, uid);
         return null;
     }
-    if (isSessionStalePastUtcCalendarDay(doc, Date.now())) {
+    if (isSessionStalePastUtcCalendarDay(doc, Date.now()) || isDevelopSessionPastDeadline(doc)) {
         await clearDevelopDailySessionPointer(domainId, uid);
         return null;
     }

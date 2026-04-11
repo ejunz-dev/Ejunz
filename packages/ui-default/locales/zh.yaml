@@ -925,6 +925,11 @@ develop: 开发
 'Develop editor all pool goals met': 开发池内所有条目今日目标均已完成。
 'Develop editor switch modal title': 今日尚未完成目标的开发池条目
 'Develop editor switch modal hint': 点击下方条目进入对应编辑器；进度为当前 UTC 日。
+'Develop session contribution': 本会话
+'Develop editor end session': 结束会话
+'Develop session deadline hint': 以下时间后本会话将自动结束（本地时间）：
+'Develop session started label': 开始时间（本地）：
+'Develop session elapsed label': 已持续时间：
 'Develop editor settle': 结算
 'Develop settle failed': 结算失败。
 'Develop settle pool incomplete': 开发池内尚有条目未达成今日目标，无法结算。
