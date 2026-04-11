@@ -36,16 +36,12 @@ interface PendingNode {
   cards: PendingNodeCard[];
 }
 
-interface MapCardProblem {
-  stem?: string;
-}
-
 interface MapCard {
   cardId: string;
   title: string;
   order?: number;
   problemCount?: number;
-  problems?: MapCardProblem[];
+  problems?: Array<{ stem?: string }>;
 }
 
 interface MapDAGNode {

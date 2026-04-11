@@ -385,6 +385,55 @@ export interface BaseHistoryEntry {
     };
 }
 
+/** Card-attached practice problems (editor + lesson). Legacy rows omit `type` → single choice. */
+export type ProblemKind = 'single' | 'multi' | 'true_false' | 'flip';
+
+export interface ProblemCommon {
+    pid: string;
+    analysis?: string;
+    imageUrl?: string;
+    imageNote?: string;
+}
+
+/** Single choice (default when `type` omitted). */
+export interface ProblemSingle extends ProblemCommon {
+    type?: 'single';
+    stem: string;
+    options: string[];
+    answer: number;
+    /** Editor: number of option slots (2–8). */
+    optionSlots?: number;
+}
+
+export interface ProblemMulti extends ProblemCommon {
+    type: 'multi';
+    stem: string;
+    options: string[];
+    /** Correct option indices; learner must match exactly. */
+    answer: number[];
+    optionSlots?: number;
+}
+
+/** True/false: 0 = false, 1 = true */
+export interface ProblemTrueFalse extends ProblemCommon {
+    type: 'true_false';
+    stem: string;
+    answer: 0 | 1;
+}
+
+/** Flip card: show face A, then face B after user taps know / not sure. */
+export interface ProblemFlip extends ProblemCommon {
+    type: 'flip';
+    faceA: string;
+    faceB: string;
+}
+
+export type Problem =
+    | ProblemSingle
+    | ProblemMulti
+    | ProblemTrueFalse
+    | ProblemFlip;
+
 export interface CardDoc {
     docType: document['TYPE_CARD'];
     docId: ObjectId;
@@ -401,15 +450,8 @@ export interface CardDoc {
     views: number;
     createdAt?: Date;
     order?: number;
-   
-    problems?: {
-        pid: string;         
-        type: 'single';      
-        stem: string;        
-        options: string[];   
-        answer: number;      
-        analysis?: string;   
-    }[];
+
+    problems?: Problem[];
     /** Mounted files (uploaded to this card) */
     files?: FileInfo[];
 }

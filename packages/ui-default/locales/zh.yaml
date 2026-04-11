@@ -380,6 +380,19 @@ __langname: 简体中文
 'Preview image': 预览图片
 'Previous': 上一题
 'Problem generated, please review': 题目已生成，请检查并确认
+'Problem kind single': 单选
+'Problem kind multi': 多选
+'Problem kind true false': 判断
+'Problem kind flip': 翻转
+'Problem field type': 题型
+'Problem option slots': 选项槽
+'Problem multi all correct': 需全部选对才算过
+'Problem face A label': A 面（先展示）
+'Problem face B label': B 面（认识/不认识后翻转）
+'Problem face A placeholder': 正面内容
+'Problem face B placeholder': 背面内容
+'Problem answer true': 对
+'Problem answer false': 错
 'Provider (MCP)': Provider (MCP)
 'Provider': 提供商
 'Pulling from GitHub...': 正在从 GitHub 拉取...

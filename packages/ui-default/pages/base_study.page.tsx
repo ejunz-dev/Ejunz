@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
 import { request } from 'vj/utils';
+import type { ProblemSingle } from 'ejun/src/interface';
 import ReactFlow, {
   Node,
   Edge,
@@ -405,24 +406,17 @@ const StudyCard = ({
   );
 };
 
-interface Problem {
-  imageUrl?: string; // 题目图片URL
-  imageNote?: string; // 图片备注
-  pid: string;
-  type: 'single';
-  stem: string;
-  options: string[];
-  answer: number;
-  analysis?: string;
+/** Study 侧栏聚合的题目行：卡片练习 + 来源卡片信息（当前 UI 仅按单选渲染）。 */
+type StudyProblemRow = ProblemSingle & {
   cardId: string;
   cardTitle: string;
   cardUrl: string;
-}
+};
 
 interface Unit {
   node: BaseNode;
   problemCount: number;
-  problems: Problem[];
+  problems: StudyProblemRow[];
 }
 
 function BaseStudy() {
