@@ -8,13 +8,14 @@ import {
     type FindOptions,
 } from 'mongodb';
 import type { Context } from '../context';
-import type { AgentChatSessionDoc } from '../interface';
+import type { AgentChatSessionDoc, BaseDoc } from '../interface';
 import { NotFoundError } from '../error';
 import db from '../service/db';
 import bus from '../service/bus';
 import { Logger } from '../logger';
 import { MaybeArray, NumberKeys } from '../typeutils';
 import { deriveSessionLearnStatus, isDevelopSessionSettled } from '../lib/sessionListDisplay';
+import { BaseModel } from './base';
 
 const logger = new Logger('model/session');
 
@@ -110,8 +111,8 @@ export interface SessionDoc {
     lessonAbandonedAt?: Date | null;
     state?: 'idle' | 'active';
     /**
-     * Opaque progress bag. Develop editor may store `developEditorNav`:
-     * `{ cardId?, nodeId? }` to restore `/develop/editor?session=` URL on next open.
+     * Opaque progress bag. Develop editor stores `developEditorUrl`: last browser path+query for this session
+     * (`/d/{domain}/base/.../branch/.../editor?...` or `/d/{domain}/develop/editor?...`).
      */
     progress?: Record<string, unknown>;
     recordIds?: ObjectId[];
@@ -202,30 +203,78 @@ function unwrapFindOneSession(updated: unknown): SessionDoc | null {
     return updated as SessionDoc;
 }
 
-/** Last editor URL fragment on `session.progress.developEditorNav` (develop editor resume). */
-export type DevelopEditorNavWire = { cardId?: string; nodeId?: string };
-
-export function readDevelopEditorNav(sess: SessionDoc): DevelopEditorNavWire | null {
-    const p = sess.progress as Record<string, unknown> | undefined;
-    const raw = p?.developEditorNav;
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-    const o = raw as Record<string, unknown>;
-    const cardId = typeof o.cardId === 'string' ? o.cardId.trim() : '';
-    const nodeId = typeof o.nodeId === 'string' ? o.nodeId.trim() : '';
-    if (!cardId && !nodeId) return null;
-    const out: DevelopEditorNavWire = {};
-    if (cardId) out.cardId = cardId;
-    if (nodeId) out.nodeId = nodeId;
-    return out;
+/** Full saved editor URL for develop sessions (`progress.developEditorUrl`). */
+export function readDevelopEditorUrl(sess: SessionDoc | null | undefined): string {
+    const p = sess?.progress as Record<string, unknown> | undefined;
+    const raw = p?.developEditorUrl;
+    return typeof raw === 'string' ? raw.trim().slice(0, 2048) : '';
 }
 
-export type PersistDevelopEditorNavInput = {
-    sessionHex: string;
-    cardId?: string;
-    nodeId?: string;
-    /** When set (e.g. base `/base/ws` docId), session must belong to this base. */
-    expectedBaseDocId?: number;
-};
+async function resolveBaseFromEditorPathDocSeg(domainId: string, docSeg: string): Promise<BaseDoc | null> {
+    const n = Number(docSeg);
+    if (Number.isFinite(n) && n > 0) {
+        return BaseModel.get(domainId, n);
+    }
+    return BaseModel.getBybid(domainId, docSeg);
+}
+
+/**
+ * True if `locationUrl` is a develop editor URL under this domain with matching `session` query
+ * (`/d/{domainId}/develop/editor?...`).
+ */
+function validateDevelopEditorEntryLocation(domainId: string, locationUrl: string, sessionHex: string): boolean {
+    const loc = locationUrl.trim().slice(0, 2048);
+    const m = /^\/d\/([^/]+)\/develop\/editor(?:\/)?(?:\?|$)/.exec(loc);
+    if (!m || m[1] !== domainId) return false;
+    const qi = loc.indexOf('?');
+    const sp = new URLSearchParams(qi >= 0 ? loc.slice(qi + 1) : '');
+    return sp.get('session') === sessionHex;
+}
+
+/**
+ * True if `locationUrl` is `/d/{domainId}/base/{docSeg}/branch/{branch}/editor?...` with matching `session`,
+ * and resolves to `expectedBaseDocId` on `expectedBranch`; or `/d/{domainId}/develop/editor?...` with matching session.
+ */
+export async function validateDevelopEditorStoredLocation(
+    domainId: string,
+    locationUrl: string,
+    sessionHex: string,
+    expectedBaseDocId: number,
+    expectedBranch: string,
+): Promise<boolean> {
+    const loc = locationUrl.trim().slice(0, 2048);
+    if (!loc || !sessionHex || !ObjectId.isValid(sessionHex)) return false;
+    if (validateDevelopEditorEntryLocation(domainId, loc, sessionHex)) return true;
+    const m = /^\/d\/([^/]+)\/base\/([^/]+)\/branch\/([^/]+)\/editor(?:\/)?(?:\?|$)/.exec(loc);
+    if (!m) return false;
+    if (m[1] !== domainId) return false;
+    const br = m[3] && String(m[3]).trim() ? String(m[3]).trim() : 'main';
+    if (br !== (expectedBranch && String(expectedBranch).trim() ? String(expectedBranch).trim() : 'main')) return false;
+    const docSeg = decodeURIComponent(String(m[2] || ''));
+    if (!docSeg) return false;
+    const base = await resolveBaseFromEditorPathDocSeg(domainId, docSeg);
+    if (!base || Number(base.docId) !== Number(expectedBaseDocId)) return false;
+    const qi = loc.indexOf('?');
+    const sp = new URLSearchParams(qi >= 0 ? loc.slice(qi + 1) : '');
+    return sp.get('session') === sessionHex;
+}
+
+export type DevelopSessionEditTotalsWire = { nodes: number; cards: number; problems: number };
+
+/** Cumulative node/card/problem edit counts for the current develop editor session (`progress.developSessionEditTotals`). */
+export function readDevelopSessionEditTotals(sess: SessionDoc | null | undefined): DevelopSessionEditTotalsWire {
+    const p = sess?.progress as Record<string, unknown> | undefined;
+    const raw = p?.developSessionEditTotals;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        return { nodes: 0, cards: 0, problems: 0 };
+    }
+    const o = raw as Record<string, unknown>;
+    return {
+        nodes: Number(o.nodes) || 0,
+        cards: Number(o.cards) || 0,
+        problems: Number(o.problems) || 0,
+    };
+}
 
 export default class SessionModel {
     static coll = db.collection('session');
@@ -644,20 +693,31 @@ export default class SessionModel {
     }
 
     /**
-     * Persist develop editor URL state on the session document (via POST /base/save or /base/batch-save `developEditorNav`).
+     * Persist last develop base editor URL (`progress.developEditorUrl`) from client pathname+search.
+     * Caller must pass a URL that passes {@link validateDevelopEditorStoredLocation}.
      */
-    static async persistDevelopEditorNav(
+    static async persistDevelopEditorUrl(
         domainId: string,
         uid: number,
-        input: PersistDevelopEditorNavInput,
+        input: {
+            sessionHex: string;
+            locationUrl: string;
+            expectedBaseDocId: number;
+            expectedBranch: string;
+        },
     ): Promise<void> {
         const sessionHex = (input.sessionHex || '').trim();
         if (!sessionHex || !ObjectId.isValid(sessionHex)) return;
-
-        const trimCap = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
-        const cardId = trimCap(input.cardId, 64);
-        const nodeId = trimCap(input.nodeId, 256);
-        if (!cardId && !nodeId) return;
+        const loc = (input.locationUrl || '').trim().slice(0, 2048);
+        if (!loc) return;
+        const ok = await validateDevelopEditorStoredLocation(
+            domainId,
+            loc,
+            sessionHex,
+            input.expectedBaseDocId,
+            input.expectedBranch,
+        );
+        if (!ok) return;
 
         const sess = await this.coll.findOne({
             _id: new ObjectId(sessionHex),
@@ -666,12 +726,6 @@ export default class SessionModel {
             appRoute: 'develop',
         }) as SessionDoc | null;
         if (!sess) return;
-
-        if (input.expectedBaseDocId != null) {
-            const bid = Number(sess.baseDocId);
-            if (!Number.isFinite(bid) || bid !== input.expectedBaseDocId) return;
-        }
-
         if (isDevelopSessionSettled(sess)) return;
         const histSt = deriveSessionLearnStatus(sess);
         if (histSt === 'timed_out' || histSt === 'finished' || histSt === 'abandoned') return;
@@ -680,18 +734,7 @@ export default class SessionModel {
         const prev = prevRaw && typeof prevRaw === 'object' && !Array.isArray(prevRaw)
             ? { ...(prevRaw as Record<string, unknown>) }
             : {};
-        const developEditorNav: Record<string, string> = {};
-        if (cardId) {
-            developEditorNav.cardId = cardId;
-            if (nodeId) developEditorNav.nodeId = nodeId;
-        } else if (nodeId) {
-            developEditorNav.nodeId = nodeId;
-        }
-        if (Object.keys(developEditorNav).length === 0) {
-            delete prev.developEditorNav;
-        } else {
-            prev.developEditorNav = developEditorNav;
-        }
+        prev.developEditorUrl = loc;
         await this.touchById(
             domainId,
             uid,

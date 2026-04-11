@@ -4,7 +4,7 @@ import SessionModel from '../model/session';
 import bus from '../service/bus';
 import { deleteUserCache } from '../model/user';
 import { developDailySessionKindMongo, developSessionNotSettledMongoFilter } from './developSessionResume';
-import { isSessionStalePastUtcCalendarDay } from './sessionUtcDaily';
+import { isDevelopSessionPastDeadline, isSessionStalePastUtcCalendarDay } from './sessionUtcDaily';
 
 /**
  * Clear stale in-progress daily learn sessions after UTC day rollover (`task.session.utc0`).
@@ -79,7 +79,7 @@ export async function settleStaleDevelopSessionPointersUtc(): Promise<number> {
     });
     for await (const raw of cursor) {
         const doc = raw as SessionDoc;
-        if (!isSessionStalePastUtcCalendarDay(doc, now)) continue;
+        if (!isSessionStalePastUtcCalendarDay(doc, now) && !isDevelopSessionPastDeadline(doc, now)) continue;
         const sidHex = doc._id.toHexString();
         const r = await DomainModel.collUser.updateMany(
             {

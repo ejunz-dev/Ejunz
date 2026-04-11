@@ -22,7 +22,6 @@ import {
     deriveSessionRecordType,
     developSessionRecordTypeLabelKey,
     formatRecordProgressInSession,
-    inferDevelopSessionKind,
     isAgentSessionRow,
     isDevelopSessionRow,
 } from '../lib/sessionListDisplay';
@@ -105,14 +104,24 @@ async function buildRecordMainListRow(
         if (sess && isAgentSessionRow(sess) && sess.agentSessionKind) {
             sessionResumeUrl = buildUrl('session_chat_detail', { domainId: rd.domainId, sid: sess._id });
         } else if (sess && isDevelopSessionRow(sess)) {
-            const base = buildUrl('develop_editor', { domainId: rd.domainId });
-            const sep = base.includes('?') ? '&' : '?';
-            let u = `${base}${sep}session=${encodeURIComponent(sessionIdHex)}`;
-            const nid = typeof sess.nodeId === 'string' ? sess.nodeId.trim() : '';
-            if (nid && inferDevelopSessionKind(sess) === 'outline_node') {
-                u += `&nodeId=${encodeURIComponent(nid)}`;
+            const br = sess.branch && String(sess.branch).trim() ? String(sess.branch).trim() : 'main';
+            const baseDocId = Number(sess.baseDocId ?? rd.baseDocId);
+            let docSeg = '';
+            if (Number.isFinite(baseDocId) && baseDocId > 0) {
+                const baseDoc = await BaseModel.get(rd.domainId, baseDocId);
+                if (baseDoc) {
+                    const bid = (baseDoc as { bid?: string }).bid;
+                    docSeg = bid && String(bid).trim() ? String(bid).trim() : String(baseDoc.docId);
+                }
             }
-            sessionResumeUrl = u;
+            if (!docSeg) docSeg = String(sess.baseDocId ?? rd.baseDocId ?? '');
+            const editorBase = buildUrl('base_editor_branch', {
+                domainId: rd.domainId,
+                docId: docSeg,
+                branch: br,
+            });
+            const sep = editorBase.includes('?') ? '&' : '?';
+            sessionResumeUrl = `${editorBase}${sep}session=${encodeURIComponent(sessionIdHex)}`;
         } else {
             const base = buildUrl('learn_lesson', { domainId: rd.domainId });
             const sep = base.includes('?') ? '&' : '?';

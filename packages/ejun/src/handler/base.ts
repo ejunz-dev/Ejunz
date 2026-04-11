@@ -32,13 +32,19 @@ import {
     resolveDevelopRunProgressForSession,
 } from '../lib/developPoolShared';
 import RecordModel, { type DevelopSaveChangeLine } from '../model/record';
-import SessionModel, { type SessionDoc } from '../model/session';
+import SessionModel, {
+    readDevelopEditorUrl,
+    readDevelopSessionEditTotals,
+    validateDevelopEditorStoredLocation,
+    type SessionDoc,
+} from '../model/session';
 import {
     deriveSessionLearnStatus,
     inferDevelopSessionKind,
     isDevelopSessionRow,
     isDevelopSessionSettled,
 } from '../lib/sessionListDisplay';
+import { isDevelopSessionPastDeadline, readDevelopSessionDeadlineMs } from '../lib/sessionUtcDaily';
 
 /** Machine token in {@link BadRequestError} params for API clients (see `request.ajax` in ui-default). */
 const DEVELOP_SESSION_CLOSED_CODE = 'DEVELOP_SESSION_CLOSED';
@@ -74,6 +80,9 @@ async function assertDevelopSessionAllowsEdits(
     }
     const st = deriveSessionLearnStatus(sess);
     if (st !== 'in_progress' && st !== 'paused') {
+        throw new BadRequestError(DEVELOP_SESSION_CLOSED_CODE);
+    }
+    if (isDevelopSessionPastDeadline(sess)) {
         throw new BadRequestError(DEVELOP_SESSION_CLOSED_CODE);
     }
 }
@@ -1321,6 +1330,81 @@ export class BaseEditorDocHandler extends Handler {
 
         const base = this.base!;
         const requestedBranch = branch && String(branch).trim() ? branch.trim() : 'main';
+
+        const sessionHexForOutline = typeof this.request.query?.session === 'string'
+            ? this.request.query.session.trim()
+            : '';
+        if (sessionHexForOutline && ObjectId.isValid(sessionHexForOutline)) {
+            const outlineSess = await SessionModel.coll.findOne({
+                _id: new ObjectId(sessionHexForOutline),
+                domainId,
+                uid: this.user._id,
+                appRoute: 'develop',
+            }) as SessionDoc | null;
+            if (outlineSess && inferDevelopSessionKind(outlineSess) === 'outline_node') {
+                const brSess = outlineSess.branch && String(outlineSess.branch).trim()
+                    ? String(outlineSess.branch).trim()
+                    : 'main';
+                if (Number(outlineSess.baseDocId) === Number(base.docId) && brSess === requestedBranch) {
+                    if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+                    const histSt = deriveSessionLearnStatus(outlineSess);
+                    if (histSt === 'timed_out' || histSt === 'finished' || histSt === 'abandoned') {
+                        const histBase = this.url('develop_session_history', { domainId });
+                        const sep = histBase.includes('?') ? '&' : '?';
+                        this.response.redirect = `${histBase}${sep}session=${encodeURIComponent(sessionHexForOutline)}`;
+                        return;
+                    }
+                    const domainNameEarly = (this as any).domain?.name || domainId;
+                    const qCardEarly = typeof this.request.query?.cardId === 'string' ? this.request.query.cardId.trim() : '';
+                    const qNodeEarly = typeof this.request.query?.nodeId === 'string' ? this.request.query.nodeId.trim() : '';
+                    const savedEditorUrl = readDevelopEditorUrl(outlineSess);
+                    if (!qCardEarly && !qNodeEarly && savedEditorUrl) {
+                        const locOk = await validateDevelopEditorStoredLocation(
+                            domainId,
+                            savedEditorUrl,
+                            sessionHexForOutline,
+                            Number(base.docId),
+                            brSess,
+                        );
+                        if (locOk) {
+                            this.response.redirect = savedEditorUrl;
+                            return;
+                        }
+                    }
+                    const sessNidEarly = typeof outlineSess.nodeId === 'string' ? String(outlineSess.nodeId).trim() : '';
+                    const rootPick = qNodeEarly || sessNidEarly;
+                    this.response.template = 'base_editor.html';
+                    const editorBodyOutline = await buildBaseEditorPageBody({
+                        domainId,
+                        base,
+                        requestedBranch,
+                        uid: this.user._id,
+                        priv: this.user.priv,
+                        domainName: domainNameEarly,
+                        db: this.ctx.db.db,
+                        makeEditorUrl: (docId, br) => this.url('base_outline_doc_branch', { domainId, docId: String(docId), branch: br }),
+                        rootNodeIdFromQuery: rootPick,
+                        developPoolUiMode: 'none',
+                    });
+                    const deadlineMsO = readDevelopSessionDeadlineMs(outlineSess);
+                    const createdO = outlineSess.createdAt instanceof Date
+                        ? outlineSess.createdAt
+                        : new Date(outlineSess.createdAt as any);
+                    this.response.body = {
+                        ...editorBodyOutline,
+                        editorMode: 'base',
+                        page_name: 'base_editor_branch',
+                        editorDevelopSessionKind: 'outline_node' as const,
+                        developSessionEditTotals: readDevelopSessionEditTotals(outlineSess),
+                        developSessionDeadlineIso: deadlineMsO != null ? new Date(deadlineMsO).toISOString() : null,
+                        developSessionStartedAtIso: Number.isNaN(createdO.getTime()) ? null : createdO.toISOString(),
+                        developEditorSessionHex: sessionHexForOutline,
+                    };
+                    return;
+                }
+            }
+        }
+
         const docSeg = (base.bid && String(base.bid).trim()) || String(base.docId);
         this.response.redirect = this.url('base_outline_doc_branch', {
             domainId,
@@ -4345,6 +4429,35 @@ async function appendDevelopSaveRecordAfterBatchSave(
         cardCreatedIds,
         ...(changeLines.length ? { changeLines } : {}),
     });
+
+    const incNodes = nodeCreates + nodeUpdates + nodeDeletes;
+    const incCards = cardCreates + cardUpdates + cardDeletes;
+    let incProblems = 0;
+    const ccList = (data.cardCreates as Array<{ problems?: unknown[] }> | undefined) || [];
+    for (const cc of ccList) {
+        if (Array.isArray(cc.problems)) incProblems += cc.problems.length;
+    }
+    const cuList = (data.cardUpdates as Array<{ problems?: unknown }> | undefined) || [];
+    for (const cu of cuList) {
+        if (cu.problems !== undefined && Array.isArray(cu.problems)) incProblems += cu.problems.length;
+    }
+    const fresh = await SessionModel.coll.findOne({
+        _id: sess._id,
+        domainId,
+        uid,
+    }) as SessionDoc | null;
+    if (!fresh) return;
+    const prevRaw = fresh.progress;
+    const prev = prevRaw && typeof prevRaw === 'object' && !Array.isArray(prevRaw)
+        ? { ...(prevRaw as Record<string, unknown>) }
+        : {};
+    const cur = readDevelopSessionEditTotals(fresh);
+    prev.developSessionEditTotals = {
+        nodes: cur.nodes + incNodes,
+        cards: cur.cards + incCards,
+        problems: cur.problems + incProblems,
+    };
+    await SessionModel.touchById(domainId, uid, sess._id, { progress: prev }, { silent: false });
 }
 
 export class BaseBatchSaveHandler extends Handler {
@@ -4664,11 +4777,25 @@ export class BaseBatchSaveHandler extends Handler {
 
         await persistBaseEditorSaveSidecars(this, actualDomainId, docId, branch, data as Record<string, unknown>);
 
+        let developSessionEditTotalsResponse: ReturnType<typeof readDevelopSessionEditTotals> | undefined;
+        if (batchSuccess && developSessionRaw && ObjectId.isValid(developSessionRaw) && opts.type === 'base') {
+            const sdoc = await SessionModel.coll.findOne({
+                _id: new ObjectId(developSessionRaw),
+                domainId: actualDomainId,
+                uid: this.user._id,
+                appRoute: 'develop',
+            }) as SessionDoc | null;
+            if (sdoc) developSessionEditTotalsResponse = readDevelopSessionEditTotals(sdoc);
+        }
+
         this.response.body = {
             success: batchSuccess,
             errors,
             nodeIdMap: Object.fromEntries(nodeIdMap),
             cardIdMap: Object.fromEntries(cardIdMap),
+            ...(developSessionEditTotalsResponse
+                ? { developSessionEditTotals: developSessionEditTotalsResponse }
+                : {}),
         };
     }
 }
@@ -5869,6 +5996,8 @@ export class BaseConnectionHandler extends ConnectionHandler {
     private bid?: string;
     /** Domain id resolved in prepare (for develop editor nav over WS). */
     private wsDomainId?: string;
+    /** When set, omit develop pool context from WS init/update (outline single-node editor). */
+    private suppressDevelopPoolContext = false;
     private subscriptions: Array<{ dispose: () => void }> = [];
 
     @param('docId', Types.String, true)
@@ -5903,7 +6032,23 @@ export class BaseConnectionHandler extends ConnectionHandler {
 
         this.docId = base.docId;
 
-        
+        const sessQ = typeof this.request.query?.developEditorSession === 'string'
+            ? this.request.query.developEditorSession.trim()
+            : '';
+        if (sessQ && ObjectId.isValid(sessQ)) {
+            const sdoc = await SessionModel.coll.findOne({
+                _id: new ObjectId(sessQ),
+                domainId: finalDomainId,
+                uid: this.user._id,
+                appRoute: 'develop',
+            }) as SessionDoc | null;
+            if (sdoc
+                && inferDevelopSessionKind(sdoc) === 'outline_node'
+                && Number(sdoc.baseDocId) === this.docId) {
+                this.suppressDevelopPoolContext = true;
+            }
+        }
+
         if (!this.user.own(base)) {
             this.checkPerm(PERM.PERM_VIEW_DISCUSSION);
         }
@@ -6058,6 +6203,7 @@ export class BaseConnectionHandler extends ConnectionHandler {
     }
 
     private async buildDevelopEditorContextPayload(domainId: string, base: BaseDoc) {
+        if (this.suppressDevelopPoolContext) return null;
         const branch = (base as any).currentBranch || 'main';
         try {
             return await buildDevelopEditorContextWire({
@@ -6509,19 +6655,25 @@ async function persistBaseEditorSaveSidecars(
             { upsert: true },
         );
     }
-    const nav = data.developEditorNav;
-    if (nav && typeof nav === 'object' && !Array.isArray(nav)) {
-        const o = nav as Record<string, unknown>;
-        const sessionHex = String(o.session ?? '').trim();
-        if (sessionHex) {
-            await assertDevelopSessionAllowsEdits(h, domainId, h.user._id, sessionHex, baseDocId, branchNorm);
-            await SessionModel.persistDevelopEditorNav(domainId, h.user._id, {
-                sessionHex,
-                cardId: typeof o.cardId === 'string' ? o.cardId : undefined,
-                nodeId: typeof o.nodeId === 'string' ? o.nodeId : undefined,
-                expectedBaseDocId: baseDocId,
-            });
-        }
+    const locRaw = data.developEditorLocation;
+    let sessionForLoc = typeof data.developSessionId === 'string' ? data.developSessionId.trim() : '';
+    if ((!sessionForLoc || !ObjectId.isValid(sessionForLoc)) && typeof locRaw === 'string' && locRaw.includes('?')) {
+        const sp0 = new URLSearchParams(locRaw.slice(locRaw.indexOf('?') + 1));
+        sessionForLoc = (sp0.get('session') || '').trim();
+    }
+    if (
+        typeof locRaw === 'string'
+        && locRaw.trim()
+        && sessionForLoc
+        && ObjectId.isValid(sessionForLoc)
+    ) {
+        await assertDevelopSessionAllowsEdits(h, domainId, h.user._id, sessionForLoc, baseDocId, branchNorm);
+        await SessionModel.persistDevelopEditorUrl(domainId, h.user._id, {
+            sessionHex: sessionForLoc,
+            locationUrl: locRaw.trim(),
+            expectedBaseDocId: baseDocId,
+            expectedBranch: branchNorm,
+        });
     }
 }
 
