@@ -1899,6 +1899,90 @@ async function generateDAG(
     return { sections, dag: dagNodes };
 }
 
+/**
+ * 当学习 DAG 的 requireNids 链不完整（例如根无子边时平铺为 requireNids: []）时，
+ * collectUnder 无法沿 DAG 走到子节点；按 base 大纲边 + parentId 做 DFS 收集子树卡片。
+ */
+async function collectOutlineSubtreeFlatCardsForNodeLesson(
+    domainId: string,
+    baseDocId: number,
+    branch: string,
+    rootNodeId: string,
+    learnSectionOrderIndex: number,
+): Promise<
+    Array<{
+        nodeId: string;
+        cardId: string;
+        nodeTitle: string;
+        cardTitle: string;
+        baseDocId: number;
+        learnSectionOrderIndex: number;
+    }>
+> {
+    const base = await BaseModel.get(domainId, baseDocId);
+    if (!base) return [];
+    const br = branch?.trim() || 'main';
+    const { nodes, edges } = getBranchData(base, br);
+    const nodeMap = new Map<string, BaseNode>();
+    nodes.forEach((node) => nodeMap.set(node.id, node));
+    if (!nodeMap.has(rootNodeId)) return [];
+
+    const childrenMap = new Map<string, string[]>();
+    edges.forEach((edge) => {
+        if (!childrenMap.has(edge.source)) childrenMap.set(edge.source, []);
+        if (!childrenMap.get(edge.source)!.includes(edge.target)) {
+            childrenMap.get(edge.source)!.push(edge.target);
+        }
+    });
+    nodes.forEach((node) => {
+        const parentId = (node as { parentId?: string }).parentId;
+        if (parentId && nodeMap.has(parentId)) {
+            if (!childrenMap.has(parentId)) childrenMap.set(parentId, []);
+            if (!childrenMap.get(parentId)!.includes(node.id)) {
+                childrenMap.get(parentId)!.push(node.id);
+            }
+        }
+    });
+
+    const out: Array<{
+        nodeId: string;
+        cardId: string;
+        nodeTitle: string;
+        cardTitle: string;
+        baseDocId: number;
+        learnSectionOrderIndex: number;
+    }> = [];
+
+    const visit = async (nid: string) => {
+        const node = nodeMap.get(nid);
+        const nodeTitle = node?.text || '';
+        const cards = await CardModel.getByNodeId(domainId, baseDocId, nid, br);
+        const sorted = [...cards].sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
+        for (const card of sorted) {
+            out.push({
+                nodeId: nid,
+                cardId: card.docId.toString(),
+                nodeTitle,
+                cardTitle: card.title || '',
+                baseDocId,
+                learnSectionOrderIndex,
+            });
+        }
+        const childIds = childrenMap.get(nid) || [];
+        const sortedChildIds = [...childIds].sort((a, b) => {
+            const oa = nodeMap.get(a)?.order || 0;
+            const ob = nodeMap.get(b)?.order || 0;
+            return oa !== ob ? oa - ob : String(a).localeCompare(String(b));
+        });
+        for (const cid of sortedChildIds) {
+            await visit(cid);
+        }
+    };
+
+    await visit(rootNodeId);
+    return out;
+}
+
 interface BaseNodeWithCards {
     id: string;
     text: string;
@@ -3004,9 +3088,42 @@ class LessonHandler extends Handler {
         }
 
         const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
-        const pageBaseLesson = await requireLearnPageBase(finalDomainId, this.user._id, this.user.priv);
+
+        let pageBaseLesson: BaseDoc;
+        let learnBrLesson: string;
+        if (qLessonSession && ObjectId.isValid(qLessonSession)) {
+            const sForBase = await SessionModel.coll.findOne({
+                _id: new ObjectId(qLessonSession),
+                domainId: finalDomainId,
+                uid: this.user._id,
+            }) as SessionDoc | null;
+            const ar = sForBase?.appRoute;
+            const isLearnSession = !ar || ar === 'learn';
+            const modeS = sForBase?.lessonMode;
+            const sidBid = sForBase?.baseDocId != null ? Number(sForBase.baseDocId) : NaN;
+            if (
+                sForBase
+                && isLearnSession
+                && (modeS === 'node' || modeS === 'card' || modeS === 'today')
+                && Number.isFinite(sidBid)
+                && sidBid > 0
+            ) {
+                const b = await BaseModel.get(finalDomainId, sidBid);
+                if (!b) throw new NotFoundError('Base not found');
+                if (!this.user.own(b)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+                pageBaseLesson = b;
+                const sb = sForBase.branch && String(sForBase.branch).trim() ? String(sForBase.branch).trim() : '';
+                learnBrLesson = sb || learnBranchFromDudoc(dudoc) || ((b as any).currentBranch || 'main');
+            } else {
+                pageBaseLesson = await requireLearnPageBase(finalDomainId, this.user._id, this.user.priv);
+                learnBrLesson = learnBranchFromDudoc(dudoc);
+            }
+        } else {
+            pageBaseLesson = await requireLearnPageBase(finalDomainId, this.user._id, this.user.priv);
+            learnBrLesson = learnBranchFromDudoc(dudoc);
+        }
+
         const learnBidLesson = Number(pageBaseLesson.docId);
-        const learnBrLesson = learnBranchFromDudoc(dudoc);
         const sdocLesson = await resolveLessonSessionForMerge(finalDomainId, this.user._id, qLessonSession || undefined, dudoc);
         const L = mergeDomainLessonState(dudoc, sdocLesson);
         // Lesson mode and position live in Mongo session (+ optional ?session=).
@@ -3320,6 +3437,34 @@ class LessonHandler extends Handler {
                 }
                 flatCards.length = 0;
                 flatCards.push(...frozSlice.next);
+                if (flatCards.length === 0 && sNode?._id) {
+                    const fbFrozen = await collectOutlineSubtreeFlatCardsForNodeLesson(
+                        finalDomainId,
+                        learnBidLesson,
+                        learnBrLesson,
+                        lessonNodeId,
+                        resolvedSectionSlot,
+                    );
+                    if (fbFrozen.length > 0) {
+                        const sliceFbFrozen = sliceNodeFlatCardsFromLearnStartIfSectionRoot(fbFrozen, sliceOptsNode);
+                        flatCards.push(...(sliceFbFrozen.sliced ? sliceFbFrozen.next : fbFrozen));
+                        if (sliceFbFrozen.sliced) nodeSliceResetIndex = true;
+                        const newQFrozen: LessonCardQueueItem[] = flatCards.map((fc) => ({
+                            domainId: finalDomainId,
+                            nodeId: fc.nodeId,
+                            cardId: fc.cardId,
+                            nodeTitle: fc.nodeTitle,
+                            cardTitle: fc.cardTitle,
+                            baseDocId: fc.baseDocId,
+                            learnSectionOrderIndex: fc.learnSectionOrderIndex,
+                        }));
+                        await SessionModel.touchById(finalDomainId, this.user._id, sNode._id, {
+                            lessonCardQueue: newQFrozen,
+                            cardIndex: 0,
+                        }, { silent: true });
+                        sNode = await resolveLessonSessionDoc(finalDomainId, this.user._id, qLessonSession || undefined);
+                    }
+                }
                 nodeTree.push({
                     type: 'node',
                     id: rootNode._id,
@@ -3335,11 +3480,28 @@ class LessonHandler extends Handler {
                     flatCards.length = 0;
                     flatCards.push(...freshSlice.next);
                 }
+                let usedOutlineSubtreeFallback = false;
+                if (flatCards.length === 0) {
+                    const fb = await collectOutlineSubtreeFlatCardsForNodeLesson(
+                        finalDomainId,
+                        learnBidLesson,
+                        learnBrLesson,
+                        lessonNodeId,
+                        resolvedSectionSlot,
+                    );
+                    if (fb.length > 0) {
+                        const sliceFb = sliceNodeFlatCardsFromLearnStartIfSectionRoot(fb, sliceOptsNode);
+                        flatCards.push(...(sliceFb.sliced ? sliceFb.next : fb));
+                        if (sliceFb.sliced) nodeSliceResetIndex = true;
+                        usedOutlineSubtreeFallback = true;
+                    }
+                }
+                const showFlatCardChildren = freshSliced || usedOutlineSubtreeFallback;
                 nodeTree.push({
                     type: 'node',
                     id: rootNode._id,
                     title: rootNode.title || '',
-                    children: freshSliced
+                    children: showFlatCardChildren
                         ? flatCards.map((c) => ({ type: 'card' as const, id: c.cardId, title: c.cardTitle }))
                         : treeChildren,
                 });
@@ -3364,7 +3526,7 @@ class LessonHandler extends Handler {
                         lessonQueueDay: null,
                         branch: persistBranch,
                         lessonQueueLearnSectionOrderIndex: resolvedSectionSlot,
-                        ...(freshSliced ? { cardIndex: 0 } : {}),
+                        ...(nodeSliceResetIndex ? { cardIndex: 0 } : {}),
                     }, { silent: true })
                     : touchLessonSession(finalDomainId, this.user._id, {
                         appRoute: 'learn',
@@ -3375,7 +3537,7 @@ class LessonHandler extends Handler {
                         lessonQueueDay: null,
                         branch: persistBranch,
                         lessonQueueLearnSectionOrderIndex: resolvedSectionSlot,
-                        ...(freshSliced ? { cardIndex: 0 } : {}),
+                        ...(nodeSliceResetIndex ? { cardIndex: 0 } : {}),
                     }, { silent: true });
                 await touchNodeQueue;
             }
@@ -3859,9 +4021,31 @@ class LessonHandler extends Handler {
             !Number.isNaN(parsedLearnSlot) && parsedLearnSlot >= 0 ? parsedLearnSlot : null;
 
         if (mode === 'node') {
-            const baseNodeStart = await requireLearnPageBase(finalDomainId, this.user._id, this.user.priv);
+            const explicitBaseNum = (() => {
+                const raw = body.baseDocId;
+                if (raw === undefined || raw === null || raw === '') return NaN;
+                const n = Number(raw);
+                return Number.isFinite(n) && n > 0 ? n : NaN;
+            })();
+            let baseNodeStart: BaseDoc;
+            let brN: string;
+            if (Number.isFinite(explicitBaseNum) && explicitBaseNum > 0) {
+                const b = await BaseModel.get(finalDomainId, explicitBaseNum);
+                if (!b) throw new NotFoundError('Base not found');
+                if (!this.user.own(b)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+                brN = typeof body.branch === 'string' && body.branch.trim()
+                    ? body.branch.trim()
+                    : ((b as any).currentBranch || 'main');
+                const { nodes } = getBranchData(b, brN);
+                if (!nodes.some((n: BaseNode) => n.id === nodeIdStart)) {
+                    throw new ValidationError('That node is not part of this base branch');
+                }
+                baseNodeStart = b;
+            } else {
+                baseNodeStart = await requireLearnPageBase(finalDomainId, this.user._id, this.user.priv);
+                brN = learnBrSt;
+            }
             const hintBaseNode = Number(baseNodeStart.docId);
-            const brN = learnBrSt;
             sid = await insertOrUpgradeLearnSession(finalDomainId, this.user._id, {
                 appRoute: 'learn',
                 route: 'learn',
@@ -3879,7 +4063,6 @@ class LessonHandler extends Handler {
             } as SessionPatch);
             redirectPath = `/d/${finalDomainId}/learn/lesson`;
         } else if (mode === 'card') {
-            await requireLearnPageBase(finalDomainId, this.user._id, this.user.priv);
             const cardSt = await CardModel.get(finalDomainId, new ObjectId(cardIdStartRaw));
             if (!cardSt) throw new NotFoundError('Card not found');
             const brCard = cardStorageBranch(cardSt as any);

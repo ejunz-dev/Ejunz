@@ -635,6 +635,10 @@ develop: Develop
 'Outline editor start needs node': A node id is required to start an editor session from the outline.
 'Outline editor start invalid node': That node is not part of this branch.
 'Outline editor popup blocked': The browser blocked the new tab. Allow popups for this site and try again.
+'Outline learn single card': Learn this card only
+'Outline learn single node': Learn this node subtree
+'Outline learn start failed': Could not start learning. Try again.
+'Outline learn invalid card': Invalid card id; cannot start learning.
 'Develop start no pending': All today’s develop tasks are done; resume an open session if needed.
 'Develop move up': Move up
 'Develop move down': Move down
