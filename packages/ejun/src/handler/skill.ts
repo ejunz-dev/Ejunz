@@ -291,6 +291,13 @@ class SkillEditorHandler extends BaseEditorHandler {
             },
         };
     }
+
+    @param('branch', Types.String, true)
+    async get(domainId: string, branch?: string) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const b = branch && String(branch).trim() ? branch.trim() : 'main';
+        this.response.redirect = this.url('base_skill_outline_branch', { domainId, branch: b });
+    }
 }
 
 export async function apply(ctx: Context) {

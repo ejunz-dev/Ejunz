@@ -1984,9 +1984,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         }
       });
     }
-    const workspaceRoot = (window as any).UiContext?.workspaceNodeId;
-    if (workspaceRoot && initialData?.nodes?.some((n: BaseNode) => n.id === workspaceRoot)) {
-      initialExpanded.add(workspaceRoot);
+    const rootFocus = (window as any).UiContext?.editorRootNodeId;
+    if (rootFocus && initialData?.nodes?.some((n: BaseNode) => n.id === rootFocus)) {
+      initialExpanded.add(rootFocus);
     }
     return initialExpanded;
   });
@@ -2053,7 +2053,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     return () => clearInterval(t);
   }, [explorerMode, basePath, docId, getBaseUrl, fetchGitRemoteStatus]);
 
-  const workspaceNodeId = (window as any).UiContext?.workspaceNodeId || '';
+  const editorRootNodeId = (window as any).UiContext?.editorRootNodeId || '';
   const currentBranch = (window as any).UiContext?.currentBranch || 'main';
   
   const fileTree = useMemo(() => {
@@ -2089,9 +2089,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       if (!hasParent) rootNodes.push(node.id);
     });
 
-    if (workspaceNodeId && nodeMap.has(workspaceNodeId)) {
+    if (editorRootNodeId && nodeMap.has(editorRootNodeId)) {
       rootNodes.length = 0;
-      rootNodes.push(workspaceNodeId);
+      rootNodes.push(editorRootNodeId);
     }
 
     
@@ -2327,7 +2327,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       });
 
     return items;
-  }, [base.nodes, base.edges, nodeCardsMapVersion, expandedNodes, pendingChanges, pendingRenames, pendingDragChanges, pendingDeletes, clipboard, workspaceNodeId]);
+  }, [base.nodes, base.edges, nodeCardsMapVersion, expandedNodes, pendingChanges, pendingRenames, pendingDragChanges, pendingDeletes, clipboard, editorRootNodeId]);
 
   useEffect(() => {
     fileTreeRef.current = fileTree;
@@ -2775,7 +2775,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             }
           : null;
 
-      let developEditorNavPayload: { session: string; cardId?: string; nodeId?: string; workspace?: string } | null = null;
+      let developEditorNavPayload: { session: string; cardId?: string; nodeId?: string } | null = null;
       if (basePath === 'base' && /\/develop\/editor(?:\/|$)/.test(window.location.pathname)) {
         const spNav = new URLSearchParams(window.location.search);
         const sessionHexNav = (spNav.get('session') || '').trim();
@@ -2789,12 +2789,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             navNodeId = String(selectedFile.nodeId);
           }
           if (navCardId || navNodeId) {
-            const wsNav = (spNav.get('workspace') || '').trim();
             developEditorNavPayload = {
               session: sessionHexNav,
               ...(navCardId ? { cardId: navCardId } : {}),
               ...(navNodeId ? { nodeId: navNodeId } : {}),
-              ...(wsNav ? { workspace: wsNav } : {}),
             };
           }
         }
@@ -8923,7 +8921,10 @@ ${editorShellPath}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 {(base.branches && base.branches.length > 0 ? base.branches : ['main']).map((branchName) => {
                   const isCurrent = branchName === (base.currentBranch || 'main');
-                  const targetHref = getBaseUrl(`/${docId}/branch/${encodeURIComponent(branchName)}/editor`);
+                  const docSeg = String(docId || base.docId || base.bid || '').trim();
+                  const targetHref = docSeg
+                    ? getBaseUrl(`/${docSeg}/outline/branch/${encodeURIComponent(branchName)}`)
+                    : '#';
                   return (
                     <a
                       key={branchName}
@@ -9861,41 +9862,6 @@ ${editorShellPath}
                   e.currentTarget.style.backgroundColor = 'transparent';
                 }}
                 onClick={() => {
-                  const ws = encodeURIComponent(contextMenu.file.nodeId || '');
-                  let path: string;
-                  if (basePath === 'base/skill') {
-                    path = getBaseUrl('/editor/branch/' + currentBranch);
-                  } else {
-                    const baseIdSeg = String(docId || base.docId || base.bid || '').trim();
-                    if (!baseIdSeg) {
-                      Notification.error('Could not open workspace: missing knowledge base identifier');
-                      setContextMenu(null);
-                      return;
-                    }
-                    path = getBaseUrl(`/${baseIdSeg}/branch/${currentBranch}/editor`);
-                  }
-                  window.open(path + '?workspace=' + ws, '_blank');
-                  setContextMenu(null);
-                }}
-              >
-                打开工作区
-              </div>
-              <>
-              <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
-              <div
-                style={{
-                  padding: '6px 16px',
-                  cursor: 'pointer',
-                  fontSize: '13px',
-                  color: themeStyles.textPrimary,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                }}
-                onClick={() => {
                   setIsMultiSelectMode(!isMultiSelectMode);
                   setSelectedItems(new Set());
                   setContextMenu(null);
@@ -9967,7 +9933,6 @@ ${editorShellPath}
                   )}
                 </>
               )}
-              </>
               {(
               <>
               <div
@@ -11735,8 +11700,9 @@ ${editorShellPath}
                     Notification.success('New base created; subtree moved');
                     setMigrateToNewBaseModal(null);
                     const openSeg = res.bid ? String(res.bid) : String(res.newDocId);
-                    const editorPath = getBaseUrl(`/${openSeg}/branch/${encodeURIComponent(currentBranch)}/editor`);
-                    window.open(editorPath, '_blank');
+                    const domainId = (window as any).UiContext?.domainId || 'system';
+                    const outlinePath = `/d/${domainId}/base/${openSeg}/outline/branch/${encodeURIComponent(currentBranch)}`;
+                    window.open(outlinePath, '_blank');
                     await refetchEditorData();
                     selectedFileRef.current = null;
                     setSelectedFile(null);

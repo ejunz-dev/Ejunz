@@ -4,7 +4,12 @@ import SessionModel, { type SessionDoc } from '../model/session';
 import bus from '../service/bus';
 import { developBranchKey, developTodayUtcYmd } from './developBranchDaily';
 import { loadDevelopRunQueuePool, type DevelopPoolEntryWire } from './developPoolShared';
-import { deriveSessionLearnStatus, isDevelopSessionRow, isDevelopSessionSettled } from './sessionListDisplay';
+import {
+    deriveSessionLearnStatus,
+    inferDevelopSessionKind,
+    isDevelopSessionRow,
+    isDevelopSessionSettled,
+} from './sessionListDisplay';
 import { isSessionStalePastUtcCalendarDay } from './sessionUtcDaily';
 
 /** Same window as `DevelopSessionStartHandler` session reuse. */
@@ -15,6 +20,25 @@ export const developSessionNotSettledMongoFilter = {
     $or: [
         { 'progress.developSettledAt': { $exists: false } },
         { 'progress.developSettledAt': null },
+    ],
+};
+
+/** Daily-queue develop sessions only (excludes outline「单节点」编辑器会话). */
+export const developDailySessionKindMongo = {
+    $or: [
+        { developSessionKind: 'daily' as const },
+        {
+            $and: [
+                { developSessionKind: { $exists: false } },
+                {
+                    $or: [
+                        { nodeId: { $exists: false } },
+                        { nodeId: null },
+                        { nodeId: '' },
+                    ],
+                },
+            ],
+        },
     ],
 };
 
@@ -51,6 +75,7 @@ function isDevelopSessionResumable(
     now = Date.now(),
 ): doc is SessionDoc {
     if (!doc || !isDevelopSessionRow(doc)) return false;
+    if (inferDevelopSessionKind(doc) === 'outline_node') return false;
     if (isDevelopSessionSettled(doc)) return false;
     if ((doc as { lessonAbandonedAt?: Date | null }).lessonAbandonedAt) return false;
     if (!developSessionInPool(doc, poolKeys)) return false;
@@ -130,6 +155,7 @@ export async function findResumableDevelopSessionDoc(
             $and: [
                 { $or: [{ lessonAbandonedAt: null }, { lessonAbandonedAt: { $exists: false } }] },
                 developSessionNotSettledMongoFilter,
+                developDailySessionKindMongo,
             ],
         })
         .sort({ lastActivityAt: -1 })
@@ -190,6 +216,7 @@ export async function hasDevelopSessionInProgressOrPaused(
             $and: [
                 { $or: [{ lessonAbandonedAt: null }, { lessonAbandonedAt: { $exists: false } }] },
                 developSessionNotSettledMongoFilter,
+                developDailySessionKindMongo,
             ],
         })
         .sort({ lastActivityAt: -1 })
@@ -198,6 +225,7 @@ export async function hasDevelopSessionInProgressOrPaused(
 
     for (const doc of docs) {
         if (!isDevelopSessionRow(doc)) continue;
+        if (inferDevelopSessionKind(doc) === 'outline_node') continue;
         const st = deriveSessionLearnStatus(doc, now);
         if (st === 'in_progress' || st === 'paused') return true;
     }
@@ -214,6 +242,7 @@ export async function clearDevelopSessionsAfterPoolChange(domainId: string, uid:
         $and: [
             { $or: [{ lessonAbandonedAt: { $exists: false } }, { lessonAbandonedAt: null }] },
             developSessionNotSettledMongoFilter,
+            developDailySessionKindMongo,
         ],
     };
     const toAbandon = await SessionModel.coll.find(abandonFilter).project({ _id: 1 }).toArray();

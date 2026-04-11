@@ -20,7 +20,9 @@ import Agent from '../model/agent';
 import { buildDevelopRecordDetailAugment } from '../lib/developRecordSummarize';
 import {
     deriveSessionRecordType,
+    developSessionRecordTypeLabelKey,
     formatRecordProgressInSession,
+    inferDevelopSessionKind,
     isAgentSessionRow,
     isDevelopSessionRow,
 } from '../lib/sessionListDisplay';
@@ -105,7 +107,12 @@ async function buildRecordMainListRow(
         } else if (sess && isDevelopSessionRow(sess)) {
             const base = buildUrl('develop_editor', { domainId: rd.domainId });
             const sep = base.includes('?') ? '&' : '?';
-            sessionResumeUrl = `${base}${sep}session=${encodeURIComponent(sessionIdHex)}`;
+            let u = `${base}${sep}session=${encodeURIComponent(sessionIdHex)}`;
+            const nid = typeof sess.nodeId === 'string' ? sess.nodeId.trim() : '';
+            if (nid && inferDevelopSessionKind(sess) === 'outline_node') {
+                u += `&nodeId=${encodeURIComponent(nid)}`;
+            }
+            sessionResumeUrl = u;
         } else {
             const base = buildUrl('learn_lesson', { domainId: rd.domainId });
             const sep = base.includes('?') ? '&' : '?';
@@ -114,7 +121,8 @@ async function buildRecordMainListRow(
     }
     if (sess) {
         const rt = deriveSessionRecordType(sess);
-        sessionTypeLabel = translate(`session_record_type_${rt}`);
+        const dKey = developSessionRecordTypeLabelKey(sess);
+        sessionTypeLabel = dKey ? translate(dKey) : translate(`session_record_type_${rt}`);
         recordSessionProgress = formatRecordProgressInSession(rd, sess);
     }
 
