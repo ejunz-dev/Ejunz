@@ -37,7 +37,6 @@
     </thead>
     <tbody>
       {%- for adoc in adocs -%}
-      {% set psdoc = psdict[adoc.domainId + '#' + adoc.docId] %}
       <tr data-aid="{{ adoc.docId }}">
         <td class="col--checkbox display-mode-hide">
           <label class="compact checkbox">
@@ -46,17 +45,13 @@
         </td>
         <td class="col--aid display-mode-hide">{{ adoc.docId }}</td>
         {% if handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
-          {% if psdoc['aid'] %}
-            {{ agent.render_status_td(psdoc, aid_key='aid', class="edit-mode-hide", allDomain=adoc.domainId!==handler.args.domainId) }}
-          {% else %}
-            <td class="col--status record-status--border edit-mode-hide"></td>
-          {% endif %}
+          <td class="col--status record-status--border edit-mode-hide"></td>
         {% endif %}
         <td class="col--name col--agent-name">
 
           {{ agent.render_agent_title(adoc) }}
         </td>
-        <td class="col--files">{{ adoc.files|length }}</td>
+        <td class="col--files">{{ (adoc.files or [])|length }}</td>
         
       </tr>
     {%- endfor -%}
