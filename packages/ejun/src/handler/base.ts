@@ -33,7 +33,45 @@ import {
 } from '../lib/developPoolShared';
 import RecordModel, { type DevelopSaveChangeLine } from '../model/record';
 import SessionModel, { type SessionDoc } from '../model/session';
-import { isDevelopSessionRow, isDevelopSessionSettled } from '../lib/sessionListDisplay';
+import { deriveSessionLearnStatus, isDevelopSessionRow, isDevelopSessionSettled } from '../lib/sessionListDisplay';
+
+/** Machine token in {@link BadRequestError} params for API clients (see `request.ajax` in ui-default). */
+const DEVELOP_SESSION_CLOSED_CODE = 'DEVELOP_SESSION_CLOSED';
+
+async function assertDevelopSessionAllowsEdits(
+    h: Handler,
+    domainId: string,
+    uid: number,
+    sessionHex: string,
+    expectedDocId: number,
+    expectedBranch: string,
+): Promise<void> {
+    if (!ObjectId.isValid(sessionHex)) {
+        throw new BadRequestError(DEVELOP_SESSION_CLOSED_CODE);
+    }
+    const sess = await SessionModel.coll.findOne({
+        _id: new ObjectId(sessionHex),
+        domainId,
+        uid,
+        appRoute: 'develop',
+    }) as SessionDoc | null;
+    if (!sess) {
+        throw new BadRequestError(DEVELOP_SESSION_CLOSED_CODE);
+    }
+    const bid = Number(sess.baseDocId);
+    if (!Number.isFinite(bid) || bid !== Number(expectedDocId)) {
+        throw new BadRequestError(DEVELOP_SESSION_CLOSED_CODE);
+    }
+    const br = sess.branch && String(sess.branch).trim() ? String(sess.branch).trim() : 'main';
+    const brExp = expectedBranch && String(expectedBranch).trim() ? String(expectedBranch).trim() : 'main';
+    if (br !== brExp) {
+        throw new BadRequestError(DEVELOP_SESSION_CLOSED_CODE);
+    }
+    const st = deriveSessionLearnStatus(sess);
+    if (st !== 'in_progress' && st !== 'paused') {
+        throw new BadRequestError(DEVELOP_SESSION_CLOSED_CODE);
+    }
+}
 
 const exec = promisify(execCb);
 const execFile = promisify(execFileCb);
@@ -4352,6 +4390,18 @@ export class BaseBatchSaveHandler extends Handler {
         const docId = base.docId;
         const branch = data.branch?.trim() || opts.getBranch(base);
 
+        const developSessionRaw = typeof data.developSessionId === 'string' ? data.developSessionId.trim() : '';
+        if (developSessionRaw && opts.type === 'base') {
+            await assertDevelopSessionAllowsEdits(
+                this,
+                actualDomainId,
+                this.user._id,
+                developSessionRaw,
+                Number(docId),
+                branch,
+            );
+        }
+
         const {
             nodeCreates = [],
             nodeUpdates = [],
@@ -4580,7 +4630,6 @@ export class BaseBatchSaveHandler extends Handler {
             }
         }
 
-        const developSessionRaw = typeof data.developSessionId === 'string' ? data.developSessionId.trim() : '';
         const developChangeLines = buildDevelopSaveChangeLines(data as Record<string, unknown>);
         if (batchSuccess && developSessionRaw && opts.type === 'base') {
             try {
@@ -6464,6 +6513,7 @@ async function persistBaseEditorSaveSidecars(
         const o = nav as Record<string, unknown>;
         const sessionHex = String(o.session ?? '').trim();
         if (sessionHex) {
+            await assertDevelopSessionAllowsEdits(h, domainId, h.user._id, sessionHex, baseDocId, branchNorm);
             await SessionModel.persistDevelopEditorNav(domainId, h.user._id, {
                 sessionHex,
                 cardId: typeof o.cardId === 'string' ? o.cardId : undefined,

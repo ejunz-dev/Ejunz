@@ -887,6 +887,7 @@ develop: 开发
 'Develop save pool': 保存开发池
 'Develop start': 开始开发
 'Develop continue': 继续开发
+'Develop session closed reload hint': 该开发会话已结束或不可用，将刷新页面以查看最新状态。
 'Develop start failed': 无法开始开发会话，请稍后重试
 'Develop pool order hint': 列表顺序即为开发顺序；在「编辑」中用 ↑↓ 调整后保存。
 'Develop pool skip done hint': 已达今日目标的库不会进入「开始开发」队列。
