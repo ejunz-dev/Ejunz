@@ -2,20 +2,14 @@ import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import { i18n, request } from 'vj/utils';
-
-interface CardProblem {
-  pid: string;
-  stem: string;
-  options?: string[];
-  answer?: number;
-}
+import type { Problem } from 'ejun/src/interface';
 
 interface LearnCard {
   cardId: string;
   title: string;
   order?: number;
   problemCount?: number;
-  problems?: CardProblem[];
+  problems?: Problem[];
 }
 
 interface LearnDAGNode {

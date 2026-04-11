@@ -8,6 +8,21 @@ import Editor from 'vj/components/editor';
 import { Dialog, ActionDialog } from 'vj/components/dialog/index';
 import uploadFiles from 'vj/components/upload';
 import { nanoid } from 'nanoid';
+import type {
+  Problem,
+  ProblemSingle,
+  ProblemMulti,
+  ProblemTrueFalse,
+  ProblemFlip,
+  ProblemKind,
+} from 'ejun/src/interface';
+import {
+  problemKind,
+  problemChangeKind,
+  clampOptionSlots,
+  ensureOptionArrayLength,
+  normalizeMultiAnswers,
+} from 'ejun/src/model/problem';
 interface BaseNode {
   id: string;
   text: string;
@@ -51,17 +66,6 @@ interface BaseDoc {
   files?: Array<{ _id: string; name: string; size: number; etag?: string; lastModified?: Date | string }>;
 }
 
-interface CardProblem {
-  pid: string;
-  type: 'single';
-  stem: string;
-  options: string[];
-  answer: number; 
-  analysis?: string;
-  imageUrl?: string; 
-  imageNote?: string; 
-}
-
 interface CardFileInfo {
   _id: string;
   name: string;
@@ -80,7 +84,7 @@ interface Card {
   createdAt?: string;
   order?: number;
   nodeId?: string;
-  problems?: CardProblem[];
+  problems?: Problem[];
   files?: CardFileInfo[];
 }
 
@@ -127,153 +131,201 @@ interface PendingDelete {
   nodeId?: string;
 }
 
-// Editable problem item
-const EditableProblem = React.memo(({ 
-  problem, 
-  index, 
-  cardId, 
-  borderColor, 
+function baseProblemJsonStable(a: Problem, b: Problem): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function problemKindLabelI18n(k: ProblemKind): string {
+  switch (k) {
+    case 'single':
+      return i18n('Problem kind single');
+    case 'multi':
+      return i18n('Problem kind multi');
+    case 'true_false':
+      return i18n('Problem kind true false');
+    case 'flip':
+      return i18n('Problem kind flip');
+    default:
+      return k;
+  }
+}
+
+// Editable problem item（单选 / 多选 / 判断 / 翻转）
+const EditableProblem = React.memo(({
+  problem,
+  index,
+  cardId: _cardId,
+  borderColor,
   borderStyle,
-  isNew, 
+  isNew,
   isEdited,
-  isPendingDelete,
-  originalProblem,
+  originalProblem: _originalProblem,
   onUpdate,
   onDelete,
   docId,
   getBaseUrl,
-  themeStyles
-}: { 
-  problem: CardProblem;
+  themeStyles,
+}: {
+  problem: Problem;
   index: number;
   cardId: string;
   borderColor: string;
   borderStyle: string;
   isNew: boolean;
   isEdited: boolean;
-  isPendingDelete: boolean;
-  originalProblem?: CardProblem;
-  onUpdate: (updated: CardProblem) => void;
+  originalProblem?: Problem;
+  onUpdate: (updated: Problem) => void;
   onDelete: () => void;
   docId: string;
   getBaseUrl: (path: string, docId: string) => string;
   themeStyles: any;
 }) => {
-  const [problemStem, setProblemStem] = useState(problem.stem);
-  const [problemOptions, setProblemOptions] = useState([...problem.options]);
-  const [problemAnswer, setProblemAnswer] = useState(problem.answer);
-  const [problemAnalysis, setProblemAnalysis] = useState(problem.analysis || '');
-  const [problemImageUrl, setProblemImageUrl] = useState(problem.imageUrl || '');
-  const [problemImageNote, setProblemImageNote] = useState(problem.imageNote || '');
-  const [isUploading, setIsUploading] = useState(false);
+  const [model, setModel] = useState<Problem>(problem);
+
+  useEffect(() => {
+    setModel(problem);
+  }, [problem.pid]);
+
+  useEffect(() => {
+    if (baseProblemJsonStable(model, problem)) return;
+    onUpdate(model);
+  }, [model, problem, onUpdate]);
+
+  const kind = problemKind(model);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  // Sync state when problem props change
-  useEffect(() => {
-    setProblemStem(problem.stem);
-    setProblemOptions([...problem.options]);
-    setProblemAnswer(problem.answer);
-    setProblemAnalysis(problem.analysis || '');
-    setProblemImageUrl(problem.imageUrl || '');
-    setProblemImageNote(problem.imageNote || '');
-  }, [problem.pid, problem.stem, problem.answer, problem.analysis, problem.imageUrl, problem.imageNote, JSON.stringify(problem.options)]);
-  
-  // Detect changes and call onUpdate
-  useEffect(() => {
-    const hasChanged = (
-      problemStem !== problem.stem ||
-      JSON.stringify(problemOptions) !== JSON.stringify(problem.options) ||
-      problemAnswer !== problem.answer ||
-      problemAnalysis !== (problem.analysis || '') ||
-      problemImageUrl !== (problem.imageUrl || '') ||
-      problemImageNote !== (problem.imageNote || '')
-    );
-    
-    if (hasChanged) {
-      const updated: CardProblem = {
-        ...problem,
-        stem: problemStem,
-        options: problemOptions,
-        answer: problemAnswer,
-        analysis: problemAnalysis || undefined,
-        imageUrl: problemImageUrl || undefined,
-        imageNote: problemImageNote || undefined,
-      };
-      onUpdate(updated);
-    }
-  }, [problemStem, problemOptions, problemAnswer, problemAnalysis, problemImageUrl, problemImageNote, problem, onUpdate]);
-  
+  const [isUploading, setIsUploading] = useState(false);
+
+  const imageUrl = model.imageUrl || '';
+  const imageNote = model.imageNote || '';
+  const analysis = model.analysis || '';
+
+  const setCommon = (patch: Partial<Pick<Problem, 'imageUrl' | 'imageNote' | 'analysis'>>) => {
+    setModel((m) => ({ ...m, ...patch } as Problem));
+  };
+
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    
     let ext: string;
     const matches = file.type.match(/^image\/(png|jpg|jpeg|gif)$/i);
     if (matches) {
       [, ext] = matches;
     } else {
       Notification.error(i18n('Unsupported file type. Please upload an image (png, jpg, jpeg, gif).'));
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
-    
     setIsUploading(true);
     try {
       const filename = `${nanoid()}.${ext}`;
-      
       await uploadFiles(getBaseUrl('/files', docId), [file], {
         filenameCallback: () => filename,
       });
-      
-      const imageUrl = getBaseUrl(`/${docId}/file/${encodeURIComponent(filename)}`, docId);
-      setProblemImageUrl(imageUrl);
+      const url = getBaseUrl(`/${docId}/file/${encodeURIComponent(filename)}`, docId);
+      setCommon({ imageUrl: url });
     } catch (error: any) {
       Notification.error(`${i18n('Image upload failed')}: ${error.message || i18n('Unknown error')}`);
     } finally {
       setIsUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
-  
-  
+
   const handlePreviewImage = async () => {
-    if (!problemImageUrl) return;
+    if (!imageUrl) return;
     try {
       const { InfoDialog } = await import('vj/components/dialog/index');
       const $ = (await import('jquery')).default;
-      const { nanoid } = await import('nanoid');
+      const { nanoid: nid } = await import('nanoid');
       const { tpl } = await import('vj/utils');
-      
-      const id = nanoid();
+      const id = nid();
       const dialog = new InfoDialog({
-        $body: tpl`<div class="typo"><img src="${problemImageUrl}" style="max-height: calc(80vh - 45px);"></img></div>`,
+        $body: tpl`<div class="typo"><img src="${imageUrl}" style="max-height: calc(80vh - 45px);"></img></div>`,
         $action: [
           tpl`<button class="rounded button" data-action="copy" id="copy-${id}">${i18n('Copy link')}</button>`,
           tpl`<button class="rounded button" data-action="cancel">${i18n('Cancel')}</button>`,
           tpl`<button class="primary rounded button" data-action="download">${i18n('Download')}</button>`,
         ],
       });
-      
       $(`#copy-${id}`).on('click', () => {
-        navigator.clipboard.writeText(problemImageUrl).then(() => {
+        navigator.clipboard.writeText(imageUrl).then(() => {
           Notification.success(i18n('Link copied to clipboard'));
         });
       });
-      
       const action = await dialog.open();
-      if (action === 'download') {
-        window.open(problemImageUrl, '_blank');
-      }
+      if (action === 'download') window.open(imageUrl, '_blank');
     } catch (error) {
       console.error('预览图片失败:', error);
       Notification.error(i18n('Image preview failed'));
     }
   };
-  
+
+  const onKindChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const k = e.target.value as ProblemKind;
+    if (k === problemKind(model)) return;
+    setModel((m) => problemChangeKind(m, k));
+  };
+
+  const optionSlotsNow = (): number => {
+    if (kind === 'single') {
+      const m = model as ProblemSingle;
+      return clampOptionSlots(m.optionSlots ?? m.options?.length);
+    }
+    if (kind === 'multi') {
+      const m = model as ProblemMulti;
+      return clampOptionSlots(m.optionSlots ?? m.options?.length);
+    }
+    return 4;
+  };
+
+  const applyOptionSlots = (raw: number) => {
+    const slots = clampOptionSlots(raw);
+    if (kind === 'single') {
+      const m = model as ProblemSingle;
+      const opts = ensureOptionArrayLength([...m.options], slots);
+      let ans = m.answer;
+      if (ans >= opts.length) ans = Math.max(0, opts.length - 1);
+      setModel({ ...m, options: opts, optionSlots: slots, answer: ans });
+    } else if (kind === 'multi') {
+      const m = model as ProblemMulti;
+      const opts = ensureOptionArrayLength([...m.options], slots);
+      const cur = normalizeMultiAnswers(m.answer).filter((i) => i < opts.length);
+      const nextAns = cur.length ? cur : [0];
+      setModel({ ...m, options: opts, optionSlots: slots, answer: nextAns });
+    }
+  };
+
+  const toggleMultiAnswer = (oi: number) => {
+    const m = model as ProblemMulti;
+    const cur = new Set(normalizeMultiAnswers(m.answer));
+    if (cur.has(oi)) cur.delete(oi);
+    else cur.add(oi);
+    const arr = [...cur].sort((a, b) => a - b);
+    setModel({ ...m, answer: arr.length ? arr : [oi] });
+  };
+
+  const taStyle: React.CSSProperties = {
+    width: '100%',
+    minHeight: '40px',
+    resize: 'vertical' as const,
+    fontSize: '12px',
+    padding: '4px 6px',
+    boxSizing: 'border-box',
+    border: `1px solid ${themeStyles.borderPrimary}`,
+    borderRadius: '2px',
+    backgroundColor: themeStyles.bgPrimary,
+    color: themeStyles.textPrimary,
+  };
+  const inpStyle: React.CSSProperties = {
+    fontSize: '12px',
+    padding: '3px 6px',
+    boxSizing: 'border-box',
+    border: `1px solid ${themeStyles.borderPrimary}`,
+    borderRadius: '2px',
+    backgroundColor: themeStyles.bgPrimary,
+    color: themeStyles.textPrimary,
+  };
+
   return (
     <div
       style={{
@@ -283,10 +335,8 @@ const EditableProblem = React.memo(({
         marginBottom: '6px',
         background: themeStyles.bgPrimary,
         position: 'relative',
-        opacity: isPendingDelete ? 0.5 : 1,
       }}
     >
-      {/* Delete button */}
       <div
         onClick={(e) => {
           e.stopPropagation();
@@ -315,38 +365,176 @@ const EditableProblem = React.memo(({
         onMouseLeave={(e) => {
           e.currentTarget.style.backgroundColor = '#f44336';
         }}
-        title="删除题目"
+        title={i18n('Delete problem')}
       >
         ×
       </div>
-      <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '4px', paddingRight: '24px' }}>
-        Q{index + 1}{i18n(' (single choice)')}
-        {isNew && <span style={{ marginLeft: '8px', fontSize: '10px', color: themeStyles.success }}>{i18n('New')}</span>}
-        {isEdited && !isNew && <span style={{ marginLeft: '8px', fontSize: '10px', color: themeStyles.warning }}>{i18n('Edited')}</span>}
-        {isPendingDelete && <span style={{ marginLeft: '8px', fontSize: '10px', color: themeStyles.error }}>{i18n('Pending delete')}</span>}
+      <div style={{
+        fontSize: '12px',
+        fontWeight: 500,
+        marginBottom: '6px',
+        paddingRight: '24px',
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        gap: '8px',
+      }}
+      >
+        <span>
+          Q{index + 1}
+          （
+          {problemKindLabelI18n(kind)}
+          ）
+        </span>
+        <label style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: 4, color: themeStyles.textPrimary }}>
+          {i18n('Problem field type')}
+          <select value={kind} onChange={onKindChange} style={{ ...inpStyle, minWidth: 88 }}>
+            <option value="single">{i18n('Problem kind single')}</option>
+            <option value="multi">{i18n('Problem kind multi')}</option>
+            <option value="true_false">{i18n('Problem kind true false')}</option>
+            <option value="flip">{i18n('Problem kind flip')}</option>
+          </select>
+        </label>
+        {isNew && <span style={{ fontSize: '10px', color: themeStyles.success }}>{i18n('New')}</span>}
+        {isEdited && !isNew && <span style={{ fontSize: '10px', color: themeStyles.warning }}>{i18n('Edited')}</span>}
       </div>
+
+      {kind === 'flip' ? (
+        <>
+          <div style={{ marginBottom: '4px' }}>
+            <div style={{ fontSize: '11px', color: themeStyles.textSecondary, marginBottom: 2 }}>{i18n('Problem face A label')}</div>
+            <textarea
+              value={(model as ProblemFlip).faceA}
+              onChange={(e) => setModel({ ...(model as ProblemFlip), faceA: e.target.value })}
+              placeholder={i18n('Problem face A placeholder')}
+              style={taStyle}
+            />
+          </div>
+          <div style={{ marginBottom: '4px' }}>
+            <div style={{ fontSize: '11px', color: themeStyles.textSecondary, marginBottom: 2 }}>{i18n('Problem face B label')}</div>
+            <textarea
+              value={(model as ProblemFlip).faceB}
+              onChange={(e) => setModel({ ...(model as ProblemFlip), faceB: e.target.value })}
+              placeholder={i18n('Problem face B placeholder')}
+              style={taStyle}
+            />
+          </div>
+        </>
+      ) : kind === 'true_false' ? (
+        <div style={{ marginBottom: '4px' }}>
+          <textarea
+            value={(model as ProblemTrueFalse).stem}
+            onChange={(e) => setModel({ ...(model as ProblemTrueFalse), stem: e.target.value })}
+            placeholder={i18n('Stem')}
+            style={taStyle}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 6, fontSize: 12, color: themeStyles.textPrimary }}>
+            <span>{i18n('Correct answer')}:</span>
+            <label style={{ cursor: 'pointer' }}>
+              <input
+                type="radio"
+                name={`tf-${problem.pid}`}
+                checked={(model as ProblemTrueFalse).answer === 1}
+                onChange={() => setModel({ ...(model as ProblemTrueFalse), answer: 1 })}
+                style={{ marginRight: 4 }}
+              />
+              {i18n('Problem answer true')}
+            </label>
+            <label style={{ cursor: 'pointer' }}>
+              <input
+                type="radio"
+                name={`tf-${problem.pid}`}
+                checked={(model as ProblemTrueFalse).answer === 0}
+                onChange={() => setModel({ ...(model as ProblemTrueFalse), answer: 0 })}
+                style={{ marginRight: 4 }}
+              />
+              {i18n('Problem answer false')}
+            </label>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div style={{ marginBottom: '4px' }}>
+            <textarea
+              value={kind === 'single' ? (model as ProblemSingle).stem : (model as ProblemMulti).stem}
+              onChange={(e) => {
+                if (kind === 'single') setModel({ ...(model as ProblemSingle), stem: e.target.value });
+                else setModel({ ...(model as ProblemMulti), stem: e.target.value });
+              }}
+              placeholder={i18n('Stem')}
+              style={taStyle}
+            />
+          </div>
+          <div style={{ marginBottom: '6px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: 8, color: themeStyles.textPrimary }}>
+            <span>{i18n('Problem option slots')}</span>
+            <select
+              value={optionSlotsNow()}
+              onChange={(e) => applyOptionSlots(parseInt(e.target.value, 10))}
+              style={{ ...inpStyle, minWidth: 52 }}
+            >
+              {[2, 3, 4, 5, 6, 7, 8].map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+            {kind === 'multi' && (
+              <span style={{ color: themeStyles.textSecondary }}>{i18n('Problem multi all correct')}</span>
+            )}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginBottom: '4px' }}>
+            {(kind === 'single' ? (model as ProblemSingle).options : (model as ProblemMulti).options).map((opt, oi) => (
+              <input
+                key={oi}
+                value={opt}
+                onChange={(e) => {
+                  if (kind === 'single') {
+                    const m = model as ProblemSingle;
+                    const next = [...m.options];
+                    next[oi] = e.target.value;
+                    setModel({ ...m, options: next });
+                  } else {
+                    const m = model as ProblemMulti;
+                    const next = [...m.options];
+                    next[oi] = e.target.value;
+                    setModel({ ...m, options: next });
+                  }
+                }}
+                placeholder={`${i18n('Option')} ${String.fromCharCode(65 + oi)}`}
+                style={inpStyle}
+              />
+            ))}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px', fontSize: '12px', color: themeStyles.textPrimary, flexWrap: 'wrap', gap: 4 }}>
+            <span style={{ marginRight: 4 }}>{i18n('Correct answer')}:</span>
+            {kind === 'single'
+              ? (model as ProblemSingle).options.map((_, oi) => (
+                <label key={oi} style={{ marginRight: 6, cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name={`problem-answer-${problem.pid}`}
+                    checked={(model as ProblemSingle).answer === oi}
+                    onChange={() => setModel({ ...(model as ProblemSingle), answer: oi })}
+                    style={{ marginRight: 2 }}
+                  />
+                  {String.fromCharCode(65 + oi)}
+                </label>
+              ))
+              : (model as ProblemMulti).options.map((_, oi) => (
+                <label key={oi} style={{ marginRight: 6, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={normalizeMultiAnswers((model as ProblemMulti).answer).includes(oi)}
+                    onChange={() => toggleMultiAnswer(oi)}
+                    style={{ marginRight: 2 }}
+                  />
+                  {String.fromCharCode(65 + oi)}
+                </label>
+              ))}
+          </div>
+        </>
+      )}
+
       <div style={{ marginBottom: '4px' }}>
-        <textarea
-          value={problemStem}
-          onChange={e => setProblemStem(e.target.value)}
-          placeholder={i18n('Stem')}
-          style={{
-            width: '100%',
-            minHeight: '40px',
-            resize: 'vertical',
-            fontSize: '12px',
-            padding: '4px 6px',
-            boxSizing: 'border-box',
-            border: `1px solid ${themeStyles.borderPrimary}`,
-            borderRadius: '2px',
-            backgroundColor: themeStyles.bgPrimary,
-            color: themeStyles.textPrimary,
-          }}
-        />
-      </div>
-      {/* Image upload & preview */}
-      <div style={{ marginBottom: '4px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: problemImageUrl ? '4px' : '0' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: imageUrl ? '4px' : '0' }}>
           <input
             ref={fileInputRef}
             type="file"
@@ -355,6 +543,7 @@ const EditableProblem = React.memo(({
             style={{ display: 'none' }}
           />
           <button
+            type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={isUploading}
             style={{
@@ -369,8 +558,9 @@ const EditableProblem = React.memo(({
           >
             {isUploading ? i18n('Uploading...') : i18n('Upload image')}
           </button>
-          {problemImageUrl && (
+          {imageUrl ? (
             <button
+              type="button"
               onClick={handlePreviewImage}
               style={{
                 padding: '2px 8px',
@@ -384,85 +574,26 @@ const EditableProblem = React.memo(({
             >
               {i18n('Preview image')}
             </button>
-          )}
+          ) : null}
         </div>
-        {/* Image note (when image present) */}
-        {problemImageUrl && (
+        {imageUrl ? (
           <div style={{ marginTop: '4px' }}>
             <input
               type="text"
-              value={problemImageNote}
-              onChange={e => setProblemImageNote(e.target.value)}
+              value={imageNote}
+              onChange={(e) => setCommon({ imageNote: e.target.value })}
               placeholder={i18n('Image note (optional)')}
-              style={{
-                width: '100%',
-                fontSize: '11px',
-                padding: '3px 6px',
-                boxSizing: 'border-box',
-                border: `1px solid ${themeStyles.borderPrimary}`,
-                borderRadius: '2px',
-                backgroundColor: themeStyles.bgPrimary,
-                color: themeStyles.textPrimary,
-              }}
+              style={{ width: '100%', fontSize: '11px', padding: '3px 6px', boxSizing: 'border-box', ...inpStyle }}
             />
           </div>
-        )}
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginBottom: '4px' }}>
-        {problemOptions.map((opt, oi) => (
-          <input
-            key={oi}
-            value={opt}
-            onChange={e => {
-              const next = [...problemOptions];
-              next[oi] = e.target.value;
-              setProblemOptions(next);
-            }}
-            placeholder={`${i18n('Option')} ${String.fromCharCode(65 + oi)}`}
-            style={{
-              fontSize: '12px',
-              padding: '3px 6px',
-              boxSizing: 'border-box',
-              border: `1px solid ${themeStyles.borderPrimary}`,
-              borderRadius: '2px',
-              backgroundColor: themeStyles.bgPrimary,
-              color: themeStyles.textPrimary,
-            }}
-          />
-        ))}
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px', fontSize: '12px', color: themeStyles.textPrimary }}>
-        <span style={{ marginRight: 4 }}>{i18n('Correct answer')}:</span>
-        {problemOptions.map((_, oi) => (
-          <label key={oi} style={{ marginRight: 6, cursor: 'pointer', color: themeStyles.textPrimary }}>
-            <input
-              type="radio"
-              name={`problem-answer-${problem.pid}`}
-              checked={problemAnswer === oi}
-              onChange={() => setProblemAnswer(oi)}
-              style={{ marginRight: 2 }}
-            />
-            {String.fromCharCode(65 + oi)}
-          </label>
-        ))}
+        ) : null}
       </div>
       <div style={{ marginBottom: '4px' }}>
         <textarea
-          value={problemAnalysis}
-          onChange={e => setProblemAnalysis(e.target.value)}
+          value={analysis}
+          onChange={(e) => setCommon({ analysis: e.target.value || undefined })}
           placeholder={i18n('Analysis (optional)')}
-          style={{
-            width: '100%',
-            minHeight: '32px',
-            resize: 'vertical',
-            fontSize: '12px',
-            padding: '4px 6px',
-            boxSizing: 'border-box',
-            border: `1px solid ${themeStyles.borderPrimary}`,
-            borderRadius: '2px',
-            backgroundColor: themeStyles.bgPrimary,
-            color: themeStyles.textPrimary,
-          }}
+          style={{ ...taStyle, minHeight: '32px' }}
         />
       </div>
     </div>
@@ -1885,10 +2016,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [pendingProblemCardIds, setPendingProblemCardIds] = useState<Set<string>>(new Set());
   const [pendingNewProblemCardIds, setPendingNewProblemCardIds] = useState<Set<string>>(new Set());
   const [pendingEditedProblemIds, setPendingEditedProblemIds] = useState<Map<string, Set<string>>>(new Map());
-  const [pendingDeleteProblemIds, setPendingDeleteProblemIds] = useState<Map<string, string>>(new Map());
   const [newProblemIds, setNewProblemIds] = useState<Set<string>>(new Set());
   const [editedProblemIds, setEditedProblemIds] = useState<Set<string>>(new Set());
-  const originalProblemsRef = useRef<Map<string, Map<string, CardProblem>>>(new Map());
+  const originalProblemsRef = useRef<Map<string, Map<string, Problem>>>(new Map());
   const [originalProblemsVersion, setOriginalProblemsVersion] = useState(0);
 
   const MOBILE_BREAKPOINT = 768;
@@ -1941,7 +2071,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     wrapper.style.alignItems = 'center';
     wrapper.style.gap = '8px';
     rightEl.appendChild(wrapper);
-    const pendingCount = pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + Object.keys(pendingCardFaceChanges).length + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + pendingDeleteProblemIds.size;
+    const pendingCount = pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + Object.keys(pendingCardFaceChanges).length + pendingNewProblemCardIds.size + pendingEditedProblemIds.size;
     const hasPending = pendingCount > 0;
     ReactDOM.render(
       <>
@@ -1979,7 +2109,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       ReactDOM.unmountComponentAtNode(wrapper);
       wrapper.remove();
     };
-  }, [isMobile, aiBottomOpen, editorAiHidden, isCommitting, pendingChanges.size, pendingDragChanges.size, pendingRenames.size, pendingCreatesCount, pendingDeletes.size, pendingCardFaceChanges, pendingNewProblemCardIds.size, pendingEditedProblemIds.size, pendingDeleteProblemIds.size]);
+  }, [isMobile, aiBottomOpen, editorAiHidden, isCommitting, pendingChanges.size, pendingDragChanges.size, pendingRenames.size, pendingCreatesCount, pendingDeletes.size, pendingCardFaceChanges, pendingNewProblemCardIds.size, pendingEditedProblemIds.size]);
 
   
   const getSelectedCard = useCallback((): Card | null => {
@@ -1996,7 +2126,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       const card = getSelectedCard();
       if (card && card.problems) {
         const cardIdStr = String(selectedFile.cardId || '');
-        const originalProblems = new Map<string, CardProblem>();
+        const originalProblems = new Map<string, Problem>();
         card.problems.forEach(p => {
           originalProblems.set(p.pid, { ...p });
         });
@@ -2732,7 +2862,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       return;
     }
 
-    const newProblem: CardProblem = {
+    const newProblem: ProblemSingle = {
       pid: `p_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
       type: 'single',
       stem: '',
@@ -2809,7 +2939,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const hasRenameChanges = pendingRenames.size > 0;
     const hasCreateChanges = pendingCreatesRef.current.size > 0;
     const hasDeleteChanges = pendingDeletes.size > 0;
-    const hasProblemChanges = pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0;
+    const hasProblemChanges = pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0;
 
     try {
       const domainId = (window as any).UiContext?.domainId || 'system';
@@ -2978,7 +3108,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             const cardIndex = cardNodeCards.findIndex((c: Card) => c.docId === change.file.cardId);
             const card = cardIndex >= 0 ? cardNodeCards[cardIndex] : null;
             
-            const problems = card?.problems?.filter(p => !pendingDeleteProblemIds.has(p.pid));
+            const problems = card?.problems;
 
             
             if (!change.file.cardId || String(change.file.cardId).startsWith('temp-card-')) {
@@ -3010,7 +3140,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         }
 
         
-        const problemUpdates: Array<{ cardId: string; nodeId: string; problems: CardProblem[] }> = [];
+        const problemUpdates: Array<{ cardId: string; nodeId: string; problems: Problem[] }> = [];
         
         for (const problemCardId of Array.from(pendingProblemCardIds)) {
           
@@ -3036,7 +3166,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           }
 
           
-          const problemsToSave = (foundCard.problems || []).filter(p => !pendingDeleteProblemIds.has(p.pid));
+          const problemsToSave = foundCard.problems || [];
           
           problemUpdates.push({
             cardId: problemCardId,
@@ -3432,7 +3562,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             for (const cardUpdate of batchSaveData.cardUpdates) {
               const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
               const cards = nodeCardsMap[cardUpdate.nodeId] || [];
-              const cardIndex = cards.findIndex((c: Card) => c.docId === cardUpdate.cardId);
+              const cardIndex = cards.findIndex((c: Card) => String(c.docId) === String(cardUpdate.cardId));
               if (cardIndex >= 0) {
                 const next = { ...cards[cardIndex] };
                 if (cardUpdate.content !== undefined) next.content = cardUpdate.content;
@@ -3583,9 +3713,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       setPendingProblemCardIds(new Set());
       setPendingNewProblemCardIds(new Set());
       setPendingEditedProblemIds(new Map());
-      setPendingDeleteProblemIds(new Map());
-      
-      const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
       const savedCardIds = new Set<string>();
       if (hasProblemChanges) {
         setNewProblemIds(new Set());
@@ -3599,7 +3726,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       }
       
       
-      const problemChangesCount = pendingNewProblemCardIds.size + pendingEditedProblemIds.size + pendingDeleteProblemIds.size;
+      const problemChangesCount = pendingNewProblemCardIds.size + pendingEditedProblemIds.size;
       
       const totalChanges = (hasContentChanges ? allChanges.size : 0) 
         + (hasDragChanges ? pendingDragChanges.size : 0) 
@@ -3664,29 +3791,54 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           }
         }
         
+        const mapAfterSave = (window as any).UiContext?.nodeCardsMap || {};
         for (const cardId of savedCardIds) {
+          const cid = String(cardId);
+          if (cid.startsWith('temp-card-')) continue;
           let foundCard: Card | null = null;
-          for (const nodeId in nodeCardsMap) {
-            const cards: Card[] = nodeCardsMap[nodeId] || [];
-            const card = cards.find(c => c.docId === cardId);
+          for (const nodeId of Object.keys(mapAfterSave)) {
+            const cards: Card[] = mapAfterSave[nodeId] || [];
+            const card = cards.find((c: Card) => String(c.docId) === cid);
             if (card) {
               foundCard = card;
               break;
             }
           }
-          
-          if (foundCard && foundCard.problems) {
-            const originalProblems = new Map<string, CardProblem>();
-            foundCard.problems.forEach(p => {
+          if (foundCard) {
+            const originalProblems = new Map<string, Problem>();
+            (foundCard.problems || []).forEach((p) => {
               originalProblems.set(p.pid, { ...p });
             });
-            originalProblemsRef.current.set(String(cardId), originalProblems);
+            originalProblemsRef.current.set(cid, originalProblems);
           }
         }
         
         
         setNodeCardsMapVersion(prev => prev + 1);
         setOriginalProblemsVersion(prev => prev + 1);
+      } else if (hasProblemChanges && savedProblemCardIds.size > 0) {
+        const mapAfterSave = (window as any).UiContext?.nodeCardsMap || {};
+        for (const rawId of savedProblemCardIds) {
+          const cid = String(rawId);
+          if (cid.startsWith('temp-card-')) continue;
+          let foundCard: Card | null = null;
+          for (const nodeId of Object.keys(mapAfterSave)) {
+            const cards: Card[] = mapAfterSave[nodeId] || [];
+            const card = cards.find((c: Card) => String(c.docId) === cid);
+            if (card) {
+              foundCard = card;
+              break;
+            }
+          }
+          if (foundCard) {
+            const originalProblems = new Map<string, Problem>();
+            (foundCard.problems || []).forEach((p) => {
+              originalProblems.set(p.pid, { ...p });
+            });
+            originalProblemsRef.current.set(cid, originalProblems);
+          }
+        }
+        setOriginalProblemsVersion((prev) => prev + 1);
       }
       
       if (hasContentChanges) {
@@ -3733,7 +3885,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     } finally {
       setIsCommitting(false);
     }
-  }, [pendingChanges, pendingDragChanges, pendingRenames, pendingDeletes, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, pendingDeleteProblemIds, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.nodes, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion, explorerMode, rightPanelOpen, aiBottomOpen, explorerPanelWidth, problemsPanelWidth, aiPanelHeight, editorAiHidden, developEditorContext, basePath]);
+  }, [pendingChanges, pendingDragChanges, pendingRenames, pendingDeletes, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.nodes, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion, explorerMode, rightPanelOpen, aiBottomOpen, explorerPanelWidth, problemsPanelWidth, aiPanelHeight, editorAiHidden, developEditorContext, basePath]);
 
   useEffect(() => {
     saveHandlerRef.current = handleSaveAll;
@@ -5817,15 +5969,20 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         let problemsText = '';
         if (problems.length > 0) {
           problemsText = '\n- 已有题目列表：\n';
-          problems.forEach((p: CardProblem, index: number) => {
-            const optionsText = p.options.map((opt, oi) => 
-              `  ${String.fromCharCode(65 + oi)}. ${opt}${oi === p.answer ? ' (正确答案)' : ''}`
+          problems.forEach((p: Problem, index: number) => {
+            if (problemKind(p) !== 'single') {
+              problemsText += `\n  题目 ${index + 1} (ID: ${p.pid})：题型 ${problemKind(p)}\n`;
+              return;
+            }
+            const ps = p as ProblemSingle;
+            const optionsText = ps.options.map((opt, oi) =>
+              `  ${String.fromCharCode(65 + oi)}. ${opt}${oi === ps.answer ? ' (正确答案)' : ''}`
             ).join('\n');
             problemsText += `\n  题目 ${index + 1} (ID: ${p.pid})：\n`;
-            problemsText += `  - 题干：${p.stem}\n`;
+            problemsText += `  - 题干：${ps.stem}\n`;
             problemsText += `  - 选项：\n${optionsText}\n`;
-            if (p.analysis) {
-              problemsText += `  - 解析：${p.analysis}\n`;
+            if (ps.analysis) {
+              problemsText += `  - 解析：${ps.analysis}\n`;
             }
           });
         } else {
@@ -6819,8 +6976,8 @@ ${editorShellPath}
           }
 
           
-          const existingProblems: CardProblem[] = foundCard.problems || [];
-          const newProblem: CardProblem = {
+          const existingProblems: Problem[] = foundCard.problems || [];
+          const newProblem: ProblemSingle = {
             pid: `p_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
             type: 'single',
             stem,
@@ -9505,42 +9662,6 @@ ${editorShellPath}
                   </div>
                 )}
                 
-                {/* Problem deletes */}
-                {pendingDeleteProblemIds.size > 0 && (
-                  <div>
-                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>题目删除 ({pendingDeleteProblemIds.size})</div>
-                    <div style={{ paddingLeft: '12px', fontSize: '10px', color: '#6a737d' }}>
-                      {Array.from(pendingDeleteProblemIds.entries()).slice(0, 5).map(([problemId, cardId], idx) => {
-                        
-                        const file = fileTree.find(f => 
-                          f.type === 'card' && f.cardId === cardId
-                        );
-                        
-                        let cardName = file ? file.name : '';
-                        if (!cardName) {
-                          const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
-                          for (const nodeId in nodeCardsMap) {
-                            const cards = nodeCardsMap[nodeId] || [];
-                            const card = cards.find((c: Card) => c.docId === cardId);
-                            if (card) {
-                              cardName = card.title || i18n('Unnamed Card');
-                              break;
-                            }
-                          }
-                        }
-                        return (
-                          <div key={idx} style={{ marginBottom: '2px' }}>
-                            • {cardName || `卡片 (${cardId.substring(0, 8)}...)`} - 题目 ({problemId.substring(0, 8)}...)
-                          </div>
-                        );
-                      })}
-                      {pendingDeleteProblemIds.size > 5 && (
-                        <div style={{ color: '#999', fontStyle: 'italic' }}>... 还有 {pendingDeleteProblemIds.size - 5} 个</div>
-                      )}
-                    </div>
-                  </div>
-                )}
-                
                 {/* No pending changes */}
                 {pendingChanges.size === 0 && 
                  pendingDragChanges.size === 0 && 
@@ -9550,8 +9671,7 @@ ${editorShellPath}
                  pendingDeletes.size === 0 &&
                  pendingProblemCardIds.size === 0 &&
                  pendingNewProblemCardIds.size === 0 &&
-                 pendingEditedProblemIds.size === 0 &&
-                 pendingDeleteProblemIds.size === 0 && (
+                 pendingEditedProblemIds.size === 0 && (
                   <div style={{ 
                     color: themeStyles.textTertiary, 
                     fontStyle: 'italic',
@@ -11738,8 +11858,7 @@ ${editorShellPath}
                     Object.keys(pendingCardFaceChanges).length +
                     pendingProblemCardIds.size +
                     pendingNewProblemCardIds.size +
-                    pendingEditedProblemIds.size +
-                    pendingDeleteProblemIds.size;
+                    pendingEditedProblemIds.size;
                   if (pendingMigrate > 0) {
                     Notification.warn('Please save all changes before migrating');
                     return;
@@ -11972,21 +12091,19 @@ ${editorShellPath}
           </div>
           {!isMobile && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
-            {(pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0) && (
+            {(pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0) && (
               <span style={{ fontSize: '12px', color: themeStyles.textSecondary }}>
                 {pendingChanges.size > 0 && `${pendingChanges.size} 个文件已修改`}
-                {pendingChanges.size > 0 && (pendingDragChanges.size > 0 || pendingRenames.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0) && '，'}
+                {pendingChanges.size > 0 && (pendingDragChanges.size > 0 || pendingRenames.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0) && '，'}
                 {Object.keys(pendingCardFaceChanges).length > 0 && `${Object.keys(pendingCardFaceChanges).length} 个卡面已修改`}
-                {Object.keys(pendingCardFaceChanges).length > 0 && (pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0) && '，'}
+                {Object.keys(pendingCardFaceChanges).length > 0 && (pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0) && '，'}
                 {pendingDragChanges.size > 0 && `${pendingDragChanges.size} 个拖动操作`}
-                {pendingDragChanges.size > 0 && (pendingRenames.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0) && '，'}
+                {pendingDragChanges.size > 0 && (pendingRenames.size > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0) && '，'}
                 {pendingRenames.size > 0 && `${pendingRenames.size} 个重命名`}
-                {(pendingRenames.size > 0 || pendingChanges.size > 0 || pendingDragChanges.size > 0) && (pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0) && '，'}
+                {(pendingRenames.size > 0 || pendingChanges.size > 0 || pendingDragChanges.size > 0) && (pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0) && '，'}
                 {pendingNewProblemCardIds.size > 0 && `${pendingNewProblemCardIds.size} 个题目新建`}
-                {pendingNewProblemCardIds.size > 0 && (pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0) && '，'}
+                {pendingNewProblemCardIds.size > 0 && (pendingEditedProblemIds.size > 0 || pendingProblemCardIds.size > 0) && '，'}
                 {pendingEditedProblemIds.size > 0 && `${pendingEditedProblemIds.size} 个题目更改`}
-                {pendingEditedProblemIds.size > 0 && pendingDeleteProblemIds.size > 0 && '，'}
-                {pendingDeleteProblemIds.size > 0 && `${pendingDeleteProblemIds.size} 个题目删除`}
               </span>
             )}
             <button
@@ -11994,22 +12111,22 @@ ${editorShellPath}
                 console.log('[保存按钮] 点击保存，pendingProblemCardIds:', Array.from(pendingProblemCardIds));
                 handleSaveAll();
               }}
-              disabled={isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && pendingDeleteProblemIds.size === 0)}
+              disabled={isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0)}
               style={{
                 padding: isMobile ? '10px 12px' : '4px 12px',
                 minHeight: isMobile ? '44px' : undefined,
                 border: `1px solid ${themeStyles.borderSecondary}`,
                 borderRadius: '3px',
-                backgroundColor: (pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0) ? themeStyles.success : (theme === 'dark' ? '#555' : '#6c757d'),
+                backgroundColor: (pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0) ? themeStyles.success : (theme === 'dark' ? '#555' : '#6c757d'),
                 color: themeStyles.textOnPrimary,
-                cursor: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && pendingDeleteProblemIds.size === 0)) ? 'not-allowed' : 'pointer',
+                cursor: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0)) ? 'not-allowed' : 'pointer',
                 fontSize: '12px',
                 fontWeight: '500',
-                opacity: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && pendingDeleteProblemIds.size === 0)) ? 0.6 : 1,
+                opacity: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0)) ? 0.6 : 1,
               }}
-              title={(pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && pendingDeleteProblemIds.size === 0) ? i18n('No pending changes') : i18n('Save all changes')}
+              title={(pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0) ? i18n('No pending changes') : i18n('Save all changes')}
             >
-              {isCommitting ? i18n('Saving...') : `${i18n('Save changes')} (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + Object.keys(pendingCardFaceChanges).length + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + pendingDeleteProblemIds.size})`}
+              {isCommitting ? i18n('Saving...') : `${i18n('Save changes')} (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + Object.keys(pendingCardFaceChanges).length + pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size})`}
             </button>
           </div>
           )}
@@ -13282,17 +13399,11 @@ ${editorShellPath}
                   {problems.map((p, index) => {
                     const isNew = newProblemIds.has(p.pid) || !originalProblems.has(p.pid);
                     const originalProblem = originalProblems.get(p.pid);
-                    const isEdited = editedProblemIds.has(p.pid) || (originalProblem && (
-                      originalProblem.stem !== p.stem ||
-                      JSON.stringify(originalProblem.options) !== JSON.stringify(p.options) ||
-                      originalProblem.answer !== p.answer ||
-                      (originalProblem.analysis || '') !== (p.analysis || '')
-                    ));
-                    const isPendingDelete = pendingDeleteProblemIds.has(p.pid);
                     let borderColor = '#e1e4e8';
                     let borderStyle = 'solid';
-                    if (isPendingDelete) { borderColor = '#f44336'; borderStyle = 'dashed'; }
-                    else if (isNew) { borderColor = '#4caf50'; borderStyle = 'dashed'; }
+                    const isEdited = editedProblemIds.has(p.pid)
+                      || (originalProblem && JSON.stringify(originalProblem) !== JSON.stringify(p));
+                    if (isNew) { borderColor = '#4caf50'; borderStyle = 'dashed'; }
                     else if (isEdited) { borderColor = '#ff9800'; borderStyle = 'dashed'; }
                     return (
                       <EditableProblem
@@ -13304,7 +13415,6 @@ ${editorShellPath}
                         borderStyle={borderStyle}
                         isNew={isNew}
                         isEdited={isEdited}
-                        isPendingDelete={isPendingDelete}
                         originalProblem={originalProblem}
                         docId={docId}
                         getBaseUrl={getBaseUrl}
@@ -13341,21 +13451,36 @@ ${editorShellPath}
                           }
                         }}
                         onDelete={() => {
-                          setPendingDeleteProblemIds(prev => { const next = new Map(prev); next.set(p.pid, cardIdStr); return next; });
-                          if (cardIdStr && !cardIdStr.startsWith('temp-card-')) {
-                            setPendingProblemCardIds(prev => { const next = new Set(prev); next.add(cardIdStr); return next; });
+                          const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+                          const nodeId = selectedFile?.nodeId || '';
+                          const nodeCards: Card[] = nodeCardsMap[nodeId] ? [...nodeCardsMap[nodeId]] : [];
+                          const cardIndex = nodeCards.findIndex((c: Card) => c.docId === selectedFile?.cardId);
+                          if (cardIndex >= 0) {
+                            const existingProblems = [...(nodeCards[cardIndex].problems || [])];
+                            const problemIndex = existingProblems.findIndex((prob) => prob.pid === p.pid);
+                            if (problemIndex >= 0) {
+                              existingProblems.splice(problemIndex, 1);
+                              nodeCards[cardIndex] = { ...nodeCards[cardIndex], problems: existingProblems };
+                              (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap, [nodeId]: nodeCards };
+                            }
                           }
-                          setNewProblemIds(prev => { const next = new Set(prev); next.delete(p.pid); return next; });
-                          setEditedProblemIds(prev => { const next = new Set(prev); next.delete(p.pid); return next; });
-                          setPendingNewProblemCardIds(prev => { const next = new Set(prev); next.delete(cardIdStr); return next; });
-                          setPendingEditedProblemIds(prev => {
+                          if (cardIdStr && !cardIdStr.startsWith('temp-card-')) {
+                            setPendingProblemCardIds((prev) => { const next = new Set(prev); next.add(cardIdStr); return next; });
+                          }
+                          setNewProblemIds((prev) => { const next = new Set(prev); next.delete(p.pid); return next; });
+                          setEditedProblemIds((prev) => { const next = new Set(prev); next.delete(p.pid); return next; });
+                          setPendingNewProblemCardIds((prev) => { const next = new Set(prev); next.delete(cardIdStr); return next; });
+                          setPendingEditedProblemIds((prev) => {
                             const next = new Map(prev);
                             const editedSet = next.get(cardIdStr);
-                            if (editedSet) { editedSet.delete(p.pid); if (editedSet.size === 0) next.delete(cardIdStr); }
+                            if (editedSet) {
+                              editedSet.delete(p.pid);
+                              if (editedSet.size === 0) next.delete(cardIdStr);
+                            }
                             return next;
                           });
-                          setNodeCardsMapVersion(prev => prev + 1);
-                          setOriginalProblemsVersion(prev => prev + 1);
+                          setNodeCardsMapVersion((prev) => prev + 1);
+                          setOriginalProblemsVersion((prev) => prev + 1);
                         }}
                       />
                     );
