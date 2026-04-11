@@ -115,6 +115,7 @@ function DevelopPage() {
   const developCheckedInToday = !!(window as any).UiContext?.developCheckedInToday;
   const developAllGoalsMet = !!(window as any).UiContext?.developAllGoalsMet;
   const todayDevelopResumeUrl = String((window as any).UiContext?.todayDevelopResumeUrl || '').trim();
+  const developContinueDevelop = !!(window as any).UiContext?.developContinueDevelop;
   const developWallContributions = ((window as any).UiContext?.developWallContributions || []) as Array<{
     date: string;
     type: 'node' | 'card' | 'problem';
@@ -896,7 +897,7 @@ function DevelopPage() {
                 opacity: poolCount && !developStartBusy ? 1 : 0.85,
               }}
             >
-              {developStartBusy ? '…' : i18n('Develop start')}
+              {developStartBusy ? '…' : (developContinueDevelop ? i18n('Develop continue') : i18n('Develop start'))}
             </button>
           </div>
 

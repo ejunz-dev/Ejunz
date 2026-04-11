@@ -20,7 +20,11 @@ import {
     type DevelopPoolEntryWire,
 } from '../lib/developPoolShared';
 import { buildDevelopDomainWallPayload } from '../lib/developDomainWall';
-import { buildTodayDevelopResumeFields, clearDevelopSessionsAfterPoolChange } from '../lib/developSessionResume';
+import {
+    buildTodayDevelopResumeFields,
+    clearDevelopSessionsAfterPoolChange,
+    hasDevelopSessionInProgressOrPaused,
+} from '../lib/developSessionResume';
 import {
     deriveSessionLearnStatus,
     deriveSessionRecordType,
@@ -277,6 +281,11 @@ class DevelopHandler extends Handler {
             },
         );
 
+        const developContinueDevelop = await hasDevelopSessionInProgressOrPaused(
+            finalDomainId,
+            this.user._id,
+        );
+
         const sinceWallYmd = moment.utc().subtract(364, 'days').format('YYYY-MM-DD');
         const domainNameWall = (this as any).domain?.name || finalDomainId;
         const developWall = await buildDevelopDomainWallPayload(
@@ -303,6 +312,7 @@ class DevelopHandler extends Handler {
             developAllGoalsMet,
             todayDevelopResumableSessionId: resume.todayDevelopResumableSessionId ?? '',
             todayDevelopResumeUrl: resume.todayDevelopResumeUrl ?? '',
+            developContinueDevelop,
             developWallContributions: developWall.developWallContributions,
             developWallContributionDetails: developWall.developWallContributionDetails,
         };
