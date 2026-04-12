@@ -3,8 +3,8 @@ import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import { i18n, request } from 'vj/utils';
 import Notification from 'vj/components/notification';
-import type { Problem, ProblemSingle } from 'ejun/src/interface';
-import { problemKind } from 'ejun/src/model/problem';
+import type { Problem, ProblemSingle, ProblemMulti, ProblemTrueFalse, ProblemFlip } from 'ejun/src/interface';
+import { problemKind, normalizeMultiAnswers, setsEqualAsSorted } from 'ejun/src/model/problem';
 
 // Cache keys aligned with base outline (shared image Cache API).
 const BASE_OUTLINE_CARD_CACHE_PREFIX = 'base-outline-card-';
@@ -16,6 +16,35 @@ function labelForFrozenLessonQueueMode(modeRaw: string | undefined): string {
   if (m === 'breadth') return i18n('Breadth learning mode');
   if (m === 'random') return i18n('Random learning mode');
   return i18n('Deep learning mode');
+}
+
+type QueuedProblem = Problem & { cardId: string };
+
+function multiIndicesToBitmask(indices: number[]): number {
+  let s = 0;
+  for (const i of indices) {
+    if (typeof i === 'number' && i >= 0 && i < 31) s |= 1 << i;
+  }
+  return s;
+}
+
+function lessonProblemKindLabel(k: ReturnType<typeof problemKind>): string {
+  const key =
+    k === 'multi' ? 'Problem kind multi'
+    : k === 'true_false' ? 'Problem kind true false'
+    : k === 'flip' ? 'Problem kind flip'
+    : 'Problem kind single';
+  const t = i18n(key);
+  return t !== key ? t : k;
+}
+
+function lessonProblemQueueTitleText(p: QueuedProblem): string {
+  if (problemKind(p) === 'flip') {
+    const f = p as ProblemFlip;
+    return String(f.faceA || '').trim();
+  }
+  const stem = (p as ProblemSingle | ProblemMulti | ProblemTrueFalse).stem;
+  return String(stem || '').trim();
 }
 
 interface Card {
@@ -251,12 +280,8 @@ function LessonPage() {
     lessonPathCardPractiseCountTitle,
   } = lessonUi;
 
-  const hasLessonSidebar = (isSingleNodeMode || isTodayMode || isAlonePractice) && nodeTree.length > 0;
-
-  const splitQueueSidebars = flatCards.length > 0 && hasLessonSidebar;
-
-  const showCardQueueProgress = flatCards.length > 0
-    && (isSingleNodeMode || isTodayMode || isAlonePractice);
+  const hasLessonSidebar = (isSingleNodeMode || isTodayMode || isAlonePractice)
+    && (nodeTree.length > 0 || (card.problems || []).length > 0);
 
   const showLessonSessionProgressCard = isSingleNodeMode || isTodayMode || isAlonePractice;
 
@@ -537,21 +562,34 @@ function LessonPage() {
       .catch(() => setRenderedCardFace(card.cardFace || ''));
   }, [card?.docId, card?.cardFace, replaceImagesWithCache]);
 
-  const allProblems = useMemo(() => {
-    return (card.problems || [])
-      .filter((p) => problemKind(p) === 'single')
-      .map((p) => ({ ...(p as ProblemSingle), cardId: card.docId }));
+  const allProblems = useMemo((): QueuedProblem[] => {
+    return (card.problems || []).map((p) => ({ ...p, cardId: String(card.docId) } as QueuedProblem));
   }, [card]);
 
-  const [problemQueue, setProblemQueue] = useState<Array<ProblemSingle & { cardId: string }>>(allProblems);
+  /** 单卡片 + 有练习题：左右栏按「已完成 / 待完成题目」分列，不用卡片队列。 */
+  const splitProblemPracticeSidebars = isAlonePractice && allProblems.length > 0 && hasLessonSidebar;
+  const splitQueueSidebars = hasLessonSidebar && (splitProblemPracticeSidebars || flatCards.length > 0);
+  const showLessonProblemSessionProgress = splitProblemPracticeSidebars;
+  const showCardQueueProgress = flatCards.length > 0
+    && (isSingleNodeMode || isTodayMode || isAlonePractice)
+    && !splitProblemPracticeSidebars;
+
+  const [problemQueue, setProblemQueue] = useState<QueuedProblem[]>([]);
   const [currentProblemIndex, setCurrentProblemIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
+  const [selectedMulti, setSelectedMulti] = useState<number[]>([]);
+  const [selectedTf, setSelectedTf] = useState<0 | 1 | null>(null);
+  const [flipStage, setFlipStage] = useState<'a' | 'b'>('a');
   const [isAnswered, setIsAnswered] = useState(false);
   const [isPassed, setIsPassed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAnalysis, setShowAnalysis] = useState(false);
   const hasCalledPassRef = useRef(false);
-  const [answerHistory, setAnswerHistory] = useState<Array<{ problem: ProblemSingle & { cardId: string }; selected: number; correct: boolean; timeSpent: number; attempts: number }>>([]);
+  const [answerHistory, setAnswerHistory] = useState<Array<{ problem: QueuedProblem; selected: number; correct: boolean; timeSpent: number; attempts: number }>>([]);
+  /** Pids removed from queue after a full correct pass (excludes “need more” requeue / wrong). */
+  const [practiceClearedPids, setPracticeClearedPids] = useState<Record<string, true>>({});
+  const practiceProblemsDoneCount = Object.keys(practiceClearedPids).length;
+  const practiceProblemsPendingCount = problemQueue.length;
   const [problemStartTime, setProblemStartTime] = useState<number>(Date.now());
   const [problemAttempts, setProblemAttempts] = useState<Record<string, number>>({});
   const sessionStartTimeRef = useRef<number>(Date.now());
@@ -636,12 +674,13 @@ function LessonPage() {
         : prev.lessonPathCardPractiseCountTitle,
     }));
     const nextCard = payload.card != null ? normalizeCardFromServer(payload.card) : null;
-    const probs = (nextCard?.problems || [])
-      .filter((p) => problemKind(p) === 'single')
-      .map((p) => ({ ...(p as ProblemSingle), cardId: nextCard!.docId }));
+    const probs = (nextCard?.problems || []).map((p) => ({ ...p, cardId: String(nextCard!.docId) } as QueuedProblem));
     setProblemQueue(probs);
     setCurrentProblemIndex(0);
     setSelectedAnswer(null);
+    setSelectedMulti([]);
+    setSelectedTf(null);
+    setFlipStage('a');
     setIsAnswered(false);
     setShowAnalysis(false);
     setIsPassed(false);
@@ -649,6 +688,7 @@ function LessonPage() {
     sessionStartTimeRef.current = Date.now();
     setProblemStartTime(Date.now());
     setAnswerHistory([]);
+    setPracticeClearedPids({});
     setProblemAttempts({});
     setPeekCount({});
     setCorrectNeeded({});
@@ -681,8 +721,12 @@ function LessonPage() {
       setProblemQueue(allProblems);
       setCurrentProblemIndex(0);
       setSelectedAnswer(null);
+      setSelectedMulti([]);
+      setSelectedTf(null);
+      setFlipStage('a');
       setIsAnswered(false);
       setShowAnalysis(false);
+      setPracticeClearedPids({});
     }
   }, [allProblems, problemQueue.length, answerHistory.length]);
 
@@ -788,7 +832,7 @@ function LessonPage() {
     if (!showLessonSessionProgressCard) return null;
     const modeLabel = lessonSessionModeLabel || i18n('Learn session');
     const modeBlock = (
-      <div style={{ marginBottom: showCardQueueProgress ? '12px' : 0 }}>
+      <div style={{ marginBottom: (showCardQueueProgress || showLessonProblemSessionProgress) ? '12px' : 0 }}>
         <div style={{ fontSize: '12px', color: themeStyles.textTertiary, marginBottom: '4px' }}>
           {i18n('Session type')}
         </div>
@@ -826,10 +870,40 @@ function LessonPage() {
       border: `1px solid ${themeStyles.border}`,
       boxShadow: theme === 'dark' ? '0 2px 12px rgba(0,0,0,0.25)' : '0 2px 10px rgba(0,0,0,0.06)',
     } as const;
-    if (!showCardQueueProgress) {
+    if (!showCardQueueProgress && !showLessonProblemSessionProgress) {
       return (
         <div style={cardShell}>
           {modeBlock}
+        </div>
+      );
+    }
+    if (showLessonProblemSessionProgress) {
+      const total = allProblems.length;
+      const done = Object.keys(practiceClearedPids).length;
+      const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+      return (
+        <div style={cardShell}>
+          {modeBlock}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', marginBottom: '12px', gap: '12px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '15px', fontWeight: 600, color: themeStyles.accent }}>
+              {done} / {total} {i18n('Lesson practice progress unit')} · {pct}%
+            </span>
+          </div>
+          <div style={{
+            height: '14px',
+            borderRadius: '999px',
+            backgroundColor: themeStyles.bgSecondary,
+            border: `1px solid ${themeStyles.border}`,
+            overflow: 'hidden',
+          }}>
+            <div style={{
+              width: `${pct}%`,
+              height: '100%',
+              borderRadius: '999px',
+              background: `linear-gradient(90deg, ${themeStyles.accent}, ${themeStyles.success})`,
+              transition: 'width 0.35s ease',
+            }} />
+          </div>
         </div>
       );
     }
@@ -867,12 +941,15 @@ function LessonPage() {
   }, [
     showLessonSessionProgressCard,
     showCardQueueProgress,
+    showLessonProblemSessionProgress,
     lessonSessionModeLabel,
     isTodayMode,
     rootNodeId,
     lessonLearnSessionMode,
     lessonTodayModesConfigLine,
     flatCards.length,
+    allProblems.length,
+    practiceClearedPids,
     lessonQueueDoneCount,
     lessonSessionNewOldCounts,
     lessonSessionQueueNewOldLabel,
@@ -951,7 +1028,9 @@ function LessonPage() {
     })() : null;
     if (leftWrap) {
       const leftLabel = splitQueueSidebars
-        ? `${i18n('Completed sections')} (${lessonQueueDoneCount})`
+        ? (splitProblemPracticeSidebars
+          ? `${i18n('Lesson practice sidebar completed')} (${practiceProblemsDoneCount})`
+          : `${i18n('Completed sections')} (${lessonQueueDoneCount})`)
         : i18n('Progress');
       ReactDOM.render(
         <button
@@ -965,7 +1044,9 @@ function LessonPage() {
       );
     }
     if (rightWrap) {
-      const rightLabel = `${i18n('Uncompleted')} (${lessonQueuePendingCount})`;
+      const rightLabel = splitProblemPracticeSidebars
+        ? `${i18n('Lesson practice sidebar pending')} (${practiceProblemsPendingCount})`
+        : `${i18n('Uncompleted')} (${lessonQueuePendingCount})`;
       ReactDOM.render(
         <button
           type="button"
@@ -987,7 +1068,17 @@ function LessonPage() {
         rightWrap.remove();
       }
     };
-  }, [isMobile, showSidebarInNav, splitQueueSidebars, lessonQueueDoneCount, lessonQueuePendingCount, i18n]);
+  }, [
+    isMobile,
+    showSidebarInNav,
+    splitQueueSidebars,
+    splitProblemPracticeSidebars,
+    lessonQueueDoneCount,
+    lessonQueuePendingCount,
+    practiceProblemsDoneCount,
+    practiceProblemsPendingCount,
+    i18n,
+  ]);
 
   const showQueueNameNewOld = (isTodayMode || isSingleNodeMode)
     && typeof lessonSessionLearnStartSlot === 'number'
@@ -1134,24 +1225,126 @@ function LessonPage() {
   }, []);
 
   const currentProblem = problemQueue[currentProblemIndex];
-  const displayOrder = currentProblem?.options && optionOrder.length === currentProblem.options.length
+  const currentKind = currentProblem ? problemKind(currentProblem) : 'single';
+  const currentSingle = currentKind === 'single' && currentProblem ? (currentProblem as ProblemSingle) : null;
+  const displayOrder = currentSingle?.options
+    && optionOrder.length === currentSingle.options.length
     ? optionOrder
-    : (currentProblem?.options?.map((_, i) => i) ?? []);
-  const isCorrect = currentProblem && selectedAnswer !== null && displayOrder[selectedAnswer] === currentProblem.answer;
+    : (currentSingle?.options ? currentSingle.options.map((_, i) => i) : []);
+  const displayOrderMulti = currentProblem && currentKind === 'multi' && (currentProblem as ProblemMulti).options
+    && optionOrder.length === (currentProblem as ProblemMulti).options.length
+    ? optionOrder
+    : (currentProblem && currentKind === 'multi' && (currentProblem as ProblemMulti).options
+      ? (currentProblem as ProblemMulti).options.map((_, i) => i)
+      : []);
+
+  const isCorrect = (() => {
+    if (!currentProblem || !isAnswered) return false;
+    if (currentKind === 'single') {
+      const ps = currentProblem as ProblemSingle;
+      if (selectedAnswer === null || !ps.options?.length) return false;
+      const order = displayOrder.length === ps.options.length ? displayOrder : ps.options.map((_, i) => i);
+      const originalIdx = order[selectedAnswer] ?? selectedAnswer;
+      return originalIdx === ps.answer;
+    }
+    if (currentKind === 'multi') {
+      const pm = currentProblem as ProblemMulti;
+      const want = normalizeMultiAnswers(pm.answer);
+      const got = [...selectedMulti].sort((a, b) => a - b);
+      return setsEqualAsSorted(want, got);
+    }
+    if (currentKind === 'true_false') {
+      const pt = currentProblem as ProblemTrueFalse;
+      return selectedTf !== null && selectedTf === pt.answer;
+    }
+    if (currentKind === 'flip') {
+      return isAnswered;
+    }
+    return false;
+  })();
+
   const allCorrect = problemQueue.length === 0 && answerHistory.length > 0;
 
+  const formatPracticeHistoryUserAnswer = useCallback((h: { problem: QueuedProblem; selected: number }) => {
+    const k = problemKind(h.problem);
+    if (k === 'single') {
+      const ps = h.problem as ProblemSingle;
+      const t = ps.options?.[h.selected];
+      return typeof t === 'string' && t.trim() ? t : i18n('N/A');
+    }
+    if (k === 'multi') {
+      const pm = h.problem as ProblemMulti;
+      const opts = pm.options || [];
+      const bits = h.selected;
+      const indices: number[] = [];
+      for (let i = 0; i < Math.min(opts.length, 31); i++) {
+        if (bits & (1 << i)) indices.push(i);
+      }
+      if (indices.length === 0) return i18n('N/A');
+      return indices.map((i) => String(opts[i] ?? '')).filter(Boolean).join('；') || i18n('N/A');
+    }
+    if (k === 'true_false') {
+      if (h.selected === 1) return i18n('Problem answer true');
+      if (h.selected === 0) return i18n('Problem answer false');
+      return i18n('N/A');
+    }
+    if (k === 'flip') return i18n('Done');
+    return i18n('N/A');
+  }, []);
+
+  const formatPracticeHistoryCorrectAnswer = useCallback((p: QueuedProblem) => {
+    const k = problemKind(p);
+    if (k === 'single') {
+      const ps = p as ProblemSingle;
+      const t = ps.options?.[ps.answer];
+      return typeof t === 'string' && t.trim() ? t : i18n('N/A');
+    }
+    if (k === 'multi') {
+      const pm = p as ProblemMulti;
+      const want = normalizeMultiAnswers(pm.answer);
+      const opts = pm.options || [];
+      if (want.length === 0) return i18n('N/A');
+      return want.map((i) => String(opts[i] ?? '')).filter(Boolean).join('；') || i18n('N/A');
+    }
+    if (k === 'true_false') {
+      const pt = p as ProblemTrueFalse;
+      return pt.answer === 1 ? i18n('Problem answer true') : i18n('Problem answer false');
+    }
+    if (k === 'flip') return i18n('Problem kind flip');
+    return i18n('N/A');
+  }, []);
+
   useLayoutEffect(() => {
-    if (currentProblem?.options?.length) {
-      setSelectedAnswer(null);
-      setIsAnswered(false);
-      setShowAnalysis(false);
-      setProblemStartTime(Date.now());
-      const indices = currentProblem.options.map((_, i) => i);
+    if (!currentProblem) return;
+    const k = problemKind(currentProblem);
+    setSelectedAnswer(null);
+    setSelectedMulti([]);
+    setSelectedTf(null);
+    setFlipStage('a');
+    setIsAnswered(false);
+    setShowAnalysis(false);
+    setProblemStartTime(Date.now());
+    if (k === 'single') {
+      const ps = currentProblem as ProblemSingle;
+      if (!ps.options?.length) {
+        setOptionOrder([]);
+        return;
+      }
+      const indices = ps.options.map((_, i) => i);
       for (let i = indices.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [indices[i], indices[j]] = [indices[j], indices[i]];
       }
       setOptionOrder(indices);
+    } else if (k === 'multi' && (currentProblem as ProblemMulti).options?.length) {
+      const indices = (currentProblem as ProblemMulti).options.map((_, i) => i);
+      for (let i = indices.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [indices[i], indices[j]] = [indices[j], indices[i]];
+      }
+      setOptionOrder(indices);
+    } else {
+      setOptionOrder([]);
     }
   }, [currentProblemIndex, currentProblem?.pid, shuffleTrigger]);
 
@@ -1285,11 +1478,51 @@ function LessonPage() {
     }
   }, [allCorrect, isPassed, isSubmitting, allProblems.length]);
 
+  const recordCorrectOrWrong = (
+    problem: QueuedProblem,
+    selected: number,
+    correct: boolean,
+    timeSpent: number,
+    problemId: string,
+    currentAttempts: number,
+  ) => {
+    if (correct) {
+      setAnswerHistory((prev) => {
+        const existingIndex = prev.findIndex((h) => h.problem.pid === problemId && h.correct);
+        if (existingIndex >= 0) {
+          const updated = [...prev];
+          updated[existingIndex] = {
+            problem,
+            selected,
+            correct: true,
+            timeSpent: updated[existingIndex].timeSpent + timeSpent,
+            attempts: currentAttempts,
+          };
+          return updated;
+        }
+        return [...prev, { problem, selected, correct: true, timeSpent, attempts: currentAttempts }];
+      });
+      const need = correctNeeded[problemId] || 0;
+      if (need > 0) {
+        setCorrectNeeded((prev) => ({ ...prev, [problemId]: need - 1 }));
+        setTimeout(() => handleCorrectButNeedMore(), 1500);
+      } else {
+        setTimeout(() => handleNextProblem(), 1500);
+      }
+    } else {
+      setPeekCount((prev) => ({ ...prev, [problemId]: (prev[problemId] || 0) + 1 }));
+      setCorrectNeeded((prev) => ({ ...prev, [problemId]: (prev[problemId] || 0) + 1 }));
+      setTimeout(() => handleWrongAnswer(), 2000);
+    }
+  };
+
   const handleAnswerSelect = (displayedIndex: number) => {
-    if (isAnswered || !currentProblem?.options) return;
-    const order = displayOrder.length === currentProblem.options.length ? displayOrder : currentProblem.options.map((_, i) => i);
+    if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'single') return;
+    const ps = currentProblem as ProblemSingle;
+    if (!ps.options?.length) return;
+    const order = displayOrder.length === ps.options.length ? displayOrder : ps.options.map((_, i) => i);
     const originalIndex = order[displayedIndex] ?? displayedIndex;
-    const correct = originalIndex === currentProblem.answer;
+    const correct = originalIndex === ps.answer;
     const timeSpent = Date.now() - problemStartTime;
     const problemId = currentProblem.pid;
     const currentAttempts = (problemAttempts[problemId] || 0) + 1;
@@ -1297,46 +1530,77 @@ function LessonPage() {
     setSelectedAnswer(displayedIndex);
     setIsAnswered(true);
     setShowAnalysis(true);
-    setProblemAttempts(prev => ({ ...prev, [problemId]: currentAttempts }));
+    setProblemAttempts((prev) => ({ ...prev, [problemId]: currentAttempts }));
 
-    if (correct) {
-      setAnswerHistory(prev => {
-        const existingIndex = prev.findIndex(h => h.problem.pid === problemId && h.correct);
-        if (existingIndex >= 0) {
-          const updated = [...prev];
-          updated[existingIndex] = {
-            problem: currentProblem,
-            selected: originalIndex,
-            correct: true,
-            timeSpent: updated[existingIndex].timeSpent + timeSpent,
-            attempts: currentAttempts,
-          };
-          return updated;
-        }
-        return [...prev, {
-          problem: currentProblem,
-          selected: originalIndex,
-          correct: true,
-          timeSpent,
-          attempts: currentAttempts,
-        }];
-      });
-      const need = correctNeeded[problemId] || 0;
-      if (need > 0) {
-        setCorrectNeeded(prev => ({ ...prev, [problemId]: need - 1 }));
-        setTimeout(() => handleCorrectButNeedMore(), 1500);
-      } else {
-        setTimeout(() => handleNextProblem(), 1500);
-      }
-    } else {
-      setPeekCount(prev => ({ ...prev, [problemId]: (prev[problemId] || 0) + 1 }));
-      setCorrectNeeded(prev => ({ ...prev, [problemId]: (prev[problemId] || 0) + 1 }));
-      setTimeout(() => handleWrongAnswer(), 2000);
-    }
+    recordCorrectOrWrong(currentProblem, originalIndex, correct, timeSpent, problemId, currentAttempts);
+  };
+
+  const handleMultiToggle = (displayedIndex: number) => {
+    if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'multi') return;
+    const pm = currentProblem as ProblemMulti;
+    if (!pm.options?.length) return;
+    const order = displayOrderMulti.length === pm.options.length ? displayOrderMulti : pm.options.map((_, i) => i);
+    const originalIndex = order[displayedIndex] ?? displayedIndex;
+    setSelectedMulti((prev) => {
+      const s = new Set(prev);
+      if (s.has(originalIndex)) s.delete(originalIndex);
+      else s.add(originalIndex);
+      return [...s].sort((a, b) => a - b);
+    });
+  };
+
+  const handleMultiConfirm = () => {
+    if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'multi') return;
+    const pm = currentProblem as ProblemMulti;
+    const want = normalizeMultiAnswers(pm.answer);
+    const got = [...selectedMulti].sort((a, b) => a - b);
+    const correct = setsEqualAsSorted(want, got);
+    const timeSpent = Date.now() - problemStartTime;
+    const problemId = currentProblem.pid;
+    const currentAttempts = (problemAttempts[problemId] || 0) + 1;
+    setIsAnswered(true);
+    setShowAnalysis(true);
+    setProblemAttempts((prev) => ({ ...prev, [problemId]: currentAttempts }));
+    recordCorrectOrWrong(currentProblem, multiIndicesToBitmask(got), correct, timeSpent, problemId, currentAttempts);
+  };
+
+  const handleTfSelect = (v: 0 | 1) => {
+    if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'true_false') return;
+    const pt = currentProblem as ProblemTrueFalse;
+    const correct = v === pt.answer;
+    const timeSpent = Date.now() - problemStartTime;
+    const problemId = currentProblem.pid;
+    const currentAttempts = (problemAttempts[problemId] || 0) + 1;
+    setSelectedTf(v);
+    setIsAnswered(true);
+    setShowAnalysis(true);
+    setProblemAttempts((prev) => ({ ...prev, [problemId]: currentAttempts }));
+    recordCorrectOrWrong(currentProblem, v, correct, timeSpent, problemId, currentAttempts);
+  };
+
+  const handleFlipShowBack = () => {
+    if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'flip') return;
+    setFlipStage('b');
+  };
+
+  const handleFlipComplete = () => {
+    if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'flip') return;
+    const timeSpent = Date.now() - problemStartTime;
+    const problemId = currentProblem.pid;
+    const currentAttempts = (problemAttempts[problemId] || 0) + 1;
+    setIsAnswered(true);
+    setShowAnalysis(true);
+    setProblemAttempts((prev) => ({ ...prev, [problemId]: currentAttempts }));
+    recordCorrectOrWrong(currentProblem, 1, true, timeSpent, problemId, currentAttempts);
   };
 
   const handleNextProblem = () => {
+    const donePid = problemQueue[currentProblemIndex]?.pid;
+    if (donePid) setPracticeClearedPids((prev) => ({ ...prev, [donePid]: true }));
     setSelectedAnswer(null);
+    setSelectedMulti([]);
+    setSelectedTf(null);
+    setFlipStage('a');
     setIsAnswered(false);
     setShowAnalysis(false);
     setShuffleTrigger((t) => t + 1);
@@ -1517,7 +1781,7 @@ function LessonPage() {
                   }}
                 >
                   <div style={{ fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: themeStyles.textPrimary }}>
-                    {i18n('Question')} {idx + 1}: {history.problem.stem}
+                    {i18n('Question')} {idx + 1}: {lessonProblemQueueTitleText(history.problem)}
                   </div>
                   <div style={{ fontSize: '12px', color: themeStyles.textSecondary, marginBottom: '4px' }}>
                     {i18n('Time Spent')}: {(history.timeSpent / 1000).toFixed(1)}s
@@ -1529,7 +1793,7 @@ function LessonPage() {
                     {i18n('Attempts')}: {history.attempts}
                   </div>
                   <div style={{ fontSize: '12px', color: themeStyles.textSecondary, marginBottom: '4px' }}>
-                    {i18n('Your Answer')}: {history.problem?.options?.[history.selected] || i18n('N/A')} 
+                    {i18n('Your Answer')}: {formatPracticeHistoryUserAnswer(history)}
                     {history.correct ? (
                       <span style={{ color: themeStyles.success, marginLeft: '8px' }}>✓</span>
                     ) : (
@@ -1538,7 +1802,7 @@ function LessonPage() {
                   </div>
                   {!history.correct && (
                     <div style={{ fontSize: '12px', color: themeStyles.textSecondary, marginTop: '4px' }}>
-                      {i18n('Correct Answer')}: {history.problem?.options?.[history.problem?.answer] || i18n('N/A')}
+                      {i18n('Correct Answer')}: {formatPracticeHistoryCorrectAnswer(history.problem)}
                     </div>
                   )}
                 </div>
@@ -1816,6 +2080,127 @@ function LessonPage() {
     </>
   );
 
+  const lessonStemPreview = (stem: string) => {
+    const plain = String(stem || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    return plain.length > 56 ? `${plain.slice(0, 56)}…` : plain || '—';
+  };
+
+  const renderLessonProblemQueueRow = (p: QueuedProblem, orderIndex: number, isCurrent: boolean, isCleared: boolean) => {
+    const k = problemKind(p);
+    const rowStyle: React.CSSProperties = {
+      padding: '6px 8px',
+      fontSize: '12px',
+      borderRadius: '6px',
+      border: `1px solid ${isCurrent ? themeStyles.accent : themeStyles.border}`,
+      backgroundColor: isCurrent ? themeStyles.accentMutedBg : isCleared ? themeStyles.doneBg : themeStyles.bgSecondary,
+      color: isCurrent ? themeStyles.accentMutedFg : isCleared ? themeStyles.doneFg : themeStyles.textSecondary,
+      fontWeight: isCurrent ? 600 : 400,
+    };
+    return (
+      <div key={`lesson-problem-row-${orderIndex}-${p.pid}`} style={rowStyle}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px', flexWrap: 'wrap' }}>
+          <span style={{ flexShrink: 0, opacity: 0.9 }}>#{orderIndex + 1}</span>
+          <span style={{
+            fontSize: '10px',
+            padding: '1px 5px',
+            borderRadius: '4px',
+            backgroundColor: themeStyles.bgPage,
+            flexShrink: 0,
+          }}
+          >
+            {lessonProblemKindLabel(k)}
+          </span>
+          {isCleared ? <span style={{ marginLeft: 'auto', flexShrink: 0 }} aria-hidden>✓</span> : null}
+        </div>
+        <div style={{ fontSize: '11px', lineHeight: 1.35, opacity: 0.95, wordBreak: 'break-word' }}>
+          {lessonStemPreview(lessonProblemQueueTitleText(p))}
+        </div>
+      </div>
+    );
+  };
+
+  const lessonProblemQueueSidebar = allProblems.length > 0 && !splitProblemPracticeSidebars ? (
+    <div style={{ marginTop: '16px', marginBottom: '12px' }}>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: '8px',
+        marginBottom: '8px',
+      }}>
+        <span style={{ fontSize: '12px', color: themeStyles.textTertiary, textTransform: 'uppercase' }}>
+          {i18n('Lesson problem queue')}
+        </span>
+        <span style={{ fontSize: '12px', fontWeight: 600, color: themeStyles.textSecondary, flexShrink: 0 }}>
+          {practiceProblemsDoneCount}/{allProblems.length}
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        {allProblems.map((p, idx) => {
+          const isCurrent = currentProblem?.pid === p.pid;
+          const isCleared = !!practiceClearedPids[p.pid];
+          return renderLessonProblemQueueRow(p, idx, isCurrent, isCleared);
+        })}
+      </div>
+    </div>
+  ) : null;
+
+  const sidebarProblemPracticeDoneColumn = splitProblemPracticeSidebars ? (
+    <>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: '8px',
+        marginBottom: '8px',
+      }}>
+        <span style={{ fontSize: '12px', color: themeStyles.textTertiary, textTransform: 'uppercase' }}>
+          {i18n('Lesson practice sidebar completed')}
+        </span>
+        <span style={{ fontSize: '14px', fontWeight: 700, color: themeStyles.success, flexShrink: 0 }}>
+          {practiceProblemsDoneCount}
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        {allProblems.map((p, idx) => {
+          if (!practiceClearedPids[p.pid]) return null;
+          return renderLessonProblemQueueRow(p, idx, false, true);
+        })}
+        {practiceProblemsDoneCount === 0 ? (
+          <div style={{ fontSize: '13px', color: themeStyles.textTertiary, padding: '8px 0' }}>
+            {i18n('No completed problems yet')}
+          </div>
+        ) : null}
+      </div>
+    </>
+  ) : null;
+
+  const sidebarProblemPracticePendingColumn = splitProblemPracticeSidebars ? (
+    <>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: '8px',
+        marginBottom: '8px',
+      }}>
+        <span style={{ fontSize: '12px', color: themeStyles.textTertiary, textTransform: 'uppercase' }}>
+          {i18n('Lesson practice sidebar pending')}
+        </span>
+        <span style={{ fontSize: '14px', fontWeight: 700, color: themeStyles.accent, flexShrink: 0 }}>
+          {practiceProblemsPendingCount}
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        {problemQueue.map((p, queueIdx) => {
+          const orderIndex = allProblems.findIndex((x) => x.pid === p.pid);
+          const idx = orderIndex >= 0 ? orderIndex : queueIdx;
+          return renderLessonProblemQueueRow(p, idx, queueIdx === currentProblemIndex, false);
+        })}
+      </div>
+    </>
+  ) : null;
+
   const todayFlatListAll = isTodayMode && rootNodeId === 'today' ? (
     <div>
       {flatCards.map((item, idx) => {
@@ -1940,7 +2325,8 @@ function LessonPage() {
 
   const sidebarInnerLeftSplit = (
     <>
-      {sidebarMeta}
+      {!splitProblemPracticeSidebars && sidebarMeta}
+      {lessonProblemQueueSidebar}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
@@ -1982,13 +2368,18 @@ function LessonPage() {
   const sidebarInner = (
     <>
       {sidebarMeta}
+      {lessonProblemQueueSidebar}
       {isTodayMode && rootNodeId === 'today' ? todayFlatListAll : nodeTree.map((root, i) => renderNodeTreeItem(root, 0))}
     </>
   );
 
-  /** Split sidebars: left done, right pending + progress meta. */
-  const lessonSidebarLeftColumn = splitQueueSidebars ? sidebarInnerRightSplit : sidebarInner;
-  const lessonSidebarRightColumn = splitQueueSidebars ? sidebarInnerLeftSplit : null;
+  /** Split sidebars: left done, right pending（单卡片有题时为题目队列，否则为今日/单节点卡片队列 + meta）。 */
+  const lessonSidebarLeftColumn = splitQueueSidebars
+    ? (splitProblemPracticeSidebars ? sidebarProblemPracticeDoneColumn : sidebarInnerRightSplit)
+    : sidebarInner;
+  const lessonSidebarRightColumn = splitQueueSidebars
+    ? (splitProblemPracticeSidebars ? sidebarProblemPracticePendingColumn : sidebarInnerLeftSplit)
+    : null;
 
   const asideBaseStyle: React.CSSProperties = {
     padding: '16px',
@@ -2104,6 +2495,21 @@ function LessonPage() {
     );
   }
 
+  if (allProblems.length > 0 && problemQueue.length > 0 && !currentProblem && !allCorrect) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: themeStyles.bgPage,
+        maxWidth: '900px',
+        margin: '0 auto',
+        padding: '20px',
+        textAlign: 'center',
+      }}>
+        <div style={{ padding: '40px', color: themeStyles.textTertiary }}>{i18n('Loading...')}</div>
+      </div>
+    );
+  }
+
   if (!currentProblem && !allCorrect && answerHistory.length === 0) {
     return (
       <div style={{
@@ -2124,7 +2530,7 @@ function LessonPage() {
     );
   }
 
-  if (!currentProblem || !currentProblem.options) {
+  if (!currentProblem) {
     if (allCorrect) {
       return null;
     }
@@ -2137,12 +2543,7 @@ function LessonPage() {
         padding: '20px',
         textAlign: 'center',
       }}>
-        <div style={{
-          padding: '40px',
-          color: themeStyles.textTertiary,
-        }}>
-          {i18n('Loading...')}
-        </div>
+        <div style={{ padding: '40px', color: themeStyles.textTertiary }}>{i18n('Loading...')}</div>
       </div>
     );
   }
@@ -2210,7 +2611,7 @@ function LessonPage() {
           }}>
             {i18n('Question')}
           </span>
-          {!isAnswered && (
+          {!isAnswered && currentKind !== 'flip' && (
             <button
               type="button"
               onClick={handlePeek}
@@ -2251,63 +2652,176 @@ function LessonPage() {
               borderRadius: '4px',
               fontSize: '12px',
             }}>
-              {isCorrect ? i18n('Correct') : i18n('Incorrect')}
+              {currentKind === 'flip' && isCorrect ? i18n('Done') : (isCorrect ? i18n('Correct') : i18n('Incorrect'))}
             </span>
           )}
+          <span style={{ fontSize: '11px', color: themeStyles.textTertiary, marginLeft: '4px' }}>
+            ({lessonProblemKindLabel(currentKind)})
+          </span>
         </div>
 
-        <div style={{
-          fontSize: '18px',
-          fontWeight: '500',
-          marginBottom: '24px',
-          color: themeStyles.stemColor,
-          lineHeight: '1.6',
-        }}>
-          {currentProblem?.stem || i18n('No stem')}
-        </div>
-
-        <div style={{ marginBottom: '20px' }} key={`options-${currentProblem?.pid}-${currentProblemIndex}-${shuffleTrigger}`}>
-          {(currentProblem?.options && Array.isArray(currentProblem.options) ? displayOrder : []).map((originalIdx, displayIdx) => {
-            const option = currentProblem.options[originalIdx];
-            const isSelected = selectedAnswer === displayIdx;
-            const isAnswer = originalIdx === currentProblem.answer;
-            const baseStyle: React.CSSProperties = {
-              padding: isMobile ? '16px' : '14px',
-              marginBottom: '12px',
-              borderRadius: '6px',
-              cursor: isAnswered ? 'not-allowed' : 'pointer',
-              transition: 'all 0.2s',
-              ...(isMobile ? { minHeight: '48px', display: 'flex', alignItems: 'center' } : {}),
-            };
-            let optionStyle: React.CSSProperties;
-            if (showAnalysis) {
-              if (isAnswer) {
-                optionStyle = { ...baseStyle, border: `2px solid ${themeStyles.success}`, backgroundColor: themeStyles.successBg };
-              } else if (isSelected) {
-                optionStyle = { ...baseStyle, border: `2px solid ${themeStyles.danger}`, backgroundColor: themeStyles.dangerBg };
-              } else {
-                optionStyle = { ...baseStyle, border: `2px solid ${themeStyles.optionBorderMuted}`, backgroundColor: themeStyles.optionNeutral, opacity: 0.6 };
-              }
-            } else if (isSelected) {
-              optionStyle = { ...baseStyle, border: `2px solid ${themeStyles.accent}`, backgroundColor: themeStyles.accentMutedBg };
-            } else {
-              optionStyle = { ...baseStyle, border: `2px solid ${themeStyles.optionBorderMuted}`, backgroundColor: themeStyles.optionNeutral };
-            }
-
-            return (
-              <div
-                key={`${currentProblem.pid || currentProblemIndex}-${displayIdx}`}
-                onClick={() => !isAnswered && handleAnswerSelect(displayIdx)}
-                style={optionStyle}
-              >
-                <span style={{ marginRight: '10px', fontWeight: 'bold', fontSize: '16px', color: themeStyles.textPrimary }}>
-                  {String.fromCharCode(65 + displayIdx)}.
-                </span>
-                <span style={{ fontSize: '16px', color: themeStyles.textPrimary }}>{option}</span>
+        {currentKind === 'flip' ? (
+          <>
+            {flipStage === 'a' ? (
+              <div style={{ fontSize: '18px', fontWeight: 500, marginBottom: '24px', color: themeStyles.stemColor, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                {(currentProblem as ProblemFlip).faceA || i18n('No stem')}
               </div>
-            );
-          })}
-        </div>
+            ) : (
+              <>
+                <div style={{ fontSize: '13px', color: themeStyles.textTertiary, marginBottom: '8px', whiteSpace: 'pre-wrap' }}>{(currentProblem as ProblemFlip).faceA}</div>
+                <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '24px', color: themeStyles.stemColor, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                  {(currentProblem as ProblemFlip).faceB}
+                </div>
+              </>
+            )}
+            {!isAnswered && flipStage === 'a' && (
+              <button type="button" onClick={handleFlipShowBack} style={{ padding: '12px 24px', border: 'none', borderRadius: '8px', backgroundColor: themeStyles.accent, color: themeStyles.whiteOnAccent, cursor: 'pointer', fontSize: '15px', fontWeight: 600 }}>
+                {i18n('Flip show back')}
+              </button>
+            )}
+            {!isAnswered && flipStage === 'b' && (
+              <button type="button" onClick={handleFlipComplete} style={{ padding: '12px 24px', border: 'none', borderRadius: '8px', backgroundColor: themeStyles.success, color: themeStyles.whiteOnAccent, cursor: 'pointer', fontSize: '15px', fontWeight: 600 }}>
+                {i18n('Flip mark done')}
+              </button>
+            )}
+          </>
+        ) : currentKind === 'true_false' ? (
+          <>
+            <div style={{ fontSize: '18px', fontWeight: '500', marginBottom: '24px', color: themeStyles.stemColor, lineHeight: '1.6' }}>
+              {(currentProblem as ProblemTrueFalse).stem || i18n('No stem')}
+            </div>
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+              {([1, 0] as const).map((v) => {
+                const pt = currentProblem as ProblemTrueFalse;
+                const isSel = selectedTf === v;
+                const isAns = pt.answer === v;
+                const baseStyle: React.CSSProperties = {
+                  flex: 1,
+                  minWidth: '120px',
+                  padding: '16px',
+                  borderRadius: '8px',
+                  cursor: isAnswered ? 'not-allowed' : 'pointer',
+                  fontSize: '16px',
+                  fontWeight: 600,
+                  border: '2px solid',
+                };
+                let st: React.CSSProperties;
+                if (showAnalysis) {
+                  if (isAns) st = { ...baseStyle, borderColor: themeStyles.success, backgroundColor: themeStyles.successBg, color: themeStyles.textPrimary };
+                  else if (isSel) st = { ...baseStyle, borderColor: themeStyles.danger, backgroundColor: themeStyles.dangerBg, color: themeStyles.textPrimary };
+                  else st = { ...baseStyle, borderColor: themeStyles.optionBorderMuted, backgroundColor: themeStyles.optionNeutral, opacity: 0.55, color: themeStyles.textSecondary };
+                } else if (isSel) st = { ...baseStyle, borderColor: themeStyles.accent, backgroundColor: themeStyles.accentMutedBg, color: themeStyles.textPrimary };
+                else st = { ...baseStyle, borderColor: themeStyles.optionBorderMuted, backgroundColor: themeStyles.optionNeutral, color: themeStyles.textPrimary };
+                return (
+                  <button key={v} type="button" disabled={isAnswered} onClick={() => handleTfSelect(v)} style={st}>
+                    {v === 1 ? i18n('Problem answer true') : i18n('Problem answer false')}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{
+              fontSize: '18px',
+              fontWeight: '500',
+              marginBottom: '24px',
+              color: themeStyles.stemColor,
+              lineHeight: '1.6',
+            }}>
+              {(currentProblem as ProblemSingle | ProblemMulti).stem || i18n('No stem')}
+            </div>
+
+            <div style={{ marginBottom: '20px' }} key={`options-${currentProblem?.pid}-${currentProblemIndex}-${shuffleTrigger}`}>
+              {(currentKind === 'single' && (currentProblem as ProblemSingle).options && Array.isArray((currentProblem as ProblemSingle).options) ? displayOrder : []).map((originalIdx, displayIdx) => {
+                const ps = currentProblem as ProblemSingle;
+                const option = ps.options[originalIdx];
+                const isSelected = selectedAnswer === displayIdx;
+                const isAnswer = originalIdx === ps.answer;
+                const baseStyle: React.CSSProperties = {
+                  padding: isMobile ? '16px' : '14px',
+                  marginBottom: '12px',
+                  borderRadius: '6px',
+                  cursor: isAnswered ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.2s',
+                  ...(isMobile ? { minHeight: '48px', display: 'flex', alignItems: 'center' } : {}),
+                };
+                let optionStyle: React.CSSProperties;
+                if (showAnalysis) {
+                  if (isAnswer) {
+                    optionStyle = { ...baseStyle, border: `2px solid ${themeStyles.success}`, backgroundColor: themeStyles.successBg };
+                  } else if (isSelected) {
+                    optionStyle = { ...baseStyle, border: `2px solid ${themeStyles.danger}`, backgroundColor: themeStyles.dangerBg };
+                  } else {
+                    optionStyle = { ...baseStyle, border: `2px solid ${themeStyles.optionBorderMuted}`, backgroundColor: themeStyles.optionNeutral, opacity: 0.6 };
+                  }
+                } else if (isSelected) {
+                  optionStyle = { ...baseStyle, border: `2px solid ${themeStyles.accent}`, backgroundColor: themeStyles.accentMutedBg };
+                } else {
+                  optionStyle = { ...baseStyle, border: `2px solid ${themeStyles.optionBorderMuted}`, backgroundColor: themeStyles.optionNeutral };
+                }
+
+                return (
+                  <div
+                    key={`${currentProblem.pid || currentProblemIndex}-${displayIdx}`}
+                    onClick={() => !isAnswered && handleAnswerSelect(displayIdx)}
+                    style={optionStyle}
+                  >
+                    <span style={{ marginRight: '10px', fontWeight: 'bold', fontSize: '16px', color: themeStyles.textPrimary }}>
+                      {String.fromCharCode(65 + displayIdx)}.
+                    </span>
+                    <span style={{ fontSize: '16px', color: themeStyles.textPrimary }}>{option}</span>
+                  </div>
+                );
+              })}
+              {(currentKind === 'multi' && (currentProblem as ProblemMulti).options && Array.isArray((currentProblem as ProblemMulti).options) ? displayOrderMulti : []).map((originalIdx, displayIdx) => {
+                const pm = currentProblem as ProblemMulti;
+                const option = pm.options[originalIdx];
+                const picked = selectedMulti.includes(originalIdx);
+                const should = normalizeMultiAnswers(pm.answer).includes(originalIdx);
+                const baseStyle: React.CSSProperties = {
+                  padding: isMobile ? '16px' : '14px',
+                  marginBottom: '12px',
+                  borderRadius: '6px',
+                  cursor: isAnswered ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.2s',
+                  ...(isMobile ? { minHeight: '48px', display: 'flex', alignItems: 'center' } : {}),
+                };
+                let optionStyle: React.CSSProperties;
+                if (showAnalysis) {
+                  if (should) {
+                    optionStyle = { ...baseStyle, border: `2px solid ${themeStyles.success}`, backgroundColor: themeStyles.successBg };
+                  } else if (picked) {
+                    optionStyle = { ...baseStyle, border: `2px solid ${themeStyles.danger}`, backgroundColor: themeStyles.dangerBg };
+                  } else {
+                    optionStyle = { ...baseStyle, border: `2px solid ${themeStyles.optionBorderMuted}`, backgroundColor: themeStyles.optionNeutral, opacity: 0.6 };
+                  }
+                } else if (picked) {
+                  optionStyle = { ...baseStyle, border: `2px solid ${themeStyles.accent}`, backgroundColor: themeStyles.accentMutedBg };
+                } else {
+                  optionStyle = { ...baseStyle, border: `2px solid ${themeStyles.optionBorderMuted}`, backgroundColor: themeStyles.optionNeutral };
+                }
+                return (
+                  <div
+                    key={`m-${currentProblem.pid}-${displayIdx}`}
+                    onClick={() => !isAnswered && handleMultiToggle(displayIdx)}
+                    style={optionStyle}
+                  >
+                    <span style={{ marginRight: '10px', fontWeight: 'bold', fontSize: '16px', color: themeStyles.textPrimary }}>
+                      {String.fromCharCode(65 + displayIdx)}.
+                    </span>
+                    <span style={{ fontSize: '16px', color: themeStyles.textPrimary }}>{option}</span>
+                  </div>
+                );
+              })}
+            </div>
+            {currentKind === 'multi' && !isAnswered && (
+              <button type="button" onClick={handleMultiConfirm} style={{ marginTop: '8px', padding: '10px 22px', border: 'none', borderRadius: '8px', backgroundColor: themeStyles.accent, color: themeStyles.whiteOnAccent, cursor: 'pointer', fontSize: '15px', fontWeight: 600 }}>
+                {i18n('Submit answer')}
+              </button>
+            )}
+          </>
+        )}
 
         {showAnalysis && currentProblem.analysis && (
           <div style={{

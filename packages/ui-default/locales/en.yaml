@@ -192,6 +192,8 @@ __langname: English
 'File Mode': File Mode
 'File view': File view
 'Final message will be': Final message will be
+'Flip mark done': Mark as done
+'Flip show back': Show back
 'Folder description': Folder description
 'Folder/Directory': Folder/Directory
 'Free Scroll': Free Scroll
@@ -256,6 +258,11 @@ __langname: English
 'Lesson session new old counts': '{0} new · {1} review'
 'Lesson path card practise count': 'Passed {0} time(s)'
 'Lesson path card practise count title': Times this card was fully passed at the current section slot (each full pass in this lesson counts once; same counter as on the learning path)
+'Lesson problem queue': Question queue
+'Lesson practice progress unit': questions
+'Lesson practice sidebar completed': Completed questions
+'Lesson practice sidebar pending': Pending questions
+'No completed problems yet': No completed questions yet
 'Learn queue card tag new': New
 'Learn queue card tag old': Old
 'Failed to save learn sub mode': Failed to save learn sub mode
@@ -435,6 +442,7 @@ __langname: English
 'Stem cannot be empty': Stem cannot be empty
 'Stem is required': Stem is required
 'Stem': Stem
+'Submit answer': Submit answer
 'Successfully pulled from GitHub': Successfully pulled from GitHub
 'Successfully pushed to GitHub': Successfully pushed to GitHub
 'System MCP tools (not from Edge). Click "Add" to add to current domain ': System MCP tools (not from Edge). Click "Add" to add to current domain
