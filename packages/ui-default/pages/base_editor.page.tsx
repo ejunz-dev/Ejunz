@@ -106,6 +106,13 @@ interface PendingChange {
   originalContent: string;
 }
 
+/** Card `docId` may be numeric from API while `FileItem.cardId` is string — use for lookups. */
+function sameCardDocId(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a == null || b == null) return false;
+  return String(a) === String(b);
+}
+
 /** Line-ending normalization so save/switch does not treat CRLF as unsaved edits. */
 function normalizeCardContentForCompare(s: string | undefined | null): string {
   return String(s ?? '').replace(/\r\n/g, '\n');
@@ -2022,6 +2029,16 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const originalProblemsRef = useRef<Map<string, Map<string, Problem>>>(new Map());
   const [originalProblemsVersion, setOriginalProblemsVersion] = useState(0);
 
+  /** 仅有「整卡题目需保存」但未落在题目新建/题目更改里时（典型：删除已有题目），用于待提交面板单独列出。 */
+  const problemPendingOtherCardIds = useMemo(() => {
+    return Array.from(pendingProblemCardIds).filter((cid) => {
+      if (pendingNewProblemCardIds.has(cid)) return false;
+      const ed = pendingEditedProblemIds.get(cid);
+      if (ed && ed.size > 0) return false;
+      return true;
+    });
+  }, [pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds]);
+
   const MOBILE_BREAKPOINT = 768;
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT);
   const [mobileExplorerOpen, setMobileExplorerOpen] = useState(false);
@@ -2072,7 +2089,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     wrapper.style.alignItems = 'center';
     wrapper.style.gap = '8px';
     rightEl.appendChild(wrapper);
-    const pendingCount = pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + Object.keys(pendingCardFaceChanges).length + pendingNewProblemCardIds.size + pendingEditedProblemIds.size;
+    const pendingCount = pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + Object.keys(pendingCardFaceChanges).length + pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size;
     const hasPending = pendingCount > 0;
     ReactDOM.render(
       <>
@@ -2110,31 +2127,31 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       ReactDOM.unmountComponentAtNode(wrapper);
       wrapper.remove();
     };
-  }, [isMobile, aiBottomOpen, editorAiHidden, isCommitting, pendingChanges.size, pendingDragChanges.size, pendingRenames.size, pendingCreatesCount, pendingDeletes.size, pendingCardFaceChanges, pendingNewProblemCardIds.size, pendingEditedProblemIds.size]);
+  }, [isMobile, aiBottomOpen, editorAiHidden, isCommitting, pendingChanges.size, pendingDragChanges.size, pendingRenames.size, pendingCreatesCount, pendingDeletes.size, pendingCardFaceChanges, pendingProblemCardIds.size, pendingNewProblemCardIds.size, pendingEditedProblemIds.size]);
 
   
   const getSelectedCard = useCallback((): Card | null => {
     if (!selectedFile || selectedFile.type !== 'card') return null;
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     const nodeCards = nodeCardsMap[selectedFile.nodeId || ''] || [];
-    const card = nodeCards.find((c: Card) => c.docId === selectedFile.cardId);
+    const card = nodeCards.find((c: Card) => sameCardDocId(c.docId, selectedFile.cardId));
     return card || null;
   }, [selectedFile]);
 
   
   useEffect(() => {
-    if (selectedFile && selectedFile.type === 'card') {
-      const card = getSelectedCard();
-      if (card && card.problems) {
-        const cardIdStr = String(selectedFile.cardId || '');
-        const originalProblems = new Map<string, Problem>();
-        card.problems.forEach(p => {
-          originalProblems.set(p.pid, { ...p });
-        });
-        originalProblemsRef.current.set(cardIdStr, originalProblems);
-      }
-    }
-  }, [selectedFile?.id]);
+    if (!selectedFile || selectedFile.type !== 'card') return;
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    const nodeCards = nodeCardsMap[selectedFile.nodeId || ''] || [];
+    const card = nodeCards.find((c: Card) => sameCardDocId(c.docId, selectedFile.cardId));
+    if (!card) return;
+    const cardIdStr = String(selectedFile.cardId || '');
+    const originalProblems = new Map<string, Problem>();
+    (card.problems || []).forEach((p) => {
+      originalProblems.set(p.pid, { ...p });
+    });
+    originalProblemsRef.current.set(cardIdStr, originalProblems);
+  }, [selectedFile?.id, selectedFile?.type, selectedFile?.nodeId, selectedFile?.cardId]);
   
 
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
@@ -2928,7 +2945,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     const nodeId = selectedFile.nodeId || '';
     const nodeCards: Card[] = nodeCardsMap[nodeId] || [];
-    const card = nodeCards.find((c: Card) => c.docId === selectedFile.cardId);
+    const card = nodeCards.find((c: Card) => sameCardDocId(c.docId, selectedFile.cardId));
 
     if (!card) {
       Notification.error(i18n('Card data not found, cannot generate problem'));
@@ -2945,7 +2962,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const updatedProblems = [...(card.problems || []), newProblem];
 
     if (nodeCardsMap[nodeId]) {
-      const cardIndex = nodeCards.findIndex((c: Card) => c.docId === selectedFile.cardId);
+      const cardIndex = nodeCards.findIndex((c: Card) => sameCardDocId(c.docId, selectedFile.cardId));
       if (cardIndex >= 0) {
         nodeCards[cardIndex] = {
           ...nodeCards[cardIndex],
@@ -2954,22 +2971,21 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
         setNodeCardsMapVersion(prev => prev + 1);
 
-        if (!String(selectedFile.cardId || '').startsWith('temp-card-')) {
-          const cardIdStr = String(selectedFile.cardId || '');
-          setPendingProblemCardIds(prev => {
-            const next = new Set(prev);
-            next.add(cardIdStr);
-            return next;
-          });
-          setPendingNewProblemCardIds(prev => {
-            const next = new Set(prev);
-            next.add(cardIdStr);
-            return next;
-          });
-        }
+        const cardIdStr = String(selectedFile.cardId || '');
+        setPendingProblemCardIds(prev => {
+          const next = new Set(prev);
+          next.add(cardIdStr);
+          return next;
+        });
+        setPendingNewProblemCardIds(prev => {
+          const next = new Set(prev);
+          next.add(cardIdStr);
+          return next;
+        });
+        setNewProblemIds((prev) => new Set(prev).add(newProblem.pid));
       }
     }
-  }, [selectedFile, setNodeCardsMapVersion, setPendingProblemCardIds, setPendingNewProblemCardIds]);
+  }, [selectedFile, setNodeCardsMapVersion, setPendingProblemCardIds, setPendingNewProblemCardIds, setNewProblemIds]);
 
 
   const handleSaveAll = useCallback(async () => {
@@ -3178,7 +3194,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             const cardNodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
             const cardNodeId = change.file.nodeId || '';
             const cardNodeCards: Card[] = cardNodeCardsMap[cardNodeId] || [];
-            const cardIndex = cardNodeCards.findIndex((c: Card) => c.docId === change.file.cardId);
+            const cardIndex = cardNodeCards.findIndex((c: Card) => sameCardDocId(c.docId, change.file.cardId));
             const card = cardIndex >= 0 ? cardNodeCards[cardIndex] : null;
             
             const problems = card?.problems;
@@ -3226,7 +3242,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           let foundCard: Card | null = null;
           for (const nodeId in nodeCardsMapForProblems) {
             const cards: Card[] = nodeCardsMapForProblems[nodeId] || [];
-            const card = cards.find(c => c.docId === problemCardId);
+            const card = cards.find((c) => sameCardDocId(c.docId, problemCardId));
             if (card) {
               foundNodeId = nodeId;
               foundCard = card;
@@ -3250,7 +3266,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         
         
         for (const { cardId, nodeId, problems } of problemUpdates) {
-          const existingUpdate = batchSaveData.cardUpdates.find((u: any) => u.cardId === cardId);
+          const existingUpdate = batchSaveData.cardUpdates.find((u: any) => sameCardDocId(u.cardId, cardId));
           if (existingUpdate) {
             existingUpdate.problems = problems;
           } else {
@@ -3389,7 +3405,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             if (String(card.docId).startsWith('temp-card-')) continue;
             
             if (cardIdsToUpdateOrder.has(card.docId) && card.order !== undefined && card.order !== null) {
-              const existingUpdate = batchSaveData.cardUpdates.find((u: any) => u.cardId === card.docId);
+              const existingUpdate = batchSaveData.cardUpdates.find((u: any) => sameCardDocId(u.cardId, card.docId));
               if (existingUpdate) {
                 existingUpdate.order = card.order;
               } else {
@@ -3871,7 +3887,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           let foundCard: Card | null = null;
           for (const nodeId of Object.keys(mapAfterSave)) {
             const cards: Card[] = mapAfterSave[nodeId] || [];
-            const card = cards.find((c: Card) => String(c.docId) === cid);
+            const card = cards.find((c: Card) => sameCardDocId(c.docId, cid));
             if (card) {
               foundCard = card;
               break;
@@ -3897,7 +3913,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           let foundCard: Card | null = null;
           for (const nodeId of Object.keys(mapAfterSave)) {
             const cards: Card[] = mapAfterSave[nodeId] || [];
-            const card = cards.find((c: Card) => String(c.docId) === cid);
+            const card = cards.find((c: Card) => sameCardDocId(c.docId, cid));
             if (card) {
               foundCard = card;
               break;
@@ -7034,7 +7050,7 @@ ${editorShellPath}
 
           for (const nodeId in nodeCardsMap) {
             const cards = nodeCardsMap[nodeId] || [];
-            const card = cards.find((c: Card) => c.docId === cardId);
+            const card = cards.find((c: Card) => sameCardDocId(c.docId, cardId));
             if (card) {
               foundCard = card;
               foundNodeId = nodeId;
@@ -7063,7 +7079,7 @@ ${editorShellPath}
 
           
           const cards = nodeCardsMap[foundNodeId];
-          const cardIndex = cards.findIndex((c: Card) => c.docId === cardId);
+          const cardIndex = cards.findIndex((c: Card) => sameCardDocId(c.docId, cardId));
           if (cardIndex >= 0) {
             cards[cardIndex] = {
               ...cards[cardIndex],
@@ -7075,7 +7091,7 @@ ${editorShellPath}
             
             
             const cardIdStr = String(cardId);
-            if (cardIdStr && !cardIdStr.startsWith('temp-card-')) {
+            if (cardIdStr) {
               setPendingProblemCardIds(prev => {
                 const next = new Set(prev);
                 next.add(cardIdStr);
@@ -7101,7 +7117,7 @@ ${editorShellPath}
     }
     
     return { success: errors.length === 0, errors };
-  }, [base, setBase, selectedFile, editorInstance, setFileContent, triggerExpandAutoSave, setNodeCardsMapVersion, setPendingProblemCardIds]);
+  }, [base, setBase, selectedFile, editorInstance, setFileContent, triggerExpandAutoSave, setNodeCardsMapVersion, setPendingProblemCardIds, setPendingNewProblemCardIds]);
 
   
   useEffect(() => {
@@ -9670,7 +9686,7 @@ ${editorShellPath}
                       {Array.from(pendingNewProblemCardIds).slice(0, 5).map((cardId, idx) => {
                         
                         const file = fileTree.find(f => 
-                          f.type === 'card' && f.cardId === cardId
+                          f.type === 'card' && sameCardDocId(f.cardId, cardId)
                         );
                         
                         let cardName = file ? file.name : '';
@@ -9678,7 +9694,7 @@ ${editorShellPath}
                           const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
                           for (const nodeId in nodeCardsMap) {
                             const cards = nodeCardsMap[nodeId] || [];
-                            const card = cards.find((c: Card) => c.docId === cardId);
+                            const card = cards.find((c: Card) => sameCardDocId(c.docId, cardId));
                             if (card) {
                               cardName = card.title || i18n('Unnamed Card');
                               break;
@@ -9706,7 +9722,7 @@ ${editorShellPath}
                       {Array.from(pendingEditedProblemIds.entries()).slice(0, 5).map(([cardId, problemIds], idx) => {
                         
                         const file = fileTree.find(f => 
-                          f.type === 'card' && f.cardId === cardId
+                          f.type === 'card' && sameCardDocId(f.cardId, cardId)
                         );
                         
                         let cardName = file ? file.name : '';
@@ -9714,7 +9730,7 @@ ${editorShellPath}
                           const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
                           for (const nodeId in nodeCardsMap) {
                             const cards = nodeCardsMap[nodeId] || [];
-                            const card = cards.find((c: Card) => c.docId === cardId);
+                            const card = cards.find((c: Card) => sameCardDocId(c.docId, cardId));
                             if (card) {
                               cardName = card.title || i18n('Unnamed Card');
                               break;
@@ -9730,6 +9746,41 @@ ${editorShellPath}
                       })}
                       {pendingEditedProblemIds.size > 5 && (
                         <div style={{ color: '#999', fontStyle: 'italic' }}>... 还有 {pendingEditedProblemIds.size - 5} 个</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {problemPendingOtherCardIds.length > 0 && (
+                  <div>
+                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>
+                      题目删除或其它待保存 ({problemPendingOtherCardIds.length})
+                    </div>
+                    <div style={{ paddingLeft: '12px', fontSize: '10px', color: '#6a737d' }}>
+                      {problemPendingOtherCardIds.slice(0, 5).map((cardId, idx) => {
+                        const file = fileTree.find((f) => f.type === 'card' && sameCardDocId(f.cardId, cardId));
+                        let cardName = file ? file.name : '';
+                        if (!cardName) {
+                          const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+                          for (const nodeId in nodeCardsMap) {
+                            const cards = nodeCardsMap[nodeId] || [];
+                            const card = cards.find((c: Card) => sameCardDocId(c.docId, cardId));
+                            if (card) {
+                              cardName = card.title || i18n('Unnamed Card');
+                              break;
+                            }
+                          }
+                        }
+                        return (
+                          <div key={idx} style={{ marginBottom: '2px' }}>
+                            • {cardName || `卡片 (${String(cardId).substring(0, 8)}...)`}
+                          </div>
+                        );
+                      })}
+                      {problemPendingOtherCardIds.length > 5 && (
+                        <div style={{ color: '#999', fontStyle: 'italic' }}>
+                          ... 还有 {problemPendingOtherCardIds.length - 5} 个
+                        </div>
                       )}
                     </div>
                   </div>
@@ -13548,7 +13599,7 @@ ${editorShellPath}
                           const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
                           const nodeId = selectedFile?.nodeId || '';
                           const nodeCards: Card[] = nodeCardsMap[nodeId] || [];
-                          const cardIndex = nodeCards.findIndex((c: Card) => c.docId === selectedFile?.cardId);
+                          const cardIndex = nodeCards.findIndex((c: Card) => sameCardDocId(c.docId, selectedFile?.cardId));
                           if (cardIndex >= 0) {
                             const existingProblems = nodeCards[cardIndex].problems || [];
                             const problemIndex = existingProblems.findIndex(prob => prob.pid === p.pid);
@@ -13559,7 +13610,7 @@ ${editorShellPath}
                               setNodeCardsMapVersion(prev => prev + 1);
                               if (isNew) setNewProblemIds(prev => new Set(prev).add(p.pid));
                               else setEditedProblemIds(prev => new Set(prev).add(p.pid));
-                              if (cardIdStr && !cardIdStr.startsWith('temp-card-')) {
+                              if (cardIdStr) {
                                 setPendingProblemCardIds(prev => { const next = new Set(prev); next.add(cardIdStr); return next; });
                                 if (isNew) setPendingNewProblemCardIds(prev => { const next = new Set(prev); next.add(cardIdStr); return next; });
                                 else {
@@ -13579,7 +13630,7 @@ ${editorShellPath}
                           const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
                           const nodeId = selectedFile?.nodeId || '';
                           const nodeCards: Card[] = nodeCardsMap[nodeId] ? [...nodeCardsMap[nodeId]] : [];
-                          const cardIndex = nodeCards.findIndex((c: Card) => c.docId === selectedFile?.cardId);
+                          const cardIndex = nodeCards.findIndex((c: Card) => sameCardDocId(c.docId, selectedFile?.cardId));
                           if (cardIndex >= 0) {
                             const existingProblems = [...(nodeCards[cardIndex].problems || [])];
                             const problemIndex = existingProblems.findIndex((prob) => prob.pid === p.pid);
@@ -13589,7 +13640,7 @@ ${editorShellPath}
                               (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap, [nodeId]: nodeCards };
                             }
                           }
-                          if (cardIdStr && !cardIdStr.startsWith('temp-card-')) {
+                          if (cardIdStr) {
                             setPendingProblemCardIds((prev) => { const next = new Set(prev); next.add(cardIdStr); return next; });
                           }
                           setNewProblemIds((prev) => { const next = new Set(prev); next.delete(p.pid); return next; });
