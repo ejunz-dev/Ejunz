@@ -8,6 +8,7 @@ import Editor from 'vj/components/editor';
 import { Dialog, ActionDialog } from 'vj/components/dialog/index';
 import uploadFiles from 'vj/components/upload';
 import { nanoid } from 'nanoid';
+import { jsonrepair } from 'jsonrepair';
 import type {
   Problem,
   ProblemSingle,
@@ -22,6 +23,8 @@ import {
   clampOptionSlots,
   ensureOptionArrayLength,
   normalizeMultiAnswers,
+  migrateRawProblem,
+  isMultiProblem,
 } from 'ejun/src/model/problem';
 interface BaseNode {
   id: string;
@@ -106,11 +109,185 @@ interface PendingChange {
   originalContent: string;
 }
 
+type ExecuteAiOpsFn = (
+  operations: any[],
+  execOpts?: { quiet?: boolean },
+) => Promise<{ success: boolean; errors: string[] }>;
+
 /** Card `docId` may be numeric from API while `FileItem.cardId` is string — use for lookups. */
 function sameCardDocId(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (a == null || b == null) return false;
   return String(a) === String(b);
+}
+
+/** Prose outside ```json fences only (not generic ``` code blocks). */
+function splitAiAssistantStream(accumulated: string): {
+  visibleProse: string;
+  inFence: boolean;
+  fenceBody: string;
+} {
+  const m = accumulated.match(/```\s*json\s*\r?\n/i);
+  if (!m || m.index === undefined) {
+    return { visibleProse: accumulated, inFence: false, fenceBody: '' };
+  }
+  const openStart = m.index;
+  const openEnd = openStart + m[0].length;
+  const tail = accumulated.slice(openEnd);
+  let closeRel = tail.search(/\r?\n```/);
+  if (closeRel === -1 && tail.endsWith('```') && tail.length >= 3) {
+    closeRel = tail.length - 3;
+  }
+  if (closeRel === -1) {
+    return {
+      visibleProse: accumulated.slice(0, openStart).replace(/\s+$/u, ''),
+      inFence: true,
+      fenceBody: tail,
+    };
+  }
+  const fenceBody = tail.slice(0, closeRel);
+  let afterClose = tail.slice(closeRel);
+  const nlClose = afterClose.match(/^(\r?\n```)/);
+  if (nlClose) {
+    afterClose = afterClose.slice(nlClose[1].length);
+  } else if (afterClose.startsWith('```')) {
+    afterClose = afterClose.slice(3);
+  } else {
+    afterClose = afterClose.replace(/^[\r\n]*```\s*/, '');
+  }
+  const proseBefore = accumulated.slice(0, openStart).replace(/\s+$/u, '');
+  const visibleProse = [proseBefore, afterClose.trim()].filter(Boolean).join('\n').trim();
+  return { visibleProse, inFence: false, fenceBody };
+}
+
+function extractAiOperationTypesPartial(partial: string): string[] {
+  const types: string[] = [];
+  const re = /"type"\s*:\s*"([a-z_]+)"/gi;
+  let mm: RegExpExecArray | null;
+  while ((mm = re.exec(partial)) !== null) {
+    types.push(mm[1]);
+  }
+  return types;
+}
+
+function friendlyAiOperationLabel(t: string): string {
+  const labels: Record<string, string> = {
+    create_node: 'Create node',
+    create_card: 'Create card',
+    move_node: 'Move node',
+    move_card: 'Move card',
+    rename_node: 'Rename node',
+    rename_card: 'Rename card',
+    update_card_content: 'Update card content',
+    delete_node: 'Delete node',
+    delete_card: 'Delete card',
+    create_problem: 'Create problem',
+  };
+  return labels[t] || t;
+}
+
+/** Balanced `{...}` from `start` (JSON string rules). Returns parsed object or null if incomplete/invalid. */
+function extractNextJsonObject(s: string, start: number): { raw: string; next: number } | null {
+  let i = start;
+  while (i < s.length && /\s/.test(s[i])) i++;
+  if (i >= s.length || s[i] !== '{') return null;
+  let depth = 0;
+  let inString = false;
+  let esc = false;
+  const objStart = i;
+  for (; i < s.length; i++) {
+    const c = s[i];
+    if (esc) {
+      esc = false;
+      continue;
+    }
+    if (inString) {
+      if (c === '\\') esc = true;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') {
+      inString = true;
+      continue;
+    }
+    if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth === 0) {
+        const raw = s.slice(objStart, i + 1);
+        let j = i + 1;
+        while (j < s.length && /\s/.test(s[j])) j++;
+        if (j < s.length && s[j] === ',') j++;
+        return { raw, next: j };
+      }
+    }
+  }
+  return null;
+}
+
+/** Parse complete `operations[]` entries from a streaming/partial ```json body. */
+function extractParsedOperationsFromPartialFence(fenceBody: string): any[] {
+  const m = fenceBody.match(/"operations"\s*:\s*\[/);
+  if (!m || m.index === undefined) return [];
+  let pos = m.index + m[0].length;
+  const out: any[] = [];
+  while (true) {
+    while (pos < fenceBody.length && /\s/.test(fenceBody[pos])) pos++;
+    if (pos < fenceBody.length && fenceBody[pos] === ']') break;
+    const ext = extractNextJsonObject(fenceBody, pos);
+    if (!ext) break;
+    try {
+      const normalized = ext.raw
+        .replace(/[“”]/g, '"')
+        .replace(/[‘’]/g, '\'')
+        .replace(/,\s*([}\]])/g, '$1');
+      let parsed: any;
+      try {
+        parsed = JSON.parse(normalized);
+      } catch {
+        parsed = JSON.parse(jsonrepair(normalized));
+      }
+      out.push(parsed);
+    } catch {
+      break;
+    }
+    pos = ext.next;
+  }
+  return out;
+}
+
+function summarizeAiOperationOneLine(op: any): string {
+  const t = op?.type;
+  if (!t) return '(unknown operation)';
+  const short = (x: unknown, max = 12) => {
+    const s = x != null ? String(x) : '';
+    if (!s) return '—';
+    return s.length > max ? `${s.slice(0, max)}…` : s;
+  };
+  switch (t) {
+    case 'create_node':
+      return `Create node "${String(op.text || '').slice(0, 40)}${String(op.text || '').length > 40 ? '…' : ''}" under ${short(op.parentId)}`;
+    case 'create_card':
+      return `Create card "${String(op.title || '').slice(0, 36)}${String(op.title || '').length > 36 ? '…' : ''}" on ${short(op.nodeId)}`;
+    case 'move_node':
+      return `Move node ${short(op.nodeId)} → parent ${short(op.targetParentId)}`;
+    case 'move_card':
+      return `Move card ${short(op.cardId)} → node ${short(op.targetNodeId)}`;
+    case 'rename_node':
+      return `Rename node ${short(op.nodeId)} → "${String(op.newText || '').slice(0, 32)}${String(op.newText || '').length > 32 ? '…' : ''}"`;
+    case 'rename_card':
+      return `Rename card ${short(op.cardId)} → "${String(op.newTitle || '').slice(0, 32)}${String(op.newTitle || '').length > 32 ? '…' : ''}"`;
+    case 'update_card_content':
+      return `Update content of card ${short(op.cardId)}`;
+    case 'delete_node':
+      return `Delete node ${short(op.nodeId)}`;
+    case 'delete_card':
+      return `Delete card ${short(op.cardId)}`;
+    case 'create_problem':
+      return `Create ${String(op.problemKind || 'single')} problem on card ${short(op.cardId)}`;
+    default:
+      return String(t);
+  }
 }
 
 /** Walk parent links (edges target→source, else `parentId`) for expand-to-deep-link. */
@@ -1985,12 +2162,14 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       setAiBottomOpen(false);
     }
   }, [editorAiHidden]);
-  const [chatMessages, setChatMessages] = useState<Array<{ 
-    role: 'user' | 'assistant' | 'operation'; 
-    content: string; 
+  const [chatMessages, setChatMessages] = useState<Array<{
+    role: 'user' | 'assistant' | 'operation';
+    content: string;
     references?: Array<{ type: 'node' | 'card'; id: string; name: string; path: string[] }>;
     operations?: any[];
     isExpanded?: boolean;
+    /** While the model streams a ```json … ``` block: friendly op list, raw JSON hidden. */
+    streamOps?: { lines: string[]; receiving: boolean; charCount: number } | null;
   }>>([]);
   const [chatInput, setChatInput] = useState<string>('');
   const [chatInputReferences, setChatInputReferences] = useState<Array<{ type: 'node' | 'card'; id: string; name: string; path: string[]; startIndex: number; endIndex: number }>>([]);
@@ -2041,7 +2220,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const aiPanelMaxHeightRef = useRef<number>(640);
   const AI_TERMINAL_MIN_H = 120;
   const EDITOR_MAIN_MIN_H = 160;
-  const executeAIOperationsRef = useRef<((operations: any[]) => Promise<{ success: boolean; errors: string[] }>) | null>(null);
+  const executeAIOperationsRef = useRef<ExecuteAiOpsFn | null>(null);
   const chatWebSocketRef = useRef<any>(null);
   const [domainTools, setDomainTools] = useState<any[]>([]);
   const [domainToolsLoading, setDomainToolsLoading] = useState<boolean>(false);
@@ -5951,19 +6130,19 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       const indentStr = '  '.repeat(indent);
       const path = getNodePath(nodeId);
       const pathStr = path.join(' > ');
-      let result = `${indentStr}- ${node.text || i18n('Unnamed Node')} (ID: ${node.id}, 路径: ${pathStr})\n`;
+      let result = `${indentStr}- ${node.text || i18n('Unnamed Node')} (ID: ${node.id}, path: ${pathStr})\n`;
 
       
       const cards = nodeCardsMap[nodeId] || [];
       if (cards.length > 0) {
         cards.forEach((card: Card) => {
           const cardPath = [...path, card.title || i18n('Unnamed Card')].join(' > ');
-          result += `${indentStr}  📄 ${card.title || i18n('Unnamed Card')} (ID: ${card.docId}, 路径: ${cardPath})\n`;
+          result += `${indentStr}  📄 ${card.title || i18n('Unnamed Card')} (ID: ${card.docId}, path: ${cardPath})\n`;
           if (card.content) {
             const contentPreview = card.content.length > 100 
               ? card.content.substring(0, 100) + '...' 
               : card.content;
-            result += `${indentStr}    内容: ${contentPreview}\n`;
+            result += `${indentStr}    content: ${contentPreview}\n`;
           }
         });
       }
@@ -5976,7 +6155,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       return result;
     };
 
-    let text = '当前知识库结构：\n\n';
+    let text = 'Current outline structure:\n\n';
     rootNodes.forEach((rootId) => {
       text += buildNodeText(rootId, 0);
     });
@@ -6005,7 +6184,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       if (matchedNode) {
         const path = getNodePath(matchedNode.id);
         const pathStr = path.join(' > ');
-        const expandedRef = `@${refName} (节点ID: ${matchedNode.id}, 完整路径: ${pathStr})`;
+        const expandedRef = `@${refName} (node ID: ${matchedNode.id}, full path: ${pathStr})`;
         expandedMessage = expandedMessage.slice(0, startIndex) + expandedRef + expandedMessage.slice(endIndex);
         continue;
       }
@@ -6019,7 +6198,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           const cardPath = [...nodePath, matchedCard.title || i18n('Unnamed Card')].join(' > ');
           
           const fullContent = matchedCard.content || i18n('(No content)');
-          const expandedRef = `@${refName} (卡片ID: ${matchedCard.docId}, 完整路径: ${cardPath}, 完整内容: ${fullContent})`;
+          const expandedRef = `@${refName} (card ID: ${matchedCard.docId}, full path: ${cardPath}, full content: ${fullContent})`;
           expandedMessage = expandedMessage.slice(0, startIndex) + expandedRef + expandedMessage.slice(endIndex);
           break;
         }
@@ -6056,7 +6235,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         let content = msg.content;
         
         if (!content && msg.role === 'assistant') {
-          content = '已完成';
+          content = 'Done';
         }
         return {
           role: msg.role,
@@ -6064,7 +6243,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         };
       });
     
-    console.log('发送给AI的历史记录（之前）:', historyBeforeNewMessage);
+    console.log('AI chat history (before this turn):', historyBeforeNewMessage);
     
     
     let assistantMessageIndex: number;
@@ -6113,73 +6292,96 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         
         let problemsText = '';
         if (problems.length > 0) {
-          problemsText = '\n- 已有题目列表：\n';
+          problemsText = '\n- Existing problems on this card:\n';
           problems.forEach((p: Problem, index: number) => {
-            if (problemKind(p) !== 'single') {
-              problemsText += `\n  题目 ${index + 1} (ID: ${p.pid})：题型 ${problemKind(p)}\n`;
+            const k = problemKind(p);
+            if (k === 'flip') {
+              const f = p as ProblemFlip;
+              problemsText += `\n  Problem ${index + 1} (ID: ${p.pid}): flip card\n`;
+              problemsText += `  - faceA: ${f.faceA}\n  - faceB: ${f.faceB}\n`;
+              if (f.analysis) problemsText += `  - analysis: ${f.analysis}\n`;
+              return;
+            }
+            if (k === 'true_false') {
+              const tf = p as ProblemTrueFalse;
+              problemsText += `\n  Problem ${index + 1} (ID: ${p.pid}): true/false\n`;
+              problemsText += `  - stem: ${tf.stem}\n  - correct answer: ${tf.answer === 1 ? 'true (1)' : 'false (0)'}\n`;
+              if (tf.analysis) problemsText += `  - analysis: ${tf.analysis}\n`;
+              return;
+            }
+            if (k === 'multi') {
+              const pm = p as ProblemMulti;
+              const set = new Set(pm.answer || []);
+              const optionsText = pm.options.map((opt, oi) =>
+                `  ${String.fromCharCode(65 + oi)}. ${opt}${set.has(oi) ? ' (correct)' : ''}`
+              ).join('\n');
+              problemsText += `\n  Problem ${index + 1} (ID: ${p.pid}): multiple choice\n`;
+              problemsText += `  - stem: ${pm.stem}\n  - options:\n${optionsText}\n`;
+              problemsText += `  - answer index array: ${JSON.stringify([...(pm.answer || [])].sort((a, b) => a - b))}\n`;
+              if (pm.analysis) problemsText += `  - analysis: ${pm.analysis}\n`;
               return;
             }
             const ps = p as ProblemSingle;
             const optionsText = ps.options.map((opt, oi) =>
-              `  ${String.fromCharCode(65 + oi)}. ${opt}${oi === ps.answer ? ' (正确答案)' : ''}`
+              `  ${String.fromCharCode(65 + oi)}. ${opt}${oi === ps.answer ? ' (correct)' : ''}`
             ).join('\n');
-            problemsText += `\n  题目 ${index + 1} (ID: ${p.pid})：\n`;
-            problemsText += `  - 题干：${ps.stem}\n`;
-            problemsText += `  - 选项：\n${optionsText}\n`;
+            problemsText += `\n  Problem ${index + 1} (ID: ${p.pid}): single choice\n`;
+            problemsText += `  - stem: ${ps.stem}\n`;
+            problemsText += `  - options:\n${optionsText}\n`;
             if (ps.analysis) {
-              problemsText += `  - 解析：${ps.analysis}\n`;
+              problemsText += `  - analysis: ${ps.analysis}\n`;
             }
           });
         } else {
-          problemsText = '\n- 已有题目列表：暂无题目';
+          problemsText = '\n- Existing problems on this card: none';
         }
         
         currentCardContext = `
-【当前显示的卡片信息】
-- 卡片标题：${currentCard.title || i18n('Unnamed Card')}
-- 卡片ID：${currentCard.docId}
-- 卡片路径：${cardPath}
-- 卡片内容：${currentCard.content || i18n('(No content)')}
-- 已有题目数量：${problems.length}${problemsText}
+[Currently open card]
+- Title: ${currentCard.title || i18n('Unnamed Card')}
+- Card ID: ${currentCard.docId}
+- Path: ${cardPath}
+- Content: ${currentCard.content || i18n('(No content)')}
+- Problem count: ${problems.length}${problemsText}
 
 `;
       }
 
       
-      const systemPrompt = `你是一个知识库操作助手，专门帮助用户操作知识库。
+      const systemPrompt = `You are a knowledge-base assistant. You help users edit their outline (nodes) and cards.
 
-【你的核心职责】
-1. **创建节点**：根据用户需求创建新的节点
-2. **创建卡片**：在指定节点下创建卡片
-3. **移动节点**：将节点移动到新的位置
-4. **重命名**：修改节点或卡片的名称
-5. **修改内容**：修改卡片的内容（当用户要求修改、美化、格式化卡片内容时使用）
-6. **删除**：删除不需要的节点或卡片
-7. **生成题目**：根据卡片内容生成单选题（当用户要求生成题目时，应该针对当前显示的卡片）
+[Core responsibilities]
+1. **create_node**: create a new node under a parent when asked
+2. **create_card**: create a card under a node
+3. **move_node**: move a node to a new parent
+4. **rename**: rename a node or card
+5. **update_card_content**: change card body/markdown when the user asks to edit, polish, format, or improve *content* (not the title)
+6. **delete**: delete a node or card when asked
+7. **create_problem**: add practice problems for the **currently open card** when asked. Use \`problemKind\`: \`single\` (default, one correct option index in \`answer\`), \`multi\` (\`answer\` is an array of correct option indices), \`true_false\` (\`stem\` + \`answer\` 0 = false, 1 = true), \`flip\` (\`faceA\` / \`faceB\`, no \`options\`)
 
-【知识库结构说明】
+[Outline structure]
 ${baseText}
 ${currentCardContext}
 
-【编辑器当前路径】
-用户在左侧资源树中的选中位置（与 Git 导出一致：节点视为文件夹、路径以 / 结尾；卡片视为该文件夹下的 .md 文件）：
+[Editor selection path]
+The user's current selection in the left tree (like Git export: nodes are folders with trailing /; cards are .md under that folder):
 ${editorShellPath}
 
-【操作格式】
-你需要以 JSON 格式回复操作指令，格式如下：
+[Response format for mutations]
+Reply with a JSON code block only for executable operations, using this shape:
 \`\`\`json
 {
   "operations": [
     {
       "type": "create_node",
       "parentId": "node_xxx",
-      "text": "新节点名称"
+      "text": "New node title"
     },
     {
       "type": "create_card",
       "nodeId": "node_xxx",
-      "title": "卡片标题",
-      "content": "卡片内容（可选）"
+      "title": "Card title",
+      "content": "Optional markdown body"
     },
     {
       "type": "move_node",
@@ -6194,17 +6396,17 @@ ${editorShellPath}
     {
       "type": "rename_node",
       "nodeId": "node_xxx",
-      "newText": "新名称"
+      "newText": "New node title"
     },
     {
       "type": "rename_card",
       "cardId": "card_xxx",
-      "newTitle": "新标题"
+      "newTitle": "New card title"
     },
     {
       "type": "update_card_content",
       "cardId": "card_xxx",
-      "newContent": "新的卡片内容"
+      "newContent": "New markdown content"
     },
     {
       "type": "delete_node",
@@ -6217,30 +6419,52 @@ ${editorShellPath}
     {
       "type": "create_problem",
       "cardId": "card_xxx",
-      "stem": "题干内容",
-      "options": ["选项A", "选项B", "选项C", "选项D"],
+      "problemKind": "single",
+      "stem": "Question stem",
+      "options": ["A", "B", "C", "D"],
       "answer": 0,
-      "analysis": "解析说明（可选）"
+      "analysis": "Optional explanation"
+    },
+    {
+      "type": "create_problem",
+      "cardId": "card_xxx",
+      "problemKind": "multi",
+      "stem": "Question stem",
+      "options": ["A","B","C","D"],
+      "answer": [0, 2],
+      "analysis": "Optional"
+    },
+    {
+      "type": "create_problem",
+      "cardId": "card_xxx",
+      "problemKind": "true_false",
+      "stem": "IPv6 addresses are 128 bits long.",
+      "answer": 1,
+      "analysis": "Optional"
+    },
+    {
+      "type": "create_problem",
+      "cardId": "card_xxx",
+      "problemKind": "flip",
+      "faceA": "Front prompt or summary",
+      "faceB": "Back answer or detail",
+      "analysis": "Optional"
     }
   ]
 }
 \`\`\`
 
-【重要规则】
-1. 只输出 JSON 代码块（\`\`\`json ... \`\`\`）
-2. 不要添加多余说明文字
-3. 如果用户只是询问，不需要操作，则只回复文字说明，不要输出 JSON
-4. **重要**：当用户要求"修改内容"、"美化格式"、"格式化"、"优化内容"等时，应该使用 \`update_card_content\` 操作修改卡片的内容（content），而不是使用 \`rename_card\` 修改标题（title）
-5. 只有在用户明确要求修改标题/名称时，才使用 \`rename_card\` 或 \`rename_node\`
-6. **移动节点时**：
-   - 必须仔细查看知识库结构说明，根据节点名称和完整路径找到正确的节点ID
-   - 如果用户说"移动到XX文件夹/节点下"，必须在结构说明中找到名称匹配的节点，使用其ID作为 \`targetParentId\`
-   - **重要**：节点ID格式通常是 \`node_xxx\`（如 \`node_1_6\`），不是卡片ID（卡片ID是长字符串）
-   - 如果用户说"移动文件夹"，指的是移动节点（文件夹就是节点）
-   - 如果找不到匹配的节点，应该回复错误信息而不是执行操作
-7. **移动卡片时**：如果用户要移动的是卡片（不是节点），必须使用 \`move_card\` 操作，而不是 \`move_node\`。卡片ID通常是一个长字符串（如 \`692f8ab7f62755451fb3ffa\`），节点ID通常是 \`node_xxx\` 格式。**重要**：如果用户引用了卡片（如 @卡片名），要移动的应该是卡片，使用 \`move_card\` 操作。
-
-用户指令：`;
+[Rules]
+1. When you need to perform edits, output **only** a \`\`\`json ... \`\`\` block with \`operations\` (no extra prose around it).
+2. If the user is only asking a question and no mutation is needed, answer in plain text and **do not** output JSON.
+3. For "fix/improve/format/polish **content**" requests, use \`update_card_content\` on the card body, **not** \`rename_card\`.
+4. Use \`rename_card\` / \`rename_node\` only when the user clearly wants to change a **title/name**.
+5. **move_node**: read the outline above; match the user's folder/node by **name and full path**, then use the real **node ID** as \`targetParentId\`. Node IDs look like \`node_...\`; they are **not** card IDs (cards use long hex-like ids). "Move folder" means move a **node**. If you cannot resolve a target, reply with an error in plain text instead of guessing IDs.
+6. **move_card**: to move a **card**, use \`move_card\` (card id + \`targetNodeId\`). Never use \`move_node\` for a card. If the user @-mentions a card, use \`move_card\` with that card's id.
+7. **create_problem**: omit \`problemKind\` or set \`single\` for classic single-choice; \`multi\` requires \`answer\` as an array; \`true_false\` requires \`stem\` and \`answer\` 0/1; \`flip\` requires \`faceA\` and \`faceB\` and must **not** include \`options\`.
+8. **Valid JSON**: never put raw line breaks or unescaped \`"\` inside a string value; use standard JSON escaping (backslash + quote, backslash + n for newline).
+9. **Streaming**: emit each \`operations[]\` entry as a **fully closed** \`{ ... }\` object (balanced braces) **before** starting the next. The editor applies each finished object immediately—trailing incomplete objects wait until complete.
+`;
 
       
       if (chatWebSocketRef.current) {
@@ -6257,52 +6481,71 @@ ${editorShellPath}
 
       let accumulatedContent = '';
       let streamFinished = false;
+      let streamedAiOpsExecuted = 0;
+      let streamExecChain: Promise<unknown> = Promise.resolve();
 
-      
       sock.onmessage = (_, data: string) => {
         try {
           const msg = JSON.parse(data);
           
           if (msg.type === 'content') {
             accumulatedContent += msg.content;
-            
-            
-            let displayContent = accumulatedContent;
-            const jsonMatch = displayContent.match(/```(?:json)?\n([\s\S]*?)\n```/);
-            if (jsonMatch) {
-              
-              displayContent = displayContent.replace(/```(?:json)?\n[\s\S]*?\n```/g, '').trim();
+
+            const split = splitAiAssistantStream(accumulatedContent);
+            let displayContent = split.visibleProse;
+            if (!split.inFence) {
+              const stripClosed = accumulatedContent.replace(/```\s*json\s*\r?\n[\s\S]*?\r?\n```/gi, '').trim();
+              displayContent = stripClosed;
             }
-            
-            
+            const rawTypes = split.inFence ? extractAiOperationTypesPartial(split.fenceBody) : [];
+            const opLines = rawTypes.map((x) => friendlyAiOperationLabel(x));
+
             setChatMessages(prev => {
               const newMessages = [...prev];
               if (newMessages[assistantMessageIndex]) {
                 newMessages[assistantMessageIndex] = {
                   role: 'assistant',
-                  content: displayContent || '正在思考...',
+                  content:
+                    displayContent
+                    || (split.inFence ? '' : 'Thinking…'),
+                  streamOps: split.inFence
+                    ? {
+                        lines: opLines,
+                        receiving: true,
+                        charCount: split.fenceBody.length,
+                      }
+                    : null,
                 };
               }
               return newMessages;
             });
-            
-            
+
+            if (split.inFence && executeAIOperationsRef.current) {
+              const parsedSoFar = extractParsedOperationsFromPartialFence(split.fenceBody);
+              const fn = executeAIOperationsRef.current;
+              while (streamedAiOpsExecuted < parsedSoFar.length) {
+                const op = parsedSoFar[streamedAiOpsExecuted];
+                streamedAiOpsExecuted += 1;
+                streamExecChain = streamExecChain.then(() => fn([op], { quiet: true }));
+              }
+            }
+
             scrollToBottomIfNeeded();
           } else if (msg.type === 'done') {
             streamFinished = true;
             const finalContent = msg.content || accumulatedContent;
             
             
-            const jsonMatch = finalContent.match(/```(?:json)?\n([\s\S]*?)\n```/);
-            let textContent = finalContent.replace(/```(?:json)?\n[\s\S]*?\n```/g, '').trim();
-            
-            
+            const jsonMatch = finalContent.match(/```\s*json\s*\r?\n([\s\S]*?)\r?\n```/i);
+            let textContent = finalContent.replace(/```\s*json\s*\r?\n[\s\S]*?\r?\n```/gi, '').trim();
+
             setChatMessages(prev => {
               const newMessages = [...prev];
               if (newMessages[assistantMessageIndex]) {
                 newMessages[assistantMessageIndex] = {
                   role: 'assistant',
-                  content: textContent || '已完成',
+                  content: textContent || 'Done',
+                  streamOps: null,
                 };
               }
               return newMessages;
@@ -6310,13 +6553,12 @@ ${editorShellPath}
             
             
             scrollToBottomIfNeeded();
-            
-              
-              if (jsonMatch) {
+
+            let opsChainFinishesLoading = false;
+            if (jsonMatch) {
                 try {
                   const parseOperationPayload = (raw: string) => {
                     let text = String(raw || '').trim();
-                    // Normalize common LLM output issues before JSON.parse.
                     text = text
                       .replace(/[“”]/g, '"')
                       .replace(/[‘’]/g, '\'')
@@ -6326,73 +6568,99 @@ ${editorShellPath}
                     const firstBracket = text.indexOf('[');
                     const start = firstBrace === -1 ? firstBracket : (firstBracket === -1 ? firstBrace : Math.min(firstBrace, firstBracket));
                     if (start > 0) text = text.slice(start).trim();
-                    return JSON.parse(text);
+                    try {
+                      return JSON.parse(text);
+                    } catch (e1) {
+                      try {
+                        return JSON.parse(jsonrepair(text));
+                      } catch {
+                        throw e1;
+                      }
+                    }
                   };
 
                   const operations = parseOperationPayload(jsonMatch[1]);
                   if (operations.operations && Array.isArray(operations.operations)) {
-                    
-                    console.log('AI 返回的操作:', operations.operations);
-                    
-                    
+                    const allOps = operations.operations as any[];
+                    console.log('AI operations payload:', allOps);
+
                     setChatMessages(prev => {
                       const newMessages = [...prev];
                       newMessages.push({
                         role: 'operation',
-                        content: `执行 ${operations.operations.length} 个操作`,
-                        operations: operations.operations,
+                        content: `Applying ${allOps.length} operation(s)`,
+                        operations: allOps,
                         isExpanded: false,
                       });
                       return newMessages;
                     });
-                    
-                    
+
                     if (executeAIOperationsRef.current) {
-                      executeAIOperationsRef.current(operations.operations).then((result) => {
+                      opsChainFinishesLoading = true;
+                      const fn = executeAIOperationsRef.current;
+                      streamExecChain = streamExecChain.then(async () => {
+                        const rem = allOps.slice(streamedAiOpsExecuted);
+                        if (!rem.length) {
+                          return { success: true, errors: [] as string[] };
+                        }
+                        const result = await fn(rem, { quiet: true });
                         if (result.success) {
-                          Notification.success('AI 已执行操作');
-                        } else {
-                          
-                          const errorText = result.errors.join('\n');
+                          streamedAiOpsExecuted = allOps.length;
+                        }
+                        return result;
+                      });
+                      streamExecChain
+                        .then((result: any) => {
+                          if (!result?.success) {
+                            const errorText = (result?.errors || []).join('\n');
+                            setChatMessages(prev => {
+                              const newMessages = [...prev];
+                              newMessages.push({
+                                role: 'assistant',
+                                content: `Operations failed:\n${errorText}\n\nFix the issues above (check node vs card IDs) and try again.`,
+                              });
+                              return newMessages;
+                            });
+                            scrollToBottomIfNeeded();
+                            return;
+                          }
+                          if (allOps.length) {
+                            Notification.success('AI operations applied');
+                          }
+                        })
+                        .catch((err) => {
+                          console.error('Failed to execute operations:', err);
+                          const errorMsg = 'Failed to run operations: ' + (err.message || 'unknown error');
+                          Notification.error(errorMsg);
                           setChatMessages(prev => {
                             const newMessages = [...prev];
-                            
                             newMessages.push({
                               role: 'assistant',
-                              content: `操作执行失败，错误信息如下：\n${errorText}\n\n请根据错误信息重新执行操作，确保使用正确的节点ID。`,
+                              content: `Operations failed: ${errorMsg}\n\nPlease try again.`,
                             });
                             return newMessages;
                           });
-                          
-                          
-                          scrollToBottomIfNeeded();
-                        }
-                      }).catch((err) => {
-                        console.error('Failed to execute operations:', err);
-                        const errorMsg = '执行操作失败: ' + (err.message || '未知错误');
-                        Notification.error(errorMsg);
-                        setChatMessages(prev => {
-                          const newMessages = [...prev];
-                          newMessages.push({
-                            role: 'assistant',
-                            content: `操作执行失败：${errorMsg}\n\n请重新执行操作。`,
-                          });
-                          return newMessages;
+                        })
+                        .finally(() => {
+                          if (chatWebSocketRef.current) {
+                            chatWebSocketRef.current.close();
+                            chatWebSocketRef.current = null;
+                          }
+                          setIsChatLoading(false);
                         });
-                      });
                     } else {
                       setTimeout(async () => {
                         if (executeAIOperationsRef.current) {
-                          const result = await executeAIOperationsRef.current(operations.operations);
+                          const result = await executeAIOperationsRef.current(allOps);
                           if (result.success) {
-                            Notification.success('AI 已执行操作');
+                            Notification.success('AI operations applied');
                           } else {
                             const errorText = result.errors.join('\n');
                             setChatMessages(prev => {
                               const newMessages = [...prev];
                               newMessages.push({
                                 role: 'assistant',
-                                content: `操作执行时出现错误：\n${errorText}\n\n请根据错误信息重新执行操作。`,
+                                content: `Operations failed:\n${errorText}\n\nPlease fix and try again.`,
                               });
                               return newMessages;
                             });
@@ -6404,16 +6672,17 @@ ${editorShellPath}
                 } catch (e) {
                   console.error('Failed to parse AI operations:', e);
                   const rawPreview = (jsonMatch[1] || '').slice(0, 240).replace(/\s+/g, ' ');
-                  Notification.error(`解析 AI 操作失败: ${(e as any).message || '未知错误'}。原始片段: ${rawPreview}`);
+                  Notification.error(`Failed to parse AI operations: ${(e as any).message || 'unknown error'}. Raw snippet: ${rawPreview}`);
                 }
               }
-            
-            
-            if (chatWebSocketRef.current) {
-              chatWebSocketRef.current.close();
-              chatWebSocketRef.current = null;
+
+            if (!opsChainFinishesLoading) {
+              if (chatWebSocketRef.current) {
+                chatWebSocketRef.current.close();
+                chatWebSocketRef.current = null;
+              }
+              setIsChatLoading(false);
             }
-            setIsChatLoading(false);
           } else if (msg.type === 'error') {
             streamFinished = true;
             setChatMessages(prev => {
@@ -6421,12 +6690,12 @@ ${editorShellPath}
               if (newMessages[assistantMessageIndex]) {
                 newMessages[assistantMessageIndex] = {
                   role: 'assistant',
-                  content: `错误: ${msg.error || '未知错误'}`,
+                  content: `Error: ${msg.error || 'unknown error'}`,
                 };
               }
               return newMessages;
             });
-            Notification.error('AI 聊天失败: ' + (msg.error || '未知错误'));
+            Notification.error('AI chat failed: ' + (msg.error || 'unknown error'));
             setIsChatLoading(false);
             
             
@@ -6450,7 +6719,7 @@ ${editorShellPath}
       sock.onopen = () => {
         
         sock.send(JSON.stringify({
-          message: `${systemPrompt}\n\n用户指令：${finalUserMessage}`,
+          message: `${systemPrompt}\n\nUser request:\n${finalUserMessage}`,
           history,
         }));
       };
@@ -6460,12 +6729,12 @@ ${editorShellPath}
         if (newMessages[assistantMessageIndex]) {
           newMessages[assistantMessageIndex] = {
             role: 'assistant',
-            content: `错误: ${error.message || '未知错误'}`,
+            content: `Error: ${error.message || 'unknown error'}`,
           };
         }
         return newMessages;
       });
-      Notification.error('AI 聊天失败: ' + (error.message || '未知错误'));
+      Notification.error('AI chat failed: ' + (error.message || 'unknown error'));
     } finally {
       setIsChatLoading(false);
     }
@@ -6482,7 +6751,11 @@ ${editorShellPath}
   ]);
 
   
-  const executeAIOperations = useCallback(async (operations: any[]): Promise<{ success: boolean; errors: string[] }> => {
+  const executeAIOperations = useCallback<ExecuteAiOpsFn>(async (
+    operations,
+    execOpts,
+  ) => {
+    const quiet = Boolean(execOpts?.quiet);
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     const errors: string[] = [];
     
@@ -6722,7 +6995,9 @@ ${editorShellPath}
             });
           }
           
-          Notification.success(`节点已移动到 ${targetParentId ? '目标节点下' : '根节点'}`);
+          if (!quiet) {
+            Notification.success(`节点已移动到 ${targetParentId ? '目标节点下' : '根节点'}`);
+          }
         } else if (op.type === 'move_card') {
           const cardId = op.cardId;
           const targetNodeId = op.targetNodeId;
@@ -6824,7 +7099,9 @@ ${editorShellPath}
             return newSet;
           });
           
-          Notification.success(`卡片已移动到节点 ${targetNode.text} 下`);
+          if (!quiet) {
+            Notification.success(`卡片已移动到节点 ${targetNode.text} 下`);
+          }
         } else if (op.type === 'rename_node') {
           const nodeId = op.nodeId;
           const newText = op.newText;
@@ -7071,9 +7348,6 @@ ${editorShellPath}
           }
         } else if (op.type === 'create_problem') {
           const cardId = op.cardId;
-          const stem = op.stem;
-          const options = op.options || [];
-          const answer = op.answer;
           const analysis = op.analysis;
 
           if (!cardId) {
@@ -7082,25 +7356,6 @@ ${editorShellPath}
             continue;
           }
 
-          if (!stem) {
-            Notification.error('题干是必需的');
-            errors.push('create_problem 操作缺少 stem');
-            continue;
-          }
-
-          if (!options || options.length < 2) {
-            Notification.error('至少需要两个选项');
-            errors.push('create_problem 操作的选项数量不足');
-            continue;
-          }
-
-          if (answer === undefined || answer < 0 || answer >= options.length) {
-            Notification.error(i18n('Answer index invalid'));
-            errors.push('create_problem 操作的答案索引无效');
-            continue;
-          }
-
-          
           let foundCard: Card | null = null;
           let foundNodeId: string | null = null;
 
@@ -7120,20 +7375,133 @@ ${editorShellPath}
             continue;
           }
 
-          
-          const existingProblems: Problem[] = foundCard.problems || [];
-          const newProblem: ProblemSingle = {
-            pid: `p_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-            type: 'single',
-            stem,
-            options,
-            answer,
-            analysis: analysis || undefined,
-          };
+          const rawKind = String(op.problemKind || op.kind || '').toLowerCase().trim();
+          const kind: ProblemKind =
+            rawKind === 'multi' || rawKind === 'true_false' || rawKind === 'flip' ? rawKind : 'single';
 
+          const pid = `p_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+          const analysisStr = typeof analysis === 'string' && analysis.trim() ? analysis.trim() : undefined;
+          let newProblem: Problem;
+
+          if (kind === 'flip') {
+            const faceA = String(op.faceA ?? op.stem ?? '').trim();
+            const faceB = String(op.faceB ?? '').trim();
+            if (!faceA || !faceB) {
+              Notification.error('翻转题需要 faceA 与 faceB');
+              errors.push('create_problem flip：缺少 faceA 或 faceB');
+              continue;
+            }
+            newProblem = migrateRawProblem({
+              pid,
+              type: 'flip',
+              faceA,
+              faceB,
+              ...(analysisStr ? { analysis: analysisStr } : {}),
+            });
+          } else if (kind === 'true_false') {
+            const stem = String(op.stem ?? '').trim();
+            if (!stem) {
+              Notification.error('题干是必需的');
+              errors.push('create_problem true_false：缺少 stem');
+              continue;
+            }
+            const a = op.answer;
+            let av: 0 | 1 = 0;
+            if (a === true || a === 1 || a === '1' || String(a).toLowerCase() === 'true' || String(a) === '正确' || String(a) === '真') {
+              av = 1;
+            } else if (a === false || a === 0 || a === '0' || String(a).toLowerCase() === 'false' || String(a) === '错误' || String(a) === '假') {
+              av = 0;
+            } else if (typeof a === 'number' && Number.isFinite(a)) {
+              av = a >= 1 ? 1 : 0;
+            } else if (typeof a === 'string' && /^\d+$/.test(a.trim())) {
+              av = parseInt(a.trim(), 10) >= 1 ? 1 : 0;
+            }
+            newProblem = migrateRawProblem({
+              pid,
+              type: 'true_false',
+              stem,
+              answer: av,
+              ...(analysisStr ? { analysis: analysisStr } : {}),
+            });
+          } else if (kind === 'multi') {
+            const stem = String(op.stem ?? '').trim();
+            const options = Array.isArray(op.options) ? op.options.map((x: unknown) => String(x ?? '')) : [];
+            if (!stem) {
+              Notification.error('题干是必需的');
+              errors.push('create_problem multi：缺少 stem');
+              continue;
+            }
+            if (options.length < 2) {
+              Notification.error('至少需要两个选项');
+              errors.push('create_problem multi：选项数量不足');
+              continue;
+            }
+            const ar = op.answer ?? op.answers;
+            const coercedAnswers = Array.isArray(ar)
+              ? ar
+                  .map((x: unknown) => {
+                    if (typeof x === 'number' && Number.isFinite(x)) return Math.trunc(x);
+                    if (typeof x === 'string' && /^\d+$/.test(x.trim())) return parseInt(x.trim(), 10);
+                    return NaN;
+                  })
+                  .filter((x: number) => Number.isFinite(x))
+              : ar;
+            newProblem = migrateRawProblem({
+              pid,
+              type: 'multi',
+              stem,
+              options,
+              answer: coercedAnswers,
+              ...(typeof op.optionSlots === 'number' && Number.isFinite(op.optionSlots) ? { optionSlots: op.optionSlots } : {}),
+              ...(analysisStr ? { analysis: analysisStr } : {}),
+            });
+            if (isMultiProblem(newProblem)) {
+              const n = newProblem.options.length;
+              const ans = normalizeMultiAnswers(newProblem.answer).filter((i) => i >= 0 && i < n);
+              if (!ans.length) {
+                Notification.error('多选题至少指定一个有效答案下标');
+                errors.push('create_problem multi：answer 无效');
+                continue;
+              }
+              newProblem = { ...newProblem, answer: ans };
+            }
+          } else {
+            const stem = String(op.stem ?? '').trim();
+            const options = Array.isArray(op.options) ? op.options.map((x: unknown) => String(x ?? '')) : [];
+            const answerRaw = op.answer;
+            let answerNum = NaN;
+            if (typeof answerRaw === 'number' && Number.isFinite(answerRaw)) {
+              answerNum = Math.trunc(answerRaw);
+            } else if (typeof answerRaw === 'string' && /^\d+$/.test(answerRaw.trim())) {
+              answerNum = parseInt(answerRaw.trim(), 10);
+            }
+            if (!stem) {
+              Notification.error('题干是必需的');
+              errors.push('create_problem 操作缺少 stem');
+              continue;
+            }
+            if (options.length < 2) {
+              Notification.error('至少需要两个选项');
+              errors.push('create_problem 操作的选项数量不足');
+              continue;
+            }
+            if (!Number.isFinite(answerNum) || answerNum < 0 || answerNum >= options.length) {
+              Notification.error(i18n('Answer index invalid'));
+              errors.push('create_problem 操作的答案索引无效');
+              continue;
+            }
+            newProblem = migrateRawProblem({
+              pid,
+              stem,
+              options,
+              answer: answerNum,
+              ...(analysisStr ? { analysis: analysisStr } : {}),
+            });
+          }
+
+          const existingProblems: Problem[] = foundCard.problems || [];
           const updatedProblems = [...existingProblems, newProblem];
 
-          
           const cards = nodeCardsMap[foundNodeId];
           const cardIndex = cards.findIndex((c: Card) => sameCardDocId(c.docId, cardId));
           if (cardIndex >= 0) {
@@ -7144,8 +7512,6 @@ ${editorShellPath}
             (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
             setNodeCardsMapVersion(prev => prev + 1);
 
-            
-            
             const cardIdStr = String(cardId);
             if (cardIdStr) {
               setPendingProblemCardIds(prev => {
@@ -7153,16 +7519,20 @@ ${editorShellPath}
                 next.add(cardIdStr);
                 return next;
               });
-              
+
               setPendingNewProblemCardIds(prev => {
                 const next = new Set(prev);
                 next.add(cardIdStr);
                 return next;
               });
             }
+
+            setNewProblemIds((prev) => new Set(prev).add(newProblem.pid));
           }
 
-          Notification.success('题目已通过Agent生成并保存');
+          if (!quiet) {
+            Notification.success('题目已通过Agent生成并保存');
+          }
         }
       } catch (error: any) {
         console.error(`Failed to execute operation ${op.type}:`, error);
@@ -13273,14 +13643,16 @@ ${editorShellPath}
                                   background: aiTerminalStyles.tabBarBg,
                                   border: `1px solid ${aiTerminalStyles.tabBorder}`,
                                   fontSize: '11px',
-                                  fontFamily: aiTerminalStyles.mono,
+                                  fontFamily: 'inherit',
                                   overflowX: 'auto',
                                   color: aiTerminalStyles.text,
                                 }}
                               >
-                                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                                  {JSON.stringify({ operations: msg.operations }, null, 2)}
-                                </pre>
+                                <ol style={{ margin: '4px 0 0 18px', padding: 0, lineHeight: 1.45 }}>
+                                  {msg.operations.map((op: any, oi: number) => (
+                                    <li key={oi}>{summarizeAiOperationOneLine(op)}</li>
+                                  ))}
+                                </ol>
                               </div>
                             )}
                           </div>
@@ -13331,13 +13703,42 @@ ${editorShellPath}
                               </div>
                             )}
                             {msg.content}
+                            {msg.role === 'assistant' && msg.streamOps?.receiving && (
+                              <div
+                                style={{
+                                  marginTop: '6px',
+                                  padding: '6px 8px',
+                                  borderRadius: '4px',
+                                  border: `1px solid ${aiTerminalStyles.tabBorder}`,
+                                  backgroundColor: aiTerminalStyles.tabBarBg,
+                                  fontSize: '11px',
+                                  color: aiTerminalStyles.text,
+                                }}
+                              >
+                                <div style={{ color: aiTerminalStyles.operationText, fontWeight: 600, marginBottom: '4px' }}>
+                                  Receiving operations…
+                                </div>
+                                {msg.streamOps.lines.length > 0 ? (
+                                  <ol style={{ margin: '0 0 0 18px', padding: 0, color: aiTerminalStyles.text }}>
+                                    {msg.streamOps.lines.map((line, li) => (
+                                      <li key={`${li}-${line}`}>{line}</li>
+                                    ))}
+                                  </ol>
+                                ) : (
+                                  <div style={{ color: aiTerminalStyles.textDim, fontStyle: 'italic' }}>Waiting for operation list…</div>
+                                )}
+                                <div style={{ marginTop: '4px', fontSize: '10px', color: aiTerminalStyles.textDim }}>
+                                  {msg.streamOps.charCount} characters in plan
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
                     })}
                     {isChatLoading && (
                       <div style={{ color: aiTerminalStyles.textDim, fontSize: '12px' }}>
-                        <span style={{ color: aiTerminalStyles.promptAi }}>...</span> 正在处理
+                        <span style={{ color: aiTerminalStyles.promptAi }}>...</span> Processing
                       </div>
                     )}
                     <div ref={chatMessagesEndRef} />
