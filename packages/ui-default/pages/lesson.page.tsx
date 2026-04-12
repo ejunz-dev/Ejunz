@@ -20,6 +20,12 @@ function labelForFrozenLessonQueueMode(modeRaw: string | undefined): string {
 
 type QueuedProblem = Problem & { cardId: string };
 
+/** 换卡时：1 题目条先满 →2 总进度条再跟上实时值 →3 清空题目条。 */
+type LessonSecondBarExitHold =
+  | null
+  | { phase: 1; prevCardId: string; total: number; frozenSessionDone: number; sessionCardTotal: number }
+  | { phase: 2; prevCardId: string; total: number };
+
 function multiIndicesToBitmask(indices: number[]): number {
   let s = 0;
   for (const i of indices) {
@@ -68,6 +74,13 @@ type LessonNodeTreeItem = {
   children: Array<{ type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }>;
 };
 
+/** 单节点跨卡题目队列侧栏：按卡片分组展示。 */
+type LessonProblemQueueSidebarGroup = {
+  cardId: string;
+  cardTitle: string;
+  items: Array<{ p: QueuedProblem; globalIndex: number }>;
+};
+
 type LessonUiState = {
   card: Card;
   node: Node;
@@ -112,6 +125,8 @@ type LessonUiState = {
   /** Server `translate('Lesson path card practise count')` — avoids missing `window.LOCALES` entry. */
   lessonPathCardPractiseCountFmt: string;
   lessonPathCardPractiseCountTitle: string;
+  /** 单节点：与 `flatCards` 顺序一致的整卡列表（含各卡 `problems`），用于跨子卡题目队列。 */
+  flatQueueCards: Card[];
 };
 
 function normalizeCardFromServer(raw: unknown): Card {
@@ -121,6 +136,53 @@ function normalizeCardFromServer(raw: unknown): Card {
     ...(c as unknown as Card),
     docId: c.docId != null ? String(c.docId) : '',
   };
+}
+
+/**
+ * 单节点：按 `flatCards` 顺序展平练习题。`flatQueueCards` 经页面 JSON 时可能丢 `problems`，
+ * 用同请求的 `cards`（当前节点列表）补全。
+ */
+function buildSingleNodeQueuedProblems(
+  flatCards: LessonUiState['flatCards'],
+  flatQueueCards: Card[],
+  cards: Card[],
+  fallbackCard: Card,
+): QueuedProblem[] {
+  const queueById = new Map<string, Card>();
+  for (const c of flatQueueCards) {
+    const id = String(c.docId ?? '').trim();
+    if (id) queueById.set(id, c);
+  }
+  const listById = new Map<string, Card>();
+  for (const c of cards) {
+    const id = String(c.docId ?? '').trim();
+    if (id) listById.set(id, c);
+  }
+  const problemsForCardId = (cid: string): Problem[] => {
+    const q = queueById.get(cid);
+    const l = listById.get(cid);
+    const qn = q?.problems?.length ? q.problems : null;
+    const ln = l?.problems?.length ? l.problems : null;
+    if (qn) return qn;
+    if (ln) return ln;
+    if (String(fallbackCard.docId) === cid) return fallbackCard.problems || [];
+    return [];
+  };
+  const out: QueuedProblem[] = [];
+  const dedupe = new Set<string>();
+  const order = flatCards.length > 0
+    ? flatCards.map((fc) => String(fc.cardId))
+    : [String(fallbackCard.docId)].filter(Boolean);
+  for (const cid of order) {
+    if (!cid) continue;
+    for (const p of problemsForCardId(cid)) {
+      const k = `${cid}::${p.pid}`;
+      if (dedupe.has(k)) continue;
+      dedupe.add(k);
+      out.push({ ...p, cardId: cid } as QueuedProblem);
+    }
+  }
+  return out;
 }
 
 /** Unwrap jQuery.ajax-style JSON; supports redirect url in nested body/data. */
@@ -244,7 +306,21 @@ function initLessonUiState(): LessonUiState {
     learnPathCardPractiseCounts: normalizeLearnPathPractiseCountsMap(U.learnPathCardPractiseCounts),
     lessonPathCardPractiseCountFmt: String(U.lessonPathCardPractiseCountFmt || ''),
     lessonPathCardPractiseCountTitle: String(U.lessonPathCardPractiseCountTitle || ''),
+    flatQueueCards: Array.isArray(U.flatQueueCards) ? (U.flatQueueCards as unknown[]).map(normalizeCardFromServer) : [],
   };
+}
+
+function cardTitleForLessonProblemQueueSidebar(
+  cardId: string,
+  flatCards: LessonUiState['flatCards'],
+  flatQueueCards: Card[],
+): string {
+  const cid = String(cardId);
+  const fc = flatCards.find((f) => String(f.cardId) === cid);
+  if (fc?.cardTitle?.trim()) return String(fc.cardTitle).trim();
+  const qc = flatQueueCards.find((c) => String(c.docId) === cid);
+  if (qc?.title?.trim()) return String(qc.title).trim();
+  return i18n('Unnamed Card');
 }
 
 function LessonPage() {
@@ -278,10 +354,22 @@ function LessonPage() {
     learnPathCardPractiseCounts,
     lessonPathCardPractiseCountFmt,
     lessonPathCardPractiseCountTitle,
+    flatQueueCards,
   } = lessonUi;
 
+  const flatQueueCardsRef = useRef<Card[]>(flatQueueCards);
+  flatQueueCardsRef.current = flatQueueCards;
+  const flatCardsRef = useRef(flatCards);
+  flatCardsRef.current = flatCards;
+  const cardsRef = useRef(cards);
+  cardsRef.current = cards;
+  const cardRef = useRef(card);
+  cardRef.current = card;
+  const isSingleNodeModeRef = useRef(isSingleNodeMode);
+  isSingleNodeModeRef.current = isSingleNodeMode;
+
   const hasLessonSidebar = (isSingleNodeMode || isTodayMode || isAlonePractice)
-    && (nodeTree.length > 0 || (card.problems || []).length > 0);
+    && (nodeTree.length > 0 || (card.problems || []).length > 0 || hasProblems);
 
   const showLessonSessionProgressCard = isSingleNodeMode || isTodayMode || isAlonePractice;
 
@@ -563,8 +651,59 @@ function LessonPage() {
   }, [card?.docId, card?.cardFace, replaceImagesWithCache]);
 
   const allProblems = useMemo((): QueuedProblem[] => {
+    if (isSingleNodeMode && flatQueueCards.length > 0) {
+      const out: QueuedProblem[] = [];
+      for (const c of flatQueueCards) {
+        const cid = String(c.docId ?? '');
+        for (const p of c.problems || []) {
+          out.push({ ...p, cardId: cid } as QueuedProblem);
+        }
+      }
+      return out;
+    }
     return (card.problems || []).map((p) => ({ ...p, cardId: String(card.docId) } as QueuedProblem));
-  }, [card]);
+  }, [isSingleNodeMode, flatQueueCards, card]);
+
+  /** 单节点：侧栏题目队列按卡片嵌套（与 `allProblems` 顺序一致）。 */
+  const singleNodeLessonProblemGroups = useMemo((): LessonProblemQueueSidebarGroup[] | null => {
+    if (!isSingleNodeMode || flatQueueCards.length === 0 || allProblems.length === 0) return null;
+    const groups: LessonProblemQueueSidebarGroup[] = [];
+    let globalIndex = 0;
+    for (const p of allProblems) {
+      const cid = String(p.cardId);
+      const title = cardTitleForLessonProblemQueueSidebar(cid, flatCards, flatQueueCards);
+      const last = groups[groups.length - 1];
+      if (last && last.cardId === cid) {
+        last.items.push({ p, globalIndex: globalIndex++ });
+      } else {
+        groups.push({ cardId: cid, cardTitle: title, items: [{ p, globalIndex: globalIndex++ }] });
+      }
+    }
+    return groups.length > 0 ? groups : null;
+  }, [isSingleNodeMode, flatQueueCards, allProblems, flatCards]);
+
+  /** 侧栏题目按卡嵌套：单节点用 flatQueue 分组；单卡练习等则用 allProblems 按 cardId 分组（与右侧/全队列侧栏一致）。 */
+  const lessonProblemSidebarGroups = useMemo((): LessonProblemQueueSidebarGroup[] | null => {
+    if (singleNodeLessonProblemGroups !== null) return singleNodeLessonProblemGroups;
+    if (allProblems.length === 0) return null;
+    const groups: LessonProblemQueueSidebarGroup[] = [];
+    let globalIndex = 0;
+    for (const p of allProblems) {
+      const cid = String(p.cardId);
+      const title = cardTitleForLessonProblemQueueSidebar(cid, flatCards, flatQueueCards);
+      const last = groups[groups.length - 1];
+      if (last && last.cardId === cid) {
+        last.items.push({ p, globalIndex: globalIndex++ });
+      } else {
+        groups.push({ cardId: cid, cardTitle: title, items: [{ p, globalIndex: globalIndex++ }] });
+      }
+    }
+    return groups.length > 0 ? groups : null;
+  }, [singleNodeLessonProblemGroups, allProblems, flatCards, flatQueueCards]);
+
+  /** 单节点跨卡做题：卡片队列与题目队列合并，仅保留嵌套题目侧栏。 */
+  const mergeSingleNodeCardQueueIntoProblemSidebar =
+    isSingleNodeMode && singleNodeLessonProblemGroups !== null && allProblems.length > 0;
 
   /** 单卡片 + 有练习题：左右栏按「已完成 / 待完成题目」分列，不用卡片队列。 */
   const splitProblemPracticeSidebars = isAlonePractice && allProblems.length > 0 && hasLessonSidebar;
@@ -590,6 +729,115 @@ function LessonPage() {
   const [practiceClearedPids, setPracticeClearedPids] = useState<Record<string, true>>({});
   const practiceProblemsDoneCount = Object.keys(practiceClearedPids).length;
   const practiceProblemsPendingCount = problemQueue.length;
+
+  /** 左栏「已完成卡片」：按张数索引已过，或该卡在整段题目队列中的题已全部 cleared。 */
+  const mergeModeCompletedCardCount = useMemo(() => {
+    if (!mergeSingleNodeCardQueueIntoProblemSidebar) return 0;
+    let n = 0;
+    flatCards.forEach((item, idx) => {
+      const inReview = lessonReviewCardIds.includes(String(item.cardId));
+      const byIndex = idx < currentCardIndex && !inReview;
+      const pids = allProblems.filter((p) => String(p.cardId) === String(item.cardId)).map((p) => p.pid);
+      const byProblems = pids.length > 0 && pids.every((pid) => !!practiceClearedPids[pid]);
+      if (byIndex || byProblems) n += 1;
+    });
+    return n;
+  }, [
+    mergeSingleNodeCardQueueIntoProblemSidebar,
+    flatCards,
+    currentCardIndex,
+    lessonReviewCardIds,
+    allProblems,
+    practiceClearedPids,
+  ]);
+
+  /** 顶部第二段进度条：当前队列指针所在卡片（与 `lessonSessionProgressCard` 内逻辑一致）。 */
+  const secondBarCardIdFromQueue = useMemo(() => {
+    const pq = problemQueue[currentProblemIndex] as QueuedProblem | undefined;
+    return String(pq?.cardId || card?.docId || '');
+  }, [problemQueue, currentProblemIndex, card?.docId]);
+
+  /** 换卡 exit 动画里用 ref 读最新队列/卡片，避免 effect 依赖 allProblems/card 导致 cleanup 打断 520ms 定时器。 */
+  const allProblemsForSecondBarExitRef = useRef(allProblems);
+  allProblemsForSecondBarExitRef.current = allProblems;
+  const cardForSecondBarExitRef = useRef(card);
+  cardForSecondBarExitRef.current = card;
+  const flatCardsLenForSecondBarExitRef = useRef(flatCards.length);
+  flatCardsLenForSecondBarExitRef.current = flatCards.length;
+  const showCardQueueProgressForExitRef = useRef(showCardQueueProgress);
+  showCardQueueProgressForExitRef.current = showCardQueueProgress;
+
+  /** 与「当前第二段进度条卡片 id」同步：仅在非 exit 动画时写入，换卡当帧用于冻结总进度条分子。 */
+  const sessionFrozenBackupRef = useRef(0);
+  const prevSidForSessionFrozenSyncRef = useRef<string | null>(null);
+
+  const prevSecondBarCardIdRef = useRef<string | null>(null);
+  const secondBarExitAnimLockRef = useRef(false);
+  const secondBarExitPhase1TimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const secondBarExitPhase2TimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const SECOND_BAR_EXIT_PHASE1_MS = 380;
+  const SECOND_BAR_EXIT_PHASE2_MS = 400;
+  /** 换卡：题目条先满 → 总条更新 → 再清空题目条。 */
+  const [secondBarExitHold, setSecondBarExitHold] = useState<LessonSecondBarExitHold>(null);
+
+  useEffect(() => {
+    const nextSid = secondBarCardIdFromQueue;
+    const prev = prevSecondBarCardIdRef.current;
+    if (prev === null) {
+      prevSecondBarCardIdRef.current = nextSid;
+      return;
+    }
+    if (prev === nextSid) return;
+    if (secondBarExitAnimLockRef.current) return;
+
+    const prevFromAll = allProblemsForSecondBarExitRef.current.filter((p) => String(p.cardId) === prev);
+    const cardSnap = cardForSecondBarExitRef.current;
+    const prevTotal = prevFromAll.length > 0
+      ? prevFromAll.length
+      : (String(cardSnap.docId) === prev ? (cardSnap.problems?.length ?? 0) : 0);
+
+    if (prevTotal <= 0) {
+      prevSecondBarCardIdRef.current = nextSid;
+      return;
+    }
+
+    secondBarExitAnimLockRef.current = true;
+    const frozenSessionDone = sessionFrozenBackupRef.current;
+    const sessionCardTotalSnap = flatCardsLenForSecondBarExitRef.current;
+    setSecondBarExitHold({
+      phase: 1,
+      prevCardId: prev,
+      total: prevTotal,
+      frozenSessionDone,
+      sessionCardTotal: sessionCardTotalSnap,
+    });
+    if (secondBarExitPhase1TimerRef.current) clearTimeout(secondBarExitPhase1TimerRef.current);
+    if (secondBarExitPhase2TimerRef.current) clearTimeout(secondBarExitPhase2TimerRef.current);
+    secondBarExitPhase1TimerRef.current = setTimeout(() => {
+      secondBarExitPhase1TimerRef.current = null;
+      setSecondBarExitHold((h) => (h?.phase === 1 ? { phase: 2, prevCardId: prev, total: prevTotal } : h));
+      const phase2Ms = showCardQueueProgressForExitRef.current ? SECOND_BAR_EXIT_PHASE2_MS : 60;
+      secondBarExitPhase2TimerRef.current = setTimeout(() => {
+        setSecondBarExitHold(null);
+        prevSecondBarCardIdRef.current = nextSid;
+        secondBarExitAnimLockRef.current = false;
+        secondBarExitPhase2TimerRef.current = null;
+      }, phase2Ms);
+    }, SECOND_BAR_EXIT_PHASE1_MS);
+
+    return () => {
+      if (secondBarExitPhase1TimerRef.current) {
+        clearTimeout(secondBarExitPhase1TimerRef.current);
+        secondBarExitPhase1TimerRef.current = null;
+      }
+      if (secondBarExitPhase2TimerRef.current) {
+        clearTimeout(secondBarExitPhase2TimerRef.current);
+        secondBarExitPhase2TimerRef.current = null;
+      }
+      secondBarExitAnimLockRef.current = false;
+    };
+  }, [secondBarCardIdFromQueue]);
+
   const [problemStartTime, setProblemStartTime] = useState<number>(Date.now());
   const [problemAttempts, setProblemAttempts] = useState<Record<string, number>>({});
   const sessionStartTimeRef = useRef<number>(Date.now());
@@ -672,9 +920,54 @@ function LessonPage() {
       lessonPathCardPractiseCountTitle: typeof payload.lessonPathCardPractiseCountTitle === 'string'
         ? payload.lessonPathCardPractiseCountTitle
         : prev.lessonPathCardPractiseCountTitle,
+      flatQueueCards: Array.isArray(payload.flatQueueCards)
+        ? (payload.flatQueueCards as unknown[]).map(normalizeCardFromServer)
+        : prev.flatQueueCards,
     }));
     const nextCard = payload.card != null ? normalizeCardFromServer(payload.card) : null;
-    const probs = (nextCard?.problems || []).map((p) => ({ ...p, cardId: String(nextCard!.docId) } as QueuedProblem));
+    const payloadHasFlatQKey = Object.prototype.hasOwnProperty.call(payload, 'flatQueueCards');
+    const nextFlatQFromPayload = payloadHasFlatQKey && Array.isArray(payload.flatQueueCards)
+      ? (payload.flatQueueCards as unknown[]).map(normalizeCardFromServer)
+      : null;
+    const probs = (() => {
+      if (nextFlatQFromPayload && nextFlatQFromPayload.length > 0) {
+        const out: QueuedProblem[] = [];
+        for (const c of nextFlatQFromPayload) {
+          const cid = String(c.docId ?? '');
+          for (const p of c.problems || []) {
+            out.push({ ...p, cardId: cid } as QueuedProblem);
+          }
+        }
+        return out;
+      }
+      if (payloadHasFlatQKey && nextFlatQFromPayload && nextFlatQFromPayload.length === 0) {
+        return [];
+      }
+      const retain = flatQueueCardsRef.current;
+      if (retain.length > 0) {
+        const out: QueuedProblem[] = [];
+        for (const c of retain) {
+          const cid = String(c.docId ?? '');
+          for (const p of c.problems || []) {
+            out.push({ ...p, cardId: cid } as QueuedProblem);
+          }
+        }
+        return out;
+      }
+      return (nextCard?.problems || []).map((p) => ({ ...p, cardId: String(nextCard!.docId) } as QueuedProblem));
+    })();
+    if (secondBarExitPhase1TimerRef.current) {
+      clearTimeout(secondBarExitPhase1TimerRef.current);
+      secondBarExitPhase1TimerRef.current = null;
+    }
+    if (secondBarExitPhase2TimerRef.current) {
+      clearTimeout(secondBarExitPhase2TimerRef.current);
+      secondBarExitPhase2TimerRef.current = null;
+    }
+    secondBarExitAnimLockRef.current = false;
+    prevSecondBarCardIdRef.current = null;
+    setSecondBarExitHold(null);
+
     setProblemQueue(probs);
     setCurrentProblemIndex(0);
     setSelectedAnswer(null);
@@ -814,6 +1107,24 @@ function LessonPage() {
     return Math.max(0, flatCards.length - lessonQueueDoneCount);
   }, [showCardQueueProgress, flatCards.length, lessonQueueDoneCount]);
 
+  useLayoutEffect(() => {
+    if (secondBarExitHold !== null) return;
+    const liveDone = mergeSingleNodeCardQueueIntoProblemSidebar
+      ? mergeModeCompletedCardCount
+      : lessonQueueDoneCount;
+    const prevS = prevSidForSessionFrozenSyncRef.current;
+    if (prevS !== null && prevS === secondBarCardIdFromQueue) {
+      sessionFrozenBackupRef.current = liveDone;
+    }
+    prevSidForSessionFrozenSyncRef.current = secondBarCardIdFromQueue;
+  }, [
+    secondBarCardIdFromQueue,
+    secondBarExitHold,
+    mergeSingleNodeCardQueueIntoProblemSidebar,
+    mergeModeCompletedCardCount,
+    lessonQueueDoneCount,
+  ]);
+
   const lessonSessionNewOldCounts = useMemo(() => {
     if (!showCardQueueProgress || flatCards.length === 0) return null;
     if (!isTodayMode && !isSingleNodeMode) return null;
@@ -877,79 +1188,112 @@ function LessonPage() {
         </div>
       );
     }
-    if (showLessonProblemSessionProgress) {
-      const total = allProblems.length;
-      const done = Object.keys(practiceClearedPids).length;
-      const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
-      return (
-        <div style={cardShell}>
-          {modeBlock}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', marginBottom: '12px', gap: '12px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '15px', fontWeight: 600, color: themeStyles.accent }}>
-              {done} / {total} {i18n('Lesson practice progress unit')} · {pct}%
-            </span>
-          </div>
-          <div style={{
-            height: '14px',
-            borderRadius: '999px',
-            backgroundColor: themeStyles.bgSecondary,
-            border: `1px solid ${themeStyles.border}`,
-            overflow: 'hidden',
-          }}>
-            <div style={{
-              width: `${pct}%`,
-              height: '100%',
-              borderRadius: '999px',
-              background: `linear-gradient(90deg, ${themeStyles.accent}, ${themeStyles.success})`,
-              transition: 'width 0.35s ease',
-            }} />
-          </div>
-        </div>
-      );
-    }
-    const total = flatCards.length;
-    const done = lessonQueueDoneCount;
-    const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+
+    const trackStyle: React.CSSProperties = {
+      height: '14px',
+      borderRadius: '999px',
+      backgroundColor: themeStyles.bgSecondary,
+      border: `1px solid ${themeStyles.border}`,
+      overflow: 'hidden',
+    };
+    const fillStyle = (pct: number): React.CSSProperties => ({
+      width: `${pct}%`,
+      height: '100%',
+      borderRadius: '999px',
+      background: `linear-gradient(90deg, ${themeStyles.accent}, ${themeStyles.success})`,
+      transition: 'width 0.35s ease',
+    });
+
+    const sessionCardTotal =
+      secondBarExitHold?.phase === 1
+        ? secondBarExitHold.sessionCardTotal
+        : flatCards.length;
+    const sessionCardDoneLive = mergeSingleNodeCardQueueIntoProblemSidebar
+      ? mergeModeCompletedCardCount
+      : lessonQueueDoneCount;
+    const sessionCardDone =
+      secondBarExitHold?.phase === 1
+        ? secondBarExitHold.frozenSessionDone
+        : sessionCardDoneLive;
+    const showSessionCardBar = showCardQueueProgress && sessionCardTotal > 0;
+    const sessionCardPct = sessionCardTotal > 0
+      ? Math.min(100, Math.round((sessionCardDone / sessionCardTotal) * 100))
+      : 0;
     const newOldLine = lessonQueueNewOldLine(lessonSessionQueueNewOldLabel, lessonSessionNewOldCounts);
     const newOldPrefix = newOldLine ? `${newOldLine} · ` : '';
+
+    const inExitHold = secondBarExitHold !== null;
+    const displaySecondBarCardId = inExitHold ? secondBarExitHold.prevCardId : secondBarCardIdFromQueue;
+    const fromAllForBar = allProblems.filter((p) => String(p.cardId) === displaySecondBarCardId);
+    const currentCardProblemPids = inExitHold
+      ? []
+      : (fromAllForBar.length > 0
+        ? fromAllForBar.map((p) => String(p.pid))
+        : (card.problems || []).map((p) => String((p as { pid?: string }).pid || '')).filter(Boolean));
+    const currentCardProblemTotal = inExitHold ? secondBarExitHold!.total : currentCardProblemPids.length;
+    const currentCardProblemDone = inExitHold
+      ? secondBarExitHold!.total
+      : currentCardProblemPids.filter((pid) => !!practiceClearedPids[pid]).length;
+    const showCurrentCardProblemsBar = inExitHold ? secondBarExitHold!.total > 0 : currentCardProblemTotal > 0;
+    const currentCardPct = currentCardProblemTotal > 0
+      ? Math.min(100, Math.round((currentCardProblemDone / currentCardProblemTotal) * 100))
+      : 0;
+
     return (
       <div style={cardShell}>
         {modeBlock}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', marginBottom: '12px', gap: '12px', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '15px', fontWeight: 600, color: themeStyles.accent }}>
-            {newOldPrefix}
-            {done} / {total} {i18n('cards')} · {pct}%
-          </span>
-        </div>
-        <div style={{
-          height: '14px',
-          borderRadius: '999px',
-          backgroundColor: themeStyles.bgSecondary,
-          border: `1px solid ${themeStyles.border}`,
-          overflow: 'hidden',
-        }}>
-          <div style={{
-            width: `${pct}%`,
-            height: '100%',
-            borderRadius: '999px',
-            background: `linear-gradient(90deg, ${themeStyles.accent}, ${themeStyles.success})`,
-            transition: 'width 0.35s ease',
-          }} />
-        </div>
+        {showSessionCardBar ? (
+          <div style={{ marginBottom: showCurrentCardProblemsBar ? '18px' : 0 }}>
+            <div style={{ fontSize: '12px', color: themeStyles.textTertiary, marginBottom: '6px' }}>
+              {i18n('Lesson progress session cards')}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', marginBottom: '10px', gap: '12px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '15px', fontWeight: 600, color: themeStyles.accent }}>
+                {newOldPrefix}
+                {sessionCardDone} / {sessionCardTotal} {i18n('cards')} · {sessionCardPct}%
+              </span>
+            </div>
+            <div style={trackStyle}>
+              <div style={fillStyle(sessionCardPct)} />
+            </div>
+          </div>
+        ) : null}
+        {showCurrentCardProblemsBar ? (
+          <div>
+            <div style={{ fontSize: '12px', color: themeStyles.textTertiary, marginBottom: '6px' }}>
+              {i18n('Lesson progress current card problems')}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', marginBottom: '10px', gap: '12px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '15px', fontWeight: 600, color: themeStyles.accent }}>
+                {currentCardProblemDone} / {currentCardProblemTotal} {i18n('Lesson practice progress unit')} · {currentCardPct}%
+              </span>
+            </div>
+            <div style={trackStyle}>
+              <div style={fillStyle(currentCardPct)} />
+            </div>
+          </div>
+        ) : null}
       </div>
     );
   }, [
     showLessonSessionProgressCard,
     showCardQueueProgress,
     showLessonProblemSessionProgress,
+    mergeSingleNodeCardQueueIntoProblemSidebar,
+    mergeModeCompletedCardCount,
+    card,
     lessonSessionModeLabel,
     isTodayMode,
     rootNodeId,
     lessonLearnSessionMode,
     lessonTodayModesConfigLine,
-    flatCards.length,
-    allProblems.length,
+    flatCards,
+    allProblems,
     practiceClearedPids,
+    problemQueue,
+    currentProblemIndex,
+    secondBarCardIdFromQueue,
+    secondBarExitHold,
     lessonQueueDoneCount,
     lessonSessionNewOldCounts,
     lessonSessionQueueNewOldLabel,
@@ -1030,7 +1374,9 @@ function LessonPage() {
       const leftLabel = splitQueueSidebars
         ? (splitProblemPracticeSidebars
           ? `${i18n('Lesson practice sidebar completed')} (${practiceProblemsDoneCount})`
-          : `${i18n('Completed sections')} (${lessonQueueDoneCount})`)
+          : mergeSingleNodeCardQueueIntoProblemSidebar
+            ? `${i18n('Lesson practice sidebar completed')} (${practiceProblemsDoneCount})`
+            : `${i18n('Completed sections')} (${lessonQueueDoneCount})`)
         : i18n('Progress');
       ReactDOM.render(
         <button
@@ -1046,7 +1392,9 @@ function LessonPage() {
     if (rightWrap) {
       const rightLabel = splitProblemPracticeSidebars
         ? `${i18n('Lesson practice sidebar pending')} (${practiceProblemsPendingCount})`
-        : `${i18n('Uncompleted')} (${lessonQueuePendingCount})`;
+        : mergeSingleNodeCardQueueIntoProblemSidebar
+          ? `${i18n('Lesson problem queue')} (${practiceProblemsPendingCount})`
+          : `${i18n('Uncompleted')} (${lessonQueuePendingCount})`;
       ReactDOM.render(
         <button
           type="button"
@@ -1073,6 +1421,10 @@ function LessonPage() {
     showSidebarInNav,
     splitQueueSidebars,
     splitProblemPracticeSidebars,
+    mergeSingleNodeCardQueueIntoProblemSidebar,
+    mergeModeCompletedCardCount,
+    allProblems.length,
+    flatCards.length,
     lessonQueueDoneCount,
     lessonQueuePendingCount,
     practiceProblemsDoneCount,
@@ -1378,6 +1730,7 @@ function LessonPage() {
         ...passSession,
         answerHistory: answerHistory.map(h => ({
           problemId: h.problem.pid,
+          cardId: String((h.problem as QueuedProblem).cardId || card.docId),
           selected: h.selected,
           correct: h.correct,
           timeSpent: h.timeSpent,
@@ -2062,7 +2415,7 @@ function LessonPage() {
           {rootNodeTitle || i18n('Unnamed Node')}
         </div>
       )}
-      {!splitQueueSidebars && (
+      {!splitQueueSidebars && !mergeSingleNodeCardQueueIntoProblemSidebar && (
         <div style={{ fontSize: '12px', color: themeStyles.textSecondary, marginBottom: '12px' }}>
           {currentCardIndex + 1} / {flatCards.length} {i18n('cards')}
           {!(isTodayMode && rootNodeId === 'today') && liveLessonSession && Array.isArray(liveLessonSession.lessonCardQueue) && (
@@ -2085,7 +2438,13 @@ function LessonPage() {
     return plain.length > 56 ? `${plain.slice(0, 56)}…` : plain || '—';
   };
 
-  const renderLessonProblemQueueRow = (p: QueuedProblem, orderIndex: number, isCurrent: boolean, isCleared: boolean) => {
+  const renderLessonProblemQueueRow = (
+    p: QueuedProblem,
+    orderIndex: number,
+    isCurrent: boolean,
+    isCleared: boolean,
+    reactKey?: string,
+  ) => {
     const k = problemKind(p);
     const rowStyle: React.CSSProperties = {
       padding: '6px 8px',
@@ -2097,7 +2456,7 @@ function LessonPage() {
       fontWeight: isCurrent ? 600 : 400,
     };
     return (
-      <div key={`lesson-problem-row-${orderIndex}-${p.pid}`} style={rowStyle}>
+      <div key={reactKey ?? `lesson-problem-row-${orderIndex}-${p.pid}`} style={rowStyle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px', flexWrap: 'wrap' }}>
           <span style={{ flexShrink: 0, opacity: 0.9 }}>#{orderIndex + 1}</span>
           <span style={{
@@ -2119,6 +2478,108 @@ function LessonPage() {
     );
   };
 
+  const lessonPracticeDoneProblemsFragment = (
+    <>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: '8px',
+        marginBottom: '8px',
+      }}>
+        <span style={{ fontSize: '12px', color: themeStyles.textTertiary, textTransform: 'uppercase' }}>
+          {i18n('Lesson practice sidebar completed')}
+        </span>
+        <span style={{ fontSize: '14px', fontWeight: 700, color: themeStyles.success, flexShrink: 0 }}>
+          {practiceProblemsDoneCount}
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        {lessonProblemSidebarGroups ? (
+          lessonProblemSidebarGroups.map((group) => {
+            const doneItems = group.items.filter(({ p }) => !!practiceClearedPids[p.pid]);
+            if (doneItems.length === 0) return null;
+            const flatIdx = cardIdToFlatIndex[group.cardId];
+            const inReview = lessonReviewCardIds.includes(group.cardId);
+            const isDone = typeof flatIdx === 'number' && flatIdx < currentCardIndex && !inReview;
+            const isCurrent = typeof flatIdx === 'number' && flatIdx === currentCardIndex;
+            const fc = typeof flatIdx === 'number' ? flatCards[flatIdx] : undefined;
+            let timeText = '—';
+            if (typeof flatIdx === 'number') {
+              if (isCurrent) timeText = `${(currentCardCumulativeMs / 1000).toFixed(1)}s`;
+              else if (flatIdx < cardTimesMs.length) timeText = `${(cardTimesMs[flatIdx] / 1000).toFixed(1)}s`;
+            }
+            const cardHeaderStyle: React.CSSProperties = {
+              padding: '6px 10px',
+              marginBottom: '6px',
+              fontSize: '12px',
+              borderRadius: '6px',
+              backgroundColor: isCurrent ? themeStyles.accentMutedBg : inReview ? themeStyles.reviewBg : isDone ? themeStyles.doneBg : themeStyles.bgSecondary,
+              color: isCurrent ? themeStyles.accentMutedFg : inReview ? themeStyles.reviewFg : isDone ? themeStyles.doneFg : themeStyles.textSecondary,
+              fontWeight: isCurrent ? 600 : 400,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '8px',
+              border: `1px solid ${themeStyles.border}`,
+              wordBreak: 'break-word',
+            };
+            const displayTitle = (fc?.cardTitle?.trim() && String(fc.cardTitle).trim()) || group.cardTitle;
+            return (
+              <div key={`lesson-practice-done-group-${group.cardId}`}>
+                <div style={cardHeaderStyle}>
+                  <span style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px', minWidth: 0 }}>
+                    {isDone ? <span style={{ marginRight: '2px', flexShrink: 0 }} aria-hidden>✓</span> : null}
+                    {inReview ? (
+                      <span style={{ marginRight: '4px', fontSize: '11px', color: themeStyles.reviewFg, fontWeight: 600, flexShrink: 0 }}>
+                        {i18n('Review')}
+                      </span>
+                    ) : null}
+                    {queueNewOldTagBeforeName(fc)}
+                    <span>{displayTitle}</span>
+                  </span>
+                  {sidebarQueuePathLoopAndTime(
+                    pathLoopCountForFlatCard(fc, learnPathCardPractiseCounts),
+                    timeText,
+                  )}
+                </div>
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '4px',
+                  paddingLeft: '8px',
+                  borderLeft: `2px solid ${themeStyles.border}`,
+                }}
+                >
+                  {doneItems.map(({ p, globalIndex }) => {
+                    const isCurrent = currentProblem?.pid === p.pid;
+                    return renderLessonProblemQueueRow(
+                      p,
+                      globalIndex,
+                      isCurrent,
+                      true,
+                      `lesson-practice-done-${group.cardId}-${globalIndex}-${p.pid}`,
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          allProblems.map((p, idx) => {
+            if (!practiceClearedPids[p.pid]) return null;
+            return renderLessonProblemQueueRow(p, idx, false, true);
+          })
+        )}
+        {practiceProblemsDoneCount === 0 ? (
+          <div style={{ fontSize: '13px', color: themeStyles.textTertiary, padding: '8px 0' }}>
+            {i18n('No completed problems yet')}
+          </div>
+        ) : null}
+      </div>
+    </>
+  );
+
   const lessonProblemQueueSidebar = allProblems.length > 0 && !splitProblemPracticeSidebars ? (
     <div style={{ marginTop: '16px', marginBottom: '12px' }}>
       <div style={{
@@ -2135,45 +2596,196 @@ function LessonPage() {
           {practiceProblemsDoneCount}/{allProblems.length}
         </span>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-        {allProblems.map((p, idx) => {
-          const isCurrent = currentProblem?.pid === p.pid;
-          const isCleared = !!practiceClearedPids[p.pid];
-          return renderLessonProblemQueueRow(p, idx, isCurrent, isCleared);
-        })}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        {singleNodeLessonProblemGroups ? (
+          singleNodeLessonProblemGroups.map((group) => {
+            const flatIdx = cardIdToFlatIndex[group.cardId];
+            const inReview = lessonReviewCardIds.includes(group.cardId);
+            const isDone = typeof flatIdx === 'number' && flatIdx < currentCardIndex && !inReview;
+            const isCurrent = typeof flatIdx === 'number' && flatIdx === currentCardIndex;
+            const fc = typeof flatIdx === 'number' ? flatCards[flatIdx] : undefined;
+            let timeText = '—';
+            if (typeof flatIdx === 'number') {
+              if (isCurrent) timeText = `${(currentCardCumulativeMs / 1000).toFixed(1)}s`;
+              else if (flatIdx < cardTimesMs.length) timeText = `${(cardTimesMs[flatIdx] / 1000).toFixed(1)}s`;
+            }
+            const cardHeaderStyle: React.CSSProperties = {
+              padding: '6px 10px',
+              marginBottom: '6px',
+              fontSize: '12px',
+              borderRadius: '6px',
+              backgroundColor: isCurrent ? themeStyles.accentMutedBg : inReview ? themeStyles.reviewBg : isDone ? themeStyles.doneBg : themeStyles.bgSecondary,
+              color: isCurrent ? themeStyles.accentMutedFg : inReview ? themeStyles.reviewFg : isDone ? themeStyles.doneFg : themeStyles.textSecondary,
+              fontWeight: isCurrent ? 600 : 400,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '8px',
+              border: `1px solid ${themeStyles.border}`,
+              wordBreak: 'break-word',
+            };
+            const displayTitle = (fc?.cardTitle?.trim() && String(fc.cardTitle).trim()) || group.cardTitle;
+            return (
+            <div key={`lesson-problem-card-group-${group.cardId}`}>
+              <div style={cardHeaderStyle}>
+                <span style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px', minWidth: 0 }}>
+                  {isDone ? <span style={{ marginRight: '2px', flexShrink: 0 }} aria-hidden>✓</span> : null}
+                  {inReview ? (
+                    <span style={{ marginRight: '4px', fontSize: '11px', color: themeStyles.reviewFg, fontWeight: 600, flexShrink: 0 }}>
+                      {i18n('Review')}
+                    </span>
+                  ) : null}
+                  {queueNewOldTagBeforeName(fc)}
+                  <span>{displayTitle}</span>
+                </span>
+                {sidebarQueuePathLoopAndTime(
+                  pathLoopCountForFlatCard(fc, learnPathCardPractiseCounts),
+                  timeText,
+                )}
+              </div>
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+                paddingLeft: '8px',
+                borderLeft: `2px solid ${themeStyles.border}`,
+              }}
+              >
+                {group.items.map(({ p, globalIndex }) => {
+                  const isCurrent = currentProblem?.pid === p.pid;
+                  const isCleared = !!practiceClearedPids[p.pid];
+                  return renderLessonProblemQueueRow(
+                    p,
+                    globalIndex,
+                    isCurrent,
+                    isCleared,
+                    `lesson-problem-row-${group.cardId}-${globalIndex}-${p.pid}`,
+                  );
+                })}
+              </div>
+            </div>
+            );
+          })
+        ) : (
+          allProblems.map((p, idx) => {
+            const isCurrent = currentProblem?.pid === p.pid;
+            const isCleared = !!practiceClearedPids[p.pid];
+            return renderLessonProblemQueueRow(p, idx, isCurrent, isCleared);
+          })
+        )}
       </div>
     </div>
   ) : null;
 
-  const sidebarProblemPracticeDoneColumn = splitProblemPracticeSidebars ? (
-    <>
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        gap: '8px',
-        marginBottom: '8px',
-      }}>
-        <span style={{ fontSize: '12px', color: themeStyles.textTertiary, textTransform: 'uppercase' }}>
-          {i18n('Lesson practice sidebar completed')}
-        </span>
-        <span style={{ fontSize: '14px', fontWeight: 700, color: themeStyles.success, flexShrink: 0 }}>
-          {practiceProblemsDoneCount}
-        </span>
+  /** 分栏右列：仅未完成题目（与左栏已完成题目对应）。 */
+  const lessonProblemQueueSidebarPendingOnly =
+    mergeSingleNodeCardQueueIntoProblemSidebar && allProblems.length > 0 && !splitProblemPracticeSidebars ? (
+      <div style={{ marginTop: '16px', marginBottom: '12px' }}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '8px',
+          marginBottom: '8px',
+        }}>
+          <span style={{ fontSize: '12px', color: themeStyles.textTertiary, textTransform: 'uppercase' }}>
+            {i18n('Lesson problem queue')}
+          </span>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: themeStyles.textSecondary, flexShrink: 0 }}>
+            {practiceProblemsPendingCount}/{allProblems.length}
+          </span>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          {singleNodeLessonProblemGroups
+            ? singleNodeLessonProblemGroups.map((group) => {
+              const pendingItems = group.items.filter(({ p }) => !practiceClearedPids[p.pid]);
+              if (pendingItems.length === 0) return null;
+              const flatIdx = cardIdToFlatIndex[group.cardId];
+              const inReview = lessonReviewCardIds.includes(group.cardId);
+              const isDone = typeof flatIdx === 'number' && flatIdx < currentCardIndex && !inReview;
+              const isCurrent = typeof flatIdx === 'number' && flatIdx === currentCardIndex;
+              const fc = typeof flatIdx === 'number' ? flatCards[flatIdx] : undefined;
+              let timeText = '—';
+              if (typeof flatIdx === 'number') {
+                if (isCurrent) timeText = `${(currentCardCumulativeMs / 1000).toFixed(1)}s`;
+                else if (flatIdx < cardTimesMs.length) timeText = `${(cardTimesMs[flatIdx] / 1000).toFixed(1)}s`;
+              }
+              const cardHeaderStyle: React.CSSProperties = {
+                padding: '6px 10px',
+                marginBottom: '6px',
+                fontSize: '12px',
+                borderRadius: '6px',
+                backgroundColor: isCurrent ? themeStyles.accentMutedBg : inReview ? themeStyles.reviewBg : isDone ? themeStyles.doneBg : themeStyles.bgSecondary,
+                color: isCurrent ? themeStyles.accentMutedFg : inReview ? themeStyles.reviewFg : isDone ? themeStyles.doneFg : themeStyles.textSecondary,
+                fontWeight: isCurrent ? 600 : 400,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '8px',
+                border: `1px solid ${themeStyles.border}`,
+                wordBreak: 'break-word',
+              };
+              const displayTitle = (fc?.cardTitle?.trim() && String(fc.cardTitle).trim()) || group.cardTitle;
+              return (
+                <div key={`lesson-problem-pending-group-${group.cardId}`}>
+                  <div style={cardHeaderStyle}>
+                    <span style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px', minWidth: 0 }}>
+                      {isDone ? <span style={{ marginRight: '2px', flexShrink: 0 }} aria-hidden>✓</span> : null}
+                      {inReview ? (
+                        <span style={{ marginRight: '4px', fontSize: '11px', color: themeStyles.reviewFg, fontWeight: 600, flexShrink: 0 }}>
+                          {i18n('Review')}
+                        </span>
+                      ) : null}
+                      {queueNewOldTagBeforeName(fc)}
+                      <span>{displayTitle}</span>
+                    </span>
+                    {sidebarQueuePathLoopAndTime(
+                      pathLoopCountForFlatCard(fc, learnPathCardPractiseCounts),
+                      timeText,
+                    )}
+                  </div>
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px',
+                    paddingLeft: '8px',
+                    borderLeft: `2px solid ${themeStyles.border}`,
+                  }}
+                  >
+                    {pendingItems.map(({ p, globalIndex }) => {
+                      const isCurrent = currentProblem?.pid === p.pid;
+                      return renderLessonProblemQueueRow(
+                        p,
+                        globalIndex,
+                        isCurrent,
+                        false,
+                        `lesson-problem-pending-${group.cardId}-${globalIndex}-${p.pid}`,
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })
+            : allProblems.filter((p) => !practiceClearedPids[p.pid]).map((p, i) => {
+              const idx = allProblems.findIndex((x) => x.pid === p.pid);
+              const isCurrent = currentProblem?.pid === p.pid;
+              return renderLessonProblemQueueRow(p, idx >= 0 ? idx : i, isCurrent, false, `lesson-problem-pending-flat-${p.pid}`);
+            })}
+          {practiceProblemsPendingCount === 0 ? (
+            <div style={{ fontSize: '13px', color: themeStyles.textTertiary, padding: '8px 0' }}>
+              {i18n('No pending sections')}
+            </div>
+          ) : null}
+        </div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-        {allProblems.map((p, idx) => {
-          if (!practiceClearedPids[p.pid]) return null;
-          return renderLessonProblemQueueRow(p, idx, false, true);
-        })}
-        {practiceProblemsDoneCount === 0 ? (
-          <div style={{ fontSize: '13px', color: themeStyles.textTertiary, padding: '8px 0' }}>
-            {i18n('No completed problems yet')}
-          </div>
-        ) : null}
-      </div>
-    </>
+    ) : null;
+
+  /** 合并题目队列：左侧只保留「已完成题目」嵌套列表，不再重复列出已完成卡片（与题目行重复）。 */
+  const singleNodeMergeLeftSidebar = mergeSingleNodeCardQueueIntoProblemSidebar ? (
+    <>{lessonPracticeDoneProblemsFragment}</>
   ) : null;
+
+  const sidebarProblemPracticeDoneColumn = splitProblemPracticeSidebars ? lessonPracticeDoneProblemsFragment : null;
 
   const sidebarProblemPracticePendingColumn = splitProblemPracticeSidebars ? (
     <>
@@ -2325,23 +2937,27 @@ function LessonPage() {
 
   const sidebarInnerLeftSplit = (
     <>
-      {!splitProblemPracticeSidebars && sidebarMeta}
-      {lessonProblemQueueSidebar}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        gap: '8px',
-        marginBottom: '8px',
-      }}>
-        <span style={{ fontSize: '12px', color: themeStyles.textTertiary, textTransform: 'uppercase' }}>
-          {i18n('Uncompleted')}
-        </span>
-        <span style={{ fontSize: '14px', fontWeight: 700, color: themeStyles.accent, flexShrink: 0 }}>
-          {lessonQueuePendingCount}
-        </span>
-      </div>
-      {todayFlatListPendingOnly}
+      {!splitProblemPracticeSidebars && !mergeSingleNodeCardQueueIntoProblemSidebar && sidebarMeta}
+      {mergeSingleNodeCardQueueIntoProblemSidebar ? lessonProblemQueueSidebarPendingOnly : lessonProblemQueueSidebar}
+      {!mergeSingleNodeCardQueueIntoProblemSidebar && (
+        <>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '8px',
+            marginBottom: '8px',
+          }}>
+            <span style={{ fontSize: '12px', color: themeStyles.textTertiary, textTransform: 'uppercase' }}>
+              {i18n('Uncompleted')}
+            </span>
+            <span style={{ fontSize: '14px', fontWeight: 700, color: themeStyles.accent, flexShrink: 0 }}>
+              {lessonQueuePendingCount}
+            </span>
+          </div>
+          {todayFlatListPendingOnly}
+        </>
+      )}
     </>
   );
 
@@ -2367,15 +2983,32 @@ function LessonPage() {
 
   const sidebarInner = (
     <>
-      {sidebarMeta}
-      {lessonProblemQueueSidebar}
-      {isTodayMode && rootNodeId === 'today' ? todayFlatListAll : nodeTree.map((root, i) => renderNodeTreeItem(root, 0))}
+      {!mergeSingleNodeCardQueueIntoProblemSidebar && sidebarMeta}
+      {mergeSingleNodeCardQueueIntoProblemSidebar && !splitQueueSidebars ? (
+        <>
+          {singleNodeMergeLeftSidebar}
+          {lessonProblemQueueSidebarPendingOnly}
+        </>
+      ) : (
+        <>
+          {lessonProblemQueueSidebar}
+          {isTodayMode && rootNodeId === 'today'
+            ? todayFlatListAll
+            : mergeSingleNodeCardQueueIntoProblemSidebar
+              ? null
+              : nodeTree.map((root, i) => renderNodeTreeItem(root, 0))}
+        </>
+      )}
     </>
   );
 
   /** Split sidebars: left done, right pending（单卡片有题时为题目队列，否则为今日/单节点卡片队列 + meta）。 */
   const lessonSidebarLeftColumn = splitQueueSidebars
-    ? (splitProblemPracticeSidebars ? sidebarProblemPracticeDoneColumn : sidebarInnerRightSplit)
+    ? (splitProblemPracticeSidebars
+      ? sidebarProblemPracticeDoneColumn
+      : mergeSingleNodeCardQueueIntoProblemSidebar
+        ? singleNodeMergeLeftSidebar
+        : sidebarInnerRightSplit)
     : sidebarInner;
   const lessonSidebarRightColumn = splitQueueSidebars
     ? (splitProblemPracticeSidebars ? sidebarProblemPracticePendingColumn : sidebarInnerLeftSplit)
@@ -2576,7 +3209,7 @@ function LessonPage() {
           {i18n('Question')} {allProblems.length - problemQueue.length + 1} / {allProblems.length}
           {problemQueue.length > 0 && ` (${i18n('Remaining')}: ${problemQueue.length})`}
         </div>
-        {(isSingleNodeMode || isTodayMode || isAlonePractice) && (
+        {(isSingleNodeMode || isTodayMode || isAlonePractice) && !mergeSingleNodeCardQueueIntoProblemSidebar && (
           <div style={{ fontSize: '14px', color: themeStyles.accent, marginTop: '8px', fontWeight: 600 }}>
             {i18n('This card')}: {(elapsedMs / 1000).toFixed(1)}s
           </div>
