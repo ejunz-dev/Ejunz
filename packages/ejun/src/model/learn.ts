@@ -72,6 +72,12 @@ class LearnModel {
         );
     }
 
+    /** Drop cached DAG so the next `ensureLearnBaseDAGCached` rebuilds from the current base. */
+    static async deleteDAG(domainId: string, baseDocId: number | ObjectId, branch: string) {
+        const br = (branch || 'main').trim() || 'main';
+        await collDAG.deleteOne({ domainId, baseDocId, branch: br });
+    }
+
     static async getPassedCardIds(domainId: string, userId: number): Promise<Set<string>> {
         const list = await collProgress
             .find({ domainId, userId, passed: true })

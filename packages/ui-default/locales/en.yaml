@@ -421,6 +421,11 @@ __langname: English
 'Saving': Saving
 'Sections': Sections
 'Section Order': Section order
+'Reset learn DAG': Reset from base
+'Reset learn DAG description': Rebuild the learning path from the latest base and reset section order to match (overwrites saved order).
+'Learn DAG reset done': Learning path was refreshed from the base.
+'Learn DAG reset failed': Could not refresh learning path from the base.
+'Resetting...': Resetting…
 'Select a conversation to view details': Select a conversation to view details
 'Select a section from the sidebar': Select a section from the sidebar
 'Select Agent': Select Agent
