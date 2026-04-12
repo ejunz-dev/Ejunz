@@ -277,6 +277,8 @@ __langname: 简体中文
 'Lesson path card practise count': 已过 {0} 次
 'Lesson path card practise count title': 本卡片在当前节槽累计完整过关次数（每次在本课完整过关计一次，与学习路径统计一致）
 'Lesson problem queue': 题目队列
+'Lesson progress session cards': 会话进度（卡片）
+'Lesson progress current card problems': 当前卡片题目
 'Lesson practice progress unit': 题
 'Lesson practice sidebar completed': 已完成题目
 'Lesson practice sidebar pending': 待完成题目
