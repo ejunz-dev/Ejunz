@@ -135,6 +135,7 @@
         "html2canvas": "^1.4.1",
         "js-yaml": "^4.1.0",
         "jsesc": "^3.1.0",
+        "jsonrepair": "^3.13.1",
         "jspdf": "^2.5.1",
         "katex": "^0.16.25",
         "lodash": "^4.17.21",
