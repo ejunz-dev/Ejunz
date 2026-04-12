@@ -268,7 +268,7 @@ function branchesForBaseDoc(base: BaseDoc): string[] {
 }
 
 /** Bump when single-base learn DAG generation rules change (invalidates `learn_dag` rows for that base+branch). */
-const LEARN_BASE_DAG_CACHE_REVISION = 1;
+const LEARN_BASE_DAG_CACHE_REVISION = 4;
 
 async function computeLearnBaseDAGVersion(domainId: string, baseDocId: number, _branch: string): Promise<number> {
     const b = await BaseModel.get(domainId, baseDocId);
@@ -813,6 +813,22 @@ function applyUserSectionOrder(sections: LearnDAGNode[], learnSectionOrder: stri
         result.push({ ...s, order: result.length });
     }
     return result;
+}
+
+/** Outline sibling order: `BaseNode.order` then id (matches base editor / folder tree). */
+function sortedOutlineChildIds(
+    childrenMap: Map<string, string[]>,
+    nodeMap: Map<string, BaseNode>,
+    parentId: string,
+): string[] {
+    const raw = childrenMap.get(parentId);
+    if (!raw?.length) return [];
+    return [...raw].sort((a, b) => {
+        const oa = nodeMap.get(a)?.order ?? 0;
+        const ob = nodeMap.get(b)?.order ?? 0;
+        if (oa !== ob) return oa - ob;
+        return String(a).localeCompare(String(b));
+    });
 }
 
 /** Tile `arr` cyclically to reach `length` (e.g. daily goal exceeds available cards). */
@@ -1795,10 +1811,13 @@ async function generateDAG(
     if (rootNodes.length === 0 && nodes.length > 0) {
         rootNodes.push(nodes[0]);
     }
+    rootNodes.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || String(a.id).localeCompare(String(b.id)));
 
     const sections: LearnDAGNode[] = [];
     const dagNodes: LearnDAGNode[] = [];
     let nodeIndex = 1;
+    /** 学习「节」顺序：按大纲遍历赋 0..n-1，不用节点画布 `order`（多为 null 或与树序无关）。 */
+    let sectionOutlineSeq = 0;
 
     const toCardItem = (card: any) => {
         const problems = (card as any).problems || [];
@@ -1821,12 +1840,15 @@ async function generateDAG(
         const cards = await CardModel.getByNodeId(domainId, baseDocId, nodeId, br);
         const cardList = cards.map(card => toCardItem(card)).sort((a, b) => (a.order || 0) - (b.order || 0));
 
+        const dagOrder = isFirstLevel
+            ? sectionOutlineSeq++
+            : (typeof node.order === 'number' && Number.isFinite(node.order) ? node.order : nodeIndex++);
         const dagNode: LearnDAGNode = {
             _id: nodeId,
             title: node.text || translate('Unnamed Node'),
             requireNids: parentIds,
             cards: cardList,
-            order: node.order || nodeIndex++,
+            order: dagOrder,
         };
 
         if (isFirstLevel) {
@@ -1835,14 +1857,13 @@ async function generateDAG(
             dagNodes.push(dagNode);
         }
 
-        const childIds = childrenMap.get(nodeId) || [];
-        for (const childId of childIds) {
+        for (const childId of sortedOutlineChildIds(childrenMap, nodeMap, nodeId)) {
             await processNode(childId, [...parentIds, nodeId], false);
         }
     };
 
     for (const rootNode of rootNodes) {
-        const firstLevelChildIds = childrenMap.get(rootNode.id) || [];
+        const firstLevelChildIds = sortedOutlineChildIds(childrenMap, nodeMap, rootNode.id);
         
         if (firstLevelChildIds.length > 0) {
             for (const childId of firstLevelChildIds) {
@@ -1850,45 +1871,64 @@ async function generateDAG(
             }
             const rootListed = sections.some((s) => s._id === rootNode.id)
                 || dagNodes.some((n) => n._id === rootNode.id);
+            // 子节已作为 section 时，根只是大纲容器；仅当根节点上**直接挂了卡片**才多出一节（与下方无子分支一致）。
             if (!rootListed) {
                 const rootOnlyCards = await CardModel.getByNodeId(domainId, baseDocId, rootNode.id, br);
-                const rootCardList = rootOnlyCards.map((card) => toCardItem(card)).sort((a, b) => (a.order || 0) - (b.order || 0));
-                sections.push({
-                    _id: rootNode.id,
-                    title: rootNode.text || translate('Unnamed Node'),
-                    requireNids: [],
-                    cards: rootCardList,
-                    order: rootNode.order || nodeIndex++,
-                });
-            }
-        } else {
-            const allOtherNodes = nodes.filter(n => n.id !== rootNode.id);
-            
-            if (allOtherNodes.length > 0) {
-                for (const otherNode of allOtherNodes) {
-                    const cards = await CardModel.getByNodeId(domainId, baseDocId, otherNode.id, br);
-                    const cardList = cards.map(card => toCardItem(card)).sort((a, b) => (a.order || 0) - (b.order || 0));
-                    
-                    sections.push({
-                        _id: otherNode.id,
-                        title: otherNode.text || translate('Unnamed Node'),
-                        requireNids: [],
-                        cards: cardList,
-                        order: otherNode.order || nodeIndex++,
-                    });
-                }
-            } else {
-                
-                const rootCards = await CardModel.getByNodeId(domainId, baseDocId, rootNode.id, br);
-                if (rootCards.length > 0) {
-                    const rootCardList = rootCards.map(card => toCardItem(card)).sort((a, b) => (a.order || 0) - (b.order || 0));
-                    
+                if (rootOnlyCards.length > 0) {
+                    const rootCardList = rootOnlyCards.map((card) => toCardItem(card)).sort((a, b) => (a.order || 0) - (b.order || 0));
                     sections.push({
                         _id: rootNode.id,
                         title: rootNode.text || translate('Unnamed Node'),
                         requireNids: [],
                         cards: rootCardList,
-                        order: rootNode.order || nodeIndex++,
+                        order: sectionOutlineSeq++,
+                    });
+                }
+            }
+        } else {
+            /** No edges from root: still walk tree by parentId/edges so section order matches base outline (DFS). */
+            const preorderSectionIdsExcludingRoot = (): string[] => {
+                const acc: string[] = [];
+                const walk = (nid: string) => {
+                    if (nid !== rootNode.id) acc.push(nid);
+                    for (const cid of sortedOutlineChildIds(childrenMap, nodeMap, nid)) {
+                        walk(cid);
+                    }
+                };
+                walk(rootNode.id);
+                return acc;
+            };
+            let orderedOtherIds = preorderSectionIdsExcludingRoot();
+            if (orderedOtherIds.length === 0) {
+                orderedOtherIds = nodes
+                    .filter((n) => n.id !== rootNode.id)
+                    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || String(a.id).localeCompare(String(b.id)))
+                    .map((n) => n.id);
+            }
+            if (orderedOtherIds.length > 0) {
+                for (const otherNodeId of orderedOtherIds) {
+                    const otherNode = nodeMap.get(otherNodeId);
+                    if (!otherNode) continue;
+                    const cards = await CardModel.getByNodeId(domainId, baseDocId, otherNode.id, br);
+                    const cardList = cards.map(card => toCardItem(card)).sort((a, b) => (a.order || 0) - (b.order || 0));
+                    sections.push({
+                        _id: otherNode.id,
+                        title: otherNode.text || translate('Unnamed Node'),
+                        requireNids: [],
+                        cards: cardList,
+                        order: sectionOutlineSeq++,
+                    });
+                }
+            } else {
+                const rootCards = await CardModel.getByNodeId(domainId, baseDocId, rootNode.id, br);
+                if (rootCards.length > 0) {
+                    const rootCardList = rootCards.map(card => toCardItem(card)).sort((a, b) => (a.order || 0) - (b.order || 0));
+                    sections.push({
+                        _id: rootNode.id,
+                        title: rootNode.text || translate('Unnamed Node'),
+                        requireNids: [],
+                        cards: rootCardList,
+                        order: sectionOutlineSeq++,
                     });
                 }
             }
@@ -5273,8 +5313,110 @@ class LessonNodeResultHandler extends Handler {
 }
 
 class LearnSectionEditHandler extends Handler {
-    async post(domainId: string) {
-        return this.postSaveOrder(domainId);
+    /** Framework passes merged `args` (params + query + JSON body) as the first argument, not a bare domainId string. */
+    async post(argsOrRoute: any) {
+        const a = argsOrRoute && typeof argsOrRoute === 'object' && !Array.isArray(argsOrRoute)
+            ? (argsOrRoute as Record<string, unknown>)
+            : {};
+        const finalDomainId = typeof argsOrRoute === 'string'
+            ? argsOrRoute
+            : String((a as any).domainId || (this.args as any).domainId || '');
+        const wantReset = a.resetDag === true
+            || String(a.resetDag).toLowerCase() === 'true'
+            || (this.request?.body && typeof this.request.body === 'object' && !Array.isArray(this.request.body)
+                && ((this.request.body as any).resetDag === true
+                    || String((this.request.body as any).resetDag).toLowerCase() === 'true'));
+        if (wantReset) {
+            return this.postResetDag(finalDomainId);
+        }
+        return this.postSaveOrder(argsOrRoute);
+    }
+
+    /** Invalidate cached `learn_dag` and rebuild from the latest base (Section Order editor). */
+    async postResetDag(domainId: string) {
+        const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
+        const targetUid = await this.resolveTargetUid(finalDomainId);
+        const { selectedBase: baseEdit } = await getLearnPageBaseSelection(finalDomainId, targetUid, this.user.priv);
+        if (!baseEdit) {
+            throw new NotFoundError('No knowledge base selected for learning');
+        }
+        const dudoc = await domain.getDomainUser(finalDomainId, { _id: targetUid, priv: this.user.priv }) as any;
+        const brEdit = learnBranchFromDudoc(dudoc);
+        await learn.deleteDAG(finalDomainId, Number(baseEdit.docId), brEdit);
+        const builtEdit = await ensureLearnBaseDAGCached(
+            finalDomainId,
+            Number(baseEdit.docId),
+            brEdit,
+            (k: string) => this.translate(k),
+        );
+        const allSections: LearnDAGNode[] = builtEdit.sections.length
+            ? [...builtEdit.sections].sort((a, b) => (a.order || 0) - (b.order || 0))
+            : [];
+        const dag: LearnDAGNode[] = builtEdit.allDagNodes.length
+            ? [...builtEdit.allDagNodes].sort((a, b) => (a.order || 0) - (b.order || 0))
+            : [];
+        /** 与最新 base 生成的 DAG 一致；覆盖旧的 `learnSectionOrder`，否则界面顺序仍按用户曾保存的节序不变。 */
+        const defaultSectionOrder = allSections.map((s) => String(s._id));
+        const sections = applyUserSectionOrder(allSections.length ? [...allSections] : [], defaultSectionOrder);
+
+        const prevIdx = normalizeDomainUserLearnIndex((dudoc as any)?.currentLearnSectionIndex);
+        const prevId = String((dudoc as any)?.currentLearnSectionId || '').trim();
+        let newIdx = 0;
+        if (defaultSectionOrder.length > 0) {
+            if (prevId && defaultSectionOrder.includes(prevId)) {
+                newIdx = defaultSectionOrder.indexOf(prevId);
+            } else if (prevIdx !== null && prevIdx >= 0 && prevIdx < defaultSectionOrder.length) {
+                newIdx = prevIdx;
+            }
+        }
+        const newSectionId = defaultSectionOrder[newIdx] || '';
+        const secForStart = sections.find((s) => String(s._id) === newSectionId);
+        const currentLearnStartCardIdFinal = firstLearnStartCardIdForSection(
+            secForStart,
+            sections,
+            dag,
+            Number(baseEdit.docId),
+        );
+        const learnProgressTotal = defaultSectionOrder.length;
+        const learnProgressPosition = learnProgressTotal > 0
+            ? Math.max(0, Math.min(newIdx, learnProgressTotal - 1))
+            : 0;
+
+        if (defaultSectionOrder.length > 0) {
+            await learn.setUserLearnState(finalDomainId, targetUid, {
+                learnSectionOrder: defaultSectionOrder,
+                currentLearnSectionIndex: newIdx,
+                currentLearnSectionId: newSectionId,
+                currentLearnStartCardId: currentLearnStartCardIdFinal,
+                learnProgressPosition,
+                learnProgressTotal,
+            });
+            await clearDailyPracticeSessionAfterSettingsChange(finalDomainId, targetUid, this.user.priv);
+            const latestAfterAbandon = await SessionModel.get(finalDomainId, targetUid) as SessionDoc | null;
+            if (
+                latestAfterAbandon
+                && isLearnSessionRow(latestAfterAbandon)
+                && !isLessonSessionAbandoned(latestAfterAbandon)
+                && (isLearnHomePlaceholderSession(latestAfterAbandon) || latestAfterAbandon.lessonMode === 'today')
+            ) {
+                await touchLessonSession(finalDomainId, targetUid, {
+                    appRoute: 'learn',
+                    currentLearnSectionIndex: newIdx,
+                    currentLearnSectionId: newSectionId,
+                }, { silent: true });
+            }
+        }
+
+        this.response.template = null;
+        this.response.body = {
+            success: true,
+            resetDag: true,
+            sections,
+            allSections,
+            dag,
+            currentLearnSectionIndex: defaultSectionOrder.length > 0 ? newIdx : null,
+            currentLearnSectionId: newSectionId || null,
+        };
     }
 
     async resolveTargetUid(domainId: string): Promise<number> {

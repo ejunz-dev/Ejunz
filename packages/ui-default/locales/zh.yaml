@@ -93,6 +93,11 @@ __langname: 简体中文
 'Click a section on the left to add to the top of the order.': 点击左侧章节的加号添加到顺序列表顶部。
 'Click a section to add it to the top of the order list.': 点击章节右侧的加号可将其添加至顺序列表顶部。
 'Section Order': 学习路径节序
+'Reset learn DAG': 从大纲重建
+'Reset learn DAG description': 按当前知识库最新大纲重建学习路径，并将节序恢复为与大纲一致（会覆盖已保存的自定义顺序）。
+'Learn DAG reset done': 已根据最新大纲重新生成学习路径。
+'Learn DAG reset failed': 从大纲重建学习路径失败。
+'Resetting...': 重建中…
 'Click the "Create Client" button above to create a new client': 点击上方"创建客户端"按钮来创建新的客户端
 'Click to expand questions': 点击展开题目
 'Client Connection Logs': 客户端连接日志

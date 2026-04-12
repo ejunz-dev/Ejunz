@@ -84,9 +84,15 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
-  const allSections = allSectionsProp || [];
-  const dag = dagProp || [];
+  const [outlineAllSections, setOutlineAllSections] = useState<LearnDAGNode[]>(() => allSectionsProp || []);
+  const [outlineDag, setOutlineDag] = useState<LearnDAGNode[]>(() => dagProp || []);
+  const [isResettingDag, setIsResettingDag] = useState(false);
   const sectionEditPostUrl = `/d/${domainId}/learn/section/edit${targetUid ? `?uid=${encodeURIComponent(String(targetUid))}` : ''}`;
+
+  useEffect(() => {
+    setOutlineAllSections(allSectionsProp || []);
+    setOutlineDag(dagProp || []);
+  }, [allSectionsProp, dagProp]);
 
   useEffect(() => {
     const len = initialSections?.length ?? 0;
@@ -181,13 +187,13 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
       }
     });
     const removed = savedSectionIds.filter(id => !currentIds.has(id)).map(id => {
-      const n = allSections.find(s => String(s._id) === id) || { _id: id, title: (id as string).slice(0, 8) + '...' } as LearnDAGNode;
+      const n = outlineAllSections.find(s => String(s._id) === id) || { _id: id, title: (id as string).slice(0, 8) + '...' } as LearnDAGNode;
       return n;
     });
     const reordered = added.length === 0 && removed.length === 0 && sections.length > 0 &&
       (currentOrder.join(',') !== savedSectionIds.join(','));
     return { added, removed, reordered, addedIndices };
-  }, [sections, savedSectionIds, allSections]);
+  }, [sections, savedSectionIds, outlineAllSections]);
 
   const handleDragStart = useCallback((e: React.DragEvent, index: number) => {
     setDraggedIndex(index);
@@ -286,6 +292,32 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
     }
   }, [domainId, sections, currentLearnSectionIndex, sectionEditPostUrl]);
 
+  const handleResetDag = useCallback(async () => {
+    setIsResettingDag(true);
+    try {
+      const body: Record<string, unknown> = { resetDag: true };
+      if (targetUid && targetUid !== (window as any).UserContext?._id) {
+        body.uid = targetUid;
+      }
+      const res: any = await request.post(sectionEditPostUrl, body);
+      if (Array.isArray(res?.sections)) {
+        const nextVisual = orderSectionsForEdit(res.sections as LearnDAGNode[]);
+        setSections(nextVisual);
+        setOutlineAllSections(Array.isArray(res.allSections) ? res.allSections : []);
+        setOutlineDag(Array.isArray(res.dag) ? res.dag : []);
+        setSavedSectionIds([...nextVisual].reverse().map((s) => String(s._id)));
+        if (typeof res?.currentLearnSectionIndex === 'number' && Number.isFinite(res.currentLearnSectionIndex)) {
+          setCurrentLearnSectionIndex(res.currentLearnSectionIndex);
+        }
+      }
+      UiNotification.success(i18n('Learn DAG reset done') || 'Learning path refreshed from base.');
+    } catch (err: any) {
+      UiNotification.error(err?.message || i18n('Learn DAG reset failed') || 'Failed to reset learning path.');
+    } finally {
+      setIsResettingDag(false);
+    }
+  }, [sectionEditPostUrl, targetUid]);
+
   const handleSetLearningPoint = useCallback(async (index: number) => {
     if (index < 0 || index >= sections.length) return;
     setIsSaving(true);
@@ -313,7 +345,7 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
     }
   }, [domainId, sections, targetUid, sectionEditPostUrl]);
 
-  if (allSections.length === 0) {
+  if (outlineAllSections.length === 0) {
     return (
       <div style={{
         padding: '40px 24px',
@@ -342,7 +374,7 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
   }
 
   const renderSidebarNode = (node: LearnDAGNode, level: number, isSection: boolean) => {
-    const children = getChildren(node._id, allSections, dag);
+    const children = getChildren(node._id, outlineAllSections, outlineDag);
     const cards = node.cards || [];
     const expanded = sidebarExpanded.has(node._id);
     const hasChildren = children.length > 0 || cards.length > 0;
@@ -539,7 +571,7 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
           </div>
         )}
 
-        {allSections.map(section => renderSidebarNode(section, 0, true))}
+        {outlineAllSections.map(section => renderSidebarNode(section, 0, true))}
       </aside>
 
       {/* 右侧主内容：标题 + 学习顺序列表 */}
@@ -590,6 +622,26 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={handleResetDag}
+              disabled={isSaving || isResettingDag}
+              title={i18n('Reset learn DAG description') || ''}
+              style={{
+                padding: isMobile ? '10px 16px' : '10px 20px',
+                minHeight: isMobile ? 44 : undefined,
+                fontSize: '14px',
+                fontWeight: 600,
+                color: themeStyles.textPrimary,
+                backgroundColor: themeStyles.bgSecondary,
+                border: `1px solid ${themeStyles.border}`,
+                borderRadius: '6px',
+                cursor: isSaving || isResettingDag ? 'not-allowed' : 'pointer',
+                opacity: isSaving || isResettingDag ? 0.6 : 1,
+              }}
+            >
+              {isResettingDag ? (i18n('Resetting...') || '…') : (i18n('Reset learn DAG') || 'Reset from base')}
+            </button>
             <button
               type="button"
               onClick={handleSave}
