@@ -1884,6 +1884,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const fileTreeRef = useRef<FileItem[]>([]);
   const baseEdgesRef = useRef(base.edges);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: FileItem } | null>(null);
+  const [editorLearnBusy, setEditorLearnBusy] = useState(false);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const [newSiblingCardSubmenuOpen, setNewSiblingCardSubmenuOpen] = useState(false);
   const [newSiblingNodeSubmenuOpen, setNewSiblingNodeSubmenuOpen] = useState(false);
@@ -2256,6 +2257,78 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
   const editorRootNodeId = (window as any).UiContext?.editorRootNodeId || '';
   const currentBranch = (window as any).UiContext?.currentBranch || 'main';
+
+  const editorUiDomainId = useCallback((): string => {
+    const rawDomainId = (window as any).UiContext?.domainId;
+    return typeof rawDomainId === 'object'
+      ? (rawDomainId?._id ? String(rawDomainId._id) : 'system')
+      : (rawDomainId ? String(rawDomainId) : 'system');
+  }, []);
+
+  const startSingleCardLearnFromEditor = useCallback(async (cardIdRaw: string | undefined) => {
+    const cardId = String(cardIdRaw || '').trim();
+    if (!cardId || editorLearnBusy) return;
+    if (!/^[a-f0-9]{24}$/i.test(cardId)) {
+      Notification.error(i18n('Outline learn invalid card'));
+      return;
+    }
+    const domainId = editorUiDomainId();
+    setEditorLearnBusy(true);
+    try {
+      const res: any = await request.post(`/d/${domainId}/learn/lesson/start`, {
+        mode: 'card',
+        cardId,
+      });
+      const redir = res?.redirect ?? res?.body?.redirect ?? res?.data?.redirect;
+      const url = redir || `/d/${domainId}/learn/lesson?cardId=${encodeURIComponent(cardId)}`;
+      const opened = window.open(url, '_blank', 'noopener,noreferrer');
+      if (opened) {
+        opened.opener = null;
+      } else {
+        Notification.error(i18n('Outline editor popup blocked'));
+      }
+    } catch (e: any) {
+      const msg = e?.message ?? i18n('Outline learn start failed');
+      Notification.error(typeof msg === 'string' ? msg : String(msg));
+    } finally {
+      setEditorLearnBusy(false);
+    }
+  }, [editorLearnBusy, editorUiDomainId]);
+
+  const startSingleNodeLearnFromEditor = useCallback(async (nodeIdRaw: string | undefined) => {
+    const nid = String(nodeIdRaw || '').trim();
+    if (!nid || editorLearnBusy) return;
+    if (nid.startsWith('temp-node-')) return;
+    const baseDocNum = Number((base as any).docId ?? docId);
+    if (!Number.isFinite(baseDocNum) || baseDocNum <= 0) {
+      Notification.error(i18n('Outline editor start invalid base'));
+      return;
+    }
+    const branch = (window as any).UiContext?.currentBranch || base.currentBranch || 'main';
+    const domainId = editorUiDomainId();
+    setEditorLearnBusy(true);
+    try {
+      const res: any = await request.post(`/d/${domainId}/learn/lesson/start`, {
+        mode: 'node',
+        nodeId: nid,
+        baseDocId: baseDocNum,
+        branch,
+      });
+      const redir = res?.redirect ?? res?.body?.redirect ?? res?.data?.redirect;
+      const url = redir || `/d/${domainId}/learn/lesson`;
+      const opened = window.open(url, '_blank', 'noopener,noreferrer');
+      if (opened) {
+        opened.opener = null;
+      } else {
+        Notification.error(i18n('Outline editor popup blocked'));
+      }
+    } catch (e: any) {
+      const msg = e?.message ?? i18n('Outline learn start failed');
+      Notification.error(typeof msg === 'string' ? msg : String(msg));
+    } finally {
+      setEditorLearnBusy(false);
+    }
+  }, [editorLearnBusy, editorUiDomainId, base, docId]);
   
   const fileTree = useMemo(() => {
     const items: FileItem[] = [];
@@ -10113,6 +10186,32 @@ ${editorShellPath}
                   )}
                 </>
               )}
+              {basePath !== 'base/skill' && docId && contextMenu.file.nodeId && !String(contextMenu.file.nodeId).startsWith('temp-node-') && (
+                <>
+                  <div
+                    style={{
+                      padding: '6px 16px',
+                      cursor: editorLearnBusy ? 'wait' : 'pointer',
+                      fontSize: '13px',
+                      color: themeStyles.textPrimary,
+                      opacity: editorLearnBusy ? 0.65 : 1,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!editorLearnBusy) e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                    onClick={() => {
+                      void startSingleNodeLearnFromEditor(contextMenu.file.nodeId);
+                      setContextMenu(null);
+                    }}
+                  >
+                    {i18n('Outline learn single node')}
+                  </div>
+                  <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
+                </>
+              )}
               {(
               <>
               <div
@@ -10843,6 +10942,32 @@ ${editorShellPath}
                   <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
                   </>
                   )}
+                </>
+              )}
+              {basePath !== 'base/skill' && docId && contextMenu.file.cardId && !String(contextMenu.file.cardId).startsWith('temp-card-') && (
+                <>
+                  <div
+                    style={{
+                      padding: '6px 16px',
+                      cursor: editorLearnBusy ? 'wait' : 'pointer',
+                      fontSize: '13px',
+                      color: themeStyles.textPrimary,
+                      opacity: editorLearnBusy ? 0.65 : 1,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!editorLearnBusy) e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                    onClick={() => {
+                      void startSingleCardLearnFromEditor(String(contextMenu.file.cardId));
+                      setContextMenu(null);
+                    }}
+                  >
+                    {i18n('Outline learn single card')}
+                  </div>
+                  <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
                 </>
               )}
               <div
