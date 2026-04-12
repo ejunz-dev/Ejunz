@@ -113,6 +113,31 @@ function sameCardDocId(a: unknown, b: unknown): boolean {
   return String(a) === String(b);
 }
 
+/** Walk parent links (edges target→source, else `parentId`) for expand-to-deep-link. */
+function collectOutlineAncestors(nodeId: string, nodes: BaseNode[], edges: BaseEdge[]): string[] {
+  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+  const acc: string[] = [];
+  let cur = nodeId;
+  const seen = new Set<string>();
+  while (cur && !seen.has(cur)) {
+    seen.add(cur);
+    const edge = edges.find((e) => e.target === cur);
+    if (edge?.source && nodeMap.has(edge.source)) {
+      acc.push(edge.source);
+      cur = edge.source;
+      continue;
+    }
+    const pid = nodeMap.get(cur)?.parentId;
+    if (pid && nodeMap.has(pid)) {
+      acc.push(pid);
+      cur = pid;
+      continue;
+    }
+    break;
+  }
+  return acc;
+}
+
 /** Line-ending normalization so save/switch does not treat CRLF as unsaved edits. */
 function normalizeCardContentForCompare(s: string | undefined | null): string {
   return String(s ?? '').replace(/\r\n/g, '\n');
@@ -2168,9 +2193,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         }
       });
     }
-    const rootFocus = (window as any).UiContext?.editorRootNodeId;
-    if (rootFocus && initialData?.nodes?.some((n: BaseNode) => n.id === rootFocus)) {
-      initialExpanded.add(rootFocus);
+    const focusNode = String((window as any).UiContext?.editorFocusNodeId || '').trim();
+    const edges0 = initialData?.edges || [];
+    if (focusNode && initialData?.nodes?.some((n: BaseNode) => n.id === focusNode)) {
+      initialExpanded.add(focusNode);
+      collectOutlineAncestors(focusNode, initialData!.nodes!, edges0).forEach((id) => initialExpanded.add(id));
     }
     return initialExpanded;
   });
@@ -2185,6 +2212,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   
   const explorerScrollRef = useRef<HTMLDivElement>(null);
   const hasExpandedForCardIdRef = useRef<string | null>(null);
+  const hasExpandedForUrlNodeIdRef = useRef<string | null>(null);
   
   
   useEffect(() => {
@@ -2880,6 +2908,16 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         if (nodeFile && (!selectedFile || selectedFile.type !== 'node' || selectedFile.nodeId !== nodeIdStr)) {
           handleSelectFile(nodeFile, true);
         }
+        const b = baseRef.current;
+        if (b?.nodes?.length && b.nodes.some((n) => n.id === nodeIdStr)) {
+          const anc = collectOutlineAncestors(nodeIdStr, b.nodes, b.edges || []);
+          setExpandedNodes((prev) => {
+            const next = new Set(prev);
+            next.add(nodeIdStr);
+            anc.forEach((id) => next.add(id));
+            return next;
+          });
+        }
       }
     };
     window.addEventListener('popstate', handlePopState);
@@ -2918,6 +2956,24 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     });
     hasExpandedForCardIdRef.current = cardId;
   }, [base.nodes.length, base.edges]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || base.nodes.length === 0) return;
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('cardId')) return;
+    const fromUrl = urlParams.get('nodeId')?.trim() || '';
+    if (!fromUrl) return;
+    if (!base.nodes.some((n) => n.id === fromUrl)) return;
+    if (hasExpandedForUrlNodeIdRef.current === fromUrl) return;
+    const anc = collectOutlineAncestors(fromUrl, base.nodes, base.edges || []);
+    setExpandedNodes((prev) => {
+      const next = new Set(prev);
+      next.add(fromUrl);
+      anc.forEach((id) => next.add(id));
+      return next;
+    });
+    hasExpandedForUrlNodeIdRef.current = fromUrl;
+  }, [base.nodes, base.edges]);
 
   
   useEffect(() => {

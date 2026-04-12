@@ -1154,8 +1154,9 @@ export class BaseEditorHandler extends Handler {
         );
 
         const nodeIds = new Set(nodes.map((n: BaseNode) => n.id));
-        const qNode = (this.request.query?.nodeId as string) || '';
-        const editorRootNodeId = qNode && nodeIds.has(qNode) ? qNode : '';
+        const qNode = typeof this.request.query?.nodeId === 'string' ? this.request.query.nodeId.trim() : '';
+        const editorFocusNodeId = qNode && nodeIds.has(qNode) ? qNode : '';
+        const editorRootNodeId = '';
 
         this.response.body = {
             base: { ...base, nodes, edges },
@@ -1172,6 +1173,7 @@ export class BaseEditorHandler extends Handler {
             baseExpandState,
             baseEditorUiPrefs,
             editorRootNodeId,
+            editorFocusNodeId,
             
             ...(opts.editorMode === 'skill' ? { page_name: 'base_skill_editor_branch' } : {}),
         };
@@ -1187,7 +1189,7 @@ export type BuildBaseEditorPageBodyArgs = {
     domainName: string;
     db: { collection: (n: string) => any };
     makeEditorUrl: (docId: number, branch: string) => string;
-    /** Optional `?nodeId=` — restrict explorer tree to this subtree root when valid. */
+    /** Optional node id from `?nodeId=` or develop session: initial focus / selection only (full explorer tree). */
     rootNodeIdFromQuery?: string;
     /** `none` = 大纲单节点 develop 会话，不展示每日队列 / 结算 UI。 */
     developPoolUiMode?: 'full' | 'none';
@@ -1273,7 +1275,9 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
     );
 
     const nodeIds = new Set(nodes.map((n: BaseNode) => n.id));
-    const editorRootNodeId = rootNodeIdFromQuery && nodeIds.has(rootNodeIdFromQuery) ? rootNodeIdFromQuery : '';
+    const qFocus = rootNodeIdFromQuery && String(rootNodeIdFromQuery).trim();
+    const editorFocusNodeId = qFocus && nodeIds.has(qFocus) ? qFocus : '';
+    const editorRootNodeId = '';
 
     const userTok = await fetchUserGithubToken(domainId, uid);
     const userGithubTokenConfigured = !!userTok;
@@ -1309,6 +1313,7 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
         baseExpandState,
         baseEditorUiPrefs,
         editorRootNodeId,
+        editorFocusNodeId,
         githubRepo: (base.githubRepo || '') as string,
         userGithubTokenConfigured,
         developEditorContext,
