@@ -210,6 +210,8 @@ __langname: 简体中文
 'File Mode': 文件模式
 'File view': 文件视图
 'Final message will be': 最终消息将是
+'Flip mark done': 标记完成
+'Flip show back': 查看背面
 'Folder description': 文件夹描述
 'Folder/Directory': 文件夹/目录
 'Format: category 1, sub category 1.1, sub category 1.2, ..., sub category 1.x, ..., category n, sub category n.1, sub category n.2, ..., sub category n.m, ...': 格式：分类1, 子分类1.1, 子分类1.2, ..., 子分类1.x, ..., 分类n, 子分类n.1, 子分类n.2, ..., 子分类n.m, ...
@@ -274,6 +276,11 @@ __langname: 简体中文
 'Lesson session new old counts': '{0} 张新 · {1} 张旧'
 'Lesson path card practise count': 已过 {0} 次
 'Lesson path card practise count title': 本卡片在当前节槽累计完整过关次数（每次在本课完整过关计一次，与学习路径统计一致）
+'Lesson problem queue': 题目队列
+'Lesson practice progress unit': 题
+'Lesson practice sidebar completed': 已完成题目
+'Lesson practice sidebar pending': 待完成题目
+'No completed problems yet': 暂无已完成题目
 'Learn queue card tag new': 新
 'Learn queue card tag old': 旧
 'Failed to save learn sub mode': 保存学习副模式失败
@@ -459,6 +466,7 @@ __langname: 简体中文
 'Stem cannot be empty': 题干不能为空
 'Stem is required': 题干是必需的
 'Stem': 题干
+'Submit answer': 提交答案
 'Successfully pulled from GitHub': 成功从 GitHub 拉取
 'Successfully pushed to GitHub': 成功推送到 GitHub
 'System MCP tools (not from Edge). Click "Add" to add to current domain ': 系统提供的 MCP 工具（非 Edge 端）。点击「添加」可将工具加入当前域的
