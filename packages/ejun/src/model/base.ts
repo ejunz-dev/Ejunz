@@ -867,6 +867,17 @@ export class CardModel {
         });
     }
 
+    /** 用于学习 DAG 缓存失效：卡片变更不会写回 base 的 `updateAt`，需单独参与版本计算。 */
+    static async maxUpdateAtMsForBase(domainId: string, baseDocId: number | ObjectId): Promise<number> {
+        const rows = await document.getMulti(domainId, document.TYPE_CARD, { baseDocId })
+            .sort({ updateAt: -1 })
+            .limit(1)
+            .project({ updateAt: 1 })
+            .toArray();
+        const u = (rows[0] as CardDoc | undefined)?.updateAt;
+        return u instanceof Date ? u.getTime() : 0;
+    }
+
     static async delete(domainId: string, docId: ObjectId): Promise<void> {
         await document.deleteOne(domainId, TYPE_CARD, docId);
     }

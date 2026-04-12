@@ -270,9 +270,11 @@ function branchesForBaseDoc(base: BaseDoc): string[] {
 /** Bump when single-base learn DAG generation rules change (invalidates `learn_dag` rows for that base+branch). */
 const LEARN_BASE_DAG_CACHE_REVISION = 1;
 
-async function computeLearnBaseDAGVersion(domainId: string, baseDocId: number, branch: string): Promise<number> {
+async function computeLearnBaseDAGVersion(domainId: string, baseDocId: number, _branch: string): Promise<number> {
     const b = await BaseModel.get(domainId, baseDocId);
-    const t = b?.updateAt instanceof Date ? b.updateAt.getTime() : 0;
+    const tBase = b?.updateAt instanceof Date ? b.updateAt.getTime() : 0;
+    const tCards = await CardModel.maxUpdateAtMsForBase(domainId, baseDocId);
+    const t = Math.max(tBase, tCards);
     return t + LEARN_BASE_DAG_CACHE_REVISION * 1_000_000_000;
 }
 
@@ -2679,6 +2681,41 @@ function lessonSnapshotToJson(snapshot: Record<string, unknown>): Record<string,
     })) as Record<string, unknown>;
 }
 
+/** Load full card docs (including `problems`) for each slot in the node-lesson flat queue, order preserved. */
+async function loadFlatQueueCardsForLesson(
+    domainId: string,
+    flatCards: Array<{ cardId: string }>,
+): Promise<any[]> {
+    if (!flatCards.length) return [];
+    return Promise.all(
+        flatCards.map(async (fc) => {
+            try {
+                const c = await CardModel.get(domainId, new ObjectId(fc.cardId));
+                return c;
+            } catch {
+                return null;
+            }
+        }),
+    ).then((rows) => rows.map((c, i) => {
+        if (c) return c;
+        return {
+            docId: new ObjectId(flatCards[i].cardId),
+            nodeId: '',
+            title: '',
+            content: '',
+            problems: [],
+        };
+    }));
+}
+
+function lessonAnswerHistoryForCard(
+    card: { problems?: Array<{ pid?: string }> },
+    answerHistory: Array<{ problemId?: string }>,
+): Array<{ problemId?: string; correct?: boolean; selected?: number; timeSpent?: number; attempts?: number }> {
+    const pids = new Set((card.problems || []).map((p) => String(p.pid || '')).filter(Boolean));
+    return answerHistory.filter((h) => h.problemId && pids.has(String(h.problemId)));
+}
+
 /** SPA next-card: reuse frozen `lessonCardQueue` + `cardIndex` on the daily session (same rules as GET today reuse path). */
 async function buildSpaLessonSnapshotToday(
     translate: LessonTranslate,
@@ -2892,6 +2929,8 @@ async function buildSpaLessonSnapshotNode(
         flatCards,
         learnStartSlotNode,
     );
+    const flatQueueCardsSpaNode = await loadFlatQueueCardsForLesson(finalDomainId, flatCards);
+    const hasProblemsSpaNode = flatQueueCardsSpaNode.some((c) => !!(c?.problems && (c.problems as unknown[]).length > 0));
     return {
         card: currentCard,
         node: currentNode,
@@ -2905,9 +2944,10 @@ async function buildSpaLessonSnapshotNode(
         rootNodeId: anchor,
         rootNodeTitle: rootNode.title || '',
         flatCards,
+        flatQueueCards: flatQueueCardsSpaNode,
         nodeTree,
         currentCardIndex,
-        hasProblems: !!(currentCard?.problems?.length),
+        hasProblems: hasProblemsSpaNode,
         lessonReviewCardIds,
         lessonCardTimesMs,
         reviewCardId: '',
@@ -3646,6 +3686,9 @@ class LessonHandler extends Handler {
                 nodeLearnStartSlot,
             );
 
+            const flatQueueCardsNodeLesson = await loadFlatQueueCardsForLesson(finalDomainId, flatCards);
+            const hasProblemsNodeAgg = flatQueueCardsNodeLesson.some((c) => !!(c?.problems && (c.problems as unknown[]).length > 0));
+
             this.response.template = 'lesson.html';
             this.response.body = {
                 card: currentCard,
@@ -3659,9 +3702,10 @@ class LessonHandler extends Handler {
                 rootNodeId: lessonNodeId,
                 rootNodeTitle: rootNode.title || '',
                 flatCards: flatCards,
+                flatQueueCards: flatQueueCardsNodeLesson,
                 nodeTree,
                 currentCardIndex,
-                hasProblems: !!(currentCard?.problems?.length),
+                hasProblems: hasProblemsNodeAgg,
                 lessonReviewCardIds,
                 lessonCardTimesMs,
                 reviewCardId: reviewCardId || '',
@@ -4504,59 +4548,154 @@ class LessonHandler extends Handler {
             } else {
                 timesMs.push(totalTimeMs);
             }
+            let nextIndexAfterPass = idxNode + 1;
             if (noImpression) {
                 const reviewIds: string[] = [...Lpn.lessonReviewCardIds];
                 if (!reviewIds.includes(currentCardId.toString())) reviewIds.push(currentCardId.toString());
                 await touchLessonSession(finalDomainId, this.user._id, { appRoute: 'learn', lessonReviewCardIds: reviewIds, lessonCardTimesMs: timesMs }, { silent: true });
             } else if (answerHistory.length > 0) {
-                const qCur = (sNodePass?.lessonCardQueue ?? [])[idxNode] as LessonCardQueueItem | undefined;
-                const nodePassSlot =
-                    typeof qCur?.learnSectionOrderIndex === 'number' && qCur.learnSectionOrderIndex >= 0
-                        ? qCur.learnSectionOrderIndex
-                        : (typeof sNodePass?.lessonQueueLearnSectionOrderIndex === 'number'
-                            && sNodePass.lessonQueueLearnSectionOrderIndex >= 0
-                            ? sNodePass.lessonQueueLearnSectionOrderIndex
-                            : 0);
-                await learn.setCardPassed(finalDomainId, this.user._id, currentCardId, currentCardNodeId, nodePassSlot);
-                const baseDocN = Number((card as any).baseDocId) || firstBasePass;
-                const branchN = cardStorageBranch(card as any) || branchLearnPass;
-                const recScoreN = await syncLearnPassToRecord(
-                    finalDomainId,
-                    this.user._id,
-                    qNodePass,
-                    card as any,
-                    baseDocN,
-                    branchN,
-                    answerHistory,
-                );
-                const score = recScoreN !== null ? recScoreN : answerHistory.length * 5;
-                await learn.addResult(finalDomainId, this.user._id, {
-                    cardId: currentCardId,
-                    nodeId: currentCardNodeId,
-                    answerHistory,
-                    totalTime,
-                    score,
-                    createdAt: new Date(),
-                });
-                await learn.incPathCardPractiseCount(finalDomainId, this.user._id, nodePassSlot, currentCardId.toString());
-                await maybeSyncLearnStartCardAfterPassForSlot(
-                    finalDomainId,
-                    this.user._id,
-                    this.user.priv,
-                    nodePassSlot,
-                    (k) => this.translate(k),
-                );
-                await bus.parallel('learn_result/add', finalDomainId);
-                await appendUserCheckinDay(finalDomainId, this.user._id, this.user.priv, 'learnActivityDates');
-                const today = moment.utc().format('YYYY-MM-DD');
-                let problemCount = 0;
-                for (const h of answerHistory) {
-                    if ((h as any).problemId) problemCount++;
+                const queueFull = (sNodePass?.lessonCardQueue ?? []) as LessonCardQueueItem[];
+                const curIdStr = currentCardId.toString();
+                const histWithPid = answerHistory.filter((h: any) => h.problemId);
+                const distCardIds = new Set(histWithPid.map((h: any) => String(h.cardId || curIdStr)));
+                const multiCardPass = distCardIds.size > 1
+                    || histWithPid.some((h: any) => String(h.cardId || curIdStr) !== curIdStr);
+
+                if (!multiCardPass) {
+                    const qCur = queueFull[idxNode] as LessonCardQueueItem | undefined;
+                    const nodePassSlot =
+                        typeof qCur?.learnSectionOrderIndex === 'number' && qCur.learnSectionOrderIndex >= 0
+                            ? qCur.learnSectionOrderIndex
+                            : (typeof sNodePass?.lessonQueueLearnSectionOrderIndex === 'number'
+                                && sNodePass.lessonQueueLearnSectionOrderIndex >= 0
+                                ? sNodePass.lessonQueueLearnSectionOrderIndex
+                                : 0);
+                    await learn.setCardPassed(finalDomainId, this.user._id, currentCardId, currentCardNodeId, nodePassSlot);
+                    const baseDocN = Number((card as any).baseDocId) || firstBasePass;
+                    const branchN = cardStorageBranch(card as any) || branchLearnPass;
+                    const recScoreN = await syncLearnPassToRecord(
+                        finalDomainId,
+                        this.user._id,
+                        qNodePass,
+                        card as any,
+                        baseDocN,
+                        branchN,
+                        answerHistory,
+                    );
+                    const score = recScoreN !== null ? recScoreN : answerHistory.length * 5;
+                    await learn.addResult(finalDomainId, this.user._id, {
+                        cardId: currentCardId,
+                        nodeId: currentCardNodeId,
+                        answerHistory,
+                        totalTime,
+                        score,
+                        createdAt: new Date(),
+                    });
+                    await learn.incPathCardPractiseCount(finalDomainId, this.user._id, nodePassSlot, currentCardId.toString());
+                    await maybeSyncLearnStartCardAfterPassForSlot(
+                        finalDomainId,
+                        this.user._id,
+                        this.user.priv,
+                        nodePassSlot,
+                        (k) => this.translate(k),
+                    );
+                    await bus.parallel('learn_result/add', finalDomainId);
+                    await appendUserCheckinDay(finalDomainId, this.user._id, this.user.priv, 'learnActivityDates');
+                    const today = moment.utc().format('YYYY-MM-DD');
+                    let problemCount = 0;
+                    for (const h of answerHistory) {
+                        if ((h as any).problemId) problemCount++;
+                    }
+                    const timeToAdd = (totalTime && typeof totalTime === 'number' && totalTime > 0) ? totalTime : 0;
+                    await learn.incConsumptionStats(finalDomainId, this.user._id, today, { nodes: 1, cards: 1, problems: problemCount, practices: 1, ...(timeToAdd > 0 ? { totalTime: timeToAdd } : {}) });
+                    const nextReviewIds = Lpn.lessonReviewCardIds.filter(id => id !== currentCardId.toString());
+                    await touchLessonSession(finalDomainId, this.user._id, { appRoute: 'learn', lessonReviewCardIds: nextReviewIds, lessonCardTimesMs: timesMs }, { silent: true });
+                } else {
+                    const touchedInOrder = flatCardsRaw
+                        .map((fc) => fc.cardId)
+                        .filter((cid) => distCardIds.has(String(cid)));
+                    let totalProb = 0;
+                    const denom = Math.max(1, histWithPid.length);
+                    for (const cidStr of touchedInOrder) {
+                        let cOid: ObjectId;
+                        try {
+                            cOid = new ObjectId(cidStr);
+                        } catch {
+                            continue;
+                        }
+                        const cardDoc = await CardModel.get(finalDomainId, cOid);
+                        if (!cardDoc) continue;
+                        const slice = lessonAnswerHistoryForCard(cardDoc, answerHistory as any);
+                        if (!slice.length) continue;
+                        const qSlot = queueFull.find((q) => String(q.cardId) === String(cidStr));
+                        const nodePassSlotMulti =
+                            typeof qSlot?.learnSectionOrderIndex === 'number' && qSlot.learnSectionOrderIndex >= 0
+                                ? qSlot.learnSectionOrderIndex
+                                : (typeof sNodePass?.lessonQueueLearnSectionOrderIndex === 'number'
+                                    && sNodePass.lessonQueueLearnSectionOrderIndex >= 0
+                                    ? sNodePass.lessonQueueLearnSectionOrderIndex
+                                    : 0);
+                        await learn.setCardPassed(finalDomainId, this.user._id, cOid, cardDoc.nodeId || '', nodePassSlotMulti);
+                        const baseDocMc = Number((cardDoc as any).baseDocId) || firstBasePass;
+                        const branchMc = cardStorageBranch(cardDoc as any) || branchLearnPass;
+                        const recScoreMc = await syncLearnPassToRecord(
+                            finalDomainId,
+                            this.user._id,
+                            qNodePass,
+                            cardDoc as any,
+                            baseDocMc,
+                            branchMc,
+                            slice as any,
+                        );
+                        const scoreMc = recScoreMc !== null ? recScoreMc : slice.length * 5;
+                        const timePart = Math.round((totalTimeMs * slice.length) / denom);
+                        await learn.addResult(finalDomainId, this.user._id, {
+                            cardId: cOid,
+                            nodeId: cardDoc.nodeId || null,
+                            answerHistory: slice as any,
+                            totalTime: timePart,
+                            score: scoreMc,
+                            createdAt: new Date(),
+                        });
+                        await learn.incPathCardPractiseCount(finalDomainId, this.user._id, nodePassSlotMulti, cidStr);
+                        totalProb += slice.length;
+                    }
+                    const qCurSync = queueFull[idxNode] as LessonCardQueueItem | undefined;
+                    const nodePassSlotSync =
+                        typeof qCurSync?.learnSectionOrderIndex === 'number' && qCurSync.learnSectionOrderIndex >= 0
+                            ? qCurSync.learnSectionOrderIndex
+                            : (typeof sNodePass?.lessonQueueLearnSectionOrderIndex === 'number'
+                                && sNodePass.lessonQueueLearnSectionOrderIndex >= 0
+                                ? sNodePass.lessonQueueLearnSectionOrderIndex
+                                : 0);
+                    await maybeSyncLearnStartCardAfterPassForSlot(
+                        finalDomainId,
+                        this.user._id,
+                        this.user.priv,
+                        nodePassSlotSync,
+                        (k) => this.translate(k),
+                    );
+                    await bus.parallel('learn_result/add', finalDomainId);
+                    await appendUserCheckinDay(finalDomainId, this.user._id, this.user.priv, 'learnActivityDates');
+                    const todayMc = moment.utc().format('YYYY-MM-DD');
+                    const timeToAddMc = (totalTime && typeof totalTime === 'number' && totalTime > 0) ? totalTime : 0;
+                    await learn.incConsumptionStats(finalDomainId, this.user._id, todayMc, {
+                        nodes: 1,
+                        cards: touchedInOrder.length,
+                        problems: totalProb,
+                        practices: 1,
+                        ...(timeToAddMc > 0 ? { totalTime: timeToAddMc } : {}),
+                    });
+                    const touchedSet = new Set(touchedInOrder.map(String));
+                    const nextReviewMulti = Lpn.lessonReviewCardIds.filter((id) => !touchedSet.has(String(id)));
+                    await touchLessonSession(finalDomainId, this.user._id, { appRoute: 'learn', lessonReviewCardIds: nextReviewMulti, lessonCardTimesMs: timesMs }, { silent: true });
+                    let maxF = idxNode;
+                    for (const cidStr of touchedInOrder) {
+                        const fi = flatCardsRaw.findIndex((fc) => String(fc.cardId) === String(cidStr));
+                        if (fi > maxF) maxF = fi;
+                    }
+                    nextIndexAfterPass = maxF + 1;
                 }
-                const timeToAdd = (totalTime && typeof totalTime === 'number' && totalTime > 0) ? totalTime : 0;
-                await learn.incConsumptionStats(finalDomainId, this.user._id, today, { nodes: 1, cards: 1, problems: problemCount, practices: 1, ...(timeToAdd > 0 ? { totalTime: timeToAdd } : {}) });
-                const nextReviewIds = Lpn.lessonReviewCardIds.filter(id => id !== currentCardId.toString());
-                await touchLessonSession(finalDomainId, this.user._id, { appRoute: 'learn', lessonReviewCardIds: nextReviewIds, lessonCardTimesMs: timesMs }, { silent: true });
             } else {
                 // Card view "Know it": no problems -> synthetic browse_judge pass, record result, then next card / node-result (no result page).
                 const qKnow = (sNodePass?.lessonCardQueue ?? [])[idxNode] as LessonCardQueueItem | undefined;
@@ -4604,7 +4743,7 @@ class LessonHandler extends Handler {
                 const nextReviewIdsKnow = Lpn.lessonReviewCardIds.filter(id => id !== currentCardId.toString());
                 await touchLessonSession(finalDomainId, this.user._id, { appRoute: 'learn', lessonReviewCardIds: nextReviewIdsKnow, lessonCardTimesMs: timesMs }, { silent: true });
             }
-            const nextIndex = idxNode + 1;
+            const nextIndex = nextIndexAfterPass;
             const sidNode = lessonSessionIdFromDoc(sNodePass);
             if (nextIndex < flatCardsRaw.length) {
                 await SessionModel.touchById(
