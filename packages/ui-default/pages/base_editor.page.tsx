@@ -2172,10 +2172,13 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     streamOps?: { lines: string[]; receiving: boolean; charCount: number } | null;
   }>>([]);
   const [chatInput, setChatInput] = useState<string>('');
-  const [chatInputReferences, setChatInputReferences] = useState<Array<{ type: 'node' | 'card'; id: string; name: string; path: string[]; startIndex: number; endIndex: number }>>([]);
+  const [chatInputReferences, setChatInputReferences] = useState<
+    Array<{ type: 'node' | 'card'; id: string; name: string; path: string[] }>
+  >([]);
   const [isChatLoading, setIsChatLoading] = useState<boolean>(false);
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
   const chatMessagesContainerRef = useRef<HTMLDivElement>(null);
+  const aiChatInputRef = useRef<HTMLInputElement | null>(null);
   
   const scrollToBottomIfNeeded = useCallback(() => {
     if (!chatMessagesContainerRef.current || !chatMessagesEndRef.current) {
@@ -5949,9 +5952,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const handleAIChatPaste = useCallback(async (e: React.ClipboardEvent<HTMLInputElement>) => {
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     const inputEl = e.currentTarget;
-    const selectionStart = inputEl.selectionStart ?? 0;
-    const selectionEnd = inputEl.selectionEnd ?? 0;
-    const currentText = chatInput;
 
     let reference: { type: 'node' | 'card'; id: string; name: string; path: string[] } | null = null;
     let shouldPreventDefault = false;
@@ -6043,56 +6043,109 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
     if (reference && shouldPreventDefault) {
       e.preventDefault();
-      
-      const placeholder = `@${reference.name}`;
-      const newText = 
-        currentText.slice(0, selectionStart) + 
-        placeholder + 
-        currentText.slice(selectionEnd);
-      
-      
-      setChatInputReferences(prev => {
-        const newRefs = prev.map(ref => {
-          
-          if (ref.startIndex >= selectionStart) {
-            return {
-              ...ref,
-              startIndex: ref.startIndex + placeholder.length,
-              endIndex: ref.endIndex + placeholder.length,
-            };
-          }
-          return ref;
-        });
-        
-        
-        newRefs.push({
-          type: reference!.type,
-          id: reference!.id,
-          name: reference!.name,
-          path: reference!.path,
-          startIndex: selectionStart,
-          endIndex: selectionStart + placeholder.length,
-        });
-        
-        
-        return newRefs.sort((a, b) => a.startIndex - b.startIndex);
+      const ref = reference;
+      const key = `${ref.type}:${ref.id}`;
+      setChatInputReferences((prev) => {
+        if (prev.some((r) => `${r.type}:${r.id}` === key)) return prev;
+        return [...prev, { type: ref.type, id: ref.id, name: ref.name, path: ref.path }];
       });
-      
-      setChatInput(newText);
-      
-      
       if (clipboard && clipboard.type === 'copy') {
         setClipboard(null);
       }
-      
-      
       setTimeout(() => {
-        const newCursorPos = selectionStart + placeholder.length;
-        inputEl.setSelectionRange(newCursorPos, newCursorPos);
+        const len = inputEl.value.length;
+        inputEl.setSelectionRange(len, len);
         inputEl.focus();
       }, 0);
     }
-  }, [clipboard, chatInput, base, getNodePath, setClipboard]);
+  }, [clipboard, base, getNodePath, setClipboard]);
+
+  type AiChatRefCore = { type: 'node' | 'card'; id: string; name: string; path: string[] };
+
+  /** 将多个 node/card 作为 @引用依次插入底部 AI 终端（树顺序；去重）。 */
+  const appendFileReferencesToAiChat = useCallback(
+    (files: FileItem[]) => {
+      if (editorAiHidden || !files.length) return;
+      const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+      const resolveOne = (file: FileItem): AiChatRefCore | null => {
+        if (file.type === 'node' && file.nodeId) {
+          const node = base.nodes.find((n) => n.id === file.nodeId);
+          if (node) {
+            return {
+              type: 'node',
+              id: file.nodeId,
+              name: node.text || i18n('Unnamed Node'),
+              path: getNodePath(file.nodeId),
+            };
+          }
+        } else if (file.type === 'card' && file.cardId != null && file.nodeId) {
+          const cards = nodeCardsMap[file.nodeId] || [];
+          const card = cards.find((c: Card) => sameCardDocId(c.docId, file.cardId));
+          if (card) {
+            const nodePath = getNodePath(file.nodeId);
+            return {
+              type: 'card',
+              id: String(card.docId),
+              name: card.title || i18n('Unnamed Card'),
+              path: [...nodePath, card.title || i18n('Unnamed Card')],
+            };
+          }
+        }
+        return null;
+      };
+      const seen = new Set<string>();
+      const resolved: AiChatRefCore[] = [];
+      for (const file of files) {
+        const key = file.type === 'node' ? `n:${file.nodeId}` : `c:${String(file.cardId)}`;
+        if (seen.has(key)) continue;
+        const r = resolveOne(file);
+        if (r) {
+          seen.add(key);
+          resolved.push(r);
+        }
+      }
+      if (!resolved.length) {
+        Notification.warn(i18n('Unable to add this item to AI context'));
+        return;
+      }
+      setAiBottomOpen(true);
+      setContextMenu(null);
+      setEmptyAreaContextMenu(null);
+      setChatInputReferences((refs) => {
+        const seen = new Set(refs.map((r) => `${r.type}:${r.id}`));
+        const next = [...refs];
+        for (const r of resolved) {
+          const k = `${r.type}:${r.id}`;
+          if (seen.has(k)) continue;
+          seen.add(k);
+          next.push({ type: r.type, id: r.id, name: r.name, path: r.path });
+        }
+        return next;
+      });
+      requestAnimationFrame(() => {
+        const el = aiChatInputRef.current;
+        if (!el) return;
+        el.focus();
+        const len = el.value.length;
+        el.setSelectionRange(len, len);
+      });
+    },
+    [base.nodes, editorAiHidden, getNodePath, nodeCardsMapVersion],
+  );
+
+  /** 单条插入；多选模式下若右键项在选中集合内，则按树顺序一次插入全部选中项。 */
+  const appendFileReferenceToAiChat = useCallback(
+    (file: FileItem) => {
+      if (editorAiHidden) return;
+      if (isMultiSelectMode && selectedItems.has(file.id)) {
+        const bulk = fileTree.filter((f) => selectedItems.has(f.id));
+        appendFileReferencesToAiChat(bulk.length > 0 ? bulk : [file]);
+        return;
+      }
+      appendFileReferencesToAiChat([file]);
+    },
+    [appendFileReferencesToAiChat, editorAiHidden, fileTree, isMultiSelectMode, selectedItems],
+  );
 
   
   const convertBaseToText = useCallback((): string => {
@@ -6208,9 +6261,48 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     return expandedMessage;
   }, [base, getNodePath]);
 
+  /** 将引用条中的项展开为与 @提及 一致的「路径 + 全文」说明，供发送给模型。 */
+  const expandBarRefsForAiSend = useCallback(
+    (refs: Array<{ type: 'node' | 'card'; id: string; name: string; path: string[] }>): string => {
+      if (!refs.length) return '';
+      const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+      const parts: string[] = [];
+      for (const ref of refs) {
+        if (ref.type === 'node') {
+          const pathStr = ref.path.join(' > ');
+          parts.push(`@${ref.name} (node ID: ${ref.id}, full path: ${pathStr})`);
+          continue;
+        }
+        let matched: Card | undefined;
+        for (const nodeId of Object.keys(nodeCardsMap)) {
+          const cards = nodeCardsMap[nodeId] || [];
+          const c = cards.find((x: Card) => sameCardDocId(x.docId, ref.id));
+          if (c) {
+            matched = c;
+            break;
+          }
+        }
+        if (matched) {
+          const cardPath = ref.path.join(' > ');
+          const fullContent = matched.content || i18n('(No content)');
+          parts.push(
+            `@${ref.name} (card ID: ${matched.docId}, full path: ${cardPath}, full content: ${fullContent})`,
+          );
+        } else {
+          const pathStr = ref.path.join(' > ');
+          parts.push(
+            `@${ref.name} (card ID: ${ref.id}, full path: ${pathStr}, full content: ${i18n('(No content)')})`,
+          );
+        }
+      }
+      return parts.join('\n');
+    },
+    [i18n, nodeCardsMapVersion],
+  );
+
   
   const handleAIChatSend = useCallback(async () => {
-    if (!chatInput.trim() || isChatLoading) return;
+    if ((!chatInput.trim() && chatInputReferences.length === 0) || isChatLoading) return;
 
     const userMessage = chatInput.trim();
     
@@ -6222,7 +6314,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     }));
     
     
-    const expandedMessage = expandReferences(userMessage);
+    const expandedFromBar = expandBarRefsForAiSend(references);
+    const expandedFromTyping = userMessage ? expandReferences(userMessage) : '';
+    const expandedMessage = [expandedFromBar, expandedFromTyping].filter(Boolean).join('\n\n');
     setChatInput('');
     setChatInputReferences([]);
     setIsChatLoading(true);
@@ -6740,10 +6834,12 @@ Reply with a JSON code block only for executable operations, using this shape:
     }
   }, [
     chatInput,
+    chatInputReferences,
     isChatLoading,
     chatMessages,
     convertBaseToText,
     expandReferences,
+    expandBarRefsForAiSend,
     editorShellPath,
     getSelectedCard,
     selectedFile,
@@ -10636,6 +10732,28 @@ Reply with a JSON code block only for executable operations, using this shape:
                   >
                     剪切选中项 ({selectedItems.size})
                   </div>
+                  {!editorAiHidden && (
+                    <div
+                      style={{
+                        padding: '6px 16px',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        color: themeStyles.textPrimary,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }}
+                      onClick={() => {
+                        appendFileReferencesToAiChat(fileTree.filter((f) => selectedItems.has(f.id)));
+                        setContextMenu(null);
+                      }}
+                    >
+                      {i18n('Insert {0} selected into AI terminal', selectedItems.size)}
+                    </div>
+                  )}
                   {(
                   <>
                   <div
@@ -11276,6 +11394,25 @@ Reply with a JSON code block only for executable operations, using this shape:
               >
                 复制
               </div>
+              {!editorAiHidden && (
+                <div
+                  style={{
+                    padding: '6px 16px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    color: themeStyles.textPrimary,
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                  onClick={() => appendFileReferenceToAiChat(contextMenu.file)}
+                >
+                  {i18n('Insert into AI terminal')}
+                </div>
+              )}
               <div
                 style={{
                   padding: '6px 16px',
@@ -11394,6 +11531,28 @@ Reply with a JSON code block only for executable operations, using this shape:
                   >
                     剪切选中项 ({selectedItems.size})
                   </div>
+                  {!editorAiHidden && (
+                    <div
+                      style={{
+                        padding: '6px 16px',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        color: themeStyles.textPrimary,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }}
+                      onClick={() => {
+                        appendFileReferencesToAiChat(fileTree.filter((f) => selectedItems.has(f.id)));
+                        setContextMenu(null);
+                      }}
+                    >
+                      {i18n('Insert {0} selected into AI terminal', selectedItems.size)}
+                    </div>
+                  )}
                   {(
                   <>
                   <div
@@ -11744,6 +11903,25 @@ Reply with a JSON code block only for executable operations, using this shape:
               >
                 复制
               </div>
+              {!editorAiHidden && (
+                <div
+                  style={{
+                    padding: '6px 16px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    color: themeStyles.textPrimary,
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                  onClick={() => appendFileReferenceToAiChat(contextMenu.file)}
+                >
+                  {i18n('Insert into AI terminal')}
+                </div>
+              )}
               <div
                 style={{
                   padding: '6px 16px',
@@ -13690,14 +13868,50 @@ Reply with a JSON code block only for executable operations, using this shape:
                             {msg.role === 'user' && msg.references && msg.references.length > 0 && (
                               <div
                                 style={{
-                                  marginBottom: '4px',
-                                  color: aiTerminalStyles.textDim,
+                                  display: 'flex',
+                                  flexWrap: 'wrap',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  marginBottom: '6px',
                                   fontSize: '11px',
+                                  color: aiTerminalStyles.textDim,
                                 }}
                               >
+                                <span style={{ userSelect: 'none', flexShrink: 0 }}>#</span>
                                 {msg.references.map((ref, refIndex) => (
-                                  <span key={refIndex}>
-                                    {refIndex > 0 ? ' ' : ''}@{ref.name}
+                                  <span
+                                    key={`${ref.type}-${ref.id}-${refIndex}`}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      padding: '1px 6px 1px 4px',
+                                      borderRadius: '3px',
+                                      border: `1px solid ${ref.type === 'node' ? themeStyles.statNode : themeStyles.statCard}`,
+                                      borderLeftWidth: 3,
+                                      borderLeftColor: ref.type === 'node' ? themeStyles.statNode : themeStyles.statCard,
+                                      backgroundColor:
+                                        theme === 'dark'
+                                          ? ref.type === 'node'
+                                            ? 'rgba(100, 181, 246, 0.12)'
+                                            : 'rgba(129, 199, 132, 0.12)'
+                                          : ref.type === 'node'
+                                            ? 'rgba(33, 150, 243, 0.08)'
+                                            : 'rgba(76, 175, 80, 0.08)',
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        fontSize: '9px',
+                                        fontWeight: 700,
+                                        lineHeight: 1,
+                                        color: ref.type === 'node' ? themeStyles.statNode : themeStyles.statCard,
+                                        userSelect: 'none',
+                                      }}
+                                    >
+                                      {ref.type === 'node' ? 'N' : 'C'}
+                                    </span>
+                                    <span style={{ color: aiTerminalStyles.operationText }}>{ref.name}</span>
                                   </span>
                                 ))}
                               </div>
@@ -13767,29 +13981,43 @@ Reply with a JSON code block only for executable operations, using this shape:
                       >
                         <span style={{ userSelect: 'none' }}>#</span>
                         {chatInputReferences.map((ref, index) => (
-                          <span key={index} style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
-                            <span style={{ color: aiTerminalStyles.operationText }}>@{ref.name}</span>
+                          <span
+                            key={`${ref.type}-${ref.id}-${index}`}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '1px 6px 1px 4px',
+                              borderRadius: '3px',
+                              border: `1px solid ${ref.type === 'node' ? themeStyles.statNode : themeStyles.statCard}`,
+                              borderLeftWidth: 3,
+                              borderLeftColor: ref.type === 'node' ? themeStyles.statNode : themeStyles.statCard,
+                              backgroundColor:
+                                theme === 'dark'
+                                  ? ref.type === 'node'
+                                    ? 'rgba(100, 181, 246, 0.12)'
+                                    : 'rgba(129, 199, 132, 0.12)'
+                                  : ref.type === 'node'
+                                    ? 'rgba(33, 150, 243, 0.08)'
+                                    : 'rgba(76, 175, 80, 0.08)',
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: '9px',
+                                fontWeight: 700,
+                                lineHeight: 1,
+                                color: ref.type === 'node' ? themeStyles.statNode : themeStyles.statCard,
+                                userSelect: 'none',
+                              }}
+                            >
+                              {ref.type === 'node' ? 'N' : 'C'}
+                            </span>
+                            <span style={{ color: aiTerminalStyles.operationText }}>{ref.name}</span>
                             <button
                               type="button"
                               onClick={() => {
-                                const placeholder = '@' + ref.name;
-                                const { startIndex, endIndex } = ref;
-                                const newText = chatInput.slice(0, startIndex) + chatInput.slice(endIndex);
-                                setChatInputReferences((prev) =>
-                                  prev
-                                    .filter((_, i) => i !== index)
-                                    .map((r) => {
-                                      if (r.startIndex > startIndex) {
-                                        return {
-                                          ...r,
-                                          startIndex: r.startIndex - placeholder.length,
-                                          endIndex: r.endIndex - placeholder.length,
-                                        };
-                                      }
-                                      return r;
-                                    }),
-                                );
-                                setChatInput(newText);
+                                setChatInputReferences((prev) => prev.filter((_, i) => i !== index));
                               }}
                               style={{
                                 background: 'none',
@@ -13902,33 +14130,11 @@ Reply with a JSON code block only for executable operations, using this shape:
                           <span style={{ color: aiTerminalStyles.promptShellSep, flexShrink: 0 }}>:</span>
                         </span>
                         <input
+                          ref={aiChatInputRef}
                           type="text"
                           value={chatInput}
                           onChange={(e) => {
-                          const newText = e.target.value;
-                          const oldText = chatInput;
-                          if (newText.length !== oldText.length) {
-                            const diff = newText.length - oldText.length;
-                            const selectionStart = e.currentTarget.selectionStart ?? 0;
-                            setChatInputReferences((prev) =>
-                              prev
-                                .map((ref) => {
-                                  if (selectionStart <= ref.startIndex) {
-                                    return {
-                                      ...ref,
-                                      startIndex: ref.startIndex + diff,
-                                      endIndex: ref.endIndex + diff,
-                                    };
-                                  }
-                                  if (selectionStart > ref.startIndex && selectionStart < ref.endIndex) {
-                                    return null as any;
-                                  }
-                                  return ref;
-                                })
-                                .filter((ref) => ref != null && ref.startIndex >= 0 && ref.endIndex <= newText.length),
-                            );
-                          }
-                          setChatInput(newText);
+                            setChatInput(e.target.value);
                           }}
                           onPaste={handleAIChatPaste}
                           onKeyDown={(e) => {

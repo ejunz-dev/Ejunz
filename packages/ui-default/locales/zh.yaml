@@ -237,6 +237,8 @@ __langname: 简体中文
 'Input Parameters': 输入参数
 'Input Schema': 输入模式
 'Insert here': 插入此处
+'Insert into AI terminal': 插入到 AI 终端
+'Insert {0} selected into AI terminal': 将 {0} 项选中内容插入 AI 终端
 'Join {0}': '加入 {0}'
 'Join Domain': 加入域
 'Jump to {0}': 跳至 {0}
@@ -513,6 +515,7 @@ __langname: 简体中文
 'TTS (Text-to-Speech) Configuration': TTS (文本转语音) 配置
 'TTS configuration saved successfully': TTS 配置已保存
 'TTS Configuration': TTS 配置
+'Unable to add this item to AI context': 无法将该项加入 AI 上下文
 'Uncommitted changes': 未提交的更改
 'Uninstall failed.': 卸载失败
 'Uninstall': 卸载
