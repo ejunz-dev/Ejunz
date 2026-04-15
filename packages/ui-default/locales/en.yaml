@@ -214,6 +214,8 @@ __langname: English
 'Input Parameters': Input Parameters
 'Input Schema': Input Schema
 'Insert here': Insert here
+'Insert into AI terminal': Insert into AI terminal
+'Insert {0} selected into AI terminal': Insert {0} selected into AI terminal
 'Join Domain': Join Domain
 'Jump to {0}': Jump to {0}
 'Know it': Know it
@@ -488,6 +490,7 @@ __langname: English
 'TTS (Text-to-Speech) Configuration': TTS (Text-to-Speech) Configuration
 'TTS configuration saved successfully': TTS configuration saved successfully
 'TTS Configuration': TTS Configuration
+'Unable to add this item to AI context': Unable to add this item to AI context
 'Uncommitted changes': Uncommitted changes
 'Uninstall failed.': Uninstall failed.
 'Uninstall': Uninstall
