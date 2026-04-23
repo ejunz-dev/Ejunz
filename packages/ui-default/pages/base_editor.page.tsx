@@ -3844,10 +3844,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                   const realSource = nodeIdMap.get(e.source) || e.source;
                   const realTarget = nodeIdMap.get(e.target) || e.target;
                   return { ...e, source: realSource, target: realTarget };
-                }).filter(e => 
-                  !e.source.startsWith('temp-node-') && 
-                  !e.target.startsWith('temp-node-') &&
-                  !e.id.startsWith('temp-edge-')
+                }).filter(e =>
+                  !e.source.startsWith('temp-node-') &&
+                  !e.target.startsWith('temp-node-')
                 ),
               }));
               setExpandedNodes(prev => {
@@ -3875,10 +3874,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                       return { ...card, docId: realCardId, nodeId: realNodeId };
                     })
                     .filter((card: Card) => !String(card.docId).startsWith('temp-card-'));
-                  
-                  if (updatedCards.length > 0) {
-                    updatedNodeCardsMap[realNodeId] = updatedCards;
-                  }
+
+                  updatedNodeCardsMap[realNodeId] = updatedCards;
                 }
               }
               
