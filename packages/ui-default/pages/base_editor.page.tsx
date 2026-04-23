@@ -1917,42 +1917,38 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       const saveMigration = async () => {
         try {
           const migrationNodes = migrationResult.base.nodes.filter(n => !String((n as any).id ?? (n as any)._id ?? '').startsWith('temp-node-'));
-          const migrationEdges = migrationResult.base.edges.filter(e =>
-            !String((e as any).source ?? '').startsWith('temp-node-') &&
-            !String((e as any).target ?? '').startsWith('temp-node-') &&
-            !String((e as any).id ?? (e as any)._id ?? '').startsWith('temp-edge-')
-          );
-          
-          await request.post(getBaseUrl('/save'), {
+          const branch = (window as any).UiContext?.currentBranch || 'main';
+          const nodeUpdates = migrationNodes
+            .filter((n) => n.order != null)
+            .map((n) => ({ nodeId: n.id, order: n.order as number }));
+          const cardUpdates = migrationResult.cardUpdates.map((u) => ({
+            cardId: u.cardId,
+            nodeId: u.nodeId,
+            order: u.order,
+          }));
+          const domainId = (window as any).UiContext?.domainId || 'system';
+          const batchUrl = `/d/${domainId}/${basePath}/batch-save`;
+          await request.post(batchUrl, {
             ...(docId ? { docId } : {}),
-            branch: (window as any).UiContext?.currentBranch || 'main',
-            nodes: migrationNodes,
-            edges: migrationEdges,
-            operationDescription: '自动迁移：为节点和卡片添加order字段',
+            branch,
+            nodeCreates: [],
+            nodeUpdates,
+            nodeDeletes: [],
+            cardCreates: [],
+            cardUpdates,
+            cardDeletes: [],
+            edgeCreates: [],
+            edgeDeletes: [],
           });
-          
-          if (migrationResult.cardUpdates.length > 0) {
-            const domainId = (window as any).UiContext?.domainId || 'system';
-            const updatePromises = migrationResult.cardUpdates.map(update =>
-              request.post(getBaseUrl(`/card/${update.cardId}`), {
-                ...(docId ? { docId } : {}),
-                operation: 'update',
-                nodeId: update.nodeId,
-                order: update.order,
-              })
-            );
-            await Promise.all(updatePromises);
-          }
-          
           console.log('Order migration done');
         } catch (error: any) {
           console.error('Order migration failed:', error);
         }
       };
-      
+
       saveMigration();
     }
-  }, [migrationResult.needsSave, migrationResult.base.nodes, migrationResult.base.edges, migrationResult.cardUpdates, docId]);
+  }, [migrationResult.needsSave, migrationResult.base.nodes, migrationResult.base.edges, migrationResult.cardUpdates, docId, basePath]);
   
   useEffect(() => {
     pendingCreatesRef.current.clear();
@@ -2386,8 +2382,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   
   
   const expandSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const developNavPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  
+
   const expandedNodesRef = useRef<Set<string>>(expandedNodes);
   
   const baseRef = useRef<BaseDoc>(base);
@@ -2420,40 +2415,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const domainId = (window as any).UiContext?.domainId || 'system';
     return `/d/${domainId}/${basePath}${path}`;
   }, [basePath]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || basePath !== 'base' || !docId) return undefined;
-    const path = window.location.pathname;
-    const onDevEd = /\/develop\/editor(?:\/|$)/.test(path);
-    const onBaseBrEd = /\/base\/[^/]+\/branch\/[^/]+\/editor(?:\/|$)/.test(path);
-    if (!onDevEd && !onBaseBrEd) return undefined;
-    const sessionHex = new URLSearchParams(window.location.search).get('session')?.trim() || '';
-    if (!sessionHex) return undefined;
-    const baseDocIdNum = Number(docId);
-    if (!Number.isFinite(baseDocIdNum) || baseDocIdNum <= 0) return undefined;
-    const branch = (window as any).UiContext?.currentBranch || 'main';
-    if (developNavPersistTimerRef.current) clearTimeout(developNavPersistTimerRef.current);
-    developNavPersistTimerRef.current = setTimeout(async () => {
-      developNavPersistTimerRef.current = null;
-      try {
-        await request.post(getBaseUrl('/save'), {
-          docId: baseDocIdNum,
-          branch,
-          sidecarOnly: true,
-          developSessionId: sessionHex,
-          developEditorLocation: `${window.location.pathname}${window.location.search || ''}`,
-        });
-      } catch (_e) {
-        /* best-effort */
-      }
-    }, 450);
-    return () => {
-      if (developNavPersistTimerRef.current) {
-        clearTimeout(developNavPersistTimerRef.current);
-        developNavPersistTimerRef.current = null;
-      }
-    };
-  }, [basePath, docId, selectedFile?.id, getBaseUrl]);
 
   const fetchGitRemoteStatus = useCallback(async () => {
     if (basePath !== 'base' || !docId) return;
@@ -3291,7 +3252,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       }
 
       const baseDocIdNumForSave = docId ? Number(docId) : NaN;
-      const saveBranch = batchSaveData.branch;
       const editorUiPrefsPayload =
         Number.isFinite(baseDocIdNumForSave) && baseDocIdNumForSave > 0
           ? {
@@ -4061,35 +4021,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
       Notification.success(`保存成功，共 ${totalChanges} 项更改`);
 
-      try {
-        if (
-          !hasAnyChanges &&
-          Number.isFinite(baseDocIdNumForSave) &&
-          baseDocIdNumForSave > 0 &&
-          (editorUiPrefsPayload || developSid)
-        ) {
-          await request.post(getBaseUrl('/save'), {
-            docId: baseDocIdNumForSave,
-            branch: saveBranch,
-            sidecarOnly: true,
-            ...(developSid
-              ? {
-                  developSessionId: developSid,
-                  developEditorLocation: `${window.location.pathname}${window.location.search || ''}`,
-                }
-              : {}),
-            ...(editorUiPrefsPayload ? { editorUiPrefs: editorUiPrefsPayload } : {}),
-          });
-        }
-      } catch (_persistUi: any) {
-        if (_persistUi?.params?.[0] === 'DEVELOP_SESSION_CLOSED') {
-          Notification.warn(i18n('Develop session closed reload hint'));
-          window.location.reload();
-          return;
-        }
-        /* layout / develop nav persistence is best-effort */
-      }
-      
       if (hasCreateChanges || hasAnyChanges) {
         try {
           const postSaveQs: Record<string, string> = {};
