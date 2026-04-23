@@ -934,25 +934,16 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
 
        
        
-        const filteredNodes = updatedNodes.filter(n => !n.id.startsWith('temp-node-'));
-        const filteredEdges = currentBase.edges.filter(e => 
-          !e.source.startsWith('temp-node-') && 
-          !e.target.startsWith('temp-node-') &&
-          !e.id.startsWith('temp-edge-')
-        );
-        
         const domainIdForSave = (window as any).UiContext?.domainId || 'system';
-        const saveUrl = basePath === 'base/skill'
-          ? `/d/${domainIdForSave}/base/skill/save`
-          : `/d/${domainIdForSave}/base/save`;
-        const saveBranch = (window as any).UiContext?.currentBranch || 'main';
-        await request.post(saveUrl, {
-          ...(docId ? { docId } : {}),
-          branch: saveBranch,
-          nodes: filteredNodes,
-          edges: filteredEdges,
-          operationDescription: '自动保存 outline 展开状态',
-        });
+        if (basePath !== 'base/skill' && docId) {
+          const docIdNum = Number(docId);
+          if (Number.isFinite(docIdNum) && docIdNum > 0) {
+            await request.post(`/d/${domainIdForSave}/base/expand-state`, {
+              docId: docIdNum,
+              expandedNodeIds: Array.from(currentExpandedNodes),
+            });
+          }
+        }
         
        
        

@@ -1827,7 +1827,19 @@ function BaseEditor({ docId, initialData }: { docId: string; initialData: BaseDo
       // 生成操作描述
       const operationDescription = lastOperationRef.current || '自动保存';
       
-      const response = await request.post(getBaseUrl('/save', docId), {
+      const domainIdForSave = (window as any).UiContext?.domainId || 'system';
+      const response = await request.post(`/d/${domainIdForSave}/base/batch-save`, {
+        docId: Number(docId),
+        branch: base.currentBranch || 'main',
+        fullGraphSave: true,
+        nodeCreates: [],
+        nodeUpdates: [],
+        nodeDeletes: [],
+        cardCreates: [],
+        cardUpdates: [],
+        cardDeletes: [],
+        edgeCreates: [],
+        edgeDeletes: [],
         nodes: updatedNodes,
         edges: updatedEdges,
         viewport: viewport ? {
@@ -1892,7 +1904,7 @@ function BaseEditor({ docId, initialData }: { docId: string; initialData: BaseDo
       Notification.error('保存失败: ' + (error.message || '未知错误'));
       setIsSaving(false);
     }
-  }, [docId, reactFlowInstance]);
+  }, [docId, reactFlowInstance, base.currentBranch]);
 
   // 从 YAML 保存的函数（支持卡片）
   const handleSaveFromYaml = useCallback(async (newNodes: BaseNode[], newEdges: BaseEdge[], cardsData?: Array<{ nodeId: string; cards: Card[] }>) => {
@@ -1943,7 +1955,19 @@ function BaseEditor({ docId, initialData }: { docId: string; initialData: BaseDo
       // 生成操作描述
       lastOperationRef.current = 'YAML 模式保存';
       
-      const response = await request.post(getBaseUrl('/save', docId), {
+      const domainIdForYamlSave = (window as any).UiContext?.domainId || 'system';
+      const response = await request.post(`/d/${domainIdForYamlSave}/base/batch-save`, {
+        docId: Number(docId),
+        branch: base.currentBranch || 'main',
+        fullGraphSave: true,
+        nodeCreates: [],
+        nodeUpdates: [],
+        nodeDeletes: [],
+        cardCreates: [],
+        cardUpdates: [],
+        cardDeletes: [],
+        edgeCreates: [],
+        edgeDeletes: [],
         nodes: updatedNodes,
         edges: updatedEdges,
         viewport: viewport ? {

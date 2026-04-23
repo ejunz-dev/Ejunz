@@ -12,7 +12,6 @@ import {
     BaseNodeHandler,
     BaseEdgeHandler,
     BaseDataHandler,
-    BaseSaveHandler,
     BaseOutlineHandler,
     BaseOutlineOptions,
     BaseBatchSaveHandler,
@@ -141,42 +140,6 @@ class SkillDataHandler extends BaseDataHandler {
     }
 }
 
-class SkillSaveHandler extends BaseSaveHandler {
-    protected override async getBase(domainId: string): Promise<BaseDoc | null> {
-        return getSkillsBaseOrNull(domainId);
-    }
-
-    protected override getDefaultTitle(): string {
-        return 'Agent Skills 管理';
-    }
-
-    protected override getDefaultRootText(): string {
-        return 'Skills';
-    }
-
-    protected override async createBase(domainId: string): Promise<BaseDoc> {
-        const { docId } = await BaseModel.create(
-            domainId,
-            this.user._id,
-            'Skills',
-            'Agent Skills 管理',
-            undefined,
-            'main',
-            this.request.ip,
-            undefined,
-            undefined,
-            'skill',
-        );
-        const base = await BaseModel.get(domainId, docId);
-        if (!base) throw new Error('Failed to create Skills base');
-        return base;
-    }
-
-    protected override shouldSyncToGit(): boolean {
-        return false;
-    }
-}
-
 class SkillOutlineHandler extends BaseOutlineHandler {
     protected override getOutlineOptions(domainId: string, branch?: string): BaseOutlineOptions {
         return {
@@ -302,7 +265,6 @@ class SkillEditorHandler extends BaseEditorHandler {
 
 export async function apply(ctx: Context) {
     ctx.Route('base_skill_data', '/base/skill/data', SkillDataHandler);
-    ctx.Route('base_skill_save', '/base/skill/save', SkillSaveHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_skill_batch_save', '/base/skill/batch-save', SkillBatchSaveHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_skill_card', '/base/skill/card', SkillCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_skill_card_update', '/base/skill/card/:cardId', SkillCardHandler, PRIV.PRIV_USER_PROFILE);
