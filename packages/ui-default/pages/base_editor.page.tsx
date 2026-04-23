@@ -2812,9 +2812,19 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           expandSaveTimerRef.current = null;
           return;
         }
-        await request.post(getBaseUrl('/expand-state'), {
+        const expandBranch = (window as any).UiContext?.currentBranch || 'main';
+        await request.post(getBaseUrl('/batch-save'), {
           docId: baseDocId,
+          branch: expandBranch,
           expandedNodeIds: Array.from(currentExpandedNodes),
+          nodeCreates: [],
+          nodeUpdates: [],
+          nodeDeletes: [],
+          cardCreates: [],
+          cardUpdates: [],
+          cardDeletes: [],
+          edgeCreates: [],
+          edgeDeletes: [],
         });
         expandSaveTimerRef.current = null;
       } catch (error: any) {

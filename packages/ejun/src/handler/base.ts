@@ -4407,6 +4407,34 @@ export class BaseBatchSaveHandler extends Handler {
             edgeDeletes = [],
         } = data;
 
+        const incrementalEmpty =
+            nodeCreates.length === 0 &&
+            nodeUpdates.length === 0 &&
+            nodeDeletes.length === 0 &&
+            cardCreates.length === 0 &&
+            cardUpdates.length === 0 &&
+            cardDeletes.length === 0 &&
+            edgeCreates.length === 0 &&
+            edgeDeletes.length === 0;
+
+        const rawBody = data as Record<string, unknown>;
+        const hasSidecarPayload =
+            Object.prototype.hasOwnProperty.call(rawBody, 'expandedNodeIds') ||
+            Object.prototype.hasOwnProperty.call(rawBody, 'editorUiPrefs') ||
+            (typeof data.developSessionId === 'string' && data.developSessionId.trim() !== '') ||
+            (typeof data.developEditorLocation === 'string' && data.developEditorLocation.trim() !== '');
+
+        if (incrementalEmpty && hasSidecarPayload) {
+            await persistBaseEditorSaveSidecars(this, actualDomainId, docId, branch, rawBody);
+            this.response.body = {
+                success: true,
+                errors: [],
+                nodeIdMap: {},
+                cardIdMap: {},
+            };
+            return;
+        }
+
         const errors: string[] = [];
         const nodeIdMap = new Map<string, string>();
         const cardIdMap = new Map<string, string>();
@@ -6477,38 +6505,7 @@ class BaseMigrateNodeToNewHandler extends Handler {
     }
 }
 
-/**
- * Base Expand State Handler — per-user node expand/collapse state for base editor (POST only, load via UiContext)
- */
-export class BaseExpandStateHandler extends Handler {
-    protected async getBase(domainId: string, docId: number): Promise<BaseDoc | null> {
-        return BaseModel.get(domainId, docId);
-    }
-
-    @post('docId', Types.PositiveInt)
-    @post('expandedNodeIds', Types.ArrayOf(Types.String), true)
-    async post(domainId: string, docId: number, expandedNodeIds?: string[]) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        const baseDocId = Number(docId);
-        const base = await this.getBase(domainId, baseDocId);
-        if (!base) throw new NotFoundError('Base not found');
-        if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
-
-        const coll = this.ctx.db.db.collection('base.userExpand');
-        const list = Array.isArray(expandedNodeIds) ? expandedNodeIds : [];
-        await coll.updateOne(
-            { domainId, baseDocId, uid: this.user._id },
-            { $set: { domainId, baseDocId, uid: this.user._id, expandedNodeIds: list, updateAt: new Date() } },
-            { upsert: true }
-        );
-
-        (this.ctx.emit as any)('base/update', baseDocId);
-
-        this.response.body = { success: true };
-    }
-}
-
-/** Optional payloads on POST /base/batch-save: UI prefs + develop session editor location. */
+/** Optional payloads on POST /base/batch-save: per-user tree expand, UI prefs, develop session editor location. */
 async function persistBaseEditorSaveSidecars(
     h: Handler,
     domainId: string,
@@ -6517,6 +6514,17 @@ async function persistBaseEditorSaveSidecars(
     data: Record<string, unknown>,
 ): Promise<void> {
     const branchNorm = branchInput && String(branchInput).trim() ? String(branchInput).trim() : 'main';
+    if (Object.prototype.hasOwnProperty.call(data, 'expandedNodeIds')) {
+        const rawList = data.expandedNodeIds;
+        const list = Array.isArray(rawList) ? rawList.map((x) => String(x)) : [];
+        const coll = h.ctx.db.db.collection('base.userExpand');
+        await coll.updateOne(
+            { domainId, baseDocId, uid: h.user._id },
+            { $set: { domainId, baseDocId, uid: h.user._id, expandedNodeIds: list, updateAt: new Date() } },
+            { upsert: true },
+        );
+        (h.ctx.emit as any)('base/update', baseDocId, null, branchNorm);
+    }
     if (Object.prototype.hasOwnProperty.call(data, 'editorUiPrefs')) {
         const sanitized = sanitizeBaseEditorUiPrefs(data.editorUiPrefs);
         const coll = h.ctx.db.db.collection('base.userEditorUi');
@@ -6570,7 +6578,6 @@ export async function apply(ctx: Context) {
     ctx.Route('base_edge', '/base/edge', BaseEdgeHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_batch_save', '/base/batch-save', BaseBatchSaveHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_migrate_node_to_new', '/base/migrate-node-to-new', BaseMigrateNodeToNewHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_expand_state', '/base/expand-state', BaseExpandStateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_card', '/base/card', BaseCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_card_update', '/base/card/:cardId', BaseCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_branch_create', '/base/branch', BaseBranchCreateHandler, PRIV.PRIV_USER_PROFILE);

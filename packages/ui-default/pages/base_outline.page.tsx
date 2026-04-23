@@ -938,9 +938,19 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         if (basePath !== 'base/skill' && docId) {
           const docIdNum = Number(docId);
           if (Number.isFinite(docIdNum) && docIdNum > 0) {
-            await request.post(`/d/${domainIdForSave}/base/expand-state`, {
+            const outlineExpandBranch = (window as any).UiContext?.currentBranch || 'main';
+            await request.post(`/d/${domainIdForSave}/base/batch-save`, {
               docId: docIdNum,
+              branch: outlineExpandBranch,
               expandedNodeIds: Array.from(currentExpandedNodes),
+              nodeCreates: [],
+              nodeUpdates: [],
+              nodeDeletes: [],
+              cardCreates: [],
+              cardUpdates: [],
+              cardDeletes: [],
+              edgeCreates: [],
+              edgeDeletes: [],
             });
           }
         }
