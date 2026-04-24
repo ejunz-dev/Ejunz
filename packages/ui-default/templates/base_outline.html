@@ -36,6 +36,9 @@
     currentBranch: currentBranch
   }) }}
   {{ set(UiContext, 'socketUrl', 'base/ws?domainId=' + (domainId or (base and base.domainId) or '') + '&docId=' + _base_doc_id) }}
+  {% if initialBaseDoc is defined and initialBaseDoc %}
+  {{ set(UiContext, 'initialBaseDoc', initialBaseDoc) }}
+  {% endif %}
   {{ set(UiContext, 'nodeCardsMap', nodeCardsMap or {}) }}
   {{ set(UiContext, 'files', files or []) }}
   // Helper function to get Notification
