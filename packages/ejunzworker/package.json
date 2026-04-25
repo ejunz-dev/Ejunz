@@ -1,16 +1,16 @@
 {
     "name": "@ejunz/ejunzworker",
     "bin": "bin/ejunzworker.js",
-    "version": "0.0.1",
+    "version": "0.1.1",
     "main": "./src/index.ts",
     "repository": "https://github.com/ejunz-dev/Ejunz.git",
     "dependencies": {
         "@ejunz/common": "workspace:^",
         "@ejunz/ejunztools": "workspace:^",
         "@ejunz/utils": "workspace:^",
-        "ejun": "workspace:^",
         "@zip.js/zip.js": "^2.8.10",
         "cac": "^6.7.14",
+        "ejun": "workspace:^",
         "p-queue": "^9.0.0",
         "schemastery": "^3.17.2",
         "semver": "^7.7.3",
