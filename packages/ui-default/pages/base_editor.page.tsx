@@ -1644,12 +1644,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const showDevelopQueueInPanels = !!(developEditorContext && developRunQueueState && developRunQueueState.items.length > 0);
 
   const contributionWsRef = useRef<any>(null);
-  const editorSyncPendingRef = useRef<Map<string, {
-    resolve: (msg: any) => void;
-    reject: (err: Error) => void;
-    timer: ReturnType<typeof setTimeout>;
-  }>>(new Map());
-  const mergeWsBaseDataRef = useRef<(newData: any) => void>(() => {});
   const saveHandlerRef = useRef<() => void>(() => {});
   const editorAiHidden = false;
   const savedEditorLayout = readSavedBaseEditorUiPrefs(editorAiHidden);
@@ -1687,7 +1681,13 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     if (!socketUrl) return;
 
     let closed = false;
+    const apiPath = basePath === 'base/skill'
+      ? `/d/${domainId}/base/skill/data`
+      : `/d/${domainId}/base/data`;
+    const editorApiQs: Record<string, string> = {};
+    if (docId) editorApiQs.docId = docId;
     const editorBranch = (window as any).UiContext?.currentBranch;
+    if (editorBranch) editorApiQs.branch = editorBranch;
 
     const connect = async () => {
       try {
@@ -1700,15 +1700,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           if (closed) return;
           try {
             const msg = JSON.parse(data);
-            if (msg.type === 'editor_sync') {
-              const pend = editorSyncPendingRef.current.get(msg.requestId);
-              if (pend) {
-                clearTimeout(pend.timer);
-                editorSyncPendingRef.current.delete(msg.requestId);
-                pend.resolve(msg);
-              }
-              return;
-            }
             if (msg.type === 'init' || msg.type === 'update') {
               if (msg.type === 'update' && msg.sourceBranch && editorBranch && msg.sourceBranch !== editorBranch) return;
               if (msg.gitStatus != null) {
@@ -1728,9 +1719,33 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               if (Object.prototype.hasOwnProperty.call(msg, 'developEditorContext')) {
                 setDevelopEditorContext(msg.developEditorContext ?? null);
               }
-              if (msg.baseData && !closed) {
-                mergeWsBaseDataRef.current(msg.baseData);
-              }
+              request.get(apiPath, editorApiQs).then((newData: any) => {
+                if (closed || !newData || (!newData.nodes && !newData.edges)) return;
+                const nextNodes = newData.nodes ?? [];
+                const nextEdges = newData.edges ?? [];
+                const nextNodeCardsMap = newData.nodeCardsMap ?? {};
+                setBase(prev => {
+                  const prevNodes = prev?.nodes || [];
+                  const prevEdges = prev?.edges || [];
+                  const tempNodes = prevNodes.filter(n => n.id && String(n.id).startsWith('temp-node-'));
+                  const tempNodeIdSet = new Set(tempNodes.map(n => String(n.id)));
+                  const tempEdges = prevEdges.filter(e =>
+                    (e.id && String(e.id).startsWith('temp-edge-')) ||
+                    (e.source && tempNodeIdSet.has(String(e.source))) ||
+                    (e.target && tempNodeIdSet.has(String(e.target)))
+                  );
+                  return {
+                    ...prev,
+                    ...newData,
+                    nodes: [...nextNodes, ...tempNodes],
+                    edges: [...nextEdges, ...tempEdges],
+                  };
+                });
+                if ((window as any).UiContext) {
+                  (window as any).UiContext.nodeCardsMap = nextNodeCardsMap;
+                }
+                setNodeCardsMapVersion(v => v + 1);
+              }).catch(() => {});
             }
             if (msg.type === 'git_status' && msg.gitStatus != null) {
               const b = (window as any).UiContext?.currentBranch || 'main';
@@ -1902,38 +1917,42 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       const saveMigration = async () => {
         try {
           const migrationNodes = migrationResult.base.nodes.filter(n => !String((n as any).id ?? (n as any)._id ?? '').startsWith('temp-node-'));
-          const branch = (window as any).UiContext?.currentBranch || 'main';
-          const nodeUpdates = migrationNodes
-            .filter((n) => n.order != null)
-            .map((n) => ({ nodeId: n.id, order: n.order as number }));
-          const cardUpdates = migrationResult.cardUpdates.map((u) => ({
-            cardId: u.cardId,
-            nodeId: u.nodeId,
-            order: u.order,
-          }));
-          const domainId = (window as any).UiContext?.domainId || 'system';
-          const batchUrl = `/d/${domainId}/${basePath}/batch-save`;
-          await request.post(batchUrl, {
+          const migrationEdges = migrationResult.base.edges.filter(e =>
+            !String((e as any).source ?? '').startsWith('temp-node-') &&
+            !String((e as any).target ?? '').startsWith('temp-node-') &&
+            !String((e as any).id ?? (e as any)._id ?? '').startsWith('temp-edge-')
+          );
+          
+          await request.post(getBaseUrl('/save'), {
             ...(docId ? { docId } : {}),
-            branch,
-            nodeCreates: [],
-            nodeUpdates,
-            nodeDeletes: [],
-            cardCreates: [],
-            cardUpdates,
-            cardDeletes: [],
-            edgeCreates: [],
-            edgeDeletes: [],
+            branch: (window as any).UiContext?.currentBranch || 'main',
+            nodes: migrationNodes,
+            edges: migrationEdges,
+            operationDescription: '自动迁移：为节点和卡片添加order字段',
           });
+          
+          if (migrationResult.cardUpdates.length > 0) {
+            const domainId = (window as any).UiContext?.domainId || 'system';
+            const updatePromises = migrationResult.cardUpdates.map(update =>
+              request.post(getBaseUrl(`/card/${update.cardId}`), {
+                ...(docId ? { docId } : {}),
+                operation: 'update',
+                nodeId: update.nodeId,
+                order: update.order,
+              })
+            );
+            await Promise.all(updatePromises);
+          }
+          
           console.log('Order migration done');
         } catch (error: any) {
           console.error('Order migration failed:', error);
         }
       };
-
+      
       saveMigration();
     }
-  }, [migrationResult.needsSave, migrationResult.base.nodes, migrationResult.base.edges, migrationResult.cardUpdates, docId, basePath]);
+  }, [migrationResult.needsSave, migrationResult.base.nodes, migrationResult.base.edges, migrationResult.cardUpdates, docId]);
   
   useEffect(() => {
     pendingCreatesRef.current.clear();
@@ -1967,74 +1986,46 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [pendingDragChanges, setPendingDragChanges] = useState<Set<string>>(new Set());
   const [nodeCardsMapVersion, setNodeCardsMapVersion] = useState(0);
 
-  mergeWsBaseDataRef.current = (newData: any) => {
-    if (!newData || (newData.nodes == null && newData.edges == null)) return;
-    const nextNodes = newData.nodes ?? [];
-    const nextEdges = newData.edges ?? [];
-    const nextNodeCardsMap = newData.nodeCardsMap ?? {};
-    setBase(prev => {
-      const prevNodes = prev?.nodes || [];
-      const prevEdges = prev?.edges || [];
-      /** Only keep optimistic temp nodes that are still pending create; avoids doubling after save+refetch when remap state has not flushed yet. */
-      const pendingTemps = pendingCreatesRef.current;
-      const tempNodes = prevNodes.filter(n => {
-        const id = n.id != null ? String(n.id) : '';
-        return id.startsWith('temp-node-') && pendingTemps.has(id);
-      });
-      const tempNodeIdSet = new Set(tempNodes.map(n => String(n.id)));
-      const tempEdges = prevEdges.filter(e =>
-        (e.id && String(e.id).startsWith('temp-edge-')) ||
-        (e.source && tempNodeIdSet.has(String(e.source))) ||
-        (e.target && tempNodeIdSet.has(String(e.target)))
-      );
-      /** New-node save: server edge and remapped temp-edge-* share the same (source,target); keep server link only. */
-      const serverLinkKeys = new Set(
-        nextEdges
-          .filter((e: BaseEdge) => e?.source != null && e?.target != null)
-          .map((e: BaseEdge) => `${e.source}\0${e.target}`),
-      );
-      const tempEdgesOnlyIfMissingOnServer = tempEdges.filter((e: BaseEdge) => {
-        if (e?.source == null || e?.target == null) return false;
-        return !serverLinkKeys.has(`${e.source}\0${e.target}`);
-      });
-      return {
-        ...prev,
-        ...newData,
-        nodes: [...nextNodes, ...tempNodes],
-        edges: [...nextEdges, ...tempEdgesOnlyIfMissingOnServer],
-      };
-    });
-    if ((window as any).UiContext) {
-      (window as any).UiContext.nodeCardsMap = nextNodeCardsMap;
-    }
-    setNodeCardsMapVersion(v => v + 1);
-  };
-
-  const fetchEditorSyncPayload = useCallback(async (): Promise<any | null> => {
-    const sock = contributionWsRef.current;
-    if (!sock || typeof sock.send !== 'function') return null;
-    const requestId = `ed-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-    const branch = String((window as any).UiContext?.currentBranch || '').trim();
-    const msg: any = await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        editorSyncPendingRef.current.delete(requestId);
-        reject(new Error('editor_sync timeout'));
-      }, 60000);
-      editorSyncPendingRef.current.set(requestId, { resolve, reject, timer });
-      sock.send(JSON.stringify({ type: 'request_editor_sync', requestId, branch }));
-    });
-    if (msg.error) throw new Error(msg.error);
-    return msg.baseData ?? null;
-  }, []);
-
   const refetchEditorData = useCallback(async () => {
+    const domainId = (window as any).UiContext?.domainId || 'system';
+    const apiPath = basePath === 'base/skill'
+      ? `/d/${domainId}/base/skill/data`
+      : `/d/${domainId}/base/data`;
     try {
-      const newData = await fetchEditorSyncPayload();
-      if (newData) mergeWsBaseDataRef.current(newData);
+      const qs: Record<string, string> = {};
+      if (docId && basePath === 'base') qs.docId = docId;
+      const refBranch = (window as any).UiContext?.currentBranch;
+      if (refBranch) qs.branch = refBranch;
+      const newData: any = await request.get(apiPath, qs);
+      if (newData?.nodes != null || newData?.edges != null) {
+        setBase(prev => {
+          const prevNodes = prev?.nodes || [];
+          const prevEdges = prev?.edges || [];
+          const serverNodes = newData.nodes ?? prevNodes;
+          const serverEdges = newData.edges ?? prevEdges;
+          const tempNodes = prevNodes.filter(n => n.id && String(n.id).startsWith('temp-node-'));
+          const tempNodeIdSet = new Set(tempNodes.map(n => String(n.id)));
+          const tempEdges = prevEdges.filter(e =>
+            (e.id && String(e.id).startsWith('temp-edge-')) ||
+            (e.source && tempNodeIdSet.has(String(e.source))) ||
+            (e.target && tempNodeIdSet.has(String(e.target)))
+          );
+          return {
+            ...prev,
+            ...newData,
+            nodes: [...serverNodes, ...tempNodes],
+            edges: [...serverEdges, ...tempEdges],
+          };
+        });
+      }
+      if ((window as any).UiContext && newData?.nodeCardsMap != null) {
+        (window as any).UiContext.nodeCardsMap = newData.nodeCardsMap;
+      }
+      setNodeCardsMapVersion(v => v + 1);
     } catch (e) {
       console.error('[BaseEditor] refetchEditorData failed:', e);
     }
-  }, [fetchEditorSyncPayload]);
+  }, [basePath, docId]);
 
   const handleCardFileInputChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
@@ -2395,7 +2386,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   
   
   const expandSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
-
+  const developNavPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
   const expandedNodesRef = useRef<Set<string>>(expandedNodes);
   
   const baseRef = useRef<BaseDoc>(base);
@@ -2428,6 +2420,40 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const domainId = (window as any).UiContext?.domainId || 'system';
     return `/d/${domainId}/${basePath}${path}`;
   }, [basePath]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || basePath !== 'base' || !docId) return undefined;
+    const path = window.location.pathname;
+    const onDevEd = /\/develop\/editor(?:\/|$)/.test(path);
+    const onBaseBrEd = /\/base\/[^/]+\/branch\/[^/]+\/editor(?:\/|$)/.test(path);
+    if (!onDevEd && !onBaseBrEd) return undefined;
+    const sessionHex = new URLSearchParams(window.location.search).get('session')?.trim() || '';
+    if (!sessionHex) return undefined;
+    const baseDocIdNum = Number(docId);
+    if (!Number.isFinite(baseDocIdNum) || baseDocIdNum <= 0) return undefined;
+    const branch = (window as any).UiContext?.currentBranch || 'main';
+    if (developNavPersistTimerRef.current) clearTimeout(developNavPersistTimerRef.current);
+    developNavPersistTimerRef.current = setTimeout(async () => {
+      developNavPersistTimerRef.current = null;
+      try {
+        await request.post(getBaseUrl('/save'), {
+          docId: baseDocIdNum,
+          branch,
+          sidecarOnly: true,
+          developSessionId: sessionHex,
+          developEditorLocation: `${window.location.pathname}${window.location.search || ''}`,
+        });
+      } catch (_e) {
+        /* best-effort */
+      }
+    }, 450);
+    return () => {
+      if (developNavPersistTimerRef.current) {
+        clearTimeout(developNavPersistTimerRef.current);
+        developNavPersistTimerRef.current = null;
+      }
+    };
+  }, [basePath, docId, selectedFile?.id, getBaseUrl]);
 
   const fetchGitRemoteStatus = useCallback(async () => {
     if (basePath !== 'base' || !docId) return;
@@ -2825,19 +2851,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           expandSaveTimerRef.current = null;
           return;
         }
-        const expandBranch = (window as any).UiContext?.currentBranch || 'main';
-        await request.post(getBaseUrl('/batch-save'), {
+        await request.post(getBaseUrl('/expand-state'), {
           docId: baseDocId,
-          branch: expandBranch,
           expandedNodeIds: Array.from(currentExpandedNodes),
-          nodeCreates: [],
-          nodeUpdates: [],
-          nodeDeletes: [],
-          cardCreates: [],
-          cardUpdates: [],
-          cardDeletes: [],
-          edgeCreates: [],
-          edgeDeletes: [],
         });
         expandSaveTimerRef.current = null;
       } catch (error: any) {
@@ -3275,6 +3291,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       }
 
       const baseDocIdNumForSave = docId ? Number(docId) : NaN;
+      const saveBranch = batchSaveData.branch;
       const editorUiPrefsPayload =
         Number.isFinite(baseDocIdNumForSave) && baseDocIdNumForSave > 0
           ? {
@@ -3537,8 +3554,16 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         let currentBase: BaseDoc | null = null;
         if (nodeEdgeUpdates.size > 0) {
           try {
-            const snap = await fetchEditorSyncPayload();
-            currentBase = snap || null;
+            const fetchQs: Record<string, string> = {};
+            if (docId) fetchQs.docId = docId;
+            const fb = (window as any).UiContext?.currentBranch;
+            if (fb) fetchQs.branch = fb;
+            currentBase = await request.get(
+              basePath === 'base/skill'
+                ? `/d/${domainId}/base/skill/data`
+                : `/d/${domainId}/base/data`,
+              fetchQs,
+            );
           } catch (error: any) {
           }
         }
@@ -4036,11 +4061,54 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
       Notification.success(`保存成功，共 ${totalChanges} 项更改`);
 
+      try {
+        if (
+          !hasAnyChanges &&
+          Number.isFinite(baseDocIdNumForSave) &&
+          baseDocIdNumForSave > 0 &&
+          (editorUiPrefsPayload || developSid)
+        ) {
+          await request.post(getBaseUrl('/save'), {
+            docId: baseDocIdNumForSave,
+            branch: saveBranch,
+            sidecarOnly: true,
+            ...(developSid
+              ? {
+                  developSessionId: developSid,
+                  developEditorLocation: `${window.location.pathname}${window.location.search || ''}`,
+                }
+              : {}),
+            ...(editorUiPrefsPayload ? { editorUiPrefs: editorUiPrefsPayload } : {}),
+          });
+        }
+      } catch (_persistUi: any) {
+        if (_persistUi?.params?.[0] === 'DEVELOP_SESSION_CLOSED') {
+          Notification.warn(i18n('Develop session closed reload hint'));
+          window.location.reload();
+          return;
+        }
+        /* layout / develop nav persistence is best-effort */
+      }
+      
       if (hasCreateChanges || hasAnyChanges) {
-        // Graph sync: rely on server `emit('base/update')` → WS `update` + `baseData` only.
-        // Avoid `refetchEditorData()` here: it duplicates the same snapshot merge and can re-apply
-        // over stale React state (double subtree / ghost folders until refresh).
-
+        try {
+          const postSaveQs: Record<string, string> = {};
+          if (docId) postSaveQs.docId = docId;
+          const psb = (window as any).UiContext?.currentBranch;
+          if (psb) postSaveQs.branch = psb;
+          const response = await request.get(
+            basePath === 'base/skill'
+              ? `/d/${domainId}/base/skill/data`
+              : `/d/${domainId}/base/data`,
+            postSaveQs,
+          );
+          setBase(response);
+          if ((window as any).UiContext && response?.nodeCardsMap != null) {
+            (window as any).UiContext.nodeCardsMap = response.nodeCardsMap;
+          }
+        } catch (error) {
+        }
+        
         for (const cardId of Array.from(savedProblemCardIds)) {
           if (!String(cardId).startsWith('temp-card-')) {
             savedCardIds.add(String(cardId));
@@ -4141,7 +4209,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     } finally {
       setIsCommitting(false);
     }
-  }, [pendingChanges, pendingDragChanges, pendingRenames, pendingDeletes, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.nodes, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion, explorerMode, rightPanelOpen, aiBottomOpen, explorerPanelWidth, problemsPanelWidth, aiPanelHeight, editorAiHidden, developEditorContext, basePath, fetchEditorSyncPayload]);
+  }, [pendingChanges, pendingDragChanges, pendingRenames, pendingDeletes, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.nodes, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion, explorerMode, rightPanelOpen, aiBottomOpen, explorerPanelWidth, problemsPanelWidth, aiPanelHeight, editorAiHidden, developEditorContext, basePath]);
 
   useEffect(() => {
     saveHandlerRef.current = handleSaveAll;
@@ -14579,18 +14647,18 @@ const page = new NamedPage(['base_editor', 'base_editor_branch', 'base_skill_edi
     let initialData: BaseDoc;
     try {
       
-      const rawInit = (window as any).UiContext?.initialBaseDoc;
-      if (
-        !rawInit ||
-        typeof rawInit !== 'object' ||
-        (rawInit.nodes == null && rawInit.edges == null)
-      ) {
-        Notification.error(`加载${isSkill ? 'Skills' : '知识库'}失败: 缺少初始数据`);
-        return;
-      }
-      initialData = rawInit as BaseDoc;
+      const apiPath = isSkill
+        ? `/d/${domainId}/base/skill/data`
+        : `/d/${domainId}/base/data`;
+      const initQs: Record<string, string> = {};
+      if (docId) initQs.docId = docId;
+      const initBranch = (window as any).UiContext?.currentBranch;
+      if (initBranch) initQs.branch = initBranch;
+      const response = await request.get(apiPath, initQs);
+      initialData = response;
+      
       if (!initialData.docId) {
-        initialData = { ...initialData, docId: docId || '' };
+        initialData.docId = docId || '';
       }
     } catch (error: any) {
       Notification.error(`加载${isSkill ? 'Skills' : '知识库'}失败: ` + (error.message || '未知错误'));

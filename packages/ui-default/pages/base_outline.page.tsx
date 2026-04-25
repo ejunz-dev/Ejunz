@@ -788,33 +788,15 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     }
   }, [nodeCardsMap]);
 
-  const outlineWsRef = useRef<{ close: () => void; send?: (d: string) => void } | null>(null);
-  const outlineEditorSyncPendingRef = useRef<Map<string, {
-    resolve: (msg: any) => void;
-    reject: (err: Error) => void;
-    timer: ReturnType<typeof setTimeout>;
-  }>>(new Map());
-
-  const fetchOutlineEditorSyncPayload = useCallback(async (): Promise<any | null> => {
-    const sock = outlineWsRef.current as any;
-    if (!sock || typeof sock.send !== 'function') return null;
-    const requestId = `ol-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-    const branch = String((window as any).UiContext?.currentBranch || '').trim();
-    const msg: any = await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        outlineEditorSyncPendingRef.current.delete(requestId);
-        reject(new Error('editor_sync timeout'));
-      }, 60000);
-      outlineEditorSyncPendingRef.current.set(requestId, { resolve, reject, timer });
-      sock.send(JSON.stringify({ type: 'request_editor_sync', requestId, branch }));
-    });
-    if (msg.error) throw new Error(msg.error);
-    return msg.baseData ?? null;
-  }, []);
-
   const refetchOutlineData = useCallback(async () => {
+    const domainId = (window as any).UiContext?.domainId || 'system';
+    const apiPath = basePath === 'base/skill' ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
+    const apiQs: Record<string, string> = {};
+    if (docId && basePath === 'base') apiQs.docId = docId;
+    const curBranch = (window as any).UiContext?.currentBranch;
+    if (curBranch) apiQs.branch = curBranch;
     try {
-      const newData = await fetchOutlineEditorSyncPayload();
+      const newData: any = await request.get(apiPath, apiQs);
       if (newData?.nodes != null || newData?.edges != null) {
         setBase(prev => ({ ...prev, ...newData, nodes: newData.nodes ?? prev.nodes, edges: newData.edges ?? prev.edges }));
       }
@@ -822,15 +804,22 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     } catch (e) {
       console.error('[BaseOutline] refetchOutlineData failed:', e);
     }
-  }, [fetchOutlineEditorSyncPayload]);
+  }, [basePath, docId]);
 
+ 
+  const outlineWsRef = useRef<{ close: () => void } | null>(null);
   useEffect(() => {
     const socketUrl = (window as any).UiContext?.socketUrl;
     const wsPrefix = (window as any).UiContext?.ws_prefix || '';
+    const domainId = (window as any).UiContext?.domainId || 'system';
     if (!socketUrl) return;
 
     let closed = false;
+    const apiPath = basePath === 'base/skill' ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
+    const wsApiQs: Record<string, string> = {};
+    if (docId && basePath === 'base') wsApiQs.docId = docId;
     const wsBranch = (window as any).UiContext?.currentBranch;
+    if (wsBranch) wsApiQs.branch = wsBranch;
 
     const connect = async () => {
       try {
@@ -843,29 +832,16 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           if (closed) return;
           try {
             const msg = JSON.parse(data);
-            if (msg.type === 'editor_sync') {
-              const pend = outlineEditorSyncPendingRef.current.get(msg.requestId);
-              if (pend) {
-                clearTimeout(pend.timer);
-                outlineEditorSyncPendingRef.current.delete(msg.requestId);
-                pend.resolve(msg);
-              }
-              return;
-            }
             if (msg.type === 'init' || msg.type === 'update') {
               if (msg.type === 'update' && msg.sourceBranch && wsBranch && msg.sourceBranch !== wsBranch) return;
-              const newData = msg.baseData;
-              if (newData && (newData.nodes || newData.edges)) {
-                const nextBase: BaseDoc = {
-                  ...baseRef.current,
-                  ...newData,
-                  nodes: newData.nodes ?? baseRef.current.nodes,
-                  edges: newData.edges ?? baseRef.current.edges,
-                };
-                setBase(nextBase);
-                const nextMap = newData.nodeCardsMap != null ? newData.nodeCardsMap : {};
-                setNodeCardsMap(nextMap);
-              }
+              request.get(apiPath, wsApiQs).then((newData: any) => {
+                if (!closed && newData && (newData.nodes || newData.edges)) {
+                  const nextBase: BaseDoc = { ...baseRef.current, ...newData, nodes: newData.nodes ?? baseRef.current.nodes, edges: newData.edges ?? baseRef.current.edges };
+                  setBase(nextBase);
+                  const nextMap = newData.nodeCardsMap != null ? newData.nodeCardsMap : {};
+                  setNodeCardsMap(nextMap);
+                }
+              }).catch(() => {});
             }
           } catch (e) {
             // ignore parse error
@@ -958,26 +934,25 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
 
        
        
+        const filteredNodes = updatedNodes.filter(n => !n.id.startsWith('temp-node-'));
+        const filteredEdges = currentBase.edges.filter(e => 
+          !e.source.startsWith('temp-node-') && 
+          !e.target.startsWith('temp-node-') &&
+          !e.id.startsWith('temp-edge-')
+        );
+        
         const domainIdForSave = (window as any).UiContext?.domainId || 'system';
-        if (basePath !== 'base/skill' && docId) {
-          const docIdNum = Number(docId);
-          if (Number.isFinite(docIdNum) && docIdNum > 0) {
-            const outlineExpandBranch = (window as any).UiContext?.currentBranch || 'main';
-            await request.post(`/d/${domainIdForSave}/base/batch-save`, {
-              docId: docIdNum,
-              branch: outlineExpandBranch,
-              expandedNodeIds: Array.from(currentExpandedNodes),
-              nodeCreates: [],
-              nodeUpdates: [],
-              nodeDeletes: [],
-              cardCreates: [],
-              cardUpdates: [],
-              cardDeletes: [],
-              edgeCreates: [],
-              edgeDeletes: [],
-            });
-          }
-        }
+        const saveUrl = basePath === 'base/skill'
+          ? `/d/${domainIdForSave}/base/skill/save`
+          : `/d/${domainIdForSave}/base/save`;
+        const saveBranch = (window as any).UiContext?.currentBranch || 'main';
+        await request.post(saveUrl, {
+          ...(docId ? { docId } : {}),
+          branch: saveBranch,
+          nodes: filteredNodes,
+          edges: filteredEdges,
+          operationDescription: '自动保存 outline 展开状态',
+        });
         
        
        
@@ -2783,26 +2758,33 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       }
       
      
-      fetchOutlineEditorSyncPayload().then((responseData) => {
-        if (!responseData) return;
+      const domainId = (window as any).UiContext?.domainId || 'system';
+      const dataApiPath = basePath === 'base/skill' ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
+      const dataQs2: Record<string, string> = {};
+      if (docId && basePath === 'base') dataQs2.docId = docId;
+      const dBranch2 = (window as any).UiContext?.currentBranch;
+      if (dBranch2) dataQs2.branch = dBranch2;
+      request.get(dataApiPath, dataQs2).then((responseData) => {
         if (responseData?.base) {
           setBase(responseData.base);
         } else {
-          setBase(responseData as BaseDoc);
+          setBase(responseData);
         }
         if ((window as any).UiContext) {
           const updatedMap = responseData?.nodeCardsMap
-            || (responseData as any)?.base?.nodeCardsMap
+            || responseData?.base?.nodeCardsMap
             || {};
           (window as any).UiContext.nodeCardsMap = updatedMap;
-
+          
+         
           const nodeCards = updatedMap[selectedCard.nodeId || ''] || [];
           const updatedCard = nodeCards.find((c: Card) => c.docId === selectedCard.docId);
           if (updatedCard) {
             setSelectedCard(updatedCard);
           }
         }
-
+        
+       
         urlParams.delete('fromEdit');
         const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
         window.history.replaceState({}, '', newUrl);
@@ -2810,7 +2792,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         console.error('Failed to reload data:', error);
       });
     }
-  }, [docId, selectedCard, basePath, fetchOutlineEditorSyncPayload]);
+  }, [docId, selectedCard]);
 
  
  
@@ -2901,85 +2883,104 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
               }
             }
           } else if (msg.type === 'init' || msg.type === 'update') {
-            if (msg.type === 'update' && msg.sourceBranch) {
-              const dBranch = (window as any).UiContext?.currentBranch;
-              if (dBranch && msg.sourceBranch !== dBranch) return;
-            }
+           
             setTimeout(() => {
-              const responseData = msg.baseData;
-              if (!responseData || (!responseData.nodes && !responseData.edges)) return;
-              const newBase = responseData?.base || responseData;
-
-              const currentExpandedNodes = expandedNodesRef.current;
-
-              const mergedNodes = newBase.nodes.map((node: BaseNode) => {
-                const isCurrentlyExpanded = currentExpandedNodes.has(node.id);
-
-                return {
-                  ...node,
-                  expandedOutline: currentExpandedNodes.has(node.id) ? isCurrentlyExpanded : (node.expandedOutline !== false),
-                };
-              });
-
-              setBase({
-                ...newBase,
-                nodes: mergedNodes,
-              });
-
-              setExpandedNodes(prev => {
-                const newSet = new Set(prev);
-                let changed = false;
-                mergedNodes.forEach((node: BaseNode) => {
-                  if (!prev.has(node.id)) {
-                    if (node.expandedOutline !== false) {
-                      newSet.add(node.id);
-                      changed = true;
-                    }
-                  }
+              const domainId = (window as any).UiContext?.domainId || 'system';
+              const dataApiPath = basePath === 'base/skill' ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
+              const dataQs: Record<string, string> = {};
+              if (docId && basePath === 'base') dataQs.docId = docId;
+              const dBranch = (window as any).UiContext?.currentBranch;
+              if (dBranch) dataQs.branch = dBranch;
+              request.get(dataApiPath, dataQs).then((responseData) => {
+                const newBase = responseData?.base || responseData;
+                
+               
+                const currentExpandedNodes = expandedNodesRef.current;
+                
+               
+                const mergedNodes = newBase.nodes.map((node: BaseNode) => {
+                  const isCurrentlyExpanded = currentExpandedNodes.has(node.id);
+                 
+                  return {
+                    ...node,
+                    expandedOutline: currentExpandedNodes.has(node.id) ? isCurrentlyExpanded : (node.expandedOutline !== false),
+                  };
                 });
-                if (changed) {
-                  expandedNodesRef.current = newSet;
-                }
-                return changed ? newSet : prev;
-              });
-
-              if ((window as any).UiContext) {
-                const updatedMap = responseData?.nodeCardsMap
-                  || responseData?.base?.nodeCardsMap
-                  || {};
-                (window as any).UiContext.nodeCardsMap = updatedMap;
-                setNodeCardsMap(updatedMap);
-
-                const currentSelectedCard = selectedCard;
-                if (currentSelectedCard) {
-                  const nodeCards = updatedMap[currentSelectedCard.nodeId || ''] || [];
-                  const updatedCard = nodeCards.find((c: Card) => c.docId === currentSelectedCard.docId);
-                  if (updatedCard) {
-                    if (updatedCard.updateAt && currentSelectedCard.updateAt &&
-                        updatedCard.updateAt !== currentSelectedCard.updateAt) {
-                      setTimeout(() => {
-                        const cardIdStr = String(currentSelectedCard.docId);
-                        delete cardContentCacheRef.current[cardIdStr];
-                        cachedCardsRef.current.delete(cardIdStr);
-                        try {
-                          const cacheKey = `base-outline-card-${cardIdStr}`;
-                          localStorage.removeItem(cacheKey);
-                        } catch (error) {
-                          console.error('Failed to remove from localStorage:', error);
-                        }
-                      }, 0);
+                
+                setBase({
+                  ...newBase,
+                  nodes: mergedNodes,
+                });
+                
+               
+               
+                setExpandedNodes(prev => {
+                  const newSet = new Set(prev);
+                  let changed = false;
+                  mergedNodes.forEach((node: BaseNode) => {
+                   
+                    if (!prev.has(node.id)) {
+                      if (node.expandedOutline !== false) {
+                        newSet.add(node.id);
+                        changed = true;
+                      }
                     }
-
-                    if (JSON.stringify(updatedCard) !== JSON.stringify(currentSelectedCard)) {
-                      setSelectedCard(updatedCard);
-                    }
-                  } else {
-                    selectedFileIdRef.current = null;
-                    setSelectedFileId(null);
-                    setSelectedCard(null);
+                   
+                  });
+                  if (changed) {
+                    expandedNodesRef.current = newSet;
                   }
+                  return changed ? newSet : prev;
+                });
+                
+                if ((window as any).UiContext) {
+                  const updatedMap = responseData?.nodeCardsMap
+                    || responseData?.base?.nodeCardsMap
+                    || {};
+                  (window as any).UiContext.nodeCardsMap = updatedMap;
+                  setNodeCardsMap(updatedMap);
+                  
+                 
+                  const currentSelectedCard = selectedCard;
+                  if (currentSelectedCard) {
+                    const nodeCards = updatedMap[currentSelectedCard.nodeId || ''] || [];
+                    const updatedCard = nodeCards.find((c: Card) => c.docId === currentSelectedCard.docId);
+                    if (updatedCard) {
+                     
+                      if (updatedCard.updateAt && currentSelectedCard.updateAt && 
+                          updatedCard.updateAt !== currentSelectedCard.updateAt) {
+                       
+                        setTimeout(() => {
+                          const cardIdStr = String(currentSelectedCard.docId);
+                          delete cardContentCacheRef.current[cardIdStr];
+                          cachedCardsRef.current.delete(cardIdStr);
+                          try {
+                            const cacheKey = `base-outline-card-${cardIdStr}`;
+                            localStorage.removeItem(cacheKey);
+                          } catch (error) {
+                            console.error('Failed to remove from localStorage:', error);
+                          }
+                        }, 0);
+                      }
+                     
+                     
+                      if (JSON.stringify(updatedCard) !== JSON.stringify(currentSelectedCard)) {
+                        setSelectedCard(updatedCard);
+                      }
+                    } else {
+                     
+                      selectedFileIdRef.current = null;
+                      setSelectedFileId(null);
+                      setSelectedCard(null);
+                    }
+                  }
+                  
+                 
+                 
                 }
-              }
+              }).catch((error) => {
+                console.error('Failed to reload data:', error);
+              });
             }, 0);
           }
         } catch (error) {
@@ -4187,19 +4188,17 @@ const page = new NamedPage(['base_outline', 'base_skill_outline', 'base_outline_
    
     let initialData: BaseDoc;
     try {
-      const rawInit = (window as any).UiContext?.initialBaseDoc;
-      if (
-        !rawInit ||
-        typeof rawInit !== 'object' ||
-        (rawInit.nodes == null && rawInit.edges == null)
-      ) {
-        Notification.error(`加载${isSkill ? 'Skills' : '知识库'}失败: 缺少初始数据`);
-        return;
-      }
-      initialData = rawInit as BaseDoc;
-
+     
+      const apiPath = isSkill ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
+      const branch = (window as any).UiContext?.currentBranch || undefined;
+      const params: Record<string, string> = {};
+      if (docId) params.docId = docId;
+      if (branch) params.branch = branch;
+      const response = await request.get(apiPath, params);
+      initialData = response;
+     
       if (!initialData.docId) {
-        initialData = { ...initialData, docId: docId || '' };
+        initialData.docId = docId || '';
       }
       if (!initialData.branches) {
         const bd = (initialData as any).branchData;
