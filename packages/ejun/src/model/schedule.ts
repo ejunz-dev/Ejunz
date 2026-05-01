@@ -74,9 +74,10 @@ export async function apply(ctx: Context) {
             const { settleStaleSessionsAtUtc0 } = await import('../lib/sessionDailySettle');
             const r = await settleStaleSessionsAtUtc0();
             new Logger('task/session').info(
-                'settleStaleSessionsAtUtc0: learn=%d develop=%d',
+                'settleStaleSessionsAtUtc0: learn=%d develop=%d developDailyTimedOut=%d',
                 r.learn,
                 r.develop,
+                r.developDailyTimedOut,
             );
         });
     });
