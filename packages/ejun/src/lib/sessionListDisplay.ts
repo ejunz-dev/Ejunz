@@ -5,6 +5,7 @@ import {
     isDevelopSessionPastDeadline,
     isSessionStalePastUtcCalendarDay,
     readDevelopSessionDeadlineMs,
+    readDevelopDailyTimedOutMs,
 } from './sessionUtcDaily';
 
 export {
@@ -12,6 +13,7 @@ export {
     effectiveLessonQueueYmd,
     isDevelopSessionPastDeadline,
     isSessionStalePastUtcCalendarDay,
+    readDevelopDailyTimedOutMs,
     readDevelopSessionDeadlineMs,
     sessionUtcYmd,
 } from './sessionUtcDaily';
@@ -158,6 +160,17 @@ export function deriveSessionLearnStatus(doc: SessionDoc, now = Date.now()): Ses
     if (isDevelopSessionRow(doc)) {
         if (isDevelopSessionSettled(doc)) return 'finished';
         if ((doc as { lessonAbandonedAt?: Date | null }).lessonAbandonedAt) return 'abandoned';
+        // 定时任务已写入 DB：每日开发 UTC 跨日超时
+        if (
+            inferDevelopSessionKind(doc) === 'daily'
+            && readDevelopDailyTimedOutMs(doc) != null
+        ) {
+            return 'timed_out';
+        }
+        // 推导规则（任务未跑或与 DB 一致）：每日开发锚定 UTC 日历日
+        if (inferDevelopSessionKind(doc) === 'daily' && isSessionStalePastUtcCalendarDay(doc, now)) {
+            return 'timed_out';
+        }
         if (isDevelopSessionPastDeadline(doc, now)) return 'timed_out';
         if (!readDevelopSessionDeadlineMs(doc) && isSessionStalePastUtcCalendarDay(doc, now)) return 'timed_out';
         const t = doc.lastActivityAt ? new Date(doc.lastActivityAt).getTime() : 0;

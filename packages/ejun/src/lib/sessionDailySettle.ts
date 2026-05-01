@@ -63,8 +63,64 @@ export async function settleStaleDailyLessonSessionsUtc(): Promise<number> {
 }
 
 /**
- * Clear `domain.user` develop daily pointers that still reference a develop session whose UTC anchor day has passed.
- * Session documents are not mutated (status remains `timed_out` via {@link isSessionStalePastUtcCalendarDay} on read).
+ * 每日开发会话：将已跨 UTC 日历日（或已超过 developSessionDeadlineAt）且未正常结束的行写入
+ * `progress.developDailyTimedOutAt`，与 {@link deriveSessionLearnStatus} 的 `timed_out` 一致。
+ */
+export async function markStaleDailyDevelopSessionsTimedOutUtc(): Promise<number> {
+    const now = Date.now();
+    const nowDate = new Date();
+    let count = 0;
+    const cursor = SessionModel.coll.find({
+        appRoute: 'develop',
+        $and: [
+            { $or: [{ lessonAbandonedAt: null }, { lessonAbandonedAt: { $exists: false } }] },
+            developSessionNotSettledMongoFilter,
+            developDailySessionKindMongo,
+            {
+                $or: [
+                    { 'progress.developDailyTimedOutAt': { $exists: false } },
+                    { 'progress.developDailyTimedOutAt': null },
+                ],
+            },
+        ],
+    });
+    for await (const raw of cursor) {
+        const doc = raw as SessionDoc;
+        const staleByDay = isSessionStalePastUtcCalendarDay(doc, now);
+        const pastDeadline = isDevelopSessionPastDeadline(doc, now);
+        if (!staleByDay && !pastDeadline) continue;
+
+        const prevRaw = doc.progress;
+        const prev =
+            prevRaw && typeof prevRaw === 'object' && !Array.isArray(prevRaw)
+                ? { ...(prevRaw as Record<string, unknown>) }
+                : {};
+        if (prev.developDailyTimedOutAt != null) continue;
+
+        prev.developDailyTimedOutAt = nowDate;
+        await SessionModel.coll.updateOne(
+            { _id: doc._id },
+            {
+                $set: {
+                    progress: prev as SessionDoc['progress'],
+                    updatedAt: nowDate,
+                    lastActivityAt: nowDate,
+                },
+            },
+        );
+        deleteUserCache(doc.domainId);
+        const updated = await SessionModel.coll.findOne({ _id: doc._id });
+        if (updated) {
+            bus.broadcast('session/change', updated as SessionDoc);
+            count += 1;
+        }
+    }
+    return count;
+}
+
+/**
+ * Clear `domain.user` develop daily pointers that still reference a develop session whose UTC anchor day has passed
+ * (or deadline passed), after {@link markStaleDailyDevelopSessionsTimedOutUtc} may have updated the row.
  */
 export async function settleStaleDevelopSessionPointersUtc(): Promise<number> {
     const now = Date.now();
@@ -103,9 +159,14 @@ export async function settleStaleDevelopSessionPointersUtc(): Promise<number> {
     return cleared;
 }
 
-/** UTC midnight housekeeping: learn queue cleanup + develop pointer cleanup (shared calendar-day rule). */
-export async function settleStaleSessionsAtUtc0(): Promise<{ learn: number; develop: number }> {
+/** UTC midnight housekeeping: learn queue cleanup + develop 超时落库 + develop 指针清理。 */
+export async function settleStaleSessionsAtUtc0(): Promise<{
+    learn: number;
+    develop: number;
+    developDailyTimedOut: number;
+}> {
     const learn = await settleStaleDailyLessonSessionsUtc();
+    const developDailyTimedOut = await markStaleDailyDevelopSessionsTimedOutUtc();
     const develop = await settleStaleDevelopSessionPointersUtc();
-    return { learn, develop };
+    return { learn, develop, developDailyTimedOut };
 }
