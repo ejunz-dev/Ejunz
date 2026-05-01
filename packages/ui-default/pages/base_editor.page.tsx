@@ -103,6 +103,11 @@ type FileItem = {
   clipboardType?: 'copy' | 'cut'; 
 };
 
+/** 仅保存标题与层级顺序，用于「复制结构 / 粘贴结构」（卡片正文为空）。 */
+type EditorStructureEntry =
+  | { kind: 'card'; title: string; order: number }
+  | { kind: 'node'; title: string; order: number; children: EditorStructureEntry[] };
+
 interface PendingChange {
   file: FileItem;
   content: string;
@@ -2131,6 +2136,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
   const [emptyAreaContextMenu, setEmptyAreaContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [clipboard, setClipboard] = useState<{ type: 'copy' | 'cut'; items: FileItem[] } | null>(null);
+  /** 右键「复制结构」得到的子树（不含被选中的节点自身），粘贴时在目标节点下重建同名空卡片结构。 */
+  const [structureClipboard, setStructureClipboard] = useState<EditorStructureEntry[] | null>(null);
   const [sortWindow, setSortWindow] = useState<{ nodeId: string } | null>(null);
   const [migrateToNewBaseModal, setMigrateToNewBaseModal] = useState<{ nodeId: string } | null>(null);
   const [migrateNewBaseTitle, setMigrateNewBaseTitle] = useState('');
@@ -5785,6 +5792,283 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
     setContextMenu(null);
   }, [clipboard, base, setBase, cleanupPendingForTempItem, triggerExpandAutoSave]);
+
+  const getNodeChildrenStructure = useCallback(
+    (parentNodeId: string): EditorStructureEntry[] => {
+      const collect = (nodeIdForParent: string): EditorStructureEntry[] => {
+      const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+      const deletedNodeIds = new Set(
+        Array.from(pendingDeletes.values())
+          .filter((d) => d.type === 'node')
+          .map((d) => d.id),
+      );
+      const deletedCardIds = new Set(
+        Array.from(pendingDeletes.values())
+          .filter((d) => d.type === 'card')
+          .map((d) => d.id),
+      );
+      if (deletedNodeIds.has(nodeIdForParent)) return [];
+
+      const childNodes = base.edges
+        .filter((e) => e.source === nodeIdForParent)
+        .map((e) => base.nodes.find((n) => n.id === e.target))
+        .filter((n): n is BaseNode => n != null)
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+      const nodeCards = (nodeCardsMap[nodeIdForParent] || [])
+        .filter((c: Card) => !c.nodeId || c.nodeId === nodeIdForParent)
+        .filter((c: Card) => !deletedCardIds.has(c.docId))
+        .sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
+
+      const existingCardIds = new Set((nodeCardsMap[nodeIdForParent] || []).map((c: Card) => c.docId));
+      const existingNodeIds = new Set(base.nodes.map((n) => n.id));
+
+      const pendingCards = Array.from(pendingCreatesRef.current.values())
+        .filter((c) => c.type === 'card' && c.nodeId === nodeIdForParent && !existingCardIds.has(c.tempId))
+        .map((create) => {
+          const tempCard = (nodeCardsMap[nodeIdForParent] || []).find((c: Card) => c.docId === create.tempId);
+          const maxCardOrder = nodeCards.length > 0 ? Math.max(...nodeCards.map((c: Card) => c.order || 0)) : 0;
+          const maxNodeOrder = childNodes.length > 0 ? Math.max(...childNodes.map((n) => n.order || 0)) : 0;
+          const maxOrder = Math.max(maxCardOrder, maxNodeOrder);
+          return {
+            type: 'card' as const,
+            id: create.tempId,
+            order: tempCard?.order || maxOrder + 1,
+            data: tempCard || {
+              docId: create.tempId,
+              title: create.title || i18n('New card'),
+              nodeId: nodeIdForParent,
+              order: maxOrder + 1,
+            },
+            isPending: true,
+          };
+        });
+
+      const pendingNodes = Array.from(pendingCreatesRef.current.values())
+        .filter((c) => c.type === 'node' && c.nodeId === nodeIdForParent && !existingNodeIds.has(c.tempId))
+        .map((create) => {
+          const tempNode = base.nodes.find((n) => n.id === create.tempId);
+          const maxCardOrder = nodeCards.length > 0 ? Math.max(...nodeCards.map((c: Card) => c.order || 0)) : 0;
+          const maxNodeOrder = childNodes.length > 0 ? Math.max(...childNodes.map((n) => n.order || 0)) : 0;
+          const maxOrder = Math.max(maxCardOrder, maxNodeOrder);
+          return {
+            type: 'node' as const,
+            id: create.tempId,
+            order: tempNode?.order || maxOrder + 1,
+            data: tempNode || {
+              id: create.tempId,
+              text: create.text || i18n('New node'),
+              order: maxOrder + 1,
+            },
+            isPending: true,
+          };
+        });
+
+      const allChildren: Array<{
+        type: 'node' | 'card';
+        id: string;
+        order: number;
+        data: any;
+        isPending?: boolean;
+      }> = [
+        ...childNodes.map((n) => ({
+          type: 'node' as const,
+          id: n.id,
+          order: n.order || 0,
+          data: n,
+          isPending: false,
+        })),
+        ...nodeCards.map((c) => ({
+          type: 'card' as const,
+          id: c.docId,
+          order: c.order || 0,
+          data: c,
+          isPending: false,
+        })),
+        ...pendingCards,
+        ...pendingNodes,
+      ];
+      allChildren.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+      const out: EditorStructureEntry[] = [];
+      for (const item of allChildren) {
+        if (item.type === 'card') {
+          const card = item.data as Card;
+          if (deletedCardIds.has(card.docId)) continue;
+          const renameRecord =
+            pendingRenames.get(`card-${card.docId}`) ?? pendingRenames.get(card.docId);
+          const title = renameRecord ? renameRecord.newName : card.title || i18n('Unnamed Card');
+          out.push({
+            kind: 'card',
+            title: title.trim() || i18n('Unnamed Card'),
+            order: item.order,
+          });
+        } else {
+          const node = item.data as BaseNode;
+          const nodeId = item.id;
+          if (deletedNodeIds.has(nodeId)) continue;
+          const title =
+            pendingRenames.get(nodeId)?.newName ?? node.text ?? i18n('Unnamed Node');
+          out.push({
+            kind: 'node',
+            title: title.trim() || i18n('Unnamed Node'),
+            order: item.order,
+            children: collect(nodeId),
+          });
+        }
+      }
+      return out;
+      };
+      return collect(parentNodeId);
+    },
+    [base.nodes, base.edges, pendingDeletes, pendingRenames, nodeCardsMapVersion, i18n],
+  );
+
+  const handleCopyStructure = useCallback(
+    (sourceNodeId: string) => {
+      if (!sourceNodeId) return;
+      const struct = getNodeChildrenStructure(sourceNodeId);
+      setStructureClipboard(struct);
+      setContextMenu(null);
+      Notification.success(struct.length === 0 ? '已复制结构（无子项）' : `已复制结构（顶层 ${struct.length} 项）`);
+    },
+    [getNodeChildrenStructure],
+  );
+
+  const handlePasteStructure = useCallback(
+    (targetNodeId: string) => {
+      if (!structureClipboard || structureClipboard.length === 0 || !targetNodeId) return;
+      if (pendingDeletes.has(targetNodeId)) {
+        Notification.error(i18n('Cannot create: node is in delete list'));
+        setContextMenu(null);
+        return;
+      }
+      const nodeExists = base.nodes.some((n) => n.id === targetNodeId);
+      if (!nodeExists && !targetNodeId.startsWith('temp-node-')) {
+        Notification.error(i18n('Cannot create: node does not exist'));
+        setContextMenu(null);
+        return;
+      }
+
+      const rawMap = (window as any).UiContext?.nodeCardsMap || {};
+      const nodeCardsMap: Record<string, Card[]> = {};
+      for (const k of Object.keys(rawMap)) {
+        nodeCardsMap[k] = [...(rawMap[k] || [])];
+      }
+
+      const createdNodeIds: string[] = [];
+      let edgeCounter = 0;
+
+      const maxSiblingOrder = (
+        parentId: string,
+        nodes: BaseNode[],
+        edges: BaseEdge[],
+        map: Record<string, Card[]>,
+      ) => {
+        const childNodeIds = edges.filter((e) => e.source === parentId).map((e) => e.target);
+        const childNodes = childNodeIds
+          .map((id) => nodes.find((n) => n.id === id))
+          .filter((n): n is BaseNode => n != null);
+        const cards = (map[parentId] || []).filter((c: Card) => !c.nodeId || c.nodeId === parentId);
+        const allOrders: number[] = [
+          ...cards.map((c: Card) => c.order ?? 0),
+          ...childNodes.map((n) => n.order ?? 0),
+        ];
+        return allOrders.length > 0 ? Math.max(...allOrders) : 0;
+      };
+
+      setBase((prev) => {
+        let nodes = [...prev.nodes];
+        let edges = [...prev.edges];
+
+        const applyEntries = (parentId: string, entries: EditorStructureEntry[]) => {
+          const sorted = [...entries].sort((a, b) => a.order - b.order);
+          for (const ent of sorted) {
+            const nextOrder = maxSiblingOrder(parentId, nodes, edges, nodeCardsMap) + 1;
+            if (ent.kind === 'card') {
+              const tempId = `temp-card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+              pendingCreatesRef.current.set(tempId, {
+                type: 'card',
+                nodeId: parentId,
+                title: ent.title,
+                tempId,
+              });
+              if (!nodeCardsMap[parentId]) nodeCardsMap[parentId] = [];
+              const tempCard: Card = {
+                docId: tempId,
+                cid: 0,
+                nodeId: parentId,
+                title: ent.title,
+                content: '',
+                order: nextOrder,
+                updateAt: new Date().toISOString(),
+              } as Card;
+              nodeCardsMap[parentId].push(tempCard);
+              nodeCardsMap[parentId].sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
+            } else {
+              const tempId = `temp-node-${Date.now()}-${edgeCounter++}-${Math.random().toString(36).substr(2, 9)}`;
+              pendingCreatesRef.current.set(tempId, {
+                type: 'node',
+                nodeId: parentId,
+                text: ent.title,
+                tempId,
+              });
+              const tempNode: BaseNode = {
+                id: tempId,
+                text: ent.title,
+                order: nextOrder,
+              };
+              const newEdge: BaseEdge = {
+                id: `temp-edge-${Date.now()}-${edgeCounter}-${Math.random().toString(36).substr(2, 9)}`,
+                source: parentId,
+                target: tempId,
+              };
+              nodes = [...nodes, tempNode].map((n) =>
+                n.id === parentId ? { ...n, expanded: true } : n,
+              );
+              edges = [...edges, newEdge];
+              if (!nodeCardsMap[tempId]) nodeCardsMap[tempId] = [];
+              createdNodeIds.push(tempId);
+              applyEntries(tempId, ent.children);
+            }
+          }
+        };
+
+        applyEntries(targetNodeId, structureClipboard);
+
+        nodes = nodes.map((n) => (n.id === targetNodeId ? { ...n, expanded: true } : n));
+
+        const updated = { ...prev, nodes, edges };
+        baseRef.current = updated;
+        return updated;
+      });
+
+      (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+      setPendingCreatesCount(pendingCreatesRef.current.size);
+      setNodeCardsMapVersion((v) => v + 1);
+
+      setExpandedNodes((prev) => {
+        const next = new Set(prev);
+        next.add(targetNodeId);
+        for (const id of createdNodeIds) next.add(id);
+        expandedNodesRef.current = next;
+        if (!prev.has(targetNodeId) || createdNodeIds.length > 0) {
+          triggerExpandAutoSave();
+        }
+        return next;
+      });
+
+      setContextMenu(null);
+    },
+    [
+      structureClipboard,
+      base.nodes,
+      pendingDeletes,
+      setBase,
+      triggerExpandAutoSave,
+      i18n,
+    ],
+  );
 
   
   useEffect(() => {
@@ -10671,6 +10955,46 @@ Reply with a JSON code block only for executable operations, using this shape:
                   <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
                 </>
               )}
+              {structureClipboard != null && structureClipboard.length > 0 && (
+                <>
+                  <div
+                    style={{
+                      padding: '6px 16px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      color: themeStyles.textPrimary,
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                    onClick={() => handlePasteStructure(contextMenu.file.nodeId || '')}
+                  >
+                    粘贴结构（顶层 {structureClipboard.length} 项）
+                  </div>
+                  <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
+                </>
+              )}
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: themeStyles.textPrimary,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => handleCopyStructure(contextMenu.file.nodeId || '')}
+              >
+                复制结构
+              </div>
+              <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
               <div
                 style={{
                   padding: '6px 16px',
