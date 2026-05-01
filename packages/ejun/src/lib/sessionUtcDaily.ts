@@ -59,17 +59,6 @@ function isDevelopRoute(doc: SessionDoc): boolean {
     return doc.appRoute === 'develop' || doc.route === 'develop';
 }
 
-/**
- * Shared rule for learn daily + develop: the session is tied to a UTC calendar day and that day is strictly
- * before `now`’s UTC date.
- *
- * - **Develop** (`appRoute`/`route` develop): anchor = {@link sessionRowCreatedAnchorYmd} (same idea as learn
- *   legacy fallback when `lessonQueueDay` is absent).
- * - **Learn daily** (`lessonMode === 'today'`): non-empty queue → {@link dailyRunAnchorYmd}; empty queue but
- *   explicit `lessonQueueDay` → compare that string to today.
- *
- * Does not inspect abandoned / settled / finished; callers gate those first.
- */
 /** Wall-clock end of develop editor session (aligned with login cookie `saved_expire_seconds`). */
 export function readDevelopSessionDeadlineMs(doc: SessionDoc | null | undefined): number | null {
     if (!doc) return null;
@@ -87,11 +76,39 @@ export function readDevelopSessionDeadlineMs(doc: SessionDoc | null | undefined)
     return null;
 }
 
+/** Persisted UTC-day timeout for daily develop sessions (written by {@link markStaleDailyDevelopSessionsTimedOutUtc}). */
+export function readDevelopDailyTimedOutMs(doc: SessionDoc | null | undefined): number | null {
+    if (!doc) return null;
+    const p = doc.progress as Record<string, unknown> | undefined;
+    if (!p || typeof p !== 'object') return null;
+    const v = p.developDailyTimedOutAt;
+    if (v instanceof Date) {
+        const t = v.getTime();
+        return Number.isNaN(t) ? null : t;
+    }
+    if (typeof v === 'string' && v.trim()) {
+        const t = new Date(v.trim()).getTime();
+        return Number.isNaN(t) ? null : t;
+    }
+    return null;
+}
+
 export function isDevelopSessionPastDeadline(doc: SessionDoc | null | undefined, now: number = Date.now()): boolean {
     const t = readDevelopSessionDeadlineMs(doc);
     return t != null && now > t;
 }
 
+/**
+ * Shared rule for learn daily + develop: the session is tied to a UTC calendar day and that day is strictly
+ * before `now`’s UTC date.
+ *
+ * - **Develop** (`appRoute`/`route` develop): anchor = {@link sessionRowCreatedAnchorYmd} (same idea as learn
+ *   legacy fallback when `lessonQueueDay` is absent).
+ * - **Learn daily** (`lessonMode === 'today'`): non-empty queue → {@link dailyRunAnchorYmd}; empty queue but
+ *   explicit `lessonQueueDay` → compare that string to today.
+ *
+ * Does not inspect abandoned / settled / finished; callers gate those first.
+ */
 export function isSessionStalePastUtcCalendarDay(doc: SessionDoc, now: number = Date.now()): boolean {
     const todayYmd = sessionUtcYmd(now);
     if (isDevelopRoute(doc)) {
