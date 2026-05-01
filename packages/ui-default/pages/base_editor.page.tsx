@@ -103,10 +103,57 @@ type FileItem = {
   clipboardType?: 'copy' | 'cut'; 
 };
 
-/** 仅保存标题与层级顺序，用于「复制结构 / 粘贴结构」（卡片正文为空）。 */
+/** Titles + tree order only, for copy/paste structure (card bodies omitted). */
 type EditorStructureEntry =
   | { kind: 'card'; title: string; order: number }
   | { kind: 'node'; title: string; order: number; children: EditorStructureEntry[] };
+
+/** Clipboard JSON for node context menu Export structure+content: children cards/nodes under the node (excluding the node itself). */
+const BASE_SUBTREE_CLIPBOARD_MARKER = 'ejunz-base-subtree-v1';
+
+type EditorSubtreeCardSnapshot = {
+  title: string;
+  content: string;
+  cardFace?: string;
+  cid?: number;
+  problems?: Problem[];
+  files?: CardFileInfo[];
+};
+
+type EditorSubtreeExportEntry =
+  | { kind: 'card'; order: number; card: EditorSubtreeCardSnapshot }
+  | {
+        kind: 'node';
+        order: number;
+        title: string;
+        node?: Pick<BaseNode, 'color' | 'backgroundColor' | 'fontSize' | 'shape'>;
+        children: EditorSubtreeExportEntry[];
+    };
+
+type EditorSubtreeExportPayload = {
+  marker: typeof BASE_SUBTREE_CLIPBOARD_MARKER;
+  version: 1;
+  exportedAt: string;
+  entries: EditorSubtreeExportEntry[];
+};
+
+function parseSubtreeExportPayload(raw: string): EditorSubtreeExportPayload | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw.trim());
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object') return null;
+  const o = parsed as Record<string, unknown>;
+  if (o.marker !== BASE_SUBTREE_CLIPBOARD_MARKER || o.version !== 1 || !Array.isArray(o.entries)) return null;
+  return o as EditorSubtreeExportPayload;
+}
+
+function cloneProblemsWithNewPid(problems: Problem[] | undefined): Problem[] | undefined {
+  if (!problems?.length) return undefined;
+  return problems.map((p) => migrateRawProblem({ ...JSON.parse(JSON.stringify(p)), pid: nanoid() }));
+}
 
 interface PendingChange {
   file: FileItem;
@@ -124,6 +171,37 @@ function sameCardDocId(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (a == null || b == null) return false;
   return String(a) === String(b);
+}
+
+/**
+ * Mirrors copy-content: pending map keys match explorer `FileItem.id` (`card-${docId}` for saved cards,
+ * raw docId like `temp-card-*` for pending). Subtree export tries those keys and, when this card is
+ * focused, prefers the editor buffer as the visible source.
+ */
+function resolveCardExportBody(
+  card: Card,
+  pendingChanges: Map<string, PendingChange>,
+  opts?: { selectedFile: FileItem | null; editorInstance: any },
+): string {
+  const cid = String(card.docId);
+  const pendingKeys =
+    cid.startsWith('temp-card-') ? [cid, `card-${cid}`] : [`card-${cid}`, cid];
+  if (opts?.selectedFile?.type === 'card' && sameCardDocId(opts.selectedFile.cardId, card.docId)) {
+    const ed = opts.editorInstance;
+    try {
+      if (ed && typeof ed.value === 'function') {
+        const live = ed.value();
+        if (typeof live === 'string') return live;
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+  for (const k of pendingKeys) {
+    const p = pendingChanges.get(k);
+    if (p?.content !== undefined && p.content !== null) return p.content;
+  }
+  return typeof card.content === 'string' ? card.content : '';
 }
 
 /** Prose outside ```json fences only (not generic ``` code blocks). */
@@ -345,6 +423,123 @@ interface PendingDelete {
   nodeId?: string;
 }
 
+/** Pending card body keyed like explorer `FileItem.id` (`card-{id}` or raw `temp-card-…`). */
+function getPendingDraftCardBody(card: Card, pendingChanges: Map<string, PendingChange>): string | undefined {
+  const cid = String(card.docId);
+  const keys = cid.startsWith('temp-card-') ? [cid, `card-${cid}`] : [`card-${cid}`, cid];
+  for (const k of keys) {
+    const p = pendingChanges.get(k);
+    if (p?.content !== undefined && p.content !== null) return p.content;
+  }
+  return undefined;
+}
+
+/**
+ * WebSocket/refetch replaces `nodeCardsMap` from the server snapshot; merge so temp cards +
+ * unsubmitted drafts (body / rename / face) and pending drag order are preserved.
+ */
+function mergeServerNodeCardsMapWithLocalDrafts(opts: {
+  serverMap: Record<string, Card[]>;
+  localMap: Record<string, Card[]>;
+  pendingChanges: Map<string, PendingChange>;
+  pendingRenames: Map<string, PendingRename>;
+  pendingCardFaceChanges: Record<string, string>;
+  pendingDragChanges: Set<string>;
+  pendingCreates: Map<string, PendingCreate>;
+}): Record<string, Card[]> {
+  const {
+    serverMap,
+    localMap,
+    pendingChanges,
+    pendingRenames,
+    pendingCardFaceChanges,
+    pendingDragChanges,
+    pendingCreates,
+  } = opts;
+
+  const out: Record<string, Card[]> = {};
+  const nodeIds = new Set([...Object.keys(serverMap || {}), ...Object.keys(localMap || {})]);
+
+  for (const nodeId of nodeIds) {
+    if (String(nodeId).startsWith('temp-node-')) {
+      const lc = localMap[nodeId];
+      if (lc?.length) out[nodeId] = lc.map((c) => ({ ...c }));
+      continue;
+    }
+
+    const serverCards = [...(serverMap[nodeId] || [])];
+    const localCards = localMap[nodeId] || [];
+    const localById = new Map(localCards.map((c) => [String(c.docId), c]));
+
+    const merged: Card[] = serverCards.map((sc) => {
+      const sid = String(sc.docId);
+      const lc = localById.get(sid);
+      let card = { ...sc } as Card;
+
+      const draftBody = getPendingDraftCardBody(card, pendingChanges);
+      if (draftBody !== undefined) card = { ...card, content: draftBody };
+
+      const rename = pendingRenames.get(`card-${sid}`) ?? pendingRenames.get(sid);
+      if (rename?.newName) card = { ...card, title: rename.newName };
+
+      const cf = pendingCardFaceChanges[sid];
+      if (cf !== undefined) card = { ...card, cardFace: cf };
+
+      if (
+        lc &&
+        typeof lc.order === 'number' &&
+        pendingDragChanges.has(sid)
+      ) {
+        card = { ...card, order: lc.order };
+      }
+
+      return card;
+    });
+
+    const seen = new Set(merged.map((c) => String(c.docId)));
+    const tempLocals = localCards.filter((c) => {
+      const tid = String(c.docId);
+      return tid.startsWith('temp-card-') && pendingCreates.has(tid);
+    });
+    for (const tc of tempLocals) {
+      const tid = String(tc.docId);
+      if (seen.has(tid)) continue;
+      seen.add(tid);
+      let tcCopy = { ...tc } as Card;
+      const db = getPendingDraftCardBody(tcCopy, pendingChanges);
+      if (db !== undefined) tcCopy = { ...tcCopy, content: db };
+      merged.push(tcCopy);
+    }
+
+    let ordered = merged;
+    const needsLocalOrder = localCards.some((c) => pendingDragChanges.has(String(c.docId)));
+
+    if (needsLocalOrder && localCards.length > 0) {
+      const byId = new Map(ordered.map((c) => [String(c.docId), c]));
+      const nextList: Card[] = [];
+      const used = new Set<string>();
+      for (const lc of localCards) {
+        const id = String(lc.docId);
+        const c = byId.get(id);
+        if (!c || used.has(id)) continue;
+        nextList.push({ ...c, order: lc.order ?? c.order ?? 0 });
+        used.add(id);
+      }
+      for (const c of ordered) {
+        const id = String(c.docId);
+        if (!used.has(id)) nextList.push(c);
+      }
+      ordered = nextList;
+    } else {
+      ordered.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    }
+
+    out[nodeId] = ordered;
+  }
+
+  return out;
+}
+
 function baseProblemJsonStable(a: Problem, b: Problem): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
@@ -364,7 +559,7 @@ function problemKindLabelI18n(k: ProblemKind): string {
   }
 }
 
-// Editable problem item（单选 / 多选 / 判断 / 翻转）
+// Editable problem row (single / multi / true-false / flip)
 const EditableProblem = React.memo(({
   problem,
   index,
@@ -1747,7 +1942,17 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                   };
                 });
                 if ((window as any).UiContext) {
-                  (window as any).UiContext.nodeCardsMap = nextNodeCardsMap;
+                  const localMap = ((window as any).UiContext.nodeCardsMap || {}) as Record<string, Card[]>;
+                  const merged = mergeServerNodeCardsMapWithLocalDrafts({
+                    serverMap: nextNodeCardsMap,
+                    localMap,
+                    pendingChanges: pendingChangesRef.current,
+                    pendingRenames: pendingRenamesRef.current,
+                    pendingCardFaceChanges: pendingCardFaceChangesRef.current,
+                    pendingDragChanges: pendingDragChangesRef.current,
+                    pendingCreates: pendingCreatesRef.current,
+                  });
+                  (window as any).UiContext.nodeCardsMap = merged;
                 }
                 setNodeCardsMapVersion(v => v + 1);
               }).catch(() => {});
@@ -1991,6 +2196,20 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [pendingDragChanges, setPendingDragChanges] = useState<Set<string>>(new Set());
   const [nodeCardsMapVersion, setNodeCardsMapVersion] = useState(0);
 
+  const pendingChangesRef = useRef(pendingChanges);
+  const pendingRenamesRef = useRef(pendingRenames);
+  const pendingDragChangesRef = useRef(pendingDragChanges);
+  const pendingCardFaceChangesRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    pendingChangesRef.current = pendingChanges;
+  }, [pendingChanges]);
+  useEffect(() => {
+    pendingRenamesRef.current = pendingRenames;
+  }, [pendingRenames]);
+  useEffect(() => {
+    pendingDragChangesRef.current = pendingDragChanges;
+  }, [pendingDragChanges]);
+
   const refetchEditorData = useCallback(async () => {
     const domainId = (window as any).UiContext?.domainId || 'system';
     const apiPath = basePath === 'base/skill'
@@ -2024,7 +2243,17 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         });
       }
       if ((window as any).UiContext && newData?.nodeCardsMap != null) {
-        (window as any).UiContext.nodeCardsMap = newData.nodeCardsMap;
+        const localMap = ((window as any).UiContext.nodeCardsMap || {}) as Record<string, Card[]>;
+        const merged = mergeServerNodeCardsMapWithLocalDrafts({
+          serverMap: newData.nodeCardsMap,
+          localMap,
+          pendingChanges: pendingChangesRef.current,
+          pendingRenames: pendingRenamesRef.current,
+          pendingCardFaceChanges: pendingCardFaceChangesRef.current,
+          pendingDragChanges: pendingDragChangesRef.current,
+          pendingCreates: pendingCreatesRef.current,
+        });
+        (window as any).UiContext.nodeCardsMap = merged;
       }
       setNodeCardsMapVersion(v => v + 1);
     } catch (e) {
@@ -2136,7 +2365,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
   const [emptyAreaContextMenu, setEmptyAreaContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [clipboard, setClipboard] = useState<{ type: 'copy' | 'cut'; items: FileItem[] } | null>(null);
-  /** 右键「复制结构」得到的子树（不含被选中的节点自身），粘贴时在目标节点下重建同名空卡片结构。 */
+  /** Subtree from Copy structure (excludes the clicked node); paste recreates empty skeleton under target. */
   const [structureClipboard, setStructureClipboard] = useState<EditorStructureEntry[] | null>(null);
   const [sortWindow, setSortWindow] = useState<{ nodeId: string } | null>(null);
   const [migrateToNewBaseModal, setMigrateToNewBaseModal] = useState<{ nodeId: string } | null>(null);
@@ -2144,6 +2373,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [migrateNewBaseBid, setMigrateNewBaseBid] = useState('');
   const [migrateToNewBaseSubmitting, setMigrateToNewBaseSubmitting] = useState(false);
   const [importWindow, setImportWindow] = useState<{ nodeId: string } | null>(null);
+  const [nodeSubtreePasteWindow, setNodeSubtreePasteWindow] = useState<{ nodeId: string } | null>(null);
+  const [nodeSubtreePasteText, setNodeSubtreePasteText] = useState('');
   const [cardFaceWindow, setCardFaceWindow] = useState<{ file: FileItem } | null>(null);
   const [cardFileListModal, setCardFileListModal] = useState<{ cardId: string; nodeId: string; cardTitle: string } | null>(null);
   const [nodeFileListModal, setNodeFileListModal] = useState<{ nodeId: string; nodeTitle: string } | null>(null);
@@ -2157,6 +2388,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const pendingNodeUploadRef = useRef<{ nodeId: string } | null>(null);
   const [cardFaceEditContent, setCardFaceEditContent] = useState('');
   const [pendingCardFaceChanges, setPendingCardFaceChanges] = useState<Record<string, string>>({});
+  useEffect(() => {
+    pendingCardFaceChangesRef.current = pendingCardFaceChanges;
+  }, [pendingCardFaceChanges]);
   const cardFaceEditorRef = useRef<HTMLTextAreaElement | null>(null);
   const cardFaceEditorInstanceRef = useRef<any>(null);
   const [importText, setImportText] = useState('');
@@ -2243,7 +2477,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const originalProblemsRef = useRef<Map<string, Map<string, Problem>>>(new Map());
   const [originalProblemsVersion, setOriginalProblemsVersion] = useState(0);
 
-  /** 仅有「整卡题目需保存」但未落在题目新建/题目更改里时（典型：删除已有题目），用于待提交面板单独列出。 */
+  /** Card has problem-related pending save (e.g. deleted problem) not counted as new/edited problem — shown separately in pending panel. */
   const problemPendingOtherCardIds = useMemo(() => {
     return Array.from(pendingProblemCardIds).filter((cid) => {
       if (pendingNewProblemCardIds.has(cid)) return false;
@@ -3374,7 +3608,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           const tempCard = createNodeCards.find((c: Card) => c.docId === create.tempId);
 
           
-          const contentChange = allChanges.get(`card-${create.tempId}`);
+          const contentChange =
+            allChanges.get(`card-${create.tempId}`) ?? allChanges.get(String(create.tempId));
+
           const finalContent = contentChange?.content ?? tempCard?.content ?? '';
           
           const cardRenameKey = `card-${create.tempId}`;
@@ -5224,16 +5460,19 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   
   const handleCopyContent = useCallback((file: FileItem) => {
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    const editorOptsForCard = (cardDocId: unknown) => {
+      const match =
+        selectedFileRef.current?.type === 'card' &&
+        sameCardDocId(selectedFileRef.current.cardId, cardDocId)
+          ? selectedFileRef.current
+          : null;
+      return match ? { selectedFile: match, editorInstance } : undefined;
+    };
     let text = '';
     if (file.type === 'card' && file.cardId != null && file.nodeId != null) {
-      const pendingChange = pendingChanges.get(file.id);
-      if (pendingChange) {
-        text = pendingChange.content;
-      } else {
-        const nodeCards = nodeCardsMap[file.nodeId] || [];
-        const card = nodeCards.find((c: Card) => c.docId === file.cardId);
-        text = card?.content || '';
-      }
+      const nodeCards = nodeCardsMap[file.nodeId] || [];
+      const card = nodeCards.find((c: Card) => sameCardDocId(c.docId, file.cardId));
+      text = card ? resolveCardExportBody(card, pendingChanges, editorOptsForCard(card.docId)) : '';
     } else if (file.type === 'node' && file.nodeId != null) {
       const deletedNodeIds = new Set(
         Array.from(pendingDeletes.values()).filter(d => d.type === 'node').map(d => d.id)
@@ -5261,10 +5500,12 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           .filter((c: Card) => (!c.nodeId || c.nodeId === nodeId) && !deletedCardIds.has(c.docId))
           .sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
         for (const card of nodeCards) {
-          const cardFileId = `card-${card.docId}`;
-          const pendingChange = pendingChanges.get(cardFileId);
-          const content = pendingChange ? pendingChange.content : (card.content || '');
-          const title = pendingRenames.get(cardFileId)?.newName ?? card.title ?? '';
+          const content = resolveCardExportBody(card, pendingChanges, editorOptsForCard(card.docId));
+          const title =
+            pendingRenames.get(`card-${card.docId}`)?.newName ??
+            pendingRenames.get(String(card.docId))?.newName ??
+            card.title ??
+            '';
           const titleLine = title.trim() ? `${cardHeading} ${title.trim()}\n\n` : '';
           const block = titleLine + (content.trim() || '');
           if (block.trim()) parts.push(block.trim());
@@ -5296,7 +5537,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       Notification.error('剪贴板不可用');
     }
     setContextMenu(null);
-  }, [pendingChanges, pendingRenames, base, pendingDeletes]);
+  }, [pendingChanges, pendingRenames, base, pendingDeletes, editorInstance]);
 
   
   const handleCut = useCallback((file?: FileItem) => {
@@ -5924,6 +6165,170 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     [base.nodes, base.edges, pendingDeletes, pendingRenames, nodeCardsMapVersion, i18n],
   );
 
+  const getNodeChildrenSubtreeExport = useCallback(
+    (parentNodeId: string): EditorSubtreeExportEntry[] => {
+      const collect = (nodeIdForParent: string): EditorSubtreeExportEntry[] => {
+        const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+        const deletedNodeIds = new Set(
+          Array.from(pendingDeletes.values())
+            .filter((d) => d.type === 'node')
+            .map((d) => d.id),
+        );
+        const deletedCardIds = new Set(
+          Array.from(pendingDeletes.values())
+            .filter((d) => d.type === 'card')
+            .map((d) => d.id),
+        );
+        if (deletedNodeIds.has(nodeIdForParent)) return [];
+
+        const childNodes = base.edges
+          .filter((e) => e.source === nodeIdForParent)
+          .map((e) => base.nodes.find((n) => n.id === e.target))
+          .filter((n): n is BaseNode => n != null)
+          .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+        const nodeCards = (nodeCardsMap[nodeIdForParent] || [])
+          .filter((c: Card) => !c.nodeId || c.nodeId === nodeIdForParent)
+          .filter((c: Card) => !deletedCardIds.has(c.docId))
+          .sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
+
+        const existingCardIds = new Set((nodeCardsMap[nodeIdForParent] || []).map((c: Card) => c.docId));
+        const existingNodeIds = new Set(base.nodes.map((n) => n.id));
+
+        const pendingCards = Array.from(pendingCreatesRef.current.values())
+          .filter((c) => c.type === 'card' && c.nodeId === nodeIdForParent && !existingCardIds.has(c.tempId))
+          .map((create) => {
+            const tempCard = (nodeCardsMap[nodeIdForParent] || []).find((c: Card) => c.docId === create.tempId);
+            const maxCardOrder = nodeCards.length > 0 ? Math.max(...nodeCards.map((c: Card) => c.order || 0)) : 0;
+            const maxNodeOrder = childNodes.length > 0 ? Math.max(...childNodes.map((n) => n.order || 0)) : 0;
+            const maxOrder = Math.max(maxCardOrder, maxNodeOrder);
+            return {
+              type: 'card' as const,
+              id: create.tempId,
+              order: tempCard?.order || maxOrder + 1,
+              data: tempCard || {
+                docId: create.tempId,
+                title: create.title || i18n('New card'),
+                nodeId: nodeIdForParent,
+                order: maxOrder + 1,
+              },
+              isPending: true,
+            };
+          });
+
+        const pendingNodes = Array.from(pendingCreatesRef.current.values())
+          .filter((c) => c.type === 'node' && c.nodeId === nodeIdForParent && !existingNodeIds.has(c.tempId))
+          .map((create) => {
+            const tempNode = base.nodes.find((n) => n.id === create.tempId);
+            const maxCardOrder = nodeCards.length > 0 ? Math.max(...nodeCards.map((c: Card) => c.order || 0)) : 0;
+            const maxNodeOrder = childNodes.length > 0 ? Math.max(...childNodes.map((n) => n.order || 0)) : 0;
+            const maxOrder = Math.max(maxCardOrder, maxNodeOrder);
+            return {
+              type: 'node' as const,
+              id: create.tempId,
+              order: tempNode?.order || maxOrder + 1,
+              data: tempNode || {
+                id: create.tempId,
+                text: create.text || i18n('New node'),
+                order: maxOrder + 1,
+              },
+              isPending: true,
+            };
+          });
+
+        const allChildren: Array<{
+          type: 'node' | 'card';
+          id: string;
+          order: number;
+          data: any;
+          isPending?: boolean;
+        }> = [
+          ...childNodes.map((n) => ({
+            type: 'node' as const,
+            id: n.id,
+            order: n.order || 0,
+            data: n,
+            isPending: false,
+          })),
+          ...nodeCards.map((c) => ({
+            type: 'card' as const,
+            id: c.docId,
+            order: c.order || 0,
+            data: c,
+            isPending: false,
+          })),
+          ...pendingCards,
+          ...pendingNodes,
+        ];
+        allChildren.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+        const out: EditorSubtreeExportEntry[] = [];
+        for (const item of allChildren) {
+          if (item.type === 'card') {
+            const card = item.data as Card;
+            if (deletedCardIds.has(card.docId)) continue;
+            const cid = card.docId;
+            const renameRecord =
+              pendingRenames.get(`card-${cid}`) ?? pendingRenames.get(String(cid));
+            const title =
+              renameRecord?.newName || card.title || i18n('Unnamed Card');
+            const content = resolveCardExportBody(card, pendingChanges, {
+              selectedFile: selectedFileRef.current,
+              editorInstance,
+            });
+            const cardFace =
+              pendingCardFaceChanges[String(cid)] ?? card.cardFace ?? undefined;
+            const snap: EditorSubtreeCardSnapshot = {
+              title: title.trim() || i18n('Unnamed Card'),
+              content,
+              cid: card.cid,
+            };
+            if (cardFace) snap.cardFace = cardFace;
+            if (card.problems?.length) {
+              snap.problems = JSON.parse(JSON.stringify(card.problems)) as Problem[];
+            }
+            if (card.files?.length) {
+              snap.files = JSON.parse(JSON.stringify(card.files)) as CardFileInfo[];
+            }
+            out.push({ kind: 'card', order: item.order, card: snap });
+          } else {
+            const node = item.data as BaseNode;
+            const nodeId = item.id;
+            if (deletedNodeIds.has(nodeId)) continue;
+            const title =
+              pendingRenames.get(nodeId)?.newName ?? node.text ?? i18n('Unnamed Node');
+            const style: Pick<BaseNode, 'color' | 'backgroundColor' | 'fontSize' | 'shape'> = {};
+            if (node.color !== undefined) style.color = node.color;
+            if (node.backgroundColor !== undefined) style.backgroundColor = node.backgroundColor;
+            if (node.fontSize !== undefined) style.fontSize = node.fontSize;
+            if (node.shape !== undefined) style.shape = node.shape;
+            const hasStyle = Object.keys(style).length > 0;
+            out.push({
+              kind: 'node',
+              title: title.trim() || i18n('Unnamed Node'),
+              order: item.order,
+              ...(hasStyle ? { node: style } : {}),
+              children: collect(nodeId),
+            });
+          }
+        }
+        return out;
+      };
+      return collect(parentNodeId);
+    },
+    [
+      base.nodes,
+      base.edges,
+      pendingDeletes,
+      pendingRenames,
+      pendingChanges,
+      pendingCardFaceChanges,
+      nodeCardsMapVersion,
+      i18n,
+      editorInstance,
+    ],
+  );
+
   const handleCopyStructure = useCallback(
     (sourceNodeId: string) => {
       if (!sourceNodeId) return;
@@ -6067,6 +6472,276 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       setBase,
       triggerExpandAutoSave,
       i18n,
+    ],
+  );
+
+  const handleExportNodeSubtreeClipboard = useCallback(
+    async (sourceNodeId: string) => {
+      if (!sourceNodeId) return;
+      const entries = getNodeChildrenSubtreeExport(sourceNodeId);
+      const payload: EditorSubtreeExportPayload = {
+        marker: BASE_SUBTREE_CLIPBOARD_MARKER,
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        entries,
+      };
+      const json = JSON.stringify(payload);
+      try {
+        if (!navigator.clipboard?.writeText) {
+          Notification.error('当前环境不支持剪贴板 API');
+        } else {
+          await navigator.clipboard.writeText(json);
+          Notification.success(
+            entries.length === 0 ? '已复制到剪贴板（无子项）' : `已复制到剪贴板（顶层 ${entries.length} 项，含正文与题目等）`,
+          );
+        }
+      } catch {
+        Notification.error('无法写入剪贴板，请检查浏览器权限或 HTTPS');
+      }
+      setContextMenu(null);
+    },
+    [getNodeChildrenSubtreeExport],
+  );
+
+  const handleOpenSubtreeImportModal = useCallback(
+    async (nodeId: string) => {
+      if (!nodeId) return;
+      if (pendingDeletes.has(nodeId)) {
+        Notification.error(i18n('Cannot import: node is in delete list'));
+        setContextMenu(null);
+        return;
+      }
+      const nodeExists = base.nodes.some((n) => n.id === nodeId);
+      if (!nodeExists && !nodeId.startsWith('temp-node-')) {
+        Notification.error(i18n('Cannot create: node does not exist'));
+        setContextMenu(null);
+        return;
+      }
+      let prefill = '';
+      try {
+        prefill = (await navigator.clipboard?.readText?.()) ?? '';
+      } catch {
+        /* paste manually */
+      }
+      setNodeSubtreePasteText(prefill.trim());
+      setNodeSubtreePasteWindow({ nodeId });
+      setContextMenu(null);
+    },
+    [pendingDeletes, base.nodes, i18n],
+  );
+
+  const handleConfirmSubtreePaste = useCallback(
+    (targetNodeId: string, textRaw: string) => {
+      const payload = parseSubtreeExportPayload(textRaw);
+      if (!payload || !payload.entries.length) {
+        Notification.error('无法解析：请粘贴由「导出结构与内容」生成的完整 JSON');
+        return;
+      }
+      if (pendingDeletes.has(targetNodeId)) {
+        Notification.error(i18n('Cannot import: node is in delete list'));
+        return;
+      }
+      const nodeExists = base.nodes.some((n) => n.id === targetNodeId);
+      if (!nodeExists && !targetNodeId.startsWith('temp-node-')) {
+        Notification.error(i18n('Cannot create: node does not exist'));
+        return;
+      }
+
+      const rawMap = (window as any).UiContext?.nodeCardsMap || {};
+      const nodeCardsMap: Record<string, Card[]> = {};
+      for (const k of Object.keys(rawMap)) {
+        nodeCardsMap[k] = [...(rawMap[k] || [])];
+      }
+
+      const createdNodeIds: string[] = [];
+      let edgeCounter = 0;
+      const pendingChangesToAdd = new Map<string, PendingChange>();
+      const problemPidAcc: string[] = [];
+      const problemCardTempIds: string[] = [];
+
+      const maxSiblingOrder = (
+        parentId: string,
+        nodes: BaseNode[],
+        edges: BaseEdge[],
+        map: Record<string, Card[]>,
+      ) => {
+        const childNodeIds = edges.filter((e) => e.source === parentId).map((e) => e.target);
+        const childNodes = childNodeIds
+          .map((id) => nodes.find((n) => n.id === id))
+          .filter((n): n is BaseNode => n != null);
+        const cards = (map[parentId] || []).filter((c: Card) => !c.nodeId || c.nodeId === parentId);
+        const allOrders: number[] = [
+          ...cards.map((c: Card) => c.order ?? 0),
+          ...childNodes.map((n) => n.order ?? 0),
+        ];
+        return allOrders.length > 0 ? Math.max(...allOrders) : 0;
+      };
+
+      setBase((prev) => {
+        let nodes = [...prev.nodes];
+        let edges = [...prev.edges];
+
+        const applyEntries = (parentId: string, ents: EditorSubtreeExportEntry[]) => {
+          const sorted = [...ents].sort((a, b) => a.order - b.order);
+          for (const ent of sorted) {
+            const nextOrder = maxSiblingOrder(parentId, nodes, edges, nodeCardsMap) + 1;
+            if (ent.kind === 'card') {
+              const snap = ent.card || { title: '', content: '' };
+              const tempId = `temp-card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+              const titleTrim =
+                typeof snap.title === 'string'
+                  ? snap.title.trim()
+                  : i18n('Unnamed Card');
+              const rawContent = typeof snap.content === 'string' ? snap.content : '';
+              const problemsCloned = cloneProblemsWithNewPid(snap.problems);
+              pendingCreatesRef.current.set(tempId, {
+                type: 'card',
+                nodeId: parentId,
+                title: titleTrim || i18n('Unnamed Card'),
+                tempId,
+              });
+              if (!nodeCardsMap[parentId]) nodeCardsMap[parentId] = [];
+              const tempCard: Card = {
+                docId: tempId,
+                cid: 0,
+                nodeId: parentId,
+                title: titleTrim || i18n('Unnamed Card'),
+                content: rawContent,
+                order: nextOrder,
+                updateAt: new Date().toISOString(),
+              } as Card;
+              const cf = typeof snap.cardFace === 'string' ? snap.cardFace.trim() : '';
+              if (cf) tempCard.cardFace = cf;
+              if (problemsCloned?.length) {
+                tempCard.problems = problemsCloned;
+              }
+              if (snap.files?.length) {
+                tempCard.files = JSON.parse(JSON.stringify(snap.files)) as CardFileInfo[];
+              }
+              nodeCardsMap[parentId].push(tempCard);
+              nodeCardsMap[parentId].sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
+
+              const fileItem: FileItem = {
+                type: 'card',
+                id: `card-${tempId}`,
+                name: tempCard.title,
+                nodeId: parentId,
+                cardId: tempId,
+                parentId,
+                level: 0,
+              };
+              if (rawContent !== '') {
+                pendingChangesToAdd.set(`card-${tempId}`, {
+                  file: fileItem,
+                  content: rawContent,
+                  originalContent: '',
+                });
+              }
+              if (problemsCloned?.length) {
+                problemCardTempIds.push(tempId);
+                for (const p of problemsCloned) {
+                  problemPidAcc.push(p.pid);
+                }
+              }
+            } else {
+              const tempNodeId = `temp-node-${Date.now()}-${edgeCounter++}-${Math.random().toString(36).substr(2, 9)}`;
+              const nodeTitle =
+                typeof ent.title === 'string'
+                  ? ent.title.trim()
+                  : i18n('Unnamed Node');
+              pendingCreatesRef.current.set(tempNodeId, {
+                type: 'node',
+                nodeId: parentId,
+                text: nodeTitle || i18n('Unnamed Node'),
+                tempId: tempNodeId,
+              });
+              const style = ent.node;
+              const tempNode: BaseNode = {
+                id: tempNodeId,
+                text: nodeTitle || i18n('Unnamed Node'),
+                order: nextOrder,
+                ...(style && typeof style === 'object' ? style : {}),
+              };
+              const newEdge: BaseEdge = {
+                id: `temp-edge-${Date.now()}-${edgeCounter}-${Math.random().toString(36).substr(2, 9)}`,
+                source: parentId,
+                target: tempNodeId,
+              };
+              nodes = [...nodes, tempNode].map((n) =>
+                n.id === parentId ? { ...n, expanded: true } : n,
+              );
+              edges = [...edges, newEdge];
+              if (!nodeCardsMap[tempNodeId]) nodeCardsMap[tempNodeId] = [];
+              createdNodeIds.push(tempNodeId);
+              applyEntries(tempNodeId, Array.isArray(ent.children) ? ent.children : []);
+            }
+          }
+        };
+
+        applyEntries(targetNodeId, payload.entries);
+
+        nodes = nodes.map((n) => (n.id === targetNodeId ? { ...n, expanded: true } : n));
+
+        const updated = { ...prev, nodes, edges };
+        baseRef.current = updated;
+        return updated;
+      });
+
+      (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+      setPendingCreatesCount(pendingCreatesRef.current.size);
+      setNodeCardsMapVersion((v) => v + 1);
+
+      setPendingChanges((prev) => {
+        const next = new Map(prev);
+        pendingChangesToAdd.forEach((v, k) => next.set(k, v));
+        return next;
+      });
+
+      if (problemPidAcc.length) {
+        setNewProblemIds((prev) => {
+          const nset = new Set(prev);
+          for (const pid of problemPidAcc) nset.add(pid);
+          return nset;
+        });
+      }
+      if (problemCardTempIds.length) {
+        setPendingNewProblemCardIds((prev) => {
+          const n = new Set(prev);
+          for (const id of problemCardTempIds) n.add(id);
+          return n;
+        });
+        setPendingProblemCardIds((prev) => {
+          const n = new Set(prev);
+          for (const id of problemCardTempIds) n.add(id);
+          return n;
+        });
+      }
+
+      setExpandedNodes((prev) => {
+        const next = new Set(prev);
+        next.add(targetNodeId);
+        for (const id of createdNodeIds) next.add(id);
+        expandedNodesRef.current = next;
+        if (!prev.has(targetNodeId) || createdNodeIds.length > 0) {
+          triggerExpandAutoSave();
+        }
+        return next;
+      });
+
+      Notification.success(`已导入 ${payload.entries.length} 项顶层结构（含内容与题目），请保存以持久化`);
+      setNodeSubtreePasteWindow(null);
+      setNodeSubtreePasteText('');
+    },
+    [
+      base.nodes,
+      pendingDeletes,
+      setBase,
+      triggerExpandAutoSave,
+      i18n,
+      setPendingChanges,
+      setPendingNewProblemCardIds,
+      setPendingProblemCardIds,
+      setNewProblemIds,
     ],
   );
 
@@ -6343,7 +7018,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
   type AiChatRefCore = { type: 'node' | 'card'; id: string; name: string; path: string[] };
 
-  /** 将多个 node/card 作为 @引用依次插入底部 AI 终端（树顺序；去重）。 */
+  /** Insert multiple node/card @-refs into AI terminal (tree order, deduped). */
   const appendFileReferencesToAiChat = useCallback(
     (files: FileItem[]) => {
       if (editorAiHidden || !files.length) return;
@@ -6414,7 +7089,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     [base.nodes, editorAiHidden, getNodePath, nodeCardsMapVersion],
   );
 
-  /** 单条插入；多选模式下若右键项在选中集合内，则按树顺序一次插入全部选中项。 */
+  /** Single insertion; multi-select expands to all selected in tree order when context target is selected. */
   const appendFileReferenceToAiChat = useCallback(
     (file: FileItem) => {
       if (editorAiHidden) return;
@@ -6542,7 +7217,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     return expandedMessage;
   }, [base, getNodePath]);
 
-  /** 将引用条中的项展开为与 @提及 一致的「路径 + 全文」说明，供发送给模型。 */
+  /** Expand toolbar reference chips to path + full body text aligned with @-mention format for model prompt. */
   const expandBarRefsForAiSend = useCallback(
     (refs: Array<{ type: 'node' | 'card'; id: string; name: string; path: string[] }>): string => {
       if (!refs.length) return '';
@@ -10994,6 +11669,44 @@ Reply with a JSON code block only for executable operations, using this shape:
               >
                 复制结构
               </div>
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: themeStyles.textPrimary,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => {
+                  void handleExportNodeSubtreeClipboard(contextMenu.file.nodeId || '');
+                }}
+              >
+                导出结构与内容（剪贴板）
+              </div>
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: themeStyles.textPrimary,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => {
+                  void handleOpenSubtreeImportModal(contextMenu.file.nodeId || '');
+                }}
+              >
+                导入结构与内容…
+              </div>
               <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
               <div
                 style={{
@@ -11441,7 +12154,7 @@ Reply with a JSON code block only for executable operations, using this shape:
                 }}
                 onClick={() => handleOpenImportWindow(contextMenu.file.nodeId || '')}
               >
-                导入
+                导入 Markdown 卡片
               </div>
               {basePath !== 'base/skill' && docId && contextMenu.file.nodeId && !String(contextMenu.file.nodeId).startsWith('temp-node-') && (
                 <div
@@ -12757,7 +13470,7 @@ Reply with a JSON code block only for executable operations, using this shape:
               fontWeight: 500,
               color: themeStyles.textPrimary,
             }}>
-              导入
+              导入 Markdown 卡片
             </div>
             <div style={{ padding: '16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
               <p style={{ margin: '0 0 10px', fontSize: '13px', color: themeStyles.textSecondary }}>
@@ -12822,6 +13535,128 @@ Reply with a JSON code block only for executable operations, using this shape:
                 }}
               >
                 确定
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Node subtree: import structure+content JSON (export writes clipboard from context menu) */}
+      {nodeSubtreePasteWindow && (
+        <>
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.3)',
+              zIndex: 1100,
+            }}
+            onClick={() => {
+              setNodeSubtreePasteWindow(null);
+              setNodeSubtreePasteText('');
+            }}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: '92%',
+              maxWidth: '720px',
+              maxHeight: '82vh',
+              backgroundColor: themeStyles.bgPrimary,
+              border: `1px solid ${themeStyles.borderSecondary}`,
+              borderRadius: '8px',
+              boxShadow: theme === 'dark' ? '0 4px 24px rgba(0,0,0,0.5)' : '0 4px 24px rgba(0,0,0,0.15)',
+              zIndex: 1101,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                padding: '16px',
+                borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+                fontSize: '15px',
+                fontWeight: 500,
+                color: themeStyles.textPrimary,
+              }}
+            >
+              导入结构与内容
+            </div>
+            <div style={{ padding: '16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <p style={{ margin: '0 0 10px', fontSize: '13px', color: themeStyles.textSecondary }}>
+                将「导出结构与内容」复制的 JSON 粘贴到下方，将挂到当前右键节点之下。卡面与附件元数据会一并恢复；保存后写入服务器。
+              </p>
+              <textarea
+                value={nodeSubtreePasteText}
+                onChange={(e) => setNodeSubtreePasteText(e.target.value)}
+                spellCheck={false}
+                placeholder='{"marker":"ejunz-base-subtree-v1","version":1,...}'
+                style={{
+                  width: '100%',
+                  flex: 1,
+                  minHeight: '240px',
+                  padding: '12px',
+                  fontSize: '12px',
+                  fontFamily: 'monospace',
+                  color: themeStyles.textPrimary,
+                  backgroundColor: themeStyles.bgSecondary,
+                  border: `1px solid ${themeStyles.borderPrimary}`,
+                  borderRadius: '4px',
+                  resize: 'vertical',
+                }}
+              />
+            </div>
+            <div
+              style={{
+                padding: '12px 16px',
+                borderTop: `1px solid ${themeStyles.borderPrimary}`,
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: '8px',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setNodeSubtreePasteWindow(null);
+                  setNodeSubtreePasteText('');
+                }}
+                style={{
+                  padding: '6px 14px',
+                  fontSize: '13px',
+                  color: themeStyles.textSecondary,
+                  backgroundColor: themeStyles.bgSecondary,
+                  border: `1px solid ${themeStyles.borderSecondary}`,
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                {i18n('Cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  handleConfirmSubtreePaste(nodeSubtreePasteWindow.nodeId, nodeSubtreePasteText);
+                }}
+                style={{
+                  padding: '6px 14px',
+                  fontSize: '13px',
+                  color: '#fff',
+                  backgroundColor: themeStyles.accent,
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                确定导入
               </button>
             </div>
           </div>
