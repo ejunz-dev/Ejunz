@@ -3607,11 +3607,17 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           }
           const tempCard = createNodeCards.find((c: Card) => c.docId === create.tempId);
 
-          
-          const contentChange =
-            allChanges.get(`card-${create.tempId}`) ?? allChanges.get(String(create.tempId));
-
-          const finalContent = contentChange?.content ?? tempCard?.content ?? '';
+          /** Same as export / switch-card: pending keys differ for temp vs saved; include live editor when focused. */
+          const finalContent = resolveCardExportBody(
+            tempCard || ({
+              docId: create.tempId,
+              nodeId: createNodeId,
+              content: '',
+              title: create.title,
+            } as Card),
+            allChanges,
+            { selectedFile, editorInstance },
+          );
           
           const cardRenameKey = `card-${create.tempId}`;
           const renameRecord = pendingRenames.get(cardRenameKey);
