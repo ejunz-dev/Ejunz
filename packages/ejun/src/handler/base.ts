@@ -4,7 +4,7 @@ import { Handler, param, route, post, Types, ConnectionHandler, subscribe } from
 import { NotFoundError, ForbiddenError, BadRequestError, ValidationError, FileLimitExceededError, FileUploadError, FileExistsError } from '../error';
 import { PRIV, PERM } from '../model/builtin';
 import { BaseModel, CardModel, TYPE_CARD } from '../model/base';
-import type { BaseDoc, BaseNode, BaseEdge, CardDoc, FileInfo } from '../interface';
+import type { BaseDoc, BaseNode, BaseEdge, CardDoc, FileInfo, ProblemFlip, ProblemTrueFalse, ProblemFillBlank, ProblemSingle, ProblemMulti } from '../interface';
 import * as document from '../model/document';
 import { exec as execCb, execFile as execFileCb } from 'child_process';
 import fs from 'fs';
@@ -45,6 +45,7 @@ import {
     isDevelopSessionSettled,
 } from '../lib/sessionListDisplay';
 import { isDevelopSessionPastDeadline, readDevelopSessionDeadlineMs } from '../lib/sessionUtcDaily';
+import { problemKind } from '../model/problem';
 
 /** Machine token in {@link BadRequestError} params for API clients (see `request.ajax` in ui-default). */
 const DEVELOP_SESSION_CLOSED_CODE = 'DEVELOP_SESSION_CLOSED';
@@ -440,7 +441,17 @@ async function buildTodayContributionAllDomains(uid: number): Promise<{
         if (Array.isArray(probs)) {
             for (const p of probs) {
                 problems += 1;
-                problemChars += typeof p.stem === 'string' ? p.stem.length : 0;
+                const pk = problemKind(p);
+                if (pk === 'flip') {
+                    problemChars += String((p as ProblemFlip).faceA || '').length
+                        + String((p as ProblemFlip).faceB || '').length;
+                } else if (pk === 'fill_blank') {
+                    const f = p as ProblemFillBlank;
+                    problemChars += String(f.stem || '').length;
+                    if (Array.isArray(f.answers)) problemChars += f.answers.join('').length;
+                } else if (typeof p.stem === 'string') {
+                    problemChars += p.stem.length;
+                }
                 if (Array.isArray(p.options)) problemChars += p.options.join('').length;
                 if (typeof p.analysis === 'string') problemChars += p.analysis.length;
             }
@@ -2936,11 +2947,42 @@ async function exportBaseToFile(base: BaseDoc, outputDir: string, branch?: strin
         const bundleRows: ExportProblemBundleRow[] = [];
         for (const p of card.problems || []) {
             if (!p) continue;
+            let stem = '';
+            let options: string[] = [];
+            let answer = 0;
+            const pk = problemKind(p);
+            if (pk === 'flip') {
+                const f = p as ProblemFlip;
+                stem = f.faceA || '';
+                options = [f.faceB || ''];
+                answer = 0;
+            } else if (pk === 'fill_blank') {
+                const f = p as ProblemFillBlank;
+                stem = f.stem || '';
+                options = [...(f.answers || [])];
+                answer = 0;
+            } else if (pk === 'true_false') {
+                const tf = p as ProblemTrueFalse;
+                stem = tf.stem || '';
+                options = ['0 (false)', '1 (true)'];
+                answer = tf.answer;
+            } else if (pk === 'multi') {
+                const m = p as ProblemMulti;
+                stem = m.stem || '';
+                options = m.options || [];
+                const a = m.answer;
+                answer = Array.isArray(a) && a.length ? a[0] : 0;
+            } else {
+                const s = p as ProblemSingle;
+                stem = s.stem || '';
+                options = s.options || [];
+                answer = typeof s.answer === 'number' ? s.answer : 0;
+            }
             bundleRows.push({
                 pid: p.pid,
-                stem: p.stem || '',
-                options: Array.isArray(p.options) ? p.options : [],
-                answer: typeof p.answer === 'number' ? p.answer : 0,
+                stem,
+                options,
+                answer,
                 analysis: p.analysis,
                 cardTitle: card.title || '',
                 nodeText,

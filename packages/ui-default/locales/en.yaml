@@ -372,6 +372,7 @@ __langname: English
 'Problem kind multi': Multiple choice
 'Problem kind true false': True / false
 'Problem kind flip': Flip card
+'Problem kind fill blank': Fill in the blank
 'Problem field type': Question type
 'Problem option slots': Option slots
 'Problem multi all correct': All correct selections required to pass
@@ -381,6 +382,9 @@ __langname: English
 'Problem face B placeholder': Back text
 'Problem answer true': True
 'Problem answer false': False
+'Problem fill blank stem hint': Use three underscores (___) in the question for each blank. If you omit them, one blank appears after the question text.
+'Problem fill blank answers label': Correct answers (one per blank, left to right)
+'Problem fill blank slot label': 'Blank {0}'
 'Provider (MCP)': Provider (MCP)
 'Provider': Provider
 'Pulling from GitHub...': Pulling from GitHub...

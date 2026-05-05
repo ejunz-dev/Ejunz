@@ -386,7 +386,7 @@ export interface BaseHistoryEntry {
 }
 
 /** Card-attached practice problems (editor + lesson). Legacy rows omit `type` → single choice. */
-export type ProblemKind = 'single' | 'multi' | 'true_false' | 'flip';
+export type ProblemKind = 'single' | 'multi' | 'true_false' | 'flip' | 'fill_blank';
 
 export interface ProblemCommon {
     pid: string;
@@ -428,11 +428,23 @@ export interface ProblemFlip extends ProblemCommon {
     faceB: string;
 }
 
+/**
+ * Fill-in-the-blank: use `___` (three underscores) in `stem` for each blank.
+ * If `stem` has no `___`, a single blank is assumed after the whole stem.
+ * `answers[i]` is the correct text for the i-th blank (order left-to-right).
+ */
+export interface ProblemFillBlank extends ProblemCommon {
+    type: 'fill_blank';
+    stem: string;
+    answers: string[];
+}
+
 export type Problem =
     | ProblemSingle
     | ProblemMulti
     | ProblemTrueFalse
-    | ProblemFlip;
+    | ProblemFlip
+    | ProblemFillBlank;
 
 export interface CardDoc {
     docType: document['TYPE_CARD'];

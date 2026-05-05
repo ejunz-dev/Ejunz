@@ -3,8 +3,15 @@ import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import { i18n, request } from 'vj/utils';
 import Notification from 'vj/components/notification';
-import type { Problem, ProblemSingle, ProblemMulti, ProblemTrueFalse, ProblemFlip } from 'ejun/src/interface';
-import { problemKind, normalizeMultiAnswers, setsEqualAsSorted } from 'ejun/src/model/problem';
+import type { Problem, ProblemSingle, ProblemMulti, ProblemTrueFalse, ProblemFlip, ProblemFillBlank } from 'ejun/src/interface';
+import {
+  problemKind,
+  normalizeMultiAnswers,
+  setsEqualAsSorted,
+  fillBlankSlotCount,
+  fillBlankResponseMatches,
+  normalizeFillBlankText,
+} from 'ejun/src/model/problem';
 
 // Cache keys aligned with base outline (shared image Cache API).
 const BASE_OUTLINE_CARD_CACHE_PREFIX = 'base-outline-card-';
@@ -39,6 +46,7 @@ function lessonProblemKindLabel(k: ReturnType<typeof problemKind>): string {
     k === 'multi' ? 'Problem kind multi'
     : k === 'true_false' ? 'Problem kind true false'
     : k === 'flip' ? 'Problem kind flip'
+    : k === 'fill_blank' ? 'Problem kind fill blank'
     : 'Problem kind single';
   const t = i18n(key);
   return t !== key ? t : k;
@@ -48,6 +56,9 @@ function lessonProblemQueueTitleText(p: QueuedProblem): string {
   if (problemKind(p) === 'flip') {
     const f = p as ProblemFlip;
     return String(f.faceA || '').trim();
+  }
+  if (problemKind(p) === 'fill_blank') {
+    return String((p as ProblemFillBlank).stem || '').trim();
   }
   const stem = (p as ProblemSingle | ProblemMulti | ProblemTrueFalse).stem;
   return String(stem || '').trim();
@@ -451,6 +462,10 @@ function LessonPage() {
       whiteOnAccent: '#fff',
       drawerAsideShadow: dark ? '2px 0 16px rgba(0,0,0,0.5)' : '2px 0 8px rgba(0,0,0,0.15)',
       drawerAsideShadowRight: dark ? '-2px 0 16px rgba(0,0,0,0.5)' : '-2px 0 8px rgba(0,0,0,0.15)',
+      /** Fill-in-the-blank: inputs sit on card — avoid near-black bgPrimary */
+      fillBlankInputBg: dark ? 'rgba(56, 189, 248, 0.12)' : '#f0f7ff',
+      fillBlankInputBorder: dark ? 'rgba(125, 211, 252, 0.5)' : 'rgba(33, 150, 243, 0.4)',
+      fillBlankStemWellBg: dark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
     };
   }, [theme]);
 
@@ -719,12 +734,20 @@ function LessonPage() {
   const [selectedMulti, setSelectedMulti] = useState<number[]>([]);
   const [selectedTf, setSelectedTf] = useState<0 | 1 | null>(null);
   const [flipStage, setFlipStage] = useState<'a' | 'b'>('a');
+  const [fillBlankDraft, setFillBlankDraft] = useState<string[]>([]);
   const [isAnswered, setIsAnswered] = useState(false);
   const [isPassed, setIsPassed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAnalysis, setShowAnalysis] = useState(false);
   const hasCalledPassRef = useRef(false);
-  const [answerHistory, setAnswerHistory] = useState<Array<{ problem: QueuedProblem; selected: number; correct: boolean; timeSpent: number; attempts: number }>>([]);
+  const [answerHistory, setAnswerHistory] = useState<Array<{
+    problem: QueuedProblem;
+    selected: number;
+    correct: boolean;
+    timeSpent: number;
+    attempts: number;
+    fillAnswers?: string[];
+  }>>([]);
   /** Pids removed from queue after a full correct pass (excludes “need more” requeue / wrong). */
   const [practiceClearedPids, setPracticeClearedPids] = useState<Record<string, true>>({});
   const practiceProblemsDoneCount = Object.keys(practiceClearedPids).length;
@@ -1609,6 +1632,13 @@ function LessonPage() {
       const pt = currentProblem as ProblemTrueFalse;
       return selectedTf !== null && selectedTf === pt.answer;
     }
+    if (currentKind === 'fill_blank') {
+      const pf = currentProblem as ProblemFillBlank;
+      const need = fillBlankSlotCount(pf.stem);
+      const u = fillBlankDraft.slice(0, need);
+      while (u.length < need) u.push('');
+      return fillBlankResponseMatches(pf.answers || [], u);
+    }
     if (currentKind === 'flip') {
       return isAnswered;
     }
@@ -1617,7 +1647,11 @@ function LessonPage() {
 
   const allCorrect = problemQueue.length === 0 && answerHistory.length > 0;
 
-  const formatPracticeHistoryUserAnswer = useCallback((h: { problem: QueuedProblem; selected: number }) => {
+  const formatPracticeHistoryUserAnswer = useCallback((h: {
+    problem: QueuedProblem;
+    selected: number;
+    fillAnswers?: string[];
+  }) => {
     const k = problemKind(h.problem);
     if (k === 'single') {
       const ps = h.problem as ProblemSingle;
@@ -1641,6 +1675,10 @@ function LessonPage() {
       return i18n('N/A');
     }
     if (k === 'flip') return i18n('Done');
+    if (k === 'fill_blank') {
+      if (h.fillAnswers?.length) return h.fillAnswers.map((s) => String(s ?? '').trim()).filter(Boolean).join('；') || i18n('N/A');
+      return i18n('N/A');
+    }
     return i18n('N/A');
   }, []);
 
@@ -1662,6 +1700,12 @@ function LessonPage() {
       const pt = p as ProblemTrueFalse;
       return pt.answer === 1 ? i18n('Problem answer true') : i18n('Problem answer false');
     }
+    if (k === 'fill_blank') {
+      const pf = p as ProblemFillBlank;
+      const a = pf.answers || [];
+      if (!a.length) return i18n('N/A');
+      return a.map((s) => String(s ?? '').trim()).filter(Boolean).join('；') || i18n('N/A');
+    }
     if (k === 'flip') return i18n('Problem kind flip');
     return i18n('N/A');
   }, []);
@@ -1673,6 +1717,11 @@ function LessonPage() {
     setSelectedMulti([]);
     setSelectedTf(null);
     setFlipStage('a');
+    setFillBlankDraft(
+      k === 'fill_blank'
+        ? Array.from({ length: fillBlankSlotCount((currentProblem as ProblemFillBlank).stem) }, () => '')
+        : [],
+    );
     setIsAnswered(false);
     setShowAnalysis(false);
     setProblemStartTime(Date.now());
@@ -1735,6 +1784,7 @@ function LessonPage() {
           correct: h.correct,
           timeSpent: h.timeSpent,
           attempts: h.attempts,
+          ...(h.fillAnswers ? { fillAnswers: h.fillAnswers } : {}),
         })),
         totalTime: totalTimeMs,
         isAlonePractice: isAlonePractice && !isSingleNodeMode && !isTodayMode,
@@ -1838,6 +1888,7 @@ function LessonPage() {
     timeSpent: number,
     problemId: string,
     currentAttempts: number,
+    fillAnswers?: string[],
   ) => {
     if (correct) {
       setAnswerHistory((prev) => {
@@ -1850,10 +1901,18 @@ function LessonPage() {
             correct: true,
             timeSpent: updated[existingIndex].timeSpent + timeSpent,
             attempts: currentAttempts,
+            ...(fillAnswers ? { fillAnswers } : {}),
           };
           return updated;
         }
-        return [...prev, { problem, selected, correct: true, timeSpent, attempts: currentAttempts }];
+        return [...prev, {
+          problem,
+          selected,
+          correct: true,
+          timeSpent,
+          attempts: currentAttempts,
+          ...(fillAnswers ? { fillAnswers } : {}),
+        }];
       });
       const need = correctNeeded[problemId] || 0;
       if (need > 0) {
@@ -1947,6 +2006,22 @@ function LessonPage() {
     recordCorrectOrWrong(currentProblem, 1, true, timeSpent, problemId, currentAttempts);
   };
 
+  const handleFillBlankSubmit = () => {
+    if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'fill_blank') return;
+    const pf = currentProblem as ProblemFillBlank;
+    const need = fillBlankSlotCount(pf.stem);
+    const user = fillBlankDraft.slice(0, need);
+    while (user.length < need) user.push('');
+    const correct = fillBlankResponseMatches(pf.answers || [], user);
+    const timeSpent = Date.now() - problemStartTime;
+    const problemId = currentProblem.pid;
+    const currentAttempts = (problemAttempts[problemId] || 0) + 1;
+    setIsAnswered(true);
+    setShowAnalysis(true);
+    setProblemAttempts((prev) => ({ ...prev, [problemId]: currentAttempts }));
+    recordCorrectOrWrong(currentProblem, correct ? 1 : 0, correct, timeSpent, problemId, currentAttempts, user);
+  };
+
   const handleNextProblem = () => {
     const donePid = problemQueue[currentProblemIndex]?.pid;
     if (donePid) setPracticeClearedPids((prev) => ({ ...prev, [donePid]: true }));
@@ -1954,6 +2029,7 @@ function LessonPage() {
     setSelectedMulti([]);
     setSelectedTf(null);
     setFlipStage('a');
+    setFillBlankDraft([]);
     setIsAnswered(false);
     setShowAnalysis(false);
     setShuffleTrigger((t) => t + 1);
@@ -3315,6 +3391,134 @@ function LessonPage() {
             {!isAnswered && flipStage === 'b' && (
               <button type="button" onClick={handleFlipComplete} style={{ padding: '12px 24px', border: 'none', borderRadius: '8px', backgroundColor: themeStyles.success, color: themeStyles.whiteOnAccent, cursor: 'pointer', fontSize: '15px', fontWeight: 600 }}>
                 {i18n('Flip mark done')}
+              </button>
+            )}
+          </>
+        ) : currentKind === 'fill_blank' ? (
+          <>
+            <div
+              style={{
+                padding: '16px 18px',
+                borderRadius: '10px',
+                backgroundColor: themeStyles.fillBlankStemWellBg,
+                border: `1px solid ${themeStyles.border}`,
+                marginBottom: '20px',
+              }}
+            >
+              <div
+                style={{
+                  fontSize: '18px',
+                  fontWeight: 500,
+                  color: themeStyles.stemColor,
+                  lineHeight: 1.75,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'stretch',
+                  gap: '12px',
+                }}
+              >
+                {(() => {
+                  const pf = currentProblem as ProblemFillBlank;
+                  const stemStr = pf.stem || '';
+                  const hasMarks = stemStr.includes('___');
+                  const segs = hasMarks ? stemStr.split('___') : [stemStr];
+                  const need = fillBlankSlotCount(stemStr);
+                  const expected = pf.answers || [];
+                  const stemBlockStyle: React.CSSProperties = {
+                    whiteSpace: 'pre-wrap',
+                    width: '100%',
+                  };
+                  const fillInputStyle = (slot: number): React.CSSProperties => {
+                    const base: React.CSSProperties = {
+                      width: '100%',
+                      maxWidth: '100%',
+                      minWidth: 0,
+                      padding: '10px 14px',
+                      borderRadius: '6px',
+                      borderWidth: '1.5px',
+                      borderStyle: 'solid',
+                      borderColor: themeStyles.fillBlankInputBorder,
+                      fontSize: '17px',
+                      fontWeight: 500,
+                      lineHeight: 1.45,
+                      letterSpacing: '0.01em',
+                      backgroundColor: themeStyles.fillBlankInputBg,
+                      color: themeStyles.textPrimary,
+                      boxShadow: theme === 'dark' ? 'inset 0 1px 0 rgba(255,255,255,0.05)' : 'inset 0 1px 2px rgba(0,0,0,0.04)',
+                      boxSizing: 'border-box',
+                      display: 'block',
+                    };
+                    if (!showAnalysis) return base;
+                    const ok = normalizeFillBlankText(expected[slot] ?? '') === normalizeFillBlankText(fillBlankDraft[slot] ?? '');
+                    return {
+                      ...base,
+                      borderColor: ok ? themeStyles.success : themeStyles.danger,
+                      backgroundColor: ok ? themeStyles.successBg : themeStyles.dangerBg,
+                      boxShadow: 'none',
+                    };
+                  };
+                  const onDraft = (slot: number, val: string) => {
+                    setFillBlankDraft((prev) => {
+                      const next = [...prev];
+                      while (next.length < need) next.push('');
+                      next[slot] = val;
+                      return next;
+                    });
+                  };
+                  if (!hasMarks) {
+                    return (
+                      <>
+                        <span style={stemBlockStyle}>{segs[0] || i18n('No stem')}</span>
+                        <input
+                          aria-label={String(i18n('Problem fill blank slot label', 1))}
+                          disabled={isAnswered}
+                          value={fillBlankDraft[0] ?? ''}
+                          onChange={(e) => onDraft(0, e.target.value)}
+                          style={fillInputStyle(0)}
+                        />
+                      </>
+                    );
+                  }
+                  const rows: React.ReactNode[] = [];
+                  for (let i = 0; i < segs.length; i++) {
+                    rows.push(
+                      <span key={`fbs-t-${currentProblem.pid}-${i}`} style={stemBlockStyle}>{segs[i]}</span>,
+                    );
+                    if (i < segs.length - 1) {
+                      rows.push(
+                        <input
+                          key={`fbs-i-${currentProblem.pid}-${i}`}
+                          aria-label={String(i18n('Problem fill blank slot label', i + 1))}
+                          disabled={isAnswered}
+                          value={fillBlankDraft[i] ?? ''}
+                          onChange={(e) => onDraft(i, e.target.value)}
+                          style={fillInputStyle(i)}
+                        />,
+                      );
+                    }
+                  }
+                  return rows;
+                })()}
+              </div>
+            </div>
+            {!isAnswered && (
+              <button
+                type="button"
+                onClick={handleFillBlankSubmit}
+                style={{
+                  marginTop: '2px',
+                  padding: '11px 24px',
+                  border: 'none',
+                  borderRadius: '8px',
+                  backgroundColor: themeStyles.accent,
+                  color: themeStyles.whiteOnAccent,
+                  cursor: 'pointer',
+                  fontSize: '15px',
+                  fontWeight: 600,
+                  boxShadow: theme === 'dark' ? '0 2px 8px rgba(56, 189, 248, 0.25)' : '0 2px 6px rgba(33, 150, 243, 0.25)',
+                }}
+              >
+                {i18n('Submit answer')}
               </button>
             )}
           </>
