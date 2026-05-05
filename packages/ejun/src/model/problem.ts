@@ -6,6 +6,7 @@
 import type {
     Problem,
     ProblemCommon,
+    ProblemFillBlank,
     ProblemFlip,
     ProblemKind,
     ProblemMulti,
@@ -24,7 +25,7 @@ export function clampOptionSlots(n: unknown): number {
 
 export function problemKind(p: Partial<Problem> | null | undefined): ProblemKind {
     const t = (p as { type?: string } | null)?.type;
-    if (t === 'multi' || t === 'true_false' || t === 'flip') return t;
+    if (t === 'multi' || t === 'true_false' || t === 'flip' || t === 'fill_blank') return t;
     return 'single';
 }
 
@@ -38,6 +39,35 @@ export function isTrueFalseProblem(p: Partial<Problem> | null | undefined): p is
 
 export function isMultiProblem(p: Partial<Problem> | null | undefined): p is ProblemMulti {
     return problemKind(p) === 'multi';
+}
+
+export function isFillBlankProblem(p: Partial<Problem> | null | undefined): p is ProblemFillBlank {
+    return problemKind(p) === 'fill_blank';
+}
+
+/** Count of blanks: `___` markers in stem, or 1 if none. */
+export function fillBlankSlotCount(stem: string): number {
+    const occ = (String(stem).match(/___/g) || []).length;
+    return Math.max(1, occ);
+}
+
+export function syncFillBlankAnswersLen(prev: string[], n: number): string[] {
+    const next = [...prev];
+    while (next.length < n) next.push('');
+    return next.slice(0, n);
+}
+
+export function normalizeFillBlankText(s: string): string {
+    return String(s ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+export function fillBlankResponseMatches(expected: string[], user: string[]): boolean {
+    const n = expected.length;
+    if (n !== user.length) return false;
+    for (let i = 0; i < n; i++) {
+        if (normalizeFillBlankText(expected[i]) !== normalizeFillBlankText(user[i])) return false;
+    }
+    return true;
 }
 
 /** Non-empty option texts with stable original indices (for shuffled display mapping). */
@@ -83,12 +113,36 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
                 ?? (prev as ProblemSingle | ProblemMulti).options?.length
             : DEFAULT_OPTION_SLOTS,
     );
+    if (newKind === 'fill_blank') {
+        const stem = 'stem' in prev ? prev.stem : isFlipProblem(prev) ? prev.faceA : isFillBlankProblem(prev) ? prev.stem : '';
+        const n = fillBlankSlotCount(stem);
+        let answers = Array.from({ length: n }, () => '');
+        if (isFillBlankProblem(prev)) {
+            answers = syncFillBlankAnswersLen(prev.answers, n);
+        } else if (problemKind(prev) === 'single' && 'options' in prev && typeof prev.answer === 'number') {
+            const t = prev.options[prev.answer];
+            if (typeof t === 'string' && t.trim()) answers[0] = t;
+        } else if (isMultiProblem(prev) && prev.answer?.length) {
+            const opts = prev.options || [];
+            const want = normalizeMultiAnswers(prev.answer);
+            want.slice(0, n).forEach((idx, i) => {
+                const t = opts[idx];
+                if (typeof t === 'string') answers[i] = t;
+            });
+        } else if (isTrueFalseProblem(prev)) {
+            answers[0] = prev.answer === 1 ? 'true' : 'false';
+        }
+        return { ...common, type: 'fill_blank', stem, answers };
+    }
     if (newKind === 'flip') {
         let faceA = '';
         let faceB = '';
         if (isFlipProblem(prev)) {
             faceA = prev.faceA;
             faceB = prev.faceB;
+        } else if (isFillBlankProblem(prev)) {
+            faceA = prev.stem || '';
+            faceB = (prev.answers || []).join(' / ');
         } else if ('stem' in prev) {
             faceA = prev.stem || '';
             faceB = prev.analysis || '';
@@ -96,14 +150,14 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
         return { ...common, type: 'flip', faceA, faceB };
     }
     if (newKind === 'true_false') {
-        const stem = 'stem' in prev ? prev.stem : isFlipProblem(prev) ? prev.faceA : '';
+        const stem = 'stem' in prev ? prev.stem : isFlipProblem(prev) ? prev.faceA : isFillBlankProblem(prev) ? prev.stem : '';
         let ans: 0 | 1 = 1;
         if (isTrueFalseProblem(prev)) ans = prev.answer;
         else if (problemKind(prev) === 'single' && 'answer' in prev) ans = prev.answer >= 1 ? 1 : 0;
         return { ...common, type: 'true_false', stem, answer: ans };
     }
     if (newKind === 'multi') {
-        const stem = 'stem' in prev ? prev.stem : isFlipProblem(prev) ? prev.faceA : '';
+        const stem = 'stem' in prev ? prev.stem : isFlipProblem(prev) ? prev.faceA : isFillBlankProblem(prev) ? prev.stem : '';
         let options: string[] = ['', '', '', ''];
         if ('options' in prev && Array.isArray(prev.options)) options = [...prev.options];
         options = ensureOptionArrayLength(options, slots);
@@ -114,7 +168,7 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
         }
         return { ...common, type: 'multi', stem, options, answer, optionSlots: slots };
     }
-    const stem = 'stem' in prev ? prev.stem : isFlipProblem(prev) ? prev.faceA : '';
+    const stem = 'stem' in prev ? prev.stem : isFlipProblem(prev) ? prev.faceA : isFillBlankProblem(prev) ? prev.stem : '';
     let options = ['', '', '', ''];
     if ('options' in prev && Array.isArray(prev.options)) options = [...prev.options];
     options = ensureOptionArrayLength(options, slots);
@@ -124,6 +178,10 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
     } else if (isMultiProblem(prev) && prev.answer.length) {
         answer = Math.min(options.length - 1, Math.max(0, prev.answer[0]));
     } else if (isTrueFalseProblem(prev)) answer = prev.answer;
+    else if (isFillBlankProblem(prev) && prev.answers?.[0]) {
+        const idx = options.findIndex((o) => normalizeFillBlankText(o) === normalizeFillBlankText(prev.answers[0]));
+        if (idx >= 0) answer = idx;
+    }
     return { ...common, type: 'single', stem, options, answer, optionSlots: slots };
 }
 
@@ -159,6 +217,15 @@ export function migrateRawProblem(raw: Record<string, unknown>): Problem {
             answer,
             optionSlots: slots,
         };
+    }
+    if (t === 'fill_blank') {
+        const stem = typeof raw.stem === 'string' ? raw.stem : '';
+        const n = fillBlankSlotCount(stem);
+        const answers = syncFillBlankAnswersLen(
+            Array.isArray(raw.answers) ? (raw.answers as unknown[]).map((x) => String(x ?? '')) : [''],
+            n,
+        );
+        return { ...common, type: 'fill_blank', stem, answers };
     }
     const stem = typeof raw.stem === 'string' ? raw.stem : '';
     const options = Array.isArray(raw.options) ? (raw.options as unknown[]).map((x) => String(x ?? '')) : ['', '', '', ''];

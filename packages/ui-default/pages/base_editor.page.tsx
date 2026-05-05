@@ -15,6 +15,7 @@ import type {
   ProblemMulti,
   ProblemTrueFalse,
   ProblemFlip,
+  ProblemFillBlank,
   ProblemKind,
 } from 'ejun/src/interface';
 import {
@@ -25,6 +26,8 @@ import {
   normalizeMultiAnswers,
   migrateRawProblem,
   isMultiProblem,
+  fillBlankSlotCount,
+  syncFillBlankAnswersLen,
 } from 'ejun/src/model/problem';
 interface BaseNode {
   id: string;
@@ -436,7 +439,7 @@ function getPendingDraftCardBody(card: Card, pendingChanges: Map<string, Pending
 
 /**
  * WebSocket/refetch replaces `nodeCardsMap` from the server snapshot; merge so temp cards +
- * unsubmitted drafts (body / rename / face) and pending drag order are preserved.
+ * unsubmitted drafts (body / rename / face), pending drag order, and in-editor problem rows are preserved.
  */
 function mergeServerNodeCardsMapWithLocalDrafts(opts: {
   serverMap: Record<string, Card[]>;
@@ -446,6 +449,8 @@ function mergeServerNodeCardsMapWithLocalDrafts(opts: {
   pendingCardFaceChanges: Record<string, string>;
   pendingDragChanges: Set<string>;
   pendingCreates: Map<string, PendingCreate>;
+  /** Card ids with unsubmitted problem create/edit/delete — keep local `problems[]` over server snapshot. */
+  pendingProblemsMergeCardIds: Set<string>;
 }): Record<string, Card[]> {
   const {
     serverMap,
@@ -455,6 +460,7 @@ function mergeServerNodeCardsMapWithLocalDrafts(opts: {
     pendingCardFaceChanges,
     pendingDragChanges,
     pendingCreates,
+    pendingProblemsMergeCardIds,
   } = opts;
 
   const out: Record<string, Card[]> = {};
@@ -491,6 +497,10 @@ function mergeServerNodeCardsMapWithLocalDrafts(opts: {
         pendingDragChanges.has(sid)
       ) {
         card = { ...card, order: lc.order };
+      }
+
+      if (pendingProblemsMergeCardIds.has(sid) && lc && Array.isArray(lc.problems)) {
+        card = { ...card, problems: lc.problems.map((pr) => ({ ...pr })) };
       }
 
       return card;
@@ -554,6 +564,8 @@ function problemKindLabelI18n(k: ProblemKind): string {
       return i18n('Problem kind true false');
     case 'flip':
       return i18n('Problem kind flip');
+    case 'fill_blank':
+      return i18n('Problem kind fill blank');
     default:
       return k;
   }
@@ -802,6 +814,7 @@ const EditableProblem = React.memo(({
             <option value="multi">{i18n('Problem kind multi')}</option>
             <option value="true_false">{i18n('Problem kind true false')}</option>
             <option value="flip">{i18n('Problem kind flip')}</option>
+            <option value="fill_blank">{i18n('Problem kind fill blank')}</option>
           </select>
         </label>
         {isNew && <span style={{ fontSize: '10px', color: themeStyles.success }}>{i18n('New')}</span>}
@@ -828,6 +841,50 @@ const EditableProblem = React.memo(({
               style={taStyle}
             />
           </div>
+        </>
+      ) : kind === 'fill_blank' ? (
+        <>
+          <div style={{ fontSize: '11px', color: themeStyles.textSecondary, marginBottom: 6 }}>
+            {i18n('Problem fill blank stem hint')}
+          </div>
+          <div style={{ marginBottom: '4px' }}>
+            <textarea
+              value={(model as ProblemFillBlank).stem}
+              onChange={(e) => {
+                const stem = e.target.value;
+                const m = model as ProblemFillBlank;
+                const n = fillBlankSlotCount(stem);
+                setModel({
+                  ...m,
+                  stem,
+                  answers: syncFillBlankAnswersLen(m.answers, n),
+                });
+              }}
+              placeholder={i18n('Stem')}
+              style={taStyle}
+            />
+          </div>
+          <div style={{ fontSize: '11px', color: themeStyles.textSecondary, marginBottom: 4 }}>
+            {i18n('Problem fill blank answers label')}
+          </div>
+          {(model as ProblemFillBlank).answers.map((ans, bi) => (
+            <div key={bi} style={{ marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, color: themeStyles.textPrimary, minWidth: 52 }}>
+                {i18n('Problem fill blank slot label', bi + 1)}
+              </span>
+              <input
+                value={ans}
+                onChange={(e) => {
+                  const m = model as ProblemFillBlank;
+                  const next = [...m.answers];
+                  next[bi] = e.target.value;
+                  setModel({ ...m, answers: next });
+                }}
+                placeholder={i18n('Correct answer')}
+                style={{ ...inpStyle, flex: 1 }}
+              />
+            </div>
+          ))}
         </>
       ) : kind === 'true_false' ? (
         <div style={{ marginBottom: '4px' }}>
@@ -1844,6 +1901,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const showDevelopQueueInPanels = !!(developEditorContext && developRunQueueState && developRunQueueState.items.length > 0);
 
   const contributionWsRef = useRef<any>(null);
+  /** Synced from problem-pending state; used when merging server /base/data into nodeCardsMap. */
+  const pendingProblemsMergeCardIdsRef = useRef<Set<string>>(new Set());
   const saveHandlerRef = useRef<() => void>(() => {});
   const editorAiHidden = false;
   const savedEditorLayout = readSavedBaseEditorUiPrefs(editorAiHidden);
@@ -1951,6 +2010,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                     pendingCardFaceChanges: pendingCardFaceChangesRef.current,
                     pendingDragChanges: pendingDragChangesRef.current,
                     pendingCreates: pendingCreatesRef.current,
+                    pendingProblemsMergeCardIds: pendingProblemsMergeCardIdsRef.current,
                   });
                   (window as any).UiContext.nodeCardsMap = merged;
                 }
@@ -2252,6 +2312,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           pendingCardFaceChanges: pendingCardFaceChangesRef.current,
           pendingDragChanges: pendingDragChangesRef.current,
           pendingCreates: pendingCreatesRef.current,
+          pendingProblemsMergeCardIds: pendingProblemsMergeCardIdsRef.current,
         });
         (window as any).UiContext.nodeCardsMap = merged;
       }
@@ -2476,6 +2537,14 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [editedProblemIds, setEditedProblemIds] = useState<Set<string>>(new Set());
   const originalProblemsRef = useRef<Map<string, Map<string, Problem>>>(new Map());
   const [originalProblemsVersion, setOriginalProblemsVersion] = useState(0);
+
+  useLayoutEffect(() => {
+    const m = new Set<string>();
+    for (const id of pendingProblemCardIds) m.add(String(id));
+    for (const id of pendingNewProblemCardIds) m.add(String(id));
+    for (const cid of pendingEditedProblemIds.keys()) m.add(String(cid));
+    pendingProblemsMergeCardIdsRef.current = m;
+  }, [pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds]);
 
   /** Card has problem-related pending save (e.g. deleted problem) not counted as new/edited problem — shown separately in pending panel. */
   const problemPendingOtherCardIds = useMemo(() => {
@@ -7365,6 +7434,14 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               if (tf.analysis) problemsText += `  - analysis: ${tf.analysis}\n`;
               return;
             }
+            if (k === 'fill_blank') {
+              const fb = p as ProblemFillBlank;
+              problemsText += `\n  Problem ${index + 1} (ID: ${p.pid}): fill-in-the-blank\n`;
+              problemsText += `  - stem (use ___ for each blank): ${fb.stem}\n`;
+              problemsText += `  - correct answers in order: ${JSON.stringify(fb.answers || [])}\n`;
+              if (fb.analysis) problemsText += `  - analysis: ${fb.analysis}\n`;
+              return;
+            }
             if (k === 'multi') {
               const pm = p as ProblemMulti;
               const set = new Set(pm.answer || []);
@@ -7413,7 +7490,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 4. **rename**: rename a node or card
 5. **update_card_content**: change card body/markdown when the user asks to edit, polish, format, or improve *content* (not the title)
 6. **delete**: delete a node or card when asked
-7. **create_problem**: add practice problems for the **currently open card** when asked. Use \`problemKind\`: \`single\` (default, one correct option index in \`answer\`), \`multi\` (\`answer\` is an array of correct option indices), \`true_false\` (\`stem\` + \`answer\` 0 = false, 1 = true), \`flip\` (\`faceA\` / \`faceB\`, no \`options\`)
+7. **create_problem**: add practice problems for the **currently open card** when asked. Use \`problemKind\`: \`single\` (default, one correct option index in \`answer\`), \`multi\` (\`answer\` is an array of correct option indices), \`true_false\` (\`stem\` + \`answer\` 0 = false, 1 = true), \`flip\` (\`faceA\` / \`faceB\`, no \`options\`), \`fill_blank\` (\`stem\` with \`___\` for each blank + \`answers\` string array in order; if no \`___\`, one blank after the stem)
 
 [Outline structure]
 ${baseText}
@@ -7505,6 +7582,14 @@ Reply with a JSON code block only for executable operations, using this shape:
       "faceA": "Front prompt or summary",
       "faceB": "Back answer or detail",
       "analysis": "Optional"
+    },
+    {
+      "type": "create_problem",
+      "cardId": "card_xxx",
+      "problemKind": "fill_blank",
+      "stem": "The protocol ___ runs on port ___.",
+      "answers": ["HTTP", "80"],
+      "analysis": "Optional"
     }
   ]
 }
@@ -7517,7 +7602,7 @@ Reply with a JSON code block only for executable operations, using this shape:
 4. Use \`rename_card\` / \`rename_node\` only when the user clearly wants to change a **title/name**.
 5. **move_node**: read the outline above; match the user's folder/node by **name and full path**, then use the real **node ID** as \`targetParentId\`. Node IDs look like \`node_...\`; they are **not** card IDs (cards use long hex-like ids). "Move folder" means move a **node**. If you cannot resolve a target, reply with an error in plain text instead of guessing IDs.
 6. **move_card**: to move a **card**, use \`move_card\` (card id + \`targetNodeId\`). Never use \`move_node\` for a card. If the user @-mentions a card, use \`move_card\` with that card's id.
-7. **create_problem**: omit \`problemKind\` or set \`single\` for classic single-choice; \`multi\` requires \`answer\` as an array; \`true_false\` requires \`stem\` and \`answer\` 0/1; \`flip\` requires \`faceA\` and \`faceB\` and must **not** include \`options\`.
+7. **create_problem**: omit \`problemKind\` or set \`single\` for classic single-choice; \`multi\` requires \`answer\` as an array; \`true_false\` requires \`stem\` and \`answer\` 0/1; \`flip\` requires \`faceA\` and \`faceB\` and must **not** include \`options\`; \`fill_blank\` requires \`stem\` and \`answers\` (array of strings, one per \`___\` left-to-right, or one string if a single blank).
 8. **Valid JSON**: never put raw line breaks or unescaped \`"\` inside a string value; use standard JSON escaping (backslash + quote, backslash + n for newline).
 9. **Streaming**: emit each \`operations[]\` entry as a **fully closed** \`{ ... }\` object (balanced braces) **before** starting the next. The editor applies each finished object immediately—trailing incomplete objects wait until complete.
 `;
@@ -8435,7 +8520,9 @@ Reply with a JSON code block only for executable operations, using this shape:
 
           const rawKind = String(op.problemKind || op.kind || '').toLowerCase().trim();
           const kind: ProblemKind =
-            rawKind === 'multi' || rawKind === 'true_false' || rawKind === 'flip' ? rawKind : 'single';
+            rawKind === 'multi' || rawKind === 'true_false' || rawKind === 'flip' || rawKind === 'fill_blank'
+              ? rawKind
+              : 'single';
 
           const pid = `p_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
           const analysisStr = typeof analysis === 'string' && analysis.trim() ? analysis.trim() : undefined;
@@ -8479,6 +8566,29 @@ Reply with a JSON code block only for executable operations, using this shape:
               type: 'true_false',
               stem,
               answer: av,
+              ...(analysisStr ? { analysis: analysisStr } : {}),
+            });
+          } else if (kind === 'fill_blank') {
+            const stem = String(op.stem ?? '').trim();
+            if (!stem) {
+              Notification.error(i18n('Stem is required'));
+              errors.push('create_problem fill_blank：缺少 stem');
+              continue;
+            }
+            let answersArr: string[] = [];
+            const ar = op.answers ?? op.answer;
+            if (Array.isArray(ar)) {
+              answersArr = ar.map((x: unknown) => String(x ?? '').trim());
+            } else if (typeof ar === 'string') {
+              answersArr = [ar.trim()];
+            } else if (ar != null && typeof ar === 'number' && Number.isFinite(ar)) {
+              answersArr = [String(ar)];
+            }
+            newProblem = migrateRawProblem({
+              pid,
+              type: 'fill_blank',
+              stem,
+              answers: answersArr.length ? answersArr : [''],
               ...(analysisStr ? { analysis: analysisStr } : {}),
             });
           } else if (kind === 'multi') {
