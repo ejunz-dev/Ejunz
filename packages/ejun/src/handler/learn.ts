@@ -477,6 +477,7 @@ async function syncLearnPassToRecord(
         problemId?: string;
         correct?: boolean;
         selected?: number;
+        fillAnswers?: string[];
         timeSpent?: number;
         attempts?: number;
     }>,
@@ -504,6 +505,7 @@ async function syncLearnPassToRecord(
         await RecordModel.patchProblem(cardDomainId, rec._id, pid, {
             status,
             selected: typeof h.selected === 'number' ? h.selected : undefined,
+            fillAnswers: Array.isArray(h.fillAnswers) && h.fillAnswers.length ? h.fillAnswers : undefined,
             attempts: typeof h.attempts === 'number' ? h.attempts : undefined,
             timeSpentMs: typeof h.timeSpent === 'number' ? h.timeSpent : undefined,
         });

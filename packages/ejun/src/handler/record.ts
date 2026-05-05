@@ -11,9 +11,10 @@ import {
     Types,
 } from '../service/server';
 import { PERM, PRIV, STATUS_TEXTS } from '../model/builtin';
-import type { BaseDoc, BaseNode, CardDoc } from '../interface';
+import type { BaseDoc, BaseNode, CardDoc, ProblemFlip, ProblemFillBlank } from '../interface';
 import { BaseModel, CardModel } from '../model/base';
 import RecordModel, { type SessionRecordDoc, type RecordProblemState } from '../model/record';
+import { problemKind } from '../model/problem';
 import SessionModel, { type SessionDoc } from '../model/session';
 import user from '../model/user';
 import Agent from '../model/agent';
@@ -247,17 +248,32 @@ async function problemRowsForRecord(rd: SessionRecordDoc): Promise<LessonHistory
     const byPid = new Map((card?.problems || []).map((pr) => [pr.pid, pr]));
     return (rd.problems || []).map((p) => {
         const pr = byPid.get(p.pid);
-        const stemPreview = pr ? stripHtmlOneLine(pr.stem || '', 160) : p.pid;
+        let stemPreview = p.pid;
+        if (pr) {
+            const pk = problemKind(pr);
+            if (pk === 'flip') stemPreview = stripHtmlOneLine((pr as ProblemFlip).faceA || '', 160);
+            else if (pk === 'fill_blank') stemPreview = stripHtmlOneLine((pr as ProblemFillBlank).stem || '', 160);
+            else stemPreview = stripHtmlOneLine((pr as { stem?: string }).stem || '', 160);
+        }
         let selectedText: string | undefined;
-        if (typeof p.selected === 'number' && pr?.options && p.selected >= 0 && p.selected < pr.options.length) {
+        if (Array.isArray(p.fillAnswers) && p.fillAnswers.length) {
+            selectedText = stripHtmlOneLine(p.fillAnswers.map(String).join(' / '), 120);
+        } else if (typeof p.selected === 'number' && pr?.options && p.selected >= 0 && p.selected < pr.options.length) {
             selectedText = stripHtmlOneLine(String(pr.options[p.selected]), 120);
         } else if (typeof p.selected === 'number') {
             selectedText = `#${p.selected}`;
         }
         let correctOptionText: string | undefined;
-        const ans = pr?.answer;
-        if (typeof ans === 'number' && pr?.options && ans >= 0 && ans < pr.options.length) {
-            correctOptionText = stripHtmlOneLine(String(pr.options[ans]), 120);
+        let correctOptIdx: number | undefined;
+        if (pr && problemKind(pr) === 'fill_blank') {
+            const fb = pr as ProblemFillBlank;
+            correctOptionText = stripHtmlOneLine((fb.answers || []).map(String).join(' / '), 120);
+        } else {
+            const ans = pr?.answer;
+            if (typeof ans === 'number' && pr?.options && ans >= 0 && ans < pr.options.length) {
+                correctOptionText = stripHtmlOneLine(String(pr.options[ans]), 120);
+                correctOptIdx = ans;
+            }
         }
         return {
             pid: p.pid,
@@ -265,7 +281,7 @@ async function problemRowsForRecord(rd: SessionRecordDoc): Promise<LessonHistory
             status: p.status,
             selectedIndex: p.selected,
             selectedText,
-            correctOptionIndex: typeof ans === 'number' ? ans : undefined,
+            correctOptionIndex: correctOptIdx,
             correctOptionText,
             attempts: p.attempts,
             timeSpentMs: p.timeSpentMs,

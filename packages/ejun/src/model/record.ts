@@ -19,6 +19,8 @@ export type RecordProblemState = {
     pid: string;
     status: 'pending' | 'correct' | 'wrong' | 'skipped';
     selected?: number;
+    /** Fill-in-the-blank: learner's texts per blank (optional, for review). */
+    fillAnswers?: string[];
     attempts?: number;
     timeSpentMs?: number;
     updatedAt?: Date;
@@ -239,7 +241,7 @@ export default class RecordModel {
         domainId: string,
         recordId: ObjectId,
         problemId: string,
-        patch: Partial<Pick<RecordProblemState, 'status' | 'selected' | 'attempts' | 'timeSpentMs'>>,
+        patch: Partial<Pick<RecordProblemState, 'status' | 'selected' | 'fillAnswers' | 'attempts' | 'timeSpentMs'>>,
     ): Promise<SessionRecordDoc | null> {
         const doc = await RecordModel.get(domainId, recordId);
         if (!doc) return null;

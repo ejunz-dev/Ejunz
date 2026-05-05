@@ -400,6 +400,7 @@ __langname: 简体中文
 'Problem kind multi': 多选
 'Problem kind true false': 判断
 'Problem kind flip': 翻转
+'Problem kind fill blank': 填空题
 'Problem field type': 题型
 'Problem option slots': 选项槽
 'Problem multi all correct': 需全部选对才算过
@@ -409,6 +410,9 @@ __langname: 简体中文
 'Problem face B placeholder': 背面内容
 'Problem answer true': 对
 'Problem answer false': 错
+'Problem fill blank stem hint': 在题干中用三个下划线 ___ 表示每个空格；若不写 ___，则在题干后显示一个空格。
+'Problem fill blank answers label': 参考答案（从左到右，每个空格一行）
+'Problem fill blank slot label': '第{0}空'
 'Provider (MCP)': Provider (MCP)
 'Provider': 提供商
 'Pulling from GitHub...': 正在从 GitHub 拉取...
