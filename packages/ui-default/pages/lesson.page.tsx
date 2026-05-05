@@ -739,6 +739,9 @@ function LessonPage() {
   const [isPassed, setIsPassed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAnalysis, setShowAnalysis] = useState(false);
+  const [pendingLessonAdvance, setPendingLessonAdvance] = useState<
+    null | 'next' | 'requeue' | 'correctMore'
+  >(null);
   const hasCalledPassRef = useRef(false);
   const [answerHistory, setAnswerHistory] = useState<Array<{
     problem: QueuedProblem;
@@ -1724,6 +1727,7 @@ function LessonPage() {
     );
     setIsAnswered(false);
     setShowAnalysis(false);
+    setPendingLessonAdvance(null);
     setProblemStartTime(Date.now());
     if (k === 'single') {
       const ps = currentProblem as ProblemSingle;
@@ -1917,14 +1921,14 @@ function LessonPage() {
       const need = correctNeeded[problemId] || 0;
       if (need > 0) {
         setCorrectNeeded((prev) => ({ ...prev, [problemId]: need - 1 }));
-        setTimeout(() => handleCorrectButNeedMore(), 1500);
+        setPendingLessonAdvance('correctMore');
       } else {
-        setTimeout(() => handleNextProblem(), 1500);
+        setPendingLessonAdvance('next');
       }
     } else {
       setPeekCount((prev) => ({ ...prev, [problemId]: (prev[problemId] || 0) + 1 }));
       setCorrectNeeded((prev) => ({ ...prev, [problemId]: (prev[problemId] || 0) + 1 }));
-      setTimeout(() => handleWrongAnswer(), 2000);
+      setPendingLessonAdvance('requeue');
     }
   };
 
@@ -1948,6 +1952,7 @@ function LessonPage() {
   };
 
   const handleMultiToggle = (displayedIndex: number) => {
+    if (!isAnswered && pendingLessonAdvance) return;
     if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'multi') return;
     const pm = currentProblem as ProblemMulti;
     if (!pm.options?.length) return;
@@ -1962,6 +1967,7 @@ function LessonPage() {
   };
 
   const handleMultiConfirm = () => {
+    if (!isAnswered && pendingLessonAdvance) return;
     if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'multi') return;
     const pm = currentProblem as ProblemMulti;
     const want = normalizeMultiAnswers(pm.answer);
@@ -1991,11 +1997,13 @@ function LessonPage() {
   };
 
   const handleFlipShowBack = () => {
+    if (!isAnswered && pendingLessonAdvance) return;
     if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'flip') return;
     setFlipStage('b');
   };
 
   const handleFlipComplete = () => {
+    if (!isAnswered && pendingLessonAdvance) return;
     if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'flip') return;
     const timeSpent = Date.now() - problemStartTime;
     const problemId = currentProblem.pid;
@@ -2023,6 +2031,7 @@ function LessonPage() {
   };
 
   const handleNextProblem = () => {
+    setPendingLessonAdvance(null);
     const donePid = problemQueue[currentProblemIndex]?.pid;
     if (donePid) setPracticeClearedPids((prev) => ({ ...prev, [donePid]: true }));
     setSelectedAnswer(null);
@@ -2045,6 +2054,7 @@ function LessonPage() {
   };
 
   const requeueCurrent = () => {
+    setPendingLessonAdvance(null);
     setSelectedAnswer(null);
     setIsAnswered(false);
     setShowAnalysis(false);
@@ -2066,6 +2076,15 @@ function LessonPage() {
     requeueCurrent();
   };
 
+  const handleContinueAfterAnswer = () => {
+    const kind = pendingLessonAdvance;
+    if (!kind) return;
+    setPendingLessonAdvance(null);
+    if (kind === 'next') handleNextProblem();
+    else if (kind === 'requeue') handleWrongAnswer();
+    else if (kind === 'correctMore') handleCorrectButNeedMore();
+  };
+
   const handlePeek = () => {
     setShowPeekCard(true);
   };
@@ -2076,7 +2095,8 @@ function LessonPage() {
       setCorrectNeeded(prev => ({ ...prev, [currentProblem.pid]: (prev[currentProblem.pid] || 0) + 1 }));
     }
     setShowPeekCard(false);
-    handleWrongAnswer();
+    /** 关闭偷看后不立刻换题：与作答后一致，在主界面点「继续」再重排队列。 */
+    setPendingLessonAdvance('requeue');
   };
 
   if (allCorrect && !isPassed && !isSubmitting) {
@@ -3412,9 +3432,11 @@ function LessonPage() {
                   color: themeStyles.stemColor,
                   lineHeight: 1.75,
                   display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'stretch',
-                  gap: '12px',
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  alignItems: 'baseline',
+                  columnGap: 6,
+                  rowGap: 8,
                 }}
               >
                 {(() => {
@@ -3426,27 +3448,27 @@ function LessonPage() {
                   const expected = pf.answers || [];
                   const stemBlockStyle: React.CSSProperties = {
                     whiteSpace: 'pre-wrap',
-                    width: '100%',
                   };
                   const fillInputStyle = (slot: number): React.CSSProperties => {
                     const base: React.CSSProperties = {
-                      width: '100%',
-                      maxWidth: '100%',
-                      minWidth: 0,
-                      padding: '10px 14px',
+                      display: 'inline-block',
+                      verticalAlign: 'baseline',
+                      minWidth: '6.5em',
+                      maxWidth: 'min(100%, 18rem)',
+                      width: 'auto',
+                      padding: '6px 10px',
                       borderRadius: '6px',
                       borderWidth: '1.5px',
                       borderStyle: 'solid',
                       borderColor: themeStyles.fillBlankInputBorder,
                       fontSize: '17px',
                       fontWeight: 500,
-                      lineHeight: 1.45,
+                      lineHeight: 1.35,
                       letterSpacing: '0.01em',
                       backgroundColor: themeStyles.fillBlankInputBg,
                       color: themeStyles.textPrimary,
                       boxShadow: theme === 'dark' ? 'inset 0 1px 0 rgba(255,255,255,0.05)' : 'inset 0 1px 2px rgba(0,0,0,0.04)',
                       boxSizing: 'border-box',
-                      display: 'block',
                     };
                     if (!showAnalysis) return base;
                     const ok = normalizeFillBlankText(expected[slot] ?? '') === normalizeFillBlankText(fillBlankDraft[slot] ?? '');
@@ -3671,6 +3693,28 @@ function LessonPage() {
             lineHeight: '1.6',
           }}>
             <strong style={{ color: themeStyles.textPrimary }}>{i18n('Analysis')}:</strong> {currentProblem.analysis}
+          </div>
+        )}
+
+        {pendingLessonAdvance && (
+          <div style={{ marginTop: '20px' }}>
+            <button
+              type="button"
+              onClick={handleContinueAfterAnswer}
+              style={{
+                padding: '11px 24px',
+                border: 'none',
+                borderRadius: '8px',
+                backgroundColor: themeStyles.accent,
+                color: themeStyles.whiteOnAccent,
+                cursor: 'pointer',
+                fontSize: '15px',
+                fontWeight: 600,
+                boxShadow: theme === 'dark' ? '0 2px 8px rgba(56, 189, 248, 0.25)' : '0 2px 6px rgba(33, 150, 243, 0.25)',
+              }}
+            >
+              {i18n('Continue')}
+            </button>
           </div>
         )}
 
