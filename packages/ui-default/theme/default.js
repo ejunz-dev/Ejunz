@@ -25,6 +25,7 @@ import 'vj/misc/section.styl';
 import 'vj/misc/nothing.styl';
 import 'vj/components/editor/cmeditor.styl';
 import 'vj/components/datepicker/datepicker.styl';
+import './lesson_result.styl';
 import './dark.styl';
 
 // load all page stylesheets
