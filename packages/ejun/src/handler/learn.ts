@@ -5162,6 +5162,12 @@ class LessonHandler extends Handler {
             });
         }
 
+        let runMs = 0;
+        problemStats = problemStats.map((s) => {
+            runMs += s.totalTime;
+            return { ...s, cumulativeMs: runMs };
+        });
+
         this.response.template = 'lesson_result.html';
         this.response.body = {
             card,
