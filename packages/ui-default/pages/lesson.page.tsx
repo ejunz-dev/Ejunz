@@ -16,6 +16,8 @@ import {
   MATCHING_PAIR_MIN,
   matchingColumnsNormalized,
   superFlipNormalized,
+  SUPER_FLIP_COL_MIN,
+  SUPER_FLIP_ROW_MIN,
 } from 'ejun/src/model/problem';
 
 // Cache keys aligned with base outline (shared image Cache API).
@@ -2253,7 +2255,7 @@ function LessonPage() {
     const cols = superFlipNormalized(currentProblem as ProblemSuperFlip).columns;
     const ncol = cols.length;
     const nrow = cols[0]?.length ?? 0;
-    if (!(ncol >= MATCHING_COL_MIN && nrow >= MATCHING_PAIR_MIN)) return;
+    if (!(ncol >= SUPER_FLIP_COL_MIN && nrow >= SUPER_FLIP_ROW_MIN)) return;
     if (
       superFlipRevealed.length !== ncol
       || !superFlipRevealed.every((c) => c.length === nrow)
@@ -3790,8 +3792,8 @@ function LessonPage() {
               const nrow = columns[0]?.length ?? 0;
               const revealed = superFlipRevealed;
               const allRevealed =
-                ncol >= MATCHING_COL_MIN
-                && nrow >= MATCHING_PAIR_MIN
+                ncol >= SUPER_FLIP_COL_MIN
+                && nrow >= SUPER_FLIP_ROW_MIN
                 && superFlipAllFilledCellsRevealed(columns, revealed);
               const thStyle: React.CSSProperties = {
                 border: `1px solid ${themeStyles.border}`,
@@ -3893,15 +3895,15 @@ function LessonPage() {
                       <button
                         type="button"
                         onClick={handleSuperFlipRevealAll}
-                        disabled={ncol < MATCHING_COL_MIN || nrow < MATCHING_PAIR_MIN}
+                        disabled={ncol < SUPER_FLIP_COL_MIN || nrow < SUPER_FLIP_ROW_MIN}
                         style={{
                           padding: '10px 18px',
                           borderRadius: '8px',
                           border: `1px solid ${themeStyles.border}`,
                           backgroundColor: themeStyles.bgSecondary,
                           color: themeStyles.textPrimary,
-                          cursor: ncol >= MATCHING_COL_MIN && nrow >= MATCHING_PAIR_MIN ? 'pointer' : 'not-allowed',
-                          opacity: ncol >= MATCHING_COL_MIN && nrow >= MATCHING_PAIR_MIN ? 1 : 0.55,
+                          cursor: ncol >= SUPER_FLIP_COL_MIN && nrow >= SUPER_FLIP_ROW_MIN ? 'pointer' : 'not-allowed',
+                          opacity: ncol >= SUPER_FLIP_COL_MIN && nrow >= SUPER_FLIP_ROW_MIN ? 1 : 0.55,
                           fontSize: '14px',
                           fontWeight: 600,
                         }}
@@ -3911,15 +3913,15 @@ function LessonPage() {
                       <button
                         type="button"
                         onClick={handleSuperFlipCoverAll}
-                        disabled={ncol < MATCHING_COL_MIN || nrow < MATCHING_PAIR_MIN}
+                        disabled={ncol < SUPER_FLIP_COL_MIN || nrow < SUPER_FLIP_ROW_MIN}
                         style={{
                           padding: '10px 18px',
                           borderRadius: '8px',
                           border: `1px solid ${themeStyles.border}`,
                           backgroundColor: themeStyles.bgSecondary,
                           color: themeStyles.textPrimary,
-                          cursor: ncol >= MATCHING_COL_MIN && nrow >= MATCHING_PAIR_MIN ? 'pointer' : 'not-allowed',
-                          opacity: ncol >= MATCHING_COL_MIN && nrow >= MATCHING_PAIR_MIN ? 1 : 0.55,
+                          cursor: ncol >= SUPER_FLIP_COL_MIN && nrow >= SUPER_FLIP_ROW_MIN ? 'pointer' : 'not-allowed',
+                          opacity: ncol >= SUPER_FLIP_COL_MIN && nrow >= SUPER_FLIP_ROW_MIN ? 1 : 0.55,
                           fontSize: '14px',
                           fontWeight: 600,
                         }}

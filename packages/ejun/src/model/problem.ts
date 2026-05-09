@@ -27,6 +27,43 @@ export const MATCHING_PAIR_MAX = 8;
 export const MATCHING_COL_MIN = 2;
 export const MATCHING_COL_MAX = 8;
 
+/** Super-flip: allow 1×1 … 8×8 (independent of matching’s ≥2 minimum). */
+export const SUPER_FLIP_ROW_MIN = 1;
+export const SUPER_FLIP_ROW_MAX = MATCHING_PAIR_MAX;
+export const SUPER_FLIP_COL_MIN = 1;
+export const SUPER_FLIP_COL_MAX = MATCHING_COL_MAX;
+
+function clampSuperFlipRowCount(n: unknown): number {
+    const v = typeof n === 'number' && Number.isFinite(n) ? Math.round(n as number) : SUPER_FLIP_ROW_MIN;
+    return Math.min(SUPER_FLIP_ROW_MAX, Math.max(SUPER_FLIP_ROW_MIN, v));
+}
+
+function clampSuperFlipColCount(n: unknown): number {
+    const v = typeof n === 'number' && Number.isFinite(n) ? Math.round(n as number) : SUPER_FLIP_COL_MIN;
+    return Math.min(SUPER_FLIP_COL_MAX, Math.max(SUPER_FLIP_COL_MIN, v));
+}
+
+/** Column-major body for `super_flip`; allows single row/column (1×1). */
+export function normalizeSuperFlipColumns(rawCols: unknown): string[][] {
+    if (Array.isArray(rawCols) && rawCols.length >= SUPER_FLIP_COL_MIN) {
+        const colCount = clampSuperFlipColCount(rawCols.length);
+        const trimmed = (rawCols as unknown[]).slice(0, colCount).map((col) =>
+            Array.isArray(col) ? (col as unknown[]).map((x) => String(x ?? '')) : [],
+        );
+        let rowCount = SUPER_FLIP_ROW_MIN;
+        for (const col of trimmed) {
+            rowCount = Math.max(rowCount, col.length);
+        }
+        rowCount = clampSuperFlipRowCount(rowCount);
+        return trimmed.map((col) => {
+            const padded = [...col];
+            while (padded.length < rowCount) padded.push('');
+            return padded.slice(0, rowCount);
+        });
+    }
+    return [['']];
+}
+
 export function clampMatchingPairCount(n: unknown): number {
     const v = typeof n === 'number' && Number.isFinite(n) ? Math.round(n as number) : MATCHING_PAIR_MIN;
     return Math.min(MATCHING_PAIR_MAX, Math.max(MATCHING_PAIR_MIN, v));
@@ -72,7 +109,7 @@ export function matchingColumnsNormalized(p: Pick<ProblemMatching, 'columns' | '
 
 /** Headers + columns for super-flip tables (column-major body, same as matching). */
 export function normalizeSuperFlipData(headersRaw: unknown, columnsRaw: unknown): { headers: string[]; columns: string[][] } {
-    const columns = normalizeMatchingColumns(columnsRaw, ['', ''], ['', '']);
+    const columns = normalizeSuperFlipColumns(columnsRaw);
     const ncol = columns.length;
     const hList = Array.isArray(headersRaw) ? (headersRaw as unknown[]).map((x) => String(x ?? '')) : [];
     const headers = Array.from({ length: ncol }, (_, i) => String(hList[i] ?? ''));
@@ -377,9 +414,9 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
         let stemS: string | undefined;
         if ('stem' in prev && typeof prev.stem === 'string' && prev.stem.trim()) stemS = prev.stem.trim();
         else if (isFlipProblem(prev)) stemS = prev.faceA || undefined;
-        const colsEmpty = normalizeMatchingColumns(undefined, ['', ''], ['', '']);
+        const colsEmpty = normalizeSuperFlipColumns([['']]);
         const stStem = stemS !== undefined ? { stem: stemS } : {};
-        return { ...common, type: 'super_flip', headers: ['', ''], columns: colsEmpty, ...stStem };
+        return { ...common, type: 'super_flip', headers: [''], columns: colsEmpty, ...stStem };
     }
     if (newKind === 'matching') {
         if (isSuperFlipProblem(prev)) {
