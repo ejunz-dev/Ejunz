@@ -746,6 +746,7 @@ function LessonPage() {
   const [selectedMulti, setSelectedMulti] = useState<number[]>([]);
   const [selectedTf, setSelectedTf] = useState<0 | 1 | null>(null);
   const [flipStage, setFlipStage] = useState<'a' | 'b'>('a');
+  const [flipHintOpen, setFlipHintOpen] = useState(false);
   const [fillBlankDraft, setFillBlankDraft] = useState<string[]>([]);
   /** Per left row index: chosen original index of right column (correct answer is identity i↔i). */
   const [matchingSelections, setMatchingSelections] = useState<Array<number | null>>([]);
@@ -1014,6 +1015,7 @@ function LessonPage() {
     setSelectedMulti([]);
     setSelectedTf(null);
     setFlipStage('a');
+    setFlipHintOpen(false);
     setIsAnswered(false);
     setShowAnalysis(false);
     setIsPassed(false);
@@ -1057,6 +1059,7 @@ function LessonPage() {
       setSelectedMulti([]);
       setSelectedTf(null);
       setFlipStage('a');
+      setFlipHintOpen(false);
       setIsAnswered(false);
       setShowAnalysis(false);
       setPracticeClearedPids({});
@@ -1766,6 +1769,7 @@ function LessonPage() {
     setSelectedMulti([]);
     setSelectedTf(null);
     setFlipStage('a');
+    setFlipHintOpen(false);
     setFillBlankDraft(
       k === 'fill_blank'
         ? Array.from({ length: fillBlankSlotCount((currentProblem as ProblemFillBlank).stem) }, () => '')
@@ -2115,6 +2119,7 @@ function LessonPage() {
     setSelectedMulti([]);
     setSelectedTf(null);
     setFlipStage('a');
+    setFlipHintOpen(false);
     setFillBlankDraft([]);
     setMatchingSelections([]);
     setIsAnswered(false);
@@ -3495,28 +3500,76 @@ function LessonPage() {
 
         {currentKind === 'flip' ? (
           <>
-            {flipStage === 'a' ? (
-              <div style={{ fontSize: '18px', fontWeight: 500, marginBottom: '24px', color: themeStyles.stemColor, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-                {(currentProblem as ProblemFlip).faceA || i18n('No stem')}
-              </div>
-            ) : (
-              <>
-                <div style={{ fontSize: '13px', color: themeStyles.textTertiary, marginBottom: '8px', whiteSpace: 'pre-wrap' }}>{(currentProblem as ProblemFlip).faceA}</div>
-                <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '24px', color: themeStyles.stemColor, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-                  {(currentProblem as ProblemFlip).faceB}
-                </div>
-              </>
-            )}
-            {!isAnswered && flipStage === 'a' && (
-              <button type="button" onClick={handleFlipShowBack} style={{ padding: '12px 24px', border: 'none', borderRadius: '8px', backgroundColor: themeStyles.accent, color: themeStyles.whiteOnAccent, cursor: 'pointer', fontSize: '15px', fontWeight: 600 }}>
-                {i18n('Flip show back')}
-              </button>
-            )}
-            {!isAnswered && flipStage === 'b' && (
-              <button type="button" onClick={handleFlipComplete} style={{ padding: '12px 24px', border: 'none', borderRadius: '8px', backgroundColor: themeStyles.success, color: themeStyles.whiteOnAccent, cursor: 'pointer', fontSize: '15px', fontWeight: 600 }}>
-                {i18n('Flip mark done')}
-              </button>
-            )}
+            {(() => {
+              const fb = currentProblem as ProblemFlip;
+              const flipHintText = typeof fb.hint === 'string' ? fb.hint.trim() : '';
+              const hintBoxStyle: React.CSSProperties = {
+                marginBottom: '16px',
+                padding: '12px 14px',
+                borderRadius: '8px',
+                border: `1px solid ${themeStyles.border}`,
+                backgroundColor: themeStyles.reviewBg,
+                color: themeStyles.textPrimary,
+                fontSize: '14px',
+                lineHeight: 1.55,
+                whiteSpace: 'pre-wrap',
+              };
+              const hintBtnStyle: React.CSSProperties = {
+                padding: '8px 16px',
+                marginBottom: '12px',
+                border: `1px solid ${themeStyles.accent}`,
+                borderRadius: '8px',
+                backgroundColor: 'transparent',
+                color: themeStyles.accent,
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: 600,
+              };
+              const hintBlock =
+                !flipHintText ? null : !isAnswered ? (
+                  <>
+                    <button type="button" onClick={() => setFlipHintOpen((v) => !v)} style={hintBtnStyle}>
+                      {flipHintOpen ? i18n('Flip hide hint') : i18n('Flip show hint')}
+                    </button>
+                    {flipHintOpen ? <div style={hintBoxStyle}>{flipHintText}</div> : null}
+                  </>
+                ) : (
+                  <div style={{ ...hintBoxStyle, marginTop: flipStage === 'a' ? 0 : '8px' }}>
+                    <div style={{ fontSize: '12px', color: themeStyles.textTertiary, marginBottom: '6px' }}>{i18n('Flip hint label')}</div>
+                    {flipHintText}
+                  </div>
+                );
+              return (
+                <>
+                  {flipStage === 'a' ? (
+                    <>
+                      <div style={{ fontSize: '18px', fontWeight: 500, marginBottom: '24px', color: themeStyles.stemColor, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                        {fb.faceA || i18n('No stem')}
+                      </div>
+                      {hintBlock}
+                      {!isAnswered && (
+                        <button type="button" onClick={handleFlipShowBack} style={{ padding: '12px 24px', border: 'none', borderRadius: '8px', backgroundColor: themeStyles.accent, color: themeStyles.whiteOnAccent, cursor: 'pointer', fontSize: '15px', fontWeight: 600 }}>
+                          {i18n('Flip show back')}
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: '13px', color: themeStyles.textTertiary, marginBottom: '8px', whiteSpace: 'pre-wrap' }}>{fb.faceA}</div>
+                      {hintBlock}
+                      <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '24px', color: themeStyles.stemColor, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                        {fb.faceB}
+                      </div>
+                      {!isAnswered && (
+                        <button type="button" onClick={handleFlipComplete} style={{ padding: '12px 24px', border: 'none', borderRadius: '8px', backgroundColor: themeStyles.success, color: themeStyles.whiteOnAccent, cursor: 'pointer', fontSize: '15px', fontWeight: 600 }}>
+                          {i18n('Flip mark done')}
+                        </button>
+                      )}
+                    </>
+                  )}
+                </>
+              );
+            })()}
           </>
         ) : currentKind === 'fill_blank' ? (
           <>

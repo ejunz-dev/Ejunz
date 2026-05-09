@@ -209,7 +209,11 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
             faceA = prev.stem || '';
             faceB = prev.analysis || '';
         }
-        return { ...common, type: 'flip', faceA, faceB };
+        const hintFlip =
+            isFlipProblem(prev) && typeof prev.hint === 'string' && prev.hint.trim()
+                ? { hint: prev.hint.trim() }
+                : {};
+        return { ...common, type: 'flip', faceA, faceB, ...hintFlip };
     }
     if (newKind === 'true_false') {
         const stem =
@@ -331,7 +335,8 @@ export function migrateRawProblem(raw: Record<string, unknown>): Problem {
     if (t === 'flip') {
         const faceA = typeof raw.faceA === 'string' ? raw.faceA : typeof raw.stem === 'string' ? raw.stem : '';
         const faceB = typeof raw.faceB === 'string' ? raw.faceB : typeof raw.analysis === 'string' ? raw.analysis : '';
-        return { ...common, type: 'flip', faceA, faceB };
+        const hintFlip = typeof raw.hint === 'string' && raw.hint.trim() ? raw.hint.trim() : undefined;
+        return { ...common, type: 'flip', faceA, faceB, ...(hintFlip ? { hint: hintFlip } : {}) };
     }
     if (t === 'true_false') {
         const stem = typeof raw.stem === 'string' ? raw.stem : '';

@@ -443,8 +443,10 @@ async function buildTodayContributionAllDomains(uid: number): Promise<{
                 problems += 1;
                 const pk = problemKind(p);
                 if (pk === 'flip') {
-                    problemChars += String((p as ProblemFlip).faceA || '').length
-                        + String((p as ProblemFlip).faceB || '').length;
+                    const f = p as ProblemFlip;
+                    problemChars += String(f.faceA || '').length
+                        + String(f.faceB || '').length
+                        + String(f.hint || '').length;
                 } else if (pk === 'fill_blank') {
                     const f = p as ProblemFillBlank;
                     problemChars += String(f.stem || '').length;
@@ -2948,7 +2950,8 @@ async function exportBaseToFile(base: BaseDoc, outputDir: string, branch?: strin
             const pk = problemKind(p);
             if (pk === 'flip') {
                 const f = p as ProblemFlip;
-                stem = f.faceA || '';
+                const h = typeof f.hint === 'string' && f.hint.trim() ? f.hint.trim() : '';
+                stem = h ? `${h}\n\n${f.faceA || ''}` : (f.faceA || '');
                 options = [f.faceB || ''];
                 answer = 0;
             } else if (pk === 'fill_blank') {

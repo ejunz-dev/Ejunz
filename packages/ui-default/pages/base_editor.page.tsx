@@ -861,6 +861,21 @@ const EditableProblem = React.memo(({
               style={taStyle}
             />
           </div>
+          <div style={{ marginBottom: '4px' }}>
+            <div style={{ fontSize: '11px', color: themeStyles.textSecondary, marginBottom: 2 }}>{i18n('Problem flip hint label')}</div>
+            <textarea
+              value={(model as ProblemFlip).hint ?? ''}
+              onChange={(e) => {
+                const v = e.target.value;
+                const cur = { ...(model as ProblemFlip) };
+                if (v.trim()) cur.hint = v;
+                else delete cur.hint;
+                setModel(cur);
+              }}
+              placeholder={i18n('Problem flip hint placeholder')}
+              style={taStyle}
+            />
+          </div>
         </>
       ) : kind === 'fill_blank' ? (
         <>
@@ -7512,6 +7527,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                 problemsText += `  - title: ${f.title.trim()}\n`;
               }
               problemsText += `  - faceA: ${f.faceA}\n  - faceB: ${f.faceB}\n`;
+              if (typeof f.hint === 'string' && f.hint.trim()) problemsText += `  - hint (learner): ${f.hint.trim()}\n`;
               if (f.analysis) problemsText += `  - analysis: ${f.analysis}\n`;
               return;
             }
@@ -7604,7 +7620,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 4. **rename**: rename a node or card
 5. **update_card_content**: change card body/markdown when the user asks to edit, polish, format, or improve *content* (not the title)
 6. **delete**: delete a node or card when asked
-7. **create_problem**: add practice problems for the **currently open card** when asked. Always include **\`title\`**: a very short plain-text label for lesson sidebars (not the full stem; omit HTML; ideally under ~40 characters). Also use \`problemKind\`: \`single\` (default, one correct option index in \`answer\`), \`multi\` (\`answer\` is an array of correct option indices), \`true_false\` (\`stem\` + \`answer\` 0 = false, 1 = true), \`flip\` (\`faceA\` / \`faceB\`, no \`options\`), \`fill_blank\` (\`stem\` with \`___\` for each blank + \`answers\` string array in order; if no \`___\`, one blank after the stem), \`matching\` (optional instruction \`stem\` plus equal-length arrays \`left\`[] and \`right\`[] with ≥2 pairs — canonical pair is \`left[i]\` with \`right[i]\`; lesson shuffles right labels).
+7. **create_problem**: add practice problems for the **currently open card** when asked. Always include **\`title\`**: a very short plain-text label for lesson sidebars (not the full stem; omit HTML; ideally under ~40 characters). Also use \`problemKind\`: \`single\` (default, one correct option index in \`answer\`), \`multi\` (\`answer\` is an array of correct option indices), \`true_false\` (\`stem\` + \`answer\` 0 = false, 1 = true), \`flip\` (\`faceA\` / \`faceB\`, optional learner \`hint\`; no \`options\`), \`fill_blank\` (\`stem\` with \`___\` for each blank + \`answers\` string array in order; if no \`___\`, one blank after the stem), \`matching\` (optional instruction \`stem\` plus equal-length arrays \`left\`[] and \`right\`[] with ≥2 pairs — canonical pair is \`left[i]\` with \`right[i]\`; lesson shuffles right labels).
 
 [Outline structure]
 ${baseText}
@@ -7699,6 +7715,7 @@ Reply with a JSON code block only for executable operations, using this shape:
       "problemKind": "flip",
       "faceA": "Front prompt or summary",
       "faceB": "Back answer or detail",
+      "hint": "Optional short learner-visible cue (lesson Hint button)",
       "analysis": "Optional"
     },
     {
@@ -7731,7 +7748,7 @@ Reply with a JSON code block only for executable operations, using this shape:
 4. Use \`rename_card\` / \`rename_node\` only when the user clearly wants to change a **title/name**.
 5. **move_node**: read the outline above; match the user's folder/node by **name and full path**, then use the real **node ID** as \`targetParentId\`. Node IDs look like \`node_...\`; they are **not** card IDs (cards use long hex-like ids). "Move folder" means move a **node**. If you cannot resolve a target, reply with an error in plain text instead of guessing IDs.
 6. **move_card**: to move a **card**, use \`move_card\` (card id + \`targetNodeId\`). Never use \`move_node\` for a card. If the user @-mentions a card, use \`move_card\` with that card's id.
-7. **create_problem**: omit \`problemKind\` or set \`single\` for classic single-choice; include **\`title\`** (short sidebar/list label); \`multi\` requires \`answer\` as an array; \`true_false\` requires \`stem\` and \`answer\` 0/1; \`flip\` requires \`faceA\` and \`faceB\` and must **not** include \`options\`; \`fill_blank\` requires \`stem\` and \`answers\` (array of strings, one per \`___\` left-to-right, or one string if a single blank); \`matching\` requires equal-length \`left\` and \`right\` string arrays with at least **2** pairs (pair \`left[i]\`↔\`right[i]\`).
+7. **create_problem**: omit \`problemKind\` or set \`single\` for classic single-choice; include **\`title\`** (short sidebar/list label); \`multi\` requires \`answer\` as an array; \`true_false\` requires \`stem\` and \`answer\` 0/1; \`flip\` requires \`faceA\` and \`faceB\`, optional \`hint\` (learner Hint button), and must **not** include \`options\`; \`fill_blank\` requires \`stem\` and \`answers\` (array of strings, one per \`___\` left-to-right, or one string if a single blank); \`matching\` requires equal-length \`left\` and \`right\` string arrays with at least **2** pairs (pair \`left[i]\`↔\`right[i]\`).
 8. **Valid JSON**: never put raw line breaks or unescaped \`"\` inside a string value; use standard JSON escaping (backslash + quote, backslash + n for newline).
 9. **Streaming**: emit each \`operations[]\` entry as a **fully closed** \`{ ... }\` object (balanced braces) **before** starting the next. The editor applies each finished object immediately—trailing incomplete objects wait until complete.
 `;
@@ -8669,11 +8686,13 @@ Reply with a JSON code block only for executable operations, using this shape:
               errors.push('create_problem flip：缺少 faceA 或 faceB');
               continue;
             }
+            const hintFlip = typeof op.hint === 'string' ? op.hint.trim() : '';
             newProblem = migrateRawProblem({
               pid,
               type: 'flip',
               faceA,
               faceB,
+              ...(hintFlip ? { hint: hintFlip } : {}),
               ...titleSpread,
               ...(analysisStr ? { analysis: analysisStr } : {}),
             });
