@@ -402,7 +402,11 @@ __langname: English
 'Problem super flip reveal all': Reveal all
 'Problem super flip cover all': Cover all
 'Problem super flip not familiar': Not familiar
-'Problem super flip columns invalid': Super flip requires a valid columns array (≥2 columns)
+'Problem super flip row count': Row count (≥1)
+'Problem super flip column count': Column count (≥1)
+'Problem super flip columns invalid': Super flip requires a valid columns array (≥1 column)
+'Problem super flip columns too few': Super flip needs at least 1 column
+'Problem super flip rows too few': Super flip needs at least 1 row
 'Problem field type': Question type
 'Problem title': Problem title
 'Problem option slots': Option slots
