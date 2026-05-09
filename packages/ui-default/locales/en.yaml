@@ -374,6 +374,8 @@ __langname: English
 'Problem kind flip': Flip card
 'Problem kind fill blank': Fill in the blank
 'Problem field type': Question type
+'Problem title': Problem title
+'Problem title hint': Shown in the lesson sidebar for pending/completed items; if empty, stem preview is used.
 'Problem option slots': Option slots
 'Problem multi all correct': All correct selections required to pass
 'Problem face A label': Side A (shown first)
