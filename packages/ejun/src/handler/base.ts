@@ -4,7 +4,7 @@ import { Handler, param, route, post, Types, ConnectionHandler, subscribe } from
 import { NotFoundError, ForbiddenError, BadRequestError, ValidationError, FileLimitExceededError, FileUploadError, FileExistsError } from '../error';
 import { PRIV, PERM } from '../model/builtin';
 import { BaseModel, CardModel, TYPE_CARD } from '../model/base';
-import type { BaseDoc, BaseNode, BaseEdge, CardDoc, FileInfo, ProblemFlip, ProblemTrueFalse, ProblemFillBlank, ProblemSingle, ProblemMulti, ProblemMatching, Problem } from '../interface';
+import type { BaseDoc, BaseNode, BaseEdge, CardDoc, FileInfo, ProblemFlip, ProblemTrueFalse, ProblemFillBlank, ProblemSingle, ProblemMulti, ProblemMatching, ProblemSuperFlip, Problem } from '../interface';
 import * as document from '../model/document';
 import { exec as execCb, execFile as execFileCb } from 'child_process';
 import fs from 'fs';
@@ -45,7 +45,7 @@ import {
     isDevelopSessionSettled,
 } from '../lib/sessionListDisplay';
 import { isDevelopSessionPastDeadline, readDevelopSessionDeadlineMs } from '../lib/sessionUtcDaily';
-import { problemKind, matchingColumnsNormalized } from '../model/problem';
+import { problemKind, matchingColumnsNormalized, superFlipNormalized } from '../model/problem';
 
 /** Machine token in {@link BadRequestError} params for API clients (see `request.ajax` in ui-default). */
 const DEVELOP_SESSION_CLOSED_CODE = 'DEVELOP_SESSION_CLOSED';
@@ -455,6 +455,12 @@ async function buildTodayContributionAllDomains(uid: number): Promise<{
                     const mm = p as ProblemMatching;
                     problemChars += String(mm.stem || '').length
                         + matchingColumnsNormalized(mm).flat().join('').length;
+                } else if (pk === 'super_flip') {
+                    const sf = p as ProblemSuperFlip;
+                    const sn = superFlipNormalized(sf);
+                    problemChars += String(sf.stem || '').length
+                        + sn.headers.join('').length
+                        + sn.columns.flat().join('').length;
                 } else if (typeof p.stem === 'string') {
                     problemChars += p.stem.length;
                 }
@@ -2968,6 +2974,19 @@ async function exportBaseToFile(base: BaseDoc, outputDir: string, branch?: strin
                     rowLines.push(cols.map((col) => String(col[r] ?? '')).join(' ↔ '));
                 }
                 stem = `${head}${rowLines.join('\n')}`.trim();
+                options = [];
+                answer = 0;
+            } else if (pk === 'super_flip') {
+                const sf = p as ProblemSuperFlip;
+                const head = typeof sf.stem === 'string' && sf.stem.trim() ? `${sf.stem.trim()}\n\n` : '';
+                const { headers, columns } = superFlipNormalized(sf);
+                const nrow = columns[0]?.length ?? 0;
+                const hdrLine = headers.map((h) => String(h ?? '').trim()).join(' · ');
+                const rowLines: string[] = [];
+                for (let r = 0; r < nrow; r++) {
+                    rowLines.push(columns.map((col) => String(col[r] ?? '')).join(' · '));
+                }
+                stem = `${head}${hdrLine ? `${hdrLine}\n` : ''}${rowLines.join('\n')}`.trim();
                 options = [];
                 answer = 0;
             } else if (pk === 'true_false') {

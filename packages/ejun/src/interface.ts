@@ -386,7 +386,14 @@ export interface BaseHistoryEntry {
 }
 
 /** Card-attached practice problems (editor + lesson). Legacy rows omit `type` → single choice. */
-export type ProblemKind = 'single' | 'multi' | 'true_false' | 'flip' | 'fill_blank' | 'matching';
+export type ProblemKind =
+    | 'single'
+    | 'multi'
+    | 'true_false'
+    | 'flip'
+    | 'fill_blank'
+    | 'matching'
+    | 'super_flip';
 
 export interface ProblemCommon {
     pid: string;
@@ -453,13 +460,27 @@ export interface ProblemMatching extends ProblemCommon {
     right: string[];
 }
 
+/**
+ * Super flip table: same storage as matching (`columns[col][row]`), plus `headers[col]` visible in lesson.
+ * Whitespace-empty body cells are shown as blank in the lesson (no flip); non-empty cells start masked until tapped.
+ */
+export interface ProblemSuperFlip extends ProblemCommon {
+    type: 'super_flip';
+    stem?: string;
+    /** Visible column titles in lesson (`headers.length` must match `columns.length`). */
+    headers: string[];
+    /** Body-only cells `columns[col][row]` (no pairing grading). */
+    columns: string[][];
+}
+
 export type Problem =
     | ProblemSingle
     | ProblemMulti
     | ProblemTrueFalse
     | ProblemFlip
     | ProblemFillBlank
-    | ProblemMatching;
+    | ProblemMatching
+    | ProblemSuperFlip;
 
 export interface CardDoc {
     docType: document['TYPE_CARD'];

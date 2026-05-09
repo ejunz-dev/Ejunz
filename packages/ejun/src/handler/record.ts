@@ -11,10 +11,10 @@ import {
     Types,
 } from '../service/server';
 import { PERM, PRIV, STATUS_TEXTS } from '../model/builtin';
-import type { BaseDoc, BaseNode, CardDoc, ProblemFlip, ProblemFillBlank, ProblemMatching } from '../interface';
+import type { BaseDoc, BaseNode, CardDoc, ProblemFlip, ProblemFillBlank, ProblemMatching, ProblemSuperFlip } from '../interface';
 import { BaseModel, CardModel } from '../model/base';
 import RecordModel, { type SessionRecordDoc, type RecordProblemState } from '../model/record';
-import { problemKind, matchingColumnsNormalized } from '../model/problem';
+import { problemKind, matchingColumnsNormalized, superFlipNormalized } from '../model/problem';
 import SessionModel, { type SessionDoc } from '../model/session';
 import user from '../model/user';
 import Agent from '../model/agent';
@@ -260,6 +260,16 @@ async function problemRowsForRecord(rd: SessionRecordDoc): Promise<LessonHistory
                         ? mm.stem.trim()
                         : (matchingColumnsNormalized(mm)[0] || []).map((t) => String(t ?? '').trim()).filter(Boolean).slice(0, 2).join(' ↔ ')
                             || (mm.pid || ''),
+                    160,
+                );
+            }
+            else if (pk === 'super_flip') {
+                const sf = pr as ProblemSuperFlip;
+                const st = typeof sf.stem === 'string' && sf.stem.trim() ? sf.stem.trim() : '';
+                stemPreview = stripHtmlOneLine(
+                    st
+                        || superFlipNormalized(sf).headers.map((x) => String(x ?? '').trim()).filter(Boolean).slice(0, 3).join(' · ')
+                        || sf.pid || '',
                     160,
                 );
             }
