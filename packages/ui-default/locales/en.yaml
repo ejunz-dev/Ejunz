@@ -373,9 +373,16 @@ __langname: English
 'Problem kind true false': True / false
 'Problem kind flip': Flip card
 'Problem kind fill blank': Fill in the blank
+'Problem kind matching': Matching pairs
+'Problem matching stem optional': Introduction (optional)
+'Problem matching pair count': Number of pairs
+'Problem matching pairs hint': Each row pairs the left and right on the same line. Learners match shuffled right options to each left item in the lesson.
+'Problem matching left': Left
+'Problem matching right': Right (pairs with left on the same row)
+'Problem matching choose': Choose a match…
+'Problem matching pairs too few': Matching problems need at least 2 left/right pairs
 'Problem field type': Question type
 'Problem title': Problem title
-'Problem title hint': Shown in the lesson sidebar for pending/completed items; if empty, stem preview is used.
 'Problem option slots': Option slots
 'Problem multi all correct': All correct selections required to pass
 'Problem face A label': Side A (shown first)
@@ -387,6 +394,8 @@ __langname: English
 'Problem fill blank stem hint': Use three underscores (___) in the question for each blank. If you omit them, one blank appears after the question text.
 'Problem fill blank answers label': Correct answers (one per blank, left to right)
 'Problem fill blank slot label': 'Blank {0}'
+'Pair': Pair
+
 'Provider (MCP)': Provider (MCP)
 'Provider': Provider
 'Pulling from GitHub...': Pulling from GitHub...

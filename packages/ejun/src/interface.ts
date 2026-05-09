@@ -386,7 +386,7 @@ export interface BaseHistoryEntry {
 }
 
 /** Card-attached practice problems (editor + lesson). Legacy rows omit `type` → single choice. */
-export type ProblemKind = 'single' | 'multi' | 'true_false' | 'flip' | 'fill_blank';
+export type ProblemKind = 'single' | 'multi' | 'true_false' | 'flip' | 'fill_blank' | 'matching';
 
 export interface ProblemCommon {
     pid: string;
@@ -441,12 +441,21 @@ export interface ProblemFillBlank extends ProblemCommon {
     answers: string[];
 }
 
+/** Pair items by index i: left[i] ↔ right[i] (right labels are shuffled in lesson). */
+export interface ProblemMatching extends ProblemCommon {
+    type: 'matching';
+    stem?: string;
+    left: string[];
+    right: string[];
+}
+
 export type Problem =
     | ProblemSingle
     | ProblemMulti
     | ProblemTrueFalse
     | ProblemFlip
-    | ProblemFillBlank;
+    | ProblemFillBlank
+    | ProblemMatching;
 
 export interface CardDoc {
     docType: document['TYPE_CARD'];
