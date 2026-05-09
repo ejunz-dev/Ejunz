@@ -474,5 +474,7 @@ You're not logged in.: 您沒有登入。
 Your permission: 您的許可權
 Your role: 您的角色
 'Insert into AI terminal': 插入到 AI 終端
+'Insert problem into AI terminal': 將題目插入到 AI 終端
+'Practice problem pid not on open card': 目前卡片上沒有該題目 id，無法更新
 'Insert {0} selected into AI terminal': 將 {0} 項選取內容插入 AI 終端
 'Unable to add this item to AI context': 無法將該項加入 AI 上下文
