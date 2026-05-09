@@ -217,6 +217,9 @@ __langname: 简体中文
 'Final message will be': 最终消息将是
 'Flip mark done': 标记完成
 'Flip show back': 查看背面
+'Flip show hint': 显示提示
+'Flip hide hint': 收起提示
+'Flip hint label': 提示
 'Folder description': 文件夹描述
 'Folder/Directory': 文件夹/目录
 'Format: category 1, sub category 1.1, sub category 1.2, ..., sub category 1.x, ..., category n, sub category n.1, sub category n.2, ..., sub category n.m, ...': 格式：分类1, 子分类1.1, 子分类1.2, ..., 子分类1.x, ..., 分类n, 子分类n.1, 子分类n.2, ..., 子分类n.m, ...
@@ -417,6 +420,8 @@ __langname: 简体中文
 'Problem face B label': B 面（认识/不认识后翻转）
 'Problem face A placeholder': 正面内容
 'Problem face B placeholder': 背面内容
+'Problem flip hint label': 提示（学习者可见）
+'Problem flip hint placeholder': 翻面前的轻量提示，选填；课程中可通过「显示提示」查看。
 'Problem answer true': 对
 'Problem answer false': 错
 'Problem fill blank stem hint': 在题干中用三个下划线 ___ 表示每个空格；若不写 ___，则在题干后显示一个空格。
