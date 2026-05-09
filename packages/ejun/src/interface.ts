@@ -390,6 +390,8 @@ export type ProblemKind = 'single' | 'multi' | 'true_false' | 'flip' | 'fill_bla
 
 export interface ProblemCommon {
     pid: string;
+    /** Short label for lesson sidebars / lists; full stem still shows in practice. */
+    title?: string;
     analysis?: string;
     imageUrl?: string;
     imageNote?: string;

@@ -4,7 +4,7 @@ import { Handler, param, route, post, Types, ConnectionHandler, subscribe } from
 import { NotFoundError, ForbiddenError, BadRequestError, ValidationError, FileLimitExceededError, FileUploadError, FileExistsError } from '../error';
 import { PRIV, PERM } from '../model/builtin';
 import { BaseModel, CardModel, TYPE_CARD } from '../model/base';
-import type { BaseDoc, BaseNode, BaseEdge, CardDoc, FileInfo, ProblemFlip, ProblemTrueFalse, ProblemFillBlank, ProblemSingle, ProblemMulti } from '../interface';
+import type { BaseDoc, BaseNode, BaseEdge, CardDoc, FileInfo, ProblemFlip, ProblemTrueFalse, ProblemFillBlank, ProblemSingle, ProblemMulti, Problem } from '../interface';
 import * as document from '../model/document';
 import { exec as execCb, execFile as execFileCb } from 'child_process';
 import fs from 'fs';
@@ -708,45 +708,35 @@ class BaseStudyHandler extends Handler {
             !branchData.edges.some(edge => edge.target === node.id)
         );
 
-        const units: Array<{ 
-            node: BaseNode; 
+        const units: Array<{
+            node: BaseNode;
             problemCount: number;
-            problems: Array<{
-                pid: string;
-                type: 'single';
-                stem: string;
-                options: string[];
-                answer: number;
-                analysis?: string;
-                cardId: string;
-                cardTitle: string;
-                cardUrl: string;
-            }>;
+            problems: Array<
+                Problem & {
+                    cardId: string;
+                    cardTitle: string;
+                    cardUrl: string;
+                }
+            >;
         }> = [];
 
         
-        const collectNodeProblems = async (node: BaseNode): Promise<Array<{
-            pid: string;
-            type: 'single';
-            stem: string;
-            options: string[];
-            answer: number;
-            analysis?: string;
-            cardId: string;
-            cardTitle: string;
-            cardUrl: string;
-        }>> => {
-            const allProblems: Array<{
-                pid: string;
-                type: 'single';
-                stem: string;
-                options: string[];
-                answer: number;
-                analysis?: string;
-                cardId: string;
-                cardTitle: string;
-                cardUrl: string;
-            }> = [];
+        const collectNodeProblems = async (node: BaseNode): Promise<
+            Array<
+                Problem & {
+                    cardId: string;
+                    cardTitle: string;
+                    cardUrl: string;
+                }
+            >
+        > => {
+            const allProblems: Array<
+                Problem & {
+                    cardId: string;
+                    cardTitle: string;
+                    cardUrl: string;
+                }
+            > = [];
             
             try {
                 const cards = await CardModel.getByNodeId(domainId, this.base!.docId, node.id);

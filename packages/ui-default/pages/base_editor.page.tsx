@@ -369,8 +369,10 @@ function summarizeAiOperationOneLine(op: any): string {
       return `Delete node ${short(op.nodeId)}`;
     case 'delete_card':
       return `Delete card ${short(op.cardId)}`;
-    case 'create_problem':
-      return `Create ${String(op.problemKind || 'single')} problem on card ${short(op.cardId)}`;
+    case 'create_problem': {
+      const ttl = typeof op.title === 'string' && op.title.trim() ? ` "${op.title.trim().slice(0, 28)}${op.title.trim().length > 28 ? '…' : ''}"` : '';
+      return `Create ${String(op.problemKind || 'single')} problem${ttl} on card ${short(op.cardId)}`;
+    }
     default:
       return String(t);
   }
@@ -620,7 +622,7 @@ const EditableProblem = React.memo(({
   const imageNote = model.imageNote || '';
   const analysis = model.analysis || '';
 
-  const setCommon = (patch: Partial<Pick<Problem, 'imageUrl' | 'imageNote' | 'analysis'>>) => {
+  const setCommon = (patch: Partial<Pick<Problem, 'imageUrl' | 'imageNote' | 'analysis' | 'title'>>) => {
     setModel((m) => ({ ...m, ...patch } as Problem));
   };
 
@@ -819,6 +821,21 @@ const EditableProblem = React.memo(({
         </label>
         {isNew && <span style={{ fontSize: '10px', color: themeStyles.success }}>{i18n('New')}</span>}
         {isEdited && !isNew && <span style={{ fontSize: '10px', color: themeStyles.warning }}>{i18n('Edited')}</span>}
+      </div>
+
+      <div style={{ marginBottom: '8px' }}>
+        <div style={{ fontSize: '11px', color: themeStyles.textSecondary, marginBottom: 2 }}>
+          {i18n('Problem title')}
+        </div>
+        <input
+          type="text"
+          value={typeof model.title === 'string' ? model.title : ''}
+          onChange={(e) => setCommon({ title: e.target.value })}
+          style={{ ...inpStyle, width: '100%' }}
+        />
+        <div style={{ fontSize: '10px', color: themeStyles.textTertiary, marginTop: 4, lineHeight: 1.35 }}>
+          {i18n('Problem title hint')}
+        </div>
       </div>
 
       {kind === 'flip' ? (
@@ -7423,6 +7440,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             if (k === 'flip') {
               const f = p as ProblemFlip;
               problemsText += `\n  Problem ${index + 1} (ID: ${p.pid}): flip card\n`;
+              if (typeof f.title === 'string' && f.title.trim()) {
+                problemsText += `  - title: ${f.title.trim()}\n`;
+              }
               problemsText += `  - faceA: ${f.faceA}\n  - faceB: ${f.faceB}\n`;
               if (f.analysis) problemsText += `  - analysis: ${f.analysis}\n`;
               return;
@@ -7430,6 +7450,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             if (k === 'true_false') {
               const tf = p as ProblemTrueFalse;
               problemsText += `\n  Problem ${index + 1} (ID: ${p.pid}): true/false\n`;
+              if (typeof tf.title === 'string' && tf.title.trim()) {
+                problemsText += `  - title: ${tf.title.trim()}\n`;
+              }
               problemsText += `  - stem: ${tf.stem}\n  - correct answer: ${tf.answer === 1 ? 'true (1)' : 'false (0)'}\n`;
               if (tf.analysis) problemsText += `  - analysis: ${tf.analysis}\n`;
               return;
@@ -7437,6 +7460,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             if (k === 'fill_blank') {
               const fb = p as ProblemFillBlank;
               problemsText += `\n  Problem ${index + 1} (ID: ${p.pid}): fill-in-the-blank\n`;
+              if (typeof fb.title === 'string' && fb.title.trim()) {
+                problemsText += `  - title: ${fb.title.trim()}\n`;
+              }
               problemsText += `  - stem (use ___ for each blank): ${fb.stem}\n`;
               problemsText += `  - correct answers in order: ${JSON.stringify(fb.answers || [])}\n`;
               if (fb.analysis) problemsText += `  - analysis: ${fb.analysis}\n`;
@@ -7449,6 +7475,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                 `  ${String.fromCharCode(65 + oi)}. ${opt}${set.has(oi) ? ' (correct)' : ''}`
               ).join('\n');
               problemsText += `\n  Problem ${index + 1} (ID: ${p.pid}): multiple choice\n`;
+              if (typeof pm.title === 'string' && pm.title.trim()) {
+                problemsText += `  - title: ${pm.title.trim()}\n`;
+              }
               problemsText += `  - stem: ${pm.stem}\n  - options:\n${optionsText}\n`;
               problemsText += `  - answer index array: ${JSON.stringify([...(pm.answer || [])].sort((a, b) => a - b))}\n`;
               if (pm.analysis) problemsText += `  - analysis: ${pm.analysis}\n`;
@@ -7459,6 +7488,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               `  ${String.fromCharCode(65 + oi)}. ${opt}${oi === ps.answer ? ' (correct)' : ''}`
             ).join('\n');
             problemsText += `\n  Problem ${index + 1} (ID: ${p.pid}): single choice\n`;
+            if (typeof ps.title === 'string' && ps.title.trim()) {
+              problemsText += `  - title: ${ps.title.trim()}\n`;
+            }
             problemsText += `  - stem: ${ps.stem}\n`;
             problemsText += `  - options:\n${optionsText}\n`;
             if (ps.analysis) {
@@ -7490,7 +7522,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 4. **rename**: rename a node or card
 5. **update_card_content**: change card body/markdown when the user asks to edit, polish, format, or improve *content* (not the title)
 6. **delete**: delete a node or card when asked
-7. **create_problem**: add practice problems for the **currently open card** when asked. Use \`problemKind\`: \`single\` (default, one correct option index in \`answer\`), \`multi\` (\`answer\` is an array of correct option indices), \`true_false\` (\`stem\` + \`answer\` 0 = false, 1 = true), \`flip\` (\`faceA\` / \`faceB\`, no \`options\`), \`fill_blank\` (\`stem\` with \`___\` for each blank + \`answers\` string array in order; if no \`___\`, one blank after the stem)
+7. **create_problem**: add practice problems for the **currently open card** when asked. Always include **\`title\`**: a very short plain-text label for lesson sidebars (not the full stem; omit HTML; ideally under ~40 characters). Also use \`problemKind\`: \`single\` (default, one correct option index in \`answer\`), \`multi\` (\`answer\` is an array of correct option indices), \`true_false\` (\`stem\` + \`answer\` 0 = false, 1 = true), \`flip\` (\`faceA\` / \`faceB\`, no \`options\`), \`fill_blank\` (\`stem\` with \`___\` for each blank + \`answers\` string array in order; if no \`___\`, one blank after the stem)
 
 [Outline structure]
 ${baseText}
@@ -7552,6 +7584,7 @@ Reply with a JSON code block only for executable operations, using this shape:
     {
       "type": "create_problem",
       "cardId": "card_xxx",
+      "title": "TCP vs UDP",
       "problemKind": "single",
       "stem": "Question stem",
       "options": ["A", "B", "C", "D"],
@@ -7561,6 +7594,7 @@ Reply with a JSON code block only for executable operations, using this shape:
     {
       "type": "create_problem",
       "cardId": "card_xxx",
+      "title": "Protocol layers",
       "problemKind": "multi",
       "stem": "Question stem",
       "options": ["A","B","C","D"],
@@ -7570,6 +7604,7 @@ Reply with a JSON code block only for executable operations, using this shape:
     {
       "type": "create_problem",
       "cardId": "card_xxx",
+      "title": "IPv6 address size",
       "problemKind": "true_false",
       "stem": "IPv6 addresses are 128 bits long.",
       "answer": 1,
@@ -7578,6 +7613,7 @@ Reply with a JSON code block only for executable operations, using this shape:
     {
       "type": "create_problem",
       "cardId": "card_xxx",
+      "title": "Flip: HTTP basics",
       "problemKind": "flip",
       "faceA": "Front prompt or summary",
       "faceB": "Back answer or detail",
@@ -7586,6 +7622,7 @@ Reply with a JSON code block only for executable operations, using this shape:
     {
       "type": "create_problem",
       "cardId": "card_xxx",
+      "title": "Ports drill",
       "problemKind": "fill_blank",
       "stem": "The protocol ___ runs on port ___.",
       "answers": ["HTTP", "80"],
@@ -7602,7 +7639,7 @@ Reply with a JSON code block only for executable operations, using this shape:
 4. Use \`rename_card\` / \`rename_node\` only when the user clearly wants to change a **title/name**.
 5. **move_node**: read the outline above; match the user's folder/node by **name and full path**, then use the real **node ID** as \`targetParentId\`. Node IDs look like \`node_...\`; they are **not** card IDs (cards use long hex-like ids). "Move folder" means move a **node**. If you cannot resolve a target, reply with an error in plain text instead of guessing IDs.
 6. **move_card**: to move a **card**, use \`move_card\` (card id + \`targetNodeId\`). Never use \`move_node\` for a card. If the user @-mentions a card, use \`move_card\` with that card's id.
-7. **create_problem**: omit \`problemKind\` or set \`single\` for classic single-choice; \`multi\` requires \`answer\` as an array; \`true_false\` requires \`stem\` and \`answer\` 0/1; \`flip\` requires \`faceA\` and \`faceB\` and must **not** include \`options\`; \`fill_blank\` requires \`stem\` and \`answers\` (array of strings, one per \`___\` left-to-right, or one string if a single blank).
+7. **create_problem**: omit \`problemKind\` or set \`single\` for classic single-choice; include **\`title\`** (short sidebar/list label); \`multi\` requires \`answer\` as an array; \`true_false\` requires \`stem\` and \`answer\` 0/1; \`flip\` requires \`faceA\` and \`faceB\` and must **not** include \`options\`; \`fill_blank\` requires \`stem\` and \`answers\` (array of strings, one per \`___\` left-to-right, or one string if a single blank).
 8. **Valid JSON**: never put raw line breaks or unescaped \`"\` inside a string value; use standard JSON escaping (backslash + quote, backslash + n for newline).
 9. **Streaming**: emit each \`operations[]\` entry as a **fully closed** \`{ ... }\` object (balanced braces) **before** starting the next. The editor applies each finished object immediately—trailing incomplete objects wait until complete.
 `;
@@ -8526,6 +8563,10 @@ Reply with a JSON code block only for executable operations, using this shape:
 
           const pid = `p_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
           const analysisStr = typeof analysis === 'string' && analysis.trim() ? analysis.trim() : undefined;
+          const aiTitleRaw = typeof op.title === 'string' ? op.title.trim() : '';
+          const titleSpread = aiTitleRaw
+            ? { title: aiTitleRaw.length > 200 ? `${aiTitleRaw.slice(0, 197)}…` : aiTitleRaw }
+            : {};
           let newProblem: Problem;
 
           if (kind === 'flip') {
@@ -8541,6 +8582,7 @@ Reply with a JSON code block only for executable operations, using this shape:
               type: 'flip',
               faceA,
               faceB,
+              ...titleSpread,
               ...(analysisStr ? { analysis: analysisStr } : {}),
             });
           } else if (kind === 'true_false') {
@@ -8566,6 +8608,7 @@ Reply with a JSON code block only for executable operations, using this shape:
               type: 'true_false',
               stem,
               answer: av,
+              ...titleSpread,
               ...(analysisStr ? { analysis: analysisStr } : {}),
             });
           } else if (kind === 'fill_blank') {
@@ -8589,6 +8632,7 @@ Reply with a JSON code block only for executable operations, using this shape:
               type: 'fill_blank',
               stem,
               answers: answersArr.length ? answersArr : [''],
+              ...titleSpread,
               ...(analysisStr ? { analysis: analysisStr } : {}),
             });
           } else if (kind === 'multi') {
@@ -8620,6 +8664,7 @@ Reply with a JSON code block only for executable operations, using this shape:
               stem,
               options,
               answer: coercedAnswers,
+              ...titleSpread,
               ...(typeof op.optionSlots === 'number' && Number.isFinite(op.optionSlots) ? { optionSlots: op.optionSlots } : {}),
               ...(analysisStr ? { analysis: analysisStr } : {}),
             });
@@ -8663,6 +8708,7 @@ Reply with a JSON code block only for executable operations, using this shape:
               stem,
               options,
               answer: answerNum,
+              ...titleSpread,
               ...(analysisStr ? { analysis: analysisStr } : {}),
             });
           }
