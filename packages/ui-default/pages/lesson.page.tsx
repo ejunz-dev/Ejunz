@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import { i18n, request } from 'vj/utils';
 import Notification from 'vj/components/notification';
-import type { Problem, ProblemSingle, ProblemMulti, ProblemTrueFalse, ProblemFlip, ProblemFillBlank } from 'ejun/src/interface';
+import type { Problem, ProblemSingle, ProblemMulti, ProblemTrueFalse, ProblemFlip, ProblemFillBlank, ProblemMatching } from 'ejun/src/interface';
 import {
   problemKind,
   normalizeMultiAnswers,
@@ -11,6 +11,8 @@ import {
   fillBlankSlotCount,
   fillBlankResponseMatches,
   normalizeFillBlankText,
+  matchingUserPicksCorrect,
+  MATCHING_PAIR_MIN,
 } from 'ejun/src/model/problem';
 
 // Cache keys aligned with base outline (shared image Cache API).
@@ -47,6 +49,7 @@ function lessonProblemKindLabel(k: ReturnType<typeof problemKind>): string {
     : k === 'true_false' ? 'Problem kind true false'
     : k === 'flip' ? 'Problem kind flip'
     : k === 'fill_blank' ? 'Problem kind fill blank'
+    : k === 'matching' ? 'Problem kind matching'
     : 'Problem kind single';
   const t = i18n(key);
   return t !== key ? t : k;
@@ -61,6 +64,13 @@ function lessonProblemQueueTitleText(p: QueuedProblem): string {
   }
   if (problemKind(p) === 'fill_blank') {
     return String((p as ProblemFillBlank).stem || '').trim();
+  }
+  if (problemKind(p) === 'matching') {
+    const m = p as ProblemMatching;
+    const st = typeof m.stem === 'string' ? m.stem.trim() : '';
+    if (st) return st;
+    const lr = [...(m.left || []), ...(m.right || [])].map((t) => String(t ?? '').trim()).filter(Boolean);
+    return lr.join(' ↔ ') || '';
   }
   const stem = (p as ProblemSingle | ProblemMulti | ProblemTrueFalse).stem;
   return String(stem || '').trim();
@@ -737,6 +747,8 @@ function LessonPage() {
   const [selectedTf, setSelectedTf] = useState<0 | 1 | null>(null);
   const [flipStage, setFlipStage] = useState<'a' | 'b'>('a');
   const [fillBlankDraft, setFillBlankDraft] = useState<string[]>([]);
+  /** Per left row index: chosen original index of right column (correct answer is identity i↔i). */
+  const [matchingSelections, setMatchingSelections] = useState<Array<number | null>>([]);
   const [isAnswered, setIsAnswered] = useState(false);
   const [isPassed, setIsPassed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1644,6 +1656,11 @@ function LessonPage() {
       while (u.length < need) u.push('');
       return fillBlankResponseMatches(pf.answers || [], u);
     }
+    if (currentKind === 'matching') {
+      const pm = currentProblem as ProblemMatching;
+      const n = pm.left.length;
+      return n >= MATCHING_PAIR_MIN && matchingUserPicksCorrect(n, matchingSelections);
+    }
     if (currentKind === 'flip') {
       return isAnswered;
     }
@@ -1684,6 +1701,20 @@ function LessonPage() {
       if (h.fillAnswers?.length) return h.fillAnswers.map((s) => String(s ?? '').trim()).filter(Boolean).join('；') || i18n('N/A');
       return i18n('N/A');
     }
+    if (k === 'matching') {
+      const pm = h.problem as ProblemMatching;
+      const L = pm.left || [];
+      const R = pm.right || [];
+      const picks = Array.isArray(h.fillAnswers)
+        ? h.fillAnswers.map((x) => (typeof x === 'string' && /^\d+$/.test(x) ? parseInt(x, 10) : NaN))
+        : [];
+      if (!picks.some((x) => Number.isFinite(x))) return i18n('N/A');
+      return L.map((lhs, ii) => {
+        const pj = picks[ii];
+        const rhs = typeof pj === 'number' && Number.isFinite(pj) && pj >= 0 && pj < R.length ? String(R[pj] ?? '').trim() : '?';
+        return `${String(lhs || '').trim() || '?'}→${rhs}`;
+      }).filter(Boolean).join('； ') || i18n('N/A');
+    }
     return i18n('N/A');
   }, []);
 
@@ -1711,6 +1742,19 @@ function LessonPage() {
       if (!a.length) return i18n('N/A');
       return a.map((s) => String(s ?? '').trim()).filter(Boolean).join('；') || i18n('N/A');
     }
+    if (k === 'matching') {
+      const pm = p as ProblemMatching;
+      const L = pm.left || [];
+      const R = pm.right || [];
+      const n = Math.min(L.length, R.length);
+      const parts: string[] = [];
+      for (let i = 0; i < n; i++) {
+        const a = String(L[i] ?? '').trim();
+        const b = String(R[i] ?? '').trim();
+        if (a || b) parts.push(`${a || '—'} ↔ ${b || '—'}`);
+      }
+      return parts.join('； ') || i18n('N/A');
+    }
     if (k === 'flip') return i18n('Problem kind flip');
     return i18n('N/A');
   }, []);
@@ -1727,6 +1771,7 @@ function LessonPage() {
         ? Array.from({ length: fillBlankSlotCount((currentProblem as ProblemFillBlank).stem) }, () => '')
         : [],
     );
+    setMatchingSelections([]);
     setIsAnswered(false);
     setShowAnalysis(false);
     setPendingLessonAdvance(null);
@@ -1750,6 +1795,21 @@ function LessonPage() {
         [indices[i], indices[j]] = [indices[j], indices[i]];
       }
       setOptionOrder(indices);
+    } else if (k === 'matching') {
+      const pm = currentProblem as ProblemMatching;
+      const n = pm.left?.length ?? 0;
+      if (n >= MATCHING_PAIR_MIN) {
+        const indices = pm.left.map((_, i) => i);
+        for (let i = indices.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [indices[i], indices[j]] = [indices[j], indices[i]];
+        }
+        setMatchingSelections(Array.from({ length: n }, () => null));
+        setOptionOrder(indices);
+      } else {
+        setMatchingSelections([]);
+        setOptionOrder([]);
+      }
     } else {
       setOptionOrder([]);
     }
@@ -2032,6 +2092,21 @@ function LessonPage() {
     recordCorrectOrWrong(currentProblem, correct ? 1 : 0, correct, timeSpent, problemId, currentAttempts, user);
   };
 
+  const handleMatchingSubmit = () => {
+    if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'matching') return;
+    const pm = currentProblem as ProblemMatching;
+    const n = pm.left?.length ?? 0;
+    const correct = matchingUserPicksCorrect(n, matchingSelections);
+    const timeSpent = Date.now() - problemStartTime;
+    const problemId = currentProblem.pid;
+    const currentAttempts = (problemAttempts[problemId] || 0) + 1;
+    setIsAnswered(true);
+    setShowAnalysis(true);
+    setProblemAttempts((prev) => ({ ...prev, [problemId]: currentAttempts }));
+    const fillAnswers = matchingSelections.slice(0, n).map((v) => String(v ?? ''));
+    recordCorrectOrWrong(currentProblem, correct ? 1 : 0, correct, timeSpent, problemId, currentAttempts, fillAnswers);
+  };
+
   const handleNextProblem = () => {
     setPendingLessonAdvance(null);
     const donePid = problemQueue[currentProblemIndex]?.pid;
@@ -2041,6 +2116,7 @@ function LessonPage() {
     setSelectedTf(null);
     setFlipStage('a');
     setFillBlankDraft([]);
+    setMatchingSelections([]);
     setIsAnswered(false);
     setShowAnalysis(false);
     setShuffleTrigger((t) => t + 1);
@@ -3563,6 +3639,105 @@ function LessonPage() {
                   backgroundColor: themeStyles.accent,
                   color: themeStyles.whiteOnAccent,
                   cursor: 'pointer',
+                  fontSize: '15px',
+                  fontWeight: 600,
+                  boxShadow: theme === 'dark' ? '0 2px 8px rgba(56, 189, 248, 0.25)' : '0 2px 6px rgba(33, 150, 243, 0.25)',
+                }}
+              >
+                {i18n('Submit answer')}
+              </button>
+            )}
+          </>
+        ) : currentKind === 'matching' ? (
+          <>
+            {(() => {
+              const pm = currentProblem as ProblemMatching;
+              const n = pm.left?.length ?? 0;
+              const stemText = typeof pm.stem === 'string' ? pm.stem.trim() : '';
+              const shuffleOrder =
+                optionOrder.length === n && n > 0
+                  ? optionOrder
+                  : pm.left.map((_, i) => i);
+              return (
+                <>
+                  {stemText ? (
+                    <div style={{ fontSize: '17px', fontWeight: 500, marginBottom: '18px', color: themeStyles.stemColor, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                      {stemText}
+                    </div>
+                  ) : null}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
+                    {pm.left.map((leftLabel, rowIdx) => {
+                      const picked = matchingSelections[rowIdx] ?? null;
+                      const okRow = picked === rowIdx;
+                      const selStyle: React.CSSProperties = {
+                        flex: 1,
+                        minWidth: '160px',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: showAnalysis ? `2px solid ${okRow ? themeStyles.success : themeStyles.danger}` : `2px solid ${themeStyles.border}`,
+                        backgroundColor: showAnalysis ? (okRow ? themeStyles.successBg : themeStyles.dangerBg) : themeStyles.bgSecondary,
+                        color: themeStyles.textPrimary,
+                        fontSize: '15px',
+                      };
+                      return (
+                        <div key={`match-row-${currentProblem.pid}-${rowIdx}`} style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                          <div style={{
+                            flex: '1 1 200px',
+                            minWidth: '120px',
+                            padding: '10px 12px',
+                            borderRadius: '8px',
+                            backgroundColor: themeStyles.bgSecondary,
+                            border: `1px solid ${themeStyles.border}`,
+                            fontSize: '15px',
+                            color: themeStyles.textPrimary,
+                            whiteSpace: 'pre-wrap',
+                          }}
+                          >
+                            {String(leftLabel || '').trim() || '—'}
+                          </div>
+                          <span aria-hidden style={{ color: themeStyles.textTertiary, flexShrink: 0 }}>→</span>
+                          <select
+                            aria-label={`${String(i18n('Pair'))} ${rowIdx + 1}`}
+                            disabled={isAnswered}
+                            value={picked === null || picked === undefined ? '' : String(picked)}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              const v = raw === '' ? NaN : parseInt(raw, 10);
+                              setMatchingSelections((prev) => {
+                                const next = [...prev];
+                                while (next.length < n) next.push(null);
+                                next[rowIdx] = Number.isFinite(v) ? v : null;
+                                return next;
+                              });
+                            }}
+                            style={selStyle}
+                          >
+                            <option value="">{i18n('Problem matching choose')}</option>
+                            {shuffleOrder.filter((ori) => ori >= 0 && ori < n).map((origIdx) => (
+                              <option key={`mopt-${origIdx}`} value={origIdx}>{String(pm.right?.[origIdx] ?? '').trim() || `—`}</option>
+                            ))}
+                          </select>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              );
+            })()}
+            {!isAnswered && (
+              <button
+                type="button"
+                onClick={handleMatchingSubmit}
+                disabled={matchingSelections.some((x) => x === null)}
+                style={{
+                  marginTop: '2px',
+                  padding: '11px 24px',
+                  border: 'none',
+                  borderRadius: '8px',
+                  backgroundColor: themeStyles.accent,
+                  color: themeStyles.whiteOnAccent,
+                  cursor: matchingSelections.some((x) => x === null) ? 'not-allowed' : 'pointer',
+                  opacity: matchingSelections.some((x) => x === null) ? 0.55 : 1,
                   fontSize: '15px',
                   fontWeight: 600,
                   boxShadow: theme === 'dark' ? '0 2px 8px rgba(56, 189, 248, 0.25)' : '0 2px 6px rgba(33, 150, 243, 0.25)',

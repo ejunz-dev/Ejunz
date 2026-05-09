@@ -16,6 +16,7 @@ import type {
   ProblemTrueFalse,
   ProblemFlip,
   ProblemFillBlank,
+  ProblemMatching,
   ProblemKind,
 } from 'ejun/src/interface';
 import {
@@ -28,6 +29,8 @@ import {
   isMultiProblem,
   fillBlankSlotCount,
   syncFillBlankAnswersLen,
+  MATCHING_PAIR_MIN,
+  MATCHING_PAIR_MAX,
 } from 'ejun/src/model/problem';
 interface BaseNode {
   id: string;
@@ -566,6 +569,8 @@ function problemKindLabelI18n(k: ProblemKind): string {
       return i18n('Problem kind true false');
     case 'flip':
       return i18n('Problem kind flip');
+    case 'matching':
+      return i18n('Problem kind matching');
     case 'fill_blank':
       return i18n('Problem kind fill blank');
     default:
@@ -816,6 +821,7 @@ const EditableProblem = React.memo(({
             <option value="multi">{i18n('Problem kind multi')}</option>
             <option value="true_false">{i18n('Problem kind true false')}</option>
             <option value="flip">{i18n('Problem kind flip')}</option>
+            <option value="matching">{i18n('Problem kind matching')}</option>
             <option value="fill_blank">{i18n('Problem kind fill blank')}</option>
           </select>
         </label>
@@ -833,9 +839,6 @@ const EditableProblem = React.memo(({
           onChange={(e) => setCommon({ title: e.target.value })}
           style={{ ...inpStyle, width: '100%' }}
         />
-        <div style={{ fontSize: '10px', color: themeStyles.textTertiary, marginTop: 4, lineHeight: 1.35 }}>
-          {i18n('Problem title hint')}
-        </div>
       </div>
 
       {kind === 'flip' ? (
@@ -899,6 +902,71 @@ const EditableProblem = React.memo(({
                 }}
                 placeholder={i18n('Correct answer')}
                 style={{ ...inpStyle, flex: 1 }}
+              />
+            </div>
+          ))}
+        </>
+      ) : kind === 'matching' ? (
+        <>
+          <div style={{ marginBottom: '4px' }}>
+            <div style={{ fontSize: '11px', color: themeStyles.textSecondary, marginBottom: 2 }}>{i18n('Stem')}</div>
+            <textarea
+              value={(model as ProblemMatching).stem ?? ''}
+              onChange={(e) =>
+                setModel({ ...(model as ProblemMatching), stem: e.target.value.trim() ? e.target.value : undefined })
+              }
+              placeholder={i18n('Problem matching stem optional')}
+              style={taStyle}
+            />
+          </div>
+          <div style={{ marginBottom: '8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: 8, color: themeStyles.textPrimary }}>
+            <span>{i18n('Problem matching pair count')}</span>
+            <select
+              value={(model as ProblemMatching).left.length}
+              onChange={(e) => {
+                const n = Math.min(MATCHING_PAIR_MAX, Math.max(MATCHING_PAIR_MIN, parseInt(e.target.value, 10) || MATCHING_PAIR_MIN));
+                const mm = model as ProblemMatching;
+                const L = [...mm.left];
+                const R = [...mm.right];
+                while (L.length < n) L.push('');
+                while (R.length < n) R.push('');
+                setModel({ ...mm, left: L.slice(0, n), right: R.slice(0, n) });
+              }}
+              style={{ ...inpStyle, minWidth: 52 }}
+            >
+              {Array.from({ length: MATCHING_PAIR_MAX - MATCHING_PAIR_MIN + 1 }, (_, i) => MATCHING_PAIR_MIN + i).map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ fontSize: '11px', color: themeStyles.textSecondary, marginBottom: 6 }}>
+            {i18n('Problem matching pairs hint')}
+          </div>
+          {(model as ProblemMatching).left.map((leftText, mi) => (
+            <div key={mi} style={{ marginBottom: 8, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, color: themeStyles.textSecondary, minWidth: 72 }}>{i18n('Pair')} {mi + 1}</span>
+              <input
+                value={leftText}
+                onChange={(e) => {
+                  const mm = model as ProblemMatching;
+                  const next = [...mm.left];
+                  next[mi] = e.target.value;
+                  setModel({ ...mm, left: next });
+                }}
+                placeholder={i18n('Problem matching left')}
+                style={{ ...inpStyle, flex: '1 1 120px', minWidth: '100px' }}
+              />
+              <span aria-hidden style={{ color: themeStyles.textTertiary }}>↔</span>
+              <input
+                value={(model as ProblemMatching).right[mi] ?? ''}
+                onChange={(e) => {
+                  const mm = model as ProblemMatching;
+                  const next = [...mm.right];
+                  next[mi] = e.target.value;
+                  setModel({ ...mm, right: next });
+                }}
+                placeholder={i18n('Problem matching right')}
+                style={{ ...inpStyle, flex: '1 1 120px', minWidth: '100px' }}
               />
             </div>
           ))}
@@ -7468,6 +7536,20 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               if (fb.analysis) problemsText += `  - analysis: ${fb.analysis}\n`;
               return;
             }
+            if (k === 'matching') {
+              const mm = p as ProblemMatching;
+              problemsText += `\n  Problem ${index + 1} (ID: ${p.pid}): matching / pairing\n`;
+              if (typeof mm.title === 'string' && mm.title.trim()) {
+                problemsText += `  - title: ${mm.title.trim()}\n`;
+              }
+              if (mm.stem && String(mm.stem).trim()) {
+                problemsText += `  - stem (instructions): ${String(mm.stem).trim()}\n`;
+              }
+              problemsText += `  - left column: ${JSON.stringify(mm.left || [])}\n`;
+              problemsText += `  - right column (paired by same index): ${JSON.stringify(mm.right || [])}\n`;
+              if (mm.analysis) problemsText += `  - analysis: ${mm.analysis}\n`;
+              return;
+            }
             if (k === 'multi') {
               const pm = p as ProblemMulti;
               const set = new Set(pm.answer || []);
@@ -7522,7 +7604,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 4. **rename**: rename a node or card
 5. **update_card_content**: change card body/markdown when the user asks to edit, polish, format, or improve *content* (not the title)
 6. **delete**: delete a node or card when asked
-7. **create_problem**: add practice problems for the **currently open card** when asked. Always include **\`title\`**: a very short plain-text label for lesson sidebars (not the full stem; omit HTML; ideally under ~40 characters). Also use \`problemKind\`: \`single\` (default, one correct option index in \`answer\`), \`multi\` (\`answer\` is an array of correct option indices), \`true_false\` (\`stem\` + \`answer\` 0 = false, 1 = true), \`flip\` (\`faceA\` / \`faceB\`, no \`options\`), \`fill_blank\` (\`stem\` with \`___\` for each blank + \`answers\` string array in order; if no \`___\`, one blank after the stem)
+7. **create_problem**: add practice problems for the **currently open card** when asked. Always include **\`title\`**: a very short plain-text label for lesson sidebars (not the full stem; omit HTML; ideally under ~40 characters). Also use \`problemKind\`: \`single\` (default, one correct option index in \`answer\`), \`multi\` (\`answer\` is an array of correct option indices), \`true_false\` (\`stem\` + \`answer\` 0 = false, 1 = true), \`flip\` (\`faceA\` / \`faceB\`, no \`options\`), \`fill_blank\` (\`stem\` with \`___\` for each blank + \`answers\` string array in order; if no \`___\`, one blank after the stem), \`matching\` (optional instruction \`stem\` plus equal-length arrays \`left\`[] and \`right\`[] with ≥2 pairs — canonical pair is \`left[i]\` with \`right[i]\`; lesson shuffles right labels).
 
 [Outline structure]
 ${baseText}
@@ -7627,6 +7709,16 @@ Reply with a JSON code block only for executable operations, using this shape:
       "stem": "The protocol ___ runs on port ___.",
       "answers": ["HTTP", "80"],
       "analysis": "Optional"
+    },
+    {
+      "type": "create_problem",
+      "cardId": "card_xxx",
+      "title": "Countries & capitals",
+      "problemKind": "matching",
+      "stem": "Match each country with its capital.",
+      "left": ["France", "Japan", "Brazil"],
+      "right": ["Paris", "Tokyo", "Brasília"],
+      "analysis": "Optional"
     }
   ]
 }
@@ -7639,7 +7731,7 @@ Reply with a JSON code block only for executable operations, using this shape:
 4. Use \`rename_card\` / \`rename_node\` only when the user clearly wants to change a **title/name**.
 5. **move_node**: read the outline above; match the user's folder/node by **name and full path**, then use the real **node ID** as \`targetParentId\`. Node IDs look like \`node_...\`; they are **not** card IDs (cards use long hex-like ids). "Move folder" means move a **node**. If you cannot resolve a target, reply with an error in plain text instead of guessing IDs.
 6. **move_card**: to move a **card**, use \`move_card\` (card id + \`targetNodeId\`). Never use \`move_node\` for a card. If the user @-mentions a card, use \`move_card\` with that card's id.
-7. **create_problem**: omit \`problemKind\` or set \`single\` for classic single-choice; include **\`title\`** (short sidebar/list label); \`multi\` requires \`answer\` as an array; \`true_false\` requires \`stem\` and \`answer\` 0/1; \`flip\` requires \`faceA\` and \`faceB\` and must **not** include \`options\`; \`fill_blank\` requires \`stem\` and \`answers\` (array of strings, one per \`___\` left-to-right, or one string if a single blank).
+7. **create_problem**: omit \`problemKind\` or set \`single\` for classic single-choice; include **\`title\`** (short sidebar/list label); \`multi\` requires \`answer\` as an array; \`true_false\` requires \`stem\` and \`answer\` 0/1; \`flip\` requires \`faceA\` and \`faceB\` and must **not** include \`options\`; \`fill_blank\` requires \`stem\` and \`answers\` (array of strings, one per \`___\` left-to-right, or one string if a single blank); \`matching\` requires equal-length \`left\` and \`right\` string arrays with at least **2** pairs (pair \`left[i]\`↔\`right[i]\`).
 8. **Valid JSON**: never put raw line breaks or unescaped \`"\` inside a string value; use standard JSON escaping (backslash + quote, backslash + n for newline).
 9. **Streaming**: emit each \`operations[]\` entry as a **fully closed** \`{ ... }\` object (balanced braces) **before** starting the next. The editor applies each finished object immediately—trailing incomplete objects wait until complete.
 `;
@@ -8557,7 +8649,7 @@ Reply with a JSON code block only for executable operations, using this shape:
 
           const rawKind = String(op.problemKind || op.kind || '').toLowerCase().trim();
           const kind: ProblemKind =
-            rawKind === 'multi' || rawKind === 'true_false' || rawKind === 'flip' || rawKind === 'fill_blank'
+            rawKind === 'multi' || rawKind === 'true_false' || rawKind === 'flip' || rawKind === 'fill_blank' || rawKind === 'matching'
               ? rawKind
               : 'single';
 
@@ -8632,6 +8724,25 @@ Reply with a JSON code block only for executable operations, using this shape:
               type: 'fill_blank',
               stem,
               answers: answersArr.length ? answersArr : [''],
+              ...titleSpread,
+              ...(analysisStr ? { analysis: analysisStr } : {}),
+            });
+          } else if (kind === 'matching') {
+            const leftArr = Array.isArray(op.left) ? op.left.map((x: unknown) => String(x ?? '')) : [];
+            const rightArr = Array.isArray(op.right) ? op.right.map((x: unknown) => String(x ?? '')) : [];
+            const nPairs = Math.max(leftArr.length, rightArr.length);
+            if (nPairs < 2) {
+              Notification.error(i18n('Problem matching pairs too few'));
+              errors.push('create_problem matching：left/right 不足 2 对');
+              continue;
+            }
+            const stemMatching = typeof op.stem === 'string' ? op.stem.trim() : '';
+            newProblem = migrateRawProblem({
+              pid,
+              type: 'matching',
+              ...(stemMatching ? { stem: stemMatching } : {}),
+              left: leftArr,
+              right: rightArr,
               ...titleSpread,
               ...(analysisStr ? { analysis: analysisStr } : {}),
             });

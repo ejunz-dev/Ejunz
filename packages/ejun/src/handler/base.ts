@@ -4,7 +4,7 @@ import { Handler, param, route, post, Types, ConnectionHandler, subscribe } from
 import { NotFoundError, ForbiddenError, BadRequestError, ValidationError, FileLimitExceededError, FileUploadError, FileExistsError } from '../error';
 import { PRIV, PERM } from '../model/builtin';
 import { BaseModel, CardModel, TYPE_CARD } from '../model/base';
-import type { BaseDoc, BaseNode, BaseEdge, CardDoc, FileInfo, ProblemFlip, ProblemTrueFalse, ProblemFillBlank, ProblemSingle, ProblemMulti, Problem } from '../interface';
+import type { BaseDoc, BaseNode, BaseEdge, CardDoc, FileInfo, ProblemFlip, ProblemTrueFalse, ProblemFillBlank, ProblemSingle, ProblemMulti, ProblemMatching, Problem } from '../interface';
 import * as document from '../model/document';
 import { exec as execCb, execFile as execFileCb } from 'child_process';
 import fs from 'fs';
@@ -449,6 +449,11 @@ async function buildTodayContributionAllDomains(uid: number): Promise<{
                     const f = p as ProblemFillBlank;
                     problemChars += String(f.stem || '').length;
                     if (Array.isArray(f.answers)) problemChars += f.answers.join('').length;
+                } else if (pk === 'matching') {
+                    const mm = p as ProblemMatching;
+                    problemChars += String(mm.stem || '').length
+                        + (mm.left || []).join('').length
+                        + (mm.right || []).join('').length;
                 } else if (typeof p.stem === 'string') {
                     problemChars += p.stem.length;
                 }
@@ -2950,6 +2955,13 @@ async function exportBaseToFile(base: BaseDoc, outputDir: string, branch?: strin
                 const f = p as ProblemFillBlank;
                 stem = f.stem || '';
                 options = [...(f.answers || [])];
+                answer = 0;
+            } else if (pk === 'matching') {
+                const mm = p as ProblemMatching;
+                const head = typeof mm.stem === 'string' && mm.stem.trim() ? `${mm.stem.trim()}\n\n` : '';
+                const pairs = (mm.left || []).map((l, i) => `${String(l)} ↔ ${String((mm.right || [])[i] ?? '')}`);
+                stem = `${head}${pairs.join('\n')}`.trim();
+                options = [];
                 answer = 0;
             } else if (pk === 'true_false') {
                 const tf = p as ProblemTrueFalse;

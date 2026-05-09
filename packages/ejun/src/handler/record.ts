@@ -11,7 +11,7 @@ import {
     Types,
 } from '../service/server';
 import { PERM, PRIV, STATUS_TEXTS } from '../model/builtin';
-import type { BaseDoc, BaseNode, CardDoc, ProblemFlip, ProblemFillBlank } from '../interface';
+import type { BaseDoc, BaseNode, CardDoc, ProblemFlip, ProblemFillBlank, ProblemMatching } from '../interface';
 import { BaseModel, CardModel } from '../model/base';
 import RecordModel, { type SessionRecordDoc, type RecordProblemState } from '../model/record';
 import { problemKind } from '../model/problem';
@@ -253,6 +253,16 @@ async function problemRowsForRecord(rd: SessionRecordDoc): Promise<LessonHistory
             const pk = problemKind(pr);
             if (pk === 'flip') stemPreview = stripHtmlOneLine((pr as ProblemFlip).faceA || '', 160);
             else if (pk === 'fill_blank') stemPreview = stripHtmlOneLine((pr as ProblemFillBlank).stem || '', 160);
+            else if (pk === 'matching') {
+                const mm = pr as ProblemMatching;
+                stemPreview = stripHtmlOneLine(
+                    (typeof mm.stem === 'string' && mm.stem.trim())
+                        ? mm.stem.trim()
+                        : (mm.left || []).map((t) => String(t ?? '').trim()).filter(Boolean).slice(0, 2).join(' ↔ ')
+                        || (mm.pid || ''),
+                    160,
+                );
+            }
             else stemPreview = stripHtmlOneLine((pr as { stem?: string }).stem || '', 160);
         }
         let selectedText: string | undefined;
