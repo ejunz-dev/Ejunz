@@ -106,6 +106,7 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
         analysis: prev.analysis,
         imageUrl: prev.imageUrl,
         imageNote: prev.imageNote,
+        ...(typeof prev.title === 'string' ? { title: prev.title } : {}),
     };
     const slots = clampOptionSlots(
         isMultiProblem(prev) || problemKind(prev) === 'single'
@@ -192,6 +193,7 @@ export function migrateRawProblem(raw: Record<string, unknown>): Problem {
         ...(typeof raw.analysis === 'string' ? { analysis: raw.analysis } : {}),
         ...(typeof raw.imageUrl === 'string' ? { imageUrl: raw.imageUrl } : {}),
         ...(typeof raw.imageNote === 'string' ? { imageNote: raw.imageNote } : {}),
+        ...(typeof raw.title === 'string' ? { title: raw.title } : {}),
     };
     const t = raw.type;
     if (t === 'flip') {

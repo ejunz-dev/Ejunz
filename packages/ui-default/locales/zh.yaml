@@ -402,6 +402,8 @@ __langname: 简体中文
 'Problem kind flip': 翻转
 'Problem kind fill blank': 填空题
 'Problem field type': 题型
+'Problem title': 题目标题
+'Problem title hint': 在课程侧边栏「待完成 / 已完成题目」中优先显示；可不填，则仍用题干预览。
 'Problem option slots': 选项槽
 'Problem multi all correct': 需全部选对才算过
 'Problem face A label': A 面（先展示）

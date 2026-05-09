@@ -53,6 +53,8 @@ function lessonProblemKindLabel(k: ReturnType<typeof problemKind>): string {
 }
 
 function lessonProblemQueueTitleText(p: QueuedProblem): string {
+  const titled = typeof p.title === 'string' ? p.title.trim() : '';
+  if (titled) return titled;
   if (problemKind(p) === 'flip') {
     const f = p as ProblemFlip;
     return String(f.faceA || '').trim();
@@ -3388,6 +3390,32 @@ function LessonPage() {
             ({lessonProblemKindLabel(currentKind)})
           </span>
         </div>
+
+        {(() => {
+          const ttl = typeof currentProblem.title === 'string' ? currentProblem.title.trim() : '';
+          const queueCore = lessonProblemQueueTitleText(currentProblem);
+          const preview = lessonStemPreview(queueCore);
+          const line = ttl || (preview !== '—' ? preview : '');
+          if (!line) return null;
+          const fromTitleField = !!ttl;
+          return (
+            <div style={{
+              marginBottom: '18px',
+              paddingBottom: '14px',
+              borderBottom: `1px solid ${themeStyles.border}`,
+            }}>
+              <div style={{
+                fontSize: fromTitleField ? '22px' : '17px',
+                fontWeight: 700,
+                color: themeStyles.textPrimary,
+                lineHeight: 1.4,
+                wordBreak: 'break-word',
+              }}>
+                {line}
+              </div>
+            </div>
+          );
+        })()}
 
         {currentKind === 'flip' ? (
           <>
