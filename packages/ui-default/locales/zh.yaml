@@ -405,6 +405,7 @@ __langname: 简体中文
 'Problem kind flip': 翻转
 'Problem kind fill blank': 填空题
 'Problem kind matching': 配对题
+'Problem kind super flip': 超级翻转题
 'Problem reorder up': 上移
 'Problem reorder down': 下移
 'Problem reorder hint': 点击题目右上角「上移 / 下移」（在红色删除左侧）调整顺序；保存后生效。
@@ -422,6 +423,15 @@ __langname: 简体中文
 'Problem matching choose': 选择匹配项…
 'Problem matching pairs too few': 配对题至少需要 2 行
 'Problem matching columns too few': 配对题至少需要 2 列
+'Problem super flip editor hint': 表头在课程中会始终展示；以下为表格正文。留空的格子在课程中不遮蔽、无需翻面。其余数据按「列」存储（与配对题相同：每列自上而下对应各行）。
+'Problem super flip column header label': '列表头 {0}'
+'Problem super flip header placeholder': 表头
+'Problem super flip lesson hint': 仅填写了内容的格子会遮蔽并可翻面查看；空格保持空白。「全部翻开」「全部遮蔽」只作用于已填格子。不熟可点「不熟悉」；已填格子都翻开后可点「完成」。
+'Problem super flip masked': 点击翻面
+'Problem super flip reveal all': 全部翻开
+'Problem super flip cover all': 全部遮蔽
+'Problem super flip not familiar': 不熟悉
+'Problem super flip columns invalid': 「超级翻转题」需要合法的 columns（二维数组，至少 2 列）
 'Problem field type': 题型
 'Problem title': 题目标题
 'Problem option slots': 选项槽

@@ -11,6 +11,7 @@ import type {
     ProblemKind,
     ProblemMatching,
     ProblemMulti,
+    ProblemSuperFlip,
     ProblemSingle,
     ProblemTrueFalse,
 } from '../interface';
@@ -69,6 +70,29 @@ export function matchingColumnsNormalized(p: Pick<ProblemMatching, 'columns' | '
     return normalizeMatchingColumns(p.columns, p.left, p.right);
 }
 
+/** Headers + columns for super-flip tables (column-major body, same as matching). */
+export function normalizeSuperFlipData(headersRaw: unknown, columnsRaw: unknown): { headers: string[]; columns: string[][] } {
+    const columns = normalizeMatchingColumns(columnsRaw, ['', ''], ['', '']);
+    const ncol = columns.length;
+    const hList = Array.isArray(headersRaw) ? (headersRaw as unknown[]).map((x) => String(x ?? '')) : [];
+    const headers = Array.from({ length: ncol }, (_, i) => String(hList[i] ?? ''));
+    return { headers, columns };
+}
+
+export function superFlipNormalized(p: Pick<ProblemSuperFlip, 'headers' | 'columns'>): { headers: string[]; columns: string[][] } {
+    return normalizeSuperFlipData(p.headers, p.columns);
+}
+
+/** Fallback stem text when converting from {@link ProblemSuperFlip} without `stem`. */
+export function superFlipStemFallback(p: Pick<ProblemSuperFlip, 'stem' | 'headers' | 'columns'>): string {
+    const st = typeof p.stem === 'string' ? p.stem.trim() : '';
+    if (st) return st;
+    const { headers, columns } = superFlipNormalized(p);
+    const h = headers.map((x) => String(x ?? '').trim()).filter(Boolean).join(' · ');
+    if (h) return h;
+    return (columns[0] || []).map((x) => String(x ?? '').trim()).filter(Boolean).join(' · ');
+}
+
 /** Learner picks original row index `i` per left row — one pick per selectable column (`selectableColCount`); correct iff identity on each column’s picks. */
 export function matchingUserPicksCorrect(pairCount: number, picks: Array<number | null | undefined>): boolean {
     if (pairCount < MATCHING_PAIR_MIN || pairCount > MATCHING_PAIR_MAX) return false;
@@ -108,6 +132,7 @@ export function problemKind(p: Partial<Problem> | null | undefined): ProblemKind
         || t === 'flip'
         || t === 'fill_blank'
         || t === 'matching'
+        || t === 'super_flip'
     ) {
         return t;
     }
@@ -121,6 +146,10 @@ export function clampOptionSlots(n: unknown): number {
 
 export function isMatchingProblem(p: Partial<Problem> | null | undefined): p is ProblemMatching {
     return problemKind(p) === 'matching';
+}
+
+export function isSuperFlipProblem(p: Partial<Problem> | null | undefined): p is ProblemSuperFlip {
+    return problemKind(p) === 'super_flip';
 }
 
 export function isFlipProblem(p: Partial<Problem> | null | undefined): p is ProblemFlip {
@@ -220,7 +249,9 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
                       ? ((typeof prev.stem === 'string' && prev.stem.trim())
                           ? prev.stem.trim()
                           : (matchingColumnsNormalized(prev)[0] || []).join(' / '))
-                      : '';
+                      : isSuperFlipProblem(prev)
+                        ? superFlipStemFallback(prev)
+                        : '';
         const n = fillBlankSlotCount(stem);
         let answers = Array.from({ length: n }, () => '');
         if (isFillBlankProblem(prev)) {
@@ -250,6 +281,10 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
             const colsM = matchingColumnsNormalized(prev);
             faceA = (colsM[0] || []).join(' / ');
             faceB = (colsM[colsM.length - 1] || []).join(' / ');
+        } else if (isSuperFlipProblem(prev)) {
+            const colsM = superFlipNormalized(prev).columns;
+            faceA = (colsM[0] || []).join(' / ');
+            faceB = (colsM[colsM.length - 1] || []).join(' / ');
         } else if (isFillBlankProblem(prev)) {
             faceA = prev.stem || '';
             faceB = (prev.answers || []).join(' / ');
@@ -276,7 +311,9 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
                           ? prev.stem
                           : (matchingColumnsNormalized(prev)[0] || []).map((x) => String(x ?? '').trim()).filter(Boolean).join(' · ')
                       )
-                      : '';
+                      : isSuperFlipProblem(prev)
+                        ? superFlipStemFallback(prev)
+                        : '';
         let ans: 0 | 1 = 1;
         if (isTrueFalseProblem(prev)) ans = prev.answer;
         else if (problemKind(prev) === 'single') {
@@ -298,7 +335,9 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
                           ? prev.stem
                           : (matchingColumnsNormalized(prev)[0] || []).map((x) => String(x ?? '').trim()).filter(Boolean).join(' · ')
                       )
-                      : '';
+                      : isSuperFlipProblem(prev)
+                        ? superFlipStemFallback(prev)
+                        : '';
         let options: string[] = ['', '', '', ''];
         if ('options' in prev && Array.isArray(prev.options)) options = [...prev.options];
         options = ensureOptionArrayLength(options, slots);
@@ -310,7 +349,48 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
         }
         return { ...common, type: 'multi', stem, options, answer, optionSlots: slots };
     }
+    if (newKind === 'super_flip') {
+        if (isSuperFlipProblem(prev)) {
+            const sf = prev as ProblemSuperFlip;
+            const { headers, columns } = superFlipNormalized(sf);
+            const st = typeof sf.stem === 'string' && sf.stem.trim() !== '' ? { stem: sf.stem.trim() } : {};
+            return {
+                ...common,
+                type: 'super_flip',
+                headers: [...headers],
+                columns: columns.map((c) => [...c]),
+                ...st,
+            };
+        }
+        if (isMatchingProblem(prev)) {
+            const cols = matchingColumnsNormalized(prev);
+            const headers = cols.map(() => '');
+            const st = typeof prev.stem === 'string' && prev.stem.trim() !== '' ? { stem: prev.stem.trim() } : {};
+            return {
+                ...common,
+                type: 'super_flip',
+                headers,
+                columns: cols.map((c) => [...c]),
+                ...st,
+            };
+        }
+        let stemS: string | undefined;
+        if ('stem' in prev && typeof prev.stem === 'string' && prev.stem.trim()) stemS = prev.stem.trim();
+        else if (isFlipProblem(prev)) stemS = prev.faceA || undefined;
+        const colsEmpty = normalizeMatchingColumns(undefined, ['', ''], ['', '']);
+        const stStem = stemS !== undefined ? { stem: stemS } : {};
+        return { ...common, type: 'super_flip', headers: ['', ''], columns: colsEmpty, ...stStem };
+    }
     if (newKind === 'matching') {
+        if (isSuperFlipProblem(prev)) {
+            const sf = prev as ProblemSuperFlip;
+            const { columns } = superFlipNormalized(sf);
+            const norm = normalizeMatchingColumns(columns);
+            const st = typeof sf.stem === 'string' && sf.stem.trim() !== '' ? { stem: sf.stem.trim() } : {};
+            const left = norm[0];
+            const right = norm[norm.length - 1];
+            return { ...common, type: 'matching', columns: norm, left, right, ...st };
+        }
         if (isMatchingProblem(prev)) {
             const cols = matchingColumnsNormalized(prev);
             const st = typeof prev.stem === 'string' && prev.stem.trim() !== '' ? { stem: prev.stem.trim() } : {};
@@ -356,10 +436,13 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
                       ? prev.stem
                       : (matchingColumnsNormalized(prev)[0] || []).map((x) => String(x ?? '').trim()).filter(Boolean).join(' · ')
                   )
-                  : '';
+                  : isSuperFlipProblem(prev)
+                    ? superFlipStemFallback(prev)
+                    : '';
     let options = ['', '', '', ''];
     if ('options' in prev && Array.isArray(prev.options)) options = [...prev.options];
     else if (isMatchingProblem(prev)) options = [...matchingColumnsNormalized(prev).flat()];
+    else if (isSuperFlipProblem(prev)) options = [...superFlipNormalized(prev).columns.flat()];
     options = ensureOptionArrayLength(options, slots);
     let answer = 0;
     if (problemKind(prev) === 'single') {
@@ -431,6 +514,17 @@ export function migrateRawProblem(raw: Record<string, unknown>): Problem {
             columns,
             left,
             right,
+        };
+    }
+    if (t === 'super_flip') {
+        const { headers, columns } = normalizeSuperFlipData(raw.headers, raw.columns);
+        const stemS = typeof raw.stem === 'string' ? raw.stem.trim() : '';
+        return {
+            ...common,
+            type: 'super_flip',
+            headers,
+            columns,
+            ...(stemS ? { stem: stemS } : {}),
         };
     }
     const stem = typeof raw.stem === 'string' ? raw.stem : '';
