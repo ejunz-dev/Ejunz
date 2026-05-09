@@ -499,6 +499,71 @@ interface PendingDelete {
   nodeId?: string;
 }
 
+/** Serializable snapshot to revert one AI assistant turn's `operations[]` effects. */
+interface AiEditorRevertSnapshot {
+  base: BaseDoc;
+  nodeCardsMap: Record<string, Card[]>;
+  pendingCreatesEntries: [string, PendingCreate][];
+  pendingChangesEntries: [string, PendingChange][];
+  pendingRenamesEntries: [string, PendingRename][];
+  pendingDeletesEntries: [string, PendingDelete][];
+  pendingDragChangesArr: string[];
+  expandedNodesArr: string[];
+  pendingProblemCardIdsArr: string[];
+  pendingNewProblemCardIdsArr: string[];
+  pendingEditedProblemIdsEntries: [string, string[]][];
+  newProblemIdsArr: string[];
+  editedProblemIdsArr: string[];
+  fileContent: string;
+  originalProblemsCardEntries: [string, [string, Problem][]][];
+  originalProblemsOrderEntries: [string, string[]][];
+  pendingCardFaceChanges: Record<string, string>;
+}
+
+function buildAiEditorRevertSnapshot(opts: {
+  baseDoc: BaseDoc;
+  nodeCardsMap: Record<string, Card[]>;
+  pendingCreates: Map<string, PendingCreate>;
+  pendingChanges: Map<string, PendingChange>;
+  pendingRenames: Map<string, PendingRename>;
+  pendingDeletes: Map<string, PendingDelete>;
+  pendingDragChanges: Set<string>;
+  expandedNodes: ReadonlySet<string>;
+  pendingProblemCardIds: Set<string>;
+  pendingNewProblemCardIds: Set<string>;
+  pendingEditedProblemIds: Map<string, Set<string>>;
+  newProblemIds: Set<string>;
+  editedProblemIds: Set<string>;
+  fileContent: string;
+  pendingCardFaceChanges: Record<string, string>;
+  originalProblemsRef: { current: Map<string, Map<string, Problem>> };
+  originalProblemsOrderRef: { current: Map<string, string[]> };
+}): AiEditorRevertSnapshot {
+  const origCardEntries: [string, [string, Problem][]][] = [];
+  for (const [cid, inner] of opts.originalProblemsRef.current.entries()) {
+    origCardEntries.push([cid, Array.from(inner.entries())]);
+  }
+  return {
+    base: JSON.parse(JSON.stringify(opts.baseDoc)),
+    nodeCardsMap: JSON.parse(JSON.stringify(opts.nodeCardsMap)),
+    pendingCreatesEntries: Array.from(opts.pendingCreates.entries()),
+    pendingChangesEntries: Array.from(opts.pendingChanges.entries()),
+    pendingRenamesEntries: Array.from(opts.pendingRenames.entries()),
+    pendingDeletesEntries: Array.from(opts.pendingDeletes.entries()),
+    pendingDragChangesArr: Array.from(opts.pendingDragChanges),
+    expandedNodesArr: Array.from(opts.expandedNodes),
+    pendingProblemCardIdsArr: Array.from(opts.pendingProblemCardIds),
+    pendingNewProblemCardIdsArr: Array.from(opts.pendingNewProblemCardIds),
+    pendingEditedProblemIdsEntries: Array.from(opts.pendingEditedProblemIds.entries()).map(([k, s]) => [k, Array.from(s)]),
+    newProblemIdsArr: Array.from(opts.newProblemIds),
+    editedProblemIdsArr: Array.from(opts.editedProblemIds),
+    fileContent: opts.fileContent,
+    originalProblemsCardEntries: origCardEntries,
+    originalProblemsOrderEntries: Array.from(opts.originalProblemsOrderRef.current.entries()),
+    pendingCardFaceChanges: JSON.parse(JSON.stringify(opts.pendingCardFaceChanges || {})),
+  };
+}
+
 /** Pending card body keyed like explorer `FileItem.id` (`card-{id}` or raw `temp-card-…`). */
 function getPendingDraftCardBody(card: Card, pendingChanges: Map<string, PendingChange>): string | undefined {
   const cid = String(card.docId);
@@ -2729,6 +2794,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
   const pendingChangesRef = useRef(pendingChanges);
   const pendingRenamesRef = useRef(pendingRenames);
+  const pendingDeletesRef = useRef(pendingDeletes);
   const pendingDragChangesRef = useRef(pendingDragChanges);
   const pendingCardFaceChangesRef = useRef<Record<string, string>>({});
   useEffect(() => {
@@ -2737,6 +2803,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   useEffect(() => {
     pendingRenamesRef.current = pendingRenames;
   }, [pendingRenames]);
+  useEffect(() => {
+    pendingDeletesRef.current = pendingDeletes;
+  }, [pendingDeletes]);
   useEffect(() => {
     pendingDragChangesRef.current = pendingDragChanges;
   }, [pendingDragChanges]);
@@ -2943,6 +3012,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     isExpanded?: boolean;
     /** While the model streams a ```json … ``` block: friendly op list, raw JSON hidden. */
     streamOps?: { lines: string[]; receiving: boolean; charCount: number } | null;
+    /** Editor state before this user turn; used by [op] revert. */
+    revertSnapshot?: AiEditorRevertSnapshot;
+    reverted?: boolean;
   }>>([]);
   const [chatInput, setChatInput] = useState<string>('');
   const [chatInputReferences, setChatInputReferences] = useState<AiChatBarRef[]>([]);
@@ -3250,6 +3322,57 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   useEffect(() => {
     baseRef.current = base;
   }, [base]);
+
+  const applyAiEditorRevertSnapshot = useCallback((snap: AiEditorRevertSnapshot) => {
+    setBase(snap.base);
+    baseRef.current = snap.base;
+    if ((window as any).UiContext) {
+      (window as any).UiContext.nodeCardsMap = JSON.parse(JSON.stringify(snap.nodeCardsMap));
+    }
+    setNodeCardsMapVersion((v) => v + 1);
+
+    pendingCreatesRef.current = new Map(snap.pendingCreatesEntries);
+    setPendingCreatesCount(snap.pendingCreatesEntries.length);
+
+    setPendingChanges(new Map(snap.pendingChangesEntries));
+    setPendingRenames(new Map(snap.pendingRenamesEntries));
+    setPendingDeletes(new Map(snap.pendingDeletesEntries));
+    setPendingDragChanges(new Set(snap.pendingDragChangesArr));
+
+    setExpandedNodes(new Set(snap.expandedNodesArr));
+
+    setPendingProblemCardIds(new Set(snap.pendingProblemCardIdsArr));
+    setPendingNewProblemCardIds(new Set(snap.pendingNewProblemCardIdsArr));
+
+    const editedMap = new Map<string, Set<string>>();
+    for (const [k, arr] of snap.pendingEditedProblemIdsEntries) {
+      editedMap.set(k, new Set(arr));
+    }
+    setPendingEditedProblemIds(editedMap);
+
+    setNewProblemIds(new Set(snap.newProblemIdsArr));
+    setEditedProblemIds(new Set(snap.editedProblemIdsArr));
+
+    setFileContent(snap.fileContent);
+
+    const face = JSON.parse(JSON.stringify(snap.pendingCardFaceChanges || {}));
+    setPendingCardFaceChanges(face);
+    pendingCardFaceChangesRef.current = face;
+
+    originalProblemsRef.current.clear();
+    for (const [cid, pairs] of snap.originalProblemsCardEntries) {
+      const m = new Map<string, Problem>();
+      for (const [pid, prob] of pairs) {
+        m.set(pid, prob as Problem);
+      }
+      originalProblemsRef.current.set(cid, m);
+    }
+    originalProblemsOrderRef.current = new Map(snap.originalProblemsOrderEntries);
+    setOriginalProblemsVersion((v) => v + 1);
+
+    Notification.success(i18n('AI editor state reverted'));
+  }, []);
+
   
   
   useEffect(() => {
@@ -7917,7 +8040,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             const json = JSON.stringify(prob);
             parts.push(
               `@${ref.name} (practice problem, card ID: ${String(matchedCard?.docId ?? ref.cardDocId)}, problem pid: ${ref.pid}, type: ${i18n(problemKindToI18nKey(k))}, full path: ${pathStr}, current JSON — includes unsaved editor state: ${json})\n` +
-              `[Agent rule: To complete or edit THIS problem (not create another), output one "create_problem" with the SAME cardId, "pid": "${ref.pid}", and the intended problemKind + fields. Omit "pid" only when adding an additional brand-new problem.]`,
+              `[Agent rule: To complete or edit THIS problem (not create another), output one "create_problem" with the SAME cardId, "pid": "${ref.pid}", matching problemKind, and the **full** payload. **Completion (补全):** fill **every** field that is still empty or placeholder in the JSON above—e.g. \`title\`, \`stem\`, options, \`answers\`, \`columns\`/\`headers\` (super_flip, matching), \`faceA\`/\`faceB\`, flip \`hint\`, and especially \`analysis\` (解析)—not only the table body. **Do not** replace or clear text the user already entered. Omit "pid" only when adding an additional brand-new problem.]`,
             );
           } else {
             parts.push(
@@ -7997,6 +8120,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         references?: AiChatBarRef[];
         operations?: any[];
         isExpanded?: boolean;
+        revertSnapshot?: AiEditorRevertSnapshot;
+        reverted?: boolean;
+        streamOps?: { lines: string[]; receiving: boolean; charCount: number } | null;
       }> = [
         ...prev, 
         { 
@@ -8015,6 +8141,26 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
     try {
       const domainId = (window as any).UiContext?.domainId || 'system';
+
+      const aiTurnRevertSnapshot = buildAiEditorRevertSnapshot({
+        baseDoc: baseRef.current,
+        nodeCardsMap: ((window as any).UiContext?.nodeCardsMap || {}) as Record<string, Card[]>,
+        pendingCreates: pendingCreatesRef.current,
+        pendingChanges: pendingChangesRef.current,
+        pendingRenames: pendingRenamesRef.current,
+        pendingDeletes: pendingDeletesRef.current,
+        pendingDragChanges: pendingDragChangesRef.current,
+        expandedNodes: expandedNodesRef.current,
+        pendingProblemCardIds,
+        pendingNewProblemCardIds,
+        pendingEditedProblemIds,
+        newProblemIds,
+        editedProblemIds,
+        fileContent,
+        pendingCardFaceChanges: { ...pendingCardFaceChangesRef.current },
+        originalProblemsRef,
+        originalProblemsOrderRef,
+      });
       
       const history = historyBeforeNewMessage;
 
@@ -8153,7 +8299,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 4. **rename**: rename a node or card
 5. **update_card_content**: change card body/markdown when the user asks to edit, polish, format, or improve *content* (not the title)
 6. **delete**: delete a node or card when asked
-7. **create_problem**: add practice problems for the **currently open card** when asked. Always include **\`title\`**: a very short plain-text label for lesson sidebars (not the full stem; omit HTML; ideally under ~40 characters). Also use \`problemKind\`: \`single\` (default, one correct option index in \`answer\`), \`multi\` (\`answer\` is an array of correct option indices), \`true_false\` (\`stem\` + \`answer\` 0 = false, 1 = true), \`flip\` (\`faceA\` / \`faceB\`, optional learner \`hint\`; no \`options\`), \`fill_blank\` (\`stem\` with \`___\` for each blank + \`answers\` string array in order; if no \`___\`, one blank after the stem), \`matching\` (optional \`stem\`: use \`columns\` — array of **columns**, each inner array is that column top-to-bottom; **same row index** across columns is one item; ≥2 rows and ≥2 columns; lesson gives **each column** an independent shuffled dropdown so the learner picks the correct row index in every column; or legacy \`left\`/\`right\`), \`super_flip\` (optional \`stem\`; \`headers\` string array per column, same length as column count; \`columns\` like matching—body cells only, **≥1 row and ≥1 column** (1×1 allowed); lesson always shows headers; **non-empty** body cells are masked until tapped; **empty or whitespace-only** cells stay visible as blank with no flip). **To update an existing practice row** (e.g. user referenced it from the AI terminal \`#\` chip or the prompt contains \`problem pid:\`), include \`"pid"\` set to that exact id plus \`cardId\`; this **replaces** that row. **Omit \`pid\`** only when adding a separate brand-new problem.
+7. **create_problem**: add practice problems for the **currently open card** when asked. Always include **\`title\`**: a very short plain-text label for lesson sidebars (not the full stem; omit HTML; ideally under ~40 characters). Also use \`problemKind\`: \`single\` (default, one correct option index in \`answer\`), \`multi\` (\`answer\` is an array of correct option indices), \`true_false\` (\`stem\` + \`answer\` 0 = false, 1 = true), \`flip\` (\`faceA\` / \`faceB\`, optional learner \`hint\`; no \`options\`), \`fill_blank\` (\`stem\` with \`___\` for each blank + \`answers\` string array in order; if no \`___\`, one blank after the stem), \`matching\` (optional \`stem\`: use \`columns\` — array of **columns**, each inner array is that column top-to-bottom; **same row index** across columns is one item; ≥2 rows and ≥2 columns; lesson gives **each column** an independent shuffled dropdown so the learner picks the correct row index in every column; or legacy \`left\`/\`right\`), \`super_flip\` (optional \`stem\`; \`headers\` string array per column, same length as column count; \`columns\` like matching—body cells only, **≥1 row and ≥1 column** (1×1 allowed); lesson always shows headers; **non-empty** body cells are masked until tapped; **empty or whitespace-only** cells stay visible as blank with no flip). **To update an existing practice row** (e.g. user referenced it from the AI terminal \`#\` chip or the prompt contains \`problem pid:\`), include \`"pid"\` set to that exact id plus \`cardId\`; this **replaces** that row. **Omit \`pid\`** only when adding a separate brand-new problem. **Completing (补全):** fill **all** still-empty problem fields the kind supports (e.g. \`analysis\` / 解析, \`title\`, \`stem\`, options, \`answers\`, table \`columns\`/\`headers\`, flip \`hint\`, etc.), not only table cells—**keep** values the user already entered.
 
 [Outline structure]
 ${baseText}
@@ -8309,6 +8455,7 @@ Reply with a JSON code block only for executable operations, using this shape:
 8. **Valid JSON**: never put raw line breaks or unescaped \`"\` inside a string value; use standard JSON escaping (backslash + quote, backslash + n for newline).
 9. **Streaming**: emit each \`operations[]\` entry as a **fully closed** \`{ ... }\` object (balanced braces) **before** starting the next. The editor applies each finished object immediately—trailing incomplete objects wait until complete.
 10. **Referenced practice problem**: If the user attached a **problem** in the AI terminal (\`#\` chip) or the expanded text includes \`problem pid:\`, treat requests as **editing that row**—output one \`create_problem\` with matching \`pid\` and the same \`cardId\`; do **not** omit \`pid\` or you will create a duplicate.
+11. **Completing / 补全 a draft problem**: When the user asks to complete, fill in, or polish a practice row (with or without a terminal chip), use \`create_problem\` with \`pid\` if that row exists, and supply values for **all** relevant empty fields—not limited to super_flip/matching \`columns\`—including \`analysis\` (解析), \`title\`, \`stem\`, correct \`answer\`/\`answers\`, flip \`hint\`, and any empty cells or options; **preserve** fields the user already filled.
 `;
 
       
@@ -8436,6 +8583,8 @@ Reply with a JSON code block only for executable operations, using this shape:
                         content: `Applying ${allOps.length} operation(s)`,
                         operations: allOps,
                         isExpanded: false,
+                        revertSnapshot: aiTurnRevertSnapshot,
+                        reverted: false,
                       });
                       return newMessages;
                     });
@@ -8595,6 +8744,13 @@ Reply with a JSON code block only for executable operations, using this shape:
     getSelectedCard,
     selectedFile,
     getNodePath,
+    pendingProblemCardIds,
+    pendingNewProblemCardIds,
+    pendingEditedProblemIds,
+    newProblemIds,
+    editedProblemIds,
+    fileContent,
+    applyAiEditorRevertSnapshot,
   ]);
 
   
@@ -15920,6 +16076,39 @@ Reply with a JSON code block only for executable operations, using this shape:
                             >
                               <span style={{ color: aiTerminalStyles.promptAi }}>[op]</span>
                               <span style={{ flex: 1 }}>{msg.content}</span>
+                              {msg.revertSnapshot && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (msg.reverted || !msg.revertSnapshot) return;
+                                    applyAiEditorRevertSnapshot(msg.revertSnapshot);
+                                    setChatMessages((prev) => {
+                                      const next = [...prev];
+                                      const cur = next[index];
+                                      if (cur && cur.role === 'operation') {
+                                        next[index] = { ...cur, reverted: true };
+                                      }
+                                      return next;
+                                    });
+                                  }}
+                                  disabled={Boolean(msg.reverted)}
+                                  style={{
+                                    flexShrink: 0,
+                                    fontSize: '11px',
+                                    padding: '2px 8px',
+                                    borderRadius: '4px',
+                                    border: `1px solid ${aiTerminalStyles.tabBorder}`,
+                                    background: msg.reverted ? aiTerminalStyles.tabBarBg : aiTerminalStyles.shellBg,
+                                    color: msg.reverted ? aiTerminalStyles.textDim : aiTerminalStyles.text,
+                                    cursor: msg.reverted ? 'default' : 'pointer',
+                                    fontFamily: 'inherit',
+                                  }}
+                                  title={i18n('Revert AI operations')}
+                                >
+                                  {msg.reverted ? i18n('Reverted') : i18n('Revert AI operations')}
+                                </button>
+                              )}
                               <span style={{ color: aiTerminalStyles.textDim, flexShrink: 0 }}>
                                 {msg.isExpanded ? '▼' : '▶'}
                               </span>

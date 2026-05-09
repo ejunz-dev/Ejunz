@@ -874,6 +874,9 @@ repo_detail: Repo Detail
 repo_doc: Repo Doc
 repo_edit: Edit Repo
 Role: Role
+Revert AI operations: Revert
+Reverted: Reverted
+AI editor state reverted: Restored editor to the state before this AI reply.
 session_chat_domain: Agent sessions
 session_chat_detail: Agent session
 session_chat_live: Agent chat
