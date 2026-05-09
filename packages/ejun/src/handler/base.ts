@@ -45,7 +45,7 @@ import {
     isDevelopSessionSettled,
 } from '../lib/sessionListDisplay';
 import { isDevelopSessionPastDeadline, readDevelopSessionDeadlineMs } from '../lib/sessionUtcDaily';
-import { problemKind } from '../model/problem';
+import { problemKind, matchingColumnsNormalized } from '../model/problem';
 
 /** Machine token in {@link BadRequestError} params for API clients (see `request.ajax` in ui-default). */
 const DEVELOP_SESSION_CLOSED_CODE = 'DEVELOP_SESSION_CLOSED';
@@ -454,8 +454,7 @@ async function buildTodayContributionAllDomains(uid: number): Promise<{
                 } else if (pk === 'matching') {
                     const mm = p as ProblemMatching;
                     problemChars += String(mm.stem || '').length
-                        + (mm.left || []).join('').length
-                        + (mm.right || []).join('').length;
+                        + matchingColumnsNormalized(mm).flat().join('').length;
                 } else if (typeof p.stem === 'string') {
                     problemChars += p.stem.length;
                 }
@@ -2962,8 +2961,13 @@ async function exportBaseToFile(base: BaseDoc, outputDir: string, branch?: strin
             } else if (pk === 'matching') {
                 const mm = p as ProblemMatching;
                 const head = typeof mm.stem === 'string' && mm.stem.trim() ? `${mm.stem.trim()}\n\n` : '';
-                const pairs = (mm.left || []).map((l, i) => `${String(l)} ↔ ${String((mm.right || [])[i] ?? '')}`);
-                stem = `${head}${pairs.join('\n')}`.trim();
+                const cols = matchingColumnsNormalized(mm);
+                const n = cols[0]?.length ?? 0;
+                const rowLines: string[] = [];
+                for (let r = 0; r < n; r++) {
+                    rowLines.push(cols.map((col) => String(col[r] ?? '')).join(' ↔ '));
+                }
+                stem = `${head}${rowLines.join('\n')}`.trim();
                 options = [];
                 answer = 0;
             } else if (pk === 'true_false') {

@@ -11,8 +11,10 @@ import {
   fillBlankSlotCount,
   fillBlankResponseMatches,
   normalizeFillBlankText,
-  matchingUserPicksCorrect,
+  matchingAllColumnsCorrect,
+  MATCHING_COL_MIN,
   MATCHING_PAIR_MIN,
+  matchingColumnsNormalized,
 } from 'ejun/src/model/problem';
 
 // Cache keys aligned with base outline (shared image Cache API).
@@ -69,8 +71,9 @@ function lessonProblemQueueTitleText(p: QueuedProblem): string {
     const m = p as ProblemMatching;
     const st = typeof m.stem === 'string' ? m.stem.trim() : '';
     if (st) return st;
-    const lr = [...(m.left || []), ...(m.right || [])].map((t) => String(t ?? '').trim()).filter(Boolean);
-    return lr.join(' ↔ ') || '';
+    const cols = matchingColumnsNormalized(m);
+    const bits = cols.flatMap((col) => col.map((t) => String(t ?? '').trim()).filter(Boolean)).slice(0, 8);
+    return bits.join(' · ') || '';
   }
   const stem = (p as ProblemSingle | ProblemMulti | ProblemTrueFalse).stem;
   return String(stem || '').trim();
@@ -749,7 +752,10 @@ function LessonPage() {
   const [flipHintOpen, setFlipHintOpen] = useState(false);
   const [fillBlankDraft, setFillBlankDraft] = useState<string[]>([]);
   /** Per left row index: chosen original index of right column (correct answer is identity i↔i). */
-  const [matchingSelections, setMatchingSelections] = useState<Array<number | null>>([]);
+  /** Per-row array: one chosen original row index per selectable column after the anchor column (each column shuffle is independent). */
+  const [matchingSelections, setMatchingSelections] = useState<Array<Array<number | null>>>([]);
+  /** Per-selectable-column shuffled display order.length === row count each. */
+  const [matchingShuffleOrders, setMatchingShuffleOrders] = useState<number[][]>([]);
   const [isAnswered, setIsAnswered] = useState(false);
   const [isPassed, setIsPassed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1028,6 +1034,8 @@ function LessonPage() {
     setPeekCount({});
     setCorrectNeeded({});
     setOptionOrder([]);
+    setMatchingSelections([]);
+    setMatchingShuffleOrders([]);
     setShowPeekCard(false);
     setBrowseFlipped(false);
     setBrowseNoImpression(false);
@@ -1661,8 +1669,14 @@ function LessonPage() {
     }
     if (currentKind === 'matching') {
       const pm = currentProblem as ProblemMatching;
-      const n = pm.left.length;
-      return n >= MATCHING_PAIR_MIN && matchingUserPicksCorrect(n, matchingSelections);
+      const cols = matchingColumnsNormalized(pm);
+      const n = (cols[0] || []).length;
+      const ncol = cols.length;
+      return (
+        n >= MATCHING_PAIR_MIN
+        && ncol >= MATCHING_COL_MIN
+        && matchingAllColumnsCorrect(n, ncol, matchingSelections)
+      );
     }
     if (currentKind === 'flip') {
       return isAnswered;
@@ -1706,17 +1720,42 @@ function LessonPage() {
     }
     if (k === 'matching') {
       const pm = h.problem as ProblemMatching;
-      const L = pm.left || [];
-      const R = pm.right || [];
-      const picks = Array.isArray(h.fillAnswers)
-        ? h.fillAnswers.map((x) => (typeof x === 'string' && /^\d+$/.test(x) ? parseInt(x, 10) : NaN))
+      const cols = matchingColumnsNormalized(pm);
+      const n = cols[0]?.length ?? 0;
+      const fullLen = cols.length;
+      const picksFromFill = Array.isArray(h.fillAnswers)
+        ? h.fillAnswers.map((cell) =>
+            String(cell ?? '')
+              .split(',')
+              .map((p) => p.trim())
+              .filter(Boolean)
+              .map((x) => (/^\d+$/.test(x) ? parseInt(x, 10) : NaN)),
+          )
         : [];
-      if (!picks.some((x) => Number.isFinite(x))) return i18n('N/A');
-      return L.map((lhs, ii) => {
-        const pj = picks[ii];
-        const rhs = typeof pj === 'number' && Number.isFinite(pj) && pj >= 0 && pj < R.length ? String(R[pj] ?? '').trim() : '?';
-        return `${String(lhs || '').trim() || '?'}→${rhs}`;
-      }).filter(Boolean).join('； ') || i18n('N/A');
+      const cellFromPick = (colIdx: number, pj: number | undefined) => {
+        const colData = cols[colIdx] || [];
+        return typeof pj === 'number' && Number.isFinite(pj) && pj >= 0 && pj < colData.length
+          ? String(colData[pj] ?? '').trim()
+          : '?';
+      };
+      const rows: string[] = [];
+      for (let ii = 0; ii < n; ii++) {
+        const pickRow = picksFromFill[ii];
+        let chosenTexts: string[] = [];
+        if (pickRow && pickRow.length === fullLen) {
+          for (let ck = 0; ck < fullLen; ck++) {
+            chosenTexts.push(cellFromPick(ck, pickRow[ck]));
+          }
+        } else {
+          chosenTexts = [];
+        }
+        if (!chosenTexts.some((x) => x !== '?' && x !== '')) {
+          rows.push(String(i18n('Problem matching row label', ii + 1)));
+          continue;
+        }
+        rows.push(chosenTexts.join(' · '));
+      }
+      return rows.join('； ') || i18n('N/A');
     }
     return i18n('N/A');
   }, []);
@@ -1747,14 +1786,12 @@ function LessonPage() {
     }
     if (k === 'matching') {
       const pm = p as ProblemMatching;
-      const L = pm.left || [];
-      const R = pm.right || [];
-      const n = Math.min(L.length, R.length);
+      const cols = matchingColumnsNormalized(pm);
+      const n = cols[0]?.length ?? 0;
       const parts: string[] = [];
       for (let i = 0; i < n; i++) {
-        const a = String(L[i] ?? '').trim();
-        const b = String(R[i] ?? '').trim();
-        if (a || b) parts.push(`${a || '—'} ↔ ${b || '—'}`);
+        const cells = cols.map((c) => String(c[i] ?? '').trim()).filter(Boolean);
+        if (cells.length) parts.push(cells.join(' ↔ '));
       }
       return parts.join('； ') || i18n('N/A');
     }
@@ -1776,6 +1813,7 @@ function LessonPage() {
         : [],
     );
     setMatchingSelections([]);
+    setMatchingShuffleOrders([]);
     setIsAnswered(false);
     setShowAnalysis(false);
     setPendingLessonAdvance(null);
@@ -1801,20 +1839,28 @@ function LessonPage() {
       setOptionOrder(indices);
     } else if (k === 'matching') {
       const pm = currentProblem as ProblemMatching;
-      const n = pm.left?.length ?? 0;
-      if (n >= MATCHING_PAIR_MIN) {
-        const indices = pm.left.map((_, i) => i);
-        for (let i = indices.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [indices[i], indices[j]] = [indices[j], indices[i]];
+      const cols = matchingColumnsNormalized(pm);
+      const n = cols[0]?.length ?? 0;
+      const ncol = cols.length;
+      if (n >= MATCHING_PAIR_MIN && ncol >= MATCHING_COL_MIN) {
+        const orders: number[][] = [];
+        for (let ck = 0; ck < ncol; ck++) {
+          const indices = Array.from({ length: n }, (_, i) => i);
+          for (let i = indices.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [indices[i], indices[j]] = [indices[j], indices[i]];
+          }
+          orders.push(indices);
         }
-        setMatchingSelections(Array.from({ length: n }, () => null));
-        setOptionOrder(indices);
+        setMatchingShuffleOrders(orders);
+        setMatchingSelections(Array.from({ length: n }, () => Array.from({ length: ncol }, () => null)));
       } else {
+        setMatchingShuffleOrders([]);
         setMatchingSelections([]);
-        setOptionOrder([]);
       }
+      setOptionOrder([]);
     } else {
+      setMatchingShuffleOrders([]);
       setOptionOrder([]);
     }
   }, [currentProblemIndex, currentProblem?.pid, shuffleTrigger]);
@@ -2099,15 +2145,19 @@ function LessonPage() {
   const handleMatchingSubmit = () => {
     if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'matching') return;
     const pm = currentProblem as ProblemMatching;
-    const n = pm.left?.length ?? 0;
-    const correct = matchingUserPicksCorrect(n, matchingSelections);
+    const cols = matchingColumnsNormalized(pm);
+    const n = cols[0]?.length ?? 0;
+    const ncol = cols.length;
+    const correct = matchingAllColumnsCorrect(n, ncol, matchingSelections);
     const timeSpent = Date.now() - problemStartTime;
     const problemId = currentProblem.pid;
     const currentAttempts = (problemAttempts[problemId] || 0) + 1;
     setIsAnswered(true);
     setShowAnalysis(true);
     setProblemAttempts((prev) => ({ ...prev, [problemId]: currentAttempts }));
-    const fillAnswers = matchingSelections.slice(0, n).map((v) => String(v ?? ''));
+    const fillAnswers = matchingSelections.slice(0, n).map((row) =>
+      (row.slice(0, ncol).map((v) => String(v ?? ''))).join(','),
+    );
     recordCorrectOrWrong(currentProblem, correct ? 1 : 0, correct, timeSpent, problemId, currentAttempts, fillAnswers);
   };
 
@@ -2122,6 +2172,7 @@ function LessonPage() {
     setFlipHintOpen(false);
     setFillBlankDraft([]);
     setMatchingSelections([]);
+    setMatchingShuffleOrders([]);
     setIsAnswered(false);
     setShowAnalysis(false);
     setShuffleTrigger((t) => t + 1);
@@ -3705,12 +3756,10 @@ function LessonPage() {
           <>
             {(() => {
               const pm = currentProblem as ProblemMatching;
-              const n = pm.left?.length ?? 0;
+              const cols = matchingColumnsNormalized(pm);
+              const n = cols[0]?.length ?? 0;
+              const ncol = cols.length;
               const stemText = typeof pm.stem === 'string' ? pm.stem.trim() : '';
-              const shuffleOrder =
-                optionOrder.length === n && n > 0
-                  ? optionOrder
-                  : pm.left.map((_, i) => i);
               return (
                 <>
                   {stemText ? (
@@ -3719,57 +3768,63 @@ function LessonPage() {
                     </div>
                   ) : null}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
-                    {pm.left.map((leftLabel, rowIdx) => {
-                      const picked = matchingSelections[rowIdx] ?? null;
-                      const okRow = picked === rowIdx;
-                      const selStyle: React.CSSProperties = {
-                        flex: 1,
-                        minWidth: '160px',
-                        padding: '10px 12px',
-                        borderRadius: '8px',
-                        border: showAnalysis ? `2px solid ${okRow ? themeStyles.success : themeStyles.danger}` : `2px solid ${themeStyles.border}`,
-                        backgroundColor: showAnalysis ? (okRow ? themeStyles.successBg : themeStyles.dangerBg) : themeStyles.bgSecondary,
-                        color: themeStyles.textPrimary,
-                        fontSize: '15px',
-                      };
+                    {Array.from({ length: n }, (_, rowIdx) => {
+                      const rowPicks = matchingSelections[rowIdx] || [];
                       return (
-                        <div key={`match-row-${currentProblem.pid}-${rowIdx}`} style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                          <div style={{
-                            flex: '1 1 200px',
-                            minWidth: '120px',
-                            padding: '10px 12px',
-                            borderRadius: '8px',
-                            backgroundColor: themeStyles.bgSecondary,
-                            border: `1px solid ${themeStyles.border}`,
-                            fontSize: '15px',
-                            color: themeStyles.textPrimary,
-                            whiteSpace: 'pre-wrap',
-                          }}
-                          >
-                            {String(leftLabel || '').trim() || '—'}
-                          </div>
-                          <span aria-hidden style={{ color: themeStyles.textTertiary, flexShrink: 0 }}>→</span>
-                          <select
-                            aria-label={`${String(i18n('Pair'))} ${rowIdx + 1}`}
-                            disabled={isAnswered}
-                            value={picked === null || picked === undefined ? '' : String(picked)}
-                            onChange={(e) => {
-                              const raw = e.target.value;
-                              const v = raw === '' ? NaN : parseInt(raw, 10);
-                              setMatchingSelections((prev) => {
-                                const next = [...prev];
-                                while (next.length < n) next.push(null);
-                                next[rowIdx] = Number.isFinite(v) ? v : null;
-                                return next;
-                              });
-                            }}
-                            style={selStyle}
-                          >
-                            <option value="">{i18n('Problem matching choose')}</option>
-                            {shuffleOrder.filter((ori) => ori >= 0 && ori < n).map((origIdx) => (
-                              <option key={`mopt-${origIdx}`} value={origIdx}>{String(pm.right?.[origIdx] ?? '').trim() || `—`}</option>
-                            ))}
-                          </select>
+                        <div key={`match-row-${currentProblem.pid}-${rowIdx}`} style={{ display: 'flex', alignItems: 'stretch', gap: '8px', flexWrap: 'wrap' }}>
+                          {Array.from({ length: ncol }, (_, ck) => {
+                              const colSrc = cols[ck] || [];
+                              const shuffleOrder =
+                                matchingShuffleOrders[ck]?.length === n
+                                  ? matchingShuffleOrders[ck]!
+                                  : Array.from({ length: n }, (_, i) => i);
+                              const picked = rowPicks[ck] ?? null;
+                              const pickOk =
+                                typeof picked === 'number' && Number.isFinite(picked) && picked === rowIdx;
+                              const selStyle: React.CSSProperties = {
+                                flex: '1 1 120px',
+                                minWidth: '120px',
+                                padding: '10px 12px',
+                                borderRadius: '8px',
+                                border:
+                                  showAnalysis
+                                    ? `2px solid ${pickOk ? themeStyles.success : themeStyles.danger}`
+                                    : `2px solid ${themeStyles.border}`,
+                                backgroundColor:
+                                  showAnalysis
+                                    ? pickOk ? themeStyles.successBg : themeStyles.dangerBg
+                                    : themeStyles.bgSecondary,
+                                color: themeStyles.textPrimary,
+                                fontSize: '14px',
+                              };
+                              return (
+                                <select
+                                  key={`m-sel-${rowIdx}-${ck}`}
+                                  aria-label={`${String(i18n('Problem matching row label', rowIdx + 1))} · ${String(i18n('Problem matching column label', ck + 1))}`}
+                                  disabled={isAnswered}
+                                  value={picked === null || picked === undefined ? '' : String(picked)}
+                                  onChange={(e) => {
+                                    const raw = e.target.value;
+                                    const v = raw === '' ? NaN : parseInt(raw, 10);
+                                    setMatchingSelections((prev) => {
+                                      const mat = [...prev];
+                                      while (mat.length < n) mat.push([]);
+                                      let rowArr = [...(mat[rowIdx] ?? [])];
+                                      while (rowArr.length < ncol) rowArr.push(null);
+                                      rowArr[ck] = Number.isFinite(v) ? v : null;
+                                      mat[rowIdx] = rowArr;
+                                      return mat;
+                                    });
+                                  }}
+                                  style={{ ...selStyle, alignSelf: 'center', maxWidth: '100%' }}
+                                >
+                                  <option value="">{i18n('Problem matching choose')}</option>
+                                  {shuffleOrder.filter((ori) => ori >= 0 && ori < n).map((origIdx) => (
+                                    <option key={`m-${rowIdx}-${ck}-${origIdx}`} value={origIdx}>{String(colSrc?.[origIdx] ?? '').trim() || `—`}</option>
+                                  ))}
+                                </select>
+                              );
+                            })}
                         </div>
                       );
                     })}
@@ -3777,28 +3832,49 @@ function LessonPage() {
                 </>
               );
             })()}
-            {!isAnswered && (
-              <button
-                type="button"
-                onClick={handleMatchingSubmit}
-                disabled={matchingSelections.some((x) => x === null)}
-                style={{
-                  marginTop: '2px',
-                  padding: '11px 24px',
-                  border: 'none',
-                  borderRadius: '8px',
-                  backgroundColor: themeStyles.accent,
-                  color: themeStyles.whiteOnAccent,
-                  cursor: matchingSelections.some((x) => x === null) ? 'not-allowed' : 'pointer',
-                  opacity: matchingSelections.some((x) => x === null) ? 0.55 : 1,
-                  fontSize: '15px',
-                  fontWeight: 600,
-                  boxShadow: theme === 'dark' ? '0 2px 8px rgba(56, 189, 248, 0.25)' : '0 2px 6px rgba(33, 150, 243, 0.25)',
-                }}
-              >
-                {i18n('Submit answer')}
-              </button>
-            )}
+            {!isAnswered &&
+              (() => {
+                const pm = currentProblem as ProblemMatching;
+                const ncolm = matchingColumnsNormalized(pm);
+                const nn = ncolm[0]?.length ?? 0;
+                const scc = ncolm.length;
+                let bad =
+                  nn <= 0 || scc < MATCHING_COL_MIN
+                  || matchingSelections.length < nn
+                  || !(matchingSelections.slice(0, nn).every((row) => {
+                    const r = row ?? [];
+                    if (r.length < scc) return false;
+                    for (let ck = 0; ck < scc; ck++) {
+                      if (r[ck] === null || r[ck] === undefined) return false;
+                    }
+                    return true;
+                  }));
+                return (
+                  <button
+                    type="button"
+                    onClick={handleMatchingSubmit}
+                    disabled={bad}
+                    style={{
+                      marginTop: '2px',
+                      padding: '11px 24px',
+                      border: 'none',
+                      borderRadius: '8px',
+                      backgroundColor: themeStyles.accent,
+                      color: themeStyles.whiteOnAccent,
+                      cursor: bad ? 'not-allowed' : 'pointer',
+                      opacity: bad ? 0.55 : 1,
+                      fontSize: '15px',
+                      fontWeight: 600,
+                      boxShadow:
+                        theme === 'dark'
+                          ? '0 2px 8px rgba(56, 189, 248, 0.25)'
+                          : '0 2px 6px rgba(33, 150, 243, 0.25)',
+                    }}
+                  >
+                    {i18n('Submit answer')}
+                  </button>
+                );
+              })()}
           </>
         ) : currentKind === 'true_false' ? (
           <>
