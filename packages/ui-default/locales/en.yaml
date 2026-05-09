@@ -194,6 +194,9 @@ __langname: English
 'Final message will be': Final message will be
 'Flip mark done': Mark as done
 'Flip show back': Show back
+'Flip show hint': Show hint
+'Flip hide hint': Hide hint
+'Flip hint label': Hint
 'Folder description': Folder description
 'Folder/Directory': Folder/Directory
 'Free Scroll': Free Scroll
@@ -389,6 +392,8 @@ __langname: English
 'Problem face B label': Side B (after flip)
 'Problem face A placeholder': Front text
 'Problem face B placeholder': Back text
+'Problem flip hint label': Hint (visible to learners)
+'Problem flip hint placeholder': Short optional cue; learners use the Hint button in the lesson to reveal it.
 'Problem answer true': True
 'Problem answer false': False
 'Problem fill blank stem hint': Use three underscores (___) in the question for each blank. If you omit them, one blank appears after the question text.

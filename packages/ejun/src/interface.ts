@@ -423,11 +423,13 @@ export interface ProblemTrueFalse extends ProblemCommon {
     answer: 0 | 1;
 }
 
-/** Flip card: show face A, then face B after user taps know / not sure. */
+/** Flip card: show face A, then face B after user taps know / not sure. Optional `hint` is learner-visible when they tap Hint (before/at flip). */
 export interface ProblemFlip extends ProblemCommon {
     type: 'flip';
     faceA: string;
     faceB: string;
+    /** Optional short cue for the learner; shown only after tapping Hint in lesson. */
+    hint?: string;
 }
 
 /**
