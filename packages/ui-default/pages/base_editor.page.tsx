@@ -31,6 +31,10 @@ import {
   syncFillBlankAnswersLen,
   MATCHING_PAIR_MIN,
   MATCHING_PAIR_MAX,
+  MATCHING_COL_MIN,
+  MATCHING_COL_MAX,
+  normalizeMatchingColumns,
+  matchingColumnsNormalized,
 } from 'ejun/src/model/problem';
 interface BaseNode {
   id: string;
@@ -934,18 +938,36 @@ const EditableProblem = React.memo(({
               style={taStyle}
             />
           </div>
-          <div style={{ marginBottom: '8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: 8, color: themeStyles.textPrimary }}>
+          <div
+            style={{
+              marginBottom: '8px',
+              fontSize: '11px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              flexWrap: 'wrap',
+              color: themeStyles.textPrimary,
+            }}
+          >
             <span>{i18n('Problem matching pair count')}</span>
             <select
-              value={(model as ProblemMatching).left.length}
+              value={matchingColumnsNormalized(model as ProblemMatching)[0]?.length || MATCHING_PAIR_MIN}
               onChange={(e) => {
-                const n = Math.min(MATCHING_PAIR_MAX, Math.max(MATCHING_PAIR_MIN, parseInt(e.target.value, 10) || MATCHING_PAIR_MIN));
                 const mm = model as ProblemMatching;
-                const L = [...mm.left];
-                const R = [...mm.right];
-                while (L.length < n) L.push('');
-                while (R.length < n) R.push('');
-                setModel({ ...mm, left: L.slice(0, n), right: R.slice(0, n) });
+                const nRows = Math.min(MATCHING_PAIR_MAX, Math.max(MATCHING_PAIR_MIN, parseInt(e.target.value, 10) || MATCHING_PAIR_MIN));
+                let cols = matchingColumnsNormalized(mm);
+                cols = cols.map((col) => {
+                  const next = [...col];
+                  while (next.length < nRows) next.push('');
+                  return next.slice(0, nRows);
+                });
+                const norm = normalizeMatchingColumns(cols);
+                setModel({
+                  ...mm,
+                  columns: norm,
+                  left: norm[0],
+                  right: norm[norm.length - 1],
+                });
               }}
               style={{ ...inpStyle, minWidth: 52 }}
             >
@@ -953,38 +975,76 @@ const EditableProblem = React.memo(({
                 <option key={n} value={n}>{n}</option>
               ))}
             </select>
+            <span>{i18n('Problem matching column count')}</span>
+            <select
+              value={matchingColumnsNormalized(model as ProblemMatching).length}
+              onChange={(e) => {
+                const mm = model as ProblemMatching;
+                const ncol = Math.min(MATCHING_COL_MAX, Math.max(MATCHING_COL_MIN, parseInt(e.target.value, 10) || MATCHING_COL_MIN));
+                let cols = matchingColumnsNormalized(mm);
+                const nrow = cols[0]?.length ?? MATCHING_PAIR_MIN;
+                const nextCols: string[][] = [];
+                for (let c = 0; c < ncol; c++) {
+                  const prev = cols[c] || [];
+                  const pad = [...prev];
+                  while (pad.length < nrow) pad.push('');
+                  nextCols.push(pad.slice(0, nrow));
+                }
+                const norm = normalizeMatchingColumns(nextCols);
+                setModel({
+                  ...mm,
+                  columns: norm,
+                  left: norm[0],
+                  right: norm[norm.length - 1],
+                });
+              }}
+              style={{ ...inpStyle, minWidth: 52 }}
+            >
+              {Array.from({ length: MATCHING_COL_MAX - MATCHING_COL_MIN + 1 }, (_, i) => MATCHING_COL_MIN + i).map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
           </div>
           <div style={{ fontSize: '11px', color: themeStyles.textSecondary, marginBottom: 6 }}>
             {i18n('Problem matching pairs hint')}
           </div>
-          {(model as ProblemMatching).left.map((leftText, mi) => (
-            <div key={mi} style={{ marginBottom: 8, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 11, color: themeStyles.textSecondary, minWidth: 72 }}>{i18n('Pair')} {mi + 1}</span>
-              <input
-                value={leftText}
-                onChange={(e) => {
-                  const mm = model as ProblemMatching;
-                  const next = [...mm.left];
-                  next[mi] = e.target.value;
-                  setModel({ ...mm, left: next });
-                }}
-                placeholder={i18n('Problem matching left')}
-                style={{ ...inpStyle, flex: '1 1 120px', minWidth: '100px' }}
-              />
-              <span aria-hidden style={{ color: themeStyles.textTertiary }}>↔</span>
-              <input
-                value={(model as ProblemMatching).right[mi] ?? ''}
-                onChange={(e) => {
-                  const mm = model as ProblemMatching;
-                  const next = [...mm.right];
-                  next[mi] = e.target.value;
-                  setModel({ ...mm, right: next });
-                }}
-                placeholder={i18n('Problem matching right')}
-                style={{ ...inpStyle, flex: '1 1 120px', minWidth: '100px' }}
-              />
-            </div>
-          ))}
+          <div style={{ fontSize: '11px', color: themeStyles.textSecondary, marginBottom: 8, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {matchingColumnsNormalized(model as ProblemMatching).map((_, ci) => (
+              <span key={`mch-${ci}`} style={{ minWidth: 56 }}>{String(i18n('Problem matching column label', ci + 1))}</span>
+            ))}
+          </div>
+          {(() => {
+            const mm = model as ProblemMatching;
+            const cols = matchingColumnsNormalized(mm);
+            const nRows = cols[0]?.length ?? MATCHING_PAIR_MIN;
+            return Array.from({ length: nRows }, (_, mi) => (
+              <div key={mi} style={{ marginBottom: 10, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 11, color: themeStyles.textSecondary, minWidth: 64 }}>
+                  {String(i18n('Problem matching row label', mi + 1))}
+                </span>
+                {cols.map((col, ci) => (
+                  <input
+                    key={`${mi}-${ci}`}
+                    value={col[mi] ?? ''}
+                    onChange={(e) => {
+                      const cur = matchingColumnsNormalized(mm);
+                      const nextCols = cur.map((c) => [...c]);
+                      nextCols[ci][mi] = e.target.value;
+                      const norm = normalizeMatchingColumns(nextCols);
+                      setModel({
+                        ...mm,
+                        columns: norm,
+                        left: norm[0],
+                        right: norm[norm.length - 1],
+                      });
+                    }}
+                    placeholder={i18n('Problem matching cell')}
+                    style={{ ...inpStyle, flex: '1 1 100px', minWidth: '90px', maxWidth: '220px' }}
+                  />
+                ))}
+              </div>
+            ));
+          })()}
         </>
       ) : kind === 'true_false' ? (
         <div style={{ marginBottom: '4px' }}>
@@ -7554,6 +7614,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             }
             if (k === 'matching') {
               const mm = p as ProblemMatching;
+              const cols = matchingColumnsNormalized(mm);
               problemsText += `\n  Problem ${index + 1} (ID: ${p.pid}): matching / pairing\n`;
               if (typeof mm.title === 'string' && mm.title.trim()) {
                 problemsText += `  - title: ${mm.title.trim()}\n`;
@@ -7561,8 +7622,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               if (mm.stem && String(mm.stem).trim()) {
                 problemsText += `  - stem (instructions): ${String(mm.stem).trim()}\n`;
               }
-              problemsText += `  - left column: ${JSON.stringify(mm.left || [])}\n`;
-              problemsText += `  - right column (paired by same index): ${JSON.stringify(mm.right || [])}\n`;
+              problemsText += `  - columns (column-major, same row index = same item): ${JSON.stringify(cols)}\n`;
               if (mm.analysis) problemsText += `  - analysis: ${mm.analysis}\n`;
               return;
             }
@@ -7620,7 +7680,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 4. **rename**: rename a node or card
 5. **update_card_content**: change card body/markdown when the user asks to edit, polish, format, or improve *content* (not the title)
 6. **delete**: delete a node or card when asked
-7. **create_problem**: add practice problems for the **currently open card** when asked. Always include **\`title\`**: a very short plain-text label for lesson sidebars (not the full stem; omit HTML; ideally under ~40 characters). Also use \`problemKind\`: \`single\` (default, one correct option index in \`answer\`), \`multi\` (\`answer\` is an array of correct option indices), \`true_false\` (\`stem\` + \`answer\` 0 = false, 1 = true), \`flip\` (\`faceA\` / \`faceB\`, optional learner \`hint\`; no \`options\`), \`fill_blank\` (\`stem\` with \`___\` for each blank + \`answers\` string array in order; if no \`___\`, one blank after the stem), \`matching\` (optional instruction \`stem\` plus equal-length arrays \`left\`[] and \`right\`[] with ≥2 pairs — canonical pair is \`left[i]\` with \`right[i]\`; lesson shuffles right labels).
+7. **create_problem**: add practice problems for the **currently open card** when asked. Always include **\`title\`**: a very short plain-text label for lesson sidebars (not the full stem; omit HTML; ideally under ~40 characters). Also use \`problemKind\`: \`single\` (default, one correct option index in \`answer\`), \`multi\` (\`answer\` is an array of correct option indices), \`true_false\` (\`stem\` + \`answer\` 0 = false, 1 = true), \`flip\` (\`faceA\` / \`faceB\`, optional learner \`hint\`; no \`options\`), \`fill_blank\` (\`stem\` with \`___\` for each blank + \`answers\` string array in order; if no \`___\`, one blank after the stem), \`matching\` (optional \`stem\`: use \`columns\` — array of **columns**, each inner array is that column top-to-bottom; **same row index** across columns is one item; ≥2 rows and ≥2 columns; lesson gives **each column** an independent shuffled dropdown so the learner picks the correct row index in every column; or legacy \`left\`/\`right\`).
 
 [Outline structure]
 ${baseText}
@@ -7730,11 +7790,14 @@ Reply with a JSON code block only for executable operations, using this shape:
     {
       "type": "create_problem",
       "cardId": "card_xxx",
-      "title": "Countries & capitals",
+      "title": "Multi-attribute match",
       "problemKind": "matching",
-      "stem": "Match each country with its capital.",
-      "left": ["France", "Japan", "Brazil"],
-      "right": ["Paris", "Tokyo", "Brasília"],
+      "stem": "Match each concept across dimensions (each column is a shuffled pool in the lesson).",
+      "columns": [
+        ["A1", "A2", "A3"],
+        ["B1", "B2", "B3"],
+        ["C1", "C2", "C3"]
+      ],
       "analysis": "Optional"
     }
   ]
@@ -7748,7 +7811,7 @@ Reply with a JSON code block only for executable operations, using this shape:
 4. Use \`rename_card\` / \`rename_node\` only when the user clearly wants to change a **title/name**.
 5. **move_node**: read the outline above; match the user's folder/node by **name and full path**, then use the real **node ID** as \`targetParentId\`. Node IDs look like \`node_...\`; they are **not** card IDs (cards use long hex-like ids). "Move folder" means move a **node**. If you cannot resolve a target, reply with an error in plain text instead of guessing IDs.
 6. **move_card**: to move a **card**, use \`move_card\` (card id + \`targetNodeId\`). Never use \`move_node\` for a card. If the user @-mentions a card, use \`move_card\` with that card's id.
-7. **create_problem**: omit \`problemKind\` or set \`single\` for classic single-choice; include **\`title\`** (short sidebar/list label); \`multi\` requires \`answer\` as an array; \`true_false\` requires \`stem\` and \`answer\` 0/1; \`flip\` requires \`faceA\` and \`faceB\`, optional \`hint\` (learner Hint button), and must **not** include \`options\`; \`fill_blank\` requires \`stem\` and \`answers\` (array of strings, one per \`___\` left-to-right, or one string if a single blank); \`matching\` requires equal-length \`left\` and \`right\` string arrays with at least **2** pairs (pair \`left[i]\`↔\`right[i]\`).
+7. **create_problem**: omit \`problemKind\` or set \`single\` for classic single-choice; include **\`title\`** (short sidebar/list label); \`multi\` requires \`answer\` as an array; \`true_false\` requires \`stem\` and \`answer\` 0/1; \`flip\` requires \`faceA\` and \`faceB\`, optional \`hint\` (learner Hint button), and must **not** include \`options\`; \`fill_blank\` requires \`stem\` and \`answers\` (array of strings, one per \`___\` left-to-right, or one string if a single blank); \`matching\` requires ≥2 rows: either \`columns\` (**array of columns**, each inner array one cell per row, same indexes align) with ≥2 columns—lesson shuffles **every** column’s pool independently—or legacy equal-length \`left\` and \`right\`.
 8. **Valid JSON**: never put raw line breaks or unescaped \`"\` inside a string value; use standard JSON escaping (backslash + quote, backslash + n for newline).
 9. **Streaming**: emit each \`operations[]\` entry as a **fully closed** \`{ ... }\` object (balanced braces) **before** starting the next. The editor applies each finished object immediately—trailing incomplete objects wait until complete.
 `;
@@ -8747,24 +8810,46 @@ Reply with a JSON code block only for executable operations, using this shape:
               ...(analysisStr ? { analysis: analysisStr } : {}),
             });
           } else if (kind === 'matching') {
-            const leftArr = Array.isArray(op.left) ? op.left.map((x: unknown) => String(x ?? '')) : [];
-            const rightArr = Array.isArray(op.right) ? op.right.map((x: unknown) => String(x ?? '')) : [];
-            const nPairs = Math.max(leftArr.length, rightArr.length);
-            if (nPairs < 2) {
-              Notification.error(i18n('Problem matching pairs too few'));
-              errors.push('create_problem matching：left/right 不足 2 对');
-              continue;
-            }
             const stemMatching = typeof op.stem === 'string' ? op.stem.trim() : '';
-            newProblem = migrateRawProblem({
+            const rawProb: Record<string, unknown> = {
               pid,
               type: 'matching',
               ...(stemMatching ? { stem: stemMatching } : {}),
-              left: leftArr,
-              right: rightArr,
               ...titleSpread,
               ...(analysisStr ? { analysis: analysisStr } : {}),
-            });
+            };
+            const colRaw = op.columns;
+            const colOk =
+              Array.isArray(colRaw)
+              && colRaw.length >= MATCHING_COL_MIN
+              && colRaw.every((c) => Array.isArray(c));
+            if (colOk) {
+              rawProb.columns = colRaw as unknown[];
+            } else {
+              const leftArr = Array.isArray(op.left) ? op.left.map((x: unknown) => String(x ?? '')) : [];
+              const rightArr = Array.isArray(op.right) ? op.right.map((x: unknown) => String(x ?? '')) : [];
+              const nPairs = Math.max(leftArr.length, rightArr.length);
+              if (nPairs < MATCHING_PAIR_MIN) {
+                Notification.error(i18n('Problem matching pairs too few'));
+                errors.push('create_problem matching：行数不足 2');
+                continue;
+              }
+              rawProb.left = leftArr;
+              rawProb.right = rightArr;
+            }
+            newProblem = migrateRawProblem(rawProb);
+            const ncol = matchingColumnsNormalized(newProblem as ProblemMatching);
+            const nrow = ncol[0]?.length ?? 0;
+            if (ncol.length < MATCHING_COL_MIN) {
+              Notification.error(i18n('Problem matching columns too few'));
+              errors.push(`create_problem matching：列数不足 ${MATCHING_COL_MIN}`);
+              continue;
+            }
+            if (nrow < MATCHING_PAIR_MIN) {
+              Notification.error(i18n('Problem matching pairs too few'));
+              errors.push('create_problem matching：行数不足 2');
+              continue;
+            }
           } else if (kind === 'multi') {
             const stem = String(op.stem ?? '').trim();
             const options = Array.isArray(op.options) ? op.options.map((x: unknown) => String(x ?? '')) : [];

@@ -19,9 +19,12 @@ const DEFAULT_OPTION_SLOTS = 4;
 const MIN_SLOTS = 2;
 const MAX_SLOTS = 8;
 
-/** Matching pairs: lesson UI uses this range. */
+/** Matching: row count editor + lesson bounds. */
 export const MATCHING_PAIR_MIN = 2;
 export const MATCHING_PAIR_MAX = 8;
+/** Matching: minimum / maximum columns (lesson uses one independently shuffled dropdown pool per column). */
+export const MATCHING_COL_MIN = 2;
+export const MATCHING_COL_MAX = 8;
 
 export function clampMatchingPairCount(n: unknown): number {
     const v = typeof n === 'number' && Number.isFinite(n) ? Math.round(n as number) : MATCHING_PAIR_MIN;
@@ -40,7 +43,33 @@ export function parseMatchingSides(leftRaw: unknown, rightRaw: unknown): Pick<Pr
     return { left: left.slice(0, n), right: right.slice(0, n) };
 }
 
-/** Learner picks original right-column index per left row `i`; correct iff each pick is identity i. */
+/** Build `columns[col][row]`; first/last columns mirror legacy `left` / `right`. */
+export function normalizeMatchingColumns(rawCols: unknown, leftRaw?: unknown, rightRaw?: unknown): string[][] {
+    if (Array.isArray(rawCols) && rawCols.length >= MATCHING_COL_MIN) {
+        const colCount = Math.min(MATCHING_COL_MAX, Math.max(MATCHING_COL_MIN, rawCols.length));
+        const trimmed = (rawCols as unknown[]).slice(0, colCount).map((col) =>
+            Array.isArray(col) ? (col as unknown[]).map((x) => String(x ?? '')) : [],
+        );
+        let rowCount = MATCHING_PAIR_MIN;
+        for (const col of trimmed) {
+            rowCount = Math.max(rowCount, col.length);
+        }
+        rowCount = clampMatchingPairCount(rowCount);
+        return trimmed.map((col) => {
+            const padded = [...col];
+            while (padded.length < rowCount) padded.push('');
+            return padded.slice(0, rowCount);
+        });
+    }
+    const { left, right } = parseMatchingSides(leftRaw, rightRaw);
+    return [left, right];
+}
+
+export function matchingColumnsNormalized(p: Pick<ProblemMatching, 'columns' | 'left' | 'right'>): string[][] {
+    return normalizeMatchingColumns(p.columns, p.left, p.right);
+}
+
+/** Learner picks original row index `i` per left row — one pick per selectable column (`selectableColCount`); correct iff identity on each column’s picks. */
 export function matchingUserPicksCorrect(pairCount: number, picks: Array<number | null | undefined>): boolean {
     if (pairCount < MATCHING_PAIR_MIN || pairCount > MATCHING_PAIR_MAX) return false;
     if (!picks || picks.length !== pairCount) return false;
@@ -53,6 +82,22 @@ export function matchingUserPicksCorrect(pairCount: number, picks: Array<number 
         if (j !== i) return false;
     }
     return seen.size === pairCount;
+}
+
+/** `picksMatrix[row][col]` picks for column index `col` at row `row`; correct iff each column satisfies {@link matchingUserPicksCorrect}. */
+export function matchingAllColumnsCorrect(
+    pairCount: number,
+    selectableColCount: number,
+    picksMatrix: ReadonlyArray<ReadonlyArray<number | null | undefined>> | null | undefined,
+): boolean {
+    if (pairCount < MATCHING_PAIR_MIN || pairCount > MATCHING_PAIR_MAX) return false;
+    if (selectableColCount < 1) return false;
+    if (!picksMatrix || picksMatrix.length !== pairCount) return false;
+    for (let k = 0; k < selectableColCount; k++) {
+        const colPicks = picksMatrix.map((row) => row[k]);
+        if (!matchingUserPicksCorrect(pairCount, colPicks)) return false;
+    }
+    return true;
 }
 
 export function problemKind(p: Partial<Problem> | null | undefined): ProblemKind {
@@ -172,7 +217,9 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
                   : isFillBlankProblem(prev)
                     ? prev.stem
                     : isMatchingProblem(prev)
-                      ? ((typeof prev.stem === 'string' && prev.stem.trim()) ? prev.stem : (prev.left || []).join(' / '))
+                      ? ((typeof prev.stem === 'string' && prev.stem.trim())
+                          ? prev.stem.trim()
+                          : (matchingColumnsNormalized(prev)[0] || []).join(' / '))
                       : '';
         const n = fillBlankSlotCount(stem);
         let answers = Array.from({ length: n }, () => '');
@@ -200,8 +247,9 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
             faceA = prev.faceA;
             faceB = prev.faceB;
         } else if (isMatchingProblem(prev)) {
-            faceA = (prev.left || []).join(' / ');
-            faceB = (prev.right || []).join(' / ');
+            const colsM = matchingColumnsNormalized(prev);
+            faceA = (colsM[0] || []).join(' / ');
+            faceB = (colsM[colsM.length - 1] || []).join(' / ');
         } else if (isFillBlankProblem(prev)) {
             faceA = prev.stem || '';
             faceB = (prev.answers || []).join(' / ');
@@ -226,7 +274,7 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
                     : isMatchingProblem(prev)
                       ? ((typeof prev.stem === 'string' && prev.stem.trim())
                           ? prev.stem
-                          : (prev.left || []).map((x) => String(x ?? '').trim()).filter(Boolean).join(' · ')
+                          : (matchingColumnsNormalized(prev)[0] || []).map((x) => String(x ?? '').trim()).filter(Boolean).join(' · ')
                       )
                       : '';
         let ans: 0 | 1 = 1;
@@ -248,7 +296,7 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
                     : isMatchingProblem(prev)
                       ? ((typeof prev.stem === 'string' && prev.stem.trim())
                           ? prev.stem
-                          : (prev.left || []).map((x) => String(x ?? '').trim()).filter(Boolean).join(' · ')
+                          : (matchingColumnsNormalized(prev)[0] || []).map((x) => String(x ?? '').trim()).filter(Boolean).join(' · ')
                       )
                       : '';
         let options: string[] = ['', '', '', ''];
@@ -264,9 +312,11 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
     }
     if (newKind === 'matching') {
         if (isMatchingProblem(prev)) {
-            const sides = parseMatchingSides(prev.left, prev.right);
+            const cols = matchingColumnsNormalized(prev);
             const st = typeof prev.stem === 'string' && prev.stem.trim() !== '' ? { stem: prev.stem.trim() } : {};
-            return { ...common, type: 'matching', ...st, ...sides };
+            const left = cols[0];
+            const right = cols[cols.length - 1];
+            return { ...common, type: 'matching', columns: cols, ...st, left, right };
         }
         let stemM: string | undefined;
         if ('stem' in prev && typeof prev.stem === 'string' && prev.stem.trim()) stemM = prev.stem.trim();
@@ -289,7 +339,10 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
         }
 
         const stOut = stemM !== undefined ? { stem: stemM } : {};
-        return { ...common, type: 'matching', ...stOut, ...sidesPick };
+        const cols = normalizeMatchingColumns(undefined, sidesPick.left, sidesPick.right);
+        const left = cols[0];
+        const right = cols[cols.length - 1];
+        return { ...common, type: 'matching', columns: cols, ...stOut, left, right };
     }
     const stem =
         'stem' in prev && typeof prev.stem === 'string'
@@ -301,12 +354,12 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
                 : isMatchingProblem(prev)
                   ? ((typeof prev.stem === 'string' && prev.stem.trim())
                       ? prev.stem
-                      : (prev.left || []).map((x) => String(x ?? '').trim()).filter(Boolean).join(' · ')
+                      : (matchingColumnsNormalized(prev)[0] || []).map((x) => String(x ?? '').trim()).filter(Boolean).join(' · ')
                   )
                   : '';
     let options = ['', '', '', ''];
     if ('options' in prev && Array.isArray(prev.options)) options = [...prev.options];
-    else if (isMatchingProblem(prev)) options = [...(prev.left || []), ...(prev.right || [])];
+    else if (isMatchingProblem(prev)) options = [...matchingColumnsNormalized(prev).flat()];
     options = ensureOptionArrayLength(options, slots);
     let answer = 0;
     if (problemKind(prev) === 'single') {
@@ -367,13 +420,17 @@ export function migrateRawProblem(raw: Record<string, unknown>): Problem {
         return { ...common, type: 'fill_blank', stem, answers };
     }
     if (t === 'matching') {
-        const sides = parseMatchingSides(raw.left, raw.right);
+        const columns = normalizeMatchingColumns(raw.columns, raw.left, raw.right);
         const stemM = typeof raw.stem === 'string' ? raw.stem.trim() : '';
+        const left = columns[0];
+        const right = columns[columns.length - 1];
         return {
             ...common,
             type: 'matching',
             ...(stemM ? { stem: stemM } : {}),
-            ...sides,
+            columns,
+            left,
+            right,
         };
     }
     const stem = typeof raw.stem === 'string' ? raw.stem : '';

@@ -443,10 +443,12 @@ export interface ProblemFillBlank extends ProblemCommon {
     answers: string[];
 }
 
-/** Pair items by index i: left[i] ↔ right[i] (right labels are shuffled in lesson). */
+/** Pair rows across columns `columns[*][rowIndex]`; in the lesson every column uses an independent shuffled dropdown per row (`matchingAllColumnsCorrect`). Legacy docs may omit `columns`. */
 export interface ProblemMatching extends ProblemCommon {
     type: 'matching';
     stem?: string;
+    /** `columns[col][row]`; when absent, derive from left/right as two columns. */
+    columns?: string[][];
     left: string[];
     right: string[];
 }
