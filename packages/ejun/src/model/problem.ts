@@ -9,6 +9,7 @@ import type {
     ProblemFillBlank,
     ProblemFlip,
     ProblemKind,
+    ProblemMatching,
     ProblemMulti,
     ProblemSingle,
     ProblemTrueFalse,
@@ -18,15 +19,63 @@ const DEFAULT_OPTION_SLOTS = 4;
 const MIN_SLOTS = 2;
 const MAX_SLOTS = 8;
 
-export function clampOptionSlots(n: unknown): number {
-    const v = typeof n === 'number' && Number.isFinite(n) ? Math.round(n) : DEFAULT_OPTION_SLOTS;
-    return Math.min(MAX_SLOTS, Math.max(MIN_SLOTS, v));
+/** Matching pairs: lesson UI uses this range. */
+export const MATCHING_PAIR_MIN = 2;
+export const MATCHING_PAIR_MAX = 8;
+
+export function clampMatchingPairCount(n: unknown): number {
+    const v = typeof n === 'number' && Number.isFinite(n) ? Math.round(n as number) : MATCHING_PAIR_MIN;
+    return Math.min(MATCHING_PAIR_MAX, Math.max(MATCHING_PAIR_MIN, v));
+}
+
+/** Equal-length padded sides for storage (n between MIN–MAX inclusive). */
+export function parseMatchingSides(leftRaw: unknown, rightRaw: unknown): Pick<ProblemMatching, 'left' | 'right'> {
+    const toArr = (raw: unknown): string[] =>
+        Array.isArray(raw) ? (raw as unknown[]).map((x) => String(x ?? '')) : [];
+    let left = toArr(leftRaw);
+    let right = toArr(rightRaw);
+    const n = clampMatchingPairCount(Math.max(left.length, right.length));
+    while (left.length < n) left.push('');
+    while (right.length < n) right.push('');
+    return { left: left.slice(0, n), right: right.slice(0, n) };
+}
+
+/** Learner picks original right-column index per left row `i`; correct iff each pick is identity i. */
+export function matchingUserPicksCorrect(pairCount: number, picks: Array<number | null | undefined>): boolean {
+    if (pairCount < MATCHING_PAIR_MIN || pairCount > MATCHING_PAIR_MAX) return false;
+    if (!picks || picks.length !== pairCount) return false;
+    const seen = new Set<number>();
+    for (let i = 0; i < pairCount; i++) {
+        const jRaw = picks[i];
+        const j = typeof jRaw === 'number' && Number.isFinite(jRaw) ? Math.trunc(jRaw as number) : NaN;
+        if (!Number.isFinite(j) || j < 0 || j >= pairCount || seen.has(j)) return false;
+        seen.add(j);
+        if (j !== i) return false;
+    }
+    return seen.size === pairCount;
 }
 
 export function problemKind(p: Partial<Problem> | null | undefined): ProblemKind {
-    const t = (p as { type?: string } | null)?.type;
-    if (t === 'multi' || t === 'true_false' || t === 'flip' || t === 'fill_blank') return t;
+    const t = (p as { type?: string } | null | undefined)?.type;
+    if (
+        t === 'multi'
+        || t === 'true_false'
+        || t === 'flip'
+        || t === 'fill_blank'
+        || t === 'matching'
+    ) {
+        return t;
+    }
     return 'single';
+}
+
+export function clampOptionSlots(n: unknown): number {
+    const v = typeof n === 'number' && Number.isFinite(n) ? Math.round(n as number) : DEFAULT_OPTION_SLOTS;
+    return Math.min(MAX_SLOTS, Math.max(MIN_SLOTS, v));
+}
+
+export function isMatchingProblem(p: Partial<Problem> | null | undefined): p is ProblemMatching {
+    return problemKind(p) === 'matching';
 }
 
 export function isFlipProblem(p: Partial<Problem> | null | undefined): p is ProblemFlip {
@@ -115,7 +164,16 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
             : DEFAULT_OPTION_SLOTS,
     );
     if (newKind === 'fill_blank') {
-        const stem = 'stem' in prev ? prev.stem : isFlipProblem(prev) ? prev.faceA : isFillBlankProblem(prev) ? prev.stem : '';
+        const stem =
+            'stem' in prev && typeof prev.stem === 'string'
+                ? prev.stem
+                : isFlipProblem(prev)
+                  ? prev.faceA
+                  : isFillBlankProblem(prev)
+                    ? prev.stem
+                    : isMatchingProblem(prev)
+                      ? ((typeof prev.stem === 'string' && prev.stem.trim()) ? prev.stem : (prev.left || []).join(' / '))
+                      : '';
         const n = fillBlankSlotCount(stem);
         let answers = Array.from({ length: n }, () => '');
         if (isFillBlankProblem(prev)) {
@@ -141,6 +199,9 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
         if (isFlipProblem(prev)) {
             faceA = prev.faceA;
             faceB = prev.faceB;
+        } else if (isMatchingProblem(prev)) {
+            faceA = (prev.left || []).join(' / ');
+            faceB = (prev.right || []).join(' / ');
         } else if (isFillBlankProblem(prev)) {
             faceA = prev.stem || '';
             faceB = (prev.answers || []).join(' / ');
@@ -151,31 +212,102 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
         return { ...common, type: 'flip', faceA, faceB };
     }
     if (newKind === 'true_false') {
-        const stem = 'stem' in prev ? prev.stem : isFlipProblem(prev) ? prev.faceA : isFillBlankProblem(prev) ? prev.stem : '';
+        const stem =
+            'stem' in prev && typeof prev.stem === 'string'
+                ? prev.stem
+                : isFlipProblem(prev)
+                  ? prev.faceA
+                  : isFillBlankProblem(prev)
+                    ? prev.stem
+                    : isMatchingProblem(prev)
+                      ? ((typeof prev.stem === 'string' && prev.stem.trim())
+                          ? prev.stem
+                          : (prev.left || []).map((x) => String(x ?? '').trim()).filter(Boolean).join(' · ')
+                      )
+                      : '';
         let ans: 0 | 1 = 1;
         if (isTrueFalseProblem(prev)) ans = prev.answer;
-        else if (problemKind(prev) === 'single' && 'answer' in prev) ans = prev.answer >= 1 ? 1 : 0;
+        else if (problemKind(prev) === 'single') {
+            const a = (prev as ProblemSingle).answer;
+            if (typeof a === 'number') ans = a >= 1 ? 1 : 0;
+        }
         return { ...common, type: 'true_false', stem, answer: ans };
     }
     if (newKind === 'multi') {
-        const stem = 'stem' in prev ? prev.stem : isFlipProblem(prev) ? prev.faceA : isFillBlankProblem(prev) ? prev.stem : '';
+        const stem =
+            'stem' in prev && typeof prev.stem === 'string'
+                ? prev.stem
+                : isFlipProblem(prev)
+                  ? prev.faceA
+                  : isFillBlankProblem(prev)
+                    ? prev.stem
+                    : isMatchingProblem(prev)
+                      ? ((typeof prev.stem === 'string' && prev.stem.trim())
+                          ? prev.stem
+                          : (prev.left || []).map((x) => String(x ?? '').trim()).filter(Boolean).join(' · ')
+                      )
+                      : '';
         let options: string[] = ['', '', '', ''];
         if ('options' in prev && Array.isArray(prev.options)) options = [...prev.options];
         options = ensureOptionArrayLength(options, slots);
         let answer: number[] = [0];
         if (isMultiProblem(prev)) answer = normalizeMultiAnswers(prev.answer);
-        else if (problemKind(prev) === 'single' && 'answer' in prev) {
-            answer = [Math.min(options.length - 1, Math.max(0, prev.answer))];
+        else if (problemKind(prev) === 'single') {
+            const a = (prev as ProblemSingle).answer;
+            if (typeof a === 'number') answer = [Math.min(options.length - 1, Math.max(0, a))];
         }
         return { ...common, type: 'multi', stem, options, answer, optionSlots: slots };
     }
-    const stem = 'stem' in prev ? prev.stem : isFlipProblem(prev) ? prev.faceA : isFillBlankProblem(prev) ? prev.stem : '';
+    if (newKind === 'matching') {
+        if (isMatchingProblem(prev)) {
+            const sides = parseMatchingSides(prev.left, prev.right);
+            const st = typeof prev.stem === 'string' && prev.stem.trim() !== '' ? { stem: prev.stem.trim() } : {};
+            return { ...common, type: 'matching', ...st, ...sides };
+        }
+        let stemM: string | undefined;
+        if ('stem' in prev && typeof prev.stem === 'string' && prev.stem.trim()) stemM = prev.stem.trim();
+        else if (isFlipProblem(prev)) stemM = prev.faceA || undefined;
+        else if (isFillBlankProblem(prev)) stemM = prev.stem || undefined;
+
+        let sidesPick = parseMatchingSides(['', ''], ['', '']);
+
+        if (problemKind(prev) === 'single' || isMultiProblem(prev)) {
+            const pm = prev as ProblemSingle | ProblemMulti;
+            const rawOpts = Array.isArray(pm.options) ? [...pm.options] : [];
+            while (rawOpts.length < 4) rawOpts.push('');
+            sidesPick = parseMatchingSides(rawOpts.slice(0, 2), rawOpts.slice(2, 4));
+        } else if (isFillBlankProblem(prev)) {
+            const ans = [...(prev.answers || [])];
+            while (ans.length < 4) ans.push('');
+            sidesPick = parseMatchingSides(ans.slice(0, 2), ans.slice(2, 4));
+        } else if (isFlipProblem(prev)) {
+            sidesPick = parseMatchingSides([prev.faceA], [prev.faceB]);
+        }
+
+        const stOut = stemM !== undefined ? { stem: stemM } : {};
+        return { ...common, type: 'matching', ...stOut, ...sidesPick };
+    }
+    const stem =
+        'stem' in prev && typeof prev.stem === 'string'
+            ? prev.stem
+            : isFlipProblem(prev)
+              ? prev.faceA
+              : isFillBlankProblem(prev)
+                ? prev.stem
+                : isMatchingProblem(prev)
+                  ? ((typeof prev.stem === 'string' && prev.stem.trim())
+                      ? prev.stem
+                      : (prev.left || []).map((x) => String(x ?? '').trim()).filter(Boolean).join(' · ')
+                  )
+                  : '';
     let options = ['', '', '', ''];
     if ('options' in prev && Array.isArray(prev.options)) options = [...prev.options];
+    else if (isMatchingProblem(prev)) options = [...(prev.left || []), ...(prev.right || [])];
     options = ensureOptionArrayLength(options, slots);
     let answer = 0;
-    if (problemKind(prev) === 'single' && 'answer' in prev) {
-        answer = Math.min(options.length - 1, Math.max(0, prev.answer));
+    if (problemKind(prev) === 'single') {
+        const a = (prev as ProblemSingle).answer;
+        if (typeof a === 'number') answer = Math.min(options.length - 1, Math.max(0, a));
     } else if (isMultiProblem(prev) && prev.answer.length) {
         answer = Math.min(options.length - 1, Math.max(0, prev.answer[0]));
     } else if (isTrueFalseProblem(prev)) answer = prev.answer;
@@ -228,6 +360,16 @@ export function migrateRawProblem(raw: Record<string, unknown>): Problem {
             n,
         );
         return { ...common, type: 'fill_blank', stem, answers };
+    }
+    if (t === 'matching') {
+        const sides = parseMatchingSides(raw.left, raw.right);
+        const stemM = typeof raw.stem === 'string' ? raw.stem.trim() : '';
+        return {
+            ...common,
+            type: 'matching',
+            ...(stemM ? { stem: stemM } : {}),
+            ...sides,
+        };
     }
     const stem = typeof raw.stem === 'string' ? raw.stem : '';
     const options = Array.isArray(raw.options) ? (raw.options as unknown[]).map((x) => String(x ?? '')) : ['', '', '', ''];
