@@ -3815,9 +3815,6 @@ function LessonPage() {
                       {stemText}
                     </div>
                   ) : null}
-                  <div style={{ fontSize: '13px', color: themeStyles.textSecondary, marginBottom: '14px', lineHeight: 1.5 }}>
-                    {i18n('Problem super flip lesson hint')}
-                  </div>
                   <div style={{ overflowX: 'auto', marginBottom: '18px' }}>
                     <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: '280px' }}>
                       <thead>
