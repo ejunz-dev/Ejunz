@@ -2219,6 +2219,11 @@ function LessonPage() {
     else if (kind === 'correctMore') handleCorrectButNeedMore();
   };
 
+  /** Wrong / peek 「继续」前：本题立刻清空作答并重排洗牌，不改变队列顺序。 */
+  const handleRedoCurrentLessonQuestion = () => {
+    setShuffleTrigger((t) => t + 1);
+  };
+
   const handlePeek = () => {
     setShowPeekCard(true);
   };
@@ -4029,7 +4034,7 @@ function LessonPage() {
         )}
 
         {pendingLessonAdvance && (
-          <div style={{ marginTop: '20px' }}>
+          <div style={{ marginTop: '20px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px' }}>
             <button
               type="button"
               onClick={handleContinueAfterAnswer}
@@ -4047,6 +4052,24 @@ function LessonPage() {
             >
               {i18n('Continue')}
             </button>
+            {pendingLessonAdvance === 'requeue' ? (
+              <button
+                type="button"
+                onClick={handleRedoCurrentLessonQuestion}
+                style={{
+                  padding: '11px 24px',
+                  borderRadius: '8px',
+                  border: `1px solid ${themeStyles.border}`,
+                  backgroundColor: themeStyles.bgSecondary,
+                  color: themeStyles.textPrimary,
+                  cursor: 'pointer',
+                  fontSize: '15px',
+                  fontWeight: 600,
+                }}
+              >
+                {i18n('Lesson redo question')}
+              </button>
+            ) : null}
           </div>
         )}
 
