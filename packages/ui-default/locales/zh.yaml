@@ -1249,6 +1249,9 @@ Role has been updated to {0} for selected users.: 所选用户角色已更新为
 Role has been updated to {0}.: 角色已更新为 {0}。
 Role name can only contains numbers, letters and underscores.: 角色名称只能包含数字、字母和下划线。
 Role: 角色
+Revert AI operations: 撤销
+Reverted: 已撤销
+AI editor state reverted: 已恢复到本次 AI 回复前的编辑状态。
 Roles: 角色
 session_chat_domain: 智能体会话
 session_chat_detail: 会话详情
