@@ -14,7 +14,7 @@ import { PERM, PRIV, STATUS_TEXTS } from '../model/builtin';
 import type { BaseDoc, BaseNode, CardDoc, ProblemFlip, ProblemFillBlank, ProblemMatching } from '../interface';
 import { BaseModel, CardModel } from '../model/base';
 import RecordModel, { type SessionRecordDoc, type RecordProblemState } from '../model/record';
-import { problemKind } from '../model/problem';
+import { problemKind, matchingColumnsNormalized } from '../model/problem';
 import SessionModel, { type SessionDoc } from '../model/session';
 import user from '../model/user';
 import Agent from '../model/agent';
@@ -258,8 +258,8 @@ async function problemRowsForRecord(rd: SessionRecordDoc): Promise<LessonHistory
                 stemPreview = stripHtmlOneLine(
                     (typeof mm.stem === 'string' && mm.stem.trim())
                         ? mm.stem.trim()
-                        : (mm.left || []).map((t) => String(t ?? '').trim()).filter(Boolean).slice(0, 2).join(' ↔ ')
-                        || (mm.pid || ''),
+                        : (matchingColumnsNormalized(mm)[0] || []).map((t) => String(t ?? '').trim()).filter(Boolean).slice(0, 2).join(' ↔ ')
+                            || (mm.pid || ''),
                     160,
                 );
             }

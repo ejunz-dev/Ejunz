@@ -378,12 +378,17 @@ __langname: English
 'Problem kind fill blank': Fill in the blank
 'Problem kind matching': Matching pairs
 'Problem matching stem optional': Introduction (optional)
-'Problem matching pair count': Number of pairs
-'Problem matching pairs hint': Each row pairs the left and right on the same line. Learners match shuffled right options to each left item in the lesson.
-'Problem matching left': Left
-'Problem matching right': Right (pairs with left on the same row)
+'Problem matching pair count': Number of rows
+'Problem matching column count': Columns (≥2)
+'Problem matching column label': 'Col {0}'
+'Problem matching row label': 'Row {0}'
+'Problem matching cell': Cell text
+'Problem matching pairs hint': Stored by column, top-to-bottom; same row index across columns forms one correct pairing. Each column is its own shuffled dropdown on the lesson—the learner selects the original row index in each column’s pool. Two columns ⇒ two independently shuffled pools.
+'Problem matching left': Column 1 cell
+'Problem matching right': Last column cell
 'Problem matching choose': Choose a match…
-'Problem matching pairs too few': Matching problems need at least 2 left/right pairs
+'Problem matching pairs too few': Matching requires at least 2 rows
+'Problem matching columns too few': Matching requires at least 2 columns
 'Problem field type': Question type
 'Problem title': Problem title
 'Problem option slots': Option slots
