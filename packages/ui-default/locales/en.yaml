@@ -398,7 +398,6 @@ __langname: English
 'Problem super flip editor hint': Headers stay visible in the lesson; rows below are the body. Leaving a cell empty shows a blank tile with no flip. Column-major cells, same as matching.
 'Problem super flip column header label': 'Column {0} header'
 'Problem super flip header placeholder': Header label
-'Problem super flip lesson hint': Only filled cells start covered and can flip—empty cells stay blank. Reveal / cover all only affects filled cells. Use Not familiar or reveal every filled cell, then Done.
 'Problem super flip masked': Tap to reveal
 'Problem super flip reveal all': Reveal all
 'Problem super flip cover all': Cover all
