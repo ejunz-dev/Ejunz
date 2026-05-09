@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import { i18n, request } from 'vj/utils';
 import Notification from 'vj/components/notification';
-import type { Problem, ProblemSingle, ProblemMulti, ProblemTrueFalse, ProblemFlip, ProblemFillBlank, ProblemMatching } from 'ejun/src/interface';
+import type { Problem, ProblemSingle, ProblemMulti, ProblemTrueFalse, ProblemFlip, ProblemFillBlank, ProblemMatching, ProblemSuperFlip } from 'ejun/src/interface';
 import {
   problemKind,
   normalizeMultiAnswers,
@@ -15,6 +15,7 @@ import {
   MATCHING_COL_MIN,
   MATCHING_PAIR_MIN,
   matchingColumnsNormalized,
+  superFlipNormalized,
 } from 'ejun/src/model/problem';
 
 // Cache keys aligned with base outline (shared image Cache API).
@@ -45,6 +46,28 @@ function multiIndicesToBitmask(indices: number[]): number {
   return s;
 }
 
+/** Lesson: empty or whitespace-only body cells never get a mask—they stay visibly blank. */
+function superFlipCellHasContent(cellText: unknown): boolean {
+  return String(cellText ?? '').trim().length > 0;
+}
+
+function superFlipAllFilledCellsRevealed(columns: string[][], revealed: boolean[][]): boolean {
+  const ncol = columns.length;
+  if (!ncol) return false;
+  const nrow = columns[0]?.length ?? 0;
+  if (revealed.length !== ncol) return false;
+  for (let ci = 0; ci < ncol; ci++) {
+    const col = columns[ci] || [];
+    const rev = revealed[ci];
+    if (!rev || rev.length !== nrow) return false;
+    for (let ri = 0; ri < nrow; ri++) {
+      if (!superFlipCellHasContent(col[ri])) continue;
+      if (!rev[ri]) return false;
+    }
+  }
+  return true;
+}
+
 function lessonProblemKindLabel(k: ReturnType<typeof problemKind>): string {
   const key =
     k === 'multi' ? 'Problem kind multi'
@@ -52,6 +75,7 @@ function lessonProblemKindLabel(k: ReturnType<typeof problemKind>): string {
     : k === 'flip' ? 'Problem kind flip'
     : k === 'fill_blank' ? 'Problem kind fill blank'
     : k === 'matching' ? 'Problem kind matching'
+    : k === 'super_flip' ? 'Problem kind super flip'
     : 'Problem kind single';
   const t = i18n(key);
   return t !== key ? t : k;
@@ -73,6 +97,16 @@ function lessonProblemQueueTitleText(p: QueuedProblem): string {
     if (st) return st;
     const cols = matchingColumnsNormalized(m);
     const bits = cols.flatMap((col) => col.map((t) => String(t ?? '').trim()).filter(Boolean)).slice(0, 8);
+    return bits.join(' · ') || '';
+  }
+  if (problemKind(p) === 'super_flip') {
+    const s = p as ProblemSuperFlip;
+    const st = typeof s.stem === 'string' ? s.stem.trim() : '';
+    if (st) return st;
+    const { headers, columns } = superFlipNormalized(s);
+    const h = headers.map((t) => String(t ?? '').trim()).filter(Boolean).join(' · ');
+    if (h) return h;
+    const bits = columns.flatMap((col) => col.map((t) => String(t ?? '').trim()).filter(Boolean)).slice(0, 8);
     return bits.join(' · ') || '';
   }
   const stem = (p as ProblemSingle | ProblemMulti | ProblemTrueFalse).stem;
@@ -756,6 +790,10 @@ function LessonPage() {
   const [matchingSelections, setMatchingSelections] = useState<Array<Array<number | null>>>([]);
   /** Per-selectable-column shuffled display order.length === row count each. */
   const [matchingShuffleOrders, setMatchingShuffleOrders] = useState<number[][]>([]);
+  /** `superFlipRevealed[col][row]` — body cell revealed in super-flip table. */
+  const [superFlipRevealed, setSuperFlipRevealed] = useState<boolean[][]>([]);
+  /** Super flip: learner marked done (mastered); false = 「不熟悉」, null = unanswered. */
+  const [superFlipMarkedOk, setSuperFlipMarkedOk] = useState<boolean | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
   const [isPassed, setIsPassed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1681,6 +1719,9 @@ function LessonPage() {
     if (currentKind === 'flip') {
       return isAnswered;
     }
+    if (currentKind === 'super_flip') {
+      return isAnswered && superFlipMarkedOk === true;
+    }
     return false;
   })();
 
@@ -1689,6 +1730,7 @@ function LessonPage() {
   const formatPracticeHistoryUserAnswer = useCallback((h: {
     problem: QueuedProblem;
     selected: number;
+    correct: boolean;
     fillAnswers?: string[];
   }) => {
     const k = problemKind(h.problem);
@@ -1714,6 +1756,7 @@ function LessonPage() {
       return i18n('N/A');
     }
     if (k === 'flip') return i18n('Done');
+    if (k === 'super_flip') return h.correct ? i18n('Done') : i18n('Problem super flip not familiar');
     if (k === 'fill_blank') {
       if (h.fillAnswers?.length) return h.fillAnswers.map((s) => String(s ?? '').trim()).filter(Boolean).join('；') || i18n('N/A');
       return i18n('N/A');
@@ -1795,6 +1838,21 @@ function LessonPage() {
       }
       return parts.join('； ') || i18n('N/A');
     }
+    if (k === 'super_flip') {
+      const sf = p as ProblemSuperFlip;
+      const { headers, columns } = superFlipNormalized(sf);
+      const nrow = columns[0]?.length ?? 0;
+      const parts: string[] = [];
+      for (let ri = 0; ri < nrow; ri++) {
+        const cells = columns.map((col, ci) => {
+          const h = String(headers[ci] ?? '').trim();
+          const body = String(col[ri] ?? '').trim();
+          return body ? (h ? `${h}: ${body}` : body) : '';
+        }).filter(Boolean);
+        if (cells.length) parts.push(cells.join(' · '));
+      }
+      return parts.join('； ') || i18n('N/A');
+    }
     if (k === 'flip') return i18n('Problem kind flip');
     return i18n('N/A');
   }, []);
@@ -1802,6 +1860,8 @@ function LessonPage() {
   useLayoutEffect(() => {
     if (!currentProblem) return;
     const k = problemKind(currentProblem);
+    setSuperFlipRevealed([]);
+    setSuperFlipMarkedOk(null);
     setSelectedAnswer(null);
     setSelectedMulti([]);
     setSelectedTf(null);
@@ -1858,6 +1918,13 @@ function LessonPage() {
         setMatchingShuffleOrders([]);
         setMatchingSelections([]);
       }
+      setOptionOrder([]);
+    } else if (k === 'super_flip') {
+      const sf = currentProblem as ProblemSuperFlip;
+      const { columns } = superFlipNormalized(sf);
+      const ncol = columns.length;
+      const nrow = columns[0]?.length ?? 0;
+      setSuperFlipRevealed(Array.from({ length: ncol }, () => Array.from({ length: nrow }, () => false)));
       setOptionOrder([]);
     } else {
       setMatchingShuffleOrders([]);
@@ -2126,6 +2193,84 @@ function LessonPage() {
     recordCorrectOrWrong(currentProblem, 1, true, timeSpent, problemId, currentAttempts);
   };
 
+  const handleSuperFlipCellToggle = (ci: number, ri: number) => {
+    if (!isAnswered && pendingLessonAdvance) return;
+    if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'super_flip') return;
+    const colsData = superFlipNormalized(currentProblem as ProblemSuperFlip).columns;
+    if (!superFlipCellHasContent(colsData[ci]?.[ri])) return;
+    setSuperFlipRevealed((prev) => {
+      const next = prev.map((col) => [...col]);
+      if (!next[ci] || next[ci][ri] === undefined) return prev;
+      next[ci][ri] = !next[ci][ri];
+      return next;
+    });
+  };
+
+  const handleSuperFlipRevealAll = () => {
+    if (!isAnswered && pendingLessonAdvance) return;
+    if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'super_flip') return;
+    const cols = superFlipNormalized(currentProblem as ProblemSuperFlip).columns;
+    const ncol = cols.length;
+    const nrow = cols[0]?.length ?? 0;
+    if (!ncol || !nrow) return;
+    setSuperFlipRevealed(
+      Array.from({ length: ncol }, (_, ci) =>
+        Array.from({ length: nrow }, (_, ri) => (superFlipCellHasContent(cols[ci]?.[ri]) ? true : false)),
+      ),
+    );
+  };
+
+  const handleSuperFlipCoverAll = () => {
+    if (!isAnswered && pendingLessonAdvance) return;
+    if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'super_flip') return;
+    const cols = superFlipNormalized(currentProblem as ProblemSuperFlip).columns;
+    const ncol = cols.length;
+    const nrow = cols[0]?.length ?? 0;
+    if (!ncol || !nrow) return;
+    setSuperFlipRevealed(
+      Array.from({ length: ncol }, (_, ci) =>
+        Array.from({ length: nrow }, (_, ri) => false),
+      ),
+    );
+  };
+
+  const handleSuperFlipNotFamiliar = () => {
+    if (!isAnswered && pendingLessonAdvance) return;
+    if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'super_flip') return;
+    const timeSpent = Date.now() - problemStartTime;
+    const problemId = currentProblem.pid;
+    const currentAttempts = (problemAttempts[problemId] || 0) + 1;
+    setSuperFlipMarkedOk(false);
+    setIsAnswered(true);
+    setShowAnalysis(true);
+    setProblemAttempts((prev) => ({ ...prev, [problemId]: currentAttempts }));
+    recordCorrectOrWrong(currentProblem, 0, false, timeSpent, problemId, currentAttempts);
+  };
+
+  const handleSuperFlipSubmit = () => {
+    if (!isAnswered && pendingLessonAdvance) return;
+    if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'super_flip') return;
+    const cols = superFlipNormalized(currentProblem as ProblemSuperFlip).columns;
+    const ncol = cols.length;
+    const nrow = cols[0]?.length ?? 0;
+    if (!(ncol >= MATCHING_COL_MIN && nrow >= MATCHING_PAIR_MIN)) return;
+    if (
+      superFlipRevealed.length !== ncol
+      || !superFlipRevealed.every((c) => c.length === nrow)
+      || !superFlipAllFilledCellsRevealed(cols, superFlipRevealed)
+    ) {
+      return;
+    }
+    setSuperFlipMarkedOk(true);
+    const timeSpent = Date.now() - problemStartTime;
+    const problemId = currentProblem.pid;
+    const currentAttempts = (problemAttempts[problemId] || 0) + 1;
+    setIsAnswered(true);
+    setShowAnalysis(true);
+    setProblemAttempts((prev) => ({ ...prev, [problemId]: currentAttempts }));
+    recordCorrectOrWrong(currentProblem, 1, true, timeSpent, problemId, currentAttempts);
+  };
+
   const handleFillBlankSubmit = () => {
     if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'fill_blank') return;
     const pf = currentProblem as ProblemFillBlank;
@@ -2173,6 +2318,8 @@ function LessonPage() {
     setFillBlankDraft([]);
     setMatchingSelections([]);
     setMatchingShuffleOrders([]);
+    setSuperFlipRevealed([]);
+    setSuperFlipMarkedOk(null);
     setIsAnswered(false);
     setShowAnalysis(false);
     setShuffleTrigger((t) => t + 1);
@@ -2190,6 +2337,7 @@ function LessonPage() {
   const requeueCurrent = () => {
     setPendingLessonAdvance(null);
     setSelectedAnswer(null);
+    setSuperFlipMarkedOk(null);
     setIsAnswered(false);
     setShowAnalysis(false);
     setShuffleTrigger((t) => t + 1);
@@ -3479,7 +3627,7 @@ function LessonPage() {
           }}>
             {i18n('Question')}
           </span>
-          {!isAnswered && currentKind !== 'flip' && (
+          {!isAnswered && currentKind !== 'flip' && currentKind !== 'super_flip' && (
             <button
               type="button"
               onClick={handlePeek}
@@ -3520,7 +3668,12 @@ function LessonPage() {
               borderRadius: '4px',
               fontSize: '12px',
             }}>
-              {currentKind === 'flip' && isCorrect ? i18n('Done') : (isCorrect ? i18n('Correct') : i18n('Incorrect'))}
+              {(currentKind === 'flip' && isCorrect)
+                || (currentKind === 'super_flip' && isAnswered && isCorrect)
+                ? i18n('Done')
+                : currentKind === 'super_flip' && isAnswered && !isCorrect
+                  ? i18n('Problem super flip not familiar')
+                  : (isCorrect ? i18n('Correct') : i18n('Incorrect'))}
             </span>
           )}
           <span style={{ fontSize: '11px', color: themeStyles.textTertiary, marginLeft: '4px' }}>
@@ -3622,6 +3775,195 @@ function LessonPage() {
                         </button>
                       )}
                     </>
+                  )}
+                </>
+              );
+            })()}
+          </>
+        ) : currentKind === 'super_flip' ? (
+          <>
+            {(() => {
+              const sf = currentProblem as ProblemSuperFlip;
+              const { headers, columns } = superFlipNormalized(sf);
+              const stemText = typeof sf.stem === 'string' ? sf.stem.trim() : '';
+              const ncol = columns.length;
+              const nrow = columns[0]?.length ?? 0;
+              const revealed = superFlipRevealed;
+              const allRevealed =
+                ncol >= MATCHING_COL_MIN
+                && nrow >= MATCHING_PAIR_MIN
+                && superFlipAllFilledCellsRevealed(columns, revealed);
+              const thStyle: React.CSSProperties = {
+                border: `1px solid ${themeStyles.border}`,
+                padding: '10px 12px',
+                fontSize: '15px',
+                fontWeight: 600,
+                backgroundColor: themeStyles.bgSecondary,
+                color: themeStyles.textPrimary,
+                textAlign: 'left',
+              };
+              const tdStyle: React.CSSProperties = {
+                border: `1px solid ${themeStyles.border}`,
+                padding: '4px',
+                verticalAlign: 'middle',
+                backgroundColor: themeStyles.bgPrimary,
+              };
+              return (
+                <>
+                  {stemText ? (
+                    <div style={{ fontSize: '17px', fontWeight: 500, marginBottom: '14px', color: themeStyles.stemColor, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                      {stemText}
+                    </div>
+                  ) : null}
+                  <div style={{ fontSize: '13px', color: themeStyles.textSecondary, marginBottom: '14px', lineHeight: 1.5 }}>
+                    {i18n('Problem super flip lesson hint')}
+                  </div>
+                  <div style={{ overflowX: 'auto', marginBottom: '18px' }}>
+                    <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: '280px' }}>
+                      <thead>
+                        <tr>
+                          {headers.map((h, ci) => (
+                            <th key={`sf-th-${currentProblem.pid}-${ci}`} style={thStyle}>
+                              {String(h ?? '').trim() ? String(h) : '—'}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Array.from({ length: nrow }, (_, ri) => (
+                          <tr key={`sf-tr-${currentProblem.pid}-${ri}`}>
+                            {columns.map((col, ci) => {
+                              const raw = col[ri];
+                              const text = raw == null ? '' : String(raw);
+                              const hasFlip = superFlipCellHasContent(text);
+                              const flipped =
+                                !hasFlip || isAnswered || showAnalysis || !!(revealed[ci] && revealed[ci][ri]);
+                              const emptyCellBox: React.CSSProperties = {
+                                minHeight: '52px',
+                                padding: '10px 12px',
+                                borderRadius: '6px',
+                                fontSize: '15px',
+                                lineHeight: 1.45,
+                                boxSizing: 'border-box' as const,
+                                backgroundColor: themeStyles.bgSecondary,
+                                color: themeStyles.textTertiary,
+                              };
+                              const cellBtn: React.CSSProperties = {
+                                width: '100%',
+                                minHeight: '52px',
+                                padding: '10px 12px',
+                                border: 'none',
+                                borderRadius: '6px',
+                                fontSize: '15px',
+                                fontWeight: flipped ? 500 : 600,
+                                lineHeight: 1.45,
+                                textAlign: 'left' as const,
+                                cursor: isAnswered ? 'default' : 'pointer',
+                                whiteSpace: 'pre-wrap' as const,
+                                wordBreak: 'break-word' as const,
+                                boxSizing: 'border-box' as const,
+                                backgroundColor: flipped ? themeStyles.bgSecondary : themeStyles.optionNeutral,
+                                color: flipped ? themeStyles.textPrimary : themeStyles.textTertiary,
+                              };
+                              if (!hasFlip) {
+                                return (
+                                  <td key={`sf-td-${ci}-${ri}`} style={tdStyle}>
+                                    <div style={emptyCellBox} aria-hidden />
+                                  </td>
+                                );
+                              }
+                              return (
+                                <td key={`sf-td-${ci}-${ri}`} style={tdStyle}>
+                                  <button
+                                    type="button"
+                                    disabled={isAnswered}
+                                    onClick={() => handleSuperFlipCellToggle(ci, ri)}
+                                    style={cellBtn}
+                                    aria-pressed={flipped}
+                                  >
+                                    {flipped ? (text.trim() ? text : '—') : String(i18n('Problem super flip masked'))}
+                                  </button>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {!isAnswered && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px' }}>
+                      <button
+                        type="button"
+                        onClick={handleSuperFlipRevealAll}
+                        disabled={ncol < MATCHING_COL_MIN || nrow < MATCHING_PAIR_MIN}
+                        style={{
+                          padding: '10px 18px',
+                          borderRadius: '8px',
+                          border: `1px solid ${themeStyles.border}`,
+                          backgroundColor: themeStyles.bgSecondary,
+                          color: themeStyles.textPrimary,
+                          cursor: ncol >= MATCHING_COL_MIN && nrow >= MATCHING_PAIR_MIN ? 'pointer' : 'not-allowed',
+                          opacity: ncol >= MATCHING_COL_MIN && nrow >= MATCHING_PAIR_MIN ? 1 : 0.55,
+                          fontSize: '14px',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {i18n('Problem super flip reveal all')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSuperFlipCoverAll}
+                        disabled={ncol < MATCHING_COL_MIN || nrow < MATCHING_PAIR_MIN}
+                        style={{
+                          padding: '10px 18px',
+                          borderRadius: '8px',
+                          border: `1px solid ${themeStyles.border}`,
+                          backgroundColor: themeStyles.bgSecondary,
+                          color: themeStyles.textPrimary,
+                          cursor: ncol >= MATCHING_COL_MIN && nrow >= MATCHING_PAIR_MIN ? 'pointer' : 'not-allowed',
+                          opacity: ncol >= MATCHING_COL_MIN && nrow >= MATCHING_PAIR_MIN ? 1 : 0.55,
+                          fontSize: '14px',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {i18n('Problem super flip cover all')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSuperFlipNotFamiliar}
+                        style={{
+                          padding: '10px 18px',
+                          borderRadius: '8px',
+                          border: `1px solid ${themeStyles.orange}`,
+                          backgroundColor: themeStyles.reviewBg,
+                          color: themeStyles.reviewFg,
+                          cursor: 'pointer',
+                          fontSize: '14px',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {i18n('Problem super flip not familiar')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSuperFlipSubmit}
+                        disabled={!allRevealed}
+                        style={{
+                          padding: '11px 24px',
+                          border: 'none',
+                          borderRadius: '8px',
+                          backgroundColor: themeStyles.success,
+                          color: themeStyles.whiteOnAccent,
+                          cursor: allRevealed ? 'pointer' : 'not-allowed',
+                          opacity: allRevealed ? 1 : 0.55,
+                          fontSize: '15px',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {i18n('Flip mark done')}
+                      </button>
+                    </div>
                   )}
                 </>
               );

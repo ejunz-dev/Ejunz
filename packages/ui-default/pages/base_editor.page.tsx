@@ -17,6 +17,7 @@ import type {
   ProblemFlip,
   ProblemFillBlank,
   ProblemMatching,
+  ProblemSuperFlip,
   ProblemKind,
 } from 'ejun/src/interface';
 import {
@@ -35,6 +36,7 @@ import {
   MATCHING_COL_MAX,
   normalizeMatchingColumns,
   matchingColumnsNormalized,
+  superFlipNormalized,
 } from 'ejun/src/model/problem';
 interface BaseNode {
   id: string;
@@ -575,6 +577,8 @@ function problemKindLabelI18n(k: ProblemKind): string {
       return i18n('Problem kind flip');
     case 'matching':
       return i18n('Problem kind matching');
+    case 'super_flip':
+      return i18n('Problem kind super flip');
     case 'fill_blank':
       return i18n('Problem kind fill blank');
     default:
@@ -922,6 +926,7 @@ const EditableProblem = React.memo(({
             <option value="true_false">{i18n('Problem kind true false')}</option>
             <option value="flip">{i18n('Problem kind flip')}</option>
             <option value="matching">{i18n('Problem kind matching')}</option>
+            <option value="super_flip">{i18n('Problem kind super flip')}</option>
             <option value="fill_blank">{i18n('Problem kind fill blank')}</option>
           </select>
         </label>
@@ -1133,6 +1138,135 @@ const EditableProblem = React.memo(({
                         left: norm[0],
                         right: norm[norm.length - 1],
                       });
+                    }}
+                    placeholder={i18n('Problem matching cell')}
+                    style={{ ...inpStyle, flex: '1 1 100px', minWidth: '90px', maxWidth: '220px' }}
+                  />
+                ))}
+              </div>
+            ));
+          })()}
+        </>
+      ) : kind === 'super_flip' ? (
+        <>
+          <div style={{ marginBottom: '4px' }}>
+            <div style={{ fontSize: '11px', color: themeStyles.textSecondary, marginBottom: 2 }}>{i18n('Stem')}</div>
+            <textarea
+              value={(model as ProblemSuperFlip).stem ?? ''}
+              onChange={(e) =>
+                setModel({ ...(model as ProblemSuperFlip), stem: e.target.value.trim() ? e.target.value : undefined })
+              }
+              placeholder={i18n('Problem matching stem optional')}
+              style={taStyle}
+            />
+          </div>
+          <div
+            style={{
+              marginBottom: '8px',
+              fontSize: '11px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              flexWrap: 'wrap',
+              color: themeStyles.textPrimary,
+            }}
+          >
+            <span>{i18n('Problem matching pair count')}</span>
+            <select
+              value={superFlipNormalized(model as ProblemSuperFlip).columns[0]?.length || MATCHING_PAIR_MIN}
+              onChange={(e) => {
+                const sf = model as ProblemSuperFlip;
+                const nRows = Math.min(MATCHING_PAIR_MAX, Math.max(MATCHING_PAIR_MIN, parseInt(e.target.value, 10) || MATCHING_PAIR_MIN));
+                let { headers, columns } = superFlipNormalized(sf);
+                columns = columns.map((col) => {
+                  const next = [...col];
+                  while (next.length < nRows) next.push('');
+                  return next.slice(0, nRows);
+                });
+                const norm = normalizeMatchingColumns(columns);
+                headers = headers.slice(0, norm.length);
+                while (headers.length < norm.length) headers.push('');
+                setModel({ ...sf, headers, columns: norm });
+              }}
+              style={{ ...inpStyle, minWidth: 52 }}
+            >
+              {Array.from({ length: MATCHING_PAIR_MAX - MATCHING_PAIR_MIN + 1 }, (_, i) => MATCHING_PAIR_MIN + i).map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+            <span>{i18n('Problem matching column count')}</span>
+            <select
+              value={superFlipNormalized(model as ProblemSuperFlip).columns.length}
+              onChange={(e) => {
+                const sf = model as ProblemSuperFlip;
+                const ncol = Math.min(MATCHING_COL_MAX, Math.max(MATCHING_COL_MIN, parseInt(e.target.value, 10) || MATCHING_COL_MIN));
+                let { headers, columns } = superFlipNormalized(sf);
+                const nrow = columns[0]?.length ?? MATCHING_PAIR_MIN;
+                const nextCols: string[][] = [];
+                for (let c = 0; c < ncol; c++) {
+                  const prev = columns[c] || [];
+                  const pad = [...prev];
+                  while (pad.length < nrow) pad.push('');
+                  nextCols.push(pad.slice(0, nrow));
+                }
+                const norm = normalizeMatchingColumns(nextCols);
+                let nextHeaders = headers.slice(0, norm.length);
+                while (nextHeaders.length < norm.length) nextHeaders.push('');
+                nextHeaders = nextHeaders.slice(0, norm.length);
+                setModel({ ...sf, headers: nextHeaders, columns: norm });
+              }}
+              style={{ ...inpStyle, minWidth: 52 }}
+            >
+              {Array.from({ length: MATCHING_COL_MAX - MATCHING_COL_MIN + 1 }, (_, i) => MATCHING_COL_MIN + i).map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ fontSize: '11px', color: themeStyles.textSecondary, marginBottom: 6 }}>
+            {i18n('Problem super flip editor hint')}
+          </div>
+          <div style={{ fontSize: '11px', color: themeStyles.textSecondary, marginBottom: 8, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+            {superFlipNormalized(model as ProblemSuperFlip).headers.map((_, ci) => (
+              <span key={`sfh-label-${ci}`} style={{ minWidth: 56, display: 'inline-flex', flexDirection: 'column', gap: 4 }}>
+                <span>{String(i18n('Problem super flip column header label', ci + 1))}</span>
+                <input
+                  value={superFlipNormalized(model as ProblemSuperFlip).headers[ci] ?? ''}
+                  onChange={(e) => {
+                    const sf = model as ProblemSuperFlip;
+                    const { headers: hs, columns: cols } = superFlipNormalized(sf);
+                    const nh = [...hs];
+                    nh[ci] = e.target.value;
+                    setModel({ ...sf, headers: nh, columns: cols });
+                  }}
+                  placeholder={i18n('Problem super flip header placeholder')}
+                  style={{ ...inpStyle, minWidth: '90px', maxWidth: '220px' }}
+                />
+              </span>
+            ))}
+          </div>
+          {(() => {
+            const sf = model as ProblemSuperFlip;
+            const { columns } = superFlipNormalized(sf);
+            const nRows = columns[0]?.length ?? MATCHING_PAIR_MIN;
+            return Array.from({ length: nRows }, (_, mi) => (
+              <div key={mi} style={{ marginBottom: 10, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 11, color: themeStyles.textSecondary, minWidth: 64 }}>
+                  {String(i18n('Problem matching row label', mi + 1))}
+                </span>
+                {columns.map((col, ci) => (
+                  <input
+                    key={`${mi}-${ci}`}
+                    value={col[mi] ?? ''}
+                    onChange={(e) => {
+                      const cur = superFlipNormalized(sf).columns;
+                      const nextCols = cur.map((c) => [...c]);
+                      nextCols[ci][mi] = e.target.value;
+                      const norm = normalizeMatchingColumns(nextCols);
+                      const { headers: hh } = superFlipNormalized(sf);
+                      let nh = hh.slice(0, norm.length);
+                      while (nh.length < norm.length) nh.push('');
+                      nh = nh.slice(0, norm.length);
+                      setModel({ ...sf, headers: nh, columns: norm });
                     }}
                     placeholder={i18n('Problem matching cell')}
                     style={{ ...inpStyle, flex: '1 1 100px', minWidth: '90px', maxWidth: '220px' }}
@@ -7801,6 +7935,21 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               if (mm.analysis) problemsText += `  - analysis: ${mm.analysis}\n`;
               return;
             }
+            if (k === 'super_flip') {
+              const sf = p as ProblemSuperFlip;
+              const sn = superFlipNormalized(sf);
+              problemsText += `\n  Problem ${index + 1} (ID: ${p.pid}): super-flip table (headers always visible; non-empty body cells flip on tap; empty cells stay blank)\n`;
+              if (typeof sf.title === 'string' && sf.title.trim()) {
+                problemsText += `  - title: ${sf.title.trim()}\n`;
+              }
+              if (sf.stem && String(sf.stem).trim()) {
+                problemsText += `  - stem (instructions): ${String(sf.stem).trim()}\n`;
+              }
+              problemsText += `  - headers (per column, visible): ${JSON.stringify(sn.headers)}\n`;
+              problemsText += `  - columns (column-major cells): ${JSON.stringify(sn.columns)}\n`;
+              if (sf.analysis) problemsText += `  - analysis: ${sf.analysis}\n`;
+              return;
+            }
             if (k === 'multi') {
               const pm = p as ProblemMulti;
               const set = new Set(pm.answer || []);
@@ -7855,7 +8004,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 4. **rename**: rename a node or card
 5. **update_card_content**: change card body/markdown when the user asks to edit, polish, format, or improve *content* (not the title)
 6. **delete**: delete a node or card when asked
-7. **create_problem**: add practice problems for the **currently open card** when asked. Always include **\`title\`**: a very short plain-text label for lesson sidebars (not the full stem; omit HTML; ideally under ~40 characters). Also use \`problemKind\`: \`single\` (default, one correct option index in \`answer\`), \`multi\` (\`answer\` is an array of correct option indices), \`true_false\` (\`stem\` + \`answer\` 0 = false, 1 = true), \`flip\` (\`faceA\` / \`faceB\`, optional learner \`hint\`; no \`options\`), \`fill_blank\` (\`stem\` with \`___\` for each blank + \`answers\` string array in order; if no \`___\`, one blank after the stem), \`matching\` (optional \`stem\`: use \`columns\` — array of **columns**, each inner array is that column top-to-bottom; **same row index** across columns is one item; ≥2 rows and ≥2 columns; lesson gives **each column** an independent shuffled dropdown so the learner picks the correct row index in every column; or legacy \`left\`/\`right\`).
+7. **create_problem**: add practice problems for the **currently open card** when asked. Always include **\`title\`**: a very short plain-text label for lesson sidebars (not the full stem; omit HTML; ideally under ~40 characters). Also use \`problemKind\`: \`single\` (default, one correct option index in \`answer\`), \`multi\` (\`answer\` is an array of correct option indices), \`true_false\` (\`stem\` + \`answer\` 0 = false, 1 = true), \`flip\` (\`faceA\` / \`faceB\`, optional learner \`hint\`; no \`options\`), \`fill_blank\` (\`stem\` with \`___\` for each blank + \`answers\` string array in order; if no \`___\`, one blank after the stem), \`matching\` (optional \`stem\`: use \`columns\` — array of **columns**, each inner array is that column top-to-bottom; **same row index** across columns is one item; ≥2 rows and ≥2 columns; lesson gives **each column** an independent shuffled dropdown so the learner picks the correct row index in every column; or legacy \`left\`/\`right\`), \`super_flip\` (optional \`stem\`; \`headers\` string array per column, same length as column count; \`columns\` like matching—body cells only; lesson always shows headers; **non-empty** body cells are masked until tapped; **empty or whitespace-only** cells stay visible as blank with no flip).
 
 [Outline structure]
 ${baseText}
@@ -7974,6 +8123,20 @@ Reply with a JSON code block only for executable operations, using this shape:
         ["C1", "C2", "C3"]
       ],
       "analysis": "Optional"
+    },
+    {
+      "type": "create_problem",
+      "cardId": "card_xxx",
+      "title": "Term–definition table flip",
+      "problemKind": "super_flip",
+      "stem": "Tap each masked cell to reveal.",
+      "headers": ["Concept", "Definition", "Example"],
+      "columns": [
+        ["TCP", "UDP", "ICMP"],
+        ["Connection-oriented …", "Connectionless …", "ICMP for …"],
+        ["web, email …", "VoIP DNS …", "ping …"]
+      ],
+      "analysis": "Optional"
     }
   ]
 }
@@ -7986,7 +8149,7 @@ Reply with a JSON code block only for executable operations, using this shape:
 4. Use \`rename_card\` / \`rename_node\` only when the user clearly wants to change a **title/name**.
 5. **move_node**: read the outline above; match the user's folder/node by **name and full path**, then use the real **node ID** as \`targetParentId\`. Node IDs look like \`node_...\`; they are **not** card IDs (cards use long hex-like ids). "Move folder" means move a **node**. If you cannot resolve a target, reply with an error in plain text instead of guessing IDs.
 6. **move_card**: to move a **card**, use \`move_card\` (card id + \`targetNodeId\`). Never use \`move_node\` for a card. If the user @-mentions a card, use \`move_card\` with that card's id.
-7. **create_problem**: omit \`problemKind\` or set \`single\` for classic single-choice; include **\`title\`** (short sidebar/list label); \`multi\` requires \`answer\` as an array; \`true_false\` requires \`stem\` and \`answer\` 0/1; \`flip\` requires \`faceA\` and \`faceB\`, optional \`hint\` (learner Hint button), and must **not** include \`options\`; \`fill_blank\` requires \`stem\` and \`answers\` (array of strings, one per \`___\` left-to-right, or one string if a single blank); \`matching\` requires ≥2 rows: either \`columns\` (**array of columns**, each inner array one cell per row, same indexes align) with ≥2 columns—lesson shuffles **every** column’s pool independently—or legacy equal-length \`left\` and \`right\`.
+7. **create_problem**: omit \`problemKind\` or set \`single\` for classic single-choice; include **\`title\`** (short sidebar/list label); \`multi\` requires \`answer\` as an array; \`true_false\` requires \`stem\` and \`answer\` 0/1; \`flip\` requires \`faceA\` and \`faceB\`, optional \`hint\` (learner Hint button), and must **not** include \`options\`; \`fill_blank\` requires \`stem\` and \`answers\` (array of strings, one per \`___\` left-to-right, or one string if a single blank); \`matching\` requires ≥2 rows: either \`columns\` (**array of columns**, each inner array one cell per row, same indexes align) with ≥2 columns—lesson shuffles **every** column’s pool independently—or legacy equal-length \`left\` and \`right\`; \`super_flip\` requires \`columns\` (same shape as matching, body cells only), optional \`stem\`, and \`headers\` parallel to columns (headers always visible; **non-empty** body cells flip; **empty** cells stay blank).
 8. **Valid JSON**: never put raw line breaks or unescaped \`"\` inside a string value; use standard JSON escaping (backslash + quote, backslash + n for newline).
 9. **Streaming**: emit each \`operations[]\` entry as a **fully closed** \`{ ... }\` object (balanced braces) **before** starting the next. The editor applies each finished object immediately—trailing incomplete objects wait until complete.
 `;
@@ -8904,7 +9067,12 @@ Reply with a JSON code block only for executable operations, using this shape:
 
           const rawKind = String(op.problemKind || op.kind || '').toLowerCase().trim();
           const kind: ProblemKind =
-            rawKind === 'multi' || rawKind === 'true_false' || rawKind === 'flip' || rawKind === 'fill_blank' || rawKind === 'matching'
+            rawKind === 'multi'
+            || rawKind === 'true_false'
+            || rawKind === 'flip'
+            || rawKind === 'fill_blank'
+            || rawKind === 'matching'
+            || rawKind === 'super_flip'
               ? rawKind
               : 'single';
 
@@ -8984,6 +9152,44 @@ Reply with a JSON code block only for executable operations, using this shape:
               ...titleSpread,
               ...(analysisStr ? { analysis: analysisStr } : {}),
             });
+          } else if (kind === 'super_flip') {
+            const stemSf = typeof op.stem === 'string' ? op.stem.trim() : '';
+            const rawProbSf: Record<string, unknown> = {
+              pid,
+              type: 'super_flip',
+              ...(stemSf ? { stem: stemSf } : {}),
+              ...titleSpread,
+              ...(analysisStr ? { analysis: analysisStr } : {}),
+            };
+            const colRawSf = op.columns;
+            const headersRaw = op.headers;
+            if (
+              Array.isArray(colRawSf)
+              && colRawSf.length >= MATCHING_COL_MIN
+              && colRawSf.every((c) => Array.isArray(c))
+            ) {
+              rawProbSf.columns = colRawSf as unknown[];
+              if (Array.isArray(headersRaw) && headersRaw.length) {
+                rawProbSf.headers = headersRaw;
+              }
+            } else {
+              Notification.error(i18n('Problem super flip columns invalid'));
+              errors.push('create_problem super_flip：columns 须为二维数组且列数≥2');
+              continue;
+            }
+            newProblem = migrateRawProblem(rawProbSf);
+            const { columns: colsSf } = superFlipNormalized(newProblem as ProblemSuperFlip);
+            const nrowSf = colsSf[0]?.length ?? 0;
+            if (colsSf.length < MATCHING_COL_MIN) {
+              Notification.error(i18n('Problem matching columns too few'));
+              errors.push(`create_problem super_flip：列数不足 ${MATCHING_COL_MIN}`);
+              continue;
+            }
+            if (nrowSf < MATCHING_PAIR_MIN) {
+              Notification.error(i18n('Problem matching pairs too few'));
+              errors.push('create_problem super_flip：行数不足 2');
+              continue;
+            }
           } else if (kind === 'matching') {
             const stemMatching = typeof op.stem === 'string' ? op.stem.trim() : '';
             const rawProb: Record<string, unknown> = {

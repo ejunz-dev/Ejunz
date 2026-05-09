@@ -377,6 +377,7 @@ __langname: English
 'Problem kind flip': Flip card
 'Problem kind fill blank': Fill in the blank
 'Problem kind matching': Matching pairs
+'Problem kind super flip': Super flip table
 'Problem reorder up': Move up
 'Problem reorder down': Move down
 'Problem reorder hint': Use ↑ / ↓ beside the red delete button to reorder; Save to persist.
@@ -394,6 +395,15 @@ __langname: English
 'Problem matching choose': Choose a match…
 'Problem matching pairs too few': Matching requires at least 2 rows
 'Problem matching columns too few': Matching requires at least 2 columns
+'Problem super flip editor hint': Headers stay visible in the lesson; rows below are the body. Leaving a cell empty shows a blank tile with no flip. Column-major cells, same as matching.
+'Problem super flip column header label': 'Column {0} header'
+'Problem super flip header placeholder': Header label
+'Problem super flip lesson hint': Only filled cells start covered and can flip—empty cells stay blank. Reveal / cover all only affects filled cells. Use Not familiar or reveal every filled cell, then Done.
+'Problem super flip masked': Tap to reveal
+'Problem super flip reveal all': Reveal all
+'Problem super flip cover all': Cover all
+'Problem super flip not familiar': Not familiar
+'Problem super flip columns invalid': Super flip requires a valid columns array (≥2 columns)
 'Problem field type': Question type
 'Problem title': Problem title
 'Problem option slots': Option slots
