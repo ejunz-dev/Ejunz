@@ -241,6 +241,8 @@ __langname: 简体中文
 'Input Schema': 输入模式
 'Insert here': 插入此处
 'Insert into AI terminal': 插入到 AI 终端
+'Insert problem into AI terminal': 将题目插入到 AI 终端
+'Practice problem pid not on open card': 当前卡片上没有该题目 id，无法更新
 'Insert {0} selected into AI terminal': 将 {0} 项选中内容插入 AI 终端
 'Join {0}': '加入 {0}'
 'Join Domain': 加入域

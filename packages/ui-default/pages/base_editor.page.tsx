@@ -1,5 +1,5 @@
 import $ from 'jquery';
-import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, startTransition } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, startTransition } from 'react';
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
@@ -188,6 +188,55 @@ function sameCardDocId(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (a == null || b == null) return false;
   return String(a) === String(b);
+}
+
+/** AI terminal @-refs in the input bar (node / card / practice problem on current card). */
+type AiChatBarRef =
+  | { type: 'node'; id: string; name: string; path: string[] }
+  | { type: 'card'; id: string; name: string; path: string[] }
+  | { type: 'problem'; id: string; name: string; path: string[]; cardDocId: string; pid: string };
+
+function cloneAiChatBarRefs(refs: AiChatBarRef[]): AiChatBarRef[] {
+  return refs.map((r) => ({ ...r, path: [...r.path] }));
+}
+
+function aiBarRefChipAccent(ref: AiChatBarRef, themeStyles: { statNode: string; statCard: string; statProblem: string }): string {
+  if (ref.type === 'node') return themeStyles.statNode;
+  if (ref.type === 'card') return themeStyles.statCard;
+  return themeStyles.statProblem;
+}
+
+function aiBarRefChipBg(ref: AiChatBarRef, theme: string): string {
+  const isDark = theme === 'dark';
+  if (ref.type === 'node') {
+    return isDark ? 'rgba(100, 181, 246, 0.12)' : 'rgba(33, 150, 243, 0.08)';
+  }
+  if (ref.type === 'card') {
+    return isDark ? 'rgba(129, 199, 132, 0.12)' : 'rgba(76, 175, 80, 0.08)';
+  }
+  return isDark ? 'rgba(255, 183, 77, 0.14)' : 'rgba(255, 152, 0, 0.1)';
+}
+
+function aiBarRefChipLetter(ref: AiChatBarRef): string {
+  if (ref.type === 'node') return 'N';
+  if (ref.type === 'card') return 'C';
+  return 'P';
+}
+
+function problemKindToI18nKey(kind: ProblemKind): string {
+  switch (kind) {
+    case 'single': return 'Problem kind single';
+    case 'multi': return 'Problem kind multi';
+    case 'true_false': return 'Problem kind true false';
+    case 'flip': return 'Problem kind flip';
+    case 'fill_blank': return 'Problem kind fill blank';
+    case 'matching': return 'Problem kind matching';
+    case 'super_flip': return 'Problem kind super flip';
+    default: {
+      const _x: never = kind;
+      return String(_x);
+    }
+  }
 }
 
 /**
@@ -385,6 +434,14 @@ function summarizeAiOperationOneLine(op: any): string {
       return `Delete card ${short(op.cardId)}`;
     case 'create_problem': {
       const ttl = typeof op.title === 'string' && op.title.trim() ? ` "${op.title.trim().slice(0, 28)}${op.title.trim().length > 28 ? '…' : ''}"` : '';
+      const rpid = typeof op.pid === 'string' && op.pid.trim()
+        ? op.pid.trim()
+        : typeof op.problemPid === 'string' && op.problemPid.trim()
+          ? op.problemPid.trim()
+          : '';
+      if (rpid) {
+        return `Update practice problem ${short(rpid)} (${String(op.problemKind || 'single')})${ttl} on card ${short(op.cardId)}`;
+      }
       return `Create ${String(op.problemKind || 'single')} problem${ttl} on card ${short(op.cardId)}`;
     }
     default:
@@ -643,12 +700,25 @@ const EditableProblem = React.memo(({
   onProblemContextMenu?: (event: React.MouseEvent) => void;
 }) => {
   const [model, setModel] = useState<Problem>(problem);
+  /** Parent `problem` snapshot by JSON; resync local `model` when AI / agent replaces the same `pid` in-place. */
+  const lastExternalProblemJsonRef = useRef<string>(JSON.stringify(problem));
+  /** After syncing from parent, skip one outgoing `onUpdate` to avoid parent/model ping-pong (max update depth). */
+  const skipNextOutgoingUpdateRef = useRef(false);
+
+  useLayoutEffect(() => {
+    const json = JSON.stringify(problem);
+    if (json !== lastExternalProblemJsonRef.current) {
+      lastExternalProblemJsonRef.current = json;
+      skipNextOutgoingUpdateRef.current = true;
+      setModel(problem);
+    }
+  }, [problem]);
 
   useEffect(() => {
-    setModel(problem);
-  }, [problem.pid]);
-
-  useEffect(() => {
+    if (skipNextOutgoingUpdateRef.current) {
+      skipNextOutgoingUpdateRef.current = false;
+      return;
+    }
     if (baseProblemJsonStable(model, problem)) return;
     onUpdate(model);
   }, [model, problem, onUpdate]);
@@ -2868,20 +2938,20 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [chatMessages, setChatMessages] = useState<Array<{
     role: 'user' | 'assistant' | 'operation';
     content: string;
-    references?: Array<{ type: 'node' | 'card'; id: string; name: string; path: string[] }>;
+    references?: AiChatBarRef[];
     operations?: any[];
     isExpanded?: boolean;
     /** While the model streams a ```json … ``` block: friendly op list, raw JSON hidden. */
     streamOps?: { lines: string[]; receiving: boolean; charCount: number } | null;
   }>>([]);
   const [chatInput, setChatInput] = useState<string>('');
-  const [chatInputReferences, setChatInputReferences] = useState<
-    Array<{ type: 'node' | 'card'; id: string; name: string; path: string[] }>
-  >([]);
+  const [chatInputReferences, setChatInputReferences] = useState<AiChatBarRef[]>([]);
   const [isChatLoading, setIsChatLoading] = useState<boolean>(false);
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
   const chatMessagesContainerRef = useRef<HTMLDivElement>(null);
   const aiChatInputRef = useRef<HTMLInputElement | null>(null);
+  /** Snapshots of `chatInputReferences` before each problem→terminal insert; Ctrl/Cmd+Z restores. */
+  const terminalAiRefsUndoStack = useRef<AiChatBarRef[][]>([]);
   
   const scrollToBottomIfNeeded = useCallback(() => {
     if (!chatMessagesContainerRef.current || !chatMessagesEndRef.current) {
@@ -7658,6 +7728,51 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     [appendFileReferencesToAiChat, editorAiHidden, fileTree, isMultiSelectMode, selectedItems],
   );
 
+  /** Current card's practice problem → terminal chip; expands to live JSON (incl. unsaved) on send. */
+  const appendProblemReferenceToAiChat = useCallback(
+    (problem: Problem, indexOneBased: number) => {
+      if (editorAiHidden) return;
+      const card = getSelectedCard();
+      const nodeId = selectedFile?.type === 'card' ? selectedFile.nodeId || '' : '';
+      if (!card || selectedFile?.type !== 'card') {
+        Notification.warn(i18n('Unable to add this item to AI context'));
+        return;
+      }
+      const cardDocId = String(card.docId);
+      const kKind = problemKind(problem);
+      const name = `${i18n(problemKindToI18nKey(kKind))} · ${indexOneBased}`;
+      const path = [
+        ...getNodePath(nodeId),
+        card.title || i18n('Unnamed Card'),
+        name,
+      ];
+      setChatInputReferences((prev) => {
+        if (prev.some((r) => r.type === 'problem' && r.pid === problem.pid)) return prev;
+        terminalAiRefsUndoStack.current.push(cloneAiChatBarRefs(prev));
+        const next: AiChatBarRef = {
+          type: 'problem',
+          id: problem.pid,
+          name,
+          path,
+          cardDocId,
+          pid: problem.pid,
+        };
+        return [...prev, next];
+      });
+      setAiBottomOpen(true);
+      setContextMenu(null);
+      setEmptyAreaContextMenu(null);
+      requestAnimationFrame(() => {
+        const el = aiChatInputRef.current;
+        if (!el) return;
+        el.focus();
+        const len = el.value.length;
+        el.setSelectionRange(len, len);
+      });
+    },
+    [editorAiHidden, getNodePath, getSelectedCard, i18n, selectedFile?.nodeId, selectedFile?.type],
+  );
+
   
   const convertBaseToText = useCallback((): string => {
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
@@ -7774,7 +7889,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
   /** Expand toolbar reference chips to path + full body text aligned with @-mention format for model prompt. */
   const expandBarRefsForAiSend = useCallback(
-    (refs: Array<{ type: 'node' | 'card'; id: string; name: string; path: string[] }>): string => {
+    (refs: AiChatBarRef[]): string => {
       if (!refs.length) return '';
       const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
       const parts: string[] = [];
@@ -7782,6 +7897,33 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         if (ref.type === 'node') {
           const pathStr = ref.path.join(' > ');
           parts.push(`@${ref.name} (node ID: ${ref.id}, full path: ${pathStr})`);
+          continue;
+        }
+        if (ref.type === 'problem') {
+          let matchedCard: Card | undefined;
+          for (const nodeId of Object.keys(nodeCardsMap)) {
+            const cards = nodeCardsMap[nodeId] || [];
+            const c = cards.find((x: Card) => sameCardDocId(x.docId, ref.cardDocId));
+            if (c) {
+              matchedCard = c;
+              break;
+            }
+          }
+          const pathStr = ref.path.join(' > ');
+          const probs = matchedCard?.problems || [];
+          const prob = probs.find((p) => p.pid === ref.pid);
+          if (prob) {
+            const k = problemKind(prob);
+            const json = JSON.stringify(prob);
+            parts.push(
+              `@${ref.name} (practice problem, card ID: ${String(matchedCard?.docId ?? ref.cardDocId)}, problem pid: ${ref.pid}, type: ${i18n(problemKindToI18nKey(k))}, full path: ${pathStr}, current JSON — includes unsaved editor state: ${json})\n` +
+              `[Agent rule: To complete or edit THIS problem (not create another), output one "create_problem" with the SAME cardId, "pid": "${ref.pid}", and the intended problemKind + fields. Omit "pid" only when adding an additional brand-new problem.]`,
+            );
+          } else {
+            parts.push(
+              `@${ref.name} (practice problem pid: ${ref.pid} not found on card ${ref.cardDocId}; path: ${pathStr})`,
+            );
+          }
           continue;
         }
         let matched: Card | undefined;
@@ -7817,12 +7959,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
     const userMessage = chatInput.trim();
     
-    const references = chatInputReferences.map(ref => ({
-      type: ref.type,
-      id: ref.id,
-      name: ref.name,
-      path: ref.path,
-    }));
+    const references = cloneAiChatBarRefs(chatInputReferences);
     
     
     const expandedFromBar = expandBarRefsForAiSend(references);
@@ -7830,6 +7967,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const expandedMessage = [expandedFromBar, expandedFromTyping].filter(Boolean).join('\n\n');
     setChatInput('');
     setChatInputReferences([]);
+    terminalAiRefsUndoStack.current = [];
     setIsChatLoading(true);
 
     
@@ -7856,7 +7994,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       const newMessages: Array<{ 
         role: 'user' | 'assistant' | 'operation'; 
         content: string; 
-        references?: Array<{ type: 'node' | 'card'; id: string; name: string; path: string[] }>;
+        references?: AiChatBarRef[];
         operations?: any[];
         isExpanded?: boolean;
       }> = [
@@ -8015,7 +8153,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 4. **rename**: rename a node or card
 5. **update_card_content**: change card body/markdown when the user asks to edit, polish, format, or improve *content* (not the title)
 6. **delete**: delete a node or card when asked
-7. **create_problem**: add practice problems for the **currently open card** when asked. Always include **\`title\`**: a very short plain-text label for lesson sidebars (not the full stem; omit HTML; ideally under ~40 characters). Also use \`problemKind\`: \`single\` (default, one correct option index in \`answer\`), \`multi\` (\`answer\` is an array of correct option indices), \`true_false\` (\`stem\` + \`answer\` 0 = false, 1 = true), \`flip\` (\`faceA\` / \`faceB\`, optional learner \`hint\`; no \`options\`), \`fill_blank\` (\`stem\` with \`___\` for each blank + \`answers\` string array in order; if no \`___\`, one blank after the stem), \`matching\` (optional \`stem\`: use \`columns\` — array of **columns**, each inner array is that column top-to-bottom; **same row index** across columns is one item; ≥2 rows and ≥2 columns; lesson gives **each column** an independent shuffled dropdown so the learner picks the correct row index in every column; or legacy \`left\`/\`right\`), \`super_flip\` (optional \`stem\`; \`headers\` string array per column, same length as column count; \`columns\` like matching—body cells only, **≥1 row and ≥1 column** (1×1 allowed); lesson always shows headers; **non-empty** body cells are masked until tapped; **empty or whitespace-only** cells stay visible as blank with no flip).
+7. **create_problem**: add practice problems for the **currently open card** when asked. Always include **\`title\`**: a very short plain-text label for lesson sidebars (not the full stem; omit HTML; ideally under ~40 characters). Also use \`problemKind\`: \`single\` (default, one correct option index in \`answer\`), \`multi\` (\`answer\` is an array of correct option indices), \`true_false\` (\`stem\` + \`answer\` 0 = false, 1 = true), \`flip\` (\`faceA\` / \`faceB\`, optional learner \`hint\`; no \`options\`), \`fill_blank\` (\`stem\` with \`___\` for each blank + \`answers\` string array in order; if no \`___\`, one blank after the stem), \`matching\` (optional \`stem\`: use \`columns\` — array of **columns**, each inner array is that column top-to-bottom; **same row index** across columns is one item; ≥2 rows and ≥2 columns; lesson gives **each column** an independent shuffled dropdown so the learner picks the correct row index in every column; or legacy \`left\`/\`right\`), \`super_flip\` (optional \`stem\`; \`headers\` string array per column, same length as column count; \`columns\` like matching—body cells only, **≥1 row and ≥1 column** (1×1 allowed); lesson always shows headers; **non-empty** body cells are masked until tapped; **empty or whitespace-only** cells stay visible as blank with no flip). **To update an existing practice row** (e.g. user referenced it from the AI terminal \`#\` chip or the prompt contains \`problem pid:\`), include \`"pid"\` set to that exact id plus \`cardId\`; this **replaces** that row. **Omit \`pid\`** only when adding a separate brand-new problem.
 
 [Outline structure]
 ${baseText}
@@ -8087,7 +8225,14 @@ Reply with a JSON code block only for executable operations, using this shape:
     {
       "type": "create_problem",
       "cardId": "card_xxx",
-      "title": "Protocol layers",
+      "pid": "exact_problem_pid_from_user_or_terminal_chip",
+      "title": "Same short label",
+      "problemKind": "single",
+      "stem": "Revised stem",
+      "options": ["A", "B", "C", "D"],
+      "answer": 2,
+      "analysis": "Optional explanation"
+    },
       "problemKind": "multi",
       "stem": "Question stem",
       "options": ["A","B","C","D"],
@@ -8160,9 +8305,10 @@ Reply with a JSON code block only for executable operations, using this shape:
 4. Use \`rename_card\` / \`rename_node\` only when the user clearly wants to change a **title/name**.
 5. **move_node**: read the outline above; match the user's folder/node by **name and full path**, then use the real **node ID** as \`targetParentId\`. Node IDs look like \`node_...\`; they are **not** card IDs (cards use long hex-like ids). "Move folder" means move a **node**. If you cannot resolve a target, reply with an error in plain text instead of guessing IDs.
 6. **move_card**: to move a **card**, use \`move_card\` (card id + \`targetNodeId\`). Never use \`move_node\` for a card. If the user @-mentions a card, use \`move_card\` with that card's id.
-7. **create_problem**: omit \`problemKind\` or set \`single\` for classic single-choice; include **\`title\`** (short sidebar/list label); \`multi\` requires \`answer\` as an array; \`true_false\` requires \`stem\` and \`answer\` 0/1; \`flip\` requires \`faceA\` and \`faceB\`, optional \`hint\` (learner Hint button), and must **not** include \`options\`; \`fill_blank\` requires \`stem\` and \`answers\` (array of strings, one per \`___\` left-to-right, or one string if a single blank); \`matching\` requires ≥2 rows: either \`columns\` (**array of columns**, each inner array one cell per row, same indexes align) with ≥2 columns—lesson shuffles **every** column’s pool independently—or legacy equal-length \`left\` and \`right\`; \`super_flip\` requires \`columns\` (same shape as matching but allows **1×1** minimum: ≥1 row and ≥1 column), optional \`stem\`, and \`headers\` parallel to columns (headers always visible; **non-empty** body cells flip; **empty** cells stay blank).
+7. **create_problem**: omit \`problemKind\` or set \`single\` for classic single-choice; include **\`title\`** (short sidebar/list label); \`multi\` requires \`answer\` as an array; \`true_false\` requires \`stem\` and \`answer\` 0/1; \`flip\` requires \`faceA\` and \`faceB\`, optional \`hint\` (learner Hint button), and must **not** include \`options\`; \`fill_blank\` requires \`stem\` and \`answers\` (array of strings, one per \`___\` left-to-right, or one string if a single blank); \`matching\` requires ≥2 rows: either \`columns\` (**array of columns**, each inner array one cell per row, same indexes align) with ≥2 columns—lesson shuffles **every** column’s pool independently—or legacy equal-length \`left\` and \`right\`; \`super_flip\` requires \`columns\` (same shape as matching but allows **1×1** minimum: ≥1 row and ≥1 column), optional \`stem\`, and \`headers\` parallel to columns (headers always visible; **non-empty** body cells flip; **empty** cells stay blank). **Include \`pid\`** to replace an existing practice question on that card (same id as in the user request); **omit \`pid\`** only when adding a brand-new problem.
 8. **Valid JSON**: never put raw line breaks or unescaped \`"\` inside a string value; use standard JSON escaping (backslash + quote, backslash + n for newline).
 9. **Streaming**: emit each \`operations[]\` entry as a **fully closed** \`{ ... }\` object (balanced braces) **before** starting the next. The editor applies each finished object immediately—trailing incomplete objects wait until complete.
+10. **Referenced practice problem**: If the user attached a **problem** in the AI terminal (\`#\` chip) or the expanded text includes \`problem pid:\`, treat requests as **editing that row**—output one \`create_problem\` with matching \`pid\` and the same \`cardId\`; do **not** omit \`pid\` or you will create a duplicate.
 `;
 
       
@@ -9076,6 +9222,23 @@ Reply with a JSON code block only for executable operations, using this shape:
             continue;
           }
 
+          const existingProblems: Problem[] = foundCard.problems || [];
+          const targetPidRaw =
+            typeof op.pid === 'string' && op.pid.trim()
+              ? op.pid.trim()
+              : typeof op.problemPid === 'string' && op.problemPid.trim()
+                ? op.problemPid.trim()
+                : '';
+          let replaceIndex = -1;
+          if (targetPidRaw) {
+            replaceIndex = existingProblems.findIndex((p) => p.pid === targetPidRaw);
+            if (replaceIndex < 0) {
+              Notification.error(i18n('Practice problem pid not on open card'));
+              errors.push(`create_problem: pid "${targetPidRaw}" not on this card`);
+              continue;
+            }
+          }
+
           const rawKind = String(op.problemKind || op.kind || '').toLowerCase().trim();
           const kind: ProblemKind =
             rawKind === 'multi'
@@ -9087,7 +9250,10 @@ Reply with a JSON code block only for executable operations, using this shape:
               ? rawKind
               : 'single';
 
-          const pid = `p_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+          const pid =
+            replaceIndex >= 0
+              ? targetPidRaw
+              : `p_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
           const analysisStr = typeof analysis === 'string' && analysis.trim() ? analysis.trim() : undefined;
           const aiTitleRaw = typeof op.title === 'string' ? op.title.trim() : '';
           const titleSpread = aiTitleRaw
@@ -9320,8 +9486,10 @@ Reply with a JSON code block only for executable operations, using this shape:
             });
           }
 
-          const existingProblems: Problem[] = foundCard.problems || [];
-          const updatedProblems = [...existingProblems, newProblem];
+          const updatedProblems =
+            replaceIndex >= 0
+              ? existingProblems.map((p, i) => (i === replaceIndex ? newProblem : p))
+              : [...existingProblems, newProblem];
 
           const cards = nodeCardsMap[foundNodeId];
           const cardIndex = cards.findIndex((c: Card) => sameCardDocId(c.docId, cardId));
@@ -9341,14 +9509,32 @@ Reply with a JSON code block only for executable operations, using this shape:
                 return next;
               });
 
-              setPendingNewProblemCardIds(prev => {
-                const next = new Set(prev);
-                next.add(cardIdStr);
-                return next;
-              });
-            }
+              const origMap = originalProblemsRef.current.get(cardIdStr);
+              const hadSavedBaseline = Boolean(origMap?.has(newProblem.pid));
 
-            setNewProblemIds((prev) => new Set(prev).add(newProblem.pid));
+              if (replaceIndex >= 0) {
+                if (hadSavedBaseline) {
+                  setNewProblemIds((prev) => {
+                    const next = new Set(prev);
+                    next.delete(newProblem.pid);
+                    return next;
+                  });
+                  setEditedProblemIds((prev) => new Set(prev).add(newProblem.pid));
+                  setPendingEditedProblemIds((prev) => {
+                    const m = new Map(prev);
+                    if (!m.has(cardIdStr)) m.set(cardIdStr, new Set());
+                    m.get(cardIdStr)!.add(newProblem.pid);
+                    return m;
+                  });
+                } else {
+                  setNewProblemIds((prev) => new Set(prev).add(newProblem.pid));
+                  setPendingNewProblemCardIds((prev) => new Set(prev).add(cardIdStr));
+                }
+              } else {
+                setNewProblemIds((prev) => new Set(prev).add(newProblem.pid));
+                setPendingNewProblemCardIds((prev) => new Set(prev).add(cardIdStr));
+              }
+            }
           }
 
           if (!quiet) {
@@ -9364,7 +9550,7 @@ Reply with a JSON code block only for executable operations, using this shape:
     }
     
     return { success: errors.length === 0, errors };
-  }, [base, setBase, selectedFile, editorInstance, setFileContent, triggerExpandAutoSave, setNodeCardsMapVersion, setPendingProblemCardIds, setPendingNewProblemCardIds]);
+  }, [base, setBase, selectedFile, editorInstance, setFileContent, triggerExpandAutoSave, setNodeCardsMapVersion, setPendingProblemCardIds, setPendingNewProblemCardIds, setNewProblemIds, setEditedProblemIds, setPendingEditedProblemIds]);
 
   
   useEffect(() => {
@@ -15803,7 +15989,10 @@ Reply with a JSON code block only for executable operations, using this shape:
                                 }}
                               >
                                 <span style={{ userSelect: 'none', flexShrink: 0 }}>#</span>
-                                {msg.references.map((ref, refIndex) => (
+                                {msg.references.map((ref, refIndex) => {
+                                  const accent = aiBarRefChipAccent(ref, themeStyles);
+                                  const bg = aiBarRefChipBg(ref, theme);
+                                  return (
                                   <span
                                     key={`${ref.type}-${ref.id}-${refIndex}`}
                                     style={{
@@ -15812,17 +16001,10 @@ Reply with a JSON code block only for executable operations, using this shape:
                                       gap: '4px',
                                       padding: '1px 6px 1px 4px',
                                       borderRadius: '3px',
-                                      border: `1px solid ${ref.type === 'node' ? themeStyles.statNode : themeStyles.statCard}`,
+                                      border: `1px solid ${accent}`,
                                       borderLeftWidth: 3,
-                                      borderLeftColor: ref.type === 'node' ? themeStyles.statNode : themeStyles.statCard,
-                                      backgroundColor:
-                                        theme === 'dark'
-                                          ? ref.type === 'node'
-                                            ? 'rgba(100, 181, 246, 0.12)'
-                                            : 'rgba(129, 199, 132, 0.12)'
-                                          : ref.type === 'node'
-                                            ? 'rgba(33, 150, 243, 0.08)'
-                                            : 'rgba(76, 175, 80, 0.08)',
+                                      borderLeftColor: accent,
+                                      backgroundColor: bg,
                                     }}
                                   >
                                     <span
@@ -15830,15 +16012,16 @@ Reply with a JSON code block only for executable operations, using this shape:
                                         fontSize: '9px',
                                         fontWeight: 700,
                                         lineHeight: 1,
-                                        color: ref.type === 'node' ? themeStyles.statNode : themeStyles.statCard,
+                                        color: accent,
                                         userSelect: 'none',
                                       }}
                                     >
-                                      {ref.type === 'node' ? 'N' : 'C'}
+                                      {aiBarRefChipLetter(ref)}
                                     </span>
                                     <span style={{ color: aiTerminalStyles.operationText }}>{ref.name}</span>
                                   </span>
-                                ))}
+                                  );
+                                })}
                               </div>
                             )}
                             {msg.content}
@@ -15905,7 +16088,10 @@ Reply with a JSON code block only for executable operations, using this shape:
                         }}
                       >
                         <span style={{ userSelect: 'none' }}>#</span>
-                        {chatInputReferences.map((ref, index) => (
+                        {chatInputReferences.map((ref, index) => {
+                          const accent = aiBarRefChipAccent(ref, themeStyles);
+                          const bg = aiBarRefChipBg(ref, theme);
+                          return (
                           <span
                             key={`${ref.type}-${ref.id}-${index}`}
                             style={{
@@ -15914,17 +16100,10 @@ Reply with a JSON code block only for executable operations, using this shape:
                               gap: '4px',
                               padding: '1px 6px 1px 4px',
                               borderRadius: '3px',
-                              border: `1px solid ${ref.type === 'node' ? themeStyles.statNode : themeStyles.statCard}`,
+                              border: `1px solid ${accent}`,
                               borderLeftWidth: 3,
-                              borderLeftColor: ref.type === 'node' ? themeStyles.statNode : themeStyles.statCard,
-                              backgroundColor:
-                                theme === 'dark'
-                                  ? ref.type === 'node'
-                                    ? 'rgba(100, 181, 246, 0.12)'
-                                    : 'rgba(129, 199, 132, 0.12)'
-                                  : ref.type === 'node'
-                                    ? 'rgba(33, 150, 243, 0.08)'
-                                    : 'rgba(76, 175, 80, 0.08)',
+                              borderLeftColor: accent,
+                              backgroundColor: bg,
                             }}
                           >
                             <span
@@ -15932,11 +16111,11 @@ Reply with a JSON code block only for executable operations, using this shape:
                                 fontSize: '9px',
                                 fontWeight: 700,
                                 lineHeight: 1,
-                                color: ref.type === 'node' ? themeStyles.statNode : themeStyles.statCard,
+                                color: accent,
                                 userSelect: 'none',
                               }}
                             >
-                              {ref.type === 'node' ? 'N' : 'C'}
+                              {aiBarRefChipLetter(ref)}
                             </span>
                             <span style={{ color: aiTerminalStyles.operationText }}>{ref.name}</span>
                             <button
@@ -15959,7 +16138,8 @@ Reply with a JSON code block only for executable operations, using this shape:
                               ×
                             </button>
                           </span>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                     <div
@@ -16066,6 +16246,15 @@ Reply with a JSON code block only for executable operations, using this shape:
                             if (e.key === 'Enter') {
                               e.preventDefault();
                               handleAIChatSend();
+                              return;
+                            }
+                            if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+                              const st = terminalAiRefsUndoStack.current;
+                              if (st.length > 0) {
+                                e.preventDefault();
+                                const snap = st.pop();
+                                if (snap) setChatInputReferences(cloneAiChatBarRefs(snap));
+                              }
                             }
                           }}
                           autoComplete="off"
@@ -16587,7 +16776,7 @@ Reply with a JSON code block only for executable operations, using this shape:
                 const pm = problemContextMenu;
                 const pad = 8;
                 const approxW = 220;
-                const approxH = 88;
+                const approxH = 176;
                 const vw = window.innerWidth;
                 const vh = window.innerHeight;
                 const left = Math.min(
@@ -16643,7 +16832,10 @@ Reply with a JSON code block only for executable operations, using this shape:
                     <button
                       type="button"
                       role="menuitem"
-                      style={{ ...itemBtn, borderBottom: 'none' }}
+                      style={{
+                        ...itemBtn,
+                        borderBottom: editorAiHidden ? 'none' : `1px solid ${themeStyles.borderPrimary}`,
+                      }}
                       onClick={() => {
                         handleAddBlankProblemAt(pm.refIndex + 1);
                         setProblemContextMenu(null);
@@ -16651,6 +16843,22 @@ Reply with a JSON code block only for executable operations, using this shape:
                     >
                       {i18n('Problem insert below')}
                     </button>
+                    {!editorAiHidden && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        style={{ ...itemBtn, borderBottom: 'none' }}
+                        onClick={() => {
+                          const c = getSelectedCard();
+                          const list = c?.problems || [];
+                          const prob = list[pm.refIndex];
+                          if (prob) appendProblemReferenceToAiChat(prob, pm.refIndex + 1);
+                          setProblemContextMenu(null);
+                        }}
+                      >
+                        {i18n('Insert problem into AI terminal')}
+                      </button>
+                    )}
                   </div>
                 );
               })()}
