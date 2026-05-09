@@ -582,6 +582,16 @@ function problemKindLabelI18n(k: ProblemKind): string {
   }
 }
 
+function makeBlankSingleProblem(): ProblemSingle {
+  return {
+    pid: `p_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+    type: 'single',
+    stem: '',
+    options: ['', '', '', ''],
+    answer: 0,
+  };
+}
+
 // Editable problem row (single / multi / true-false / flip)
 const EditableProblem = React.memo(({
   problem,
@@ -594,9 +604,14 @@ const EditableProblem = React.memo(({
   originalProblem: _originalProblem,
   onUpdate,
   onDelete,
+  onReorderUp,
+  onReorderDown,
+  reorderDisableUp,
+  reorderDisableDown,
   docId,
   getBaseUrl,
   themeStyles,
+  onProblemContextMenu,
 }: {
   problem: Problem;
   index: number;
@@ -608,9 +623,15 @@ const EditableProblem = React.memo(({
   originalProblem?: Problem;
   onUpdate: (updated: Problem) => void;
   onDelete: () => void;
+  /** When set together with {@link onReorderDown}, reorder buttons render left of delete. */
+  onReorderUp?: () => void;
+  onReorderDown?: () => void;
+  reorderDisableUp?: boolean;
+  reorderDisableDown?: boolean;
   docId: string;
   getBaseUrl: (path: string, docId: string) => string;
   themeStyles: any;
+  onProblemContextMenu?: (event: React.MouseEvent) => void;
 }) => {
   const [model, setModel] = useState<Problem>(problem);
 
@@ -758,8 +779,17 @@ const EditableProblem = React.memo(({
     color: themeStyles.textPrimary,
   };
 
+  const reorderBar = !!(onReorderUp && onReorderDown);
+  const headerPadRight = reorderBar ? 96 : 28;
+
   return (
     <div
+      onContextMenu={(e) => {
+        if (!onProblemContextMenu) return;
+        e.preventDefault();
+        e.stopPropagation();
+        onProblemContextMenu(e);
+      }}
       style={{
         border: `1px ${borderStyle} ${borderColor}`,
         borderRadius: '4px',
@@ -770,42 +800,108 @@ const EditableProblem = React.memo(({
       }}
     >
       <div
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete();
-        }}
         style={{
           position: 'absolute',
           top: '4px',
           right: '4px',
-          width: '20px',
-          height: '20px',
           display: 'flex',
+          flexDirection: 'row',
           alignItems: 'center',
-          justifyContent: 'center',
-          cursor: 'pointer',
-          borderRadius: '3px',
-          backgroundColor: '#f44336',
-          color: '#fff',
-          fontSize: '12px',
-          fontWeight: 'bold',
-          userSelect: 'none',
+          gap: '4px',
         }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = '#d32f2f';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = '#f44336';
-        }}
-        title={i18n('Delete problem')}
       >
-        ×
+        {reorderBar ? (
+          <>
+            <button
+              type="button"
+              aria-label={String(i18n('Problem reorder up'))}
+              title={String(i18n('Problem reorder up'))}
+              disabled={!!reorderDisableUp}
+              onClick={(e) => {
+                e.stopPropagation();
+                onReorderUp!();
+              }}
+              style={{
+                width: '20px',
+                height: '20px',
+                padding: 0,
+                flexShrink: 0,
+                fontSize: '11px',
+                lineHeight: '18px',
+                borderRadius: '3px',
+                border: `1px solid ${themeStyles.borderPrimary}`,
+                background: reorderDisableUp ? themeStyles.bgSecondary : themeStyles.bgPrimary,
+                color: themeStyles.textPrimary,
+                cursor: reorderDisableUp ? 'not-allowed' : 'pointer',
+                opacity: reorderDisableUp ? 0.45 : 1,
+              }}
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              aria-label={String(i18n('Problem reorder down'))}
+              title={String(i18n('Problem reorder down'))}
+              disabled={!!reorderDisableDown}
+              onClick={(e) => {
+                e.stopPropagation();
+                onReorderDown!();
+              }}
+              style={{
+                width: '20px',
+                height: '20px',
+                padding: 0,
+                flexShrink: 0,
+                fontSize: '11px',
+                lineHeight: '18px',
+                borderRadius: '3px',
+                border: `1px solid ${themeStyles.borderPrimary}`,
+                background: reorderDisableDown ? themeStyles.bgSecondary : themeStyles.bgPrimary,
+                color: themeStyles.textPrimary,
+                cursor: reorderDisableDown ? 'not-allowed' : 'pointer',
+                opacity: reorderDisableDown ? 0.45 : 1,
+              }}
+            >
+              ↓
+            </button>
+          </>
+        ) : null}
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          style={{
+            width: '20px',
+            height: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            borderRadius: '3px',
+            backgroundColor: '#f44336',
+            color: '#fff',
+            fontSize: '12px',
+            fontWeight: 'bold',
+            userSelect: 'none',
+            flexShrink: 0,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#d32f2f';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = '#f44336';
+          }}
+          title={String(i18n('Delete problem'))}
+        >
+          ×
+        </div>
       </div>
       <div style={{
         fontSize: '12px',
         fontWeight: 500,
         marginBottom: '6px',
-        paddingRight: '24px',
+        paddingRight: `${headerPadRight}px`,
         display: 'flex',
         flexWrap: 'wrap',
         alignItems: 'center',
@@ -2695,7 +2791,12 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [pendingEditedProblemIds, setPendingEditedProblemIds] = useState<Map<string, Set<string>>>(new Map());
   const [newProblemIds, setNewProblemIds] = useState<Set<string>>(new Set());
   const [editedProblemIds, setEditedProblemIds] = useState<Set<string>>(new Set());
+  /** Right-click menu on practice row: insert blank above/below index. */
+  const [problemContextMenu, setProblemContextMenu] = useState<
+    null | { x: number; y: number; refIndex: number }
+  >(null);
   const originalProblemsRef = useRef<Map<string, Map<string, Problem>>>(new Map());
+  const originalProblemsOrderRef = useRef<Map<string, string[]>>(new Map());
   const [originalProblemsVersion, setOriginalProblemsVersion] = useState(0);
 
   useLayoutEffect(() => {
@@ -2705,6 +2806,32 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     for (const cid of pendingEditedProblemIds.keys()) m.add(String(cid));
     pendingProblemsMergeCardIdsRef.current = m;
   }, [pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds]);
+
+  useEffect(() => {
+    if (!problemContextMenu) return;
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setProblemContextMenu(null);
+    };
+    const onDocClose = (ev: MouseEvent) => {
+      const t = ev.target;
+      const el = t instanceof Element ? t : t instanceof Node ? t.parentElement : null;
+      if (el?.closest('[data-problem-ctx-root]')) return;
+      setProblemContextMenu(null);
+    };
+    const tid = window.setTimeout(() => {
+      window.addEventListener('click', onDocClose);
+    }, 0);
+    window.addEventListener('keydown', onEsc);
+    return () => {
+      window.clearTimeout(tid);
+      window.removeEventListener('click', onDocClose);
+      window.removeEventListener('keydown', onEsc);
+    };
+  }, [problemContextMenu]);
+
+  useEffect(() => {
+    setProblemContextMenu(null);
+  }, [selectedFile?.id, rightPanelOpen, editorRightPanelTab]);
 
   /** Card has problem-related pending save (e.g. deleted problem) not counted as new/edited problem — shown separately in pending panel. */
   const problemPendingOtherCardIds = useMemo(() => {
@@ -2815,6 +2942,35 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     return card || null;
   }, [selectedFile]);
 
+  const reorderSelectedCardProblems = useCallback(
+    (fromIndex: number, toIndex: number) => {
+      if (!selectedFile || selectedFile.type !== 'card') return;
+      if (fromIndex === toIndex) return;
+      const nodeId = selectedFile.nodeId || '';
+      const cardIdSel = selectedFile.cardId;
+      if (!nodeId || cardIdSel == null || cardIdSel === '') return;
+      const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+      const nodeCards: Card[] = [...(nodeCardsMap[nodeId] || [])];
+      const cardIndex = nodeCards.findIndex((c: Card) => sameCardDocId(c.docId, cardIdSel));
+      if (cardIndex < 0) return;
+      const list = [...(nodeCards[cardIndex].problems || [])];
+      if (fromIndex < 0 || fromIndex >= list.length || toIndex < 0 || toIndex >= list.length) return;
+      const [moved] = list.splice(fromIndex, 1);
+      list.splice(toIndex, 0, moved);
+      nodeCards[cardIndex] = { ...nodeCards[cardIndex], problems: list };
+      (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap, [nodeId]: nodeCards };
+      const cid = String(cardIdSel);
+      setPendingProblemCardIds((prev) => {
+        const next = new Set(prev);
+        next.add(cid);
+        return next;
+      });
+      setOriginalProblemsVersion((v) => v + 1);
+      setNodeCardsMapVersion((v) => v + 1);
+    },
+    [selectedFile],
+  );
+
   
   useEffect(() => {
     if (!selectedFile || selectedFile.type !== 'card') return;
@@ -2828,6 +2984,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       originalProblems.set(p.pid, { ...p });
     });
     originalProblemsRef.current.set(cardIdStr, originalProblems);
+    originalProblemsOrderRef.current.set(
+      cardIdStr,
+      (card.problems || []).map((p) => p.pid),
+    );
+    setOriginalProblemsVersion((v) => v + 1);
   }, [selectedFile?.id, selectedFile?.type, selectedFile?.nodeId, selectedFile?.cardId]);
   
 
@@ -3642,9 +3803,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     return () => cancelAnimationFrame(raf);
   }, [selectedFile?.id, explorerMode]);
 
-  /** Append an empty single-choice row; edit in place, then save with the rest of pending changes. */
-
-  const handleAddBlankProblem = useCallback(() => {
+  /** Insert blank single-choice at `insertAt` (0 = top). Use `(problems||[]).length` to append. */
+  const handleAddBlankProblemAt = useCallback((insertAt: number) => {
     if (!selectedFile || selectedFile.type !== 'card') {
       Notification.error(i18n('Please select a card on the left first'));
       return;
@@ -3660,40 +3820,53 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       return;
     }
 
-    const newProblem: ProblemSingle = {
-      pid: `p_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-      type: 'single',
-      stem: '',
-      options: ['', '', '', ''],
-      answer: 0,
-    };
-    const updatedProblems = [...(card.problems || []), newProblem];
+    const newProblem = makeBlankSingleProblem();
+    const list = [...(card.problems || [])];
+    const idx = Math.max(0, Math.min(Math.floor(insertAt), list.length));
+    list.splice(idx, 0, newProblem);
 
     if (nodeCardsMap[nodeId]) {
       const cardIndex = nodeCards.findIndex((c: Card) => sameCardDocId(c.docId, selectedFile.cardId));
       if (cardIndex >= 0) {
         nodeCards[cardIndex] = {
           ...nodeCards[cardIndex],
-          problems: updatedProblems,
+          problems: list,
         };
         (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
-        setNodeCardsMapVersion(prev => prev + 1);
+        setNodeCardsMapVersion((prev) => prev + 1);
 
         const cardIdStr = String(selectedFile.cardId || '');
-        setPendingProblemCardIds(prev => {
+        setPendingProblemCardIds((prev) => {
           const next = new Set(prev);
           next.add(cardIdStr);
           return next;
         });
-        setPendingNewProblemCardIds(prev => {
+        setPendingNewProblemCardIds((prev) => {
           const next = new Set(prev);
           next.add(cardIdStr);
           return next;
         });
         setNewProblemIds((prev) => new Set(prev).add(newProblem.pid));
+        setOriginalProblemsVersion((v) => v + 1);
       }
     }
-  }, [selectedFile, setNodeCardsMapVersion, setPendingProblemCardIds, setPendingNewProblemCardIds, setNewProblemIds]);
+  }, [selectedFile]);
+
+  const handleAddBlankProblem = useCallback(() => {
+    if (!selectedFile || selectedFile.type !== 'card') {
+      Notification.error(i18n('Please select a card on the left first'));
+      return;
+    }
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    const nodeId = selectedFile.nodeId || '';
+    const nodeCards: Card[] = nodeCardsMap[nodeId] || [];
+    const card = nodeCards.find((c: Card) => sameCardDocId(c.docId, selectedFile.cardId));
+    if (!card) {
+      Notification.error(i18n('Card data not found, cannot generate problem'));
+      return;
+    }
+    handleAddBlankProblemAt((card.problems || []).length);
+  }, [selectedFile, handleAddBlankProblemAt]);
 
 
   const handleSaveAll = useCallback(async () => {
@@ -4612,6 +4785,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               originalProblems.set(p.pid, { ...p });
             });
             originalProblemsRef.current.set(cid, originalProblems);
+            originalProblemsOrderRef.current.set(cid, (foundCard.problems || []).map((p) => p.pid));
           }
         }
         
@@ -4638,6 +4812,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               originalProblems.set(p.pid, { ...p });
             });
             originalProblemsRef.current.set(cid, originalProblems);
+            originalProblemsOrderRef.current.set(cid, (foundCard.problems || []).map((p) => p.pid));
           }
         }
         setOriginalProblemsVersion((prev) => prev + 1);
@@ -15753,16 +15928,41 @@ Reply with a JSON code block only for executable operations, using this shape:
                   color: themeStyles.accent,
                   cursor: 'pointer',
                 }}
-              >
+                >
                 +
               </button>
             </div>
+            {(() => {
+              const c = getSelectedCard();
+              if ((c?.problems || []).length > 1) {
+                return (
+                  <div
+                    style={{
+                      fontSize: '10px',
+                      color: themeStyles.textSecondary,
+                      marginBottom: '6px',
+                      lineHeight: 1.35,
+                    }}
+                  >
+                    {i18n('Problem reorder hint')}
+                  </div>
+                );
+              }
+              return null;
+            })()}
             {(() => {
               const card = getSelectedCard();
               const problems = card?.problems || [];
               const cardIdStr = String(selectedFile?.cardId || '');
               const _ = originalProblemsVersion;
               const originalProblems = originalProblemsRef.current.get(cardIdStr) || new Map();
+              const baselinePidOrder = originalProblemsOrderRef.current.get(cardIdStr);
+              const currentPidOrder = problems.map((pr) => pr.pid);
+              const reorderVisualDirty =
+                !!baselinePidOrder
+                && baselinePidOrder.length > 0
+                && currentPidOrder.length === baselinePidOrder.length
+                && baselinePidOrder.some((pid, i) => pid !== currentPidOrder[i]);
               if (!problems.length) {
                 return null;
               }
@@ -15774,7 +15974,8 @@ Reply with a JSON code block only for executable operations, using this shape:
                     let borderColor = '#e1e4e8';
                     let borderStyle = 'solid';
                     const isEdited = editedProblemIds.has(p.pid)
-                      || (originalProblem && JSON.stringify(originalProblem) !== JSON.stringify(p));
+                      || (originalProblem && JSON.stringify(originalProblem) !== JSON.stringify(p))
+                      || reorderVisualDirty;
                     if (isNew) { borderColor = '#4caf50'; borderStyle = 'dashed'; }
                     else if (isEdited) { borderColor = '#ff9800'; borderStyle = 'dashed'; }
                     return (
@@ -15791,6 +15992,16 @@ Reply with a JSON code block only for executable operations, using this shape:
                         docId={docId}
                         getBaseUrl={getBaseUrl}
                         themeStyles={themeStyles}
+                        onProblemContextMenu={(ev) =>
+                          setProblemContextMenu({
+                            x: ev.clientX,
+                            y: ev.clientY,
+                            refIndex: index,
+                          })}
+                        onReorderUp={problems.length > 1 ? () => reorderSelectedCardProblems(index, index - 1) : undefined}
+                        onReorderDown={problems.length > 1 ? () => reorderSelectedCardProblems(index, index + 1) : undefined}
+                        reorderDisableUp={index <= 0}
+                        reorderDisableDown={index >= problems.length - 1}
                         onUpdate={(updatedProblem) => {
                           const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
                           const nodeId = selectedFile?.nodeId || '';
@@ -16153,6 +16364,79 @@ Reply with a JSON code block only for executable operations, using this shape:
                   </button>
                 ) : null}
             </div>
+            {problemContextMenu &&
+              typeof window !== 'undefined' &&
+              (() => {
+                const pm = problemContextMenu;
+                const pad = 8;
+                const approxW = 220;
+                const approxH = 88;
+                const vw = window.innerWidth;
+                const vh = window.innerHeight;
+                const left = Math.min(
+                  Math.max(pad, pm.x),
+                  Math.max(pad, vw - approxW - pad),
+                );
+                const top = Math.min(
+                  Math.max(pad, pm.y),
+                  Math.max(pad, vh - approxH - pad),
+                );
+                const itemBtn: React.CSSProperties = {
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '8px 12px',
+                  border: 'none',
+                  borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+                  background: themeStyles.bgPrimary,
+                  color: themeStyles.textPrimary,
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                };
+                return (
+                  <div
+                    data-problem-ctx-root
+                    role="menu"
+                    style={{
+                      position: 'fixed',
+                      left,
+                      top,
+                      zIndex: 10080,
+                      minWidth: `${approxW}px`,
+                      padding: '4px 0',
+                      borderRadius: '6px',
+                      border: `1px solid ${themeStyles.borderPrimary}`,
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                      background: themeStyles.bgPrimary,
+                      overflow: 'hidden',
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      style={{ ...itemBtn, borderBottom: `1px solid ${themeStyles.borderPrimary}` }}
+                      onClick={() => {
+                        handleAddBlankProblemAt(pm.refIndex);
+                        setProblemContextMenu(null);
+                      }}
+                    >
+                      {i18n('Problem insert above')}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      style={{ ...itemBtn, borderBottom: 'none' }}
+                      onClick={() => {
+                        handleAddBlankProblemAt(pm.refIndex + 1);
+                        setProblemContextMenu(null);
+                      }}
+                    >
+                      {i18n('Problem insert below')}
+                    </button>
+                  </div>
+                );
+              })()}
           </>
         );
       })()}

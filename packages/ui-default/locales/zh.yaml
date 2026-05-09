@@ -405,6 +405,11 @@ __langname: 简体中文
 'Problem kind flip': 翻转
 'Problem kind fill blank': 填空题
 'Problem kind matching': 配对题
+'Problem reorder up': 上移
+'Problem reorder down': 下移
+'Problem reorder hint': 点击题目右上角「上移 / 下移」（在红色删除左侧）调整顺序；保存后生效。
+'Problem insert above': 在此题上方插入
+'Problem insert below': 在此题下方插入
 'Problem matching stem optional': 说明（可为空）
 'Problem matching pair count': 配对行数
 'Problem matching column count': 列数（≥2）
