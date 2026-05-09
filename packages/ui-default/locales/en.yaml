@@ -377,6 +377,11 @@ __langname: English
 'Problem kind flip': Flip card
 'Problem kind fill blank': Fill in the blank
 'Problem kind matching': Matching pairs
+'Problem reorder up': Move up
+'Problem reorder down': Move down
+'Problem reorder hint': Use ↑ / ↓ beside the red delete button to reorder; Save to persist.
+'Problem insert above': Insert blank problem above
+'Problem insert below': Insert blank problem below
 'Problem matching stem optional': Introduction (optional)
 'Problem matching pair count': Number of rows
 'Problem matching column count': Columns (≥2)
