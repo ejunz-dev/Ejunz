@@ -34,7 +34,12 @@ import {
   MATCHING_PAIR_MAX,
   MATCHING_COL_MIN,
   MATCHING_COL_MAX,
+  SUPER_FLIP_ROW_MIN,
+  SUPER_FLIP_ROW_MAX,
+  SUPER_FLIP_COL_MIN,
+  SUPER_FLIP_COL_MAX,
   normalizeMatchingColumns,
+  normalizeSuperFlipColumns,
   matchingColumnsNormalized,
   superFlipNormalized,
 } from 'ejun/src/model/problem';
@@ -1171,37 +1176,43 @@ const EditableProblem = React.memo(({
               color: themeStyles.textPrimary,
             }}
           >
-            <span>{i18n('Problem matching pair count')}</span>
+            <span>{i18n('Problem super flip row count')}</span>
             <select
-              value={superFlipNormalized(model as ProblemSuperFlip).columns[0]?.length || MATCHING_PAIR_MIN}
+              value={superFlipNormalized(model as ProblemSuperFlip).columns[0]?.length || SUPER_FLIP_ROW_MIN}
               onChange={(e) => {
                 const sf = model as ProblemSuperFlip;
-                const nRows = Math.min(MATCHING_PAIR_MAX, Math.max(MATCHING_PAIR_MIN, parseInt(e.target.value, 10) || MATCHING_PAIR_MIN));
+                const nRows = Math.min(
+                  SUPER_FLIP_ROW_MAX,
+                  Math.max(SUPER_FLIP_ROW_MIN, parseInt(e.target.value, 10) || SUPER_FLIP_ROW_MIN),
+                );
                 let { headers, columns } = superFlipNormalized(sf);
                 columns = columns.map((col) => {
                   const next = [...col];
                   while (next.length < nRows) next.push('');
                   return next.slice(0, nRows);
                 });
-                const norm = normalizeMatchingColumns(columns);
+                const norm = normalizeSuperFlipColumns(columns);
                 headers = headers.slice(0, norm.length);
                 while (headers.length < norm.length) headers.push('');
                 setModel({ ...sf, headers, columns: norm });
               }}
               style={{ ...inpStyle, minWidth: 52 }}
             >
-              {Array.from({ length: MATCHING_PAIR_MAX - MATCHING_PAIR_MIN + 1 }, (_, i) => MATCHING_PAIR_MIN + i).map((n) => (
+              {Array.from({ length: SUPER_FLIP_ROW_MAX - SUPER_FLIP_ROW_MIN + 1 }, (_, i) => SUPER_FLIP_ROW_MIN + i).map((n) => (
                 <option key={n} value={n}>{n}</option>
               ))}
             </select>
-            <span>{i18n('Problem matching column count')}</span>
+            <span>{i18n('Problem super flip column count')}</span>
             <select
               value={superFlipNormalized(model as ProblemSuperFlip).columns.length}
               onChange={(e) => {
                 const sf = model as ProblemSuperFlip;
-                const ncol = Math.min(MATCHING_COL_MAX, Math.max(MATCHING_COL_MIN, parseInt(e.target.value, 10) || MATCHING_COL_MIN));
+                const ncol = Math.min(
+                  SUPER_FLIP_COL_MAX,
+                  Math.max(SUPER_FLIP_COL_MIN, parseInt(e.target.value, 10) || SUPER_FLIP_COL_MIN),
+                );
                 let { headers, columns } = superFlipNormalized(sf);
-                const nrow = columns[0]?.length ?? MATCHING_PAIR_MIN;
+                const nrow = columns[0]?.length ?? SUPER_FLIP_ROW_MIN;
                 const nextCols: string[][] = [];
                 for (let c = 0; c < ncol; c++) {
                   const prev = columns[c] || [];
@@ -1209,7 +1220,7 @@ const EditableProblem = React.memo(({
                   while (pad.length < nrow) pad.push('');
                   nextCols.push(pad.slice(0, nrow));
                 }
-                const norm = normalizeMatchingColumns(nextCols);
+                const norm = normalizeSuperFlipColumns(nextCols);
                 let nextHeaders = headers.slice(0, norm.length);
                 while (nextHeaders.length < norm.length) nextHeaders.push('');
                 nextHeaders = nextHeaders.slice(0, norm.length);
@@ -1217,7 +1228,7 @@ const EditableProblem = React.memo(({
               }}
               style={{ ...inpStyle, minWidth: 52 }}
             >
-              {Array.from({ length: MATCHING_COL_MAX - MATCHING_COL_MIN + 1 }, (_, i) => MATCHING_COL_MIN + i).map((n) => (
+              {Array.from({ length: SUPER_FLIP_COL_MAX - SUPER_FLIP_COL_MIN + 1 }, (_, i) => SUPER_FLIP_COL_MIN + i).map((n) => (
                 <option key={n} value={n}>{n}</option>
               ))}
             </select>
@@ -1247,7 +1258,7 @@ const EditableProblem = React.memo(({
           {(() => {
             const sf = model as ProblemSuperFlip;
             const { columns } = superFlipNormalized(sf);
-            const nRows = columns[0]?.length ?? MATCHING_PAIR_MIN;
+            const nRows = columns[0]?.length ?? SUPER_FLIP_ROW_MIN;
             return Array.from({ length: nRows }, (_, mi) => (
               <div key={mi} style={{ marginBottom: 10, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 11, color: themeStyles.textSecondary, minWidth: 64 }}>
@@ -1261,7 +1272,7 @@ const EditableProblem = React.memo(({
                       const cur = superFlipNormalized(sf).columns;
                       const nextCols = cur.map((c) => [...c]);
                       nextCols[ci][mi] = e.target.value;
-                      const norm = normalizeMatchingColumns(nextCols);
+                      const norm = normalizeSuperFlipColumns(nextCols);
                       const { headers: hh } = superFlipNormalized(sf);
                       let nh = hh.slice(0, norm.length);
                       while (nh.length < norm.length) nh.push('');
@@ -8004,7 +8015,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 4. **rename**: rename a node or card
 5. **update_card_content**: change card body/markdown when the user asks to edit, polish, format, or improve *content* (not the title)
 6. **delete**: delete a node or card when asked
-7. **create_problem**: add practice problems for the **currently open card** when asked. Always include **\`title\`**: a very short plain-text label for lesson sidebars (not the full stem; omit HTML; ideally under ~40 characters). Also use \`problemKind\`: \`single\` (default, one correct option index in \`answer\`), \`multi\` (\`answer\` is an array of correct option indices), \`true_false\` (\`stem\` + \`answer\` 0 = false, 1 = true), \`flip\` (\`faceA\` / \`faceB\`, optional learner \`hint\`; no \`options\`), \`fill_blank\` (\`stem\` with \`___\` for each blank + \`answers\` string array in order; if no \`___\`, one blank after the stem), \`matching\` (optional \`stem\`: use \`columns\` — array of **columns**, each inner array is that column top-to-bottom; **same row index** across columns is one item; ≥2 rows and ≥2 columns; lesson gives **each column** an independent shuffled dropdown so the learner picks the correct row index in every column; or legacy \`left\`/\`right\`), \`super_flip\` (optional \`stem\`; \`headers\` string array per column, same length as column count; \`columns\` like matching—body cells only; lesson always shows headers; **non-empty** body cells are masked until tapped; **empty or whitespace-only** cells stay visible as blank with no flip).
+7. **create_problem**: add practice problems for the **currently open card** when asked. Always include **\`title\`**: a very short plain-text label for lesson sidebars (not the full stem; omit HTML; ideally under ~40 characters). Also use \`problemKind\`: \`single\` (default, one correct option index in \`answer\`), \`multi\` (\`answer\` is an array of correct option indices), \`true_false\` (\`stem\` + \`answer\` 0 = false, 1 = true), \`flip\` (\`faceA\` / \`faceB\`, optional learner \`hint\`; no \`options\`), \`fill_blank\` (\`stem\` with \`___\` for each blank + \`answers\` string array in order; if no \`___\`, one blank after the stem), \`matching\` (optional \`stem\`: use \`columns\` — array of **columns**, each inner array is that column top-to-bottom; **same row index** across columns is one item; ≥2 rows and ≥2 columns; lesson gives **each column** an independent shuffled dropdown so the learner picks the correct row index in every column; or legacy \`left\`/\`right\`), \`super_flip\` (optional \`stem\`; \`headers\` string array per column, same length as column count; \`columns\` like matching—body cells only, **≥1 row and ≥1 column** (1×1 allowed); lesson always shows headers; **non-empty** body cells are masked until tapped; **empty or whitespace-only** cells stay visible as blank with no flip).
 
 [Outline structure]
 ${baseText}
@@ -8149,7 +8160,7 @@ Reply with a JSON code block only for executable operations, using this shape:
 4. Use \`rename_card\` / \`rename_node\` only when the user clearly wants to change a **title/name**.
 5. **move_node**: read the outline above; match the user's folder/node by **name and full path**, then use the real **node ID** as \`targetParentId\`. Node IDs look like \`node_...\`; they are **not** card IDs (cards use long hex-like ids). "Move folder" means move a **node**. If you cannot resolve a target, reply with an error in plain text instead of guessing IDs.
 6. **move_card**: to move a **card**, use \`move_card\` (card id + \`targetNodeId\`). Never use \`move_node\` for a card. If the user @-mentions a card, use \`move_card\` with that card's id.
-7. **create_problem**: omit \`problemKind\` or set \`single\` for classic single-choice; include **\`title\`** (short sidebar/list label); \`multi\` requires \`answer\` as an array; \`true_false\` requires \`stem\` and \`answer\` 0/1; \`flip\` requires \`faceA\` and \`faceB\`, optional \`hint\` (learner Hint button), and must **not** include \`options\`; \`fill_blank\` requires \`stem\` and \`answers\` (array of strings, one per \`___\` left-to-right, or one string if a single blank); \`matching\` requires ≥2 rows: either \`columns\` (**array of columns**, each inner array one cell per row, same indexes align) with ≥2 columns—lesson shuffles **every** column’s pool independently—or legacy equal-length \`left\` and \`right\`; \`super_flip\` requires \`columns\` (same shape as matching, body cells only), optional \`stem\`, and \`headers\` parallel to columns (headers always visible; **non-empty** body cells flip; **empty** cells stay blank).
+7. **create_problem**: omit \`problemKind\` or set \`single\` for classic single-choice; include **\`title\`** (short sidebar/list label); \`multi\` requires \`answer\` as an array; \`true_false\` requires \`stem\` and \`answer\` 0/1; \`flip\` requires \`faceA\` and \`faceB\`, optional \`hint\` (learner Hint button), and must **not** include \`options\`; \`fill_blank\` requires \`stem\` and \`answers\` (array of strings, one per \`___\` left-to-right, or one string if a single blank); \`matching\` requires ≥2 rows: either \`columns\` (**array of columns**, each inner array one cell per row, same indexes align) with ≥2 columns—lesson shuffles **every** column’s pool independently—or legacy equal-length \`left\` and \`right\`; \`super_flip\` requires \`columns\` (same shape as matching but allows **1×1** minimum: ≥1 row and ≥1 column), optional \`stem\`, and \`headers\` parallel to columns (headers always visible; **non-empty** body cells flip; **empty** cells stay blank).
 8. **Valid JSON**: never put raw line breaks or unescaped \`"\` inside a string value; use standard JSON escaping (backslash + quote, backslash + n for newline).
 9. **Streaming**: emit each \`operations[]\` entry as a **fully closed** \`{ ... }\` object (balanced braces) **before** starting the next. The editor applies each finished object immediately—trailing incomplete objects wait until complete.
 `;
@@ -9165,7 +9176,7 @@ Reply with a JSON code block only for executable operations, using this shape:
             const headersRaw = op.headers;
             if (
               Array.isArray(colRawSf)
-              && colRawSf.length >= MATCHING_COL_MIN
+              && colRawSf.length >= SUPER_FLIP_COL_MIN
               && colRawSf.every((c) => Array.isArray(c))
             ) {
               rawProbSf.columns = colRawSf as unknown[];
@@ -9174,20 +9185,20 @@ Reply with a JSON code block only for executable operations, using this shape:
               }
             } else {
               Notification.error(i18n('Problem super flip columns invalid'));
-              errors.push('create_problem super_flip：columns 须为二维数组且列数≥2');
+              errors.push(`create_problem super_flip：columns 须为二维数组且列数≥${SUPER_FLIP_COL_MIN}`);
               continue;
             }
             newProblem = migrateRawProblem(rawProbSf);
             const { columns: colsSf } = superFlipNormalized(newProblem as ProblemSuperFlip);
             const nrowSf = colsSf[0]?.length ?? 0;
-            if (colsSf.length < MATCHING_COL_MIN) {
-              Notification.error(i18n('Problem matching columns too few'));
-              errors.push(`create_problem super_flip：列数不足 ${MATCHING_COL_MIN}`);
+            if (colsSf.length < SUPER_FLIP_COL_MIN) {
+              Notification.error(i18n('Problem super flip columns too few'));
+              errors.push(`create_problem super_flip：列数不足 ${SUPER_FLIP_COL_MIN}`);
               continue;
             }
-            if (nrowSf < MATCHING_PAIR_MIN) {
-              Notification.error(i18n('Problem matching pairs too few'));
-              errors.push('create_problem super_flip：行数不足 2');
+            if (nrowSf < SUPER_FLIP_ROW_MIN) {
+              Notification.error(i18n('Problem super flip rows too few'));
+              errors.push(`create_problem super_flip：行数不足 ${SUPER_FLIP_ROW_MIN}`);
               continue;
             }
           } else if (kind === 'matching') {
