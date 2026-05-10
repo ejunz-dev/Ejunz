@@ -97,6 +97,11 @@ __langname: 简体中文
 'Reset learn DAG description': 按当前知识库最新大纲重建学习路径，并将节序恢复为与大纲一致（会覆盖已保存的自定义顺序）。
 'Learn DAG reset done': 已根据最新大纲重新生成学习路径。
 'Learn DAG reset failed': 从大纲重建学习路径失败。
+'Reset learn progress': 重置进度
+'Reset learn progress description': 清除该用户在本域内的通过记录、路径练习次数等进度，保留当前节序与学习起点；会结束进行中的课时会话以便下次从头开始。
+'Reset learn progress confirm': 确定清除该用户在本域内的学习进度（通过状态、路径练习计数等）吗？节序与当前学习节将保持不变。
+'Learn progress reset done': 学习进度已清除。
+'Learn progress reset failed': 重置学习进度失败。
 'Resetting...': 重建中…
 'Click the "Create Client" button above to create a new client': 点击上方"创建客户端"按钮来创建新的客户端
 'Click to expand questions': 点击展开题目

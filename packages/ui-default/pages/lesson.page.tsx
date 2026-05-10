@@ -1114,9 +1114,30 @@ function LessonPage() {
   }>>([]);
   /** Pids removed from queue after a full correct pass (excludes “need more” requeue / wrong). */
   const [practiceClearedPids, setPracticeClearedPids] = useState<Record<string, true>>({});
-  const practiceProblemsDoneCount = Object.keys(practiceClearedPids).length;
+  const practiceProblemsDoneCount = useMemo(() => {
+    if (!lessonProblemSidebarGroups || !mergeSingleNodeCardQueueIntoProblemSidebar) {
+      return Object.keys(practiceClearedPids).length;
+    }
+    let n = 0;
+    for (const group of lessonProblemSidebarGroups) {
+      const flatIdx = cardIdToFlatIndex[group.cardId];
+      const inReview = lessonReviewCardIds.includes(group.cardId);
+      if (typeof flatIdx === 'number' && flatIdx < currentCardIndex && !inReview) {
+        n += group.items.length;
+      } else {
+        n += group.items.filter(({ p }) => !!practiceClearedPids[p.pid]).length;
+      }
+    }
+    return n;
+  }, [
+    lessonProblemSidebarGroups,
+    mergeSingleNodeCardQueueIntoProblemSidebar,
+    cardIdToFlatIndex,
+    lessonReviewCardIds,
+    currentCardIndex,
+    practiceClearedPids,
+  ]);
   const practiceProblemsPendingCount = problemQueue.length;
-
   /** 左栏「已完成卡片」：按张数索引已过，或该卡在整段题目队列中的题已全部 cleared。 */
   const mergeModeCompletedCardCount = useMemo(() => {
     if (!mergeSingleNodeCardQueueIntoProblemSidebar) return 0;
@@ -3431,10 +3452,17 @@ function LessonPage() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
         {lessonProblemSidebarGroups ? (
           lessonProblemSidebarGroups.map((group) => {
-            const doneItems = group.items.filter(({ p }) => !!practiceClearedPids[p.pid]);
-            if (doneItems.length === 0) return null;
             const flatIdx = cardIdToFlatIndex[group.cardId];
             const inReview = lessonReviewCardIds.includes(group.cardId);
+            const cardDoneBySessionIndex =
+              !!mergeSingleNodeCardQueueIntoProblemSidebar
+              && typeof flatIdx === 'number'
+              && flatIdx < currentCardIndex
+              && !inReview;
+            const doneItems = group.items.filter(
+              ({ p }) => cardDoneBySessionIndex || !!practiceClearedPids[p.pid],
+            );
+            if (doneItems.length === 0) return null;
             const isDone = typeof flatIdx === 'number' && flatIdx < currentCardIndex && !inReview;
             const isCurrent = typeof flatIdx === 'number' && flatIdx === currentCardIndex;
             const fc = typeof flatIdx === 'number' ? flatCards[flatIdx] : undefined;
@@ -3487,11 +3515,12 @@ function LessonPage() {
                 >
                   {doneItems.map(({ p, globalIndex }) => {
                     const isCurrent = currentProblem?.pid === p.pid;
+                    const rowCleared = cardDoneBySessionIndex || !!practiceClearedPids[p.pid];
                     return renderLessonProblemQueueRow(
                       p,
                       globalIndex,
                       isCurrent,
-                      true,
+                      rowCleared,
                       `lesson-practice-done-${group.cardId}-${globalIndex}-${p.pid}`,
                     );
                   })}
