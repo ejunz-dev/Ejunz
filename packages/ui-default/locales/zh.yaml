@@ -256,6 +256,10 @@ __langname: 简体中文
 'Last Disconnected Time': 最后断开时间
 'Learn session mode': 学习模式（下次会话）
 'Learn session preferences': 学习会话设置
+'Learn session card filter': 卡片过滤（下次会话）
+'Learn session card filter all': 学习所有卡片（含无题目的）
+'Learn session card filter with problems': 只学有题目的卡片
+'Learn session card filter without problems': 只学无题目的卡片
 'Learn ratio section label': 学习副模式 · 新旧比例（下次会话）
 'Learn ratio section hint': 主模式（深度/广度/随机）只影响今日队列里「新」段卡片的展开顺序。混合与纯新模式下每日目标指**新卡**张数；**纯复习**模式下同一每日目标表示要抽取的**复习卡**张数。混合模式：今日会话 = 新卡（按目标截断，不足则循环）+ 新卡数×N 张旧段复习（不足则循环，无旧段则不追加）。纯新 / 纯复习会省略另一臂。
 'Learn today ratio summary': 每张新卡配 {0} 张复习卡

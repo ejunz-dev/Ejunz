@@ -62,6 +62,8 @@ type LearnSessionModeUi = 'deep' | 'breadth' | 'random';
 
 type LearnNewReviewOrderUi = 'new_first' | 'old_first' | 'shuffle';
 
+type LearnSessionCardFilterUi = 'all' | 'with_problems' | 'without_problems';
+
 /** Values in dropdown order (must match server `ratioOptionLabels`). */
 const LEARN_NEW_REVIEW_RATIO_UI_VALUES = [0, -1, 1, 2, 3, 4, 5] as const;
 
@@ -118,6 +120,13 @@ function normalizeLearnNewReviewOrderFromUi(raw: unknown): LearnNewReviewOrderUi
   const s = String(raw ?? 'new_first').trim().toLowerCase().replace(/-/g, '_');
   if (s === 'old_first' || s === 'shuffle') return s;
   return 'new_first';
+}
+
+function normalizeLearnSessionCardFilterFromUi(raw: unknown): LearnSessionCardFilterUi {
+  const s = String(raw ?? 'all').trim().toLowerCase().replace(/-/g, '_');
+  if (s === 'with_problems') return 'with_problems';
+  if (s === 'without_problems') return 'without_problems';
+  return 'all';
 }
 
 function getChildren(nodeId: string, sections: MapDAGNode[], dag: MapDAGNode[]): MapDAGNode[] {
@@ -190,6 +199,10 @@ function LearnPage() {
     () => normalizeLearnNewReviewOrderFromUi((window as any).UiContext?.learnNewReviewOrder),
     [],
   );
+  const initialLearnSessionCardFilter = useMemo(
+    () => normalizeLearnSessionCardFilterFromUi((window as any).UiContext?.learnSessionCardFilter),
+    [],
+  );
   const learnSubModeStrings = useMemo(
     () => ((window as any).UiContext?.learnSubModeStrings || {}) as LearnSubModeStringsFromServer,
     [],
@@ -219,10 +232,12 @@ function LearnPage() {
   const [learnSessionMode, setLearnSessionMode] = useState<LearnSessionModeUi>(initialLearnSessionMode);
   const [learnNewReviewRatio, setLearnNewReviewRatio] = useState(initialLearnNewReviewRatio);
   const [learnNewReviewOrder, setLearnNewReviewOrder] = useState<LearnNewReviewOrderUi>(initialLearnNewReviewOrder);
+  const [learnSessionCardFilter, setLearnSessionCardFilter] = useState<LearnSessionCardFilterUi>(initialLearnSessionCardFilter);
   const [learnPrefsOpen, setLearnPrefsOpen] = useState(false);
   const [draftSessionMode, setDraftSessionMode] = useState<LearnSessionModeUi>(initialLearnSessionMode);
   const [draftRatio, setDraftRatio] = useState(initialLearnNewReviewRatio);
   const [draftOrder, setDraftOrder] = useState<LearnNewReviewOrderUi>(initialLearnNewReviewOrder);
+  const [draftCardFilter, setDraftCardFilter] = useState<LearnSessionCardFilterUi>(initialLearnSessionCardFilter);
   const [draftDailyGoal, setDraftDailyGoal] = useState(dailyGoal);
   const [savingLearnPrefs, setSavingLearnPrefs] = useState(false);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
@@ -373,8 +388,9 @@ function LearnPage() {
     setDraftSessionMode(learnSessionMode);
     setDraftRatio(learnNewReviewRatio);
     setDraftOrder(learnNewReviewOrder);
+    setDraftCardFilter(learnSessionCardFilter);
     setLearnPrefsOpen(true);
-  }, [goal, learnSessionMode, learnNewReviewRatio, learnNewReviewOrder]);
+  }, [goal, learnSessionMode, learnNewReviewRatio, learnNewReviewOrder, learnSessionCardFilter]);
 
   const saveLearnPrefsModal = useCallback(async () => {
     if (!domainId || savingLearnPrefs) return;
@@ -382,7 +398,8 @@ function LearnPage() {
     const modeChanged = draftSessionMode !== learnSessionMode;
     const ratioChanged = draftRatio !== learnNewReviewRatio;
     const orderChanged = draftOrder !== learnNewReviewOrder;
-    const subChanged = ratioChanged || orderChanged;
+    const cardFilterChanged = draftCardFilter !== learnSessionCardFilter;
+    const subChanged = ratioChanged || orderChanged || cardFilterChanged;
     if (!goalChanged && !modeChanged && !subChanged) {
       setLearnPrefsOpen(false);
       return;
@@ -399,6 +416,7 @@ function LearnPage() {
         const body: Record<string, unknown> = {};
         if (ratioChanged) body.learnNewReviewRatio = draftRatio;
         if (orderChanged) body.learnNewReviewOrder = draftOrder;
+        if (cardFilterChanged) body.learnSessionCardFilter = draftCardFilter;
         await request.post(`/d/${domainId}/learn/sub-mode`, body);
       }
       window.location.reload();
@@ -417,10 +435,12 @@ function LearnPage() {
     draftSessionMode,
     draftRatio,
     draftOrder,
+    draftCardFilter,
     goal,
     learnSessionMode,
     learnNewReviewRatio,
     learnNewReviewOrder,
+    learnSessionCardFilter,
     learnSubModeStrings.failedSave,
   ]);
 
@@ -972,6 +992,30 @@ function LearnPage() {
                         <option value="deep">{i18n('Deep learning mode')}</option>
                         <option value="breadth">{i18n('Breadth learning mode')}</option>
                         <option value="random">{i18n('Random learning mode')}</option>
+                      </select>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <label htmlFor="learn-prefs-card-filter" style={{ fontSize: '13px', color: themeStyles.textSecondary, fontWeight: 500 }}>
+                        {i18n('Learn session card filter')}
+                      </label>
+                      <select
+                        id="learn-prefs-card-filter"
+                        value={draftCardFilter}
+                        disabled={savingLearnPrefs}
+                        onChange={(e) => setDraftCardFilter(normalizeLearnSessionCardFilterFromUi(e.target.value))}
+                        style={{
+                          padding: '8px 10px',
+                          fontSize: '13px',
+                          background: themeStyles.bgPrimary,
+                          border: `1px solid ${themeStyles.border}`,
+                          borderRadius: '8px',
+                          color: themeStyles.textPrimary,
+                          width: '100%',
+                        }}
+                      >
+                        <option value="all">{i18n('Learn session card filter all')}</option>
+                        <option value="with_problems">{i18n('Learn session card filter with problems')}</option>
+                        <option value="without_problems">{i18n('Learn session card filter without problems')}</option>
                       </select>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>

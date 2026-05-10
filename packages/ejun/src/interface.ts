@@ -1243,6 +1243,7 @@ export interface SessionDoc {
     lessonQueueLearnStartCardId?: string | null;
     lessonQueueLearnSectionOrderIndex?: number | null;
     lessonQueueLearnSessionMode?: string | null;
+    lessonQueueLearnSessionCardFilter?: string | null;
     lessonQueueLearnSubMode?: string | null;
     lessonQueueLearnNewReviewRatio?: number | null;
     lessonQueueLearnNewReviewOrder?: string | null;
@@ -1281,6 +1282,7 @@ export type SessionPatch = Partial<Pick<
     | 'lessonQueueLearnStartCardId'
     | 'lessonQueueLearnSectionOrderIndex'
     | 'lessonQueueLearnSessionMode'
+    | 'lessonQueueLearnSessionCardFilter'
     | 'lessonQueueLearnSubMode'
     | 'lessonQueueLearnNewReviewRatio'
     | 'lessonQueueLearnNewReviewOrder'

@@ -3,7 +3,9 @@ import {
     getLearnSessionMode,
     getLearnNewReviewRatio,
     getLearnNewReviewOrder,
+    getLearnSessionCardFilter,
     normalizeLearnNewReviewOrder,
+    normalizeLearnSessionCardFilter,
     normalizeLearnSessionMode,
 } from './learnModePrefs';
 import type { LessonCardQueueItem, LessonMode, SessionDoc, SessionPatch } from '../model/session';
@@ -151,6 +153,14 @@ export function frozenTodayQueueMatchesLearnSettings(dudoc: any, s: SessionDoc):
     const rawS = (s as SessionDoc & { lessonQueueLearnSessionMode?: string | null }).lessonQueueLearnSessionMode;
     const normalizedS = normalizeLearnSessionMode(rawS);
     if (normalizedDu !== normalizedS) return false;
+
+    const cardFilterDu = getLearnSessionCardFilter(du);
+    const rawCf = (s as SessionDoc & { lessonQueueLearnSessionCardFilter?: string | null }).lessonQueueLearnSessionCardFilter;
+    const cardFilterSnap =
+        rawCf === undefined || rawCf === null || String(rawCf).trim() === ''
+            ? 'all'
+            : normalizeLearnSessionCardFilter(rawCf);
+    if (cardFilterSnap !== cardFilterDu) return false;
 
     const rDu = getLearnNewReviewRatio(du);
     const rawR = (s as SessionDoc & { lessonQueueLearnNewReviewRatio?: number | null }).lessonQueueLearnNewReviewRatio;
