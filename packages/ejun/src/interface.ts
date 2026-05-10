@@ -365,6 +365,8 @@ export interface BaseDoc {
     domainPosition?: { x: number; y: number };
     history?: BaseHistoryEntry[];
     files?: FileInfo[];
+    /** Custom problem tag names offered in the base editor (+ any tag inferred from cards on load). */
+    problemTags?: string[];
 }
 
 export interface BaseHistoryEntry {
@@ -402,6 +404,11 @@ export interface ProblemCommon {
     analysis?: string;
     imageUrl?: string;
     imageNote?: string;
+    /**
+     * Optional editor taxonomy tag shared within this base (`BaseDoc.problemTags` lists known names).
+     * Omit or unset / `default` (normalized away) ⇒ default grouping in the editor UI.
+     */
+    tag?: string;
 }
 
 /** Single choice (default when `type` omitted). */
@@ -1244,6 +1251,8 @@ export interface SessionDoc {
     lessonQueueLearnSectionOrderIndex?: number | null;
     lessonQueueLearnSessionMode?: string | null;
     lessonQueueLearnSessionCardFilter?: string | null;
+    lessonQueueLearnSessionProblemTagMode?: string | null;
+    lessonQueueLearnSessionProblemTags?: string[];
     lessonQueueLearnSubMode?: string | null;
     lessonQueueLearnNewReviewRatio?: number | null;
     lessonQueueLearnNewReviewOrder?: string | null;
@@ -1283,6 +1292,8 @@ export type SessionPatch = Partial<Pick<
     | 'lessonQueueLearnSectionOrderIndex'
     | 'lessonQueueLearnSessionMode'
     | 'lessonQueueLearnSessionCardFilter'
+    | 'lessonQueueLearnSessionProblemTagMode'
+    | 'lessonQueueLearnSessionProblemTags'
     | 'lessonQueueLearnSubMode'
     | 'lessonQueueLearnNewReviewRatio'
     | 'lessonQueueLearnNewReviewOrder'

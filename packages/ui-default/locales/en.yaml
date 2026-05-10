@@ -237,6 +237,14 @@ __langname: English
 'Learn session card filter all': All cards (including cards without problems)
 'Learn session card filter with problems': Only cards that have problems
 'Learn session card filter without problems': Only cards without problems
+'Learn session problem tag filter': Problem tag filter (problems inside cards)
+'Learn session problem tag filter off': Don't filter problems by tag
+'Learn session problem tag filter include': Only problems tagged with selections
+'Learn session problem tag filter exclude': Exclude selected problem tags
+'Learn session problem tag filter tags label': Tagged problems (multiple)
+'Learn session problem tag filter max hint': Up to {0} tags
+'Learn session problem tag filter no tags in base': No registered tags found for this base. Tags can still be persisted if synced from elsewhere.
+'No cards match session problem tag filter': No cards remain after filtering problems by tags.
 'Learn ratio section label': Sub mode · new/review ratio (next daily run)
 'Learn ratio section hint': Main mode (deep/breadth/random) only affects ordering of **new-segment** cards in the daily queue. Daily goal counts **new** cards in mixed and new-only modes; in **review-only** mode the same number is how many **review** cards to draw. Each mixed daily session length = new slice (goal cap, cycle new pool if short) plus (new count × N) **old-segment** review pulls (cycle old pool if short; if there is no old segment, append none). New-only and review-only modes skip the other arm.
 'Learn today ratio summary': '{0} review card(s) per new card'
@@ -414,6 +422,11 @@ __langname: English
 'Problem super flip columns too few': Super flip needs at least 1 column
 'Problem super flip rows too few': Super flip needs at least 1 row
 'Problem field type': Question type
+'Problem tag': Tag
+'Problem tag default': Default
+'Problem tag new placeholder': New tag
+'Problem tag add': Add
+'Problem tag empty': Enter a tag name first
 'Problem title': Problem title
 'Problem option slots': Option slots
 'Problem multi all correct': All correct selections required to pass
