@@ -45,7 +45,13 @@ import {
     isDevelopSessionSettled,
 } from '../lib/sessionListDisplay';
 import { isDevelopSessionPastDeadline, readDevelopSessionDeadlineMs } from '../lib/sessionUtcDaily';
-import { problemKind, matchingColumnsNormalized, superFlipNormalized, sanitizeProblemTagRegistryList } from '../model/problem';
+import {
+    problemKind,
+    matchingColumnsNormalized,
+    superFlipNormalized,
+    sanitizeProblemTagRegistryList,
+    normalizeProblemTagInput,
+} from '../model/problem';
 
 /** Machine token in {@link BadRequestError} params for API clients (see `request.ajax` in ui-default). */
 const DEVELOP_SESSION_CLOSED_CODE = 'DEVELOP_SESSION_CLOSED';
@@ -6677,6 +6683,34 @@ class BaseMigrateNodeToNewHandler extends Handler {
 }
 
 /**
+ * Append one label to the base `problemTags` registry (dropdown in editor + lesson).
+ * Does not set `Problem.tag` on any card — use lesson UI or editor to apply.
+ */
+export class BaseProblemTagRegistryHandler extends Handler {
+    @param('docId', Types.PositiveInt, true)
+    async post(domainId: string, docId: number) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const body: Record<string, unknown> = (this.request.body && typeof this.request.body === 'object')
+            ? this.request.body as Record<string, unknown>
+            : {};
+        const tag = normalizeProblemTagInput(body.tag);
+        if (!tag) throw new ValidationError('tag required');
+        const base = await BaseModel.get(domainId, docId);
+        if (!base) throw new NotFoundError('Base not found');
+        if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+        const prev = sanitizeProblemTagRegistryList((base as BaseDoc & { problemTags?: unknown }).problemTags);
+        if (prev.includes(tag)) {
+            this.response.body = { success: true, problemTags: prev };
+            return;
+        }
+        const next = sanitizeProblemTagRegistryList([...prev, tag]);
+        await BaseModel.updateFull(domainId, docId, { problemTags: next });
+        (this.ctx.emit as any)('base/update', docId);
+        this.response.body = { success: true, problemTags: next };
+    }
+}
+
+/**
  * Base Expand State Handler — per-user node expand/collapse state for base editor (POST only, load via UiContext)
  */
 export class BaseExpandStateHandler extends Handler {
@@ -6771,6 +6805,7 @@ export async function apply(ctx: Context) {
     ctx.Route('base_batch_save', '/base/batch-save', BaseBatchSaveHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_migrate_node_to_new', '/base/migrate-node-to-new', BaseMigrateNodeToNewHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_expand_state', '/base/expand-state', BaseExpandStateHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_problem_tag_register', '/base/:docId/problem-tag-register', BaseProblemTagRegistryHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_card', '/base/card', BaseCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_card_update', '/base/card/:cardId', BaseCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_branch_create', '/base/branch', BaseBranchCreateHandler, PRIV.PRIV_USER_PROFILE);

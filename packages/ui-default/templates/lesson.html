@@ -42,6 +42,8 @@
   {{ set(UiContext, 'learnPathCardPractiseCounts', learnPathCardPractiseCounts or {}) }}
   {{ set(UiContext, 'lessonPathCardPractiseCountFmt', lessonPathCardPractiseCountFmt or '') }}
   {{ set(UiContext, 'lessonPathCardPractiseCountTitle', lessonPathCardPractiseCountTitle or '') }}
+  {{ set(UiContext, 'lessonProblemTagOptions', lessonProblemTagOptions or []) }}
+  {{ set(UiContext, 'lessonCanEditProblemTags', lessonCanEditProblemTags or false) }}
 </script>
 <div id="lesson-container"></div>
 {% endblock %}
