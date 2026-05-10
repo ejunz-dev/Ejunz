@@ -44,6 +44,8 @@ import {
   superFlipNormalized,
   normalizeProblemTagInput,
   sanitizeProblemTagRegistryList,
+  getProblemTagList,
+  MAX_TAGS_PER_PROBLEM,
 } from 'ejun/src/model/problem';
 interface BaseNode {
   id: string;
@@ -725,8 +727,9 @@ function collectProblemTagsFromNodeCardsMap(map: Record<string, Card[]> | undefi
   for (const cards of Object.values(map)) {
     for (const c of cards || []) {
       for (const p of c.problems || []) {
-        const t = normalizeProblemTagInput((p as Problem & { tag?: unknown }).tag);
-        if (t) tags.add(t);
+        for (const t of getProblemTagList(p as Problem)) {
+          if (t) tags.add(t);
+        }
       }
     }
   }
@@ -834,12 +837,24 @@ const EditableProblem = React.memo(({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
 
-  const currentProblemTag = normalizeProblemTagInput((model as Problem & { tag?: unknown }).tag) ?? '';
+  const currentProblemTags = useMemo(() => getProblemTagList(model), [model]);
   const selectTagOptions = useMemo(() => {
     const opts = [...problemTagOptions];
-    if (currentProblemTag && !opts.includes(currentProblemTag)) opts.push(currentProblemTag);
+    for (const t of currentProblemTags) {
+      if (t && !opts.includes(t)) opts.push(t);
+    }
     return [...new Set(opts)].sort((a, b) => a.localeCompare(b));
-  }, [problemTagOptions, currentProblemTag]);
+  }, [problemTagOptions, currentProblemTags]);
+
+  const setProblemTags = (next: string[]) => {
+    const clean = sanitizeProblemTagRegistryList(next, MAX_TAGS_PER_PROBLEM);
+    setModel((m) => {
+      const base = { ...m } as Problem & Record<string, unknown>;
+      if (clean.length) base.tags = clean;
+      else delete base.tags;
+      return base as Problem;
+    });
+  };
 
   const [newProblemTagDraft, setNewProblemTagDraft] = useState('');
 
@@ -914,16 +929,11 @@ const EditableProblem = React.memo(({
     setModel((m) => problemChangeKind(m, k));
   };
 
-  const onProblemTagSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const onAppendRegisteredProblemTag = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const t = normalizeProblemTagInput(e.target.value);
-    setModel((m) => {
-      if (!t) {
-        if (!Object.prototype.hasOwnProperty.call(m, 'tag')) return m;
-        const { tag: _rm, ...rest } = m as Problem & { tag?: string };
-        return rest as Problem;
-      }
-      return { ...m, tag: t } as Problem;
-    });
+    e.target.value = '';
+    if (!t || currentProblemTags.includes(t)) return;
+    setProblemTags([...currentProblemTags, t]);
   };
 
   const addDraftProblemTag = () => {
@@ -933,7 +943,7 @@ const EditableProblem = React.memo(({
       return;
     }
     onRegisterProblemTag(t);
-    setModel((m) => ({ ...m, tag: t } as Problem));
+    if (!currentProblemTags.includes(t)) setProblemTags([...currentProblemTags, t]);
     setNewProblemTagDraft('');
   };
 
@@ -1156,44 +1166,85 @@ const EditableProblem = React.memo(({
           }}
         >
           {i18n('Problem tag')}
-          <select
-            value={currentProblemTag}
-            onChange={onProblemTagSelectChange}
-            style={{ ...inpStyle, minWidth: 88 }}
-          >
-            <option value="">{i18n('Problem tag default')}</option>
-            {selectTagOptions.map((t) => (
-              <option key={t} value={t}>{t}</option>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, maxWidth: '100%' }}>
+            {currentProblemTags.map((t) => (
+              <span
+                key={t}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '2px 8px',
+                  borderRadius: 999,
+                  border: `1px solid ${themeStyles.borderPrimary}`,
+                  backgroundColor: themeStyles.bgSecondary ?? themeStyles.bgPrimary,
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  maxWidth: '100%',
+                  wordBreak: 'break-word',
+                }}
+              >
+                <span>{t}</span>
+                <button
+                  type="button"
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    setProblemTags(currentProblemTags.filter((x) => x !== t));
+                  }}
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    padding: 0,
+                    fontSize: 13,
+                    lineHeight: 1,
+                    color: themeStyles.textSecondary,
+                  }}
+                  title={String(i18n('Lesson problem tag chip remove'))}
+                >
+                  ×
+                </button>
+              </span>
             ))}
-          </select>
-          <input
-            type="text"
-            value={newProblemTagDraft}
-            placeholder={String(i18n('Problem tag new placeholder'))}
-            onChange={(e) => setNewProblemTagDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
+            <select
+              value=""
+              onChange={onAppendRegisteredProblemTag}
+              style={{ ...inpStyle, minWidth: 88 }}
+            >
+              <option value="">{String(i18n('Lesson problem tag panel add registered placeholder'))}</option>
+              {selectTagOptions.filter((x) => !currentProblemTags.includes(x)).map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={newProblemTagDraft}
+              placeholder={String(i18n('Problem tag new placeholder'))}
+              onChange={(e) => setNewProblemTagDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  addDraftProblemTag();
+                }
+              }}
+              style={{ ...inpStyle, width: 100, maxWidth: 140 }}
+            />
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
                 addDraftProblemTag();
-              }
-            }}
-            style={{ ...inpStyle, width: 100, maxWidth: 140 }}
-          />
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              addDraftProblemTag();
-            }}
-            style={{
-              ...inpStyle,
-              padding: '2px 6px',
-              cursor: 'pointer',
-              flexShrink: 0,
-            }}
-          >
-            {i18n('Problem tag add')}
-          </button>
+              }}
+              style={{
+                ...inpStyle,
+                padding: '2px 6px',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+            >
+              {i18n('Problem tag add')}
+            </button>
+          </div>
         </label>
         {isNew && <span style={{ fontSize: '10px', color: themeStyles.success }}>{i18n('New')}</span>}
         {isEdited && !isNew && <span style={{ fontSize: '10px', color: themeStyles.warning }}>{i18n('Edited')}</span>}

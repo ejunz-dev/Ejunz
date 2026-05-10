@@ -1,7 +1,7 @@
 import type { Context } from '../context';
 import { Handler, param, post, Types } from '../service/server';
 import { BaseModel, CardModel } from '../model/base';
-import type { BaseDoc, BaseNode, BaseEdge } from '../interface';
+import type { BaseDoc, BaseNode, BaseEdge, Problem } from '../interface';
 import domain from '../model/domain';
 import learn, { type LearnDAGNode } from '../model/learn';
 import user from '../model/user';
@@ -37,7 +37,7 @@ import {
 import { getBranchData } from './base';
 import SessionModel, { type LessonCardQueueItem, type SessionDoc, type SessionPatch } from '../model/session';
 import * as document from '../model/document';
-import { normalizeProblemTagInput, sanitizeProblemTagRegistryList } from '../model/problem';
+import { getProblemTagList, normalizeProblemTagInput, sanitizeProblemTagRegistryList } from '../model/problem';
 import {
     appendLessonSessionToUrl,
     frozenTodayQueueMatchesLearnSettings,
@@ -69,7 +69,7 @@ function utcLessonQueueDayString(): string {
     return moment.utc().format('YYYY-MM-DD');
 }
 
-/** Sidebar + practice header: taxonomy tags for `Problem.tag` while in lesson (read-only picker list + edit permission). */
+/** Sidebar + practice header: taxonomy tags on problems (`Problem.tags`). */
 function lessonProblemTagUiExtras(handler: Handler, base: BaseDoc | null | undefined): {
     lessonProblemTagOptions: string[];
     lessonCanEditProblemTags: boolean;
@@ -170,8 +170,9 @@ async function buildCardIdProblemTagsMap(domainId: string, cardIds: string[]): P
         if (!hex) continue;
         const tagSet = new Set<string>();
         for (const p of row.problems || []) {
-            const t = normalizeProblemTagInput((p as { tag?: unknown }).tag);
-            if (t) tagSet.add(t);
+            for (const t of getProblemTagList(p as Problem)) {
+                tagSet.add(t);
+            }
         }
         out.set(hex, tagSet);
     }
@@ -240,9 +241,10 @@ function applyLearnProblemTagFilterToCardDoc<T extends { problems?: unknown[] }>
     const probs = card.problems;
     if (!Array.isArray(probs) || probs.length === 0) return card;
     const filtered = probs.filter((p) => {
-        const t = normalizeProblemTagInput((p as { tag?: unknown }).tag);
-        if (mode === 'include') return !!t && tagSet.has(t);
-        return !t || !tagSet.has(t);
+        const list = getProblemTagList(p as Problem);
+        const overlap = list.some((t) => tagSet.has(t));
+        if (mode === 'include') return overlap;
+        return !overlap;
     });
     return { ...card, problems: filtered };
 }

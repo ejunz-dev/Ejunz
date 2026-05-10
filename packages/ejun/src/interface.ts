@@ -405,10 +405,10 @@ export interface ProblemCommon {
     imageUrl?: string;
     imageNote?: string;
     /**
-     * Optional editor taxonomy tag shared within this base (`BaseDoc.problemTags` lists known names).
-     * Omit or unset / `default` (normalized away) ⇒ default grouping in the editor UI.
+     * Taxonomy tags for this problem within the base (`BaseDoc.problemTags` lists known names).
+     * Omit or empty ⇒ default grouping in the editor UI.
      */
-    tag?: string;
+    tags?: string[];
 }
 
 /** Single choice (default when `type` omitted). */
