@@ -1,5 +1,8 @@
 /** Learn: knowledge base selection and daily goals (domain user document). */
 
+/** Which cards may appear in the ordered learn queue (domain.user). */
+export type LearnSessionCardFilterMode = 'all' | 'with_problems' | 'without_problems';
+
 /** Order in which today's **new**-segment cards are merged (`today` session only; stored on domain.user). */
 export type LearnSessionMode = 'deep' | 'breadth' | 'random';
 
@@ -79,6 +82,17 @@ export function normalizeLearnSessionMode(raw: unknown): LearnSessionMode {
 /** Default: deep learning (section-by-section depth-first card order). */
 export function getLearnSessionMode(dudoc: Record<string, unknown> | null | undefined): LearnSessionMode {
     return normalizeLearnSessionMode(dudoc?.learnSessionMode);
+}
+
+export function normalizeLearnSessionCardFilter(raw: unknown): LearnSessionCardFilterMode {
+    const s = String(raw ?? '').trim().toLowerCase().replace(/-/g, '_');
+    if (s === 'with_problems') return 'with_problems';
+    if (s === 'without_problems') return 'without_problems';
+    return 'all';
+}
+
+export function getLearnSessionCardFilter(dudoc: Record<string, unknown> | null | undefined): LearnSessionCardFilterMode {
+    return normalizeLearnSessionCardFilter(dudoc?.learnSessionCardFilter);
 }
 
 export function getLearnBaseDocId(dudoc: Record<string, unknown> | null | undefined): number | null {

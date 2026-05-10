@@ -20,13 +20,17 @@ import {
     getLearnSessionMode,
     getLearnBaseDocId,
     getLearnDailyGoal,
+    getLearnSessionCardFilter,
     mergeDailyNewReviewArms,
     normalizeLearnNewReviewOrder,
+    normalizeLearnSessionCardFilter,
     normalizeLearnSessionMode,
     type LearnSessionMode,
+    type LearnSessionCardFilterMode,
 } from '../lib/learnModePrefs';
 import { getBranchData } from './base';
 import SessionModel, { type LessonCardQueueItem, type SessionDoc, type SessionPatch } from '../model/session';
+import * as document from '../model/document';
 import {
     appendLessonSessionToUrl,
     frozenTodayQueueMatchesLearnSettings,
@@ -70,6 +74,70 @@ function normalizeDomainUserLearnIndex(v: unknown): number | null {
         if (Number.isFinite(n)) return Math.trunc(n);
     }
     return null;
+}
+
+/** Card doc id (hex) → at least one problem. */
+async function buildCardIdProblemsPresenceMap(
+    domainId: string,
+    cardIds: string[],
+): Promise<Map<string, boolean>> {
+    const out = new Map<string, boolean>();
+    const oids: ObjectId[] = [];
+    for (const raw of new Set(cardIds.map((x) => String(x).trim()).filter(Boolean))) {
+        if (!ObjectId.isValid(raw)) {
+            out.set(raw, false);
+            continue;
+        }
+        oids.push(new ObjectId(raw));
+    }
+    if (oids.length === 0) return out;
+    const rows = await document.getMulti(domainId, document.TYPE_CARD, { docId: { $in: oids } })
+        .project({ docId: 1, problems: 1 })
+        .toArray();
+    for (const row of rows as Array<{ docId?: ObjectId; problems?: unknown[] }>) {
+        const hex = row.docId ? String(row.docId) : '';
+        if (!hex) continue;
+        out.set(hex, Array.isArray(row.problems) && row.problems.length > 0);
+    }
+    for (const oid of oids) {
+        const h = oid.toString();
+        if (!out.has(h)) out.set(h, false);
+    }
+    return out;
+}
+
+function filterEntriesByLearnCardProblemPresence<T extends { cardId: string }>(
+    entries: T[],
+    presence: Map<string, boolean>,
+    mode: LearnSessionCardFilterMode,
+): T[] {
+    if (mode === 'all') return entries;
+    return entries.filter((e) => {
+        const id = String(e.cardId);
+        const oidHex = ObjectId.isValid(id) ? new ObjectId(id).toString() : id;
+        const hp = !!(presence.get(id) ?? presence.get(oidHex));
+        return mode === 'with_problems' ? hp : !hp;
+    });
+}
+
+async function filterFlatQueueByLearnCardProblemPresence<T extends { cardId: string }>(
+    domainId: string,
+    entries: T[],
+    mode: LearnSessionCardFilterMode,
+): Promise<T[]> {
+    if (mode === 'all' || entries.length === 0) return entries;
+    const presence = await buildCardIdProblemsPresenceMap(domainId, entries.map((e) => String(e.cardId)));
+    return filterEntriesByLearnCardProblemPresence(entries, presence, mode);
+}
+
+function frozenNodeLessonCardFilterMatches(dudoc: Record<string, unknown>, s: SessionDoc): boolean {
+    const want = getLearnSessionCardFilter(dudoc);
+    const raw = (s as SessionDoc & { lessonQueueLearnSessionCardFilter?: unknown }).lessonQueueLearnSessionCardFilter;
+    const snap =
+        raw === undefined || raw === null || String(raw).trim() === ''
+            ? 'all'
+            : normalizeLearnSessionCardFilter(raw);
+    return snap === want;
 }
 
 /** True when domain-aligned patch would change learning-start slot vs what the session row still has (stale queue risk). */
@@ -1515,11 +1583,18 @@ async function buildTodayLessonQueueFromDomain(
         ...c,
         todayQueueRole: 'review' as const,
     }));
-    const cardsForToday: TodayPoolCard[] = mergeDailyNewReviewArms(
+    const cardsForTodayMerged: TodayPoolCard[] = mergeDailyNewReviewArms(
         newTagged,
         reviewTagged,
         newReviewOrder,
         newReviewShuffleSeed,
+    );
+
+    const cardFilterModeToday = getLearnSessionCardFilter(dudoc);
+    const cardsForToday = await filterFlatQueueByLearnCardProblemPresence(
+        domainId,
+        cardsForTodayMerged,
+        cardFilterModeToday,
     );
 
     const queuePersist: LessonCardQueueItem[] = cardsForToday.map((c) => ({
@@ -2173,6 +2248,10 @@ class LearnHandler extends Handler {
             && String(body.learnNewReviewOrder).trim() !== '') {
             patch.learnNewReviewOrder = normalizeLearnNewReviewOrder(body.learnNewReviewOrder);
         }
+        if (body.learnSessionCardFilter !== undefined && body.learnSessionCardFilter !== null
+            && String(body.learnSessionCardFilter).trim() !== '') {
+            patch.learnSessionCardFilter = normalizeLearnSessionCardFilter(body.learnSessionCardFilter);
+        }
         if (Object.keys(patch).length === 0) {
             this.response.body = { success: false, error: 'No valid fields' };
             return;
@@ -2187,6 +2266,7 @@ class LearnHandler extends Handler {
             success: true,
             learnNewReviewRatio: getLearnNewReviewRatio(dudocFresh),
             learnNewReviewOrder: getLearnNewReviewOrder(dudocFresh),
+            learnSessionCardFilter: getLearnSessionCardFilter(dudocFresh),
         };
     }
 
@@ -2197,6 +2277,7 @@ class LearnHandler extends Handler {
         const learnSessionModeUi = getLearnSessionMode(dudocForLearnUi);
         const learnNewReviewRatioUi = getLearnNewReviewRatio(dudocForLearnUi);
         const learnNewReviewOrderUi = getLearnNewReviewOrder(dudocForLearnUi);
+        const learnSessionCardFilterUi = getLearnSessionCardFilter(dudocForLearnUi);
         const learnSubModeStrings = {
             label: this.translate('Learn ratio section label'),
             hint: this.translate('Learn ratio section hint'),
@@ -2254,6 +2335,7 @@ class LearnHandler extends Handler {
             learnSessionMode: learnSessionModeUi,
             learnNewReviewRatio: learnNewReviewRatioUi,
             learnNewReviewOrder: learnNewReviewOrderUi,
+            learnSessionCardFilter: learnSessionCardFilterUi,
             learnSubModeStrings,
             learnPathCardPractiseCounts: learnPathCardPractiseCountsPayload,
         };
@@ -2665,6 +2747,7 @@ class LearnHandler extends Handler {
             learnSessionMode: learnSessionModeUi,
             learnNewReviewRatio: learnNewReviewRatioUi,
             learnNewReviewOrder: learnNewReviewOrderUi,
+            learnSessionCardFilter: learnSessionCardFilterUi,
             learnSubModeStrings,
             learnPathCardPractiseCounts: learnPathCardPractiseCountsPayload,
             ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
@@ -3478,7 +3561,8 @@ class LessonHandler extends Handler {
 
             const frozenNode = sNode?.lessonMode === 'node'
                 && (sNode.lessonCardQueue?.length ?? 0) > 0
-                && sNode.lessonQueueAnchorNodeId === lessonNodeId;
+                && sNode.lessonQueueAnchorNodeId === lessonNodeId
+                && frozenNodeLessonCardFilterMatches(dudoc as Record<string, unknown>, sNode as SessionDoc);
             if (frozenNode) {
                 const sidB = (typeof sNode?.lessonQueueBaseDocId === 'number' && sNode.lessonQueueBaseDocId > 0)
                     ? sNode.lessonQueueBaseDocId
@@ -3514,6 +3598,7 @@ class LessonHandler extends Handler {
                     await SessionModel.touchById(finalDomainId, this.user._id, sNode._id, {
                         lessonCardQueue: newQ,
                         cardIndex: 0,
+                        lessonQueueLearnSessionCardFilter: getLearnSessionCardFilter(dudoc as Record<string, unknown>),
                     }, { silent: true });
                     sNode = await resolveLessonSessionDoc(finalDomainId, this.user._id, qLessonSession || undefined);
                 }
@@ -3543,6 +3628,7 @@ class LessonHandler extends Handler {
                         await SessionModel.touchById(finalDomainId, this.user._id, sNode._id, {
                             lessonCardQueue: newQFrozen,
                             cardIndex: 0,
+                            lessonQueueLearnSessionCardFilter: getLearnSessionCardFilter(dudoc as Record<string, unknown>),
                         }, { silent: true });
                         sNode = await resolveLessonSessionDoc(finalDomainId, this.user._id, qLessonSession || undefined);
                     }
@@ -3608,6 +3694,7 @@ class LessonHandler extends Handler {
                         lessonQueueDay: null,
                         branch: persistBranch,
                         lessonQueueLearnSectionOrderIndex: resolvedSectionSlot,
+                        lessonQueueLearnSessionCardFilter: getLearnSessionCardFilter(dudoc as Record<string, unknown>),
                         ...(nodeSliceResetIndex ? { cardIndex: 0 } : {}),
                     }, { silent: true })
                     : touchLessonSession(finalDomainId, this.user._id, {
@@ -3619,9 +3706,64 @@ class LessonHandler extends Handler {
                         lessonQueueDay: null,
                         branch: persistBranch,
                         lessonQueueLearnSectionOrderIndex: resolvedSectionSlot,
+                        lessonQueueLearnSessionCardFilter: getLearnSessionCardFilter(dudoc as Record<string, unknown>),
                         ...(nodeSliceResetIndex ? { cardIndex: 0 } : {}),
                     }, { silent: true });
                 await touchNodeQueue;
+            }
+
+            const nodeCardFilter = getLearnSessionCardFilter(dudoc as Record<string, unknown>);
+            if (nodeCardFilter !== 'all') {
+                const beforeCf = flatCards.map((fc) => ({ ...fc }));
+                const afterCf = await filterFlatQueueByLearnCardProblemPresence(finalDomainId, flatCards, nodeCardFilter);
+                const queueFiltered =
+                    afterCf.length !== beforeCf.length
+                    || afterCf.some((fc, i) => fc.cardId !== beforeCf[i]?.cardId);
+                if (queueFiltered) {
+                    flatCards.length = 0;
+                    flatCards.push(...afterCf);
+                    const rootEntry = nodeTree[0];
+                    if (rootEntry?.type === 'node') {
+                        nodeTree[0] = {
+                            ...rootEntry,
+                            children: flatCards.map((c) => ({ type: 'card' as const, id: c.cardId, title: c.cardTitle })),
+                        };
+                    }
+                    if (flatCards.length === 0) {
+                        throw new NotFoundError(this.translate('No cards match session card filter'));
+                    }
+                    const persistBaseCf = queueBaseHint || learnBidLesson;
+                    const persistBranchCf = learnBrLesson;
+                    const syncCf: LessonCardQueueItem[] = flatCards.map((fc) => ({
+                        domainId: finalDomainId,
+                        nodeId: fc.nodeId,
+                        cardId: fc.cardId,
+                        nodeTitle: fc.nodeTitle,
+                        cardTitle: fc.cardTitle,
+                        baseDocId: fc.baseDocId,
+                        learnSectionOrderIndex: fc.learnSectionOrderIndex,
+                    }));
+                    const cfTouch = sNode?._id
+                        ? SessionModel.touchById(finalDomainId, this.user._id, sNode._id, {
+                            lessonCardQueue: syncCf,
+                            cardIndex: 0,
+                            lessonQueueLearnSessionCardFilter: nodeCardFilter,
+                            lessonQueueAnchorNodeId: lessonNodeId,
+                            lessonQueueBaseDocId: persistBaseCf || null,
+                            lessonQueueLearnBranch: persistBranchCf,
+                        }, { silent: true })
+                        : touchLessonSession(finalDomainId, this.user._id, {
+                            lessonCardQueue: syncCf,
+                            cardIndex: 0,
+                            lessonQueueLearnSessionCardFilter: nodeCardFilter,
+                            lessonQueueAnchorNodeId: lessonNodeId,
+                            lessonQueueBaseDocId: persistBaseCf || null,
+                            lessonQueueLearnBranch: persistBranchCf,
+                        }, { silent: true });
+                    await cfTouch;
+                    sNode = await resolveLessonSessionDoc(finalDomainId, this.user._id, qLessonSession || undefined);
+                    nodeSliceResetIndex = true;
+                }
             }
 
             let currentCardIndex = nodeSliceResetIndex ? 0 : Math.max(0, L.lessonCardIndex);
@@ -3927,6 +4069,7 @@ class LessonHandler extends Handler {
                     lessonQueueLearnSectionOrder: sectionOrderSnapshot,
                     lessonQueueLearnStartCardId: builtToday.effectiveLearnStartCardId ?? null,
                     lessonQueueLearnSessionMode: getLearnSessionMode(dudoc),
+                    lessonQueueLearnSessionCardFilter: getLearnSessionCardFilter(dudoc),
                     lessonQueueLearnNewReviewRatio: getLearnNewReviewRatio(dudoc),
                     lessonQueueLearnNewReviewOrder: getLearnNewReviewOrder(dudoc),
                     lessonQueueMixedLayoutVersion: LESSON_QUEUE_MIXED_LAYOUT_VERSION,
@@ -4203,6 +4346,7 @@ class LessonHandler extends Handler {
                             lessonQueueLearnBranch: builtStart.learnBranch,
                             lessonQueueLearnSectionOrder: builtStart.sectionOrderSnapshot,
                             lessonQueueLearnSessionMode: getLearnSessionMode(dudocSt),
+                            lessonQueueLearnSessionCardFilter: getLearnSessionCardFilter(dudocSt),
                             lessonQueueLearnNewReviewRatio: getLearnNewReviewRatio(dudocSt),
                             lessonQueueLearnNewReviewOrder: getLearnNewReviewOrder(dudocSt),
                             lessonQueueMixedLayoutVersion: LESSON_QUEUE_MIXED_LAYOUT_VERSION,

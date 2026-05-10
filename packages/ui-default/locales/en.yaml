@@ -233,6 +233,10 @@ __langname: English
 'Last Disconnected Time': Last Disconnected Time
 'Learn session mode': Session order (next daily run)
 'Learn session preferences': Session preferences
+'Learn session card filter': Card filter (next daily run)
+'Learn session card filter all': All cards (including cards without problems)
+'Learn session card filter with problems': Only cards that have problems
+'Learn session card filter without problems': Only cards without problems
 'Learn ratio section label': Sub mode · new/review ratio (next daily run)
 'Learn ratio section hint': Main mode (deep/breadth/random) only affects ordering of **new-segment** cards in the daily queue. Daily goal counts **new** cards in mixed and new-only modes; in **review-only** mode the same number is how many **review** cards to draw. Each mixed daily session length = new slice (goal cap, cycle new pool if short) plus (new count × N) **old-segment** review pulls (cycle old pool if short; if there is no old segment, append none). New-only and review-only modes skip the other arm.
 'Learn today ratio summary': '{0} review card(s) per new card'
