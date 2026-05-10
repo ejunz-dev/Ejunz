@@ -37,6 +37,27 @@ function labelForFrozenLessonQueueMode(modeRaw: string | undefined): string {
 
 type QueuedProblem = Problem & { cardId: string };
 
+/** 「上一题/下一题」（题目行）：只在与当前题相同 cardId 的队列片段内移动，不跨卡片。 */
+function lessonProblemPrevIndexSameCard(queue: QueuedProblem[], idx: number): number {
+  const cur = queue[idx];
+  if (!cur) return -1;
+  const cid = String(cur.cardId ?? '');
+  for (let i = idx - 1; i >= 0; i--) {
+    if (String(queue[i].cardId ?? '') === cid) return i;
+  }
+  return -1;
+}
+
+function lessonProblemNextIndexSameCard(queue: QueuedProblem[], idx: number): number {
+  const cur = queue[idx];
+  if (!cur) return -1;
+  const cid = String(cur.cardId ?? '');
+  for (let i = idx + 1; i < queue.length; i++) {
+    if (String(queue[i].cardId ?? '') === cid) return i;
+  }
+  return -1;
+}
+
 /** 点击「继续」去下一题前保存，供「上一题」回到已提交、未点继续时的界面状态。 */
 type LessonPreviousStackEntry = {
   problem: QueuedProblem;
@@ -1093,6 +1114,8 @@ function LessonPage() {
   const lessonPreviousStackRef = useRef<LessonPreviousStackEntry[]>([]);
   lessonPreviousStackRef.current = lessonPreviousStack;
   const lessonPendingRestoreRef = useRef<LessonPreviousStackEntry | null>(null);
+  /** 本会话内已提交题目的 UI 快照（供上下题漫游恢复，不写「继续」）。 */
+  const lessonAnsweredSnapshotRef = useRef<Record<string, LessonPreviousStackEntry>>({});
   const [currentProblemIndex, setCurrentProblemIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [selectedMulti, setSelectedMulti] = useState<number[]>([]);
@@ -1411,6 +1434,7 @@ function LessonPage() {
 
     setProblemQueue(probs);
     setLessonPreviousStack([]);
+    lessonAnsweredSnapshotRef.current = {};
     setCurrentProblemIndex(startGlobIdx);
     setSelectedAnswer(null);
     setSelectedMulti([]);
@@ -2403,7 +2427,11 @@ function LessonPage() {
   useLayoutEffect(() => {
     if (!currentProblem) return;
     const restore = lessonPendingRestoreRef.current;
-    if (restore && restore.problem.pid === currentProblem.pid) {
+    if (
+      restore
+      && restore.problem.pid === currentProblem.pid
+      && String(restore.problem.cardId) === String(currentProblem.cardId)
+    ) {
       lessonPendingRestoreRef.current = null;
       const r = restore;
       setSelectedAnswer(r.selectedAnswer);
@@ -2419,7 +2447,7 @@ function LessonPage() {
       setOptionOrder([...r.optionOrder]);
       setIsAnswered(r.isAnswered);
       setShowAnalysis(r.showAnalysis);
-      setPendingLessonAdvance(r.pendingLessonAdvance);
+      setPendingLessonAdvance(r.isAnswered && r.showAnalysis ? null : r.pendingLessonAdvance);
       setProblemAttempts((prev) => ({ ...prev, [r.problem.pid]: r.problemAttemptSnapshot }));
       setProblemStartTime(Date.now());
       return;
@@ -2496,6 +2524,47 @@ function LessonPage() {
       setOptionOrder([]);
     }
   }, [currentProblemIndex, currentProblem?.pid, shuffleTrigger]);
+
+  useLayoutEffect(() => {
+    if (!currentProblem || !isAnswered || !showAnalysis) return;
+    const pid = currentProblem.pid;
+    const adv = pendingLessonAdvance;
+    lessonAnsweredSnapshotRef.current[pid] = {
+      problem: currentProblem,
+      pendingLessonAdvance: adv ?? 'next',
+      selectedAnswer,
+      selectedMulti: [...selectedMulti],
+      selectedTf,
+      fillBlankDraft: [...fillBlankDraft],
+      matchingSelections: matchingSelections.map((row) => [...row]),
+      matchingShuffleOrders: matchingShuffleOrders.map((row) => [...row]),
+      flipStage,
+      flipHintOpen,
+      superFlipRevealed: superFlipRevealed.map((col) => [...col]),
+      superFlipMarkedOk,
+      optionOrder: [...optionOrder],
+      problemAttemptSnapshot: problemAttempts[pid] ?? 0,
+      isAnswered: true,
+      showAnalysis: true,
+    };
+  }, [
+    currentProblem,
+    isAnswered,
+    showAnalysis,
+    pendingLessonAdvance,
+    selectedAnswer,
+    selectedMulti,
+    selectedTf,
+    fillBlankDraft,
+    matchingSelections,
+    matchingShuffleOrders,
+    flipStage,
+    flipHintOpen,
+    superFlipRevealed,
+    superFlipMarkedOk,
+    optionOrder,
+    problemAttempts,
+  ]);
 
   const currentPeekCount = currentProblem ? (peekCount[currentProblem.pid] || 0) : 0;
   const currentCorrectNeeded = currentProblem ? (correctNeeded[currentProblem.pid] || 0) : 0;
@@ -2948,7 +3017,10 @@ function LessonPage() {
     setPendingLessonAdvance(null);
     const removed = problemQueue[currentProblemIndex];
     const donePid = removed?.pid;
-    if (donePid) setPracticeClearedPids((prev) => ({ ...prev, [donePid]: true }));
+    if (donePid) {
+      delete lessonAnsweredSnapshotRef.current[donePid];
+      setPracticeClearedPids((prev) => ({ ...prev, [donePid]: true }));
+    }
     setSelectedAnswer(null);
     setSelectedMulti([]);
     setSelectedTf(null);
@@ -3049,15 +3121,18 @@ function LessonPage() {
     setPendingLessonAdvance('requeue');
   };
 
+  const lessonProblemPrevIdxSameCard = useMemo(
+    () => lessonProblemPrevIndexSameCard(problemQueue, currentProblemIndex),
+    [problemQueue, currentProblemIndex],
+  );
+  const lessonProblemNextIdxSameCard = useMemo(
+    () => lessonProblemNextIndexSameCard(problemQueue, currentProblemIndex),
+    [problemQueue, currentProblemIndex],
+  );
+
   const canLessonGoPrevious =
     lessonPreviousStack.length > 0
-    || currentProblemIndex > 0
-    || (
-      (isSingleNodeMode || isTodayMode)
-      && !!lessonSessionId
-      && !reviewCardId
-      && currentCardIndex > 0
-    );
+    || lessonProblemPrevIdxSameCard >= 0;
 
   const handleLessonPreviousProblem = useCallback(async () => {
     const stack = lessonPreviousStackRef.current;
@@ -3070,48 +3145,61 @@ function LessonPage() {
       setShuffleTrigger((t) => t + 1);
       return;
     }
-    if (currentProblemIndex > 0) {
-      resetLessonBrowseInteractiveSurface();
+    const prevIdx = lessonProblemPrevIndexSameCard(problemQueue, currentProblemIndex);
+    if (prevIdx >= 0) {
+      const target = problemQueue[prevIdx];
+      const snaps = lessonAnsweredSnapshotRef.current;
+      const snap =
+        target
+        && snaps[target.pid]
+        && String(snaps[target.pid]!.problem.cardId) === String(target.cardId)
+          ? snaps[target.pid]!
+          : undefined;
+      if (snap) lessonPendingRestoreRef.current = snap;
+      else {
+        lessonPendingRestoreRef.current = null;
+        resetLessonBrowseInteractiveSurface();
+      }
       sessionStartTimeRef.current = Date.now();
       setProblemStartTime(Date.now());
       setElapsedMs(0);
-      setCurrentProblemIndex((i) => i - 1);
+      setCurrentProblemIndex(prevIdx);
       return;
-    }
-    if (
-      (isSingleNodeMode || isTodayMode)
-      && lessonSessionId
-      && !reviewCardId
-      && currentCardIndex > 0
-    ) {
-      await handleLessonCardNav('prev');
     }
   }, [
     currentProblemIndex,
-    isSingleNodeMode,
-    isTodayMode,
-    lessonSessionId,
-    reviewCardId,
-    currentCardIndex,
-    handleLessonCardNav,
     resetLessonBrowseInteractiveSurface,
+    problemQueue,
   ]);
 
-  /** 题目行「下一题」：仅前移下标，不把本题挪到队尾（否则 index 常在 0，上一题无法回到刚看过的题）。 */
+  /** 题目行「下一题」：同卡下一题指针；不改变队列顺序。 */
   const handleLessonNextProblemBrowse = useCallback(() => {
     if (lessonCardNavLoading || isSubmitting || browseSubmitting) return;
-    if (currentProblemIndex >= problemQueue.length - 1) return;
-    resetLessonBrowseInteractiveSurface();
+    const nx = lessonProblemNextIndexSameCard(problemQueue, currentProblemIndex);
+    if (nx < 0) return;
+    const target = problemQueue[nx];
+    const snaps = lessonAnsweredSnapshotRef.current;
+    const snap =
+      target
+      && snaps[target.pid]
+      && String(snaps[target.pid]!.problem.cardId) === String(target.cardId)
+        ? snaps[target.pid]!
+        : undefined;
+    if (snap) lessonPendingRestoreRef.current = snap;
+    else {
+      lessonPendingRestoreRef.current = null;
+      resetLessonBrowseInteractiveSurface();
+    }
     sessionStartTimeRef.current = Date.now();
     setProblemStartTime(Date.now());
     setElapsedMs(0);
-    setCurrentProblemIndex((i) => i + 1);
+    setCurrentProblemIndex(nx);
   }, [
     lessonCardNavLoading,
     isSubmitting,
     browseSubmitting,
     currentProblemIndex,
-    problemQueue.length,
+    problemQueue,
     resetLessonBrowseInteractiveSurface,
   ]);
 
@@ -3119,6 +3207,7 @@ function LessonPage() {
     if (!currentProblem) return;
     const pid = currentProblem.pid;
     lessonPendingRestoreRef.current = null;
+    delete lessonAnsweredSnapshotRef.current[pid];
     setPracticeClearedPids((prev) => {
       const n = { ...prev };
       delete n[pid];
@@ -4433,8 +4522,7 @@ function LessonPage() {
             lessonCardNavLoading
             || isSubmitting
             || browseSubmitting
-            || problemQueue.length <= 1
-            || currentProblemIndex >= problemQueue.length - 1
+            || lessonProblemNextIdxSameCard < 0
           }
           style={{
             ...lessonNavSecondaryBtn,
@@ -4442,16 +4530,14 @@ function LessonPage() {
               lessonCardNavLoading
               || isSubmitting
               || browseSubmitting
-              || problemQueue.length <= 1
-              || currentProblemIndex >= problemQueue.length - 1
+              || lessonProblemNextIdxSameCard < 0
                 ? 'not-allowed'
                 : 'pointer',
             opacity:
               lessonCardNavLoading
               || isSubmitting
               || browseSubmitting
-              || problemQueue.length <= 1
-              || currentProblemIndex >= problemQueue.length - 1
+              || lessonProblemNextIdxSameCard < 0
                 ? 0.5
                 : 1,
           }}
@@ -4701,10 +4787,12 @@ function LessonPage() {
                         {fb.faceA || i18n('No stem')}
                       </div>
                       {hintBlock}
-                      {!isAnswered && renderLessonPracticeActionRow(
-                        <button type="button" onClick={handleFlipShowBack} style={{ padding: '12px 24px', border: 'none', borderRadius: '8px', backgroundColor: themeStyles.accent, color: themeStyles.whiteOnAccent, cursor: 'pointer', fontSize: '15px', fontWeight: 600 }}>
-                          {i18n('Flip show back')}
-                        </button>,
+                      {(!isAnswered || !pendingLessonAdvance) && renderLessonPracticeActionRow(
+                        !isAnswered ? (
+                          <button type="button" onClick={handleFlipShowBack} style={{ padding: '12px 24px', border: 'none', borderRadius: '8px', backgroundColor: themeStyles.accent, color: themeStyles.whiteOnAccent, cursor: 'pointer', fontSize: '15px', fontWeight: 600 }}>
+                            {i18n('Flip show back')}
+                          </button>
+                        ) : null,
                         '2px',
                       )}
                     </>
@@ -4715,12 +4803,14 @@ function LessonPage() {
                       <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '24px', color: themeStyles.stemColor, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
                         {fb.faceB}
                       </div>
-                      {!isAnswered && renderLessonPracticeActionRow(
+                      {(!isAnswered || !pendingLessonAdvance) && renderLessonPracticeActionRow(
                         null,
                         '2px',
-                        <button type="button" onClick={handleFlipComplete} style={{ padding: '12px 24px', border: 'none', borderRadius: '8px', backgroundColor: themeStyles.success, color: themeStyles.whiteOnAccent, cursor: 'pointer', fontSize: '15px', fontWeight: 600 }}>
-                          {i18n('Flip mark done')}
-                        </button>,
+                        !isAnswered ? (
+                          <button type="button" onClick={handleFlipComplete} style={{ padding: '12px 24px', border: 'none', borderRadius: '8px', backgroundColor: themeStyles.success, color: themeStyles.whiteOnAccent, cursor: 'pointer', fontSize: '15px', fontWeight: 600 }}>
+                            {i18n('Flip mark done')}
+                          </button>
+                        ) : null,
                       )}
                     </>
                   )}
@@ -4836,7 +4926,8 @@ function LessonPage() {
                       </tbody>
                     </table>
                   </div>
-                  {!isAnswered && renderLessonPracticeActionRow(
+                  {(!isAnswered || !pendingLessonAdvance) && renderLessonPracticeActionRow(
+                    !isAnswered ? (
                     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px' }}>
                       <button
                         type="button"
@@ -4874,8 +4965,10 @@ function LessonPage() {
                       >
                         {i18n('Problem super flip cover all')}
                       </button>
-                    </div>,
+                    </div>
+                    ) : null,
                     '0px',
+                    !isAnswered ? (
                     <>
                       <button
                         type="button"
@@ -4911,7 +5004,8 @@ function LessonPage() {
                       >
                         {i18n('Flip mark done')}
                       </button>
-                    </>,
+                    </>
+                    ) : null,
                   )}
                 </>
               );
@@ -5026,7 +5120,8 @@ function LessonPage() {
                 })()}
               </div>
             </div>
-            {!isAnswered && renderLessonPracticeActionRow(
+            {(!isAnswered || !pendingLessonAdvance) && renderLessonPracticeActionRow(
+              !isAnswered ? (
               <button
                 type="button"
                 onClick={handleFillBlankSubmit}
@@ -5043,7 +5138,8 @@ function LessonPage() {
                 }}
               >
                 {i18n('Submit answer')}
-              </button>,
+              </button>
+              ) : null,
               '2px',
             )}
           </>
@@ -5127,7 +5223,7 @@ function LessonPage() {
                 </>
               );
             })()}
-            {!isAnswered &&
+            {(!isAnswered || !pendingLessonAdvance) &&
               (() => {
                 const pm = currentProblem as ProblemMatching;
                 const ncolm = matchingColumnsNormalized(pm);
@@ -5145,6 +5241,7 @@ function LessonPage() {
                     return true;
                   }));
                 return renderLessonPracticeActionRow(
+                  !isAnswered ? (
                   <button
                     type="button"
                     onClick={handleMatchingSubmit}
@@ -5167,7 +5264,8 @@ function LessonPage() {
                     }}
                   >
                     {i18n('Submit answer')}
-                  </button>,
+                  </button>
+                  ) : null,
                   '2px',
                 );
               })()}
@@ -5206,7 +5304,7 @@ function LessonPage() {
                 );
               })}
             </div>
-            {!isAnswered && renderLessonPracticeActionRow(null, '12px')}
+            {(!isAnswered || !pendingLessonAdvance) && renderLessonPracticeActionRow(null, '12px')}
           </>
         ) : (
           <>
@@ -5303,15 +5401,17 @@ function LessonPage() {
                 );
               })}
             </div>
-            {currentKind === 'single' && !isAnswered && renderLessonPracticeActionRow(null, '12px')}
-            {currentKind === 'multi' && !isAnswered && renderLessonPracticeActionRow(
+            {currentKind === 'single' && (!isAnswered || !pendingLessonAdvance) && renderLessonPracticeActionRow(null, '12px')}
+            {currentKind === 'multi' && (!isAnswered || !pendingLessonAdvance) && renderLessonPracticeActionRow(
+              !isAnswered ? (
               <button
                 type="button"
                 onClick={handleMultiConfirm}
                 style={{ padding: '10px 22px', border: 'none', borderRadius: '8px', backgroundColor: themeStyles.accent, color: themeStyles.whiteOnAccent, cursor: 'pointer', fontSize: '15px', fontWeight: 600 }}
               >
                 {i18n('Submit answer')}
-              </button>,
+              </button>
+              ) : null,
               '8px',
             )}
           </>
