@@ -1491,7 +1491,8 @@ function LessonPage() {
       return;
     }
     const orderRaw = (cdoc as unknown as { order?: number }).order;
-    const order = typeof orderRaw === 'number' && orderRaw > 0 ? orderRaw : 1;
+    const order =
+      typeof orderRaw === 'number' && Number.isFinite(orderRaw) && orderRaw > 0 ? orderRaw : 1;
     const prevProblems = cdoc.problems || [];
     const nextProblems = prevProblems.map((pr) => {
       if (pr.pid !== pid) return pr;
