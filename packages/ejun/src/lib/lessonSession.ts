@@ -149,6 +149,7 @@ export function frozenTodayQueueMatchesLearnSettings(dudoc: any, s: SessionDoc):
     const sCardRaw = (s as SessionDoc & { lessonQueueLearnStartCardId?: string | null }).lessonQueueLearnStartCardId;
     const sCard =
         typeof sCardRaw === 'string' && sCardRaw.trim() ? sCardRaw.trim() : null;
+    /** Must match advancing `domain.user.currentLearnStartCardId` after passes (`postPass` today syncs onto the session row). */
     if (dCard !== sCard) return false;
     const normalizedDu = getLearnSessionMode(du);
     const rawS = (s as SessionDoc & { lessonQueueLearnSessionMode?: string | null }).lessonQueueLearnSessionMode;
