@@ -3533,7 +3533,7 @@ export class BaseCardHandler extends Handler {
     @param('nodeId', Types.String, true)
     @param('title', Types.String, true)
     @param('content', Types.String, true)
-    @param('order', Types.PositiveInt, true)
+    @param('order', Types.PositiveFinite, true)
     @param('operation', Types.String, true)
     @param('cid', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
@@ -3567,7 +3567,7 @@ export class BaseCardHandler extends Handler {
     @param('nodeId', Types.String, true)
     @param('title', Types.String, true)
     @param('content', Types.String, true)
-    @param('order', Types.PositiveInt, true)
+    @param('order', Types.PositiveFinite, true)
     @param('operation', Types.String, true)
     @param('cid', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
@@ -4323,7 +4323,7 @@ class BaseCardDetailHandler extends Handler {
     @param('nodeId', Types.String, true)
     @param('title', Types.String, true)
     @param('content', Types.String, true)
-    @param('order', Types.PositiveInt, true)
+    @param('order', Types.PositiveFinite, true)
     @param('operation', Types.String, true)
     async postUpdate(
         domainId: string,
