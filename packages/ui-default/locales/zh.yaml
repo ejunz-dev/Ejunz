@@ -243,6 +243,24 @@ __langname: 简体中文
 'Insert into AI terminal': 插入到 AI 终端
 'Insert problem into AI terminal': 将题目插入到 AI 终端
 'Practice problem pid not on open card': 当前卡片上没有该题目 id，无法更新
+'Lesson problem tag label': 题目标签
+'Problem tag none': （无标签 / 默认分组）
+'Lesson problem tag save failed': 保存题目标签失败
+'Lesson problem tag save missing node': 无法保存标签：卡片缺少所属节点信息
+'Lesson problem tag save no card': 无法保存标签：当前页找不到对应卡片
+'Lesson problem tag new placeholder': 输入新标签名称
+'Lesson problem tag apply new': 添加
+'Lesson problem tag new hint': 将标签登记到当前知识库（最多 64 字符）；登记后从上方「从已登记标签中选择」套用到本题。
+'Lesson problem tag register ok': 已登记，请在上方下拉框中选择以套用到本题。
+'Lesson problem tag register failed': 登记标签失败
+'Lesson problem tag panel title': 题目标签
+'Lesson problem tag panel open': 管理标签
+'Lesson problem tag panel empty': 当前无标签
+'Lesson problem tag panel current': 当前标签
+'Lesson problem tag panel readonly hint': 你没有编辑该题标签的权限。
+'Lesson problem tag panel choose registered': 从已登记标签中选择
+'Lesson problem tag panel new': 自定义新标签
+'Lesson problem tag panel clear': 清除标签
 'Insert {0} selected into AI terminal': 将 {0} 项选中内容插入 AI 终端
 'Join {0}': '加入 {0}'
 'Join Domain': 加入域
@@ -297,6 +315,8 @@ __langname: 简体中文
 'Learn today modes config': '主模式：{0} · 副模式：{1}'
 'Learn today card kind new': 新卡片
 'Learn today card kind review': 复习卡片
+'Learn today queue empty': 今日没有可排的卡片（请检查会话里「卡片过滤」「题目标签」与学习起点设置，或是否已全部学完）。
+'Learn lesson start missing redirect': 开始学习失败，服务器未返回有效跳转地址。
 'Lesson session new old counts': '{0} 张新 · {1} 张旧'
 'Lesson path card practise count': 已过 {0} 次
 'Lesson path card practise count title': 本卡片在当前节槽累计完整过关次数（每次在本课完整过关计一次，与学习路径统计一致）

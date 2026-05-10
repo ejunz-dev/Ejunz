@@ -11,6 +11,7 @@ import {
   fillBlankSlotCount,
   fillBlankResponseMatches,
   normalizeFillBlankText,
+  normalizeProblemTagInput,
   matchingAllColumnsCorrect,
   MATCHING_COL_MIN,
   MATCHING_PAIR_MIN,
@@ -182,6 +183,10 @@ type LessonUiState = {
   lessonSessionLearnStartSlot: number;
   /** Server-translated "n 新 · m 旧" (avoids missing `window.LOCALES` before UI rebuild). */
   lessonSessionQueueNewOldLabel: string;
+  /** Base editor taxonomy tags (optional); server may omit to use []. */
+  lessonProblemTagOptions: string[];
+  /** User may PATCH card problems when owner or PERM_EDIT_DISCUSSION on base. */
+  lessonCanEditProblemTags: boolean;
   /** Keys `slot:cardId` → times this card was completed on the learning path (domain.user). */
   learnPathCardPractiseCounts: Record<string, number>;
   /** Server `translate('Lesson path card practise count')` — avoids missing `window.LOCALES` entry. */
@@ -332,7 +337,211 @@ function lessonQueueNewOldLine(
   return `${counts.newN} 张新 · ${counts.reviewN} 张旧`;
 }
 
-function initLessonUiState(): LessonUiState {
+const LESSON_PROBLEM_TAG_NONE_VALUE = '__lesson_problem_tag_none__';
+
+/** Deep-enough duplicate of problem list onto every in-memory slot that mirrors this card (`card`, `cards[]`, `flatQueueCards`). */
+function mergeLessonUiCardProblems(prev: LessonUiState, cardId: string, nextProblems: Problem[]): LessonUiState {
+  const cid = String(cardId).trim();
+  const list = nextProblems.map((p) => ({ ...p }));
+  const patchCard = (c: Card): Card =>
+    (String(c.docId ?? '').trim() !== cid ? c : { ...c, problems: list.map((x) => ({ ...x })) });
+  return {
+    ...prev,
+    card: patchCard(prev.card),
+    cards: prev.cards.map(patchCard),
+    flatQueueCards: prev.flatQueueCards.map(patchCard),
+  };
+}
+
+/** Floating panel body: CRUD current `Problem.tag` (single string; clear = delete). */
+function LessonProblemTagPanelBody(props: {
+  problem: QueuedProblem;
+  registry: string[];
+  canEdit: boolean;
+  saving: boolean;
+  registerSaving: boolean;
+  bgPrimary: string;
+  bgSecondary: string;
+  border: string;
+  textPrimary: string;
+  textSecondary: string;
+  textTertiary: string;
+  accent: string;
+  accentMutedBg: string;
+  onPersist: (rawSelection: string) => void;
+  onRegisterOnly: (tag: string) => Promise<void>;
+}) {
+  const {
+    problem,
+    registry,
+    canEdit,
+    saving,
+    registerSaving,
+    bgPrimary,
+    bgSecondary,
+    border,
+    textPrimary,
+    textSecondary,
+    textTertiary,
+    accent,
+    accentMutedBg,
+    onPersist,
+    onRegisterOnly,
+  } = props;
+  const tagNorm = normalizeProblemTagInput((problem as unknown as { tag?: unknown }).tag);
+  const merged = [...new Set([...registry, ...(tagNorm ? [tagNorm] : [])])].sort((a, b) => a.localeCompare(b));
+  const [customDraft, setCustomDraft] = useState('');
+  useEffect(() => {
+    setCustomDraft('');
+  }, [problem.pid, problem.cardId, tagNorm]);
+
+  const registerCustom = async () => {
+    const t = normalizeProblemTagInput(customDraft);
+    if (!t || merged.includes(t)) return;
+    try {
+      await onRegisterOnly(t);
+      setCustomDraft('');
+    } catch {
+      /* parent shows Notification */
+    }
+  };
+
+  const draftNorm = normalizeProblemTagInput(customDraft);
+
+  const fld: React.CSSProperties = {
+    width: '100%',
+    padding: '10px 12px',
+    borderRadius: 8,
+    border: `1px solid ${border}`,
+    backgroundColor: bgPrimary,
+    color: textSecondary,
+    fontSize: 14,
+    boxSizing: 'border-box',
+  };
+
+  const btnPri: React.CSSProperties = {
+    padding: '10px 18px',
+    borderRadius: 8,
+    border: `1px solid ${accent}`,
+    backgroundColor: accent,
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: saving || registerSaving ? 'not-allowed' : 'pointer',
+    opacity: saving || registerSaving ? 0.65 : 1,
+  };
+
+  const btnSec: React.CSSProperties = {
+    padding: '10px 18px',
+    borderRadius: 8,
+    border: `1px solid ${border}`,
+    backgroundColor: bgSecondary,
+    color: textPrimary,
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: saving || registerSaving ? 'not-allowed' : 'pointer',
+    opacity: saving || registerSaving ? 0.65 : 1,
+  };
+
+  const btnDangerOutline: React.CSSProperties = {
+    ...btnSec,
+    borderColor: 'rgba(244, 67, 54, 0.45)',
+    color: '#f44336',
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: textTertiary, marginBottom: 6 }}>
+          {i18n('Lesson problem tag panel current')}
+        </div>
+        <div style={{
+          fontSize: 16,
+          fontWeight: 700,
+          color: textPrimary,
+          padding: '12px 14px',
+          borderRadius: 8,
+          border: `1px solid ${border}`,
+          backgroundColor: accentMutedBg,
+          wordBreak: 'break-word',
+        }}
+        >
+          {tagNorm || i18n('Lesson problem tag panel empty')}
+        </div>
+      </div>
+
+      {!canEdit ? (
+        <p style={{ margin: 0, fontSize: 13, color: textTertiary, lineHeight: 1.5 }}>
+          {i18n('Lesson problem tag panel readonly hint')}
+        </p>
+      ) : (
+        <>
+          <div>
+            <label style={{ fontSize: 13, fontWeight: 600, color: textSecondary, display: 'block', marginBottom: 8 }} htmlFor="lesson-tag-panel-select">
+              {i18n('Lesson problem tag panel choose registered')}
+            </label>
+            <select
+              id="lesson-tag-panel-select"
+              value={tagNorm ?? LESSON_PROBLEM_TAG_NONE_VALUE}
+              disabled={saving || registerSaving}
+              onChange={(e) => onPersist(e.target.value)}
+              style={fld}
+            >
+              <option value={LESSON_PROBLEM_TAG_NONE_VALUE}>{i18n('Problem tag none')}</option>
+              {merged.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 13, fontWeight: 600, color: textSecondary, display: 'block', marginBottom: 8 }} htmlFor="lesson-tag-panel-custom">
+              {i18n('Lesson problem tag panel new')}
+            </label>
+            <input
+              id="lesson-tag-panel-custom"
+              type="text"
+              maxLength={64}
+              value={customDraft}
+              disabled={saving || registerSaving}
+              placeholder={i18n('Lesson problem tag new placeholder')}
+              onChange={(e) => setCustomDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void registerCustom();
+                }
+              }}
+              style={fld}
+            />
+            <div style={{ marginTop: 10, fontSize: 12, color: textTertiary, lineHeight: 1.45 }}>
+              {i18n('Lesson problem tag new hint')}
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            <button
+              type="button"
+              style={btnPri}
+              disabled={saving || registerSaving || !draftNorm || merged.includes(draftNorm)}
+              onClick={() => { void registerCustom(); }}
+            >
+              {i18n('Lesson problem tag apply new')}
+            </button>
+            <button
+              type="button"
+              style={btnDangerOutline}
+              disabled={saving || registerSaving || !tagNorm}
+              onClick={() => onPersist(LESSON_PROBLEM_TAG_NONE_VALUE)}
+            >
+              {i18n('Lesson problem tag panel clear')}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function createInitialLessonUiState(): LessonUiState {
   const U = (window as any).UiContext || {};
   const nodeRaw = U.node || {};
   const nodeObj = typeof nodeRaw === 'object' && nodeRaw !== null ? nodeRaw as Record<string, unknown> : {};
@@ -369,8 +578,14 @@ function initLessonUiState(): LessonUiState {
     lessonPathCardPractiseCountFmt: String(U.lessonPathCardPractiseCountFmt || ''),
     lessonPathCardPractiseCountTitle: String(U.lessonPathCardPractiseCountTitle || ''),
     flatQueueCards: Array.isArray(U.flatQueueCards) ? (U.flatQueueCards as unknown[]).map(normalizeCardFromServer) : [],
+    lessonProblemTagOptions: Array.isArray(U.lessonProblemTagOptions)
+      ? (U.lessonProblemTagOptions as unknown[]).map((x) => String(x)).filter(Boolean)
+      : [],
+    lessonCanEditProblemTags: !!U.lessonCanEditProblemTags,
   };
 }
+
+const initLessonUiState: LessonUiState = createInitialLessonUiState();
 
 function cardTitleForLessonProblemQueueSidebar(
   cardId: string,
@@ -417,6 +632,8 @@ function LessonPage() {
     lessonPathCardPractiseCountFmt,
     lessonPathCardPractiseCountTitle,
     flatQueueCards,
+    lessonProblemTagOptions,
+    lessonCanEditProblemTags,
   } = lessonUi;
 
   const flatQueueCardsRef = useRef<Card[]>(flatQueueCards);
@@ -1010,6 +1227,12 @@ function LessonPage() {
       flatQueueCards: Array.isArray(payload.flatQueueCards)
         ? (payload.flatQueueCards as unknown[]).map(normalizeCardFromServer)
         : prev.flatQueueCards,
+      lessonProblemTagOptions: Array.isArray(payload.lessonProblemTagOptions)
+        ? (payload.lessonProblemTagOptions as unknown[]).map((x) => String(x)).filter(Boolean)
+        : prev.lessonProblemTagOptions,
+      lessonCanEditProblemTags: typeof payload.lessonCanEditProblemTags === 'boolean'
+        ? payload.lessonCanEditProblemTags
+        : prev.lessonCanEditProblemTags,
     }));
     const nextCard = payload.card != null ? normalizeCardFromServer(payload.card) : null;
     const payloadHasFlatQKey = Object.prototype.hasOwnProperty.call(payload, 'flatQueueCards');
@@ -1113,6 +1336,143 @@ function LessonPage() {
       setPracticeClearedPids({});
     }
   }, [allProblems, problemQueue.length, answerHistory.length]);
+
+  const [lessonProblemTagSaveKey, setLessonProblemTagSaveKey] = useState<string | null>(null);
+  const [lessonProblemTagRegisterBusy, setLessonProblemTagRegisterBusy] = useState(false);
+  const [lessonProblemTagPanelOpen, setLessonProblemTagPanelOpen] = useState(false);
+
+  const lessonCurrentProblemSlotKey = problemQueue[currentProblemIndex]
+    ? `${String(problemQueue[currentProblemIndex].cardId)}:${problemQueue[currentProblemIndex].pid}`
+    : '';
+
+  useEffect(() => {
+    setLessonProblemTagPanelOpen(false);
+  }, [lessonCurrentProblemSlotKey]);
+
+  useEffect(() => {
+    if (!lessonProblemTagPanelOpen) return;
+    const onDocKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLessonProblemTagPanelOpen(false);
+    };
+    document.addEventListener('keydown', onDocKey);
+    return () => document.removeEventListener('keydown', onDocKey);
+  }, [lessonProblemTagPanelOpen]);
+
+  const persistLessonProblemTag = useCallback(async (cardIdRaw: string, pid: string, selectedOption: string) => {
+    if (!lessonApiDomainId || !baseDocId || !lessonCanEditProblemTags) return;
+    const cardIdStr = String(cardIdRaw).trim();
+    const saveKey = `${cardIdStr}:${pid}`;
+    const nextTag =
+      selectedOption === LESSON_PROBLEM_TAG_NONE_VALUE || String(selectedOption).trim() === ''
+        ? undefined
+        : normalizeProblemTagInput(selectedOption);
+    const findCardSnapshot = (): Card | null => {
+      if (String(card.docId) === cardIdStr) return card;
+      for (const c of cards) {
+        if (String(c.docId) === cardIdStr) return c;
+      }
+      for (const c of flatQueueCards) {
+        if (String(c.docId) === cardIdStr) return c;
+      }
+      return null;
+    };
+    const cdoc = findCardSnapshot();
+    if (!cdoc) {
+      Notification.error(i18n('Lesson problem tag save no card'));
+      return;
+    }
+    const nodeId = String((cdoc as unknown as { nodeId?: string }).nodeId || '').trim();
+    if (!nodeId) {
+      Notification.error(i18n('Lesson problem tag save missing node'));
+      return;
+    }
+    const orderRaw = (cdoc as unknown as { order?: number }).order;
+    const order = typeof orderRaw === 'number' && orderRaw > 0 ? orderRaw : 1;
+    const prevProblems = cdoc.problems || [];
+    const nextProblems = prevProblems.map((pr) => {
+      if (pr.pid !== pid) return pr;
+      const copy = { ...pr } as Problem & Record<string, unknown>;
+      if (nextTag === undefined) delete copy.tag;
+      else copy.tag = nextTag;
+      return copy;
+    });
+    setLessonProblemTagSaveKey(saveKey);
+    try {
+      await request.post(`/d/${lessonApiDomainId}/base/card/${encodeURIComponent(cardIdStr)}`, {
+        operation: 'update',
+        docId: Number(baseDocId),
+        nodeId,
+        title: String(cdoc.title ?? ''),
+        content: String(cdoc.content ?? ''),
+        order,
+        problems: nextProblems,
+      });
+      setLessonUi((prev) => mergeLessonUiCardProblems(prev, cardIdStr, nextProblems));
+      setProblemQueue((q) =>
+        q.map((pr) => {
+          if (String(pr.cardId) !== cardIdStr || pr.pid !== pid) return pr;
+          const qp = { ...pr } as QueuedProblem & Record<string, unknown>;
+          if (nextTag === undefined) delete qp.tag;
+          else qp.tag = nextTag;
+          return qp as QueuedProblem;
+        }),
+      );
+      setAnswerHistory((hist) =>
+        hist.map((row) => {
+          if (String(row.problem.cardId) !== cardIdStr || row.problem.pid !== pid) return row;
+          const np = { ...row.problem } as QueuedProblem & Record<string, unknown>;
+          if (nextTag === undefined) delete np.tag;
+          else np.tag = nextTag;
+          return { ...row, problem: np as QueuedProblem };
+        }),
+      );
+      Notification.success(i18n('Saved successfully'));
+    } catch (err: unknown) {
+      console.error(err);
+      const msg = (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message
+        ?? (err as Error)?.message
+        ?? i18n('Lesson problem tag save failed');
+      Notification.error(typeof msg === 'string' ? msg : String(msg));
+    } finally {
+      setLessonProblemTagSaveKey(null);
+    }
+  }, [lessonApiDomainId, baseDocId, lessonCanEditProblemTags, card, cards, flatQueueCards]);
+
+  const registerLessonProblemTagToRegistry = useCallback(async (tagRaw: string) => {
+    const tag = normalizeProblemTagInput(tagRaw);
+    if (!lessonApiDomainId || !baseDocId || !lessonCanEditProblemTags || !tag) return;
+    const bid = Number(baseDocId);
+    if (!Number.isFinite(bid) || bid <= 0) {
+      Notification.error(i18n('Lesson problem tag register failed'));
+      throw new Error('invalid base');
+    }
+    setLessonProblemTagRegisterBusy(true);
+    try {
+      const res: any = await request.post(
+        `/d/${lessonApiDomainId}/base/${bid}/problem-tag-register`,
+        { tag },
+      );
+      const listRaw = res?.problemTags;
+      if (Array.isArray(listRaw)) {
+        setLessonUi((prev) => ({
+          ...prev,
+          lessonProblemTagOptions: listRaw.map((x: unknown) => String(x)).filter(Boolean),
+        }));
+      } else {
+        setLessonUi((prev) => ({
+          ...prev,
+          lessonProblemTagOptions: [...new Set([...prev.lessonProblemTagOptions, tag])].sort((a, b) => a.localeCompare(b)),
+        }));
+      }
+      Notification.success(i18n('Lesson problem tag register ok'));
+    } catch (e: unknown) {
+      const msg = (e as Error)?.message || i18n('Lesson problem tag register failed');
+      Notification.error(msg);
+      throw e;
+    } finally {
+      setLessonProblemTagRegisterBusy(false);
+    }
+  }, [lessonApiDomainId, baseDocId, lessonCanEditProblemTags]);
 
   const isNodeOrToday = isSingleNodeMode || isTodayMode;
   const cardTimesStorageKey = domainId && rootNodeId
@@ -3681,6 +4041,29 @@ function LessonPage() {
           <span style={{ fontSize: '11px', color: themeStyles.textTertiary, marginLeft: '4px' }}>
             ({lessonProblemKindLabel(currentKind)})
           </span>
+          {currentProblem ? (
+            <button
+              type="button"
+              aria-label={i18n('Lesson problem tag panel open')}
+              onClick={() => setLessonProblemTagPanelOpen(true)}
+              style={{
+                marginLeft: 'auto',
+                padding: '6px 14px',
+                border: `1px solid ${themeStyles.accent}`,
+                borderRadius: '6px',
+                backgroundColor: themeStyles.accentMutedBg,
+                color: themeStyles.accent,
+                cursor: 'pointer',
+                fontSize: '13px',
+                fontWeight: 600,
+              }}
+            >
+              {(() => {
+                const tn = normalizeProblemTagInput((currentProblem as unknown as { tag?: unknown }).tag);
+                return tn || i18n('Lesson problem tag panel empty');
+              })()}
+            </button>
+          ) : null}
         </div>
 
         {(() => {
@@ -4475,6 +4858,85 @@ function LessonPage() {
                   {i18n('Close and retry')}
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+        {lessonProblemTagPanelOpen && currentProblem && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={i18n('Lesson problem tag panel title')}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 10001,
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'stretch',
+              justifyContent: 'flex-end',
+            }}
+          >
+            <div
+              role="presentation"
+              style={{ flex: 1, minWidth: 0, backgroundColor: themeStyles.drawerScrim }}
+              onClick={() => setLessonProblemTagPanelOpen(false)}
+              aria-hidden
+            />
+            <div
+              style={{
+                width: 'min(400px, 100vw)',
+                maxHeight: '100vh',
+                overflowY: 'auto',
+                backgroundColor: themeStyles.bgCard,
+                borderLeft: `1px solid ${themeStyles.border}`,
+                boxShadow: themeStyles.drawerAsideShadowRight,
+                padding: '20px',
+                boxSizing: 'border-box',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: themeStyles.textPrimary, lineHeight: 1.3 }}>
+                  {i18n('Lesson problem tag panel title')}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setLessonProblemTagPanelOpen(false)}
+                  style={{
+                    flexShrink: 0,
+                    padding: '6px 12px',
+                    borderRadius: 6,
+                    border: `1px solid ${themeStyles.border}`,
+                    backgroundColor: themeStyles.bgSecondary,
+                    color: themeStyles.textPrimary,
+                    cursor: 'pointer',
+                    fontSize: 13,
+                    fontWeight: 600,
+                  }}
+                >
+                  {i18n('Close')}
+                </button>
+              </div>
+              <LessonProblemTagPanelBody
+                problem={currentProblem}
+                registry={lessonProblemTagOptions}
+                canEdit={lessonCanEditProblemTags}
+                saving={lessonProblemTagSaveKey === `${String(currentProblem.cardId)}:${currentProblem.pid}`}
+                registerSaving={lessonProblemTagRegisterBusy}
+                bgPrimary={themeStyles.bgPrimary}
+                bgSecondary={themeStyles.bgSecondary}
+                border={themeStyles.border}
+                textPrimary={themeStyles.textPrimary}
+                textSecondary={themeStyles.textSecondary}
+                textTertiary={themeStyles.textTertiary}
+                accent={themeStyles.accent}
+                accentMutedBg={themeStyles.accentMutedBg}
+                onPersist={(raw) => {
+                  if (!lessonCanEditProblemTags) return;
+                  void persistLessonProblemTag(String(currentProblem.cardId), currentProblem.pid, raw);
+                }}
+                onRegisterOnly={registerLessonProblemTagToRegistry}
+              />
             </div>
           </div>
         )}
