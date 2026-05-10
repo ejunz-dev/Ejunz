@@ -35,6 +35,26 @@ function labelForFrozenLessonQueueMode(modeRaw: string | undefined): string {
 
 type QueuedProblem = Problem & { cardId: string };
 
+/** 点击「继续」去下一题前保存，供「上一题」回到已提交、未点继续时的界面状态。 */
+type LessonPreviousStackEntry = {
+  problem: QueuedProblem;
+  pendingLessonAdvance: 'next' | 'requeue' | 'correctMore';
+  selectedAnswer: number | null;
+  selectedMulti: number[];
+  selectedTf: 0 | 1 | null;
+  fillBlankDraft: string[];
+  matchingSelections: Array<Array<number | null>>;
+  matchingShuffleOrders: number[][];
+  flipStage: 'a' | 'b';
+  flipHintOpen: boolean;
+  superFlipRevealed: boolean[][];
+  superFlipMarkedOk: boolean | null;
+  optionOrder: number[];
+  problemAttemptSnapshot: number;
+  isAnswered: boolean;
+  showAnalysis: boolean;
+};
+
 /** 换卡时：1 题目条先满 →2 总进度条再跟上实时值 →3 清空题目条。 */
 type LessonSecondBarExitHold =
   | null
@@ -997,6 +1017,10 @@ function LessonPage() {
     && !splitProblemPracticeSidebars;
 
   const [problemQueue, setProblemQueue] = useState<QueuedProblem[]>([]);
+  const [lessonPreviousStack, setLessonPreviousStack] = useState<LessonPreviousStackEntry[]>([]);
+  const lessonPreviousStackRef = useRef<LessonPreviousStackEntry[]>([]);
+  lessonPreviousStackRef.current = lessonPreviousStack;
+  const lessonPendingRestoreRef = useRef<LessonPreviousStackEntry | null>(null);
   const [currentProblemIndex, setCurrentProblemIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [selectedMulti, setSelectedMulti] = useState<number[]>([]);
@@ -1279,6 +1303,7 @@ function LessonPage() {
     setSecondBarExitHold(null);
 
     setProblemQueue(probs);
+    setLessonPreviousStack([]);
     setCurrentProblemIndex(0);
     setSelectedAnswer(null);
     setSelectedMulti([]);
@@ -1325,6 +1350,7 @@ function LessonPage() {
   useEffect(() => {
     if (allProblems.length > 0 && problemQueue.length === 0 && answerHistory.length === 0) {
       setProblemQueue(allProblems);
+      setLessonPreviousStack([]);
       setCurrentProblemIndex(0);
       setSelectedAnswer(null);
       setSelectedMulti([]);
@@ -2221,6 +2247,28 @@ function LessonPage() {
 
   useLayoutEffect(() => {
     if (!currentProblem) return;
+    const restore = lessonPendingRestoreRef.current;
+    if (restore && restore.problem.pid === currentProblem.pid) {
+      lessonPendingRestoreRef.current = null;
+      const r = restore;
+      setSelectedAnswer(r.selectedAnswer);
+      setSelectedMulti([...r.selectedMulti]);
+      setSelectedTf(r.selectedTf);
+      setFillBlankDraft([...r.fillBlankDraft]);
+      setMatchingSelections(r.matchingSelections.map((row) => [...row]));
+      setMatchingShuffleOrders(r.matchingShuffleOrders.map((row) => [...row]));
+      setFlipStage(r.flipStage);
+      setFlipHintOpen(r.flipHintOpen);
+      setSuperFlipRevealed(r.superFlipRevealed.map((col) => [...col]));
+      setSuperFlipMarkedOk(r.superFlipMarkedOk);
+      setOptionOrder([...r.optionOrder]);
+      setIsAnswered(r.isAnswered);
+      setShowAnalysis(r.showAnalysis);
+      setPendingLessonAdvance(r.pendingLessonAdvance);
+      setProblemAttempts((prev) => ({ ...prev, [r.problem.pid]: r.problemAttemptSnapshot }));
+      setProblemStartTime(Date.now());
+      return;
+    }
     const k = problemKind(currentProblem);
     setSuperFlipRevealed([]);
     setSuperFlipMarkedOk(null);
@@ -2670,7 +2718,8 @@ function LessonPage() {
 
   const handleNextProblem = () => {
     setPendingLessonAdvance(null);
-    const donePid = problemQueue[currentProblemIndex]?.pid;
+    const removed = problemQueue[currentProblemIndex];
+    const donePid = removed?.pid;
     if (donePid) setPracticeClearedPids((prev) => ({ ...prev, [donePid]: true }));
     setSelectedAnswer(null);
     setSelectedMulti([]);
@@ -2723,6 +2772,30 @@ function LessonPage() {
   const handleContinueAfterAnswer = () => {
     const kind = pendingLessonAdvance;
     if (!kind) return;
+    if (kind === 'next') {
+      const cur = problemQueue[currentProblemIndex];
+      if (cur && isAnswered && showAnalysis) {
+        const entry: LessonPreviousStackEntry = {
+          problem: cur,
+          pendingLessonAdvance: kind,
+          selectedAnswer,
+          selectedMulti: [...selectedMulti],
+          selectedTf,
+          fillBlankDraft: [...fillBlankDraft],
+          matchingSelections: matchingSelections.map((row) => [...row]),
+          matchingShuffleOrders: matchingShuffleOrders.map((row) => [...row]),
+          flipStage,
+          flipHintOpen,
+          superFlipRevealed: superFlipRevealed.map((col) => [...col]),
+          superFlipMarkedOk,
+          optionOrder: [...optionOrder],
+          problemAttemptSnapshot: problemAttempts[cur.pid] ?? 0,
+          isAnswered: true,
+          showAnalysis: true,
+        };
+        setLessonPreviousStack((s) => [...s, entry]);
+      }
+    }
     setPendingLessonAdvance(null);
     if (kind === 'next') handleNextProblem();
     else if (kind === 'requeue') handleWrongAnswer();
@@ -2747,6 +2820,66 @@ function LessonPage() {
     /** 关闭偷看后不立刻换题：与作答后一致，在主界面点「继续」再重排队列。 */
     setPendingLessonAdvance('requeue');
   };
+
+  const canLessonGoPrevious =
+    lessonPreviousStack.length > 0 || currentProblemIndex > 0;
+
+  const handleLessonPreviousProblem = useCallback(() => {
+    const stack = lessonPreviousStackRef.current;
+    if (stack.length > 0) {
+      const entry = stack[stack.length - 1];
+      lessonPendingRestoreRef.current = entry;
+      setLessonPreviousStack(stack.slice(0, -1));
+      setProblemQueue((q) => [entry.problem, ...q]);
+      setCurrentProblemIndex(0);
+      setShuffleTrigger((t) => t + 1);
+      return;
+    }
+    if (currentProblemIndex <= 0) return;
+    setCurrentProblemIndex((i) => i - 1);
+    setShuffleTrigger((t) => t + 1);
+  }, [currentProblemIndex]);
+
+  const handleLessonSkipCurrentProblem = useCallback(() => {
+    if (problemQueue.length <= 1) return;
+    const idx = currentProblemIndex;
+    const newQueue = [...problemQueue];
+    const cur = newQueue[idx];
+    newQueue.splice(idx, 1);
+    newQueue.push(cur);
+    setProblemQueue(newQueue);
+    const nextIndex = idx < newQueue.length - 1 ? idx : 0;
+    setCurrentProblemIndex(nextIndex);
+    setShuffleTrigger((t) => t + 1);
+  }, [problemQueue, currentProblemIndex]);
+
+  const handleLessonRedoResetProgress = useCallback(() => {
+    if (!currentProblem) return;
+    const pid = currentProblem.pid;
+    lessonPendingRestoreRef.current = null;
+    setPracticeClearedPids((prev) => {
+      const n = { ...prev };
+      delete n[pid];
+      return n;
+    });
+    setAnswerHistory((prev) => prev.filter((h) => h.problem.pid !== pid));
+    setProblemAttempts((prev) => {
+      const n = { ...prev };
+      delete n[pid];
+      return n;
+    });
+    setPeekCount((prev) => {
+      const n = { ...prev };
+      delete n[pid];
+      return n;
+    });
+    setCorrectNeeded((prev) => {
+      const n = { ...prev };
+      delete n[pid];
+      return n;
+    });
+    setShuffleTrigger((t) => t + 1);
+  }, [currentProblem]);
 
   if (allCorrect && !isPassed && !isSubmitting) {
     if (!hasCalledPassRef.current) {
@@ -3927,6 +4060,56 @@ function LessonPage() {
   }
 
   const contentPadding = isMobile ? '12px' : '20px';
+  const lessonNavSecondaryBtn: React.CSSProperties = {
+    padding: '11px 18px',
+    borderRadius: '8px',
+    border: `1px solid ${themeStyles.border}`,
+    backgroundColor: themeStyles.bgSecondary,
+    color: themeStyles.textPrimary,
+    fontSize: '15px',
+    fontWeight: 600,
+  };
+  const renderLessonPracticeActionRow = (submitOrActions: React.ReactNode, marginTop = '2px') => (
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px', marginTop }}>
+      <button
+        type="button"
+        onClick={handleLessonPreviousProblem}
+        disabled={!canLessonGoPrevious}
+        style={{
+          ...lessonNavSecondaryBtn,
+          cursor: !canLessonGoPrevious ? 'not-allowed' : 'pointer',
+          opacity: !canLessonGoPrevious ? 0.5 : 1,
+        }}
+      >
+        {i18n('Previous')}
+      </button>
+      <button
+        type="button"
+        onClick={handleLessonSkipCurrentProblem}
+        disabled={problemQueue.length <= 1}
+        style={{
+          ...lessonNavSecondaryBtn,
+          cursor: problemQueue.length <= 1 ? 'not-allowed' : 'pointer',
+          opacity: problemQueue.length <= 1 ? 0.5 : 1,
+        }}
+      >
+        {i18n('Lesson skip problem')}
+      </button>
+      <button
+        type="button"
+        onClick={handleLessonRedoResetProgress}
+        disabled={!currentProblem}
+        style={{
+          ...lessonNavSecondaryBtn,
+          cursor: currentProblem ? 'pointer' : 'not-allowed',
+          opacity: currentProblem ? 1 : 0.5,
+        }}
+      >
+        {i18n('Lesson practice redo')}
+      </button>
+      {submitOrActions}
+    </div>
+  );
   const mainContent = (
     <div style={{
       maxWidth: '900px',
@@ -4141,10 +4324,11 @@ function LessonPage() {
                         {fb.faceA || i18n('No stem')}
                       </div>
                       {hintBlock}
-                      {!isAnswered && (
+                      {!isAnswered && renderLessonPracticeActionRow(
                         <button type="button" onClick={handleFlipShowBack} style={{ padding: '12px 24px', border: 'none', borderRadius: '8px', backgroundColor: themeStyles.accent, color: themeStyles.whiteOnAccent, cursor: 'pointer', fontSize: '15px', fontWeight: 600 }}>
                           {i18n('Flip show back')}
-                        </button>
+                        </button>,
+                        '2px',
                       )}
                     </>
                   ) : (
@@ -4154,10 +4338,11 @@ function LessonPage() {
                       <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '24px', color: themeStyles.stemColor, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
                         {fb.faceB}
                       </div>
-                      {!isAnswered && (
+                      {!isAnswered && renderLessonPracticeActionRow(
                         <button type="button" onClick={handleFlipComplete} style={{ padding: '12px 24px', border: 'none', borderRadius: '8px', backgroundColor: themeStyles.success, color: themeStyles.whiteOnAccent, cursor: 'pointer', fontSize: '15px', fontWeight: 600 }}>
                           {i18n('Flip mark done')}
-                        </button>
+                        </button>,
+                        '2px',
                       )}
                     </>
                   )}
@@ -4273,7 +4458,7 @@ function LessonPage() {
                       </tbody>
                     </table>
                   </div>
-                  {!isAnswered && (
+                  {!isAnswered && renderLessonPracticeActionRow(
                     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px' }}>
                       <button
                         type="button"
@@ -4345,7 +4530,8 @@ function LessonPage() {
                       >
                         {i18n('Flip mark done')}
                       </button>
-                    </div>
+                    </div>,
+                    '0px',
                   )}
                 </>
               );
@@ -4460,12 +4646,11 @@ function LessonPage() {
                 })()}
               </div>
             </div>
-            {!isAnswered && (
+            {!isAnswered && renderLessonPracticeActionRow(
               <button
                 type="button"
                 onClick={handleFillBlankSubmit}
                 style={{
-                  marginTop: '2px',
                   padding: '11px 24px',
                   border: 'none',
                   borderRadius: '8px',
@@ -4478,7 +4663,8 @@ function LessonPage() {
                 }}
               >
                 {i18n('Submit answer')}
-              </button>
+              </button>,
+              '2px',
             )}
           </>
         ) : currentKind === 'matching' ? (
@@ -4578,7 +4764,7 @@ function LessonPage() {
                     }
                     return true;
                   }));
-                return (
+                return renderLessonPracticeActionRow(
                   <button
                     type="button"
                     onClick={handleMatchingSubmit}
@@ -4601,7 +4787,8 @@ function LessonPage() {
                     }}
                   >
                     {i18n('Submit answer')}
-                  </button>
+                  </button>,
+                  '2px',
                 );
               })()}
           </>
@@ -4639,6 +4826,7 @@ function LessonPage() {
                 );
               })}
             </div>
+            {!isAnswered && renderLessonPracticeActionRow(null, '12px')}
           </>
         ) : (
           <>
@@ -4735,10 +4923,16 @@ function LessonPage() {
                 );
               })}
             </div>
-            {currentKind === 'multi' && !isAnswered && (
-              <button type="button" onClick={handleMultiConfirm} style={{ marginTop: '8px', padding: '10px 22px', border: 'none', borderRadius: '8px', backgroundColor: themeStyles.accent, color: themeStyles.whiteOnAccent, cursor: 'pointer', fontSize: '15px', fontWeight: 600 }}>
+            {currentKind === 'single' && !isAnswered && renderLessonPracticeActionRow(null, '12px')}
+            {currentKind === 'multi' && !isAnswered && renderLessonPracticeActionRow(
+              <button
+                type="button"
+                onClick={handleMultiConfirm}
+                style={{ padding: '10px 22px', border: 'none', borderRadius: '8px', backgroundColor: themeStyles.accent, color: themeStyles.whiteOnAccent, cursor: 'pointer', fontSize: '15px', fontWeight: 600 }}
+              >
                 {i18n('Submit answer')}
-              </button>
+              </button>,
+              '8px',
             )}
           </>
         )}
