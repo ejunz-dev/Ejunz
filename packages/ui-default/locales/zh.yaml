@@ -441,6 +441,13 @@ __langname: 简体中文
 'Preview image': 预览图片
 'Previous': 上一题
 'Lesson skip problem': 跳过
+'Lesson card queue navigation': 卡片队列导航
+'Previous card': 上一张卡
+'Skip card': 跳过此卡
+'Lesson skip card hint': 不记录通过或答题进度。跳过今日任务最后一张即结束今日队列；单节点模式下将进入本节汇总。
+'Lesson card navigation failed': 切换卡片失败
+'Invalid lesson navigate': 无效的卡片跳转请求
+'Lesson navigate unsupported': 仅支持今日任务或单节点模式下的卡片跳转
 'Lesson practice redo': 重做
 'Problem generated, please review': 题目已生成，请检查并确认
 'Problem kind single': 单选

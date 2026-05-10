@@ -3298,6 +3298,9 @@ class LessonHandler extends Handler {
         if (this.request.path.endsWith('/pass')) {
             return this.postPass(domainId);
         }
+        if (this.request.path.endsWith('/navigate')) {
+            return this.postLessonNavigate(domainId);
+        }
         if (this.request.path.endsWith('/start')) {
             return this.postLessonStart(domainId);
         }
@@ -4651,6 +4654,242 @@ class LessonHandler extends Handler {
         };
     }
 
+    /**
+     * Move today's / single-node queue pointer without recording a pass (previous card, or skip ahead).
+     */
+    async postLessonNavigate(domainId: string) {
+        const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
+        const body: any = this.request?.body || {};
+        const spaNext = body.spaNext === true || body.spaNext === 'true';
+        const rawNav = body.lessonCardNav;
+        const nav = rawNav === 'prev' ? 'prev' : rawNav === 'skip' ? 'skip' : null;
+        if (!nav) {
+            throw new ValidationError(this.translate('Invalid lesson navigate'));
+        }
+        const isTodayModeNav = body.todayMode === true;
+        const nodeIdBodyNav = typeof body.nodeId === 'string' ? body.nodeId.trim() : '';
+        const isNodeModeNav = body.singleNodeMode === true && !!nodeIdBodyNav;
+        if (!isTodayModeNav && !isNodeModeNav) {
+            throw new ValidationError(this.translate('Lesson navigate unsupported'));
+        }
+
+        const finishTodaySkipNav = async (s: SessionDoc): Promise<void> => {
+            await SessionModel.touchById(
+                finalDomainId,
+                this.user._id,
+                s._id,
+                {
+                    appRoute: 'learn',
+                    route: 'learn',
+                    lessonMode: 'today',
+                    cardIndex: (s.lessonCardQueue ?? []).length,
+                },
+                { silent: false },
+            );
+            await clearLearnDailySessionPointer(finalDomainId, this.user._id);
+        };
+
+        const nodeSkipFinishedResponseNav = async (sPass: SessionDoc, nodeIdStr: string): Promise<void> => {
+            const sidNode = lessonSessionIdFromDoc(sPass);
+            const dudoc2n = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
+            const s2n = await SessionModel.get(finalDomainId, this.user._id);
+            const L2n = mergeDomainLessonState(dudoc2n, s2n);
+            const reviewIds2: string[] = [...L2n.lessonReviewCardIds];
+            const flatLen = (sPass.lessonCardQueue ?? []).length;
+            if (reviewIds2.length > 0) {
+                const baseNodeLesson = appendLessonSessionToUrl(`/d/${finalDomainId}/learn/lesson`, sidNode);
+                const qsep = baseNodeLesson.includes('?') ? '&' : '?';
+                this.response.body = {
+                    success: true,
+                    redirect: `${baseNodeLesson}${qsep}reviewCardId=${encodeURIComponent(reviewIds2[0])}`,
+                };
+                return;
+            }
+            await SessionModel.touchById(
+                finalDomainId,
+                this.user._id,
+                sPass._id,
+                {
+                    appRoute: 'learn',
+                    route: 'learn',
+                    lessonMode: 'node',
+                    nodeId: nodeIdStr,
+                    cardIndex: flatLen,
+                    lessonCardTimesMs: [],
+                    lessonReviewCardIds: [],
+                },
+                { silent: false },
+            );
+            this.response.body = {
+                success: true,
+                redirect: `/d/${finalDomainId}/learn/lesson/node-result?nodeId=${encodeURIComponent(nodeIdStr)}`,
+            };
+        };
+
+        if (isTodayModeNav) {
+            const qSes = typeof body.session === 'string' ? body.session.trim() : '';
+            const dudocNav = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
+            const sDailyNav = await resolveLearnDailySessionDoc(finalDomainId, this.user._id, dudocNav);
+            if (!sDailyNav || !lessonTodayFrozenQueueIsValid(sDailyNav)) {
+                this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn` };
+                return;
+            }
+            if (qSes && sDailyNav._id.toString() !== qSes) {
+                this.response.body = {
+                    success: true,
+                    redirect: appendLessonSessionToUrl(`/d/${finalDomainId}/learn/lesson`, sDailyNav._id.toString()),
+                };
+                return;
+            }
+            const queue: LessonCardQueueItem[] = sDailyNav.lessonCardQueue ?? [];
+            if (!queue.length) {
+                this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn` };
+                return;
+            }
+            let idx = typeof sDailyNav.cardIndex === 'number' ? sDailyNav.cardIndex : 0;
+            if (idx < 0) idx = 0;
+            const qLen = queue.length;
+            const pastEnd = idx >= qLen;
+            if (pastEnd) {
+                if (nav === 'prev') {
+                    const newIdx = qLen - 1;
+                    await SessionModel.touchById(
+                        finalDomainId,
+                        this.user._id,
+                        sDailyNav._id,
+                        { cardIndex: newIdx, lessonMode: 'today' },
+                        { silent: false },
+                    );
+                } else {
+                    this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn` };
+                    return;
+                }
+            } else {
+                let newIdx = idx;
+                if (nav === 'prev') {
+                    newIdx = Math.max(0, idx - 1);
+                } else {
+                    newIdx = idx + 1;
+                }
+                if (newIdx < qLen) {
+                    await SessionModel.touchById(
+                        finalDomainId,
+                        this.user._id,
+                        sDailyNav._id,
+                        { cardIndex: newIdx, lessonMode: 'today' },
+                        { silent: false },
+                    );
+                } else {
+                    await finishTodaySkipNav(sDailyNav);
+                    this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn` };
+                    return;
+                }
+            }
+            const hex = sDailyNav._id.toString();
+            if (spaNext) {
+                const snap = await buildSpaLessonSnapshotToday(
+                    (k) => this.translate(k),
+                    finalDomainId,
+                    this.user._id,
+                    this.user.priv,
+                    hex,
+                );
+                if (snap) {
+                    this.response.body = {
+                        success: true,
+                        spaNext: true,
+                        lesson: lessonSnapshotToJson(snap),
+                    };
+                    return;
+                }
+            }
+            this.response.body = {
+                success: true,
+                redirect: appendLessonSessionToUrl(`/d/${finalDomainId}/learn/lesson`, hex),
+            };
+            return;
+        }
+
+        const qNodeNav = typeof body.session === 'string' ? body.session.trim() : '';
+        const sNodeNav = await resolveLessonSessionDoc(finalDomainId, this.user._id, qNodeNav || undefined);
+        if (!sNodeNav || sNodeNav.lessonMode !== 'node') {
+            this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn` };
+            return;
+        }
+        const anchorNav = typeof sNodeNav.lessonQueueAnchorNodeId === 'string' ? sNodeNav.lessonQueueAnchorNodeId.trim() : '';
+        if (anchorNav && anchorNav !== nodeIdBodyNav) {
+            throw new ValidationError(this.translate('Invalid lesson navigate'));
+        }
+        const queueN: LessonCardQueueItem[] = sNodeNav.lessonCardQueue ?? [];
+        if (!queueN.length) {
+            this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn` };
+            return;
+        }
+        let idxN = typeof sNodeNav.cardIndex === 'number' ? sNodeNav.cardIndex : 0;
+        if (idxN < 0) idxN = 0;
+        const qLenN = queueN.length;
+        const pastEndN = idxN >= qLenN;
+        if (pastEndN) {
+            if (nav === 'prev') {
+                const newIdx = qLenN - 1;
+                await SessionModel.touchById(
+                    finalDomainId,
+                    this.user._id,
+                    sNodeNav._id,
+                    { cardIndex: newIdx, lessonMode: 'node', nodeId: nodeIdBodyNav },
+                    { silent: false },
+                );
+            } else {
+                await nodeSkipFinishedResponseNav(sNodeNav, nodeIdBodyNav);
+                return;
+            }
+        } else {
+            let newIdxN = idxN;
+            if (nav === 'prev') {
+                newIdxN = Math.max(0, idxN - 1);
+            } else {
+                newIdxN = idxN + 1;
+            }
+            if (newIdxN < qLenN) {
+                await SessionModel.touchById(
+                    finalDomainId,
+                    this.user._id,
+                    sNodeNav._id,
+                    { cardIndex: newIdxN, lessonMode: 'node', nodeId: nodeIdBodyNav },
+                    { silent: false },
+                );
+            } else {
+                await nodeSkipFinishedResponseNav(sNodeNav, nodeIdBodyNav);
+                return;
+            }
+        }
+
+        if (spaNext) {
+            const snapNode = await buildSpaLessonSnapshotNode(
+                (k) => this.translate(k),
+                finalDomainId,
+                nodeIdBodyNav,
+                this.user._id,
+                this.user.priv,
+                qNodeNav || undefined,
+            );
+            if (snapNode) {
+                this.response.body = {
+                    success: true,
+                    spaNext: true,
+                    lesson: lessonSnapshotToJson(snapNode),
+                };
+                return;
+            }
+        }
+        this.response.body = {
+            success: true,
+            redirect: appendLessonSessionToUrl(
+                `/d/${finalDomainId}/learn/lesson`,
+                lessonSessionIdFromDoc(sNodeNav),
+            ),
+        };
+    }
 
     async postPass(domainId: string) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
@@ -6318,6 +6557,7 @@ export async function apply(ctx: Context) {
     ctx.Route('learn_lesson', '/learn/lesson', LessonHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_lesson_result', '/learn/lesson/result/:resultId', LessonHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_lesson_pass', '/learn/lesson/pass', LessonHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('learn_lesson_navigate', '/learn/lesson/navigate', LessonHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_lesson_start', '/learn/lesson/start', LessonHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_lesson_node_result', '/learn/lesson/node-result', LessonNodeResultHandler, PRIV.PRIV_USER_PROFILE);
 }
