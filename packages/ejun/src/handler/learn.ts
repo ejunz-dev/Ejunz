@@ -69,6 +69,19 @@ function utcLessonQueueDayString(): string {
     return moment.utc().format('YYYY-MM-DD');
 }
 
+/** Sidebar + practice header: taxonomy tags for `Problem.tag` while in lesson (read-only picker list + edit permission). */
+function lessonProblemTagUiExtras(handler: Handler, base: BaseDoc | null | undefined): {
+    lessonProblemTagOptions: string[];
+    lessonCanEditProblemTags: boolean;
+} {
+    const lessonProblemTagOptions = base
+        ? sanitizeProblemTagRegistryList((base as BaseDoc & { problemTags?: unknown }).problemTags)
+        : [];
+    const lessonCanEditProblemTags = !!base
+        && (handler.user.own(base as any) || handler.user.hasPerm(PERM.PERM_EDIT_DISCUSSION));
+    return { lessonProblemTagOptions, lessonCanEditProblemTags };
+}
+
 /** Mongo / JSON may yield Long, Decimal128, or string; merge + learn home must not drop valid indices. */
 function normalizeDomainUserLearnIndex(v: unknown): number | null {
     if (typeof v === 'number' && Number.isFinite(v)) return Math.trunc(v);
@@ -3584,6 +3597,7 @@ class LessonHandler extends Handler {
                     lessonSessionQueueNewOldLabel: '',
                     learnPathCardPractiseCounts: payloadLearnPathCardPractiseCountsFromDudoc(dudoc),
                     ...lessonPathPractiseStringsForLessonUi((k) => this.translate(k)),
+                    ...lessonProblemTagUiExtras(this, cardBase),
                 };
                 return;
             }
@@ -4139,6 +4153,7 @@ class LessonHandler extends Handler {
                 lessonSessionQueueNewOldLabel,
                 learnPathCardPractiseCounts: payloadLearnPathCardPractiseCountsFromDudoc(dudoc),
                 ...lessonPathPractiseStringsForLessonUi((k) => this.translate(k)),
+                ...lessonProblemTagUiExtras(this, baseDocForNode),
             };
             return;
         }
@@ -4453,6 +4468,7 @@ class LessonHandler extends Handler {
                 lessonSessionQueueNewOldLabel,
                 learnPathCardPractiseCounts: payloadLearnPathCardPractiseCountsFromDudoc(dudoc),
                 ...lessonPathPractiseStringsForLessonUi((k) => this.translate(k)),
+                ...lessonProblemTagUiExtras(this, baseDocToday),
             };
             return;
         }
@@ -4555,11 +4571,18 @@ class LessonHandler extends Handler {
         } else {
             await requireLearnPageBase(finalDomainId, this.user._id, this.user.priv);
             const resumableToday = await findResumableTodayLearnSessionDoc(finalDomainId, this.user._id, dudocSt);
+            let usedResumableToday = false;
             if (resumableToday && frozenTodayQueueMatchesLearnSettings(dudocSt, resumableToday)) {
-                sid = resumableToday._id.toString();
-                await setLearnDailySessionPointer(finalDomainId, this.user._id, sid);
-                redirectPath = `/d/${finalDomainId}/learn/lesson`;
-            } else {
+                const rq = resumableToday.lessonCardQueue ?? [];
+                const ridx = typeof resumableToday.cardIndex === 'number' ? resumableToday.cardIndex : 0;
+                if (rq.length > 0 && ridx < rq.length) {
+                    sid = resumableToday._id.toString();
+                    await setLearnDailySessionPointer(finalDomainId, this.user._id, sid);
+                    redirectPath = `/d/${finalDomainId}/learn/lesson`;
+                    usedResumableToday = true;
+                }
+            }
+            if (!usedResumableToday) {
                 const progressToday = sessionTodayProgressPatchFromDomainUser(dudocSt);
                 let todayPatch: SessionPatch = {
                     appRoute: 'learn',
@@ -4571,39 +4594,43 @@ class LessonHandler extends Handler {
                     lessonCardQueue: [],
                     ...progressToday,
                 };
-                try {
-                    const builtStart = await buildTodayLessonQueueFromDomain(
-                        finalDomainId,
-                        this.user._id,
-                        dudocSt,
-                        (k: string) => this.translate(k),
-                    );
-                    if (builtStart.queuePersist.length > 0) {
-                        todayPatch = {
-                            ...todayPatch,
-                            lessonCardQueue: builtStart.queuePersist,
-                            lessonQueueBaseDocId: builtStart.learnBaseDocId || null,
-                            lessonQueueLearnBranch: builtStart.learnBranch,
-                            lessonQueueLearnSectionOrder: builtStart.sectionOrderSnapshot,
-                            lessonQueueLearnSessionMode: getLearnSessionMode(dudocSt),
-                            lessonQueueLearnSessionCardFilter: getLearnSessionCardFilter(dudocSt),
-                            lessonQueueLearnSessionProblemTagMode: getLearnSessionProblemTagMode(dudocSt as Record<string, unknown>),
-                            lessonQueueLearnSessionProblemTags: getLearnSessionProblemTags(dudocSt as Record<string, unknown>),
-                            lessonQueueLearnNewReviewRatio: getLearnNewReviewRatio(dudocSt),
-                            lessonQueueLearnNewReviewOrder: getLearnNewReviewOrder(dudocSt),
-                            lessonQueueMixedLayoutVersion: LESSON_QUEUE_MIXED_LAYOUT_VERSION,
-                            lessonQueueDay: utcLessonQueueDayString(),
-                            currentLearnSectionIndex: builtStart.currentSectionIndex,
-                            currentLearnSectionId:
-                                builtStart.finalSectionId
-                                ?? builtStart.sections[builtStart.currentSectionIndex]?._id
-                                ?? null,
-                            lessonQueueLearnStartCardId: builtStart.effectiveLearnStartCardId ?? null,
-                        };
-                    }
-                } catch (e) {
-                    if (e instanceof NotFoundError) throw e;
+                const builtStart = await buildTodayLessonQueueFromDomain(
+                    finalDomainId,
+                    this.user._id,
+                    dudocSt,
+                    (k: string) => this.translate(k),
+                );
+                if (builtStart.queuePersist.length === 0) {
+                    this.response.body = {
+                        UserFacingError: true,
+                        error: {
+                            message: this.translate('Learn today queue empty')
+                                || 'No cards queued for today. Check session filters and problem tag settings.',
+                        },
+                    };
+                    return;
                 }
+                todayPatch = {
+                    ...todayPatch,
+                    lessonCardQueue: builtStart.queuePersist,
+                    lessonQueueBaseDocId: builtStart.learnBaseDocId || null,
+                    lessonQueueLearnBranch: builtStart.learnBranch,
+                    lessonQueueLearnSectionOrder: builtStart.sectionOrderSnapshot,
+                    lessonQueueLearnSessionMode: getLearnSessionMode(dudocSt),
+                    lessonQueueLearnSessionCardFilter: getLearnSessionCardFilter(dudocSt),
+                    lessonQueueLearnSessionProblemTagMode: getLearnSessionProblemTagMode(dudocSt as Record<string, unknown>),
+                    lessonQueueLearnSessionProblemTags: getLearnSessionProblemTags(dudocSt as Record<string, unknown>),
+                    lessonQueueLearnNewReviewRatio: getLearnNewReviewRatio(dudocSt),
+                    lessonQueueLearnNewReviewOrder: getLearnNewReviewOrder(dudocSt),
+                    lessonQueueMixedLayoutVersion: LESSON_QUEUE_MIXED_LAYOUT_VERSION,
+                    lessonQueueDay: utcLessonQueueDayString(),
+                    currentLearnSectionIndex: builtStart.currentSectionIndex,
+                    currentLearnSectionId:
+                        builtStart.finalSectionId
+                        ?? builtStart.sections[builtStart.currentSectionIndex]?._id
+                        ?? null,
+                    lessonQueueLearnStartCardId: builtStart.effectiveLearnStartCardId ?? null,
+                };
                 sid = await insertNewTodayLearnSession(finalDomainId, this.user._id, todayPatch);
                 await setLearnDailySessionPointer(finalDomainId, this.user._id, sid);
                 redirectPath = `/d/${finalDomainId}/learn/lesson`;

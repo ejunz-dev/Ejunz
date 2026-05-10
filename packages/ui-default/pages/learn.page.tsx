@@ -435,10 +435,23 @@ function LearnPage() {
         window.location.href = redir;
         return;
       }
-    } catch {
-      /* fall through */
+      if (res && res.success === false) {
+        const msg =
+          typeof res.error?.message === 'string' && res.error.message.trim()
+            ? res.error.message
+            : i18n('Learn today queue empty');
+        Notification.error(msg);
+        return;
+      }
+    } catch (e: any) {
+      const msg =
+        typeof e?.message === 'string' && e.message.trim()
+          ? e.message
+          : i18n('Learn today queue empty');
+      Notification.error(msg);
+      return;
     }
-    window.location.href = `/d/${domainId}/learn/lesson`;
+    Notification.error(i18n('Learn lesson start missing redirect'));
   }, [domainId, todayLessonResumeUrl]);
 
   const toggleDraftProblemTag = useCallback((tag: string) => {
