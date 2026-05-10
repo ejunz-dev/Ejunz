@@ -4,6 +4,7 @@ import {
     getLearnNewReviewRatio,
     getLearnNewReviewOrder,
     getLearnSessionCardFilter,
+    learnSessionProblemTagSettingsMatchDuWithSession,
     normalizeLearnNewReviewOrder,
     normalizeLearnSessionCardFilter,
     normalizeLearnSessionMode,
@@ -161,6 +162,13 @@ export function frozenTodayQueueMatchesLearnSettings(dudoc: any, s: SessionDoc):
             ? 'all'
             : normalizeLearnSessionCardFilter(rawCf);
     if (cardFilterSnap !== cardFilterDu) return false;
+
+    const tagOk = learnSessionProblemTagSettingsMatchDuWithSession(
+        du,
+        (s as SessionDoc & { lessonQueueLearnSessionProblemTagMode?: unknown }).lessonQueueLearnSessionProblemTagMode,
+        (s as SessionDoc & { lessonQueueLearnSessionProblemTags?: unknown }).lessonQueueLearnSessionProblemTags,
+    );
+    if (!tagOk) return false;
 
     const rDu = getLearnNewReviewRatio(du);
     const rawR = (s as SessionDoc & { lessonQueueLearnNewReviewRatio?: number | null }).lessonQueueLearnNewReviewRatio;

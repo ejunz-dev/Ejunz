@@ -45,7 +45,7 @@ import {
     isDevelopSessionSettled,
 } from '../lib/sessionListDisplay';
 import { isDevelopSessionPastDeadline, readDevelopSessionDeadlineMs } from '../lib/sessionUtcDaily';
-import { problemKind, matchingColumnsNormalized, superFlipNormalized } from '../model/problem';
+import { problemKind, matchingColumnsNormalized, superFlipNormalized, sanitizeProblemTagRegistryList } from '../model/problem';
 
 /** Machine token in {@link BadRequestError} params for API clients (see `request.ajax` in ui-default). */
 const DEVELOP_SESSION_CLOSED_CODE = 'DEVELOP_SESSION_CLOSED';
@@ -4816,6 +4816,10 @@ export class BaseBatchSaveHandler extends Handler {
                     cards: incCards,
                     problems: incProblems,
                 });
+            }
+            if (Object.prototype.hasOwnProperty.call(data as object, 'problemTags')) {
+                const list = sanitizeProblemTagRegistryList((data as { problemTags?: unknown }).problemTags);
+                await BaseModel.updateFull(actualDomainId, docId, { problemTags: list });
             }
         }
 

@@ -42,6 +42,8 @@ import {
   normalizeSuperFlipColumns,
   matchingColumnsNormalized,
   superFlipNormalized,
+  normalizeProblemTagInput,
+  sanitizeProblemTagRegistryList,
 } from 'ejun/src/model/problem';
 interface BaseNode {
   id: string;
@@ -83,6 +85,9 @@ interface BaseDoc {
   edges: BaseEdge[];
   currentBranch?: string;
   branches?: string[];
+  /** Persisted problem taxonomy registry (`sanitizeProblemTagRegistryList` on save/load). */
+  problemTags?: unknown;
+  nodeCardsMap?: Record<string, Card[]>;
   files?: Array<{ _id: string; name: string; size: number; etag?: string; lastModified?: Date | string }>;
 }
 
@@ -713,6 +718,39 @@ function problemKindLabelI18n(k: ProblemKind): string {
   }
 }
 
+/** Tags used on problems anywhere in `nodeCardsMap` (excluding default / unset). */
+function collectProblemTagsFromNodeCardsMap(map: Record<string, Card[]> | undefined | null): string[] {
+  const tags = new Set<string>();
+  if (!map) return [];
+  for (const cards of Object.values(map)) {
+    for (const c of cards || []) {
+      for (const p of c.problems || []) {
+        const t = normalizeProblemTagInput((p as Problem & { tag?: unknown }).tag);
+        if (t) tags.add(t);
+      }
+    }
+  }
+  return [...tags];
+}
+
+/** Persisted registry first, then any tag discovered on cards (stable order). */
+function mergePersistedProblemTagsWithUsed(persisted: string[], usedOnCards: string[]): string[] {
+  const merged = [...persisted];
+  const seen = new Set(persisted);
+  for (const t of usedOnCards) {
+    if (seen.has(t)) continue;
+    seen.add(t);
+    merged.push(t);
+  }
+  return merged;
+}
+
+function buildMergedProblemTagsForEditor(ext: BaseDoc & { problemTags?: unknown; nodeCardsMap?: Record<string, Card[]> }): string[] {
+  const sr = sanitizeProblemTagRegistryList(ext.problemTags);
+  const used = collectProblemTagsFromNodeCardsMap(ext.nodeCardsMap);
+  return mergePersistedProblemTagsWithUsed(sr, used);
+}
+
 function makeBlankSingleProblem(): ProblemSingle {
   return {
     pid: `p_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
@@ -743,6 +781,8 @@ const EditableProblem = React.memo(({
   getBaseUrl,
   themeStyles,
   onProblemContextMenu,
+  problemTagOptions,
+  onRegisterProblemTag,
 }: {
   problem: Problem;
   index: number;
@@ -763,6 +803,8 @@ const EditableProblem = React.memo(({
   getBaseUrl: (path: string, docId: string) => string;
   themeStyles: any;
   onProblemContextMenu?: (event: React.MouseEvent) => void;
+  problemTagOptions: string[];
+  onRegisterProblemTag: (tag: string) => void;
 }) => {
   const [model, setModel] = useState<Problem>(problem);
   /** Parent `problem` snapshot by JSON; resync local `model` when AI / agent replaces the same `pid` in-place. */
@@ -791,6 +833,15 @@ const EditableProblem = React.memo(({
   const kind = problemKind(model);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
+
+  const currentProblemTag = normalizeProblemTagInput((model as Problem & { tag?: unknown }).tag) ?? '';
+  const selectTagOptions = useMemo(() => {
+    const opts = [...problemTagOptions];
+    if (currentProblemTag && !opts.includes(currentProblemTag)) opts.push(currentProblemTag);
+    return [...new Set(opts)].sort((a, b) => a.localeCompare(b));
+  }, [problemTagOptions, currentProblemTag]);
+
+  const [newProblemTagDraft, setNewProblemTagDraft] = useState('');
 
   const imageUrl = model.imageUrl || '';
   const imageNote = model.imageNote || '';
@@ -861,6 +912,29 @@ const EditableProblem = React.memo(({
     const k = e.target.value as ProblemKind;
     if (k === problemKind(model)) return;
     setModel((m) => problemChangeKind(m, k));
+  };
+
+  const onProblemTagSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const t = normalizeProblemTagInput(e.target.value);
+    setModel((m) => {
+      if (!t) {
+        if (!Object.prototype.hasOwnProperty.call(m, 'tag')) return m;
+        const { tag: _rm, ...rest } = m as Problem & { tag?: string };
+        return rest as Problem;
+      }
+      return { ...m, tag: t } as Problem;
+    });
+  };
+
+  const addDraftProblemTag = () => {
+    const t = normalizeProblemTagInput(newProblemTagDraft);
+    if (!t) {
+      Notification.warn(String(i18n('Problem tag empty')));
+      return;
+    }
+    onRegisterProblemTag(t);
+    setModel((m) => ({ ...m, tag: t } as Problem));
+    setNewProblemTagDraft('');
   };
 
   const optionSlotsNow = (): number => {
@@ -1069,6 +1143,57 @@ const EditableProblem = React.memo(({
             <option value="super_flip">{i18n('Problem kind super flip')}</option>
             <option value="fill_blank">{i18n('Problem kind fill blank')}</option>
           </select>
+        </label>
+        <label
+          style={{
+            fontSize: '11px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            color: themeStyles.textPrimary,
+            flexWrap: 'wrap',
+            maxWidth: '100%',
+          }}
+        >
+          {i18n('Problem tag')}
+          <select
+            value={currentProblemTag}
+            onChange={onProblemTagSelectChange}
+            style={{ ...inpStyle, minWidth: 88 }}
+          >
+            <option value="">{i18n('Problem tag default')}</option>
+            {selectTagOptions.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+          <input
+            type="text"
+            value={newProblemTagDraft}
+            placeholder={String(i18n('Problem tag new placeholder'))}
+            onChange={(e) => setNewProblemTagDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                addDraftProblemTag();
+              }
+            }}
+            style={{ ...inpStyle, width: 100, maxWidth: 140 }}
+          />
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              addDraftProblemTag();
+            }}
+            style={{
+              ...inpStyle,
+              padding: '2px 6px',
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+          >
+            {i18n('Problem tag add')}
+          </button>
         </label>
         {isNew && <span style={{ fontSize: '10px', color: themeStyles.success }}>{i18n('New')}</span>}
         {isEdited && !isNew && <span style={{ fontSize: '10px', color: themeStyles.warning }}>{i18n('Edited')}</span>}
@@ -2677,6 +2802,19 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const migrationResult = useMemo(() => migrateOrderFields(initialData), [initialData]);
   const [base, setBase] = useState<BaseDoc>(() => migrationResult.base);
 
+  const lastPersistedProblemTagsRef = useRef<string>(
+    JSON.stringify(sanitizeProblemTagRegistryList(initialData.problemTags)),
+  );
+  const [problemTagRegistry, setProblemTagRegistry] = useState<string[]>(() =>
+    buildMergedProblemTagsForEditor(initialData),
+  );
+
+  const registerProblemTag = useCallback((tag: string) => {
+    const t = normalizeProblemTagInput(tag);
+    if (!t) return;
+    setProblemTagRegistry((prev) => (prev.includes(t) ? prev : [...prev, t]));
+  }, []);
+
   useEffect(() => {
     if (typeof window === 'undefined' || !developEditorContext || basePath !== 'base') {
       setDevelopRunQueueState(null);
@@ -2791,6 +2929,14 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [editingName, setEditingName] = useState<string>('');
   const [pendingDragChanges, setPendingDragChanges] = useState<Set<string>>(new Set());
   const [nodeCardsMapVersion, setNodeCardsMapVersion] = useState(0);
+
+  const problemTagDropdownOptions = useMemo(() => {
+    const map = ((window as any).UiContext?.nodeCardsMap || {}) as Record<string, Card[]>;
+    const discovered = collectProblemTagsFromNodeCardsMap(map);
+    return mergePersistedProblemTagsWithUsed(problemTagRegistry, discovered).sort((a, b) =>
+      a.localeCompare(b),
+    );
+  }, [problemTagRegistry, nodeCardsMapVersion]);
 
   const pendingChangesRef = useRef(pendingChanges);
   const pendingRenamesRef = useRef(pendingRenames);
@@ -4287,6 +4433,17 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
       if (editorUiPrefsPayload) batchSaveData.editorUiPrefs = editorUiPrefsPayload;
 
+      const sanitizedRegistryForSave = sanitizeProblemTagRegistryList(problemTagRegistry);
+      const sanitizedRegistryJson = JSON.stringify(sanitizedRegistryForSave);
+      const problemTagsDirty =
+        Number.isFinite(baseDocIdNumForSave)
+        && baseDocIdNumForSave > 0
+        && sanitizedRegistryJson !== lastPersistedProblemTagsRef.current;
+
+      if (problemTagsDirty) {
+        batchSaveData.problemTags = sanitizedRegistryForSave;
+      }
+
       const nodeIdMap = new Map<string, string>();
       const cardIdMap = new Map<string, string>();
       let createCountBeforeSave = 0;
@@ -4793,7 +4950,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         batchSaveData.cardUpdates.length > 0 ||
         batchSaveData.cardDeletes.length > 0 ||
         batchSaveData.edgeCreates.length > 0 ||
-        batchSaveData.edgeDeletes.length > 0;
+        batchSaveData.edgeDeletes.length > 0 ||
+        problemTagsDirty;
       
       if (hasAnyChanges) {
         
@@ -4801,6 +4959,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           const response = await request.post(getBaseUrl('/batch-save'), batchSaveData);
           
           if (response.success) {
+            if (problemTagsDirty && batchSaveData.problemTags !== undefined) {
+              lastPersistedProblemTagsRef.current = JSON.stringify(
+                sanitizeProblemTagRegistryList(batchSaveData.problemTags),
+              );
+            }
             const det = (response as any).developSessionEditTotals;
             if (det && typeof det === 'object') {
               setDevelopSessionEditTotals({
@@ -5095,6 +5258,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           if ((window as any).UiContext && response?.nodeCardsMap != null) {
             (window as any).UiContext.nodeCardsMap = response.nodeCardsMap;
           }
+          const respExt = response as BaseDoc;
+          const persistedTagsSan = sanitizeProblemTagRegistryList(respExt.problemTags);
+          lastPersistedProblemTagsRef.current = JSON.stringify(persistedTagsSan);
+          setProblemTagRegistry(buildMergedProblemTagsForEditor(respExt));
         } catch (error) {
         }
         
@@ -5200,7 +5367,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     } finally {
       setIsCommitting(false);
     }
-  }, [pendingChanges, pendingDragChanges, pendingRenames, pendingDeletes, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.nodes, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion, explorerMode, rightPanelOpen, aiBottomOpen, explorerPanelWidth, problemsPanelWidth, aiPanelHeight, editorAiHidden, developEditorContext, basePath]);
+  }, [pendingChanges, pendingDragChanges, pendingRenames, pendingDeletes, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.nodes, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion, explorerMode, rightPanelOpen, aiBottomOpen, explorerPanelWidth, problemsPanelWidth, aiPanelHeight, editorAiHidden, developEditorContext, basePath, problemTagRegistry]);
 
   useEffect(() => {
     saveHandlerRef.current = handleSaveAll;
@@ -16587,6 +16754,8 @@ Reply with a JSON code block only for executable operations, using this shape:
                         docId={docId}
                         getBaseUrl={getBaseUrl}
                         themeStyles={themeStyles}
+                        problemTagOptions={problemTagDropdownOptions}
+                        onRegisterProblemTag={registerProblemTag}
                         onProblemContextMenu={(ev) =>
                           setProblemContextMenu({
                             x: ev.clientX,

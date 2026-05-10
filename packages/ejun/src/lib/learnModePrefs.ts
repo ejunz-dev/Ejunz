@@ -1,7 +1,12 @@
 /** Learn: knowledge base selection and daily goals (domain user document). */
 
+import { normalizeProblemTagInput } from '../model/problem';
+
 /** Which cards may appear in the ordered learn queue (domain.user). */
 export type LearnSessionCardFilterMode = 'all' | 'with_problems' | 'without_problems';
+
+/** Filter problems by taxonomy tag (`Problem.tag`) in session queue + practise. */
+export type LearnSessionProblemTagMode = 'off' | 'include' | 'exclude';
 
 /** Order in which today's **new**-segment cards are merged (`today` session only; stored on domain.user). */
 export type LearnSessionMode = 'deep' | 'breadth' | 'random';
@@ -93,6 +98,52 @@ export function normalizeLearnSessionCardFilter(raw: unknown): LearnSessionCardF
 
 export function getLearnSessionCardFilter(dudoc: Record<string, unknown> | null | undefined): LearnSessionCardFilterMode {
     return normalizeLearnSessionCardFilter(dudoc?.learnSessionCardFilter);
+}
+
+export function normalizeLearnSessionProblemTagMode(raw: unknown): LearnSessionProblemTagMode {
+    const s = String(raw ?? 'off').trim().toLowerCase().replace(/-/g, '_');
+    if (s === 'include' || s === 'exclude') return s;
+    return 'off';
+}
+
+/** Normalized, deduped, sorted tag list for storage and snapshot compare (max 32). */
+export function normalizeLearnSessionProblemTagList(raw: unknown, maxEntries = 32): string[] {
+    if (!Array.isArray(raw)) return [];
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const x of raw) {
+        const t = normalizeProblemTagInput(x);
+        if (!t || seen.has(t)) continue;
+        seen.add(t);
+        out.push(t);
+        if (out.length >= maxEntries) break;
+    }
+    return out.sort((a, b) => a.localeCompare(b));
+}
+
+export function getLearnSessionProblemTagMode(dudoc: Record<string, unknown> | null | undefined): LearnSessionProblemTagMode {
+    return normalizeLearnSessionProblemTagMode(dudoc?.learnSessionProblemTagMode);
+}
+
+export function getLearnSessionProblemTags(dudoc: Record<string, unknown> | null | undefined): string[] {
+    return normalizeLearnSessionProblemTagList(dudoc?.learnSessionProblemTags);
+}
+
+/** Compare domain.user tag prefs vs values frozen on a session row (missing session fields ⇒ off / []). */
+export function learnSessionProblemTagSettingsMatchDuWithSession(
+    du: Record<string, unknown>,
+    sessionTagModeRaw: unknown,
+    sessionTagsRaw: unknown,
+): boolean {
+    const wantM = getLearnSessionProblemTagMode(du);
+    const wantT = JSON.stringify(getLearnSessionProblemTags(du));
+    const snapM = sessionTagModeRaw === undefined || sessionTagModeRaw === null || String(sessionTagModeRaw).trim() === ''
+        ? 'off'
+        : normalizeLearnSessionProblemTagMode(sessionTagModeRaw);
+    const snapT = JSON.stringify(normalizeLearnSessionProblemTagList(
+        Array.isArray(sessionTagsRaw) ? sessionTagsRaw : [],
+    ));
+    return wantM === snapM && wantT === snapT;
 }
 
 export function getLearnBaseDocId(dudoc: Record<string, unknown> | null | undefined): number | null {

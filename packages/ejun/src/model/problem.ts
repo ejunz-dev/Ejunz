@@ -181,6 +181,29 @@ export function clampOptionSlots(n: unknown): number {
     return Math.min(MAX_SLOTS, Math.max(MIN_SLOTS, v));
 }
 
+/** Trim; empty or case-insensitive `default` are treated as unset (not stored). */
+export function normalizeProblemTagInput(raw: unknown): string | undefined {
+    if (typeof raw !== 'string') return undefined;
+    const v = raw.trim();
+    if (!v || v.toLowerCase() === 'default') return undefined;
+    return v.slice(0, 64);
+}
+
+/** Sanitize persisted tag registry payloads (dedupe preserve order). */
+export function sanitizeProblemTagRegistryList(raw: unknown, maxEntries = 200): string[] {
+    if (!Array.isArray(raw)) return [];
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const x of raw) {
+        const t = normalizeProblemTagInput(x);
+        if (!t || seen.has(t)) continue;
+        seen.add(t);
+        out.push(t);
+        if (out.length >= maxEntries) break;
+    }
+    return out;
+}
+
 export function isMatchingProblem(p: Partial<Problem> | null | undefined): p is ProblemMatching {
     return problemKind(p) === 'matching';
 }
@@ -261,12 +284,14 @@ export function ensureOptionArrayLength(options: string[], slots: number): strin
 }
 
 export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem {
+    const rawTag = normalizeProblemTagInput((prev as { tag?: unknown }).tag);
     const common: ProblemCommon = {
         pid: prev.pid,
         analysis: prev.analysis,
         imageUrl: prev.imageUrl,
         imageNote: prev.imageNote,
         ...(typeof prev.title === 'string' ? { title: prev.title } : {}),
+        ...(rawTag ? { tag: rawTag } : {}),
     };
     const slots = clampOptionSlots(
         isMultiProblem(prev) || problemKind(prev) === 'single'
@@ -497,12 +522,14 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
 
 export function migrateRawProblem(raw: Record<string, unknown>): Problem {
     const pid = typeof raw.pid === 'string' && raw.pid ? raw.pid : `p_${Date.now()}`;
+    const tagNorm = normalizeProblemTagInput(raw.tag);
     const common: ProblemCommon = {
         pid,
         ...(typeof raw.analysis === 'string' ? { analysis: raw.analysis } : {}),
         ...(typeof raw.imageUrl === 'string' ? { imageUrl: raw.imageUrl } : {}),
         ...(typeof raw.imageNote === 'string' ? { imageNote: raw.imageNote } : {}),
         ...(typeof raw.title === 'string' ? { title: raw.title } : {}),
+        ...(tagNorm ? { tag: tagNorm } : {}),
     };
     const t = raw.type;
     if (t === 'flip') {
@@ -578,3 +605,4 @@ export function migrateRawProblem(raw: Record<string, unknown>): Problem {
         optionSlots: slots,
     };
 }
+

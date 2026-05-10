@@ -21,16 +21,23 @@ import {
     getLearnBaseDocId,
     getLearnDailyGoal,
     getLearnSessionCardFilter,
+    getLearnSessionProblemTagMode,
+    getLearnSessionProblemTags,
+    learnSessionProblemTagSettingsMatchDuWithSession,
     mergeDailyNewReviewArms,
     normalizeLearnNewReviewOrder,
     normalizeLearnSessionCardFilter,
     normalizeLearnSessionMode,
+    normalizeLearnSessionProblemTagList,
+    normalizeLearnSessionProblemTagMode,
     type LearnSessionMode,
     type LearnSessionCardFilterMode,
+    type LearnSessionProblemTagMode,
 } from '../lib/learnModePrefs';
 import { getBranchData } from './base';
 import SessionModel, { type LessonCardQueueItem, type SessionDoc, type SessionPatch } from '../model/session';
 import * as document from '../model/document';
+import { normalizeProblemTagInput, sanitizeProblemTagRegistryList } from '../model/problem';
 import {
     appendLessonSessionToUrl,
     frozenTodayQueueMatchesLearnSettings,
@@ -130,6 +137,108 @@ async function filterFlatQueueByLearnCardProblemPresence<T extends { cardId: str
     return filterEntriesByLearnCardProblemPresence(entries, presence, mode);
 }
 
+/** Card id → set of normalized tags present on at least one problem. */
+async function buildCardIdProblemTagsMap(domainId: string, cardIds: string[]): Promise<Map<string, Set<string>>> {
+    const out = new Map<string, Set<string>>();
+    const oids: ObjectId[] = [];
+    for (const raw of new Set(cardIds.map((x) => String(x).trim()).filter(Boolean))) {
+        if (!ObjectId.isValid(raw)) {
+            out.set(raw, new Set());
+            continue;
+        }
+        oids.push(new ObjectId(raw));
+    }
+    if (oids.length === 0) return out;
+    const rows = await document.getMulti(domainId, document.TYPE_CARD, { docId: { $in: oids } })
+        .project({ docId: 1, problems: 1 })
+        .toArray();
+    for (const row of rows as Array<{ docId?: ObjectId; problems?: unknown[] }>) {
+        const hex = row.docId ? String(row.docId) : '';
+        if (!hex) continue;
+        const tagSet = new Set<string>();
+        for (const p of row.problems || []) {
+            const t = normalizeProblemTagInput((p as { tag?: unknown }).tag);
+            if (t) tagSet.add(t);
+        }
+        out.set(hex, tagSet);
+    }
+    for (const oid of oids) {
+        const h = oid.toString();
+        if (!out.has(h)) out.set(h, new Set());
+    }
+    return out;
+}
+
+function cardMatchesLearnProblemTagPolicy(
+    tagsOnCardProblems: Set<string>,
+    mode: LearnSessionProblemTagMode,
+    selectedNormalized: string[],
+): boolean {
+    const selected = new Set(selectedNormalized);
+    if (mode === 'off' || selected.size === 0) return true;
+    if (mode === 'include') {
+        for (const t of tagsOnCardProblems) {
+            if (selected.has(t)) return true;
+        }
+        return false;
+    }
+    for (const t of tagsOnCardProblems) {
+        if (selected.has(t)) return false;
+    }
+    return true;
+}
+
+function filterEntriesByLearnProblemTags<T extends { cardId: string }>(
+    entries: T[],
+    tagMap: Map<string, Set<string>>,
+    mode: LearnSessionProblemTagMode,
+    selectedTags: string[],
+): T[] {
+    if (mode === 'off' || selectedTags.length === 0) return entries;
+    return entries.filter((e) => {
+        const id = String(e.cardId);
+        const oidHex = ObjectId.isValid(id) ? new ObjectId(id).toString() : id;
+        const tagsOn = tagMap.get(id) ?? tagMap.get(oidHex) ?? new Set<string>();
+        return cardMatchesLearnProblemTagPolicy(tagsOn, mode, selectedTags);
+    });
+}
+
+async function filterFlatQueueByLearnProblemTags<T extends { cardId: string }>(
+    domainId: string,
+    entries: T[],
+    mode: LearnSessionProblemTagMode,
+    selectedTags: string[],
+): Promise<T[]> {
+    const normalized = normalizeLearnSessionProblemTagList(selectedTags);
+    if (mode === 'off' || normalized.length === 0 || entries.length === 0) return entries;
+    const tagMap = await buildCardIdProblemTagsMap(domainId, entries.map((e) => String(e.cardId)));
+    return filterEntriesByLearnProblemTags(entries, tagMap, mode, normalized);
+}
+
+function applyLearnProblemTagFilterToCardDoc<T extends { problems?: unknown[] }>(
+    card: T | null | undefined,
+    dudocLearn: Record<string, unknown> | null | undefined,
+): T | null | undefined {
+    if (!card || !dudocLearn) return card;
+    const mode = getLearnSessionProblemTagMode(dudocLearn);
+    const sel = getLearnSessionProblemTags(dudocLearn);
+    if (mode === 'off' || sel.length === 0) return card;
+    const tagSet = new Set(sel);
+    const probs = card.problems;
+    if (!Array.isArray(probs) || probs.length === 0) return card;
+    const filtered = probs.filter((p) => {
+        const t = normalizeProblemTagInput((p as { tag?: unknown }).tag);
+        if (mode === 'include') return !!t && tagSet.has(t);
+        return !t || !tagSet.has(t);
+    });
+    return { ...card, problems: filtered };
+}
+
+async function loadLearnProblemTagRegistryForBase(domainId: string, baseDocId: number): Promise<string[]> {
+    const b = await BaseModel.get(domainId, baseDocId);
+    return sanitizeProblemTagRegistryList((b as BaseDoc & { problemTags?: unknown }).problemTags);
+}
+
 function frozenNodeLessonCardFilterMatches(dudoc: Record<string, unknown>, s: SessionDoc): boolean {
     const want = getLearnSessionCardFilter(dudoc);
     const raw = (s as SessionDoc & { lessonQueueLearnSessionCardFilter?: unknown }).lessonQueueLearnSessionCardFilter;
@@ -137,7 +246,12 @@ function frozenNodeLessonCardFilterMatches(dudoc: Record<string, unknown>, s: Se
         raw === undefined || raw === null || String(raw).trim() === ''
             ? 'all'
             : normalizeLearnSessionCardFilter(raw);
-    return snap === want;
+    if (snap !== want) return false;
+    return learnSessionProblemTagSettingsMatchDuWithSession(
+        dudoc,
+        (s as SessionDoc & { lessonQueueLearnSessionProblemTagMode?: unknown }).lessonQueueLearnSessionProblemTagMode,
+        (s as SessionDoc & { lessonQueueLearnSessionProblemTags?: unknown }).lessonQueueLearnSessionProblemTags,
+    );
 }
 
 /** True when domain-aligned patch would change learning-start slot vs what the session row still has (stale queue risk). */
@@ -1591,10 +1705,16 @@ async function buildTodayLessonQueueFromDomain(
     );
 
     const cardFilterModeToday = getLearnSessionCardFilter(dudoc);
-    const cardsForToday = await filterFlatQueueByLearnCardProblemPresence(
+    const cardsPresence = await filterFlatQueueByLearnCardProblemPresence(
         domainId,
         cardsForTodayMerged,
         cardFilterModeToday,
+    );
+    const cardsForToday = await filterFlatQueueByLearnProblemTags(
+        domainId,
+        cardsPresence,
+        getLearnSessionProblemTagMode(dudoc as Record<string, unknown>),
+        getLearnSessionProblemTags(dudoc as Record<string, unknown>),
     );
 
     const queuePersist: LessonCardQueueItem[] = cardsForToday.map((c) => ({
@@ -2252,6 +2372,12 @@ class LearnHandler extends Handler {
             && String(body.learnSessionCardFilter).trim() !== '') {
             patch.learnSessionCardFilter = normalizeLearnSessionCardFilter(body.learnSessionCardFilter);
         }
+        if (body.learnSessionProblemTagMode !== undefined && body.learnSessionProblemTagMode !== null) {
+            patch.learnSessionProblemTagMode = normalizeLearnSessionProblemTagMode(body.learnSessionProblemTagMode);
+        }
+        if (body.learnSessionProblemTags !== undefined) {
+            patch.learnSessionProblemTags = normalizeLearnSessionProblemTagList(body.learnSessionProblemTags);
+        }
         if (Object.keys(patch).length === 0) {
             this.response.body = { success: false, error: 'No valid fields' };
             return;
@@ -2267,6 +2393,8 @@ class LearnHandler extends Handler {
             learnNewReviewRatio: getLearnNewReviewRatio(dudocFresh),
             learnNewReviewOrder: getLearnNewReviewOrder(dudocFresh),
             learnSessionCardFilter: getLearnSessionCardFilter(dudocFresh),
+            learnSessionProblemTagMode: getLearnSessionProblemTagMode(dudocFresh),
+            learnSessionProblemTags: getLearnSessionProblemTags(dudocFresh),
         };
     }
 
@@ -2278,6 +2406,8 @@ class LearnHandler extends Handler {
         const learnNewReviewRatioUi = getLearnNewReviewRatio(dudocForLearnUi);
         const learnNewReviewOrderUi = getLearnNewReviewOrder(dudocForLearnUi);
         const learnSessionCardFilterUi = getLearnSessionCardFilter(dudocForLearnUi);
+        const learnSessionProblemTagModeUi = getLearnSessionProblemTagMode(dudocForLearnUi);
+        const learnSessionProblemTagsUi = getLearnSessionProblemTags(dudocForLearnUi);
         const learnSubModeStrings = {
             label: this.translate('Learn ratio section label'),
             hint: this.translate('Learn ratio section hint'),
@@ -2327,6 +2457,9 @@ class LearnHandler extends Handler {
                 currentLearnSectionIndex: 0,
             });
         }
+        const learnProblemTagOptionsUi = selectedBase
+            ? await loadLearnProblemTagRegistryForBase(finalDomainId, Number(selectedBase.docId))
+            : [];
         const emptyLearnShell = {
             passedCardIds: [] as string[],
             passedCardKeys: [] as string[],
@@ -2336,6 +2469,9 @@ class LearnHandler extends Handler {
             learnNewReviewRatio: learnNewReviewRatioUi,
             learnNewReviewOrder: learnNewReviewOrderUi,
             learnSessionCardFilter: learnSessionCardFilterUi,
+            learnSessionProblemTagMode: learnSessionProblemTagModeUi,
+            learnSessionProblemTags: learnSessionProblemTagsUi,
+            learnProblemTagOptions: learnProblemTagOptionsUi,
             learnSubModeStrings,
             learnPathCardPractiseCounts: learnPathCardPractiseCountsPayload,
         };
@@ -2748,6 +2884,9 @@ class LearnHandler extends Handler {
             learnNewReviewRatio: learnNewReviewRatioUi,
             learnNewReviewOrder: learnNewReviewOrderUi,
             learnSessionCardFilter: learnSessionCardFilterUi,
+            learnSessionProblemTagMode: learnSessionProblemTagModeUi,
+            learnSessionProblemTags: learnSessionProblemTagsUi,
+            learnProblemTagOptions: learnProblemTagOptionsUi,
             learnSubModeStrings,
             learnPathCardPractiseCounts: learnPathCardPractiseCountsPayload,
             ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
@@ -2810,6 +2949,7 @@ function lessonSnapshotToJson(snapshot: Record<string, unknown>): Record<string,
 async function loadFlatQueueCardsForLesson(
     domainId: string,
     flatCards: Array<{ cardId: string }>,
+    dudocLearn?: Record<string, unknown> | null,
 ): Promise<any[]> {
     if (!flatCards.length) return [];
     return Promise.all(
@@ -2822,14 +2962,16 @@ async function loadFlatQueueCardsForLesson(
             }
         }),
     ).then((rows) => rows.map((c, i) => {
-        if (c) return c;
-        return {
-            docId: new ObjectId(flatCards[i].cardId),
-            nodeId: '',
-            title: '',
-            content: '',
-            problems: [],
-        };
+        const base = c
+            ? c
+            : {
+                docId: new ObjectId(flatCards[i].cardId),
+                nodeId: '',
+                title: '',
+                content: '',
+                problems: [],
+            };
+        return applyLearnProblemTagFilterToCardDoc(base, dudocLearn ?? undefined) ?? base;
     }));
 }
 
@@ -2865,8 +3007,9 @@ async function buildSpaLessonSnapshotToday(
     if (idx >= q.length) return null;
     const flatCardsBase = queueItemsToTodayFlatCards(q, finalDomainId);
     const currentItem = flatCardsBase[idx];
-    const currentCard = await CardModel.get(finalDomainId, new ObjectId(currentItem.cardId));
+    let currentCard = await CardModel.get(finalDomainId, new ObjectId(currentItem.cardId));
     if (!currentCard) return null;
+    currentCard = applyLearnProblemTagFilterToCardDoc(currentCard, dudocSpaToday as Record<string, unknown>) as typeof currentCard;
     const todayResolvedBase = (typeof currentItem.baseDocId === 'number' && currentItem.baseDocId > 0)
         ? currentItem.baseDocId
         : (baseNumericId(currentCard.baseDocId) > 0 ? baseNumericId(currentCard.baseDocId) : learnBid);
@@ -2876,7 +3019,10 @@ async function buildSpaLessonSnapshotToday(
     if (!baseDocToday) return null;
     const currentNode = (getBranchData(baseDocToday, todayLessonBranch).nodes || []).find((n: BaseNode) => n.id === currentItem.nodeId)
         || ({ id: currentItem.nodeId, title: currentItem.nodeTitle, text: '' } as BaseNode);
-    const currentCardList = await CardModel.getByNodeId(finalDomainId, todayResolvedBase, currentItem.nodeId, todayLessonBranch);
+    const currentCardListRawSpaToday = await CardModel.getByNodeId(finalDomainId, todayResolvedBase, currentItem.nodeId, todayLessonBranch);
+    const currentCardList = currentCardListRawSpaToday.map((c: any) =>
+        applyLearnProblemTagFilterToCardDoc(c, dudocSpaToday as Record<string, unknown>) ?? c,
+    );
     const currentIndexInNode = currentCardList.findIndex((c: any) => c.docId.toString() === currentItem.cardId);
     const L = mergeDomainLessonState(dudocSpaToday, sDaily);
     const lessonReviewCardIds = [...L.lessonReviewCardIds];
@@ -3017,15 +3163,19 @@ async function buildSpaLessonSnapshotNode(
     const L = mergeDomainLessonState(dudocSpaNode, sNode);
     const lessonReviewCardIds = [...L.lessonReviewCardIds];
     const lessonCardTimesMs = [...L.lessonCardTimesMs];
-    const currentCard = await CardModel.get(finalDomainId, new ObjectId(currentItem.cardId));
+    let currentCard = await CardModel.get(finalDomainId, new ObjectId(currentItem.cardId));
     if (!currentCard) return null;
+    currentCard = applyLearnProblemTagFilterToCardDoc(currentCard, dudocSpaNode as Record<string, unknown>) as typeof currentCard;
     const br = cardStorageBranch(currentCard as any);
     const cardBaseIdNode = baseNumericId(currentCard.baseDocId);
     const baseOfCard = await BaseModel.get(finalDomainId, cardBaseIdNode);
     if (!baseOfCard) return null;
     const currentNode = (getBranchData(baseOfCard, br).nodes || []).find((n: BaseNode) => n.id === currentCard.nodeId);
     if (!currentNode) return null;
-    const currentCardList = await CardModel.getByNodeId(finalDomainId, cardBaseIdNode, currentCard.nodeId, br);
+    const currentCardListRawSpaNode = await CardModel.getByNodeId(finalDomainId, cardBaseIdNode, currentCard.nodeId, br);
+    const currentCardList = currentCardListRawSpaNode.map((c: any) =>
+        applyLearnProblemTagFilterToCardDoc(c, dudocSpaNode as Record<string, unknown>) ?? c,
+    );
     const currentIndexInNode = currentCardList.findIndex((c: any) => c.docId.toString() === currentItem.cardId);
     const sid = lessonSessionIdFromDoc(await SessionModel.get(finalDomainId, uid));
     const learnRecordIdSpaNode = await ensureLearnRecordForCard(
@@ -3054,7 +3204,7 @@ async function buildSpaLessonSnapshotNode(
         flatCards,
         learnStartSlotNode,
     );
-    const flatQueueCardsSpaNode = await loadFlatQueueCardsForLesson(finalDomainId, flatCards);
+    const flatQueueCardsSpaNode = await loadFlatQueueCardsForLesson(finalDomainId, flatCards, dudocSpaNodePre);
     const hasProblemsSpaNode = flatQueueCardsSpaNode.some((c) => !!(c?.problems && (c.problems as unknown[]).length > 0));
     return {
         card: currentCard,
@@ -3599,6 +3749,8 @@ class LessonHandler extends Handler {
                         lessonCardQueue: newQ,
                         cardIndex: 0,
                         lessonQueueLearnSessionCardFilter: getLearnSessionCardFilter(dudoc as Record<string, unknown>),
+                        lessonQueueLearnSessionProblemTagMode: getLearnSessionProblemTagMode(dudoc as Record<string, unknown>),
+                        lessonQueueLearnSessionProblemTags: getLearnSessionProblemTags(dudoc as Record<string, unknown>),
                     }, { silent: true });
                     sNode = await resolveLessonSessionDoc(finalDomainId, this.user._id, qLessonSession || undefined);
                 }
@@ -3629,6 +3781,8 @@ class LessonHandler extends Handler {
                             lessonCardQueue: newQFrozen,
                             cardIndex: 0,
                             lessonQueueLearnSessionCardFilter: getLearnSessionCardFilter(dudoc as Record<string, unknown>),
+                            lessonQueueLearnSessionProblemTagMode: getLearnSessionProblemTagMode(dudoc as Record<string, unknown>),
+                            lessonQueueLearnSessionProblemTags: getLearnSessionProblemTags(dudoc as Record<string, unknown>),
                         }, { silent: true });
                         sNode = await resolveLessonSessionDoc(finalDomainId, this.user._id, qLessonSession || undefined);
                     }
@@ -3695,6 +3849,8 @@ class LessonHandler extends Handler {
                         branch: persistBranch,
                         lessonQueueLearnSectionOrderIndex: resolvedSectionSlot,
                         lessonQueueLearnSessionCardFilter: getLearnSessionCardFilter(dudoc as Record<string, unknown>),
+                        lessonQueueLearnSessionProblemTagMode: getLearnSessionProblemTagMode(dudoc as Record<string, unknown>),
+                        lessonQueueLearnSessionProblemTags: getLearnSessionProblemTags(dudoc as Record<string, unknown>),
                         ...(nodeSliceResetIndex ? { cardIndex: 0 } : {}),
                     }, { silent: true })
                     : touchLessonSession(finalDomainId, this.user._id, {
@@ -3707,6 +3863,8 @@ class LessonHandler extends Handler {
                         branch: persistBranch,
                         lessonQueueLearnSectionOrderIndex: resolvedSectionSlot,
                         lessonQueueLearnSessionCardFilter: getLearnSessionCardFilter(dudoc as Record<string, unknown>),
+                        lessonQueueLearnSessionProblemTagMode: getLearnSessionProblemTagMode(dudoc as Record<string, unknown>),
+                        lessonQueueLearnSessionProblemTags: getLearnSessionProblemTags(dudoc as Record<string, unknown>),
                         ...(nodeSliceResetIndex ? { cardIndex: 0 } : {}),
                     }, { silent: true });
                 await touchNodeQueue;
@@ -3748,6 +3906,8 @@ class LessonHandler extends Handler {
                             lessonCardQueue: syncCf,
                             cardIndex: 0,
                             lessonQueueLearnSessionCardFilter: nodeCardFilter,
+                            lessonQueueLearnSessionProblemTagMode: getLearnSessionProblemTagMode(dudoc as Record<string, unknown>),
+                            lessonQueueLearnSessionProblemTags: getLearnSessionProblemTags(dudoc as Record<string, unknown>),
                             lessonQueueAnchorNodeId: lessonNodeId,
                             lessonQueueBaseDocId: persistBaseCf || null,
                             lessonQueueLearnBranch: persistBranchCf,
@@ -3756,11 +3916,81 @@ class LessonHandler extends Handler {
                             lessonCardQueue: syncCf,
                             cardIndex: 0,
                             lessonQueueLearnSessionCardFilter: nodeCardFilter,
+                            lessonQueueLearnSessionProblemTagMode: getLearnSessionProblemTagMode(dudoc as Record<string, unknown>),
+                            lessonQueueLearnSessionProblemTags: getLearnSessionProblemTags(dudoc as Record<string, unknown>),
                             lessonQueueAnchorNodeId: lessonNodeId,
                             lessonQueueBaseDocId: persistBaseCf || null,
                             lessonQueueLearnBranch: persistBranchCf,
                         }, { silent: true });
                     await cfTouch;
+                    sNode = await resolveLessonSessionDoc(finalDomainId, this.user._id, qLessonSession || undefined);
+                    nodeSliceResetIndex = true;
+                }
+            }
+
+            const nodeProbTagMode = getLearnSessionProblemTagMode(dudoc as Record<string, unknown>);
+            const nodeProbTags = getLearnSessionProblemTags(dudoc as Record<string, unknown>);
+            if (nodeProbTagMode !== 'off' && nodeProbTags.length > 0) {
+                const beforeTf = flatCards.map((fc) => ({ ...fc }));
+                const afterTf = await filterFlatQueueByLearnProblemTags(
+                    finalDomainId,
+                    flatCards,
+                    nodeProbTagMode,
+                    nodeProbTags,
+                );
+                const queueTagFiltered =
+                    afterTf.length !== beforeTf.length
+                    || afterTf.some((fc, i) => fc.cardId !== beforeTf[i]?.cardId);
+                if (queueTagFiltered) {
+                    flatCards.length = 0;
+                    flatCards.push(...afterTf);
+                    const rootEntryTf = nodeTree[0];
+                    if (rootEntryTf?.type === 'node') {
+                        nodeTree[0] = {
+                            ...rootEntryTf,
+                            children: flatCards.map((c) => ({
+                                type: 'card' as const,
+                                id: c.cardId,
+                                title: c.cardTitle,
+                            })),
+                        };
+                    }
+                    if (flatCards.length === 0) {
+                        throw new NotFoundError(this.translate('No cards match session problem tag filter'));
+                    }
+                    const persistBaseTf = queueBaseHint || learnBidLesson;
+                    const persistBranchTf = learnBrLesson;
+                    const syncTf: LessonCardQueueItem[] = flatCards.map((fc) => ({
+                        domainId: finalDomainId,
+                        nodeId: fc.nodeId,
+                        cardId: fc.cardId,
+                        nodeTitle: fc.nodeTitle,
+                        cardTitle: fc.cardTitle,
+                        baseDocId: fc.baseDocId,
+                        learnSectionOrderIndex: fc.learnSectionOrderIndex,
+                    }));
+                    const tfTouch = sNode?._id
+                        ? SessionModel.touchById(finalDomainId, this.user._id, sNode._id, {
+                            lessonCardQueue: syncTf,
+                            cardIndex: 0,
+                            lessonQueueLearnSessionCardFilter: getLearnSessionCardFilter(dudoc as Record<string, unknown>),
+                            lessonQueueLearnSessionProblemTagMode: nodeProbTagMode,
+                            lessonQueueLearnSessionProblemTags: nodeProbTags,
+                            lessonQueueAnchorNodeId: lessonNodeId,
+                            lessonQueueBaseDocId: persistBaseTf || null,
+                            lessonQueueLearnBranch: persistBranchTf,
+                        }, { silent: true })
+                        : touchLessonSession(finalDomainId, this.user._id, {
+                            lessonCardQueue: syncTf,
+                            cardIndex: 0,
+                            lessonQueueLearnSessionCardFilter: getLearnSessionCardFilter(dudoc as Record<string, unknown>),
+                            lessonQueueLearnSessionProblemTagMode: nodeProbTagMode,
+                            lessonQueueLearnSessionProblemTags: nodeProbTags,
+                            lessonQueueAnchorNodeId: lessonNodeId,
+                            lessonQueueBaseDocId: persistBaseTf || null,
+                            lessonQueueLearnBranch: persistBranchTf,
+                        }, { silent: true });
+                    await tfTouch;
                     sNode = await resolveLessonSessionDoc(finalDomainId, this.user._id, qLessonSession || undefined);
                     nodeSliceResetIndex = true;
                 }
@@ -3804,8 +4034,9 @@ class LessonHandler extends Handler {
                 lessonCardTimesMs = [...L.lessonCardTimesMs];
             }
 
-            const currentCard = await CardModel.get(finalDomainId, new ObjectId(currentItem.cardId));
+            let currentCard = await CardModel.get(finalDomainId, new ObjectId(currentItem.cardId));
             if (!currentCard) throw new NotFoundError('Card not found');
+            currentCard = applyLearnProblemTagFilterToCardDoc(currentCard, dudoc as Record<string, unknown>) as typeof currentCard;
             const resolvedBase = (typeof currentItem.baseDocId === 'number' && currentItem.baseDocId > 0)
                 ? currentItem.baseDocId
                 : (baseNumericId(currentCard.baseDocId) > 0
@@ -3817,7 +4048,10 @@ class LessonHandler extends Handler {
             if (!baseDocForNode) throw new NotFoundError('Base not found');
             const currentNode = (getBranchData(baseDocForNode, nodeLessonBranch).nodes || []).find(n => n.id === currentItem.nodeId)
                 || ({ id: currentItem.nodeId, title: currentItem.nodeTitle, text: '' } as any);
-            const currentCardList = await CardModel.getByNodeId(finalDomainId, resolvedBase, currentItem.nodeId, nodeLessonBranch);
+            const currentCardListRawNodeLesson = await CardModel.getByNodeId(finalDomainId, resolvedBase, currentItem.nodeId, nodeLessonBranch);
+            const currentCardList = currentCardListRawNodeLesson.map((c) =>
+                applyLearnProblemTagFilterToCardDoc(c, dudoc as Record<string, unknown>) ?? c,
+            );
             const currentIndexInNode = currentCardList.findIndex(c => c.docId.toString() === currentItem.cardId);
 
             const touchNodeActive = sNode?._id
@@ -3870,7 +4104,7 @@ class LessonHandler extends Handler {
                 nodeLearnStartSlot,
             );
 
-            const flatQueueCardsNodeLesson = await loadFlatQueueCardsForLesson(finalDomainId, flatCards);
+            const flatQueueCardsNodeLesson = await loadFlatQueueCardsForLesson(finalDomainId, flatCards, dudoc);
             const hasProblemsNodeAgg = flatQueueCardsNodeLesson.some((c) => !!(c?.problems && (c.problems as unknown[]).length > 0));
 
             this.response.template = 'lesson.html';
@@ -4070,6 +4304,8 @@ class LessonHandler extends Handler {
                     lessonQueueLearnStartCardId: builtToday.effectiveLearnStartCardId ?? null,
                     lessonQueueLearnSessionMode: getLearnSessionMode(dudoc),
                     lessonQueueLearnSessionCardFilter: getLearnSessionCardFilter(dudoc),
+                    lessonQueueLearnSessionProblemTagMode: getLearnSessionProblemTagMode(dudoc as Record<string, unknown>),
+                    lessonQueueLearnSessionProblemTags: getLearnSessionProblemTags(dudoc as Record<string, unknown>),
                     lessonQueueLearnNewReviewRatio: getLearnNewReviewRatio(dudoc),
                     lessonQueueLearnNewReviewOrder: getLearnNewReviewOrder(dudoc),
                     lessonQueueMixedLayoutVersion: LESSON_QUEUE_MIXED_LAYOUT_VERSION,
@@ -4086,11 +4322,12 @@ class LessonHandler extends Handler {
             const currentCardIndex = todayQueueSlotIndex;
 
             const currentItem = cardsForToday[currentCardIndex];
-            const currentCard = await CardModel.get(finalDomainId, new ObjectId(currentItem.cardId));
+            let currentCard = await CardModel.get(finalDomainId, new ObjectId(currentItem.cardId));
             // Allow no-problem cards in today's lesson (card view mode).
             if (!currentCard) {
                 throw new NotFoundError('Card not found');
             }
+            currentCard = applyLearnProblemTagFilterToCardDoc(currentCard, dudoc as Record<string, unknown>) as typeof currentCard;
             const todayResolvedBase = (typeof currentItem.baseDocId === 'number' && currentItem.baseDocId > 0)
                 ? currentItem.baseDocId
                 : (baseNumericId(currentCard.baseDocId) > 0 ? baseNumericId(currentCard.baseDocId) : learnBaseIdToday);
@@ -4100,7 +4337,10 @@ class LessonHandler extends Handler {
             if (!baseDocToday) throw new NotFoundError('Base not found');
             const currentNode = (getBranchData(baseDocToday, todayLessonBranch).nodes || []).find((n: any) => n.id === currentItem.nodeId)
                 || ({ id: currentItem.nodeId, title: currentItem.nodeTitle, text: '' } as any);
-            const currentCardList = await CardModel.getByNodeId(finalDomainId, todayResolvedBase, currentItem.nodeId, todayLessonBranch);
+            const currentCardListRawToday = await CardModel.getByNodeId(finalDomainId, todayResolvedBase, currentItem.nodeId, todayLessonBranch);
+            const currentCardList = currentCardListRawToday.map((c) =>
+                applyLearnProblemTagFilterToCardDoc(c, dudoc as Record<string, unknown>) ?? c,
+            );
             const currentIndexInNode = currentCardList.findIndex(c => c.docId.toString() === currentItem.cardId);
 
             await touchTodayResolvedRow({
@@ -4347,6 +4587,8 @@ class LessonHandler extends Handler {
                             lessonQueueLearnSectionOrder: builtStart.sectionOrderSnapshot,
                             lessonQueueLearnSessionMode: getLearnSessionMode(dudocSt),
                             lessonQueueLearnSessionCardFilter: getLearnSessionCardFilter(dudocSt),
+                            lessonQueueLearnSessionProblemTagMode: getLearnSessionProblemTagMode(dudocSt as Record<string, unknown>),
+                            lessonQueueLearnSessionProblemTags: getLearnSessionProblemTags(dudocSt as Record<string, unknown>),
                             lessonQueueLearnNewReviewRatio: getLearnNewReviewRatio(dudocSt),
                             lessonQueueLearnNewReviewOrder: getLearnNewReviewOrder(dudocSt),
                             lessonQueueMixedLayoutVersion: LESSON_QUEUE_MIXED_LAYOUT_VERSION,
@@ -5078,7 +5320,11 @@ class LessonHandler extends Handler {
             if (cardIdStr) {
                 try {
                     currentCardId = new ObjectId(cardIdStr as string);
-                    const card = await CardModel.get(finalDomainId, currentCardId);
+                    const cardRaw = await CardModel.get(finalDomainId, currentCardId);
+                    const card = applyLearnProblemTagFilterToCardDoc(
+                        cardRaw,
+                        dudocPostMain as Record<string, unknown>,
+                    );
                     if (!card) {
                         throw new NotFoundError('Card not found');
                     }
@@ -5105,7 +5351,10 @@ class LessonHandler extends Handler {
             currentCardNodeId = currentCard.nodeId;
         }
 
-        const card = await CardModel.get(finalDomainId, currentCardId);
+        const card = applyLearnProblemTagFilterToCardDoc(
+            await CardModel.get(finalDomainId, currentCardId),
+            dudocPostMain as Record<string, unknown>,
+        );
         if (!card) {
             throw new NotFoundError('Card not found');
         }
