@@ -98,6 +98,35 @@ const exec = promisify(execCb);
 const execFile = promisify(execFileCb);
 const logger = new Logger('base');
 
+/**
+ * Base editor sends the full local `problems[]` snapshot; tags are maintained in Lesson and can be newer in DB.
+ * For each incoming problem with matching `pid`, keep stored `tags` (or absence of tags) instead of stale UI copies.
+ */
+function mergeIncomingProblemsPreserveStoredTags(incoming: Problem[], stored?: Problem[] | null): Problem[] {
+    if (!Array.isArray(stored) || stored.length === 0) return incoming;
+    const byPid = new Map<string, Problem>();
+    for (const row of stored) {
+        const pid = row?.pid != null ? String(row.pid) : '';
+        if (!pid) continue;
+        byPid.set(pid, row);
+    }
+    return incoming.map((inc) => {
+        const pid = inc?.pid != null ? String(inc.pid) : '';
+        if (!pid || !byPid.has(pid)) return inc;
+        const st = byPid.get(pid)!;
+        const merged: Problem = { ...inc };
+        if (Object.prototype.hasOwnProperty.call(st, 'tags')) {
+            if (Array.isArray(st.tags) && st.tags.length >= 0) {
+                merged.tags = [...st.tags];
+            } else {
+                delete (merged as { tags?: string[] }).tags;
+            }
+        } else {
+            delete (merged as { tags?: string[] }).tags;
+        }
+        return merged;
+    });
+}
 
 export function readOptionalRequestBaseDocId(req: { body?: any; query?: any } | undefined): number | undefined {
     if (!req) return undefined;
@@ -4785,7 +4814,18 @@ export class BaseBatchSaveHandler extends Handler {
                 if (cardUpdate.cardFace !== undefined) updates.cardFace = cardUpdate.cardFace;
                 if (cardUpdate.nodeId !== undefined) updates.nodeId = cardUpdate.nodeId;
                 if (cardUpdate.order !== undefined) updates.order = cardUpdate.order;
-                if (cardUpdate.problems !== undefined) updates.problems = cardUpdate.problems;
+                if (cardUpdate.problems !== undefined) {
+                    let problemsOut = cardUpdate.problems as Problem[];
+                    try {
+                        const prevCard = await CardModel.get(actualDomainId, new ObjectId(cardUpdate.cardId));
+                        if (prevCard?.problems && Array.isArray(cardUpdate.problems)) {
+                            problemsOut = mergeIncomingProblemsPreserveStoredTags(problemsOut, prevCard.problems as Problem[]);
+                        }
+                    } catch (_) {
+                        /* fall back to body problems */
+                    }
+                    updates.problems = problemsOut;
+                }
                 if (Object.keys(updates).length === 0) continue;
                 await CardModel.update(actualDomainId, new ObjectId(cardUpdate.cardId), updates);
             } catch (error: any) {
