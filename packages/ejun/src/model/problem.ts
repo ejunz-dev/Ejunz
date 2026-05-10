@@ -20,6 +20,9 @@ const DEFAULT_OPTION_SLOTS = 4;
 const MIN_SLOTS = 2;
 const MAX_SLOTS = 8;
 
+/** Max tags stored on a single problem (editor registry uses a higher cap). */
+export const MAX_TAGS_PER_PROBLEM = 32;
+
 /** Matching: row count editor + lesson bounds. */
 export const MATCHING_PAIR_MIN = 2;
 export const MATCHING_PAIR_MAX = 8;
@@ -189,6 +192,22 @@ export function normalizeProblemTagInput(raw: unknown): string | undefined {
     return v.slice(0, 64);
 }
 
+/**
+ * Normalized tag list for a problem (`tags[]` only).
+ */
+export function getProblemTagList(
+    p: (Partial<Problem> & { tags?: unknown }) | null | undefined,
+): string[] {
+    if (!p) return [];
+    return sanitizeProblemTagRegistryList((p as { tags?: unknown }).tags, MAX_TAGS_PER_PROBLEM);
+}
+
+/** Normalize `raw.tags` when loading Mongo / JSON. */
+export function normalizeProblemTagsFromRaw(raw: Record<string, unknown> | null | undefined): string[] {
+    if (!raw) return [];
+    return sanitizeProblemTagRegistryList(raw.tags, MAX_TAGS_PER_PROBLEM);
+}
+
 /** Sanitize persisted tag registry payloads (dedupe preserve order). */
 export function sanitizeProblemTagRegistryList(raw: unknown, maxEntries = 200): string[] {
     if (!Array.isArray(raw)) return [];
@@ -284,14 +303,14 @@ export function ensureOptionArrayLength(options: string[], slots: number): strin
 }
 
 export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem {
-    const rawTag = normalizeProblemTagInput((prev as { tag?: unknown }).tag);
+    const tagList = getProblemTagList(prev);
     const common: ProblemCommon = {
         pid: prev.pid,
         analysis: prev.analysis,
         imageUrl: prev.imageUrl,
         imageNote: prev.imageNote,
         ...(typeof prev.title === 'string' ? { title: prev.title } : {}),
-        ...(rawTag ? { tag: rawTag } : {}),
+        ...(tagList.length ? { tags: tagList } : {}),
     };
     const slots = clampOptionSlots(
         isMultiProblem(prev) || problemKind(prev) === 'single'
@@ -522,14 +541,14 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
 
 export function migrateRawProblem(raw: Record<string, unknown>): Problem {
     const pid = typeof raw.pid === 'string' && raw.pid ? raw.pid : `p_${Date.now()}`;
-    const tagNorm = normalizeProblemTagInput(raw.tag);
+    const tagsNorm = normalizeProblemTagsFromRaw(raw);
     const common: ProblemCommon = {
         pid,
         ...(typeof raw.analysis === 'string' ? { analysis: raw.analysis } : {}),
         ...(typeof raw.imageUrl === 'string' ? { imageUrl: raw.imageUrl } : {}),
         ...(typeof raw.imageNote === 'string' ? { imageNote: raw.imageNote } : {}),
         ...(typeof raw.title === 'string' ? { title: raw.title } : {}),
-        ...(tagNorm ? { tag: tagNorm } : {}),
+        ...(tagsNorm.length ? { tags: tagsNorm } : {}),
     };
     const t = raw.type;
     if (t === 'flip') {
