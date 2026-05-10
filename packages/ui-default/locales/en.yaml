@@ -408,6 +408,13 @@ __langname: English
 'Preview image': Preview image
 'Previous': Previous
 'Lesson skip problem': Skip
+'Lesson card queue navigation': Card queue navigation
+'Previous card': Previous card
+'Skip card': Skip card
+'Lesson skip card hint': 'No pass recorded. Skipping the last card ends the daily run; in single-node mode it opens the section summary.'
+'Lesson card navigation failed': Could not switch card
+'Invalid lesson navigate': Invalid card navigation
+'Lesson navigate unsupported': Card navigation is only for daily or single-node lessons
 'Lesson practice redo': Redo
 'Problem generated, please review': Problem generated, please review
 'Problem kind single': Single choice
