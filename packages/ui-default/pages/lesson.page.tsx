@@ -1262,6 +1262,7 @@ function LessonPage() {
   const [browseFlipped, setBrowseFlipped] = useState(false);
   const [browseNoImpression, setBrowseNoImpression] = useState(false);
   const [browseSubmitting, setBrowseSubmitting] = useState(false);
+  const [lessonCardNavLoading, setLessonCardNavLoading] = useState(false);
 
   const applySpaLesson = useCallback((payload: Record<string, unknown>) => {
     const normalizeNodeFromPayload = (raw: unknown): Node => {
@@ -2545,6 +2546,58 @@ function LessonPage() {
     }
   };
 
+  const handleLessonCardNav = useCallback(async (dir: 'prev' | 'skip') => {
+    if (lessonCardNavLoading || isSubmitting || browseSubmitting) return;
+    if ((!isSingleNodeMode && !isTodayMode) || !lessonSessionId) return;
+    if (reviewCardId) return;
+    if (dir === 'prev' && currentCardIndex <= 0) return;
+    const canSpaNav = isSingleNodeMode || isTodayMode;
+    setLessonCardNavLoading(true);
+    try {
+      const result = await request.post(`/d/${lessonApiDomainId}/learn/lesson/navigate`, {
+        ...(lessonSessionId ? { session: lessonSessionId } : {}),
+        lessonCardNav: dir,
+        spaNext: canSpaNav ? true : undefined,
+        todayMode: isTodayMode ? true : undefined,
+        singleNodeMode: isSingleNodeMode ? true : undefined,
+        nodeId: isSingleNodeMode ? rootNodeId : undefined,
+      });
+      const { lesson: spaNavLesson, spaNext: spaNavFlag, redirect: navRedirectRaw } = unwrapLearnPassResponse(result);
+      const navSpaOk = spaNavFlag === true || spaNavFlag === 'true' || spaNavFlag === 1;
+      if (
+        canSpaNav
+        && lessonPayloadLooksValid(spaNavLesson)
+        && (navSpaOk || spaNavFlag === undefined)
+      ) {
+        applySpaLesson(spaNavLesson);
+        return;
+      }
+      const navRedirect = typeof navRedirectRaw === 'string' ? navRedirectRaw : '';
+      if (navRedirect) {
+        window.location.href = navRedirect;
+        return;
+      }
+    } catch (err: any) {
+      console.error('Lesson card navigate failed:', err);
+      Notification.error(err?.message || i18n('Lesson card navigation failed'));
+    } finally {
+      setLessonCardNavLoading(false);
+    }
+  }, [
+    lessonCardNavLoading,
+    isSubmitting,
+    browseSubmitting,
+    isSingleNodeMode,
+    isTodayMode,
+    lessonSessionId,
+    reviewCardId,
+    currentCardIndex,
+    lessonApiDomainId,
+    rootNodeId,
+    applySpaLesson,
+    i18n,
+  ]);
+
   useEffect(() => {
     if (allCorrect && !isPassed && !isSubmitting && allProblems.length > 0) {
       handlePass();
@@ -3209,6 +3262,63 @@ function LessonPage() {
     );
   }
 
+  const showLessonCardQueueNav = (isSingleNodeMode || isTodayMode) && !!lessonSessionId && !reviewCardId && flatCards.length > 0;
+  const lessonCardNavDisabled = lessonCardNavLoading || isSubmitting || browseSubmitting;
+  const lessonCardQueueNavControls = showLessonCardQueueNav ? (
+    <div
+      role="group"
+      aria-label={i18n('Lesson card queue navigation')}
+      style={{
+        marginTop: '12px',
+        marginBottom: '12px',
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        gap: '10px',
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => { void handleLessonCardNav('prev'); }}
+        disabled={lessonCardNavDisabled || currentCardIndex <= 0}
+        style={{
+          padding: '10px 18px',
+          borderRadius: '8px',
+          border: `1px solid ${themeStyles.border}`,
+          backgroundColor: themeStyles.bgSecondary,
+          color: themeStyles.textPrimary,
+          fontSize: '14px',
+          fontWeight: 600,
+          cursor: lessonCardNavDisabled || currentCardIndex <= 0 ? 'not-allowed' : 'pointer',
+          opacity: lessonCardNavDisabled || currentCardIndex <= 0 ? 0.5 : 1,
+        }}
+      >
+        {lessonCardNavLoading ? i18n('Redirecting') : i18n('Previous card')}
+      </button>
+      <button
+        type="button"
+        onClick={() => { void handleLessonCardNav('skip'); }}
+        disabled={lessonCardNavDisabled}
+        style={{
+          padding: '10px 18px',
+          borderRadius: '8px',
+          border: `1px solid ${themeStyles.optionBorderMuted}`,
+          backgroundColor: themeStyles.bgSecondary,
+          color: themeStyles.textSecondary,
+          fontSize: '14px',
+          fontWeight: 600,
+          cursor: lessonCardNavDisabled ? 'not-allowed' : 'pointer',
+          opacity: lessonCardNavDisabled ? 0.55 : 1,
+        }}
+      >
+        {lessonCardNavLoading ? i18n('Redirecting') : i18n('Skip card')}
+      </button>
+      <span style={{ fontSize: '12px', color: themeStyles.textTertiary, flex: '1 1 160px', minWidth: 0 }}>
+        {i18n('Lesson skip card hint')}
+      </span>
+    </div>
+  ) : null;
+
   // Card view when there are no problems; otherwise use problem queue below. Single-card without problems matches node-without-problems.
   const useCardViewMode = (isSingleNodeMode || isTodayMode || isAlonePractice) && !hasProblems && allProblems.length === 0;
   let cardViewContent: React.ReactNode = null;
@@ -3230,6 +3340,7 @@ function LessonPage() {
           borderRadius: '8px',
         }}>
           {lessonProvenanceTopRow}
+          {lessonCardQueueNavControls}
           <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', color: themeStyles.textPrimary }}>
             {card.title || i18n('Unnamed Card')}
             {(isAlonePractice ? (reviewCardId && String(card.docId) === reviewCardId) : (lessonReviewCardIds.includes(String(card.docId)) || (reviewCardId && String(card.docId) === reviewCardId))) && (
@@ -4210,6 +4321,7 @@ function LessonPage() {
         borderRadius: '8px',
       }}>
         {lessonProvenanceTopRow}
+        {lessonCardQueueNavControls}
         <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', color: themeStyles.textPrimary }}>
           {card.title || i18n('Unnamed Card')}
           {(isAlonePractice ? (reviewCardId && String(card.docId) === reviewCardId) : lessonReviewCardIds.includes(String(card.docId))) && (
