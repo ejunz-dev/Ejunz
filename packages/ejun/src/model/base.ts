@@ -726,6 +726,7 @@ export class BaseModel {
             viewport?: BaseDoc['viewport'];
             theme?: BaseDoc['theme'];
             history?: BaseDoc['history'];
+            problemTags?: string[];
         }
     ): Promise<void> {
         await document.set(domainId, document.TYPE_BASE, docId, {

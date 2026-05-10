@@ -129,6 +129,42 @@ function normalizeLearnSessionCardFilterFromUi(raw: unknown): LearnSessionCardFi
   return 'all';
 }
 
+type LearnSessionProblemTagModeUi = 'off' | 'include' | 'exclude';
+
+const LEARN_PROBLEM_SESSION_TAG_LIMIT = 32;
+
+function normalizeProblemTagUi(raw: string): string | undefined {
+  const v = String(raw ?? '').trim().slice(0, 64);
+  if (!v || v.toLowerCase() === 'default') return undefined;
+  return v;
+}
+
+/** Align with server `normalizeLearnSessionProblemTagList` semantics (bounded list for session picker). */
+function normalizeLearnProblemTagSelectionList(tags: unknown, maxEntries = LEARN_PROBLEM_SESSION_TAG_LIMIT): string[] {
+  if (!Array.isArray(tags)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const x of tags) {
+    const t = normalizeProblemTagUi(typeof x === 'string' ? x : String(x ?? ''));
+    if (!t || seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+    if (out.length >= maxEntries) break;
+  }
+  return out.sort((a, b) => a.localeCompare(b));
+}
+
+function normalizeLearnSessionProblemTagModeFromUi(raw: unknown): LearnSessionProblemTagModeUi {
+  const s = String(raw ?? 'off').trim().toLowerCase().replace(/-/g, '_');
+  if (s === 'include' || s === 'exclude') return s;
+  return 'off';
+}
+
+function learnProblemTagsEqual(a: string[], b: string[]): boolean {
+  return JSON.stringify(normalizeLearnProblemTagSelectionList(a))
+    === JSON.stringify(normalizeLearnProblemTagSelectionList(b));
+}
+
 function getChildren(nodeId: string, sections: MapDAGNode[], dag: MapDAGNode[]): MapDAGNode[] {
   const list: MapDAGNode[] = [];
   dag.forEach((n) => {
@@ -203,6 +239,19 @@ function LearnPage() {
     () => normalizeLearnSessionCardFilterFromUi((window as any).UiContext?.learnSessionCardFilter),
     [],
   );
+  const initialLearnSessionProblemTagMode = useMemo(
+    () => normalizeLearnSessionProblemTagModeFromUi((window as any).UiContext?.learnSessionProblemTagMode),
+    [],
+  );
+  const initialLearnSessionProblemTags = useMemo(
+    () => normalizeLearnProblemTagSelectionList((window as any).UiContext?.learnSessionProblemTags),
+    [],
+  );
+  const learnProblemTagOptionsFromUi = useMemo(() => {
+    const raw = (window as any).UiContext?.learnProblemTagOptions;
+    if (!Array.isArray(raw)) return [] as string[];
+    return raw.map((x: unknown) => String(x)).filter((s) => normalizeProblemTagUi(s));
+  }, []);
   const learnSubModeStrings = useMemo(
     () => ((window as any).UiContext?.learnSubModeStrings || {}) as LearnSubModeStringsFromServer,
     [],
@@ -233,11 +282,15 @@ function LearnPage() {
   const [learnNewReviewRatio, setLearnNewReviewRatio] = useState(initialLearnNewReviewRatio);
   const [learnNewReviewOrder, setLearnNewReviewOrder] = useState<LearnNewReviewOrderUi>(initialLearnNewReviewOrder);
   const [learnSessionCardFilter, setLearnSessionCardFilter] = useState<LearnSessionCardFilterUi>(initialLearnSessionCardFilter);
+  const [learnSessionProblemTagMode] = useState<LearnSessionProblemTagModeUi>(initialLearnSessionProblemTagMode);
+  const [learnSessionProblemTags] = useState<string[]>(() => [...initialLearnSessionProblemTags]);
   const [learnPrefsOpen, setLearnPrefsOpen] = useState(false);
   const [draftSessionMode, setDraftSessionMode] = useState<LearnSessionModeUi>(initialLearnSessionMode);
   const [draftRatio, setDraftRatio] = useState(initialLearnNewReviewRatio);
   const [draftOrder, setDraftOrder] = useState<LearnNewReviewOrderUi>(initialLearnNewReviewOrder);
   const [draftCardFilter, setDraftCardFilter] = useState<LearnSessionCardFilterUi>(initialLearnSessionCardFilter);
+  const [draftTagMode, setDraftTagMode] = useState<LearnSessionProblemTagModeUi>(initialLearnSessionProblemTagMode);
+  const [draftTags, setDraftTags] = useState<string[]>(() => [...initialLearnSessionProblemTags]);
   const [draftDailyGoal, setDraftDailyGoal] = useState(dailyGoal);
   const [savingLearnPrefs, setSavingLearnPrefs] = useState(false);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
@@ -250,6 +303,11 @@ function LearnPage() {
   const [expandedPathSectionSlots, setExpandedPathSectionSlots] = useState<Set<number>>(new Set());
   const [expandedPathCardIds, setExpandedPathCardIds] = useState<Set<string>>(new Set());
   const consecutiveBubbleRef = useRef<HTMLButtonElement>(null);
+
+  const tagOptionsForPicker = useMemo(
+    () => normalizeLearnProblemTagSelectionList([...learnProblemTagOptionsFromUi, ...learnSessionProblemTags], 256),
+    [learnProblemTagOptionsFromUi, learnSessionProblemTags],
+  );
 
   const getLatestLearnWallDate = useCallback(() => {
     const dates = Object.keys(learnWallContributionDetails);
@@ -383,14 +441,38 @@ function LearnPage() {
     window.location.href = `/d/${domainId}/learn/lesson`;
   }, [domainId, todayLessonResumeUrl]);
 
+  const toggleDraftProblemTag = useCallback((tag: string) => {
+    const t = normalizeProblemTagUi(tag);
+    if (!t) return;
+    setDraftTags((prev) => {
+      const next = new Set(prev);
+      if (next.has(t)) next.delete(t);
+      else {
+        if (next.size >= LEARN_PROBLEM_SESSION_TAG_LIMIT) return prev;
+        next.add(t);
+      }
+      return [...next].sort((a, b) => a.localeCompare(b));
+    });
+  }, []);
+
   const openLearnPrefsModal = useCallback(() => {
     setDraftDailyGoal(goal);
     setDraftSessionMode(learnSessionMode);
     setDraftRatio(learnNewReviewRatio);
     setDraftOrder(learnNewReviewOrder);
     setDraftCardFilter(learnSessionCardFilter);
+    setDraftTagMode(learnSessionProblemTagMode);
+    setDraftTags([...learnSessionProblemTags]);
     setLearnPrefsOpen(true);
-  }, [goal, learnSessionMode, learnNewReviewRatio, learnNewReviewOrder, learnSessionCardFilter]);
+  }, [
+    goal,
+    learnSessionMode,
+    learnNewReviewRatio,
+    learnNewReviewOrder,
+    learnSessionCardFilter,
+    learnSessionProblemTagMode,
+    learnSessionProblemTags,
+  ]);
 
   const saveLearnPrefsModal = useCallback(async () => {
     if (!domainId || savingLearnPrefs) return;
@@ -399,7 +481,9 @@ function LearnPage() {
     const ratioChanged = draftRatio !== learnNewReviewRatio;
     const orderChanged = draftOrder !== learnNewReviewOrder;
     const cardFilterChanged = draftCardFilter !== learnSessionCardFilter;
-    const subChanged = ratioChanged || orderChanged || cardFilterChanged;
+    const tagModeChanged = draftTagMode !== learnSessionProblemTagMode;
+    const tagsChanged = !learnProblemTagsEqual(draftTags, learnSessionProblemTags);
+    const subChanged = ratioChanged || orderChanged || cardFilterChanged || tagModeChanged || tagsChanged;
     if (!goalChanged && !modeChanged && !subChanged) {
       setLearnPrefsOpen(false);
       return;
@@ -417,6 +501,8 @@ function LearnPage() {
         if (ratioChanged) body.learnNewReviewRatio = draftRatio;
         if (orderChanged) body.learnNewReviewOrder = draftOrder;
         if (cardFilterChanged) body.learnSessionCardFilter = draftCardFilter;
+        if (tagModeChanged) body.learnSessionProblemTagMode = draftTagMode;
+        if (tagsChanged) body.learnSessionProblemTags = normalizeLearnProblemTagSelectionList(draftTags);
         await request.post(`/d/${domainId}/learn/sub-mode`, body);
       }
       window.location.reload();
@@ -436,11 +522,15 @@ function LearnPage() {
     draftRatio,
     draftOrder,
     draftCardFilter,
+    draftTagMode,
+    draftTags,
     goal,
     learnSessionMode,
     learnNewReviewRatio,
     learnNewReviewOrder,
     learnSessionCardFilter,
+    learnSessionProblemTagMode,
+    learnSessionProblemTags,
     learnSubModeStrings.failedSave,
   ]);
 
@@ -1018,6 +1108,84 @@ function LearnPage() {
                         <option value="without_problems">{i18n('Learn session card filter without problems')}</option>
                       </select>
                     </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <label htmlFor="learn-prefs-problem-tag-mode" style={{ fontSize: '13px', color: themeStyles.textSecondary, fontWeight: 500 }}>
+                        {i18n('Learn session problem tag filter')}
+                      </label>
+                      <select
+                        id="learn-prefs-problem-tag-mode"
+                        value={draftTagMode}
+                        disabled={savingLearnPrefs}
+                        onChange={(e) => setDraftTagMode(normalizeLearnSessionProblemTagModeFromUi(e.target.value))}
+                        style={{
+                          padding: '8px 10px',
+                          fontSize: '13px',
+                          background: themeStyles.bgPrimary,
+                          border: `1px solid ${themeStyles.border}`,
+                          borderRadius: '8px',
+                          color: themeStyles.textPrimary,
+                          width: '100%',
+                        }}
+                      >
+                        <option value="off">{i18n('Learn session problem tag filter off')}</option>
+                        <option value="include">{i18n('Learn session problem tag filter include')}</option>
+                        <option value="exclude">{i18n('Learn session problem tag filter exclude')}</option>
+                      </select>
+                    </div>
+                    {draftTagMode !== 'off' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <span style={{ fontSize: '12px', color: themeStyles.textTertiary }}>
+                          {i18n('Learn session problem tag filter max hint', LEARN_PROBLEM_SESSION_TAG_LIMIT)}
+                        </span>
+                        <span style={{ fontSize: '13px', color: themeStyles.textSecondary, fontWeight: 500 }}>
+                          {i18n('Learn session problem tag filter tags label')}
+                        </span>
+                        {tagOptionsForPicker.length === 0 ? (
+                          <div style={{ fontSize: '12px', color: themeStyles.textTertiary, lineHeight: 1.45 }}>
+                            {i18n('Learn session problem tag filter no tags in base')}
+                          </div>
+                        ) : (
+                          <div
+                            role="group"
+                            aria-label={i18n('Learn session problem tag filter tags label')}
+                            style={{
+                              maxHeight: 'min(200px, 40vh)',
+                              overflow: 'auto',
+                              padding: '8px 10px',
+                              border: `1px solid ${themeStyles.border}`,
+                              borderRadius: '8px',
+                              background: themeStyles.bgPrimary,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '8px',
+                            }}
+                          >
+                            {tagOptionsForPicker.map((tag) => (
+                              <label
+                                key={tag}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '10px',
+                                  fontSize: '13px',
+                                  color: themeStyles.textPrimary,
+                                  cursor: savingLearnPrefs ? 'not-allowed' : 'pointer',
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={draftTags.includes(tag)}
+                                  disabled={savingLearnPrefs
+                                    || (!draftTags.includes(tag) && draftTags.length >= LEARN_PROBLEM_SESSION_TAG_LIMIT)}
+                                  onChange={() => toggleDraftProblemTag(tag)}
+                                />
+                                <span>{tag}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       <label htmlFor="learn-prefs-ratio" style={{ fontSize: '13px', color: themeStyles.textSecondary, fontWeight: 500 }}>
                         {learnSubModeStrings.label || i18n('Learn ratio section label')}

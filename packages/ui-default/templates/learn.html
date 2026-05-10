@@ -14,6 +14,9 @@
   {{ set(UiContext, 'learnNewReviewRatio', learnNewReviewRatio if learnNewReviewRatio is defined else 1) }}
   {{ set(UiContext, 'learnNewReviewOrder', learnNewReviewOrder or 'new_first') }}
   {{ set(UiContext, 'learnSessionCardFilter', learnSessionCardFilter or 'all') }}
+  {{ set(UiContext, 'learnSessionProblemTagMode', learnSessionProblemTagMode or 'off') }}
+  {{ set(UiContext, 'learnSessionProblemTags', learnSessionProblemTags or []) }}
+  {{ set(UiContext, 'learnProblemTagOptions', learnProblemTagOptions or []) }}
   {{ set(UiContext, 'learnSubModeStrings', learnSubModeStrings or {}) }}
   {{ set(UiContext, 'learnPathCardPractiseCounts', learnPathCardPractiseCounts or {}) }}
   {{ set(UiContext, 'todayCompletedCount', todayCompletedCount) }}
