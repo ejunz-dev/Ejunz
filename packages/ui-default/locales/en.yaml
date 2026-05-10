@@ -459,6 +459,7 @@ __langname: English
 'Problem tag new placeholder': New tag
 'Problem tag add': Add
 'Problem tag empty': Enter a tag name first
+'Problem tag editor read only hint': Tags can be edited in lesson practice only (read-only here).
 'Problem title': Problem title
 'Problem option slots': Option slots
 'Problem multi all correct': All correct selections required to pass
