@@ -87,6 +87,7 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
   const [outlineAllSections, setOutlineAllSections] = useState<LearnDAGNode[]>(() => allSectionsProp || []);
   const [outlineDag, setOutlineDag] = useState<LearnDAGNode[]>(() => dagProp || []);
   const [isResettingDag, setIsResettingDag] = useState(false);
+  const [isResettingProgress, setIsResettingProgress] = useState(false);
   const sectionEditPostUrl = `/d/${domainId}/learn/section/edit${targetUid ? `?uid=${encodeURIComponent(String(targetUid))}` : ''}`;
 
   useEffect(() => {
@@ -315,6 +316,29 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
       UiNotification.error(err?.message || i18n('Learn DAG reset failed') || 'Failed to reset learning path.');
     } finally {
       setIsResettingDag(false);
+    }
+  }, [sectionEditPostUrl, targetUid]);
+
+  const handleResetLearnProgress = useCallback(async () => {
+    if (!window.confirm(i18n('Reset learn progress confirm') || 'Clear all passed/progress for this user in this domain?')) {
+      return;
+    }
+    setIsResettingProgress(true);
+    try {
+      const body: Record<string, unknown> = { resetLearnProgress: true };
+      if (targetUid && targetUid !== (window as any).UserContext?._id) {
+        body.uid = targetUid;
+      }
+      const res: any = await request.post(sectionEditPostUrl, body);
+      const idx = typeof res?.currentLearnSectionIndex === 'number' && Number.isFinite(res.currentLearnSectionIndex)
+        ? res.currentLearnSectionIndex
+        : null;
+      if (idx !== null) setCurrentLearnSectionIndex(idx);
+      UiNotification.success(i18n('Learn progress reset done') || '学习进度已重置。');
+    } catch (err: any) {
+      UiNotification.error(err?.message || i18n('Learn progress reset failed') || '重置进度失败。');
+    } finally {
+      setIsResettingProgress(false);
     }
   }, [sectionEditPostUrl, targetUid]);
 
@@ -624,8 +648,28 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
             <button
               type="button"
+              onClick={handleResetLearnProgress}
+              disabled={isSaving || isResettingDag || isResettingProgress}
+              title={i18n('Reset learn progress description') || ''}
+              style={{
+                padding: isMobile ? '10px 16px' : '10px 20px',
+                minHeight: isMobile ? 44 : undefined,
+                fontSize: '14px',
+                fontWeight: 600,
+                color: themeStyles.textPrimary,
+                backgroundColor: themeStyles.bgSecondary,
+                border: `1px solid ${themeStyles.border}`,
+                borderRadius: '6px',
+                cursor: isSaving || isResettingDag || isResettingProgress ? 'not-allowed' : 'pointer',
+                opacity: isSaving || isResettingDag || isResettingProgress ? 0.6 : 1,
+              }}
+            >
+              {isResettingProgress ? (i18n('Resetting...') || '…') : (i18n('Reset learn progress') || '重置进度')}
+            </button>
+            <button
+              type="button"
               onClick={handleResetDag}
-              disabled={isSaving || isResettingDag}
+              disabled={isSaving || isResettingDag || isResettingProgress}
               title={i18n('Reset learn DAG description') || ''}
               style={{
                 padding: isMobile ? '10px 16px' : '10px 20px',
@@ -636,8 +680,8 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
                 backgroundColor: themeStyles.bgSecondary,
                 border: `1px solid ${themeStyles.border}`,
                 borderRadius: '6px',
-                cursor: isSaving || isResettingDag ? 'not-allowed' : 'pointer',
-                opacity: isSaving || isResettingDag ? 0.6 : 1,
+                cursor: isSaving || isResettingDag || isResettingProgress ? 'not-allowed' : 'pointer',
+                opacity: isSaving || isResettingDag || isResettingProgress ? 0.6 : 1,
               }}
             >
               {isResettingDag ? (i18n('Resetting...') || '…') : (i18n('Reset learn DAG') || 'Reset from base')}
@@ -645,7 +689,7 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
             <button
               type="button"
               onClick={handleSave}
-              disabled={isSaving || !hasUnsavedChanges}
+              disabled={isSaving || isResettingDag || isResettingProgress || !hasUnsavedChanges}
               style={{
                 padding: isMobile ? '10px 16px' : '10px 20px',
                 minHeight: isMobile ? 44 : undefined,
@@ -655,7 +699,7 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
                 backgroundColor: isSaving ? themeStyles.textSecondary : (hasUnsavedChanges ? themeStyles.accent : themeStyles.textSecondary),
                 border: 'none',
                 borderRadius: '6px',
-                cursor: isSaving || !hasUnsavedChanges ? 'not-allowed' : 'pointer',
+                cursor: isSaving || isResettingDag || isResettingProgress || !hasUnsavedChanges ? 'not-allowed' : 'pointer',
               }}
             >
               {isSaving ? (i18n('Saving...') || '保存中...') : (i18n('Save') || '保存')}

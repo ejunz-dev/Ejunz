@@ -514,6 +514,11 @@ __langname: English
 'Reset learn DAG description': Rebuild the learning path from the latest base and reset section order to match (overwrites saved order).
 'Learn DAG reset done': Learning path was refreshed from the base.
 'Learn DAG reset failed': Could not refresh learning path from the base.
+'Reset learn progress': Reset progress
+'Reset learn progress description': Clears all passed/card progress and path practice counts for this user in this domain; keeps section order and current section. Abandons active lesson sessions so the next session starts fresh.
+'Reset learn progress confirm': Clear all learning progress (passed states, path practice counts) for this user in this domain? Section order and starting section stay the same.
+'Learn progress reset done': Learning progress was cleared.
+'Learn progress reset failed': Could not reset learning progress.
 'Resetting...': Resetting…
 'Select a conversation to view details': Select a conversation to view details
 'Select a section from the sidebar': Select a section from the sidebar

@@ -138,6 +138,16 @@ class LearnModel {
         await collProgress.deleteMany({ domainId, userId, cardId: { $in: oids } });
     }
 
+    /** Clear all learn pass / slot progress for this user in the domain (full reset from section editor). */
+    static async deleteAllPassedProgressForUser(domainId: string, userId: number) {
+        await collProgress.deleteMany({ domainId, userId });
+    }
+
+    /** Remove all path practise count keys (`learnPathCardPractiseCounts`). */
+    static async clearLearnPathPractiseCounts(domainId: string, userId: number) {
+        return domain.updateUserInDomain(domainId, userId, { $unset: { learnPathCardPractiseCounts: '' } });
+    }
+
     static async getResults(
         domainId: string,
         userId: number,

@@ -405,6 +405,22 @@ async function resolveLessonSessionForMerge(
     return await SessionModel.get(domainId, uid);
 }
 
+/** Mark in-progress node/card lesson rows abandoned so a fresh queue is built after progress reset. */
+async function abandonActiveNodeCardLessonSessions(domainId: string, uid: number): Promise<void> {
+    const now = new Date();
+    await SessionModel.coll.updateMany(
+        {
+            domainId,
+            uid,
+            appRoute: 'learn',
+            route: 'learn',
+            lessonMode: { $in: ['node', 'card'] },
+            $or: [{ lessonAbandonedAt: { $exists: false } }, { lessonAbandonedAt: null }],
+        },
+        { $set: { lessonAbandonedAt: now, lastActivityAt: now } },
+    );
+}
+
 /** Clear domain pointer and mark every active daily (`today`) session abandoned (daily goal / section order change). */
 async function clearDailyPracticeSessionAfterSettingsChange(domainId: string, uid: number, _priv: number): Promise<void> {
     await clearLearnDailySessionPointer(domainId, uid);
@@ -3749,29 +3765,12 @@ class LessonHandler extends Handler {
                         learnSectionOrderIndex: slotQ,
                     });
                 }
-                const frozSlice = sliceNodeFlatCardsFromLearnStartIfSectionRoot(flatCards, sliceOptsNode);
-                if (frozSlice.sliced && sNode?._id) {
-                    nodeSliceResetIndex = true;
-                    const newQ: LessonCardQueueItem[] = frozSlice.next.map((fc) => ({
-                        domainId: finalDomainId,
-                        nodeId: fc.nodeId,
-                        cardId: fc.cardId,
-                        nodeTitle: fc.nodeTitle,
-                        cardTitle: fc.cardTitle,
-                        baseDocId: fc.baseDocId,
-                        learnSectionOrderIndex: fc.learnSectionOrderIndex,
-                    }));
-                    await SessionModel.touchById(finalDomainId, this.user._id, sNode._id, {
-                        lessonCardQueue: newQ,
-                        cardIndex: 0,
-                        lessonQueueLearnSessionCardFilter: getLearnSessionCardFilter(dudoc as Record<string, unknown>),
-                        lessonQueueLearnSessionProblemTagMode: getLearnSessionProblemTagMode(dudoc as Record<string, unknown>),
-                        lessonQueueLearnSessionProblemTags: getLearnSessionProblemTags(dudoc as Record<string, unknown>),
-                    }, { silent: true });
-                    sNode = await resolveLessonSessionDoc(finalDomainId, this.user._id, qLessonSession || undefined);
-                }
-                flatCards.length = 0;
-                flatCards.push(...frozSlice.next);
+                /**
+                 * Do not re-slice a frozen `lessonCardQueue` using `currentLearnStartCardId`.
+                 * After each pass we advance domain learn-start + cardIndex on the persisted queue.
+                 * Re-applying slice would shrink the queue (drop finished cards), reset cardIndex to 0,
+                 * break session totals (e.g. 1/294 → 0/293) and wipe "completed cards" UX.
+                 */
                 if (flatCards.length === 0 && sNode?._id) {
                     const fbFrozen = await collectOutlineSubtreeFlatCardsForNodeLesson(
                         finalDomainId,
@@ -4764,6 +4763,16 @@ class LessonHandler extends Handler {
                 todayLearnSlot,
                 (k) => this.translate(k),
             );
+            /** Keep `lessonQueueLearnStartCardId` in sync with `domain.user` so `frozenTodayQueueMatchesLearnSettings` stays true across GET rebuild checks. */
+            const dudocQueueStartSnap = await learn.getUserLearnState(finalDomainId, {
+                _id: this.user._id,
+                priv: this.user.priv,
+            }) as any;
+            const queueLearnStartCardSnap =
+                typeof dudocQueueStartSnap?.currentLearnStartCardId === 'string'
+                && dudocQueueStartSnap.currentLearnStartCardId.trim()
+                    ? String(dudocQueueStartSnap.currentLearnStartCardId).trim()
+                    : null;
             await bus.parallel('learn_result/add', cardDomain);
             await appendUserCheckinDay(cardDomain, this.user._id, this.user.priv, 'learnActivityDates');
             const today = moment.utc().format('YYYY-MM-DD');
@@ -4781,7 +4790,11 @@ class LessonHandler extends Handler {
                     finalDomainId,
                     this.user._id,
                     sBr._id,
-                    { cardIndex: nextIndex, lessonMode: 'today' },
+                    {
+                        cardIndex: nextIndex,
+                        lessonMode: 'today',
+                        lessonQueueLearnStartCardId: queueLearnStartCardSnap,
+                    },
                     { silent: false },
                 );
                 if (spaNext) {
@@ -4816,6 +4829,7 @@ class LessonHandler extends Handler {
                         route: 'learn',
                         lessonMode: 'today',
                         cardIndex: queue.length,
+                        lessonQueueLearnStartCardId: queueLearnStartCardSnap,
                     },
                     { silent: false },
                 );
@@ -5751,6 +5765,14 @@ class LearnSectionEditHandler extends Handler {
         const finalDomainId = typeof argsOrRoute === 'string'
             ? argsOrRoute
             : String((a as any).domainId || (this.args as any).domainId || '');
+        const wantResetProgress = a.resetLearnProgress === true
+            || String((a as any).resetLearnProgress).toLowerCase() === 'true'
+            || (this.request?.body && typeof this.request.body === 'object' && !Array.isArray(this.request.body)
+                && ((this.request.body as any).resetLearnProgress === true
+                    || String((this.request.body as any).resetLearnProgress).toLowerCase() === 'true'));
+        if (wantResetProgress) {
+            return this.postResetLearnProgress(finalDomainId);
+        }
         const wantReset = a.resetDag === true
             || String(a.resetDag).toLowerCase() === 'true'
             || (this.request?.body && typeof this.request.body === 'object' && !Array.isArray(this.request.body)
@@ -5845,6 +5867,93 @@ class LearnSectionEditHandler extends Handler {
             allSections,
             dag,
             currentLearnSectionIndex: defaultSectionOrder.length > 0 ? newIdx : null,
+            currentLearnSectionId: newSectionId || null,
+        };
+    }
+
+    /** Clear passed/progress rows and path practise counts; keep section order and current section. */
+    async postResetLearnProgress(domainId: string) {
+        const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
+        const targetUid = await this.resolveTargetUid(finalDomainId);
+        const { selectedBase: baseSel } = await getLearnPageBaseSelection(finalDomainId, targetUid, this.user.priv);
+        if (!baseSel) {
+            throw new NotFoundError('No knowledge base selected for learning');
+        }
+        const dudoc = await domain.getDomainUser(finalDomainId, { _id: targetUid, priv: this.user.priv }) as any;
+        const br = learnBranchFromDudoc(dudoc);
+        const built = await ensureLearnBaseDAGCached(
+            finalDomainId,
+            Number(baseSel.docId),
+            br,
+            (k: string) => this.translate(k),
+        );
+        const allSectionsSorted: LearnDAGNode[] = built.sections.length
+            ? [...built.sections].sort((a, b) => (a.order || 0) - (b.order || 0))
+            : [];
+        const dag: LearnDAGNode[] = built.allDagNodes.length
+            ? [...built.allDagNodes].sort((a, b) => (a.order || 0) - (b.order || 0))
+            : [];
+        const learnSectionOrderRaw = (dudoc as any)?.learnSectionOrder;
+        const sections = applyUserSectionOrder(allSectionsSorted.length ? [...allSectionsSorted] : [], learnSectionOrderRaw);
+        const sectionOrder: string[] = Array.isArray(learnSectionOrderRaw) && learnSectionOrderRaw.length
+            ? learnSectionOrderRaw.map((x: unknown) => String(x))
+            : sections.map((s) => String(s._id));
+        if (!sectionOrder.length || !sections.length) {
+            throw new NotFoundError('No sections to reset');
+        }
+
+        const prevIdx = normalizeDomainUserLearnIndex((dudoc as any)?.currentLearnSectionIndex);
+        const prevId = String((dudoc as any)?.currentLearnSectionId || '').trim();
+        let newIdx = 0;
+        if (prevId && sectionOrder.includes(prevId)) {
+            newIdx = sectionOrder.indexOf(prevId);
+        } else if (prevIdx !== null && prevIdx >= 0 && prevIdx < sectionOrder.length) {
+            newIdx = prevIdx;
+        }
+        const newSectionId = sectionOrder[newIdx] || '';
+        const secForStart = sections.find((s) => String(s._id) === newSectionId);
+        const currentLearnStartCardIdFinal = firstLearnStartCardIdForSection(
+            secForStart,
+            sections,
+            dag,
+            Number(baseSel.docId),
+        );
+        const learnProgressTotal = sectionOrder.length;
+        const learnProgressPosition = learnProgressTotal > 0
+            ? Math.max(0, Math.min(newIdx, learnProgressTotal - 1))
+            : 0;
+
+        await learn.deleteAllPassedProgressForUser(finalDomainId, targetUid);
+        await learn.clearLearnPathPractiseCounts(finalDomainId, targetUid);
+        await learn.setUserLearnState(finalDomainId, targetUid, {
+            learnSectionOrder: sectionOrder,
+            currentLearnSectionIndex: newIdx,
+            currentLearnSectionId: newSectionId,
+            currentLearnStartCardId: currentLearnStartCardIdFinal,
+            learnProgressPosition,
+            learnProgressTotal,
+        });
+        await clearDailyPracticeSessionAfterSettingsChange(finalDomainId, targetUid, this.user.priv);
+        await abandonActiveNodeCardLessonSessions(finalDomainId, targetUid);
+        const latestAfterAbandon = await SessionModel.get(finalDomainId, targetUid) as SessionDoc | null;
+        if (
+            latestAfterAbandon
+            && isLearnSessionRow(latestAfterAbandon)
+            && !isLessonSessionAbandoned(latestAfterAbandon)
+            && (isLearnHomePlaceholderSession(latestAfterAbandon) || latestAfterAbandon.lessonMode === 'today')
+        ) {
+            await touchLessonSession(finalDomainId, targetUid, {
+                appRoute: 'learn',
+                currentLearnSectionIndex: newIdx,
+                currentLearnSectionId: newSectionId,
+            }, { silent: true });
+        }
+
+        this.response.template = null;
+        this.response.body = {
+            success: true,
+            resetLearnProgress: true,
+            currentLearnSectionIndex: newIdx,
             currentLearnSectionId: newSectionId || null,
         };
     }
