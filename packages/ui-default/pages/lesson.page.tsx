@@ -227,6 +227,19 @@ function normalizeCardFromServer(raw: unknown): Card {
   };
 }
 
+/** 会话卡片槽位在整条展平题目列表中的起始下标（单节点 / 今日任务跨卡漫游用）。 */
+function lessonFirstQueuedProblemIndexForFlatSlot(
+  probs: QueuedProblem[],
+  flatCards: LessonUiState['flatCards'],
+  cci: number,
+): number {
+  if (!probs.length || !flatCards.length || cci < 0 || cci >= flatCards.length) return 0;
+  const cid = String(flatCards[cci]?.cardId ?? '').trim();
+  if (!cid) return 0;
+  const i = probs.findIndex((p) => String(p.cardId) === cid);
+  return i >= 0 ? i : 0;
+}
+
 /**
  * 单节点：按 `flatCards` 顺序展平练习题。`flatQueueCards` 经页面 JSON 时可能丢 `problems`，
  * 用同请求的 `cards`（当前节点列表）补全。
@@ -1371,6 +1384,19 @@ function LessonPage() {
       }
       return (nextCard?.problems || []).map((p) => ({ ...p, cardId: String(nextCard!.docId) } as QueuedProblem));
     })();
+    const cciPayload =
+      typeof payload.currentCardIndex === 'number' && Number.isFinite(payload.currentCardIndex)
+        ? Math.max(0, Math.floor(payload.currentCardIndex))
+        : 0;
+    const flatCardsPayload = Array.isArray(payload.flatCards)
+      ? (payload.flatCards as LessonUiState['flatCards'])
+      : [];
+    const startGlobIdx =
+      probs.length > 0
+      && (payload.isSingleNodeMode === true || payload.isTodayMode === true)
+      && flatCardsPayload.length > 0
+        ? lessonFirstQueuedProblemIndexForFlatSlot(probs, flatCardsPayload, cciPayload)
+      : 0;
     if (secondBarExitPhase1TimerRef.current) {
       clearTimeout(secondBarExitPhase1TimerRef.current);
       secondBarExitPhase1TimerRef.current = null;
@@ -1385,7 +1411,7 @@ function LessonPage() {
 
     setProblemQueue(probs);
     setLessonPreviousStack([]);
-    setCurrentProblemIndex(0);
+    setCurrentProblemIndex(startGlobIdx);
     setSelectedAnswer(null);
     setSelectedMulti([]);
     setSelectedTf(null);
@@ -1429,20 +1455,61 @@ function LessonPage() {
   const showSidebarInNav = hasLessonSidebar;
 
   useEffect(() => {
-    if (allProblems.length > 0 && problemQueue.length === 0 && answerHistory.length === 0) {
-      setProblemQueue(allProblems);
-      setLessonPreviousStack([]);
-      setCurrentProblemIndex(0);
-      setSelectedAnswer(null);
-      setSelectedMulti([]);
-      setSelectedTf(null);
-      setFlipStage('a');
-      setFlipHintOpen(false);
-      setIsAnswered(false);
-      setShowAnalysis(false);
-      setPracticeClearedPids({});
-    }
-  }, [allProblems, problemQueue.length, answerHistory.length]);
+    if (answerHistory.length > 0) return;
+    if (allProblems.length === 0 || problemQueue.length > 0) return;
+    const startGlob =
+      (isSingleNodeMode || isTodayMode)
+      && flatCards.length > 0
+      && typeof currentCardIndex === 'number'
+      && Number.isFinite(currentCardIndex)
+        ? lessonFirstQueuedProblemIndexForFlatSlot(allProblems, flatCards, Math.max(0, Math.floor(currentCardIndex)))
+      : 0;
+    setProblemQueue(allProblems);
+    setLessonPreviousStack([]);
+    setCurrentProblemIndex(startGlob);
+    setSelectedAnswer(null);
+    setSelectedMulti([]);
+    setSelectedTf(null);
+    setFlipStage('a');
+    setFlipHintOpen(false);
+    setIsAnswered(false);
+    setShowAnalysis(false);
+    setPracticeClearedPids({});
+  }, [
+    allProblems,
+    problemQueue.length,
+    answerHistory.length,
+    isSingleNodeMode,
+    isTodayMode,
+    flatCards,
+    currentCardIndex,
+  ]);
+
+  /** 会话内按题漫游时，把顶层 `card` / `currentCardIndex` 与当前题目所属卡对齐，便于 pass 与用时条。 */
+  useEffect(() => {
+    if (!isSingleNodeMode && !isTodayMode) return;
+    const p = problemQueue[currentProblemIndex];
+    if (!p) return;
+    setLessonUi((prev) => {
+      const cid = String(p.cardId ?? '').trim();
+      if (!cid) return prev;
+      const fi = prev.flatCards.findIndex((fc) => String(fc.cardId) === cid);
+      if (fi < 0) return prev;
+      const qc = prev.flatQueueCards.find((c) => String(c.docId ?? '').trim() === cid);
+      if (!qc) return prev;
+      if (prev.currentCardIndex === fi && String(prev.card?.docId ?? '') === cid) return prev;
+      const ixInCards = prev.cards.findIndex((c) => String(c.docId) === cid);
+      const normalized = normalizeCardFromServer(qc);
+      const hasProblems = !!((normalized.problems || []).length > 0);
+      return {
+        ...prev,
+        currentCardIndex: fi,
+        card: normalized,
+        currentIndex: ixInCards >= 0 ? ixInCards : prev.currentIndex,
+        hasProblems,
+      };
+    });
+  }, [isSingleNodeMode, isTodayMode, problemQueue, currentProblemIndex]);
 
   const [lessonProblemTagSaveKey, setLessonProblemTagSaveKey] = useState<string | null>(null);
   const [lessonProblemTagRegisterBusy, setLessonProblemTagRegisterBusy] = useState(false);
@@ -2133,6 +2200,15 @@ function LessonPage() {
   }, []);
 
   const currentProblem = problemQueue[currentProblemIndex];
+  /** 题干顺序序号（/browse 线性上一题下一题时值随当前题切换，不靠队列截断推导）。 */
+  const lessonLinearQuestionOrdinal = useMemo(() => {
+    if (!currentProblem || allProblems.length === 0) return 1;
+    const ix = allProblems.findIndex(
+      (x) => x.pid === currentProblem.pid && String(x.cardId) === String(currentProblem.cardId),
+    );
+    if (ix >= 0) return ix + 1;
+    return Math.min(currentProblemIndex + 1, Math.max(1, problemQueue.length));
+  }, [currentProblem, allProblems, currentProblemIndex, problemQueue.length]);
   const currentKind = currentProblem ? problemKind(currentProblem) : 'single';
   const currentSingle = currentKind === 'single' && currentProblem ? (currentProblem as ProblemSingle) : null;
   const displayOrder = currentSingle?.options
@@ -2547,6 +2623,27 @@ function LessonPage() {
     }
   };
 
+  /** 会话内线性切换题目（头部「下一题」）时清空本题作答与继续栈 */
+  const resetLessonBrowseInteractiveSurface = useCallback(() => {
+    lessonPendingRestoreRef.current = null;
+    setLessonPreviousStack([]);
+    setPendingLessonAdvance(null);
+    setSelectedAnswer(null);
+    setSelectedMulti([]);
+    setSelectedTf(null);
+    setFlipStage('a');
+    setFlipHintOpen(false);
+    setFillBlankDraft([]);
+    setMatchingSelections([]);
+    setMatchingShuffleOrders([]);
+    setSuperFlipRevealed([]);
+    setSuperFlipMarkedOk(null);
+    setIsAnswered(false);
+    setShowAnalysis(false);
+    setOptionOrder([]);
+    setShuffleTrigger((t) => t + 1);
+  }, []);
+
   const handleLessonCardNav = useCallback(async (dir: 'prev' | 'skip') => {
     if (lessonCardNavLoading || isSubmitting || browseSubmitting) return;
     if ((!isSingleNodeMode && !isTodayMode) || !lessonSessionId) return;
@@ -2953,9 +3050,16 @@ function LessonPage() {
   };
 
   const canLessonGoPrevious =
-    lessonPreviousStack.length > 0 || currentProblemIndex > 0;
+    lessonPreviousStack.length > 0
+    || currentProblemIndex > 0
+    || (
+      (isSingleNodeMode || isTodayMode)
+      && !!lessonSessionId
+      && !reviewCardId
+      && currentCardIndex > 0
+    );
 
-  const handleLessonPreviousProblem = useCallback(() => {
+  const handleLessonPreviousProblem = useCallback(async () => {
     const stack = lessonPreviousStackRef.current;
     if (stack.length > 0) {
       const entry = stack[stack.length - 1];
@@ -2966,23 +3070,50 @@ function LessonPage() {
       setShuffleTrigger((t) => t + 1);
       return;
     }
-    if (currentProblemIndex <= 0) return;
-    setCurrentProblemIndex((i) => i - 1);
-    setShuffleTrigger((t) => t + 1);
-  }, [currentProblemIndex]);
+    if (currentProblemIndex > 0) {
+      resetLessonBrowseInteractiveSurface();
+      sessionStartTimeRef.current = Date.now();
+      setProblemStartTime(Date.now());
+      setElapsedMs(0);
+      setCurrentProblemIndex((i) => i - 1);
+      return;
+    }
+    if (
+      (isSingleNodeMode || isTodayMode)
+      && lessonSessionId
+      && !reviewCardId
+      && currentCardIndex > 0
+    ) {
+      await handleLessonCardNav('prev');
+    }
+  }, [
+    currentProblemIndex,
+    isSingleNodeMode,
+    isTodayMode,
+    lessonSessionId,
+    reviewCardId,
+    currentCardIndex,
+    handleLessonCardNav,
+    resetLessonBrowseInteractiveSurface,
+  ]);
 
-  const handleLessonSkipCurrentProblem = useCallback(() => {
-    if (problemQueue.length <= 1) return;
-    const idx = currentProblemIndex;
-    const newQueue = [...problemQueue];
-    const cur = newQueue[idx];
-    newQueue.splice(idx, 1);
-    newQueue.push(cur);
-    setProblemQueue(newQueue);
-    const nextIndex = idx < newQueue.length - 1 ? idx : 0;
-    setCurrentProblemIndex(nextIndex);
-    setShuffleTrigger((t) => t + 1);
-  }, [problemQueue, currentProblemIndex]);
+  /** 题目行「下一题」：仅前移下标，不把本题挪到队尾（否则 index 常在 0，上一题无法回到刚看过的题）。 */
+  const handleLessonNextProblemBrowse = useCallback(() => {
+    if (lessonCardNavLoading || isSubmitting || browseSubmitting) return;
+    if (currentProblemIndex >= problemQueue.length - 1) return;
+    resetLessonBrowseInteractiveSurface();
+    sessionStartTimeRef.current = Date.now();
+    setProblemStartTime(Date.now());
+    setElapsedMs(0);
+    setCurrentProblemIndex((i) => i + 1);
+  }, [
+    lessonCardNavLoading,
+    isSubmitting,
+    browseSubmitting,
+    currentProblemIndex,
+    problemQueue.length,
+    resetLessonBrowseInteractiveSurface,
+  ]);
 
   const handleLessonRedoResetProgress = useCallback(() => {
     if (!currentProblem) return;
@@ -4266,45 +4397,93 @@ function LessonPage() {
     fontSize: '15px',
     fontWeight: 600,
   };
-  const renderLessonPracticeActionRow = (submitOrActions: React.ReactNode, marginTop = '2px') => (
-    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px', marginTop }}>
-      <button
-        type="button"
-        onClick={handleLessonPreviousProblem}
-        disabled={!canLessonGoPrevious}
-        style={{
-          ...lessonNavSecondaryBtn,
-          cursor: !canLessonGoPrevious ? 'not-allowed' : 'pointer',
-          opacity: !canLessonGoPrevious ? 0.5 : 1,
+  const renderLessonPracticeActionRow = (
+    submitOrActions: React.ReactNode,
+    marginTop = '2px',
+    trailing?: React.ReactNode,
+  ) => (
+    <div style={{
+      display: 'flex',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      gap: '10px',
+      marginTop,
+      width: '100%',
+    }}
+    >
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px' }}>
+        <button
+          type="button"
+          onClick={() => {
+            void handleLessonPreviousProblem();
+          }}
+          disabled={!canLessonGoPrevious || lessonCardNavLoading}
+          style={{
+            ...lessonNavSecondaryBtn,
+            cursor: (!canLessonGoPrevious || lessonCardNavLoading) ? 'not-allowed' : 'pointer',
+            opacity: (!canLessonGoPrevious || lessonCardNavLoading) ? 0.5 : 1,
+          }}
+        >
+          {i18n('Previous')}
+        </button>
+        <button
+          type="button"
+          onClick={handleLessonNextProblemBrowse}
+          disabled={
+            lessonCardNavLoading
+            || isSubmitting
+            || browseSubmitting
+            || problemQueue.length <= 1
+            || currentProblemIndex >= problemQueue.length - 1
+          }
+          style={{
+            ...lessonNavSecondaryBtn,
+            cursor:
+              lessonCardNavLoading
+              || isSubmitting
+              || browseSubmitting
+              || problemQueue.length <= 1
+              || currentProblemIndex >= problemQueue.length - 1
+                ? 'not-allowed'
+                : 'pointer',
+            opacity:
+              lessonCardNavLoading
+              || isSubmitting
+              || browseSubmitting
+              || problemQueue.length <= 1
+              || currentProblemIndex >= problemQueue.length - 1
+                ? 0.5
+                : 1,
+          }}
+        >
+          {i18n('Lesson skip problem')}
+        </button>
+        <button
+          type="button"
+          onClick={handleLessonRedoResetProgress}
+          disabled={!currentProblem}
+          style={{
+            ...lessonNavSecondaryBtn,
+            cursor: currentProblem ? 'pointer' : 'not-allowed',
+            opacity: currentProblem ? 1 : 0.5,
+          }}
+        >
+          {i18n('Lesson practice redo')}
+        </button>
+        {submitOrActions}
+      </div>
+      {trailing != null ? (
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: '10px',
+          marginLeft: 'auto',
         }}
-      >
-        {i18n('Previous')}
-      </button>
-      <button
-        type="button"
-        onClick={handleLessonSkipCurrentProblem}
-        disabled={problemQueue.length <= 1}
-        style={{
-          ...lessonNavSecondaryBtn,
-          cursor: problemQueue.length <= 1 ? 'not-allowed' : 'pointer',
-          opacity: problemQueue.length <= 1 ? 0.5 : 1,
-        }}
-      >
-        {i18n('Lesson skip problem')}
-      </button>
-      <button
-        type="button"
-        onClick={handleLessonRedoResetProgress}
-        disabled={!currentProblem}
-        style={{
-          ...lessonNavSecondaryBtn,
-          cursor: currentProblem ? 'pointer' : 'not-allowed',
-          opacity: currentProblem ? 1 : 0.5,
-        }}
-      >
-        {i18n('Lesson practice redo')}
-      </button>
-      {submitOrActions}
+        >
+          {trailing}
+        </div>
+      ) : null}
     </div>
   );
   const mainContent = (
@@ -4332,7 +4511,7 @@ function LessonPage() {
           )}
         </h1>
         <div style={{ fontSize: '12px', color: themeStyles.textTertiary, marginTop: '8px' }}>
-          {i18n('Question')} {allProblems.length - problemQueue.length + 1} / {allProblems.length}
+          {i18n('Question')} {lessonLinearQuestionOrdinal} / {allProblems.length}
           {problemQueue.length > 0 && ` (${i18n('Remaining')}: ${problemQueue.length})`}
         </div>
         {(isSingleNodeMode || isTodayMode || isAlonePractice) && !mergeSingleNodeCardQueueIntoProblemSidebar && (
@@ -4537,10 +4716,11 @@ function LessonPage() {
                         {fb.faceB}
                       </div>
                       {!isAnswered && renderLessonPracticeActionRow(
+                        null,
+                        '2px',
                         <button type="button" onClick={handleFlipComplete} style={{ padding: '12px 24px', border: 'none', borderRadius: '8px', backgroundColor: themeStyles.success, color: themeStyles.whiteOnAccent, cursor: 'pointer', fontSize: '15px', fontWeight: 600 }}>
                           {i18n('Flip mark done')}
                         </button>,
-                        '2px',
                       )}
                     </>
                   )}
@@ -4694,6 +4874,9 @@ function LessonPage() {
                       >
                         {i18n('Problem super flip cover all')}
                       </button>
+                    </div>,
+                    '0px',
+                    <>
                       <button
                         type="button"
                         onClick={handleSuperFlipNotFamiliar}
@@ -4728,8 +4911,7 @@ function LessonPage() {
                       >
                         {i18n('Flip mark done')}
                       </button>
-                    </div>,
-                    '0px',
+                    </>,
                   )}
                 </>
               );
@@ -5150,7 +5332,36 @@ function LessonPage() {
         )}
 
         {pendingLessonAdvance && (
-          <div style={{ marginTop: '20px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px' }}>
+          <div style={{
+            marginTop: '20px',
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: '12px',
+            width: '100%',
+            justifyContent: 'space-between',
+          }}
+          >
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px' }}>
+              {pendingLessonAdvance === 'requeue' ? (
+                <button
+                  type="button"
+                  onClick={handleRedoCurrentLessonQuestion}
+                  style={{
+                    padding: '11px 24px',
+                    borderRadius: '8px',
+                    border: `1px solid ${themeStyles.border}`,
+                    backgroundColor: themeStyles.bgSecondary,
+                    color: themeStyles.textPrimary,
+                    cursor: 'pointer',
+                    fontSize: '15px',
+                    fontWeight: 600,
+                  }}
+                >
+                  {i18n('Lesson redo question')}
+                </button>
+              ) : null}
+            </div>
             <button
               type="button"
               onClick={handleContinueAfterAnswer}
@@ -5164,28 +5375,11 @@ function LessonPage() {
                 fontSize: '15px',
                 fontWeight: 600,
                 boxShadow: theme === 'dark' ? '0 2px 8px rgba(56, 189, 248, 0.25)' : '0 2px 6px rgba(33, 150, 243, 0.25)',
+                marginLeft: 'auto',
               }}
             >
               {i18n('Continue')}
             </button>
-            {pendingLessonAdvance === 'requeue' ? (
-              <button
-                type="button"
-                onClick={handleRedoCurrentLessonQuestion}
-                style={{
-                  padding: '11px 24px',
-                  borderRadius: '8px',
-                  border: `1px solid ${themeStyles.border}`,
-                  backgroundColor: themeStyles.bgSecondary,
-                  color: themeStyles.textPrimary,
-                  cursor: 'pointer',
-                  fontSize: '15px',
-                  fontWeight: 600,
-                }}
-              >
-                {i18n('Lesson redo question')}
-              </button>
-            ) : null}
           </div>
         )}
 
