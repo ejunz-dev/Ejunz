@@ -5,7 +5,7 @@ import { normalizeProblemTagInput } from '../model/problem';
 /** Which cards may appear in the ordered learn queue (domain.user). */
 export type LearnSessionCardFilterMode = 'all' | 'with_problems' | 'without_problems';
 
-/** Filter problems by taxonomy tag (`Problem.tag`) in session queue + practise. */
+/** Filter problems by taxonomy tag (`Problem.tags`) in session queue + practise. */
 export type LearnSessionProblemTagMode = 'off' | 'include' | 'exclude';
 
 /** Order in which today's **new**-segment cards are merged (`today` session only; stored on domain.user). */

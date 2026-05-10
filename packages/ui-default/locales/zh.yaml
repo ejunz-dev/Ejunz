@@ -250,8 +250,8 @@ __langname: 简体中文
 'Lesson problem tag save no card': 无法保存标签：当前页找不到对应卡片
 'Lesson problem tag new placeholder': 输入新标签名称
 'Lesson problem tag apply new': 添加
-'Lesson problem tag new hint': 将标签登记到当前知识库（最多 64 字符）；登记后从上方「从已登记标签中选择」套用到本题。
-'Lesson problem tag register ok': 已登记，请在上方下拉框中选择以套用到本题。
+'Lesson problem tag new hint': 将标签登记到当前知识库（最多 64 字符）；登记后会自动追加到本题，也可从上方下拉追加已有标签。
+'Lesson problem tag register ok': 已登记并已追加到本题。
 'Lesson problem tag register failed': 登记标签失败
 'Lesson problem tag panel title': 题目标签
 'Lesson problem tag panel open': 管理标签
@@ -261,6 +261,9 @@ __langname: 简体中文
 'Lesson problem tag panel choose registered': 从已登记标签中选择
 'Lesson problem tag panel new': 自定义新标签
 'Lesson problem tag panel clear': 清除标签
+'Lesson problem tag panel append registered': 追加已登记标签
+'Lesson problem tag panel add registered placeholder': 选择要追加的标签…
+'Lesson problem tag chip remove': 移除
 'Insert {0} selected into AI terminal': 将 {0} 项选中内容插入 AI 终端
 'Join {0}': '加入 {0}'
 'Join Domain': 加入域

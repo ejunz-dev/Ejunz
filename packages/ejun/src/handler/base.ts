@@ -6684,7 +6684,7 @@ class BaseMigrateNodeToNewHandler extends Handler {
 
 /**
  * Append one label to the base `problemTags` registry (dropdown in editor + lesson).
- * Does not set `Problem.tag` on any card — use lesson UI or editor to apply.
+ * Does not set `Problem.tags` on any card — use lesson UI or editor to apply.
  */
 export class BaseProblemTagRegistryHandler extends Handler {
     @param('docId', Types.PositiveInt, true)

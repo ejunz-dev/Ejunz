@@ -227,8 +227,8 @@ __langname: English
 'Lesson problem tag save no card': 'Cannot save tag: card not found on this page'
 'Lesson problem tag new placeholder': Type a new tag name
 'Lesson problem tag apply new': Add
-'Lesson problem tag new hint': 'Registers the tag on this knowledge base (max 64 characters). Then pick it from "Choose a registered tag" above to apply to this problem.'
-'Lesson problem tag register ok': Tag registered. Choose it in the dropdown above to apply to this problem.
+'Lesson problem tag new hint': 'Registers the tag on this knowledge base (max 64 characters) and adds it to this problem; you can also append registered tags from the dropdown above.'
+'Lesson problem tag register ok': Registered and added to this problem.
 'Lesson problem tag register failed': Failed to register tag
 'Lesson problem tag panel title': Problem tag
 'Lesson problem tag panel open': Tags
@@ -238,6 +238,9 @@ __langname: English
 'Lesson problem tag panel choose registered': Choose a registered tag
 'Lesson problem tag panel new': Custom new tag
 'Lesson problem tag panel clear': Clear tag
+'Lesson problem tag panel append registered': Add an existing tag
+'Lesson problem tag panel add registered placeholder': Select a tag to add…
+'Lesson problem tag chip remove': Remove
 'Insert {0} selected into AI terminal': Insert {0} selected into AI terminal
 'Join Domain': Join Domain
 'Jump to {0}': Jump to {0}
