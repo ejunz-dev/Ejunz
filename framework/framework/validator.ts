@@ -49,6 +49,7 @@ export interface Types {
     Int: Type<number>;
     UnsignedInt: Type<number>;
     PositiveInt: Type<number>;
+    PositiveFinite: Type<number>;
     Float: Type<number>;
 
     // Other
@@ -108,6 +109,7 @@ export const Types = {
     Int: [(v) => +v, (v) => /^[+-]?[0-9]+$/.test(v.toString().trim()) && Number.isSafeInteger(+v)],
     UnsignedInt: [(v) => +v, (v) => /^(?:-0|\+?[0-9]+)$/.test(v.toString().trim()) && Number.isSafeInteger(+v)],
     PositiveInt: [(v) => +v, (v) => /^\+?[1-9][0-9]*$/.test(v.toString().trim()) && Number.isSafeInteger(+v)],
+    PositiveFinite: [(v) => +v, (v) => Number.isFinite(+v) && +v > 0],
     Float: [(v) => +v, (v) => Number.isFinite(+v)],
 
     ObjectId: [() => { throw new Error('mongodb package not found'); }, () => true],
