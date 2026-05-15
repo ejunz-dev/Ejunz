@@ -26,6 +26,17 @@ const OUTLINE_PROBLEM_KIND_LABEL: Record<string, string> = {
   super_flip: '表格式翻转',
 };
 
+/** Shown when markdown render fails; must not be stored in cardContentCacheRef. */
+const OUTLINE_CARD_RENDER_ERROR_HTML = '<p style="color: #f44336;">加载内容失败</p>';
+
+function isOutlineCardRenderErrorHtml(html: string | undefined | null): boolean {
+  if (!html) return false;
+  const t = html.trim();
+  if (t === OUTLINE_CARD_RENDER_ERROR_HTML.trim()) return true;
+  // Legacy short error fragments only (avoid matching long articles).
+  return t.length < 200 && /加载内容失败/.test(t) && /#f44336/.test(t);
+}
+
 function outlineProblemPreviewBlocks(
   p: Problem,
   indexOneBased: number,
@@ -320,6 +331,18 @@ interface ReactFlowEdge {
   };
 }
 
+type OutlineViewThemeStyles = {
+  bgPrimary: string;
+  bgSecondary: string;
+  bgHover: string;
+  bgSelected: string;
+  textPrimary: string;
+  textSecondary: string;
+  textTertiary: string;
+  borderPrimary: string;
+  accent: string;
+};
+
 const OutlineView = ({
   nodes,
   edges,
@@ -328,6 +351,7 @@ const OutlineView = ({
   selectedNodeId,
   rootNodeId,
   basePath = 'base',
+  themeStyles,
 }: {
   nodes: ReactFlowNode[];
   edges: ReactFlowEdge[];
@@ -336,6 +360,7 @@ const OutlineView = ({
   selectedNodeId: string | null;
   rootNodeId?: string | null;
   basePath?: string;
+  themeStyles: OutlineViewThemeStyles;
 }) => {
  
   const [expandedNodesOutline, setExpandedNodesOutline] = useState<Set<string>>(() => {
@@ -631,17 +656,21 @@ const OutlineView = ({
                   position: 'relative',
                   zIndex: 1,
                   width: '100%',
+                  borderRadius: '4px',
+                  backgroundColor: isSelected ? themeStyles.bgSelected : 'transparent',
                 }}
                 onClick={() => onNodeClick(nodeId)}
                 onMouseEnter={(e) => {
                   if (!isSelected) {
-                    e.currentTarget.style.backgroundColor = '#f5f5f5';
+                    e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                  } else {
+                    e.currentTarget.style.backgroundColor = themeStyles.bgSelected;
                   }
                 }}
                 onMouseLeave={(e) => {
-                  if (!isSelected) {
-                    e.currentTarget.style.backgroundColor = 'transparent';
-                  }
+                  e.currentTarget.style.backgroundColor = isSelected
+                    ? themeStyles.bgSelected
+                    : 'transparent';
                 }}
               >
     
@@ -665,7 +694,7 @@ const OutlineView = ({
                       flexShrink: 0,
                       position: 'relative',
                       zIndex: 2,
-                      color: '#666',
+                      color: themeStyles.textSecondary,
                     }}
                     title={expanded ? '折叠' : '展开'}
                   >
@@ -686,7 +715,7 @@ const OutlineView = ({
     
                 <span style={{ 
                   marginRight: '8px',
-                  color: '#666',
+                  color: themeStyles.textSecondary,
                   fontSize: '12px',
                   flexShrink: 0,
                   lineHeight: '1',
@@ -698,7 +727,7 @@ const OutlineView = ({
                 <div
                   style={{
                     flex: 1,
-                    color: isSelected ? '#1976d2' : (originalNode?.color || '#333'),
+                    color: isSelected ? themeStyles.accent : (originalNode?.color || themeStyles.textPrimary),
                     fontSize: `${originalNode?.fontSize || 14}px`,
                     fontWeight: isSelected ? '600' : 'normal',
                     lineHeight: '1.5',
@@ -720,7 +749,7 @@ const OutlineView = ({
                   top: '0px',
                   bottom: '0px',
                   width: '1px',
-                  backgroundColor: '#e0e0e0',
+                  backgroundColor: themeStyles.borderPrimary,
                   zIndex: 0,
                     }}
               />
@@ -747,21 +776,21 @@ const OutlineView = ({
                       display: 'inline-block',
                       padding: '4px 8px',
                       fontSize: '12px',
-                      color: '#1976d2',
+                      color: themeStyles.accent,
                       textDecoration: 'none',
                       borderRadius: '4px',
-                      backgroundColor: '#f0f7ff',
-                      border: '1px solid #e3f2fd',
+                      backgroundColor: themeStyles.bgSelected,
+                      border: `1px solid ${themeStyles.borderPrimary}`,
                       cursor: 'pointer',
                       transition: 'all 0.2s',
                       maxWidth: 'fit-content',
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#e3f2fd';
+                      e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                       e.currentTarget.style.textDecoration = 'underline';
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = '#f0f7ff';
+                      e.currentTarget.style.backgroundColor = themeStyles.bgSelected;
                       e.currentTarget.style.textDecoration = 'none';
                     }}
                     title={card.title}
@@ -786,20 +815,21 @@ const OutlineView = ({
         </div>
       );
     },
-    [buildTree, selectedNodeId, handleToggleExpand, onNodeClick, getNodeCards, getCardUrl, cardsExpanded, toggleCardsExpanded, expandedNodesOutline]
+    [buildTree, selectedNodeId, handleToggleExpand, onNodeClick, getNodeCards, getCardUrl, cardsExpanded, toggleCardsExpanded, expandedNodesOutline, themeStyles]
   );
 
   return (
     <div
       style={{
         padding: '24px 32px',
-        backgroundColor: '#fff',
+        backgroundColor: themeStyles.bgPrimary,
+        color: themeStyles.textPrimary,
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
         minHeight: '100%',
       }}
     >
       {!rootNodeInfo ? (
-        <div style={{ textAlign: 'center', color: '#999', marginTop: '40px', fontSize: '14px' }}>
+        <div style={{ textAlign: 'center', color: themeStyles.textTertiary, marginTop: '40px', fontSize: '14px' }}>
           暂无节点
         </div>
       ) : (
@@ -808,10 +838,10 @@ const OutlineView = ({
             style={{
               fontSize: '20px',
               fontWeight: '600',
-              color: '#333',
+              color: themeStyles.textPrimary,
               marginBottom: '24px',
               paddingBottom: '16px',
-              borderBottom: '1px solid #e0e0e0',
+              borderBottom: `1px solid ${themeStyles.borderPrimary}`,
             }}
           >
             {rootNodeInfo.text}
@@ -845,7 +875,7 @@ const OutlineView = ({
             
             if (rootAllChildren.length === 0) {
               return (
-            <div style={{ textAlign: 'center', color: '#999', marginTop: '40px', fontSize: '14px' }}>
+            <div style={{ textAlign: 'center', color: themeStyles.textTertiary, marginTop: '40px', fontSize: '14px' }}>
                   暂无内容
             </div>
               );
@@ -875,21 +905,21 @@ const OutlineView = ({
                             display: 'inline-block',
                             padding: '4px 8px',
                             fontSize: '12px',
-                            color: '#1976d2',
+                            color: themeStyles.accent,
                             textDecoration: 'none',
                             borderRadius: '4px',
-                            backgroundColor: '#f0f7ff',
-                            border: '1px solid #e3f2fd',
+                            backgroundColor: themeStyles.bgSelected,
+                            border: `1px solid ${themeStyles.borderPrimary}`,
                             cursor: 'pointer',
                             transition: 'all 0.2s',
                             maxWidth: 'fit-content',
                           }}
                           onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = '#e3f2fd';
+                            e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                             e.currentTarget.style.textDecoration = 'underline';
                           }}
                           onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = '#f0f7ff';
+                            e.currentTarget.style.backgroundColor = themeStyles.bgSelected;
                             e.currentTarget.style.textDecoration = 'none';
                           }}
                           title={card.title}
@@ -1280,17 +1310,28 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                   invalidatedCount++;
                   return;
                 }
+                if (isOutlineCardRenderErrorHtml(cachedData.html)) {
+                  localStorage.removeItem(key);
+                  return;
+                }
                 cardContentCacheRef.current[cardId] = cachedData.html;
                 cachedCardsRef.current.add(cardId);
                 loadedCount++;
               } else {
-               
-                cardContentCacheRef.current[cardId] = cachedData.html || cachedDataStr;
+                const h = typeof cachedData.html === 'string' ? cachedData.html : cachedDataStr;
+                if (isOutlineCardRenderErrorHtml(h)) {
+                  localStorage.removeItem(key);
+                  return;
+                }
+                cardContentCacheRef.current[cardId] = h;
                 cachedCardsRef.current.add(cardId);
                 loadedCount++;
               }
             } catch (e) {
-             
+              if (isOutlineCardRenderErrorHtml(cachedDataStr)) {
+                localStorage.removeItem(key);
+                return;
+              }
               cardContentCacheRef.current[cardId] = cachedDataStr;
               cachedCardsRef.current.add(cardId);
               loadedCount++;
@@ -2166,9 +2207,6 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       }
     } catch (error) {
       console.error(`Failed to preload card ${card.docId}:`, error);
-      const errorHtml = '<p style="color: #f44336;">加载内容失败</p>';
-      cardContentCacheRef.current[cardIdStr] = errorHtml;
-      cachedCardsRef.current.add(cardIdStr);
     }
   }, [preloadAndCacheImages]);
 
@@ -2841,6 +2879,55 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     };
     
     const cardIdStr = String(selectedCard.docId);
+
+    const tryApplyFromLocalStorage = (): boolean => {
+      try {
+        const cacheKey = `base-outline-card-${cardIdStr}`;
+        const cachedDataStr = localStorage.getItem(cacheKey);
+        if (!cachedDataStr) return false;
+        let cachedHtml: string;
+        try {
+          const cachedData = JSON.parse(cachedDataStr) as { html?: string };
+          cachedHtml = typeof cachedData.html === 'string' ? cachedData.html : cachedDataStr;
+        } catch {
+          cachedHtml = cachedDataStr;
+        }
+        if (isOutlineCardRenderErrorHtml(cachedHtml)) {
+          try {
+            localStorage.removeItem(cacheKey);
+          } catch {
+            /* ignore */
+          }
+          return false;
+        }
+        cardContentCacheRef.current[cardIdStr] = cachedHtml;
+        cachedCardsRef.current.add(cardIdStr);
+        replaceImagesWithCache(cachedHtml).then(htmlWithCachedImages => {
+          if (selectedCard && String(selectedCard.docId) === cardIdStr) {
+            applyOutlineCardMainHtml(htmlWithCachedImages);
+          }
+        }).catch(err => {
+          console.error('Failed to replace images with cache:', err);
+          if (selectedCard && String(selectedCard.docId) === cardIdStr) {
+            applyOutlineCardMainHtml(cachedHtml);
+          }
+        });
+        const nodeId = selectedCard.nodeId || '';
+        if (nodeId) {
+          setTimeout(() => {
+            if (selectedCard && String(selectedCard.docId) === cardIdStr) {
+              cacheNodeCards(nodeId).catch(error => {
+                console.error('Failed to cache node cards:', error);
+              });
+            }
+          }, 500);
+        }
+        return true;
+      } catch (e) {
+        console.error('Failed to read from localStorage:', e);
+        return false;
+      }
+    };
     
    
     if (renderingCardRef.current === cardIdStr) {
@@ -2848,9 +2935,11 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     }
     renderingCardRef.current = cardIdStr;
     
-   
-    if (cardContentCacheRef.current[cardIdStr]) {
-      const cachedHtml = cardContentCacheRef.current[cardIdStr];
+    const memHtml = cardContentCacheRef.current[cardIdStr];
+    if (memHtml && isOutlineCardRenderErrorHtml(memHtml)) {
+      delete cardContentCacheRef.current[cardIdStr];
+    } else if (memHtml) {
+      const cachedHtml = memHtml;
      
       replaceImagesWithCache(cachedHtml).then(htmlWithCachedImages => {
        
@@ -2879,76 +2968,8 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       return;
     }
     
-   
-    try {
-      const cacheKey = `base-outline-card-${cardIdStr}`;
-      const cachedDataStr = localStorage.getItem(cacheKey);
-      if (cachedDataStr) {
-        try {
-         
-          const cachedData = JSON.parse(cachedDataStr);
-          const cachedHtml = cachedData.html || cachedDataStr;
-          cardContentCacheRef.current[cardIdStr] = cachedHtml;
-          cachedCardsRef.current.add(cardIdStr);
-         
-          replaceImagesWithCache(cachedHtml).then(htmlWithCachedImages => {
-           
-            if (selectedCard && String(selectedCard.docId) === cardIdStr) {
-              applyOutlineCardMainHtml(htmlWithCachedImages);
-            }
-          }).catch(error => {
-            console.error('Failed to replace images with cache:', error);
-           
-            if (selectedCard && String(selectedCard.docId) === cardIdStr) {
-              applyOutlineCardMainHtml(cachedHtml);
-            }
-          });
-          
-         
-          const nodeId = selectedCard.nodeId || '';
-          if (nodeId) {
-            setTimeout(() => {
-              if (selectedCard && String(selectedCard.docId) === cardIdStr) {
-                cacheNodeCards(nodeId).catch(error => {
-                  console.error('Failed to cache node cards:', error);
-                });
-              }
-            }, 500);
-          }
-          return;
-        } catch (e) {
-         
-          cardContentCacheRef.current[cardIdStr] = cachedDataStr;
-          cachedCardsRef.current.add(cardIdStr);
-         
-          replaceImagesWithCache(cachedDataStr).then(htmlWithCachedImages => {
-           
-            if (selectedCard && String(selectedCard.docId) === cardIdStr) {
-              applyOutlineCardMainHtml(htmlWithCachedImages);
-            }
-          }).catch(error => {
-            console.error('Failed to replace images with cache:', error);
-           
-            if (selectedCard && String(selectedCard.docId) === cardIdStr) {
-              applyOutlineCardMainHtml(cachedDataStr);
-            }
-          });
-          
-          const nodeId = selectedCard.nodeId || '';
-          if (nodeId) {
-            setTimeout(() => {
-              if (selectedCard && String(selectedCard.docId) === cardIdStr) {
-                cacheNodeCards(nodeId).catch(error => {
-                  console.error('Failed to cache node cards:', error);
-                });
-              }
-            }, 500);
-          }
-          return;
-        }
-      }
-    } catch (error) {
-      console.error('Failed to read from localStorage:', error);
+    if (tryApplyFromLocalStorage()) {
+      return;
     }
     
    
@@ -3041,9 +3062,8 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       })
       .catch(error => {
         console.error('Failed to render markdown:', error);
-        const errorHtml = '<p style="color: #f44336;">加载内容失败</p>';
-        cardContentCacheRef.current[cardIdStr] = errorHtml;
-        applyOutlineCardMainHtml(errorHtml);
+        if (tryApplyFromLocalStorage()) return;
+        applyOutlineCardMainHtml(OUTLINE_CARD_RENDER_ERROR_HTML);
       });
     } else {
       const emptyHtml = '<p style="color: #888;">暂无内容</p>';
@@ -4565,6 +4585,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           selectedNodeId={selectedNodeId}
                     rootNodeId={selectedNodeId}
                     basePath={basePath}
+                    themeStyles={themeStyles}
         />
                 );
               })()}
