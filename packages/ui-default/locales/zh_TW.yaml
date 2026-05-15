@@ -478,3 +478,7 @@ Your role: 您的角色
 'Practice problem pid not on open card': 目前卡片上沒有該題目 id，無法更新
 'Insert {0} selected into AI terminal': 將 {0} 項選取內容插入 AI 終端
 'Unable to add this item to AI context': 無法將該項加入 AI 上下文
+'Outline card problems button': 'Problem（{0}）'
+'Outline card problems empty': 此卡片暫無 Problem。
+'Outline card problems card label': '卡片：{0}'
+'Outline card problems untitled item': 'Problem {0}'

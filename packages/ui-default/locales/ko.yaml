@@ -623,3 +623,7 @@ You need to enter the invitation code to join the domain.: 초대 코드가 필�
 You're not logged in.: 로그인하십시오
 Your permission: 당신의 권한
 Your role: 당신의 역할
+'Outline card problems button': 'Problem ({0})'
+'Outline card problems empty': 이 카드에 Problem이 없습니다.
+'Outline card problems card label': '카드: {0}'
+'Outline card problems untitled item': 'Problem {0}'
