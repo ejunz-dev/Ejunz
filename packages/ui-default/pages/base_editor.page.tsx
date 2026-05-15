@@ -2528,8 +2528,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     if (!socketUrl) return;
 
     let closed = false;
-    const apiPath = basePath === 'base/skill'
-      ? `/d/${domainId}/base/skill/data`
+    const apiPath = basePath === 'skill'
+      ? `/d/${domainId}/skill/data`
       : `/d/${domainId}/base/data`;
     const editorApiQs: Record<string, string> = {};
     if (docId) editorApiQs.docId = docId;
@@ -2864,8 +2864,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
   const refetchEditorData = useCallback(async () => {
     const domainId = (window as any).UiContext?.domainId || 'system';
-    const apiPath = basePath === 'base/skill'
-      ? `/d/${domainId}/base/skill/data`
+    const apiPath = basePath === 'skill'
+      ? `/d/${domainId}/skill/data`
       : `/d/${domainId}/base/data`;
     try {
       const qs: Record<string, string> = {};
@@ -3443,11 +3443,13 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   }, [basePath]);
 
   useEffect(() => {
-    if (typeof window === 'undefined' || basePath !== 'base' || !docId) return undefined;
+    if (typeof window === 'undefined' || !docId) return undefined;
+    if (basePath !== 'base' && basePath !== 'skill') return undefined;
     const path = window.location.pathname;
     const onDevEd = /\/develop\/editor(?:\/|$)/.test(path);
     const onBaseBrEd = /\/base\/[^/]+\/branch\/[^/]+\/editor(?:\/|$)/.test(path);
-    if (!onDevEd && !onBaseBrEd) return undefined;
+    const onSkillBrEd = /\/skill\/[^/]+\/branch\/[^/]+\/editor(?:\/|$)/.test(path);
+    if (!onDevEd && !onBaseBrEd && !onSkillBrEd) return undefined;
     const sessionHex = new URLSearchParams(window.location.search).get('session')?.trim() || '';
     if (!sessionHex) return undefined;
     const baseDocIdNum = Number(docId);
@@ -4318,7 +4320,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         edgeDeletes: [],
       };
       const developSid = new URLSearchParams(window.location.search).get('session');
-      if (developSid && basePath === 'base') {
+      if (developSid) {
         batchSaveData.developSessionId = developSid;
         batchSaveData.developEditorLocation = `${window.location.pathname}${window.location.search || ''}`;
       }
@@ -4600,8 +4602,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             const fb = (window as any).UiContext?.currentBranch;
             if (fb) fetchQs.branch = fb;
             currentBase = await request.get(
-              basePath === 'base/skill'
-                ? `/d/${domainId}/base/skill/data`
+              basePath === 'skill'
+                ? `/d/${domainId}/skill/data`
                 : `/d/${domainId}/base/data`,
               fetchQs,
             );
@@ -5138,8 +5140,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           const psb = (window as any).UiContext?.currentBranch;
           if (psb) postSaveQs.branch = psb;
           const response = await request.get(
-            basePath === 'base/skill'
-              ? `/d/${domainId}/base/skill/data`
+            basePath === 'skill'
+              ? `/d/${domainId}/skill/data`
               : `/d/${domainId}/base/data`,
             postSaveQs,
           );
@@ -11229,7 +11231,7 @@ Reply with a JSON code block only for executable operations, using this shape:
   }, [fileContent, editorInstance, selectedFile]);
 
   useEffect(() => {
-    if (basePath !== 'base/skill') return;
+    if (basePath !== 'skill') return;
     const domainId = (window as any).UiContext?.domainId;
     if (!domainId) return;
     setDomainToolsLoading(true);
@@ -12978,7 +12980,7 @@ Reply with a JSON code block only for executable operations, using this shape:
                   )}
                 </>
               )}
-              {basePath !== 'base/skill' && docId && contextMenu.file.nodeId && !String(contextMenu.file.nodeId).startsWith('temp-node-') && (
+              {basePath !== 'skill' && docId && contextMenu.file.nodeId && !String(contextMenu.file.nodeId).startsWith('temp-node-') && (
                 <>
                   <div
                     style={{
@@ -13319,7 +13321,7 @@ Reply with a JSON code block only for executable operations, using this shape:
               >
                 导入 Markdown 卡片
               </div>
-              {basePath !== 'base/skill' && docId && contextMenu.file.nodeId && !String(contextMenu.file.nodeId).startsWith('temp-node-') && (
+              {basePath !== 'skill' && docId && contextMenu.file.nodeId && !String(contextMenu.file.nodeId).startsWith('temp-node-') && (
                 <div
                   style={{
                     padding: '6px 16px',
@@ -13430,7 +13432,7 @@ Reply with a JSON code block only for executable operations, using this shape:
                 }}
               >
                 {/* Skill mode: right sidebar, click tool to copy params */}
-      {basePath === 'base/skill' && (
+      {basePath === 'skill' && (
         <div style={{
           width: '280px',
           flexShrink: 0,
@@ -13777,7 +13779,7 @@ Reply with a JSON code block only for executable operations, using this shape:
                   )}
                 </>
               )}
-              {basePath !== 'base/skill' && docId && contextMenu.file.cardId && !String(contextMenu.file.cardId).startsWith('temp-card-') && (
+              {basePath !== 'skill' && docId && contextMenu.file.cardId && !String(contextMenu.file.cardId).startsWith('temp-card-') && (
                 <>
                   <div
                     style={{
@@ -17116,10 +17118,11 @@ const getBaseUrl = (path: string, docId: string): string => {
   return `/d/${domainId}/base/${docId}${path}`;
 };
 
-const page = new NamedPage(['base_editor', 'base_editor_branch', 'base_skill_editor', 'base_skill_editor_branch', 'develop_editor'], async (pageName) => {
+const page = new NamedPage(['base_editor', 'base_editor_branch', 'skill_editor', 'skill_editor_branch', 'skill_editor_doc', 'skill_editor_doc_branch', 'develop_editor'], async (pageName) => {
   try {
     
-    const isSkill = pageName === 'base_skill_editor' || pageName === 'base_skill_editor_branch';
+    const isSkill = pageName === 'skill_editor' || pageName === 'skill_editor_branch'
+      || pageName === 'skill_editor_doc' || pageName === 'skill_editor_doc_branch';
     const containerId = isSkill ? '#skill-editor-mode' : '#base-editor-mode';
     const $container = $(containerId);
     if (!$container.length) {
@@ -17134,7 +17137,7 @@ const page = new NamedPage(['base_editor', 'base_editor_branch', 'base_skill_edi
     try {
       
       const apiPath = isSkill
-        ? `/d/${domainId}/base/skill/data`
+        ? `/d/${domainId}/skill/data`
         : `/d/${domainId}/base/data`;
       const initQs: Record<string, string> = {};
       if (docId) initQs.docId = docId;
@@ -17151,7 +17154,7 @@ const page = new NamedPage(['base_editor', 'base_editor_branch', 'base_skill_edi
       return;
     }
 
-    const editorBasePath = isSkill ? 'base/skill' : 'base';
+    const editorBasePath = isSkill ? 'skill' : 'base';
     ReactDOM.render(
       <BaseEditorMode docId={initialData.docId || ''} initialData={initialData} basePath={editorBasePath} />,
       $container[0]

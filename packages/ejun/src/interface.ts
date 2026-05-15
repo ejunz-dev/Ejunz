@@ -330,7 +330,6 @@ export interface BaseDoc {
     owner: number;
     title: string;
     content: string;
-    type?: 'base' | 'skill' | 'training';
     nodes: BaseNode[];
     edges: BaseEdge[];
     branchData?: { [branch: string]: { nodes: BaseNode[]; edges: BaseEdge[] } };
@@ -368,6 +367,10 @@ export interface BaseDoc {
     /** Custom problem tag names offered in the base editor (+ any tag inferred from cards on load). */
     problemTags?: string[];
 }
+
+export type SkillDoc = Omit<BaseDoc, 'docType'> & {
+    docType: document['TYPE_SKILL'];
+};
 
 export interface BaseHistoryEntry {
     id: string;
@@ -1231,6 +1234,8 @@ export interface SessionDoc {
     route?: string;
     appRoute?: 'learn' | 'develop' | 'agent';
     developSessionKind?: 'daily' | 'outline_node';
+    /** Develop mind-map storage: 70 = TYPE_BASE, 73 = TYPE_SKILL. Required on `appRoute: develop` session rows. */
+    developMapDocType?: number;
     agentId?: string;
     agentSessionKind?: 'chat' | 'client';
     title?: string;
@@ -1277,6 +1282,7 @@ export type SessionPatch = Partial<Pick<
     | 'route'
     | 'appRoute'
     | 'developSessionKind'
+    | 'developMapDocType'
     | 'lessonMode'
     | 'currentLearnSectionIndex'
     | 'currentLearnSectionId'

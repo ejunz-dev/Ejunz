@@ -1,9 +1,181 @@
 import yaml from 'js-yaml';
 import { ObjectId } from 'mongodb';
+import { _, Filter } from '../libs';
 import { Logger } from '../logger';
-import { BaseModel, CardModel } from '../model/base';
-import * as document from '../model/document';
-import type { CardDoc, BaseNode, BaseEdge } from '../interface';
+import * as document from './document';
+import type { BaseEdge, BaseNode, SkillDoc, CardDoc } from '../interface';
+import { BaseModel, CardModel } from './base';
+
+export class SkillModel {
+    static async generateNextDocId(domainId: string): Promise<number> {
+        const last = await document.getMulti(domainId, document.TYPE_SKILL, { docId: { $type: 'number' } } as any)
+            .sort({ docId: -1 })
+            .limit(1)
+            .project({ docId: 1 })
+            .toArray();
+        return (Number(last[0]?.docId) || 0) + 1;
+    }
+
+    static async get(domainId: string, docId: number): Promise<SkillDoc | null> {
+        return (await BaseModel.get(domainId, docId, document.TYPE_SKILL)) as SkillDoc | null;
+    }
+
+    static async getBybid(domainId: string, bid: string | number): Promise<SkillDoc | null> {
+        const bidString = String(bid).trim();
+        if (!bidString) return null;
+        const list = await document.getMulti(domainId, document.TYPE_SKILL, { bid: bidString } as Filter<SkillDoc>).limit(1).toArray();
+        return list.length > 0 ? (list[0] as SkillDoc) : null;
+    }
+
+    static async getAll(domainId: string): Promise<SkillDoc[]> {
+        return await document.getMulti(domainId, document.TYPE_SKILL, {}).sort({ updateAt: -1 }).toArray() as SkillDoc[];
+    }
+
+    static async getRecentUpdated(domainId: string, limit: number = 10): Promise<SkillDoc[]> {
+        return await document
+            .getMulti(domainId, document.TYPE_SKILL, {})
+            .sort({ updateAt: -1 })
+            .limit(limit)
+            .toArray() as SkillDoc[];
+    }
+
+    static async create(
+        domainId: string,
+        owner: number,
+        title: string,
+        content: string = '',
+        branch: string = 'main',
+        ip?: string,
+        domainName?: string,
+        bid?: string,
+        /** If set, root mind-map node label (document `title` is unchanged). */
+        rootNodeText?: string,
+    ): Promise<{ docId: number }> {
+        const rootLabel = (rootNodeText != null && String(rootNodeText).trim() !== '')
+            ? String(rootNodeText).trim()
+            : (title || domainName || 'Skills');
+        const rootNode: BaseNode = {
+            id: `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            text: rootLabel,
+            x: 0,
+            y: 0,
+            level: 0,
+            expanded: true,
+        };
+
+        const payload: Partial<SkillDoc> = {
+            docType: document.TYPE_SKILL,
+            domainId,
+            title: title || '未命名技能库',
+            content: content || '',
+            owner,
+            bid: bid ? String(bid).trim() : undefined,
+            nodes: [rootNode],
+            edges: [],
+            layout: {
+                type: 'hierarchical',
+                direction: 'LR',
+                spacing: { x: 200, y: 100 },
+            },
+            viewport: {
+                x: 0,
+                y: 0,
+                zoom: 1,
+            },
+            createdAt: new Date(),
+            updateAt: new Date(),
+            views: 0,
+            ip,
+            branch,
+        };
+
+        const nextDocId = await this.generateNextDocId(domainId);
+        const docId = await document.add(
+            domainId,
+            payload.content!,
+            payload.owner!,
+            document.TYPE_SKILL,
+            nextDocId,
+            null,
+            null,
+            _.omit(payload, ['domainId', 'content', 'owner']),
+        );
+
+        return { docId: Number(docId) };
+    }
+
+    static async delete(domainId: string, docId: number): Promise<void> {
+        await BaseModel.delete(domainId, docId, document.TYPE_SKILL);
+    }
+
+    static async update(
+        domainId: string,
+        docId: number,
+        updates: Parameters<typeof BaseModel.update>[2],
+    ): Promise<void> {
+        await BaseModel.update(domainId, docId, updates, document.TYPE_SKILL);
+    }
+
+    static async addNode(
+        domainId: string,
+        docId: number,
+        node: Omit<BaseNode, 'id'>,
+        parentId?: string,
+        branch?: string,
+        edgeSourceId?: string,
+    ) {
+        return BaseModel.addNode(domainId, docId, node, parentId, branch, edgeSourceId, document.TYPE_SKILL);
+    }
+
+    static async updateNode(
+        domainId: string,
+        docId: number,
+        nodeId: string,
+        updates: Partial<BaseNode>,
+        branch?: string,
+    ): Promise<void> {
+        await BaseModel.updateNode(domainId, docId, nodeId, updates, branch, document.TYPE_SKILL);
+    }
+
+    static async deleteNode(domainId: string, docId: number, nodeId: string, branch?: string): Promise<void> {
+        await BaseModel.deleteNode(domainId, docId, nodeId, branch, document.TYPE_SKILL);
+    }
+
+    static async addEdge(
+        domainId: string,
+        docId: number,
+        edge: Omit<BaseEdge, 'id'>,
+        branch?: string,
+    ): Promise<string> {
+        return BaseModel.addEdge(domainId, docId, edge, branch, document.TYPE_SKILL);
+    }
+
+    static async deleteEdge(domainId: string, docId: number, edgeId: string, branch?: string): Promise<void> {
+        await BaseModel.deleteEdge(domainId, docId, edgeId, branch, document.TYPE_SKILL);
+    }
+
+    static async updateFull(
+        domainId: string,
+        docId: number,
+        updates: Parameters<typeof BaseModel.updateFull>[2],
+    ): Promise<void> {
+        await BaseModel.updateFull(domainId, docId, updates, document.TYPE_SKILL);
+    }
+
+    static async incrementViews(domainId: string, docId: number): Promise<void> {
+        await BaseModel.incrementViews(domainId, docId, document.TYPE_SKILL);
+    }
+}
+
+export async function resolveSkillDocByIdOrBid(domainId: string, docIdOrBid: string): Promise<SkillDoc | null> {
+    const key = String(docIdOrBid || '').trim();
+    if (!key) return null;
+    if (/^\d+$/.test(key)) {
+        const byDocId = await SkillModel.get(domainId, Number(key));
+        if (byDocId) return byDocId;
+    }
+    return SkillModel.getBybid(domainId, key);
+}
 
 const logger = new Logger('skillLoader');
 
@@ -78,14 +250,12 @@ function buildNodeTree(nodes: BaseNode[], edges: BaseEdge[]): Map<string, BaseNo
     return childrenMap;
 }
 
-/** 返回指定分支下所有技能的元数据列表（供 loadSkillsMetadata / getSkillNamesForBranch 复用）。branch 为空则返回 []。 */
-async function getSkillsMetadataList(domainId: string, branch: string): Promise<{ name: string; description: string; nodeId: string; cardId: string }[]> {
-    if (!branch || String(branch).trim() === '') return [];
-    const skillsBaseList = await document.getMulti(domainId, document.TYPE_BASE, { type: 'skill' })
-        .limit(1)
-        .toArray();
-    if (skillsBaseList.length === 0) return [];
-    const skillsBase = skillsBaseList[0] as any;
+/** Collect skill metadata rows from one skill-type base document and branch. */
+async function collectSkillMetadataFromOneBase(
+    domainId: string,
+    skillsBase: any,
+    branch: string,
+): Promise<{ name: string; description: string; nodeId: string; cardId: string }[]> {
     const branchName = branch || 'main';
     const branchData = skillsBase.branchData?.[branchName] || (branchName === 'main' ? { nodes: skillsBase.nodes || [], edges: skillsBase.edges || [] } : { nodes: [], edges: [] });
     const nodes: BaseNode[] = branchData.nodes || [];
@@ -95,7 +265,7 @@ async function getSkillsMetadataList(domainId: string, branch: string): Promise<
     const rootNodes = nodes.filter(n => (n.level === 0 || !n.parentId) && !edges.some(e => e.target === n.id));
     if (rootNodes.length === 0) return [];
     const rootNode = rootNodes[0];
-    const baseDocId = (skillsBase as any).docId || (skillsBase as any)._id;
+    const baseDocId = skillsBase.docId || skillsBase._id;
     const skillNodes = childrenMap.get(rootNode.id) || nodes.filter(n => n.parentId === rootNode.id || edges.some(e => e.source === rootNode.id && e.target === n.id));
     const skillMetadata: { name: string; description: string; nodeId: string; cardId: string }[] = [];
     if (skillNodes.length > 0) {
@@ -124,7 +294,6 @@ async function getSkillsMetadataList(domainId: string, branch: string): Promise<
             try {
                 const { metadata } = parseSkillMd(card.content || '');
                 const overview = card.content ? card.content.replace(/^---[\s\S]*?---\s*\n/, '').trim().substring(0, 200) : '';
-                // 根节点下每张卡一个技能：优先用卡片标题，避免都用 rootNode.text（如 "Skills"）导致重名、load 时匹配错卡或 instructions 为空
                 const displayName = (metadata.name && metadata.name !== 'Unnamed Skill') ? metadata.name : (card.title || rootNode.text);
                 skillMetadata.push({ name: displayName, description: metadata.description || overview || '', nodeId: rootNode.id, cardId });
             } catch (e) {
@@ -134,6 +303,20 @@ async function getSkillsMetadataList(domainId: string, branch: string): Promise<
         }
     }
     return skillMetadata;
+}
+
+/** 返回指定分支下所有技能的元数据列表（供 loadSkillsMetadata / getSkillNamesForBranch 复用）。branch 为空则返回 []。 */
+async function getSkillsMetadataList(domainId: string, branch: string): Promise<{ name: string; description: string; nodeId: string; cardId: string }[]> {
+    if (!branch || String(branch).trim() === '') return [];
+    const skillsBaseList = await document.getMulti(domainId, document.TYPE_SKILL, {})
+        .sort({ updateAt: -1 })
+        .toArray();
+    const aggregated: { name: string; description: string; nodeId: string; cardId: string }[] = [];
+    for (const skillsBase of skillsBaseList) {
+        const part = await collectSkillMetadataFromOneBase(domainId, skillsBase as any, branch);
+        aggregated.push(...part);
+    }
+    return aggregated;
 }
 
 /** Returns all skill names for the branch (used when skillIds is empty to resolve tools by branch). */
@@ -276,82 +459,91 @@ async function loadNodeContentRecursive(
     return content;
 }
 
+async function loadSkillInstructionsInBase(
+    domainId: string,
+    skillsBase: any,
+    skillName: string,
+    maxLevel: number,
+    branch: string,
+): Promise<string | null> {
+    const branchName = branch || 'main';
+    const branchData = skillsBase.branchData?.[branchName] || (branchName === 'main' ? { nodes: skillsBase.nodes || [], edges: skillsBase.edges || [] } : { nodes: [], edges: [] });
+    const nodes: BaseNode[] = branchData.nodes || [];
+    const edges: BaseEdge[] = branchData.edges || [];
+
+    const childrenMap = buildNodeTree(nodes, edges);
+
+    const rootNodes = nodes.filter(n => (n.level === 0 || !n.parentId) &&
+        !edges.some(e => e.target === n.id));
+
+    if (rootNodes.length === 0) {
+        return null;
+    }
+
+    const rootNode = rootNodes[0];
+    const baseDocId = skillsBase.docId || skillsBase._id;
+
+    const skillNodes = childrenMap.get(rootNode.id) ||
+        nodes.filter(n => n.parentId === rootNode.id ||
+            edges.some(e => e.source === rootNode.id && e.target === n.id));
+
+    if (skillNodes.length > 0) {
+        for (const skillNode of skillNodes) {
+            const nodeCards = await CardModel.getByNodeId(domainId, baseDocId, skillNode.id);
+            let skillNodeName = skillNode.text;
+
+            if (nodeCards.length > 0) {
+                const { metadata } = parseSkillMd(nodeCards[0].content || '');
+                skillNodeName = metadata.name || skillNode.text || nodeCards[0].title;
+            }
+
+            if (skillNodeName.toLowerCase().includes(skillName.toLowerCase()) ||
+                skillName.toLowerCase().includes(skillNodeName.toLowerCase())) {
+                const fullContent = await loadNodeContentRecursive(
+                    domainId,
+                    baseDocId,
+                    skillNode.id,
+                    nodes,
+                    childrenMap,
+                    1,
+                    maxLevel
+                );
+                return fullContent ? `\n\n${fullContent}\n\n---\n\n` : null;
+            }
+        }
+    } else {
+        const rootCards = await CardModel.getByNodeId(domainId, baseDocId, rootNode.id);
+        for (const card of rootCards) {
+            let cardSkillName = card.title || rootNode.text;
+            try {
+                const { metadata } = parseSkillMd(card.content || '');
+                cardSkillName = (metadata.name && metadata.name !== 'Unnamed Skill') ? metadata.name : (card.title || rootNode.text);
+            } catch (_) { /* ignore */ }
+            const nameMatches = cardSkillName && (cardSkillName.toLowerCase().includes(skillName.toLowerCase()) ||
+                skillName.toLowerCase().includes(cardSkillName.toLowerCase()));
+            const contentMatchesTool = (card.content || '').includes(skillName);
+            if (nameMatches || contentMatchesTool) {
+                const { instructions } = parseSkillMd(card.content || '');
+                const body = instructions || (card.content || '').trim();
+                return body ? `\n\n${body}\n\n---\n\n` : null;
+            }
+        }
+    }
+
+    return null;
+}
+
 /** Load skill instructions by name; maxLevel 1=overview, 2+=depth, -1=full. Returns null if branch is empty. */
 export async function loadSkillInstructions(domainId: string, skillName: string, maxLevel: number = -1, branch?: string): Promise<string | null> {
     if (!branch || String(branch).trim() === '') return null;
     try {
-        const skillsBaseList = await document.getMulti(domainId, document.TYPE_BASE, { type: 'skill' })
-            .limit(1)
+        const skillsBaseList = await document.getMulti(domainId, document.TYPE_SKILL, {})
+            .sort({ updateAt: -1 })
             .toArray();
-        
-        if (skillsBaseList.length === 0) {
-            return null;
-        }
-        
-        const skillsBase = skillsBaseList[0] as any;
-        const branchName = branch || 'main';
-        const branchData = skillsBase.branchData?.[branchName] || (branchName === 'main' ? { nodes: skillsBase.nodes || [], edges: skillsBase.edges || [] } : { nodes: [], edges: [] });
-        const nodes: BaseNode[] = branchData.nodes || [];
-        const edges: BaseEdge[] = branchData.edges || [];
-        
-        const childrenMap = buildNodeTree(nodes, edges);
-        
-        const rootNodes = nodes.filter(n => (n.level === 0 || !n.parentId) &&
-            !edges.some(e => e.target === n.id));
-        
-        if (rootNodes.length === 0) {
-            return null;
-        }
-        
-        const rootNode = rootNodes[0];
-        const baseDocId = skillsBase.docId || skillsBase._id;
 
-        const skillNodes = childrenMap.get(rootNode.id) ||
-            nodes.filter(n => n.parentId === rootNode.id ||
-                edges.some(e => e.source === rootNode.id && e.target === n.id));
-
-        if (skillNodes.length > 0) {
-            for (const skillNode of skillNodes) {
-                const nodeCards = await CardModel.getByNodeId(domainId, baseDocId, skillNode.id);
-                let skillNodeName = skillNode.text;
-
-                if (nodeCards.length > 0) {
-                    const { metadata } = parseSkillMd(nodeCards[0].content || '');
-                    skillNodeName = metadata.name || skillNode.text || nodeCards[0].title;
-                }
-
-                if (skillNodeName.toLowerCase().includes(skillName.toLowerCase()) ||
-                    skillName.toLowerCase().includes(skillNodeName.toLowerCase())) {
-                    const fullContent = await loadNodeContentRecursive(
-                        domainId,
-                        baseDocId,
-                        skillNode.id,
-                        nodes,
-                        childrenMap,
-                        1,
-                        maxLevel
-                    );
-                    return fullContent ? `\n\n${fullContent}\n\n---\n\n` : null;
-                }
-            }
-        } else {
-            // 根节点为 layer，每张 card 为技能：按 card 的 name/title 匹配，或按卡片内容中的工具名匹配（如 fetch_webpage）
-            const rootCards = await CardModel.getByNodeId(domainId, baseDocId, rootNode.id);
-            for (const card of rootCards) {
-                let cardSkillName = card.title || rootNode.text;
-                try {
-                    const { metadata } = parseSkillMd(card.content || '');
-                    cardSkillName = (metadata.name && metadata.name !== 'Unnamed Skill') ? metadata.name : (card.title || rootNode.text);
-                } catch (_) { /* ignore */ }
-                const nameMatches = cardSkillName && (cardSkillName.toLowerCase().includes(skillName.toLowerCase()) ||
-                    skillName.toLowerCase().includes(cardSkillName.toLowerCase()));
-                const contentMatchesTool = (card.content || '').includes(skillName);
-                if (nameMatches || contentMatchesTool) {
-                    const { instructions } = parseSkillMd(card.content || '');
-                    const body = instructions || (card.content || '').trim();
-                    return body ? `\n\n${body}\n\n---\n\n` : null;
-                }
-            }
+        for (const skillsBase of skillsBaseList) {
+            const hit = await loadSkillInstructionsInBase(domainId, skillsBase as any, skillName, maxLevel, branch);
+            if (hit) return hit;
         }
 
         return null;
@@ -379,29 +571,26 @@ export async function loadSkillFull(domainId: string, skillName: string): Promis
 /** Load all domain skills from Base cards; returns formatted string for system message. @deprecated Use loadSkillsMetadata() */
 export async function loadSkillsInstructions(domainId: string): Promise<string> {
     try {
-        const skillsBaseList = await document.getMulti(domainId, document.TYPE_BASE, { type: 'skill' })
-            .limit(1)
+        const skillsBaseList = await document.getMulti(domainId, document.TYPE_SKILL, {})
+            .sort({ updateAt: -1 })
             .toArray();
-        
+
         if (skillsBaseList.length === 0) {
             return '';
         }
-        
-        const skillsBase = skillsBaseList[0] as any;
-        
-        const branchData = skillsBase.branchData?.['main'] || { nodes: skillsBase.nodes || [], edges: skillsBase.edges || [] };
-        const nodes: BaseNode[] = branchData.nodes || [];
-        
-        if (nodes.length === 0) {
-            return '';
-        }
-        
+
         const allCards: CardDoc[] = [];
-        for (const node of nodes) {
-            const nodeCards = await CardModel.getByNodeId(domainId, skillsBase.docId, node.id);
-            allCards.push(...nodeCards);
+        for (const skillsBase of skillsBaseList) {
+            const sb = skillsBase as any;
+            const branchData = sb.branchData?.['main'] || { nodes: sb.nodes || [], edges: sb.edges || [] };
+            const nodes: BaseNode[] = branchData.nodes || [];
+            if (nodes.length === 0) continue;
+            for (const node of nodes) {
+                const nodeCards = await CardModel.getByNodeId(domainId, sb.docId, node.id);
+                allCards.push(...nodeCards);
+            }
         }
-        
+
         if (!allCards || allCards.length === 0) {
             return '';
         }

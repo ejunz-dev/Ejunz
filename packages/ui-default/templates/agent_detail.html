@@ -30,7 +30,7 @@
             <div class="typo">
               <p class="help-text">
                 {{ _('Agent uses all Skills in this Domain. Skills are managed via Base.') }}
-                <a href="{{ url('base_skill_editor_branch', domainId=domainId, branch=adoc.skillBranch or 'main') }}" target="_blank" style="margin-left: 10px;">
+                <a href="{{ url('skill_domain', { domainId: handler.args.domainId }) }}" target="_blank" style="margin-left: 10px;">
                   {{ _('Manage Skills') }} →
                 </a>
               </p>
@@ -169,7 +169,7 @@
           <button type="submit" class="button primary" style="margin-left: 8px;">{{ _('Save') }}</button>
         </form>
         <p class="help-text" style="margin-top: 10px;">
-          <a href="{{ url('base_skill_editor_branch', domainId=domainId, branch=adoc.skillBranch or 'main') }}" target="_blank">{{ _('Manage Skills') }} →</a>
+          <a href="{{ url('skill_editor_branch', domainId=domainId, branch=adoc.skillBranch or 'main') }}" target="_blank">{{ _('Manage Skills') }} →</a>
         </p>
       </div>
     </div>

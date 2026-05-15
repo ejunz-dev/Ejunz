@@ -64,7 +64,7 @@
                 </select>
                 <div class="help-text" style="margin-bottom: 10px;">
                   {{ _('After selecting a Skill branch, the Agent will load and use Skills under that branch.') }}
-                  <a href="{{ url('base_skill_outline', { domainId: handler.domain._id }) }}" target="_blank" style="margin-left: 10px;">
+                  <a href="{{ url('skill_domain', { domainId: handler.args.domainId }) }}" target="_blank" style="margin-left: 10px;">
                     {{ _('Manage Skills') }} →
                   </a>
                 </div>
