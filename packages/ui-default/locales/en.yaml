@@ -29,6 +29,11 @@ __langname: English
 'Agent Configuration': Agent Configuration
 'Agent Skills': Agent Skills
 'Agent uses all Skills in this Domain. Skills are managed via Base.': Agent uses all Skills in this Domain. Skills are managed via Base.
+'Configure Agent Skills': Configure Agent Skills
+'Configure skill libraries and branches on the Agent Skills page.': Configure skill libraries and branches on the dedicated Agent Skills page.
+'Only skill libraries enabled below are active for this agent.': Only the skill libraries listed below are enabled for this agent.
+'Only skill libraries listed here are active for this agent.': Only the skill libraries listed here are enabled for this agent.
+'Agents can use skills from selected skill libraries and branches (configure in the sidebar if you can edit this agent).': Agents can use skills from selected skill libraries and branches (configure in the sidebar if you can edit this agent).
 'Ahead of remote by {0} commit(s)': Ahead of remote by {0} commit(s)
 'AI chat failed': AI chat failed
 'AI executed operations': AI executed operations
@@ -59,6 +64,8 @@ __langname: English
 'Batch save failed': Batch save failed
 'Behind remote by {0} commit(s)': Behind remote by {0} commit(s)
 'Block': Block
+'Branch': Branch
+'branch': branch
 'Breadth learning mode': Breadth (rotate across sections)
 'Cancel': Cancel
 'Edit': Edit
@@ -123,6 +130,7 @@ __langname: English
 'Correct Answer': Correct Answer
 'Correct needed': Correct needed
 'Correct': Correct
+'Create one': Create one
 'Create Client': Create Client
 'Create remote branch': Create remote branch
 'Create': Create
@@ -187,6 +195,7 @@ __langname: English
 'Failed to save ASR configuration: {0}': 'Failed to save ASR configuration: {0}'
 'Failed to save learn session mode': Failed to save session mode
 'Failed to save TTS configuration: {0}': 'Failed to save TTS configuration: {0}'
+'Failed to save skill selection': Failed to save skill selection
 'Failed to set learning point': Failed to set learning point
 'Failed to update Skill branch': Failed to update Skill branch
 'File Mode': File Mode
@@ -220,6 +229,7 @@ __langname: English
 'Insert into AI terminal': Insert into AI terminal
 'Insert problem into AI terminal': Insert practice problem into AI terminal
 'Practice problem pid not on open card': That practice problem id is not on this card
+'Legacy mode: single branch for all skill libraries:': 'Legacy mode: single branch for all skill libraries:'
 'Lesson problem tag label': Problem tag
 'Problem tag none': (No tag · default grouping)
 'Lesson problem tag save failed': Failed to save problem tag
@@ -324,6 +334,7 @@ __langname: English
 'Lock Scroll': Lock Scroll
 'Locked': Locked
 'Login expired, please log in again.': Login expired, please log in again.
+'Manage skill libraries': Manage skill libraries
 'Manage Skills': Manage Skills
 'Manuscript Mode': Manuscript Mode
 'Max consecutive': Max consecutive
@@ -367,6 +378,7 @@ __langname: English
 'No recording available': No recording available
 'No remote repository configured': No remote repository configured
 'No sections available.': No sections available.
+'No skill libraries in this domain yet.': No skill libraries in this domain yet.
 'No system tools.': No system tools.
 'No tools available': No tools available
 'No tools yet. Tools list will be automatically synced after server connection.': No tools yet. Tools list will be automatically synced after server connection.
@@ -376,6 +388,7 @@ __langname: English
 'Node does not exist': Node does not exist
 'Node moved successfully': Node moved successfully
 'Node': Node
+'Not enabled': Not enabled
 'Open practice for card: {0}': 'Open practice for card: {0}'
 'Open practice for node: {0}': 'Open practice for node: {0}'
 'Operation failed': Operation failed
@@ -507,6 +520,8 @@ __langname: English
 'Save completed, but {0} error(s) occurred': Save completed, but {0} error(s) occurred
 'Save failed': Save failed
 'Save failed not logged in': Not signed in. Save failed.
+'Save legacy branch': Save legacy branch
+'Save skill selection': Save skill selection
 'Save sort failed': Save sort failed
 'Save successful, {0} changes': 'Save successful, {0} changes'
 'Save TTS Configuration': Save TTS Configuration
@@ -531,6 +546,7 @@ __langname: English
 'Select a conversation to view details': Select a conversation to view details
 'Select a section from the sidebar': Select a section from the sidebar
 'Select Agent': Select Agent
+'Select skill libraries and a branch for each. Only checked libraries are active.': Select skill libraries and a branch for each. Only checked libraries are active.
 'Select the branch to use for learning': Select the branch to use for learning
 'Select the type of access point to generate a token': Select the type of access point to generate a token
 'Server ID': Server ID
@@ -542,6 +558,8 @@ __langname: English
 'Single-card session': Single-card session
 'Single-node session': Single-node session
 'Skill branch': Skill branch
+'Skill library': Skill library
+'Skills are not enabled for this agent yet.': Skills are not enabled for this agent yet.
 'Sort order updated, click Save to persist': Sort order updated, click Save to persist
 'Sort': Sort
 'Source card': Source card
@@ -665,6 +683,7 @@ Create Skill: Create Skill
 SID: SID
 Input skill library title: Input skill library title
 'Optional human-readable skill library identifier (SID), for example: S1001': 'Optional human-readable skill library identifier (SID), for example: S1001'
+'Optional: legacy single branch (used only when no library is selected above)': Optional single branch for all skill libraries (only used when no library is selected above).
 Skill library title is required.: Skill library title is required.
 'Skill library SID already exists: {0}': 'Skill library SID already exists: {0}'
 base_node: Base Node

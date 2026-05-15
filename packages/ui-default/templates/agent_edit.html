@@ -54,34 +54,18 @@
                 extra_style: 'height: 200px'
               }) }}
 
+          {% if adoc %}
           <div class="row">
             <div class="medium-12 columns">
-              <label>
-                {{ _('Skill branch') }}
-                <select name="skillBranch" class="textbox">
-                  <option value="" {{ 'selected' if not adoc.skillBranch else '' }}>{{ _('Not enabled') }}</option>
-                  <option value="main" {{ 'selected' if adoc.skillBranch == 'main' else '' }}>main</option>
-                </select>
-                <div class="help-text" style="margin-bottom: 10px;">
-                  {{ _('After selecting a Skill branch, the Agent will load and use Skills under that branch.') }}
-                  <a href="{{ url('skill_domain', { domainId: handler.args.domainId }) }}" target="_blank" style="margin-left: 10px;">
-                    {{ _('Manage Skills') }} →
-                  </a>
-                </div>
-              </label>
+              <p class="help-text">
+                {{ _('Configure skill libraries and branches on the Agent Skills page.') }}
+                <a href="{{ url('agent_skills', domainId=handler.args.domainId, aid=adoc.aid) }}" class="button secondary" style="margin-left: 8px;">
+                  {{ _('Configure Agent Skills') }}
+                </a>
+              </p>
             </div>
           </div>
-
-          <div class="row">
-            <div class="medium-12 columns">
-              <label>
-                {{ _('Agent Skills') }}
-                <div class="help-text" style="margin-bottom: 10px;">
-                  {{ _('Agent uses all Skills in this Domain. Skills are managed via Base.') }}
-                </div>
-              </label>
-            </div>
-          </div>
+          {% endif %}
 
           <div class="row">
             <div class="columns">

@@ -69,8 +69,16 @@
     <div class="section">
       <div class="section__header" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
         <h1 class="section__title" style="margin: 0;">{{ adoc.title }} - {{ _('Chat') }}</h1>
+        {% set _skillB = adoc.skillLibraryBindings if adoc.skillLibraryBindings else [] %}
         <span class="skill-branch-inline" style="font-size: 0.95em; color: var(--color-text-secondary, #666);">
-          {{ _('Skill 分支') }}: <strong>{{ adoc.skillBranch or _('未启用') }}</strong>
+          {{ _('Agent Skills') }}:
+          <strong>
+            {% if _skillB and _skillB|length > 0 %}
+              {% for b in _skillB %}#{{ b.docId }}/{{ b.branch }}{% if not loop.last %}, {% endif %}{% endfor %}
+            {% else %}
+              {{ _('Skills are not enabled for this agent yet.') }}
+            {% endif %}
+          </strong>
         </span>
         <div class="section__tools" style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
           {% if mode == 'chat' %}
