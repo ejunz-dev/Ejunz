@@ -1043,6 +1043,11 @@ develop: 开发
 'Outline card problems empty': 此卡片暂无 Problem。
 'Outline card problems card label': '卡片：{0}'
 'Outline card problems untitled item': 'Problem {0}'
+'Outline search placeholder': 搜索节点、卡片…
+'Outline search aria': 搜索大纲
+'Outline search no results': 无匹配项
+'Outline search kind node': 节点
+'Outline search kind card': 卡片
 'Develop start no pending': 今日待开发任务已全部完成；若有未结束的会话可先继续。
 'Develop move up': 上移
 'Develop move down': 下移

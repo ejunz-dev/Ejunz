@@ -776,6 +776,11 @@ develop: Develop
 'Outline card problems empty': No problems on this card.
 'Outline card problems card label': 'Card: {0}'
 'Outline card problems untitled item': 'Problem {0}'
+'Outline search placeholder': Search nodes and cards…
+'Outline search aria': Search outline
+'Outline search no results': No matches
+'Outline search kind node': Node
+'Outline search kind card': Card
 'Develop start no pending': All today’s develop tasks are done; resume an open session if needed.
 'Develop move up': Move up
 'Develop move down': Move down
