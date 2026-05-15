@@ -16,6 +16,46 @@ import type {
 } from 'ejun/src/interface';
 import { problemKind, matchingColumnsNormalized, superFlipNormalized } from 'ejun/src/model/problem';
 
+/** Appends filterNode, filterCard, filterProblem from the current URL for /base/data (server: model/outlineExplorerFilter). */
+function appendOutlineExplorerFilterParams(qs: Record<string, string>): void {
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    for (const k of ['filterNode', 'filterCard', 'filterProblem'] as const) {
+      const v = sp.get(k);
+      if (v != null && String(v).trim()) qs[k] = String(v).trim();
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function syncUiContextOutlineExplorerFiltersFromResponse(data: any): void {
+  const f = data?.outlineExplorerFilters;
+  if (!f || typeof f !== 'object' || !(window as any).UiContext) return;
+  (window as any).UiContext.outlineExplorerFilters = {
+    filterNode: typeof f.filterNode === 'string' ? f.filterNode : '',
+    filterCard: typeof f.filterCard === 'string' ? f.filterCard : '',
+    filterProblem: typeof f.filterProblem === 'string' ? f.filterProblem : '',
+  };
+}
+
+function readOutlineExplorerFilterDraftsFromLocation(): {
+  filterNode: string;
+  filterCard: string;
+  filterProblem: string;
+} {
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    return {
+      filterNode: sp.get('filterNode') || '',
+      filterCard: sp.get('filterCard') || '',
+      filterProblem: sp.get('filterProblem') || '',
+    };
+  } catch {
+    return { filterNode: '', filterCard: '', filterProblem: '' };
+  }
+}
+
 const OUTLINE_PROBLEM_KIND_LABEL: Record<string, string> = {
   single: '单选',
   multi: '多选',
@@ -1018,8 +1058,10 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     if (docId && basePath === 'base') apiQs.docId = docId;
     const curBranch = (window as any).UiContext?.currentBranch;
     if (curBranch) apiQs.branch = curBranch;
+    appendOutlineExplorerFilterParams(apiQs);
     try {
       const newData: any = await request.get(apiPath, apiQs);
+      syncUiContextOutlineExplorerFiltersFromResponse(newData);
       if (newData?.nodes != null || newData?.edges != null) {
         setBase(prev => ({ ...prev, ...newData, nodes: newData.nodes ?? prev.nodes, edges: newData.edges ?? prev.edges }));
       }
@@ -1043,6 +1085,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     if (docId && basePath === 'base') wsApiQs.docId = docId;
     const wsBranch = (window as any).UiContext?.currentBranch;
     if (wsBranch) wsApiQs.branch = wsBranch;
+    appendOutlineExplorerFilterParams(wsApiQs);
 
     const connect = async () => {
       try {
@@ -1059,6 +1102,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
               if (msg.type === 'update' && msg.sourceBranch && wsBranch && msg.sourceBranch !== wsBranch) return;
               request.get(apiPath, wsApiQs).then((newData: any) => {
                 if (!closed && newData && (newData.nodes || newData.edges)) {
+                  syncUiContextOutlineExplorerFiltersFromResponse(newData);
                   const nextBase: BaseDoc = { ...baseRef.current, ...newData, nodes: newData.nodes ?? baseRef.current.nodes, edges: newData.edges ?? baseRef.current.edges };
                   setBase(nextBase);
                   const nextMap = newData.nodeCardsMap != null ? newData.nodeCardsMap : {};
@@ -1217,8 +1261,63 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
   const [outlineSearchQuery, setOutlineSearchQuery] = useState('');
   const [outlineSearchOpen, setOutlineSearchOpen] = useState(false);
   const outlineSearchWrapRef = useRef<HTMLDivElement | null>(null);
-  
+
+  const [explorerFilterDraft, setExplorerFilterDraft] = useState(readOutlineExplorerFilterDraftsFromLocation);
+  const [explorerFilterBusy, setExplorerFilterBusy] = useState(false);
+  const [explorerFilterDialogOpen, setExplorerFilterDialogOpen] = useState(false);
+
+  const openExplorerFilterDialog = useCallback(() => {
+    setExplorerFilterDraft(readOutlineExplorerFilterDraftsFromLocation());
+    setExplorerFilterDialogOpen(true);
+  }, []);
+
+  const applyExplorerServerFilters = useCallback(async () => {
+    setExplorerFilterBusy(true);
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const syncOne = (key: 'filterNode' | 'filterCard' | 'filterProblem', val: string) => {
+        const t = val.trim();
+        if (t) params.set(key, t);
+        else params.delete(key);
+      };
+      syncOne('filterNode', explorerFilterDraft.filterNode);
+      syncOne('filterCard', explorerFilterDraft.filterCard);
+      syncOne('filterProblem', explorerFilterDraft.filterProblem);
+      const qs = params.toString();
+      window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''));
+      await refetchOutlineData();
+      setExplorerFilterDialogOpen(false);
+    } finally {
+      setExplorerFilterBusy(false);
+    }
+  }, [explorerFilterDraft, refetchOutlineData]);
+
+  const clearExplorerServerFilters = useCallback(async () => {
+    setExplorerFilterBusy(true);
+    try {
+      setExplorerFilterDraft({ filterNode: '', filterCard: '', filterProblem: '' });
+      const params = new URLSearchParams(window.location.search);
+      params.delete('filterNode');
+      params.delete('filterCard');
+      params.delete('filterProblem');
+      const qs = params.toString();
+      window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''));
+      await refetchOutlineData();
+      setExplorerFilterDialogOpen(false);
+    } finally {
+      setExplorerFilterBusy(false);
+    }
+  }, [refetchOutlineData]);
  
+  const explorerUrlFiltersActive = useMemo(() => {
+    try {
+      const d = readOutlineExplorerFilterDraftsFromLocation();
+      return !!(d.filterNode.trim() || d.filterCard.trim() || d.filterProblem.trim());
+    } catch {
+      return false;
+    }
+  }, [base, nodeCardsMap]);
+
   useEffect(() => {
     const checkMobile = () => {
       const mobile = window.innerWidth <= 600;
@@ -1251,6 +1350,15 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [outlineSearchOpen]);
+
+  useEffect(() => {
+    if (!explorerFilterDialogOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setExplorerFilterDialogOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [explorerFilterDialogOpen]);
  
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: FileItem } | null>(null);
  
@@ -3101,7 +3209,9 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       if (docId && basePath === 'base') dataQs2.docId = docId;
       const dBranch2 = (window as any).UiContext?.currentBranch;
       if (dBranch2) dataQs2.branch = dBranch2;
+      appendOutlineExplorerFilterParams(dataQs2);
       request.get(dataApiPath, dataQs2).then((responseData) => {
+        syncUiContextOutlineExplorerFiltersFromResponse(responseData?.base || responseData);
         if (responseData?.base) {
           setBase(responseData.base);
         } else {
@@ -3228,7 +3338,9 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
               if (docId && basePath === 'base') dataQs.docId = docId;
               const dBranch = (window as any).UiContext?.currentBranch;
               if (dBranch) dataQs.branch = dBranch;
+              appendOutlineExplorerFilterParams(dataQs);
               request.get(dataApiPath, dataQs).then((responseData) => {
+                syncUiContextOutlineExplorerFiltersFromResponse(responseData);
                 const newBase = responseData?.base || responseData;
                 
                
@@ -3357,6 +3469,161 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', backgroundColor: themeStyles.bgPrimary, overflow: 'hidden' }}>
+      {explorerFilterDialogOpen && (
+          <>
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(0,0,0,0.4)',
+                zIndex: 10000,
+              }}
+              onClick={() => !explorerFilterBusy && setExplorerFilterDialogOpen(false)}
+              aria-hidden
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="outline-explorer-filter-title"
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: 'fixed',
+                left: '50%',
+                top: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: 'min(400px, calc(100vw - 28px))',
+                maxHeight: 'min(520px, calc(100vh - 28px))',
+                overflow: 'auto',
+                boxSizing: 'border-box',
+                background: themeStyles.bgSecondary,
+                border: `1px solid ${themeStyles.borderPrimary}`,
+                borderRadius: '10px',
+                boxShadow: theme === 'dark' ? '0 16px 48px rgba(0,0,0,0.55)' : '0 16px 48px rgba(0,0,0,0.18)',
+                zIndex: 10001,
+                padding: '16px 18px',
+              }}
+            >
+              <h2
+                id="outline-explorer-filter-title"
+                style={{ margin: '0 0 14px', fontSize: '15px', fontWeight: 600, color: themeStyles.textPrimary }}
+              >
+                {i18n('Outline explorer filter dialog title')}
+              </h2>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <input
+                  type="text"
+                  value={explorerFilterDraft.filterNode}
+                  onChange={(e) => setExplorerFilterDraft((d) => ({ ...d, filterNode: e.target.value }))}
+                  placeholder={i18n('Outline explorer filter node placeholder')}
+                  autoComplete="off"
+                  disabled={explorerFilterBusy}
+                  aria-label={i18n('Outline explorer filter node placeholder')}
+                  style={{
+                    boxSizing: 'border-box',
+                    width: '100%',
+                    padding: '8px 10px',
+                    border: `1px solid ${themeStyles.borderPrimary}`,
+                    borderRadius: '6px',
+                    background: themeStyles.bgPrimary,
+                    color: themeStyles.textPrimary,
+                    fontSize: '13px',
+                  }}
+                />
+                <input
+                  type="text"
+                  value={explorerFilterDraft.filterCard}
+                  onChange={(e) => setExplorerFilterDraft((d) => ({ ...d, filterCard: e.target.value }))}
+                  placeholder={i18n('Outline explorer filter card placeholder')}
+                  autoComplete="off"
+                  disabled={explorerFilterBusy}
+                  aria-label={i18n('Outline explorer filter card placeholder')}
+                  style={{
+                    boxSizing: 'border-box',
+                    width: '100%',
+                    padding: '8px 10px',
+                    border: `1px solid ${themeStyles.borderPrimary}`,
+                    borderRadius: '6px',
+                    background: themeStyles.bgPrimary,
+                    color: themeStyles.textPrimary,
+                    fontSize: '13px',
+                  }}
+                />
+                <input
+                  type="text"
+                  value={explorerFilterDraft.filterProblem}
+                  onChange={(e) => setExplorerFilterDraft((d) => ({ ...d, filterProblem: e.target.value }))}
+                  placeholder={i18n('Outline explorer filter problem placeholder')}
+                  autoComplete="off"
+                  disabled={explorerFilterBusy}
+                  aria-label={i18n('Outline explorer filter problem placeholder')}
+                  style={{
+                    boxSizing: 'border-box',
+                    width: '100%',
+                    padding: '8px 10px',
+                    border: `1px solid ${themeStyles.borderPrimary}`,
+                    borderRadius: '6px',
+                    background: themeStyles.bgPrimary,
+                    color: themeStyles.textPrimary,
+                    fontSize: '13px',
+                  }}
+                />
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
+                <button
+                  type="button"
+                  onClick={() => void clearExplorerServerFilters()}
+                  disabled={explorerFilterBusy}
+                  style={{
+                    padding: '6px 12px',
+                    border: `1px solid ${themeStyles.borderPrimary}`,
+                    borderRadius: '6px',
+                    background: themeStyles.bgPrimary,
+                    color: themeStyles.textPrimary,
+                    cursor: explorerFilterBusy ? 'wait' : 'pointer',
+                    fontSize: '13px',
+                    opacity: explorerFilterBusy ? 0.7 : 1,
+                  }}
+                >
+                  {i18n('Outline explorer filter clear')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => !explorerFilterBusy && setExplorerFilterDialogOpen(false)}
+                  disabled={explorerFilterBusy}
+                  style={{
+                    padding: '6px 12px',
+                    border: `1px solid ${themeStyles.borderPrimary}`,
+                    borderRadius: '6px',
+                    background: themeStyles.bgButton,
+                    color: themeStyles.textPrimary,
+                    cursor: explorerFilterBusy ? 'wait' : 'pointer',
+                    fontSize: '13px',
+                  }}
+                >
+                  {i18n('Outline explorer filter cancel')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void applyExplorerServerFilters()}
+                  disabled={explorerFilterBusy}
+                  style={{
+                    padding: '6px 14px',
+                    border: `1px solid ${themeStyles.borderPrimary}`,
+                    borderRadius: '6px',
+                    background: themeStyles.bgButtonActive,
+                    color: themeStyles.textOnPrimary,
+                    cursor: explorerFilterBusy ? 'wait' : 'pointer',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    opacity: explorerFilterBusy ? 0.7 : 1,
+                  }}
+                >
+                  {i18n('Outline explorer filter apply')}
+                </button>
+              </div>
+            </div>
+          </>
+      )}
       <div style={{
         padding: '10px 20px',
         background: themeStyles.bgSecondary,
@@ -3367,6 +3634,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         flexShrink: 0,
         flexWrap: 'wrap',
       }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
         <div ref={branchDropdownRef} style={{ position: 'relative' }}>
           <button
             onClick={() => setBranchDropdownOpen(!branchDropdownOpen)}
@@ -3472,6 +3740,34 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
               </a>
             </div>
           )}
+        </div>
+        <button
+          type="button"
+          onClick={() => openExplorerFilterDialog()}
+          aria-haspopup="dialog"
+          aria-expanded={explorerFilterDialogOpen}
+          title={String(i18n('Outline explorer filter aria'))}
+          style={{
+            padding: '5px 10px',
+            border: `1px solid ${explorerUrlFiltersActive ? themeStyles.accent : themeStyles.borderPrimary}`,
+            borderRadius: '6px',
+            background: themeStyles.bgButton,
+            color: explorerUrlFiltersActive ? themeStyles.accent : themeStyles.textPrimary,
+            cursor: 'pointer',
+            fontSize: '13px',
+            fontWeight: 500,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px',
+            lineHeight: '20px',
+            flexShrink: 0,
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden style={{ opacity: 0.85 }}>
+            <path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z" />
+          </svg>
+          <span>{i18n('Outline explorer filter open')}</span>
+        </button>
         </div>
         <div
           ref={outlineSearchWrapRef}
@@ -4852,8 +5148,10 @@ const page = new NamedPage(['base_outline', 'base_skill_outline', 'base_outline_
       const params: Record<string, string> = {};
       if (docId) params.docId = docId;
       if (branch) params.branch = branch;
+      appendOutlineExplorerFilterParams(params);
       const response = await request.get(apiPath, params);
       initialData = response;
+      syncUiContextOutlineExplorerFiltersFromResponse(initialData);
      
       if (!initialData.docId) {
         initialData.docId = docId || '';

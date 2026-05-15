@@ -22,6 +22,12 @@ import moment from 'moment-timezone';
 import UserModel from '../model/user';
 import { loadBaseEditorUiPrefs, sanitizeBaseEditorUiPrefs } from '../lib/baseEditorUiPrefs';
 import { computeMaxNodeLayers, countMainLevelChildNodes, loadCardStatsByBaseDocId } from '../lib/baseListStats';
+import {
+    applyOutlineExplorerUrlFilters,
+    hasActiveOutlineExplorerFilters,
+    outlineExplorerFiltersFromQuery,
+    trimOutlineExplorerFiltersForClient,
+} from '../model/outlineExplorerFilter';
 import { getTodayUserDomainContribution } from '../lib/homepageRanking';
 import { incDevelopBranchDaily } from '../lib/developBranchDaily';
 import {
@@ -644,7 +650,7 @@ class BaseDetailHandler extends Handler {
         const branchData = getBranchData(this.base!, requestedBranch);
         
         
-        const nodeCardsMap: Record<string, CardDoc[]> = {};
+        let nodeCardsMap: Record<string, CardDoc[]> = {};
         if (branchData.nodes && branchData.nodes.length > 0) {
             for (const node of branchData.nodes) {
                 try {
@@ -950,7 +956,7 @@ export class BaseOutlineHandler extends Handler {
             .sort({ order: 1, cid: 1 })
             .toArray() as CardDoc[];
         
-        const nodeCardsMap: Record<string, CardDoc[]> = {};
+        let nodeCardsMap: Record<string, CardDoc[]> = {};
         for (const card of allCards) {
             if (card.nodeId) {
                 if (!nodeCardsMap[card.nodeId]) {
@@ -962,6 +968,14 @@ export class BaseOutlineHandler extends Handler {
         for (const nodeId of Object.keys(nodeCardsMap)) {
             nodeCardsMap[nodeId].sort((a, b) =>
                 (a.order ?? 999999) - (b.order ?? 999999) || (a.cid - b.cid));
+        }
+
+        const outlineExplorerFilters = outlineExplorerFiltersFromQuery(this.request.query as any);
+        if (hasActiveOutlineExplorerFilters(outlineExplorerFilters)) {
+            const applied = applyOutlineExplorerUrlFilters(nodes, edges, nodeCardsMap, outlineExplorerFilters);
+            nodes = applied.nodes;
+            edges = applied.edges;
+            nodeCardsMap = applied.nodeCardsMap;
         }
 
         const cardId = this.request.query.cardId as string | undefined;
@@ -1050,6 +1064,7 @@ export class BaseOutlineHandler extends Handler {
             files: base?.files || [],
             domainId,
             editorMode: opts.editorMode,
+            outlineExplorerFilters: trimOutlineExplorerFiltersForClient(outlineExplorerFilters),
         };
     }
 }
@@ -1156,7 +1171,7 @@ export class BaseEditorHandler extends Handler {
         const allCards = await document.getMulti(domainId, TYPE_CARD, editorCardFilter)
             .sort({ order: 1, cid: 1 })
             .toArray() as CardDoc[];
-        const nodeCardsMap: Record<string, CardDoc[]> = {};
+        let nodeCardsMap: Record<string, CardDoc[]> = {};
         for (const card of allCards) {
             if (card.nodeId) {
                 if (!nodeCardsMap[card.nodeId]) nodeCardsMap[card.nodeId] = [];
@@ -2494,7 +2509,7 @@ class BaseOutlineDocHandler extends Handler {
         const allCards = await document.getMulti(domainId, document.TYPE_CARD, outlineDocCardFilter)
             .sort({ order: 1, cid: 1 })
             .toArray() as CardDoc[];
-        const nodeCardsMap: Record<string, CardDoc[]> = {};
+        let nodeCardsMap: Record<string, CardDoc[]> = {};
         for (const card of allCards) {
             if (card.nodeId) {
                 if (!nodeCardsMap[card.nodeId]) nodeCardsMap[card.nodeId] = [];
@@ -2504,6 +2519,14 @@ class BaseOutlineDocHandler extends Handler {
         for (const nodeId of Object.keys(nodeCardsMap)) {
             nodeCardsMap[nodeId].sort((a, b) =>
                 (a.order ?? 999999) - (b.order ?? 999999) || (a.cid - b.cid));
+        }
+
+        const outlineExplorerFilters = outlineExplorerFiltersFromQuery(this.request.query as any);
+        if (hasActiveOutlineExplorerFilters(outlineExplorerFilters)) {
+            const applied = applyOutlineExplorerUrlFilters(nodes, edges, nodeCardsMap, outlineExplorerFilters);
+            nodes = applied.nodes;
+            edges = applied.edges;
+            nodeCardsMap = applied.nodeCardsMap;
         }
 
         const cardId = this.request.query.cardId as string | undefined;
@@ -2564,6 +2587,7 @@ class BaseOutlineDocHandler extends Handler {
             files: base?.files || [],
             domainId,
             editorMode: 'base',
+            outlineExplorerFilters: trimOutlineExplorerFiltersForClient(outlineExplorerFilters),
         };
     }
 }
@@ -2781,7 +2805,7 @@ export class BaseDataHandler extends Handler {
             .sort({ order: 1, cid: 1 })
             .toArray() as CardDoc[];
         
-        const nodeCardsMap: Record<string, CardDoc[]> = {};
+        let nodeCardsMap: Record<string, CardDoc[]> = {};
         for (const card of allCards) {
             if (card.nodeId) {
                 if (!nodeCardsMap[card.nodeId]) {
@@ -2795,18 +2819,28 @@ export class BaseDataHandler extends Handler {
                 (a.order ?? 999999) - (b.order ?? 999999) || (a.cid - b.cid));
         }
 
+        const outlineExplorerFilters = outlineExplorerFiltersFromQuery(this.request.query as any);
+        if (hasActiveOutlineExplorerFilters(outlineExplorerFilters)) {
+            const applied = applyOutlineExplorerUrlFilters(nodes, edges, nodeCardsMap, outlineExplorerFilters);
+            nodes = applied.nodes;
+            edges = applied.edges;
+            nodeCardsMap = applied.nodeCardsMap;
+        }
+
         this.response.body = base ? {
             ...base,
             nodes,
             edges,
             currentBranch,
             nodeCardsMap,
+            outlineExplorerFilters: trimOutlineExplorerFiltersForClient(outlineExplorerFilters),
         } : {
             domainId: domainId,
             nodes: [],
             edges: [],
             currentBranch,
             nodeCardsMap: {},
+            outlineExplorerFilters: trimOutlineExplorerFiltersForClient(outlineExplorerFilters),
         };
     }
 }
