@@ -482,3 +482,8 @@ Your role: 您的角色
 'Outline card problems empty': 此卡片暫無 Problem。
 'Outline card problems card label': '卡片：{0}'
 'Outline card problems untitled item': 'Problem {0}'
+'Outline search placeholder': 搜尋節點、卡片…
+'Outline search aria': 搜尋大綱
+'Outline search no results': 無符合項目
+'Outline search kind node': 節點
+'Outline search kind card': 卡片

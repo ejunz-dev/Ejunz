@@ -627,3 +627,8 @@ Your role: 당신의 역할
 'Outline card problems empty': 이 카드에 Problem이 없습니다.
 'Outline card problems card label': '카드: {0}'
 'Outline card problems untitled item': 'Problem {0}'
+'Outline search placeholder': 노드·카드 검색…
+'Outline search aria': 아웃라인 검색
+'Outline search no results': 일치 항목 없음
+'Outline search kind node': 노드
+'Outline search kind card': 카드
