@@ -888,6 +888,165 @@ export class CardModel {
     }
 }
 
+/** URL query–driven narrowing for outline file-tree (used by outline / base data handlers). */
+export type OutlineExplorerFilters = {
+    filterNode: string;
+    filterCard: string;
+    filterProblem: string;
+};
+
+function cardMatchesOutlineExplorerFilters(
+    card: CardDoc,
+    filterCardLc: string,
+    filterProblemLc: string,
+): boolean {
+    const needCard = filterCardLc.length > 0;
+    const needProb = filterProblemLc.length > 0;
+    if (!needCard && !needProb) return true;
+    let okCard = !needCard;
+    if (needCard) {
+        const t = (card.title || '').toLowerCase();
+        okCard = t.includes(filterCardLc);
+    }
+    let okProb = !needProb;
+    if (needProb) {
+        const probs = card.problems || [];
+        okProb = probs.some((pr) => {
+            try {
+                return JSON.stringify(pr).toLowerCase().includes(filterProblemLc);
+            } catch {
+                return false;
+            }
+        });
+    }
+    return okCard && okProb;
+}
+
+function nodeDirectHitForOutlineExplorer(
+    nodeId: string,
+    nodeById: Map<string, BaseNode>,
+    nodeCardsMap: Record<string, CardDoc[]>,
+    fn: string,
+    fc: string,
+    fp: string,
+): boolean {
+    const needNode = fn.length > 0;
+    const needCardDim = fc.length > 0 || fp.length > 0;
+    if (!needNode && !needCardDim) return true;
+    const parts: boolean[] = [];
+    if (needNode) {
+        const n = nodeById.get(nodeId);
+        parts.push(!!n && (n.text || '').toLowerCase().includes(fn));
+    }
+    if (needCardDim) {
+        const cards = nodeCardsMap[nodeId] || [];
+        parts.push(cards.some((c) => cardMatchesOutlineExplorerFilters(c, fc, fp)));
+    }
+    return parts.every(Boolean);
+}
+
+export function hasActiveOutlineExplorerFilters(f: OutlineExplorerFilters): boolean {
+    return !!(f.filterNode?.trim() || f.filterCard?.trim() || f.filterProblem?.trim());
+}
+
+export function outlineExplorerFiltersFromQuery(
+    query: Record<string, unknown> | undefined | null,
+): OutlineExplorerFilters {
+    const g = (k: string) => {
+        const v = query?.[k];
+        return typeof v === 'string' ? v : '';
+    };
+    return {
+        filterNode: g('filterNode'),
+        filterCard: g('filterCard'),
+        filterProblem: g('filterProblem'),
+    };
+}
+
+export function trimOutlineExplorerFiltersForClient(
+    f: OutlineExplorerFilters,
+): OutlineExplorerFilters {
+    return {
+        filterNode: f.filterNode.trim(),
+        filterCard: f.filterCard.trim(),
+        filterProblem: f.filterProblem.trim(),
+    };
+}
+
+/**
+ * Restricts outline file-tree nodes/edges and card lists using URL query keywords.
+ * When multiple dimensions are set (node / card / problem), a node matches only if
+ * every active dimension is satisfied (node title, card title only, problems).
+ */
+export function applyOutlineExplorerUrlFilters(
+    nodes: BaseNode[],
+    edges: BaseEdge[],
+    nodeCardsMap: Record<string, CardDoc[]>,
+    filters: OutlineExplorerFilters,
+): { nodes: BaseNode[]; edges: BaseEdge[]; nodeCardsMap: Record<string, CardDoc[]> } {
+    const fn = filters.filterNode.trim().toLowerCase();
+    const fc = filters.filterCard.trim().toLowerCase();
+    const fp = filters.filterProblem.trim().toLowerCase();
+    if (!fn && !fc && !fp) {
+        return { nodes, edges, nodeCardsMap };
+    }
+
+    const parentMap = new Map<string, string>();
+    const childrenMap = new Map<string, string[]>();
+    for (const e of edges) {
+        parentMap.set(e.target, e.source);
+        if (!childrenMap.has(e.source)) childrenMap.set(e.source, []);
+        childrenMap.get(e.source)!.push(e.target);
+    }
+
+    const nodeById = new Map(nodes.map((n) => [n.id, n]));
+    const roots = nodes.filter((n) => !parentMap.has(n.id));
+
+    const relevant = new Set<string>();
+    function dfs(nodeId: string): boolean {
+        const children = childrenMap.get(nodeId) || [];
+        let childRel = false;
+        for (const c of children) {
+            if (dfs(c)) childRel = true;
+        }
+        const direct = nodeDirectHitForOutlineExplorer(nodeId, nodeById, nodeCardsMap, fn, fc, fp);
+        if (direct || childRel) {
+            relevant.add(nodeId);
+            return true;
+        }
+        return false;
+    }
+    for (const r of roots) dfs(r.id);
+
+    if (relevant.size === 0) {
+        return { nodes: [], edges: [], nodeCardsMap: {} };
+    }
+
+    const visible = new Set(relevant);
+    for (const id of relevant) {
+        let p = parentMap.get(id);
+        while (p) {
+            visible.add(p);
+            p = parentMap.get(p);
+        }
+    }
+
+    const visibleNodes = nodes.filter((n) => visible.has(n.id));
+    const visibleEdges = edges.filter((e) => visible.has(e.source) && visible.has(e.target));
+
+    const filteredMap: Record<string, CardDoc[]> = {};
+    for (const nodeId of Object.keys(nodeCardsMap)) {
+        if (!visible.has(nodeId)) continue;
+        let list = [...(nodeCardsMap[nodeId] || [])];
+        if (fc || fp) {
+            list = list.filter((c) => cardMatchesOutlineExplorerFilters(c, fc, fp));
+        }
+        filteredMap[nodeId] = list;
+    }
+
+    return { nodes: visibleNodes, edges: visibleEdges, nodeCardsMap: filteredMap };
+}
+
 // @ts-ignore
 global.Ejunz.model.base = BaseModel;
 // @ts-ignore
