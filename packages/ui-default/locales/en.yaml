@@ -772,6 +772,10 @@ develop: Develop
 'Outline learn single node': Learn this node subtree
 'Outline learn start failed': Could not start learning. Try again.
 'Outline learn invalid card': Invalid card id; cannot start learning.
+'Outline card problems button': 'Problem ({0})'
+'Outline card problems empty': No problems on this card.
+'Outline card problems card label': 'Card: {0}'
+'Outline card problems untitled item': 'Problem {0}'
 'Develop start no pending': All today’s develop tasks are done; resume an open session if needed.
 'Develop move up': Move up
 'Develop move down': Move down
