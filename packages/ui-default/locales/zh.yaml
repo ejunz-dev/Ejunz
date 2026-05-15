@@ -1039,6 +1039,10 @@ develop: 开发
 'Outline learn single node': 单节点学习
 'Outline learn start failed': 无法开始学习，请重试。
 'Outline learn invalid card': 该卡片 ID 无效，无法开始学习。
+'Outline card problems button': 'Problem（{0}）'
+'Outline card problems empty': 此卡片暂无 Problem。
+'Outline card problems card label': '卡片：{0}'
+'Outline card problems untitled item': 'Problem {0}'
 'Develop start no pending': 今日待开发任务已全部完成；若有未结束的会话可先继续。
 'Develop move up': 上移
 'Develop move down': 下移

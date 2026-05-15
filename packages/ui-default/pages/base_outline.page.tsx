@@ -4,6 +4,107 @@ import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
 import { request, i18n } from 'vj/utils';
+import type {
+  Problem,
+  ProblemFlip,
+  ProblemSingle,
+  ProblemMulti,
+  ProblemTrueFalse,
+  ProblemFillBlank,
+  ProblemMatching,
+  ProblemSuperFlip,
+} from 'ejun/src/interface';
+import { problemKind, matchingColumnsNormalized, superFlipNormalized } from 'ejun/src/model/problem';
+
+const OUTLINE_PROBLEM_KIND_LABEL: Record<string, string> = {
+  single: '单选',
+  multi: '多选',
+  true_false: '判断',
+  flip: '翻转卡',
+  fill_blank: '填空',
+  matching: '配对',
+  super_flip: '表格式翻转',
+};
+
+function outlineProblemPreviewBlocks(
+  p: Problem,
+  indexOneBased: number,
+): { kindLabel: string; titleLine: string; stemHtml: string; answerHtml: string } {
+  const k = problemKind(p);
+  const kindLabel = OUTLINE_PROBLEM_KIND_LABEL[k] || k;
+  const titleRaw = typeof (p as { title?: string }).title === 'string' ? (p as { title?: string }).title!.trim() : '';
+  const titleLine = titleRaw || i18n('Outline card problems untitled item', indexOneBased);
+
+  if (k === 'flip') {
+    const f = p as ProblemFlip;
+    return {
+      kindLabel,
+      titleLine,
+      stemHtml: f.faceA || '',
+      answerHtml: f.faceB || '',
+    };
+  }
+  if (k === 'true_false') {
+    const t = p as ProblemTrueFalse;
+    const ans = t.answer === 1 ? '正确（True）' : '错误（False）';
+    return { kindLabel, titleLine, stemHtml: t.stem || '', answerHtml: ans };
+  }
+  if (k === 'fill_blank') {
+    const fb = p as ProblemFillBlank;
+    const ans = (fb.answers || []).map((a) => String(a ?? '').trim()).filter(Boolean).join('；') || '—';
+    return { kindLabel, titleLine, stemHtml: fb.stem || '', answerHtml: ans };
+  }
+  if (k === 'single') {
+    const s = p as ProblemSingle;
+    const opts = s.options || [];
+    const a = typeof s.answer === 'number' && opts[s.answer] != null ? String(opts[s.answer]) : '—';
+    return { kindLabel, titleLine, stemHtml: s.stem || '', answerHtml: a };
+  }
+  if (k === 'multi') {
+    const m = p as ProblemMulti;
+    const opts = m.options || [];
+    const idx = Array.isArray(m.answer) ? m.answer : [];
+    const texts = idx.filter((i) => typeof i === 'number' && opts[i] != null).map((i) => String(opts[i as number]));
+    return { kindLabel, titleLine, stemHtml: m.stem || '', answerHtml: texts.length ? texts.join('、') : '—' };
+  }
+  if (k === 'matching') {
+    const m = p as ProblemMatching;
+    const cols = matchingColumnsNormalized(m);
+    const n = cols.length ? Math.max(...cols.map((c) => c.length), 0) : 0;
+    const rows: string[] = [];
+    for (let r = 0; r < n; r++) {
+      const cells = cols.map((c) => String(c[r] ?? '').trim()).filter(Boolean);
+      if (cells.length) rows.push(cells.join(' — '));
+    }
+    const stem = (m.stem || '').trim();
+    const answerHtml = rows.length ? rows.map((row, i) => `${i + 1}. ${row}`).join('<br/>') : '—';
+    return { kindLabel, titleLine, stemHtml: stem || '（配对表）', answerHtml };
+  }
+  if (k === 'super_flip') {
+    const sf = p as ProblemSuperFlip;
+    const { headers, columns } = superFlipNormalized(sf);
+    const nCol = columns.length;
+    const nRow = nCol ? Math.max(0, ...columns.map((c) => c.length)) : 0;
+    const lines: string[] = [];
+    for (let r = 0; r < nRow; r++) {
+      const parts: string[] = [];
+      for (let c = 0; c < nCol; c++) {
+        const head = String(headers[c] ?? '').trim();
+        const cell = String(columns[c]?.[r] ?? '').trim();
+        if (cell) parts.push(head ? `${head}：${cell}` : cell);
+      }
+      if (parts.length) lines.push(parts.join('；'));
+    }
+    const stem = (sf.stem || '').trim();
+    return {
+      kindLabel,
+      titleLine,
+      stemHtml: stem || (lines.length ? '（表格式翻转）' : ''),
+      answerHtml: lines.length ? lines.map((ln, i) => `${i + 1}. ${ln}`).join('<br/>') : '—',
+    };
+  }
+  return { kindLabel, titleLine, stemHtml: '', answerHtml: '—' };
+}
 
 interface BaseNode {
   id: string;
@@ -88,6 +189,7 @@ interface Card {
   createdAt?: string;
   order?: number;
   nodeId?: string;
+  problems?: Problem[];
   files?: CardFileInfo[];
 }
 
@@ -103,6 +205,93 @@ type FileItem = {
   hasPendingChanges?: boolean;
   clipboardType?: 'copy' | 'cut';
 };
+
+function OutlineCardProblemsList({
+  card,
+  theme,
+}: {
+  card: Card;
+  theme: {
+    textSecondary: string;
+    textTertiary: string;
+    borderSecondary: string;
+  };
+}) {
+  const problemsList = card.problems ?? [];
+  if (problemsList.length === 0) {
+    return (
+      <div style={{ fontSize: '13px', color: theme.textTertiary, lineHeight: 1.5 }}>
+        {i18n('Outline card problems empty')}
+      </div>
+    );
+  }
+  return problemsList.map((prob, idx) => {
+    const { kindLabel, titleLine, stemHtml, answerHtml } = outlineProblemPreviewBlocks(prob, idx + 1);
+    const isLast = idx === problemsList.length - 1;
+    return (
+      <div
+        key={prob.pid || `p-${idx}`}
+        style={{
+          marginBottom: isLast ? 0 : '14px',
+          paddingBottom: isLast ? 0 : '14px',
+          borderBottom: isLast ? 'none' : `1px solid ${theme.borderSecondary}`,
+        }}
+      >
+        <div style={{
+          fontSize: '11px',
+          color: theme.textSecondary,
+          marginBottom: '8px',
+          lineHeight: 1.35,
+        }}>
+          <span style={{ fontWeight: 600 }}>{kindLabel}</span>
+          <span style={{ margin: '0 6px', opacity: 0.6 }}>·</span>
+          <span>{titleLine}</span>
+        </div>
+        <div style={{
+          fontSize: '10px',
+          fontWeight: 600,
+          color: theme.textSecondary,
+          textTransform: 'uppercase',
+          letterSpacing: '0.04em',
+          marginBottom: '4px',
+        }}>
+          {i18n('Question')}
+        </div>
+        <div
+          className="typo topic__content richmedia"
+          style={{
+            fontSize: '13px',
+            lineHeight: 1.45,
+            marginBottom: '10px',
+            overflowWrap: 'break-word',
+            wordBreak: 'break-word',
+          }}
+          dangerouslySetInnerHTML={{ __html: stemHtml && stemHtml.trim() ? stemHtml : '—' }}
+        />
+        <div style={{
+          fontSize: '10px',
+          fontWeight: 600,
+          color: theme.textSecondary,
+          textTransform: 'uppercase',
+          letterSpacing: '0.04em',
+          marginBottom: '4px',
+        }}>
+          {i18n('Correct Answer')}
+        </div>
+        <div
+          className="typo topic__content richmedia"
+          style={{
+            fontSize: '13px',
+            lineHeight: 1.45,
+            overflowWrap: 'break-word',
+            wordBreak: 'break-word',
+          }}
+          dangerouslySetInnerHTML={{ __html: answerHtml && String(answerHtml).trim() ? answerHtml : '—' }}
+        />
+      </div>
+    );
+  });
+}
 
 
 interface ReactFlowNode {
@@ -990,6 +1179,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
  
   const [isMobile, setIsMobile] = useState(false);
   const [isExplorerOpen, setIsExplorerOpen] = useState(false);
+  const [mobileProblemsOpen, setMobileProblemsOpen] = useState(false);
   
  
   useEffect(() => {
@@ -997,6 +1187,9 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       const mobile = window.innerWidth <= 600;
       setIsMobile(mobile);
      
+      if (!mobile) {
+        setMobileProblemsOpen(false);
+      }
       if (mobile) {
         setIsExplorerOpen(false);
       }
@@ -1006,6 +1199,10 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  useEffect(() => {
+    setMobileProblemsOpen(false);
+  }, [selectedCard?.docId]);
  
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: FileItem } | null>(null);
  
@@ -2506,6 +2703,12 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     
     const contentDiv = document.getElementById('card-content-outline');
     if (!contentDiv) return;
+
+    const applyOutlineCardMainHtml = (html: string) => {
+      contentDiv.innerHTML = html;
+      $(contentDiv).trigger('vjContentNew');
+      attachImagePreviewHandlers(contentDiv);
+    };
     
     const cardIdStr = String(selectedCard.docId);
     
@@ -2522,16 +2725,12 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       replaceImagesWithCache(cachedHtml).then(htmlWithCachedImages => {
        
         if (selectedCard && String(selectedCard.docId) === cardIdStr) {
-          contentDiv.innerHTML = htmlWithCachedImages;
-          $(contentDiv).trigger('vjContentNew');
-          attachImagePreviewHandlers(contentDiv);
+          applyOutlineCardMainHtml(htmlWithCachedImages);
         }
       }).catch(error => {
         console.error('Failed to replace images with cache:', error);
        
-        contentDiv.innerHTML = cachedHtml;
-        $(contentDiv).trigger('vjContentNew');
-        attachImagePreviewHandlers(contentDiv);
+        applyOutlineCardMainHtml(cachedHtml);
       });
       
      
@@ -2565,17 +2764,13 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           replaceImagesWithCache(cachedHtml).then(htmlWithCachedImages => {
            
             if (selectedCard && String(selectedCard.docId) === cardIdStr) {
-              contentDiv.innerHTML = htmlWithCachedImages;
-              $(contentDiv).trigger('vjContentNew');
-              attachImagePreviewHandlers(contentDiv);
+              applyOutlineCardMainHtml(htmlWithCachedImages);
             }
           }).catch(error => {
             console.error('Failed to replace images with cache:', error);
            
             if (selectedCard && String(selectedCard.docId) === cardIdStr) {
-              contentDiv.innerHTML = cachedHtml;
-              $(contentDiv).trigger('vjContentNew');
-              attachImagePreviewHandlers(contentDiv);
+              applyOutlineCardMainHtml(cachedHtml);
             }
           });
           
@@ -2599,17 +2794,13 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           replaceImagesWithCache(cachedDataStr).then(htmlWithCachedImages => {
            
             if (selectedCard && String(selectedCard.docId) === cardIdStr) {
-              contentDiv.innerHTML = htmlWithCachedImages;
-              $(contentDiv).trigger('vjContentNew');
-              attachImagePreviewHandlers(contentDiv);
+              applyOutlineCardMainHtml(htmlWithCachedImages);
             }
           }).catch(error => {
             console.error('Failed to replace images with cache:', error);
            
             if (selectedCard && String(selectedCard.docId) === cardIdStr) {
-              contentDiv.innerHTML = cachedDataStr;
-              $(contentDiv).trigger('vjContentNew');
-              attachImagePreviewHandlers(contentDiv);
+              applyOutlineCardMainHtml(cachedDataStr);
             }
           });
           
@@ -2632,7 +2823,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     
    
     if (selectedCard.content) {
-      contentDiv.innerHTML = '<p style="color: #999; text-align: center;">加载中...</p>';
+      applyOutlineCardMainHtml('<p style="color: #999; text-align: center;">加载中...</p>');
       
       const renderMarkdown = async () => {
         if (wsRef.current) {
@@ -2673,9 +2864,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       renderMarkdown()
       .then(async html => {
        
-        contentDiv.innerHTML = html;
-        $(contentDiv).trigger('vjContentNew');
-        attachImagePreviewHandlers(contentDiv);
+        applyOutlineCardMainHtml(html);
         
        
         cardContentCacheRef.current[cardIdStr] = html;
@@ -2699,9 +2888,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           replaceImagesWithCache(html).then(htmlWithCachedImages => {
            
             if (selectedCard && String(selectedCard.docId) === cardIdStr) {
-              contentDiv.innerHTML = htmlWithCachedImages;
-              $(contentDiv).trigger('vjContentNew');
-              attachImagePreviewHandlers(contentDiv);
+              applyOutlineCardMainHtml(htmlWithCachedImages);
             }
           }).catch(error => {
             console.error('Failed to replace images with cache:', error);
@@ -2726,13 +2913,13 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         console.error('Failed to render markdown:', error);
         const errorHtml = '<p style="color: #f44336;">加载内容失败</p>';
         cardContentCacheRef.current[cardIdStr] = errorHtml;
-        contentDiv.innerHTML = errorHtml;
+        applyOutlineCardMainHtml(errorHtml);
       });
     } else {
       const emptyHtml = '<p style="color: #888;">暂无内容</p>';
       cardContentCacheRef.current[cardIdStr] = emptyHtml;
       cachedCardsRef.current.add(cardIdStr);
-      contentDiv.innerHTML = emptyHtml;
+      applyOutlineCardMainHtml(emptyHtml);
     }
   }, [selectedCard, preloadAndCacheImages, replaceImagesWithCache, cacheNodeCards, preloadCardContent, attachImagePreviewHandlers]);
 
@@ -3767,132 +3954,337 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         </div>
 
         {selectedCard ? (
+          <>
           <div style={{
             flex: 1,
+            minHeight: 0,
             borderLeft: `1px solid ${themeStyles.borderPrimary}`,
             backgroundColor: themeStyles.bgPrimary,
-            overflow: 'auto',
+            overflow: 'hidden',
             display: 'flex',
-            flexDirection: 'column',
+            flexDirection: 'row',
           }}>
             <div style={{
-              padding: '16px',
-              borderBottom: `1px solid ${themeStyles.borderPrimary}`,
-              backgroundColor: themeStyles.bgSecondary,
+              flex: 1,
+              minWidth: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: themeStyles.textPrimary }}>
-                  {selectedCard.title || '未命名卡片'}
-                </h3>
-                <a
-                  href={(() => {
-                    const domainId = (window as any).UiContext?.domainId || 'system';
-                    const branch = (window as any).UiContext?.currentBranch || 'main';
-                    const baseDocId = (window as any).UiContext?.base?.docId;
-                    const basebid = (window as any).UiContext?.base?.bid;
-                    const nodeId = selectedCard.nodeId || '';
-                    const cardId = selectedCard.docId;
-                    
-                    const docSeg = baseDocId != null && String(baseDocId).trim()
-                      ? String(baseDocId).trim()
-                      : (basebid && String(basebid).trim() ? String(basebid).trim() : '');
-                    if (docSeg) {
-                      return `/d/${domainId}/base/${encodeURIComponent(docSeg)}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit?returnUrl=${encodeURIComponent(window.location.href)}`;
-                    }
-                    return '#';
-                  })()}
-                  style={{
-                    padding: '6px 12px',
-                    backgroundColor: themeStyles.accent,
-                    color: themeStyles.textOnPrimary,
-                    textDecoration: 'none',
-                    borderRadius: '4px',
-                    fontSize: '13px',
-                    fontWeight: '500',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    transition: 'background-color 0.2s',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = theme === 'dark' ? '#4a9fd4' : '#1565c0';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = themeStyles.accent;
-                  }}
-                >
-                  <span>✎</span>
-                  <span>编辑</span>
-                </a>
-              </div>
-              {cachingProgress && (
+              <div style={{
+                padding: '16px',
+                borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+                backgroundColor: themeStyles.bgSecondary,
+                flexShrink: 0,
+              }}>
                 <div style={{
-                  marginTop: '12px',
-                  padding: '8px 12px',
-                  backgroundColor: themeStyles.bgPrimary,
-                  borderRadius: '4px',
-                  border: `1px solid ${themeStyles.borderPrimary}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '10px',
+                  flexWrap: isMobile ? 'wrap' : 'nowrap',
                 }}>
-                  <div style={{ fontSize: '12px', color: themeStyles.textSecondary, marginBottom: '6px' }}>
-                    正在缓存同节点下的其他卡片...
-                  </div>
-                  <div style={{ 
-                    width: '100%', 
-                    height: '6px', 
-                    backgroundColor: themeStyles.borderPrimary, 
-                    borderRadius: '3px',
-                    overflow: 'hidden',
-                    marginBottom: '4px',
+                  <h3 style={{
+                    margin: 0,
+                    fontSize: '16px',
+                    fontWeight: '600',
+                    color: themeStyles.textPrimary,
+                    flex: 1,
+                    minWidth: 0,
                   }}>
-                    <div style={{
-                      width: `${(cachingProgress.current / cachingProgress.total) * 100}%`,
-                      height: '100%',
-                      backgroundColor: '#4caf50',
-                      transition: 'width 0.3s ease',
-                    }} />
-                  </div>
-                  <div style={{ fontSize: '11px', color: themeStyles.textTertiary, textAlign: 'center' }}>
-                    {cachingProgress.current} / {cachingProgress.total}
-                    {cachingProgress.currentCard && ` - ${cachingProgress.currentCard}`}
+                    {selectedCard.title || '未命名卡片'}
+                  </h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                    {isMobile && (
+                      <button
+                        type="button"
+                        onClick={() => setMobileProblemsOpen(true)}
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: '4px',
+                          fontSize: '13px',
+                          fontWeight: '500',
+                          border: `1px solid ${themeStyles.borderPrimary}`,
+                          backgroundColor: themeStyles.bgButton,
+                          color: themeStyles.textPrimary,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {i18n('Outline card problems button', (selectedCard.problems ?? []).length)}
+                      </button>
+                    )}
+                    <a
+                      href={(() => {
+                        const domainId = (window as any).UiContext?.domainId || 'system';
+                        const branch = (window as any).UiContext?.currentBranch || 'main';
+                        const baseDocId = (window as any).UiContext?.base?.docId;
+                        const basebid = (window as any).UiContext?.base?.bid;
+                        const nodeId = selectedCard.nodeId || '';
+                        const cardId = selectedCard.docId;
+
+                        const docSeg = baseDocId != null && String(baseDocId).trim()
+                          ? String(baseDocId).trim()
+                          : (basebid && String(basebid).trim() ? String(basebid).trim() : '');
+                        if (docSeg) {
+                          return `/d/${domainId}/base/${encodeURIComponent(docSeg)}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit?returnUrl=${encodeURIComponent(window.location.href)}`;
+                        }
+                        return '#';
+                      })()}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: themeStyles.accent,
+                        color: themeStyles.textOnPrimary,
+                        textDecoration: 'none',
+                        borderRadius: '4px',
+                        fontSize: '13px',
+                        fontWeight: '500',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        transition: 'background-color 0.2s',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = theme === 'dark' ? '#4a9fd4' : '#1565c0';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = themeStyles.accent;
+                      }}
+                    >
+                      <span>✎</span>
+                      <span>编辑</span>
+                    </a>
                   </div>
                 </div>
-              )}
-            </div>
-            <div style={{
-              flex: 1,
-              minHeight: 0,
-              padding: '16px',
-              overflow: 'auto',
-              WebkitOverflowScrolling: 'touch',
-            }}>
-              <style dangerouslySetInnerHTML={{ __html: `
-                #card-content-outline img, #card-content-outline .typo img, .topic__content img {
-                  max-width: 100% !important;
-                  height: auto !important;
-                  max-height: min(70vh, 600px);
-                  object-fit: contain;
-                  display: block;
-                  margin: 8px 0;
-                }
-                @media (max-width: 600px) {
-                  #card-content-outline img, #card-content-outline .typo img, .topic__content img {
-                    max-height: min(50vh, 400px);
+                {cachingProgress && (
+                  <div style={{
+                    marginTop: '12px',
+                    padding: '8px 12px',
+                    backgroundColor: themeStyles.bgPrimary,
+                    borderRadius: '4px',
+                    border: `1px solid ${themeStyles.borderPrimary}`,
+                  }}>
+                    <div style={{ fontSize: '12px', color: themeStyles.textSecondary, marginBottom: '6px' }}>
+                      正在缓存同节点下的其他卡片...
+                    </div>
+                    <div style={{ 
+                      width: '100%', 
+                      height: '6px', 
+                      backgroundColor: themeStyles.borderPrimary, 
+                      borderRadius: '3px',
+                      overflow: 'hidden',
+                      marginBottom: '4px',
+                    }}>
+                      <div style={{
+                        width: `${(cachingProgress.current / cachingProgress.total) * 100}%`,
+                        height: '100%',
+                        backgroundColor: '#4caf50',
+                        transition: 'width 0.3s ease',
+                      }} />
+                    </div>
+                    <div style={{ fontSize: '11px', color: themeStyles.textTertiary, textAlign: 'center' }}>
+                      {cachingProgress.current} / {cachingProgress.total}
+                      {cachingProgress.currentCard && ` - ${cachingProgress.currentCard}`}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div style={{
+                flex: 1,
+                minHeight: 0,
+                padding: '16px',
+                overflow: 'auto',
+                WebkitOverflowScrolling: 'touch',
+              }}>
+                <style dangerouslySetInnerHTML={{ __html: `
+                  #card-content-outline img, #card-content-outline .typo img,
+                  .topic__content img {
+                    max-width: 100% !important;
+                    height: auto !important;
+                    max-height: min(70vh, 600px);
+                    object-fit: contain;
+                    display: block;
+                    margin: 8px 0;
                   }
-                }
-              ` }} />
-              <div
-                id="card-content-outline"
-                className="typo topic__content richmedia"
-                data-emoji-enabled
-                style={{
-                  padding: '16px',
-                  overflowWrap: 'break-word',
-                  wordBreak: 'break-word',
-                }}
-                dangerouslySetInnerHTML={{ __html: '<p style="color: #999;">加载中...</p>' }}
-              />
+                  @media (max-width: 600px) {
+                    #card-content-outline img, #card-content-outline .typo img, .topic__content img {
+                      max-height: min(50vh, 400px);
+                    }
+                  }
+                ` }} />
+                <div
+                  id="card-content-outline"
+                  className="typo topic__content richmedia"
+                  data-emoji-enabled
+                  style={{
+                    padding: '16px',
+                    overflowWrap: 'break-word',
+                    wordBreak: 'break-word',
+                  }}
+                  dangerouslySetInnerHTML={{ __html: '<p style="color: #999;">加载中...</p>' }}
+                />
+              </div>
             </div>
+            {!isMobile && (() => {
+              const problemCount = (selectedCard.problems ?? []).length;
+              return (
+              <aside
+                style={{
+                  width: '300px',
+                  flexShrink: 0,
+                  borderLeft: `1px solid ${themeStyles.borderPrimary}`,
+                  backgroundColor: themeStyles.bgSecondary,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  minHeight: 0,
+                  overflow: 'hidden',
+                }}
+                aria-label={String(i18n('Outline card problems button', problemCount))}
+              >
+                <div style={{
+                  padding: '14px 16px',
+                  borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+                  flexShrink: 0,
+                }}>
+                  <div style={{
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: themeStyles.textPrimary,
+                    marginBottom: '6px',
+                  }}>
+                    {i18n('Outline card problems button', problemCount)}
+                  </div>
+                  <div style={{
+                    fontSize: '11px',
+                    color: themeStyles.textSecondary,
+                    lineHeight: 1.4,
+                    wordBreak: 'break-word',
+                  }}>
+                    {i18n('Outline card problems card label', selectedCard.title || i18n('Unnamed Card'))}
+                  </div>
+                </div>
+                <div style={{
+                  flex: 1,
+                  minHeight: 0,
+                  overflow: 'auto',
+                  WebkitOverflowScrolling: 'touch',
+                  padding: '12px 16px 16px',
+                }}>
+                  <OutlineCardProblemsList
+                    card={selectedCard}
+                    theme={{
+                      textSecondary: themeStyles.textSecondary,
+                      textTertiary: themeStyles.textTertiary,
+                      borderSecondary: themeStyles.borderSecondary,
+                    }}
+                  />
+                </div>
+              </aside>
+              );
+            })()}
           </div>
+          {isMobile && mobileProblemsOpen && (() => {
+            const problemCount = (selectedCard.problems ?? []).length;
+            return (
+            <>
+              <div
+                role="presentation"
+                onClick={() => setMobileProblemsOpen(false)}
+                style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: 'rgba(0, 0, 0, 0.45)',
+                  zIndex: 1000,
+                }}
+              />
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label={String(i18n('Outline card problems button', problemCount))}
+                style={{
+                  position: 'fixed',
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  maxHeight: '88vh',
+                  zIndex: 1001,
+                  backgroundColor: themeStyles.bgSecondary,
+                  borderTopLeftRadius: '12px',
+                  borderTopRightRadius: '12px',
+                  borderTop: `1px solid ${themeStyles.borderPrimary}`,
+                  boxShadow: theme === 'dark' ? '0 -4px 24px rgba(0,0,0,0.45)' : '0 -4px 24px rgba(0,0,0,0.12)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  minHeight: 0,
+                  overflow: 'hidden',
+                }}
+              >
+                <div style={{
+                  padding: '12px 16px',
+                  borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+                  flexShrink: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '12px',
+                }}>
+                  <div style={{ fontSize: '16px', fontWeight: 600, color: themeStyles.textPrimary }}>
+                    {i18n('Outline card problems button', problemCount)}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMobileProblemsOpen(false)}
+                    style={{
+                      padding: '6px 12px',
+                      border: 'none',
+                      borderRadius: '6px',
+                      backgroundColor: themeStyles.borderPrimary,
+                      color: themeStyles.textPrimary,
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {i18n('Close')}
+                  </button>
+                </div>
+                <div style={{
+                  padding: '0 16px 10px',
+                  flexShrink: 0,
+                  fontSize: '12px',
+                  color: themeStyles.textSecondary,
+                  lineHeight: 1.4,
+                  wordBreak: 'break-word',
+                }}>
+                  {i18n('Outline card problems card label', selectedCard.title || i18n('Unnamed Card'))}
+                </div>
+                <div style={{
+                  flex: 1,
+                  minHeight: 0,
+                  overflow: 'auto',
+                  WebkitOverflowScrolling: 'touch',
+                  padding: '8px 16px 20px',
+                }}>
+                  <OutlineCardProblemsList
+                    card={selectedCard}
+                    theme={{
+                      textSecondary: themeStyles.textSecondary,
+                      textTertiary: themeStyles.textTertiary,
+                      borderSecondary: themeStyles.borderSecondary,
+                    }}
+                  />
+                </div>
+              </div>
+            </>
+            );
+          })()}
+          </>
         ) : selectedNodeId ? (
           <div style={{
             flex: 1,
