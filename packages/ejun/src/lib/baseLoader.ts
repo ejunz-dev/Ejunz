@@ -69,7 +69,7 @@ function parseCardNodeUrl(url: string): ParsedCardNodeUrl {
     }
 }
 
-/** Build node tree for multi-level base structure (same logic as skillLoader). */
+/** Build node tree for multi-level base structure (same logic as model/skill skill loader). */
 function buildNodeTree(nodes: BaseNode[], edges: BaseEdge[]): Map<string, BaseNode[]> {
     const childrenMap = new Map<string, BaseNode[]>();
 

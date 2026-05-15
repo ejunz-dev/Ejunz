@@ -702,7 +702,11 @@ Average Rating: 平均评分
 Back to Outline: 返回文件模式
 Back to: 返回
 Base Node: 知识库节点
+Base type: 知识库类型
 base_create: 创建知识库
+Each domain can have at most one skill base; choosing Skill again opens the existing one if present.: 每个域最多一个技能库；若已存在则提交「技能库」会进入已有技能库而非新建。
+Skill knowledge base: 技能库
+Standard knowledge base: 普通知识库
 base_data: 知识库数据
 base_delete: 删除知识库
 base_detail: 知识库详情
@@ -711,6 +715,23 @@ base_edge: 知识库边
 base_edit: 编辑知识库
 base_editor: 编辑器
 base_list: 知识库列表
+skill_list: 技能库列表
+skill_domain: 技能库
+skill_library: 技能库
+Search skill libraries: 搜索技能库
+You have permission to create skill libraries for this domain.: 您可以在此域下创建技能库。
+No categories for skills.: 暂无技能库分类。
+Create a new skill library for this domain.: 为此域新建一个技能库。
+There are no skill libraries in this domain.: 此域下还没有技能库。
+Please select at least one skill library to delete.: 请至少选择一个要删除的技能库。
+Confirm deleting {0} selected skill libraries?: 确定要删除选中的 {0} 个技能库吗？
+Selected skill libraries have been deleted.: 所选技能库已删除。
+Create Skill: 创建技能库
+SID: 技能库编号（SID）
+Input skill library title: 填写技能库标题
+'Optional human-readable skill library identifier (SID), for example: S1001': '可选的易读编号（与知识库 BID 共用唯一性校验），例如：S1001'
+Skill library title is required.: 请填写技能库标题。
+'Skill library SID already exists: {0}': '技能库 SID 已存在：{0}'
 base_node: 知识库节点
 base_outline: 知识库
 base_save: 保存知识库

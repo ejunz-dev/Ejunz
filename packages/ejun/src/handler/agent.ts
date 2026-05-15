@@ -23,7 +23,7 @@ import { Logger } from '../logger';
 import { PassThrough } from 'stream';
 import EdgeModel from '../model/edge';
 import ToolModel from '../model/tool';
-import { loadSkillsMetadata, loadSkillInstructions, loadSkillsInstructions, getToolNamesFromSkills, getToolExamplesFromSkills, getSkillNamesForBranch } from '../lib/skillLoader';
+import { loadSkillsMetadata, loadSkillInstructions, loadSkillsInstructions, getToolNamesFromSkills, getToolExamplesFromSkills, getSkillNamesForBranch } from '../model/skill';
 import { EdgeServerConnectionHandler } from './edge';
 import * as document from '../model/document';
 import NodeModel from '../model/node';

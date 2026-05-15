@@ -479,7 +479,7 @@ export class McpClient {
                             message: 'Skill 未启用：请在 Agent 设置中选择 Skill 分支后再使用。'
                         };
                     }
-                    const { loadSkillInstructions } = require('../lib/skillLoader');
+                    const { loadSkillInstructions } = require('./skill');
                     const skillName = args.skillName || args.skill_name;
                     const level = args.level !== undefined ? args.level : (args.maxLevel !== undefined ? args.maxLevel : 2);
                     if (!skillName) {

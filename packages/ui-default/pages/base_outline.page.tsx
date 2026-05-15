@@ -1053,7 +1053,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
 
   const refetchOutlineData = useCallback(async () => {
     const domainId = (window as any).UiContext?.domainId || 'system';
-    const apiPath = basePath === 'base/skill' ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
+    const apiPath = basePath === 'skill' ? `/d/${domainId}/skill/data` : `/d/${domainId}/base/data`;
     const apiQs: Record<string, string> = {};
     if (docId && basePath === 'base') apiQs.docId = docId;
     const curBranch = (window as any).UiContext?.currentBranch;
@@ -1080,7 +1080,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     if (!socketUrl) return;
 
     let closed = false;
-    const apiPath = basePath === 'base/skill' ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
+    const apiPath = basePath === 'skill' ? `/d/${domainId}/skill/data` : `/d/${domainId}/base/data`;
     const wsApiQs: Record<string, string> = {};
     if (docId && basePath === 'base') wsApiQs.docId = docId;
     const wsBranch = (window as any).UiContext?.currentBranch;
@@ -1209,8 +1209,8 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         );
         
         const domainIdForSave = (window as any).UiContext?.domainId || 'system';
-        const saveUrl = basePath === 'base/skill'
-          ? `/d/${domainIdForSave}/base/skill/save`
+        const saveUrl = basePath === 'skill'
+          ? `/d/${domainIdForSave}/skill/save`
           : `/d/${domainIdForSave}/base/save`;
         const saveBranch = (window as any).UiContext?.currentBranch || 'main';
         await request.post(saveUrl, {
@@ -2027,12 +2027,18 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     const branch = base.currentBranch || 'main';
     setOutlineStartBusy(true);
     try {
-      const res: any = await request.post(`/d/${domainId}/session/develop/start`, {
+      const payload: Record<string, unknown> = {
         baseDocId: baseDocNum,
         branch,
         fromOutline: true,
         nodeId,
-      });
+      };
+      if (basePath === 'skill') {
+        payload.developMapDocType = 73;
+      } else {
+        payload.developMapDocType = 70;
+      }
+      const res: any = await request.post(`/d/${domainId}/session/develop/start`, payload);
       const sessionId = res?.sessionId ?? res?.body?.sessionId;
       if (typeof sessionId !== 'string' || !sessionId.trim()) {
         Notification.error(i18n('Outline editor start failed'));
@@ -2044,7 +2050,8 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       });
       const bid = (base as any)?.bid;
       const docSeg = bid && String(bid).trim() ? String(bid).trim() : String(baseDocNum);
-      const editorUrl = `/d/${domainId}/base/${encodeURIComponent(docSeg)}/branch/${encodeURIComponent(branch)}/editor?${sp.toString()}`;
+      const pathPrefix = basePath === 'skill' ? 'skill' : 'base';
+      const editorUrl = `/d/${domainId}/${pathPrefix}/${encodeURIComponent(docSeg)}/branch/${encodeURIComponent(branch)}/editor?${sp.toString()}`;
       const opened = window.open(editorUrl, '_blank');
       if (opened) {
         opened.opener = null;
@@ -2057,7 +2064,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     } finally {
       setOutlineStartBusy(false);
     }
-  }, [base.currentBranch, base, docId, outlineStartBusy, outlineUiDomainId]);
+  }, [base.currentBranch, base, docId, outlineStartBusy, outlineUiDomainId, basePath]);
 
   const startSingleCardLearnFromOutline = useCallback(async (cardIdRaw: string | undefined) => {
     const cardId = String(cardIdRaw || '').trim();
@@ -3204,7 +3211,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       
      
       const domainId = (window as any).UiContext?.domainId || 'system';
-      const dataApiPath = basePath === 'base/skill' ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
+      const dataApiPath = basePath === 'skill' ? `/d/${domainId}/skill/data` : `/d/${domainId}/base/data`;
       const dataQs2: Record<string, string> = {};
       if (docId && basePath === 'base') dataQs2.docId = docId;
       const dBranch2 = (window as any).UiContext?.currentBranch;
@@ -3285,7 +3292,9 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     cleanupOldConnection();
     
     const domainId = (window as any).UiContext?.domainId || 'system';
-    const wsUrl = `/d/${domainId}/${basePath}/${docId}/ws`;
+    const wsUrl = basePath === 'skill'
+      ? `/d/${domainId}/skill/ws?docId=${encodeURIComponent(String(docId))}`
+      : `/d/${domainId}/${basePath}/${docId}/ws`;
 
    
     import('../components/socket').then(({ default: WebSocket }) => {
@@ -3333,7 +3342,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
            
             setTimeout(() => {
               const domainId = (window as any).UiContext?.domainId || 'system';
-              const dataApiPath = basePath === 'base/skill' ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
+              const dataApiPath = basePath === 'skill' ? `/d/${domainId}/skill/data` : `/d/${domainId}/base/data`;
               const dataQs: Record<string, string> = {};
               if (docId && basePath === 'base') dataQs.docId = docId;
               const dBranch = (window as any).UiContext?.currentBranch;
@@ -4940,7 +4949,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           >
             {contextMenu.file.type === 'card' ? (
               <>
-                {basePath !== 'base/skill' && contextMenu.file.cardId ? (
+                {basePath !== 'skill' && contextMenu.file.cardId ? (
                   <>
                     <div
                       style={{
@@ -5016,7 +5025,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
               </>
             ) : (
               <>
-                {contextMenu.file.type === 'node' && contextMenu.file.nodeId && basePath !== 'base/skill' ? (
+                {contextMenu.file.type === 'node' && contextMenu.file.nodeId ? (
                   <>
                     <div
                       style={{
@@ -5046,6 +5055,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                     >
                       {i18n('Outline editor start session')}
                     </div>
+                    {basePath !== 'skill' ? (
                     <div
                       style={{
                         padding: isMobile ? '12px 16px' : '6px 16px',
@@ -5074,6 +5084,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                     >
                       {i18n('Outline learn single node')}
                     </div>
+                    ) : null}
                     <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
                   </>
                 ) : null}
@@ -5126,10 +5137,11 @@ const getBaseUrl = (path: string, docId: string): string => {
   return `/d/${domainId}/base/${docId}${path}`;
 };
 
-const page = new NamedPage(['base_outline', 'base_skill_outline', 'base_outline_doc', 'base_outline_doc_branch'], async (pageName) => {
+const page = new NamedPage(['base_outline', 'skill_outline', 'skill_outline_branch', 'skill_outline_doc', 'skill_outline_doc_branch', 'base_outline_doc', 'base_outline_doc_branch'], async (pageName) => {
   try {
    
-    const isSkill = pageName === 'base_skill_outline';
+    const isSkill = pageName === 'skill_outline' || pageName === 'skill_outline_branch'
+      || pageName === 'skill_outline_doc' || pageName === 'skill_outline_doc_branch';
     const containerId = isSkill ? '#skill-outline-editor' : '#base-outline-editor';
     const $container = $(containerId);
     if (!$container.length) {
@@ -5143,7 +5155,7 @@ const page = new NamedPage(['base_outline', 'base_skill_outline', 'base_outline_
     let initialData: BaseDoc;
     try {
      
-      const apiPath = isSkill ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
+      const apiPath = isSkill ? `/d/${domainId}/skill/data` : `/d/${domainId}/base/data`;
       const branch = (window as any).UiContext?.currentBranch || undefined;
       const params: Record<string, string> = {};
       if (docId) params.docId = docId;
@@ -5175,7 +5187,7 @@ const page = new NamedPage(['base_outline', 'base_skill_outline', 'base_outline_
 
     console.log('[BaseOutline] Rendering BaseOutlineEditor...');
     ReactDOM.render(
-      <BaseOutlineEditor docId={initialData.docId || ''} initialData={initialData} basePath={isSkill ? 'base/skill' : 'base'} />,
+      <BaseOutlineEditor docId={initialData.docId || ''} initialData={initialData} basePath={isSkill ? 'skill' : 'base'} />,
       $container[0]
     );
     console.log('[BaseOutline] Render complete');
