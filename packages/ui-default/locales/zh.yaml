@@ -1048,6 +1048,16 @@ develop: 开发
 'Outline search no results': 无匹配项
 'Outline search kind node': 节点
 'Outline search kind card': 卡片
+'Outline explorer filter label': 服务端过滤
+'Outline explorer filter open': 过滤
+'Outline explorer filter dialog title': 服务端过滤
+'Outline explorer filter cancel': 取消
+'Outline explorer filter node placeholder': 节点标题…
+'Outline explorer filter card placeholder': 卡片标题…
+'Outline explorer filter problem placeholder': Problem 内容…
+'Outline explorer filter apply': 应用
+'Outline explorer filter clear': 清除
+'Outline explorer filter aria': 按关键词缩小大纲（服务端）
 'Develop start no pending': 今日待开发任务已全部完成；若有未结束的会话可先继续。
 'Develop move up': 上移
 'Develop move down': 下移

@@ -487,3 +487,13 @@ Your role: 您的角色
 'Outline search no results': 無符合項目
 'Outline search kind node': 節點
 'Outline search kind card': 卡片
+'Outline explorer filter label': 伺服器篩選
+'Outline explorer filter open': 篩選
+'Outline explorer filter dialog title': 伺服器篩選
+'Outline explorer filter cancel': 取消
+'Outline explorer filter node placeholder': 節點標題…
+'Outline explorer filter card placeholder': 卡片標題…
+'Outline explorer filter problem placeholder': Problem 內容…
+'Outline explorer filter apply': 套用
+'Outline explorer filter clear': 清除
+'Outline explorer filter aria': 以關鍵字縮小大綱（伺服器端）

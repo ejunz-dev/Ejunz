@@ -37,6 +37,7 @@
   }) }}
   {{ set(UiContext, 'socketUrl', 'base/ws?domainId=' + (domainId or (base and base.domainId) or '') + '&docId=' + _base_doc_id) }}
   {{ set(UiContext, 'nodeCardsMap', nodeCardsMap or {}) }}
+  {{ set(UiContext, 'outlineExplorerFilters', outlineExplorerFilters or { filterNode: '', filterCard: '', filterProblem: '' }) }}
   {{ set(UiContext, 'files', files or []) }}
   // Helper function to get Notification
   async function getNotification() {
