@@ -193,6 +193,10 @@ interface Card {
   files?: CardFileInfo[];
 }
 
+type OutlineSearchHit =
+  | { type: 'node'; nodeId: string; label: string; pathLabel: string }
+  | { type: 'card'; nodeId: string; card: Card; label: string; pathLabel: string };
+
 
 type FileItem = {
   type: 'node' | 'card';
@@ -1180,6 +1184,9 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
   const [isMobile, setIsMobile] = useState(false);
   const [isExplorerOpen, setIsExplorerOpen] = useState(false);
   const [mobileProblemsOpen, setMobileProblemsOpen] = useState(false);
+  const [outlineSearchQuery, setOutlineSearchQuery] = useState('');
+  const [outlineSearchOpen, setOutlineSearchOpen] = useState(false);
+  const outlineSearchWrapRef = useRef<HTMLDivElement | null>(null);
   
  
   useEffect(() => {
@@ -1203,6 +1210,17 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
   useEffect(() => {
     setMobileProblemsOpen(false);
   }, [selectedCard?.docId]);
+
+  useEffect(() => {
+    if (!outlineSearchOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (outlineSearchWrapRef.current && !outlineSearchWrapRef.current.contains(e.target as Node)) {
+        setOutlineSearchOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [outlineSearchOpen]);
  
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: FileItem } | null>(null);
  
@@ -1661,6 +1679,78 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
 
     return items;
   }, [base.nodes, base.edges, expandedNodesArray, nodeCardsMap]);
+
+  const childToParentMap = useMemo(() => {
+    const m = new Map<string, string>();
+    base.edges.forEach((e) => {
+      m.set(e.target, e.source);
+    });
+    return m;
+  }, [base.edges]);
+
+  const nodeIdToName = useMemo(() => {
+    const m = new Map<string, string>();
+    base.nodes.forEach((n) => m.set(n.id, n.text || ''));
+    return m;
+  }, [base.nodes]);
+
+  const getAncestorNodeIds = useCallback(
+    (nodeId: string): string[] => {
+      const out: string[] = [];
+      let cur = childToParentMap.get(nodeId);
+      while (cur) {
+        out.unshift(cur);
+        cur = childToParentMap.get(cur);
+      }
+      return out;
+    },
+    [childToParentMap],
+  );
+
+  const outlineSearchHits = useMemo((): OutlineSearchHit[] => {
+    const raw = outlineSearchQuery.trim().toLowerCase();
+    if (!raw) return [];
+    const nodeHits: OutlineSearchHit[] = [];
+    const cardHits: OutlineSearchHit[] = [];
+    const displayNode = (id: string) => nodeIdToName.get(id)?.trim() || i18n('Unnamed Node');
+    const pathFor = (nodeId: string) =>
+      [...getAncestorNodeIds(nodeId), nodeId].map(displayNode).join(' › ');
+
+    base.nodes.forEach((node) => {
+      const label = node.text?.trim() || i18n('Unnamed Node');
+      if (label.toLowerCase().includes(raw)) {
+        nodeHits.push({
+          type: 'node',
+          nodeId: node.id,
+          label,
+          pathLabel: pathFor(node.id),
+        });
+      }
+    });
+
+    Object.entries(nodeCardsMap).forEach(([mapNodeId, cards]) => {
+      if (!Array.isArray(cards)) return;
+      cards.forEach((card) => {
+        const hostId = card.nodeId || mapNodeId;
+        const title = card.title?.trim() || i18n('Unnamed Card');
+        if (title.toLowerCase().includes(raw)) {
+          cardHits.push({
+            type: 'card',
+            nodeId: hostId,
+            card,
+            label: title,
+            pathLabel: pathFor(hostId),
+          });
+        }
+      });
+    });
+
+    const cmp = (a: OutlineSearchHit, b: OutlineSearchHit) =>
+      a.label.localeCompare(b.label, undefined, { sensitivity: 'base' });
+    nodeHits.sort(cmp);
+    cardHits.sort(cmp);
+    return [...nodeHits, ...cardHits].slice(0, 50);
+  }, [outlineSearchQuery, base.nodes, nodeCardsMap, nodeIdToName, getAncestorNodeIds]);
 
  
   const toggleNodeExpanded = useCallback((nodeId: string) => {
@@ -2415,6 +2505,46 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       window.history.pushState({ cardId: card.docId }, '', newUrl);
     }
   }, [clearAllHighlights]);
+
+  const navigateOutlineSearchHit = useCallback(
+    (hit: OutlineSearchHit) => {
+      isManualSelectionRef.current = true;
+      clearAllHighlights();
+      const targetNodeId = hit.nodeId;
+      const ancestors = getAncestorNodeIds(targetNodeId);
+      const toExpand = new Set<string>([...ancestors, targetNodeId]);
+      setExpandedNodes((prev) => {
+        const next = new Set(prev);
+        toExpand.forEach((id) => next.add(id));
+        return next;
+      });
+      window.setTimeout(() => {
+        if (hit.type === 'card') {
+          handleSelectCard(hit.card);
+          setSelectedNodeId(null);
+        } else {
+          setSelectedNodeId(hit.nodeId);
+          setSelectedCard(null);
+          selectedFileIdRef.current = hit.nodeId;
+          setSelectedFileId(hit.nodeId);
+          const urlParams = new URLSearchParams(window.location.search);
+          urlParams.set('nodeId', hit.nodeId);
+          urlParams.delete('cardId');
+          const qs = urlParams.toString();
+          window.history.pushState(
+            { nodeId: hit.nodeId },
+            '',
+            window.location.pathname + (qs ? `?${qs}` : ''),
+          );
+        }
+        setOutlineSearchQuery('');
+        setOutlineSearchOpen(false);
+        if (isMobile) setIsExplorerOpen(true);
+        triggerExpandAutoSave();
+      }, 60);
+    },
+    [clearAllHighlights, getAncestorNodeIds, handleSelectCard, isMobile, triggerExpandAutoSave],
+  );
 
  
   useEffect(() => {
@@ -3215,6 +3345,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         alignItems: 'center',
         gap: '10px',
         flexShrink: 0,
+        flexWrap: 'wrap',
       }}>
         <div ref={branchDropdownRef} style={{ position: 'relative' }}>
           <button
@@ -3319,6 +3450,120 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
               >
                 View all branches
               </a>
+            </div>
+          )}
+        </div>
+        <div
+          ref={outlineSearchWrapRef}
+          style={{
+            flex: 1,
+            minWidth: 120,
+            maxWidth: 420,
+            position: 'relative',
+          }}
+        >
+          <input
+            type="search"
+            value={outlineSearchQuery}
+            onChange={(e) => {
+              setOutlineSearchQuery(e.target.value);
+              setOutlineSearchOpen(true);
+            }}
+            onFocus={() => setOutlineSearchOpen(true)}
+            placeholder={i18n('Outline search placeholder')}
+            aria-label={i18n('Outline search aria')}
+            autoComplete="off"
+            style={{
+              width: '100%',
+              boxSizing: 'border-box',
+              padding: '6px 10px',
+              border: `1px solid ${themeStyles.borderPrimary}`,
+              borderRadius: '6px',
+              background: themeStyles.bgPrimary,
+              color: themeStyles.textPrimary,
+              fontSize: '13px',
+            }}
+          />
+          {outlineSearchOpen && outlineSearchQuery.trim() && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                right: 0,
+                marginTop: '4px',
+                maxHeight: 'min(320px, 50vh)',
+                overflowY: 'auto',
+                WebkitOverflowScrolling: 'touch',
+                background: themeStyles.bgSecondary,
+                border: `1px solid ${themeStyles.borderPrimary}`,
+                borderRadius: '8px',
+                boxShadow: theme === 'dark' ? '0 8px 24px rgba(0,0,0,0.45)' : '0 8px 24px rgba(0,0,0,0.12)',
+                zIndex: 1002,
+              }}
+            >
+              {outlineSearchHits.length === 0 ? (
+                <div style={{ padding: '10px 12px', fontSize: '13px', color: themeStyles.textTertiary }}>
+                  {i18n('Outline search no results')}
+                </div>
+              ) : (
+                outlineSearchHits.map((hit, idx) => (
+                  <button
+                    key={hit.type === 'node' ? `n-${hit.nodeId}` : `c-${hit.card.docId}-${idx}`}
+                    type="button"
+                    onClick={() => navigateOutlineSearchHit(hit)}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '8px 12px',
+                      border: 'none',
+                      borderBottom:
+                        idx === outlineSearchHits.length - 1
+                          ? 'none'
+                          : `1px solid ${themeStyles.borderPrimary}`,
+                      background: 'transparent',
+                      cursor: 'pointer',
+                      color: themeStyles.textPrimary,
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLButtonElement).style.background = themeStyles.bgHover;
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
+                      <span style={{ flexShrink: 0 }}>{hit.type === 'node' ? '📁' : '📄'}</span>
+                      <span style={{ fontWeight: 600, flex: 1, minWidth: 0 }}>{hit.label}</span>
+                      <span
+                        style={{
+                          fontSize: '10px',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          background: themeStyles.borderPrimary,
+                          color: themeStyles.textSecondary,
+                          flexShrink: 0,
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        {hit.type === 'node' ? i18n('Outline search kind node') : i18n('Outline search kind card')}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        fontSize: '11px',
+                        color: themeStyles.textSecondary,
+                        marginTop: '4px',
+                        paddingLeft: '24px',
+                        wordBreak: 'break-word',
+                      }}
+                    >
+                      {hit.pathLabel}
+                    </div>
+                  </button>
+                ))
+              )}
             </div>
           )}
         </div>
