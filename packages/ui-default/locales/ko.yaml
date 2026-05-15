@@ -632,3 +632,13 @@ Your role: 당신의 역할
 'Outline search no results': 일치 항목 없음
 'Outline search kind node': 노드
 'Outline search kind card': 카드
+'Outline explorer filter label': 서버 필터
+'Outline explorer filter open': 필터
+'Outline explorer filter dialog title': 서버 필터
+'Outline explorer filter cancel': 취소
+'Outline explorer filter node placeholder': 노드 제목…
+'Outline explorer filter card placeholder': 카드 제목…
+'Outline explorer filter problem placeholder': Problem 텍스트…
+'Outline explorer filter apply': 적용
+'Outline explorer filter clear': 지우기
+'Outline explorer filter aria': 키워드로 아웃라인 축소(서버)

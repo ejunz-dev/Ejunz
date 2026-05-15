@@ -781,6 +781,16 @@ develop: Develop
 'Outline search no results': No matches
 'Outline search kind node': Node
 'Outline search kind card': Card
+'Outline explorer filter label': Server filter
+'Outline explorer filter open': Filter
+'Outline explorer filter dialog title': Server filter
+'Outline explorer filter cancel': Cancel
+'Outline explorer filter node placeholder': Node title…
+'Outline explorer filter card placeholder': Card title…
+'Outline explorer filter problem placeholder': Problem text…
+'Outline explorer filter apply': Apply
+'Outline explorer filter clear': Clear
+'Outline explorer filter aria': Narrow outline by server-side keywords
 'Develop start no pending': All today’s develop tasks are done; resume an open session if needed.
 'Develop move up': Move up
 'Develop move down': Move down
