@@ -42,6 +42,11 @@ __langname: 简体中文
 'Agent Configuration': Agent 配置
 'Agent Skills': Agent Skills
 'Agent uses all Skills in this Domain. Skills are managed via Base.': Agent 会自动使用此 Domain 的所有 Skills。Skills 通过 Base 的文件夹系统管理。
+'Agents can use skills from selected skill libraries and branches (configure in the sidebar if you can edit this agent).': Agent 可使用来自所选技能库及其分支的 Skills（若有编辑权限，请在侧栏配置）。
+'Configure Agent Skills': 配置 Agent Skills
+'Configure skill libraries and branches on the Agent Skills page.': 请在「Agent Skills」专用页面中配置技能库及分支。
+'Only skill libraries enabled below are active for this agent.': 下方列出的技能库为此 Agent 当前启用的技能来源。
+'Only skill libraries listed here are active for this agent.': 此处列出的技能库为此 Agent 当前启用的技能来源。
 'Agent': 智能体
 'Ahead of remote by {0} commit(s)': 领先远程 {0} 个提交
 'AI chat failed': AI 聊天失败
@@ -75,6 +80,7 @@ __langname: 简体中文
 'Batch save failed': 批量保存失败
 'Behind remote by {0} commit(s)': 落后远程 {0} 个提交
 'Block': 块
+'branch': 分支
 'Breadth learning mode': 广度学习模式
 'Cannot create: node does not exist': 无法创建：节点不存在
 'Cannot delete: invalid node ID': 无法删除：节点ID无效
@@ -149,6 +155,7 @@ __langname: 简体中文
 'Correct Answer': 正确答案
 'Correct needed': 再答对
 'Correct': 正确
+'Create one': 去创建
 'Create Client': 创建客户端
 'Create remote branch': 创建远程分支
 'Created Clients': 已创建的客户端
@@ -215,6 +222,7 @@ __langname: 简体中文
 'Failed to save ASR configuration: {0}': '保存 ASR 配置失败: {0}'
 'Failed to save learn session mode': 保存学习模式失败
 'Failed to save TTS configuration: {0}': '保存 TTS 配置失败: {0}'
+'Failed to save skill selection': 保存技能库选择失败
 'Failed to set learning point': 设置学习点失败
 'Failed to update Skill branch': 更新 Skill 分支失败
 'File Mode': 文件模式
@@ -248,6 +256,7 @@ __langname: 简体中文
 'Insert into AI terminal': 插入到 AI 终端
 'Insert problem into AI terminal': 将题目插入到 AI 终端
 'Practice problem pid not on open card': 当前卡片上没有该题目 id，无法更新
+'Legacy mode: single branch for all skill libraries:': 旧版模式：对所有技能库统一使用的分支：
 'Lesson problem tag label': 题目标签
 'Problem tag none': （无标签 / 默认分组）
 'Lesson problem tag save failed': 保存题目标签失败
@@ -354,6 +363,7 @@ __langname: 简体中文
 'Lock Scroll': 锁定滚动
 'Locked': 已锁定
 'Login expired, please log in again.': 登录已过期，请重新登录。
+'Manage skill libraries': 管理技能库
 'Manage Skills': 管理 Skills
 'Manuscript Mode': 文稿模式
 'Max consecutive': 最长连续
@@ -397,6 +407,7 @@ __langname: 简体中文
 'No recording available': 无录音可用
 'No remote repository configured': 未配置远程仓库
 'No sections available.': 暂无可用章节。
+'No skill libraries in this domain yet.': 当前域下还没有技能库。
 'No system tools.': 暂无系统工具。
 'No tools available': 暂无工具
 'No tools yet. Tools list will be automatically synced after server connection.': 暂无工具。服务器连接后会自动同步工具列表。
@@ -541,6 +552,8 @@ __langname: 简体中文
 'Save completed, but {0} error(s) occurred': 保存完成，但有 {0} 个错误
 'Save failed': 保存失败
 'Save failed not logged in': 未登录，保存失败。
+'Save legacy branch': 保存旧版分支
+'Save skill selection': 保存技能库选择
 'Save sort failed': 保存排序失败
 'Save successful, {0} changes': 保存成功，共 {0} 项更改
 'Save TTS Configuration': 保存 TTS 配置
@@ -554,6 +567,7 @@ __langname: 简体中文
 'Select a conversation to view details': 选择对话以查看详情
 'Select a section from the sidebar': 请从左侧选择章节
 'Select Agent': 选择 Agent
+'Select skill libraries and a branch for each. Only checked libraries are active.': 请选择要启用的技能库，并为每个库选择分支；仅勾选的库会生效。
 'Select the branch to use for learning': 选择用于学习的分支
 'Select the type of access point to generate a token': 选择接入点类型以生成 token
 'Server ID': 服务器 ID
@@ -566,6 +580,8 @@ __langname: 简体中文
 'Single-card session': 单卡片会话
 'Single-node session': 单节点会话
 'Skill branch': Skill 分支
+'Skill library': 技能库
+'Skills are not enabled for this agent yet.': 此 Agent 尚未启用 Skills。
 'Sort order updated, click Save to persist': 排序已更新，请点击"保存更改"按钮保存
 'Sort': 排序
 'Source card': 题目来源
@@ -730,6 +746,7 @@ Create Skill: 创建技能库
 SID: 技能库编号（SID）
 Input skill library title: 填写技能库标题
 'Optional human-readable skill library identifier (SID), for example: S1001': '可选的易读编号（与知识库 BID 共用唯一性校验），例如：S1001'
+'Optional: legacy single branch (used only when no library is selected above)': 可选：旧版单一分支（仅当上方未选择任何技能库时生效）。
 Skill library title is required.: 请填写技能库标题。
 'Skill library SID already exists: {0}': '技能库 SID 已存在：{0}'
 base_node: 知识库节点

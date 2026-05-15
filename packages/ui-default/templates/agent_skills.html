@@ -1,0 +1,115 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-10 columns medium-centered">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Agent Skills') }} — {{ adoc.title | e }}</h1>
+      </div>
+      <div class="section__body">
+        <p class="help-text" style="margin-bottom: 12px;">
+          {{ _('Select skill libraries and a branch for each. Only checked libraries are active.') }}
+          <a href="{{ url('agent_detail', domainId=domainId, aid=adoc.aid) }}" class="supplementary" style="margin-left: 12px;">← {{ _('Back to Agent') }}</a>
+        </p>
+        <form id="agent-skill-bindings-form" class="form">
+          {% if skillLibrariesForUi and skillLibrariesForUi|length > 0 %}
+          <table class="data-table" style="width:100%; font-size: 14px;">
+            <thead>
+              <tr>
+                <th style="width:36px;"></th>
+                <th>{{ _('Skill library') }}</th>
+                <th style="width:140px;">{{ _('Branch') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for lib in skillLibrariesForUi %}
+              {% set lid = lib.docId | string %}
+              {% set bound_branch = skillBindingsByDocId[lid] if skillBindingsByDocId and skillBindingsByDocId[lid] else '' %}
+              <tr data-doc-id="{{ lib.docId }}">
+                <td>
+                  <input type="checkbox" class="agent-skill-lib-checkbox" value="{{ lib.docId }}"
+                    {% if bound_branch %}checked{% endif %} />
+                </td>
+                <td>
+                  <strong>{{ lib.title | e }}</strong>
+                  {% if lib.bid %}<span class="supplementary"> ({{ lib.bid }})</span>{% endif %}
+                  <span class="supplementary"> #{{ lib.docId }}</span>
+                </td>
+                <td>
+                  <select class="textbox agent-skill-lib-branch" style="width:100%;" {% if not bound_branch %}disabled{% endif %}>
+                    {% for br in lib.branches %}
+                    <option value="{{ br }}"
+                      {% if bound_branch == br %}selected{% elif not bound_branch and br == 'main' %}selected{% endif %}>{{ br }}</option>
+                    {% endfor %}
+                  </select>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <p class="help-text">{{ _('No skill libraries in this domain yet.') }}
+            <a href="{{ url('skill_domain', domainId=domainId) }}">{{ _('Create one') }}</a>
+          </p>
+          {% endif %}
+          <div style="margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+            <button type="button" class="button primary" id="agent-skill-bindings-save">{{ _('Save skill selection') }}</button>
+            <a href="{{ url('agent_detail', domainId=domainId, aid=adoc.aid) }}" class="button secondary">{{ _('Cancel') }}</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function initAgentSkillBindingsForm() {
+  const form = document.getElementById('agent-skill-bindings-form');
+  if (!form) return;
+  const domainId = '{{ domainId }}';
+  const aid = '{{ adoc.aid }}';
+
+  function syncRow(checkbox) {
+    const tr = checkbox.closest('tr');
+    if (!tr) return;
+    const sel = tr.querySelector('.agent-skill-lib-branch');
+    if (!sel) return;
+    sel.disabled = !checkbox.checked;
+  }
+
+  form.querySelectorAll('.agent-skill-lib-checkbox').forEach((cb) => {
+    cb.addEventListener('change', () => syncRow(cb));
+    syncRow(cb);
+  });
+
+  const saveBtn = document.getElementById('agent-skill-bindings-save');
+  if (!saveBtn) return;
+  saveBtn.addEventListener('click', async () => {
+    const skillLibraryBindings = [];
+    form.querySelectorAll('tr[data-doc-id]').forEach((tr) => {
+      const cb = tr.querySelector('.agent-skill-lib-checkbox');
+      const sel = tr.querySelector('.agent-skill-lib-branch');
+      if (!cb || !sel || !cb.checked) return;
+      const docId = Number(tr.getAttribute('data-doc-id'));
+      if (!Number.isFinite(docId) || docId <= 0) return;
+      skillLibraryBindings.push({ docId, branch: (sel.value || 'main').trim() || 'main' });
+    });
+    try {
+      const response = await fetch(`/d/${domainId}/agent/${aid}/skills`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operation: 'updateSkillLibraryBindings', skillLibraryBindings }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        window.location.href = '{{ url("agent_detail", domainId=domainId, aid=adoc.aid) }}';
+      } else {
+        alert('{{ _("Failed to save skill selection") }}');
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert('{{ _("Failed to save skill selection") }}');
+    }
+  });
+})();
+</script>
+{% endblock %}

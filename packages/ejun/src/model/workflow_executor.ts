@@ -9,7 +9,7 @@ import { NodeDeviceModel } from './node';
 import AgentModel from './agent';
 import message from './message';
 import ClientModel from './client';
-import { getAssignedTools } from '../handler/agent';
+import { getAssignedTools, normalizeAgentSkillBindings } from '../handler/agent';
 import SessionModel from './session';
 
 const logger = new Logger('model/workflow_executor');
@@ -304,7 +304,7 @@ export class WorkflowExecutor {
         }
 
         // 获取工具列表
-        const tools = await getAssignedTools(context.domainId, agent.mcpToolIds, agent.repoIds, agent.skillIds, agent.skillBranch);
+        const tools = await getAssignedTools(context.domainId, agent.mcpToolIds, agent.repoIds, agent.skillIds, normalizeAgentSkillBindings(agent as any));
 
         // 构建系统消息
         const agentPrompt = agent.content || '';

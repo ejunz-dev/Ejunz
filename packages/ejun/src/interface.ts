@@ -213,7 +213,8 @@ declare module './model/agent'{
         mcpToolIds?: ObjectId[];
         repoIds?: number[];
         skillIds?: string[]; // Assigned skill names; domain market tools only when referenced in these skills
-        skillBranch?: string;
+        /** Selected skill libraries (TYPE_SKILL doc) + branch for this Agent. */
+        skillLibraryBindings?: Array<{ docId: number; branch: string }>;
     }
 }
 export type { AgentDoc } from './model/agent';
