@@ -71,6 +71,7 @@ inject('Nav', 'homepage', { prefix: 'homepage' });
 inject('Nav', 'learn', { prefix: 'learn' });
 inject('Nav', 'develop', { prefix: 'develop' });
 inject('Nav', 'base_domain', { prefix: 'base' });
+inject('Nav', 'skill_domain', { prefix: 'skill' });
 inject('Nav', 'agent_domain', { prefix: 'agent' });
 // inject('Nav', 'edge_domain', { prefix: 'edge' });
 // inject('Nav', 'tool_domain', { prefix: 'tool' });

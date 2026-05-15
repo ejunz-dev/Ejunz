@@ -24,6 +24,8 @@ import {
 import { readDevelopSessionDeadlineMs } from '../lib/sessionUtcDaily';
 import { PERM, PRIV } from '../model/builtin';
 import { BaseModel } from '../model/base';
+import * as document from '../model/document';
+import { SkillModel } from '../model/skill';
 import { getBranchData } from './base';
 import DomainModel from '../model/domain';
 import type { SessionRecordDoc } from '../model/record';
@@ -180,7 +182,14 @@ function mergeSessionProgressWithDevelopRun(
     return prev;
 }
 
-/** POST JSON: allocate or reuse a develop-pool editor session (`appRoute: develop`). */
+function parseDevelopMapDocType(body: Record<string, unknown>): number {
+    const raw = body.developMapDocType ?? body.mapDocType ?? body.mindMapKind;
+    if (raw === 'skill' || raw === document.TYPE_SKILL || raw === 73) {
+        return document.TYPE_SKILL;
+    }
+    return document.TYPE_BASE;
+}
+
 class DevelopSessionStartHandler extends Handler {
     async post(domainId: string) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
@@ -190,10 +199,13 @@ class DevelopSessionStartHandler extends Handler {
         if (!Number.isFinite(baseDocId) || baseDocId <= 0) {
             throw new ValidationError('Invalid baseDocId');
         }
+        const mapDocType = parseDevelopMapDocType(body);
         const branch = typeof body.branch === 'string' && body.branch.trim() ? body.branch.trim() : 'main';
-        const base = await BaseModel.get(finalDomainId, baseDocId);
-        if (!base) throw new NotFoundError('Base not found');
-        if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+        const mindMap = mapDocType === document.TYPE_SKILL
+            ? await SkillModel.get(finalDomainId, baseDocId)
+            : await BaseModel.get(finalDomainId, baseDocId);
+        if (!mindMap) throw new NotFoundError('Base not found');
+        if (!this.user.own(mindMap)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
 
         const fromOutline = body.fromOutline === true;
         const nodeId = typeof body.nodeId === 'string' ? body.nodeId.trim() : '';
@@ -202,7 +214,7 @@ class DevelopSessionStartHandler extends Handler {
             if (!nodeId) {
                 throw new ValidationError(this.translate('Outline editor start needs node'));
             }
-            const { nodes } = getBranchData(base, branch);
+            const { nodes } = getBranchData(mindMap as any, branch);
             if (!nodes.some((n) => n.id === nodeId)) {
                 throw new ValidationError(this.translate('Outline editor start invalid node'));
             }
@@ -211,6 +223,9 @@ class DevelopSessionStartHandler extends Handler {
         const fullPool = await loadUserDevelopPool(finalDomainId, this.user._id, this.user.priv);
         const poolKey = developBranchKey(baseDocId, branch);
         if (!fromOutline) {
+            if (mapDocType === document.TYPE_SKILL) {
+                throw new ValidationError('技能库仅支持从大纲进入编辑会话');
+            }
             if (!fullPool.length) {
                 throw new ValidationError(this.translate('Develop run queue empty today'));
             }
@@ -239,6 +254,11 @@ class DevelopSessionStartHandler extends Handler {
                 developSessionNotSettledMongoFilter,
             ],
         };
+        if (mapDocType === document.TYPE_SKILL) {
+            (reuseFilter.$and as unknown[]).push({ developMapDocType: document.TYPE_SKILL });
+        } else {
+            (reuseFilter.$and as unknown[]).push({ developMapDocType: document.TYPE_BASE });
+        }
         if (fromOutline) {
             reuseFilter.nodeId = nodeId;
             (reuseFilter.$and as unknown[]).push({
@@ -306,6 +326,7 @@ class DevelopSessionStartHandler extends Handler {
             baseDocId,
             branch,
             developSessionKind: fromOutline ? 'outline_node' : 'daily',
+            developMapDocType: mapDocType,
             ...(fromOutline && nodeId ? { nodeId } : {}),
         });
         const deadline = new Date(doc.createdAt.getTime() + ttlSec * 1000);

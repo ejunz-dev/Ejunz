@@ -16,6 +16,7 @@ import { Logger } from '../logger';
 import { MaybeArray, NumberKeys } from '../typeutils';
 import { deriveSessionLearnStatus, isDevelopSessionSettled } from '../lib/sessionListDisplay';
 import { BaseModel } from './base';
+import { resolveSkillDocByIdOrBid } from './skill';
 
 const logger = new Logger('model/session');
 
@@ -107,6 +108,19 @@ export async function validateDevelopEditorStoredLocation(
     const loc = locationUrl.trim().slice(0, 2048);
     if (!loc || !sessionHex || !ObjectId.isValid(sessionHex)) return false;
     if (validateDevelopEditorEntryLocation(domainId, loc, sessionHex)) return true;
+    const mSkill = /^\/d\/([^/]+)\/skill\/([^/]+)\/branch\/([^/]+)\/editor(?:\/)?(?:\?|$)/.exec(loc);
+    if (mSkill) {
+        if (mSkill[1] !== domainId) return false;
+        const br = mSkill[3] && String(mSkill[3]).trim() ? String(mSkill[3]).trim() : 'main';
+        if (br !== (expectedBranch && String(expectedBranch).trim() ? String(expectedBranch).trim() : 'main')) return false;
+        const docSeg = decodeURIComponent(String(mSkill[2] || ''));
+        if (!docSeg) return false;
+        const skillDoc = await resolveSkillDocByIdOrBid(domainId, docSeg);
+        if (!skillDoc || Number(skillDoc.docId) !== Number(expectedBaseDocId)) return false;
+        const qi = loc.indexOf('?');
+        const sp = new URLSearchParams(qi >= 0 ? loc.slice(qi + 1) : '');
+        return sp.get('session') === sessionHex;
+    }
     const m = /^\/d\/([^/]+)\/base\/([^/]+)\/branch\/([^/]+)\/editor(?:\/)?(?:\?|$)/.exec(loc);
     if (!m) return false;
     if (m[1] !== domainId) return false;

@@ -9,9 +9,15 @@
       {%- for b in bases -%}
         {% if b and b.docId %}
           <p>
+            {% if b.docType == 73 %}
+            <a href="{{ url('skill_outline_doc_branch', domainId=currentDomainId, docId=b.docId, branch='main') }}" data-emoji-enabled>
+              {{ b.title|default('Untitled') }}
+            </a>
+            {% else %}
             <a href="{{ url('base_outline_doc_branch', domainId=currentDomainId, docId=b.docId, branch='main') }}" data-emoji-enabled>
               {{ b.title|default('Untitled') }}
             </a>
+            {% endif %}
             <span style="float: right">
               {% if b.updateAt %}
                 {{ datetimeSpan(b.updateAt)|safe }}

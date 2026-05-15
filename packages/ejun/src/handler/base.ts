@@ -11,8 +11,18 @@ import {
     hasActiveOutlineExplorerFilters,
     outlineExplorerFiltersFromQuery,
     trimOutlineExplorerFiltersForClient,
+    type MindMapDocType,
+    readOptionalRequestBaseDocId,
+    getBranchData,
+    setBranchData,
+    nodeCreationDedupCache,
+    DEDUP_WINDOW_MS,
+    loadCardStatsByBaseDocId,
+    attachBaseListStats,
 } from '../model/base';
-import type { BaseDoc, BaseNode, BaseEdge, CardDoc, FileInfo, ProblemFlip, ProblemTrueFalse, ProblemFillBlank, ProblemSingle, ProblemMulti, ProblemMatching, ProblemSuperFlip, Problem } from '../interface';
+
+export { readOptionalRequestBaseDocId, getBranchData, setBranchData };
+import type { BaseDoc, BaseNode, BaseEdge, CardDoc, FileInfo, ProblemFlip, ProblemTrueFalse, ProblemFillBlank, ProblemSingle, ProblemMulti, ProblemMatching, ProblemSuperFlip, Problem, SkillDoc } from '../interface';
 import * as document from '../model/document';
 import { exec as execCb, execFile as execFileCb } from 'child_process';
 import fs from 'fs';
@@ -29,7 +39,6 @@ import { sortFiles } from '@ejunz/utils/lib/common';
 import moment from 'moment-timezone';
 import UserModel from '../model/user';
 import { loadBaseEditorUiPrefs, sanitizeBaseEditorUiPrefs } from '../lib/baseEditorUiPrefs';
-import { computeMaxNodeLayers, countMainLevelChildNodes, loadCardStatsByBaseDocId } from '../lib/baseListStats';
 import { getTodayUserDomainContribution } from '../lib/homepageRanking';
 import { incDevelopBranchDaily } from '../lib/developBranchDaily';
 import {
@@ -39,6 +48,7 @@ import {
     loadUserDevelopPool,
     resolveDevelopRunProgressForSession,
 } from '../lib/developPoolShared';
+import { SkillModel } from '../model/skill';
 import RecordModel, { type DevelopSaveChangeLine } from '../model/record';
 import SessionModel, {
     readDevelopEditorUrl,
@@ -71,6 +81,7 @@ async function assertDevelopSessionAllowsEdits(
     sessionHex: string,
     expectedDocId: number,
     expectedBranch: string,
+    expectedMapDocType: MindMapDocType,
 ): Promise<void> {
     if (!ObjectId.isValid(sessionHex)) {
         throw new BadRequestError(DEVELOP_SESSION_CLOSED_CODE);
@@ -82,6 +93,9 @@ async function assertDevelopSessionAllowsEdits(
         appRoute: 'develop',
     }) as SessionDoc | null;
     if (!sess) {
+        throw new BadRequestError(DEVELOP_SESSION_CLOSED_CODE);
+    }
+    if (sess.developMapDocType !== expectedMapDocType) {
         throw new BadRequestError(DEVELOP_SESSION_CLOSED_CODE);
     }
     const bid = Number(sess.baseDocId);
@@ -134,21 +148,6 @@ function mergeIncomingProblemsPreserveStoredTags(incoming: Problem[], stored?: P
         }
         return merged;
     });
-}
-
-export function readOptionalRequestBaseDocId(req: { body?: any; query?: any } | undefined): number | undefined {
-    if (!req) return undefined;
-    const body = req.body || {};
-    const q = req.query || {};
-    const raw = body.docId ?? body.baseDocId ?? q.docId;
-    if (raw === undefined || raw === null || raw === '') return undefined;
-    try {
-        const n = Number(raw);
-        if (!Number.isSafeInteger(n) || n <= 0) return undefined;
-        return n;
-    } catch {
-        return undefined;
-    }
 }
 
 function getSystemGithubToken(ctx: { setting: { get: (k: string) => unknown } }): string {
@@ -696,45 +695,6 @@ function getSyntheticRootTextForFileImport(base: BaseDoc, branch: string): strin
     return 'Root';
 }
 
-export function getBranchData(base: BaseDoc, branch: string): { nodes: BaseNode[]; edges: BaseEdge[] } {
-    const branchName = branch || 'main';
-    
-    
-    if (base.branchData && base.branchData[branchName]) {
-        return {
-            nodes: base.branchData[branchName].nodes || [],
-            edges: base.branchData[branchName].edges || [],
-        };
-    }
-    
-    
-    if (branchName === 'main') {
-        return {
-            nodes: base.nodes || [],
-            edges: base.edges || [],
-        };
-    }
-    
-    
-    return { nodes: [], edges: [] };
-}
-
-export function setBranchData(base: BaseDoc, branch: string, nodes: BaseNode[], edges: BaseEdge[]): void {
-    const branchName = branch || 'main';
-    
-    if (!base.branchData) {
-        base.branchData = {};
-    }
-    
-    base.branchData[branchName] = { nodes, edges };
-    
-    
-    if (branchName === 'main') {
-        base.nodes = nodes;
-        base.edges = edges;
-    }
-}
-
 /**
  * Base Study Handler
  */
@@ -1076,6 +1036,8 @@ export interface BaseEditorOptions {
     template: string;
     editorMode: 'base' | 'skill';
     redirectRouteName: string;
+    /** When set, sets `page_name` on the HTML payload (e.g. skill editor route for NamedPage). */
+    responsePageName?: string;
     getRequestedBranch: (branch?: string) => string;
     getBase: (domainId: string, requestedBranch: string) => Promise<BaseDoc | null>;
     createBase: (domainId: string, requestedBranch: string) => Promise<BaseDoc>;
@@ -1240,7 +1202,7 @@ export class BaseEditorHandler extends Handler {
             editorRootNodeId,
             editorFocusNodeId,
             
-            ...(opts.editorMode === 'skill' ? { page_name: 'base_skill_editor_branch' } : {}),
+            ...(opts.responsePageName ? { page_name: opts.responsePageName } : {}),
         };
     }
 }
@@ -1258,15 +1220,21 @@ export type BuildBaseEditorPageBodyArgs = {
     rootNodeIdFromQuery?: string;
     /** `none` = 大纲单节点 develop 会话，不展示每日队列 / 结算 UI。 */
     developPoolUiMode?: 'full' | 'none';
+    /** Mind-map storage; inferred from `base.docType` when omitted. */
+    mapDocType?: MindMapDocType;
 };
 
-/** Shared HTML payload for `base_editor.html` (normal base URL or `/develop/editor?session=`). */
+/** Shared HTML payload for `base_editor.html` / `skill_editor.html` (normal editor URL or `/develop/editor?session=`). */
 export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs): Promise<Record<string, unknown>> {
     const {
         domainId, base, requestedBranch, uid, priv, domainName, db, makeEditorUrl,
         rootNodeIdFromQuery = '',
         developPoolUiMode = 'full',
+        mapDocType: mapDocTypeArg,
     } = args;
+
+    const mdt: MindMapDocType = mapDocTypeArg
+        ?? (((base as { docType?: number }).docType === document.TYPE_SKILL) ? document.TYPE_SKILL : document.TYPE_BASE);
 
     let nodes: BaseNode[] = [];
     let edges: BaseEdge[] = [];
@@ -1277,13 +1245,13 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
 
     const currentBaseBranch = (base as any)?.currentBranch || 'main';
     if (requestedBranch !== currentBaseBranch) {
-        await document.set(domainId, document.TYPE_BASE, base.docId, { currentBranch: requestedBranch });
+        await document.set(domainId, mdt, base.docId, { currentBranch: requestedBranch });
     }
 
     if (nodes.length === 0) {
-        const rootNode: Omit<BaseNode, 'id'> = { text: domainName || '知识库', level: 0 };
-        await BaseModel.addNode(domainId, base.docId, rootNode, undefined, requestedBranch);
-        const updated = await BaseModel.get(domainId, base.docId);
+        const rootNode: Omit<BaseNode, 'id'> = { text: domainName || (mdt === document.TYPE_SKILL ? 'Skills' : '知识库'), level: 0 };
+        await BaseModel.addNode(domainId, base.docId, rootNode, undefined, requestedBranch, undefined, mdt);
+        const updated = await BaseModel.get(domainId, base.docId, mdt);
         if (updated) {
             const updatedBranchData = getBranchData(updated, requestedBranch);
             nodes = updatedBranchData.nodes || [];
@@ -1357,6 +1325,10 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
             baseDocId: base.docId,
             branch: requestedBranch,
             getBaseTitle: async (docId) => {
+                if (mdt === document.TYPE_SKILL) {
+                    const s = await SkillModel.get(domainId, docId);
+                    return s ? ((s.title || '').trim() || String(docId)) : `Skill ${docId}`;
+                }
                 const b = await BaseModel.get(domainId, docId);
                 return b ? ((b.title || '').trim() || String(docId)) : `Base ${docId}`;
             },
@@ -1370,7 +1342,7 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
         nodeCardsMap,
         files: base.files || [],
         domainId,
-        editorMode: 'base',
+        editorMode: mdt === document.TYPE_SKILL ? 'skill' : 'base',
         todayContribution,
         todayContributionAllDomains: todayAllDomains,
         contributions,
@@ -1387,6 +1359,19 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
 
 export class BaseEditorDocHandler extends Handler {
     base?: BaseDoc;
+
+    protected getEditorOutlineBranchUrl(domainId: string, docId: string, branch: string): string {
+        return this.url('base_outline_doc_branch', { domainId, docId, branch });
+    }
+
+    /** Nunjucks template for develop outline-node session (skill uses `skill_editor.html`). */
+    protected editorDocDevelopPageTemplate(): string {
+        return 'base_editor.html';
+    }
+
+    protected editorDocDevelopPageName(): string {
+        return 'base_editor_branch';
+    }
 
     @param('docId', Types.String)
     async _prepare(domainId: string, docId: string) {
@@ -1415,7 +1400,15 @@ export class BaseEditorDocHandler extends Handler {
                 const brSess = outlineSess.branch && String(outlineSess.branch).trim()
                     ? String(outlineSess.branch).trim()
                     : 'main';
-                if (Number(outlineSess.baseDocId) === Number(base.docId) && brSess === requestedBranch) {
+                const sessMdt = outlineSess.developMapDocType;
+                const baseMdt: MindMapDocType = ((base as { docType?: number }).docType === document.TYPE_SKILL)
+                    ? document.TYPE_SKILL
+                    : document.TYPE_BASE;
+                if (
+                    Number(outlineSess.baseDocId) === Number(base.docId)
+                    && brSess === requestedBranch
+                    && sessMdt === baseMdt
+                ) {
                     if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
                     const histSt = deriveSessionLearnStatus(outlineSess);
                     if (histSt === 'timed_out' || histSt === 'finished' || histSt === 'abandoned') {
@@ -1443,7 +1436,7 @@ export class BaseEditorDocHandler extends Handler {
                     }
                     const sessNidEarly = typeof outlineSess.nodeId === 'string' ? String(outlineSess.nodeId).trim() : '';
                     const rootPick = qNodeEarly || sessNidEarly;
-                    this.response.template = 'base_editor.html';
+                    this.response.template = this.editorDocDevelopPageTemplate();
                     const editorBodyOutline = await buildBaseEditorPageBody({
                         domainId,
                         base,
@@ -1452,9 +1445,10 @@ export class BaseEditorDocHandler extends Handler {
                         priv: this.user.priv,
                         domainName: domainNameEarly,
                         db: this.ctx.db.db,
-                        makeEditorUrl: (docId, br) => this.url('base_outline_doc_branch', { domainId, docId: String(docId), branch: br }),
+                        makeEditorUrl: (docId, br) => this.getEditorOutlineBranchUrl(domainId, String(docId), br),
                         rootNodeIdFromQuery: rootPick,
                         developPoolUiMode: 'none',
+                        mapDocType: baseMdt,
                     });
                     const deadlineMsO = readDevelopSessionDeadlineMs(outlineSess);
                     const createdO = outlineSess.createdAt instanceof Date
@@ -1462,8 +1456,7 @@ export class BaseEditorDocHandler extends Handler {
                         : new Date(outlineSess.createdAt as any);
                     this.response.body = {
                         ...editorBodyOutline,
-                        editorMode: 'base',
-                        page_name: 'base_editor_branch',
+                        page_name: this.editorDocDevelopPageName(),
                         editorDevelopSessionKind: 'outline_node' as const,
                         developSessionEditTotals: readDevelopSessionEditTotals(outlineSess),
                         developSessionDeadlineIso: deadlineMsO != null ? new Date(deadlineMsO).toISOString() : null,
@@ -1476,11 +1469,7 @@ export class BaseEditorDocHandler extends Handler {
         }
 
         const docSeg = (base.bid && String(base.bid).trim()) || String(base.docId);
-        this.response.redirect = this.url('base_outline_doc_branch', {
-            domainId,
-            docId: docSeg,
-            branch: requestedBranch,
-        });
+        this.response.redirect = this.getEditorOutlineBranchUrl(domainId, docSeg, requestedBranch);
     }
 }
 
@@ -1498,11 +1487,12 @@ class BaseCreateHandler extends Handler {
     async post(
         domainId: string,
         title: string,
-        bid?: string
+        bid?: string,
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
         const actualDomainId = this.args.domainId || domainId || 'system';
+
         const finalBid = (bid || '').trim();
         if (finalBid) {
             const existed = await BaseModel.getBybid(actualDomainId, finalBid);
@@ -1521,7 +1511,6 @@ class BaseCreateHandler extends Handler {
             this.request.ip,
             undefined,
             this.domain.name,
-            'base',
             true,
             finalBid || undefined
         );
@@ -1529,7 +1518,10 @@ class BaseCreateHandler extends Handler {
         let createdBase = await BaseModel.get(actualDomainId, docId);
         if (!createdBase) {
             await new Promise(resolve => setTimeout(resolve, 200));
-            createdBase = await BaseModel.get(actualDomainId, docId) || await BaseModel.getByDomain(actualDomainId);
+            createdBase = await BaseModel.get(actualDomainId, docId);
+            if (!createdBase) {
+                createdBase = await BaseModel.getByDomain(actualDomainId);
+            }
         }
         
         if (!createdBase) {
@@ -1556,10 +1548,6 @@ class BaseCreateHandler extends Handler {
     }
 }
 
-
-// key: `${domainId}:${docId}:${text}:${parentId}`, value: timestamp
-const nodeCreationDedupCache = new Map<string, number>();
-const DEDUP_WINDOW_MS = 2000; 
 
 /**
  * Base Edit Handler
@@ -1624,14 +1612,12 @@ class BaseEditHandler extends Handler {
 }
 
 export class BaseNodeHandler extends Handler {
-    
     protected async getBase(domainId: string): Promise<BaseDoc> {
         const base = await BaseModel.getByDomain(domainId);
         if (!base) throw new NotFoundError('Base not found');
         return base;
     }
 
-    
     protected async resolveBase(domainId: string): Promise<BaseDoc> {
         const specified = readOptionalRequestBaseDocId(this.request);
         if (specified) {
@@ -1959,11 +1945,9 @@ export class BaseNodeHandler extends Handler {
     }
 }
 
-/**
- * Base Edge Handler
- */
+
+
 export class BaseEdgeHandler extends Handler {
-    
     protected async getBase(domainId: string): Promise<BaseDoc> {
         const base = await BaseModel.getByDomain(domainId);
         if (!base) throw new NotFoundError('Base not found');
@@ -1990,10 +1974,10 @@ export class BaseEdgeHandler extends Handler {
         label?: string
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        
+
         const base = await this.resolveBase(domainId);
         const docId = base.docId;
-        
+
         if (!this.user.own(base)) {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         }
@@ -2019,10 +2003,10 @@ export class BaseEdgeHandler extends Handler {
     @param('edgeId', Types.String)
     async postDelete(domainId: string, edgeId: string) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        
+
         const base = await this.resolveBase(domainId);
         const docId = base.docId;
-        
+
         if (!this.user.own(base)) {
             this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
         }
@@ -2034,11 +2018,14 @@ export class BaseEdgeHandler extends Handler {
     }
 }
 
-/**
- * Base Save Handler
- */
+
+
 export class BaseSaveHandler extends Handler {
-    
+
+    protected saveMindMapDocType(): typeof document.TYPE_BASE | typeof document.TYPE_SKILL {
+        return document.TYPE_BASE;
+    }
+
     protected async getBase(domainId: string): Promise<BaseDoc | null> {
         return BaseModel.getByDomain(domainId);
     }
@@ -2092,7 +2079,7 @@ export class BaseSaveHandler extends Handler {
             null,
             restPayload
         );
-        const base = await BaseModel.get(domainId, docId);
+        const base = await BaseModel.get(domainId, docId, this.saveMindMapDocType());
         if (!base) throw new NotFoundError('Failed to create document');
         return base;
     }
@@ -2103,18 +2090,19 @@ export class BaseSaveHandler extends Handler {
 
     async post(domainId: string) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const mdt = this.saveMindMapDocType();
 
         const data = this.request.body || {};
         const specifiedDocIdEarly = readOptionalRequestBaseDocId(this.request);
 
         if (data.sidecarOnly === true) {
             if (!specifiedDocIdEarly) throw new BadRequestError('docId is required for sidecarOnly save');
-            const baseOnly = await BaseModel.get(domainId, specifiedDocIdEarly);
+            const baseOnly = await BaseModel.get(domainId, specifiedDocIdEarly, mdt);
             if (!baseOnly) throw new NotFoundError('Base not found');
             if (!this.user.own(baseOnly)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
             const docIdOnly = baseOnly.docId;
             const branchOnly = data.branch?.trim() || (baseOnly as any).currentBranch || 'main';
-            await persistBaseEditorSaveSidecars(this, domainId, docIdOnly, branchOnly, data as Record<string, unknown>);
+            await persistBaseEditorSaveSidecars(this, domainId, docIdOnly, branchOnly, data as Record<string, unknown>, mdt);
             this.response.body = { success: true, hasNonPositionChanges: false };
             return;
         }
@@ -2124,7 +2112,7 @@ export class BaseSaveHandler extends Handler {
         let docId: number;
 
         if (specifiedDocId) {
-            base = await BaseModel.get(domainId, specifiedDocId);
+            base = await BaseModel.get(domainId, specifiedDocId, mdt);
             if (!base) throw new NotFoundError('Base not found');
             docId = base.docId;
             if (!this.user.own(base)) {
@@ -2144,7 +2132,7 @@ export class BaseSaveHandler extends Handler {
         }
 
         const branchForSidecars = data.branch?.trim() || (base as any).currentBranch || 'main';
-        await persistBaseEditorSaveSidecars(this, domainId, docId, branchForSidecars, data as Record<string, unknown>);
+        await persistBaseEditorSaveSidecars(this, domainId, docId, branchForSidecars, data as Record<string, unknown>, mdt);
 
         let { nodes, edges, layout, viewport, theme, operationDescription } = data;
         
@@ -2176,7 +2164,7 @@ export class BaseSaveHandler extends Handler {
                 branchData: base.branchData,
                 nodes: base.nodes, 
                 edges: base.edges, 
-            });
+            }, mdt);
             
             (this.ctx.emit as any)('base/update', docId, null, currentBranch);
             
@@ -2239,12 +2227,12 @@ export class BaseSaveHandler extends Handler {
             layout,
             viewport,
             theme,
-        });
+        }, mdt);
         
         
         if (hasNonPositionChanges && this.shouldSyncToGit()) {
             try {
-                const updatedBase = await BaseModel.get(domainId, docId);
+                const updatedBase = await BaseModel.get(domainId, docId, mdt);
                 if (updatedBase) {
                     const branch = updatedBase.currentBranch || 'main';
                     await syncBaseToGit(domainId, updatedBase.docId, branch);
@@ -2317,35 +2305,6 @@ export class BaseSaveHandler extends Handler {
 /**
  * Base List Handler
  */
-function attachBaseListStats<T extends BaseDoc & { docId?: number | string }>(
-    bases: T[],
-    cardStats: Map<number, { cardCount: number; problemCount: number }>,
-): Array<T & {
-    listStats: {
-        nodeCount: number;
-        mainLevelCount: number;
-        cardCount: number;
-        problemCount: number;
-        maxLayers: number;
-    };
-}> {
-    return bases.map((b) => {
-        const id = typeof b.docId === 'number' ? b.docId : Number((b as any).docId);
-        const { nodes, edges } = getBranchData(b as BaseDoc, 'main');
-        const cs = Number.isFinite(id) ? cardStats.get(id) : undefined;
-        return {
-            ...b,
-            listStats: {
-                nodeCount: nodes.length,
-                mainLevelCount: countMainLevelChildNodes(nodes, edges),
-                cardCount: cs?.cardCount ?? 0,
-                problemCount: cs?.problemCount ?? 0,
-                maxLayers: computeMaxNodeLayers(nodes, edges),
-            },
-        };
-    });
-}
-
 class BaseListHandler extends Handler {
     @param('rpid', Types.PositiveInt, true)
     @param('branch', Types.String, true)
@@ -2460,7 +2419,6 @@ class BaseCreateNewHandler extends Handler {
             this.request.ip,
             undefined,
             this.domain.name,
-            'base',
             true
         );
         const target = this.url('base_outline_doc_branch', { domainId: did, docId, branch: 'main' });
@@ -2469,21 +2427,55 @@ class BaseCreateNewHandler extends Handler {
 }
 
 
-class BaseOutlineDocHandler extends Handler {
+export class BaseOutlineDocHandler extends Handler {
+    protected outlineDocBranchRouteName(): 'base_outline_doc_branch' | 'skill_outline_doc_branch' {
+        return 'base_outline_doc_branch';
+    }
+
+    /** Nunjucks template for the outline page (skill uses `skill_outline.html`). */
+    protected outlineDocPageTemplate(): string {
+        return 'base_outline.html';
+    }
+
+    protected assertOutlineDocBase(_base: BaseDoc): void {}
+
+    protected getOutlineDocRootLabel(_base: BaseDoc): string {
+        return this.domain.name || '根节点';
+    }
+
+    protected getOutlineDocEditorMode(): 'base' | 'skill' {
+        return 'base';
+    }
+
+    protected async resolveOutlineDocForGet(domainId: string, docId: string): Promise<BaseDoc | null> {
+        return resolveBaseByDocIdOrBid(domainId, docId);
+    }
+
+    protected async maybeCleanupOutlineBranch(
+        _domainId: string,
+        _base: BaseDoc,
+        _requestedBranch: string,
+        nodes: BaseNode[],
+        edges: BaseEdge[],
+    ): Promise<{ nodes: BaseNode[]; edges: BaseEdge[] }> {
+        return { nodes, edges };
+    }
+
     @param('docId', Types.String)
     @param('branch', Types.String, true)
     async get(domainId: string, docId: string, branch?: string) {
         const requestedBranch = branch && String(branch).trim() ? branch : 'main';
         if (!branch || !String(branch).trim()) {
-            const target = this.url('base_outline_doc_branch', { domainId, docId, branch: 'main' });
+            const target = this.url(this.outlineDocBranchRouteName() as any, { domainId, docId, branch: 'main' });
             this.response.redirect = target;
             return;
         }
 
-        const base = await resolveBaseByDocIdOrBid(domainId, docId);
+        const base = await this.resolveOutlineDocForGet(domainId, docId);
         if (!base) throw new NotFoundError('Base not found');
+        this.assertOutlineDocBase(base);
 
-        this.response.template = 'base_outline.html';
+        this.response.template = this.outlineDocPageTemplate();
 
         let nodes: BaseNode[] = [];
         let edges: BaseEdge[] = [];
@@ -2491,10 +2483,18 @@ class BaseOutlineDocHandler extends Handler {
         nodes = branchData.nodes || [];
         edges = branchData.edges || [];
 
+        const cleaned = await this.maybeCleanupOutlineBranch(domainId, base, requestedBranch, nodes, edges);
+        nodes = cleaned.nodes;
+        edges = cleaned.edges;
+
+        const mapDt: MindMapDocType = (base as BaseDoc | SkillDoc).docType === document.TYPE_SKILL
+            ? document.TYPE_SKILL
+            : document.TYPE_BASE;
+
         if (nodes.length === 0) {
-            const rootNode: Omit<BaseNode, 'id'> = { text: this.domain.name || '根节点', level: 0 };
-            await BaseModel.addNode(domainId, base.docId, rootNode, undefined, requestedBranch);
-            const updated = await BaseModel.get(domainId, base.docId);
+            const rootNode: Omit<BaseNode, 'id'> = { text: this.getOutlineDocRootLabel(base), level: 0 };
+            await BaseModel.addNode(domainId, base.docId, rootNode, undefined, requestedBranch, undefined, mapDt);
+            const updated = await BaseModel.get(domainId, base.docId, mapDt);
             if (updated) {
                 const updatedBranchData = getBranchData(updated, requestedBranch);
                 nodes = updatedBranchData.nodes || [];
@@ -2588,7 +2588,7 @@ class BaseOutlineDocHandler extends Handler {
             nodeCardsMap,
             files: base?.files || [],
             domainId,
-            editorMode: 'base',
+            editorMode: this.getOutlineDocEditorMode(),
             outlineExplorerFilters: trimOutlineExplorerFiltersForClient(outlineExplorerFilters),
         };
     }
@@ -3514,8 +3514,10 @@ class BaseGithubPushHandler extends Handler {
 /**
  * Base Card Handler
  */
+/**
+ * Base Card Handler
+ */
 export class BaseCardHandler extends Handler {
-    
     protected async getBase(domainId: string): Promise<BaseDoc> {
         const specified = readOptionalRequestBaseDocId(this.request);
         if (specified) {
@@ -3748,6 +3750,8 @@ export class BaseCardHandler extends Handler {
         this.response.body = { success: true };
     }
 }
+
+
 
 class BaseCardListHandler extends Handler {
     @param('docId', Types.PositiveInt, true)
@@ -4441,6 +4445,7 @@ class BaseCardDetailHandler extends Handler {
 
 export interface BatchSaveOptions {
     type: 'base' | 'skill';
+    mapDocType: typeof document.TYPE_BASE | typeof document.TYPE_SKILL;
     getBase: (actualDomainId: string) => Promise<BaseDoc | null>;
     createBase: (actualDomainId: string) => Promise<BaseDoc>;
     getBranch: (base: BaseDoc) => string;
@@ -4530,6 +4535,7 @@ async function appendDevelopSaveRecordAfterBatchSave(
     data: Record<string, unknown>,
     cardIdMap: Map<string, string>,
     changeLines: DevelopSaveChangeLine[],
+    expectedMapDocType: MindMapDocType,
 ): Promise<void> {
     if (!developSessionIdHex || !ObjectId.isValid(developSessionIdHex)) return;
     const sess = await SessionModel.coll.findOne({
@@ -4540,6 +4546,7 @@ async function appendDevelopSaveRecordAfterBatchSave(
     }) as SessionDoc | null;
     if (!sess) return;
     if (isDevelopSessionSettled(sess)) return;
+    if (sess.developMapDocType !== expectedMapDocType) return;
     if (Number(sess.baseDocId) !== Number(docId)) return;
     const brSes = sess.branch && String(sess.branch).trim() ? String(sess.branch).trim() : 'main';
     if (brSes !== branch) return;
@@ -4610,6 +4617,7 @@ export class BaseBatchSaveHandler extends Handler {
     protected getBatchSaveOptions(): BatchSaveOptions {
         return {
             type: 'base',
+            mapDocType: document.TYPE_BASE,
             getBase: (d) => BaseModel.getByDomain(d),
             createBase: async (d) => {
                 const { docId } = await BaseModel.create(
@@ -4636,11 +4644,12 @@ export class BaseBatchSaveHandler extends Handler {
 
         const actualDomainId = this.args.domainId || domainId || 'system';
         const opts = this.getBatchSaveOptions();
+        const mdt = opts.mapDocType;
         const data = this.request.body || {};
         const specifiedDocId = readOptionalRequestBaseDocId(this.request);
         let base: BaseDoc | null = null;
         if (specifiedDocId) {
-            base = await BaseModel.get(actualDomainId, specifiedDocId);
+            base = await BaseModel.get(actualDomainId, specifiedDocId, mdt);
             if (!base) throw new NotFoundError('Base not found');
         } else {
             base = await opts.getBase(actualDomainId);
@@ -4651,7 +4660,7 @@ export class BaseBatchSaveHandler extends Handler {
         const branch = data.branch?.trim() || opts.getBranch(base);
 
         const developSessionRaw = typeof data.developSessionId === 'string' ? data.developSessionId.trim() : '';
-        if (developSessionRaw && opts.type === 'base') {
+        if (developSessionRaw) {
             await assertDevelopSessionAllowsEdits(
                 this,
                 actualDomainId,
@@ -4659,6 +4668,7 @@ export class BaseBatchSaveHandler extends Handler {
                 developSessionRaw,
                 Number(docId),
                 branch,
+                mdt,
             );
         }
 
@@ -4715,7 +4725,7 @@ export class BaseBatchSaveHandler extends Handler {
                     }
                     
                     if (realParentId && !realParentId.startsWith('temp-node-')) {
-                        const currentBase = await BaseModel.get(actualDomainId, docId);
+                        const currentBase = await BaseModel.get(actualDomainId, docId, mdt);
                         if (currentBase) {
                             const branchData = getBranchData(currentBase, branch);
                             const parentExists = branchData.nodes.some((n: BaseNode) => n.id === realParentId);
@@ -4740,7 +4750,8 @@ export class BaseBatchSaveHandler extends Handler {
                         nodePayload as Omit<BaseNode, 'id'>,
                         realParentId,
                         branch,
-                        realParentId // edgeSourceId
+                        realParentId, // edgeSourceId
+                        mdt,
                     );
                     if (nodeCreate.tempId) {
                         nodeIdMap.set(nodeCreate.tempId, result.nodeId);
@@ -4765,7 +4776,7 @@ export class BaseBatchSaveHandler extends Handler {
                 if (nodeUpdate.text != null) updates.text = nodeUpdate.text;
                 if (nodeUpdate.order != null) updates.order = nodeUpdate.order;
                 if (Object.keys(updates).length === 0) continue;
-                await BaseModel.updateNode(actualDomainId, docId, nodeUpdate.nodeId, updates, branch);
+                await BaseModel.updateNode(actualDomainId, docId, nodeUpdate.nodeId, updates, branch, mdt);
             } catch (error: any) {
                 errors.push(`更新节点失败: ${error.message || '未知错误'}`);
             }
@@ -4774,7 +4785,7 @@ export class BaseBatchSaveHandler extends Handler {
         
         for (const edgeId of edgeDeletes) {
             try {
-                await BaseModel.deleteEdge(actualDomainId, docId, edgeId, branch);
+                await BaseModel.deleteEdge(actualDomainId, docId, edgeId, branch, mdt);
             } catch (error: any) {
                 
             }
@@ -4783,7 +4794,7 @@ export class BaseBatchSaveHandler extends Handler {
         
         for (const nodeId of nodeDeletes) {
             try {
-                await BaseModel.deleteNode(actualDomainId, docId, nodeId, branch);
+                await BaseModel.deleteNode(actualDomainId, docId, nodeId, branch, mdt);
             } catch (error: any) {
                 errors.push(`删除节点失败: ${error.message || '未知错误'}`);
             }
@@ -4803,7 +4814,7 @@ export class BaseBatchSaveHandler extends Handler {
                         source: sourceId,
                         target: targetId,
                         label: edgeCreate.label,
-                    }, branch);
+                    }, branch, mdt);
                 }
             } catch (error: any) {
                 errors.push(`创建边失败: ${error.message || '未知错误'}`);
@@ -4901,12 +4912,12 @@ export class BaseBatchSaveHandler extends Handler {
             }
             if (Object.prototype.hasOwnProperty.call(data as object, 'problemTags')) {
                 const list = sanitizeProblemTagRegistryList((data as { problemTags?: unknown }).problemTags);
-                await BaseModel.updateFull(actualDomainId, docId, { problemTags: list });
+                await BaseModel.updateFull(actualDomainId, docId, { problemTags: list }, mdt);
             }
         }
 
         const developChangeLines = buildDevelopSaveChangeLines(data as Record<string, unknown>);
-        if (batchSuccess && developSessionRaw && opts.type === 'base') {
+        if (batchSuccess && developSessionRaw) {
             try {
                 await refreshDevelopSessionRunProgressAfterBatchSave(
                     this.ctx.db.db,
@@ -4919,7 +4930,7 @@ export class BaseBatchSaveHandler extends Handler {
                 logger.warn('refreshDevelopSessionRunProgressAfterBatchSave failed: %s', err?.message || err);
             }
         }
-        if (batchSuccess && developSessionRaw && opts.type === 'base') {
+        if (batchSuccess && developSessionRaw) {
             try {
                 await appendDevelopSaveRecordAfterBatchSave(
                     actualDomainId,
@@ -4930,16 +4941,17 @@ export class BaseBatchSaveHandler extends Handler {
                     data,
                     cardIdMap,
                     developChangeLines,
+                    mdt,
                 );
             } catch (err: any) {
                 logger.warn('appendDevelopSaveRecordAfterBatchSave failed: %s', err?.message || err);
             }
         }
 
-        await persistBaseEditorSaveSidecars(this, actualDomainId, docId, branch, data as Record<string, unknown>);
+        await persistBaseEditorSaveSidecars(this, actualDomainId, docId, branch, data as Record<string, unknown>, mdt);
 
         let developSessionEditTotalsResponse: ReturnType<typeof readDevelopSessionEditTotals> | undefined;
-        if (batchSuccess && developSessionRaw && ObjectId.isValid(developSessionRaw) && opts.type === 'base') {
+        if (batchSuccess && developSessionRaw && ObjectId.isValid(developSessionRaw)) {
             const sdoc = await SessionModel.coll.findOne({
                 _id: new ObjectId(developSessionRaw),
                 domainId: actualDomainId,
@@ -6587,9 +6599,11 @@ class BaseMigrateNodeToNewHandler extends Handler {
         }
 
         const sourceBase = await BaseModel.get(actualDomainId, sourceDocId);
-        if (!sourceBase) throw new NotFoundError('Base not found');
-        if ((sourceBase as any).type === 'skill') {
-            throw new ValidationError('Cannot migrate from skill base');
+        if (!sourceBase) {
+            if (await SkillModel.get(actualDomainId, sourceDocId)) {
+                throw new ValidationError('Cannot migrate from skill base');
+            }
+            throw new NotFoundError('Base not found');
         }
         if (!this.user.own(sourceBase)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
 
@@ -6628,7 +6642,6 @@ class BaseMigrateNodeToNewHandler extends Handler {
             this.request.ip,
             undefined,
             this.domain.name,
-            'base',
             true,
             finalBid || undefined,
         );
@@ -6824,6 +6837,7 @@ async function persistBaseEditorSaveSidecars(
     baseDocId: number,
     branchInput: string,
     data: Record<string, unknown>,
+    mapDocType: MindMapDocType,
 ): Promise<void> {
     const branchNorm = branchInput && String(branchInput).trim() ? String(branchInput).trim() : 'main';
     if (Object.prototype.hasOwnProperty.call(data, 'editorUiPrefs')) {
@@ -6856,7 +6870,7 @@ async function persistBaseEditorSaveSidecars(
         && sessionForLoc
         && ObjectId.isValid(sessionForLoc)
     ) {
-        await assertDevelopSessionAllowsEdits(h, domainId, h.user._id, sessionForLoc, baseDocId, branchNorm);
+        await assertDevelopSessionAllowsEdits(h, domainId, h.user._id, sessionForLoc, baseDocId, branchNorm, mapDocType);
         await SessionModel.persistDevelopEditorUrl(domainId, h.user._id, {
             sessionHex: sessionForLoc,
             locationUrl: locRaw.trim(),

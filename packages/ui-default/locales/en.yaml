@@ -637,7 +637,11 @@ Average Rating: Average Rating
 Back to: Back to
 Base has no nodes: Base has no nodes
 Base Node: Base Node
+Base type: Base type
 base_create: Create Base
+Each domain can have at most one skill base; choosing Skill again opens the existing one if present.: Each domain can have at most one skill base; choosing Skill again opens the existing one if present.
+Skill knowledge base: Skill knowledge base
+Standard knowledge base: Standard knowledge base
 base_data: Base Data
 base_delete: Delete Base
 base_detail: Base Detail
@@ -646,6 +650,23 @@ base_edge: Base Edge
 base_edit: Edit Base
 base_editor: Base Editor
 base_list: Base List
+skill_list: Skill libraries
+skill_domain: Skill libraries
+skill_library: Skill library
+Search skill libraries: Search skill libraries
+You have permission to create skill libraries for this domain.: You have permission to create skill libraries for this domain.
+No categories for skills.: No categories for skills.
+Create a new skill library for this domain.: Create a new skill library for this domain.
+There are no skill libraries in this domain.: There are no skill libraries in this domain.
+Please select at least one skill library to delete.: Please select at least one skill library to delete.
+Confirm deleting {0} selected skill libraries?: Confirm deleting {0} selected skill libraries?
+Selected skill libraries have been deleted.: Selected skill libraries have been deleted.
+Create Skill: Create Skill
+SID: SID
+Input skill library title: Input skill library title
+'Optional human-readable skill library identifier (SID), for example: S1001': 'Optional human-readable skill library identifier (SID), for example: S1001'
+Skill library title is required.: Skill library title is required.
+'Skill library SID already exists: {0}': 'Skill library SID already exists: {0}'
 base_node: Base Node
 base_outline: Base
 base_save: Save Base
