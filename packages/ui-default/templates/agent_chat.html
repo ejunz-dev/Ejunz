@@ -34,21 +34,20 @@
           {% if chatSessions and chatSessions.length > 0 %}
           <div class="session-list">
             {% for chatSession in chatSessions %}
-            <div class="session-item-sidebar" data-chat-session-id="{{ chatSession._id.toString() }}" 
-                 style="border: 1px solid #ddd; border-radius: 4px; padding: 12px; margin-bottom: 8px; cursor: pointer; {% if chatSessionId == chatSession._id.toString() %}background-color: #f0f0f0; border-color: #007bff;{% endif %}">
-              <div style="flex: 1;">
+            <div class="session-item-sidebar{% if chatSessionId == chatSession._id.toString() %} session-item-sidebar--active{% endif %}" data-chat-session-id="{{ chatSession._id.toString() }}">
+              <div>
                 <h4 style="margin: 0 0 5px 0; font-size: 0.95em; font-weight: 600;">
                   {{ chatSession.title or (_('session_chat_detail') + ' ' + chatSession._id.toString().substring(0, 8)) }}
                 </h4>
                 {% if chatSession.lastAgentRecord and chatSession.lastAgentRecord.agentMessages %}
                   {% set lastMsg = chatSession.lastAgentRecord.agentMessages[chatSession.lastAgentRecord.agentMessages.length - 1] %}
-                  <p style="margin: 5px 0; color: #666; font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                  <p class="agent-chat-session-preview">
                     {{ lastMsg.content|truncate(60) }}
                   </p>
                 {% endif %}
-                <div style="font-size: 0.8em; color: #999; margin-top: 5px;">
+                <div class="agent-chat-session-meta">
                   <span>{{ (chatSession.recordIds|length) if chatSession.recordIds else 0 }} {{ _('record_col_short') }}</span>
-                  <span style="margin-left: 8px;">{{ datetimeSpan(chatSession.updatedAt, false)|safe if chatSession.updatedAt else datetimeSpan(chatSession._id, false)|safe }}</span>
+                  <span>{{ datetimeSpan(chatSession.updatedAt, false)|safe if chatSession.updatedAt else datetimeSpan(chatSession._id, false)|safe }}</span>
                 </div>
               </div>
             </div>
@@ -100,7 +99,7 @@
           {% if chatSessions and chatSessions.length > 0 %}
           <div class="session-list">
             {% for chatSession in chatSessions %}
-            <div class="session-item" data-chat-session-id="{{ chatSession._id.toString() }}" style="border: 1px solid #ddd; border-radius: 4px; padding: 15px; margin-bottom: 10px; cursor: pointer;">
+            <div class="session-item" data-chat-session-id="{{ chatSession._id.toString() }}">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div style="flex: 1;">
                   <h3 style="margin: 0 0 5px 0; font-size: 1.1em;">
@@ -108,17 +107,17 @@
                   </h3>
                   {% if chatSession.lastAgentRecord and chatSession.lastAgentRecord.agentMessages %}
                     {% set lastMsg = chatSession.lastAgentRecord.agentMessages[chatSession.lastAgentRecord.agentMessages.length - 1] %}
-                    <p style="margin: 5px 0; color: #666; font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    <p class="agent-chat-session-preview agent-chat-session-preview--main-list">
                       {{ lastMsg.content|truncate(100) }}
                     </p>
                   {% endif %}
-                  <div style="font-size: 0.85em; color: #999; margin-top: 5px;">
+                  <div class="agent-chat-session-meta agent-chat-session-meta--main-list">
                     <span>{{ (chatSession.recordIds|length) if chatSession.recordIds else 0 }} {{ _('record_col_short') }}</span>
-                    <span style="margin-left: 10px;">{{ datetimeSpan(chatSession.updatedAt, false)|safe if chatSession.updatedAt else datetimeSpan(chatSession._id, false)|safe }}</span>
+                    <span>{{ datetimeSpan(chatSession.updatedAt, false)|safe if chatSession.updatedAt else datetimeSpan(chatSession._id, false)|safe }}</span>
                   </div>
                 </div>
                 <div>
-                  <span class="icon icon-chevron-right" style="color: #999;"></span>
+                  <span class="icon icon-chevron-right"></span>
                 </div>
               </div>
             </div>

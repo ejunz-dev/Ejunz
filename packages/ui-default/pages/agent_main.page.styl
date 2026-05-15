@@ -218,3 +218,58 @@
   right: 50px
   top: 8px
   font-size: rem(17px)
+
+// Dark theme: search bar & category filter (agent list)
+.theme--dark
+  .page--agent_main,
+  .page--agent_domain
+    .widget--category-filter__drop
+      background: #262729
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.45)
+
+      &:before
+        border-top-color: #262729
+        border-left-color: #262729
+        box-shadow: -2px -2px 3px rgba(0, 0, 0, 0.35)
+
+    .search-tag__item
+      &:hover
+        color: #eee
+        background: #424242
+
+    .category-filter__header .list .list__item
+      background: #3a3b3d
+      color: #eee
+
+      &.selected
+        color: #fff
+
+    .category-filter__body
+      background: #292a2c
+
+      .divider
+        border-bottom-color: rgba(255, 255, 255, 0.12)
+
+      .subcategory-container h2
+        color: #eee
+
+      .search-tag__item
+        background: #36383c
+        color: #e0e0e0
+
+    .search > input
+      background: #2a2b2d
+      border: 1px solid rgba(255, 255, 255, 0.15)
+      border-right: none
+      color: #eee
+
+      &::placeholder
+        color: #9ca3af
+
+    .search > button
+      border-color: #3385b5
+      background: #3385b5
+
+      &:hover
+        background: #55b6e2
+        border-color: #55b6e2
