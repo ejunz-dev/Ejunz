@@ -1,4 +1,5 @@
 import { NamedPage } from 'vj/misc/Page';
+import { getTheme } from 'vj/utils';
 
 let agentChatSocket: any = null;
 let agentChatSocketConnected = false;
@@ -21,6 +22,34 @@ const page = new NamedPage('agent_chat', async () => {
   const wsPrefix = UiContext?.ws_prefix || '/';
   const urlMatch = window.location.pathname.match(/\/agent\/([^\/]+)\/chat/);
   const urlAid = urlMatch ? urlMatch[1] : aid;
+
+  const agentChatPalette = () => {
+    const dark = getTheme() === 'dark';
+    return {
+      textMuted: dark ? '#9ca3af' : '#666',
+      textFaint: dark ? '#6b7280' : '#999',
+      resultPreBg: dark ? 'rgba(56, 189, 248, 0.12)' : '#e7f3ff',
+      resultPreBorder: dark ? 'rgba(56, 189, 248, 0.4)' : '#b3d9ff',
+      errorResultBg: dark ? 'rgba(244, 67, 54, 0.18)' : '#ffebee',
+      argsPreBg: dark ? '#1e1f21' : '#f8f9fa',
+      argsPreBorder: dark ? 'rgba(255, 255, 255, 0.12)' : '#e9ecef',
+      loadingText: dark ? '#9ca3af' : '#666',
+    };
+  };
+
+  const toolCallResultLabelStyle = () => {
+    const p = agentChatPalette();
+    return `font-size: 11px; color: ${p.textMuted}; margin-bottom: 4px;`;
+  };
+  const toolCallResultPreStyle = () => {
+    const p = agentChatPalette();
+    return `margin: 0; padding: 8px; background: ${p.resultPreBg}; border: 1px solid ${p.resultPreBorder}; border-radius: 4px; font-size: 12px; overflow-x: auto; max-height: 300px; overflow-y: auto;`;
+  };
+  const toolCallArgsLabelStyle = toolCallResultLabelStyle;
+  const toolCallArgsPreStyle = () => {
+    const p = agentChatPalette();
+    return `margin: 0; padding: 8px; background: ${p.argsPreBg}; border: 1px solid ${p.argsPreBorder}; border-radius: 4px; font-size: 12px; overflow-x: auto;`;
+  };
 
   /** Returns true if tool result content indicates an error (e.g. { error: true } or { success: false }). */
   const isToolResultError = (content: string | object | undefined): boolean => {
@@ -49,8 +78,9 @@ const page = new NamedPage('agent_chat', async () => {
     }
     const resultPre = toolCallItem.querySelector('.tool-call-result pre') as HTMLElement | null;
     if (resultPre) {
-      resultPre.style.background = isError ? '#ffebee' : '#e7f3ff';
-      resultPre.style.borderColor = isError ? '#f44336' : '#b3d9ff';
+      const p = agentChatPalette();
+      resultPre.style.background = isError ? p.errorResultBg : p.resultPreBg;
+      resultPre.style.borderColor = isError ? '#f44336' : p.resultPreBorder;
     }
   };
 
@@ -1078,7 +1108,7 @@ const page = new NamedPage('agent_chat', async () => {
       if (!loadingIndicator) {
         loadingIndicator = document.createElement('div');
         loadingIndicator.id = 'agentChatLoadingIndicator';
-        loadingIndicator.style.cssText = 'text-align: center; padding: 20px; color: #666;';
+        loadingIndicator.style.cssText = `text-align: center; padding: 20px; color: ${agentChatPalette().loadingText};`;
         loadingIndicator.innerHTML = `
           <div style="display: inline-block;">
             <span class="loading" style="margin-right: 8px;"></span>
@@ -1109,16 +1139,7 @@ const page = new NamedPage('agent_chat', async () => {
     sessionItems.forEach(item => {
       const sid = item.getAttribute('data-chat-session-id');
       const isActive = sid === activeSessionId;
-      const element = item as HTMLElement;
-      
-      // Only set border highlight, don't change background color
-      if (isActive) {
-        element.style.setProperty('border-color', '#007bff', 'important');
-        element.style.setProperty('border-width', '2px', 'important');
-      } else {
-        element.style.setProperty('border-color', '#ddd', 'important');
-        element.style.setProperty('border-width', '1px', 'important');
-      }
+      item.classList.toggle('session-item-sidebar--active', !!isActive);
     });
   }
   
@@ -1208,11 +1229,11 @@ const page = new NamedPage('agent_chat', async () => {
                     
                     const resultLabel = document.createElement('div');
                     resultLabel.textContent = '结果:';
-                    resultLabel.style.cssText = 'font-size: 11px; color: #666; margin-bottom: 4px;';
+                    resultLabel.style.cssText = toolCallResultLabelStyle();
                     resultDiv.appendChild(resultLabel);
                     
                     const resultPre = document.createElement('pre');
-                    resultPre.style.cssText = 'margin: 0; padding: 8px; background: #e7f3ff; border: 1px solid #b3d9ff; border-radius: 4px; font-size: 12px; overflow-x: auto; max-height: 300px; overflow-y: auto;';
+                    resultPre.style.cssText = toolCallResultPreStyle();
                     resultDiv.appendChild(resultPre);
                     
                     toolCallDetails.appendChild(resultDiv);
@@ -1236,7 +1257,7 @@ const page = new NamedPage('agent_chat', async () => {
       } else {
         // If no history records, show message
         const emptyMsg = document.createElement('div');
-        emptyMsg.style.cssText = 'text-align: center; padding: 20px; color: #999;';
+        emptyMsg.style.cssText = `text-align: center; padding: 20px; color: ${agentChatPalette().textFaint};`;
         emptyMsg.textContent = '暂无消息';
         chatMessages.appendChild(emptyMsg);
       }
@@ -1313,14 +1334,13 @@ const page = new NamedPage('agent_chat', async () => {
         });
         
         html += `
-          <div class="session-item-sidebar" data-chat-session-id="${itemSessionId}" 
-               style="border: 1px solid #ddd; border-radius: 4px; padding: 12px; margin-bottom: 8px; cursor: pointer; ${isActive ? 'border-color: #007bff; border-width: 2px;' : ''}">
-            <div style="flex: 1;">
+          <div class="session-item-sidebar${isActive ? ' session-item-sidebar--active' : ''}" data-chat-session-id="${itemSessionId}">
+            <div>
               <h4 style="margin: 0 0 5px 0; font-size: 0.95em; font-weight: 600;">${title}</h4>
-              ${lastMsgPreview ? `<p style="margin: 5px 0; color: #666; font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${lastMsgPreview}</p>` : ''}
-              <div style="font-size: 0.8em; color: #999; margin-top: 5px;">
+              ${lastMsgPreview ? `<p class="agent-chat-session-preview">${lastMsgPreview}</p>` : ''}
+              <div class="agent-chat-session-meta">
                 <span>${recordCount} records</span>
-                <span style="margin-left: 8px;">${updatedAtStr}</span>
+                <span>${updatedAtStr}</span>
               </div>
             </div>
           </div>
@@ -1863,10 +1883,10 @@ const page = new NamedPage('agent_chat', async () => {
                       resultDiv.style.cssText = 'margin-top: 8px;';
                       const resultLabel = document.createElement('div');
                       resultLabel.textContent = '结果:';
-                      resultLabel.style.cssText = 'font-size: 11px; color: #666; margin-bottom: 4px;';
+                      resultLabel.style.cssText = toolCallResultLabelStyle();
                       resultDiv.appendChild(resultLabel);
                       const resultPre = document.createElement('pre');
-                      resultPre.style.cssText = 'margin: 0; padding: 8px; background: #e7f3ff; border: 1px solid #b3d9ff; border-radius: 4px; font-size: 12px; overflow-x: auto; max-height: 300px; overflow-y: auto;';
+                      resultPre.style.cssText = toolCallResultPreStyle();
                       resultDiv.appendChild(resultPre);
                       toolCallDetails.appendChild(resultDiv);
                     }
@@ -1911,10 +1931,10 @@ const page = new NamedPage('agent_chat', async () => {
                     resultDiv.style.cssText = 'margin-top: 8px;';
                     const resultLabel = document.createElement('div');
                     resultLabel.textContent = '结果:';
-                    resultLabel.style.cssText = 'font-size: 11px; color: #666; margin-bottom: 4px;';
+                    resultLabel.style.cssText = toolCallResultLabelStyle();
                     resultDiv.appendChild(resultLabel);
                     const resultPre = document.createElement('pre');
-                    resultPre.style.cssText = 'margin: 0; padding: 8px; background: #e7f3ff; border: 1px solid #b3d9ff; border-radius: 4px; font-size: 12px; overflow-x: auto; max-height: 300px; overflow-y: auto;';
+                    resultPre.style.cssText = toolCallResultPreStyle();
                     resultDiv.appendChild(resultPre);
                     toolCallDetails.appendChild(resultDiv);
                   }
@@ -2656,10 +2676,10 @@ const page = new NamedPage('agent_chat', async () => {
                     resultDiv.style.cssText = 'margin-top: 8px;';
                     const resultLabel = document.createElement('div');
                     resultLabel.textContent = '结果:';
-                    resultLabel.style.cssText = 'font-size: 11px; color: #666; margin-bottom: 4px;';
+                    resultLabel.style.cssText = toolCallResultLabelStyle();
                     resultDiv.appendChild(resultLabel);
                     const resultPre = document.createElement('pre');
-                    resultPre.style.cssText = 'margin: 0; padding: 8px; background: #e7f3ff; border: 1px solid #b3d9ff; border-radius: 4px; font-size: 12px; overflow-x: auto; max-height: 300px; overflow-y: auto;';
+                    resultPre.style.cssText = toolCallResultPreStyle();
                     resultDiv.appendChild(resultPre);
                     toolCallDetails.appendChild(resultDiv);
                   }
@@ -2898,11 +2918,11 @@ const page = new NamedPage('agent_chat', async () => {
         if (toolCall.function?.arguments) {
           const argsLabel = document.createElement('div');
           argsLabel.textContent = '参数:';
-          argsLabel.style.cssText = 'font-size: 11px; color: #666; margin-bottom: 4px;';
+          argsLabel.style.cssText = toolCallArgsLabelStyle();
           toolCallDetails.appendChild(argsLabel);
           
           const argsPre = document.createElement('pre');
-          argsPre.style.cssText = 'margin: 0; padding: 8px; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px; font-size: 12px; overflow-x: auto;';
+          argsPre.style.cssText = toolCallArgsPreStyle();
           argsPre.textContent = typeof toolCall.function.arguments === 'string' 
             ? toolCall.function.arguments 
             : JSON.stringify(toolCall.function.arguments, null, 2);
@@ -3074,11 +3094,11 @@ const page = new NamedPage('agent_chat', async () => {
         if (toolCall.function?.arguments) {
             const argsLabel = document.createElement('div');
             argsLabel.textContent = '参数:';
-            argsLabel.style.cssText = 'font-size: 11px; color: #666; margin-bottom: 4px;';
+            argsLabel.style.cssText = toolCallArgsLabelStyle();
             toolCallDetails.appendChild(argsLabel);
             
           const argsPre = document.createElement('pre');
-            argsPre.style.cssText = 'margin: 0; padding: 8px; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px; font-size: 12px; overflow-x: auto;';
+            argsPre.style.cssText = toolCallArgsPreStyle();
           argsPre.textContent = typeof toolCall.function.arguments === 'string' 
             ? toolCall.function.arguments 
             : JSON.stringify(toolCall.function.arguments, null, 2);
@@ -3396,10 +3416,10 @@ const page = new NamedPage('agent_chat', async () => {
                 resultDiv.style.cssText = 'margin-top: 8px;';
                 const resultLabel = document.createElement('div');
                 resultLabel.textContent = '结果:';
-                resultLabel.style.cssText = 'font-size: 11px; color: #666; margin-bottom: 4px;';
+                resultLabel.style.cssText = toolCallResultLabelStyle();
                 resultDiv.appendChild(resultLabel);
                 const resultPre = document.createElement('pre');
-                resultPre.style.cssText = 'margin: 0; padding: 8px; background: #e7f3ff; border: 1px solid #b3d9ff; border-radius: 4px; font-size: 12px; overflow-x: auto; max-height: 300px; overflow-y: auto;';
+                resultPre.style.cssText = toolCallResultPreStyle();
                 resultDiv.appendChild(resultPre);
                 toolCallDetails.appendChild(resultDiv);
               }

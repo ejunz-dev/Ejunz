@@ -1,3 +1,50 @@
+.session-item-sidebar
+  border: 1px solid #ddd
+  border-radius: 4px
+  padding: 12px
+  margin-bottom: 8px
+  cursor: pointer
+
+.session-item-sidebar--active
+  border-color: #007bff
+  border-width: 2px
+  background-color: #f0f7ff
+
+.agent-chat-session-preview
+  margin: 5px 0
+  font-size: 0.85em
+  white-space: nowrap
+  overflow: hidden
+  text-overflow: ellipsis
+  color: #666
+
+.agent-chat-session-meta
+  font-size: 0.8em
+  color: #999
+  margin-top: 5px
+
+  span + span
+    margin-left: 8px
+
+.agent-chat-session-preview--main-list
+  font-size: 0.9em
+
+.agent-chat-session-meta--main-list
+  font-size: 0.85em
+
+  span + span
+    margin-left: 10px
+
+.session-item
+  border: 1px solid #ddd
+  border-radius: 4px
+  padding: 15px
+  margin-bottom: 10px
+  cursor: pointer
+
+  .icon-chevron-right
+    color: #999
+
 .chat-container
   display: flex
   flex-direction: column
@@ -34,6 +81,13 @@
       border-radius: 4px
       cursor: pointer
       transition: background 0.2s
+
+      &:hover:not(:disabled)
+        background: #005999
+
+      &:disabled
+        background: #ccc
+        cursor: not-allowed
 
 .api-key-warning
   padding: 12px
@@ -169,13 +223,6 @@
   &.disconnected
     background: #f44336
     color: white
-
-.button:hover
-  background: #005999
-
-.button:disabled
-  background: #ccc
-  cursor: not-allowed
 
 .loading
   display: inline-block
@@ -384,7 +431,177 @@
   font-style: italic
   text-align: center
 
-// Mobile: session list as drawer, toggle button to open
+// Dark theme (html.theme--dark)
+.theme--dark
+  .session-item-sidebar
+    border-color: rgba(255, 255, 255, 0.12)
+
+  .session-item-sidebar--active
+    border-color: #55b6e2
+    background-color: rgba(85, 182, 226, 0.12)
+
+  .agent-chat-session-preview
+    color: #9ca3af
+
+  .agent-chat-session-meta
+    color: #6b7280
+
+  .session-item
+    border-color: rgba(255, 255, 255, 0.12)
+
+    .icon-chevron-right
+      color: #6b7280
+
+  .chat-container
+    border: 1px solid rgba(255, 255, 255, 0.12)
+    background: #262729
+
+    .chat-input-container
+      border-top: 1px solid rgba(255, 255, 255, 0.12)
+      background: #1e1f21
+
+      textarea
+        background: #2a2b2d
+        color: #eee
+        border: 1px solid rgba(255, 255, 255, 0.15)
+
+        &::placeholder
+          color: #9ca3af
+
+      .send-button
+        &:hover:not(:disabled)
+          background: #3399d6
+
+        &:disabled
+          background: #555
+          color: #888
+
+  .chat-message.assistant
+    .message-status
+      color: #bdbdbd
+      background: #3a3b3d
+
+      &.message-status-streaming
+        color: #7dd3fc
+        background: rgba(56, 189, 248, 0.14)
+
+      &.message-status-pending_complete
+        color: #ffb74d
+        background: rgba(255, 152, 0, 0.18)
+
+    .message-bubble
+      background: #323334
+      color: #eee
+      border: 1px solid rgba(255, 255, 255, 0.1)
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35)
+
+  .chat-message.tool .message-bubble
+    background: #2a2b2d
+    border: 1px solid rgba(255, 255, 255, 0.12)
+
+  .chat-message.assistant .message-bubble
+    pre
+      background: #1e1f21
+      border: 1px solid rgba(255, 255, 255, 0.1)
+      color: #e5e5e5
+
+    code
+      background: #2a2b2d
+      color: #e5e5e5
+
+  .message-content
+    pre,
+    code
+      background: rgba(255, 255, 255, 0.08)
+
+  .mcp-status
+    background: #424242
+    color: #eee
+
+  .tool-call-bubble
+    background: #2a2b2d
+    border: 1px solid rgba(255, 255, 255, 0.12)
+    border-left: 4px solid #78909c
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4)
+
+  .tool-call-header
+    color: #b0bec5
+
+  .tool-call-item
+    background: #323334
+    border: 1px solid rgba(255, 255, 255, 0.1)
+
+    .tool-call-item-header code
+      background: #424242
+      color: #e0e0e0
+
+    code
+      background: #424242
+      color: #e0e0e0
+
+    pre
+      background: #1e1f21
+      border: 1px solid rgba(255, 255, 255, 0.1)
+      color: #e0e0e0
+
+  .tool-result-bubble
+    background: rgba(56, 189, 248, 0.12)
+    border: 1px solid rgba(56, 189, 248, 0.35)
+    border-left: 4px solid #55b6e2
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35)
+
+  .tool-header
+    color: #7dd3fc
+
+  .tool-content
+    background: #323334
+    border: 1px solid rgba(56, 189, 248, 0.35)
+    color: #eee
+
+  .mcp-server-item
+    border-color: rgba(255, 255, 255, 0.12)
+
+  .mcp-server-header
+    background: #2a2b2d
+
+    &:hover
+      background: #36383c
+
+  .mcp-server-tools
+    background: #1e1f21
+
+  .mcp-tool-item
+    border-color: rgba(255, 255, 255, 0.1)
+    background: #262729
+
+  .mcp-tool-name
+    color: #eee
+
+  .mcp-tool-description
+    color: #9ca3af
+
+  .mcp-tool-schema
+    summary
+      color: #9ca3af
+
+    pre
+      background: #2a2b2d
+
+  .mcp-tool-empty
+    color: #6b7280
+
+  .agent-chat-sidebar-column
+    +below(rupture.mobile-cutoff)
+      background: #323334
+      box-shadow: 2px 0 12px rgba(0, 0, 0, 0.45)
+
+  .loading
+    border: 2px solid #555
+    border-top-color: #55b6e2
+
+  .api-key-warning
+    background: #c62828
+    color: #fff
 .agent-chat-sidebar-toggle
   +above(rupture.mobile-cutoff)
     display: none
