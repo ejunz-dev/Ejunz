@@ -22,22 +22,6 @@
           {{ adoc['content']|markdown|safe }}
         </div>
 
-        <div class="section" style="margin-top: 20px;">
-          <div class="section__header">
-            <h2 class="section__title">{{ _('Agent Skills') }}</h2>
-          </div>
-          <div class="section__body">
-            <div class="typo">
-              <p class="help-text">
-                {{ _('Agent uses all Skills in this Domain. Skills are managed via Base.') }}
-                <a href="{{ url('skill_domain', { domainId: handler.args.domainId }) }}" target="_blank" style="margin-left: 10px;">
-                  {{ _('Manage Skills') }} →
-                </a>
-              </p>
-            </div>
-          </div>
-        </div>
-
         {% if adoc.memory %}
         <div class="section" style="margin-top: 20px;">
           <div class="section__header">
@@ -105,6 +89,35 @@
     </div>
     {% endif %}
 
+    <div class="section">
+      <div class="section__header">
+        <h2 class="section__title">{{ _('Agent Skills') }}</h2>
+      </div>
+      <div class="section__body">
+        <div class="typo">
+          {% if enabledSkillLibrariesForDisplay and enabledSkillLibrariesForDisplay|length > 0 %}
+          <ul class="supplementary dot list" style="font-size: 13px;">
+            {% for row in enabledSkillLibrariesForDisplay %}
+            <li>
+              <strong>{{ row.title | e }}</strong>
+              {% if row.bid %}<span class="supplementary"> ({{ row.bid }})</span>{% endif %}
+              <span class="supplementary"> #{{ row.docId }}</span>
+              — {{ _('branch') }} <code>{{ row.branch }}</code>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p class="help-text">{{ _('Skills are not enabled for this agent yet.') }}</p>
+          {% endif %}
+          {% if handler.user.own(adoc) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) %}
+          <a href="{{ url('agent_skills', domainId=domainId, aid=adoc.aid) }}" class="button secondary expanded" style="margin-top: 12px;">
+            <span class="icon icon-edit"></span> {{ _('Configure Agent Skills') }}
+          </a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
     {% if handler.user.own(adoc) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) %}
     <div class="section">
       <div class="section__header">
@@ -151,50 +164,7 @@
     </div>
     {% endif %}
 
-    {% if handler.user.own(adoc) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) %}
-    <div class="section">
-      <div class="section__header">
-        <h2 class="section__title">{{ _('Agent Skills') }}</h2>
-      </div>
-      <div class="section__body">
-        <p class="help-text" style="margin-bottom: 10px;">{{ _('After selecting a Skill branch, the Agent will load and use Skills under that branch.') }}</p>
-        <form method="post" class="form--inline" onsubmit="event.preventDefault(); updateSkillBranch('{{ domainId }}', '{{ adoc.aid }}', this.skillBranch.value); return false;">
-          <input type="hidden" name="operation" value="updateSkillBranch">
-          <label>
-            <select name="skillBranch" class="textbox" style="min-width: 120px;">
-              <option value="" {{ 'selected' if not adoc.skillBranch else '' }}>{{ _('Not enabled') }}</option>
-              <option value="main" {{ 'selected' if adoc.skillBranch == 'main' else '' }}>main</option>
-            </select>
-          </label>
-          <button type="submit" class="button primary" style="margin-left: 8px;">{{ _('Save') }}</button>
-        </form>
-        <p class="help-text" style="margin-top: 10px;">
-          <a href="{{ url('skill_editor_branch', domainId=domainId, branch=adoc.skillBranch or 'main') }}" target="_blank">{{ _('Manage Skills') }} →</a>
-        </p>
-      </div>
-    </div>
-    {% endif %}
-
     <script>
-    async function updateSkillBranch(domainId, aid, skillBranch) {
-      try {
-        const response = await fetch(`/d/${domainId}/agent/${aid}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ operation: 'updateSkillBranch', skillBranch: skillBranch || '' }),
-        });
-        const data = await response.json();
-        if (data.success) {
-          location.reload();
-        } else {
-          alert('{{ _("Failed to update Skill branch") }}');
-        }
-      } catch (error) {
-        console.error('Error:', error);
-        alert('{{ _("Failed to update Skill branch") }}');
-      }
-    }
-
     async function generateApiKey(domainId, aid) {
       try {
         const response = await fetch(`/d/${domainId}/agent/${aid}`, {

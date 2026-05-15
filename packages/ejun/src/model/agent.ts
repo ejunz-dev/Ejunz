@@ -12,9 +12,9 @@ import { Logger as AppLogger } from '../logger';
 import { randomstring } from '@ejunz/utils';
 import { Context } from '../context';
 import { FileUploadError, ProblemNotFoundError } from '../error';
-import type {
-    Document, User, AgentDoc
+import type { Document, User, AgentDoc
 } from '../interface';
+import type { SkillSourceResolution } from './skill';
 import { parseConfig } from '../lib/testdataConfig';
 import * as bus from '../service/bus';
 import {
@@ -42,7 +42,7 @@ export class AgentModel {
 
     static PROJECTION_DETAIL: Field[] = [
         ...AgentModel.PROJECTION_LIST,
-       'docId', 'aid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply', 'apiKey', 'memory', 'mcpToolIds', 'skillIds', 'skillBranch'
+       'docId', 'aid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply', 'apiKey', 'memory', 'mcpToolIds', 'skillIds', 'skillLibraryBindings'
     ];
 
     static PROJECTION_PUBLIC: Field[] = [
@@ -417,7 +417,16 @@ export class McpClient {
         }
     }
 
-    async callTool(name: string, args: any, domainId?: string, serverId?: number, token?: string, skillBranch?: string, toolType?: string): Promise<any> {
+    async callTool(
+        name: string,
+        args: any,
+        domainId?: string,
+        serverId?: number,
+        token?: string,
+        skillBranch?: string,
+        toolType?: string,
+        skillSourceByName?: Map<string, SkillSourceResolution>,
+    ): Promise<any> {
         try {
             ClientLogger.info('[tool] callTool: name=%s toolType=%s', name, toolType ?? 'undefined');
             const ctx = (global as any).app || (global as any).Ejunz;
@@ -472,27 +481,39 @@ export class McpClient {
                     if (!domainId) {
                         throw new Error('domainId is required for load_skill_instructions');
                     }
-                    if (!skillBranch || String(skillBranch).trim() === '') {
-                        return {
-                            success: false,
-                            skillName: args.skillName || args.skill_name,
-                            message: 'Skill 未启用：请在 Agent 设置中选择 Skill 分支后再使用。'
-                        };
-                    }
                     const { loadSkillInstructions } = require('./skill');
-                    const skillName = args.skillName || args.skill_name;
+                    const skillNameRaw = String(args.skillName || args.skill_name || '').trim();
                     const level = args.level !== undefined ? args.level : (args.maxLevel !== undefined ? args.maxLevel : 2);
-                    if (!skillName) {
+                    if (!skillNameRaw) {
                         throw new Error('skillName is required');
                     }
-                    ClientLogger.info('Loading skill instructions: skillName=%s, level=%d, domainId=%s, branch=%s', skillName, level, domainId, skillBranch);
-                    const instructions = await loadSkillInstructions(domainId, skillName, level, skillBranch);
+                    const res = skillSourceByName?.get(skillNameRaw);
+                    const effectiveBranch = (res?.branch && String(res.branch).trim())
+                        || (skillBranch && String(skillBranch).trim())
+                        || '';
+                    const restrictDocId = res?.docId;
+                    if (!effectiveBranch) {
+                        return {
+                            success: false,
+                            skillName: skillNameRaw,
+                            message: 'Skill 未启用：请在 Agent 设置中选择 Skill 分支后再使用。',
+                        };
+                    }
+                    ClientLogger.info(
+                        'Loading skill instructions: skillName=%s, level=%d, domainId=%s, branch=%s, docId=%s',
+                        skillNameRaw,
+                        level,
+                        domainId,
+                        effectiveBranch,
+                        restrictDocId ?? '',
+                    );
+                    const instructions = await loadSkillInstructions(domainId, skillNameRaw, level, effectiveBranch, restrictDocId);
                     return {
                         success: true,
-                        skillName,
+                        skillName: skillNameRaw,
                         level,
                         instructions,
-                        message: `Successfully loaded skill "${skillName}" to level ${level}`
+                        message: `Successfully loaded skill "${skillNameRaw}" to level ${level}`,
                     };
                 } catch (e) {
                     ClientLogger.error('Built-in skill loading tool call failed: %s', (e as Error).message);

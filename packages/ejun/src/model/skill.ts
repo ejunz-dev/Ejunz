@@ -3,7 +3,7 @@ import { ObjectId } from 'mongodb';
 import { _, Filter } from '../libs';
 import { Logger } from '../logger';
 import * as document from './document';
-import type { BaseEdge, BaseNode, SkillDoc, CardDoc } from '../interface';
+import type { BaseEdge, BaseNode, SkillDoc, CardDoc, BaseDoc } from '../interface';
 import { BaseModel, CardModel } from './base';
 
 export class SkillModel {
@@ -167,6 +167,24 @@ export class SkillModel {
     }
 }
 
+export type SkillLibraryBinding = { docId: number; branch: string };
+export type SkillSourceResolution = { branch: string; docId: number };
+
+/** Branch names available on a skill mind-map document (`main` + `branchData` keys + `currentBranch`). */
+export function listBranchNamesForSkillDoc(base: SkillDoc | BaseDoc | Record<string, unknown>): string[] {
+    const s = new Set<string>(['main']);
+    const raw = (base as any).branchData;
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+        for (const k of Object.keys(raw)) {
+            const b = String(k || '').trim();
+            if (b) s.add(b);
+        }
+    }
+    const cb = (base as any).currentBranch;
+    if (typeof cb === 'string' && cb.trim()) s.add(cb.trim());
+    return [...s];
+}
+
 export async function resolveSkillDocByIdOrBid(domainId: string, docIdOrBid: string): Promise<SkillDoc | null> {
     const key = String(docIdOrBid || '').trim();
     if (!key) return null;
@@ -319,6 +337,73 @@ async function getSkillsMetadataList(domainId: string, branch: string): Promise<
     return aggregated;
 }
 
+/** Returns ordered unique skill names + map name → library source (branch + docId). */
+export async function getSkillNamesAndResolutionMap(
+    domainId: string,
+    bindings: SkillLibraryBinding[],
+): Promise<{ names: string[]; map: Map<string, SkillSourceResolution> }> {
+    const map = new Map<string, SkillSourceResolution>();
+    const names: string[] = [];
+    for (const { docId, branch } of bindings) {
+        if (!Number.isFinite(docId) || docId <= 0) continue;
+        const b = await SkillModel.get(domainId, docId);
+        if (!b) continue;
+        const br = String(branch || 'main').trim() || 'main';
+        const part = await collectSkillMetadataFromOneBase(domainId, b as any, br);
+        for (const r of part) {
+            const nm = String(r.name || '').trim();
+            if (!nm) continue;
+            if (!map.has(nm)) names.push(nm);
+            map.set(nm, { branch: br, docId });
+        }
+    }
+    return { names, map };
+}
+
+async function getSkillsMetadataRowsForBindings(
+    domainId: string,
+    bindings: SkillLibraryBinding[],
+): Promise<{ name: string; description: string }[]> {
+    const out: { name: string; description: string }[] = [];
+    const seen = new Set<string>();
+    for (const { docId, branch } of bindings) {
+        if (!Number.isFinite(docId) || docId <= 0) continue;
+        const b = await SkillModel.get(domainId, docId);
+        if (!b) continue;
+        const br = String(branch || 'main').trim() || 'main';
+        const part = await collectSkillMetadataFromOneBase(domainId, b as any, br);
+        for (const r of part) {
+            const key = String(r.name || '').trim().toLowerCase();
+            if (!key || seen.has(key)) continue;
+            seen.add(key);
+            out.push({ name: r.name, description: r.description || '' });
+        }
+    }
+    return out;
+}
+
+function buildSkillsMetadataSystemBlock(skillMetadata: { name: string; description: string }[]): string {
+    if (skillMetadata.length === 0) return '';
+    const skillsList = skillMetadata.map((skill) => {
+        const desc = skill.description ? `: ${skill.description}` : '';
+        return `- **${skill.name}**${desc}`;
+    }).join('\n');
+    const exampleSkillName = skillMetadata[0]?.name || 'skill_name';
+    return `\n\n# Available Agent Skills\n\nThe following Agent Skills are available. Each skill has a hierarchical structure with modules and sub-modules. When you need to use a specific skill, you can request its detailed instructions. The skills will be loaded on-demand to save tokens.\n\n${skillsList}\n\n**Note**: To use a skill, simply mention its name or ask for help with a task that matches the skill's description. The full skill instructions (including all modules and sub-modules) will be provided when needed.\n\n**When the user only asks what tools/skills you have** (e.g. \"你有什么工具\", \"what tools do you have\"), **answer directly** from the tools list and the skill names in this message. Do NOT call \`load_skill_instructions\` or any other tool to answer that question; the list is already in the system message.\n\n**Tool calls in skills**: When skill instructions contain a JSON block with \`tool\` and \`arguments\` (e.g. {\"tool\": \"get_current_time\", \"arguments\": {\"timezone\": \"UTC\"}}), you MUST call that tool with the given arguments and use the result in your response. Do not refuse to call tools that are in your available tools list. **When arguments are already set** (e.g. \`"url": "https://example.com"\` in the loaded instructions), use them directly and call the tool immediately; do NOT ask the user again for the URL or other parameters. **When arguments have empty placeholders** (e.g. \`"url": ""\`, \`"maxLength": ""\`), you MUST fill them from the user's message or conversation context before calling the tool; do not call the tool with empty url or other required fields.\n\n**Built-in Tool Available**: You can use the \`load_skill_instructions\` tool to load instructions for any skill. **Call it only once per skill**: use \`skillName\` (the name from the list above) and omit \`level\` or use \`level=2\` to get full content (including tool name and arguments) in one response. Do NOT call it multiple times (e.g. first level=1 then level=2); one call is enough. Example: \`load_skill_instructions(skillName="${exampleSkillName}")\`\n\n**CRITICAL - Match user request**: When the user asks for a specific task (e.g. \"抓取网页\" / scrape webpage, \"查时间\" / get time), you MUST load the skill that matches that task (e.g. load \"查询网页\" for 抓取网页, \"查询时间\" for 查时间). Only call the tool from the loaded skill content if that tool fulfills the user's request. If the loaded content specifies a different tool (e.g. get_current_time when the user asked to scrape a webpage), do NOT call that tool; load the correct skill for the user's request instead.\n\n**CRITICAL - One load per skill**: Call \`load_skill_instructions\` only **once** for the skill that matches the user's request. One call returns the full content (including tool and arguments). Do NOT call it again for the same skill to get "more detail" or "specific content". After you receive the result, call the tool from that content directly; do NOT call \`load_skill_instructions\` again.\n\n**CRITICAL - Concise response & tool error codes**: Keep replies short (1–2 sentences). When a tool call returns an error, check the \`code\` field and reply as follows:\n- **TOOL_NOT_ADDED**: The tool exists in the catalog but was not added to this domain. Tell the user: \"该工具尚未添加，请到本域【工具市场】添加该工具后再试。\" or similar.\n- **TOOL_NOT_FOUND**: The tool does not exist in the market. Tell the user the tool is unavailable or the name is invalid.\n- **TIMEOUT** / **NETWORK_ERROR** / **SERVER_ERROR**: Suggest retry or check network/server.\n- Other codes: State what failed in one short sentence and one suggested action. Do not output long self-reflective or apologetic paragraphs.\n\n---\n\n`;
+}
+
+/** Load skills system prompt from selected libraries + branches (exclusive; use with skillLibraryBindings). */
+export async function loadSkillsMetadataForBindings(domainId: string, bindings: SkillLibraryBinding[]): Promise<string> {
+    if (!bindings.length) return '';
+    try {
+        const rows = await getSkillsMetadataRowsForBindings(domainId, bindings);
+        return buildSkillsMetadataSystemBlock(rows);
+    } catch (e) {
+        logger.warn('Failed to load Skills metadata (bindings):', e);
+        return '';
+    }
+}
+
 /** Returns all skill names for the branch (used when skillIds is empty to resolve tools by branch). */
 export async function getSkillNamesForBranch(domainId: string, branch: string): Promise<string[]> {
     if (!branch || String(branch).trim() === '') return [];
@@ -336,15 +421,8 @@ export async function loadSkillsMetadata(domainId: string, branch?: string): Pro
     if (!branch || String(branch).trim() === '') return '';
     try {
         const skillMetadata = await getSkillsMetadataList(domainId, branch);
-        if (skillMetadata.length === 0) {
-            return '';
-        }
-        const skillsList = skillMetadata.map(skill => {
-            const desc = skill.description ? `: ${skill.description}` : '';
-            return `- **${skill.name}**${desc}`;
-        }).join('\n');
-        const exampleSkillName = skillMetadata[0]?.name || 'skill_name';
-        return `\n\n# Available Agent Skills\n\nThe following Agent Skills are available. Each skill has a hierarchical structure with modules and sub-modules. When you need to use a specific skill, you can request its detailed instructions. The skills will be loaded on-demand to save tokens.\n\n${skillsList}\n\n**Note**: To use a skill, simply mention its name or ask for help with a task that matches the skill's description. The full skill instructions (including all modules and sub-modules) will be provided when needed.\n\n**When the user only asks what tools/skills you have** (e.g. \"你有什么工具\", \"what tools do you have\"), **answer directly** from the tools list and the skill names in this message. Do NOT call \`load_skill_instructions\` or any other tool to answer that question; the list is already in the system message.\n\n**Tool calls in skills**: When skill instructions contain a JSON block with \`tool\` and \`arguments\` (e.g. {\"tool\": \"get_current_time\", \"arguments\": {\"timezone\": \"UTC\"}}), you MUST call that tool with the given arguments and use the result in your response. Do not refuse to call tools that are in your available tools list. **When arguments are already set** (e.g. \`"url": "https://example.com"\` in the loaded instructions), use them directly and call the tool immediately; do NOT ask the user again for the URL or other parameters. **When arguments have empty placeholders** (e.g. \`"url": ""\`, \`"maxLength": ""\`), you MUST fill them from the user's message or conversation context before calling the tool; do not call the tool with empty url or other required fields.\n\n**Built-in Tool Available**: You can use the \`load_skill_instructions\` tool to load instructions for any skill. **Call it only once per skill**: use \`skillName\` (the name from the list above) and omit \`level\` or use \`level=2\` to get full content (including tool name and arguments) in one response. Do NOT call it multiple times (e.g. first level=1 then level=2); one call is enough. Example: \`load_skill_instructions(skillName="${exampleSkillName}")\`\n\n**CRITICAL - Match user request**: When the user asks for a specific task (e.g. \"抓取网页\" / scrape webpage, \"查时间\" / get time), you MUST load the skill that matches that task (e.g. load \"查询网页\" for 抓取网页, \"查询时间\" for 查时间). Only call the tool from the loaded skill content if that tool fulfills the user's request. If the loaded content specifies a different tool (e.g. get_current_time when the user asked to scrape a webpage), do NOT call that tool; load the correct skill for the user's request instead.\n\n**CRITICAL - One load per skill**: Call \`load_skill_instructions\` only **once** for the skill that matches the user's request. One call returns the full content (including tool and arguments). Do NOT call it again for the same skill to get "more detail" or "specific content". After you receive the result, call the tool from that content directly; do NOT call \`load_skill_instructions\` again.\n\n**CRITICAL - Concise response & tool error codes**: Keep replies short (1–2 sentences). When a tool call returns an error, check the \`code\` field and reply as follows:\n- **TOOL_NOT_ADDED**: The tool exists in the catalog but was not added to this domain. Tell the user: \"该工具尚未添加，请到本域【工具市场】添加该工具后再试。\" or similar.\n- **TOOL_NOT_FOUND**: The tool does not exist in the market. Tell the user the tool is unavailable or the name is invalid.\n- **TIMEOUT** / **NETWORK_ERROR** / **SERVER_ERROR**: Suggest retry or check network/server.\n- Other codes: State what failed in one short sentence and one suggested action. Do not output long self-reflective or apologetic paragraphs.\n\n---\n\n`;
+        const rows = skillMetadata.map((s) => ({ name: s.name, description: s.description || '' }));
+        return buildSkillsMetadataSystemBlock(rows);
     } catch (e) {
         logger.warn('Failed to load Skills metadata:', e);
         return '';
@@ -534,9 +612,21 @@ async function loadSkillInstructionsInBase(
 }
 
 /** Load skill instructions by name; maxLevel 1=overview, 2+=depth, -1=full. Returns null if branch is empty. */
-export async function loadSkillInstructions(domainId: string, skillName: string, maxLevel: number = -1, branch?: string): Promise<string | null> {
+export async function loadSkillInstructions(
+    domainId: string,
+    skillName: string,
+    maxLevel: number = -1,
+    branch?: string,
+    /** When set, only this TYPE_SKILL document is searched (agent library bindings). */
+    restrictDocId?: number,
+): Promise<string | null> {
     if (!branch || String(branch).trim() === '') return null;
     try {
+        if (restrictDocId != null && Number.isFinite(restrictDocId) && restrictDocId > 0) {
+            const skillsBase = await SkillModel.get(domainId, restrictDocId);
+            if (!skillsBase) return null;
+            return await loadSkillInstructionsInBase(domainId, skillsBase as any, skillName, maxLevel, branch);
+        }
         const skillsBaseList = await document.getMulti(domainId, document.TYPE_SKILL, {})
             .sort({ updateAt: -1 })
             .toArray();
@@ -679,14 +769,26 @@ function extractToolExamplesFromText(content: string): Array<{ tool: string; arg
 
 /**
  * Returns the set of tool names referenced in the given skills (by name).
- * branch 为空则返回空集合（不使用 Skill）。
+ * Optional `sourceByName` maps each skill name to branch + library docId (per-binding agents).
  */
-export async function getToolNamesFromSkills(domainId: string, skillNames: string[], branch?: string): Promise<Set<string>> {
+export async function getToolNamesFromSkills(
+    domainId: string,
+    skillNames: string[],
+    branch?: string,
+    sourceByName?: Map<string, SkillSourceResolution>,
+): Promise<Set<string>> {
     const names = new Set<string>();
-    if (!branch) return names;
+    const hasSource = sourceByName && sourceByName.size > 0;
+    if (!branch && !hasSource) return names;
     for (const skillName of skillNames || []) {
         try {
-            const content = await loadSkillInstructions(domainId, skillName.trim(), -1, branch);
+            const sn = skillName.trim();
+            if (!sn) continue;
+            const res = sourceByName?.get(sn);
+            const br = res?.branch ?? branch;
+            const docId = res?.docId;
+            if (!br) continue;
+            const content = await loadSkillInstructions(domainId, sn, -1, br, docId);
             if (!content) continue;
             for (const toolName of extractToolNamesFromContent(content)) {
                 names.add(toolName);
@@ -695,7 +797,7 @@ export async function getToolNamesFromSkills(domainId: string, skillNames: strin
             logger.debug('getToolNamesFromSkills: failed to load skill %s: %s', skillName, (e as Error).message);
         }
     }
-    if (branch) {
+    if (branch || hasSource) {
         try {
             const base = await BaseModel.getByDomain(domainId);
             if (base) names.add('load_base_instructions');
@@ -707,14 +809,26 @@ export async function getToolNamesFromSkills(domainId: string, skillNames: strin
 }
 
 /**
- * Returns tool name -> recommended arguments from assigned skills (first occurrence per tool). Returns empty map if branch is empty.
+ * Returns tool name -> recommended arguments from assigned skills (first occurrence per tool).
  */
-export async function getToolExamplesFromSkills(domainId: string, skillNames: string[], branch?: string): Promise<Map<string, Record<string, unknown>>> {
+export async function getToolExamplesFromSkills(
+    domainId: string,
+    skillNames: string[],
+    branch?: string,
+    sourceByName?: Map<string, SkillSourceResolution>,
+): Promise<Map<string, Record<string, unknown>>> {
     const map = new Map<string, Record<string, unknown>>();
-    if (!branch || !skillNames?.length) return map;
+    const hasSource = sourceByName && sourceByName.size > 0;
+    if ((!branch && !hasSource) || !skillNames?.length) return map;
     for (const skillName of skillNames) {
         try {
-            const content = await loadSkillInstructions(domainId, skillName.trim(), -1, branch);
+            const sn = skillName.trim();
+            if (!sn) continue;
+            const res = sourceByName?.get(sn);
+            const br = res?.branch ?? branch;
+            const docId = res?.docId;
+            if (!br) continue;
+            const content = await loadSkillInstructions(domainId, sn, -1, br, docId);
             if (!content) continue;
             const examples = extractToolExamplesFromText(content);
             for (const { tool, arguments: args } of examples) {

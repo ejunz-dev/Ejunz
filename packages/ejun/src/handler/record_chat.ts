@@ -639,8 +639,8 @@ export class SessionChatLiveHandler extends Handler {
             throw new Error('Domain not found');
         }
         
-        const { getAssignedTools } = require('./agent');
-        const tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds, adoc.skillIds, adoc.skillBranch);
+        const { getAssignedTools, normalizeAgentSkillBindings } = require('./agent');
+        const tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds, adoc.skillIds, normalizeAgentSkillBindings(adoc));
         
         const agentPrompt = adoc.content || '';
         let systemMessage = agentPrompt;
