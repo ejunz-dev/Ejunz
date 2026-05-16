@@ -1,9 +1,9 @@
 import type { SystemToolEntry } from './types';
 import { get_current_time } from './get_current_time';
 import { fetch_webpage } from './fetch_webpage';
-import { load_base_instructions } from './load_base_instructions';
+import { load_base } from './load_base';
 
-const TOOL_MODULES = [get_current_time, fetch_webpage, load_base_instructions];
+const TOOL_MODULES = [get_current_time, fetch_webpage, load_base];
 
 export type { SystemToolEntry } from './types';
 

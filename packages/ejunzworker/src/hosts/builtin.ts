@@ -697,6 +697,8 @@ export async function apply(ctx: EjunzContext) {
                                 toolType,
                                 skillSourceByName,
                                 coreSkillNames,
+                                (context as any)?.baseDocId,
+                                (context as any)?.baseBranch,
                             );
                             logger.info('[tool] worker: name=%s done success', toolName);
                             

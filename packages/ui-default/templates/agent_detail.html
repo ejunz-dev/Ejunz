@@ -119,6 +119,35 @@
       </div>
     </div>
 
+    <div class="section">
+      <div class="section__header">
+        <h2 class="section__title">{{ _('Agent Knowledge Base') }}</h2>
+      </div>
+      <div class="section__body">
+        <div class="typo">
+          {% if enabledBaseLibrariesForDisplay and enabledBaseLibrariesForDisplay|length > 0 %}
+          <ul class="supplementary dot list" style="font-size: 13px;">
+            {% for row in enabledBaseLibrariesForDisplay %}
+            <li>
+              <strong>{{ row.title | e }}</strong>
+              {% if row.bid %}<span class="supplementary"> ({{ row.bid }})</span>{% endif %}
+              <span class="supplementary"> #{{ row.docId }}</span>
+              — {{ _('branch') }} <code>{{ row.branch }}</code>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p class="help-text">{{ _('No knowledge base is mounted for this agent yet.') }}</p>
+          {% endif %}
+          {% if handler.user.own(adoc) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) %}
+          <a href="{{ url('agent_bases', domainId=domainId, aid=adoc.aid) }}" class="button secondary expanded" style="margin-top: 12px;">
+            <span class="icon icon-edit"></span> {{ _('Configure Agent Knowledge Base') }}
+          </a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
     {% if handler.user.own(adoc) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) %}
     <div class="section">
       <div class="section__header">

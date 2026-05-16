@@ -1,9 +1,34 @@
 import { ObjectId } from 'mongodb';
 import { Logger } from '../logger';
-import { BaseModel, CardModel } from '../model/base';
-import type { BaseNode, BaseEdge } from '../interface';
+import { CardModel } from '../model/base';
+import { hasActiveOutlineExplorerFilters } from '../model/base';
+import type { BaseNode, BaseEdge, CardDoc } from '../interface';
+import { fetchFilteredBaseOutline, outlineExplorerFiltersFromToolArgs } from './baseOutlineData';
 
 const logger = new Logger('baseLoader');
+
+/**
+ * Prefix for links returned to the agent. Relative paths resolve against the *browser* origin
+ * (e.g. qwen ask page), which yields wrong hosts — use system `server.url` when set.
+ */
+function getPublicOriginForBaseLinks(): string {
+    try {
+        const sys = (global as any).Ejunz?.model?.system;
+        const url = sys?.get?.('server.url');
+        if (typeof url === 'string' && url.length > 1 && url !== '/') {
+            return url.replace(/\/+$/, '');
+        }
+    } catch {
+        /* ignore */
+    }
+    return '';
+}
+
+function withOrigin(origin: string, path: string): string {
+    const p = path.startsWith('/') ? path : `/${path}`;
+    if (!origin) return p;
+    return `${origin.replace(/\/+$/, '')}${p}`;
+}
 
 export interface ParsedCardNodeUrl {
     url: string;
@@ -16,7 +41,14 @@ export interface ParsedCardNodeUrl {
 }
 
 /**
- * Parse a single card/node URL (e.g. http://localhost:8000/d/Bazi/base/branch/main?cardId=xxx).
+ * Canonical outline page path (matches route `base_outline_doc_branch`).
+ */
+function outlineDocBranchPath(domainId: string, baseDocId: number, branch: string): string {
+    return `/d/${encodeURIComponent(domainId)}/base/${baseDocId}/outline/branch/${encodeURIComponent(branch)}`;
+}
+
+/**
+ * Parse a single outline card/node URL: only .../base/:baseDocId/outline/branch/:branch?nodeId= / ?cardId= .
  */
 function parseCardNodeUrl(url: string): ParsedCardNodeUrl {
     const result: ParsedCardNodeUrl = { url: url.trim() };
@@ -49,18 +81,13 @@ function parseCardNodeUrl(url: string): ParsedCardNodeUrl {
         }
 
         const rest = segments.slice(baseIdx + 1);
-        const branchIdx = rest.indexOf('branch');
-        const nodeIdx = rest.indexOf('node');
+        if (rest.length < 4 || rest[1] !== 'outline' || rest[2] !== 'branch' || !rest[3]) {
+            result.parseError = 'path must be /d/:domainId/base/:baseDocId/outline/branch/:branch';
+            return result;
+        }
 
-        if (branchIdx !== -1 && rest[branchIdx + 1]) {
-            result.branch = rest[branchIdx + 1];
-        }
-        if (nodeIdx !== -1 && rest[nodeIdx + 1]) {
-            result.nodeId = result.nodeId ?? rest[nodeIdx + 1];
-        }
-        if (branchIdx > 0) {
-            result.docId = rest[0];
-        }
+        result.docId = rest[0];
+        result.branch = rest[3];
 
         return result;
     } catch (e) {
@@ -69,7 +96,6 @@ function parseCardNodeUrl(url: string): ParsedCardNodeUrl {
     }
 }
 
-/** Build node tree for multi-level base structure (same logic as model/skill skill loader). */
 function buildNodeTree(nodes: BaseNode[], edges: BaseEdge[]): Map<string, BaseNode[]> {
     const childrenMap = new Map<string, BaseNode[]>();
 
@@ -95,30 +121,32 @@ function buildNodeTree(nodes: BaseNode[], edges: BaseEdge[]): Map<string, BaseNo
     return childrenMap;
 }
 
-/** Build relative URL for a card (knowledge base outline). */
-function cardUrl(domainId: string, _baseDocId: ObjectId, branch: string, _nodeId: string, cardId: ObjectId): string {
-    return `/d/${domainId}/base/branch/${branch}?cardId=${cardId}`;
+function cardUrl(origin: string, domainId: string, baseDocId: number, branch: string, _nodeId: string, cardId: ObjectId): string {
+    return withOrigin(
+        origin,
+        `${outlineDocBranchPath(domainId, baseDocId, branch)}?cardId=${encodeURIComponent(String(cardId))}`,
+    );
 }
 
-/** Build relative URL for a node (knowledge base outline). */
-function nodeUrl(domainId: string, _baseDocId: ObjectId, branch: string, nodeId: string): string {
-    return `/d/${domainId}/base/branch/${branch}?nodeId=${nodeId}`;
+function nodeUrl(origin: string, domainId: string, baseDocId: number, branch: string, nodeId: string): string {
+    const q = new URLSearchParams({ nodeId });
+    return withOrigin(origin, `${outlineDocBranchPath(domainId, baseDocId, branch)}?${q.toString()}`);
 }
 
-/** Build relative URL for card lesson (e.g. /d/Bazi/learn/lesson?cardId=xxx). */
-function lessonCardUrl(domainId: string, cardId: ObjectId): string {
-    return `/d/${domainId}/learn/lesson?cardId=${cardId}`;
+function lessonCardUrl(origin: string, domainId: string, cardId: ObjectId): string {
+    const q = new URLSearchParams({ cardId: String(cardId) });
+    return withOrigin(origin, `/d/${encodeURIComponent(domainId)}/learn/lesson?${q.toString()}`);
 }
 
-/** Build relative URL for node lesson (e.g. /d/Bazi/learn/lesson?nodeId=xxx). */
-function lessonNodeUrl(domainId: string, nodeId: string): string {
-    return `/d/${domainId}/learn/lesson?nodeId=${nodeId}`;
+function lessonNodeUrl(origin: string, domainId: string, nodeId: string): string {
+    const q = new URLSearchParams({ nodeId });
+    return withOrigin(origin, `/d/${encodeURIComponent(domainId)}/learn/lesson?${q.toString()}`);
 }
 
-/** Load node tree by level: nodes only (no cards). Agent sees full node structure, then opens one node via urls to see its cards. */
 async function loadBaseNodeRecursive(
+    origin: string,
     domainId: string,
-    baseDocId: ObjectId,
+    baseDocId: number,
     branch: string,
     nodeId: string,
     nodes: BaseNode[],
@@ -135,8 +163,8 @@ async function loadBaseNodeRecursive(
 
     const indent = '  '.repeat(level);
     let content = '';
-    const nodeLink = nodeUrl(domainId, baseDocId, branch, nodeId);
-    const nodeLessonLink = lessonNodeUrl(domainId, nodeId);
+    const nodeLink = nodeUrl(origin, domainId, baseDocId, branch, nodeId);
+    const nodeLessonLink = lessonNodeUrl(origin, domainId, nodeId);
     const nodeTitle = node.text || 'Untitled';
 
     if (level === 0) {
@@ -152,8 +180,8 @@ async function loadBaseNodeRecursive(
                 content += `${indent}**Child nodes:**\n`;
                 for (const child of children) {
                     const childName = child.text || 'Untitled';
-                    const childLink = nodeUrl(domainId, baseDocId, branch, child.id);
-                    const childLessonLink = lessonNodeUrl(domainId, child.id);
+                    const childLink = nodeUrl(origin, domainId, baseDocId, branch, child.id);
+                    const childLessonLink = lessonNodeUrl(origin, domainId, child.id);
                     content += `${indent}- [${childName}](${childLink}) [Lesson](${childLessonLink})\n`;
                 }
                 content += '\n';
@@ -165,6 +193,7 @@ async function loadBaseNodeRecursive(
         const children = childrenMap.get(nodeId) || [];
         for (const child of children) {
             content += await loadBaseNodeRecursive(
+                origin,
                 domainId,
                 baseDocId,
                 branch,
@@ -180,38 +209,56 @@ async function loadBaseNodeRecursive(
     return content;
 }
 
+function cardIdsInMap(nodeCardsMap: Record<string, CardDoc[]>): Set<string> {
+    const s = new Set<string>();
+    for (const list of Object.values(nodeCardsMap)) {
+        for (const c of list) {
+            s.add(c.docId.toString());
+        }
+    }
+    return s;
+}
+
 /**
- * Load base instructions progressively by level.
- * Uses the domain's single base (non-skill). branch defaults to base.currentBranch or 'main'.
+ * Load base outline for the agent using the same filtering as the base data API (outline explorer).
  * maxLevel: 1=overview, 2+=depth, -1=full.
  */
 export async function loadBaseInstructions(
     domainId: string,
     maxLevel: number = -1,
-    branch?: string
+    branch?: string,
+    baseDocId?: number,
+    toolArgs?: Record<string, unknown>,
 ): Promise<string | null> {
     try {
-        const base = await BaseModel.getByDomain(domainId);
-        if (!base) return null;
+        const filters = outlineExplorerFiltersFromToolArgs(toolArgs);
+        const payload = await fetchFilteredBaseOutline(domainId, {
+            baseDocId,
+            branch,
+            filters,
+        });
+        if (!payload) return null;
 
-        const baseDocId = (base as any).docId || (base as any)._id;
-        const branchName = branch || (base as any).currentBranch || (base as any).branch || 'main';
-        const branchData = (base as any).branchData || {};
-        const data = branchData[branchName] || (branchName === 'main' ? { nodes: (base as any).nodes || [], edges: (base as any).edges || [] } : { nodes: [], edges: [] });
-        const nodes: BaseNode[] = data.nodes || [];
-        const edges: BaseEdge[] = data.edges || [];
-
-        if (nodes.length === 0) return null;
+        const { nodes, edges, base, currentBranch, outlineExplorerFilters } = payload;
+        if (nodes.length === 0) {
+            if (hasActiveOutlineExplorerFilters(filters)) {
+                return 'No nodes matched the outline filters (filterNode / filterCard / filterProblem). Try different keywords or omit filters.';
+            }
+            return null;
+        }
 
         const childrenMap = buildNodeTree(nodes, edges);
         const rootNodes = nodes.filter(n => (n.level === 0 || !n.parentId) && !edges.some(e => e.target === n.id));
         if (rootNodes.length === 0) return null;
 
         const rootNode = rootNodes[0];
+        const linkOrigin = getPublicOriginForBaseLinks();
+        const baseNumericId = Number((base as any).docId);
         const fullContent = await loadBaseNodeRecursive(
+            linkOrigin,
             domainId,
-            baseDocId,
-            branchName,
+            baseNumericId,
+            currentBranch,
             rootNode.id,
             nodes,
             childrenMap,
@@ -219,8 +266,12 @@ export async function loadBaseInstructions(
             maxLevel
         );
 
+        const filterLine = hasActiveOutlineExplorerFilters(outlineExplorerFilters)
+            ? `Applied outline filters (same as base UI): filterNode="${outlineExplorerFilters.filterNode}" filterCard="${outlineExplorerFilters.filterCard}" filterProblem="${outlineExplorerFilters.filterProblem}".\n\n`
+            : '';
+
         return fullContent
-            ? `Below is the full node structure only (no cards listed). Each line is a node with base link and Lesson link. Use this to let the agent know all nodes; to see cards under a node, call this tool again with urls containing that node's URL (one node per call).\n\n${fullContent}\n\n---\n\n`
+            ? `${filterLine}Below is the node structure (filtered like base/data). No card bodies here; call again with \`urls\` for one node/card link at a time.\n\n${fullContent}\n\n---\n\n`
             : null;
     } catch (e) {
         logger.warn('Failed to load base instructions:', e);
@@ -228,33 +279,35 @@ export async function loadBaseInstructions(
     }
 }
 
-/** Max length for instructions string to avoid agent overflow; truncate with note if over. */
 const INSTRUCTIONS_MAX_LENGTH = 12000;
 
 /**
- * Load base instructions for multiple card/node URLs.
- * - cardId URL: returns that card's full content (one card only).
- * - nodeId URL: returns only node name + card titles with links (no card body), to avoid huge output.
- * Total length is capped at INSTRUCTIONS_MAX_LENGTH; excess is truncated.
+ * Load one node or card by URL, respecting the same outline filters as base/data.
  */
 export async function loadBaseInstructionsByUrls(
     domainId: string,
     urls: string[],
-    branch?: string
+    branch?: string,
+    baseDocIdArg?: number,
+    toolArgs?: Record<string, unknown>,
 ): Promise<string | null> {
     if (!urls || urls.length === 0) return null;
     try {
-        const base = await BaseModel.getByDomain(domainId);
-        if (!base) return null;
+        const filters = outlineExplorerFiltersFromToolArgs(toolArgs);
+        const payload = await fetchFilteredBaseOutline(domainId, {
+            baseDocId: baseDocIdArg,
+            branch,
+            filters,
+        });
+        if (!payload) return null;
 
-        const baseDocId = (base as any).docId || (base as any)._id;
-        const branchName = branch || (base as any).currentBranch || (base as any).branch || 'main';
-        const branchData = (base as any).branchData || {};
-        const data = branchData[branchName] || (branchName === 'main' ? { nodes: (base as any).nodes || [], edges: (base as any).edges || [] } : { nodes: [], edges: [] });
-        const nodes: BaseNode[] = data.nodes || [];
+        const { nodes, base, currentBranch, outlineExplorerFilters, nodeCardsMap } = payload;
+        const linkOrigin = getPublicOriginForBaseLinks();
+        const baseNumericId = Number((base as any).docId);
+        const visibleCardIds = cardIdsInMap(nodeCardsMap);
+
         const seenCardIds = new Set<string>();
         const parts: string[] = [];
-
         const oneUrlOnly = urls.length > 1 ? [urls[0]] : urls;
         const multiUrlNote = urls.length > 1 ? '\n(Only the first URL was loaded. Pass one node or one card URL per call and call again for more to avoid hanging.)\n\n' : '';
 
@@ -268,25 +321,34 @@ export async function loadBaseInstructionsByUrls(
                 logger.debug('Skip URL from other domain: %s (expected %s)', parsed.domainId, domainId);
                 continue;
             }
+            if (Number(parsed.docId) !== baseNumericId) {
+                logger.debug('Skip URL for other base doc: %s (expected %s)', parsed.docId, baseNumericId);
+                continue;
+            }
 
             if (parsed.cardId) {
                 try {
                     const id = new ObjectId(parsed.cardId);
                     if (seenCardIds.has(id.toString())) continue;
-                    const card = await CardModel.get(domainId, id);
-                    if (card) {
-                        seenCardIds.add(id.toString());
-                        const title = card.title || 'Untitled';
-                        const body = (card.content || '').trim();
-                        const nodeId = (card as any).nodeId;
-                        const link = nodeId ? cardUrl(domainId, baseDocId, branchName, nodeId, card.docId) : '';
-                        const lessonLink = lessonCardUrl(domainId, card.docId);
-                        parts.push(
-                            link
-                                ? `\n\n## [${title}](${link}) [Lesson](${lessonLink})\n\n${body}\n\n`
-                                : `\n\n## [${title}](${lessonLink})\n\n${body}\n\n`
-                        );
+                    if (hasActiveOutlineExplorerFilters(outlineExplorerFilters) && !visibleCardIds.has(id.toString())) {
+                        parts.push(`\n\n(Card not in filtered outline; widen or clear filterCard/filterProblem/filterNode.)\n\n`);
+                        continue;
                     }
+                    const card = await CardModel.get(domainId, id);
+                    if (!card || Number((card as any).baseDocId) !== Number((base as any).docId)) {
+                        continue;
+                    }
+                    seenCardIds.add(id.toString());
+                    const title = card.title || 'Untitled';
+                    const body = (card.content || '').trim();
+                    const nodeId = (card as any).nodeId;
+                    const link = nodeId ? cardUrl(linkOrigin, domainId, baseNumericId, currentBranch, nodeId, card.docId) : '';
+                    const lessonLink = lessonCardUrl(linkOrigin, domainId, card.docId);
+                    parts.push(
+                        link
+                            ? `\n\n## [${title}](${link}) [Lesson](${lessonLink})\n\n${body}\n\n`
+                            : `\n\n## [${title}](${lessonLink})\n\n${body}\n\n`
+                    );
                 } catch (e) {
                     logger.debug('Failed to load card %s: %s', parsed.cardId, (e as Error).message);
                 }
@@ -295,13 +357,17 @@ export async function loadBaseInstructionsByUrls(
 
             if (parsed.nodeId) {
                 const node = nodes.find((n) => n.id === parsed.nodeId);
+                if (!node && hasActiveOutlineExplorerFilters(outlineExplorerFilters)) {
+                    parts.push('\n\n(Node not in filtered outline; widen or clear filters.)\n\n');
+                    continue;
+                }
                 const nodeTitle = node?.text || 'Node';
-                const nodeLink = nodeUrl(domainId, baseDocId, branchName, parsed.nodeId);
-                const nodeLessonLink = lessonNodeUrl(domainId, parsed.nodeId);
-                const nodeCards = await CardModel.getByNodeId(domainId, baseDocId, parsed.nodeId);
+                const nodeLink = nodeUrl(linkOrigin, domainId, baseNumericId, currentBranch, parsed.nodeId);
+                const nodeLessonLink = lessonNodeUrl(linkOrigin, domainId, parsed.nodeId);
+                const nodeCards = nodeCardsMap[parsed.nodeId] || [];
                 const cardLines = nodeCards.map((card) => {
                     const title = card.title || 'Untitled';
-                    const lessonLink = lessonCardUrl(domainId, card.docId);
+                    const lessonLink = lessonCardUrl(linkOrigin, domainId, card.docId);
                     return `- [${title}](${lessonLink})`;
                 });
                 parts.push(
@@ -313,7 +379,10 @@ export async function loadBaseInstructionsByUrls(
         }
 
         if (parts.length === 0) return null;
-        let out = `Below is the outline or single-card content for the given link. When giving course URLs, use only the URLs returned here. Never construct a card URL yourself: cardId must be the 24-char hex ID from the link, never the card title (e.g. never ?cardId=壬申). When replying, show links as Markdown hyperlinks.\n\n${multiUrlNote}` + parts.join('');
+        const filterLine = hasActiveOutlineExplorerFilters(outlineExplorerFilters)
+            ? `Outline filtering matches base/data API (filterNode / filterCard / filterProblem).\n\n`
+            : '';
+        let out = `Below is content for the given link (after filters). Use only URLs returned here. cardId must be the 24-char hex ID.\n\n${filterLine}${multiUrlNote}` + parts.join('');
         if (out.length > INSTRUCTIONS_MAX_LENGTH) {
             out = out.slice(0, INSTRUCTIONS_MAX_LENGTH) + `\n\n---\n(Content truncated, over ${INSTRUCTIONS_MAX_LENGTH} chars. Narrow urls or query by cardId alone.)`;
         }

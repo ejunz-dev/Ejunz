@@ -2749,8 +2749,8 @@ export class BaseDataHandler extends Handler {
         return this.domain.name;
     }
     
-    protected getCardFilter(_base: BaseDoc): Record<string, unknown> {
-        return {};
+    protected getCardFilter(base: BaseDoc): Record<string, unknown> {
+        return { baseDocId: base.docId };
     }
 
     @param('branch', Types.String, true)
