@@ -432,6 +432,8 @@ export class McpClient {
         baseDocId?: number,
         /** Branch for agent-mounted base; falls back to skillBranch when unset. */
         baseBranch?: string,
+        /** Chat/task user when tools need the current human (e.g. get_domain_user_progress). */
+        toolCallerUid?: number,
     ): Promise<any> {
         try {
             ClientLogger.info('[tool] callTool: name=%s toolType=%s', name, toolType ?? 'undefined');
@@ -569,6 +571,42 @@ export class McpClient {
                     };
                 } catch (e) {
                     ClientLogger.error('Built-in skill loading tool call failed: %s', (e as Error).message);
+                    throw e;
+                }
+            }
+
+            if (name === 'get_domain_user_progress') {
+                try {
+                    ClientLogger.info('Calling built-in domain user progress tool: %s', name);
+                    if (!domainId) {
+                        throw new Error('domainId is required for get_domain_user_progress');
+                    }
+                    if (toolCallerUid == null || !Number.isFinite(Number(toolCallerUid)) || Number(toolCallerUid) <= 0) {
+                        return {
+                            success: false,
+                            message:
+                                '无法识别当前对话用户。该工具仅汇报已登录用户在域内的学习/开发进度；'
+                                + '请通过站点内 Agent 聊天（非仅 API Key 的匿名调用）使用。',
+                        };
+                    }
+                    const mongoDb = db.db;
+                    if (!mongoDb) {
+                        throw new Error('Database not available');
+                    }
+                    const { getDomainUserProgressForTool } = require('../lib/domainUserProgress');
+                    const uid = Number(toolCallerUid);
+                    const payload = await getDomainUserProgressForTool(domainId, uid, mongoDb);
+                    if ((payload as { needJoinDomain?: boolean }).needJoinDomain) {
+                        return {
+                            success: false,
+                            needJoinDomain: true,
+                            domainId,
+                            message: '用户未加入该域或无权查看。',
+                        };
+                    }
+                    return { success: true, ...payload };
+                } catch (e) {
+                    ClientLogger.error('Built-in get_domain_user_progress failed: %s', (e as Error).message);
                     throw e;
                 }
             }
