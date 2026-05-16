@@ -66,7 +66,7 @@ export class SkillModel {
         const payload: Partial<SkillDoc> = {
             docType: document.TYPE_SKILL,
             domainId,
-            title: title || '未命名技能库',
+            title: title || 'Untitled skill library',
             content: content || '',
             owner,
             bid: bid ? String(bid).trim() : undefined,
@@ -167,7 +167,7 @@ export class SkillModel {
     }
 }
 
-export type SkillLibraryBinding = { docId: number; branch: string };
+export type SkillLibraryBinding = { docId: number; branch: string; core?: boolean };
 export type SkillSourceResolution = { branch: string; docId: number };
 
 /** Branch names available on a skill mind-map document (`main` + `branchData` keys + `currentBranch`). */
@@ -323,7 +323,7 @@ async function collectSkillMetadataFromOneBase(
     return skillMetadata;
 }
 
-/** 返回指定分支下所有技能的元数据列表（供 loadSkillsMetadata / getSkillNamesForBranch 复用）。branch 为空则返回 []。 */
+/** Metadata rows for all skills on a branch (shared by loadSkillsMetadata / getSkillNamesForBranch). Empty branch → []. */
 async function getSkillsMetadataList(domainId: string, branch: string): Promise<{ name: string; description: string; nodeId: string; cardId: string }[]> {
     if (!branch || String(branch).trim() === '') return [];
     const skillsBaseList = await document.getMulti(domainId, document.TYPE_SKILL, {})
@@ -389,7 +389,63 @@ function buildSkillsMetadataSystemBlock(skillMetadata: { name: string; descripti
         return `- **${skill.name}**${desc}`;
     }).join('\n');
     const exampleSkillName = skillMetadata[0]?.name || 'skill_name';
-    return `\n\n# Available Agent Skills\n\nThe following Agent Skills are available. Each skill has a hierarchical structure with modules and sub-modules. When you need to use a specific skill, you can request its detailed instructions. The skills will be loaded on-demand to save tokens.\n\n${skillsList}\n\n**Note**: To use a skill, simply mention its name or ask for help with a task that matches the skill's description. The full skill instructions (including all modules and sub-modules) will be provided when needed.\n\n**When the user only asks what tools/skills you have** (e.g. \"你有什么工具\", \"what tools do you have\"), **answer directly** from the tools list and the skill names in this message. Do NOT call \`load_skill_instructions\` or any other tool to answer that question; the list is already in the system message.\n\n**Tool calls in skills**: When skill instructions contain a JSON block with \`tool\` and \`arguments\` (e.g. {\"tool\": \"get_current_time\", \"arguments\": {\"timezone\": \"UTC\"}}), you MUST call that tool with the given arguments and use the result in your response. Do not refuse to call tools that are in your available tools list. **When arguments are already set** (e.g. \`"url": "https://example.com"\` in the loaded instructions), use them directly and call the tool immediately; do NOT ask the user again for the URL or other parameters. **When arguments have empty placeholders** (e.g. \`"url": ""\`, \`"maxLength": ""\`), you MUST fill them from the user's message or conversation context before calling the tool; do not call the tool with empty url or other required fields.\n\n**Built-in Tool Available**: You can use the \`load_skill_instructions\` tool to load instructions for any skill. **Call it only once per skill**: use \`skillName\` (the name from the list above) and omit \`level\` or use \`level=2\` to get full content (including tool name and arguments) in one response. Do NOT call it multiple times (e.g. first level=1 then level=2); one call is enough. Example: \`load_skill_instructions(skillName="${exampleSkillName}")\`\n\n**CRITICAL - Match user request**: When the user asks for a specific task (e.g. \"抓取网页\" / scrape webpage, \"查时间\" / get time), you MUST load the skill that matches that task (e.g. load \"查询网页\" for 抓取网页, \"查询时间\" for 查时间). Only call the tool from the loaded skill content if that tool fulfills the user's request. If the loaded content specifies a different tool (e.g. get_current_time when the user asked to scrape a webpage), do NOT call that tool; load the correct skill for the user's request instead.\n\n**CRITICAL - One load per skill**: Call \`load_skill_instructions\` only **once** for the skill that matches the user's request. One call returns the full content (including tool and arguments). Do NOT call it again for the same skill to get "more detail" or "specific content". After you receive the result, call the tool from that content directly; do NOT call \`load_skill_instructions\` again.\n\n**CRITICAL - Concise response & tool error codes**: Keep replies short (1–2 sentences). When a tool call returns an error, check the \`code\` field and reply as follows:\n- **TOOL_NOT_ADDED**: The tool exists in the catalog but was not added to this domain. Tell the user: \"该工具尚未添加，请到本域【工具市场】添加该工具后再试。\" or similar.\n- **TOOL_NOT_FOUND**: The tool does not exist in the market. Tell the user the tool is unavailable or the name is invalid.\n- **TIMEOUT** / **NETWORK_ERROR** / **SERVER_ERROR**: Suggest retry or check network/server.\n- Other codes: State what failed in one short sentence and one suggested action. Do not output long self-reflective or apologetic paragraphs.\n\n---\n\n`;
+    return `\n\n# Available Agent Skills\n\nThe following entries are **documentation modules** (titles from the skill library), not the same as callable MCP tools. Each can have a hierarchical structure. Request full text when needed via \`load_skill_instructions\`.\n\n${skillsList}\n\n**Callable tools vs. these names**: Only tools that appear in the separate **\"You can use the following tools\"** section of this system message are guaranteed invocable via function calls. **Do not** describe the items above as \"tools you can call\" or list them together with real tools when the user asks what **tools** you have — unless that tool name also appears in the tools section. If the user asks what **skills / documentation modules** exist, you may list the names above without calling \`load_skill_instructions\`.\n\n**Note**: When you need procedural detail for a task, load the matching module with \`load_skill_instructions\`; the loaded text may then contain explicit \`\"tool\"\`/\`arguments\` blocks for actual calls.\n\n**Tool calls in skills**: When skill instructions contain a JSON block with \`tool\` and \`arguments\` (e.g. {\"tool\": \"get_current_time\", \"arguments\": {\"timezone\": \"UTC\"}}), you MUST call that tool with the given arguments and use the result in your response. Do not refuse to call tools that are in your available tools list. **When arguments are already set** (e.g. \`"url": "https://example.com"\` in the loaded instructions), use them directly and call the tool immediately; do NOT ask the user again for the URL or other parameters. **When arguments have empty placeholders** (e.g. \`"url": ""\`, \`"maxLength": ""\`), you MUST fill them from the user's message or conversation context before calling the tool; do not call the tool with empty url or other required fields.\n\n**Built-in Tool Available**: You can use the \`load_skill_instructions\` tool to load instructions for any skill. **Call it only once per skill**: use \`skillName\` (the name from the list above) and omit \`level\` or use \`level=2\` to get full content (including tool name and arguments) in one response. Do NOT call it multiple times (e.g. first level=1 then level=2); one call is enough. Example: \`load_skill_instructions(skillName="${exampleSkillName}")\`\n\n**CRITICAL - Match user request**: When the user asks for a specific task (e.g. scrape a webpage, get the current time), you MUST load the skill whose title or description best matches that task. Only call the tool from the loaded skill content if that tool fulfills the user's request. If the loaded content specifies a different tool (e.g. get_current_time when the user asked to scrape a webpage), do NOT call that tool; load the correct skill for the user's request instead.\n\n**CRITICAL - One load per skill**: Call \`load_skill_instructions\` only **once** for the skill that matches the user's request. One call returns the full content (including tool and arguments). Do NOT call it again for the same skill to get "more detail" or "specific content". After you receive the result, call the tool from that content directly; do NOT call \`load_skill_instructions\` again.\n\n**CRITICAL - Concise response & tool error codes**: Keep replies short (1–2 sentences). When a tool call returns an error, check the \`code\` field and reply as follows:\n- **TOOL_NOT_ADDED**: The tool exists in the catalog but was not added to this domain. Tell the user to add it from the Tool Market for this domain and try again, or similar.\n- **TOOL_NOT_FOUND**: The tool does not exist in the market. Tell the user the tool is unavailable or the name is invalid.\n- **TIMEOUT** / **NETWORK_ERROR** / **SERVER_ERROR**: Suggest retry or check network/server.\n- Other codes: State what failed in one short sentence and one suggested action. Do not output long self-reflective or apologetic paragraphs.\n\n---\n\n`;
+}
+
+/** Full skill instructions for libraries marked core — passive context (not via load_skill_instructions). */
+export async function loadCoreSkillsFullContextBlock(domainId: string, coreBindings: SkillLibraryBinding[]): Promise<string> {
+    if (!coreBindings.length) return '';
+    const chunks: string[] = [];
+    for (const bind of coreBindings) {
+        const docId = bind.docId;
+        const branch = String(bind.branch || 'main').trim() || 'main';
+        const b = await SkillModel.get(domainId, docId);
+        if (!b) continue;
+        const metaRows = await collectSkillMetadataFromOneBase(domainId, b as any, branch);
+        for (const r of metaRows) {
+            const nm = String(r.name || '').trim();
+            if (!nm) continue;
+            const full = await loadSkillInstructions(domainId, nm, -1, branch, docId);
+            if (full && full.trim()) {
+                chunks.push(`## ${nm}\n\n${full.trim()}`);
+            }
+        }
+    }
+    if (!chunks.length) return '';
+    return `\n\n# Core Agent Skills (always in context)\n\nThe sections below are **full skill documentation** embedded in context. This is not the same as your **callable tools** list (see the separate tools section, if any). Do not claim you can invoke an MCP function by name unless that name appears in your available tools list *and* your instructions justify it. **Do not** call \`load_skill_instructions\` for these modules; use this text directly.\n\n${chunks.join('\n\n---\n\n')}\n\n---\n\n`;
+}
+
+/**
+ * Non-core library skill **names** (metadata titles only) — always injected into system prompt next to core content.
+ * Full instructions are loaded on demand via `load_skill_instructions`.
+ */
+export async function loadNonCoreSkillNamesContextBlock(
+    domainId: string,
+    optionalBindings: SkillLibraryBinding[],
+): Promise<string> {
+    if (!optionalBindings.length) return '';
+    try {
+        const rows = await getSkillsMetadataRowsForBindings(domainId, optionalBindings);
+        if (!rows.length) return '';
+        const list = rows
+            .map((r) => {
+                const nm = String(r.name || '').trim();
+                return nm ? `- **${nm}**` : '';
+            })
+            .filter(Boolean)
+            .join('\n');
+        if (!list) return '';
+        return (
+            `\n\n# Non-core Agent Skills (names in context)\n\n`
+            + `These **names** identify skills from non-core libraries. They stay in this system message so you know what can be loaded; `
+            + `**full instructions are not here** — call \`load_skill_instructions\` with the exact \`skillName\` when the user’s task needs that module. `
+            + `**(Core Agent Skills)** above, if present, are fully loaded already — never use \`load_skill_instructions\` for those names.\n\n`
+            + `${list}\n\n---\n\n`
+        );
+    } catch (e) {
+        logger.warn('loadNonCoreSkillNamesContextBlock failed:', e);
+        return '';
+    }
 }
 
 /** Load skills system prompt from selected libraries + branches (exclusive; use with skillLibraryBindings). */
@@ -795,14 +851,6 @@ export async function getToolNamesFromSkills(
             }
         } catch (e) {
             logger.debug('getToolNamesFromSkills: failed to load skill %s: %s', skillName, (e as Error).message);
-        }
-    }
-    if (branch || hasSource) {
-        try {
-            const base = await BaseModel.getByDomain(domainId);
-            if (base) names.add('load_base_instructions');
-        } catch (e) {
-            logger.debug('getToolNamesFromSkills: failed to check base for load_base_instructions: %s', (e as Error).message);
         }
     }
     return names;

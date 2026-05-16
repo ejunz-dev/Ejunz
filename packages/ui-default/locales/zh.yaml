@@ -45,6 +45,13 @@ __langname: 简体中文
 'Agents can use skills from selected skill libraries and branches (configure in the sidebar if you can edit this agent).': Agent 可使用来自所选技能库及其分支的 Skills（若有编辑权限，请在侧栏配置）。
 'Configure Agent Skills': 配置 Agent Skills
 'Configure skill libraries and branches on the Agent Skills page.': 请在「Agent Skills」专用页面中配置技能库及分支。
+'Select skill libraries and a branch for each. Mark at least one as core: core libraries are fully injected into context; non-core libraries load on demand via tools.': 为每个技能库勾选启用并选择分支。至少将一个库标为「核心」：核心库的全文会写入 Agent 系统提示（被动注入）；非核心库仍通过工具按需加载。
+'Core library': 核心库
+'Core': 核心
+'Core library skills are always fully included in the agent system prompt.': 标记为核心的技能库会将其技能全文写入系统提示，无需再调用 load_skill_instructions。
+'At least one enabled library must be marked as core.': 已启用的技能库中，至少须将一个标记为核心库。
+'At least one skill library must be marked as core.': 至少须将一个技能库标记为核心库。
+'Back to Agent': 返回 Agent
 'Only skill libraries enabled below are active for this agent.': 下方列出的技能库为此 Agent 当前启用的技能来源。
 'Only skill libraries listed here are active for this agent.': 此处列出的技能库为此 Agent 当前启用的技能来源。
 'Agent': 智能体

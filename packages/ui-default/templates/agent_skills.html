@@ -8,7 +8,7 @@
       </div>
       <div class="section__body">
         <p class="help-text" style="margin-bottom: 12px;">
-          {{ _('Select skill libraries and a branch for each. Only checked libraries are active.') }}
+          {{ _('Select skill libraries and a branch for each. Mark at least one as core: core libraries are fully injected into context; non-core libraries load on demand via tools.') }}
           <a href="{{ url('agent_detail', domainId=domainId, aid=adoc.aid) }}" class="supplementary" style="margin-left: 12px;">← {{ _('Back to Agent') }}</a>
         </p>
         <form id="agent-skill-bindings-form" class="form">
@@ -17,6 +17,7 @@
             <thead>
               <tr>
                 <th style="width:36px;"></th>
+                <th style="width:44px; text-align:center;" title="{{ _('Core library skills are always fully included in the agent system prompt.') }}">{{ _('Core') }}</th>
                 <th>{{ _('Skill library') }}</th>
                 <th style="width:140px;">{{ _('Branch') }}</th>
               </tr>
@@ -25,10 +26,16 @@
               {% for lib in skillLibrariesForUi %}
               {% set lid = lib.docId | string %}
               {% set bound_branch = skillBindingsByDocId[lid] if skillBindingsByDocId and skillBindingsByDocId[lid] else '' %}
+              {% set is_core = skillCoreByDocId[lid] if skillCoreByDocId and skillCoreByDocId[lid] else false %}
               <tr data-doc-id="{{ lib.docId }}">
                 <td>
                   <input type="checkbox" class="agent-skill-lib-checkbox" value="{{ lib.docId }}"
                     {% if bound_branch %}checked{% endif %} />
+                </td>
+                <td style="text-align:center;">
+                  <input type="checkbox" class="agent-skill-lib-core" title="{{ _('Core library') }}"
+                    {% if is_core %}checked{% endif %}
+                    {% if not bound_branch %}disabled{% endif %} />
                 </td>
                 <td>
                   <strong>{{ lib.title | e }}</strong>
@@ -72,8 +79,13 @@
     const tr = checkbox.closest('tr');
     if (!tr) return;
     const sel = tr.querySelector('.agent-skill-lib-branch');
+    const coreCb = tr.querySelector('.agent-skill-lib-core');
     if (!sel) return;
     sel.disabled = !checkbox.checked;
+    if (coreCb) {
+      coreCb.disabled = !checkbox.checked;
+      if (!checkbox.checked) coreCb.checked = false;
+    }
   }
 
   form.querySelectorAll('.agent-skill-lib-checkbox').forEach((cb) => {
@@ -85,14 +97,24 @@
   if (!saveBtn) return;
   saveBtn.addEventListener('click', async () => {
     const skillLibraryBindings = [];
+    let anyEnabled = false;
+    let anyCore = false;
     form.querySelectorAll('tr[data-doc-id]').forEach((tr) => {
       const cb = tr.querySelector('.agent-skill-lib-checkbox');
       const sel = tr.querySelector('.agent-skill-lib-branch');
+      const coreCb = tr.querySelector('.agent-skill-lib-core');
       if (!cb || !sel || !cb.checked) return;
+      anyEnabled = true;
       const docId = Number(tr.getAttribute('data-doc-id'));
       if (!Number.isFinite(docId) || docId <= 0) return;
-      skillLibraryBindings.push({ docId, branch: (sel.value || 'main').trim() || 'main' });
+      const core = !!(coreCb && coreCb.checked);
+      if (core) anyCore = true;
+      skillLibraryBindings.push({ docId, branch: (sel.value || 'main').trim() || 'main', core });
     });
+    if (anyEnabled && !anyCore) {
+      alert('{{ _("At least one enabled library must be marked as core.") }}');
+      return;
+    }
     try {
       const response = await fetch(`/d/${domainId}/agent/${aid}/skills`, {
         method: 'POST',
@@ -100,10 +122,10 @@
         body: JSON.stringify({ operation: 'updateSkillLibraryBindings', skillLibraryBindings }),
       });
       const data = await response.json();
-      if (data.success) {
+      if (response.ok && data.success) {
         window.location.href = '{{ url("agent_detail", domainId=domainId, aid=adoc.aid) }}';
       } else {
-        alert('{{ _("Failed to save skill selection") }}');
+        alert(data.error || data.message || '{{ _("Failed to save skill selection") }}');
       }
     } catch (error) {
       console.error('Error:', error);

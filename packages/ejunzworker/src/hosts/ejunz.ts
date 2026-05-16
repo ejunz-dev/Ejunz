@@ -62,7 +62,7 @@ export default class Ejunz implements Session {
     }
 
     async consumeToolCall(queue: PQueue) {
-        log.info(`[${this.config.host}] 开始从数据库轮询工具调用任务`);
+        log.info(`[${this.config.host}] Polling tool-call tasks from database`);
         
         try {
             const { TaskModel } = require('ejun');
@@ -77,7 +77,7 @@ export default class Ejunz implements Session {
             
             const handleTask = async (t: any) => {
                 const taskId = t._id?.toString() || t._id;
-                log.info(`[${this.config.host}] 处理工具调用任务: ${t.toolName} (${taskId})`);
+                log.info(`[${this.config.host}] Tool-call task: ${t.toolName} (${taskId})`);
                 
                 const sendNext = async (data: any) => {
                     log.debug(`[${this.config.host}] Tool call progress: ${t.toolName}`, data);
@@ -91,7 +91,7 @@ export default class Ejunz implements Session {
                             bus.broadcast('toolcall/complete', t._id, data?.result || data?.error || data);
                         }
                     } catch (e) {
-                        log.debug(`[${this.config.host}] 无法访问事件总线，忽略`);
+                        log.debug(`[${this.config.host}] Event bus unavailable, skipping broadcast`);
                     }
                 };
                 
@@ -100,12 +100,12 @@ export default class Ejunz implements Session {
             
             const consumer = TaskModel.consume(query, handleTask, true, concurrency);
             
-            log.info(`[${this.config.host}] 工具调用任务消费者已启动 (并发数: ${concurrency})`);
+            log.info(`[${this.config.host}] Tool-call consumer started (concurrency: ${concurrency})`);
             
             (this as any).toolCallConsumer = consumer;
         } catch (error) {
-            log.error(`[${this.config.host}] 无法从数据库轮询任务，错误:`, error);
-            log.warn(`[${this.config.host}] 如果 worker 无法访问主服务器数据库，请确保配置了数据库连接`);
+            log.error(`[${this.config.host}] Failed to poll tasks from database:`, error);
+            log.warn(`[${this.config.host}] If the worker cannot reach the app database, check DB connection settings`);
             throw error;
         }
     }

@@ -24,7 +24,8 @@ import { PassThrough } from 'stream';
 import EdgeModel from '../model/edge';
 import ToolModel from '../model/tool';
 import {
-    loadSkillsMetadataForBindings,
+    loadCoreSkillsFullContextBlock,
+    loadNonCoreSkillNamesContextBlock,
     loadSkillInstructions,
     loadSkillsInstructions,
     getToolNamesFromSkills,
@@ -47,15 +48,26 @@ const AgentLogger = new Logger('agent');
 export function normalizeAgentSkillBindings(adoc: AgentDoc): SkillLibraryBinding[] | undefined {
     const raw = (adoc as any).skillLibraryBindings;
     if (!Array.isArray(raw) || raw.length === 0) return undefined;
-    const byDoc = new Map<number, string>();
+    const byDoc = new Map<number, { branch: string; core: boolean }>();
     for (const x of raw) {
         const docId = Number((x as any).docId);
         if (!Number.isFinite(docId) || docId <= 0) continue;
         const branch = String((x as any).branch ?? 'main').trim() || 'main';
-        byDoc.set(docId, branch);
+        const core = !!(x as any).core;
+        const prev = byDoc.get(docId);
+        if (prev) {
+            byDoc.set(docId, { branch, core: prev.core || core });
+        } else {
+            byDoc.set(docId, { branch, core });
+        }
     }
     if (byDoc.size === 0) return undefined;
-    return [...byDoc.entries()].map(([docId, branch]) => ({ docId, branch }));
+    const entries = [...byDoc.entries()].sort((a, b) => {
+        const ac = a[1].core ? 1 : 0;
+        const bc = b[1].core ? 1 : 0;
+        return bc - ac;
+    });
+    return entries.map(([docId, { branch, core }]) => (core ? { docId, branch, core: true } : { docId, branch }));
 }
 
 export function effectiveAgentSkillBranch(adoc: AgentDoc): string | undefined {
@@ -67,17 +79,104 @@ export function effectiveAgentSkillBranch(adoc: AgentDoc): string | undefined {
 
 async function loadAgentSkillsMetadataBlock(adoc: AgentDoc): Promise<string> {
     const bindings = normalizeAgentSkillBindings(adoc);
-    if (bindings?.length) {
-        return loadSkillsMetadataForBindings(adoc.domainId, bindings);
+    if (!bindings?.length) return '';
+    const core = bindings.filter((b) => b.core);
+    const optional = bindings.filter((b) => !b.core);
+    const parts: string[] = [];
+    if (core.length) {
+        const block = await loadCoreSkillsFullContextBlock(adoc.domainId, core);
+        if (block) parts.push(block);
     }
-    return '';
+    if (optional.length) {
+        const nameCtx = await loadNonCoreSkillNamesContextBlock(adoc.domainId, optional);
+        if (nameCtx) parts.push(nameCtx);
+    }
+    return parts.join('');
 }
 
 async function skillSourceMapForAgent(domainId: string, adoc: AgentDoc): Promise<Map<string, SkillSourceResolution> | undefined> {
-    const bindings = normalizeAgentSkillBindings(adoc);
+    const bindings = normalizeAgentSkillBindings(adoc)?.filter((b) => !b.core);
     if (!bindings?.length) return undefined;
     const { map } = await getSkillNamesAndResolutionMap(domainId, bindings);
     return map;
+}
+
+async function coreSkillNameSetForAgent(domainId: string, adoc: AgentDoc): Promise<Set<string>> {
+    const coreBindings = normalizeAgentSkillBindings(adoc)?.filter((b) => b.core);
+    if (!coreBindings?.length) return new Set();
+    const { names } = await getSkillNamesAndResolutionMap(domainId, coreBindings);
+    return new Set(names);
+}
+
+function agentHasOnDemandSkillLibraries(adoc: AgentDoc): boolean {
+    const b = normalizeAgentSkillBindings(adoc);
+    return !!(b && b.some((x) => !x.core));
+}
+
+function skillSourceMapToPlain(map: Map<string, SkillSourceResolution>): Record<string, SkillSourceResolution> {
+    return Object.fromEntries(map.entries());
+}
+
+const LOAD_SKILL_INSTRUCTIONS_TOOL_DEF: {
+    name: string;
+    description: string;
+    inputSchema: Record<string, unknown>;
+    token: string;
+    edgeId: null;
+} = {
+    name: 'load_skill_instructions',
+    description:
+        'Load detailed instructions for a specific skill from a non-core library. Parameters: skillName (required, string); '
+        + 'level (optional, number) — omit or use 2 for full content. Call at most once per skill per user request. '
+        + 'Core-library skills are already in the system message — do not use this tool for them. '
+        + 'You have no other tools in this session’s function list until you load a skill; any additional tool names and JSON call examples appear only inside loaded skill text — follow those when executing.',
+    inputSchema: {
+        type: 'object',
+        properties: {
+            skillName: {
+                type: 'string',
+                description: 'The name of the skill to load',
+            },
+            level: {
+                type: 'number',
+                description: 'The maximum level to load (1 for skill overview, 2+ for specific depth, omit for full content).',
+                minimum: 1,
+            },
+        },
+        required: ['skillName'],
+    },
+    token: '',
+    edgeId: null,
+};
+
+/**
+ * Functions exposed to the model API: if non-core skill libraries exist, only `load_skill_instructions`;
+ * otherwise the agent's assigned and domain-market tools (same as `processAgentChatInternal` paths).
+ */
+function toolsForModelApi(adoc: AgentDoc, executionTools: any[]): any[] {
+    if (agentHasOnDemandSkillLibraries(adoc)) {
+        return [{ ...LOAD_SKILL_INSTRUCTIONS_TOOL_DEF }];
+    }
+    return executionTools;
+}
+
+/** Emoji ban + mirror the user's language for all natural-language output (tool JSON schemas unchanged). */
+export function appendAgentUniversalAssistantRules(systemMessage: string): string {
+    const emojiRule = '\n\nNote: Do not use any emoji in your responses.';
+    const langRule =
+        '\n\n**Response language**: Use the same language as the user\'s latest message for every user-visible reply '
+        + '(including narration before and after tool calls). '
+        + 'If recent user messages in this thread are clearly in one language, stay in that language. '
+        + 'If the user explicitly asks for a specific language, follow that. '
+        + 'Do not default to English when the user writes in Chinese, Japanese, or other non-English languages.';
+    let out = systemMessage || '';
+    if (!out.includes('do not use emoji')) {
+        out += emojiRule;
+    }
+    if (!out.includes('**Response language**')) {
+        out += langRule;
+    }
+    return out.trimStart();
 }
 
 function escapeRegExp(s: string) {
@@ -95,8 +194,14 @@ async function callToolWithFallback(
     uid?: number,
     taskRecordId?: ObjectId,
     useWorker: boolean = true,
+    mcpOpts?: {
+        skillBranch?: string;
+        skillSourceByName?: Map<string, SkillSourceResolution>;
+        coreSkillNames?: Set<string>;
+    },
 ): Promise<any> {
-    if (useWorker) {
+    const preferDirectMcp = toolName === 'load_skill_instructions' || toolName === 'load_base_instructions';
+    if (useWorker && !preferDirectMcp) {
         try {
             const ctx = (global as any).app || (global as any).Ejunz;
             if (ctx) {
@@ -106,9 +211,19 @@ async function callToolWithFallback(
             AgentLogger.warn(`Worker tool call failed, falling back to direct call: ${toolName}`, e);
         }
     }
-    // 回退到直接调用
+    // Fallback: direct MCP call
     const mcpClient = new McpClient();
-    return await mcpClient.callTool(toolName, args, domainId);
+    return await mcpClient.callTool(
+        toolName,
+        args,
+        domainId,
+        undefined,
+        undefined,
+        mcpOpts?.skillBranch,
+        undefined,
+        mcpOpts?.skillSourceByName,
+        mcpOpts?.coreSkillNames,
+    );
 }
 
 /**
@@ -168,7 +283,7 @@ async function updateAgentMemory(
         const userGuidance: Array<{ question?: string; guidance: string }> = [];
         
         const guidanceKeywords = detectedLanguage === 'zh' 
-            ? /(需要|应该|必须|记得|下次|不要|避免|规则|方法|方式|要|不要|禁止|应该要|需要要)/
+            ? /(need|should|must|remember|next time|don't|avoid|rules?|methods?|ways?|forbidden|required)/i
             : /(need|should|must|remember|next time|don't|avoid|rule|method|way|prefer|preference|require|when|if.*then)/i;
         
         for (let i = 0; i < recentHistory.length; i++) {
@@ -365,7 +480,7 @@ export interface AgentChatEventCallbacks {
     onToolResult?: (tool: string, result: any) => void;
     onDone?: (message: string, history: string) => void;
     onError?: (error: string) => void;
-    taskRecordId?: ObjectId; // 可选的 task record ID，用于跟踪任务
+    taskRecordId?: ObjectId; // Optional task record ID for task tracking
 }
 
 export async function processAgentChatInternal(
@@ -378,13 +493,13 @@ export async function processAgentChatInternal(
     let toolCallCount = 0;
     let accumulatedContent = '';
     
-    // 注意：所有请求现在都必须通过worker处理，processAgentChatInternal 不应该更新record
-    // 这个函数现在只用于Client Handler的特殊情况（需要立即流式响应），但即使在这种情况下也不应该更新record
-    // Worker 会负责所有record的更新
+    // All requests go through the worker; processAgentChatInternal must not update records
+    // Used only for Client Handler streaming edge cases; still must not update records
+    // Worker owns all record updates
     
     try {
-        // 不再更新record，所有record更新都由worker处理
-        // 如果taskRecordId存在，说明这是Client Handler的特殊情况，但即使如此也不应该更新record
+        // Do not update records here; worker handles all record updates
+        // taskRecordId may be set for Client Handler; still do not update records here
         if (taskRecordId) {
             AgentLogger.info('processAgentChatInternal: taskRecordId provided, but record updates are handled by worker', {
                 recordId: taskRecordId.toString(),
@@ -432,6 +547,9 @@ export async function processAgentChatInternal(
                 });
                 const loadedTools = await getAssignedTools(adoc.domainId, adoc.mcpToolIds, adoc.repoIds, adoc.skillIds, normalizeAgentSkillBindings(adoc));
                 tools = loadedTools;
+                if (agentHasOnDemandSkillLibraries(adoc)) {
+                    tools = [...tools, { ...LOAD_SKILL_INSTRUCTIONS_TOOL_DEF }];
+                }
                 toolsLoaded = true;
                 AgentLogger.info('processAgentChatInternal: Got tools (async)', { 
                     toolCount: tools.length, 
@@ -451,7 +569,7 @@ export async function processAgentChatInternal(
             }
         })();
         
-        // 加载 Agent Skills 元数据（渐进式披露）；未配置技能库绑定时不加载
+        // Load Agent Skills metadata (progressive disclosure); skip if no skill library bindings
         let skillsInstructions = '';
         try {
             skillsInstructions = await loadAgentSkillsMetadataBlock(adoc);
@@ -459,6 +577,8 @@ export async function processAgentChatInternal(
             AgentLogger.warn('Failed to load Agent Skills metadata:', e);
         }
         
+        const skillSourceByName = await skillSourceMapForAgent(adoc.domainId, adoc);
+        const coreSkillNames = await coreSkillNameSetForAgent(adoc.domainId, adoc);
         const mcpClient = new McpClient();
 
         const agentPrompt = adoc.content || '';
@@ -477,15 +597,10 @@ export async function processAgentChatInternal(
         };
         if (adoc.memory) {
             const truncatedMemory = truncateMemory(adoc.memory);
-            systemMessage += `\n\n---\n【Work Rules Memory - Supplementary Guidelines】\n${truncatedMemory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
+            systemMessage += `\n\n---\n[Work Rules Memory - Supplementary Guidelines]\n${truncatedMemory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
         }
 
-        // Prohibit using emojis
-        if (systemMessage && !systemMessage.includes('do not use emoji')) {
-            systemMessage += '\n\nNote: Do not use any emoji in your responses.';
-        } else if (!systemMessage) {
-            systemMessage = 'Note: Do not use any emoji in your responses.';
-        }
+        systemMessage = appendAgentUniversalAssistantRules(systemMessage);
 
         // Don't wait for tools - start streaming immediately with "naked" reply
         // Tools will be loaded in background and available for tool calls later
@@ -519,7 +634,7 @@ export async function processAgentChatInternal(
                 }
                 finalMessages.push(msg);
                 if (finalMessages.length > maxMessages + (systemMsg ? 1 : 0)) {
-                    // 如果超过最大消息数，移除最旧的消息（保留系统消息）
+                    // If over message cap, drop oldest non-system messages
                     if (systemMsg && finalMessages.length > maxMessages + 1) {
                         finalMessages.splice(1, 1);
                     } else if (!systemMsg && finalMessages.length > maxMessages) {
@@ -528,7 +643,7 @@ export async function processAgentChatInternal(
                 }
             }
             
-            // 反转回正确的顺序（系统消息在前，然后是其他消息）
+            // Restore order: system first, then chronological
             if (systemMsg) {
                 return [systemMsg, ...finalMessages.slice(1).reverse()];
             } else {
@@ -536,8 +651,8 @@ export async function processAgentChatInternal(
             }
         };
         
-        // 限制历史消息长度，避免请求体过大
-        // 保留最近的 20 条消息，或者总字符数不超过 8000
+        // Cap history size to limit request body
+        // Keep last 20 messages or ≤8000 chars of history
         let limitedHistory = [...chatHistory];
         const maxHistoryMessages = 20;
         const maxHistoryChars = 8000;
@@ -595,8 +710,14 @@ export async function processAgentChatInternal(
             try {
                 const requestStartTime = Date.now();
                 
-                // 打印发送给 API 的请求内容（用于查看渐进式披露过程）
-                logApiRequest('processAgentChatInternal', adoc.domainId, adoc.aid, model, systemMessage, finalHistory, message);
+                // Log request payload (incl. skill bindings; first chunk may omit tools)
+                logApiRequest('processAgentChatInternal', adoc.domainId, adoc.aid, model, systemMessage, finalHistory, message, {
+                    messages: requestBody.messages,
+                    skillBranch: effectiveAgentSkillBranch(adoc),
+                    skillLibraryBindings: normalizeAgentSkillBindings(adoc),
+                    coreSkillNames: [...coreSkillNames],
+                    skillSourceSkillNames: skillSourceByName?.size ? [...skillSourceByName.keys()] : undefined,
+                });
                 
                 AgentLogger.info('Starting stream request (internal)', { 
                     apiUrl, 
@@ -768,9 +889,9 @@ export async function processAgentChatInternal(
 
                                                 AgentLogger.info(`Calling first tool: ${firstToolName} (internal - One-by-One Mode)`, parsedArgs);
 
-                                                // 不再更新record，所有record更新都由worker处理
+                                                // Do not update records here; worker handles all record updates
                                                 toolCallCount++;
-                                                // 记录工具调用，但不更新record（worker会处理）
+                                                // Log tool call only; worker updates records
                                                 AgentLogger.debug('processAgentChatInternal: tool call detected', {
                                                     toolName: firstToolName,
                                                     toolCallCount,
@@ -784,7 +905,20 @@ export async function processAgentChatInternal(
                                                         : parsedArgs;
                                                     const agentId = (adoc as any).aid || (adoc as any)._id?.toString();
                                                     const uid = (adoc as any).uid || (adoc as any).owner;
-                                                    toolResult = await callToolWithFallback(firstToolName, toolArgs, adoc.domainId, agentId, uid, callbacks.taskRecordId);
+                                                    toolResult = await callToolWithFallback(
+                                                        firstToolName,
+                                                        toolArgs,
+                                                        adoc.domainId,
+                                                        agentId,
+                                                        uid,
+                                                        callbacks.taskRecordId,
+                                                        true,
+                                                        {
+                                                            skillBranch: effectiveAgentSkillBranch(adoc),
+                                                            skillSourceByName,
+                                                            coreSkillNames,
+                                                        },
+                                                    );
                                                     AgentLogger.info(`Tool ${firstToolName} returned (internal)`, { resultLength: JSON.stringify(toolResult).length });
                                                 } catch (toolError: any) {
                                                     AgentLogger.error(`Tool ${firstToolName} failed (internal):`, toolError);
@@ -793,7 +927,7 @@ export async function processAgentChatInternal(
                                                         message: toolError.message || String(toolError),
                                                         code: toolError.code || 'UNKNOWN_ERROR',
                                                     };
-                                                    // 不再更新record，所有record更新都由worker处理
+                                                    // Do not update records here; worker handles all record updates
                                                     AgentLogger.error('processAgentChatInternal: tool call failed', {
                                                         toolName: firstToolName,
                                                         error: toolError.message || String(toolError),
@@ -803,7 +937,7 @@ export async function processAgentChatInternal(
 
                                                 callbacks.onToolResult?.(firstToolName, toolResult);
                                                 
-                                                // 不再更新record，所有record更新都由worker处理
+                                                // Do not update records here; worker handles all record updates
                                                 AgentLogger.debug('processAgentChatInternal: tool result received', {
                                                     toolName: firstToolName,
                                                     recordId: taskRecordId?.toString(),
@@ -816,7 +950,7 @@ export async function processAgentChatInternal(
                                                     {
                                                         role: 'assistant',
                                                         content: accumulatedContent,
-                                                        tool_calls: [firstToolCall] // 只包含已调用的工具
+                                                        tool_calls: [firstToolCall] // Only the tool call being executed
                                                     },
                                                     toolMsg,
                                                 ];
@@ -832,15 +966,16 @@ export async function processAgentChatInternal(
                                                 // Check if tools are now loaded and add them to request
                                                 // Also update system message with tools info if available
                                                 if (toolsLoaded && tools.length > 0) {
-                                                    // Add tools to request body
-                                                    requestBody.tools = toolsToApiFormat(tools);
+                                                    const modelTools = toolsForModelApi(adoc, tools);
+                                                    // Add tools to request body (model-visible list only)
+                                                    requestBody.tools = toolsToApiFormat(modelTools);
                                                     
                                                     // Update system message with tools info if not already added
                                                     let updatedSystemMessage = systemMessage;
                                                     if (!updatedSystemMessage.includes('You can use the following tools')) {
                                                         const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
-                                                          tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
-                                                          `\n\n【CRITICAL - YOU MUST READ THIS FIRST】\n**MANDATORY: SPEAK BEFORE TOOL CALLS**\nBefore calling ANY tool, you MUST first output a message explaining what you are about to do. This is MANDATORY and NON-NEGOTIABLE.\n\nExample workflow:\n1. User asks: "Find the switch"\n2. You MUST first output: "Let me help you find the switch device..." (or similar)\n3. THEN call the tool (e.g., zigbee_list_devices)\n4. After tool returns, output the results\n\nIf you call a tool WITHOUT first explaining what you are doing, you are violating the rules. The conversation should feel natural - you speak first, then act, then speak about the results.\n\n【TOOL USAGE STRATEGY - CRITICAL】\n1. **Proactive Multi-Tool Problem Solving**: When a user's question requires multiple tools or steps to fully answer, you MUST actively call tools in sequence until you have enough information. Do not stop after the first tool if the problem clearly needs more.\n2. **Knowledge Base Search Priority**: When users ask questions about information, documentation, stored knowledge, or specific topics, ALWAYS use the search_repo tool first to check if the information exists in the knowledge base. Even if you think you might know the answer, search the knowledge base to ensure accuracy and completeness.\n3. **Sequential Tool Execution**: The system executes one tool at a time. After each tool completes, you receive the result and can immediately call the next tool if needed.\n4. **Complete Before Responding**: When solving complex problems, gather ALL necessary information through tool calls BEFORE giving your final answer to the user. Only reply after you have completed the tool chain needed to answer the question.\n5. **Tool Chaining Examples**:\n   - User: "Do I have classes tomorrow?" → You should: (1) FIRST say "Let me check tomorrow's schedule..." (2) call get_current_time to know what day tomorrow is, (3) call search_repo to check if there's schedule/calendar info in knowledge base, (4) then provide complete answer\n   - User: "View files in repo" → You should: (1) FIRST say "Let me search for files in the knowledge base..." (2) call search_repo to find relevant repo entries, (3) if found, analyze content, (4) present comprehensive results\n   - User asks about any topic → You should: (1) FIRST say what you will do, (2) THEN search knowledge base using search_repo, (3) analyze results, (4) if needed, call other tools, (5) provide answer based on all information gathered\n6. **When to Stop Tool Chain**: Only stop calling tools when: (a) you have enough information to fully answer the question, (b) you need user clarification, or (c) no more relevant tools are available.\n7. **System Behavior**: The system processes tools one-by-one automatically. After each tool result, you decide whether to call another tool or provide the answer.\n\n**KEY PRINCIPLE**: Be proactive and thorough. Always search the knowledge base first when users ask about information. If a question needs multiple tools, call them all before responding. Do not make the user ask multiple times or give incomplete answers.\n\n【IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES】You must strictly adhere to the following rules for tool calls:\n1. **ALWAYS speak first before calling tools (MANDATORY)**: When you need to call a tool, you MUST first output and stream a message to the user explaining what you are about to do. Examples:\n   Examples: "Let me search the knowledge base..." / "Let me find the switch devices..." / "Let me check the relevant information..."\n   This message MUST be streamed BEFORE you call the tool. This gives the user immediate feedback and makes the conversation feel natural and responsive. ONLY AFTER you have explained what you are doing should you call the tool. Calling a tool without first speaking is STRICTLY FORBIDDEN.\n2. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n3. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n4. Each tool call response should be independent and focused solely on the current tool's result.\n5. After the last tool call completes, you should only reply with the last tool's result. Do NOT provide a comprehensive summary of all tools' results (unless there are clear dependencies between tools that require integration).\n6. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n7. Tool calls proceed one by one sequentially: first explain what you will do → call one tool → immediately reply with that tool's result → decide if another tool is needed.\n8. If multiple tools are needed, proceed one by one: explain what you will do → call the first tool → reply with the first tool's result → explain what you will do next → call the second tool → reply with the second tool's result, and so on. Each reply should be independent and focused on the current tool.`;
+                                                          modelTools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
+                                                          `\n\n[CRITICAL - YOU MUST READ THIS FIRST]\n**MANDATORY: SPEAK BEFORE TOOL CALLS**\nBefore calling ANY tool, you MUST first output a message explaining what you are about to do. This is MANDATORY and NON-NEGOTIABLE.\n\nExample workflow:\n1. User asks: "Find the switch"\n2. You MUST first output: "Let me help you find the switch device..." (or similar)\n3. THEN call the tool (e.g., zigbee_list_devices)\n4. After tool returns, output the results\n\nIf you call a tool WITHOUT first explaining what you are doing, you are violating the rules. The conversation should feel natural - you speak first, then act, then speak about the results.\n\n[TOOL USAGE STRATEGY - CRITICAL]\n1. **Proactive Multi-Tool Problem Solving**: When a user's question requires multiple tools or steps to fully answer, you MUST actively call tools in sequence until you have enough information. Do not stop after the first tool if the problem clearly needs more.\n2. **Knowledge Base Search Priority**: When users ask questions about information, documentation, stored knowledge, or specific topics, ALWAYS use the search_repo tool first to check if the information exists in the knowledge base. Even if you think you might know the answer, search the knowledge base to ensure accuracy and completeness.\n3. **Sequential Tool Execution**: The system executes one tool at a time. After each tool completes, you receive the result and can immediately call the next tool if needed.\n4. **Complete Before Responding**: When solving complex problems, gather ALL necessary information through tool calls BEFORE giving your final answer to the user. Only reply after you have completed the tool chain needed to answer the question.\n5. **Tool Chaining Examples**:\n   - User: "Do I have classes tomorrow?" → You should: (1) FIRST say "Let me check tomorrow's schedule..." (2) call get_current_time to know what day tomorrow is, (3) call search_repo to check if there's schedule/calendar info in knowledge base, (4) then provide complete answer\n   - User: "View files in repo" → You should: (1) FIRST say "Let me search for files in the knowledge base..." (2) call search_repo to find relevant repo entries, (3) if found, analyze content, (4) present comprehensive results\n   - User asks about any topic → You should: (1) FIRST say what you will do, (2) THEN search knowledge base using search_repo, (3) analyze results, (4) if needed, call other tools, (5) provide answer based on all information gathered\n6. **When to Stop Tool Chain**: Only stop calling tools when: (a) you have enough information to fully answer the question, (b) you need user clarification, or (c) no more relevant tools are available.\n7. **System Behavior**: The system processes tools one-by-one automatically. After each tool result, you decide whether to call another tool or provide the answer.\n\n**KEY PRINCIPLE**: Be proactive and thorough. Always search the knowledge base first when users ask about information. If a question needs multiple tools, call them all before responding. Do not make the user ask multiple times or give incomplete answers.\n\n[IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES]You must strictly adhere to the following rules for tool calls:\n1. **ALWAYS speak first before calling tools (MANDATORY)**: When you need to call a tool, you MUST first output and stream a message to the user explaining what you are about to do. Examples:\n   Examples: "Let me search the knowledge base..." / "Let me find the switch devices..." / "Let me check the relevant information..."\n   This message MUST be streamed BEFORE you call the tool. This gives the user immediate feedback and makes the conversation feel natural and responsive. ONLY AFTER you have explained what you are doing should you call the tool. Calling a tool without first speaking is STRICTLY FORBIDDEN.\n2. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n3. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n4. Each tool call response should be independent and focused solely on the current tool's result.\n5. After the last tool call completes, you should only reply with the last tool's result. Do NOT provide a comprehensive summary of all tools' results (unless there are clear dependencies between tools that require integration).\n6. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n7. Tool calls proceed one by one sequentially: first explain what you will do → call one tool → immediately reply with that tool's result → decide if another tool is needed.\n8. If multiple tools are needed, proceed one by one: explain what you will do → call the first tool → reply with the first tool's result → explain what you will do next → call the second tool → reply with the second tool's result, and so on. Each reply should be independent and focused on the current tool.`;
                                                         updatedSystemMessage = systemMessage + toolsInfo;
                                                         systemMessage = updatedSystemMessage;
                                                         // Update system message in request body
@@ -933,7 +1068,7 @@ export async function getAssignedTools(
     skillIds?: string[],
     skillLibraryBindings?: SkillLibraryBinding[],
 ): Promise<any[]> {
-    // [Edge 暂不启用] 仅做系统工具（Skill + domain market + catalog），不加载 Edge 工具
+    // [Edge disabled] system tools only (skills + domain market + catalog), no Edge tools
     // const allToolIds = new Set<string>();
     // if (mcpToolIds) { for (const toolId of mcpToolIds) { allToolIds.add(toolId.toString()); } }
     // const finalToolIds: ObjectId[] = Array.from(allToolIds).map(id => new ObjectId(id));
@@ -968,7 +1103,7 @@ export async function getAssignedTools(
         } catch (e) {
             AgentLogger.warn('getAssignedTools: getDomainMarketToolsForAgent failed: %s', (e as Error).message);
         }
-        // 仅使用市场已添加的工具，不再从 catalog 补全；用户卸载后即不可用，即使 skill 仍引用
+        // Use domain-market tools only; no catalog backfill — uninstalled tools stay unavailable even if skills reference them
         if (result.length > 0) {
             AgentLogger.info('getAssignedTools: returning %d tools from market (skills filter)', result.length);
             return result;
@@ -977,7 +1112,7 @@ export async function getAssignedTools(
         return [];
     }
 
-    // [Edge 暂不启用] 以下整段已注释：从 DB/Edge 查工具、realtime MCP、合并 Edge 工具
+    // [Edge disabled] block commented out: DB/Edge tool lookup, realtime MCP, Edge merge
     // const dbToolsMap = new Map<string, any>();
     // const assignedToolNames = new Set<string>();
     // try { const tools = await document.getMulti(domainId, document.TYPE_TOOL, { _id: { $in: finalToolIds } }); ...
@@ -1000,7 +1135,7 @@ export async function getAssignedTools(
                     processedNames.add(t.name);
                 }
             }
-            // 仅使用市场已添加的工具，不从 catalog 补全；用户卸载后即不可用
+            // Domain-market tools only; no catalog backfill; uninstalled tools unavailable
         }
     } catch (e) {
         AgentLogger.warn('getAssignedTools: getDomainMarketToolsForAgent failed: %s', (e as Error).message);
@@ -1049,7 +1184,10 @@ class AgentMcpStatusHandler extends Handler {
             return;
         }
         
-        const tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds, adoc.skillIds, normalizeAgentSkillBindings(adoc));
+        let tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds, adoc.skillIds, normalizeAgentSkillBindings(adoc));
+        if (agentHasOnDemandSkillLibraries(adoc)) {
+            tools = [...tools, { ...LOAD_SKILL_INSTRUCTIONS_TOOL_DEF }];
+        }
         this.response.body = { 
             connected: true, 
             toolCount: tools.length 
@@ -1100,7 +1238,7 @@ export class AgentDetailHandler extends Handler {
         }
 
         const rawBindings = normalizeAgentSkillBindings(adoc) || [];
-        const enabledSkillLibrariesForDisplay: Array<{ docId: number; title: string; bid: string; branch: string }> = [];
+        const enabledSkillLibrariesForDisplay: Array<{ docId: number; title: string; bid: string; branch: string; core: boolean }> = [];
         for (const b of rawBindings) {
             const lib = await SkillModel.get(domainId, b.docId);
             if (lib) {
@@ -1109,6 +1247,7 @@ export class AgentDetailHandler extends Handler {
                     title: (lib.title && String(lib.title).trim()) || `Skill #${lib.docId}`,
                     bid: ((lib as any).bid && String((lib as any).bid).trim()) || '',
                     branch: String(b.branch || 'main'),
+                    core: !!b.core,
                 });
             } else {
                 enabledSkillLibrariesForDisplay.push({
@@ -1116,6 +1255,7 @@ export class AgentDetailHandler extends Handler {
                     title: `Skill #${b.docId}`,
                     bid: '',
                     branch: String(b.branch || 'main'),
+                    core: !!b.core,
                 });
             }
         }
@@ -1258,10 +1398,11 @@ export class AgentSkillsEditHandler extends Handler {
         }));
 
         const skillBindingsByDocId: Record<string, string> = {};
-        for (const b of (adoc as any).skillLibraryBindings || []) {
-            if (b && Number.isFinite(Number(b.docId))) {
-                skillBindingsByDocId[String(b.docId)] = String(b.branch || 'main');
-            }
+        const skillCoreByDocId: Record<string, boolean> = {};
+        for (const b of normalizeAgentSkillBindings(adoc) || []) {
+            const lid = String(b.docId);
+            skillBindingsByDocId[lid] = String(b.branch || 'main');
+            if (b.core) skillCoreByDocId[lid] = true;
         }
 
         this.response.template = 'agent_skills.html';
@@ -1271,6 +1412,7 @@ export class AgentSkillsEditHandler extends Handler {
             adoc,
             skillLibrariesForUi,
             skillBindingsByDocId,
+            skillCoreByDocId,
         };
     }
 
@@ -1304,8 +1446,7 @@ export class AgentSkillsEditHandler extends Handler {
             }
         }
 
-        const normalized: SkillLibraryBinding[] = [];
-        const seen = new Set<number>();
+        const byDoc = new Map<number, { branch: string; core: boolean }>();
         for (const row of rawList) {
             if (!row || typeof row !== 'object') continue;
             const docId = Number((row as any).docId);
@@ -1318,11 +1459,31 @@ export class AgentSkillsEditHandler extends Handler {
             if (!allowed.includes(branch)) {
                 branch = allowed.includes('main') ? 'main' : (allowed[0] || 'main');
             }
-            if (seen.has(docId)) continue;
-            seen.add(docId);
-            normalized.push({ docId, branch });
+            const core = !!(row as any).core;
+            const prev = byDoc.get(docId);
+            if (prev) {
+                byDoc.set(docId, { branch, core: prev.core || core });
+            } else {
+                byDoc.set(docId, { branch, core });
+            }
         }
 
+        const normalized: SkillLibraryBinding[] = [...byDoc.entries()]
+            .sort((a, b) => {
+                const ac = a[1].core ? 1 : 0;
+                const bc = b[1].core ? 1 : 0;
+                return bc - ac;
+            })
+            .map(([docId, { branch, core }]) => (core ? { docId, branch, core: true } : { docId, branch }));
+
+        if (normalized.length > 0 && !normalized.some((b) => b.core)) {
+            this.response.status = 400;
+            this.response.body = {
+                success: false,
+                error: this.translate('At least one skill library must be marked as core.'),
+            };
+            return;
+        }
         await Agent.edit(domainId, adoc.aid, {
             skillLibraryBindings: normalized.length > 0 ? normalized : undefined,
         });
@@ -1331,32 +1492,106 @@ export class AgentSkillsEditHandler extends Handler {
     }
 }
 
-// 辅助函数：打印 API 请求内容
-function logApiRequest(handlerName: string, domainId: string, agentId: string, model: string, systemMessage: string, chatHistory: any[], message: string) {
-    const logMsg = `\n========== [Agent API Request - ${handlerName}] ==========\n` +
-        `Domain: ${domainId}\n` +
-        `Agent ID: ${agentId}\n` +
-        `Model: ${model}\n` +
-        `System Message Length: ${systemMessage.length} chars (~${Math.ceil(systemMessage.length / 4)} tokens)\n` +
-        `--- System Message Content ---\n` +
-        `${systemMessage}\n` +
-        `--- End System Message ---\n` +
-        `History Messages: ${chatHistory.length}\n` +
-        `User Message: ${message.substring(0, 100)}${message.length > 100 ? '...' : ''}\n` +
-        `=========================================\n`;
-    
-    // 同时使用 console.log 和 AgentLogger 确保日志可见
+/** Log full prompt to the model: systemMessage, message outline, skill/tool metadata (for debugging skill injection). */
+export function logAgentContextToModel(params: {
+    source: string;
+    domainId: string;
+    agentId: string;
+    model?: string;
+    systemMessage: string;
+    chatHistory?: any[];
+    userMessage?: string;
+    /** When provided, matches API message order (system / history / user). */
+    messages?: Array<{ role: string; content?: unknown; tool_calls?: unknown; tool_call_id?: unknown }>;
+    skillBranch?: string;
+    skillLibraryBindings?: SkillLibraryBinding[];
+    coreSkillNames?: string[];
+    /** Non-core skill names as keys in skillSourceByName */
+    skillSourceSkillNames?: string[];
+}) {
+    const {
+        source, domainId, agentId, systemMessage, model = '', chatHistory, userMessage,
+        messages, skillBranch, skillLibraryBindings, coreSkillNames, skillSourceSkillNames,
+    } = params;
+
+    let messagesOutline = '';
+    if (messages && messages.length > 0) {
+        messagesOutline = messages.map((m, i) => {
+            const c = m.content;
+            const len = typeof c === 'string' ? c.length : JSON.stringify(c ?? '').length;
+            const extra = m.tool_calls ? ' +tool_calls' : m.tool_call_id != null ? ' +tool_call_id' : '';
+            return `  [${i}] ${m.role} (${len} chars)${extra}`;
+        }).join('\n');
+    } else if (chatHistory || userMessage != null) {
+        const h = chatHistory || [];
+        const lines = h.map((m: any, i: number) => {
+            const c = m?.content;
+            const len = typeof c === 'string' ? c.length : JSON.stringify(c ?? '').length;
+            const extra = m?.tool_calls ? ' +tool_calls' : m?.tool_call_id != null ? ' +tool_call_id' : '';
+            return `  [${i}] ${m.role} (${len} chars)${extra}`;
+        });
+        lines.push(`  [${h.length}] user (${String(userMessage ?? '').length} chars)`);
+        messagesOutline = lines.join('\n');
+    }
+
+    const logMsg = `\n========== [Agent context to model — ${source}] ==========\n`
+        + `Domain: ${domainId}\n`
+        + `Agent ID: ${agentId}\n`
+        + `Model: ${model}\n`
+        + `skillBranch: ${skillBranch ?? '(none)'}\n`
+        + `skillLibraryBindings: ${skillLibraryBindings?.length ? JSON.stringify(skillLibraryBindings) : '(none)'}\n`
+        + `coreSkillNames: ${coreSkillNames?.length ? coreSkillNames.join(', ') : '(none)'}\n`
+        + `skillSource (non-core names): ${skillSourceSkillNames?.length ? skillSourceSkillNames.join(', ') : '(none)'}\n`
+        + `System Message Length: ${systemMessage.length} chars (~${Math.ceil(systemMessage.length / 4)} tokens)\n`
+        + `--- System Message (full text) ---\n`
+        + `${systemMessage}\n`
+        + `--- End System Message ---\n`
+        + `Messages outline (index / role / content length):\n${messagesOutline || '(empty)'}\n`
+        + `User message preview: ${String(userMessage ?? '').substring(0, 200)}${String(userMessage ?? '').length > 200 ? '...' : ''}\n`
+        + `=========================================\n`;
+
     console.log(logMsg);
-    AgentLogger.info('[Agent API Request]', {
-        handlerName,
+    AgentLogger.info('[Agent context to model]', {
+        source,
         domainId,
         agentId,
         model,
+        skillBranch: skillBranch ?? null,
+        skillLibraryBindings: skillLibraryBindings ?? null,
+        coreSkillNames: coreSkillNames ?? null,
+        skillSourceSkillNames: skillSourceSkillNames ?? null,
         systemMessageLength: systemMessage.length,
         estimatedTokens: Math.ceil(systemMessage.length / 4),
-        historyMessages: chatHistory.length,
-        userMessagePreview: message.substring(0, 100),
-        systemMessagePreview: systemMessage.substring(0, 200) + (systemMessage.length > 200 ? '...' : '')
+        messagesCount: messages?.length ?? (chatHistory?.length ?? 0) + (userMessage != null ? 1 : 0),
+        systemMessagePreview: systemMessage.substring(0, 240) + (systemMessage.length > 240 ? '...' : ''),
+    });
+}
+
+type LogAgentContextExtras = Pick<
+    Parameters<typeof logAgentContextToModel>[0],
+    'skillBranch' | 'skillLibraryBindings' | 'coreSkillNames' | 'skillSourceSkillNames' | 'messages'
+>;
+
+// Helper: log API request (delegates to logAgentContextToModel)
+function logApiRequest(
+    handlerName: string,
+    domainId: string,
+    agentId: string,
+    model: string,
+    systemMessage: string,
+    chatHistory: any[],
+    message: string,
+    extras?: LogAgentContextExtras,
+) {
+    logAgentContextToModel({
+        source: handlerName,
+        domainId,
+        agentId,
+        model,
+        systemMessage,
+        chatHistory,
+        userMessage: message,
+        ...extras,
     });
 }
 
@@ -1390,7 +1625,7 @@ export class AgentChatHandler extends Handler {
 
         const udoc = await user.getById(domainId, adoc.owner);
         
-        // 聊天模式：新建或指定 session（默认进入聊天模式，不再显示列表模式）
+        // Chat mode: create or resume session (default chat, no list mode)
         let currentChatSessionId: ObjectId | undefined = sid;
         let recordHistory: any[] = [];
         
@@ -1425,7 +1660,7 @@ export class AgentChatHandler extends Handler {
                     }
                 }
             } else {
-                // Session 无效，重置为新建模式
+                // Invalid session; start fresh
                 currentChatSessionId = undefined;
             }
         }
@@ -1457,7 +1692,7 @@ export class AgentChatHandler extends Handler {
         const aiModel = (this.domain as any)['model'] || 'deepseek-chat';
         const apiUrl = (this.domain as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions';
 
-        // WebSocket URL 在模板中构建，不需要在这里生成
+        // WebSocket URL is built in templates
         const host = this.domain?.host;
 
         const assignedToolIds = new Set((adoc.mcpToolIds || []).map(id => id.toString()));
@@ -1508,7 +1743,7 @@ export class AgentChatHandler extends Handler {
             aiModel,
             apiUrl,
             edgesWithTools,
-            mode: 'chat', // 聊天模式
+            mode: 'chat', // Chat mode
             chatSessionId: currentChatSessionId?.toString(),
             recordHistory,
             chatSessions: chatSessionsWithRecords,
@@ -1539,7 +1774,7 @@ export class AgentChatHandler extends Handler {
         const assistantbubbleId = this.request.body?.assistantbubbleId; // Get assistant bubbleId from request
         const history = this.request.body?.history || '[]';
         const stream = this.request.query?.stream === 'true' || this.request.body?.stream === true;
-        // 强制所有请求都创建task，必须通过worker处理
+        // Always create a task; worker must process it
         const createTaskRecord = true;
         
         AgentLogger.info('POST /agent/:aid/chat: parameters parsed', { 
@@ -1567,14 +1802,14 @@ export class AgentChatHandler extends Handler {
 
         let chatHistory: ChatMessage[] = [];
         try {
-            // history 可能是字符串或数组
+            // history may be string or array
             if (typeof history === 'string') {
             chatHistory = JSON.parse(history);
             } else if (Array.isArray(history)) {
                 chatHistory = history;
             }
         } catch (e) {
-            // 解析失败，使用空数组
+            // Parse failed; use empty history
             chatHistory = [];
         }
         
@@ -1607,7 +1842,8 @@ export class AgentChatHandler extends Handler {
         }
         
         const sdoc = await SessionModel.getAgentChatSession(domainId, chatSessionId);
-        let sessionContext = sdoc?.context || {};
+        let sessionContext: Record<string, unknown> = { ...(sdoc?.context || {}) };
+        delete sessionContext.tools;
         
         let taskRecordId: ObjectId | undefined;
         AgentLogger.info('POST chat: checking task creation', { 
@@ -1641,7 +1877,7 @@ export class AgentChatHandler extends Handler {
             
             AgentLogger.info('POST chat: task record created', { taskRecordId: taskRecordId?.toString(), chatSessionId: chatSessionId.toString() });
             
-            // 收集完整的上下文信息，供 worker 使用
+            // Build full context for the worker
             const domainInfo = await domain.get(domainId);
             if (!domainInfo) {
                 throw new Error('Domain not found');
@@ -1649,7 +1885,7 @@ export class AgentChatHandler extends Handler {
             
             const tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds, adoc.skillIds, normalizeAgentSkillBindings(adoc));
             
-            // 加载 Agent Skills 元数据（渐进式披露）；未配置技能库绑定时不加载
+            // Load Agent Skills metadata (progressive disclosure); skip if no skill library bindings
             let skillsInstructions = '';
             try {
                 skillsInstructions = await loadAgentSkillsMetadataBlock(adoc);
@@ -1657,38 +1893,22 @@ export class AgentChatHandler extends Handler {
                 AgentLogger.warn('Failed to load Agent Skills metadata:', e);
             }
             
-            // Add built-in load_skill_instructions when skills exist (skill library bindings)
+            // Add built-in load_skill_instructions when non-core skill libraries exist
             const finalTools = [...tools];
-            if (skillsInstructions) {
-                finalTools.push({
-                    name: 'load_skill_instructions',
-                    description: 'Load detailed instructions for a specific skill. Use this when you need detailed information about a skill\'s modules, sub-modules, or full instructions. Parameters: skillName (required, string) - the name of the skill to load; level (optional, number) - 1 for overview, 2+ for specific depth (supports unlimited levels), or omit for full content. IMPORTANT: Call this only ONCE per skill per user request. After you receive the tool result, do NOT call load_skill_instructions again; immediately call the tool specified in the loaded content (e.g. get_current_time) with the arguments from the skill.',
-                    inputSchema: {
-                        type: 'object',
-                        properties: {
-                            skillName: {
-                                type: 'string',
-                                description: 'The name of the skill to load'
-                            },
-                            level: {
-                                type: 'number',
-                                description: 'The maximum level to load (1 for skill overview, 2+ for specific depth, omit for full content). Supports unlimited depth levels.',
-                                minimum: 1
-                            }
-                        },
-                        required: ['skillName']
-                    },
-                    token: '', // 内置工具，不需要 token
-                    edgeId: null as any,
-                });
+            if (agentHasOnDemandSkillLibraries(adoc)) {
+                finalTools.push({ ...LOAD_SKILL_INSTRUCTIONS_TOOL_DEF });
             }
+            const modelTools = toolsForModelApi(adoc, finalTools);
             
-            // 构建完整的系统消息（包含 agent prompt, memory, tools 等）
+            const skillSourceForTask = await skillSourceMapForAgent(domainId, adoc);
+            const coreSkillNameList = [...(await coreSkillNameSetForAgent(domainId, adoc))];
+            
+            // Build full system message (prompt, memory, tools, …)
             const agentPrompt = adoc.content || '';
             let systemMessage = agentPrompt;
             
-            // 添加 Agent Skills 列表（在 role prompt 之后，memory 之前）
-            // 只包含 skill 名称和描述，不包含完整 instructions，节省 token
+            // Append Agent Skills list after role prompt, before memory
+            // Names + descriptions only; not full instructions (saves tokens)
             if (skillsInstructions) {
                 systemMessage += skillsInstructions;
             }
@@ -1701,55 +1921,67 @@ export class AgentChatHandler extends Handler {
             };
             if (adoc.memory) {
                 const truncatedMemory = truncateMemory(adoc.memory);
-                systemMessage += `\n\n---\n【Work Rules Memory - Supplementary Guidelines】\n${truncatedMemory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
+                systemMessage += `\n\n---\n[Work Rules Memory - Supplementary Guidelines]\n${truncatedMemory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
             }
             
-            if (systemMessage && !systemMessage.includes('do not use emoji')) {
-                systemMessage += '\n\nNote: Do not use any emoji in your responses.';
-            } else if (!systemMessage) {
-                systemMessage = 'Note: Do not use any emoji in your responses.';
-            }
+            systemMessage = appendAgentUniversalAssistantRules(systemMessage);
             
-            if (finalTools.length > 0) {
-                const toolErrorCodesHint = '\n\n【Tool error codes】When a tool returns error with \`code\`, reply to user as follows: TOOL_NOT_ADDED → "该工具尚未添加，请到本域【工具市场】添加后再试。"; TOOL_NOT_FOUND → tool unavailable/invalid; TIMEOUT/NETWORK_ERROR/SERVER_ERROR → suggest retry or check network; other codes → one short sentence + one suggested action. Keep reply 1-2 sentences.\n\n';
+            if (modelTools.length > 0) {
+                const toolErrorCodesHint = '\n\n[Tool error codes] When a tool returns a `code`, reply as follows: TOOL_NOT_ADDED → tell the user the tool is not installed for this domain and they should add it from the Tool Market, then retry; TOOL_NOT_FOUND → tool unavailable or invalid; TIMEOUT / NETWORK_ERROR / SERVER_ERROR → suggest retry or check network; other codes → one short sentence plus one suggested action. Keep replies to 1–2 sentences.\n\n';
                 const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
-                  finalTools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
+                  modelTools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
                   toolErrorCodesHint +
-                  `【CRITICAL - YOU MUST READ THIS FIRST】\n**MANDATORY: SPEAK BEFORE TOOL CALLS**\nBefore calling ANY tool, you MUST first output a message explaining what you are about to do. This is MANDATORY and NON-NEGOTIABLE.\n\nExample workflow:\n1. User asks: "Find the switch"\n2. You MUST first output: "Let me help you find the switch device..." (or similar)\n3. THEN call the tool (e.g., zigbee_list_devices)\n4. After tool returns, output the results\n\nIf you call a tool WITHOUT first explaining what you are doing, you are violating the rules. The conversation should feel natural - you speak first, then act, then speak about the results.\n\n【TOOL USAGE STRATEGY - CRITICAL】\n1. **Proactive Multi-Tool Problem Solving**: When a user's question requires multiple tools or steps to fully answer, you MUST actively call tools in sequence until you have enough information. Do not stop after the first tool if the problem clearly needs more.\n2. **Knowledge Base Search Priority**: When users ask questions about information, documentation, stored knowledge, or specific topics, ALWAYS use the search_repo tool first to check if the information exists in the knowledge base. Even if you think you might know the answer, search the knowledge base to ensure accuracy and completeness.\n3. **Sequential Tool Execution**: The system executes one tool at a time. After each tool completes, you receive the result and can immediately call the next tool if needed.\n4. **Complete Before Responding**: When solving complex problems, gather ALL necessary information through tool calls BEFORE giving your final answer to the user. Only reply after you have completed the tool chain needed to answer the question.\n5. **Tool Chaining Examples**:\n   - User: "Do I have classes tomorrow?" → You should: (1) FIRST say "Let me check tomorrow's schedule..." (2) call get_current_time to know what day tomorrow is, (3) call search_repo to check if there's schedule/calendar info in knowledge base, (4) then provide complete answer\n   - User: "View files in repo" → You should: (1) FIRST say "Let me search for files in the knowledge base..." (2) call search_repo to find relevant repo entries, (3) if found, analyze content, (4) present comprehensive results\n   - User asks about any topic → You should: (1) FIRST say what you will do, (2) THEN search knowledge base using search_repo, (3) analyze results, (4) if needed, call other tools, (5) provide answer based on all information gathered\n6. **When to Stop Tool Chain**: Only stop calling tools when: (a) you have enough information to fully answer the question, (b) you need user clarification, or (c) no more relevant tools are available.\n7. **System Behavior**: The system processes tools one-by-one automatically. After each tool result, you decide whether to call another tool or provide the answer.\n\n**KEY PRINCIPLE**: Be proactive and thorough. Always search the knowledge base first when users ask about information. If a question needs multiple tools, call them all before responding. Do not make the user ask multiple times or give incomplete answers.\n\n【IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES】You must strictly adhere to the following rules for tool calls:\n1. **ALWAYS speak first before calling tools (MANDATORY)**: When you need to call a tool, you MUST first output and stream a message to the user explaining what you are about to do. Examples:\n   Examples: "Let me search the knowledge base..." / "Let me find the switch devices..." / "Let me check the relevant information..."\n   This message MUST be streamed BEFORE you call the tool. This gives the user immediate feedback and makes the conversation feel natural and responsive. ONLY AFTER you have explained what you are doing should you call the tool. Calling a tool without first speaking is STRICTLY FORBIDDEN.\n2. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n3. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n4. Each tool call response should be independent and focused solely on the current tool's result.\n5. After the last tool call completes, you should only reply with the last tool's result. Do NOT provide a comprehensive summary of all tools' results (unless there are clear dependencies between tools that require integration).\n6. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n7. Tool calls proceed one by one sequentially: first explain what you will do → call one tool → immediately reply with that tool's result → decide if another tool is needed.\n8. If multiple tools are needed, proceed one by one: explain what you will do → call the first tool → reply with the first tool's result → explain what you will do next → call the second tool → reply with the second tool's result, and so on. Each reply should be independent and focused on the current tool.`;
+                  `[CRITICAL - YOU MUST READ THIS FIRST]\n**MANDATORY: SPEAK BEFORE TOOL CALLS**\nBefore calling ANY tool, you MUST first output a message explaining what you are about to do. This is MANDATORY and NON-NEGOTIABLE.\n\nExample workflow:\n1. User asks: "Find the switch"\n2. You MUST first output: "Let me help you find the switch device..." (or similar)\n3. THEN call the tool (e.g., zigbee_list_devices)\n4. After tool returns, output the results\n\nIf you call a tool WITHOUT first explaining what you are doing, you are violating the rules. The conversation should feel natural - you speak first, then act, then speak about the results.\n\n[TOOL USAGE STRATEGY - CRITICAL]\n1. **Proactive Multi-Tool Problem Solving**: When a user's question requires multiple tools or steps to fully answer, you MUST actively call tools in sequence until you have enough information. Do not stop after the first tool if the problem clearly needs more.\n2. **Knowledge Base Search Priority**: When users ask questions about information, documentation, stored knowledge, or specific topics, ALWAYS use the search_repo tool first to check if the information exists in the knowledge base. Even if you think you might know the answer, search the knowledge base to ensure accuracy and completeness.\n3. **Sequential Tool Execution**: The system executes one tool at a time. After each tool completes, you receive the result and can immediately call the next tool if needed.\n4. **Complete Before Responding**: When solving complex problems, gather ALL necessary information through tool calls BEFORE giving your final answer to the user. Only reply after you have completed the tool chain needed to answer the question.\n5. **Tool Chaining Examples**:\n   - User: "Do I have classes tomorrow?" → You should: (1) FIRST say "Let me check tomorrow's schedule..." (2) call get_current_time to know what day tomorrow is, (3) call search_repo to check if there's schedule/calendar info in knowledge base, (4) then provide complete answer\n   - User: "View files in repo" → You should: (1) FIRST say "Let me search for files in the knowledge base..." (2) call search_repo to find relevant repo entries, (3) if found, analyze content, (4) present comprehensive results\n   - User asks about any topic → You should: (1) FIRST say what you will do, (2) THEN search knowledge base using search_repo, (3) analyze results, (4) if needed, call other tools, (5) provide answer based on all information gathered\n6. **When to Stop Tool Chain**: Only stop calling tools when: (a) you have enough information to fully answer the question, (b) you need user clarification, or (c) no more relevant tools are available.\n7. **System Behavior**: The system processes tools one-by-one automatically. After each tool result, you decide whether to call another tool or provide the answer.\n\n**KEY PRINCIPLE**: Be proactive and thorough. Always search the knowledge base first when users ask about information. If a question needs multiple tools, call them all before responding. Do not make the user ask multiple times or give incomplete answers.\n\n[IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES]You must strictly adhere to the following rules for tool calls:\n1. **ALWAYS speak first before calling tools (MANDATORY)**: When you need to call a tool, you MUST first output and stream a message to the user explaining what you are about to do. Examples:\n   Examples: "Let me search the knowledge base..." / "Let me find the switch devices..." / "Let me check the relevant information..."\n   This message MUST be streamed BEFORE you call the tool. This gives the user immediate feedback and makes the conversation feel natural and responsive. ONLY AFTER you have explained what you are doing should you call the tool. Calling a tool without first speaking is STRICTLY FORBIDDEN.\n2. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n3. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n4. Each tool call response should be independent and focused solely on the current tool's result.\n5. After the last tool call completes, you should only reply with the last tool's result. Do NOT provide a comprehensive summary of all tools' results (unless there are clear dependencies between tools that require integration).\n6. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n7. Tool calls proceed one by one sequentially: first explain what you will do → call one tool → immediately reply with that tool's result → decide if another tool is needed.\n8. If multiple tools are needed, proceed one by one: explain what you will do → call the first tool → reply with the first tool's result → explain what you will do next → call the second tool → reply with the second tool's result, and so on. Each reply should be independent and focused on the current tool.`;
                 systemMessage = systemMessage + toolsInfo;
             }
             
-            // 合并 session context 和当前 context
+            // Merge persisted session context with this request
             const context = {
-                ...sessionContext, // 先使用 session 的 context
-                // Domain 配置
+                ...sessionContext, // Start from persisted session context
+                // Domain settings
                 apiKey: (domainInfo as any)['apiKey'] || '',
                 model: (domainInfo as any)['model'] || 'deepseek-chat',
                 apiUrl: (domainInfo as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions',
-                // Agent 信息
+                // Agent snapshot
                 agentContent: adoc.content || '',
                 agentMemory: adoc.memory || '',
                 skillBranch: effectiveAgentSkillBranch(adoc),
-                // 工具列表（序列化）；type 为 system 时 worker 走 executeSystemTool，不走 Edge
-                tools: finalTools.map(tool => ({
+                skillSourceByName: skillSourceForTask ? skillSourceMapToPlain(skillSourceForTask) : undefined,
+                coreSkillNames: coreSkillNameList.length > 0 ? coreSkillNameList : undefined,
+                /** Serialize only OpenAI function tools; skill text guides real tool calls; server resolves via McpClient (system catalog / domain market). */
+                toolsForModel: modelTools.map(tool => ({
                     name: tool.name,
                     description: tool.description,
                     inputSchema: tool.inputSchema,
                     token: tool.token,
                     edgeId: tool.edgeId,
                     type: tool.type,
-                    system: (tool as any).system === true, // 有 system 则识别为系统工具并直接调用
+                    system: (tool as any).system === true,
                 })),
-                // 系统消息（已构建完整）
+                // Complete system message
                 systemMessage,
             };
+
+            logAgentContextToModel({
+                source: `POST /agent/:aid/chat → worker task context recordId=${taskRecordId.toString()}`,
+                domainId,
+                agentId: String(adoc.aid || adoc.docId?.toString() || ''),
+                model: (domainInfo as any)['model'] || 'deepseek-chat',
+                systemMessage,
+                messages: [
+                    { role: 'system', content: systemMessage },
+                    ...chatHistory,
+                    { role: 'user', content: message },
+                ],
+                skillSourceSkillNames: skillSourceForTask?.size ? [...skillSourceForTask.keys()] : undefined,
+            });
             
-            // 更新 session 的 context（保存最新的上下文信息）
+            // Persist latest context on the session
             await SessionModel.updateAgentChatSession(domainId, chatSessionId, {
                 context,
             });
             
-            // 创建 task 任务，包含完整的上下文信息
+            // Enqueue task with full context
             const taskModel = require('../model/task').default;
             AgentLogger.info('POST chat: calling TaskModel.add', { 
                 recordId: taskRecordId.toString(), 
@@ -1779,11 +2011,11 @@ export class AgentChatHandler extends Handler {
                 NODE_APP_INSTANCE: process.env.NODE_APP_INSTANCE 
             });
             
-            // 注意：不设置 record 状态为 PROCESSING，让 worker 正常消费任务
-            // 这与 client.ts 不同：client.ts 会设置 PROCESSING 并直接调用 processAgentChatInternal
-            // 而 agent.ts 的 post 方法应该让 worker 处理任务
+            // Do not mark record PROCESSING here — let the worker consume normally
+            // Unlike client.ts, which sets PROCESSING and calls processAgentChatInternal inline
+            // agent post should hand off to the worker
             
-            // 任务已创建，返回任务 ID，由 worker 处理
+            // Task enqueued; worker will run it
             const responseBody = {
                 taskRecordId: taskRecordId.toString(),
                 chatSessionId: chatSessionId.toString(),
@@ -1794,7 +2026,7 @@ export class AgentChatHandler extends Handler {
             return;
         }
 
-        // 所有请求都必须创建task并通过worker处理，不再支持直接处理模式
+        // All requests use tasks + worker; no direct-only path
         AgentLogger.error('POST chat: createTaskRecord must be true, all requests must go through worker');
         this.response.body = { error: 'All requests must create task and be processed by worker' };
         return;
@@ -1882,7 +2114,7 @@ export class AgentChatSessionHistoryHandler extends Handler {
             const agentRecordsById = await RecordModel.getList(domainId, sdoc.recordIds);
             const agentRecordsOrdered = sdoc.recordIds.map(rid => agentRecordsById[rid.toString()]).filter(Boolean);
             
-            // 提取所有消息并按时间排序
+            // Collect messages and sort by time
             for (const rdoc of agentRecordsOrdered) {
                 if (rdoc) {
                     const r = rdoc as any;
@@ -2361,11 +2593,16 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
         } catch (e) {
         }
 
-        const tools = await getAssignedTools(domainId, this.adoc.mcpToolIds, this.adoc.repoIds, this.adoc.skillIds, normalizeAgentSkillBindings(this.adoc));
+        let tools = await getAssignedTools(domainId, this.adoc.mcpToolIds, this.adoc.repoIds, this.adoc.skillIds, normalizeAgentSkillBindings(this.adoc));
+        if (agentHasOnDemandSkillLibraries(this.adoc)) {
+            tools = [...tools, { ...LOAD_SKILL_INSTRUCTIONS_TOOL_DEF }];
+        }
+        const modelTools = toolsForModelApi(this.adoc, tools);
         const mcpClient = new McpClient();
         const skillSourceByName = await skillSourceMapForAgent(domainId, this.adoc);
+        const coreSkillNames = await coreSkillNameSetForAgent(domainId, this.adoc);
         
-        // 加载 Agent Skills 元数据（渐进式披露）；未配置技能库绑定时不加载
+        // Load Agent Skills metadata (progressive disclosure); skip if no skill library bindings
         let skillsInstructions = '';
         try {
             skillsInstructions = await loadAgentSkillsMetadataBlock(this.adoc);
@@ -2381,7 +2618,7 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
             systemMessage += skillsInstructions;
         }
         
-        // 限制 memory 长度的辅助函数
+        // Truncate memory helper
         const truncateMemory = (memory: string, maxLength: number = 2000): string => {
             if (!memory || memory.length <= maxLength) {
                 return memory;
@@ -2389,27 +2626,32 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
             return memory.substring(0, maxLength) + '\n\n[... Memory truncated, keeping most important rules ...]';
         };
 
-        // 添加工作规则记忆
-        // 限制 memory 长度，避免请求体过大（最多 2000 字符）
+        // Append work-rules memory
+        // Cap memory at 2000 chars for request size
         if (this.adoc.memory) {
             const truncatedMemory = truncateMemory(this.adoc.memory);
-            systemMessage += `\n\n---\n【Work Rules Memory - Supplementary Guidelines】\n${truncatedMemory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
+            systemMessage += `\n\n---\n[Work Rules Memory - Supplementary Guidelines]\n${truncatedMemory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
         }
         
-        // Prohibit using emojis
-        if (systemMessage && !systemMessage.includes('do not use emoji')) {
-            systemMessage += '\n\nNote: Do not use any emoji in your responses.';
-        } else if (!systemMessage) {
-            systemMessage = 'Note: Do not use any emoji in your responses.';
-        }
-        if (tools.length > 0) {
+        systemMessage = appendAgentUniversalAssistantRules(systemMessage);
+        if (modelTools.length > 0) {
             const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
-              tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
-              `\n\n【CRITICAL - YOU MUST READ THIS FIRST】\n**MANDATORY: SPEAK BEFORE TOOL CALLS**\nBefore calling ANY tool, you MUST first output a message explaining what you are about to do. This is MANDATORY and NON-NEGOTIABLE.\n\nExample workflow:\n1. User asks: "Find the switch"\n2. You MUST first output: "Let me help you find the switch device..." (or similar)\n3. THEN call the tool (e.g., zigbee_list_devices)\n4. After tool returns, output the results\n\nIf you call a tool WITHOUT first explaining what you are doing, you are violating the rules. The conversation should feel natural - you speak first, then act, then speak about the results.\n\n【TOOL USAGE STRATEGY - CRITICAL】\n1. **Proactive Multi-Tool Problem Solving**: When a user's question requires multiple tools or steps to fully answer, you MUST actively call tools in sequence until you have enough information. Do not stop after the first tool if the problem clearly needs more.\n2. **Knowledge Base Search Priority**: When users ask questions about information, documentation, stored knowledge, or specific topics, ALWAYS use the search_repo tool first to check if the information exists in the knowledge base. Even if you think you might know the answer, search the knowledge base to ensure accuracy and completeness.\n3. **Sequential Tool Execution**: The system executes one tool at a time. After each tool completes, you receive the result and can immediately call the next tool if needed.\n4. **Complete Before Responding**: When solving complex problems, gather ALL necessary information through tool calls BEFORE giving your final answer to the user. Only reply after you have completed the tool chain needed to answer the question.\n5. **Tool Chaining Examples**:\n   - User: "Do I have classes tomorrow?" → You should: (1) FIRST say "Let me check tomorrow's schedule..." (2) call get_current_time to know what day tomorrow is, (3) call search_repo to check if there's schedule/calendar info in knowledge base, (4) then provide complete answer\n   - User: "View files in repo" → You should: (1) FIRST say "Let me search for files in the knowledge base..." (2) call search_repo to find relevant repo entries, (3) if found, analyze content, (4) present comprehensive results\n   - User asks about any topic → You should: (1) FIRST say what you will do, (2) THEN search knowledge base using search_repo, (3) analyze results, (4) if needed, call other tools, (5) provide answer based on all information gathered\n6. **When to Stop Tool Chain**: Only stop calling tools when: (a) you have enough information to fully answer the question, (b) you need user clarification, or (c) no more relevant tools are available.\n7. **System Behavior**: The system processes tools one-by-one automatically. After each tool result, you decide whether to call another tool or provide the answer.\n\n**KEY PRINCIPLE**: Be proactive and thorough. Always search the knowledge base first when users ask about information. If a question needs multiple tools, call them all before responding. Do not make the user ask multiple times or give incomplete answers.\n\n【IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES】You must strictly adhere to the following rules for tool calls:\n1. **ALWAYS speak first before calling tools (MANDATORY)**: When you need to call a tool, you MUST first output and stream a message to the user explaining what you are about to do. Examples:\n   Examples: "Let me search the knowledge base..." / "Let me find the switch devices..." / "Let me check the relevant information..."\n   This message MUST be streamed BEFORE you call the tool. This gives the user immediate feedback and makes the conversation feel natural and responsive. ONLY AFTER you have explained what you are doing should you call the tool. Calling a tool without first speaking is STRICTLY FORBIDDEN.\n2. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n3. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n4. Each tool call response should be independent and focused solely on the current tool's result.\n5. After the last tool call completes, you should only reply with the last tool's result. Do NOT provide a comprehensive summary of all tools' results (unless there are clear dependencies between tools that require integration).\n6. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n7. Tool calls proceed one by one sequentially: first explain what you will do → call one tool → immediately reply with that tool's result → decide if another tool is needed.\n8. If multiple tools are needed, proceed one by one: explain what you will do → call the first tool → reply with the first tool's result → explain what you will do next → call the second tool → reply with the second tool's result, and so on. Each reply should be independent and focused on the current tool.`;
+              modelTools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
+              `\n\n[CRITICAL - YOU MUST READ THIS FIRST]\n**MANDATORY: SPEAK BEFORE TOOL CALLS**\nBefore calling ANY tool, you MUST first output a message explaining what you are about to do. This is MANDATORY and NON-NEGOTIABLE.\n\nExample workflow:\n1. User asks: "Find the switch"\n2. You MUST first output: "Let me help you find the switch device..." (or similar)\n3. THEN call the tool (e.g., zigbee_list_devices)\n4. After tool returns, output the results\n\nIf you call a tool WITHOUT first explaining what you are doing, you are violating the rules. The conversation should feel natural - you speak first, then act, then speak about the results.\n\n[TOOL USAGE STRATEGY - CRITICAL]\n1. **Proactive Multi-Tool Problem Solving**: When a user's question requires multiple tools or steps to fully answer, you MUST actively call tools in sequence until you have enough information. Do not stop after the first tool if the problem clearly needs more.\n2. **Knowledge Base Search Priority**: When users ask questions about information, documentation, stored knowledge, or specific topics, ALWAYS use the search_repo tool first to check if the information exists in the knowledge base. Even if you think you might know the answer, search the knowledge base to ensure accuracy and completeness.\n3. **Sequential Tool Execution**: The system executes one tool at a time. After each tool completes, you receive the result and can immediately call the next tool if needed.\n4. **Complete Before Responding**: When solving complex problems, gather ALL necessary information through tool calls BEFORE giving your final answer to the user. Only reply after you have completed the tool chain needed to answer the question.\n5. **Tool Chaining Examples**:\n   - User: "Do I have classes tomorrow?" → You should: (1) FIRST say "Let me check tomorrow's schedule..." (2) call get_current_time to know what day tomorrow is, (3) call search_repo to check if there's schedule/calendar info in knowledge base, (4) then provide complete answer\n   - User: "View files in repo" → You should: (1) FIRST say "Let me search for files in the knowledge base..." (2) call search_repo to find relevant repo entries, (3) if found, analyze content, (4) present comprehensive results\n   - User asks about any topic → You should: (1) FIRST say what you will do, (2) THEN search knowledge base using search_repo, (3) analyze results, (4) if needed, call other tools, (5) provide answer based on all information gathered\n6. **When to Stop Tool Chain**: Only stop calling tools when: (a) you have enough information to fully answer the question, (b) you need user clarification, or (c) no more relevant tools are available.\n7. **System Behavior**: The system processes tools one-by-one automatically. After each tool result, you decide whether to call another tool or provide the answer.\n\n**KEY PRINCIPLE**: Be proactive and thorough. Always search the knowledge base first when users ask about information. If a question needs multiple tools, call them all before responding. Do not make the user ask multiple times or give incomplete answers.\n\n[IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES]You must strictly adhere to the following rules for tool calls:\n1. **ALWAYS speak first before calling tools (MANDATORY)**: When you need to call a tool, you MUST first output and stream a message to the user explaining what you are about to do. Examples:\n   Examples: "Let me search the knowledge base..." / "Let me find the switch devices..." / "Let me check the relevant information..."\n   This message MUST be streamed BEFORE you call the tool. This gives the user immediate feedback and makes the conversation feel natural and responsive. ONLY AFTER you have explained what you are doing should you call the tool. Calling a tool without first speaking is STRICTLY FORBIDDEN.\n2. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n3. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n4. Each tool call response should be independent and focused solely on the current tool's result.\n5. After the last tool call completes, you should only reply with the last tool's result. Do NOT provide a comprehensive summary of all tools' results (unless there are clear dependencies between tools that require integration).\n6. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n7. Tool calls proceed one by one sequentially: first explain what you will do → call one tool → immediately reply with that tool's result → decide if another tool is needed.\n8. If multiple tools are needed, proceed one by one: explain what you will do → call the first tool → reply with the first tool's result → explain what you will do next → call the second tool → reply with the second tool's result, and so on. Each reply should be independent and focused on the current tool.`;
             systemMessage = systemMessage + toolsInfo;
         }
 
-        logApiRequest('AgentApiConnectionHandler', domainId, this.adoc.aid, model, systemMessage, chatHistory, message);
+        logApiRequest('AgentStreamConnectionHandler', domainId, this.adoc.aid, model, systemMessage, chatHistory, message, {
+            messages: [
+                { role: 'system', content: systemMessage },
+                ...chatHistory,
+                { role: 'user', content: message },
+            ],
+            skillBranch: effectiveAgentSkillBranch(this.adoc),
+            skillLibraryBindings: normalizeAgentSkillBindings(this.adoc),
+            coreSkillNames: [...coreSkillNames],
+            skillSourceSkillNames: skillSourceByName?.size ? [...skillSourceByName.keys()] : undefined,
+        });
 
         try {
             const requestBody: any = {
@@ -2423,8 +2665,8 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
                 stream: true,
             };
 
-            if (tools.length > 0) {
-                requestBody.tools = toolsToApiFormat(tools);
+            if (modelTools.length > 0) {
+                requestBody.tools = toolsToApiFormat(modelTools);
             }
 
             let messagesForTurn: any[] = [
@@ -2437,7 +2679,7 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
             let finishReason = '';
             let toolCalls: any[] = [];
             let iterations = 0;
-            const maxIterations = 50; // 增加迭代次数限制，避免过早停止
+            const maxIterations = 50; // Higher cap to avoid stopping tool chains too early
             let streamFinished = false;
             let waitingForToolCall = false;
 
@@ -2470,8 +2712,8 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
                                         const data = line.slice(6).trim();
                                         if (data === '[DONE]') {
                                             if (waitingForToolCall) {
-                                                // 工具调用前，先发送已累积的初始内容（如果有的话）
-                                                // 内容已经在 delta.content 时实时发送了，这里只需要标记完成
+                                                // Before tool call: ensure streamed preamble is accounted for
+                                                // delta.content already streamed; mark completion here
                                                 AgentLogger.info('Received [DONE] while waiting for tool call, will process tool calls (Stream)');
                                                 callback(null, undefined);
                                                 return;
@@ -2505,19 +2747,19 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
                                                         hasContent: !!accumulatedContent && accumulatedContent.trim().length > 0,
                                                         contentLength: accumulatedContent.length 
                                                     });
-                                                    // AI应该已经在流式输出中说明了要做什么，这里只需要记录
+                                                    // Model should have narrated intent in the stream; record only here
                                                     if (!accumulatedContent || !accumulatedContent.trim()) {
                                                         AgentLogger.warn('AI called tool without providing context message first (Stream)');
                                                     }
                                                     
-                                                    // 等待工具调用参数收集完成（tool_calls参数可能还在流式传输中）
-                                                    // 但我们不在这里处理，让res.on('end')处理，确保所有tool_calls都收集完毕
+                                                    // Wait for tool_calls args to finish streaming
+                                                    // Defer to res.on('end') so tool_calls are fully assembled
                                                 }
                                             }
                                             
                                             if (delta?.tool_calls) {
                                                 for (const toolCall of delta.tool_calls || []) {
-                                                    // 这是为了确保每次只执行一个工具
+                                                    // One tool per turn
                                                     if (toolCall.index === 0 || toolCalls.length === 0) {
                                                         const idx = toolCall.index || 0;
                                                         if (idx === 0) {
@@ -2541,7 +2783,7 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
                                     AgentLogger.info('Stream ended (Stream)', { finishReason, iterations, accumulatedLength: accumulatedContent.length, waitingForToolCall, toolCallsCount: toolCalls.length });
                                     callback(null, undefined);
                                     
-                                    // 如果检测到工具调用，立即处理第一个工具
+                                    // On tool_calls, handle the first call only
                                     if (waitingForToolCall && toolCalls.length > 0 && iterations < maxIterations) {
                                         (async () => {
                                             try {
@@ -2558,7 +2800,7 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
                                                 const firstToolName = firstToolCall.function.name;
                                                 this.logSend({ type: 'tool_call_start', tools: [firstToolName] });
                                                 
-                                                // 构建 assistant 消息，只包含第一个工具调用
+                                                // Assistant message: first tool call only
                                                 const assistantForTools: any = { 
                                                     role: 'assistant', 
                                                     tool_calls: [{
@@ -2584,10 +2826,20 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
                                                 // Execute tool call
                                                 let toolResult: any;
                                                 try {
-                                                    toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs, domainId);
+                                                    toolResult = await mcpClient.callTool(
+                                                        firstToolCall.function.name,
+                                                        parsedArgs,
+                                                        domainId,
+                                                        undefined,
+                                                        undefined,
+                                                        effectiveAgentSkillBranch(this.adoc),
+                                                        undefined,
+                                                        skillSourceByName,
+                                                        coreSkillNames,
+                                                    );
                                                     AgentLogger.info(`Tool ${firstToolCall.function.name} returned (Stream)`, { resultLength: JSON.stringify(toolResult).length });
                                                     
-                                                    // 工具完成后立即发送结果
+                                                    // Emit tool result immediately
                                                     this.logSend({ 
                                                         type: 'tool_result', 
                                                         tool: firstToolCall.function.name, 
@@ -2595,7 +2847,7 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
                                                     });
                                                     
                                                 } catch (toolError: any) {
-                                                    // 工具调用失败
+                                                    // Tool call failed
                                                     AgentLogger.error(`Tool ${firstToolCall.function.name} failed (Stream):`, toolError);
                                                     toolResult = {
                                                         error: true,
@@ -2603,7 +2855,7 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
                                                         code: toolError.code || 'UNKNOWN_ERROR',
                                                     };
                                                     
-                                                    // 立即发送错误结果
+                                                    // Emit error payload immediately
                                                     this.logSend({ 
                                                         type: 'tool_result', 
                                                         tool: firstToolCall.function.name, 
@@ -2659,7 +2911,7 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
                                         return;
                                     }
                                     
-                                    // 如果没有工具调用，正常结束
+                                    // No tool calls: finish stream normally
                                     if (!waitingForToolCall && !streamFinished) {
                                         streamFinished = true;
                                         this.logSend({ type: 'done', message: accumulatedContent, history: JSON.stringify([
@@ -2809,11 +3061,16 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
         } catch (e) {
         }
 
-        const tools = await getAssignedTools(domainId, this.adoc.mcpToolIds, this.adoc.repoIds, this.adoc.skillIds, normalizeAgentSkillBindings(this.adoc));
+        let tools = await getAssignedTools(domainId, this.adoc.mcpToolIds, this.adoc.repoIds, this.adoc.skillIds, normalizeAgentSkillBindings(this.adoc));
+        if (agentHasOnDemandSkillLibraries(this.adoc)) {
+            tools = [...tools, { ...LOAD_SKILL_INSTRUCTIONS_TOOL_DEF }];
+        }
+        const modelTools = toolsForModelApi(this.adoc, tools);
         const mcpClient = new McpClient();
         const skillSourceByName = await skillSourceMapForAgent(domainId, this.adoc);
+        const coreSkillNames = await coreSkillNameSetForAgent(domainId, this.adoc);
         
-        // 加载 Agent Skills 元数据（渐进式披露）；未配置技能库绑定时不加载
+        // Load Agent Skills metadata (progressive disclosure); skip if no skill library bindings
         let skillsInstructions = '';
         try {
             skillsInstructions = await loadAgentSkillsMetadataBlock(this.adoc);
@@ -2829,7 +3086,7 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
             systemMessage += skillsInstructions;
         }
         
-        // 限制 memory 长度的辅助函数
+        // Truncate memory helper
         const truncateMemory = (memory: string, maxLength: number = 2000): string => {
             if (!memory || memory.length <= maxLength) {
                 return memory;
@@ -2837,27 +3094,32 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
             return memory.substring(0, maxLength) + '\n\n[... Memory truncated, keeping most important rules ...]';
         };
 
-        // 添加工作规则记忆
-        // 限制 memory 长度，避免请求体过大（最多 2000 字符）
+        // Append work-rules memory
+        // Cap memory at 2000 chars for request size
         if (this.adoc.memory) {
             const truncatedMemory = truncateMemory(this.adoc.memory);
-            systemMessage += `\n\n---\n【Work Rules Memory - Supplementary Guidelines】\n${truncatedMemory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
+            systemMessage += `\n\n---\n[Work Rules Memory - Supplementary Guidelines]\n${truncatedMemory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
         }
         
-        // Prohibit using emojis
-        if (systemMessage && !systemMessage.includes('do not use emoji')) {
-            systemMessage += '\n\nNote: Do not use any emoji in your responses.';
-        } else if (!systemMessage) {
-            systemMessage = 'Note: Do not use any emoji in your responses.';
-        }
-        if (tools.length > 0) {
+        systemMessage = appendAgentUniversalAssistantRules(systemMessage);
+        if (modelTools.length > 0) {
             const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
-              tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
-              `\n\n【CRITICAL - YOU MUST READ THIS FIRST】\n**MANDATORY: SPEAK BEFORE TOOL CALLS**\nBefore calling ANY tool, you MUST first output a message explaining what you are about to do. This is MANDATORY and NON-NEGOTIABLE.\n\nExample workflow:\n1. User asks: "Find the switch"\n2. You MUST first output: "Let me help you find the switch device..." (or similar)\n3. THEN call the tool (e.g., zigbee_list_devices)\n4. After tool returns, output the results\n\nIf you call a tool WITHOUT first explaining what you are doing, you are violating the rules. The conversation should feel natural - you speak first, then act, then speak about the results.\n\n【TOOL USAGE STRATEGY - CRITICAL】\n1. **Proactive Multi-Tool Problem Solving**: When a user's question requires multiple tools or steps to fully answer, you MUST actively call tools in sequence until you have enough information. Do not stop after the first tool if the problem clearly needs more.\n2. **Knowledge Base Search Priority**: When users ask questions about information, documentation, stored knowledge, or specific topics, ALWAYS use the search_repo tool first to check if the information exists in the knowledge base. Even if you think you might know the answer, search the knowledge base to ensure accuracy and completeness.\n3. **Sequential Tool Execution**: The system executes one tool at a time. After each tool completes, you receive the result and can immediately call the next tool if needed.\n4. **Complete Before Responding**: When solving complex problems, gather ALL necessary information through tool calls BEFORE giving your final answer to the user. Only reply after you have completed the tool chain needed to answer the question.\n5. **Tool Chaining Examples**:\n   - User: "Do I have classes tomorrow?" → You should: (1) FIRST say "Let me check tomorrow's schedule..." (2) call get_current_time to know what day tomorrow is, (3) call search_repo to check if there's schedule/calendar info in knowledge base, (4) then provide complete answer\n   - User: "View files in repo" → You should: (1) FIRST say "Let me search for files in the knowledge base..." (2) call search_repo to find relevant repo entries, (3) if found, analyze content, (4) present comprehensive results\n   - User asks about any topic → You should: (1) FIRST say what you will do, (2) THEN search knowledge base using search_repo, (3) analyze results, (4) if needed, call other tools, (5) provide answer based on all information gathered\n6. **When to Stop Tool Chain**: Only stop calling tools when: (a) you have enough information to fully answer the question, (b) you need user clarification, or (c) no more relevant tools are available.\n7. **System Behavior**: The system processes tools one-by-one automatically. After each tool result, you decide whether to call another tool or provide the answer.\n\n**KEY PRINCIPLE**: Be proactive and thorough. Always search the knowledge base first when users ask about information. If a question needs multiple tools, call them all before responding. Do not make the user ask multiple times or give incomplete answers.\n\n【IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES】You must strictly adhere to the following rules for tool calls:\n1. **ALWAYS speak first before calling tools (MANDATORY)**: When you need to call a tool, you MUST first output and stream a message to the user explaining what you are about to do. Examples:\n   Examples: "Let me search the knowledge base..." / "Let me find the switch devices..." / "Let me check the relevant information..."\n   This message MUST be streamed BEFORE you call the tool. This gives the user immediate feedback and makes the conversation feel natural and responsive. ONLY AFTER you have explained what you are doing should you call the tool. Calling a tool without first speaking is STRICTLY FORBIDDEN.\n2. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n3. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n4. Each tool call response should be independent and focused solely on the current tool's result.\n5. After the last tool call completes, you should only reply with the last tool's result. Do NOT provide a comprehensive summary of all tools' results (unless there are clear dependencies between tools that require integration).\n6. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n7. Tool calls proceed one by one sequentially: first explain what you will do → call one tool → immediately reply with that tool's result → decide if another tool is needed.\n8. If multiple tools are needed, proceed one by one: explain what you will do → call the first tool → reply with the first tool's result → explain what you will do next → call the second tool → reply with the second tool's result, and so on. Each reply should be independent and focused on the current tool.`;
+              modelTools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
+              `\n\n[CRITICAL - YOU MUST READ THIS FIRST]\n**MANDATORY: SPEAK BEFORE TOOL CALLS**\nBefore calling ANY tool, you MUST first output a message explaining what you are about to do. This is MANDATORY and NON-NEGOTIABLE.\n\nExample workflow:\n1. User asks: "Find the switch"\n2. You MUST first output: "Let me help you find the switch device..." (or similar)\n3. THEN call the tool (e.g., zigbee_list_devices)\n4. After tool returns, output the results\n\nIf you call a tool WITHOUT first explaining what you are doing, you are violating the rules. The conversation should feel natural - you speak first, then act, then speak about the results.\n\n[TOOL USAGE STRATEGY - CRITICAL]\n1. **Proactive Multi-Tool Problem Solving**: When a user's question requires multiple tools or steps to fully answer, you MUST actively call tools in sequence until you have enough information. Do not stop after the first tool if the problem clearly needs more.\n2. **Knowledge Base Search Priority**: When users ask questions about information, documentation, stored knowledge, or specific topics, ALWAYS use the search_repo tool first to check if the information exists in the knowledge base. Even if you think you might know the answer, search the knowledge base to ensure accuracy and completeness.\n3. **Sequential Tool Execution**: The system executes one tool at a time. After each tool completes, you receive the result and can immediately call the next tool if needed.\n4. **Complete Before Responding**: When solving complex problems, gather ALL necessary information through tool calls BEFORE giving your final answer to the user. Only reply after you have completed the tool chain needed to answer the question.\n5. **Tool Chaining Examples**:\n   - User: "Do I have classes tomorrow?" → You should: (1) FIRST say "Let me check tomorrow's schedule..." (2) call get_current_time to know what day tomorrow is, (3) call search_repo to check if there's schedule/calendar info in knowledge base, (4) then provide complete answer\n   - User: "View files in repo" → You should: (1) FIRST say "Let me search for files in the knowledge base..." (2) call search_repo to find relevant repo entries, (3) if found, analyze content, (4) present comprehensive results\n   - User asks about any topic → You should: (1) FIRST say what you will do, (2) THEN search knowledge base using search_repo, (3) analyze results, (4) if needed, call other tools, (5) provide answer based on all information gathered\n6. **When to Stop Tool Chain**: Only stop calling tools when: (a) you have enough information to fully answer the question, (b) you need user clarification, or (c) no more relevant tools are available.\n7. **System Behavior**: The system processes tools one-by-one automatically. After each tool result, you decide whether to call another tool or provide the answer.\n\n**KEY PRINCIPLE**: Be proactive and thorough. Always search the knowledge base first when users ask about information. If a question needs multiple tools, call them all before responding. Do not make the user ask multiple times or give incomplete answers.\n\n[IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES]You must strictly adhere to the following rules for tool calls:\n1. **ALWAYS speak first before calling tools (MANDATORY)**: When you need to call a tool, you MUST first output and stream a message to the user explaining what you are about to do. Examples:\n   Examples: "Let me search the knowledge base..." / "Let me find the switch devices..." / "Let me check the relevant information..."\n   This message MUST be streamed BEFORE you call the tool. This gives the user immediate feedback and makes the conversation feel natural and responsive. ONLY AFTER you have explained what you are doing should you call the tool. Calling a tool without first speaking is STRICTLY FORBIDDEN.\n2. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n3. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n4. Each tool call response should be independent and focused solely on the current tool's result.\n5. After the last tool call completes, you should only reply with the last tool's result. Do NOT provide a comprehensive summary of all tools' results (unless there are clear dependencies between tools that require integration).\n6. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n7. Tool calls proceed one by one sequentially: first explain what you will do → call one tool → immediately reply with that tool's result → decide if another tool is needed.\n8. If multiple tools are needed, proceed one by one: explain what you will do → call the first tool → reply with the first tool's result → explain what you will do next → call the second tool → reply with the second tool's result, and so on. Each reply should be independent and focused on the current tool.`;
             systemMessage = systemMessage + toolsInfo;
         }
 
-        logApiRequest('AgentApiConnectionHandler', domainId, this.adoc.aid, model, systemMessage, chatHistory, message);
+        logApiRequest('AgentApiConnectionHandler', domainId, this.adoc.aid, model, systemMessage, chatHistory, message, {
+            messages: [
+                { role: 'system', content: systemMessage },
+                ...chatHistory,
+                { role: 'user', content: message },
+            ],
+            skillBranch: effectiveAgentSkillBranch(this.adoc),
+            skillLibraryBindings: normalizeAgentSkillBindings(this.adoc),
+            coreSkillNames: [...coreSkillNames],
+            skillSourceSkillNames: skillSourceByName?.size ? [...skillSourceByName.keys()] : undefined,
+        });
 
         try {
             const requestBody: any = {
@@ -2871,8 +3133,8 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
                 stream: true,
             };
 
-            if (tools.length > 0) {
-                requestBody.tools = toolsToApiFormat(tools);
+            if (modelTools.length > 0) {
+                requestBody.tools = toolsToApiFormat(modelTools);
             }
 
             let messagesForTurn: any[] = [
@@ -2885,7 +3147,7 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
             let finishReason = '';
             let toolCalls: any[] = [];
             let iterations = 0;
-            const maxIterations = 50; // 增加迭代次数限制，避免过早停止
+            const maxIterations = 50; // Higher cap to avoid stopping tool chains too early
             let streamFinished = false;
             let waitingForToolCall = false;
 
@@ -2960,7 +3222,7 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
                                                         hasContent: !!accumulatedContent && accumulatedContent.trim().length > 0,
                                                         contentLength: accumulatedContent.length 
                                                     });
-                                                    // AI应该已经在流式输出中说明了要做什么，这里只需要记录
+                                                    // Model should have narrated intent in the stream; record only here
                                                     if (!accumulatedContent || !accumulatedContent.trim()) {
                                                         AgentLogger.warn('AI called tool without providing context message first (API WS)');
                                                     }
@@ -2969,7 +3231,7 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
                                             
                                             if (delta?.tool_calls) {
                                                 for (const toolCall of delta.tool_calls || []) {
-                                                    // 这是为了确保每次只执行一个工具
+                                                    // One tool per turn
                                                     if (toolCall.index === 0 || toolCalls.length === 0) {
                                                         const idx = toolCall.index || 0;
                                                         if (idx === 0) {
@@ -3034,7 +3296,7 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
                                                     
                                                     let toolResult: any;
                                                     try {
-                                                        toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs, domainId, undefined, undefined, effectiveAgentSkillBranch(this.adoc), undefined, skillSourceByName);
+                                                        toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs, domainId, undefined, undefined, effectiveAgentSkillBranch(this.adoc), undefined, skillSourceByName, coreSkillNames);
                                                         AgentLogger.info(`Tool ${firstToolCall.function.name} returned (API WS)`, { resultLength: JSON.stringify(toolResult).length });
                                                     } catch (toolError: any) {
                                                         AgentLogger.error(`Tool ${firstToolCall.function.name} failed (API WS):`, toolError);
@@ -3055,7 +3317,7 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
                                                         { 
                                                             role: 'assistant', 
                                                             content: accumulatedContent, 
-                                                            tool_calls: [firstToolCall] // 只包含已调用的工具
+                                                            tool_calls: [firstToolCall] // Only the tool call being executed
                                                         },
                                                         toolMsg,
                                                     ];
@@ -3178,11 +3440,16 @@ export class AgentApiHandler extends Handler {
             // ignore parse error
         }
 
-        const tools = await getAssignedTools(adoc.domainId, adoc.mcpToolIds, adoc.repoIds, adoc.skillIds, normalizeAgentSkillBindings(adoc));
+        let tools = await getAssignedTools(adoc.domainId, adoc.mcpToolIds, adoc.repoIds, adoc.skillIds, normalizeAgentSkillBindings(adoc));
+        if (agentHasOnDemandSkillLibraries(adoc)) {
+            tools = [...tools, { ...LOAD_SKILL_INSTRUCTIONS_TOOL_DEF }];
+        }
+        const modelTools = toolsForModelApi(adoc, tools);
         const mcpClient = new McpClient();
         const skillSourceByName = await skillSourceMapForAgent(adoc.domainId, adoc);
+        const coreSkillNames = await coreSkillNameSetForAgent(adoc.domainId, adoc);
         
-        // 加载 Agent Skills 元数据（渐进式披露）；未配置技能库绑定时不加载
+        // Load Agent Skills metadata (progressive disclosure); skip if no skill library bindings
         let skillsInstructions = '';
         try {
             skillsInstructions = await loadAgentSkillsMetadataBlock(adoc);
@@ -3206,23 +3473,28 @@ export class AgentApiHandler extends Handler {
         };
         if (adoc.memory) {
             const truncatedMemory = truncateMemory(adoc.memory);
-            systemMessage += `\n\n---\n【Work Rules Memory - Supplementary Guidelines】\n${truncatedMemory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
+            systemMessage += `\n\n---\n[Work Rules Memory - Supplementary Guidelines]\n${truncatedMemory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
         }
         
-        // Prohibit using emojis
-        if (systemMessage && !systemMessage.includes('do not use emoji')) {
-            systemMessage += '\n\nNote: Do not use any emoji in your responses.';
-        } else if (!systemMessage) {
-            systemMessage = 'Note: Do not use any emoji in your responses.';
-        }
-        if (tools.length > 0) {
+        systemMessage = appendAgentUniversalAssistantRules(systemMessage);
+        if (modelTools.length > 0) {
             const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
-              tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
-              `\n\n【CRITICAL - YOU MUST READ THIS FIRST】\n**MANDATORY: SPEAK BEFORE TOOL CALLS**\nBefore calling ANY tool, you MUST first output a message explaining what you are about to do. This is MANDATORY and NON-NEGOTIABLE.\n\nExample workflow:\n1. User asks: "Find the switch"\n2. You MUST first output: "Let me help you find the switch device..." (or similar)\n3. THEN call the tool (e.g., zigbee_list_devices)\n4. After tool returns, output the results\n\nIf you call a tool WITHOUT first explaining what you are doing, you are violating the rules. The conversation should feel natural - you speak first, then act, then speak about the results.\n\n【TOOL USAGE STRATEGY - CRITICAL】\n1. **Proactive Multi-Tool Problem Solving**: When a user's question requires multiple tools or steps to fully answer, you MUST actively call tools in sequence until you have enough information. Do not stop after the first tool if the problem clearly needs more.\n2. **Knowledge Base Search Priority**: When users ask questions about information, documentation, stored knowledge, or specific topics, ALWAYS use the search_repo tool first to check if the information exists in the knowledge base. Even if you think you might know the answer, search the knowledge base to ensure accuracy and completeness.\n3. **Sequential Tool Execution**: The system executes one tool at a time. After each tool completes, you receive the result and can immediately call the next tool if needed.\n4. **Complete Before Responding**: When solving complex problems, gather ALL necessary information through tool calls BEFORE giving your final answer to the user. Only reply after you have completed the tool chain needed to answer the question.\n5. **Tool Chaining Examples**:\n   - User: "Do I have classes tomorrow?" → You should: (1) FIRST say "Let me check tomorrow's schedule..." (2) call get_current_time to know what day tomorrow is, (3) call search_repo to check if there's schedule/calendar info in knowledge base, (4) then provide complete answer\n   - User: "View files in repo" → You should: (1) FIRST say "Let me search for files in the knowledge base..." (2) call search_repo to find relevant repo entries, (3) if found, analyze content, (4) present comprehensive results\n   - User asks about any topic → You should: (1) FIRST say what you will do, (2) THEN search knowledge base using search_repo, (3) analyze results, (4) if needed, call other tools, (5) provide answer based on all information gathered\n6. **When to Stop Tool Chain**: Only stop calling tools when: (a) you have enough information to fully answer the question, (b) you need user clarification, or (c) no more relevant tools are available.\n7. **System Behavior**: The system processes tools one-by-one automatically. After each tool result, you decide whether to call another tool or provide the answer.\n\n**KEY PRINCIPLE**: Be proactive and thorough. Always search the knowledge base first when users ask about information. If a question needs multiple tools, call them all before responding. Do not make the user ask multiple times or give incomplete answers.\n\n【IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES】You must strictly adhere to the following rules for tool calls:\n1. **ALWAYS speak first before calling tools (MANDATORY)**: When you need to call a tool, you MUST first output and stream a message to the user explaining what you are about to do. Examples:\n   Examples: "Let me search the knowledge base..." / "Let me find the switch devices..." / "Let me check the relevant information..."\n   This message MUST be streamed BEFORE you call the tool. This gives the user immediate feedback and makes the conversation feel natural and responsive. ONLY AFTER you have explained what you are doing should you call the tool. Calling a tool without first speaking is STRICTLY FORBIDDEN.\n2. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n3. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n4. Each tool call response should be independent and focused solely on the current tool's result.\n5. After the last tool call completes, you should only reply with the last tool's result. Do NOT provide a comprehensive summary of all tools' results (unless there are clear dependencies between tools that require integration).\n6. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n7. Tool calls proceed one by one sequentially: first explain what you will do → call one tool → immediately reply with that tool's result → decide if another tool is needed.\n8. If multiple tools are needed, proceed one by one: explain what you will do → call the first tool → reply with the first tool's result → explain what you will do next → call the second tool → reply with the second tool's result, and so on. Each reply should be independent and focused on the current tool.`;
+              modelTools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
+              `\n\n[CRITICAL - YOU MUST READ THIS FIRST]\n**MANDATORY: SPEAK BEFORE TOOL CALLS**\nBefore calling ANY tool, you MUST first output a message explaining what you are about to do. This is MANDATORY and NON-NEGOTIABLE.\n\nExample workflow:\n1. User asks: "Find the switch"\n2. You MUST first output: "Let me help you find the switch device..." (or similar)\n3. THEN call the tool (e.g., zigbee_list_devices)\n4. After tool returns, output the results\n\nIf you call a tool WITHOUT first explaining what you are doing, you are violating the rules. The conversation should feel natural - you speak first, then act, then speak about the results.\n\n[TOOL USAGE STRATEGY - CRITICAL]\n1. **Proactive Multi-Tool Problem Solving**: When a user's question requires multiple tools or steps to fully answer, you MUST actively call tools in sequence until you have enough information. Do not stop after the first tool if the problem clearly needs more.\n2. **Knowledge Base Search Priority**: When users ask questions about information, documentation, stored knowledge, or specific topics, ALWAYS use the search_repo tool first to check if the information exists in the knowledge base. Even if you think you might know the answer, search the knowledge base to ensure accuracy and completeness.\n3. **Sequential Tool Execution**: The system executes one tool at a time. After each tool completes, you receive the result and can immediately call the next tool if needed.\n4. **Complete Before Responding**: When solving complex problems, gather ALL necessary information through tool calls BEFORE giving your final answer to the user. Only reply after you have completed the tool chain needed to answer the question.\n5. **Tool Chaining Examples**:\n   - User: "Do I have classes tomorrow?" → You should: (1) FIRST say "Let me check tomorrow's schedule..." (2) call get_current_time to know what day tomorrow is, (3) call search_repo to check if there's schedule/calendar info in knowledge base, (4) then provide complete answer\n   - User: "View files in repo" → You should: (1) FIRST say "Let me search for files in the knowledge base..." (2) call search_repo to find relevant repo entries, (3) if found, analyze content, (4) present comprehensive results\n   - User asks about any topic → You should: (1) FIRST say what you will do, (2) THEN search knowledge base using search_repo, (3) analyze results, (4) if needed, call other tools, (5) provide answer based on all information gathered\n6. **When to Stop Tool Chain**: Only stop calling tools when: (a) you have enough information to fully answer the question, (b) you need user clarification, or (c) no more relevant tools are available.\n7. **System Behavior**: The system processes tools one-by-one automatically. After each tool result, you decide whether to call another tool or provide the answer.\n\n**KEY PRINCIPLE**: Be proactive and thorough. Always search the knowledge base first when users ask about information. If a question needs multiple tools, call them all before responding. Do not make the user ask multiple times or give incomplete answers.\n\n[IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES]You must strictly adhere to the following rules for tool calls:\n1. **ALWAYS speak first before calling tools (MANDATORY)**: When you need to call a tool, you MUST first output and stream a message to the user explaining what you are about to do. Examples:\n   Examples: "Let me search the knowledge base..." / "Let me find the switch devices..." / "Let me check the relevant information..."\n   This message MUST be streamed BEFORE you call the tool. This gives the user immediate feedback and makes the conversation feel natural and responsive. ONLY AFTER you have explained what you are doing should you call the tool. Calling a tool without first speaking is STRICTLY FORBIDDEN.\n2. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n3. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n4. Each tool call response should be independent and focused solely on the current tool's result.\n5. After the last tool call completes, you should only reply with the last tool's result. Do NOT provide a comprehensive summary of all tools' results (unless there are clear dependencies between tools that require integration).\n6. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n7. Tool calls proceed one by one sequentially: first explain what you will do → call one tool → immediately reply with that tool's result → decide if another tool is needed.\n8. If multiple tools are needed, proceed one by one: explain what you will do → call the first tool → reply with the first tool's result → explain what you will do next → call the second tool → reply with the second tool's result, and so on. Each reply should be independent and focused on the current tool.`;
             systemMessage = systemMessage + toolsInfo;
         }
 
-        logApiRequest('AgentApiHandler.all', adoc.domainId, adoc.aid, model, systemMessage, chatHistory, message);
+        logApiRequest('AgentApiHandler.all', adoc.domainId, adoc.aid, model, systemMessage, chatHistory, message, {
+            messages: [
+                { role: 'system', content: systemMessage },
+                ...chatHistory,
+                { role: 'user', content: message },
+            ],
+            skillBranch: effectiveAgentSkillBranch(adoc),
+            skillLibraryBindings: normalizeAgentSkillBindings(adoc),
+            coreSkillNames: [...coreSkillNames],
+            skillSourceSkillNames: skillSourceByName?.size ? [...skillSourceByName.keys()] : undefined,
+        });
 
         if (stream) {
             this.response.type = 'text/event-stream';
@@ -3245,8 +3517,8 @@ export class AgentApiHandler extends Handler {
                 stream: stream,
             };
 
-            if (tools.length > 0) {
-                requestBody.tools = toolsToApiFormat(tools);
+            if (modelTools.length > 0) {
+                requestBody.tools = toolsToApiFormat(modelTools);
             }
 
             let messagesForTurn: any[] = [
@@ -3284,7 +3556,7 @@ export class AgentApiHandler extends Handler {
                 let finishReason = '';
                 let toolCalls: any[] = [];
                 let iterations = 0;
-                const maxIterations = 50; // 增加迭代次数限制，避免过早停止
+                const maxIterations = 50; // Higher cap to avoid stopping tool chains too early
                 let streamFinished = false;
                 let waitingForToolCall = false;
 
@@ -3436,7 +3708,7 @@ export class AgentApiHandler extends Handler {
                                                             const toolArgs = firstToolCall.function.name.match(/^repo_\d+_/) 
                                                                 ? { ...parsedArgs, __agentId: (adoc as any).aid || (adoc as any)._id?.toString() || 'unknown', __agentName: (adoc as any).name || 'agent' }
                                                                 : parsedArgs;
-                                                            toolResult = await mcpClient.callTool(firstToolCall.function.name, toolArgs, adoc.domainId, undefined, undefined, effectiveAgentSkillBranch(adoc), undefined, skillSourceByName);
+                                                            toolResult = await mcpClient.callTool(firstToolCall.function.name, toolArgs, adoc.domainId, undefined, undefined, effectiveAgentSkillBranch(adoc), undefined, skillSourceByName, coreSkillNames);
                                                             AgentLogger.info(`Tool ${firstToolCall.function.name} returned (API)`, { resultLength: JSON.stringify(toolResult).length });
                                                         } catch (toolError: any) {
                                                             AgentLogger.error(`Tool ${firstToolCall.function.name} failed (API):`, toolError);
@@ -3459,7 +3731,7 @@ export class AgentApiHandler extends Handler {
                                                             { 
                                                                 role: 'assistant', 
                                                                 content: accumulatedContent, 
-                                                                tool_calls: [firstToolCall] // 只包含已调用的工具
+                                                                tool_calls: [firstToolCall] // Only the tool call being executed
                                                             },
                                                             toolMsg,
                                                         ];
@@ -3548,7 +3820,7 @@ export class AgentApiHandler extends Handler {
                 .set('content-type', 'application/json');
 
             let iterations = 0;
-            const maxIterations = 50; // 增加迭代次数限制，避免过早停止
+            const maxIterations = 50; // Higher cap to avoid stopping tool chains too early
 
             while (true) {
                 const choice = currentResponse.body.choices?.[0] || {};
@@ -3572,11 +3844,11 @@ export class AgentApiHandler extends Handler {
                     }
                     
                     AgentLogger.info(`Calling first tool: ${firstToolCall.function?.name} (One-by-One Mode)`);
-                    // 如果是 repo 工具，传递 agentId 和 agentName
+                    // For repo_* tools, pass agentId and agentName
                     const toolArgs = firstToolCall.function?.name?.match(/^repo_\d+_/) 
                         ? { ...parsedArgs, __agentId: (adoc as any).aid || (adoc as any)._id?.toString() || 'unknown', __agentName: (adoc as any).name || 'agent' }
                         : parsedArgs;
-                    const toolResult = await mcpClient.callTool(firstToolCall.function?.name, toolArgs, adoc.domainId, undefined, undefined, effectiveAgentSkillBranch(adoc), undefined, skillSourceByName);
+                    const toolResult = await mcpClient.callTool(firstToolCall.function?.name, toolArgs, adoc.domainId, undefined, undefined, effectiveAgentSkillBranch(adoc), undefined, skillSourceByName, coreSkillNames);
                     AgentLogger.info('Tool returned:', { toolResult });
                     
                     const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
@@ -3584,7 +3856,7 @@ export class AgentApiHandler extends Handler {
                     const assistantForTools: any = { 
                         role: 'assistant', 
                         content: msg.content || '',
-                        tool_calls: [firstToolCall] // 只包含已调用的工具
+                        tool_calls: [firstToolCall] // Only the tool call being executed
                     };
 
                     messagesForTurn = [
@@ -3698,11 +3970,11 @@ export class AgentEditHandler extends Handler {
         }
         const udoc = await user.getById(domainId, agent.owner);
 
-        // 获取所有可用的repo列表
+        // List repos available to this domain
         // RepoModel has been removed, repo functionality is no longer available
         const allRepos: any[] = [];
 
-        // 获取已选择的repo ID列表
+        // Selected repo IDs
         const assignedRepoIds = (agent.repoIds || []).map(id => id.toString());
 
         this.response.template = 'agent_edit.html';
@@ -3783,7 +4055,7 @@ export class AgentEditHandler extends Handler {
             }
         }
         
-        // 验证repo ID是否有效
+        // Validate repo id
         // RepoModel has been removed, repo functionality is no longer available
         const validRepoIds: number[] = [];
         if (repoIds && Array.isArray(repoIds)) {
@@ -3947,7 +4219,7 @@ export class DirectAiChatHandler extends Handler {
         }
 
         if (stream) {
-            // 流式传输模式
+            // Streaming response
             const res = this.context.res;
             this.response.status = 200;
             this.response.type = 'text/event-stream';
@@ -3972,7 +4244,7 @@ export class DirectAiChatHandler extends Handler {
             this.response.body = null;
             this.context.body = null;
             
-            // 立即发送响应头
+            // Flush response headers early
             res.writeHead(200, {
                 'Content-Type': 'text/event-stream',
                 'Cache-Control': 'no-cache',
@@ -4006,7 +4278,7 @@ export class DirectAiChatHandler extends Handler {
                             AgentLogger.info('AI API response received, status: %d', res.statusCode);
                             if (res.statusCode !== 200) {
                                 AgentLogger.error('AI API returned non-200 status: %d', res.statusCode);
-                                // 读取错误响应
+                                // Read error body
                                 let errorBody = '';
                                 res.on('data', (chunk: string) => {
                                     errorBody += chunk;
@@ -4102,7 +4374,7 @@ export class DirectAiChatHandler extends Handler {
                                 AgentLogger.error('AI API response error:', err);
                                 if (!streamFinished) {
                                     streamFinished = true;
-                                    streamResponse.write(`data: ${JSON.stringify({ type: 'error', error: err.message || '请求失败' })}\n\n`);
+                                    streamResponse.write(`data: ${JSON.stringify({ type: 'error', error: err.message || 'Request failed' })}\n\n`);
                                     streamResponse.end();
                                     reject(err);
                                 }
@@ -4113,7 +4385,7 @@ export class DirectAiChatHandler extends Handler {
                         AgentLogger.error('Stream request error:', err);
                         if (!streamFinished) {
                             streamFinished = true;
-                            streamResponse.write(`data: ${JSON.stringify({ type: 'error', error: err.message || '请求失败' })}\n\n`);
+                            streamResponse.write(`data: ${JSON.stringify({ type: 'error', error: err.message || 'Request failed' })}\n\n`);
                             streamResponse.end();
                         }
                         reject(err);
@@ -4124,12 +4396,12 @@ export class DirectAiChatHandler extends Handler {
             } catch (error: any) {
                 AgentLogger.error('Direct AI chat stream error:', error);
                 if (!streamFinished) {
-                    streamResponse.write(`data: ${JSON.stringify({ type: 'error', error: error.message || '请求失败' })}\n\n`);
+                    streamResponse.write(`data: ${JSON.stringify({ type: 'error', error: error.message || 'Request failed' })}\n\n`);
                     streamResponse.end();
                 }
             }
         } else {
-            // 非流式模式（兼容）
+            // Non-streaming fallback
             try {
                 const response = await request.post(apiUrl)
                     .send({
@@ -4146,7 +4418,7 @@ export class DirectAiChatHandler extends Handler {
                     .set('Authorization', `Bearer ${apiKey}`)
                     .set('content-type', 'application/json');
 
-                const assistantMessage = response.body.choices?.[0]?.message?.content || '无响应';
+                const assistantMessage = response.body.choices?.[0]?.message?.content || 'No response';
                 
                 this.response.body = {
                     message: assistantMessage,
@@ -4154,7 +4426,7 @@ export class DirectAiChatHandler extends Handler {
             } catch (error: any) {
                 AgentLogger.error('Direct AI chat error:', error);
                 this.response.body = { 
-                    error: error.response?.body?.error?.message || error.message || '请求失败' 
+                    error: error.response?.body?.error?.message || error.message || 'Request failed' 
                 };
                 this.response.status = 500;
             }
@@ -4301,7 +4573,7 @@ export class DirectAiChatConnectionHandler extends ConnectionHandler {
                             AgentLogger.error('AI API response error:', err);
                             if (!streamFinished) {
                                 streamFinished = true;
-                                this.send({ type: 'error', error: err.message || '请求失败' });
+                                this.send({ type: 'error', error: err.message || 'Request failed' });
                                 reject(err);
                             }
                         });
@@ -4311,7 +4583,7 @@ export class DirectAiChatConnectionHandler extends ConnectionHandler {
                     AgentLogger.error('Stream request error:', err);
                     if (!streamFinished) {
                         streamFinished = true;
-                        this.send({ type: 'error', error: err.message || '请求失败' });
+                        this.send({ type: 'error', error: err.message || 'Request failed' });
                     }
                     reject(err);
                 });
@@ -4320,7 +4592,7 @@ export class DirectAiChatConnectionHandler extends ConnectionHandler {
             });
         } catch (error: any) {
             AgentLogger.error('Direct AI chat stream error:', error);
-            this.send({ type: 'error', error: error.message || '请求失败' });
+            this.send({ type: 'error', error: error.message || 'Request failed' });
         }
     }
 }
@@ -4343,7 +4615,7 @@ export async function apply(ctx: Context) {
     ctx.Route('direct_ai_chat', '/ai/chat', DirectAiChatHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Connection('direct_ai_chat_ws', '/ai/chat-ws', DirectAiChatConnectionHandler, PRIV.PRIV_USER_PROFILE);
     
-    // 注册 agent task record 路由
+    // Register agent task record route
     // Agent task record routes are now in record.ts
     
 }

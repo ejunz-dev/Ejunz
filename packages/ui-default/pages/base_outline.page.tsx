@@ -1055,7 +1055,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     const domainId = (window as any).UiContext?.domainId || 'system';
     const apiPath = basePath === 'skill' ? `/d/${domainId}/skill/data` : `/d/${domainId}/base/data`;
     const apiQs: Record<string, string> = {};
-    if (docId && basePath === 'base') apiQs.docId = docId;
+    if (docId) apiQs.docId = docId;
     const curBranch = (window as any).UiContext?.currentBranch;
     if (curBranch) apiQs.branch = curBranch;
     appendOutlineExplorerFilterParams(apiQs);
@@ -1082,7 +1082,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     let closed = false;
     const apiPath = basePath === 'skill' ? `/d/${domainId}/skill/data` : `/d/${domainId}/base/data`;
     const wsApiQs: Record<string, string> = {};
-    if (docId && basePath === 'base') wsApiQs.docId = docId;
+    if (docId) wsApiQs.docId = docId;
     const wsBranch = (window as any).UiContext?.currentBranch;
     if (wsBranch) wsApiQs.branch = wsBranch;
     appendOutlineExplorerFilterParams(wsApiQs);
@@ -3213,7 +3213,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       const domainId = (window as any).UiContext?.domainId || 'system';
       const dataApiPath = basePath === 'skill' ? `/d/${domainId}/skill/data` : `/d/${domainId}/base/data`;
       const dataQs2: Record<string, string> = {};
-      if (docId && basePath === 'base') dataQs2.docId = docId;
+      if (docId) dataQs2.docId = docId;
       const dBranch2 = (window as any).UiContext?.currentBranch;
       if (dBranch2) dataQs2.branch = dBranch2;
       appendOutlineExplorerFilterParams(dataQs2);
@@ -3344,7 +3344,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
               const domainId = (window as any).UiContext?.domainId || 'system';
               const dataApiPath = basePath === 'skill' ? `/d/${domainId}/skill/data` : `/d/${domainId}/base/data`;
               const dataQs: Record<string, string> = {};
-              if (docId && basePath === 'base') dataQs.docId = docId;
+              if (docId) dataQs.docId = docId;
               const dBranch = (window as any).UiContext?.currentBranch;
               if (dBranch) dataQs.branch = dBranch;
               appendOutlineExplorerFilterParams(dataQs);
