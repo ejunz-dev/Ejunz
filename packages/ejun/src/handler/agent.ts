@@ -240,7 +240,8 @@ async function callToolWithFallback(
         baseBranch?: string;
     },
 ): Promise<any> {
-    const preferDirectMcp = toolName === 'load_skill_instructions' || toolName === 'load_base';
+    const preferDirectMcp = toolName === 'load_skill_instructions' || toolName === 'load_base'
+        || toolName === 'get_domain_user_progress';
     if (useWorker && !preferDirectMcp) {
         try {
             const ctx = (global as any).app || (global as any).Ejunz;
@@ -265,6 +266,7 @@ async function callToolWithFallback(
         mcpOpts?.coreSkillNames,
         mcpOpts?.baseDocId,
         mcpOpts?.baseBranch,
+        uid,
     );
 }
 
@@ -3014,6 +3016,7 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
                                                         coreSkillNames,
                                                         effectiveAgentBaseDocId(this.adoc),
                                                         effectiveAgentBaseBranch(this.adoc),
+                                                        this.user._id > 0 ? this.user._id : undefined,
                                                     );
                                                     AgentLogger.info(`Tool ${firstToolCall.function.name} returned (Stream)`, { resultLength: JSON.stringify(toolResult).length });
                                                     
@@ -3474,7 +3477,7 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
                                                     
                                                     let toolResult: any;
                                                     try {
-                                                        toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs, domainId, undefined, undefined, effectiveAgentSkillBranch(this.adoc), undefined, skillSourceByName, coreSkillNames, effectiveAgentBaseDocId(this.adoc), effectiveAgentBaseBranch(this.adoc));
+                                                        toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs, domainId, undefined, undefined, effectiveAgentSkillBranch(this.adoc), undefined, skillSourceByName, coreSkillNames, effectiveAgentBaseDocId(this.adoc), effectiveAgentBaseBranch(this.adoc), this.user._id > 0 ? this.user._id : undefined);
                                                         AgentLogger.info(`Tool ${firstToolCall.function.name} returned (API WS)`, { resultLength: JSON.stringify(toolResult).length });
                                                     } catch (toolError: any) {
                                                         AgentLogger.error(`Tool ${firstToolCall.function.name} failed (API WS):`, toolError);
@@ -3886,7 +3889,7 @@ export class AgentApiHandler extends Handler {
                                                             const toolArgs = firstToolCall.function.name.match(/^repo_\d+_/) 
                                                                 ? { ...parsedArgs, __agentId: (adoc as any).aid || (adoc as any)._id?.toString() || 'unknown', __agentName: (adoc as any).name || 'agent' }
                                                                 : parsedArgs;
-                                                            toolResult = await mcpClient.callTool(firstToolCall.function.name, toolArgs, adoc.domainId, undefined, undefined, effectiveAgentSkillBranch(adoc), undefined, skillSourceByName, coreSkillNames, effectiveAgentBaseDocId(adoc), effectiveAgentBaseBranch(adoc));
+                                                            toolResult = await mcpClient.callTool(firstToolCall.function.name, toolArgs, adoc.domainId, undefined, undefined, effectiveAgentSkillBranch(adoc), undefined, skillSourceByName, coreSkillNames, effectiveAgentBaseDocId(adoc), effectiveAgentBaseBranch(adoc), this.user._id > 0 ? this.user._id : undefined);
                                                             AgentLogger.info(`Tool ${firstToolCall.function.name} returned (API)`, { resultLength: JSON.stringify(toolResult).length });
                                                         } catch (toolError: any) {
                                                             AgentLogger.error(`Tool ${firstToolCall.function.name} failed (API):`, toolError);
@@ -4026,7 +4029,7 @@ export class AgentApiHandler extends Handler {
                     const toolArgs = firstToolCall.function?.name?.match(/^repo_\d+_/) 
                         ? { ...parsedArgs, __agentId: (adoc as any).aid || (adoc as any)._id?.toString() || 'unknown', __agentName: (adoc as any).name || 'agent' }
                         : parsedArgs;
-                    const toolResult = await mcpClient.callTool(firstToolCall.function?.name, toolArgs, adoc.domainId, undefined, undefined, effectiveAgentSkillBranch(adoc), undefined, skillSourceByName, coreSkillNames, effectiveAgentBaseDocId(adoc), effectiveAgentBaseBranch(adoc));
+                    const toolResult = await mcpClient.callTool(firstToolCall.function?.name, toolArgs, adoc.domainId, undefined, undefined, effectiveAgentSkillBranch(adoc), undefined, skillSourceByName, coreSkillNames, effectiveAgentBaseDocId(adoc), effectiveAgentBaseBranch(adoc), this.user._id > 0 ? this.user._id : undefined);
                     AgentLogger.info('Tool returned:', { toolResult });
                     
                     const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
