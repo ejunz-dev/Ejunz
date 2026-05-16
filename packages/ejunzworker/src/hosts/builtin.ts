@@ -278,8 +278,11 @@ export async function apply(ctx: EjunzContext) {
                     stream: true,
                 };
                 
-                if (context.tools && context.tools.length > 0) {
-                    requestBody.tools = context.tools.map((tool: any) => {
+                const toolsForApi = (context.toolsForModel && context.toolsForModel.length > 0)
+                    ? context.toolsForModel
+                    : (context.tools && context.tools.length > 0 ? context.tools : []);
+                if (toolsForApi.length > 0) {
+                    requestBody.tools = toolsForApi.map((tool: any) => {
                         let parameters = tool.inputSchema || {};
                         if (typeof parameters !== 'object' || Array.isArray(parameters)) {
                             parameters = {};
@@ -320,6 +323,34 @@ export async function apply(ctx: EjunzContext) {
                 
                 while (iterations < maxIterations) {
                     iterations++;
+                    
+                    if (iterations === 1) {
+                        try {
+                            const { logAgentContextToModel } = require('ejun/src/handler/agent');
+                            const plainSrc = (context as any)?.skillSourceByName;
+                            const skillSourceSkillNames =
+                                plainSrc && typeof plainSrc === 'object' && !Array.isArray(plainSrc)
+                                    ? Object.keys(plainSrc)
+                                    : undefined;
+                            const coreRaw = (context as any)?.coreSkillNames;
+                            const coreSkillNamesLog = Array.isArray(coreRaw)
+                                ? coreRaw.map((x: any) => String(x))
+                                : undefined;
+                            logAgentContextToModel({
+                                source: `ejunzworker/builtin first LLM request recordId=${rid?.toString()} taskId=${String(taskId)}`,
+                                domainId,
+                                agentId: String(agentId),
+                                model: context.model,
+                                systemMessage: context.systemMessage || '',
+                                messages: requestBody.messages,
+                                skillBranch: (context as any)?.skillBranch,
+                                coreSkillNames: coreSkillNamesLog,
+                                skillSourceSkillNames,
+                            });
+                        } catch (e: any) {
+                            logger.warn('logAgentContextToModel failed: %s', e?.message || e);
+                        }
+                    }
                     
                     let currentBubbleId: string | null = null;
                     let bubbleStarted = false;
@@ -383,7 +414,7 @@ export async function apply(ctx: EjunzContext) {
                             });
                             
                         } catch (e) {
-                            logger.error(`[气泡 ${currentBubbleId ? currentBubbleId.substring(0, 8) : 'unknown'}] updateRecordContent 错误:`, {
+                            logger.error(`[bubble ${currentBubbleId ? currentBubbleId.substring(0, 8) : 'unknown'}] updateRecordContent error:`, {
                                 error: e,
                                 recordId: rid.toString(),
                                 bubbleId: currentBubbleId,
@@ -458,7 +489,7 @@ export async function apply(ctx: EjunzContext) {
                                             if (delta?.content) {
                                                 accumulatedContent += delta.content;
                                                 updateRecordContent(accumulatedContent, toolCalls.length > 0 ? toolCalls : undefined).catch((err) => {
-                                                    logger.error('updateRecordContent 调用失败', {
+                                                    logger.error('updateRecordContent failed', {
                                                         recordId: rid.toString(),
                                                         error: err,
                                                     });
@@ -639,38 +670,37 @@ export async function apply(ctx: EjunzContext) {
                         
                         let toolToken: string | undefined = undefined;
                         let toolServerId: number | undefined = undefined;
-                        let toolType: string | undefined = undefined;
-                        const toolsCount = context.tools && Array.isArray(context.tools) ? context.tools.length : 0;
-                        if (context.tools && Array.isArray(context.tools)) {
-                            const toolInfo = context.tools.find((t: any) => t.name === toolName);
-                            if (toolInfo) {
-                                if (toolInfo.token) {
-                                    toolToken = toolInfo.token;
-                                }
-                                if (toolInfo.serverId) {
-                                    toolServerId = toolInfo.serverId;
-                                }
-                                if (toolInfo.type) {
-                                    toolType = toolInfo.type;
-                                }                              // 可复制的工具参数中增加 system 字段，据此识别并直接调用系统工具
-                                if (toolInfo.system === true) {
-                                    toolType = 'system';
-                                }
-                            }
-                            logger.info('[tool] worker: name=%s context.tools=%d found=%s toolType=%s', toolName, toolsCount, !!toolInfo, toolType ?? 'undefined');
-                        } else {
-                            logger.info('[tool] worker: name=%s context.tools=missing toolType=%s', toolName, toolType ?? 'undefined');
-                        }
+                        const toolType: string | undefined = undefined;
+                        logger.info('[tool] worker: name=%s (resolve via McpClient; no context.tools)', toolName);
                         
+                        const plainSrc = (context as any)?.skillSourceByName;
+                        const skillSourceByName = plainSrc && typeof plainSrc === 'object' && !Array.isArray(plainSrc)
+                            ? new Map(Object.entries(plainSrc) as [string, { branch: string; docId: number }][])
+                            : undefined;
+                        const rawCoreNames = (context as any)?.coreSkillNames;
+                        const coreSkillNames = Array.isArray(rawCoreNames) && rawCoreNames.length > 0
+                            ? new Set(rawCoreNames.map((x: any) => String(x)))
+                            : undefined;
+
                         toolCallCount++;
                         
                         let toolResult: any;
                         const STATUS = require('ejun/src/model/builtin').STATUS;
                         try {
-                            toolResult = await mcpClient.callTool(toolName, toolArgs, domainId, toolServerId, toolToken, (context as any)?.skillBranch, toolType);
+                            toolResult = await mcpClient.callTool(
+                                toolName,
+                                toolArgs,
+                                domainId,
+                                toolServerId,
+                                toolToken,
+                                (context as any)?.skillBranch,
+                                toolType,
+                                skillSourceByName,
+                                coreSkillNames,
+                            );
                             logger.info('[tool] worker: name=%s done success', toolName);
                             
-                            // 工具返回 success: false 时仍将结果写入 record，并继续请求模型让 Agent 根据结果回复；不设 hasToolError，避免任务被标为错误导致中断/UI 显示失败
+                            // On success:false tool results, still persist and continue so the model can reply; avoid aborting UI
                             if (toolResult === false || (typeof toolResult === 'object' && toolResult !== null && toolResult.success === false)) {
                                 score = Math.max(0, score - 20);
                             }
@@ -693,17 +723,15 @@ export async function apply(ctx: EjunzContext) {
                             
                             if (errorCode === 'TOOL_NOT_ADDED') {
                                 errorStatus = STATUS.STATUS_TASK_ERROR_NOT_ADDED;
-                            } else if (errorCode === 'TOOL_NOT_FOUND' || errorMessage.includes('找不到')) {
+                            } else if (errorCode === 'TOOL_NOT_FOUND' || errorMessage.toLowerCase().includes('not found')) {
                                 errorStatus = STATUS.STATUS_TASK_ERROR_NOT_FOUND;
-                            } else if (errorMessage.includes('not found')) {
-                                errorStatus = STATUS.STATUS_TASK_ERROR_NOT_FOUND;
-                            } else if (errorMessage.includes('timeout') || errorMessage.includes('超时') || errorCode === 'TIMEOUT') {
+                            } else if (errorMessage.toLowerCase().includes('timeout') || errorCode === 'TIMEOUT') {
                                 errorStatus = STATUS.STATUS_TASK_ERROR_TIMEOUT;
-                            } else if (errorMessage.includes('network') || errorMessage.includes('网络') || errorCode === 'NETWORK_ERROR') {
+                            } else if (errorMessage.toLowerCase().includes('network') || errorCode === 'NETWORK_ERROR') {
                                 errorStatus = STATUS.STATUS_TASK_ERROR_NETWORK;
-                            } else if (errorMessage.includes('server') || errorMessage.includes('服务器') || errorCode === 'SERVER_ERROR') {
+                            } else if (errorMessage.toLowerCase().includes('server') || errorCode === 'SERVER_ERROR') {
                                 errorStatus = STATUS.STATUS_TASK_ERROR_SERVER;
-                            } else if (errorMessage.includes('system') || errorMessage.includes('系统') || errorCode === 'SYSTEM_ERROR') {
+                            } else if (errorMessage.toLowerCase().includes('system') || errorCode === 'SYSTEM_ERROR') {
                                 errorStatus = STATUS.STATUS_TASK_ERROR_SYSTEM;
                             } else {
                                 errorStatus = STATUS.STATUS_TASK_ERROR_UNKNOWN;
@@ -729,7 +757,7 @@ export async function apply(ctx: EjunzContext) {
                                     timestamp: new Date(),
                                 }],
                             });
-                            // 不 break：将错误结果带入下一轮请求，让 Agent 根据报错回复用户
+                            // Do not break: feed error into next model turn
                         }
                         
                         const assistantMsg = {
@@ -751,7 +779,7 @@ export async function apply(ctx: EjunzContext) {
                             tool_call_id: toolCall.id,
                         };
                         
-                        // 下一轮请求必须带上当前用户消息，否则模型看不到用户刚发的 URL/需求
+                        // Next turn must include the user message so the model still sees URL/intent
                         messagesForTurn = [
                             ...messagesForTurn,
                             { role: 'user', content: message },

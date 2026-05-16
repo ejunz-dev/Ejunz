@@ -31,6 +31,13 @@ __langname: English
 'Agent uses all Skills in this Domain. Skills are managed via Base.': Agent uses all Skills in this Domain. Skills are managed via Base.
 'Configure Agent Skills': Configure Agent Skills
 'Configure skill libraries and branches on the Agent Skills page.': Configure skill libraries and branches on the dedicated Agent Skills page.
+'Select skill libraries and a branch for each. Mark at least one as core: core libraries are fully injected into context; non-core libraries load on demand via tools.': Select skill libraries and a branch for each. Mark at least one as core — core libraries are fully injected into the agent context; non-core libraries are loaded on demand via tools.
+'Core library': Core library
+'Core': Core
+'Core library skills are always fully included in the agent system prompt.': Core library skills are always fully included in the agent system prompt.
+'At least one enabled library must be marked as core.': At least one enabled library must be marked as core.
+'At least one skill library must be marked as core.': At least one skill library must be marked as core.
+'Back to Agent': Back to Agent
 'Only skill libraries enabled below are active for this agent.': Only the skill libraries listed below are enabled for this agent.
 'Only skill libraries listed here are active for this agent.': Only the skill libraries listed here are enabled for this agent.
 'Agents can use skills from selected skill libraries and branches (configure in the sidebar if you can edit this agent).': Agents can use skills from selected skill libraries and branches (configure in the sidebar if you can edit this agent).

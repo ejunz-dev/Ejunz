@@ -11,15 +11,15 @@ const hosts: Record<string, EjunzHost> = {};
 let exit = false;
 
 const terminate = async () => {
-    log.info('正在保存数据');
+    log.info('Saving data...');
     try {
         await Promise.all(Object.values(hosts).map((f) => f.dispose?.()));
         process.exit(1);
     } catch (e) {
         if (exit) process.exit(1);
         log.error(e.stack);
-        log.error('发生了错误。');
-        log.error('再次按下 Ctrl-C 可强制退出。');
+        log.error('An error occurred.');
+        log.error('Press Ctrl-C again to force quit.');
         exit = true;
     }
 };

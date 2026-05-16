@@ -103,6 +103,7 @@
               {% if row.bid %}<span class="supplementary"> ({{ row.bid }})</span>{% endif %}
               <span class="supplementary"> #{{ row.docId }}</span>
               — {{ _('branch') }} <code>{{ row.branch }}</code>
+              {% if row.core %}<span class="supplementary"> · {{ _('Core library') }}</span>{% endif %}
             </li>
             {% endfor %}
           </ul>
