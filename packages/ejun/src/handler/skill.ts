@@ -275,7 +275,7 @@ class SkillDataHandler extends BaseDataHandler {
             domainId,
             this.user._id,
             title,
-            'Agent Skills 管理',
+            'Agent Skills',
             branch,
             this.request.ip,
             this.domain.name,
@@ -360,7 +360,7 @@ class SkillSaveHandler extends BaseSaveHandler {
     }
 
     protected override getDefaultTitle(): string {
-        return 'Agent Skills 管理';
+        return 'Agent Skills';
     }
 
     protected override getDefaultRootText(): string {
@@ -373,7 +373,7 @@ class SkillSaveHandler extends BaseSaveHandler {
             domainId,
             this.user._id,
             title,
-            'Agent Skills 管理',
+            'Agent Skills',
             'main',
             this.request.ip,
             this.domain.name,
@@ -433,7 +433,7 @@ class SkillBatchSaveHandler extends BaseBatchSaveHandler {
                     d,
                     this.user._id,
                     title,
-                    'Agent Skills 管理',
+                    'Agent Skills',
                     'main',
                     this.request.ip,
                     this.domain.name,

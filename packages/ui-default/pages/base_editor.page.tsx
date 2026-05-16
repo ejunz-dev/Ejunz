@@ -2331,6 +2331,33 @@ function BaseEditorDevelopQueueList({
   );
 }
 
+/** JSON Schema defaults for skill markdown `{"tool","arguments"}` snippets. */
+function defaultArgsFromInputSchema(inputSchema: unknown): Record<string, unknown> {
+  if (!inputSchema || typeof inputSchema !== 'object') return {};
+  const schema = inputSchema as { properties?: Record<string, unknown>; required?: string[] };
+  const props = schema.properties;
+  const required: string[] = Array.isArray(schema.required) ? schema.required : [];
+  if (!props || typeof props !== 'object') return {};
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(props)) {
+    const p = props[key] as { type?: string; default?: unknown };
+    if (p && typeof p === 'object' && 'default' in p) {
+      out[key] = p.default;
+    } else if (required.includes(key)) {
+      if (p?.type === 'number' || p?.type === 'integer') out[key] = 0;
+      else if (p?.type === 'boolean') out[key] = false;
+      else if (p?.type === 'array') out[key] = [];
+      else out[key] = '';
+    }
+  }
+  return out;
+}
+
+function buildSkillToolCallSnippet(toolName: string, inputSchema: unknown): string {
+  const args = defaultArgsFromInputSchema(inputSchema);
+  return JSON.stringify({ tool: toolName, arguments: args }, null, 2);
+}
+
 export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docId: string | undefined; initialData: BaseDoc; basePath?: string }) {
   
   const getTheme = useCallback(() => {
@@ -2445,7 +2472,14 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   } | null>(null);
 
   const [developQueueNavBusy, setDevelopQueueNavBusy] = useState<number | null>(null);
-  const [editorRightPanelTab, setEditorRightPanelTab] = useState<'problems' | 'develop_queue'>('problems');
+  const [editorRightPanelTab, setEditorRightPanelTab] = useState<'problems' | 'develop_queue' | 'skill_tools'>(() =>
+    basePath === 'skill' ? 'skill_tools' : 'problems',
+  );
+
+  const [skillDomainTools, setSkillDomainTools] = useState<
+    Array<{ name: string; description?: string; inputSchema?: unknown; edgeName?: string }>
+  >([]);
+  const [skillToolsLoadState, setSkillToolsLoadState] = useState<'idle' | 'loading' | 'error'>('idle');
 
   const navigateDevelopQueueItem = useCallback(async (baseDocId: number, branch: string, queueIndex: number) => {
     const d = (window as any).UiContext?.domainId || 'system';
@@ -2482,9 +2516,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
   useEffect(() => {
     if (!developRunQueueState?.items.length) {
-      setEditorRightPanelTab('problems');
+      setEditorRightPanelTab(basePath === 'skill' ? 'skill_tools' : 'problems');
     }
-  }, [developRunQueueState]);
+  }, [developRunQueueState, basePath]);
 
   const showDevelopQueueInPanels = !!(developEditorContext && developRunQueueState && developRunQueueState.items.length > 0);
 
@@ -2869,7 +2903,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       : `/d/${domainId}/base/data`;
     try {
       const qs: Record<string, string> = {};
-      if (docId && basePath === 'base') qs.docId = docId;
+      if (docId) qs.docId = docId;
       const refBranch = (window as any).UiContext?.currentBranch;
       if (refBranch) qs.branch = refBranch;
       const newData: any = await request.get(apiPath, qs);
@@ -3048,6 +3082,37 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const cardFaceEditorInstanceRef = useRef<any>(null);
   const [importText, setImportText] = useState('');
   const [rightPanelOpen, setRightPanelOpen] = useState(() => savedEditorLayout.rightPanelOpen);
+
+  useEffect(() => {
+    if (basePath !== 'skill') return;
+    if (!rightPanelOpen || editorRightPanelTab !== 'skill_tools') return;
+    const domainId = (window as any).UiContext?.domainId || 'system';
+    let cancelled = false;
+    setSkillToolsLoadState('loading');
+    request
+      .get(`/d/${domainId}/tool/api/list`)
+      .then((res: any) => {
+        if (cancelled) return;
+        const tools = Array.isArray(res?.tools) ? res.tools : [];
+        setSkillDomainTools(
+          tools
+            .map((t: any) => ({
+              name: String(t.name || '').trim(),
+              description: typeof t.description === 'string' ? t.description : '',
+              inputSchema: t.inputSchema,
+              edgeName: typeof t.edgeName === 'string' ? t.edgeName : '',
+            }))
+            .filter((t: { name: string }) => t.name.length > 0),
+        );
+        setSkillToolsLoadState('idle');
+      })
+      .catch(() => {
+        if (!cancelled) setSkillToolsLoadState('error');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [basePath, rightPanelOpen, editorRightPanelTab]);
   const [aiBottomOpen, setAiBottomOpen] = useState(() => savedEditorLayout.aiBottomOpen);
   const [aiPanelHeight, setAiPanelHeight] = useState(() => savedEditorLayout.aiPanelHeight);
   const [aiPanelMaxHeight, setAiPanelMaxHeight] = useState(640);
@@ -16555,7 +16620,72 @@ Reply with a JSON code block only for executable operations, using this shape:
       </div>
 
       {(() => {
-        /* problems sidebar only; AI is in editor bottom panel */
+        /* Right sidebar: skill mode → domain tools; base mode → card problems. AI is in editor bottom panel. */
+        const skillToolsBody = (
+          <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px', minHeight: 0 }}>
+            <div style={{ fontSize: '12px', color: themeStyles.textSecondary, marginBottom: '10px', lineHeight: 1.45 }}>
+              下列为当前域已添加到工具市场的工具（含系统工具与 Edge）。可复制 JSON 示例到 Skill 正文中供 Agent 解析调用。
+            </div>
+            {skillToolsLoadState === 'loading' && (
+              <div style={{ color: themeStyles.textSecondary, fontSize: '13px' }}>加载中…</div>
+            )}
+            {skillToolsLoadState === 'error' && (
+              <div style={{ color: '#c62828', fontSize: '13px' }}>加载失败，请稍后重试</div>
+            )}
+            {skillToolsLoadState === 'idle' && skillDomainTools.length === 0 && (
+              <div style={{ color: themeStyles.textSecondary, fontSize: '13px' }}>
+                暂无可用工具，请前往本域工具市场添加
+              </div>
+            )}
+            {skillDomainTools.map((t) => (
+              <div
+                key={t.name}
+                style={{
+                  marginBottom: '12px',
+                  padding: '10px',
+                  border: `1px solid ${themeStyles.borderPrimary}`,
+                  borderRadius: '8px',
+                  background: themeStyles.bgSecondary,
+                }}
+              >
+                <div style={{ fontWeight: 600, fontSize: '13px', color: themeStyles.textPrimary, wordBreak: 'break-word' }}>
+                  {t.name}
+                </div>
+                {t.edgeName ? (
+                  <div style={{ fontSize: '11px', color: themeStyles.textTertiary, marginTop: '4px' }}>{t.edgeName}</div>
+                ) : null}
+                {t.description ? (
+                  <div style={{ fontSize: '12px', color: themeStyles.textSecondary, marginTop: '6px', lineHeight: 1.4 }}>
+                    {t.description.length > 220 ? `${t.description.slice(0, 220)}…` : t.description}
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const snippet = buildSkillToolCallSnippet(t.name, t.inputSchema);
+                    void navigator.clipboard.writeText(snippet).then(
+                      () => Notification.success('已复制调用示例'),
+                      () => Notification.error('复制失败'),
+                    );
+                  }}
+                  style={{
+                    marginTop: '8px',
+                    fontSize: '12px',
+                    padding: '4px 10px',
+                    borderRadius: '4px',
+                    border: `1px solid ${themeStyles.borderPrimary}`,
+                    background: themeStyles.bgButton,
+                    color: themeStyles.textPrimary,
+                    cursor: 'pointer',
+                  }}
+                >
+                  复制调用参数
+                </button>
+              </div>
+            ))}
+          </div>
+        );
+
         const problemsBody = (
           <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px', minHeight: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '8px' }}>
@@ -16812,17 +16942,15 @@ Reply with a JSON code block only for executable operations, using this shape:
               flexShrink: 0,
             }}>
               <span style={{ fontWeight: 600, fontSize: '14px', color: themeStyles.textPrimary, flex: 1, minWidth: 0 }}>
-                {showDevelopQueueInPanels && developEditorContext && developRunQueueState ? (
-                  editorRightPanelTab === 'develop_queue' ? (
+                {showDevelopQueueInPanels && developEditorContext && developRunQueueState && editorRightPanelTab === 'develop_queue' ? (
                     <>
                       {i18n('Develop queue tab')}
                       {developRunQueueState.currentIndex >= 0
                         ? ` ${developRunQueueState.currentIndex + 1}/${developRunQueueState.items.length}`
                         : ` · ${developRunQueueState.items.length}`}
                     </>
-                  ) : (
-                    '本卡片的练习题'
-                  )
+                ) : basePath === 'skill' ? (
+                  '工具（本域可用）'
                 ) : (
                   '本卡片的练习题'
                 )}
@@ -16859,19 +16987,17 @@ Reply with a JSON code block only for executable operations, using this shape:
               flexShrink: 0,
               gap: 8,
             }}>
-              {showDevelopQueueInPanels && developEditorContext && developRunQueueState ? (
+              {showDevelopQueueInPanels && developEditorContext && developRunQueueState && editorRightPanelTab === 'develop_queue' ? (
                 <span style={{ fontWeight: 'bold', minWidth: 0 }}>
-                  {editorRightPanelTab === 'develop_queue' ? (
-                    <>
-                      {i18n('Develop queue tab')}
-                      {developRunQueueState.currentIndex >= 0
-                        ? ` ${developRunQueueState.currentIndex + 1}/${developRunQueueState.items.length}`
-                        : ` · ${developRunQueueState.items.length}`}
-                    </>
-                  ) : (
-                    '本卡片的练习题'
-                  )}
+                  <>
+                    {i18n('Develop queue tab')}
+                    {developRunQueueState.currentIndex >= 0
+                      ? ` ${developRunQueueState.currentIndex + 1}/${developRunQueueState.items.length}`
+                      : ` · ${developRunQueueState.items.length}`}
+                  </>
                 </span>
+              ) : basePath === 'skill' ? (
+                <span style={{ fontWeight: 'bold' }}>工具（本域可用）</span>
               ) : (
                 <span style={{ fontWeight: 'bold' }}>本卡片的练习题</span>
               )}
@@ -16903,6 +17029,8 @@ Reply with a JSON code block only for executable operations, using this shape:
                 busyIndex={developQueueNavBusy}
                 onGo={navigateDevelopQueueItem}
               />
+            ) : basePath === 'skill' && editorRightPanelTab === 'skill_tools' ? (
+              skillToolsBody
             ) : selectedFile?.type === 'card' ? (
                 problemsBody
               ) : (
@@ -16952,6 +17080,35 @@ Reply with a JSON code block only for executable operations, using this shape:
               overflowX: 'hidden',
               WebkitOverflowScrolling: 'touch',
             }}>
+                {basePath === 'skill' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (rightPanelOpen && editorRightPanelTab === 'skill_tools') {
+                      setRightPanelOpen(false);
+                    } else {
+                      setEditorRightPanelTab('skill_tools');
+                      setRightPanelOpen(true);
+                    }
+                  }}
+                  style={{
+                    width: '34px',
+                    height: '34px',
+                    border: `1px solid ${themeStyles.borderSecondary}`,
+                    borderRadius: '3px',
+                    backgroundColor: rightPanelOpen && editorRightPanelTab === 'skill_tools' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                    color: rightPanelOpen && editorRightPanelTab === 'skill_tools' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                    fontSize: '11px',
+                    fontWeight: 600,
+                  }}
+                  title="本域可用工具"
+                  aria-label="工具"
+                >
+                  工
+                </button>
+                ) : (
                 <button
                   type="button"
                   onClick={() => {
@@ -16979,6 +17136,7 @@ Reply with a JSON code block only for executable operations, using this shape:
                 >
                   题
                 </button>
+                )}
                 {showDevelopQueueInPanels && developEditorContext && developRunQueueState ? (
                   <button
                     type="button"

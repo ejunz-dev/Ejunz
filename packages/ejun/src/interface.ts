@@ -214,7 +214,7 @@ declare module './model/agent'{
         repoIds?: number[];
         skillIds?: string[]; // Assigned skill names; domain market tools only when referenced in these skills
         /** Selected skill libraries (TYPE_SKILL doc) + branch for this Agent. */
-        skillLibraryBindings?: Array<{ docId: number; branch: string }>;
+        skillLibraryBindings?: Array<{ docId: number; branch: string; core?: boolean }>;
     }
 }
 export type { AgentDoc } from './model/agent';

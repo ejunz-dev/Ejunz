@@ -31,6 +31,7 @@ import db from '../service/db';
 import EdgeModel from './edge';
 import ToolModel from './tool';
 import { EdgeServerConnectionHandler } from '../handler/edge';
+import { domainMarketHasInstalledToolName } from '../handler/tool';
 import _ from 'lodash';
 
 export type Field = keyof AgentDoc;
@@ -399,13 +400,13 @@ export class McpClient {
     async getTools(domainId?: string): Promise<EdgeTool[]> {
         try {
             const ctx = (global as any).app || (global as any).Ejunz;
-            // [Edge 暂不启用] const edgeP = (async () => { try { return ctx ? await ctx.serial('mcp/tools/list/edge') : []; } catch { return []; } })();
+            // [Edge disabled] const edgeP = (async () => { try { return ctx ? await ctx.serial('mcp/tools/list/edge') : []; } catch { return []; } })();
             const localP = (async () => {
                 try { return ctx && domainId ? await ctx.serial('mcp/tools/list/local', { domainId }) : []; } catch { return []; }
             })();
-            // [Edge 暂不启用] const [edgeTools, localTools] = await Promise.all([edgeP, localP]);
+            // [Edge disabled] const [edgeTools, localTools] = await Promise.all([edgeP, localP]);
             const localTools = await localP;
-            ClientLogger.info('Tool sources: local only (Edge 暂不启用)', { localCount: (localTools || []).length });
+            ClientLogger.info('Tool sources: local only (Edge disabled)', { localCount: (localTools || []).length });
             const merged: Record<string, EdgeTool> = Object.create(null);
             for (const t of ([] as EdgeTool[]).concat(/* edgeTools || [], */ localTools || [])) merged[t.name] = t;
             const list = Object.values(merged);
@@ -426,6 +427,7 @@ export class McpClient {
         skillBranch?: string,
         toolType?: string,
         skillSourceByName?: Map<string, SkillSourceResolution>,
+        coreSkillNames?: Set<string> | string[],
     ): Promise<any> {
         try {
             ClientLogger.info('[tool] callTool: name=%s toolType=%s', name, toolType ?? 'undefined');
@@ -444,7 +446,7 @@ export class McpClient {
                     if (!skillBranch || String(skillBranch).trim() === '') {
                         return {
                             success: false,
-                            message: 'Base 未启用：请在 Agent 设置中选择分支后再使用。'
+                            message: 'Base is not enabled: select a branch in Agent settings.'
                         };
                     }
                     const { loadBaseInstructions, loadBaseInstructionsByUrls } = require('../lib/baseLoader');
@@ -487,6 +489,20 @@ export class McpClient {
                     if (!skillNameRaw) {
                         throw new Error('skillName is required');
                     }
+                    const inCoreSet = coreSkillNames instanceof Set
+                        ? coreSkillNames.has(skillNameRaw)
+                        : (Array.isArray(coreSkillNames) ? coreSkillNames.includes(skillNameRaw) : false);
+                    if (inCoreSet) {
+                        return {
+                            success: true,
+                            skillName: skillNameRaw,
+                            level,
+                            instructions: '',
+                            message:
+                                `Skill "${skillNameRaw}" is from a core library: its full instructions are already in the system message. `
+                                + 'Do not call load_skill_instructions for it; use that content directly.',
+                        };
+                    }
                     const res = skillSourceByName?.get(skillNameRaw);
                     const effectiveBranch = (res?.branch && String(res.branch).trim())
                         || (skillBranch && String(skillBranch).trim())
@@ -496,7 +512,7 @@ export class McpClient {
                         return {
                             success: false,
                             skillName: skillNameRaw,
-                            message: 'Skill 未启用：请在 Agent 设置中选择 Skill 分支后再使用。',
+                            message: 'Skills are not enabled: select a skill branch in Agent settings.',
                         };
                     }
                     ClientLogger.info(
@@ -521,8 +537,23 @@ export class McpClient {
                 }
             }
 
-            // type 为 system 时走 executeSystemTool，不走 Edge
+            // Registered system tools: only if this domain installed the tool on the market (same policy as getDomainMarketToolsForAgent)
+            if (domainId && await domainMarketHasInstalledToolName(domainId, name)) {
+                const { tryExecuteSystemTool } = require('../lib/systemTools');
+                const sysEarly = await tryExecuteSystemTool(name, args || {});
+                if (sysEarly !== null) {
+                    return sysEarly;
+                }
+            }
+
+            // toolType system → executeSystemTool (not Edge); still require domain market install
             if (toolType === 'system') {
+                if (!domainId || !(await domainMarketHasInstalledToolName(domainId, name))) {
+                    ClientLogger.warn('[tool] callTool: name=%s toolType=system but not on domain market', name);
+                    const err = new Error(`Tool not added: ${name}. Please add it from the tool market for this domain.`);
+                    (err as any).code = 'TOOL_NOT_ADDED';
+                    throw err;
+                }
                 const { executeSystemTool } = require('../lib/systemTools');
                 ClientLogger.info('[tool] callTool: name=%s -> branch=system (executeSystemTool)', name);
                 return executeSystemTool(name, args || {});
@@ -557,7 +588,7 @@ export class McpClient {
                 }
             }
 
-            // [Edge 适配暂不启用] If token is provided, try to call tool directly using that token
+            // [Edge adapter disabled] If token is provided, try to call tool directly using that token
             // if (token) {
             //     try {
             //         const connection = EdgeServerConnectionHandler.getConnection(token);
@@ -568,13 +599,13 @@ export class McpClient {
             //     } catch (e) { ... }
             // }
 
-            // [Edge 适配暂不启用] First try to call via edge (if available)
+            // [Edge adapter disabled] First try to call via edge (if available)
             // try {
             //     const edgeTools = await ctx.serial('mcp/tools/list/edge').catch(() => []);
             //     ...
             // } catch (e) { ... }
 
-            // [Edge 适配暂不启用] Search for tool in Edge/Tool model
+            // [Edge adapter disabled] Search for tool in Edge/Tool model
             // if (domainId) {
             //     const edges = await EdgeModel.getByDomain(domainId);
             //     for (const edge of connectedEdges) { ... }
@@ -595,9 +626,9 @@ export class McpClient {
                 ClientLogger.debug('Local tools not available: %s', (e as Error).message);
             }
 
-            // 不再从 catalog 兜底执行：仅执行已分配工具（市场已添加 + load_skill/load_base），未分配则报错
+            // No catalog-only execution: must be on domain market (or built-in loaders); otherwise error
             ClientLogger.warn('[tool] callTool: name=%s -> not in assigned tools (market/local)', name);
-            const err = new Error(`Tool not added: ${name}. Please add it from the tool market (工具市场) for this domain.`);
+            const err = new Error(`Tool not added: ${name}. Please add it from the tool market for this domain.`);
             (err as any).code = 'TOOL_NOT_ADDED';
             throw err;
         } catch (e) {

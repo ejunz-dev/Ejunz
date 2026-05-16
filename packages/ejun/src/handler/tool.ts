@@ -12,7 +12,7 @@ import type { ToolDoc } from '../interface';
 import { registerSystemToolCatalog, registerSystemToolExecutor, executeSystemTool } from '../lib/systemTools';
 import { SYSTEM_TOOLS_CATALOG, executeSystemTool as pluginExecuteSystemTool } from '@ejunz/ejunztools';
 
-// 插件注册：将 ejunztools 的 catalog 与 executor 注册到 core，core 不写死 package
+// Plugin registration: ejunztools catalog + executor into core (no hard-coded package in core)
 registerSystemToolCatalog(SYSTEM_TOOLS_CATALOG as any);
 registerSystemToolExecutor(pluginExecuteSystemTool);
 
@@ -51,6 +51,17 @@ async function buildSystemToolsForDomain(domainId: string): Promise<any[]> {
 export async function getDomainMarketToolsForAgent(domainId: string): Promise<Array<{ name: string; description: string; inputSchema: any; type?: 'system'; system?: boolean }>> {
     const list = await buildSystemToolsForDomain(domainId);
     return list.map((t: any) => ({ name: t.name, description: t.description || '', inputSchema: t.inputSchema, type: 'system' as const, system: t.system !== false }));
+}
+
+/** True if this OpenAI tool name is installed for the domain (domain_market_tool + catalog). Gates system-tool execution. */
+export async function domainMarketHasInstalledToolName(domainId: string, toolName: string): Promise<boolean> {
+    if (!domainId || !toolName) return false;
+    const enabled = await DomainMarketToolModel.getByDomain(domainId);
+    const keySet = new Set(enabled.map((d) => d.toolKey));
+    for (const c of SYSTEM_TOOLS_CATALOG) {
+        if (c.name === toolName && keySet.has(c.id)) return true;
+    }
+    return false;
 }
 
 // Tool page handlers
@@ -186,7 +197,7 @@ export class ToolSystemDetailHandler extends Handler<Context> {
     }
 }
 
-/** 将市场中的工具添加到当前 domain 的 tool/list（仅写入 domain_market_tool，不创建 Edge） */
+/** Add a market tool to this domain list (domain_market_tool only; no Edge server). */
 export class ToolMarketAddHandler extends Handler<Context> {
     async post() {
         const toolKey = this.request.body?.toolKey;
@@ -209,7 +220,7 @@ export class ToolMarketAddHandler extends Handler<Context> {
     }
 }
 
-/** 从当前 domain 卸载市场已添加的工具 */
+/** Remove a domain-installed market tool */
 export class ToolMarketRemoveHandler extends Handler<Context> {
     async post() {
         const toolKey = this.request.body?.toolKey;

@@ -1,6 +1,6 @@
 /**
- * 系统工具适配层：核心逻辑在 core，由插件（如 @ejunz/ejunztools）注册 catalog 与 executor。
- * core 不写死任何 package，getSystemToolCatalog / executeSystemTool / tryExecuteSystemTool 均走注册。
+ * System-tool adapter: core delegates to plugins (e.g. @ejunz/ejunztools) for catalog + executor.
+ * Core does not hard-code packages; getSystemToolCatalog / executeSystemTool / tryExecuteSystemTool use registration.
  */
 import { Logger } from '../logger';
 
@@ -12,7 +12,7 @@ export type SystemToolExecutor = (name: string, args: Record<string, unknown>) =
 let registeredCatalog: SystemToolCatalogEntry[] = [];
 let registeredExecutor: SystemToolExecutor | null = null;
 
-/** 插件注册可执行系统工具列表（name/description/inputSchema）。 */
+/** Plugin: register executable system tools (name/description/inputSchema). */
 export function registerSystemToolCatalog(catalog: SystemToolCatalogEntry[]): void {
     registeredCatalog = Array.isArray(catalog) ? catalog.map(t => ({
         name: t.name,
@@ -22,18 +22,18 @@ export function registerSystemToolCatalog(catalog: SystemToolCatalogEntry[]): vo
     logger.info('[tool] systemTools: registerSystemToolCatalog count=%d names=%s', registeredCatalog.length, registeredCatalog.map(t => t.name).join(','));
 }
 
-/** 插件注册系统工具执行器。 */
+/** Plugin: register system-tool executor. */
 export function registerSystemToolExecutor(fn: SystemToolExecutor): void {
     registeredExecutor = typeof fn === 'function' ? fn : null;
     logger.info('[tool] systemTools: registerSystemToolExecutor hasExecutor=%s', !!registeredExecutor);
 }
 
-/** 可执行的系统工具列表，用于 getAssignedTools 按 Skill 引用补全；未注册时返回 []。 */
+/** Executable system tools; used when resolving skill references in getAssignedTools; [] if unregistered. */
 export function getSystemToolCatalog(): SystemToolCatalogEntry[] {
     return registeredCatalog;
 }
 
-/** 执行系统工具（由插件注册的 executor 执行）；未注册时抛错。 */
+/** Run a system tool via plugin executor; throws if not registered. */
 export async function executeSystemTool(name: string, args: Record<string, unknown>): Promise<unknown> {
     logger.info('[tool] systemTools: executeSystemTool name=%s hasExecutor=%s', name, !!registeredExecutor);
     if (!registeredExecutor) {
@@ -45,8 +45,8 @@ export async function executeSystemTool(name: string, args: Record<string, unkno
 }
 
 /**
- * 若 name 在已注册的可执行系统工具列表中则执行并返回结果，否则返回 null。
- * 用于 callTool 兜底：仅配 Skill、参数写在 card 里时，凭 system 字段或此兜底直接调用系统工具。
+ * If name is in the registered system-tool list, run it and return the result; else null.
+ * callTool fallback when only skills/cards configure tools (no edge metadata).
  */
 export async function tryExecuteSystemTool(name: string, args: Record<string, unknown>): Promise<unknown | null> {
     const inCatalog = registeredCatalog.some(t => t.name === name);

@@ -9,7 +9,7 @@ import { NodeDeviceModel } from './node';
 import AgentModel from './agent';
 import message from './message';
 import ClientModel from './client';
-import { getAssignedTools, normalizeAgentSkillBindings } from '../handler/agent';
+import { getAssignedTools, normalizeAgentSkillBindings, appendAgentUniversalAssistantRules } from '../handler/agent';
 import SessionModel from './session';
 
 const logger = new Logger('model/workflow_executor');
@@ -321,11 +321,7 @@ export class WorkflowExecutor {
             systemMessage += `\n\n---\n【Work Rules Memory - Supplementary Guidelines】\n${truncatedMemory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
         }
 
-        if (systemMessage && !systemMessage.includes('do not use emoji')) {
-            systemMessage += '\n\nNote: Do not use any emoji in your responses.';
-        } else if (!systemMessage) {
-            systemMessage = 'Note: Do not use any emoji in your responses.';
-        }
+        systemMessage = appendAgentUniversalAssistantRules(systemMessage);
 
         if (tools.length > 0) {
             const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
