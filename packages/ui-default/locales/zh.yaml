@@ -45,6 +45,14 @@ __langname: 简体中文
 'Agents can use skills from selected skill libraries and branches (configure in the sidebar if you can edit this agent).': Agent 可使用来自所选技能库及其分支的 Skills（若有编辑权限，请在侧栏配置）。
 'Configure Agent Skills': 配置 Agent Skills
 'Configure skill libraries and branches on the Agent Skills page.': 请在「Agent Skills」专用页面中配置技能库及分支。
+'Agent Knowledge Base': Agent 知识库
+'Configure Agent Knowledge Base': 配置 Agent 知识库
+'No knowledge base is mounted for this agent yet.': 此 Agent 尚未挂载知识库。
+'Optionally mount one domain knowledge base (outline / cards) for this agent. load_base uses this document and branch.': 可选：为此 Agent 挂载一个域内知识库（大纲/卡片）。load_base 将使用该文档及分支。
+'Save knowledge base mount': 保存知识库挂载
+'Failed to save knowledge base mount': 保存知识库挂载失败。
+'Knowledge base': 知识库
+'No knowledge bases in this domain yet.': 该域内还没有知识库。
 'Select skill libraries and a branch for each. Mark at least one as core: core libraries are fully injected into context; non-core libraries load on demand via tools.': 为每个技能库勾选启用并选择分支。至少将一个库标为「核心」：核心库的全文会写入 Agent 系统提示（被动注入）；非核心库仍通过工具按需加载。
 'Core library': 核心库
 'Core': 核心

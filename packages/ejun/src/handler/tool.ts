@@ -180,12 +180,12 @@ export class ToolSystemDetailHandler extends Handler<Context> {
         if (!toolKey || typeof toolKey !== 'string') {
             throw new ValidationError('toolKey');
         }
-        const has = await DomainMarketToolModel.has(this.domain._id, toolKey);
-        if (!has) {
-            throw new NotFoundError(toolKey);
-        }
         const entry = SYSTEM_TOOLS_CATALOG.find(c => c.id === toolKey);
         if (!entry) {
+            throw new NotFoundError(toolKey);
+        }
+        const has = await DomainMarketToolModel.has(this.domain._id, toolKey);
+        if (!has) {
             throw new NotFoundError(toolKey);
         }
         this.response.template = 'tool_system_detail.html';

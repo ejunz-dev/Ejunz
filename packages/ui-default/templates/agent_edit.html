@@ -63,6 +63,12 @@
                   {{ _('Configure Agent Skills') }}
                 </a>
               </p>
+              <p class="help-text">
+                {{ _('Optionally mount one domain knowledge base (outline / cards) for this agent. load_base uses this document and branch.') }}
+                <a href="{{ url('agent_bases', domainId=handler.args.domainId, aid=adoc.aid) }}" class="button secondary" style="margin-left: 8px;">
+                  {{ _('Configure Agent Knowledge Base') }}
+                </a>
+              </p>
             </div>
           </div>
           {% endif %}

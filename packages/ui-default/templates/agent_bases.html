@@ -1,0 +1,125 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-10 columns medium-centered">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Agent Knowledge Base') }} — {{ adoc.title | e }}</h1>
+      </div>
+      <div class="section__body">
+        <p class="help-text" style="margin-bottom: 12px;">
+          {{ _('Optionally mount one domain knowledge base (outline / cards) for this agent. load_base uses this document and branch.') }}
+          <a href="{{ url('agent_detail', domainId=domainId, aid=adoc.aid) }}" class="supplementary" style="margin-left: 12px;">← {{ _('Back to Agent') }}</a>
+        </p>
+        <form id="agent-base-bindings-form" class="form">
+          {% if basesForUi and basesForUi|length > 0 %}
+          <table class="data-table" style="width:100%; font-size: 14px;">
+            <thead>
+              <tr>
+                <th style="width:36px;"></th>
+                <th>{{ _('Knowledge base') }}</th>
+                <th style="width:140px;">{{ _('Branch') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for b in basesForUi %}
+              {% set bid = b.docId | string %}
+              {% set bound_branch = baseBindingsByDocId[bid] if baseBindingsByDocId and baseBindingsByDocId[bid] else '' %}
+              <tr data-doc-id="{{ b.docId }}">
+                <td>
+                  <input type="checkbox" class="agent-base-lib-checkbox" name="basePick" value="{{ b.docId }}"
+                    {% if bound_branch %}checked{% endif %} />
+                </td>
+                <td>
+                  <strong>{{ b.title | e }}</strong>
+                  {% if b.bid %}<span class="supplementary"> ({{ b.bid }})</span>{% endif %}
+                  <span class="supplementary"> #{{ b.docId }}</span>
+                </td>
+                <td>
+                  <select class="textbox agent-base-lib-branch" style="width:100%;" {% if not bound_branch %}disabled{% endif %}>
+                    {% for br in b.branches %}
+                    <option value="{{ br }}"
+                      {% if bound_branch == br %}selected{% elif not bound_branch and br == 'main' %}selected{% endif %}>{{ br }}</option>
+                    {% endfor %}
+                  </select>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <p class="help-text">{{ _('No knowledge bases in this domain yet.') }}
+            <a href="{{ url('base_domain', domainId=domainId) }}">{{ _('Create one') }}</a>
+          </p>
+          {% endif %}
+          <div style="margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+            <button type="button" class="button primary" id="agent-base-bindings-save">{{ _('Save knowledge base mount') }}</button>
+            <a href="{{ url('agent_detail', domainId=domainId, aid=adoc.aid) }}" class="button secondary">{{ _('Cancel') }}</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function initAgentBaseBindingsForm() {
+  const form = document.getElementById('agent-base-bindings-form');
+  if (!form) return;
+  const domainId = '{{ domainId }}';
+  const aid = '{{ adoc.aid }}';
+
+  function syncRow(checkbox) {
+    const tr = checkbox.closest('tr');
+    if (!tr) return;
+    const sel = tr.querySelector('.agent-base-lib-branch');
+    if (!sel) return;
+    sel.disabled = !checkbox.checked;
+  }
+
+  form.querySelectorAll('.agent-base-lib-checkbox').forEach((cb) => {
+    cb.addEventListener('change', () => {
+      if (cb.checked) {
+        form.querySelectorAll('.agent-base-lib-checkbox').forEach((other) => {
+          if (other !== cb) {
+            other.checked = false;
+            syncRow(other);
+          }
+        });
+      }
+      syncRow(cb);
+    });
+    syncRow(cb);
+  });
+
+  const saveBtn = document.getElementById('agent-base-bindings-save');
+  if (!saveBtn) return;
+  saveBtn.addEventListener('click', async () => {
+    const baseLibraryBindings = [];
+    form.querySelectorAll('tr[data-doc-id]').forEach((tr) => {
+      const cb = tr.querySelector('.agent-base-lib-checkbox');
+      const sel = tr.querySelector('.agent-base-lib-branch');
+      if (!cb || !sel || !cb.checked) return;
+      const docId = Number(tr.getAttribute('data-doc-id'));
+      if (!Number.isFinite(docId) || docId <= 0) return;
+      baseLibraryBindings.push({ docId, branch: (sel.value || 'main').trim() || 'main' });
+    });
+    try {
+      const response = await fetch(`/d/${domainId}/agent/${aid}/bases`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operation: 'updateBaseLibraryBindings', baseLibraryBindings }),
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        window.location.href = '{{ url("agent_detail", domainId=domainId, aid=adoc.aid) }}';
+      } else {
+        alert(data.error || data.message || '{{ _("Failed to save knowledge base mount") }}');
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert('{{ _("Failed to save knowledge base mount") }}');
+    }
+  });
+})();
+</script>
+{% endblock %}

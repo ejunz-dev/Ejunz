@@ -9,7 +9,7 @@ import { NodeDeviceModel } from './node';
 import AgentModel from './agent';
 import message from './message';
 import ClientModel from './client';
-import { getAssignedTools, normalizeAgentSkillBindings, appendAgentUniversalAssistantRules } from '../handler/agent';
+import { getAssignedTools, normalizeAgentSkillBindings, appendAgentUniversalAssistantRules, effectiveAgentSkillBranch, effectiveAgentBaseDocId, effectiveAgentBaseBranch } from '../handler/agent';
 import SessionModel from './session';
 
 const logger = new Logger('model/workflow_executor');
@@ -355,6 +355,9 @@ export class WorkflowExecutor {
             apiUrl: (domainInfo as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions',
             agentContent: agent.content || '',
             agentMemory: agent.memory || '',
+            skillBranch: effectiveAgentSkillBranch(agent as any),
+            baseDocId: effectiveAgentBaseDocId(agent as any),
+            baseBranch: effectiveAgentBaseBranch(agent as any),
             tools: tools.map(tool => ({
                 name: tool.name,
                 description: tool.description,
