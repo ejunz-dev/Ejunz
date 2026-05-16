@@ -76,11 +76,11 @@ const page = new NamedPage('agent_chat', async () => {
         ? 'padding: 2px 8px; border-radius: 12px; background: #f44336; color: white; font-size: 11px;'
         : 'padding: 2px 8px; border-radius: 12px; background: #4caf50; color: white; font-size: 11px;';
     }
-    const resultPre = toolCallItem.querySelector('.tool-call-result pre') as HTMLElement | null;
-    if (resultPre) {
+    const resultInner = toolCallItem.querySelector('.tool-call-result-inner') as HTMLElement | null;
+    if (resultInner) {
       const p = agentChatPalette();
-      resultPre.style.background = isError ? p.errorResultBg : p.resultPreBg;
-      resultPre.style.borderColor = isError ? '#f44336' : p.resultPreBorder;
+      resultInner.style.background = isError ? p.errorResultBg : p.resultPreBg;
+      resultInner.style.borderColor = isError ? '#f44336' : p.resultPreBorder;
     }
   };
 
@@ -1058,6 +1058,108 @@ const page = new NamedPage('agent_chat', async () => {
       return text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
   }
+
+  /** Parse tool message JSON and prefer markdown bodies (e.g. load_base / load_skill_instructions `instructions`). */
+  function extractToolResultDisplayPayload(rawContent: string | object): { mode: 'markdown' | 'pre'; text: string } {
+    if (rawContent == null) return { mode: 'pre', text: '' };
+
+    let obj: any = null;
+    let rawString: string | null = null;
+
+    if (typeof rawContent === 'string') {
+      rawString = rawContent;
+      const t = rawContent.trim();
+      if (!t) return { mode: 'pre', text: '' };
+      try {
+        obj = JSON.parse(rawContent);
+      } catch {
+        if (/^#{1,6}\s|\[[^\]]+\]\([^)]+\)/m.test(rawContent)) {
+          return { mode: 'markdown', text: rawContent };
+        }
+        return { mode: 'pre', text: rawContent };
+      }
+    } else if (typeof rawContent === 'object') {
+      obj = rawContent;
+    } else {
+      return { mode: 'pre', text: String(rawContent) };
+    }
+
+    if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+      const instr = obj.instructions;
+      if (typeof instr === 'string' && instr.trim()) {
+        const msg = typeof obj.message === 'string' && obj.message.trim() ? obj.message.trim() : '';
+        const header = msg ? `*${msg}*\n\n` : '';
+        return { mode: 'markdown', text: header + instr };
+      }
+      if (obj.error === true || obj.success === false) {
+        const msg = typeof obj.message === 'string' ? obj.message : JSON.stringify(obj, null, 2);
+        return { mode: 'pre', text: msg };
+      }
+    }
+
+    const fallback = rawString ?? JSON.stringify(obj, null, 2);
+    return { mode: 'pre', text: fallback };
+  }
+
+  function ensureToolCallResultPane(toolCallDetails: HTMLElement): HTMLElement {
+    let resultDiv = toolCallDetails.querySelector('.tool-call-result') as HTMLElement;
+    if (!resultDiv) {
+      resultDiv = document.createElement('div');
+      resultDiv.className = 'tool-call-result';
+      resultDiv.style.cssText = 'margin-top: 8px;';
+      const resultLabel = document.createElement('div');
+      resultLabel.textContent = '结果:';
+      resultLabel.style.cssText = toolCallResultLabelStyle();
+      resultDiv.appendChild(resultLabel);
+      const resultInner = document.createElement('div');
+      resultInner.className = 'tool-call-result-inner';
+      resultInner.style.cssText = toolCallResultPreStyle();
+      resultDiv.appendChild(resultInner);
+      toolCallDetails.appendChild(resultDiv);
+      return resultInner;
+    }
+    let inner = resultDiv.querySelector('.tool-call-result-inner') as HTMLElement;
+    if (!inner) {
+      const legacyPre = resultDiv.querySelector('pre');
+      if (legacyPre) legacyPre.remove();
+      inner = document.createElement('div');
+      inner.className = 'tool-call-result-inner';
+      inner.style.cssText = toolCallResultPreStyle();
+      resultDiv.appendChild(inner);
+    }
+    return inner;
+  }
+
+  async function mountToolCallResultDisplay(host: HTMLElement, rawContent: string | object): Promise<void> {
+    const payload = extractToolResultDisplayPayload(rawContent);
+    host.classList.remove('typo');
+    host.style.cssText = toolCallResultPreStyle();
+    host.innerHTML = '';
+
+    if (payload.mode === 'markdown') {
+      host.classList.add('typo');
+      try {
+        host.innerHTML = await renderMarkdown(payload.text, false);
+      } catch (e: any) {
+        console.error('[AgentChat] tool result markdown failed:', e);
+        host.textContent = payload.text;
+      }
+    } else {
+      const pre = document.createElement('pre');
+      pre.style.cssText = 'margin:0;white-space:pre-wrap;word-wrap:break-word;font-family:inherit;font-size:inherit;';
+      pre.textContent = payload.text;
+      host.appendChild(pre);
+    }
+  }
+
+  function applyToolCallResultFromRaw(toolCallItem: Element, toolCallDetails: HTMLElement, rawContent: string | object) {
+    const statusBadge = toolCallItem.querySelector('.tool-status-badge') as HTMLElement | null;
+    applyToolCallStatus(toolCallItem, rawContent, statusBadge);
+    const resultInner = ensureToolCallResultPane(toolCallDetails);
+    void mountToolCallResultDisplay(resultInner, rawContent).then(() => {
+      applyToolCallStatus(toolCallItem, rawContent, toolCallItem.querySelector('.tool-status-badge') as HTMLElement | null);
+    });
+  }
   
   // Render markdown and track it to prevent duplicates
   async function renderMarkdownWithTracking(bubbleId: string, content: string, contentDiv: HTMLElement | null): Promise<void> {
@@ -1216,37 +1318,9 @@ const page = new NamedPage('agent_chat', async () => {
               ) as Element | null;
               
               if (toolCallItem) {
-                const statusBadge = toolCallItem.querySelector('.tool-status-badge') as HTMLElement | null;
-                applyToolCallStatus(toolCallItem, processedMsg.toolResult.content, statusBadge);
-                
                 const toolCallDetails = toolCallItem.querySelector('.tool-call-details') as HTMLElement;
                 if (toolCallDetails) {
-                  let resultDiv = toolCallDetails.querySelector('.tool-call-result') as HTMLElement;
-                  if (!resultDiv) {
-                    resultDiv = document.createElement('div');
-                    resultDiv.className = 'tool-call-result';
-                    resultDiv.style.cssText = 'margin-top: 8px;';
-                    
-                    const resultLabel = document.createElement('div');
-                    resultLabel.textContent = '结果:';
-                    resultLabel.style.cssText = toolCallResultLabelStyle();
-                    resultDiv.appendChild(resultLabel);
-                    
-                    const resultPre = document.createElement('pre');
-                    resultPre.style.cssText = toolCallResultPreStyle();
-                    resultDiv.appendChild(resultPre);
-                    
-                    toolCallDetails.appendChild(resultDiv);
-                  }
-                  
-                  const resultPre = resultDiv.querySelector('pre') as HTMLElement;
-                  if (resultPre) {
-                    const toolContent = typeof processedMsg.toolResult.content === 'string'
-                      ? processedMsg.toolResult.content
-                      : JSON.stringify(processedMsg.toolResult.content, null, 2);
-                    resultPre.textContent = toolContent;
-                    applyToolCallStatus(toolCallItem, processedMsg.toolResult.content, toolCallItem.querySelector('.tool-status-badge') as HTMLElement | null);
-                  }
+                  applyToolCallResultFromRaw(toolCallItem, toolCallDetails, processedMsg.toolResult.content);
                 }
               }
             }
@@ -1872,29 +1946,9 @@ const page = new NamedPage('agent_chat', async () => {
                 ) as Element | null;
                 
                 if (toolCallItem) {
-                  const content = toolResult.content;
-                  applyToolCallStatus(toolCallItem, content, toolCallItem.querySelector('.tool-status-badge') as HTMLElement | null);
                   const toolCallDetails = toolCallItem.querySelector('.tool-call-details') as HTMLElement;
                   if (toolCallDetails) {
-                    let resultDiv = toolCallDetails.querySelector('.tool-call-result') as HTMLElement;
-                    if (!resultDiv) {
-                      resultDiv = document.createElement('div');
-                      resultDiv.className = 'tool-call-result';
-                      resultDiv.style.cssText = 'margin-top: 8px;';
-                      const resultLabel = document.createElement('div');
-                      resultLabel.textContent = '结果:';
-                      resultLabel.style.cssText = toolCallResultLabelStyle();
-                      resultDiv.appendChild(resultLabel);
-                      const resultPre = document.createElement('pre');
-                      resultPre.style.cssText = toolCallResultPreStyle();
-                      resultDiv.appendChild(resultPre);
-                      toolCallDetails.appendChild(resultDiv);
-                    }
-                    const resultPre = resultDiv.querySelector('pre') as HTMLElement;
-                    if (resultPre) {
-                      const toolContent = typeof toolResult.content === 'string' ? toolResult.content : JSON.stringify(toolResult.content, null, 2);
-                      resultPre.textContent = toolContent;
-                    }
+                    applyToolCallResultFromRaw(toolCallItem, toolCallDetails, toolResult.content);
                   }
                 }
               }
@@ -1921,29 +1975,9 @@ const page = new NamedPage('agent_chat', async () => {
                 (el: any) => el.getAttribute('data-tool-call-id') === processedMsg.toolCallId
               ) as Element | null;
               if (toolCallItem) {
-                applyToolCallStatus(toolCallItem, toolResult.content, toolCallItem.querySelector('.tool-status-badge') as HTMLElement | null);
                 const toolCallDetails = toolCallItem.querySelector('.tool-call-details') as HTMLElement;
                 if (toolCallDetails) {
-                  let resultDiv = toolCallDetails.querySelector('.tool-call-result') as HTMLElement;
-                  if (!resultDiv) {
-                    resultDiv = document.createElement('div');
-                    resultDiv.className = 'tool-call-result';
-                    resultDiv.style.cssText = 'margin-top: 8px;';
-                    const resultLabel = document.createElement('div');
-                    resultLabel.textContent = '结果:';
-                    resultLabel.style.cssText = toolCallResultLabelStyle();
-                    resultDiv.appendChild(resultLabel);
-                    const resultPre = document.createElement('pre');
-                    resultPre.style.cssText = toolCallResultPreStyle();
-                    resultDiv.appendChild(resultPre);
-                    toolCallDetails.appendChild(resultDiv);
-                  }
-                  const resultPre = resultDiv.querySelector('pre') as HTMLElement;
-                  if (resultPre) {
-                    const toolContent = typeof toolResult.content === 'string' ? toolResult.content : JSON.stringify(toolResult.content, null, 2);
-                    resultPre.textContent = toolContent;
-                    applyToolCallStatus(toolCallItem, toolResult.content, toolCallItem.querySelector('.tool-status-badge') as HTMLElement | null);
-                  }
+                  applyToolCallResultFromRaw(toolCallItem, toolCallDetails, toolResult.content);
                 }
               }
             }
@@ -2666,29 +2700,9 @@ const page = new NamedPage('agent_chat', async () => {
                 (el: any) => el.getAttribute('data-tool-call-id') === toolCallId
               ) as Element | null;
               if (toolCallItem && toolResult) {
-                applyToolCallStatus(toolCallItem, toolResult.content, toolCallItem.querySelector('.tool-status-badge') as HTMLElement | null);
                 const toolCallDetails = toolCallItem.querySelector('.tool-call-details') as HTMLElement;
                 if (toolCallDetails) {
-                  let resultDiv = toolCallDetails.querySelector('.tool-call-result') as HTMLElement;
-                  if (!resultDiv) {
-                    resultDiv = document.createElement('div');
-                    resultDiv.className = 'tool-call-result';
-                    resultDiv.style.cssText = 'margin-top: 8px;';
-                    const resultLabel = document.createElement('div');
-                    resultLabel.textContent = '结果:';
-                    resultLabel.style.cssText = toolCallResultLabelStyle();
-                    resultDiv.appendChild(resultLabel);
-                    const resultPre = document.createElement('pre');
-                    resultPre.style.cssText = toolCallResultPreStyle();
-                    resultDiv.appendChild(resultPre);
-                    toolCallDetails.appendChild(resultDiv);
-                  }
-                  const resultPre = resultDiv.querySelector('pre') as HTMLElement;
-                  if (resultPre) {
-                    const toolContent = typeof toolResult.content === 'string' ? toolResult.content : JSON.stringify(toolResult.content, null, 2);
-                    resultPre.textContent = toolContent;
-                    applyToolCallStatus(toolCallItem, toolResult.content, toolCallItem.querySelector('.tool-status-badge') as HTMLElement | null);
-                  }
+                  applyToolCallResultFromRaw(toolCallItem, toolCallDetails, toolResult.content);
                 }
               }
               chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -3406,29 +3420,9 @@ const page = new NamedPage('agent_chat', async () => {
           ) as Element | null;
           
           if (toolCallItem) {
-            applyToolCallStatus(toolCallItem, processedMsg.toolResult.content, toolCallItem.querySelector('.tool-status-badge') as HTMLElement | null);
             const toolCallDetails = toolCallItem.querySelector('.tool-call-details') as HTMLElement;
             if (toolCallDetails) {
-              let resultDiv = toolCallDetails.querySelector('.tool-call-result') as HTMLElement;
-              if (!resultDiv) {
-                resultDiv = document.createElement('div');
-                resultDiv.className = 'tool-call-result';
-                resultDiv.style.cssText = 'margin-top: 8px;';
-                const resultLabel = document.createElement('div');
-                resultLabel.textContent = '结果:';
-                resultLabel.style.cssText = toolCallResultLabelStyle();
-                resultDiv.appendChild(resultLabel);
-                const resultPre = document.createElement('pre');
-                resultPre.style.cssText = toolCallResultPreStyle();
-                resultDiv.appendChild(resultPre);
-                toolCallDetails.appendChild(resultDiv);
-              }
-              const resultPre = resultDiv.querySelector('pre') as HTMLElement;
-              if (resultPre) {
-                const toolContent = typeof processedMsg.toolResult.content === 'string' ? processedMsg.toolResult.content : JSON.stringify(processedMsg.toolResult.content, null, 2);
-                resultPre.textContent = toolContent;
-                applyToolCallStatus(toolCallItem, processedMsg.toolResult.content, toolCallItem.querySelector('.tool-status-badge') as HTMLElement | null);
-              }
+              applyToolCallResultFromRaw(toolCallItem, toolCallDetails, processedMsg.toolResult.content);
             }
           }
         }

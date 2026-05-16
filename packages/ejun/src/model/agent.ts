@@ -43,7 +43,7 @@ export class AgentModel {
 
     static PROJECTION_DETAIL: Field[] = [
         ...AgentModel.PROJECTION_LIST,
-       'docId', 'aid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply', 'apiKey', 'memory', 'mcpToolIds', 'skillIds', 'skillLibraryBindings'
+       'docId', 'aid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply', 'apiKey', 'memory', 'mcpToolIds', 'skillIds', 'skillLibraryBindings', 'baseLibraryBindings'
     ];
 
     static PROJECTION_PUBLIC: Field[] = [
@@ -428,6 +428,10 @@ export class McpClient {
         toolType?: string,
         skillSourceByName?: Map<string, SkillSourceResolution>,
         coreSkillNames?: Set<string> | string[],
+        /** Agent-mounted TYPE_BASE docId for load_base; omit to use domain default base. */
+        baseDocId?: number,
+        /** Branch for agent-mounted base; falls back to skillBranch when unset. */
+        baseBranch?: string,
     ): Promise<any> {
         try {
             ClientLogger.info('[tool] callTool: name=%s toolType=%s', name, toolType ?? 'undefined');
@@ -437,25 +441,45 @@ export class McpClient {
             }
 
             // Built-in loading tools (handled in core; do not dispatch to executeSystemTool)
-            if (name === 'load_base_instructions') {
+            if (name === 'load_base') {
                 try {
                     ClientLogger.info('Calling built-in base loading tool: %s', name);
                     if (!domainId) {
-                        throw new Error('domainId is required for load_base_instructions');
+                        throw new Error('domainId is required for load_base');
                     }
-                    if (!skillBranch || String(skillBranch).trim() === '') {
+                    const branchForBase =
+                        (baseBranch && String(baseBranch).trim())
+                        || (skillBranch && String(skillBranch).trim())
+                        || '';
+                    if (!branchForBase) {
                         return {
                             success: false,
-                            message: 'Base is not enabled: select a branch in Agent settings.'
+                            message:
+                                'Base is not enabled: mount a knowledge base on this agent (with branch), '
+                                + 'or select a skill library branch in Agent settings.',
                         };
                     }
+                    const resolvedBaseDocId =
+                        baseDocId != null && Number.isFinite(baseDocId) && baseDocId > 0 ? baseDocId : undefined;
                     const { loadBaseInstructions, loadBaseInstructionsByUrls } = require('../lib/baseLoader');
                     const urls = args.urls;
                     const useUrls = Array.isArray(urls) && urls.length > 0;
+                    const filterArgs = args && typeof args === 'object' ? (args as Record<string, unknown>) : {};
 
                     if (useUrls) {
-                        ClientLogger.info('Loading base instructions by urls: count=%s, domainId=%s', urls.length, domainId);
-                        const instructions = await loadBaseInstructionsByUrls(domainId, urls, skillBranch);
+                        ClientLogger.info(
+                            'Loading base by urls: count=%s, domainId=%s, baseDocId=%s',
+                            urls.length,
+                            domainId,
+                            resolvedBaseDocId ?? '(domain default)',
+                        );
+                        const instructions = await loadBaseInstructionsByUrls(
+                            domainId,
+                            urls,
+                            branchForBase,
+                            resolvedBaseDocId,
+                            filterArgs,
+                        );
                         return {
                             success: true,
                             instructions: instructions ?? '',
@@ -463,8 +487,20 @@ export class McpClient {
                         };
                     }
                     const level = args.level !== undefined ? args.level : (args.maxLevel !== undefined ? args.maxLevel : -1);
-                    ClientLogger.info('Loading base instructions: level=%s, domainId=%s, branch=%s', level, domainId, skillBranch);
-                    const instructions = await loadBaseInstructions(domainId, level, skillBranch);
+                    ClientLogger.info(
+                        'Loading base: level=%s, domainId=%s, branch=%s, baseDocId=%s',
+                        level,
+                        domainId,
+                        branchForBase,
+                        resolvedBaseDocId ?? '(domain default)',
+                    );
+                    const instructions = await loadBaseInstructions(
+                        domainId,
+                        level,
+                        branchForBase,
+                        resolvedBaseDocId,
+                        filterArgs,
+                    );
                     return {
                         success: true,
                         level,

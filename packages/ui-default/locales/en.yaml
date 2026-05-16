@@ -31,6 +31,14 @@ __langname: English
 'Agent uses all Skills in this Domain. Skills are managed via Base.': Agent uses all Skills in this Domain. Skills are managed via Base.
 'Configure Agent Skills': Configure Agent Skills
 'Configure skill libraries and branches on the Agent Skills page.': Configure skill libraries and branches on the dedicated Agent Skills page.
+'Agent Knowledge Base': Agent Knowledge Base
+'Configure Agent Knowledge Base': Configure Agent Knowledge Base
+'No knowledge base is mounted for this agent yet.': No knowledge base is mounted for this agent yet.
+'Optionally mount one domain knowledge base (outline / cards) for this agent. load_base uses this document and branch.': Optionally mount one domain knowledge base (outline / cards) for this agent. The load_base tool uses this document and branch.
+'Save knowledge base mount': Save knowledge base mount
+'Failed to save knowledge base mount': Failed to save knowledge base mount.
+'Knowledge base': Knowledge base
+'No knowledge bases in this domain yet.': No knowledge bases in this domain yet.
 'Select skill libraries and a branch for each. Mark at least one as core: core libraries are fully injected into context; non-core libraries load on demand via tools.': Select skill libraries and a branch for each. Mark at least one as core — core libraries are fully injected into the agent context; non-core libraries are loaded on demand via tools.
 'Core library': Core library
 'Core': Core

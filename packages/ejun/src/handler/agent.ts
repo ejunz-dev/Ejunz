@@ -36,6 +36,7 @@ import {
     type SkillLibraryBinding,
     type SkillSourceResolution,
 } from '../model/skill';
+import { BaseModel } from '../model/base';
 import { EdgeServerConnectionHandler } from './edge';
 import * as document from '../model/document';
 import NodeModel from '../model/node';
@@ -74,6 +75,36 @@ export function effectiveAgentSkillBranch(adoc: AgentDoc): string | undefined {
     const b = normalizeAgentSkillBindings(adoc);
     const branch = b?.[0]?.branch;
     const t = branch && String(branch).trim();
+    return t || undefined;
+}
+
+export type BaseLibraryBinding = { docId: number; branch: string };
+
+/** At most one knowledge-base (TYPE_BASE) mount per agent; extra entries are ignored. */
+export function normalizeAgentBaseBindings(adoc: AgentDoc): BaseLibraryBinding[] | undefined {
+    const raw = (adoc as any).baseLibraryBindings;
+    if (!Array.isArray(raw) || raw.length === 0) return undefined;
+    const out: BaseLibraryBinding[] = [];
+    for (const x of raw) {
+        const docId = Number((x as any).docId);
+        if (!Number.isFinite(docId) || docId <= 0) continue;
+        const branch = String((x as any).branch ?? 'main').trim() || 'main';
+        out.push({ docId, branch });
+    }
+    if (out.length === 0) return undefined;
+    return [out[0]];
+}
+
+export function effectiveAgentBaseDocId(adoc: AgentDoc): number | undefined {
+    const b = normalizeAgentBaseBindings(adoc);
+    const id = b?.[0]?.docId;
+    return Number.isFinite(id) && id > 0 ? id : undefined;
+}
+
+export function effectiveAgentBaseBranch(adoc: AgentDoc): string | undefined {
+    const b = normalizeAgentBaseBindings(adoc);
+    const br = b?.[0]?.branch;
+    const t = br && String(br).trim();
     return t || undefined;
 }
 
@@ -169,12 +200,19 @@ export function appendAgentUniversalAssistantRules(systemMessage: string): strin
         + 'If recent user messages in this thread are clearly in one language, stay in that language. '
         + 'If the user explicitly asks for a specific language, follow that. '
         + 'Do not default to English when the user writes in Chinese, Japanese, or other non-English languages.';
+    const toolUrlRule =
+        '\n\n**Tool result URLs (critical)**: When a tool returns links (relative paths or absolute URLs), and you include them in your reply to the user, copy them **exactly** from the tool output—same characters, same scheme and host (if present), same path and query. '
+        + 'Do not prepend `https://`, do not substitute the chat page host or any other domain you imagine, and do not invent or "normalize" a base URL. '
+        + 'If the tool gives a path starting with `/d/`, keep it exactly that way unless the tool output already includes a full URL.';
     let out = systemMessage || '';
     if (!out.includes('do not use emoji')) {
         out += emojiRule;
     }
     if (!out.includes('**Response language**')) {
         out += langRule;
+    }
+    if (!out.includes('**Tool result URLs**')) {
+        out += toolUrlRule;
     }
     return out.trimStart();
 }
@@ -198,9 +236,11 @@ async function callToolWithFallback(
         skillBranch?: string;
         skillSourceByName?: Map<string, SkillSourceResolution>;
         coreSkillNames?: Set<string>;
+        baseDocId?: number;
+        baseBranch?: string;
     },
 ): Promise<any> {
-    const preferDirectMcp = toolName === 'load_skill_instructions' || toolName === 'load_base_instructions';
+    const preferDirectMcp = toolName === 'load_skill_instructions' || toolName === 'load_base';
     if (useWorker && !preferDirectMcp) {
         try {
             const ctx = (global as any).app || (global as any).Ejunz;
@@ -223,6 +263,8 @@ async function callToolWithFallback(
         undefined,
         mcpOpts?.skillSourceByName,
         mcpOpts?.coreSkillNames,
+        mcpOpts?.baseDocId,
+        mcpOpts?.baseBranch,
     );
 }
 
@@ -917,6 +959,8 @@ export async function processAgentChatInternal(
                                                             skillBranch: effectiveAgentSkillBranch(adoc),
                                                             skillSourceByName,
                                                             coreSkillNames,
+                                                            baseDocId: effectiveAgentBaseDocId(adoc),
+                                                            baseBranch: effectiveAgentBaseBranch(adoc),
                                                         },
                                                     );
                                                     AgentLogger.info(`Tool ${firstToolName} returned (internal)`, { resultLength: JSON.stringify(toolResult).length });
@@ -1260,6 +1304,27 @@ export class AgentDetailHandler extends Handler {
             }
         }
 
+        const rawBaseBindings = normalizeAgentBaseBindings(adoc) || [];
+        const enabledBaseLibrariesForDisplay: Array<{ docId: number; title: string; bid: string; branch: string }> = [];
+        for (const b of rawBaseBindings) {
+            const bdoc = await BaseModel.get(domainId, b.docId);
+            if (bdoc) {
+                enabledBaseLibrariesForDisplay.push({
+                    docId: bdoc.docId,
+                    title: (bdoc.title && String(bdoc.title).trim()) || `Base #${bdoc.docId}`,
+                    bid: (bdoc.bid && String(bdoc.bid).trim()) || '',
+                    branch: String(b.branch || 'main'),
+                });
+            } else {
+                enabledBaseLibrariesForDisplay.push({
+                    docId: b.docId,
+                    title: `Base #${b.docId}`,
+                    bid: '',
+                    branch: String(b.branch || 'main'),
+                });
+            }
+        }
+
         this.response.template = 'agent_detail.html';
         this.response.body = {
             domainId,
@@ -1268,6 +1333,7 @@ export class AgentDetailHandler extends Handler {
             udoc,
             apiUrl,
             enabledSkillLibrariesForDisplay,
+            enabledBaseLibrariesForDisplay,
         };
 
     }
@@ -1489,6 +1555,114 @@ export class AgentSkillsEditHandler extends Handler {
         });
 
         this.response.body = { success: true, skillLibraryBindings: normalized };
+    }
+}
+
+/** Configure knowledge-base (TYPE_BASE) mount for an agent (one base + branch). */
+export class AgentBasesEditHandler extends Handler {
+    @param('aid', Types.String)
+    async _prepare(domainId: string, aid: string) {
+        if (!aid) return;
+        const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
+        const adoc = await Agent.get(domainId, normalizedId);
+        if (!adoc) {
+            throw new NotFoundError(`Agent not found for ${typeof normalizedId === 'number' ? 'docId' : 'aid'}: ${normalizedId}`);
+        }
+        if (!this.user.own(adoc) && !this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) {
+            throw new PermissionError('Only owner or system administrator can manage Agent knowledge base mount');
+        }
+        this.UiContext.extraTitleContent = adoc.title;
+    }
+
+    @param('aid', Types.String)
+    async get(domainId: string, aid: string) {
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+
+        const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
+        const adoc = await Agent.get(domainId, normalizedId, Agent.PROJECTION_DETAIL);
+        if (!adoc) {
+            throw new NotFoundError(`Agent not found for ${typeof normalizedId === 'number' ? 'docId' : 'aid'}: ${normalizedId}`);
+        }
+
+        if (!this.user.own(adoc) && !this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) {
+            throw new PermissionError('Only owner or system administrator can manage Agent knowledge base mount');
+        }
+
+        const basesRaw = await BaseModel.getAll(domainId);
+        const basesForUi = basesRaw.map((bd) => ({
+            docId: bd.docId,
+            title: (bd.title && String(bd.title).trim()) || `Base #${bd.docId}`,
+            bid: (bd.bid && String(bd.bid).trim()) || '',
+            branches: listBranchNamesForSkillDoc(bd as any),
+        }));
+
+        const bb = normalizeAgentBaseBindings(adoc)?.[0];
+        const baseBindingsByDocId: Record<string, string> = {};
+        if (bb) {
+            baseBindingsByDocId[String(bb.docId)] = String(bb.branch || 'main');
+        }
+
+        this.response.template = 'agent_bases.html';
+        this.response.body = {
+            domainId,
+            adoc,
+            basesForUi,
+            baseBindingsByDocId,
+        };
+    }
+
+    @param('aid', Types.String)
+    @post('baseLibraryBindings', Types.Any, true)
+    async postUpdateBaseLibraryBindings(domainId: string, aid: string, baseLibraryBindings?: unknown) {
+        this.response.template = null;
+
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+
+        const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
+        const adoc = await Agent.get(domainId, normalizedId);
+
+        if (!adoc) {
+            throw new NotFoundError(`Agent not found for ${typeof normalizedId === 'number' ? 'docId' : 'aid'}: ${normalizedId}`);
+        }
+
+        if (!this.user.own(adoc) && !this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) {
+            throw new PermissionError('Only owner or system administrator can update Agent knowledge base mount');
+        }
+
+        let rawList: unknown[] = [];
+        if (Array.isArray(baseLibraryBindings)) {
+            rawList = baseLibraryBindings;
+        } else if (typeof baseLibraryBindings === 'string' && baseLibraryBindings.trim()) {
+            try {
+                const parsed = JSON.parse(baseLibraryBindings);
+                if (Array.isArray(parsed)) rawList = parsed;
+            } catch {
+                rawList = [];
+            }
+        }
+
+        const normalized: Array<{ docId: number; branch: string }> = [];
+        for (const row of rawList) {
+            if (!row || typeof row !== 'object') continue;
+            const docId = Number((row as any).docId);
+            if (!Number.isFinite(docId) || docId <= 0) continue;
+            const bdoc = await BaseModel.get(domainId, docId);
+            if (!bdoc) continue;
+            if (!this.user.own(bdoc)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            let branch = String((row as any).branch ?? 'main').trim() || 'main';
+            const allowed = listBranchNamesForSkillDoc(bdoc as any);
+            if (!allowed.includes(branch)) {
+                branch = allowed.includes('main') ? 'main' : (allowed[0] || 'main');
+            }
+            normalized.push({ docId, branch });
+            break;
+        }
+
+        await Agent.edit(domainId, adoc.aid, {
+            baseLibraryBindings: normalized.length > 0 ? normalized : undefined,
+        });
+
+        this.response.body = { success: true, baseLibraryBindings: normalized };
     }
 }
 
@@ -1946,6 +2120,8 @@ export class AgentChatHandler extends Handler {
                 agentContent: adoc.content || '',
                 agentMemory: adoc.memory || '',
                 skillBranch: effectiveAgentSkillBranch(adoc),
+                baseDocId: effectiveAgentBaseDocId(adoc),
+                baseBranch: effectiveAgentBaseBranch(adoc),
                 skillSourceByName: skillSourceForTask ? skillSourceMapToPlain(skillSourceForTask) : undefined,
                 coreSkillNames: coreSkillNameList.length > 0 ? coreSkillNameList : undefined,
                 /** Serialize only OpenAI function tools; skill text guides real tool calls; server resolves via McpClient (system catalog / domain market). */
@@ -2836,6 +3012,8 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
                                                         undefined,
                                                         skillSourceByName,
                                                         coreSkillNames,
+                                                        effectiveAgentBaseDocId(this.adoc),
+                                                        effectiveAgentBaseBranch(this.adoc),
                                                     );
                                                     AgentLogger.info(`Tool ${firstToolCall.function.name} returned (Stream)`, { resultLength: JSON.stringify(toolResult).length });
                                                     
@@ -3296,7 +3474,7 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
                                                     
                                                     let toolResult: any;
                                                     try {
-                                                        toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs, domainId, undefined, undefined, effectiveAgentSkillBranch(this.adoc), undefined, skillSourceByName, coreSkillNames);
+                                                        toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs, domainId, undefined, undefined, effectiveAgentSkillBranch(this.adoc), undefined, skillSourceByName, coreSkillNames, effectiveAgentBaseDocId(this.adoc), effectiveAgentBaseBranch(this.adoc));
                                                         AgentLogger.info(`Tool ${firstToolCall.function.name} returned (API WS)`, { resultLength: JSON.stringify(toolResult).length });
                                                     } catch (toolError: any) {
                                                         AgentLogger.error(`Tool ${firstToolCall.function.name} failed (API WS):`, toolError);
@@ -3708,7 +3886,7 @@ export class AgentApiHandler extends Handler {
                                                             const toolArgs = firstToolCall.function.name.match(/^repo_\d+_/) 
                                                                 ? { ...parsedArgs, __agentId: (adoc as any).aid || (adoc as any)._id?.toString() || 'unknown', __agentName: (adoc as any).name || 'agent' }
                                                                 : parsedArgs;
-                                                            toolResult = await mcpClient.callTool(firstToolCall.function.name, toolArgs, adoc.domainId, undefined, undefined, effectiveAgentSkillBranch(adoc), undefined, skillSourceByName, coreSkillNames);
+                                                            toolResult = await mcpClient.callTool(firstToolCall.function.name, toolArgs, adoc.domainId, undefined, undefined, effectiveAgentSkillBranch(adoc), undefined, skillSourceByName, coreSkillNames, effectiveAgentBaseDocId(adoc), effectiveAgentBaseBranch(adoc));
                                                             AgentLogger.info(`Tool ${firstToolCall.function.name} returned (API)`, { resultLength: JSON.stringify(toolResult).length });
                                                         } catch (toolError: any) {
                                                             AgentLogger.error(`Tool ${firstToolCall.function.name} failed (API):`, toolError);
@@ -3848,7 +4026,7 @@ export class AgentApiHandler extends Handler {
                     const toolArgs = firstToolCall.function?.name?.match(/^repo_\d+_/) 
                         ? { ...parsedArgs, __agentId: (adoc as any).aid || (adoc as any)._id?.toString() || 'unknown', __agentName: (adoc as any).name || 'agent' }
                         : parsedArgs;
-                    const toolResult = await mcpClient.callTool(firstToolCall.function?.name, toolArgs, adoc.domainId, undefined, undefined, effectiveAgentSkillBranch(adoc), undefined, skillSourceByName, coreSkillNames);
+                    const toolResult = await mcpClient.callTool(firstToolCall.function?.name, toolArgs, adoc.domainId, undefined, undefined, effectiveAgentSkillBranch(adoc), undefined, skillSourceByName, coreSkillNames, effectiveAgentBaseDocId(adoc), effectiveAgentBaseBranch(adoc));
                     AgentLogger.info('Tool returned:', { toolResult });
                     
                     const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
@@ -4601,6 +4779,7 @@ export async function apply(ctx: Context) {
     ctx.Route('agent_domain', '/agent', AgentMainHandler);
     ctx.Route('agent_create', '/agent/create', AgentEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_skills', '/agent/:aid/skills', AgentSkillsEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('agent_bases', '/agent/:aid/bases', AgentBasesEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_edge_config', '/agent/:aid/edge-config', AgentEdgeConfigHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_chat_sessions_list', '/agent/:aid/chat/sessions', AgentChatSessionsListHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_chat_session_history', '/agent/:aid/chat/session/:sid/history', AgentChatSessionHistoryHandler, PRIV.PRIV_USER_PROFILE);
