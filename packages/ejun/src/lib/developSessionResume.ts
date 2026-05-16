@@ -12,6 +12,8 @@ import {
 } from './sessionListDisplay';
 import { isDevelopSessionPastDeadline, isSessionStalePastUtcCalendarDay } from './sessionUtcDaily';
 
+type DevelopBranchDailyDb = Parameters<typeof loadDevelopRunQueuePool>[0];
+
 /** Same window as `DevelopSessionStartHandler` session reuse. */
 export const DEVELOP_SESSION_REUSE_MS = 8 * 3600 * 1000;
 
@@ -169,12 +171,58 @@ export async function findResumableDevelopSessionDoc(
     return null;
 }
 
+/**
+ * Read-only: today’s resumable develop queue session id if any.
+ * Does not clear stale pointers or write developDailySessionId (unlike {@link buildTodayDevelopResumeFields}).
+ */
+export async function peekResumableDevelopDailySessionIdReadOnly(
+    db: DevelopBranchDailyDb,
+    domainId: string,
+    uid: number,
+    priv: number,
+): Promise<string | null> {
+    const dudoc = await DomainModel.getDomainUser(domainId, { _id: uid, priv });
+    const pendingPool = await loadDevelopRunQueuePool(db, domainId, uid, priv);
+    const poolKeys = poolKeySet(pendingPool);
+
+    const todayYmd = developTodayUtcYmd();
+    const ptrId = typeof dudoc?.developDailySessionId === 'string' ? dudoc.developDailySessionId.trim() : '';
+    const ptrDay = typeof dudoc?.developDailySessionDay === 'string' ? dudoc.developDailySessionDay.trim() : '';
+
+    if (ptrId && ObjectId.isValid(ptrId) && YMD_RE.test(ptrDay) && ptrDay === todayYmd) {
+        const doc = await SessionModel.coll.findOne({ _id: new ObjectId(ptrId), domainId, uid }) as SessionDoc | null;
+        if (doc && isDevelopSessionResumable(doc, poolKeys)) {
+            return doc._id.toString();
+        }
+    }
+
+    const cutoff = new Date(Date.now() - DEVELOP_SESSION_REUSE_MS);
+    const candidates = await SessionModel.coll
+        .find({
+            domainId,
+            uid,
+            appRoute: 'develop',
+            lastActivityAt: { $gte: cutoff },
+            $and: [
+                { $or: [{ lessonAbandonedAt: null }, { lessonAbandonedAt: { $exists: false } }] },
+                developSessionNotSettledMongoFilter,
+                developDailySessionKindMongo,
+            ],
+        })
+        .sort({ lastActivityAt: -1 })
+        .limit(20)
+        .toArray() as SessionDoc[];
+
+    for (const doc of candidates) {
+        if (isDevelopSessionResumable(doc, poolKeys)) return doc._id.toString();
+    }
+    return null;
+}
+
 export type DevelopResumeFields = {
     todayDevelopResumableSessionId: string | null;
     todayDevelopResumeUrl: string | null;
 };
-
-type DevelopBranchDailyDb = Parameters<typeof loadDevelopRunQueuePool>[0];
 
 export async function buildTodayDevelopResumeFields(
     db: DevelopBranchDailyDb,

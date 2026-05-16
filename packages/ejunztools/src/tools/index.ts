@@ -2,8 +2,9 @@ import type { SystemToolEntry } from './types';
 import { get_current_time } from './get_current_time';
 import { fetch_webpage } from './fetch_webpage';
 import { load_base } from './load_base';
+import { get_domain_user_progress } from './get_domain_user_progress';
 
-const TOOL_MODULES = [get_current_time, fetch_webpage, load_base];
+const TOOL_MODULES = [get_current_time, fetch_webpage, load_base, get_domain_user_progress];
 
 export type { SystemToolEntry } from './types';
 
