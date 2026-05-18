@@ -484,6 +484,25 @@ __langname: 简体中文
 'Problem kind fill blank': 填空题
 'Problem kind matching': 配对题
 'Problem kind super flip': 超级翻转题
+'Problem kind ai eval': AI评测题
+'Problem ai eval stem placeholder': 请输入需要 AI 评测的题干
+'Problem ai eval points': 评测点
+'Problem ai eval point title placeholder': 评测点标题（学习中展示）
+'Problem ai eval point content placeholder': 评测内容（仅 AI 可见）
+'Problem ai eval add point': 新增评测点
+'Problem ai eval total score': 总分值
+'Problem ai eval point earned': 本点评分
+'Problem ai eval point standard content': 评测点标准内容
+'Problem ai eval earned total': 本次总得分
+'Problem ai eval pass score': 通过分
+'Problem ai eval max attempts': 最大尝试次数
+'Problem ai eval lesson hint': 学员提交文本后，系统会调用 AI 评分并给出反馈；达到通过分才算正确。
+'Problem ai eval answer placeholder': 在此输入你的作答内容...
+'Problem ai eval evaluating': AI 评测中...
+'Problem ai eval failed': AI 评测失败，请稍后重试。
+'Problem ai eval invalid point scores': AI 未返回有效的逐点评分，请重试。
+'Problem ai eval hard zero missing title': 未命中评测点标题，按规则该点记 0 分
+'Problem ai eval hard zero missing content': 命中评测点标题但未命中标准内容，按规则该点记 0 分
 'Problem reorder up': 上移
 'Problem reorder down': 下移
 'Problem reorder hint': 点击题目右上角「上移 / 下移」（在红色删除左侧）调整顺序；保存后生效。

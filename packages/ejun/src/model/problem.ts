@@ -4,6 +4,8 @@
  */
 
 import type {
+    ProblemAiEval,
+    ProblemAiEvalPoint,
     Problem,
     ProblemCommon,
     ProblemFillBlank,
@@ -19,6 +21,44 @@ import type {
 const DEFAULT_OPTION_SLOTS = 4;
 const MIN_SLOTS = 2;
 const MAX_SLOTS = 8;
+const AI_EVAL_POINT_MAX = 20;
+
+function normalizeAiEvalPointScore(raw: unknown, fallback = 10): number {
+    const n = typeof raw === 'number' && Number.isFinite(raw) ? Math.round(raw) : fallback;
+    return Math.max(0, Math.min(1000, n));
+}
+
+function normalizeAiEvalPoints(raw: unknown, rubricRaw?: unknown): ProblemAiEvalPoint[] {
+    const out: ProblemAiEvalPoint[] = [];
+    if (Array.isArray(raw)) {
+        for (let i = 0; i < raw.length && out.length < AI_EVAL_POINT_MAX; i++) {
+            const it = raw[i];
+            if (!it || typeof it !== 'object' || Array.isArray(it)) continue;
+            const rec = it as Record<string, unknown>;
+            const titleRaw = typeof rec.title === 'string' ? rec.title.trim() : '';
+            const contentRaw = typeof rec.content === 'string' ? rec.content.trim() : '';
+            const title = titleRaw || contentRaw;
+            const content = contentRaw || titleRaw;
+            if (!title || !content) continue;
+            const idRaw = typeof rec.id === 'string' && rec.id.trim() ? rec.id.trim() : `pt_${i + 1}`;
+            out.push({
+                id: idRaw,
+                title,
+                content,
+                score: normalizeAiEvalPointScore(rec.score, 10),
+            });
+        }
+    }
+    if (!out.length && typeof rubricRaw === 'string' && rubricRaw.trim()) {
+        out.push({
+            id: 'pt_1',
+            title: rubricRaw.trim(),
+            content: rubricRaw.trim(),
+            score: 100,
+        });
+    }
+    return out;
+}
 
 /** Max tags stored on a single problem (editor registry uses a higher cap). */
 export const MAX_TAGS_PER_PROBLEM = 32;
@@ -173,6 +213,7 @@ export function problemKind(p: Partial<Problem> | null | undefined): ProblemKind
         || t === 'fill_blank'
         || t === 'matching'
         || t === 'super_flip'
+        || t === 'ai_eval'
     ) {
         return t;
     }
@@ -245,6 +286,10 @@ export function isMultiProblem(p: Partial<Problem> | null | undefined): p is Pro
 
 export function isFillBlankProblem(p: Partial<Problem> | null | undefined): p is ProblemFillBlank {
     return problemKind(p) === 'fill_blank';
+}
+
+export function isAiEvalProblem(p: Partial<Problem> | null | undefined): p is ProblemAiEval {
+    return problemKind(p) === 'ai_eval';
 }
 
 /** Count of blanks: `___` markers in stem, or 1 if none. */
@@ -351,6 +396,42 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
             answers[0] = prev.answer === 1 ? 'true' : 'false';
         }
         return { ...common, type: 'fill_blank', stem, answers };
+    }
+    if (newKind === 'ai_eval') {
+        const stem =
+            'stem' in prev && typeof prev.stem === 'string'
+                ? prev.stem
+                : isFlipProblem(prev)
+                  ? prev.faceA
+                  : isFillBlankProblem(prev)
+                    ? prev.stem
+                    : isMatchingProblem(prev)
+                      ? ((typeof prev.stem === 'string' && prev.stem.trim())
+                          ? prev.stem.trim()
+                          : (matchingColumnsNormalized(prev)[0] || []).join(' / '))
+                      : isSuperFlipProblem(prev)
+                        ? superFlipStemFallback(prev)
+                        : '';
+        const points = normalizeAiEvalPoints(
+            (prev as { points?: unknown }).points,
+            (prev as { rubric?: unknown }).rubric,
+        );
+        const passScoreRaw = (prev as { passScore?: unknown }).passScore;
+        const maxAttemptsRaw = (prev as { maxAttempts?: unknown }).maxAttempts;
+        const passScore = typeof passScoreRaw === 'number' && Number.isFinite(passScoreRaw)
+            ? Math.max(0, Math.min(100, Math.round(passScoreRaw)))
+            : 60;
+        const maxAttempts = typeof maxAttemptsRaw === 'number' && Number.isFinite(maxAttemptsRaw)
+            ? Math.max(1, Math.min(20, Math.round(maxAttemptsRaw)))
+            : 3;
+        return {
+            ...common,
+            type: 'ai_eval',
+            stem,
+            points,
+            passScore,
+            maxAttempts,
+        };
     }
     if (newKind === 'flip') {
         let faceA = '';
@@ -584,6 +665,26 @@ export function migrateRawProblem(raw: Record<string, unknown>): Problem {
             n,
         );
         return { ...common, type: 'fill_blank', stem, answers };
+    }
+    if (t === 'ai_eval') {
+        const stem = typeof raw.stem === 'string' ? raw.stem : '';
+        const points = normalizeAiEvalPoints(raw.points, raw.rubric);
+        const passScoreRaw = typeof raw.passScore === 'number' && Number.isFinite(raw.passScore)
+            ? Math.round(raw.passScore)
+            : 60;
+        const maxAttemptsRaw = typeof raw.maxAttempts === 'number' && Number.isFinite(raw.maxAttempts)
+            ? Math.round(raw.maxAttempts)
+            : 3;
+        const passScore = Math.max(0, Math.min(100, passScoreRaw));
+        const maxAttempts = Math.max(1, Math.min(20, maxAttemptsRaw));
+        return {
+            ...common,
+            type: 'ai_eval',
+            stem,
+            points,
+            passScore,
+            maxAttempts,
+        };
     }
     if (t === 'matching') {
         const columns = normalizeMatchingColumns(raw.columns, raw.left, raw.right);
