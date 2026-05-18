@@ -13,6 +13,7 @@ import type {
   ProblemFillBlank,
   ProblemMatching,
   ProblemSuperFlip,
+  ProblemAiEval,
 } from 'ejun/src/interface';
 import { problemKind, matchingColumnsNormalized, superFlipNormalized } from 'ejun/src/model/problem';
 
@@ -64,6 +65,7 @@ const OUTLINE_PROBLEM_KIND_LABEL: Record<string, string> = {
   fill_blank: '填空',
   matching: '配对',
   super_flip: '表格式翻转',
+  ai_eval: 'AI评测',
 };
 
 /** Shown when markdown render fails; must not be stored in cardContentCacheRef. */
@@ -104,6 +106,23 @@ function outlineProblemPreviewBlocks(
     const fb = p as ProblemFillBlank;
     const ans = (fb.answers || []).map((a) => String(a ?? '').trim()).filter(Boolean).join('；') || '—';
     return { kindLabel, titleLine, stemHtml: fb.stem || '', answerHtml: ans };
+  }
+  if (k === 'ai_eval') {
+    const ae = p as ProblemAiEval;
+    const stem = String(ae.stem || '').trim();
+    const passScore = typeof ae.passScore === 'number' ? `通过分：${ae.passScore}` : '';
+    const points = Array.isArray(ae.points)
+      ? ae.points
+        .map((pt, i) => {
+          const title = String(pt?.title ?? '').trim();
+          if (!title) return '';
+          const score = typeof pt?.score === 'number' ? pt.score : 0;
+          return `${i + 1}. ${title}（${score}）`;
+        })
+        .filter(Boolean)
+      : [];
+    const answerHtml = [passScore, ...points].filter(Boolean).join('<br/>') || '—';
+    return { kindLabel, titleLine, stemHtml: stem || '（AI评测）', answerHtml };
   }
   if (k === 'single') {
     const s = p as ProblemSingle;

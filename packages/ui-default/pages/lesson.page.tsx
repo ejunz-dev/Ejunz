@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import { i18n, request } from 'vj/utils';
 import Notification from 'vj/components/notification';
-import type { Problem, ProblemSingle, ProblemMulti, ProblemTrueFalse, ProblemFlip, ProblemFillBlank, ProblemMatching, ProblemSuperFlip } from 'ejun/src/interface';
+import type { Problem, ProblemSingle, ProblemMulti, ProblemTrueFalse, ProblemFlip, ProblemFillBlank, ProblemMatching, ProblemSuperFlip, ProblemAiEval } from 'ejun/src/interface';
 import {
   problemKind,
   normalizeMultiAnswers,
@@ -122,6 +122,7 @@ function lessonProblemKindLabel(k: ReturnType<typeof problemKind>): string {
     : k === 'fill_blank' ? 'Problem kind fill blank'
     : k === 'matching' ? 'Problem kind matching'
     : k === 'super_flip' ? 'Problem kind super flip'
+    : k === 'ai_eval' ? 'Problem kind ai eval'
     : 'Problem kind single';
   const t = i18n(key);
   return t !== key ? t : k;
@@ -136,6 +137,9 @@ function lessonProblemQueueTitleText(p: QueuedProblem): string {
   }
   if (problemKind(p) === 'fill_blank') {
     return String((p as ProblemFillBlank).stem || '').trim();
+  }
+  if (problemKind(p) === 'ai_eval') {
+    return String((p as ProblemAiEval).stem || '').trim();
   }
   if (problemKind(p) === 'matching') {
     const m = p as ProblemMatching;
@@ -1132,6 +1136,11 @@ function LessonPage() {
   const [superFlipRevealed, setSuperFlipRevealed] = useState<boolean[][]>([]);
   /** Super flip: learner marked done (mastered); false = 「不熟悉」, null = unanswered. */
   const [superFlipMarkedOk, setSuperFlipMarkedOk] = useState<boolean | null>(null);
+  const [aiEvalAnswerDraft, setAiEvalAnswerDraft] = useState('');
+  const [aiEvalSubmitting, setAiEvalSubmitting] = useState(false);
+  const [aiEvalFeedbackByPid, setAiEvalFeedbackByPid] = useState<Record<string, string>>({});
+  const [aiEvalLastScoreByPid, setAiEvalLastScoreByPid] = useState<Record<string, number>>({});
+  const [aiEvalPointScoresByPid, setAiEvalPointScoresByPid] = useState<Record<string, number[]>>({});
   const [isAnswered, setIsAnswered] = useState(false);
   const [isPassed, setIsPassed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1439,6 +1448,7 @@ function LessonPage() {
     setSelectedAnswer(null);
     setSelectedMulti([]);
     setSelectedTf(null);
+    setAiEvalAnswerDraft('');
     setFlipStage('a');
     setFlipHintOpen(false);
     setIsAnswered(false);
@@ -1494,6 +1504,7 @@ function LessonPage() {
     setSelectedAnswer(null);
     setSelectedMulti([]);
     setSelectedTf(null);
+    setAiEvalAnswerDraft('');
     setFlipStage('a');
     setFlipHintOpen(false);
     setIsAnswered(false);
@@ -2289,6 +2300,12 @@ function LessonPage() {
     if (currentKind === 'super_flip') {
       return isAnswered && superFlipMarkedOk === true;
     }
+    if (currentKind === 'ai_eval') {
+      const pe = currentProblem as ProblemAiEval;
+      const passScore = typeof pe.passScore === 'number' ? pe.passScore : 60;
+      const score = aiEvalLastScoreByPid[pe.pid];
+      return typeof score === 'number' && Number.isFinite(score) && score >= passScore;
+    }
     return false;
   })();
 
@@ -2326,6 +2343,10 @@ function LessonPage() {
     if (k === 'super_flip') return h.correct ? i18n('Done') : i18n('Problem super flip not familiar');
     if (k === 'fill_blank') {
       if (h.fillAnswers?.length) return h.fillAnswers.map((s) => String(s ?? '').trim()).filter(Boolean).join('；') || i18n('N/A');
+      return i18n('N/A');
+    }
+    if (k === 'ai_eval') {
+      if (h.fillAnswers?.[0]) return String(h.fillAnswers[0]);
       return i18n('N/A');
     }
     if (k === 'matching') {
@@ -2420,6 +2441,11 @@ function LessonPage() {
       }
       return parts.join('； ') || i18n('N/A');
     }
+    if (k === 'ai_eval') {
+      const pa = p as ProblemAiEval;
+      const passScore = typeof pa.passScore === 'number' ? pa.passScore : 60;
+      return `>= ${passScore}`;
+    }
     if (k === 'flip') return i18n('Problem kind flip');
     return i18n('N/A');
   }, []);
@@ -2458,6 +2484,7 @@ function LessonPage() {
     setSelectedAnswer(null);
     setSelectedMulti([]);
     setSelectedTf(null);
+    setAiEvalAnswerDraft('');
     setFlipStage('a');
     setFlipHintOpen(false);
     setFillBlankDraft(
@@ -2700,6 +2727,7 @@ function LessonPage() {
     setSelectedAnswer(null);
     setSelectedMulti([]);
     setSelectedTf(null);
+    setAiEvalAnswerDraft('');
     setFlipStage('a');
     setFlipHintOpen(false);
     setFillBlankDraft([]);
@@ -2815,6 +2843,154 @@ function LessonPage() {
       setPeekCount((prev) => ({ ...prev, [problemId]: (prev[problemId] || 0) + 1 }));
       setCorrectNeeded((prev) => ({ ...prev, [problemId]: (prev[problemId] || 0) + 1 }));
       setPendingLessonAdvance('requeue');
+    }
+  };
+
+  const parseAiEvalScoreAndFeedback = (raw: string): { score: number; feedback: string; pointScores: number[] } => {
+    const text = String(raw ?? '').trim();
+    let score = 0;
+    let feedback = text;
+    let pointScores: number[] = [];
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]) as { score?: unknown; feedback?: unknown; pointScores?: unknown };
+        if (typeof parsed.score === 'number' && Number.isFinite(parsed.score)) {
+          score = parsed.score;
+        }
+        if (typeof parsed.feedback === 'string' && parsed.feedback.trim()) {
+          feedback = parsed.feedback.trim();
+        }
+        if (Array.isArray(parsed.pointScores)) {
+          pointScores = parsed.pointScores
+            .map((x) => (typeof x === 'number' && Number.isFinite(x) ? Math.round(x) : NaN))
+            .filter((x) => Number.isFinite(x));
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    if (!(typeof score === 'number' && Number.isFinite(score))) {
+      const m = text.match(/(?:score|评分)\s*[:：]?\s*(-?\d+(?:\.\d+)?)/i);
+      if (m) score = Number(m[1]);
+    }
+    score = Math.max(0, Math.min(100, Math.round(score)));
+    if (!feedback) feedback = text || i18n('N/A');
+    return { score, feedback, pointScores };
+  };
+
+  const normalizeAiEvalMatchText = (s: string): string =>
+    String(s ?? '')
+      .toLowerCase()
+      .replace(/[\s,.;:!?'"`~@#$%^&*()\-_=+\[\]{}\\|/<>，。；：！？、（）《》【】“”‘’·…]+/g, '');
+
+  const aiEvalContainsLoose = (haystack: string, needle: string): boolean => {
+    const h = normalizeAiEvalMatchText(haystack);
+    const n = normalizeAiEvalMatchText(needle);
+    if (!h || !n) return false;
+    return h.includes(n);
+  };
+
+  const handleAiEvalSubmit = async () => {
+    if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'ai_eval' || aiEvalSubmitting) return;
+    const pe = currentProblem as ProblemAiEval;
+    const answerText = aiEvalAnswerDraft.trim();
+    if (!answerText) return;
+    const passScore = typeof pe.passScore === 'number' ? Math.max(0, Math.min(100, pe.passScore)) : 60;
+    const maxAttempts = typeof pe.maxAttempts === 'number' ? Math.max(1, Math.min(20, pe.maxAttempts)) : 3;
+    const problemId = pe.pid;
+    const currentAttempts = (problemAttempts[problemId] || 0) + 1;
+    setAiEvalSubmitting(true);
+    try {
+      const points = Array.isArray(pe.points) ? pe.points : [];
+      const pointLines = points
+        .map((pt, idx) => {
+          const title = String(pt?.title ?? '').trim();
+          const content = String(pt?.content ?? '').trim();
+          if (!content) return '';
+          const score = typeof pt?.score === 'number' && Number.isFinite(pt.score) ? Math.max(0, Math.round(pt.score)) : 0;
+          return `${idx + 1}. ${title || `Point ${idx + 1}`}: ${content} (${score})`;
+        })
+        .filter(Boolean);
+      const prompt = [
+        'You are grading one learner answer.',
+        'Return strict JSON only: {"score": <0-100 integer>, "feedback": "<short feedback>", "pointScores": [<earned score per point>]}',
+        `Question: ${pe.stem || ''}`,
+        pointLines.length ? `Evaluation points:\n${pointLines.join('\n')}` : '',
+        pointLines.length ? `pointScores length must be exactly ${pointLines.length}` : '',
+        'Point title is only a locator, never a direct scoring item.',
+        'If learner answer does not contain a point title, that point must be 0.',
+        'If learner answer contains point title but does not contain that point content, that point must be 0.',
+        'Only when both title and content are present, evaluate quality for that point.',
+        'Each point score must be an integer and must not exceed that point max score.',
+        'Be strict. If key requirement is missing or wrong, deduct score explicitly in that point.',
+        `Pass score: ${passScore}`,
+        `Learner answer: ${answerText}`,
+      ].filter(Boolean).join('\n\n');
+      const resp: any = await request.post(`/d/${lessonApiDomainId}/ai/chat`, {
+        message: prompt,
+        stream: false,
+      });
+      const aiText = String(resp?.message ?? '').trim();
+      const fullScores = points.map((pt) =>
+        (typeof pt?.score === 'number' && Number.isFinite(pt.score)) ? Math.max(0, Math.round(pt.score)) : 0);
+      const sumFull = fullScores.reduce((a, b) => a + b, 0);
+      const { feedback, pointScores } = parseAiEvalScoreAndFeedback(aiText);
+      if (pointScores.length !== points.length) {
+        throw new Error(i18n('Problem ai eval invalid point scores'));
+      }
+      const normalizedPointScores = pointScores.map((x, i) =>
+        Math.max(0, Math.min(fullScores[i], Math.round(x))));
+      const hardZeroReasons: string[] = [];
+      const gatedPointScores = normalizedPointScores.map((score, i) => {
+        const pt = points[i];
+        const title = String(pt?.title ?? '').trim();
+        const content = String(pt?.content ?? '').trim();
+        const hasTitle = title ? aiEvalContainsLoose(answerText, title) : false;
+        const hasContent = content ? aiEvalContainsLoose(answerText, content) : false;
+        if (!hasTitle) {
+          hardZeroReasons.push(`${i18n('Problem ai eval hard zero missing title')} #${i + 1}`);
+          return 0;
+        }
+        if (!hasContent) {
+          hardZeroReasons.push(`${i18n('Problem ai eval hard zero missing content')} #${i + 1}`);
+          return 0;
+        }
+        return score;
+      });
+      const feedbackFinal = hardZeroReasons.length
+        ? `${feedback}\n\n${hardZeroReasons.join('；')}`
+        : feedback;
+      const earnedRaw = gatedPointScores.reduce((a, b) => a + b, 0);
+      const score = sumFull > 0 ? Math.max(0, Math.min(100, Math.round((earnedRaw / sumFull) * 100))) : 0;
+      const correct = score >= passScore;
+      const timeSpent = Date.now() - problemStartTime;
+      setIsAnswered(true);
+      setShowAnalysis(true);
+      setProblemAttempts((prev) => ({ ...prev, [problemId]: currentAttempts }));
+      setAiEvalLastScoreByPid((prev) => ({ ...prev, [problemId]: score }));
+      setAiEvalFeedbackByPid((prev) => ({ ...prev, [problemId]: feedbackFinal }));
+      setAiEvalPointScoresByPid((prev) => ({ ...prev, [problemId]: gatedPointScores }));
+      const historyPayload = [answerText, `score:${score}`, `pointScores:${gatedPointScores.join(',')}`, feedbackFinal];
+      if (correct) {
+        recordCorrectOrWrong(currentProblem, score, true, timeSpent, problemId, currentAttempts, historyPayload);
+      } else if (currentAttempts >= maxAttempts) {
+        setAnswerHistory((prev) => [...prev, {
+          problem: currentProblem,
+          selected: score,
+          correct: false,
+          timeSpent,
+          attempts: currentAttempts,
+          fillAnswers: historyPayload,
+        }]);
+        setPendingLessonAdvance('next');
+      } else {
+        setPendingLessonAdvance('requeue');
+      }
+    } catch (e: any) {
+      Notification.error(e?.message || i18n('Problem ai eval failed'));
+    } finally {
+      setAiEvalSubmitting(false);
     }
   };
 
@@ -3024,6 +3200,7 @@ function LessonPage() {
     setSelectedAnswer(null);
     setSelectedMulti([]);
     setSelectedTf(null);
+    setAiEvalAnswerDraft('');
     setFlipStage('a');
     setFlipHintOpen(false);
     setFillBlankDraft([]);
@@ -5269,6 +5446,140 @@ function LessonPage() {
                   '2px',
                 );
               })()}
+          </>
+        ) : currentKind === 'ai_eval' ? (
+          <>
+            <div style={{ fontSize: '18px', fontWeight: '500', marginBottom: '14px', color: themeStyles.stemColor, lineHeight: '1.6' }}>
+              {(currentProblem as ProblemAiEval).stem || i18n('No stem')}
+            </div>
+            {(() => {
+              const pe = currentProblem as ProblemAiEval;
+              const passScore = typeof pe.passScore === 'number' ? pe.passScore : 60;
+              const maxAttempts = typeof pe.maxAttempts === 'number' ? pe.maxAttempts : 3;
+              const currentAttempts = problemAttempts[pe.pid] || 0;
+              const feedback = aiEvalFeedbackByPid[pe.pid];
+              const points = Array.isArray(pe.points) ? pe.points : [];
+              const totalScore = points.reduce((sum, p) => sum + (typeof p?.score === 'number' ? p.score : 0), 0);
+              const pointEarnedScores = aiEvalPointScoresByPid[pe.pid] || [];
+              const totalEarned = aiEvalLastScoreByPid[pe.pid];
+              return (
+                <>
+                  {points.length > 0 ? (
+                    <div style={{
+                      marginBottom: '12px',
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      backgroundColor: themeStyles.bgSecondary,
+                      border: `1px solid ${themeStyles.border}`,
+                      color: themeStyles.textSecondary,
+                      fontSize: '13px',
+                      whiteSpace: 'pre-wrap',
+                      lineHeight: 1.5,
+                    }}
+                    >
+                      <strong style={{ color: themeStyles.textPrimary }}>{i18n('Problem ai eval points')}:</strong>
+                      <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {points.map((pt, idx) => (
+                          <div key={pt.id || `pt-${idx}`} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <span>
+                              {idx + 1}. {String(pt.title || '').trim() || i18n('N/A')}（{typeof pt.score === 'number' ? pt.score : 0}）
+                              {showAnalysis ? ` · ${i18n('Problem ai eval point earned')}: ${typeof pointEarnedScores[idx] === 'number' ? pointEarnedScores[idx] : 0}` : ''}
+                            </span>
+                            {showAnalysis ? (
+                              <span style={{ fontSize: '12px', color: themeStyles.textTertiary }}>
+                                {i18n('Problem ai eval point standard content')}: {String(pt.content || '').trim() || i18n('N/A')}
+                              </span>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  <div style={{ marginBottom: '10px', fontSize: '12px', color: themeStyles.textSecondary }}>
+                    {i18n('Problem ai eval pass score')}: <strong style={{ color: themeStyles.textPrimary }}>{passScore}</strong>
+                    {' · '}
+                    {i18n('Problem ai eval max attempts')}: <strong style={{ color: themeStyles.textPrimary }}>{maxAttempts}</strong>
+                    {totalScore > 0 ? (
+                      <>
+                        {' · '}
+                        {i18n('Problem ai eval total score')}: <strong style={{ color: themeStyles.textPrimary }}>{totalScore}</strong>
+                      </>
+                    ) : null}
+                    {showAnalysis && typeof totalEarned === 'number' ? (
+                      <>
+                        {' · '}
+                        {i18n('Problem ai eval earned total')}: <strong style={{ color: themeStyles.textPrimary }}>{totalEarned}</strong>
+                      </>
+                    ) : null}
+                    {' · '}
+                    {i18n('Attempts')}: <strong style={{ color: themeStyles.textPrimary }}>{currentAttempts}</strong>
+                  </div>
+                  <textarea
+                    value={aiEvalAnswerDraft}
+                    onChange={(e) => setAiEvalAnswerDraft(e.target.value)}
+                    disabled={isAnswered || aiEvalSubmitting}
+                    placeholder={i18n('Problem ai eval answer placeholder')}
+                    style={{
+                      width: '100%',
+                      minHeight: 120,
+                      resize: 'vertical',
+                      borderRadius: 8,
+                      border: `1px solid ${themeStyles.border}`,
+                      backgroundColor: themeStyles.bgPrimary,
+                      color: themeStyles.textPrimary,
+                      padding: '12px',
+                      fontSize: '14px',
+                      lineHeight: 1.55,
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                  {(!isAnswered || !pendingLessonAdvance) && renderLessonPracticeActionRow(
+                    !isAnswered ? (
+                      <button
+                        type="button"
+                        onClick={() => { void handleAiEvalSubmit(); }}
+                        disabled={aiEvalSubmitting || !aiEvalAnswerDraft.trim()}
+                        style={{
+                          marginTop: '2px',
+                          padding: '11px 24px',
+                          border: 'none',
+                          borderRadius: '8px',
+                          backgroundColor: themeStyles.accent,
+                          color: themeStyles.whiteOnAccent,
+                          cursor: aiEvalSubmitting || !aiEvalAnswerDraft.trim() ? 'not-allowed' : 'pointer',
+                          opacity: aiEvalSubmitting || !aiEvalAnswerDraft.trim() ? 0.55 : 1,
+                          fontSize: '15px',
+                          fontWeight: 600,
+                          boxShadow:
+                            theme === 'dark'
+                              ? '0 2px 8px rgba(56, 189, 248, 0.25)'
+                              : '0 2px 6px rgba(33, 150, 243, 0.25)',
+                        }}
+                      >
+                        {aiEvalSubmitting ? i18n('Problem ai eval evaluating') : i18n('Submit answer')}
+                      </button>
+                    ) : null,
+                    '2px',
+                  )}
+                  {showAnalysis && feedback ? (
+                    <div style={{
+                      marginTop: '12px',
+                      padding: '12px',
+                      borderRadius: '8px',
+                      border: `1px solid ${themeStyles.border}`,
+                      backgroundColor: themeStyles.bgSecondary,
+                      color: themeStyles.textSecondary,
+                      whiteSpace: 'pre-wrap',
+                      lineHeight: 1.5,
+                      fontSize: '13px',
+                    }}
+                    >
+                      <strong style={{ color: themeStyles.textPrimary }}>{i18n('Analysis')}:</strong> {feedback}
+                    </div>
+                  ) : null}
+                </>
+              );
+            })()}
           </>
         ) : currentKind === 'true_false' ? (
           <>
