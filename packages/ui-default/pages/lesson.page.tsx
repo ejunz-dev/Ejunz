@@ -1141,6 +1141,7 @@ function LessonPage() {
   const [aiEvalFeedbackByPid, setAiEvalFeedbackByPid] = useState<Record<string, string>>({});
   const [aiEvalLastScoreByPid, setAiEvalLastScoreByPid] = useState<Record<string, number>>({});
   const [aiEvalPointScoresByPid, setAiEvalPointScoresByPid] = useState<Record<string, number[]>>({});
+  const [aiEvalPointReasonsByPid, setAiEvalPointReasonsByPid] = useState<Record<string, string[]>>({});
   const [isAnswered, setIsAnswered] = useState(false);
   const [isPassed, setIsPassed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -2846,15 +2847,26 @@ function LessonPage() {
     }
   };
 
-  const parseAiEvalScoreAndFeedback = (raw: string): { score: number; feedback: string; pointScores: number[] } => {
+  const parseAiEvalScoreAndFeedback = (raw: string): {
+    score: number;
+    feedback: string;
+    pointScores: number[];
+    pointReasons: string[];
+  } => {
     const text = String(raw ?? '').trim();
     let score = 0;
     let feedback = text;
     let pointScores: number[] = [];
+    let pointReasons: string[] = [];
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       try {
-        const parsed = JSON.parse(jsonMatch[0]) as { score?: unknown; feedback?: unknown; pointScores?: unknown };
+        const parsed = JSON.parse(jsonMatch[0]) as {
+          score?: unknown;
+          feedback?: unknown;
+          pointScores?: unknown;
+          pointReasons?: unknown;
+        };
         if (typeof parsed.score === 'number' && Number.isFinite(parsed.score)) {
           score = parsed.score;
         }
@@ -2866,6 +2878,9 @@ function LessonPage() {
             .map((x) => (typeof x === 'number' && Number.isFinite(x) ? Math.round(x) : NaN))
             .filter((x) => Number.isFinite(x));
         }
+        if (Array.isArray(parsed.pointReasons)) {
+          pointReasons = parsed.pointReasons.map((x) => String(x ?? '').trim());
+        }
       } catch {
         /* ignore */
       }
@@ -2876,7 +2891,7 @@ function LessonPage() {
     }
     score = Math.max(0, Math.min(100, Math.round(score)));
     if (!feedback) feedback = text || i18n('N/A');
-    return { score, feedback, pointScores };
+    return { score, feedback, pointScores, pointReasons };
   };
 
   const normalizeAiEvalMatchText = (s: string): string =>
@@ -2914,10 +2929,11 @@ function LessonPage() {
         .filter(Boolean);
       const prompt = [
         'You are grading one learner answer.',
-        'Return strict JSON only: {"score": <0-100 integer>, "feedback": "<short feedback>", "pointScores": [<earned score per point>]}',
+        'Return strict JSON only: {"score": <0-100 integer>, "feedback": "<short feedback>", "pointScores": [<earned score per point>], "pointReasons": ["<reason per point>"]}',
         `Question: ${pe.stem || ''}`,
         pointLines.length ? `Evaluation points:\n${pointLines.join('\n')}` : '',
         pointLines.length ? `pointScores length must be exactly ${pointLines.length}` : '',
+        pointLines.length ? `pointReasons length must be exactly ${pointLines.length}` : '',
         'Point title is only a locator, never a direct scoring item.',
         'If learner answer does not contain a point title, that point must be 0.',
         'If learner answer contains point title but does not contain that point content, that point must be 0.',
@@ -2935,9 +2951,12 @@ function LessonPage() {
       const fullScores = points.map((pt) =>
         (typeof pt?.score === 'number' && Number.isFinite(pt.score)) ? Math.max(0, Math.round(pt.score)) : 0);
       const sumFull = fullScores.reduce((a, b) => a + b, 0);
-      const { feedback, pointScores } = parseAiEvalScoreAndFeedback(aiText);
+      const { feedback, pointScores, pointReasons } = parseAiEvalScoreAndFeedback(aiText);
       if (pointScores.length !== points.length) {
         throw new Error(i18n('Problem ai eval invalid point scores'));
+      }
+      if (pointReasons.length !== points.length) {
+        throw new Error(i18n('Problem ai eval invalid point reasons'));
       }
       const normalizedPointScores = pointScores.map((x, i) =>
         Math.max(0, Math.min(fullScores[i], Math.round(x))));
@@ -2958,6 +2977,15 @@ function LessonPage() {
         }
         return score;
       });
+      const gatedPointReasons = pointReasons.map((r, i) => {
+        const base = String(r ?? '').trim();
+        const scoreNow = gatedPointScores[i];
+        if (scoreNow <= 0 && hardZeroReasons.length) {
+          const own = hardZeroReasons.find((x) => x.endsWith(`#${i + 1}`));
+          if (own) return own;
+        }
+        return base || i18n('N/A');
+      });
       const feedbackFinal = hardZeroReasons.length
         ? `${feedback}\n\n${hardZeroReasons.join('；')}`
         : feedback;
@@ -2971,7 +2999,14 @@ function LessonPage() {
       setAiEvalLastScoreByPid((prev) => ({ ...prev, [problemId]: score }));
       setAiEvalFeedbackByPid((prev) => ({ ...prev, [problemId]: feedbackFinal }));
       setAiEvalPointScoresByPid((prev) => ({ ...prev, [problemId]: gatedPointScores }));
-      const historyPayload = [answerText, `score:${score}`, `pointScores:${gatedPointScores.join(',')}`, feedbackFinal];
+      setAiEvalPointReasonsByPid((prev) => ({ ...prev, [problemId]: gatedPointReasons }));
+      const historyPayload = [
+        answerText,
+        `score:${score}`,
+        `pointScores:${gatedPointScores.join(',')}`,
+        `pointReasons:${JSON.stringify(gatedPointReasons)}`,
+        feedbackFinal,
+      ];
       if (correct) {
         recordCorrectOrWrong(currentProblem, score, true, timeSpent, problemId, currentAttempts, historyPayload);
       } else if (currentAttempts >= maxAttempts) {
@@ -5461,6 +5496,7 @@ function LessonPage() {
               const points = Array.isArray(pe.points) ? pe.points : [];
               const totalScore = points.reduce((sum, p) => sum + (typeof p?.score === 'number' ? p.score : 0), 0);
               const pointEarnedScores = aiEvalPointScoresByPid[pe.pid] || [];
+              const pointReasons = aiEvalPointReasonsByPid[pe.pid] || [];
               const totalEarned = aiEvalLastScoreByPid[pe.pid];
               return (
                 <>
@@ -5488,6 +5524,11 @@ function LessonPage() {
                             {showAnalysis ? (
                               <span style={{ fontSize: '12px', color: themeStyles.textTertiary }}>
                                 {i18n('Problem ai eval point standard content')}: {String(pt.content || '').trim() || i18n('N/A')}
+                              </span>
+                            ) : null}
+                            {showAnalysis ? (
+                              <span style={{ fontSize: '12px', color: themeStyles.textTertiary }}>
+                                {i18n('Problem ai eval point reason')}: {String(pointReasons[idx] || '').trim() || i18n('N/A')}
                               </span>
                             ) : null}
                           </div>

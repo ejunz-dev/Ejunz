@@ -172,6 +172,11 @@
                     {% if p.selectedIndex is defined %}
                       <span class="text-gray text-sm">(#{{ p.selectedIndex }})</span>
                     {% endif %}
+                    {% if p.selectedExtraLines and p.selectedExtraLines.length %}
+                      {% for ln in p.selectedExtraLines %}
+                        <div class="text-gray text-sm">{{ ln }}</div>
+                      {% endfor %}
+                    {% endif %}
                   {% elif p.selectedIndex is defined %}
                     #{{ p.selectedIndex }}
                   {% else %}
@@ -184,8 +189,17 @@
                     {% if p.correctOptionIndex is defined %}
                       <span class="text-gray text-sm">(#{{ p.correctOptionIndex }})</span>
                     {% endif %}
+                    {% if p.correctExtraLines and p.correctExtraLines.length %}
+                      {% for ln in p.correctExtraLines %}
+                        <div class="text-gray text-sm">{{ ln }}</div>
+                      {% endfor %}
+                    {% endif %}
                   {% elif p.correctOptionIndex is defined %}
                     #{{ p.correctOptionIndex }}
+                  {% elif p.correctExtraLines and p.correctExtraLines.length %}
+                    {% for ln in p.correctExtraLines %}
+                      <div class="text-gray text-sm">{{ ln }}</div>
+                    {% endfor %}
                   {% else %}
                     <span class="text-gray">-</span>
                   {% endif %}
