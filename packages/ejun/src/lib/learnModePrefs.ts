@@ -3,7 +3,7 @@
 import { normalizeProblemTagInput } from '../model/problem';
 
 /** Which cards may appear in the ordered learn queue (domain.user). */
-export type LearnSessionCardFilterMode = 'all' | 'with_problems' | 'without_problems';
+export type LearnSessionCardFilterMode = 'all' | 'with_problems';
 
 /** Filter problems by taxonomy tag (`Problem.tags`) in session queue + practise. */
 export type LearnSessionProblemTagMode = 'off' | 'include' | 'exclude';
@@ -92,7 +92,6 @@ export function getLearnSessionMode(dudoc: Record<string, unknown> | null | unde
 export function normalizeLearnSessionCardFilter(raw: unknown): LearnSessionCardFilterMode {
     const s = String(raw ?? '').trim().toLowerCase().replace(/-/g, '_');
     if (s === 'with_problems') return 'with_problems';
-    if (s === 'without_problems') return 'without_problems';
     return 'all';
 }
 

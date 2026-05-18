@@ -62,7 +62,7 @@ type LearnSessionModeUi = 'deep' | 'breadth' | 'random';
 
 type LearnNewReviewOrderUi = 'new_first' | 'old_first' | 'shuffle';
 
-type LearnSessionCardFilterUi = 'all' | 'with_problems' | 'without_problems';
+type LearnSessionCardFilterUi = 'all' | 'with_problems';
 
 /** Values in dropdown order (must match server `ratioOptionLabels`). */
 const LEARN_NEW_REVIEW_RATIO_UI_VALUES = [0, -1, 1, 2, 3, 4, 5] as const;
@@ -125,7 +125,6 @@ function normalizeLearnNewReviewOrderFromUi(raw: unknown): LearnNewReviewOrderUi
 function normalizeLearnSessionCardFilterFromUi(raw: unknown): LearnSessionCardFilterUi {
   const s = String(raw ?? 'all').trim().toLowerCase().replace(/-/g, '_');
   if (s === 'with_problems') return 'with_problems';
-  if (s === 'without_problems') return 'without_problems';
   return 'all';
 }
 
@@ -1118,7 +1117,6 @@ function LearnPage() {
                       >
                         <option value="all">{i18n('Learn session card filter all')}</option>
                         <option value="with_problems">{i18n('Learn session card filter with problems')}</option>
-                        <option value="without_problems">{i18n('Learn session card filter without problems')}</option>
                       </select>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
