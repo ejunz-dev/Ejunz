@@ -37,7 +37,6 @@ function labelForFrozenLessonQueueMode(modeRaw: string | undefined): string {
 
 type QueuedProblem = Problem & { cardId: string };
 
-/** 「上一题/下一题」（题目行）：只在与当前题相同 cardId 的队列片段内移动，不跨卡片。 */
 function lessonProblemPrevIndexSameCard(queue: QueuedProblem[], idx: number): number {
   const cur = queue[idx];
   if (!cur) return -1;
@@ -58,10 +57,9 @@ function lessonProblemNextIndexSameCard(queue: QueuedProblem[], idx: number): nu
   return -1;
 }
 
-/** 点击「继续」去下一题前保存，供「上一题」回到已提交、未点继续时的界面状态。 */
 type LessonPreviousStackEntry = {
   problem: QueuedProblem;
-  pendingLessonAdvance: 'next' | 'requeue' | 'correctMore';
+  pendingLessonAdvance: 'next' | 'requeue';
   selectedAnswer: number | null;
   selectedMulti: number[];
   selectedTf: 0 | 1 | null;
@@ -78,7 +76,6 @@ type LessonPreviousStackEntry = {
   showAnalysis: boolean;
 };
 
-/** 换卡时：1 题目条先满 →2 总进度条再跟上实时值 →3 清空题目条。 */
 type LessonSecondBarExitHold =
   | null
   | { phase: 1; prevCardId: string; total: number; frozenSessionDone: number; sessionCardTotal: number }
@@ -184,7 +181,6 @@ type LessonNodeTreeItem = {
   children: Array<{ type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }>;
 };
 
-/** 单节点跨卡题目队列侧栏：按卡片分组展示。 */
 type LessonProblemQueueSidebarGroup = {
   cardId: string;
   cardTitle: string;
@@ -213,7 +209,6 @@ type LessonUiState = {
     domainId?: string;
     baseDocId?: number;
     learnSectionOrderIndex?: number;
-    /** 今日任务：服务端按「起点前节 | 已掌握」标好的新/复习，侧栏 tag 优先用此字段。 */
     lessonTodayQueueKind?: 'new' | 'review';
   }>;
   nodeTree: LessonNodeTreeItem[];
@@ -222,13 +217,11 @@ type LessonUiState = {
   reviewCardId: string;
   lessonCardProvenanceLabel: string;
   lessonLearnSessionMode: string;
-  /** Today task only: server-translated "主模式… · 副模式…". */
   lessonTodayModesConfigLine: string;
   lessonTodayCardKind: 'new' | 'review' | '';
   lessonTodayCardKindLabel: string;
   /** Section-order slot of learning start; -1 = omit new/review queue breakdown (e.g. single-card practice). */
   lessonSessionLearnStartSlot: number;
-  /** Server-translated "n 新 · m 旧" (avoids missing `window.LOCALES` before UI rebuild). */
   lessonSessionQueueNewOldLabel: string;
   /** Base editor taxonomy tags (optional); server may omit to use []. */
   lessonProblemTagOptions: string[];
@@ -239,7 +232,6 @@ type LessonUiState = {
   /** Server `translate('Lesson path card practise count')` — avoids missing `window.LOCALES` entry. */
   lessonPathCardPractiseCountFmt: string;
   lessonPathCardPractiseCountTitle: string;
-  /** 单节点：与 `flatCards` 顺序一致的整卡列表（含各卡 `problems`），用于跨子卡题目队列。 */
   flatQueueCards: Card[];
 };
 
@@ -252,7 +244,6 @@ function normalizeCardFromServer(raw: unknown): Card {
   };
 }
 
-/** 会话卡片槽位在整条展平题目列表中的起始下标（单节点 / 今日任务跨卡漫游用）。 */
 function lessonFirstQueuedProblemIndexForFlatSlot(
   probs: QueuedProblem[],
   flatCards: LessonUiState['flatCards'],
@@ -265,10 +256,6 @@ function lessonFirstQueuedProblemIndexForFlatSlot(
   return i >= 0 ? i : 0;
 }
 
-/**
- * 单节点：按 `flatCards` 顺序展平练习题。`flatQueueCards` 经页面 JSON 时可能丢 `problems`，
- * 用同请求的 `cards`（当前节点列表）补全。
- */
 function buildSingleNodeQueuedProblems(
   flatCards: LessonUiState['flatCards'],
   flatQueueCards: Card[],
@@ -331,7 +318,6 @@ function lessonPayloadLooksValid(lesson: unknown): lesson is Record<string, unkn
   return typeof card === 'object' && card !== null;
 }
 
-/** 侧栏新/旧 tag：`window.LOCALES` 未更新时避免显示英文 key。 */
 function i18nLearnQueueCardTag(kind: 'new' | 'old'): string {
   const key = kind === 'old' ? 'Learn queue card tag old' : 'Learn queue card tag new';
   const t = i18n(key);
@@ -341,7 +327,6 @@ function i18nLearnQueueCardTag(kind: 'new' | 'old'): string {
   return kind === 'old' ? '旧' : '新';
 }
 
-/** 今日任务：`lessonTodayQueueKind`（节槽 vs 学习起点）优先；缺省按节槽 < 学习起点为旧。 */
 function flatCardNewOldKind(
   fc: LessonUiState['flatCards'][number] | undefined,
   learnStartSlot: number,
@@ -379,7 +364,6 @@ function normalizeLearnPathPractiseCountsMap(raw: unknown): Record<string, numbe
   return out;
 }
 
-/** 进度条旁新/旧行：优先服务端文案，其次 i18n，再按语言兜底。 */
 function lessonQueueNewOldLine(
   serverLabel: string,
   counts: { newN: number; reviewN: number } | null,
@@ -1064,7 +1048,6 @@ function LessonPage() {
     return (card.problems || []).map((p) => ({ ...p, cardId: String(card.docId) } as QueuedProblem));
   }, [isSingleNodeMode, flatQueueCards, card]);
 
-  /** 单节点：侧栏题目队列按卡片嵌套（与 `allProblems` 顺序一致）。 */
   const singleNodeLessonProblemGroups = useMemo((): LessonProblemQueueSidebarGroup[] | null => {
     if (!isSingleNodeMode || flatQueueCards.length === 0 || allProblems.length === 0) return null;
     const groups: LessonProblemQueueSidebarGroup[] = [];
@@ -1082,7 +1065,6 @@ function LessonPage() {
     return groups.length > 0 ? groups : null;
   }, [isSingleNodeMode, flatQueueCards, allProblems, flatCards]);
 
-  /** 侧栏题目按卡嵌套：单节点用 flatQueue 分组；单卡练习等则用 allProblems 按 cardId 分组（与右侧/全队列侧栏一致）。 */
   const lessonProblemSidebarGroups = useMemo((): LessonProblemQueueSidebarGroup[] | null => {
     if (singleNodeLessonProblemGroups !== null) return singleNodeLessonProblemGroups;
     if (allProblems.length === 0) return null;
@@ -1101,11 +1083,9 @@ function LessonPage() {
     return groups.length > 0 ? groups : null;
   }, [singleNodeLessonProblemGroups, allProblems, flatCards, flatQueueCards]);
 
-  /** 单节点跨卡做题：卡片队列与题目队列合并，仅保留嵌套题目侧栏。 */
   const mergeSingleNodeCardQueueIntoProblemSidebar =
     isSingleNodeMode && singleNodeLessonProblemGroups !== null && allProblems.length > 0;
 
-  /** 单卡片 + 有练习题：左右栏按「已完成 / 待完成题目」分列，不用卡片队列。 */
   const splitProblemPracticeSidebars = isAlonePractice && allProblems.length > 0 && hasLessonSidebar;
   const splitQueueSidebars = hasLessonSidebar && (splitProblemPracticeSidebars || flatCards.length > 0);
   const showLessonProblemSessionProgress = splitProblemPracticeSidebars;
@@ -1118,7 +1098,6 @@ function LessonPage() {
   const lessonPreviousStackRef = useRef<LessonPreviousStackEntry[]>([]);
   lessonPreviousStackRef.current = lessonPreviousStack;
   const lessonPendingRestoreRef = useRef<LessonPreviousStackEntry | null>(null);
-  /** 本会话内已提交题目的 UI 快照（供上下题漫游恢复，不写「继续」）。 */
   const lessonAnsweredSnapshotRef = useRef<Record<string, LessonPreviousStackEntry>>({});
   const [currentProblemIndex, setCurrentProblemIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
@@ -1134,7 +1113,6 @@ function LessonPage() {
   const [matchingShuffleOrders, setMatchingShuffleOrders] = useState<number[][]>([]);
   /** `superFlipRevealed[col][row]` — body cell revealed in super-flip table. */
   const [superFlipRevealed, setSuperFlipRevealed] = useState<boolean[][]>([]);
-  /** Super flip: learner marked done (mastered); false = 「不熟悉」, null = unanswered. */
   const [superFlipMarkedOk, setSuperFlipMarkedOk] = useState<boolean | null>(null);
   const [aiEvalAnswerDraft, setAiEvalAnswerDraft] = useState('');
   const [aiEvalSubmitting, setAiEvalSubmitting] = useState(false);
@@ -1147,7 +1125,7 @@ function LessonPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [pendingLessonAdvance, setPendingLessonAdvance] = useState<
-    null | 'next' | 'requeue' | 'correctMore'
+    null | 'next' | 'requeue'
   >(null);
   const hasCalledPassRef = useRef(false);
   const [answerHistory, setAnswerHistory] = useState<Array<{
@@ -1184,7 +1162,6 @@ function LessonPage() {
     practiceClearedPids,
   ]);
   const practiceProblemsPendingCount = problemQueue.length;
-  /** 左栏「已完成卡片」：按张数索引已过，或该卡在整段题目队列中的题已全部 cleared。 */
   const mergeModeCompletedCardCount = useMemo(() => {
     if (!mergeSingleNodeCardQueueIntoProblemSidebar) return 0;
     let n = 0;
@@ -1205,13 +1182,11 @@ function LessonPage() {
     practiceClearedPids,
   ]);
 
-  /** 顶部第二段进度条：当前队列指针所在卡片（与 `lessonSessionProgressCard` 内逻辑一致）。 */
   const secondBarCardIdFromQueue = useMemo(() => {
     const pq = problemQueue[currentProblemIndex] as QueuedProblem | undefined;
     return String(pq?.cardId || card?.docId || '');
   }, [problemQueue, currentProblemIndex, card?.docId]);
 
-  /** 换卡 exit 动画里用 ref 读最新队列/卡片，避免 effect 依赖 allProblems/card 导致 cleanup 打断 520ms 定时器。 */
   const allProblemsForSecondBarExitRef = useRef(allProblems);
   allProblemsForSecondBarExitRef.current = allProblems;
   const cardForSecondBarExitRef = useRef(card);
@@ -1221,7 +1196,6 @@ function LessonPage() {
   const showCardQueueProgressForExitRef = useRef(showCardQueueProgress);
   showCardQueueProgressForExitRef.current = showCardQueueProgress;
 
-  /** 与「当前第二段进度条卡片 id」同步：仅在非 exit 动画时写入，换卡当帧用于冻结总进度条分子。 */
   const sessionFrozenBackupRef = useRef(0);
   const prevSidForSessionFrozenSyncRef = useRef<string | null>(null);
 
@@ -1231,7 +1205,6 @@ function LessonPage() {
   const secondBarExitPhase2TimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const SECOND_BAR_EXIT_PHASE1_MS = 380;
   const SECOND_BAR_EXIT_PHASE2_MS = 400;
-  /** 换卡：题目条先满 → 总条更新 → 再清空题目条。 */
   const [secondBarExitHold, setSecondBarExitHold] = useState<LessonSecondBarExitHold>(null);
 
   useEffect(() => {
@@ -1302,7 +1275,6 @@ function LessonPage() {
   });
   const [showPeekCard, setShowPeekCard] = useState(false);
   const [peekCount, setPeekCount] = useState<Record<string, number>>({});
-  const [correctNeeded, setCorrectNeeded] = useState<Record<string, number>>({});
   const [optionOrder, setOptionOrder] = useState<number[]>([]);
   const [shuffleTrigger, setShuffleTrigger] = useState(0);
   const [browseFlipped, setBrowseFlipped] = useState(false);
@@ -1462,7 +1434,6 @@ function LessonPage() {
     setPracticeClearedPids({});
     setProblemAttempts({});
     setPeekCount({});
-    setCorrectNeeded({});
     setOptionOrder([]);
     setMatchingSelections([]);
     setMatchingShuffleOrders([]);
@@ -1521,7 +1492,6 @@ function LessonPage() {
     currentCardIndex,
   ]);
 
-  /** 会话内按题漫游时，把顶层 `card` / `currentCardIndex` 与当前题目所属卡对齐，便于 pass 与用时条。 */
   useEffect(() => {
     if (!isSingleNodeMode && !isTodayMode) return;
     const p = problemQueue[currentProblemIndex];
@@ -2116,7 +2086,6 @@ function LessonPage() {
     );
   };
 
-  /** 左右队列侧栏：路径练习次数（仅数字）与用时并列 */
   const sidebarQueuePathLoopAndTime = (pathLoopCount: number, timeText: string) => (
     <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '8px', flexShrink: 0 }}>
       <span style={{ fontSize: '12px', color: themeStyles.textTertiary, fontVariantNumeric: 'tabular-nums' }}>
@@ -2236,7 +2205,6 @@ function LessonPage() {
   }, []);
 
   const currentProblem = problemQueue[currentProblemIndex];
-  /** 题干顺序序号（/browse 线性上一题下一题时值随当前题切换，不靠队列截断推导）。 */
   const lessonLinearQuestionOrdinal = useMemo(() => {
     if (!currentProblem || allProblems.length === 0) return 1;
     const ix = allProblems.findIndex(
@@ -2595,7 +2563,6 @@ function LessonPage() {
   ]);
 
   const currentPeekCount = currentProblem ? (peekCount[currentProblem.pid] || 0) : 0;
-  const currentCorrectNeeded = currentProblem ? (correctNeeded[currentProblem.pid] || 0) : 0;
 
   const handlePass = async () => {
     if (isPassed || isSubmitting || hasCalledPassRef.current) return;
@@ -2720,7 +2687,6 @@ function LessonPage() {
     }
   };
 
-  /** 会话内线性切换题目（头部「下一题」）时清空本题作答与继续栈 */
   const resetLessonBrowseInteractiveSurface = useCallback(() => {
     lessonPendingRestoreRef.current = null;
     setLessonPreviousStack([]);
@@ -2833,16 +2799,9 @@ function LessonPage() {
           ...(fillAnswers ? { fillAnswers } : {}),
         }];
       });
-      const need = correctNeeded[problemId] || 0;
-      if (need > 0) {
-        setCorrectNeeded((prev) => ({ ...prev, [problemId]: need - 1 }));
-        setPendingLessonAdvance('correctMore');
-      } else {
-        setPendingLessonAdvance('next');
-      }
+      setPendingLessonAdvance('next');
     } else {
       setPeekCount((prev) => ({ ...prev, [problemId]: (prev[problemId] || 0) + 1 }));
-      setCorrectNeeded((prev) => ({ ...prev, [problemId]: (prev[problemId] || 0) + 1 }));
       setPendingLessonAdvance('requeue');
     }
   };
@@ -3277,10 +3236,6 @@ function LessonPage() {
     requeueCurrent();
   };
 
-  const handleCorrectButNeedMore = () => {
-    requeueCurrent();
-  };
-
   const handleContinueAfterAnswer = () => {
     const kind = pendingLessonAdvance;
     if (!kind) return;
@@ -3311,10 +3266,8 @@ function LessonPage() {
     setPendingLessonAdvance(null);
     if (kind === 'next') handleNextProblem();
     else if (kind === 'requeue') handleWrongAnswer();
-    else if (kind === 'correctMore') handleCorrectButNeedMore();
   };
 
-  /** Wrong / peek 「继续」前：本题立刻清空作答并重排洗牌，不改变队列顺序。 */
   const handleRedoCurrentLessonQuestion = () => {
     setShuffleTrigger((t) => t + 1);
   };
@@ -3326,10 +3279,8 @@ function LessonPage() {
   const handlePeekClose = () => {
     if (currentProblem) {
       setPeekCount(prev => ({ ...prev, [currentProblem.pid]: (prev[currentProblem.pid] || 0) + 1 }));
-      setCorrectNeeded(prev => ({ ...prev, [currentProblem.pid]: (prev[currentProblem.pid] || 0) + 1 }));
     }
     setShowPeekCard(false);
-    /** 关闭偷看后不立刻换题：与作答后一致，在主界面点「继续」再重排队列。 */
     setPendingLessonAdvance('requeue');
   };
 
@@ -3384,7 +3335,6 @@ function LessonPage() {
     problemQueue,
   ]);
 
-  /** 题目行「下一题」：同卡下一题指针；不改变队列顺序。 */
   const handleLessonNextProblemBrowse = useCallback(() => {
     if (lessonCardNavLoading || isSubmitting || browseSubmitting) return;
     const nx = lessonProblemNextIndexSameCard(problemQueue, currentProblemIndex);
@@ -3432,11 +3382,6 @@ function LessonPage() {
       return n;
     });
     setPeekCount((prev) => {
-      const n = { ...prev };
-      delete n[pid];
-      return n;
-    });
-    setCorrectNeeded((prev) => {
       const n = { ...prev };
       delete n[pid];
       return n;
@@ -4184,7 +4129,6 @@ function LessonPage() {
     </div>
   ) : null;
 
-  /** 分栏右列：仅未完成题目（与左栏已完成题目对应）。 */
   const lessonProblemQueueSidebarPendingOnly =
     mergeSingleNodeCardQueueIntoProblemSidebar && allProblems.length > 0 && !splitProblemPracticeSidebars ? (
       <div style={{ marginTop: '16px', marginBottom: '12px' }}>
@@ -4287,7 +4231,6 @@ function LessonPage() {
       </div>
     ) : null;
 
-  /** 合并题目队列：左侧只保留「已完成题目」嵌套列表，不再重复列出已完成卡片（与题目行重复）。 */
   const singleNodeMergeLeftSidebar = mergeSingleNodeCardQueueIntoProblemSidebar ? (
     <>{lessonPracticeDoneProblemsFragment}</>
   ) : null;
@@ -4509,7 +4452,6 @@ function LessonPage() {
     </>
   );
 
-  /** Split sidebars: left done, right pending（单卡片有题时为题目队列，否则为今日/单节点卡片队列 + meta）。 */
   const lessonSidebarLeftColumn = splitQueueSidebars
     ? (splitProblemPracticeSidebars
       ? sidebarProblemPracticeDoneColumn
@@ -4865,7 +4807,7 @@ function LessonPage() {
               {i18n('Peek')}
             </button>
           )}
-          {currentProblem && (currentPeekCount > 0 || currentCorrectNeeded > 0) && (
+          {currentProblem && currentPeekCount > 0 && (
             <span style={{
               display: 'inline-block',
               padding: '4px 8px',
@@ -4876,7 +4818,6 @@ function LessonPage() {
             }}>
               {i18n('To review')}
               {currentPeekCount > 1 ? ` ×${currentPeekCount}` : ''}
-              {currentCorrectNeeded > 0 ? ` · ${i18n('Correct needed')} ${currentCorrectNeeded}` : ''}
             </span>
           )}
           {isAnswered && (
