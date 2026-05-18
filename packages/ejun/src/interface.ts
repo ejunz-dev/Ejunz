@@ -401,7 +401,8 @@ export type ProblemKind =
     | 'flip'
     | 'fill_blank'
     | 'matching'
-    | 'super_flip';
+    | 'super_flip'
+    | 'ai_eval';
 
 export interface ProblemCommon {
     pid: string;
@@ -486,6 +487,28 @@ export interface ProblemSuperFlip extends ProblemCommon {
     columns: string[][];
 }
 
+/** AI-evaluated subjective question: learner submits text, AI returns score (0-100). */
+export interface ProblemAiEvalPoint {
+    id: string;
+    /** Visible name shown to learners in lesson UI. */
+    title: string;
+    /** Hidden evaluator instruction sent to AI scoring prompt. */
+    content: string;
+    score: number;
+}
+
+/** AI-evaluated subjective question: learner submits text, AI returns score. */
+export interface ProblemAiEval extends ProblemCommon {
+    type: 'ai_eval';
+    stem: string;
+    /** Grading points with per-point scores. */
+    points: ProblemAiEvalPoint[];
+    /** Passing threshold (0-100). Default 60. */
+    passScore?: number;
+    /** Max attempts allowed before forced progression. Default 3. */
+    maxAttempts?: number;
+}
+
 export type Problem =
     | ProblemSingle
     | ProblemMulti
@@ -493,7 +516,8 @@ export type Problem =
     | ProblemFlip
     | ProblemFillBlank
     | ProblemMatching
-    | ProblemSuperFlip;
+    | ProblemSuperFlip
+    | ProblemAiEval;
 
 export interface CardDoc {
     docType: document['TYPE_CARD'];

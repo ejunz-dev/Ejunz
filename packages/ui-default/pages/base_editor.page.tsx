@@ -18,6 +18,7 @@ import type {
   ProblemFillBlank,
   ProblemMatching,
   ProblemSuperFlip,
+  ProblemAiEval,
   ProblemKind,
 } from 'ejun/src/interface';
 import {
@@ -236,6 +237,7 @@ function problemKindToI18nKey(kind: ProblemKind): string {
     case 'fill_blank': return 'Problem kind fill blank';
     case 'matching': return 'Problem kind matching';
     case 'super_flip': return 'Problem kind super flip';
+    case 'ai_eval': return 'Problem kind ai eval';
     default: {
       const _x: never = kind;
       return String(_x);
@@ -712,6 +714,8 @@ function problemKindLabelI18n(k: ProblemKind): string {
       return i18n('Problem kind super flip');
     case 'fill_blank':
       return i18n('Problem kind fill blank');
+    case 'ai_eval':
+      return i18n('Problem kind ai eval');
     default:
       return k;
   }
@@ -1074,6 +1078,7 @@ const EditableProblem = React.memo(({
             <option value="matching">{i18n('Problem kind matching')}</option>
             <option value="super_flip">{i18n('Problem kind super flip')}</option>
             <option value="fill_blank">{i18n('Problem kind fill blank')}</option>
+            <option value="ai_eval">{i18n('Problem kind ai eval')}</option>
           </select>
         </label>
         <div
@@ -1473,6 +1478,150 @@ const EditableProblem = React.memo(({
               </div>
             ));
           })()}
+        </>
+      ) : kind === 'ai_eval' ? (
+        <>
+          <div style={{ marginBottom: '4px' }}>
+            <div style={{ fontSize: '11px', color: themeStyles.textSecondary, marginBottom: 2 }}>
+              {i18n('Stem')}
+            </div>
+            <textarea
+              value={(model as ProblemAiEval).stem}
+              onChange={(e) => setModel({ ...(model as ProblemAiEval), stem: e.target.value })}
+              placeholder={i18n('Problem ai eval stem placeholder')}
+              style={taStyle}
+            />
+          </div>
+          <div style={{ marginBottom: '8px' }}>
+            <div style={{ fontSize: '11px', color: themeStyles.textSecondary, marginBottom: 6 }}>
+              {i18n('Problem ai eval points')}
+            </div>
+            {(Array.isArray((model as ProblemAiEval).points) ? (model as ProblemAiEval).points : []).map((pt, pi) => (
+              <div key={pt.id || `pt-${pi}`} style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6, border: `1px solid ${themeStyles.borderPrimary}`, borderRadius: 4, padding: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    value={pt.title ?? ''}
+                    onChange={(e) => {
+                      const m = model as ProblemAiEval;
+                      const pts = Array.isArray(m.points) ? [...m.points] : [];
+                      pts[pi] = { ...pts[pi], title: e.target.value };
+                      setModel({ ...m, points: pts });
+                    }}
+                    placeholder={i18n('Problem ai eval point title placeholder')}
+                    style={{ ...inpStyle, flex: 1 }}
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    max={1000}
+                    value={typeof pt.score === 'number' ? pt.score : 0}
+                    onChange={(e) => {
+                      const m = model as ProblemAiEval;
+                      const pts = Array.isArray(m.points) ? [...m.points] : [];
+                      const n = parseInt(e.target.value, 10);
+                      pts[pi] = { ...pts[pi], score: Number.isFinite(n) ? Math.max(0, Math.min(1000, n)) : 0 };
+                      setModel({ ...m, points: pts });
+                    }}
+                    style={{ ...inpStyle, width: 86 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const m = model as ProblemAiEval;
+                      const pts = Array.isArray(m.points) ? [...m.points] : [];
+                      pts.splice(pi, 1);
+                      setModel({ ...m, points: pts });
+                    }}
+                    style={{
+                      padding: '2px 8px',
+                      fontSize: '11px',
+                      borderRadius: '3px',
+                      border: `1px solid ${themeStyles.danger}`,
+                      background: themeStyles.bgPrimary,
+                      color: themeStyles.danger,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {i18n('Delete')}
+                  </button>
+                </div>
+                <input
+                  value={pt.content}
+                  onChange={(e) => {
+                    const m = model as ProblemAiEval;
+                    const pts = Array.isArray(m.points) ? [...m.points] : [];
+                    pts[pi] = { ...pts[pi], content: e.target.value };
+                    setModel({ ...m, points: pts });
+                  }}
+                  placeholder={i18n('Problem ai eval point content placeholder')}
+                  style={{ ...inpStyle, width: '100%' }}
+                />
+              </div>
+            ))}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const m = model as ProblemAiEval;
+                  const pts = Array.isArray(m.points) ? [...m.points] : [];
+                  pts.push({ id: `pt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, title: '', content: '', score: 10 });
+                  setModel({ ...m, points: pts });
+                }}
+                style={{
+                  padding: '2px 8px',
+                  fontSize: '11px',
+                  borderRadius: '3px',
+                  border: `1px solid ${themeStyles.accent}`,
+                  background: themeStyles.bgPrimary,
+                  color: themeStyles.accent,
+                  cursor: 'pointer',
+                }}
+              >
+                {i18n('Problem ai eval add point')}
+              </button>
+              <span style={{ fontSize: '11px', color: themeStyles.textSecondary }}>
+                {i18n('Problem ai eval total score')}: {
+                  ((Array.isArray((model as ProblemAiEval).points) ? (model as ProblemAiEval).points : [])
+                    .reduce((sum, x) => sum + (typeof x?.score === 'number' ? x.score : 0), 0))
+                }
+              </span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: '4px', flexWrap: 'wrap' }}>
+            <label style={{ fontSize: 12, color: themeStyles.textPrimary, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span>{i18n('Problem ai eval pass score')}</span>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={typeof (model as ProblemAiEval).passScore === 'number' ? (model as ProblemAiEval).passScore : 60}
+                onChange={(e) => {
+                  const n = parseInt(e.target.value, 10);
+                  const passScore = Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 60;
+                  setModel({ ...(model as ProblemAiEval), passScore });
+                }}
+                style={{ ...inpStyle, width: 72 }}
+              />
+            </label>
+            <label style={{ fontSize: 12, color: themeStyles.textPrimary, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span>{i18n('Problem ai eval max attempts')}</span>
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={typeof (model as ProblemAiEval).maxAttempts === 'number' ? (model as ProblemAiEval).maxAttempts : 3}
+                onChange={(e) => {
+                  const n = parseInt(e.target.value, 10);
+                  const maxAttempts = Number.isFinite(n) ? Math.max(1, Math.min(20, n)) : 3;
+                  setModel({ ...(model as ProblemAiEval), maxAttempts });
+                }}
+                style={{ ...inpStyle, width: 72 }}
+              />
+            </label>
+          </div>
+          <div style={{ fontSize: '11px', color: themeStyles.textTertiary, marginBottom: '2px' }}>
+            {i18n('Problem ai eval lesson hint')}
+          </div>
         </>
       ) : kind === 'true_false' ? (
         <div style={{ marginBottom: '4px' }}>
@@ -9532,6 +9681,7 @@ Reply with a JSON code block only for executable operations, using this shape:
             || rawKind === 'fill_blank'
             || rawKind === 'matching'
             || rawKind === 'super_flip'
+            || rawKind === 'ai_eval'
               ? rawKind
               : 'single';
 
@@ -9693,6 +9843,43 @@ Reply with a JSON code block only for executable operations, using this shape:
               errors.push('create_problem matching：行数不足 2');
               continue;
             }
+          } else if (kind === 'ai_eval') {
+            const stem = String(op.stem ?? '').trim();
+            if (!stem) {
+              Notification.error(i18n('Stem is required'));
+              errors.push('create_problem ai_eval：缺少 stem');
+              continue;
+            }
+            const pointsRaw = Array.isArray(op.points) ? op.points : (Array.isArray(op.evalPoints) ? op.evalPoints : []);
+            const points = pointsRaw
+              .map((x: any, i: number) => {
+                if (!x || typeof x !== 'object') return null;
+                const titleRaw = typeof x.title === 'string' ? x.title.trim() : '';
+                const contentRaw = typeof x.content === 'string' ? x.content.trim() : '';
+                const title = titleRaw || contentRaw;
+                const content = contentRaw || titleRaw;
+                if (!title || !content) return null;
+                const scoreRaw = Number(x.score);
+                return {
+                  id: typeof x.id === 'string' && x.id.trim() ? x.id.trim() : `pt_${i + 1}`,
+                  title,
+                  content,
+                  score: Number.isFinite(scoreRaw) ? Math.max(0, Math.min(1000, Math.round(scoreRaw))) : 10,
+                };
+              })
+              .filter(Boolean);
+            const passScoreRaw = Number(op.passScore ?? op.threshold ?? 60);
+            const maxAttemptsRaw = Number(op.maxAttempts ?? 3);
+            newProblem = migrateRawProblem({
+              pid,
+              type: 'ai_eval',
+              stem,
+              points,
+              passScore: Number.isFinite(passScoreRaw) ? Math.max(0, Math.min(100, Math.round(passScoreRaw))) : 60,
+              maxAttempts: Number.isFinite(maxAttemptsRaw) ? Math.max(1, Math.min(20, Math.round(maxAttemptsRaw))) : 3,
+              ...titleSpread,
+              ...(analysisStr ? { analysis: analysisStr } : {}),
+            });
           } else if (kind === 'multi') {
             const stem = String(op.stem ?? '').trim();
             const options = Array.isArray(op.options) ? op.options.map((x: unknown) => String(x ?? '')) : [];
