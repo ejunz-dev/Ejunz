@@ -80,6 +80,7 @@
     {% endif %}
   </div>
   {% else %}
+  {% set detailProblems = recordDetailProblems if (recordDetailProblems and recordDetailProblems.length) else [] %}
   <div class="section__header">
     <h1 class="section__title">
       <span class="icon record-status--icon progress"></span>
@@ -90,8 +91,8 @@
   <div class="section__body no-padding">
     <table class="data-table record_detail__table">
       <colgroup>
-        <col class="col--case">
-        <col class="col--status">
+        <col class="col--case" style="width: 78%;">
+        <col class="col--status" style="width: 22%;">
       </colgroup>
       <thead>
         <tr>
@@ -100,10 +101,35 @@
         </tr>
       </thead>
       <tbody>
-      {% for p in rdoc.problems %}
+      {% for p in (detailProblems if detailProblems.length else rdoc.problems) %}
         <tr>
-          <td class="col--case record-status--border">
+          <td class="col--case record-status--border" style="white-space: normal; word-break: break-word; line-height: 1.55;">
             <code class="text-sm">{{ p.pid }}</code>
+            {% if p.stemPreview %}
+              <div class="text-sm text-gray" style="margin-top: 4px; white-space: normal; word-break: break-word;">{{ p.stemPreview }}</div>
+            {% endif %}
+            {% if p.selectedText %}
+              <div class="text-sm" style="margin-top: 8px; white-space: normal; word-break: break-word;">
+                <strong>{{ _('lesson_history_col_selected') }}:</strong>
+                <div style="margin-top: 2px;">{{ p.selectedText }}</div>
+              </div>
+            {% endif %}
+            {% if p.selectedExtraLines and p.selectedExtraLines.length %}
+              {% for ln in p.selectedExtraLines %}
+                <div class="text-sm text-gray" style="margin-top: 3px; white-space: normal; word-break: break-word;">{{ ln }}</div>
+              {% endfor %}
+            {% endif %}
+            {% if p.correctOptionText %}
+              <div class="text-sm" style="margin-top: 8px; white-space: normal; word-break: break-word;">
+                <strong>{{ _('lesson_history_col_correct') }}:</strong>
+                <div style="margin-top: 2px;">{{ p.correctOptionText }}</div>
+              </div>
+            {% endif %}
+            {% if p.correctExtraLines and p.correctExtraLines.length %}
+              {% for ln in p.correctExtraLines %}
+                <div class="text-sm text-gray" style="margin-top: 3px; white-space: normal; word-break: break-word;">{{ ln }}</div>
+              {% endfor %}
+            {% endif %}
           </td>
           <td class="col--status">
             {% if p.status == 'correct' %}
@@ -125,7 +151,7 @@
           </td>
         </tr>
       {% endfor %}
-      {% if not rdoc.problems or rdoc.problems.length == 0 %}
+      {% if (not detailProblems.length) and (not rdoc.problems or rdoc.problems.length == 0) %}
         <tr>
           <td colspan="2" class="text-gray">{{ _('record_no_problems') }}</td>
         </tr>

@@ -462,6 +462,7 @@ __langname: English
 'Problem ai eval total score': Total score
 'Problem ai eval point earned': Point score
 'Problem ai eval point standard content': Point standard content
+'Problem ai eval point reason': AI scoring reason
 'Problem ai eval earned total': Earned total
 'Problem ai eval pass score': Pass score
 'Problem ai eval max attempts': Max attempts
@@ -470,6 +471,7 @@ __langname: English
 'Problem ai eval evaluating': Evaluating with AI...
 'Problem ai eval failed': AI evaluation failed. Please try again.
 'Problem ai eval invalid point scores': AI did not return valid point-level scores. Please retry.
+'Problem ai eval invalid point reasons': AI did not return valid point-level reasons. Please retry.
 'Problem ai eval hard zero missing title': Point title not found in answer. This point is forced to 0.
 'Problem ai eval hard zero missing content': Point title found but standard content missing. This point is forced to 0.
 'Problem reorder up': Move up

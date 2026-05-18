@@ -11,7 +11,7 @@ import {
     Types,
 } from '../service/server';
 import { PERM, PRIV, STATUS_TEXTS } from '../model/builtin';
-import type { BaseDoc, BaseNode, CardDoc, ProblemFlip, ProblemFillBlank, ProblemMatching, ProblemSuperFlip } from '../interface';
+import type { BaseDoc, BaseNode, CardDoc, ProblemAiEval, ProblemFlip, ProblemFillBlank, ProblemMatching, ProblemSuperFlip } from '../interface';
 import { BaseModel, CardModel } from '../model/base';
 import RecordModel, { type SessionRecordDoc, type RecordProblemState } from '../model/record';
 import { problemKind, matchingColumnsNormalized, superFlipNormalized } from '../model/problem';
@@ -223,8 +223,10 @@ export type LessonHistoryProblemRow = {
     status: RecordProblemState['status'];
     selectedIndex?: number;
     selectedText?: string;
+    selectedExtraLines?: string[];
     correctOptionIndex?: number;
     correctOptionText?: string;
+    correctExtraLines?: string[];
     attempts?: number;
     timeSpentMs?: number;
 };
@@ -276,8 +278,104 @@ async function problemRowsForRecord(rd: SessionRecordDoc): Promise<LessonHistory
             else stemPreview = stripHtmlOneLine((pr as { stem?: string }).stem || '', 160);
         }
         let selectedText: string | undefined;
+        let selectedExtraLines: string[] | undefined;
+        let correctExtraLines: string[] | undefined;
+        const parseAiEvalFillAnswers = (
+            fillAnswersRaw: string[] | undefined,
+        ): { answerText: string; score100?: number; pointScores?: number[]; pointReasons?: string[]; feedback?: string } => {
+            const xs = Array.isArray(fillAnswersRaw) ? fillAnswersRaw.map((x) => String(x ?? '')) : [];
+            if (!xs.length) return { answerText: '' };
+            const answerText = xs[0] || '';
+            let score100: number | undefined;
+            let pointScores: number[] | undefined;
+            let pointReasons: string[] | undefined;
+            const feedbackChunks: string[] = [];
+            for (const line of xs.slice(1)) {
+                const s = String(line || '').trim();
+                if (!s) continue;
+                if (s.startsWith('score:')) {
+                    const n = Number(s.slice('score:'.length).trim());
+                    if (Number.isFinite(n)) score100 = Math.max(0, Math.min(100, Math.round(n)));
+                    continue;
+                }
+                if (s.startsWith('pointScores:')) {
+                    const arr = s
+                        .slice('pointScores:'.length)
+                        .split(',')
+                        .map((x) => Number(x.trim()))
+                        .filter((n) => Number.isFinite(n))
+                        .map((n) => Math.max(0, Math.round(n)));
+                    if (arr.length) pointScores = arr;
+                    continue;
+                }
+                if (s.startsWith('pointReasons:')) {
+                    try {
+                        const raw = s.slice('pointReasons:'.length).trim();
+                        const parsed = JSON.parse(raw);
+                        if (Array.isArray(parsed)) {
+                            pointReasons = parsed.map((x) => String(x ?? '').trim());
+                            continue;
+                        }
+                    } catch {
+                        // fall through to feedback line
+                    }
+                }
+                feedbackChunks.push(s);
+            }
+            const feedback = feedbackChunks.length ? feedbackChunks.join('； ') : undefined;
+            return { answerText, score100, pointScores, pointReasons, feedback };
+        };
         if (Array.isArray(p.fillAnswers) && p.fillAnswers.length) {
             selectedText = stripHtmlOneLine(p.fillAnswers.map(String).join(' / '), 120);
+            if (pr && problemKind(pr) === 'ai_eval') {
+                const pa = pr as ProblemAiEval;
+                const parsed = parseAiEvalFillAnswers(p.fillAnswers);
+                const points = Array.isArray(pa.points) ? pa.points : [];
+                const pointScores = Array.isArray(parsed.pointScores) ? parsed.pointScores : [];
+                const pointReasons = Array.isArray(parsed.pointReasons) ? parsed.pointReasons : [];
+                selectedText = stripHtmlOneLine(parsed.answerText || '', 200);
+                const pointProcess = points.length
+                    ? points.map((pt, i) => {
+                        const earned = typeof pointScores[i] === 'number' ? pointScores[i] : 0;
+                        const full = typeof pt.score === 'number' ? pt.score : 0;
+                        const title = String(pt.title || '').trim() || `P${i + 1}`;
+                        return `${title} ${earned}/${full}`;
+                    }).join('； ')
+                    : '';
+                const pointReasonLine = points.length
+                    ? points.map((pt, i) => {
+                        const title = String(pt.title || '').trim() || `P${i + 1}`;
+                        const reason = String(pointReasons[i] || '').trim();
+                        return reason ? `${title}: ${reason}` : '';
+                    }).filter(Boolean).join('； ')
+                    : '';
+                selectedExtraLines = [
+                    ...(pointProcess ? [`评测过程 · 逐点评分: ${stripHtmlOneLine(pointProcess, 220)}`] : []),
+                    ...(pointReasonLine ? [`评测过程 · 评分原因: ${stripHtmlOneLine(pointReasonLine, 220)}`] : []),
+                    ...(parsed.feedback ? [`评测过程 · 评语: ${stripHtmlOneLine(parsed.feedback, 220)}`] : []),
+                ];
+                const standards = points.length
+                    ? points.map((pt, i) => {
+                        const title = String(pt.title || '').trim() || `P${i + 1}`;
+                        const full = typeof pt.score === 'number' ? pt.score : 0;
+                        return `${title}(${full})`;
+                    }).join('； ')
+                    : '';
+                const sumEarned = pointScores.reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0);
+                const sumFull = points.reduce((a, pt) => a + (typeof pt.score === 'number' ? pt.score : 0), 0);
+                const score100 = typeof parsed.score100 === 'number'
+                    ? parsed.score100
+                    : (typeof p.selected === 'number' ? Math.max(0, Math.min(100, Math.round(p.selected))) : undefined);
+                correctExtraLines = [
+                    ...(standards ? [`评测结果 · 标准点: ${stripHtmlOneLine(standards, 220)}`] : []),
+                    ...(typeof score100 === 'number'
+                        ? [`评测结果 · 总分(100制): ${score100}`]
+                        : []),
+                    ...(sumFull > 0 || sumEarned > 0
+                        ? [`评测结果 · 逐点合计: ${sumEarned}/${sumFull}`]
+                        : []),
+                ];
+            }
         } else if (typeof p.selected === 'number' && pr?.options && p.selected >= 0 && p.selected < pr.options.length) {
             selectedText = stripHtmlOneLine(String(pr.options[p.selected]), 120);
         } else if (typeof p.selected === 'number') {
@@ -295,7 +393,7 @@ async function problemRowsForRecord(rd: SessionRecordDoc): Promise<LessonHistory
                 correctOptIdx = ans;
             }
         }
-        return {
+        const out: LessonHistoryProblemRow = {
             pid: p.pid,
             stemPreview,
             status: p.status,
@@ -306,6 +404,9 @@ async function problemRowsForRecord(rd: SessionRecordDoc): Promise<LessonHistory
             attempts: p.attempts,
             timeSpentMs: p.timeSpentMs,
         };
+        if (selectedExtraLines && selectedExtraLines.length) out.selectedExtraLines = selectedExtraLines;
+        if (correctExtraLines && correctExtraLines.length) out.correctExtraLines = correctExtraLines;
+        return out;
     });
 }
 
@@ -518,6 +619,7 @@ class RecordDetailHandler extends Handler {
     async get(domainId: string, rid: ObjectId) {
         const udoc = await user.getById(domainId, this.rdoc.uid);
         const disp = await enrichRecordRowDisplay(this.rdoc, (name, kwargs) => this.url(name, kwargs as any));
+        const recordDetailProblems = await problemRowsForRecord(this.rdoc);
         const { developChangeRows, developCountSummaries } = buildDevelopRecordDetailAugment(
             this.rdoc,
             (k) => this.translate(k),
@@ -535,6 +637,7 @@ class RecordDetailHandler extends Handler {
             rdoc: this.rdoc,
             udoc,
             recordDisp: disp,
+            recordDetailProblems,
             developChangeRows,
             developCountSummaries,
             adoc,
@@ -568,6 +671,7 @@ class RecordDetailConnectionHandler extends ConnectionHandler {
     }
 
     async sendUpdate(d: SessionRecordDoc) {
+        const recordDetailProblems = await problemRowsForRecord(d);
         const { developChangeRows, developCountSummaries } = buildDevelopRecordDetailAugment(
             d,
             (k) => this.translate(k),
@@ -575,6 +679,7 @@ class RecordDetailConnectionHandler extends ConnectionHandler {
         this.send({
             status_html: await this.renderHTML('record_detail_status.html', {
                 rdoc: d,
+                recordDetailProblems,
                 developChangeRows,
                 developCountSummaries,
             }),

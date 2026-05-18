@@ -493,6 +493,7 @@ __langname: 简体中文
 'Problem ai eval total score': 总分值
 'Problem ai eval point earned': 本点评分
 'Problem ai eval point standard content': 评测点标准内容
+'Problem ai eval point reason': AI评分原因
 'Problem ai eval earned total': 本次总得分
 'Problem ai eval pass score': 通过分
 'Problem ai eval max attempts': 最大尝试次数
@@ -501,6 +502,7 @@ __langname: 简体中文
 'Problem ai eval evaluating': AI 评测中...
 'Problem ai eval failed': AI 评测失败，请稍后重试。
 'Problem ai eval invalid point scores': AI 未返回有效的逐点评分，请重试。
+'Problem ai eval invalid point reasons': AI 未返回有效的逐点评分原因，请重试。
 'Problem ai eval hard zero missing title': 未命中评测点标题，按规则该点记 0 分
 'Problem ai eval hard zero missing content': 命中评测点标题但未命中标准内容，按规则该点记 0 分
 'Problem reorder up': 上移
