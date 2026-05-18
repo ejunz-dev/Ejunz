@@ -3603,8 +3603,13 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         Notification.error(i18n('Outline editor popup blocked'));
       }
     } catch (e: any) {
-      const msg = e?.message ?? i18n('Outline learn start failed');
-      Notification.error(typeof msg === 'string' ? msg : String(msg));
+      const raw = typeof e?.message === 'string' ? e.message : String(e ?? '');
+      const cleaned = raw.replace(/^[A-Za-z]+Error:\s*/i, '').trim();
+      const msg = cleaned === 'No cards match session card filter'
+        || cleaned === 'Learn requires cards with problems'
+        ? i18n('Learn requires cards with problems')
+        : (cleaned || i18n('Outline learn start failed'));
+      Notification.error(msg);
     } finally {
       setEditorLearnBusy(false);
     }
@@ -3638,8 +3643,13 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         Notification.error(i18n('Outline editor popup blocked'));
       }
     } catch (e: any) {
-      const msg = e?.message ?? i18n('Outline learn start failed');
-      Notification.error(typeof msg === 'string' ? msg : String(msg));
+      const raw = typeof e?.message === 'string' ? e.message : String(e ?? '');
+      const cleaned = raw.replace(/^[A-Za-z]+Error:\s*/i, '').trim();
+      const msg = cleaned === 'No cards match session card filter'
+        || cleaned === 'Learn requires cards with problems'
+        ? i18n('Learn requires cards with problems')
+        : (cleaned || i18n('Outline learn start failed'));
+      Notification.error(msg);
     } finally {
       setEditorLearnBusy(false);
     }

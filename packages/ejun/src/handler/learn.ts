@@ -136,7 +136,7 @@ function filterEntriesByLearnCardProblemPresence<T extends { cardId: string }>(
         const id = String(e.cardId);
         const oidHex = ObjectId.isValid(id) ? new ObjectId(id).toString() : id;
         const hp = !!(presence.get(id) ?? presence.get(oidHex));
-        return mode === 'with_problems' ? hp : !hp;
+        return hp;
     });
 }
 
@@ -148,6 +148,15 @@ async function filterFlatQueueByLearnCardProblemPresence<T extends { cardId: str
     if (mode === 'all' || entries.length === 0) return entries;
     const presence = await buildCardIdProblemsPresenceMap(domainId, entries.map((e) => String(e.cardId)));
     return filterEntriesByLearnCardProblemPresence(entries, presence, mode);
+}
+
+async function enforceFlatQueueCardsWithProblems<T extends { cardId: string }>(
+    domainId: string,
+    entries: T[],
+): Promise<T[]> {
+    if (entries.length === 0) return entries;
+    const presence = await buildCardIdProblemsPresenceMap(domainId, entries.map((e) => String(e.cardId)));
+    return filterEntriesByLearnCardProblemPresence(entries, presence, 'with_problems');
 }
 
 /** Card id → set of normalized tags present on at least one problem. */
@@ -1735,12 +1744,7 @@ async function buildTodayLessonQueueFromDomain(
         newReviewShuffleSeed,
     );
 
-    const cardFilterModeToday = getLearnSessionCardFilter(dudoc);
-    const cardsPresence = await filterFlatQueueByLearnCardProblemPresence(
-        domainId,
-        cardsForTodayMerged,
-        cardFilterModeToday,
-    );
+    const cardsPresence = await enforceFlatQueueCardsWithProblems(domainId, cardsForTodayMerged);
     const cardsForToday = await filterFlatQueueByLearnProblemTags(
         domainId,
         cardsPresence,
@@ -3888,6 +3892,66 @@ class LessonHandler extends Handler {
                 await touchNodeQueue;
             }
 
+            {
+                const beforeRequired = flatCards.map((fc) => ({ ...fc }));
+                const afterRequired = await enforceFlatQueueCardsWithProblems(finalDomainId, flatCards);
+                const queueRequiredFiltered =
+                    afterRequired.length !== beforeRequired.length
+                    || afterRequired.some((fc, i) => fc.cardId !== beforeRequired[i]?.cardId);
+                if (queueRequiredFiltered) {
+                    flatCards.length = 0;
+                    flatCards.push(...afterRequired);
+                    const rootEntry = nodeTree[0];
+                    if (rootEntry?.type === 'node') {
+                        nodeTree[0] = {
+                            ...rootEntry,
+                            children: flatCards.map((c) => ({ type: 'card' as const, id: c.cardId, title: c.cardTitle })),
+                        };
+                    }
+                    if (flatCards.length === 0) {
+                        throw new ValidationError(
+                            this.translate('Learn requires cards with problems')
+                            || 'At least one card with problems is required to start learning.',
+                        );
+                    }
+                    const persistBaseRequired = queueBaseHint || learnBidLesson;
+                    const persistBranchRequired = learnBrLesson;
+                    const syncRequired: LessonCardQueueItem[] = flatCards.map((fc) => ({
+                        domainId: finalDomainId,
+                        nodeId: fc.nodeId,
+                        cardId: fc.cardId,
+                        nodeTitle: fc.nodeTitle,
+                        cardTitle: fc.cardTitle,
+                        baseDocId: fc.baseDocId,
+                        learnSectionOrderIndex: fc.learnSectionOrderIndex,
+                    }));
+                    const requiredTouch = sNode?._id
+                        ? SessionModel.touchById(finalDomainId, this.user._id, sNode._id, {
+                            lessonCardQueue: syncRequired,
+                            cardIndex: 0,
+                            lessonQueueLearnSessionCardFilter: getLearnSessionCardFilter(dudoc as Record<string, unknown>),
+                            lessonQueueLearnSessionProblemTagMode: getLearnSessionProblemTagMode(dudoc as Record<string, unknown>),
+                            lessonQueueLearnSessionProblemTags: getLearnSessionProblemTags(dudoc as Record<string, unknown>),
+                            lessonQueueAnchorNodeId: lessonNodeId,
+                            lessonQueueBaseDocId: persistBaseRequired || null,
+                            lessonQueueLearnBranch: persistBranchRequired,
+                        }, { silent: true })
+                        : touchLessonSession(finalDomainId, this.user._id, {
+                            lessonCardQueue: syncRequired,
+                            cardIndex: 0,
+                            lessonQueueLearnSessionCardFilter: getLearnSessionCardFilter(dudoc as Record<string, unknown>),
+                            lessonQueueLearnSessionProblemTagMode: getLearnSessionProblemTagMode(dudoc as Record<string, unknown>),
+                            lessonQueueLearnSessionProblemTags: getLearnSessionProblemTags(dudoc as Record<string, unknown>),
+                            lessonQueueAnchorNodeId: lessonNodeId,
+                            lessonQueueBaseDocId: persistBaseRequired || null,
+                            lessonQueueLearnBranch: persistBranchRequired,
+                        }, { silent: true });
+                    await requiredTouch;
+                    sNode = await resolveLessonSessionDoc(finalDomainId, this.user._id, qLessonSession || undefined);
+                    nodeSliceResetIndex = true;
+                }
+            }
+
             const nodeCardFilter = getLearnSessionCardFilter(dudoc as Record<string, unknown>);
             if (nodeCardFilter !== 'all') {
                 const beforeCf = flatCards.map((fc) => ({ ...fc }));
@@ -3906,7 +3970,10 @@ class LessonHandler extends Handler {
                         };
                     }
                     if (flatCards.length === 0) {
-                        throw new NotFoundError(this.translate('No cards match session card filter'));
+                        throw new ValidationError(
+                            this.translate('Learn requires cards with problems')
+                            || 'At least one card with problems is required to start learning.',
+                        );
                     }
                     const persistBaseCf = queueBaseHint || learnBidLesson;
                     const persistBranchCf = learnBrLesson;
@@ -4534,6 +4601,41 @@ class LessonHandler extends Handler {
                 baseNodeStart = await requireLearnPageBase(finalDomainId, this.user._id, this.user.priv);
                 brN = learnBrSt;
             }
+            const nodeLearnBaseDocId = Number(baseNodeStart.docId);
+            const { sections: nodeSections, allDagNodes: nodeAllDag } = await ensureLearnBaseDAGCached(
+                finalDomainId,
+                nodeLearnBaseDocId,
+                brN,
+                (k: string) => this.translate(k),
+            );
+            const nodeEntryMap = new Map<string, LearnDAGNode>();
+            nodeSections.forEach((n) => nodeEntryMap.set(n._id, n));
+            nodeAllDag.forEach((n) => nodeEntryMap.set(n._id, n));
+            if (!nodeEntryMap.has(nodeIdStart)) {
+                throw new ValidationError('That node is not part of this base branch');
+            }
+            const nodeCardIds = collectTrainingScopeCardIdSet(
+                [{ _id: nodeIdStart } as LearnDAGNode],
+                nodeAllDag,
+            );
+            if (nodeCardIds.size === 0) {
+                throw new ValidationError(
+                    this.translate('Learn requires cards with problems')
+                    || 'At least one card with problems is required to start learning.',
+                );
+            }
+            const nodeCardPresence = await buildCardIdProblemsPresenceMap(finalDomainId, [...nodeCardIds]);
+            const nodeHasProblemCards = [...nodeCardIds].some((cid) => {
+                const id = String(cid);
+                const oidHex = ObjectId.isValid(id) ? new ObjectId(id).toString() : id;
+                return !!(nodeCardPresence.get(id) ?? nodeCardPresence.get(oidHex));
+            });
+            if (!nodeHasProblemCards) {
+                throw new ValidationError(
+                    this.translate('Learn requires cards with problems')
+                    || 'At least one card with problems is required to start learning.',
+                );
+            }
             const hintBaseNode = Number(baseNodeStart.docId);
             sid = await insertOrUpgradeLearnSession(finalDomainId, this.user._id, {
                 appRoute: 'learn',
@@ -4554,6 +4656,13 @@ class LessonHandler extends Handler {
         } else if (mode === 'card') {
             const cardSt = await CardModel.get(finalDomainId, new ObjectId(cardIdStartRaw));
             if (!cardSt) throw new NotFoundError('Card not found');
+            const hasCardProblemsStart = Array.isArray((cardSt as any).problems) && (cardSt as any).problems.length > 0;
+            if (!hasCardProblemsStart) {
+                throw new ValidationError(
+                    this.translate('Learn requires cards with problems')
+                    || 'At least one card with problems is required to start learning.',
+                );
+            }
             const brCard = cardStorageBranch(cardSt as any);
             sid = await insertOrUpgradeLearnSession(finalDomainId, this.user._id, {
                 appRoute: 'learn',
