@@ -427,6 +427,12 @@ function BaseStudy() {
   const [currentProblemIndex, setCurrentProblemIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [showAnswer, setShowAnswer] = useState(false);
+  const selectedUnitForPractice = useMemo(
+    () => (selectedUnitNodeId ? units.find((u) => u.node.id === selectedUnitNodeId) : undefined),
+    [units, selectedUnitNodeId],
+  );
+  const practiceCurrentProblem = selectedUnitForPractice?.problems[currentProblemIndex];
+  const [practiceStemHtml, setPracticeStemHtml] = useState('');
 
   // 从 URL 获取 docId
   const docId = useMemo(() => {
@@ -505,6 +511,30 @@ function BaseStudy() {
     setShowAnswer(false);
   }, [currentProblemIndex]);
 
+  useEffect(() => {
+    const stem = practiceCurrentProblem?.stem;
+    if (!stem?.trim()) {
+      setPracticeStemHtml('');
+      return;
+    }
+    let cancelled = false;
+    fetch('/markdown', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: stem, inline: false }),
+    })
+      .then((r) => (r.ok ? r.text() : Promise.reject(new Error('markdown'))))
+      .then((h) => {
+        if (!cancelled) setPracticeStemHtml(h);
+      })
+      .catch(() => {
+        if (!cancelled) setPracticeStemHtml('');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [practiceCurrentProblem?.stem, currentProblemIndex, selectedUnitNodeId]);
+
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
@@ -523,9 +553,9 @@ function BaseStudy() {
 
   // 如果选择了 unit，显示刷题界面
   if (selectedUnitNodeId) {
-    const selectedUnit = units.find(u => u.node.id === selectedUnitNodeId);
-    const currentProblem = selectedUnit?.problems[currentProblemIndex];
-    
+    const selectedUnit = selectedUnitForPractice;
+    const currentProblem = practiceCurrentProblem;
+
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%' }}>
         {/* 顶部工具栏 */}
@@ -577,59 +607,15 @@ function BaseStudy() {
                 background: '#fff',
                 boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
               }}>
-                {/* 题干 */}
+                {/* 题干（Markdown，可与编辑器一致使用 ![](...) 插图） */}
                 <div style={{ fontSize: '18px', fontWeight: '600', color: '#333', marginBottom: '30px', lineHeight: '1.6' }}>
-                  {currentProblem.stem}
+                  {practiceStemHtml ? (
+                    <div className="typo" dangerouslySetInnerHTML={{ __html: practiceStemHtml }} />
+                  ) : (
+                    (currentProblem.stem ?? '')
+                  )}
                 </div>
-                
-                {/* 题目图片（题干下方，选项上方） */}
-                {currentProblem.imageUrl && (
-                  <div style={{ marginBottom: '30px', textAlign: 'center' }}>
-                    <img
-                      src={currentProblem.imageUrl}
-                      alt="题目图片"
-                      onClick={async () => {
-                        try {
-                          const previewImage = (window as any).Ejunz?.components?.preview?.previewImage;
-                          if (previewImage) {
-                            await previewImage(currentProblem.imageUrl!);
-                          } else {
-                            // 使用InfoDialog显示图片
-                            const { InfoDialog } = await import('vj/components/dialog/index');
-                            const $ = (await import('jquery')).default;
-                            const dialog = new InfoDialog({
-                              $body: $(`<div class="typo"><img src="${currentProblem.imageUrl}" style="max-height: calc(80vh - 45px);"></img></div>`),
-                            });
-                            await dialog.open();
-                          }
-                        } catch (error) {
-                          console.error('预览图片失败:', error);
-                          Notification.error('预览图片失败');
-                        }
-                      }}
-                      style={{
-                        maxWidth: '100%',
-                        maxHeight: '400px',
-                        cursor: 'pointer',
-                        borderRadius: '8px',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                      }}
-                    />
-                    {/* 图片备注（显示在图片下方） */}
-                    {currentProblem.imageNote && (
-                      <div style={{
-                        marginTop: '12px',
-                        fontSize: '14px',
-                        color: '#666',
-                        lineHeight: '1.5',
-                        fontStyle: 'italic',
-                      }}>
-                        {currentProblem.imageNote}
-                      </div>
-                    )}
-                  </div>
-                )}
-                
+
                 {/* 选项 */}
                 <div style={{ marginBottom: '30px' }}>
                   {currentProblem.options.map((option, index) => {

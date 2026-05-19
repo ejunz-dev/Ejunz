@@ -718,6 +718,63 @@ function cardTitleForLessonProblemQueueSidebar(
   return i18n('Unnamed Card');
 }
 
+/** Renders problem text as Markdown (e.g. `![](/doc/file/...)`), same pipeline as card content. */
+function LessonProblemMarkdown({
+  text,
+  inline,
+  replaceImagesWithCache,
+  as,
+  className,
+  style,
+  emptyFallback,
+}: {
+  text: string | undefined;
+  inline: boolean;
+  replaceImagesWithCache: (html: string) => Promise<string>;
+  as?: 'div' | 'span';
+  className?: string;
+  style?: React.CSSProperties;
+  emptyFallback?: React.ReactNode;
+}) {
+  const raw = text ?? '';
+  const plain = raw.trim();
+  const [html, setHtml] = useState('');
+  const As = as ?? (inline ? 'span' : 'div');
+  const cls = `lesson-markdown-body${className ? ` ${className}` : ''}`;
+
+  useEffect(() => {
+    if (!plain) {
+      setHtml('');
+      return;
+    }
+    let cancelled = false;
+    fetch('/markdown', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: raw, inline }),
+    })
+      .then((res) => (res.ok ? res.text() : Promise.reject(new Error('markdown'))))
+      .then((h) => replaceImagesWithCache(h).then((x) => {
+        if (!cancelled) setHtml(x);
+      }).catch(() => {
+        if (!cancelled) setHtml(h);
+      }))
+      .catch(() => {
+        if (!cancelled) setHtml('');
+      });
+    return () => { cancelled = true; };
+  }, [raw, plain, inline, replaceImagesWithCache]);
+
+  if (!plain) {
+    if (emptyFallback === undefined) return null;
+    return <As className={cls} style={style}>{emptyFallback}</As>;
+  }
+  if (!html) {
+    return <As className={cls} style={style}>{raw}</As>;
+  }
+  return <As className={cls} style={style} dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
 function LessonPage() {
   const [lessonUi, setLessonUi] = useState<LessonUiState>(initLessonUiState);
   const {
@@ -5009,8 +5066,13 @@ function LessonPage() {
                 <>
                   {flipStage === 'a' ? (
                     <>
-                      <div style={{ fontSize: '18px', fontWeight: 500, marginBottom: '24px', color: themeStyles.stemColor, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-                        {fb.faceA || i18n('No stem')}
+                      <div style={{ fontSize: '18px', fontWeight: 500, marginBottom: '24px', color: themeStyles.stemColor, lineHeight: 1.6 }}>
+                        <LessonProblemMarkdown
+                          text={fb.faceA}
+                          inline={false}
+                          replaceImagesWithCache={replaceImagesWithCache}
+                          emptyFallback={i18n('No stem')}
+                        />
                       </div>
                       {hintBlock}
                       {(!isAnswered || !pendingLessonAdvance) && renderLessonPracticeActionRow(
@@ -5024,10 +5086,20 @@ function LessonPage() {
                     </>
                   ) : (
                     <>
-                      <div style={{ fontSize: '13px', color: themeStyles.textTertiary, marginBottom: '8px', whiteSpace: 'pre-wrap' }}>{fb.faceA}</div>
+                      <div style={{ fontSize: '13px', color: themeStyles.textTertiary, marginBottom: '8px' }}>
+                        <LessonProblemMarkdown
+                          text={fb.faceA}
+                          inline={false}
+                          replaceImagesWithCache={replaceImagesWithCache}
+                        />
+                      </div>
                       {hintBlock}
-                      <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '24px', color: themeStyles.stemColor, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-                        {fb.faceB}
+                      <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '24px', color: themeStyles.stemColor, lineHeight: 1.6 }}>
+                        <LessonProblemMarkdown
+                          text={fb.faceB}
+                          inline={false}
+                          replaceImagesWithCache={replaceImagesWithCache}
+                        />
                       </div>
                       {(!isAnswered || !pendingLessonAdvance) && renderLessonPracticeActionRow(
                         null,
@@ -5075,8 +5147,12 @@ function LessonPage() {
               return (
                 <>
                   {stemText ? (
-                    <div style={{ fontSize: '17px', fontWeight: 500, marginBottom: '14px', color: themeStyles.stemColor, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-                      {stemText}
+                    <div style={{ fontSize: '17px', fontWeight: 500, marginBottom: '14px', color: themeStyles.stemColor, lineHeight: 1.6 }}>
+                      <LessonProblemMarkdown
+                        text={sf.stem}
+                        inline={false}
+                        replaceImagesWithCache={replaceImagesWithCache}
+                      />
                     </div>
                   ) : null}
                   <div style={{ overflowX: 'auto', marginBottom: '18px' }}>
@@ -5313,7 +5389,14 @@ function LessonPage() {
                   if (!hasMarks) {
                     return (
                       <>
-                        <span style={stemBlockStyle}>{segs[0] || i18n('No stem')}</span>
+                        <LessonProblemMarkdown
+                          text={segs[0]}
+                          inline
+                          replaceImagesWithCache={replaceImagesWithCache}
+                          as="span"
+                          style={stemBlockStyle}
+                          emptyFallback={i18n('No stem')}
+                        />
                         <input
                           aria-label={String(i18n('Problem fill blank slot label', 1))}
                           disabled={isAnswered}
@@ -5327,7 +5410,14 @@ function LessonPage() {
                   const rows: React.ReactNode[] = [];
                   for (let i = 0; i < segs.length; i++) {
                     rows.push(
-                      <span key={`fbs-t-${currentProblem.pid}-${i}`} style={stemBlockStyle}>{segs[i]}</span>,
+                      <LessonProblemMarkdown
+                        key={`fbs-t-${currentProblem.pid}-${i}`}
+                        text={segs[i]}
+                        inline
+                        replaceImagesWithCache={replaceImagesWithCache}
+                        as="span"
+                        style={stemBlockStyle}
+                      />,
                     );
                     if (i < segs.length - 1) {
                       rows.push(
@@ -5380,8 +5470,12 @@ function LessonPage() {
               return (
                 <>
                   {stemText ? (
-                    <div style={{ fontSize: '17px', fontWeight: 500, marginBottom: '18px', color: themeStyles.stemColor, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-                      {stemText}
+                    <div style={{ fontSize: '17px', fontWeight: 500, marginBottom: '18px', color: themeStyles.stemColor, lineHeight: 1.6 }}>
+                      <LessonProblemMarkdown
+                        text={pm.stem}
+                        inline={false}
+                        replaceImagesWithCache={replaceImagesWithCache}
+                      />
                     </div>
                   ) : null}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
@@ -5499,12 +5593,16 @@ function LessonPage() {
         ) : currentKind === 'ai_eval' ? (
           <>
             <div style={{ fontSize: '18px', fontWeight: '500', marginBottom: '14px', color: themeStyles.stemColor, lineHeight: '1.6' }}>
-              {(currentProblem as ProblemAiEval).stem || i18n('No stem')}
+              <LessonProblemMarkdown
+                text={(currentProblem as ProblemAiEval).stem}
+                inline={false}
+                replaceImagesWithCache={replaceImagesWithCache}
+                emptyFallback={i18n('No stem')}
+              />
             </div>
             {(() => {
               const pe = currentProblem as ProblemAiEval;
               const passScore = typeof pe.passScore === 'number' ? pe.passScore : 60;
-              const maxAttempts = typeof pe.maxAttempts === 'number' ? pe.maxAttempts : 3;
               const currentAttempts = problemAttempts[pe.pid] || 0;
               const feedback = aiEvalFeedbackByPid[pe.pid];
               const points = Array.isArray(pe.points) ? pe.points : [];
@@ -5559,8 +5657,6 @@ function LessonPage() {
                   ) : null}
                   <div style={{ marginBottom: '10px', fontSize: '12px', color: themeStyles.textSecondary }}>
                     {i18n('Problem ai eval pass score')}: <strong style={{ color: themeStyles.textPrimary }}>{passScore}</strong>
-                    {' · '}
-                    {i18n('Problem ai eval max attempts')}: <strong style={{ color: themeStyles.textPrimary }}>{maxAttempts}</strong>
                     {totalScore > 0 ? (
                       <>
                         {' · '}
@@ -5672,7 +5768,12 @@ function LessonPage() {
         ) : currentKind === 'true_false' ? (
           <>
             <div style={{ fontSize: '18px', fontWeight: '500', marginBottom: '24px', color: themeStyles.stemColor, lineHeight: '1.6' }}>
-              {(currentProblem as ProblemTrueFalse).stem || i18n('No stem')}
+              <LessonProblemMarkdown
+                text={(currentProblem as ProblemTrueFalse).stem}
+                inline={false}
+                replaceImagesWithCache={replaceImagesWithCache}
+                emptyFallback={i18n('No stem')}
+              />
             </div>
             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
               {([1, 0] as const).map((v) => {
@@ -5714,7 +5815,12 @@ function LessonPage() {
               color: themeStyles.stemColor,
               lineHeight: '1.6',
             }}>
-              {(currentProblem as ProblemSingle | ProblemMulti).stem || i18n('No stem')}
+              <LessonProblemMarkdown
+                text={(currentProblem as ProblemSingle | ProblemMulti).stem}
+                inline={false}
+                replaceImagesWithCache={replaceImagesWithCache}
+                emptyFallback={i18n('No stem')}
+              />
             </div>
 
             <div style={{ marginBottom: '20px' }} key={`options-${currentProblem?.pid}-${currentProblemIndex}-${shuffleTrigger}`}>
@@ -5750,12 +5856,18 @@ function LessonPage() {
                   <div
                     key={`${currentProblem.pid || currentProblemIndex}-${displayIdx}`}
                     onClick={() => !isAnswered && handleAnswerSelect(displayIdx)}
-                    style={optionStyle}
+                    style={{ ...optionStyle, display: 'flex', alignItems: 'flex-start' }}
                   >
-                    <span style={{ marginRight: '10px', fontWeight: 'bold', fontSize: '16px', color: themeStyles.textPrimary }}>
+                    <span style={{ marginRight: '10px', fontWeight: 'bold', fontSize: '16px', color: themeStyles.textPrimary, flexShrink: 0 }}>
                       {String.fromCharCode(65 + displayIdx)}.
                     </span>
-                    <span style={{ fontSize: '16px', color: themeStyles.textPrimary }}>{option}</span>
+                    <LessonProblemMarkdown
+                      text={option}
+                      inline
+                      replaceImagesWithCache={replaceImagesWithCache}
+                      as="span"
+                      style={{ flex: 1, fontSize: '16px', color: themeStyles.textPrimary, minWidth: 0 }}
+                    />
                   </div>
                 );
               })}
@@ -5790,12 +5902,18 @@ function LessonPage() {
                   <div
                     key={`m-${currentProblem.pid}-${displayIdx}`}
                     onClick={() => !isAnswered && handleMultiToggle(displayIdx)}
-                    style={optionStyle}
+                    style={{ ...optionStyle, display: 'flex', alignItems: 'flex-start' }}
                   >
-                    <span style={{ marginRight: '10px', fontWeight: 'bold', fontSize: '16px', color: themeStyles.textPrimary }}>
+                    <span style={{ marginRight: '10px', fontWeight: 'bold', fontSize: '16px', color: themeStyles.textPrimary, flexShrink: 0 }}>
                       {String.fromCharCode(65 + displayIdx)}.
                     </span>
-                    <span style={{ fontSize: '16px', color: themeStyles.textPrimary }}>{option}</span>
+                    <LessonProblemMarkdown
+                      text={option}
+                      inline
+                      replaceImagesWithCache={replaceImagesWithCache}
+                      as="span"
+                      style={{ flex: 1, fontSize: '16px', color: themeStyles.textPrimary, minWidth: 0 }}
+                    />
                   </div>
                 );
               })}
@@ -5816,7 +5934,7 @@ function LessonPage() {
           </>
         )}
 
-        {showAnalysis && currentProblem.analysis && (
+        {showAnalysis && currentProblem.analysis?.trim() && (
           <div style={{
             marginTop: '20px',
             padding: '16px',
@@ -5826,7 +5944,14 @@ function LessonPage() {
             color: themeStyles.textSecondary,
             lineHeight: '1.6',
           }}>
-            <strong style={{ color: themeStyles.textPrimary }}>{i18n('Analysis')}:</strong> {currentProblem.analysis}
+            <strong style={{ color: themeStyles.textPrimary }}>{i18n('Analysis')}:</strong>
+            <div style={{ marginTop: 8 }}>
+              <LessonProblemMarkdown
+                text={currentProblem.analysis}
+                inline={false}
+                replaceImagesWithCache={replaceImagesWithCache}
+              />
+            </div>
           </div>
         )}
 

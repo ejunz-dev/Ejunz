@@ -409,8 +409,6 @@ export interface ProblemCommon {
     /** Short label for lesson sidebars / lists; full stem still shows in practice. */
     title?: string;
     analysis?: string;
-    imageUrl?: string;
-    imageNote?: string;
     /**
      * Taxonomy tags for this problem within the base (`BaseDoc.problemTags` lists known names).
      * Omit or empty ⇒ default grouping in the editor UI.
