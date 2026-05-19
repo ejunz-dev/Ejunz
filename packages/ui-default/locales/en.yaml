@@ -463,8 +463,6 @@ __langname: English
 'Problem ai eval sub point title placeholder': Sub-point title (shown)
 'Problem ai eval sub point content placeholder': Sub-point rubric (for AI)
 'Problem ai eval need points': Need at least one evaluation point with sub-points (`points`)
-'Problem ai eval sub point aliases hint': Synonymous acceptable answers (optional, one per add); loose match treats any as a rubric hit for auto gate.
-'Problem ai eval add alias': Add synonym
 'Problem ai eval alias input placeholder': Phrase learners might type
 'Problem ai eval slot placeholder': Answer for this sub-point
 'Problem ai eval answer aliases label': Acceptable synonyms
@@ -476,7 +474,6 @@ __langname: English
 'Problem ai eval earned total': Earned total
 'Problem ai eval pass score': Pass score
 'Problem ai eval max attempts': Max attempts
-'Problem ai eval lesson hint': Learners fill one box per sub-point. Scoring uses each box against rubric text and synonyms you configure. All boxes must be filled to submit. Parent evaluation-point order still applies; sub-point order within a parent does not. Reach pass score to count as correct.
 'Problem ai eval evaluating': Evaluating with AI...
 'Problem ai eval failed': AI evaluation failed. Please try again.
 'Problem ai eval invalid point scores': AI did not return valid point-level scores. Please retry.

@@ -391,8 +391,6 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
     const common: ProblemCommon = {
         pid: prev.pid,
         analysis: prev.analysis,
-        imageUrl: prev.imageUrl,
-        imageNote: prev.imageNote,
         ...(typeof prev.title === 'string' ? { title: prev.title } : {}),
         ...(tagList.length ? { tags: tagList } : {}),
     };
@@ -662,8 +660,6 @@ export function migrateRawProblem(raw: Record<string, unknown>): Problem {
     const common: ProblemCommon = {
         pid,
         ...(typeof raw.analysis === 'string' ? { analysis: raw.analysis } : {}),
-        ...(typeof raw.imageUrl === 'string' ? { imageUrl: raw.imageUrl } : {}),
-        ...(typeof raw.imageNote === 'string' ? { imageNote: raw.imageNote } : {}),
         ...(typeof raw.title === 'string' ? { title: raw.title } : {}),
         ...(tagsNorm.length ? { tags: tagsNorm } : {}),
     };

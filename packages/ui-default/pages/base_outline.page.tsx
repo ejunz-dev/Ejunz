@@ -1,5 +1,5 @@
 import $ from 'jquery';
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
@@ -16,6 +16,190 @@ import type {
   ProblemAiEval,
 } from 'ejun/src/interface';
 import { problemKind, matchingColumnsNormalized, superFlipNormalized } from 'ejun/src/model/problem';
+
+/** Markdown source for question / answer (rendered via /markdown in the outline sidebar). */
+function outlineProblemPreviewBlocks(
+  p: Problem,
+  indexOneBased: number,
+): { kindLabel: string; titleLine: string; stemMarkdown: string; answerMarkdown: string } {
+  const k = problemKind(p);
+  const kindLabel = OUTLINE_PROBLEM_KIND_LABEL[k] || k;
+  const titleRaw = typeof (p as { title?: string }).title === 'string' ? (p as { title?: string }).title!.trim() : '';
+  const titleLine = titleRaw || i18n('Outline card problems untitled item', indexOneBased);
+
+  if (k === 'flip') {
+    const f = p as ProblemFlip;
+    return {
+      kindLabel,
+      titleLine,
+      stemMarkdown: f.faceA || '',
+      answerMarkdown: f.faceB || '',
+    };
+  }
+  if (k === 'true_false') {
+    const t = p as ProblemTrueFalse;
+    const ans = t.answer === 1 ? '正确（True）' : '错误（False）';
+    return { kindLabel, titleLine, stemMarkdown: t.stem || '', answerMarkdown: ans };
+  }
+  if (k === 'fill_blank') {
+    const fb = p as ProblemFillBlank;
+    const ans = (fb.answers || []).map((a) => String(a ?? '').trim()).filter(Boolean).join('；') || '—';
+    return { kindLabel, titleLine, stemMarkdown: fb.stem || '', answerMarkdown: ans };
+  }
+  if (k === 'ai_eval') {
+    const ae = p as ProblemAiEval;
+    const stem = String(ae.stem || '').trim();
+    const passScore = typeof ae.passScore === 'number' ? `通过分：${ae.passScore}` : '';
+    const points = Array.isArray(ae.points) ? ae.points : [];
+    const lines: string[] = [];
+    for (let i = 0; i < points.length; i++) {
+      const pt = points[i];
+      const title = String(pt?.title ?? '').trim();
+      const subs = Array.isArray(pt?.subPoints) ? pt!.subPoints! : [];
+      const nonEmptySubs = subs.filter((s) => {
+        const st = String(s?.title ?? '').trim();
+        const sc = String(s?.content ?? '').trim();
+        return !!(st || sc);
+      });
+      if (nonEmptySubs.length > 0) {
+        for (let j = 0; j < nonEmptySubs.length; j++) {
+          const s = nonEmptySubs[j];
+          const st = String(s?.title ?? '').trim();
+          const score = typeof s?.score === 'number' ? s.score : 0;
+          const label = title ? `${title} · ${st || `子项${j + 1}`}` : (st || `子项${j + 1}`);
+          lines.push(`${lines.length + 1}. ${label}（${score}）`);
+        }
+      }
+    }
+    const answerMarkdown = [passScore, ...lines].filter(Boolean).join('\n') || '—';
+    return { kindLabel, titleLine, stemMarkdown: stem || '（AI评测）', answerMarkdown };
+  }
+  if (k === 'single') {
+    const s = p as ProblemSingle;
+    const opts = s.options || [];
+    const a = typeof s.answer === 'number' && opts[s.answer] != null ? String(opts[s.answer]) : '—';
+    return { kindLabel, titleLine, stemMarkdown: s.stem || '', answerMarkdown: a };
+  }
+  if (k === 'multi') {
+    const m = p as ProblemMulti;
+    const opts = m.options || [];
+    const idx = Array.isArray(m.answer) ? m.answer : [];
+    const texts = idx.filter((i) => typeof i === 'number' && opts[i] != null).map((i) => String(opts[i as number]));
+    return { kindLabel, titleLine, stemMarkdown: m.stem || '', answerMarkdown: texts.length ? texts.join('、') : '—' };
+  }
+  if (k === 'matching') {
+    const m = p as ProblemMatching;
+    const cols = matchingColumnsNormalized(m);
+    const n = cols.length ? Math.max(...cols.map((c) => c.length), 0) : 0;
+    const rows: string[] = [];
+    for (let r = 0; r < n; r++) {
+      const cells = cols.map((c) => String(c[r] ?? '').trim()).filter(Boolean);
+      if (cells.length) rows.push(cells.join(' — '));
+    }
+    const stem = (m.stem || '').trim();
+    const answerMarkdown = rows.length ? rows.map((row, i) => `${i + 1}. ${row}`).join('\n') : '—';
+    return { kindLabel, titleLine, stemMarkdown: stem || '（配对表）', answerMarkdown };
+  }
+  if (k === 'super_flip') {
+    const sf = p as ProblemSuperFlip;
+    const { headers, columns } = superFlipNormalized(sf);
+    const nCol = columns.length;
+    const nRow = nCol ? Math.max(0, ...columns.map((c) => c.length)) : 0;
+    const lines: string[] = [];
+    for (let r = 0; r < nRow; r++) {
+      const parts: string[] = [];
+      for (let c = 0; c < nCol; c++) {
+        const head = String(headers[c] ?? '').trim();
+        const cell = String(columns[c]?.[r] ?? '').trim();
+        if (cell) parts.push(head ? `${head}：${cell}` : cell);
+      }
+      if (parts.length) lines.push(parts.join('；'));
+    }
+    const stem = (sf.stem || '').trim();
+    return {
+      kindLabel,
+      titleLine,
+      stemMarkdown: stem || (lines.length ? '（表格式翻转）' : ''),
+      answerMarkdown: lines.length ? lines.map((ln, i) => `${i + 1}. ${ln}`).join('\n') : '—',
+    };
+  }
+  return { kindLabel, titleLine, stemMarkdown: '', answerMarkdown: '—' };
+}
+
+/** Renders stored markdown via /markdown + optional image preview (outline sidebar). */
+function OutlineProblemMarkdownPreview({
+  markdown,
+  inline,
+  replaceImagesWithCache,
+  attachImagePreviewHandlers,
+  className,
+  style,
+  emptyLabel,
+}: {
+  markdown: string;
+  inline: boolean;
+  replaceImagesWithCache: (html: string) => Promise<string>;
+  attachImagePreviewHandlers?: (container: HTMLElement) => void;
+  className?: string;
+  style?: React.CSSProperties;
+  emptyLabel?: string;
+}) {
+  const raw = markdown ?? '';
+  const plain = raw.trim();
+  const [html, setHtml] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!plain) {
+      setHtml('');
+      return;
+    }
+    let cancelled = false;
+    fetch('/markdown', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: raw, inline }),
+    })
+      .then((res) => (res.ok ? res.text() : Promise.reject(new Error('markdown'))))
+      .then((h) => replaceImagesWithCache(h).then((x) => {
+        if (!cancelled) setHtml(x);
+      }).catch(() => {
+        if (!cancelled) setHtml(h);
+      }))
+      .catch(() => {
+        if (!cancelled) setHtml('');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [raw, plain, inline, replaceImagesWithCache]);
+
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el || !html || !attachImagePreviewHandlers) return;
+    attachImagePreviewHandlers(el);
+  }, [html, attachImagePreviewHandlers]);
+
+  const mergedStyle: React.CSSProperties = {
+    ...style,
+    display: inline ? 'inline' : 'block',
+  };
+
+  if (!plain) {
+    return <div ref={containerRef} className={className} style={mergedStyle}>{emptyLabel ?? '—'}</div>;
+  }
+  if (!html) {
+    return <div ref={containerRef} className={className} style={mergedStyle}>{raw}</div>;
+  }
+  return (
+    <div
+      ref={containerRef}
+      className={className}
+      style={mergedStyle}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}
 
 /** Appends filterNode, filterCard, filterProblem from the current URL for /base/data (server: model/outlineExplorerFilter). */
 function appendOutlineExplorerFilterParams(qs: Record<string, string>): void {
@@ -77,114 +261,6 @@ function isOutlineCardRenderErrorHtml(html: string | undefined | null): boolean 
   if (t === OUTLINE_CARD_RENDER_ERROR_HTML.trim()) return true;
   // Legacy short error fragments only (avoid matching long articles).
   return t.length < 200 && /加载内容失败/.test(t) && /#f44336/.test(t);
-}
-
-function outlineProblemPreviewBlocks(
-  p: Problem,
-  indexOneBased: number,
-): { kindLabel: string; titleLine: string; stemHtml: string; answerHtml: string } {
-  const k = problemKind(p);
-  const kindLabel = OUTLINE_PROBLEM_KIND_LABEL[k] || k;
-  const titleRaw = typeof (p as { title?: string }).title === 'string' ? (p as { title?: string }).title!.trim() : '';
-  const titleLine = titleRaw || i18n('Outline card problems untitled item', indexOneBased);
-
-  if (k === 'flip') {
-    const f = p as ProblemFlip;
-    return {
-      kindLabel,
-      titleLine,
-      stemHtml: f.faceA || '',
-      answerHtml: f.faceB || '',
-    };
-  }
-  if (k === 'true_false') {
-    const t = p as ProblemTrueFalse;
-    const ans = t.answer === 1 ? '正确（True）' : '错误（False）';
-    return { kindLabel, titleLine, stemHtml: t.stem || '', answerHtml: ans };
-  }
-  if (k === 'fill_blank') {
-    const fb = p as ProblemFillBlank;
-    const ans = (fb.answers || []).map((a) => String(a ?? '').trim()).filter(Boolean).join('；') || '—';
-    return { kindLabel, titleLine, stemHtml: fb.stem || '', answerHtml: ans };
-  }
-  if (k === 'ai_eval') {
-    const ae = p as ProblemAiEval;
-    const stem = String(ae.stem || '').trim();
-    const passScore = typeof ae.passScore === 'number' ? `通过分：${ae.passScore}` : '';
-    const points = Array.isArray(ae.points) ? ae.points : [];
-    const lines: string[] = [];
-    for (let i = 0; i < points.length; i++) {
-      const pt = points[i];
-      const title = String(pt?.title ?? '').trim();
-      const subs = Array.isArray(pt?.subPoints) ? pt!.subPoints! : [];
-      const nonEmptySubs = subs.filter((s) => {
-        const st = String(s?.title ?? '').trim();
-        const sc = String(s?.content ?? '').trim();
-        return !!(st || sc);
-      });
-      if (nonEmptySubs.length > 0) {
-        for (let j = 0; j < nonEmptySubs.length; j++) {
-          const s = nonEmptySubs[j];
-          const st = String(s?.title ?? '').trim();
-          const score = typeof s?.score === 'number' ? s.score : 0;
-          const label = title ? `${title} · ${st || `子项${j + 1}`}` : (st || `子项${j + 1}`);
-          lines.push(`${lines.length + 1}. ${label}（${score}）`);
-        }
-      }
-    }
-    const answerHtml = [passScore, ...lines].filter(Boolean).join('<br/>') || '—';
-    return { kindLabel, titleLine, stemHtml: stem || '（AI评测）', answerHtml };
-  }
-  if (k === 'single') {
-    const s = p as ProblemSingle;
-    const opts = s.options || [];
-    const a = typeof s.answer === 'number' && opts[s.answer] != null ? String(opts[s.answer]) : '—';
-    return { kindLabel, titleLine, stemHtml: s.stem || '', answerHtml: a };
-  }
-  if (k === 'multi') {
-    const m = p as ProblemMulti;
-    const opts = m.options || [];
-    const idx = Array.isArray(m.answer) ? m.answer : [];
-    const texts = idx.filter((i) => typeof i === 'number' && opts[i] != null).map((i) => String(opts[i as number]));
-    return { kindLabel, titleLine, stemHtml: m.stem || '', answerHtml: texts.length ? texts.join('、') : '—' };
-  }
-  if (k === 'matching') {
-    const m = p as ProblemMatching;
-    const cols = matchingColumnsNormalized(m);
-    const n = cols.length ? Math.max(...cols.map((c) => c.length), 0) : 0;
-    const rows: string[] = [];
-    for (let r = 0; r < n; r++) {
-      const cells = cols.map((c) => String(c[r] ?? '').trim()).filter(Boolean);
-      if (cells.length) rows.push(cells.join(' — '));
-    }
-    const stem = (m.stem || '').trim();
-    const answerHtml = rows.length ? rows.map((row, i) => `${i + 1}. ${row}`).join('<br/>') : '—';
-    return { kindLabel, titleLine, stemHtml: stem || '（配对表）', answerHtml };
-  }
-  if (k === 'super_flip') {
-    const sf = p as ProblemSuperFlip;
-    const { headers, columns } = superFlipNormalized(sf);
-    const nCol = columns.length;
-    const nRow = nCol ? Math.max(0, ...columns.map((c) => c.length)) : 0;
-    const lines: string[] = [];
-    for (let r = 0; r < nRow; r++) {
-      const parts: string[] = [];
-      for (let c = 0; c < nCol; c++) {
-        const head = String(headers[c] ?? '').trim();
-        const cell = String(columns[c]?.[r] ?? '').trim();
-        if (cell) parts.push(head ? `${head}：${cell}` : cell);
-      }
-      if (parts.length) lines.push(parts.join('；'));
-    }
-    const stem = (sf.stem || '').trim();
-    return {
-      kindLabel,
-      titleLine,
-      stemHtml: stem || (lines.length ? '（表格式翻转）' : ''),
-      answerHtml: lines.length ? lines.map((ln, i) => `${i + 1}. ${ln}`).join('<br/>') : '—',
-    };
-  }
-  return { kindLabel, titleLine, stemHtml: '', answerHtml: '—' };
 }
 
 interface BaseNode {
@@ -294,6 +370,8 @@ type FileItem = {
 function OutlineCardProblemsList({
   card,
   theme,
+  replaceImagesWithCache,
+  attachImagePreviewHandlers,
 }: {
   card: Card;
   theme: {
@@ -301,6 +379,8 @@ function OutlineCardProblemsList({
     textTertiary: string;
     borderSecondary: string;
   };
+  replaceImagesWithCache: (html: string) => Promise<string>;
+  attachImagePreviewHandlers: (container: HTMLElement) => void;
 }) {
   const problemsList = card.problems ?? [];
   if (problemsList.length === 0) {
@@ -311,8 +391,85 @@ function OutlineCardProblemsList({
     );
   }
   return problemsList.map((prob, idx) => {
-    const { kindLabel, titleLine, stemHtml, answerHtml } = outlineProblemPreviewBlocks(prob, idx + 1);
+    const { kindLabel, titleLine, stemMarkdown, answerMarkdown } = outlineProblemPreviewBlocks(prob, idx + 1);
+    const k = problemKind(prob);
     const isLast = idx === problemsList.length - 1;
+    const stemBlockClass = 'typo topic__content richmedia';
+    const stemBlockStyle: React.CSSProperties = {
+      fontSize: '13px',
+      lineHeight: 1.45,
+      marginBottom: '10px',
+      overflowWrap: 'break-word',
+      wordBreak: 'break-word',
+    };
+    const answerBlockStyle: React.CSSProperties = {
+      fontSize: '13px',
+      lineHeight: 1.45,
+      overflowWrap: 'break-word',
+      wordBreak: 'break-word',
+    };
+
+    let stemEl: React.ReactNode;
+    if (k === 'fill_blank') {
+      const stemStr = (prob as ProblemFillBlank).stem || '';
+      if (!stemStr.trim()) {
+        stemEl = (
+          <OutlineProblemMarkdownPreview
+            markdown=""
+            inline={false}
+            replaceImagesWithCache={replaceImagesWithCache}
+            attachImagePreviewHandlers={attachImagePreviewHandlers}
+            className={stemBlockClass}
+            style={stemBlockStyle}
+            emptyLabel="—"
+          />
+        );
+      } else {
+        const hasMarks = stemStr.includes('___');
+        const segs = hasMarks ? stemStr.split('___') : [stemStr];
+        stemEl = (
+          <div
+            className={stemBlockClass}
+            style={{
+              ...stemBlockStyle,
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'baseline',
+              columnGap: 6,
+              rowGap: 4,
+            }}
+          >
+            {segs.map((seg, si) => (
+              <React.Fragment key={`fbs-${prob.pid || idx}-${si}`}>
+                <OutlineProblemMarkdownPreview
+                  markdown={seg}
+                  inline
+                  replaceImagesWithCache={replaceImagesWithCache}
+                  attachImagePreviewHandlers={attachImagePreviewHandlers}
+                  style={{ verticalAlign: 'baseline' }}
+                />
+                {si < segs.length - 1 ? (
+                  <span style={{ fontWeight: 700, opacity: 0.45, userSelect: 'none' }}>___</span>
+                ) : null}
+              </React.Fragment>
+            ))}
+          </div>
+        );
+      }
+    } else {
+      stemEl = (
+        <OutlineProblemMarkdownPreview
+          markdown={stemMarkdown}
+          inline={false}
+          replaceImagesWithCache={replaceImagesWithCache}
+          attachImagePreviewHandlers={attachImagePreviewHandlers}
+          className={stemBlockClass}
+          style={stemBlockStyle}
+          emptyLabel="—"
+        />
+      );
+    }
+
     return (
       <div
         key={prob.pid || `p-${idx}`}
@@ -342,17 +499,7 @@ function OutlineCardProblemsList({
         }}>
           {i18n('Question')}
         </div>
-        <div
-          className="typo topic__content richmedia"
-          style={{
-            fontSize: '13px',
-            lineHeight: 1.45,
-            marginBottom: '10px',
-            overflowWrap: 'break-word',
-            wordBreak: 'break-word',
-          }}
-          dangerouslySetInnerHTML={{ __html: stemHtml && stemHtml.trim() ? stemHtml : '—' }}
-        />
+        {stemEl}
         <div style={{
           fontSize: '10px',
           fontWeight: 600,
@@ -363,15 +510,14 @@ function OutlineCardProblemsList({
         }}>
           {i18n('Correct Answer')}
         </div>
-        <div
+        <OutlineProblemMarkdownPreview
+          markdown={answerMarkdown}
+          inline={false}
+          replaceImagesWithCache={replaceImagesWithCache}
+          attachImagePreviewHandlers={attachImagePreviewHandlers}
           className="typo topic__content richmedia"
-          style={{
-            fontSize: '13px',
-            lineHeight: 1.45,
-            overflowWrap: 'break-word',
-            wordBreak: 'break-word',
-          }}
-          dangerouslySetInnerHTML={{ __html: answerHtml && String(answerHtml).trim() ? answerHtml : '—' }}
+          style={answerBlockStyle}
+          emptyLabel="—"
         />
       </div>
     );
@@ -4790,6 +4936,8 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                       textTertiary: themeStyles.textTertiary,
                       borderSecondary: themeStyles.borderSecondary,
                     }}
+                    replaceImagesWithCache={replaceImagesWithCache}
+                    attachImagePreviewHandlers={attachImagePreviewHandlers}
                   />
                 </div>
               </aside>
@@ -4888,6 +5036,8 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                       textTertiary: themeStyles.textTertiary,
                       borderSecondary: themeStyles.borderSecondary,
                     }}
+                    replaceImagesWithCache={replaceImagesWithCache}
+                    attachImagePreviewHandlers={attachImagePreviewHandlers}
                   />
                 </div>
               </div>
