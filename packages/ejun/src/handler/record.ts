@@ -14,7 +14,7 @@ import { PERM, PRIV, STATUS_TEXTS } from '../model/builtin';
 import type { BaseDoc, BaseNode, CardDoc, ProblemAiEval, ProblemFlip, ProblemFillBlank, ProblemMatching, ProblemSuperFlip } from '../interface';
 import { BaseModel, CardModel } from '../model/base';
 import RecordModel, { type SessionRecordDoc, type RecordProblemState } from '../model/record';
-import { problemKind, matchingColumnsNormalized, superFlipNormalized } from '../model/problem';
+import { problemKind, matchingColumnsNormalized, superFlipNormalized, flattenAiEvalRubricForScoring, aiEvalRubricSumMax } from '../model/problem';
 import SessionModel, { type SessionDoc } from '../model/session';
 import user from '../model/user';
 import Agent from '../model/agent';
@@ -282,15 +282,15 @@ async function problemRowsForRecord(rd: SessionRecordDoc): Promise<LessonHistory
         let correctExtraLines: string[] | undefined;
         const parseAiEvalFillAnswers = (
             fillAnswersRaw: string[] | undefined,
-        ): { answerText: string; score100?: number; pointScores?: number[]; pointReasons?: string[]; feedback?: string } => {
+        ): { score100?: number; pointScores?: number[]; pointReasons?: string[]; feedback?: string; slotAnswersById?: Record<string, string> } => {
             const xs = Array.isArray(fillAnswersRaw) ? fillAnswersRaw.map((x) => String(x ?? '')) : [];
-            if (!xs.length) return { answerText: '' };
-            const answerText = xs[0] || '';
+            if (!xs.length) return {};
             let score100: number | undefined;
             let pointScores: number[] | undefined;
             let pointReasons: string[] | undefined;
+            let slotAnswersById: Record<string, string> | undefined;
             const feedbackChunks: string[] = [];
-            for (const line of xs.slice(1)) {
+            for (const line of xs) {
                 const s = String(line || '').trim();
                 if (!s) continue;
                 if (s.startsWith('score:')) {
@@ -311,19 +311,31 @@ async function problemRowsForRecord(rd: SessionRecordDoc): Promise<LessonHistory
                 if (s.startsWith('pointReasons:')) {
                     try {
                         const raw = s.slice('pointReasons:'.length).trim();
-                        const parsed = JSON.parse(raw);
-                        if (Array.isArray(parsed)) {
-                            pointReasons = parsed.map((x) => String(x ?? '').trim());
+                        const parsedJr = JSON.parse(raw);
+                        if (Array.isArray(parsedJr)) {
+                            pointReasons = parsedJr.map((x) => String(x ?? '').trim());
                             continue;
                         }
                     } catch {
-                        // fall through to feedback line
+                        /* fall through */
+                    }
+                }
+                if (s.startsWith('aiEvalSlots:')) {
+                    try {
+                        const raw = s.slice('aiEvalSlots:'.length).trim();
+                        const parsedSlots = JSON.parse(raw) as { byId?: Record<string, string> };
+                        if (parsedSlots && typeof parsedSlots === 'object' && parsedSlots.byId && typeof parsedSlots.byId === 'object') {
+                            slotAnswersById = parsedSlots.byId;
+                            continue;
+                        }
+                    } catch {
+                        /* ignore */
                     }
                 }
                 feedbackChunks.push(s);
             }
             const feedback = feedbackChunks.length ? feedbackChunks.join('； ') : undefined;
-            return { answerText, score100, pointScores, pointReasons, feedback };
+            return { score100, pointScores, pointReasons, feedback, slotAnswersById };
         };
         if (Array.isArray(p.fillAnswers) && p.fillAnswers.length) {
             selectedText = stripHtmlOneLine(p.fillAnswers.map(String).join(' / '), 120);
@@ -331,20 +343,23 @@ async function problemRowsForRecord(rd: SessionRecordDoc): Promise<LessonHistory
                 const pa = pr as ProblemAiEval;
                 const parsed = parseAiEvalFillAnswers(p.fillAnswers);
                 const points = Array.isArray(pa.points) ? pa.points : [];
+                const rubricLeaves = flattenAiEvalRubricForScoring(points);
                 const pointScores = Array.isArray(parsed.pointScores) ? parsed.pointScores : [];
                 const pointReasons = Array.isArray(parsed.pointReasons) ? parsed.pointReasons : [];
-                selectedText = stripHtmlOneLine(parsed.answerText || '', 200);
-                const pointProcess = points.length
-                    ? points.map((pt, i) => {
+                const byId = parsed.slotAnswersById;
+                const orderedSlots = rubricLeaves.map((leaf) => String(byId?.[leaf.subPointId] ?? '').trim()).filter(Boolean);
+                selectedText = stripHtmlOneLine(orderedSlots.join('；'), 200);
+                const pointProcess = rubricLeaves.length
+                    ? rubricLeaves.map((leaf, i) => {
                         const earned = typeof pointScores[i] === 'number' ? pointScores[i] : 0;
-                        const full = typeof pt.score === 'number' ? pt.score : 0;
-                        const title = String(pt.title || '').trim() || `P${i + 1}`;
+                        const full = typeof leaf.max === 'number' ? leaf.max : 0;
+                        const title = String(leaf.title || '').trim() || `P${i + 1}`;
                         return `${title} ${earned}/${full}`;
                     }).join('； ')
                     : '';
-                const pointReasonLine = points.length
-                    ? points.map((pt, i) => {
-                        const title = String(pt.title || '').trim() || `P${i + 1}`;
+                const pointReasonLine = rubricLeaves.length
+                    ? rubricLeaves.map((leaf, i) => {
+                        const title = String(leaf.title || '').trim() || `P${i + 1}`;
                         const reason = String(pointReasons[i] || '').trim();
                         return reason ? `${title}: ${reason}` : '';
                     }).filter(Boolean).join('； ')
@@ -354,15 +369,15 @@ async function problemRowsForRecord(rd: SessionRecordDoc): Promise<LessonHistory
                     ...(pointReasonLine ? [`评测过程 · 评分原因: ${stripHtmlOneLine(pointReasonLine, 220)}`] : []),
                     ...(parsed.feedback ? [`评测过程 · 评语: ${stripHtmlOneLine(parsed.feedback, 220)}`] : []),
                 ];
-                const standards = points.length
-                    ? points.map((pt, i) => {
-                        const title = String(pt.title || '').trim() || `P${i + 1}`;
-                        const full = typeof pt.score === 'number' ? pt.score : 0;
+                const standards = rubricLeaves.length
+                    ? rubricLeaves.map((leaf, i) => {
+                        const title = String(leaf.title || '').trim() || `P${i + 1}`;
+                        const full = typeof leaf.max === 'number' ? leaf.max : 0;
                         return `${title}(${full})`;
                     }).join('； ')
                     : '';
                 const sumEarned = pointScores.reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0);
-                const sumFull = points.reduce((a, pt) => a + (typeof pt.score === 'number' ? pt.score : 0), 0);
+                const sumFull = aiEvalRubricSumMax(points);
                 const score100 = typeof parsed.score100 === 'number'
                     ? parsed.score100
                     : (typeof p.selected === 'number' ? Math.max(0, Math.min(100, Math.round(p.selected))) : undefined);

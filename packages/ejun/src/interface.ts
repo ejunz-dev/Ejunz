@@ -487,14 +487,30 @@ export interface ProblemSuperFlip extends ProblemCommon {
     columns: string[][];
 }
 
-/** AI-evaluated subjective question: learner submits text, AI returns score (0-100). */
-export interface ProblemAiEvalPoint {
+/** Sub-rubric under one AI eval point (scored leaf for AI prompt / gating). */
+export interface ProblemAiEvalSubPoint {
     id: string;
-    /** Visible name shown to learners in lesson UI. */
+    /** Visible name shown to learners (under parent point). */
     title: string;
-    /** Hidden evaluator instruction sent to AI scoring prompt. */
+    /** Evaluator instruction for this sub-point. */
     content: string;
     score: number;
+    /**
+     * Optional synonymous phrases that count as “expected wording” for loose automatic matching
+     * (in addition to {@link #content}); helps AI/hard-gate accept varied learner phrasing.
+     */
+    answerAliases?: string[];
+}
+
+/** Parent row: grouping title only; scoring text lives in {@link ProblemAiEvalSubPoint#content}. */
+export interface ProblemAiEvalPoint {
+    id: string;
+    /** Shown to learners; prefixed to each sub-point title in the rubric. */
+    title: string;
+    /** Ignored for totals when `subPoints` exist; kept for legacy / editor. */
+    score: number;
+    /** Sub-rubric; when present and non-empty, only leaves here are scored. */
+    subPoints?: ProblemAiEvalSubPoint[];
 }
 
 /** AI-evaluated subjective question: learner submits text, AI returns score. */

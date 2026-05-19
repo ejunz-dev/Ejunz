@@ -488,8 +488,18 @@ __langname: 简体中文
 'Problem ai eval stem placeholder': 请输入需要 AI 评测的题干
 'Problem ai eval points': 评测点
 'Problem ai eval point title placeholder': 评测点标题（学习中展示）
-'Problem ai eval point content placeholder': 评测内容（仅 AI 可见）
 'Problem ai eval add point': 新增评测点
+'Problem ai eval sub points': 子评测点
+'Problem ai eval add sub point': 新增子评测点
+'Problem ai eval sub point title placeholder': 子评测点标题（展示）
+'Problem ai eval sub point content placeholder': 子评测标准（AI 评分依据）
+'Problem ai eval need points': 至少需要一个带子评测点的评测点（points）
+'Problem ai eval sub point aliases hint': 同义答案（可选）：匹配即视为命中要点，便于容忍学员不同表述；每行一条。
+'Problem ai eval add alias': 添加同义表述
+'Problem ai eval alias input placeholder': 短语（如：第二个烟囱）
+'Problem ai eval slot placeholder': 针对该子评测点作答
+'Problem ai eval answer aliases label': 同义参考
+'Problem ai eval parent score hint': 父级分值不计入总分；满分以子评测点分值之和为准（可填 0）
 'Problem ai eval total score': 总分值
 'Problem ai eval point earned': 本点评分
 'Problem ai eval point standard content': 评测点标准内容
@@ -497,14 +507,14 @@ __langname: 简体中文
 'Problem ai eval earned total': 本次总得分
 'Problem ai eval pass score': 通过分
 'Problem ai eval max attempts': 最大尝试次数
-'Problem ai eval lesson hint': 学员提交文本后，系统会调用 AI 评分并给出反馈；达到通过分才算正确。
-'Problem ai eval answer placeholder': 在此输入你的作答内容...
+'Problem ai eval lesson hint': 学习中每个子评测点单独一格作答；程序与 AI 会按格对照标准与「同义答案」。须填满所有格才可提交。评测点（父级）之间顺序仍受规则约束，同组内子项顺序不限。达到通过分才算正确。
 'Problem ai eval evaluating': AI 评测中...
 'Problem ai eval failed': AI 评测失败，请稍后重试。
 'Problem ai eval invalid point scores': AI 未返回有效的逐点评分，请重试。
 'Problem ai eval invalid point reasons': AI 未返回有效的逐点评分原因，请重试。
-'Problem ai eval hard zero missing title': 未命中评测点标题，按规则该点记 0 分
-'Problem ai eval hard zero missing content': 命中评测点标题但未命中标准内容，按规则该点记 0 分
+'Problem ai eval hard zero missing content': 该格未命中标准或任一同义表述，按规则该点记 0 分
+'Problem ai eval hard zero empty slot': 该子评测点作答为空，按规则该点记 0 分
+'Problem ai eval hard zero wrong order': 评测点「{0}」未遵守各评测点之间的清单顺序（同一评测点内子项不强制顺序）；顺序不符时该评测点整组记 0 分
 'Problem reorder up': 上移
 'Problem reorder down': 下移
 'Problem reorder hint': 点击题目右上角「上移 / 下移」（在红色删除左侧）调整顺序；保存后生效。
