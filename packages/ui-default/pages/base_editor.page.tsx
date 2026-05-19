@@ -799,74 +799,13 @@ const EditableProblem = React.memo(({
   }, [model, problem, onUpdate]);
 
   const kind = problemKind(model);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isUploading, setIsUploading] = useState(false);
 
   const currentProblemTags = useMemo(() => getProblemTagList(model), [model]);
 
-  const imageUrl = model.imageUrl || '';
-  const imageNote = model.imageNote || '';
   const analysis = model.analysis || '';
 
-  const setCommon = (patch: Partial<Pick<Problem, 'imageUrl' | 'imageNote' | 'analysis' | 'title'>>) => {
+  const setCommon = (patch: Partial<Pick<Problem, 'analysis' | 'title'>>) => {
     setModel((m) => ({ ...m, ...patch } as Problem));
-  };
-
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    let ext: string;
-    const matches = file.type.match(/^image\/(png|jpg|jpeg|gif)$/i);
-    if (matches) {
-      [, ext] = matches;
-    } else {
-      Notification.error(i18n('Unsupported file type. Please upload an image (png, jpg, jpeg, gif).'));
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
-    }
-    setIsUploading(true);
-    try {
-      const filename = `${nanoid()}.${ext}`;
-      await uploadFiles(getBaseUrl('/files', docId), [file], {
-        filenameCallback: () => filename,
-      });
-      const url = getBaseUrl(`/${docId}/file/${encodeURIComponent(filename)}`, docId);
-      setCommon({ imageUrl: url });
-    } catch (error: any) {
-      Notification.error(`${i18n('Image upload failed')}: ${error.message || i18n('Unknown error')}`);
-    } finally {
-      setIsUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
-
-  const handlePreviewImage = async () => {
-    if (!imageUrl) return;
-    try {
-      const { InfoDialog } = await import('vj/components/dialog/index');
-      const $ = (await import('jquery')).default;
-      const { nanoid: nid } = await import('nanoid');
-      const { tpl } = await import('vj/utils');
-      const id = nid();
-      const dialog = new InfoDialog({
-        $body: tpl`<div class="typo"><img src="${imageUrl}" style="max-height: calc(80vh - 45px);"></img></div>`,
-        $action: [
-          tpl`<button class="rounded button" data-action="copy" id="copy-${id}">${i18n('Copy link')}</button>`,
-          tpl`<button class="rounded button" data-action="cancel">${i18n('Cancel')}</button>`,
-          tpl`<button class="primary rounded button" data-action="download">${i18n('Download')}</button>`,
-        ],
-      });
-      $(`#copy-${id}`).on('click', () => {
-        navigator.clipboard.writeText(imageUrl).then(() => {
-          Notification.success(i18n('Link copied to clipboard'));
-        });
-      });
-      const action = await dialog.open();
-      if (action === 'download') window.open(imageUrl, '_blank');
-    } catch (error) {
-      console.error('预览图片失败:', error);
-      Notification.error(i18n('Image preview failed'));
-    }
   };
 
   const onKindChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -1620,9 +1559,6 @@ const EditableProblem = React.memo(({
                         placeholder={i18n('Problem ai eval sub point content placeholder')}
                         style={{ ...inpStyle, width: '100%' }}
                       />
-                      <div style={{ fontSize: '10px', color: themeStyles.textSecondary, marginTop: 2 }}>
-                        {i18n('Problem ai eval sub point aliases hint')}
-                      </div>
                       {(Array.isArray(sp.answerAliases) ? sp.answerAliases : []).map((al, ai) => (
                         <div key={`al-${sp.id}-${ai}`} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <input
@@ -1693,8 +1629,9 @@ const EditableProblem = React.memo(({
                           cursor: 'pointer',
                           alignSelf: 'flex-start',
                         }}
+                        aria-label="+"
                       >
-                        {i18n('Problem ai eval add alias')}
+                        +
                       </button>
                     </div>
                   ))}
@@ -1799,9 +1736,6 @@ const EditableProblem = React.memo(({
                 style={{ ...inpStyle, width: 72 }}
               />
             </label>
-          </div>
-          <div style={{ fontSize: '11px', color: themeStyles.textTertiary, marginBottom: '2px' }}>
-            {i18n('Problem ai eval lesson hint')}
           </div>
         </>
       ) : kind === 'true_false' ? (
@@ -1917,61 +1851,6 @@ const EditableProblem = React.memo(({
         </>
       )}
 
-      <div style={{ marginBottom: '4px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: imageUrl ? '4px' : '0' }}>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
-            onChange={handleImageUpload}
-            style={{ display: 'none' }}
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading}
-            style={{
-              padding: '2px 8px',
-              fontSize: '11px',
-              borderRadius: '3px',
-              border: `1px solid ${themeStyles.accent}`,
-              background: isUploading ? themeStyles.textTertiary : themeStyles.accent,
-              color: themeStyles.textOnPrimary,
-              cursor: isUploading ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {isUploading ? i18n('Uploading...') : i18n('Upload image')}
-          </button>
-          {imageUrl ? (
-            <button
-              type="button"
-              onClick={handlePreviewImage}
-              style={{
-                padding: '2px 8px',
-                fontSize: '11px',
-                borderRadius: '3px',
-                border: `1px solid ${themeStyles.success}`,
-                background: themeStyles.success,
-                color: themeStyles.textOnPrimary,
-                cursor: 'pointer',
-              }}
-            >
-              {i18n('Preview image')}
-            </button>
-          ) : null}
-        </div>
-        {imageUrl ? (
-          <div style={{ marginTop: '4px' }}>
-            <input
-              type="text"
-              value={imageNote}
-              onChange={(e) => setCommon({ imageNote: e.target.value })}
-              placeholder={i18n('Image note (optional)')}
-              style={{ width: '100%', fontSize: '11px', padding: '3px 6px', boxSizing: 'border-box', ...inpStyle }}
-            />
-          </div>
-        ) : null}
-      </div>
       <div style={{ marginBottom: '4px' }}>
         <textarea
           value={analysis}
