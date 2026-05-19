@@ -111,17 +111,28 @@ function outlineProblemPreviewBlocks(
     const ae = p as ProblemAiEval;
     const stem = String(ae.stem || '').trim();
     const passScore = typeof ae.passScore === 'number' ? `通过分：${ae.passScore}` : '';
-    const points = Array.isArray(ae.points)
-      ? ae.points
-        .map((pt, i) => {
-          const title = String(pt?.title ?? '').trim();
-          if (!title) return '';
-          const score = typeof pt?.score === 'number' ? pt.score : 0;
-          return `${i + 1}. ${title}（${score}）`;
-        })
-        .filter(Boolean)
-      : [];
-    const answerHtml = [passScore, ...points].filter(Boolean).join('<br/>') || '—';
+    const points = Array.isArray(ae.points) ? ae.points : [];
+    const lines: string[] = [];
+    for (let i = 0; i < points.length; i++) {
+      const pt = points[i];
+      const title = String(pt?.title ?? '').trim();
+      const subs = Array.isArray(pt?.subPoints) ? pt!.subPoints! : [];
+      const nonEmptySubs = subs.filter((s) => {
+        const st = String(s?.title ?? '').trim();
+        const sc = String(s?.content ?? '').trim();
+        return !!(st || sc);
+      });
+      if (nonEmptySubs.length > 0) {
+        for (let j = 0; j < nonEmptySubs.length; j++) {
+          const s = nonEmptySubs[j];
+          const st = String(s?.title ?? '').trim();
+          const score = typeof s?.score === 'number' ? s.score : 0;
+          const label = title ? `${title} · ${st || `子项${j + 1}`}` : (st || `子项${j + 1}`);
+          lines.push(`${lines.length + 1}. ${label}（${score}）`);
+        }
+      }
+    }
+    const answerHtml = [passScore, ...lines].filter(Boolean).join('<br/>') || '—';
     return { kindLabel, titleLine, stemHtml: stem || '（AI评测）', answerHtml };
   }
   if (k === 'single') {

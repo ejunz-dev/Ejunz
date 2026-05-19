@@ -19,6 +19,7 @@ import type {
   ProblemMatching,
   ProblemSuperFlip,
   ProblemAiEval,
+  ProblemAiEvalSubPoint,
   ProblemKind,
 } from 'ejun/src/interface';
 import {
@@ -44,6 +45,7 @@ import {
   matchingColumnsNormalized,
   superFlipNormalized,
   getProblemTagList,
+  aiEvalRubricSumMax,
 } from 'ejun/src/model/problem';
 interface BaseNode {
   id: string;
@@ -1523,6 +1525,7 @@ const EditableProblem = React.memo(({
                       setModel({ ...m, points: pts });
                     }}
                     style={{ ...inpStyle, width: 86 }}
+                    title={Array.isArray(pt.subPoints) && pt.subPoints.length > 0 ? i18n('Problem ai eval parent score hint') : undefined}
                   />
                   <button
                     type="button"
@@ -1545,17 +1548,187 @@ const EditableProblem = React.memo(({
                     {i18n('Delete')}
                   </button>
                 </div>
-                <input
-                  value={pt.content}
-                  onChange={(e) => {
-                    const m = model as ProblemAiEval;
-                    const pts = Array.isArray(m.points) ? [...m.points] : [];
-                    pts[pi] = { ...pts[pi], content: e.target.value };
-                    setModel({ ...m, points: pts });
-                  }}
-                  placeholder={i18n('Problem ai eval point content placeholder')}
-                  style={{ ...inpStyle, width: '100%' }}
-                />
+                <div style={{ marginLeft: 4, paddingLeft: 8, borderLeft: `2px solid ${themeStyles.borderPrimary}` }}>
+                  <div style={{ fontSize: '10px', color: themeStyles.textSecondary, marginBottom: 4 }}>
+                    {i18n('Problem ai eval sub points')}
+                  </div>
+                  {(Array.isArray(pt.subPoints) ? pt.subPoints : []).map((sp, si) => (
+                    <div key={sp.id || `sub-${pi}-${si}`} style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <input
+                          value={sp.title ?? ''}
+                          onChange={(e) => {
+                            const m = model as ProblemAiEval;
+                            const pts = [...(m.points || [])];
+                            const subs = [...(pts[pi].subPoints || [])];
+                            subs[si] = { ...subs[si], title: e.target.value };
+                            pts[pi] = { ...pts[pi], subPoints: subs };
+                            setModel({ ...m, points: pts });
+                          }}
+                          placeholder={i18n('Problem ai eval sub point title placeholder')}
+                          style={{ ...inpStyle, flex: 1 }}
+                        />
+                        <input
+                          type="number"
+                          min={0}
+                          max={1000}
+                          value={typeof sp.score === 'number' ? sp.score : 0}
+                          onChange={(e) => {
+                            const m = model as ProblemAiEval;
+                            const pts = [...(m.points || [])];
+                            const subs = [...(pts[pi].subPoints || [])];
+                            const n = parseInt(e.target.value, 10);
+                            subs[si] = { ...subs[si], score: Number.isFinite(n) ? Math.max(0, Math.min(1000, n)) : 0 };
+                            pts[pi] = { ...pts[pi], subPoints: subs };
+                            setModel({ ...m, points: pts });
+                          }}
+                          style={{ ...inpStyle, width: 72 }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const m = model as ProblemAiEval;
+                            const pts = [...(m.points || [])];
+                            const subs = [...(pts[pi].subPoints || [])];
+                            subs.splice(si, 1);
+                            pts[pi] = { ...pts[pi], subPoints: subs.length ? subs : [] };
+                            setModel({ ...m, points: pts });
+                          }}
+                          style={{
+                            padding: '2px 6px',
+                            fontSize: '10px',
+                            borderRadius: '3px',
+                            border: `1px solid ${themeStyles.danger}`,
+                            background: themeStyles.bgPrimary,
+                            color: themeStyles.danger,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {i18n('Delete')}
+                        </button>
+                      </div>
+                      <input
+                        value={sp.content ?? ''}
+                        onChange={(e) => {
+                          const m = model as ProblemAiEval;
+                          const pts = [...(m.points || [])];
+                          const subs = [...(pts[pi].subPoints || [])];
+                          subs[si] = { ...subs[si], content: e.target.value };
+                          pts[pi] = { ...pts[pi], subPoints: subs };
+                          setModel({ ...m, points: pts });
+                        }}
+                        placeholder={i18n('Problem ai eval sub point content placeholder')}
+                        style={{ ...inpStyle, width: '100%' }}
+                      />
+                      <div style={{ fontSize: '10px', color: themeStyles.textSecondary, marginTop: 2 }}>
+                        {i18n('Problem ai eval sub point aliases hint')}
+                      </div>
+                      {(Array.isArray(sp.answerAliases) ? sp.answerAliases : []).map((al, ai) => (
+                        <div key={`al-${sp.id}-${ai}`} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <input
+                            value={al}
+                            onChange={(e) => {
+                              const m = model as ProblemAiEval;
+                              const pts = [...(m.points || [])];
+                              const subs = [...(pts[pi].subPoints || [])];
+                              const als = [...(subs[si].answerAliases || [])];
+                              als[ai] = e.target.value;
+                              subs[si] = { ...subs[si], answerAliases: als };
+                              pts[pi] = { ...pts[pi], subPoints: subs };
+                              setModel({ ...m, points: pts });
+                            }}
+                            placeholder={i18n('Problem ai eval alias input placeholder')}
+                            style={{ ...inpStyle, flex: 1 }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const m = model as ProblemAiEval;
+                              const pts = [...(m.points || [])];
+                              const subs = [...(pts[pi].subPoints || [])];
+                              const als = [...(subs[si].answerAliases || [])];
+                              als.splice(ai, 1);
+                              subs[si] = {
+                                ...subs[si],
+                                answerAliases: als.length ? als : undefined,
+                              };
+                              pts[pi] = { ...pts[pi], subPoints: subs };
+                              setModel({ ...m, points: pts });
+                            }}
+                            style={{
+                              padding: '2px 6px',
+                              fontSize: '10px',
+                              borderRadius: '3px',
+                              border: `1px solid ${themeStyles.danger}`,
+                              background: themeStyles.bgPrimary,
+                              color: themeStyles.danger,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {i18n('Delete')}
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const m = model as ProblemAiEval;
+                          const pts = [...(m.points || [])];
+                          const subs = [...(pts[pi].subPoints || [])];
+                          const cur = subs[si];
+                          const als = [...(cur.answerAliases || [])];
+                          if (als.length >= 24) return;
+                          als.push('');
+                          subs[si] = { ...cur, answerAliases: als };
+                          pts[pi] = { ...pts[pi], subPoints: subs };
+                          setModel({ ...m, points: pts });
+                        }}
+                        style={{
+                          padding: '2px 8px',
+                          fontSize: '10px',
+                          borderRadius: '3px',
+                          border: `1px solid ${themeStyles.border}`,
+                          background: themeStyles.bgPrimary,
+                          color: themeStyles.textSecondary,
+                          cursor: 'pointer',
+                          alignSelf: 'flex-start',
+                        }}
+                      >
+                        {i18n('Problem ai eval add alias')}
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const m = model as ProblemAiEval;
+                      const pts = [...(m.points || [])];
+                      const cur = pts[pi];
+                      const subs = [...(cur.subPoints || [])];
+                      const sp: ProblemAiEvalSubPoint = {
+                        id: `sub_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                        title: '',
+                        content: '',
+                        score: 5,
+                        answerAliases: [],
+                      };
+                      subs.push(sp);
+                      pts[pi] = { ...cur, subPoints: subs };
+                      setModel({ ...m, points: pts });
+                    }}
+                    style={{
+                      padding: '2px 8px',
+                      fontSize: '11px',
+                      borderRadius: '3px',
+                      border: `1px solid ${themeStyles.border}`,
+                      background: themeStyles.bgPrimary,
+                      color: themeStyles.textSecondary,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {i18n('Problem ai eval add sub point')}
+                  </button>
+                </div>
               </div>
             ))}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
@@ -1564,7 +1737,18 @@ const EditableProblem = React.memo(({
                 onClick={() => {
                   const m = model as ProblemAiEval;
                   const pts = Array.isArray(m.points) ? [...m.points] : [];
-                  pts.push({ id: `pt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, title: '', content: '', score: 10 });
+                  pts.push({
+                    id: `pt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                    title: '',
+                    score: 0,
+                    subPoints: [{
+                      id: `sub_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                      title: '',
+                      content: '',
+                      score: 10,
+                      answerAliases: [],
+                    }],
+                  });
                   setModel({ ...m, points: pts });
                 }}
                 style={{
@@ -1580,10 +1764,7 @@ const EditableProblem = React.memo(({
                 {i18n('Problem ai eval add point')}
               </button>
               <span style={{ fontSize: '11px', color: themeStyles.textSecondary }}>
-                {i18n('Problem ai eval total score')}: {
-                  ((Array.isArray((model as ProblemAiEval).points) ? (model as ProblemAiEval).points : [])
-                    .reduce((sum, x) => sum + (typeof x?.score === 'number' ? x.score : 0), 0))
-                }
+                {i18n('Problem ai eval total score')}: {aiEvalRubricSumMax(Array.isArray((model as ProblemAiEval).points) ? (model as ProblemAiEval).points : [])}
               </span>
             </div>
           </div>
@@ -9850,25 +10031,60 @@ Reply with a JSON code block only for executable operations, using this shape:
               errors.push('create_problem ai_eval：缺少 stem');
               continue;
             }
-            const pointsRaw = Array.isArray(op.points) ? op.points : (Array.isArray(op.evalPoints) ? op.evalPoints : []);
+            const pointsRaw = Array.isArray(op.points) ? op.points : [];
             const points = pointsRaw
               .map((x: any, i: number) => {
                 if (!x || typeof x !== 'object') return null;
                 const titleRaw = typeof x.title === 'string' ? x.title.trim() : '';
-                const contentRaw = typeof x.content === 'string' ? x.content.trim() : '';
-                const title = titleRaw || contentRaw;
-                const content = contentRaw || titleRaw;
-                if (!title || !content) return null;
-                const scoreRaw = Number(x.score);
-                return {
-                  id: typeof x.id === 'string' && x.id.trim() ? x.id.trim() : `pt_${i + 1}`,
-                  title,
-                  content,
-                  score: Number.isFinite(scoreRaw) ? Math.max(0, Math.min(1000, Math.round(scoreRaw))) : 10,
-                };
+                const id = typeof x.id === 'string' && x.id.trim() ? x.id.trim() : `pt_${i + 1}`;
+                const subRaw = x.subPoints;
+                let subPointsArr = Array.isArray(subRaw)
+                  ? subRaw
+                      .map((s: any, j: number) => {
+                        if (!s || typeof s !== 'object') return null;
+                        const st = typeof s.title === 'string' ? s.title.trim() : '';
+                        const sc = typeof s.content === 'string' ? s.content.trim() : '';
+                        const tit = st || sc;
+                        const cont = sc || st;
+                        if (!tit || !cont) return null;
+                        const sr = Number(s.score);
+                        const aliasesFrom = s.answerAliases;
+                        let answerAliases: string[] | undefined;
+                        if (Array.isArray(aliasesFrom)) {
+                          const seen = new Set<string>();
+                          const als: string[] = [];
+                          for (const a of aliasesFrom) {
+                            if (typeof a !== 'string') continue;
+                            const t = a.trim();
+                            if (!t || t.length > 200) continue;
+                            if (seen.has(t)) continue;
+                            seen.add(t);
+                            als.push(t);
+                            if (als.length >= 24) break;
+                          }
+                          if (als.length) answerAliases = als;
+                        }
+                        return {
+                          id: typeof s.id === 'string' && s.id.trim() ? s.id.trim() : `pt_${i + 1}_sub_${j + 1}`,
+                          title: tit,
+                          content: cont,
+                          score: Number.isFinite(sr) ? Math.max(0, Math.min(1000, Math.round(sr))) : 10,
+                          ...(answerAliases ? { answerAliases } : {}),
+                        };
+                      })
+                      .filter(Boolean)
+                  : [];
+                if (!subPointsArr.length) return null;
+                const title = titleRaw || `Point ${i + 1}`;
+                return { id, title, score: 0, subPoints: subPointsArr };
               })
               .filter(Boolean);
-            const passScoreRaw = Number(op.passScore ?? op.threshold ?? 60);
+            if (!points.length) {
+              Notification.error(i18n('Problem ai eval need points'));
+              errors.push('create_problem ai_eval：缺少 points');
+              continue;
+            }
+            const passScoreRaw = Number(op.passScore ?? 60);
             const maxAttemptsRaw = Number(op.maxAttempts ?? 3);
             newProblem = migrateRawProblem({
               pid,
