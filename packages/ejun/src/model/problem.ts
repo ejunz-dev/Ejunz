@@ -6,6 +6,7 @@
 import type {
     ProblemAiEval,
     ProblemAiEvalPoint,
+    ProblemAiEvalSubPoint,
     Problem,
     ProblemCommon,
     ProblemFillBlank,
@@ -22,39 +23,77 @@ const DEFAULT_OPTION_SLOTS = 4;
 const MIN_SLOTS = 2;
 const MAX_SLOTS = 8;
 const AI_EVAL_POINT_MAX = 20;
+const AI_EVAL_SUB_POINT_MAX = 12;
+const AI_EVAL_SUB_POINT_ALIAS_MAX = 24;
+const AI_EVAL_ALIAS_STR_MAX = 200;
 
 function normalizeAiEvalPointScore(raw: unknown, fallback = 10): number {
     const n = typeof raw === 'number' && Number.isFinite(raw) ? Math.round(raw) : fallback;
     return Math.max(0, Math.min(1000, n));
 }
 
-function normalizeAiEvalPoints(raw: unknown, rubricRaw?: unknown): ProblemAiEvalPoint[] {
-    const out: ProblemAiEvalPoint[] = [];
-    if (Array.isArray(raw)) {
-        for (let i = 0; i < raw.length && out.length < AI_EVAL_POINT_MAX; i++) {
-            const it = raw[i];
-            if (!it || typeof it !== 'object' || Array.isArray(it)) continue;
-            const rec = it as Record<string, unknown>;
-            const titleRaw = typeof rec.title === 'string' ? rec.title.trim() : '';
-            const contentRaw = typeof rec.content === 'string' ? rec.content.trim() : '';
-            const title = titleRaw || contentRaw;
-            const content = contentRaw || titleRaw;
-            if (!title || !content) continue;
-            const idRaw = typeof rec.id === 'string' && rec.id.trim() ? rec.id.trim() : `pt_${i + 1}`;
-            out.push({
-                id: idRaw,
-                title,
-                content,
-                score: normalizeAiEvalPointScore(rec.score, 10),
-            });
-        }
+function normalizeAiEvalAnswerAliases(raw: unknown): string[] {
+    if (!Array.isArray(raw)) return [];
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const a of raw) {
+        if (typeof a !== 'string') continue;
+        const t = a.trim();
+        if (!t || t.length > AI_EVAL_ALIAS_STR_MAX) continue;
+        if (seen.has(t)) continue;
+        seen.add(t);
+        out.push(t);
+        if (out.length >= AI_EVAL_SUB_POINT_ALIAS_MAX) break;
     }
-    if (!out.length && typeof rubricRaw === 'string' && rubricRaw.trim()) {
+    return out;
+}
+
+function normalizeAiEvalSubPoints(raw: unknown, pointIndex: number): ProblemAiEvalSubPoint[] {
+    const out: ProblemAiEvalSubPoint[] = [];
+    if (!Array.isArray(raw)) return out;
+    for (let j = 0; j < raw.length && out.length < AI_EVAL_SUB_POINT_MAX; j++) {
+        const it = raw[j];
+        if (!it || typeof it !== 'object' || Array.isArray(it)) continue;
+        const rec = it as Record<string, unknown>;
+        const titleRaw = typeof rec.title === 'string' ? rec.title.trim() : '';
+        const contentRaw = typeof rec.content === 'string' ? rec.content.trim() : '';
+        const title = titleRaw || contentRaw;
+        const content = contentRaw || titleRaw;
+        if (!title || !content) continue;
+        const idRaw = typeof rec.id === 'string' && rec.id.trim()
+            ? rec.id.trim()
+            : `pt_${pointIndex + 1}_sub_${j + 1}`;
+        const answerAliases = normalizeAiEvalAnswerAliases(rec.answerAliases);
+        const row: ProblemAiEvalSubPoint = {
+            id: idRaw,
+            title,
+            content,
+            score: normalizeAiEvalPointScore(rec.score, 10),
+        };
+        if (answerAliases.length) row.answerAliases = answerAliases;
+        out.push(row);
+    }
+    return out;
+}
+
+function normalizeAiEvalPoints(raw: unknown): ProblemAiEvalPoint[] {
+    const out: ProblemAiEvalPoint[] = [];
+    if (!Array.isArray(raw)) return out;
+    for (let i = 0; i < raw.length && out.length < AI_EVAL_POINT_MAX; i++) {
+        const it = raw[i];
+        if (!it || typeof it !== 'object' || Array.isArray(it)) continue;
+        const rec = it as Record<string, unknown>;
+        const titleRaw = typeof rec.title === 'string' ? rec.title.trim() : '';
+        const idRaw = typeof rec.id === 'string' && rec.id.trim() ? rec.id.trim() : `pt_${i + 1}`;
+        const subPoints = normalizeAiEvalSubPoints(rec.subPoints, i);
+        if (!subPoints.length) continue;
+
+        const title = titleRaw || `Point ${i + 1}`;
         out.push({
-            id: 'pt_1',
-            title: rubricRaw.trim(),
-            content: rubricRaw.trim(),
-            score: 100,
+            id: idRaw,
+            title,
+            score: 0,
+            subPoints,
         });
     }
     return out;
@@ -412,10 +451,7 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
                       : isSuperFlipProblem(prev)
                         ? superFlipStemFallback(prev)
                         : '';
-        const points = normalizeAiEvalPoints(
-            (prev as { points?: unknown }).points,
-            (prev as { rubric?: unknown }).rubric,
-        );
+        const points = normalizeAiEvalPoints((prev as { points?: unknown }).points);
         const passScoreRaw = (prev as { passScore?: unknown }).passScore;
         const maxAttemptsRaw = (prev as { maxAttempts?: unknown }).maxAttempts;
         const passScore = typeof passScoreRaw === 'number' && Number.isFinite(passScoreRaw)
@@ -668,7 +704,7 @@ export function migrateRawProblem(raw: Record<string, unknown>): Problem {
     }
     if (t === 'ai_eval') {
         const stem = typeof raw.stem === 'string' ? raw.stem : '';
-        const points = normalizeAiEvalPoints(raw.points, raw.rubric);
+        const points = normalizeAiEvalPoints(raw.points);
         const passScoreRaw = typeof raw.passScore === 'number' && Number.isFinite(raw.passScore)
             ? Math.round(raw.passScore)
             : 60;
@@ -724,5 +760,191 @@ export function migrateRawProblem(raw: Record<string, unknown>): Problem {
         answer: Math.max(0, Math.min(filled.length - 1, ans)),
         optionSlots: slots,
     };
+}
+
+/** Scoring leaf: one row in AI rubric (top-level point or a sub-point). */
+export type AiEvalRubricLeaf = {
+    title: string;
+    content: string;
+    max: number;
+    /** Index into {@link ProblemAiEval} `points` for order / grouping rules. */
+    parentPointIndex: number;
+    /** Parent group title only (loose match; may be empty). */
+    parentTitle: string;
+    /** Sub-point label as configured (loose match; may be empty). */
+    subTitle: string;
+    /** Stable id of the scored sub-point (learner answer slot key). */
+    subPointId: string;
+    /** Extra phrases that match like {@link #content} for loose gating. */
+    answerAliases: string[];
+};
+
+/** Same normalization as lesson AI-eval gates (loose substring match). */
+export function normalizeAiEvalMatchText(s: string): string {
+    return String(s ?? '')
+        .toLowerCase()
+        .replace(/[\s,.;:!?'"`~@#$%^&*()\-_=+\[\]{}\\|/<>，。；：！？、（）《》【】“”‘’·…]+/g, '');
+}
+
+export function aiEvalContainsLoose(haystack: string, needle: string): boolean {
+    const h = normalizeAiEvalMatchText(haystack);
+    const n = normalizeAiEvalMatchText(needle);
+    if (!h || !n) return false;
+    return h.includes(n);
+}
+
+/**
+ * Slot rubric match: answer contains the expected phrase, OR (Chinese-style) answer is a shorter
+ * substring of the rubric phrase so omissions like 「箱子」→「箱」 still count as the same point.
+ */
+function aiEvalSlotPhraseMatches(slot: string, needle: string): boolean {
+    if (aiEvalContainsLoose(slot, needle)) return true;
+    const h = normalizeAiEvalMatchText(slot);
+    const n = normalizeAiEvalMatchText(needle);
+    if (!h || !n) return false;
+    if (h.length < 2) return false;
+    return n.includes(h);
+}
+
+/** Learner slot must loosely hit rubric {@link ProblemAiEvalSubPoint#content} or any {@link ProblemAiEvalSubPoint#answerAliases}. */
+export function aiEvalSlotMatchesRubric(slotText: string, content: string, aliases: string[] | undefined): boolean {
+    const slot = String(slotText ?? '').trim();
+    if (!slot) return false;
+    const needles = [String(content ?? '').trim(), ...(aliases ?? []).map((x) => String(x ?? '').trim())].filter(Boolean);
+    for (const needle of needles) {
+        if (aiEvalSlotPhraseMatches(slot, needle)) return true;
+    }
+    return false;
+}
+
+function aiEvalLooseFirstIndex(haystack: string, needle: string): number {
+    const h = normalizeAiEvalMatchText(haystack);
+    const n = normalizeAiEvalMatchText(needle);
+    if (!n) return -1;
+    return h.indexOf(n);
+}
+
+/** Like {@link aiEvalLooseFirstIndex}, but if the rubric phrase is not found, try dropping 1–2 trailing chars (learner shortenings). */
+function aiEvalLooseFirstIndexRelaxed(haystack: string, needle: string): number {
+    const idx = aiEvalLooseFirstIndex(haystack, needle);
+    if (idx >= 0) return idx;
+    const h = normalizeAiEvalMatchText(haystack);
+    const n = normalizeAiEvalMatchText(needle);
+    if (!h || !n || n.length < 3) return -1;
+    for (let drop = 1; drop <= 2 && n.length - drop >= 2; drop++) {
+        const truncated = n.slice(0, n.length - drop);
+        const j = h.indexOf(truncated);
+        if (j >= 0) return j;
+    }
+    return -1;
+}
+
+/**
+ * First index in normalized answer for ordering: prefer content, then sub label, then full line title
+ * (avoids using parent alone when several sub-points share one parent).
+ */
+function aiEvalLeafOrderAnchorPos(answerText: string, leaf: AiEvalRubricLeaf): number {
+    const c = String(leaf.content ?? '').trim();
+    const aliases = Array.isArray(leaf.answerAliases) ? leaf.answerAliases : [];
+    const sub = String(leaf.subTitle ?? '').trim();
+    const full = String(leaf.title ?? '').trim();
+    const tries = [c, ...aliases.map((x) => String(x ?? '').trim()).filter(Boolean), sub, full].filter((x) => !!x);
+    let best = Number.MAX_SAFE_INTEGER;
+    for (const t of tries) {
+        const idx = aiEvalLooseFirstIndexRelaxed(answerText, t);
+        if (idx >= 0 && idx < best) best = idx;
+    }
+    return best;
+}
+
+/**
+ * Top-level evaluation points ({@link ProblemAiEvalPoint} rows) must appear in rubric order.
+ * Order between **sub-points inside the same parent** is not enforced.
+ * Uses the earliest loose match among each parent's eligible leaves (content, then sub-title, then full title).
+ *
+ * @returns parent `points` indices whose entire group must score 0 due to order violation.
+ */
+export function aiEvalParentIndicesWithOrderViolation(
+    leaves: AiEvalRubricLeaf[],
+    eligible: boolean[],
+    answerText: string,
+): Set<number> {
+    const bad = new Set<number>();
+    if (!leaves.length || eligible.length !== leaves.length) return bad;
+
+    const titlePos = (leaf: AiEvalRubricLeaf): number => aiEvalLeafOrderAnchorPos(answerText, leaf);
+
+    const byParent = new Map<number, number[]>();
+    for (let i = 0; i < leaves.length; i++) {
+        const p = leaves[i].parentPointIndex;
+        if (!byParent.has(p)) byParent.set(p, []);
+        byParent.get(p)!.push(i);
+    }
+
+    const maxParent = Math.max(...leaves.map((l) => l.parentPointIndex), 0);
+    let lastParentFirst = -1;
+    for (let p = 0; p <= maxParent; p++) {
+        const idxs = byParent.get(p);
+        if (!idxs) continue;
+        let fp = Number.MAX_SAFE_INTEGER;
+        for (const i of idxs) {
+            if (!eligible[i]) continue;
+            fp = Math.min(fp, titlePos(leaves[i]));
+        }
+        if (fp === Number.MAX_SAFE_INTEGER) continue;
+        if (fp < lastParentFirst) bad.add(p);
+        lastParentFirst = fp;
+    }
+
+    return bad;
+}
+
+/**
+ * Flatten AI-eval rubric for scoring: only {@link ProblemAiEvalSubPoint} rows are scored;
+ * the parent title prefixes each sub's display title.
+ */
+export function flattenAiEvalRubricForScoring(points: ProblemAiEvalPoint[]): AiEvalRubricLeaf[] {
+    const pts = Array.isArray(points) ? points : [];
+    const out: AiEvalRubricLeaf[] = [];
+    for (let pi = 0; pi < pts.length; pi++) {
+        const pt = pts[pi];
+        const subs = Array.isArray(pt.subPoints) ? pt.subPoints : [];
+        const nonEmptySubs = subs.filter((s) => {
+            if (!s || typeof s !== 'object') return false;
+            const t = String((s as ProblemAiEvalSubPoint).title ?? '').trim();
+            const c = String((s as ProblemAiEvalSubPoint).content ?? '').trim();
+            return !!(t || c);
+        }) as ProblemAiEvalSubPoint[];
+        const parentTitle = String(pt.title ?? '').trim();
+        for (const s of nonEmptySubs) {
+            const st = String(s.title ?? '').trim();
+            const sc = String(s.content ?? '').trim();
+            const title = st || sc;
+            const content = sc || st;
+            const max = typeof s.score === 'number' && Number.isFinite(s.score)
+                ? Math.max(0, Math.round(s.score))
+                : 0;
+            const displayTitle = parentTitle ? `${parentTitle} · ${title}` : title;
+            const subId = String((s as ProblemAiEvalSubPoint).id ?? '').trim()
+                || `pt_${pi + 1}_sub_${out.length + 1}`;
+            const answerAliases = normalizeAiEvalAnswerAliases((s as ProblemAiEvalSubPoint).answerAliases);
+            out.push({
+                title: displayTitle,
+                content,
+                max,
+                parentPointIndex: pi,
+                parentTitle,
+                subTitle: st,
+                subPointId: subId,
+                answerAliases,
+            });
+        }
+    }
+    return out;
+}
+
+/** Sum of max scores over all rubric leaves (for UI totals). */
+export function aiEvalRubricSumMax(points: ProblemAiEvalPoint[]): number {
+    return flattenAiEvalRubricForScoring(points).reduce((a, x) => a + x.max, 0);
 }
 

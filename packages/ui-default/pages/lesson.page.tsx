@@ -21,7 +21,12 @@ import {
   superFlipNormalized,
   SUPER_FLIP_COL_MIN,
   SUPER_FLIP_ROW_MIN,
+  flattenAiEvalRubricForScoring,
+  aiEvalRubricSumMax,
+  aiEvalSlotMatchesRubric,
+  aiEvalParentIndicesWithOrderViolation,
 } from 'ejun/src/model/problem';
+import type { AiEvalRubricLeaf } from 'ejun/src/model/problem';
 
 // Cache keys aligned with base outline (shared image Cache API).
 const BASE_OUTLINE_CARD_CACHE_PREFIX = 'base-outline-card-';
@@ -64,6 +69,8 @@ type LessonPreviousStackEntry = {
   selectedMulti: number[];
   selectedTf: 0 | 1 | null;
   fillBlankDraft: string[];
+  /** AI subjective: one text slot per rubric sub-point id. */
+  aiEvalSlotDraft: Record<string, string>;
   matchingSelections: Array<Array<number | null>>;
   matchingShuffleOrders: number[][];
   flipStage: 'a' | 'b';
@@ -109,6 +116,16 @@ function superFlipAllFilledCellsRevealed(columns: string[][], revealed: boolean[
     }
   }
   return true;
+}
+
+/** One learner line per rubric leaf, for AI prompt and parent-order heuristics. */
+function buildAiEvalComposedAnswer(leaves: AiEvalRubricLeaf[], slotDraft: Record<string, string>): string {
+  return leaves
+    .map((leaf, idx) => {
+      const slot = String(slotDraft[leaf.subPointId] ?? '').trim();
+      return `${idx + 1}. ${String(leaf.title || '').trim()}: ${slot}`;
+    })
+    .join('\n');
 }
 
 function lessonProblemKindLabel(k: ReturnType<typeof problemKind>): string {
@@ -1114,7 +1131,7 @@ function LessonPage() {
   /** `superFlipRevealed[col][row]` — body cell revealed in super-flip table. */
   const [superFlipRevealed, setSuperFlipRevealed] = useState<boolean[][]>([]);
   const [superFlipMarkedOk, setSuperFlipMarkedOk] = useState<boolean | null>(null);
-  const [aiEvalAnswerDraft, setAiEvalAnswerDraft] = useState('');
+  const [aiEvalSlotDraft, setAiEvalSlotDraft] = useState<Record<string, string>>({});
   const [aiEvalSubmitting, setAiEvalSubmitting] = useState(false);
   const [aiEvalFeedbackByPid, setAiEvalFeedbackByPid] = useState<Record<string, string>>({});
   const [aiEvalLastScoreByPid, setAiEvalLastScoreByPid] = useState<Record<string, number>>({});
@@ -1421,7 +1438,7 @@ function LessonPage() {
     setSelectedAnswer(null);
     setSelectedMulti([]);
     setSelectedTf(null);
-    setAiEvalAnswerDraft('');
+    setAiEvalSlotDraft({});
     setFlipStage('a');
     setFlipHintOpen(false);
     setIsAnswered(false);
@@ -1476,7 +1493,7 @@ function LessonPage() {
     setSelectedAnswer(null);
     setSelectedMulti([]);
     setSelectedTf(null);
-    setAiEvalAnswerDraft('');
+    setAiEvalSlotDraft({});
     setFlipStage('a');
     setFlipHintOpen(false);
     setIsAnswered(false);
@@ -2315,7 +2332,22 @@ function LessonPage() {
       return i18n('N/A');
     }
     if (k === 'ai_eval') {
-      if (h.fillAnswers?.[0]) return String(h.fillAnswers[0]);
+      const lines = Array.isArray(h.fillAnswers) ? h.fillAnswers : [];
+      for (const line of lines) {
+        const s = String(line ?? '').trim();
+        if (s.startsWith('aiEvalSlots:')) {
+          try {
+            const j = JSON.parse(s.slice('aiEvalSlots:'.length).trim()) as { byId?: Record<string, string> };
+            const byId = j?.byId && typeof j.byId === 'object' ? j.byId : null;
+            if (byId) {
+              const texts = Object.values(byId).map((t) => String(t ?? '').trim()).filter(Boolean);
+              if (texts.length) return texts.join('；') || i18n('N/A');
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+      }
       return i18n('N/A');
     }
     if (k === 'matching') {
@@ -2435,6 +2467,7 @@ function LessonPage() {
       setFillBlankDraft([...r.fillBlankDraft]);
       setMatchingSelections(r.matchingSelections.map((row) => [...row]));
       setMatchingShuffleOrders(r.matchingShuffleOrders.map((row) => [...row]));
+      setAiEvalSlotDraft({ ...(r.aiEvalSlotDraft ?? {}) });
       setFlipStage(r.flipStage);
       setFlipHintOpen(r.flipHintOpen);
       setSuperFlipRevealed(r.superFlipRevealed.map((col) => [...col]));
@@ -2453,7 +2486,13 @@ function LessonPage() {
     setSelectedAnswer(null);
     setSelectedMulti([]);
     setSelectedTf(null);
-    setAiEvalAnswerDraft('');
+    if (k === 'ai_eval') {
+      const pe = currentProblem as ProblemAiEval;
+      const leaves = flattenAiEvalRubricForScoring(Array.isArray(pe.points) ? pe.points : []);
+      setAiEvalSlotDraft(Object.fromEntries(leaves.map((l) => [l.subPointId, ''])));
+    } else {
+      setAiEvalSlotDraft({});
+    }
     setFlipStage('a');
     setFlipHintOpen(false);
     setFillBlankDraft(
@@ -2532,6 +2571,7 @@ function LessonPage() {
       selectedMulti: [...selectedMulti],
       selectedTf,
       fillBlankDraft: [...fillBlankDraft],
+      aiEvalSlotDraft: { ...aiEvalSlotDraft },
       matchingSelections: matchingSelections.map((row) => [...row]),
       matchingShuffleOrders: matchingShuffleOrders.map((row) => [...row]),
       flipStage,
@@ -2552,6 +2592,7 @@ function LessonPage() {
     selectedMulti,
     selectedTf,
     fillBlankDraft,
+    aiEvalSlotDraft,
     matchingSelections,
     matchingShuffleOrders,
     flipStage,
@@ -2694,7 +2735,7 @@ function LessonPage() {
     setSelectedAnswer(null);
     setSelectedMulti([]);
     setSelectedTf(null);
-    setAiEvalAnswerDraft('');
+    setAiEvalSlotDraft({});
     setFlipStage('a');
     setFlipHintOpen(false);
     setFillBlankDraft([]);
@@ -2853,90 +2894,83 @@ function LessonPage() {
     return { score, feedback, pointScores, pointReasons };
   };
 
-  const normalizeAiEvalMatchText = (s: string): string =>
-    String(s ?? '')
-      .toLowerCase()
-      .replace(/[\s,.;:!?'"`~@#$%^&*()\-_=+\[\]{}\\|/<>，。；：！？、（）《》【】“”‘’·…]+/g, '');
-
-  const aiEvalContainsLoose = (haystack: string, needle: string): boolean => {
-    const h = normalizeAiEvalMatchText(haystack);
-    const n = normalizeAiEvalMatchText(needle);
-    if (!h || !n) return false;
-    return h.includes(n);
-  };
-
   const handleAiEvalSubmit = async () => {
     if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'ai_eval' || aiEvalSubmitting) return;
     const pe = currentProblem as ProblemAiEval;
-    const answerText = aiEvalAnswerDraft.trim();
-    if (!answerText) return;
+    const points = Array.isArray(pe.points) ? pe.points : [];
+    const rubricLeaves = flattenAiEvalRubricForScoring(points);
+    const allFilled = rubricLeaves.length > 0
+      && rubricLeaves.every((l) => String(aiEvalSlotDraft[l.subPointId] ?? '').trim().length > 0);
+    if (!allFilled) return;
+    const answerText = buildAiEvalComposedAnswer(rubricLeaves, aiEvalSlotDraft);
     const passScore = typeof pe.passScore === 'number' ? Math.max(0, Math.min(100, pe.passScore)) : 60;
     const maxAttempts = typeof pe.maxAttempts === 'number' ? Math.max(1, Math.min(20, pe.maxAttempts)) : 3;
     const problemId = pe.pid;
     const currentAttempts = (problemAttempts[problemId] || 0) + 1;
     setAiEvalSubmitting(true);
     try {
-      const points = Array.isArray(pe.points) ? pe.points : [];
-      const pointLines = points
-        .map((pt, idx) => {
-          const title = String(pt?.title ?? '').trim();
-          const content = String(pt?.content ?? '').trim();
+      const pointLines = rubricLeaves
+        .map((leaf, idx) => {
+          const title = String(leaf.title ?? '').trim();
+          const content = String(leaf.content ?? '').trim();
           if (!content) return '';
-          const score = typeof pt?.score === 'number' && Number.isFinite(pt.score) ? Math.max(0, Math.round(pt.score)) : 0;
-          return `${idx + 1}. ${title || `Point ${idx + 1}`}: ${content} (${score})`;
+          const score = typeof leaf.max === 'number' && Number.isFinite(leaf.max) ? Math.max(0, Math.round(leaf.max)) : 0;
+          const als = Array.isArray(leaf.answerAliases) && leaf.answerAliases.length
+            ? ` [synonyms also acceptable: ${leaf.answerAliases.join('； ')}]`
+            : '';
+          return `${idx + 1}. ${title || `Point ${idx + 1}`}: ${content}${als} (${score})`;
         })
         .filter(Boolean);
       const prompt = [
         'You are grading one learner answer.',
         'Return strict JSON only: {"score": <0-100 integer>, "feedback": "<short feedback>", "pointScores": [<earned score per point>], "pointReasons": ["<reason per point>"]}',
         `Question: ${pe.stem || ''}`,
-        pointLines.length ? `Evaluation points:\n${pointLines.join('\n')}` : '',
+        pointLines.length ? `Evaluation points (rubric):\n${pointLines.join('\n')}` : '',
         pointLines.length ? `pointScores length must be exactly ${pointLines.length}` : '',
         pointLines.length ? `pointReasons length must be exactly ${pointLines.length}` : '',
-        'Point title is only a locator, never a direct scoring item.',
-        'If learner answer does not contain a point title, that point must be 0.',
-        'If learner answer contains point title but does not contain that point content, that point must be 0.',
-        'Only when both title and content are present, evaluate quality for that point.',
+        'The learner filled one text field per numbered point below; judge each point using only the text on that line (and the rubric for that point).',
+        'Scoring attitude: when the learner clearly expresses the same in-game / scenario meaning as the rubric (including common shortenings, one missing character at the end of a fixed phrase, or obvious synonymous wording in Chinese), treat it as satisfying that point. Do not treat tiny surface differences as wrong if the referent is the same.',
+        'Order (mandatory): parent evaluation points (same text before " · " in rubric titles) must appear in rubric order when reading the composed answer top-to-bottom. Sub-point order inside one parent is not enforced. If order is violated, the system zeros that parent group.',
         'Each point score must be an integer and must not exceed that point max score.',
-        'Be strict. If key requirement is missing or wrong, deduct score explicitly in that point.',
+        'If the line is clearly off-topic or missing the required idea, deduct in that point; otherwise be fair and slightly generous when meaning matches.',
         `Pass score: ${passScore}`,
-        `Learner answer: ${answerText}`,
+        `Learner answers (one line per rubric row):\n${answerText}`,
       ].filter(Boolean).join('\n\n');
       const resp: any = await request.post(`/d/${lessonApiDomainId}/ai/chat`, {
         message: prompt,
         stream: false,
       });
       const aiText = String(resp?.message ?? '').trim();
-      const fullScores = points.map((pt) =>
-        (typeof pt?.score === 'number' && Number.isFinite(pt.score)) ? Math.max(0, Math.round(pt.score)) : 0);
+      const fullScores = rubricLeaves.map((leaf) =>
+        (typeof leaf.max === 'number' && Number.isFinite(leaf.max)) ? Math.max(0, Math.round(leaf.max)) : 0);
       const sumFull = fullScores.reduce((a, b) => a + b, 0);
       const { feedback, pointScores, pointReasons } = parseAiEvalScoreAndFeedback(aiText);
-      if (pointScores.length !== points.length) {
+      if (pointScores.length !== rubricLeaves.length) {
         throw new Error(i18n('Problem ai eval invalid point scores'));
       }
-      if (pointReasons.length !== points.length) {
+      if (pointReasons.length !== rubricLeaves.length) {
         throw new Error(i18n('Problem ai eval invalid point reasons'));
       }
       const normalizedPointScores = pointScores.map((x, i) =>
         Math.max(0, Math.min(fullScores[i], Math.round(x))));
       const hardZeroReasons: string[] = [];
       const gatedPointScores = normalizedPointScores.map((score, i) => {
-        const pt = points[i];
-        const title = String(pt?.title ?? '').trim();
-        const content = String(pt?.content ?? '').trim();
-        const hasTitle = title ? aiEvalContainsLoose(answerText, title) : false;
-        const hasContent = content ? aiEvalContainsLoose(answerText, content) : false;
-        if (!hasTitle) {
-          hardZeroReasons.push(`${i18n('Problem ai eval hard zero missing title')} #${i + 1}`);
+        const leaf = rubricLeaves[i];
+        const slot = String(aiEvalSlotDraft[leaf.subPointId] ?? '').trim();
+        const content = String(leaf?.content ?? '').trim();
+        const hasSlot = slot.length > 0;
+        const hasRubricHit = aiEvalSlotMatchesRubric(slot, content, leaf.answerAliases);
+        if (!hasSlot) {
+          hardZeroReasons.push(`${i18n('Problem ai eval hard zero empty slot')} #${i + 1}`);
           return 0;
         }
-        if (!hasContent) {
+        if (!hasRubricHit) {
           hardZeroReasons.push(`${i18n('Problem ai eval hard zero missing content')} #${i + 1}`);
           return 0;
         }
         return score;
       });
-      const gatedPointReasons = pointReasons.map((r, i) => {
+      let gatedPointReasons = pointReasons.map((r, i) => {
         const base = String(r ?? '').trim();
         const scoreNow = gatedPointScores[i];
         if (scoreNow <= 0 && hardZeroReasons.length) {
@@ -2945,10 +2979,44 @@ function LessonPage() {
         }
         return base || i18n('N/A');
       });
-      const feedbackFinal = hardZeroReasons.length
-        ? `${feedback}\n\n${hardZeroReasons.join('；')}`
-        : feedback;
-      const earnedRaw = gatedPointScores.reduce((a, b) => a + b, 0);
+      const eligibleForOrder = rubricLeaves.map((leaf, i) => {
+        const slot = String(aiEvalSlotDraft[leaf.subPointId] ?? '').trim();
+        const content = String(leaf?.content ?? '').trim();
+        return !!(
+          slot.length > 0
+          && aiEvalSlotMatchesRubric(slot, content, leaf.answerAliases)
+        );
+      });
+      const orderBadParents = aiEvalParentIndicesWithOrderViolation(
+        rubricLeaves,
+        eligibleForOrder,
+        answerText,
+      );
+      const orderHardMsgs: string[] = [];
+      for (const p of orderBadParents) {
+        const pt = typeof p === 'number' && p >= 0 && p < points.length ? points[p] : undefined;
+        const groupTitle = pt && typeof pt.title === 'string' ? pt.title.trim() : '';
+        orderHardMsgs.push(i18n('Problem ai eval hard zero wrong order', groupTitle || `#${p + 1}`));
+      }
+      const finalPointScores = gatedPointScores.map((s, i) =>
+        (orderBadParents.has(rubricLeaves[i].parentPointIndex) ? 0 : s));
+      gatedPointReasons = gatedPointReasons.map((r, i) => {
+        if (orderBadParents.has(rubricLeaves[i].parentPointIndex)) {
+          const p = rubricLeaves[i].parentPointIndex;
+          const pt = p >= 0 && p < points.length ? points[p] : undefined;
+          const groupTitle = pt && typeof pt.title === 'string' ? pt.title.trim() : '';
+          return i18n('Problem ai eval hard zero wrong order', groupTitle || `#${p + 1}`);
+        }
+        return r;
+      });
+      const feedbackFinal = (() => {
+        const extras = [
+          hardZeroReasons.length ? hardZeroReasons.join('；') : '',
+          orderHardMsgs.join('；'),
+        ].filter(Boolean);
+        return extras.length ? `${feedback}\n\n${extras.join('\n')}` : feedback;
+      })();
+      const earnedRaw = finalPointScores.reduce((a, b) => a + b, 0);
       const score = sumFull > 0 ? Math.max(0, Math.min(100, Math.round((earnedRaw / sumFull) * 100))) : 0;
       const correct = score >= passScore;
       const timeSpent = Date.now() - problemStartTime;
@@ -2957,12 +3025,16 @@ function LessonPage() {
       setProblemAttempts((prev) => ({ ...prev, [problemId]: currentAttempts }));
       setAiEvalLastScoreByPid((prev) => ({ ...prev, [problemId]: score }));
       setAiEvalFeedbackByPid((prev) => ({ ...prev, [problemId]: feedbackFinal }));
-      setAiEvalPointScoresByPid((prev) => ({ ...prev, [problemId]: gatedPointScores }));
+      setAiEvalPointScoresByPid((prev) => ({ ...prev, [problemId]: finalPointScores }));
       setAiEvalPointReasonsByPid((prev) => ({ ...prev, [problemId]: gatedPointReasons }));
+      const slotsPayload = JSON.stringify({
+        v: 1,
+        byId: Object.fromEntries(rubricLeaves.map((l) => [l.subPointId, String(aiEvalSlotDraft[l.subPointId] ?? '').trim()])),
+      });
       const historyPayload = [
-        answerText,
+        `aiEvalSlots:${slotsPayload}`,
         `score:${score}`,
-        `pointScores:${gatedPointScores.join(',')}`,
+        `pointScores:${finalPointScores.join(',')}`,
         `pointReasons:${JSON.stringify(gatedPointReasons)}`,
         feedbackFinal,
       ];
@@ -3194,7 +3266,7 @@ function LessonPage() {
     setSelectedAnswer(null);
     setSelectedMulti([]);
     setSelectedTf(null);
-    setAiEvalAnswerDraft('');
+    setAiEvalSlotDraft({});
     setFlipStage('a');
     setFlipHintOpen(false);
     setFillBlankDraft([]);
@@ -3249,6 +3321,7 @@ function LessonPage() {
           selectedMulti: [...selectedMulti],
           selectedTf,
           fillBlankDraft: [...fillBlankDraft],
+          aiEvalSlotDraft: { ...aiEvalSlotDraft },
           matchingSelections: matchingSelections.map((row) => [...row]),
           matchingShuffleOrders: matchingShuffleOrders.map((row) => [...row]),
           flipStage,
@@ -5435,13 +5508,14 @@ function LessonPage() {
               const currentAttempts = problemAttempts[pe.pid] || 0;
               const feedback = aiEvalFeedbackByPid[pe.pid];
               const points = Array.isArray(pe.points) ? pe.points : [];
-              const totalScore = points.reduce((sum, p) => sum + (typeof p?.score === 'number' ? p.score : 0), 0);
+              const rubricLeaves = flattenAiEvalRubricForScoring(points);
+              const totalScore = aiEvalRubricSumMax(points);
               const pointEarnedScores = aiEvalPointScoresByPid[pe.pid] || [];
               const pointReasons = aiEvalPointReasonsByPid[pe.pid] || [];
               const totalEarned = aiEvalLastScoreByPid[pe.pid];
               return (
                 <>
-                  {points.length > 0 ? (
+                  {rubricLeaves.length > 0 ? (
                     <div style={{
                       marginBottom: '12px',
                       padding: '10px 12px',
@@ -5456,15 +5530,21 @@ function LessonPage() {
                     >
                       <strong style={{ color: themeStyles.textPrimary }}>{i18n('Problem ai eval points')}:</strong>
                       <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        {points.map((pt, idx) => (
-                          <div key={pt.id || `pt-${idx}`} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        {rubricLeaves.map((leaf, idx) => (
+                          <div key={`leaf-${idx}`} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                             <span>
-                              {idx + 1}. {String(pt.title || '').trim() || i18n('N/A')}（{typeof pt.score === 'number' ? pt.score : 0}）
+                              {idx + 1}. {String(leaf.title || '').trim() || i18n('N/A')}（{typeof leaf.max === 'number' ? leaf.max : 0}）
                               {showAnalysis ? ` · ${i18n('Problem ai eval point earned')}: ${typeof pointEarnedScores[idx] === 'number' ? pointEarnedScores[idx] : 0}` : ''}
                             </span>
                             {showAnalysis ? (
                               <span style={{ fontSize: '12px', color: themeStyles.textTertiary }}>
-                                {i18n('Problem ai eval point standard content')}: {String(pt.content || '').trim() || i18n('N/A')}
+                                {i18n('Problem ai eval point standard content')}: {String(leaf.content || '').trim() || i18n('N/A')}
+                                {Array.isArray(leaf.answerAliases) && leaf.answerAliases.length > 0 ? (
+                                  <span>
+                                    {' · '}
+                                    {i18n('Problem ai eval answer aliases label')}: {leaf.answerAliases.join('； ')}
+                                  </span>
+                                ) : null}
                               </span>
                             ) : null}
                             {showAnalysis ? (
@@ -5496,31 +5576,47 @@ function LessonPage() {
                     {' · '}
                     {i18n('Attempts')}: <strong style={{ color: themeStyles.textPrimary }}>{currentAttempts}</strong>
                   </div>
-                  <textarea
-                    value={aiEvalAnswerDraft}
-                    onChange={(e) => setAiEvalAnswerDraft(e.target.value)}
-                    disabled={isAnswered || aiEvalSubmitting}
-                    placeholder={i18n('Problem ai eval answer placeholder')}
-                    style={{
-                      width: '100%',
-                      minHeight: 120,
-                      resize: 'vertical',
-                      borderRadius: 8,
-                      border: `1px solid ${themeStyles.border}`,
-                      backgroundColor: themeStyles.bgPrimary,
-                      color: themeStyles.textPrimary,
-                      padding: '12px',
-                      fontSize: '14px',
-                      lineHeight: 1.55,
-                      boxSizing: 'border-box',
-                    }}
-                  />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 10 }}>
+                    {rubricLeaves.map((leaf) => (
+                      <div key={leaf.subPointId} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <div style={{ fontSize: '13px', color: themeStyles.textSecondary, fontWeight: 500 }}>
+                          {String(leaf.title || '').trim() || i18n('N/A')}
+                        </div>
+                        <textarea
+                          value={aiEvalSlotDraft[leaf.subPointId] ?? ''}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setAiEvalSlotDraft((prev) => ({ ...prev, [leaf.subPointId]: v }));
+                          }}
+                          disabled={isAnswered || aiEvalSubmitting}
+                          placeholder={i18n('Problem ai eval slot placeholder')}
+                          style={{
+                            width: '100%',
+                            minHeight: 72,
+                            resize: 'vertical',
+                            borderRadius: 8,
+                            border: `1px solid ${themeStyles.border}`,
+                            backgroundColor: themeStyles.bgPrimary,
+                            color: themeStyles.textPrimary,
+                            padding: '10px',
+                            fontSize: '14px',
+                            lineHeight: 1.55,
+                            boxSizing: 'border-box',
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
                   {(!isAnswered || !pendingLessonAdvance) && renderLessonPracticeActionRow(
                     !isAnswered ? (
                       <button
                         type="button"
                         onClick={() => { void handleAiEvalSubmit(); }}
-                        disabled={aiEvalSubmitting || !aiEvalAnswerDraft.trim()}
+                        disabled={
+                          aiEvalSubmitting
+                          || rubricLeaves.length === 0
+                          || !rubricLeaves.every((l) => String(aiEvalSlotDraft[l.subPointId] ?? '').trim().length > 0)
+                        }
                         style={{
                           marginTop: '2px',
                           padding: '11px 24px',
@@ -5528,8 +5624,18 @@ function LessonPage() {
                           borderRadius: '8px',
                           backgroundColor: themeStyles.accent,
                           color: themeStyles.whiteOnAccent,
-                          cursor: aiEvalSubmitting || !aiEvalAnswerDraft.trim() ? 'not-allowed' : 'pointer',
-                          opacity: aiEvalSubmitting || !aiEvalAnswerDraft.trim() ? 0.55 : 1,
+                          cursor:
+                            aiEvalSubmitting
+                            || rubricLeaves.length === 0
+                            || !rubricLeaves.every((l) => String(aiEvalSlotDraft[l.subPointId] ?? '').trim().length > 0)
+                              ? 'not-allowed'
+                              : 'pointer',
+                          opacity:
+                            aiEvalSubmitting
+                            || rubricLeaves.length === 0
+                            || !rubricLeaves.every((l) => String(aiEvalSlotDraft[l.subPointId] ?? '').trim().length > 0)
+                              ? 0.55
+                              : 1,
                           fontSize: '15px',
                           fontWeight: 600,
                           boxShadow:

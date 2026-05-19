@@ -457,8 +457,18 @@ __langname: English
 'Problem ai eval stem placeholder': Enter the prompt for AI evaluation
 'Problem ai eval points': Evaluation points
 'Problem ai eval point title placeholder': Point title (shown in lesson)
-'Problem ai eval point content placeholder': Evaluation instruction (AI only)
 'Problem ai eval add point': Add evaluation point
+'Problem ai eval sub points': Sub evaluation points
+'Problem ai eval add sub point': Add sub-point
+'Problem ai eval sub point title placeholder': Sub-point title (shown)
+'Problem ai eval sub point content placeholder': Sub-point rubric (for AI)
+'Problem ai eval need points': Need at least one evaluation point with sub-points (`points`)
+'Problem ai eval sub point aliases hint': Synonymous acceptable answers (optional, one per add); loose match treats any as a rubric hit for auto gate.
+'Problem ai eval add alias': Add synonym
+'Problem ai eval alias input placeholder': Phrase learners might type
+'Problem ai eval slot placeholder': Answer for this sub-point
+'Problem ai eval answer aliases label': Acceptable synonyms
+'Problem ai eval parent score hint': Parent score is not included in the lesson total; max score is the sum of sub-points (use 0 if you prefer)
 'Problem ai eval total score': Total score
 'Problem ai eval point earned': Point score
 'Problem ai eval point standard content': Point standard content
@@ -466,14 +476,14 @@ __langname: English
 'Problem ai eval earned total': Earned total
 'Problem ai eval pass score': Pass score
 'Problem ai eval max attempts': Max attempts
-'Problem ai eval lesson hint': Learner submissions are scored by AI with feedback; score must reach pass score to be marked correct.
-'Problem ai eval answer placeholder': Enter your answer here...
+'Problem ai eval lesson hint': Learners fill one box per sub-point. Scoring uses each box against rubric text and synonyms you configure. All boxes must be filled to submit. Parent evaluation-point order still applies; sub-point order within a parent does not. Reach pass score to count as correct.
 'Problem ai eval evaluating': Evaluating with AI...
 'Problem ai eval failed': AI evaluation failed. Please try again.
 'Problem ai eval invalid point scores': AI did not return valid point-level scores. Please retry.
 'Problem ai eval invalid point reasons': AI did not return valid point-level reasons. Please retry.
-'Problem ai eval hard zero missing title': Point title not found in answer. This point is forced to 0.
-'Problem ai eval hard zero missing content': Point title found but standard content missing. This point is forced to 0.
+'Problem ai eval hard zero missing content': This answer box does not match the rubric or any synonym; forced 0.
+'Problem ai eval hard zero empty slot': This sub-point answer is empty; forced 0.
+'Problem ai eval hard zero wrong order': Evaluation point "{0}" is out of parent rubric order (sub-point order within the group is not enforced); wrong order forces 0 for the whole point group.
 'Problem reorder up': Move up
 'Problem reorder down': Move down
 'Problem reorder hint': Use ↑ / ↓ beside the red delete button to reorder; Save to persist.
