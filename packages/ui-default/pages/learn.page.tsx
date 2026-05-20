@@ -6,6 +6,9 @@ import { i18n } from 'vj/utils';
 import { request } from 'vj/utils';
 import Notification from 'vj/components/notification';
 import { ContributionWall, type ContributionDetail } from '../components/ContributionWall';
+import { LearnProblemNotesPanelBody } from '../components/learn_problem_notes_panel';
+import { getProblemTagList, normalizeAuthorNotesFromRaw } from 'ejun/src/model/problem';
+import type { Problem, ProblemAuthorNote } from 'ejun/src/interface';
 
 interface SectionProgress {
   _id: string;
@@ -26,7 +29,7 @@ interface CompletedCardToday {
 interface PendingNodeCard {
   cardId: string;
   title: string;
-  problems?: Array<{ stem?: string }>;
+  problems?: Array<{ pid?: string; stem?: string; notes?: unknown[]; tags?: string[] }>;
 }
 
 interface PendingNode {
@@ -41,7 +44,7 @@ interface MapCard {
   title: string;
   order?: number;
   problemCount?: number;
-  problems?: Array<{ stem?: string }>;
+  problems?: Array<{ pid?: string; stem?: string; options?: unknown; answer?: unknown; notes?: unknown[]; tags?: string[] }>;
 }
 
 interface MapDAGNode {
@@ -189,6 +192,11 @@ function collectCardsUnder(nodeId: string, sections: MapDAGNode[], dag: MapDAGNo
   return cards.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 }
 
+/** Separates cardId and pid for outline note-count map keys (pid is unlikely to contain \u001f). */
+function learnOutlineProblemNoteKey(cardId: string, pid: string): string {
+  return `${String(cardId)}\u001f${String(pid)}`;
+}
+
 function LearnPage() {
   const domainId = (window as any).UiContext?.domainId as string;
   const currentProgress = (window as any).UiContext?.currentProgress || 0;
@@ -301,6 +309,14 @@ function LearnPage() {
   /** Path view expands by section slot index so duplicate node _ids in custom order do not clash keys/expand state. */
   const [expandedPathSectionSlots, setExpandedPathSectionSlots] = useState<Set<number>>(new Set());
   const [expandedPathCardIds, setExpandedPathCardIds] = useState<Set<string>>(new Set());
+  const [learnNotesModal, setLearnNotesModal] = useState<{
+    cardId: string;
+    pid: string;
+    authorNotes: ProblemAuthorNote[];
+  } | null>(null);
+  const [learnProblemLearnerNoteCounts, setLearnProblemLearnerNoteCounts] = useState<Record<string, number>>({});
+  const learnNoteCountInflightRef = useRef(new Set<string>());
+  const learnNoteCountFetchedRef = useRef(new Set<string>());
   const consecutiveBubbleRef = useRef<HTMLButtonElement>(null);
 
   const tagOptionsForPicker = useMemo(
@@ -354,6 +370,78 @@ function LearnPage() {
       else next.add(cardKey);
       return next;
     });
+  }, []);
+
+  const problemsForLearnerNotePrefetch = useMemo(() => {
+    const keys = new Set<string>();
+    const add = (cardId: string, pid: string | undefined) => {
+      const p = String(pid || '').trim();
+      const c = String(cardId || '').trim();
+      if (!p || !c) return;
+      keys.add(learnOutlineProblemNoteKey(c, p));
+    };
+
+    if (viewMode === 'path') {
+      pathSectionsView.forEach((section, sectionIndex) => {
+        const sectionCards = collectCardsUnder(section._id, pathSectionsView, pathFullDagView, new Set());
+        for (const card of sectionCards) {
+          const pathPlacementKey = `${sectionIndex}:${String(card.cardId)}`;
+          if (!expandedPathCardIds.has(pathPlacementKey)) continue;
+          for (const pr of card.problems || []) add(String(card.cardId), pr.pid);
+        }
+      });
+    }
+
+    for (const node of pendingNodeList) {
+      const nodeKey = `${String(node._id)}-${node.orderIndex}`;
+      if (!expandedNodeIds.has(nodeKey)) continue;
+      for (const card of node.cards || []) {
+        const cardKey = `${nodeKey}-${String(card.cardId)}`;
+        if (!expandedCardIds.has(cardKey)) continue;
+        for (const pr of card.problems || []) add(String(card.cardId), pr.pid);
+      }
+    }
+
+    return Array.from(keys);
+  }, [
+    viewMode,
+    pathSectionsView,
+    pathFullDagView,
+    expandedPathCardIds,
+    pendingNodeList,
+    expandedNodeIds,
+    expandedCardIds,
+  ]);
+
+  useEffect(() => {
+    if (!domainId) return;
+    for (const key of problemsForLearnerNotePrefetch) {
+      if (learnNoteCountFetchedRef.current.has(key)) continue;
+      if (learnNoteCountInflightRef.current.has(key)) continue;
+      learnNoteCountInflightRef.current.add(key);
+      const sep = key.indexOf('\u001f');
+      const cardId = key.slice(0, sep);
+      const pid = key.slice(sep + 1);
+      request
+        .get(`/d/${domainId}/learn/problem-notes`, { cardId, pid })
+        .then((res: any) => {
+          const n = Array.isArray(res?.learnerNotes) ? res.learnerNotes.length : 0;
+          learnNoteCountFetchedRef.current.add(key);
+          setLearnProblemLearnerNoteCounts((prev) => (prev[key] !== undefined ? prev : { ...prev, [key]: n }));
+        })
+        .catch(() => {
+          learnNoteCountFetchedRef.current.add(key);
+          setLearnProblemLearnerNoteCounts((prev) => (prev[key] !== undefined ? prev : { ...prev, [key]: 0 }));
+        })
+        .finally(() => {
+          learnNoteCountInflightRef.current.delete(key);
+        });
+    }
+  }, [domainId, problemsForLearnerNotePrefetch]);
+
+  const bumpLearnProblemLearnerNoteCount = useCallback((cardId: string, pid: string) => {
+    const k = learnOutlineProblemNoteKey(cardId, pid);
+    setLearnProblemLearnerNoteCounts((prev) => ({ ...prev, [k]: (prev[k] ?? 0) + 1 }));
   }, []);
 
   const handleConsecutiveBubbleClick = useCallback((e: React.MouseEvent) => {
@@ -419,6 +507,9 @@ function LearnPage() {
     statNode: theme === 'dark' ? '#64b5f6' : '#2196F3',
     statCard: theme === 'dark' ? '#81c784' : '#4CAF50',
     statProblem: theme === 'dark' ? '#ffb74d' : '#FF9800',
+    accentMutedBg: theme === 'dark' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(14, 165, 233, 0.12)',
+    drawerScrim: 'rgba(0,0,0,0.45)',
+    drawerAsideShadowRight: theme === 'dark' ? '-2px 0 16px rgba(0,0,0,0.5)' : '-2px 0 8px rgba(0,0,0,0.15)',
   };
 
   const handleStart = useCallback(async () => {
@@ -554,6 +645,15 @@ function LearnPage() {
     document.addEventListener('keydown', onDocKey);
     return () => document.removeEventListener('keydown', onDocKey);
   }, [learnPrefsOpen, savingLearnPrefs]);
+
+  useEffect(() => {
+    if (!learnNotesModal) return;
+    const onDocKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLearnNotesModal(null);
+    };
+    document.addEventListener('keydown', onDocKey);
+    return () => document.removeEventListener('keydown', onDocKey);
+  }, [learnNotesModal]);
 
   const progressPercentage = totalProgress > 0 ? Math.round((currentProgress / totalProgress) * 100) : 0;
 
@@ -1728,22 +1828,82 @@ function LearnPage() {
                                   flexDirection: 'column',
                                   gap: '6px',
                                 }}>
-                                  {problems.map((p, idx) => (
-                                    <div
-                                      key={idx}
-                                      style={{
-                                        padding: '8px 10px',
-                                        fontSize: '12px',
-                                        color: themeStyles.textSecondary,
-                                        background: themeStyles.bgPrimary,
-                                        borderRadius: '6px',
-                                        lineHeight: 1.5,
-                                      }}
-                                    >
-                                      <span style={{ color: themeStyles.textTertiary, marginRight: '6px' }}>{idx + 1}.</span>
-                                      {p.stem || i18n('Unnamed question')}
-                                    </div>
-                                  ))}
+                                  {problems.map((p, idx) => {
+                                    const pid = String(p.pid || '').trim();
+                                    const tagList = getProblemTagList(p as Problem);
+                                    const authorNotes = normalizeAuthorNotesFromRaw(p.notes);
+                                    const noteKey = pid ? learnOutlineProblemNoteKey(cardIdStr, pid) : '';
+                                    const learnerN = pid ? (learnProblemLearnerNoteCounts[noteKey] ?? 0) : 0;
+                                    const notesTotal = authorNotes.length + learnerN;
+                                    const showMeta = tagList.length > 0 || !!pid;
+                                    return (
+                                      <div
+                                        key={pid || idx}
+                                        style={{
+                                          padding: '8px 10px',
+                                          fontSize: '12px',
+                                          color: themeStyles.textSecondary,
+                                          background: themeStyles.bgPrimary,
+                                          borderRadius: '6px',
+                                          lineHeight: 1.5,
+                                        }}
+                                      >
+                                        <div>
+                                          <span style={{ color: themeStyles.textTertiary, marginRight: '6px' }}>{idx + 1}.</span>
+                                          {p.stem || i18n('Unnamed question')}
+                                        </div>
+                                        {showMeta ? (
+                                          <div style={{
+                                            marginTop: '8px',
+                                            display: 'flex',
+                                            flexWrap: 'wrap',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                          }}
+                                          >
+                                            <span
+                                              style={{
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                padding: '6px 14px',
+                                                border: `1px solid ${themeStyles.accent}`,
+                                                borderRadius: '6px',
+                                                backgroundColor: themeStyles.accentMutedBg,
+                                                color: themeStyles.accent,
+                                                fontSize: '13px',
+                                                fontWeight: 600,
+                                              }}
+                                            >
+                                              {tagList.length ? tagList.join(' · ') : i18n('Lesson problem tag panel empty')}
+                                            </span>
+                                            {pid ? (
+                                              <button
+                                                type="button"
+                                                aria-label={i18n('Lesson problem notes panel title')}
+                                                onClick={() => setLearnNotesModal({
+                                                  cardId: cardIdStr,
+                                                  pid,
+                                                  authorNotes,
+                                                })}
+                                                style={{
+                                                  padding: '6px 14px',
+                                                  border: `1px solid ${themeStyles.border}`,
+                                                  borderRadius: '6px',
+                                                  backgroundColor: themeStyles.bgSecondary,
+                                                  color: themeStyles.textPrimary,
+                                                  cursor: 'pointer',
+                                                  fontSize: '13px',
+                                                  fontWeight: 600,
+                                                }}
+                                              >
+                                                {i18n('Lesson problem notes count badge', notesTotal)}
+                                              </button>
+                                            ) : null}
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               )}
                             </div>
@@ -2094,13 +2254,72 @@ function LearnPage() {
                                     )}
                                   </button>
                                   {isCardExpanded && problems.length > 0 && (
-                                    <div style={{ marginTop: '6px', fontSize: '12px', color: themeStyles.textSecondary, whiteSpace: 'pre-wrap' }}>
+                                    <div style={{ marginTop: '6px', fontSize: '12px', color: themeStyles.textSecondary }}>
                                       {problems.map((p, idx) => {
                                         const problemNumber = `${cardNumber}.${idx + 1}`;
+                                        const cardIdStr = String(card.cardId);
+                                        const pid = String(p.pid || '').trim();
+                                        const tagList = getProblemTagList(p as Problem);
+                                        const authorNotes = normalizeAuthorNotesFromRaw(p.notes);
+                                        const noteKey = pid ? learnOutlineProblemNoteKey(cardIdStr, pid) : '';
+                                        const learnerN = pid ? (learnProblemLearnerNoteCounts[noteKey] ?? 0) : 0;
+                                        const notesTotal = authorNotes.length + learnerN;
+                                        const showMeta = tagList.length > 0 || !!pid;
                                         return (
-                                          <div key={idx} style={{ marginBottom: '4px' }}>
-                                            <span style={{ color: themeStyles.textTertiary, marginRight: '6px' }}>{problemNumber}.</span>
-                                            {p.stem || ''}
+                                          <div key={pid || idx} style={{ marginBottom: '8px' }}>
+                                            <div style={{ whiteSpace: 'pre-wrap' }}>
+                                              <span style={{ color: themeStyles.textTertiary, marginRight: '6px' }}>{problemNumber}.</span>
+                                              {p.stem || ''}
+                                            </div>
+                                            {showMeta ? (
+                                              <div style={{
+                                                marginTop: '8px',
+                                                display: 'flex',
+                                                flexWrap: 'wrap',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                              }}
+                                              >
+                                                <span
+                                                  style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    padding: '6px 14px',
+                                                    border: `1px solid ${themeStyles.accent}`,
+                                                    borderRadius: '6px',
+                                                    backgroundColor: themeStyles.accentMutedBg,
+                                                    color: themeStyles.accent,
+                                                    fontSize: '13px',
+                                                    fontWeight: 600,
+                                                  }}
+                                                >
+                                                  {tagList.length ? tagList.join(' · ') : i18n('Lesson problem tag panel empty')}
+                                                </span>
+                                                {pid ? (
+                                                  <button
+                                                    type="button"
+                                                    aria-label={i18n('Lesson problem notes panel title')}
+                                                    onClick={() => setLearnNotesModal({
+                                                      cardId: cardIdStr,
+                                                      pid,
+                                                      authorNotes,
+                                                    })}
+                                                    style={{
+                                                      padding: '6px 14px',
+                                                      border: `1px solid ${themeStyles.border}`,
+                                                      borderRadius: '6px',
+                                                      backgroundColor: themeStyles.bgSecondary,
+                                                      color: themeStyles.textPrimary,
+                                                      cursor: 'pointer',
+                                                      fontSize: '13px',
+                                                      fontWeight: 600,
+                                                    }}
+                                                  >
+                                                    {i18n('Lesson problem notes count badge', notesTotal)}
+                                                  </button>
+                                                ) : null}
+                                              </div>
+                                            ) : null}
                                           </div>
                                         );
                                       })}
@@ -2144,6 +2363,83 @@ function LearnPage() {
           </button>
         ) : null}
       </aside>
+
+      {learnNotesModal && domainId ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={i18n('Lesson problem notes panel title')}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 10003,
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'stretch',
+            justifyContent: 'flex-end',
+          }}
+        >
+          <div
+            role="presentation"
+            style={{ flex: 1, minWidth: 0, backgroundColor: themeStyles.drawerScrim }}
+            onClick={() => setLearnNotesModal(null)}
+            aria-hidden
+          />
+          <div
+            style={{
+              width: 'min(420px, 100vw)',
+              maxHeight: '100vh',
+              overflowY: 'auto',
+              backgroundColor: themeStyles.bgCard,
+              borderLeft: `1px solid ${themeStyles.border}`,
+              boxShadow: themeStyles.drawerAsideShadowRight,
+              padding: '20px',
+              boxSizing: 'border-box',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: themeStyles.textPrimary, lineHeight: 1.3 }}>
+                {i18n('Lesson problem notes panel title')}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setLearnNotesModal(null)}
+                style={{
+                  flexShrink: 0,
+                  padding: '6px 12px',
+                  borderRadius: 6,
+                  border: `1px solid ${themeStyles.border}`,
+                  backgroundColor: themeStyles.bgSecondary,
+                  color: themeStyles.textPrimary,
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                {i18n('Close')}
+              </button>
+            </div>
+            <LearnProblemNotesPanelBody
+              domainId={domainId}
+              cardId={learnNotesModal.cardId}
+              pid={learnNotesModal.pid}
+              authorNotes={learnNotesModal.authorNotes}
+              theme={{
+                bgPrimary: themeStyles.bgPrimary,
+                bgSecondary: themeStyles.bgSecondary,
+                border: themeStyles.border,
+                textPrimary: themeStyles.textPrimary,
+                textSecondary: themeStyles.textSecondary,
+                textTertiary: themeStyles.textTertiary,
+                accent: themeStyles.accent,
+                accentMutedBg: themeStyles.accentMutedBg,
+              }}
+              onAfterAdd={() => bumpLearnProblemLearnerNoteCount(learnNotesModal.cardId, learnNotesModal.pid)}
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

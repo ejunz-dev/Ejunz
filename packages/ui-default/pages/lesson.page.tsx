@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import { i18n, request } from 'vj/utils';
 import Notification from 'vj/components/notification';
+import { LearnProblemNotesPanelBody } from '../components/learn_problem_notes_panel';
 import type { Problem, ProblemSingle, ProblemMulti, ProblemTrueFalse, ProblemFlip, ProblemFillBlank, ProblemMatching, ProblemSuperFlip, ProblemAiEval } from 'ejun/src/interface';
 import {
   problemKind,
@@ -25,6 +26,7 @@ import {
   aiEvalRubricSumMax,
   aiEvalSlotMatchesRubric,
   aiEvalParentIndicesWithOrderViolation,
+  getProblemAuthorNoteList,
 } from 'ejun/src/model/problem';
 import type { AiEvalRubricLeaf } from 'ejun/src/model/problem';
 
@@ -1594,6 +1596,8 @@ function LessonPage() {
   const [lessonProblemTagSaveKey, setLessonProblemTagSaveKey] = useState<string | null>(null);
   const [lessonProblemTagRegisterBusy, setLessonProblemTagRegisterBusy] = useState(false);
   const [lessonProblemTagPanelOpen, setLessonProblemTagPanelOpen] = useState(false);
+  const [lessonProblemNotesPanelOpen, setLessonProblemNotesPanelOpen] = useState(false);
+  const [lessonLearnerNoteCount, setLessonLearnerNoteCount] = useState(0);
 
   const lessonCurrentProblemSlotKey = problemQueue[currentProblemIndex]
     ? `${String(problemQueue[currentProblemIndex].cardId)}:${problemQueue[currentProblemIndex].pid}`
@@ -1601,16 +1605,20 @@ function LessonPage() {
 
   useEffect(() => {
     setLessonProblemTagPanelOpen(false);
+    setLessonProblemNotesPanelOpen(false);
   }, [lessonCurrentProblemSlotKey]);
 
   useEffect(() => {
-    if (!lessonProblemTagPanelOpen) return;
+    if (!lessonProblemTagPanelOpen && !lessonProblemNotesPanelOpen) return;
     const onDocKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setLessonProblemTagPanelOpen(false);
+      if (e.key === 'Escape') {
+        setLessonProblemTagPanelOpen(false);
+        setLessonProblemNotesPanelOpen(false);
+      }
     };
     document.addEventListener('keydown', onDocKey);
     return () => document.removeEventListener('keydown', onDocKey);
-  }, [lessonProblemTagPanelOpen]);
+  }, [lessonProblemTagPanelOpen, lessonProblemNotesPanelOpen]);
 
   const persistLessonProblemTag = useCallback(async (cardIdRaw: string, pid: string, nextTags: string[]) => {
     if (!lessonApiDomainId || !baseDocId || !lessonCanEditProblemTags) return;
@@ -2279,6 +2287,28 @@ function LessonPage() {
   }, []);
 
   const currentProblem = problemQueue[currentProblemIndex];
+
+  useEffect(() => {
+    if (!currentProblem || !lessonApiDomainId) {
+      setLessonLearnerNoteCount(0);
+      return;
+    }
+    let cancelled = false;
+    const cid = String(currentProblem.cardId);
+    const pid = currentProblem.pid;
+    request
+      .get(`/d/${lessonApiDomainId}/learn/problem-notes`, { cardId: cid, pid })
+      .then((res: any) => {
+        if (!cancelled) setLessonLearnerNoteCount(Array.isArray(res?.learnerNotes) ? res.learnerNotes.length : 0);
+      })
+      .catch(() => {
+        if (!cancelled) setLessonLearnerNoteCount(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentProblem, lessonApiDomainId]);
+
   const lessonLinearQuestionOrdinal = useMemo(() => {
     if (!currentProblem || allProblems.length === 0) return 1;
     const ix = allProblems.findIndex(
@@ -4971,27 +5001,55 @@ function LessonPage() {
             ({lessonProblemKindLabel(currentKind)})
           </span>
           {currentProblem ? (
-            <button
-              type="button"
-              aria-label={i18n('Lesson problem tag panel open')}
-              onClick={() => setLessonProblemTagPanelOpen(true)}
-              style={{
-                marginLeft: 'auto',
-                padding: '6px 14px',
-                border: `1px solid ${themeStyles.accent}`,
-                borderRadius: '6px',
-                backgroundColor: themeStyles.accentMutedBg,
-                color: themeStyles.accent,
-                cursor: 'pointer',
-                fontSize: '13px',
-                fontWeight: 600,
-              }}
+            <div style={{
+              marginLeft: 'auto',
+              display: 'flex',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 8,
+            }}
             >
-              {(() => {
-                const list = getProblemTagList(currentProblem as Problem);
-                return list.length ? list.join(' · ') : i18n('Lesson problem tag panel empty');
-              })()}
-            </button>
+              <button
+                type="button"
+                aria-label={i18n('Lesson problem tag panel open')}
+                onClick={() => setLessonProblemTagPanelOpen(true)}
+                style={{
+                  padding: '6px 14px',
+                  border: `1px solid ${themeStyles.accent}`,
+                  borderRadius: '6px',
+                  backgroundColor: themeStyles.accentMutedBg,
+                  color: themeStyles.accent,
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                }}
+              >
+                {(() => {
+                  const list = getProblemTagList(currentProblem as Problem);
+                  return list.length ? list.join(' · ') : i18n('Lesson problem tag panel empty');
+                })()}
+              </button>
+              <button
+                type="button"
+                aria-label={i18n('Lesson problem notes panel title')}
+                onClick={() => setLessonProblemNotesPanelOpen(true)}
+                style={{
+                  padding: '6px 14px',
+                  border: `1px solid ${themeStyles.border}`,
+                  borderRadius: '6px',
+                  backgroundColor: themeStyles.bgSecondary,
+                  color: themeStyles.textPrimary,
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                }}
+              >
+                {i18n(
+                  'Lesson problem notes count badge',
+                  getProblemAuthorNoteList(currentProblem as Problem).length + lessonLearnerNoteCount,
+                )}
+              </button>
+            </div>
           ) : null}
         </div>
 
@@ -6150,6 +6208,82 @@ function LessonPage() {
             </div>
           </div>
         )}
+        {lessonProblemNotesPanelOpen && currentProblem && lessonApiDomainId ? (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={i18n('Lesson problem notes panel title')}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 10001,
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'stretch',
+              justifyContent: 'flex-end',
+            }}
+          >
+            <div
+              role="presentation"
+              style={{ flex: 1, minWidth: 0, backgroundColor: themeStyles.drawerScrim }}
+              onClick={() => setLessonProblemNotesPanelOpen(false)}
+              aria-hidden
+            />
+            <div
+              style={{
+                width: 'min(420px, 100vw)',
+                maxHeight: '100vh',
+                overflowY: 'auto',
+                backgroundColor: themeStyles.bgCard,
+                borderLeft: `1px solid ${themeStyles.border}`,
+                boxShadow: themeStyles.drawerAsideShadowRight,
+                padding: '20px',
+                boxSizing: 'border-box',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: themeStyles.textPrimary, lineHeight: 1.3 }}>
+                  {i18n('Lesson problem notes panel title')}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setLessonProblemNotesPanelOpen(false)}
+                  style={{
+                    flexShrink: 0,
+                    padding: '6px 12px',
+                    borderRadius: 6,
+                    border: `1px solid ${themeStyles.border}`,
+                    backgroundColor: themeStyles.bgSecondary,
+                    color: themeStyles.textPrimary,
+                    cursor: 'pointer',
+                    fontSize: 13,
+                    fontWeight: 600,
+                  }}
+                >
+                  {i18n('Close')}
+                </button>
+              </div>
+              <LearnProblemNotesPanelBody
+                domainId={lessonApiDomainId}
+                cardId={String(currentProblem.cardId)}
+                pid={currentProblem.pid}
+                authorNotes={getProblemAuthorNoteList(currentProblem as Problem)}
+                theme={{
+                  bgPrimary: themeStyles.bgPrimary,
+                  bgSecondary: themeStyles.bgSecondary,
+                  border: themeStyles.border,
+                  textPrimary: themeStyles.textPrimary,
+                  textSecondary: themeStyles.textSecondary,
+                  textTertiary: themeStyles.textTertiary,
+                  accent: themeStyles.accent,
+                  accentMutedBg: themeStyles.accentMutedBg,
+                }}
+                onAfterAdd={() => setLessonLearnerNoteCount((n) => n + 1)}
+              />
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

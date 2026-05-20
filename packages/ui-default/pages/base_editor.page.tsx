@@ -197,6 +197,60 @@ function sameCardDocId(a: unknown, b: unknown): boolean {
   return String(a) === String(b);
 }
 
+type LearnProblemNotesDraftBatch = {
+  cardId: string;
+  pid: string;
+  create: string[];
+  update: Array<{ id: string; content: string }>;
+  deleteIds: string[];
+};
+
+function findNodeIdForCardMap(nodeCardsMap: Record<string, Card[]>, cardId: string): string {
+  for (const nid of Object.keys(nodeCardsMap || {})) {
+    const cards = nodeCardsMap[nid] || [];
+    if (cards.some((c: Card) => sameCardDocId(c.docId, cardId))) return nid;
+  }
+  return '';
+}
+
+function mergeLearnProblemNoteDraftsIntoBatch(
+  batchSaveData: { cardUpdates: any[] },
+  draftMap: Map<string, LearnProblemNotesDraftBatch>,
+) {
+  const byCard = new Map<string, LearnProblemNotesDraftBatch[]>();
+  for (const batch of draftMap.values()) {
+    const cid = String(batch.cardId);
+    if (cid.startsWith('temp-card-')) continue;
+    if (!byCard.has(cid)) byCard.set(cid, []);
+    byCard.get(cid)!.push(batch);
+  }
+  const nodeCardsMap = (typeof window !== 'undefined' ? (window as any).UiContext?.nodeCardsMap : null) || {};
+  for (const [cardId, blocks] of byCard) {
+    const nodeId = findNodeIdForCardMap(nodeCardsMap, cardId);
+    if (!nodeId) continue;
+    const learnProblemNotes = blocks.map((b) => {
+      const o: Record<string, unknown> = { pid: b.pid };
+      if (b.create.length) o.create = b.create;
+      if (b.update.length) o.update = b.update;
+      if (b.deleteIds.length) o.deleteIds = b.deleteIds;
+      return o;
+    });
+    const existing = batchSaveData.cardUpdates.find((u: any) => sameCardDocId(u.cardId, cardId));
+    if (existing) {
+      const prev = Array.isArray((existing as any).learnProblemNotes)
+        ? (existing as any).learnProblemNotes
+        : [];
+      (existing as any).learnProblemNotes = [...prev, ...learnProblemNotes];
+    } else {
+      batchSaveData.cardUpdates.push({
+        cardId,
+        nodeId,
+        learnProblemNotes,
+      });
+    }
+  }
+}
+
 /** AI terminal @-refs in the input bar (node / card / practice problem on current card). */
 type AiChatBarRef =
   | { type: 'node'; id: string; name: string; path: string[] }
@@ -733,6 +787,52 @@ function makeBlankSingleProblem(): ProblemSingle {
   };
 }
 
+type EditorLearnerNoteRow = {
+  id: string;
+  uid: number;
+  uname: string;
+  content: string;
+  createdAt: string;
+};
+
+function cloneLearnerRows(rows: EditorLearnerNoteRow[]): EditorLearnerNoteRow[] {
+  return rows.map((r) => ({ ...r }));
+}
+
+function computeLearnerNotesDraft(
+  baseline: EditorLearnerNoteRow[],
+  rows: EditorLearnerNoteRow[],
+  cardId: string,
+  pid: string,
+): LearnProblemNotesDraftBatch | null {
+  const baseMap = new Map(baseline.map((r) => [r.id, r]));
+  const curIds = new Set(rows.map((r) => r.id));
+  const deleteIds: string[] = [];
+  for (const id of baseMap.keys()) {
+    if (!curIds.has(id)) deleteIds.push(id);
+  }
+  const create: string[] = [];
+  const update: Array<{ id: string; content: string }> = [];
+  for (const r of rows) {
+    if (r.id.startsWith('local_')) {
+      const t = r.content.trim().slice(0, 4000);
+      if (t) create.push(t);
+      continue;
+    }
+    const b = baseMap.get(r.id);
+    if (!b) continue;
+    const t = r.content.trim().slice(0, 4000);
+    if (!t) {
+      if (!deleteIds.includes(r.id)) deleteIds.push(r.id);
+    } else if (b.content.trim() !== t) {
+      update.push({ id: r.id, content: t });
+    }
+  }
+  const uniqDelete = [...new Set(deleteIds)];
+  if (create.length === 0 && update.length === 0 && uniqDelete.length === 0) return null;
+  return { cardId, pid, create, update, deleteIds: uniqDelete };
+}
+
 // Editable problem row (single / multi / true-false / flip)
 const EditableProblem = React.memo(({
   problem,
@@ -753,6 +853,8 @@ const EditableProblem = React.memo(({
   getBaseUrl,
   themeStyles,
   onProblemContextMenu,
+  learnerNotesReloadEpoch = 0,
+  onLearnerNotesDraftChange,
 }: {
   problem: Problem;
   index: number;
@@ -773,6 +875,9 @@ const EditableProblem = React.memo(({
   getBaseUrl: (path: string, docId: string) => string;
   themeStyles: any;
   onProblemContextMenu?: (event: React.MouseEvent) => void;
+  /** Bumped after batch save so learner notes reload from server. */
+  learnerNotesReloadEpoch?: number;
+  onLearnerNotesDraftChange?: (draftKey: string, batch: LearnProblemNotesDraftBatch | null) => void;
 }) => {
   const [model, setModel] = useState<Problem>(problem);
   /** Parent `problem` snapshot by JSON; resync local `model` when AI / agent replaces the same `pid` in-place. */
@@ -803,6 +908,75 @@ const EditableProblem = React.memo(({
   const currentProblemTags = useMemo(() => getProblemTagList(model), [model]);
 
   const analysis = model.analysis || '';
+
+  const editorDomainId = typeof window !== 'undefined' ? String((window as any).UiContext?.domainId ?? '').trim() : '';
+  const isTempCard = String(_cardId).startsWith('temp-card-');
+  const [learnerNoteRows, setLearnerNoteRows] = useState<EditorLearnerNoteRow[]>([]);
+  const [learnerNotesLoading, setLearnerNotesLoading] = useState(false);
+  const learnerNotesBaselineRef = useRef<EditorLearnerNoteRow[]>([]);
+  const learnerDraftKeyPrevRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!onLearnerNotesDraftChange) return;
+    const key = `${_cardId}\x1f${problem.pid}`;
+    const prev = learnerDraftKeyPrevRef.current;
+    if (prev && prev !== key) {
+      onLearnerNotesDraftChange(prev, null);
+    }
+    learnerDraftKeyPrevRef.current = key;
+  }, [_cardId, problem.pid, onLearnerNotesDraftChange]);
+
+  useEffect(() => {
+    if (!onLearnerNotesDraftChange) return;
+    return () => {
+      const k = learnerDraftKeyPrevRef.current;
+      if (k) onLearnerNotesDraftChange(k, null);
+    };
+  }, [onLearnerNotesDraftChange]);
+
+  useLayoutEffect(() => {
+    setLearnerNoteRows([]);
+    learnerNotesBaselineRef.current = [];
+  }, [_cardId, problem.pid]);
+
+  const reloadLearnerNotes = useCallback(async () => {
+    if (!editorDomainId || !_cardId || !problem.pid || isTempCard) return;
+    setLearnerNotesLoading(true);
+    try {
+      const res: any = await request.get(`/d/${editorDomainId}/learn/problem-notes`, { cardId: _cardId, pid: problem.pid });
+      const list = Array.isArray(res?.learnerNotes) ? res.learnerNotes : [];
+      const mapped: EditorLearnerNoteRow[] = list.map((x: any) => ({
+        id: String(x.id || ''),
+        uid: Number(x.uid) || 0,
+        uname: String(x.uname || ''),
+        content: String(x.content || ''),
+        createdAt: String(x.createdAt || ''),
+      }));
+      setLearnerNoteRows(mapped);
+      learnerNotesBaselineRef.current = cloneLearnerRows(mapped);
+    } catch {
+      setLearnerNoteRows([]);
+      learnerNotesBaselineRef.current = [];
+      Notification.error(i18n('Lesson problem notes load failed'));
+    } finally {
+      setLearnerNotesLoading(false);
+    }
+  }, [editorDomainId, _cardId, problem.pid, learnerNotesReloadEpoch, isTempCard]);
+
+  useEffect(() => {
+    void reloadLearnerNotes();
+  }, [reloadLearnerNotes]);
+
+  useEffect(() => {
+    if (!onLearnerNotesDraftChange || !problem.pid || !_cardId) return;
+    const key = `${_cardId}\x1f${problem.pid}`;
+    if (isTempCard) {
+      onLearnerNotesDraftChange(key, null);
+      return;
+    }
+    const draft = computeLearnerNotesDraft(learnerNotesBaselineRef.current, learnerNoteRows, _cardId, problem.pid);
+    onLearnerNotesDraftChange(key, draft);
+  }, [learnerNoteRows, _cardId, problem.pid, onLearnerNotesDraftChange, isTempCard]);
 
   const setCommon = (patch: Partial<Pick<Problem, 'analysis' | 'title'>>) => {
     setModel((m) => ({ ...m, ...patch } as Problem));
@@ -1850,6 +2024,82 @@ const EditableProblem = React.memo(({
           </div>
         </>
       )}
+
+      {editorDomainId && _cardId && problem.pid && !isTempCard ? (
+        <div style={{ marginBottom: '8px' }}>
+          <div style={{ fontSize: '11px', color: themeStyles.textSecondary, marginBottom: '4px' }}>
+            {i18n('Problem editor notes title')}
+            {learnerNotesLoading ? ` (${i18n('Loading...')})` : ''}
+          </div>
+          {!learnerNotesLoading && learnerNoteRows.length === 0 ? (
+            <div style={{ fontSize: '11px', color: themeStyles.textTertiary, marginBottom: '6px' }}>
+              {i18n('Problem editor notes empty')}
+            </div>
+          ) : null}
+          {learnerNoteRows.map((n) => (
+            <div key={n.id} style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
+              <div style={{ fontSize: '10px', color: themeStyles.textSecondary }}>
+                {n.uname}
+                {n.createdAt ? ` · ${n.createdAt}` : ''}
+              </div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                <textarea
+                  value={n.content}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setLearnerNoteRows((prev) => prev.map((r) => (r.id === n.id ? { ...r, content: v } : r)));
+                  }}
+                  placeholder={i18n('Lesson problem notes placeholder')}
+                  style={{ ...taStyle, flex: 1, minHeight: 56 }}
+                  disabled={!!learnerNotesLoading}
+                />
+                <button
+                  type="button"
+                  disabled={!!learnerNotesLoading}
+                  onClick={() => setLearnerNoteRows((prev) => prev.filter((r) => r.id !== n.id))}
+                  title={i18n('Problem editor notes remove row')}
+                  style={{
+                    flexShrink: 0,
+                    padding: '4px 8px',
+                    fontSize: 11,
+                    borderRadius: 4,
+                    border: `1px solid ${themeStyles.borderPrimary}`,
+                    background: themeStyles.bgSecondary,
+                    color: themeStyles.textPrimary,
+                    cursor: learnerNotesLoading ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {i18n('Problem editor notes delete')}
+                </button>
+              </div>
+            </div>
+          ))}
+          <div style={{ marginTop: 4 }}>
+            <button
+              type="button"
+              disabled={!!learnerNotesLoading}
+              onClick={() => {
+                setLearnerNoteRows((prev) => [
+                  ...prev,
+                  { id: `local_${nanoid()}`, uid: 0, uname: '', content: '', createdAt: '' },
+                ]);
+              }}
+              style={{
+                padding: '2px 10px',
+                fontSize: 11,
+                borderRadius: 4,
+                border: `1px solid ${themeStyles.accent}`,
+                background: (themeStyles as { accentMutedBg?: string }).accentMutedBg ?? themeStyles.bgSecondary,
+                color: themeStyles.accent,
+                cursor: learnerNotesLoading ? 'not-allowed' : 'pointer',
+                opacity: learnerNotesLoading ? 0.5 : 1,
+              }}
+            >
+              {i18n('Problem editor notes add')}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div style={{ marginBottom: '4px' }}>
         <textarea
@@ -3411,6 +3661,16 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const originalProblemsRef = useRef<Map<string, Map<string, Problem>>>(new Map());
   const originalProblemsOrderRef = useRef<Map<string, string[]>>(new Map());
   const [originalProblemsVersion, setOriginalProblemsVersion] = useState(0);
+  const learnProblemNotesDraftRef = useRef<Map<string, LearnProblemNotesDraftBatch>>(new Map());
+  const [learnProblemNotesDraftCount, setLearnProblemNotesDraftCount] = useState(0);
+  const [learnerNotesReloadEpoch, setLearnerNotesReloadEpoch] = useState(0);
+
+  const onLearnerNotesDraftChange = useCallback((draftKey: string, batch: LearnProblemNotesDraftBatch | null) => {
+    const m = learnProblemNotesDraftRef.current;
+    if (batch) m.set(draftKey, batch);
+    else m.delete(draftKey);
+    setLearnProblemNotesDraftCount(m.size);
+  }, []);
 
   useLayoutEffect(() => {
     const m = new Set<string>();
@@ -3506,7 +3766,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     wrapper.style.alignItems = 'center';
     wrapper.style.gap = '8px';
     rightEl.appendChild(wrapper);
-    const pendingCount = pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + Object.keys(pendingCardFaceChanges).length + pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size;
+    const pendingCount = pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + Object.keys(pendingCardFaceChanges).length + pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + learnProblemNotesDraftCount;
     const hasPending = pendingCount > 0;
     ReactDOM.render(
       <>
@@ -3544,7 +3804,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       ReactDOM.unmountComponentAtNode(wrapper);
       wrapper.remove();
     };
-  }, [isMobile, aiBottomOpen, editorAiHidden, isCommitting, pendingChanges.size, pendingDragChanges.size, pendingRenames.size, pendingCreatesCount, pendingDeletes.size, pendingCardFaceChanges, pendingProblemCardIds.size, pendingNewProblemCardIds.size, pendingEditedProblemIds.size]);
+  }, [isMobile, aiBottomOpen, editorAiHidden, isCommitting, pendingChanges.size, pendingDragChanges.size, pendingRenames.size, pendingCreatesCount, pendingDeletes.size, pendingCardFaceChanges, pendingProblemCardIds.size, pendingNewProblemCardIds.size, pendingEditedProblemIds.size, learnProblemNotesDraftCount]);
 
   
   const getSelectedCard = useCallback((): Card | null => {
@@ -4589,6 +4849,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
     try {
       const domainId = (window as any).UiContext?.domainId || 'system';
+      let savedLearnerDraftBucketsForMsg = 0;
       
       
       const batchSaveData: any = {
@@ -5123,6 +5384,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         }
       }
 
+      mergeLearnProblemNoteDraftsIntoBatch(batchSaveData, learnProblemNotesDraftRef.current);
+
       const hasAnyChanges = 
         batchSaveData.nodeCreates.length > 0 ||
         batchSaveData.nodeUpdates.length > 0 ||
@@ -5139,6 +5402,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           const response = await request.post(getBaseUrl('/batch-save'), batchSaveData);
           
           if (response.success) {
+            savedLearnerDraftBucketsForMsg = learnProblemNotesDraftRef.current.size;
+            learnProblemNotesDraftRef.current.clear();
+            setLearnProblemNotesDraftCount(0);
+            setLearnerNotesReloadEpoch((e) => e + 1);
             const det = (response as any).developSessionEditTotals;
             if (det && typeof det === 'object') {
               setDevelopSessionEditTotals({
@@ -5384,7 +5651,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         + actualRenameCount
         + createCountBeforeSave
         + (hasDeleteChanges ? pendingDeletes.size : 0)
-        + problemChangesCount;
+        + problemChangesCount
+        + savedLearnerDraftBucketsForMsg;
 
       Notification.success(`保存成功，共 ${totalChanges} 项更改`);
 
@@ -5538,7 +5806,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     } finally {
       setIsCommitting(false);
     }
-  }, [pendingChanges, pendingDragChanges, pendingRenames, pendingDeletes, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.nodes, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion, explorerMode, rightPanelOpen, aiBottomOpen, explorerPanelWidth, problemsPanelWidth, aiPanelHeight, editorAiHidden, developEditorContext, basePath]);
+  }, [pendingChanges, pendingDragChanges, pendingRenames, pendingDeletes, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, learnProblemNotesDraftCount, onLearnerNotesDraftChange, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.nodes, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion, explorerMode, rightPanelOpen, aiBottomOpen, explorerPanelWidth, problemsPanelWidth, aiPanelHeight, editorAiHidden, developEditorContext, basePath]);
 
   useEffect(() => {
     saveHandlerRef.current = handleSaveAll;
@@ -12785,6 +13053,14 @@ Reply with a JSON code block only for executable operations, using this shape:
                     </div>
                   </div>
                 )}
+
+                {learnProblemNotesDraftCount > 0 && (
+                  <div>
+                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>
+                      {i18n('Problem editor notes title')}（{learnProblemNotesDraftCount}）
+                    </div>
+                  </div>
+                )}
                 
                 {/* No pending changes */}
                 {pendingChanges.size === 0 && 
@@ -12795,7 +13071,8 @@ Reply with a JSON code block only for executable operations, using this shape:
                  pendingDeletes.size === 0 &&
                  pendingProblemCardIds.size === 0 &&
                  pendingNewProblemCardIds.size === 0 &&
-                 pendingEditedProblemIds.size === 0 && (
+                 pendingEditedProblemIds.size === 0 &&
+                 learnProblemNotesDraftCount === 0 && (
                   <div style={{ 
                     color: themeStyles.textTertiary, 
                     fontStyle: 'italic',
@@ -15316,7 +15593,8 @@ Reply with a JSON code block only for executable operations, using this shape:
                     Object.keys(pendingCardFaceChanges).length +
                     pendingProblemCardIds.size +
                     pendingNewProblemCardIds.size +
-                    pendingEditedProblemIds.size;
+                    pendingEditedProblemIds.size +
+                    learnProblemNotesDraftCount;
                   if (pendingMigrate > 0) {
                     Notification.warn('Please save all changes before migrating');
                     return;
@@ -15549,19 +15827,21 @@ Reply with a JSON code block only for executable operations, using this shape:
           </div>
           {!isMobile && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
-            {(pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0) && (
+            {(pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) && (
               <span style={{ fontSize: '12px', color: themeStyles.textSecondary }}>
                 {pendingChanges.size > 0 && `${pendingChanges.size} 个文件已修改`}
-                {pendingChanges.size > 0 && (pendingDragChanges.size > 0 || pendingRenames.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0) && '，'}
+                {pendingChanges.size > 0 && (pendingDragChanges.size > 0 || pendingRenames.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) && '，'}
                 {Object.keys(pendingCardFaceChanges).length > 0 && `${Object.keys(pendingCardFaceChanges).length} 个卡面已修改`}
-                {Object.keys(pendingCardFaceChanges).length > 0 && (pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0) && '，'}
+                {Object.keys(pendingCardFaceChanges).length > 0 && (pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) && '，'}
                 {pendingDragChanges.size > 0 && `${pendingDragChanges.size} 个拖动操作`}
-                {pendingDragChanges.size > 0 && (pendingRenames.size > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0) && '，'}
+                {pendingDragChanges.size > 0 && (pendingRenames.size > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) && '，'}
                 {pendingRenames.size > 0 && `${pendingRenames.size} 个重命名`}
-                {(pendingRenames.size > 0 || pendingChanges.size > 0 || pendingDragChanges.size > 0) && (pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0) && '，'}
+                {(pendingRenames.size > 0 || pendingChanges.size > 0 || pendingDragChanges.size > 0) && (pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) && '，'}
                 {pendingNewProblemCardIds.size > 0 && `${pendingNewProblemCardIds.size} 个题目新建`}
-                {pendingNewProblemCardIds.size > 0 && (pendingEditedProblemIds.size > 0 || pendingProblemCardIds.size > 0) && '，'}
+                {pendingNewProblemCardIds.size > 0 && (pendingEditedProblemIds.size > 0 || pendingProblemCardIds.size > 0 || learnProblemNotesDraftCount > 0) && '，'}
                 {pendingEditedProblemIds.size > 0 && `${pendingEditedProblemIds.size} 个题目更改`}
+                {(pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0) && learnProblemNotesDraftCount > 0 && '，'}
+                {learnProblemNotesDraftCount > 0 && `${learnProblemNotesDraftCount} ${i18n('Problem editor notes pending short')}`}
               </span>
             )}
             <button
@@ -15569,22 +15849,22 @@ Reply with a JSON code block only for executable operations, using this shape:
                 console.log('[保存按钮] 点击保存，pendingProblemCardIds:', Array.from(pendingProblemCardIds));
                 handleSaveAll();
               }}
-              disabled={isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0)}
+              disabled={isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)}
               style={{
                 padding: isMobile ? '10px 12px' : '4px 12px',
                 minHeight: isMobile ? '44px' : undefined,
                 border: `1px solid ${themeStyles.borderSecondary}`,
                 borderRadius: '3px',
-                backgroundColor: (pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0) ? themeStyles.success : (theme === 'dark' ? '#555' : '#6c757d'),
+                backgroundColor: (pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) ? themeStyles.success : (theme === 'dark' ? '#555' : '#6c757d'),
                 color: themeStyles.textOnPrimary,
-                cursor: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0)) ? 'not-allowed' : 'pointer',
+                cursor: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)) ? 'not-allowed' : 'pointer',
                 fontSize: '12px',
                 fontWeight: '500',
-                opacity: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0)) ? 0.6 : 1,
+                opacity: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)) ? 0.6 : 1,
               }}
-              title={(pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0) ? i18n('No pending changes') : i18n('Save all changes')}
+              title={(pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0) ? i18n('No pending changes') : i18n('Save all changes')}
             >
-              {isCommitting ? i18n('Saving...') : `${i18n('Save changes')} (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + Object.keys(pendingCardFaceChanges).length + pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size})`}
+              {isCommitting ? i18n('Saving...') : `${i18n('Save changes')} (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + Object.keys(pendingCardFaceChanges).length + pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + learnProblemNotesDraftCount})`}
             </button>
           </div>
           )}
@@ -17063,6 +17343,8 @@ Reply with a JSON code block only for executable operations, using this shape:
                         docId={docId}
                         getBaseUrl={getBaseUrl}
                         themeStyles={themeStyles}
+                        learnerNotesReloadEpoch={learnerNotesReloadEpoch}
+                        onLearnerNotesDraftChange={onLearnerNotesDraftChange}
                         onProblemContextMenu={(ev) =>
                           setProblemContextMenu({
                             x: ev.clientX,

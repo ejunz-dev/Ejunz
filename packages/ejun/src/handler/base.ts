@@ -69,7 +69,92 @@ import {
     superFlipNormalized,
     sanitizeProblemTagRegistryList,
     normalizeProblemTagInput,
+    LearnProblemNoteModel,
 } from '../model/problem';
+
+type LearnProblemNotesBatchBlock = {
+    pid: string;
+    create?: string[];
+    update?: Array<{ id: string; content: string }>;
+    deleteIds?: string[];
+};
+
+async function applyLearnProblemNotesBatchBlocks(
+    h: Handler,
+    domainId: string,
+    cardIdStr: string,
+    blocks: LearnProblemNotesBatchBlock[] | undefined,
+    mdt: MindMapDocType,
+): Promise<void> {
+    if (!blocks || !Array.isArray(blocks) || blocks.length === 0) return;
+    if (!cardIdStr || !ObjectId.isValid(cardIdStr)) {
+        throw new ValidationError('cardId');
+    }
+    const card = await CardModel.get(domainId, new ObjectId(cardIdStr));
+    if (!card) throw new NotFoundError('Card not found');
+    const base = await BaseModel.get(domainId, card.baseDocId as number, mdt);
+    if (!base) throw new NotFoundError('Base not found');
+
+    let needEdit = false;
+    let needDelete = false;
+    for (const b of blocks) {
+        if (b.create?.length) needEdit = true;
+        if (b.update?.length) needEdit = true;
+        if (b.deleteIds?.length) needDelete = true;
+    }
+    if (!h.user.own(base)) {
+        if (needEdit) h.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+        if (needDelete) h.checkPerm(PERM.PERM_DELETE_DISCUSSION);
+    }
+
+    for (const block of blocks) {
+        const pid = String(block.pid ?? '').trim();
+        if (!pid) throw new ValidationError('pid');
+        for (const text of block.create ?? []) {
+            const content = String(text ?? '').trim().slice(0, 4000);
+            if (!content) continue;
+            const uname = String((h.user as any).uname || h.user._id || '').trim().slice(0, 128);
+            await LearnProblemNoteModel.add({
+                domainId,
+                cardId: cardIdStr,
+                pid,
+                uid: h.user._id,
+                uname: uname || String(h.user._id),
+                content,
+            });
+        }
+        for (const u of block.update ?? []) {
+            const id = String(u.id ?? '').trim();
+            const content = String(u.content ?? '').trim().slice(0, 4000);
+            if (!id || !ObjectId.isValid(id)) throw new ValidationError('noteId');
+            if (!content) throw new ValidationError('content');
+            const note = await LearnProblemNoteModel.getById(new ObjectId(id));
+            if (
+                !note
+                || note.domainId !== domainId
+                || note.cardId !== cardIdStr
+                || note.pid !== pid
+            ) {
+                throw new NotFoundError('Note');
+            }
+            await LearnProblemNoteModel.updateContent(new ObjectId(id), content);
+        }
+        for (const delId of block.deleteIds ?? []) {
+            const id = String(delId ?? '').trim();
+            if (!id || !ObjectId.isValid(id)) throw new ValidationError('noteId');
+            const note = await LearnProblemNoteModel.getById(new ObjectId(id));
+            if (
+                !note
+                || note.domainId !== domainId
+                || note.cardId !== cardIdStr
+                || note.pid !== pid
+            ) {
+                throw new NotFoundError('Note');
+            }
+            await LearnProblemNoteModel.deleteById(new ObjectId(id));
+        }
+    }
+}
 
 /** Machine token in {@link BadRequestError} params for API clients (see `request.ajax` in ui-default). */
 const DEVELOP_SESSION_CLOSED_CODE = 'DEVELOP_SESSION_CLOSED';
@@ -4873,8 +4958,19 @@ export class BaseBatchSaveHandler extends Handler {
                     }
                     updates.problems = problemsOut;
                 }
-                if (Object.keys(updates).length === 0) continue;
-                await CardModel.update(actualDomainId, new ObjectId(cardUpdate.cardId), updates);
+                const learnBlocks = (cardUpdate as { learnProblemNotes?: LearnProblemNotesBatchBlock[] }).learnProblemNotes;
+                if (Object.keys(updates).length > 0) {
+                    await CardModel.update(actualDomainId, new ObjectId(cardUpdate.cardId), updates);
+                }
+                if (learnBlocks && Array.isArray(learnBlocks) && learnBlocks.length > 0) {
+                    await applyLearnProblemNotesBatchBlocks(
+                        this,
+                        actualDomainId,
+                        String(cardUpdate.cardId),
+                        learnBlocks,
+                        mdt,
+                    );
+                }
             } catch (error: any) {
                 errors.push(`更新卡片失败: ${error.message || '未知错误'}`);
             }

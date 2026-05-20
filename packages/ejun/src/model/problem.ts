@@ -8,6 +8,7 @@ import type {
     ProblemAiEvalPoint,
     ProblemAiEvalSubPoint,
     Problem,
+    ProblemAuthorNote,
     ProblemCommon,
     ProblemFillBlank,
     ProblemFlip,
@@ -18,6 +19,7 @@ import type {
     ProblemSingle,
     ProblemTrueFalse,
 } from '../interface';
+import { nanoid } from 'nanoid';
 
 const DEFAULT_OPTION_SLOTS = 4;
 const MIN_SLOTS = 2;
@@ -26,6 +28,30 @@ const AI_EVAL_POINT_MAX = 20;
 const AI_EVAL_SUB_POINT_MAX = 12;
 const AI_EVAL_SUB_POINT_ALIAS_MAX = 24;
 const AI_EVAL_ALIAS_STR_MAX = 200;
+
+const AUTHOR_NOTE_TEXT_MAX = 8000;
+const AUTHOR_NOTE_MAX_ROWS = 32;
+
+/** Normalize author notes from persisted JSON (editor / migrate). */
+export function normalizeAuthorNotesFromRaw(raw: unknown): ProblemAuthorNote[] {
+    if (!Array.isArray(raw)) return [];
+    const out: ProblemAuthorNote[] = [];
+    for (const x of raw) {
+        if (!x || typeof x !== 'object') continue;
+        const o = x as Record<string, unknown>;
+        const text = typeof o.text === 'string' ? o.text.trim() : '';
+        if (!text) continue;
+        const id = typeof o.id === 'string' && o.id.trim() ? o.id.trim() : nanoid();
+        out.push({ id, text: text.slice(0, AUTHOR_NOTE_TEXT_MAX) });
+        if (out.length >= AUTHOR_NOTE_MAX_ROWS) break;
+    }
+    return out;
+}
+
+/** Active author notes on a problem (for lesson / learn UI). */
+export function getProblemAuthorNoteList(p: Problem): ProblemAuthorNote[] {
+    return normalizeAuthorNotesFromRaw((p as Problem & { notes?: unknown }).notes);
+}
 
 function normalizeAiEvalPointScore(raw: unknown, fallback = 10): number {
     const n = typeof raw === 'number' && Number.isFinite(raw) ? Math.round(raw) : fallback;
@@ -388,11 +414,13 @@ export function ensureOptionArrayLength(options: string[], slots: number): strin
 
 export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem {
     const tagList = getProblemTagList(prev);
+    const authorNotes = getProblemAuthorNoteList(prev);
     const common: ProblemCommon = {
         pid: prev.pid,
         analysis: prev.analysis,
         ...(typeof prev.title === 'string' ? { title: prev.title } : {}),
         ...(tagList.length ? { tags: tagList } : {}),
+        ...(authorNotes.length ? { notes: authorNotes } : {}),
     };
     const slots = clampOptionSlots(
         isMultiProblem(prev) || problemKind(prev) === 'single'
@@ -657,11 +685,13 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
 export function migrateRawProblem(raw: Record<string, unknown>): Problem {
     const pid = typeof raw.pid === 'string' && raw.pid ? raw.pid : `p_${Date.now()}`;
     const tagsNorm = normalizeProblemTagsFromRaw(raw);
+    const authorNotes = normalizeAuthorNotesFromRaw(raw.notes);
     const common: ProblemCommon = {
         pid,
         ...(typeof raw.analysis === 'string' ? { analysis: raw.analysis } : {}),
         ...(typeof raw.title === 'string' ? { title: raw.title } : {}),
         ...(tagsNorm.length ? { tags: tagsNorm } : {}),
+        ...(authorNotes.length ? { notes: authorNotes } : {}),
     };
     const t = raw.type;
     if (t === 'flip') {

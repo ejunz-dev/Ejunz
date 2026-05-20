@@ -6,7 +6,7 @@ import domain from '../model/domain';
 import learn, { type LearnDAGNode } from '../model/learn';
 import user from '../model/user';
 import { PERM, PRIV } from '../model/builtin';
-import { BadRequestError, NotFoundError, ValidationError } from '../error';
+import { NotFoundError, ValidationError } from '../error';
 import { MethodNotAllowedError } from '@ejunz/framework';
 import { ObjectId } from 'mongodb';
 import db from '../service/db';
@@ -57,6 +57,7 @@ import {
     isLearnSessionRow,
 } from '../lib/sessionListDisplay';
 import RecordModel, { type SessionRecordDoc } from '../model/record';
+import LearnProblemNoteModel from '../model/learnProblemNote';
 import {
     buildSessionRecordHistoryRows,
     lessonHistoryRowsToWire,
@@ -1981,10 +1982,15 @@ function getPendingNodeList(
         collected.add(nodeId);
         const node = nodeMap.get(nodeId);
         if (!node) return [];
-        const cardList: Array<{ cardId: string; title: string; problems?: Array<{ stem?: string }> }> = (node.cards || []).map((c: any) => ({
+        const cardList: Array<{ cardId: string; title: string; problems?: Array<{ pid?: string; stem?: string; notes?: unknown[] }> }> = (node.cards || []).map((c: any) => ({
             cardId: String(c.cardId),
             title: c.title || 'Unnamed',
-            problems: (c.problems || []).map((p: any) => ({ stem: p.stem })),
+            problems: (c.problems || []).map((p: any) => ({
+                pid: String(p.pid || ''),
+                stem: p.stem,
+                notes: Array.isArray(p.notes) ? p.notes : [],
+                tags: Array.isArray(p.tags) ? p.tags : [],
+            })),
         }));
         const children = allDagNodes.filter((n: any) => n.requireNids?.length > 0 && n.requireNids[n.requireNids.length - 1] === nodeId);
         for (const child of children) {
@@ -2058,7 +2064,14 @@ async function generateDAG(
             title: card.title || translate('Unnamed Card'),
             order: (card as any).order || 0,
             problemCount: problems.length,
-            problems: problems.map((p: any) => ({ pid: p.pid, stem: p.stem, options: p.options, answer: p.answer })),
+            problems: problems.map((p: any) => ({
+                pid: String(p.pid || ''),
+                stem: p.stem,
+                options: p.options,
+                answer: p.answer,
+                notes: Array.isArray(p.notes) ? p.notes : [],
+                tags: Array.isArray(p.tags) ? p.tags : [],
+            })),
         };
     };
 
@@ -6653,6 +6666,63 @@ class LearnBaseSelectHandler extends Handler {
     }
 }
 
+/** GET: list notes for a problem. POST: current user appends one note (e.g. from /learn). Maintainer edits use base batch-save. */
+class LearnProblemNotesHandler extends Handler {
+    private notesFinalDomainId(domainId: string): string {
+        return typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
+    }
+
+    private notesBody(): Record<string, unknown> {
+        const body = this.request.body;
+        return body && typeof body === 'object' && !Array.isArray(body)
+            ? body as Record<string, unknown>
+            : {};
+    }
+
+    async get(domainId: string) {
+        const finalDomainId = this.notesFinalDomainId(domainId);
+        const cardId = String(this.request.query?.cardId ?? '').trim();
+        const pid = String(this.request.query?.pid ?? '').trim();
+        if (!cardId || !ObjectId.isValid(cardId)) {
+            throw new ValidationError('cardId');
+        }
+        if (!pid) {
+            throw new ValidationError('pid');
+        }
+        const learnerNotes = await LearnProblemNoteModel.listForProblem(finalDomainId, cardId, pid, 200);
+        this.response.body = {
+            learnerNotes: learnerNotes.map((d) => LearnProblemNoteModel.toWire(d)),
+        };
+    }
+
+    async post(domainId: string) {
+        const finalDomainId = this.notesFinalDomainId(domainId);
+        const body = this.notesBody();
+        const cardId = String(body.cardId ?? '').trim();
+        const pid = String(body.pid ?? '').trim();
+        const content = String(body.content ?? '').trim().slice(0, 4000);
+        if (!cardId || !ObjectId.isValid(cardId)) {
+            throw new ValidationError('cardId');
+        }
+        if (!pid) {
+            throw new ValidationError('pid');
+        }
+        if (!content) {
+            throw new ValidationError('content');
+        }
+        const uname = String((this.user as any).uname || this.user._id || '').trim().slice(0, 128);
+        const doc = await LearnProblemNoteModel.add({
+            domainId: finalDomainId,
+            cardId,
+            pid,
+            uid: this.user._id,
+            uname: uname || String(this.user._id),
+            content,
+        });
+        this.response.body = { note: LearnProblemNoteModel.toWire(doc) };
+    }
+}
+
 export async function apply(ctx: Context) {
     ctx.Route('learn', '/learn', LearnHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_set_base', '/learn/base', LearnHandler, PRIV.PRIV_USER_PROFILE);
@@ -6669,4 +6739,6 @@ export async function apply(ctx: Context) {
     ctx.Route('learn_lesson_navigate', '/learn/lesson/navigate', LessonHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_lesson_start', '/learn/lesson/start', LessonHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_lesson_node_result', '/learn/lesson/node-result', LessonNodeResultHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('learn_problem_notes', '/learn/problem-notes', LearnProblemNotesHandler, PRIV.PRIV_USER_PROFILE);
+    void LearnProblemNoteModel.ensureIndexes();
 }
