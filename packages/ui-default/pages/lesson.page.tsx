@@ -6280,6 +6280,7 @@ function LessonPage() {
                   accentMutedBg: themeStyles.accentMutedBg,
                 }}
                 onAfterAdd={() => setLessonLearnerNoteCount((n) => n + 1)}
+                onAfterRemove={() => setLessonLearnerNoteCount((n) => Math.max(0, n - 1))}
               />
             </div>
           </div>
