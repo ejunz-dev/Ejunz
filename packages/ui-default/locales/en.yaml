@@ -266,6 +266,23 @@ __langname: English
 'Lesson problem tag panel append registered': Add an existing tag
 'Lesson problem tag panel add registered placeholder': Select a tag to add…
 'Lesson problem tag chip remove': Remove
+'Lesson problem notes panel title': Notes
+'Lesson problem notes count badge': '{0} notes'
+'Lesson problem notes empty list': No notes yet.
+'Lesson problem notes add': Add a note
+'Lesson problem notes placeholder': Write your note…
+'Lesson problem notes submit': Post note
+'Lesson problem notes submitting': Posting…
+'Lesson problem notes saved': Note posted.
+'Lesson problem notes load failed': Failed to load notes.
+'Lesson problem notes save failed': Failed to post note.
+'Problem editor notes title': Notes
+'Problem editor notes empty': No notes yet.
+'Problem editor notes add': Add
+'Problem editor notes delete': Remove
+'Problem editor notes remove row': Remove this row
+'Problem editor notes pending short': pending
+'Loading...': Loading…
 'Insert {0} selected into AI terminal': Insert {0} selected into AI terminal
 'Join Domain': Join Domain
 'Jump to {0}': Jump to {0}
