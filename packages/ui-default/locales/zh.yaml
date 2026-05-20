@@ -303,6 +303,16 @@ __langname: 简体中文
 'Lesson problem notes saved': 已发布。
 'Lesson problem notes load failed': 加载笔记失败。
 'Lesson problem notes save failed': 发布笔记失败。
+'Lesson problem notes updated': 已更新笔记。
+'Lesson problem notes edited at': 编辑于 {0}
+'Lesson problem notes edit': 编辑
+'Lesson problem notes save edit': 保存
+'Lesson problem notes cancel edit': 取消
+'Lesson problem notes delete': 删除
+'Lesson problem notes deleting': 删除中…
+'Lesson problem notes delete confirm': 确定删除这条笔记？此操作无法撤销。
+'Lesson problem notes deleted': 已删除笔记。
+'Lesson problem notes delete failed': 删除失败。
 'Problem editor notes title': 笔记
 'Problem editor notes empty': 暂无笔记。
 'Problem editor notes add': 添加

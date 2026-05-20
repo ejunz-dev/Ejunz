@@ -444,6 +444,15 @@ function LearnPage() {
     setLearnProblemLearnerNoteCounts((prev) => ({ ...prev, [k]: (prev[k] ?? 0) + 1 }));
   }, []);
 
+  const decrementLearnProblemLearnerNoteCount = useCallback((cardId: string, pid: string) => {
+    const k = learnOutlineProblemNoteKey(cardId, pid);
+    setLearnProblemLearnerNoteCounts((prev) => {
+      const cur = prev[k] ?? 0;
+      if (cur <= 0) return prev;
+      return { ...prev, [k]: cur - 1 };
+    });
+  }, []);
+
   const handleConsecutiveBubbleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     setShowConsecutiveTip(true);
@@ -2436,6 +2445,7 @@ function LearnPage() {
                 accentMutedBg: themeStyles.accentMutedBg,
               }}
               onAfterAdd={() => bumpLearnProblemLearnerNoteCount(learnNotesModal.cardId, learnNotesModal.pid)}
+              onAfterRemove={() => decrementLearnProblemLearnerNoteCount(learnNotesModal.cardId, learnNotesModal.pid)}
             />
           </div>
         </div>
