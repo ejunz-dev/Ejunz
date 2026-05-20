@@ -12,6 +12,8 @@ export type LearnProblemNoteDoc = {
     uname: string;
     content: string;
     createdAt: Date;
+    /** Set when content was last modified (not set on initial insert). */
+    updatedAt?: Date;
 };
 
 export default class LearnProblemNoteModel {
@@ -42,7 +44,7 @@ export default class LearnProblemNoteModel {
 
     static async updateContent(_id: ObjectId, content: string): Promise<boolean> {
         const text = String(content ?? '').slice(0, 4000);
-        const r = await coll.updateOne({ _id }, { $set: { content: text } });
+        const r = await coll.updateOne({ _id }, { $set: { content: text, updatedAt: new Date() } });
         return r.modifiedCount > 0;
     }
 
@@ -69,12 +71,17 @@ export default class LearnProblemNoteModel {
     }
 
     static toWire(d: LearnProblemNoteDoc) {
-        return {
+        const upd = d.updatedAt;
+        const wire: Record<string, unknown> = {
             id: d._id.toString(),
             uid: d.uid,
             uname: d.uname,
             content: d.content,
             createdAt: d.createdAt instanceof Date ? d.createdAt.toISOString() : String(d.createdAt ?? ''),
         };
+        if (upd instanceof Date && !Number.isNaN(upd.getTime())) {
+            wire.updatedAt = upd.toISOString();
+        }
+        return wire;
     }
 }

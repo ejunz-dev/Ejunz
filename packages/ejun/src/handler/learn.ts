@@ -6,7 +6,7 @@ import domain from '../model/domain';
 import learn, { type LearnDAGNode } from '../model/learn';
 import user from '../model/user';
 import { PERM, PRIV } from '../model/builtin';
-import { NotFoundError, ValidationError } from '../error';
+import { NotFoundError, ValidationError, ForbiddenError } from '../error';
 import { MethodNotAllowedError } from '@ejunz/framework';
 import { ObjectId } from 'mongodb';
 import db from '../service/db';
@@ -6666,7 +6666,7 @@ class LearnBaseSelectHandler extends Handler {
     }
 }
 
-/** GET: list notes for a problem. POST: current user appends one note (e.g. from /learn). Maintainer edits use base batch-save. */
+/** GET: list notes for a problem. POST: create, update own (noteId+content), or delete own (noteDelete+noteId). Maintainer bulk edits use base batch-save. */
 class LearnProblemNotesHandler extends Handler {
     private notesFinalDomainId(domainId: string): string {
         return typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
@@ -6700,16 +6700,60 @@ class LearnProblemNotesHandler extends Handler {
         const body = this.notesBody();
         const cardId = String(body.cardId ?? '').trim();
         const pid = String(body.pid ?? '').trim();
-        const content = String(body.content ?? '').trim().slice(0, 4000);
+        const noteIdRaw = String(body.noteId ?? '').trim();
+        const noteDelete = body.noteDelete === true || body.noteDelete === 'true';
         if (!cardId || !ObjectId.isValid(cardId)) {
             throw new ValidationError('cardId');
         }
         if (!pid) {
             throw new ValidationError('pid');
         }
+
+        if (noteDelete) {
+            if (!noteIdRaw || !ObjectId.isValid(noteIdRaw)) {
+                throw new ValidationError('noteId');
+            }
+            const note = await LearnProblemNoteModel.getById(new ObjectId(noteIdRaw));
+            if (
+                !note
+                || note.domainId !== finalDomainId
+                || note.cardId !== cardId
+                || note.pid !== pid
+            ) {
+                throw new NotFoundError('Note');
+            }
+            if (note.uid !== this.user._id) {
+                throw new ForbiddenError();
+            }
+            await LearnProblemNoteModel.deleteById(new ObjectId(noteIdRaw));
+            this.response.body = { success: true };
+            return;
+        }
+
+        const content = String(body.content ?? '').trim().slice(0, 4000);
         if (!content) {
             throw new ValidationError('content');
         }
+
+        if (noteIdRaw && ObjectId.isValid(noteIdRaw)) {
+            const note = await LearnProblemNoteModel.getById(new ObjectId(noteIdRaw));
+            if (
+                !note
+                || note.domainId !== finalDomainId
+                || note.cardId !== cardId
+                || note.pid !== pid
+            ) {
+                throw new NotFoundError('Note');
+            }
+            if (note.uid !== this.user._id) {
+                throw new ForbiddenError();
+            }
+            await LearnProblemNoteModel.updateContent(new ObjectId(noteIdRaw), content);
+            const updated = await LearnProblemNoteModel.getById(new ObjectId(noteIdRaw));
+            this.response.body = { note: updated ? LearnProblemNoteModel.toWire(updated) : null };
+            return;
+        }
+
         const uname = String((this.user as any).uname || this.user._id || '').trim().slice(0, 128);
         const doc = await LearnProblemNoteModel.add({
             domainId: finalDomainId,

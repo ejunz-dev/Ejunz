@@ -276,6 +276,16 @@ __langname: English
 'Lesson problem notes saved': Note posted.
 'Lesson problem notes load failed': Failed to load notes.
 'Lesson problem notes save failed': Failed to post note.
+'Lesson problem notes updated': Note updated.
+'Lesson problem notes edited at': Edited {0}
+'Lesson problem notes edit': Edit
+'Lesson problem notes save edit': Save
+'Lesson problem notes cancel edit': Cancel
+'Lesson problem notes delete': Delete
+'Lesson problem notes deleting': Deleting…
+'Lesson problem notes delete confirm': Delete this note? This cannot be undone.
+'Lesson problem notes deleted': Note deleted.
+'Lesson problem notes delete failed': Failed to delete note.
 'Problem editor notes title': Notes
 'Problem editor notes empty': No notes yet.
 'Problem editor notes add': Add
