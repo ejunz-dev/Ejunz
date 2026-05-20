@@ -414,6 +414,16 @@ export interface ProblemCommon {
      * Omit or empty ⇒ default grouping in the editor UI.
      */
     tags?: string[];
+    /**
+     * Author/teacher notes on this problem (shown in lesson/learn; learners add separate notes via API).
+     */
+    notes?: ProblemAuthorNote[];
+}
+
+/** Single author note row in the base editor (Markdown-friendly plain text). */
+export interface ProblemAuthorNote {
+    id: string;
+    text: string;
 }
 
 /** Single choice (default when `type` omitted). */

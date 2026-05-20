@@ -293,6 +293,23 @@ __langname: 简体中文
 'Lesson problem tag panel append registered': 追加已登记标签
 'Lesson problem tag panel add registered placeholder': 选择要追加的标签…
 'Lesson problem tag chip remove': 移除
+'Lesson problem notes panel title': 笔记
+'Lesson problem notes count badge': '{0} 条笔记'
+'Lesson problem notes empty list': 暂无笔记
+'Lesson problem notes add': 添加笔记
+'Lesson problem notes placeholder': 写下你的笔记…
+'Lesson problem notes submit': 发布
+'Lesson problem notes submitting': 发布中…
+'Lesson problem notes saved': 已发布。
+'Lesson problem notes load failed': 加载笔记失败。
+'Lesson problem notes save failed': 发布笔记失败。
+'Problem editor notes title': 笔记
+'Problem editor notes empty': 暂无笔记。
+'Problem editor notes add': 添加
+'Problem editor notes delete': 删除
+'Problem editor notes remove row': 移除该条
+'Problem editor notes pending short': 条待保存
+'Loading...': 加载中…
 'Insert {0} selected into AI terminal': 将 {0} 项选中内容插入 AI 终端
 'Join {0}': '加入 {0}'
 'Join Domain': 加入域
