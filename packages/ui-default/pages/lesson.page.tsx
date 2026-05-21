@@ -1854,18 +1854,18 @@ function LessonPage() {
     if (!showLessonSessionProgressCard) return null;
     const modeLabel = lessonSessionModeLabel || i18n('Learn session');
     const modeBlock = (
-      <div style={{ marginBottom: (showCardQueueProgress || showLessonProblemSessionProgress) ? '12px' : 0 }}>
-        <div style={{ fontSize: '12px', color: themeStyles.textTertiary, marginBottom: '4px' }}>
+      <div style={{ marginBottom: (showCardQueueProgress || showLessonProblemSessionProgress) ? '6px' : 0 }}>
+        <div style={{ fontSize: '11px', color: themeStyles.textTertiary, marginBottom: '2px' }}>
           {i18n('Session type')}
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 10px' }}>
-          <span style={{ fontSize: '15px', fontWeight: 700, color: themeStyles.accent }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 8px' }}>
+          <span style={{ fontSize: '14px', fontWeight: 700, color: themeStyles.accent }}>
             {modeLabel}
           </span>
           {isTodayMode && (
             <>
-              <span style={{ fontSize: '14px', color: themeStyles.textTertiary }} aria-hidden>·</span>
-              <span style={{ fontSize: '14px', fontWeight: 600, color: themeStyles.textPrimary }}>
+              <span style={{ fontSize: '13px', color: themeStyles.textTertiary }} aria-hidden>·</span>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: themeStyles.textPrimary }}>
                 {labelForFrozenLessonQueueMode(lessonLearnSessionMode)}
               </span>
             </>
@@ -1873,10 +1873,10 @@ function LessonPage() {
         </div>
         {isTodayMode && rootNodeId === 'today' && lessonTodayModesConfigLine ? (
           <div style={{
-            fontSize: '12px',
+            fontSize: '11px',
             color: themeStyles.textTertiary,
-            marginTop: '8px',
-            lineHeight: 1.5,
+            marginTop: '4px',
+            lineHeight: 1.4,
             wordBreak: 'break-word',
           }}>
             {lessonTodayModesConfigLine}
@@ -1885,8 +1885,8 @@ function LessonPage() {
       </div>
     );
     const cardShell = {
-      marginBottom: '24px',
-      padding: '20px 24px',
+      marginBottom: '8px',
+      padding: '12px 16px',
       backgroundColor: themeStyles.bgCard,
       borderRadius: '12px',
       border: `1px solid ${themeStyles.border}`,
@@ -1901,7 +1901,7 @@ function LessonPage() {
     }
 
     const trackStyle: React.CSSProperties = {
-      height: '14px',
+      height: '8px',
       borderRadius: '999px',
       backgroundColor: themeStyles.bgSecondary,
       border: `1px solid ${themeStyles.border}`,
@@ -1954,12 +1954,12 @@ function LessonPage() {
       <div style={cardShell}>
         {modeBlock}
         {showSessionCardBar ? (
-          <div style={{ marginBottom: showCurrentCardProblemsBar ? '18px' : 0 }}>
-            <div style={{ fontSize: '12px', color: themeStyles.textTertiary, marginBottom: '6px' }}>
+          <div style={{ marginBottom: showCurrentCardProblemsBar ? '8px' : 0 }}>
+            <div style={{ fontSize: '11px', color: themeStyles.textTertiary, marginBottom: '3px' }}>
               {i18n('Lesson progress session cards')}
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', marginBottom: '10px', gap: '12px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '15px', fontWeight: 600, color: themeStyles.accent }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', marginBottom: '4px', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: themeStyles.accent }}>
                 {newOldPrefix}
                 {sessionCardDone} / {sessionCardTotal} {i18n('cards')} · {sessionCardPct}%
               </span>
@@ -1971,11 +1971,11 @@ function LessonPage() {
         ) : null}
         {showCurrentCardProblemsBar ? (
           <div>
-            <div style={{ fontSize: '12px', color: themeStyles.textTertiary, marginBottom: '6px' }}>
+            <div style={{ fontSize: '11px', color: themeStyles.textTertiary, marginBottom: '3px' }}>
               {i18n('Lesson progress current card problems')}
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', marginBottom: '10px', gap: '12px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '15px', fontWeight: 600, color: themeStyles.accent }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', marginBottom: '4px', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: themeStyles.accent }}>
                 {currentCardProblemDone} / {currentCardProblemTotal} {i18n('Lesson practice progress unit')} · {currentCardPct}%
               </span>
             </div>
@@ -2011,52 +2011,6 @@ function LessonPage() {
     themeStyles,
     theme,
     i18n,
-  ]);
-
-  const showTodayLearnKindBadge = isTodayMode && rootNodeId === 'today' && !!lessonTodayCardKindLabel;
-  const todayLearnKindIsReview = lessonTodayCardKind === 'review';
-  const lessonProvenanceTopRow = useMemo(() => {
-    if (!showLessonSessionProgressCard || (!lessonCardProvenanceLabel && !showTodayLearnKindBadge)) return null;
-    return (
-      <div style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        alignItems: 'center',
-        gap: '8px',
-        fontSize: '12px',
-        color: themeStyles.textTertiary,
-        marginBottom: '8px',
-        lineHeight: 1.45,
-        wordBreak: 'break-word',
-      }}>
-        {showTodayLearnKindBadge ? (
-          <span
-            style={{
-              flexShrink: 0,
-              fontSize: '11px',
-              fontWeight: 700,
-              padding: '3px 8px',
-              borderRadius: '6px',
-              letterSpacing: '0.02em',
-              backgroundColor: todayLearnKindIsReview ? themeStyles.reviewBg : themeStyles.accentMutedBg,
-              color: todayLearnKindIsReview ? themeStyles.reviewFg : themeStyles.accentMutedFg,
-            }}
-          >
-            {lessonTodayCardKindLabel}
-          </span>
-        ) : null}
-        {lessonCardProvenanceLabel ? (
-          <span style={{ flex: '1 1 160px', minWidth: 0 }}>{lessonCardProvenanceLabel}</span>
-        ) : null}
-      </div>
-    );
-  }, [
-    showLessonSessionProgressCard,
-    lessonCardProvenanceLabel,
-    showTodayLearnKindBadge,
-    todayLearnKindIsReview,
-    lessonTodayCardKindLabel,
-    themeStyles,
   ]);
 
   useEffect(() => {
@@ -3592,7 +3546,39 @@ function LessonPage() {
           backgroundColor: themeStyles.bgSecondary,
           borderRadius: '8px',
         }}>
-          {lessonProvenanceTopRow}
+          {(showLessonSessionProgressCard && (lessonCardProvenanceLabel || (isTodayMode && rootNodeId === 'today' && !!lessonTodayCardKindLabel))) ? (
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '12px',
+              color: themeStyles.textTertiary,
+              marginBottom: '8px',
+              lineHeight: 1.45,
+              wordBreak: 'break-word',
+            }}>
+              {(isTodayMode && rootNodeId === 'today' && !!lessonTodayCardKindLabel) ? (
+                <span
+                  style={{
+                    flexShrink: 0,
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    letterSpacing: '0.02em',
+                    backgroundColor: lessonTodayCardKind === 'review' ? themeStyles.reviewBg : themeStyles.accentMutedBg,
+                    color: lessonTodayCardKind === 'review' ? themeStyles.reviewFg : themeStyles.accentMutedFg,
+                  }}
+                >
+                  {lessonTodayCardKindLabel}
+                </span>
+              ) : null}
+              {lessonCardProvenanceLabel ? (
+                <span style={{ flex: '1 1 160px', minWidth: 0 }}>{lessonCardProvenanceLabel}</span>
+              ) : null}
+            </div>
+          ) : null}
           <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, color: themeStyles.textPrimary }}>
             {card.title || i18n('Unnamed Card')}
           </h1>
@@ -3800,63 +3786,6 @@ function LessonPage() {
     );
   }
 
-  const showLessonCardQueueNav = (isSingleNodeMode || isTodayMode) && !!lessonSessionId && !reviewCardId && flatCards.length > 0;
-  const lessonCardNavDisabled = lessonCardNavLoading || isSubmitting || browseSubmitting;
-  const lessonCardQueueNavControls = showLessonCardQueueNav ? (
-    <div
-      role="group"
-      aria-label={i18n('Lesson card queue navigation')}
-      style={{
-        marginTop: '12px',
-        marginBottom: '12px',
-        display: 'flex',
-        flexWrap: 'wrap',
-        alignItems: 'center',
-        gap: '10px',
-      }}
-    >
-      <button
-        type="button"
-        onClick={() => { void handleLessonCardNav('prev'); }}
-        disabled={lessonCardNavDisabled || currentCardIndex <= 0}
-        style={{
-          padding: '10px 18px',
-          borderRadius: '8px',
-          border: `1px solid ${themeStyles.border}`,
-          backgroundColor: themeStyles.bgSecondary,
-          color: themeStyles.textPrimary,
-          fontSize: '14px',
-          fontWeight: 600,
-          cursor: lessonCardNavDisabled || currentCardIndex <= 0 ? 'not-allowed' : 'pointer',
-          opacity: lessonCardNavDisabled || currentCardIndex <= 0 ? 0.5 : 1,
-        }}
-      >
-        {lessonCardNavLoading ? i18n('Redirecting') : i18n('Previous card')}
-      </button>
-      <button
-        type="button"
-        onClick={() => { void handleLessonCardNav('skip'); }}
-        disabled={lessonCardNavDisabled}
-        style={{
-          padding: '10px 18px',
-          borderRadius: '8px',
-          border: `1px solid ${themeStyles.optionBorderMuted}`,
-          backgroundColor: themeStyles.bgSecondary,
-          color: themeStyles.textSecondary,
-          fontSize: '14px',
-          fontWeight: 600,
-          cursor: lessonCardNavDisabled ? 'not-allowed' : 'pointer',
-          opacity: lessonCardNavDisabled ? 0.55 : 1,
-        }}
-      >
-        {lessonCardNavLoading ? i18n('Redirecting') : i18n('Skip card')}
-      </button>
-      <span style={{ fontSize: '12px', color: themeStyles.textTertiary, flex: '1 1 160px', minWidth: 0 }}>
-        {i18n('Lesson skip card hint')}
-      </span>
-    </div>
-  ) : null;
-
   // Card view when there are no problems; otherwise use problem queue below. Single-card without problems matches node-without-problems.
   const useCardViewMode = (isSingleNodeMode || isTodayMode || isAlonePractice) && !hasProblems && allProblems.length === 0;
   let cardViewContent: React.ReactNode = null;
@@ -3871,34 +3800,6 @@ function LessonPage() {
         background: themeStyles.bgPage,
       }}>
         {lessonSessionProgressCard}
-        <div style={{
-          marginBottom: '20px',
-          padding: '16px',
-          backgroundColor: themeStyles.bgSecondary,
-          borderRadius: '8px',
-        }}>
-          {lessonProvenanceTopRow}
-          {lessonCardQueueNavControls}
-          <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', color: themeStyles.textPrimary }}>
-            {card.title || i18n('Unnamed Card')}
-            {(isAlonePractice ? (reviewCardId && String(card.docId) === reviewCardId) : (lessonReviewCardIds.includes(String(card.docId)) || (reviewCardId && String(card.docId) === reviewCardId))) && (
-              <span style={{ fontSize: '14px', fontWeight: 600, color: themeStyles.reviewFg, backgroundColor: themeStyles.reviewBg, padding: '4px 10px', borderRadius: '6px' }}>
-                {i18n('Review')}
-              </span>
-            )}
-          </h1>
-          <div style={{ fontSize: '14px', color: themeStyles.accent, marginTop: '8px', fontWeight: 600 }}>
-            {i18n('This card')}: {(currentCardCumulativeMs / 1000).toFixed(1)}s
-          </div>
-          {showPathCardPractiseCount ? (
-            <div
-              style={{ fontSize: '13px', color: themeStyles.textSecondary, marginTop: '6px', fontWeight: 500 }}
-              title={pathCardPractiseTooltip}
-            >
-              {pathCardLoopCountText}
-            </div>
-          ) : null}
-        </div>
 
         {!browseFlipped ? (
           <>
@@ -4886,6 +4787,9 @@ function LessonPage() {
       ) : null}
     </div>
   );
+  const showLessonCardInlineNav = (isSingleNodeMode || isTodayMode) && !!lessonSessionId && !reviewCardId && flatCards.length > 0;
+  const lessonCardInlineNavDisabled = lessonCardNavLoading || isSubmitting || browseSubmitting;
+  const lessonCardInlineText = `${lessonCardProvenanceLabel || '—'}-${String(card.title || i18n('Unnamed Card'))}`;
   const mainContent = (
     <div style={{
       maxWidth: '900px',
@@ -4894,41 +4798,6 @@ function LessonPage() {
       padding: contentPadding,
     }}>
       {lessonSessionProgressCard}
-      <div style={{
-        marginBottom: '20px',
-        padding: '16px',
-        backgroundColor: themeStyles.bgSecondary,
-        borderRadius: '8px',
-      }}>
-        {lessonProvenanceTopRow}
-        {lessonCardQueueNavControls}
-        <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', color: themeStyles.textPrimary }}>
-          {card.title || i18n('Unnamed Card')}
-          {(isAlonePractice ? (reviewCardId && String(card.docId) === reviewCardId) : lessonReviewCardIds.includes(String(card.docId))) && (
-            <span style={{ fontSize: '14px', fontWeight: 600, color: themeStyles.reviewFg, backgroundColor: themeStyles.reviewBg, padding: '4px 10px', borderRadius: '6px' }}>
-              {i18n('Review')}
-            </span>
-          )}
-        </h1>
-        <div style={{ fontSize: '12px', color: themeStyles.textTertiary, marginTop: '8px' }}>
-          {i18n('Question')} {lessonLinearQuestionOrdinal} / {allProblems.length}
-          {problemQueue.length > 0 && ` (${i18n('Remaining')}: ${problemQueue.length})`}
-        </div>
-        {(isSingleNodeMode || isTodayMode || isAlonePractice) && !mergeSingleNodeCardQueueIntoProblemSidebar && (
-          <div style={{ fontSize: '14px', color: themeStyles.accent, marginTop: '8px', fontWeight: 600 }}>
-            {i18n('This card')}: {(elapsedMs / 1000).toFixed(1)}s
-          </div>
-        )}
-        {showPathCardPractiseCount ? (
-          <div
-            style={{ fontSize: '13px', color: themeStyles.textSecondary, marginTop: '6px', fontWeight: 500 }}
-            title={pathCardPractiseTooltip}
-          >
-            {pathCardLoopCountText}
-          </div>
-        ) : null}
-      </div>
-
 
       <div style={{
         marginBottom: '30px',
@@ -4937,6 +4806,75 @@ function LessonPage() {
         borderRadius: '8px',
         border: `1px solid ${themeStyles.border}`,
       }}>
+        <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'nowrap' }}>
+          <span style={{
+            display: 'inline-block',
+            padding: '4px 8px',
+            backgroundColor: themeStyles.accent,
+            color: themeStyles.whiteOnAccent,
+            borderRadius: '4px',
+            fontSize: '12px',
+            flexShrink: 0,
+          }}
+          >
+            新卡片
+          </span>
+          <span style={{
+            flex: 1,
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            fontSize: '13px',
+            color: themeStyles.textPrimary,
+            fontWeight: 600,
+          }}
+          >
+            {lessonCardInlineText}
+          </span>
+          {showLessonCardInlineNav ? (
+            <>
+              <button
+                type="button"
+                onClick={() => { void handleLessonCardNav('prev'); }}
+                disabled={lessonCardInlineNavDisabled || currentCardIndex <= 0}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  border: `1px solid ${themeStyles.border}`,
+                  backgroundColor: themeStyles.bgSecondary,
+                  color: themeStyles.textPrimary,
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: lessonCardInlineNavDisabled || currentCardIndex <= 0 ? 'not-allowed' : 'pointer',
+                  opacity: lessonCardInlineNavDisabled || currentCardIndex <= 0 ? 0.5 : 1,
+                  flexShrink: 0,
+                }}
+              >
+                上一张
+              </button>
+              <button
+                type="button"
+                onClick={() => { void handleLessonCardNav('skip'); }}
+                disabled={lessonCardInlineNavDisabled}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  border: `1px solid ${themeStyles.optionBorderMuted}`,
+                  backgroundColor: themeStyles.bgSecondary,
+                  color: themeStyles.textSecondary,
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: lessonCardInlineNavDisabled ? 'not-allowed' : 'pointer',
+                  opacity: lessonCardInlineNavDisabled ? 0.55 : 1,
+                  flexShrink: 0,
+                }}
+              >
+                跳过本卡
+              </button>
+            </>
+          ) : null}
+        </div>
         <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
           <span style={{
             display: 'inline-block',
