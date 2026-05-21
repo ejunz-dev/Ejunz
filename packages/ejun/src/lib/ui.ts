@@ -47,12 +47,6 @@ export const Nav = (name, args, prefix, ...permPrivChecker) => {
     inject('Nav', name, { ...args, prefix }, ...permPrivChecker);
 };
 /** @deprecated */
-export const ProblemAdd = (name, args, icon = 'add', text = 'Create Problem') => {
-    inject('ProblemAdd', name, { ...args, icon, text });
-};
-export const RepoAdd = (name, args, icon = 'add', text = 'Create Repository') => {
-    inject('RepoAdd', name, { ...args, icon, text });
-};
 export const AgentAdd = (name, args, icon = 'add', text = 'Create Agent') => {
     inject('AgentAdd', name, { ...args, icon, text });
 };
@@ -71,7 +65,6 @@ inject('Nav', 'homepage', { prefix: 'homepage' });
 inject('Nav', 'learn', { prefix: 'learn' });
 inject('Nav', 'develop', { prefix: 'develop' });
 inject('Nav', 'base_domain', { prefix: 'base' });
-inject('Nav', 'skill_domain', { prefix: 'skill' });
 inject('Nav', 'agent_domain', { prefix: 'agent' });
 // inject('Nav', 'edge_domain', { prefix: 'edge' });
 // inject('Nav', 'tool_domain', { prefix: 'tool' });
@@ -87,8 +80,6 @@ inject('Nav', 'discussion_main', { prefix: 'discussion' });
 
 inject('NavDropdown', 'domain_dashboard', { prefix: 'domain' }, PERM.PERM_EDIT_DOMAIN);
 inject('NavDropdown', 'manage_dashboard', { prefix: 'manage' }, PRIV.PRIV_EDIT_SYSTEM);
-inject('ProblemAdd', 'problem_create', { icon: 'add', text: 'Create Problem' });
-inject('RepoAdd', 'repo_create', { icon: 'add', text: 'Create Repository' });
 inject('AgentAdd', 'agent_create', { icon: 'add', text: 'Create Agent' });
 inject('BaseAdd', 'base_create', { icon: 'add', text: 'Create Base' });
 inject('ControlPanel', 'manage_dashboard');
@@ -108,4 +99,4 @@ inject('DomainManage', 'domain_group', { family: 'Access Control', icon: 'user' 
 global.Ejunz.ui.inject = inject;
 global.Ejunz.ui.nodes = nodes as any;
 global.Ejunz.ui.getNodes = getNodes;
-Object.assign(global.Ejunz.ui, { ProblemAdd, Nav });
+Object.assign(global.Ejunz.ui, { Nav });
