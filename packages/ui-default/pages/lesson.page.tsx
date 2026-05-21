@@ -4790,6 +4790,12 @@ function LessonPage() {
   const showLessonCardInlineNav = (isSingleNodeMode || isTodayMode) && !!lessonSessionId && !reviewCardId && flatCards.length > 0;
   const lessonCardInlineNavDisabled = lessonCardNavLoading || isSubmitting || browseSubmitting;
   const lessonCardInlineText = `${lessonCardProvenanceLabel || '—'}-${String(card.title || i18n('Unnamed Card'))}`;
+  const currentProblemTitleLine = (() => {
+    if (!currentProblem) return '';
+    const ttl = typeof currentProblem.title === 'string' ? currentProblem.title.trim() : '';
+    const preview = lessonStemPreview(lessonProblemQueueTitleText(currentProblem));
+    return ttl || (preview !== '—' ? preview : '');
+  })();
   const mainContent = (
     <div style={{
       maxWidth: '900px',
@@ -4876,17 +4882,19 @@ function LessonPage() {
           ) : null}
         </div>
         <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-          <span style={{
-            display: 'inline-block',
-            padding: '4px 8px',
-            backgroundColor: themeStyles.accent,
-            color: themeStyles.whiteOnAccent,
-            borderRadius: '4px',
-            fontSize: '12px',
-            marginRight: '8px',
-          }}>
-            {i18n('Question')}
-          </span>
+          {currentProblemTitleLine ? (
+            <span style={{
+              flex: '1 1 160px',
+              minWidth: 0,
+              fontSize: '15px',
+              fontWeight: 700,
+              color: themeStyles.textPrimary,
+              lineHeight: 1.4,
+              wordBreak: 'break-word',
+            }}>
+              {currentProblemTitleLine}
+            </span>
+          ) : null}
           {!isAnswered && currentKind !== 'flip' && currentKind !== 'super_flip' && (
             <button
               type="button"
@@ -4935,9 +4943,6 @@ function LessonPage() {
                   : (isCorrect ? i18n('Correct') : i18n('Incorrect'))}
             </span>
           )}
-          <span style={{ fontSize: '11px', color: themeStyles.textTertiary, marginLeft: '4px' }}>
-            ({lessonProblemKindLabel(currentKind)})
-          </span>
           {currentProblem ? (
             <div style={{
               marginLeft: 'auto',
@@ -4990,32 +4995,6 @@ function LessonPage() {
             </div>
           ) : null}
         </div>
-
-        {(() => {
-          const ttl = typeof currentProblem.title === 'string' ? currentProblem.title.trim() : '';
-          const queueCore = lessonProblemQueueTitleText(currentProblem);
-          const preview = lessonStemPreview(queueCore);
-          const line = ttl || (preview !== '—' ? preview : '');
-          if (!line) return null;
-          const fromTitleField = !!ttl;
-          return (
-            <div style={{
-              marginBottom: '18px',
-              paddingBottom: '14px',
-              borderBottom: `1px solid ${themeStyles.border}`,
-            }}>
-              <div style={{
-                fontSize: fromTitleField ? '22px' : '17px',
-                fontWeight: 700,
-                color: themeStyles.textPrimary,
-                lineHeight: 1.4,
-                wordBreak: 'break-word',
-              }}>
-                {line}
-              </div>
-            </div>
-          );
-        })()}
 
         {currentKind === 'flip' ? (
           <>
