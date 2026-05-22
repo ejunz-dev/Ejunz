@@ -3509,6 +3509,53 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     }
   }, [contextMenu]);
 
+  const contextSubmenuCloseTimersRef = useRef<Partial<Record<string, ReturnType<typeof setTimeout>>>>({});
+  const clearContextSubmenuCloseTimer = useCallback((key: string) => {
+    const timer = contextSubmenuCloseTimersRef.current[key];
+    if (timer) {
+      clearTimeout(timer);
+      delete contextSubmenuCloseTimersRef.current[key];
+    }
+  }, []);
+  const getContextSubmenuHoverHandlers = useCallback((
+    key: string,
+    setOpen: (open: boolean) => void,
+  ) => ({
+    onMouseEnter: () => {
+      clearContextSubmenuCloseTimer(key);
+      setOpen(true);
+    },
+    onMouseLeave: (e: React.MouseEvent<HTMLElement>) => {
+      const related = e.relatedTarget as Node | null;
+      if (related && e.currentTarget.contains(related)) return;
+      clearContextSubmenuCloseTimer(key);
+      contextSubmenuCloseTimersRef.current[key] = setTimeout(() => {
+        setOpen(false);
+        delete contextSubmenuCloseTimersRef.current[key];
+      }, 180);
+    },
+  }), [clearContextSubmenuCloseTimer]);
+  const contextSubmenuFlyoutShellStyle = useMemo<React.CSSProperties>(() => ({
+    position: 'absolute',
+    left: '100%',
+    top: 0,
+    marginLeft: '-6px',
+    paddingLeft: '6px',
+    zIndex: 1200,
+  }), []);
+  const contextSubmenuPanelStyle = useMemo<React.CSSProperties>(() => ({
+    minWidth: '140px',
+    backgroundColor: themeStyles.bgPrimary,
+    border: `1px solid ${themeStyles.borderSecondary}`,
+    borderRadius: '4px',
+    boxShadow: theme === 'dark' ? '0 2px 8px rgba(0,0,0,0.5)' : '0 2px 8px rgba(0,0,0,0.15)',
+    padding: '4px 0',
+  }), [theme, themeStyles.bgPrimary, themeStyles.borderSecondary]);
+  useEffect(() => () => {
+    Object.values(contextSubmenuCloseTimersRef.current).forEach((timer) => clearTimeout(timer));
+    contextSubmenuCloseTimersRef.current = {};
+  }, []);
+
   const [emptyAreaContextMenu, setEmptyAreaContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [clipboard, setClipboard] = useState<{ type: 'copy' | 'cut'; items: FileItem[] } | null>(null);
   /** Subtree from Copy structure (excludes the clicked node); paste recreates empty skeleton under target. */
@@ -13682,8 +13729,7 @@ Reply with a JSON code block only for executable operations, using this shape:
               </div>
               <div
                 style={{ position: 'relative' }}
-                onMouseEnter={() => setNewSiblingNodeSubmenuOpen(true)}
-                onMouseLeave={() => setNewSiblingNodeSubmenuOpen(false)}
+                {...getContextSubmenuHoverHandlers('siblingNode', setNewSiblingNodeSubmenuOpen)}
               >
                 <div
                   style={{
@@ -13708,22 +13754,10 @@ Reply with a JSON code block only for executable operations, using this shape:
                 </div>
                 {newSiblingNodeSubmenuOpen && contextMenu.file.nodeId && (
                   <div
-                    style={{
-                      position: 'absolute',
-                      left: '100%',
-                      top: 0,
-                      marginLeft: '2px',
-                      minWidth: '140px',
-                      backgroundColor: themeStyles.bgPrimary,
-                      border: `1px solid ${themeStyles.borderSecondary}`,
-                      borderRadius: '4px',
-                      boxShadow: theme === 'dark' ? '0 2px 8px rgba(0,0,0,0.5)' : '0 2px 8px rgba(0,0,0,0.15)',
-                      zIndex: 1200,
-                      padding: '4px 0',
-                    }}
-                    onMouseEnter={() => setNewSiblingNodeSubmenuOpen(true)}
-                    onMouseLeave={() => setNewSiblingNodeSubmenuOpen(false)}
+                    style={contextSubmenuFlyoutShellStyle}
+                    {...getContextSubmenuHoverHandlers('siblingNode', setNewSiblingNodeSubmenuOpen)}
                   >
+                    <div style={contextSubmenuPanelStyle}>
                     <div
                       style={{
                         padding: '6px 16px',
@@ -13784,6 +13818,7 @@ Reply with a JSON code block only for executable operations, using this shape:
                     >
                       底部插入
                     </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -13793,8 +13828,7 @@ Reply with a JSON code block only for executable operations, using this shape:
               <>
               <div
                 style={{ position: 'relative' }}
-                onMouseEnter={() => setNewSiblingCardForNodeSubmenuOpen(true)}
-                onMouseLeave={() => setNewSiblingCardForNodeSubmenuOpen(false)}
+                {...getContextSubmenuHoverHandlers('siblingCardForNode', setNewSiblingCardForNodeSubmenuOpen)}
               >
                 <div
                   style={{
@@ -13819,22 +13853,10 @@ Reply with a JSON code block only for executable operations, using this shape:
                 </div>
                 {newSiblingCardForNodeSubmenuOpen && contextMenu.file.nodeId && (
                   <div
-                    style={{
-                      position: 'absolute',
-                      left: '100%',
-                      top: 0,
-                      marginLeft: '2px',
-                      minWidth: '140px',
-                      backgroundColor: themeStyles.bgPrimary,
-                      border: `1px solid ${themeStyles.borderSecondary}`,
-                      borderRadius: '4px',
-                      boxShadow: theme === 'dark' ? '0 2px 8px rgba(0,0,0,0.5)' : '0 2px 8px rgba(0,0,0,0.15)',
-                      zIndex: 1200,
-                      padding: '4px 0',
-                    }}
-                    onMouseEnter={() => setNewSiblingCardForNodeSubmenuOpen(true)}
-                    onMouseLeave={() => setNewSiblingCardForNodeSubmenuOpen(false)}
+                    style={contextSubmenuFlyoutShellStyle}
+                    {...getContextSubmenuHoverHandlers('siblingCardForNode', setNewSiblingCardForNodeSubmenuOpen)}
                   >
+                    <div style={contextSubmenuPanelStyle}>
                     <div
                       style={{
                         padding: '6px 16px',
@@ -13894,6 +13916,7 @@ Reply with a JSON code block only for executable operations, using this shape:
                       }}
                     >
                       底部插入
+                    </div>
                     </div>
                   </div>
                 )}
@@ -14441,8 +14464,7 @@ Reply with a JSON code block only for executable operations, using this shape:
               )}
               <div
                 style={{ position: 'relative' }}
-                onMouseEnter={() => setNewSiblingCardSubmenuOpen(true)}
-                onMouseLeave={() => setNewSiblingCardSubmenuOpen(false)}
+                {...getContextSubmenuHoverHandlers('siblingCard', setNewSiblingCardSubmenuOpen)}
               >
                 <div
                   style={{
@@ -14467,22 +14489,10 @@ Reply with a JSON code block only for executable operations, using this shape:
                 </div>
                 {newSiblingCardSubmenuOpen && contextMenu.file.cardId && (
                   <div
-                    style={{
-                      position: 'absolute',
-                      left: '100%',
-                      top: 0,
-                      marginLeft: '2px',
-                      minWidth: '140px',
-                      backgroundColor: themeStyles.bgPrimary,
-                      border: `1px solid ${themeStyles.borderSecondary}`,
-                      borderRadius: '4px',
-                      boxShadow: theme === 'dark' ? '0 2px 8px rgba(0,0,0,0.5)' : '0 2px 8px rgba(0,0,0,0.15)',
-                      zIndex: 1200,
-                      padding: '4px 0',
-                    }}
-                    onMouseEnter={() => setNewSiblingCardSubmenuOpen(true)}
-                    onMouseLeave={() => setNewSiblingCardSubmenuOpen(false)}
+                    style={contextSubmenuFlyoutShellStyle}
+                    {...getContextSubmenuHoverHandlers('siblingCard', setNewSiblingCardSubmenuOpen)}
                   >
+                    <div style={contextSubmenuPanelStyle}>
                     <div
                       style={{
                         padding: '6px 16px',
@@ -14555,6 +14565,7 @@ Reply with a JSON code block only for executable operations, using this shape:
                     >
                       底部插入
                     </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -14562,8 +14573,7 @@ Reply with a JSON code block only for executable operations, using this shape:
               <>
               <div
                 style={{ position: 'relative' }}
-                onMouseEnter={() => setNewSiblingNodeForCardSubmenuOpen(true)}
-                onMouseLeave={() => setNewSiblingNodeForCardSubmenuOpen(false)}
+                {...getContextSubmenuHoverHandlers('siblingNodeForCard', setNewSiblingNodeForCardSubmenuOpen)}
               >
                 <div
                   style={{
@@ -14588,22 +14598,10 @@ Reply with a JSON code block only for executable operations, using this shape:
                 </div>
                 {newSiblingNodeForCardSubmenuOpen && contextMenu.file.nodeId && contextMenu.file.cardId && (
                   <div
-                    style={{
-                      position: 'absolute',
-                      left: '100%',
-                      top: 0,
-                      marginLeft: '2px',
-                      minWidth: '140px',
-                      backgroundColor: themeStyles.bgPrimary,
-                      border: `1px solid ${themeStyles.borderSecondary}`,
-                      borderRadius: '4px',
-                      boxShadow: theme === 'dark' ? '0 2px 8px rgba(0,0,0,0.5)' : '0 2px 8px rgba(0,0,0,0.15)',
-                      zIndex: 1200,
-                      padding: '4px 0',
-                    }}
-                    onMouseEnter={() => setNewSiblingNodeForCardSubmenuOpen(true)}
-                    onMouseLeave={() => setNewSiblingNodeForCardSubmenuOpen(false)}
+                    style={contextSubmenuFlyoutShellStyle}
+                    {...getContextSubmenuHoverHandlers('siblingNodeForCard', setNewSiblingNodeForCardSubmenuOpen)}
                   >
+                    <div style={contextSubmenuPanelStyle}>
                     <div
                       style={{
                         padding: '6px 16px',
@@ -14675,6 +14673,7 @@ Reply with a JSON code block only for executable operations, using this shape:
                       }}
                     >
                       底部插入
+                    </div>
                     </div>
                   </div>
                 )}
