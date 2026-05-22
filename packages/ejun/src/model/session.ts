@@ -12,13 +12,10 @@ import type { AgentChatSessionDoc, BaseDoc, SessionDoc, SessionPatch } from '../
 import { NotFoundError } from '../error';
 import db from '../service/db';
 import bus from '../service/bus';
-import { Logger } from '../logger';
 import { MaybeArray, NumberKeys } from '../typeutils';
 import { deriveSessionLearnStatus, isDevelopSessionSettled } from '../lib/sessionListDisplay';
 import { BaseModel } from './base';
 import { resolveSkillDocByIdOrBid } from './skill';
-
-const logger = new Logger('model/session');
 
 export function agentChatSessionKindFilter(
     kind?: 'chat' | 'client' | { $in: ('chat' | 'client')[] },
@@ -613,21 +610,6 @@ export async function apply(ctx: Context) {
         { key: { domainId: 1, appRoute: 1, agentId: 1, uid: 1, _id: -1 }, name: 'agent_chat_by_agent' },
         { key: { domainId: 1, appRoute: 1, clientId: 1, lastActivityAt: -1 }, name: 'agent_chat_client_activity' },
     );
-
-    const TIMEOUT_MS = 5 * 60 * 1000;
-    setInterval(async () => {
-        try {
-            const timeoutThreshold = new Date(Date.now() - TIMEOUT_MS);
-            const n = await SessionModel.coll.countDocuments({
-                appRoute: 'agent',
-                ...agentChatSessionKindFilter('client'),
-                lastActivityAt: { $lt: timeoutThreshold },
-            });
-            if (n > 0) logger.debug('Found %d stale client agent sessions (detached heuristic)', n);
-        } catch (e) {
-            logger.error('Agent session timeout check: %O', e);
-        }
-    }, 30000);
 
     (global.Ejunz.model as any).session = SessionModel;
 }
