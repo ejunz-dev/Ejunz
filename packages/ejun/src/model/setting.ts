@@ -59,8 +59,8 @@ export const Setting = (
     validation?: (val: any) => boolean,
 ): _Setting => {
     let subType = '';
-    if (type === 'yaml' && typeof value !== 'string') {
-        value = yaml.dump(value);
+    if (type === 'yaml') {
+        if (typeof value !== 'string') value = yaml.dump(value);
         type = 'textarea';
         subType = 'yaml';
     }
@@ -310,6 +310,7 @@ DomainSetting(
     Setting('setting_domain', 'avatar', '', 'text', 'avatar', 'Will be used as the domain icon.'),
     Setting('setting_domain', 'share', '', 'text', 'Share problem with domain (* for any)'),
     Setting('setting_domain', 'bulletin', '', 'markdown', 'Bulletin'),
+    Setting('setting_domain', 'categories', '', 'yaml', 'Base Categories', 'Category tree for Base/Agent tags and filters. Leave empty to use the system default.'),
     Setting('setting_domain', 'langs', '', 'text', 'Allowed langs', null),
     Setting('setting_storage', 'host', '', 'text', 'Custom host', null, FLAG_HIDDEN | FLAG_DISABLED),
     Setting('ai', 'apiKey', '', 'password', 'AI API Key', 'API密钥，用于AI聊天功能'),
@@ -394,7 +395,7 @@ SystemSetting(
     Setting('setting_basic', 'avatar.gravatar_url', '//cn.gravatar.com/avatar/', 'text', 'avatar.gravatar_url', 'Gravatar URL Prefix'),
     Setting('setting_basic', 'default.priv', builtin.PRIV.PRIV_DEFAULT, 'number', 'default.priv', 'Default Privilege', FLAG_HIDDEN),
     Setting('setting_basic', 'discussion.nodes', builtin.DEFAULT_NODES, 'yaml', 'discussion.nodes', 'Discussion Nodes'),
-    Setting('setting_basic', 'problem.categories', builtin.CATEGORIES, 'yaml', 'problem.categories', 'Problem Categories'),
+    Setting('setting_basic', 'base.categories', builtin.CATEGORIES, 'yaml', 'base.categories', 'Base Categories'),
     Setting('setting_basic', 'training.enrolled-users', true, 'boolean', 'training.enrolled-users', 'Show enrolled users for training'),
     Setting('setting_basic', 'record.statMode', 'unique', 'text', 'record.statMode', 'Record stat mode'),
     Setting('setting_basic', 'pagination.problem', 100, 'number', 'pagination.problem', 'Problems per page'),
@@ -439,7 +440,7 @@ export async function apply(ctx: Context) {
         if (!setting.value) continue;
         const current = await ctx.db.collection('system').findOne({ _id: setting.key });
         if (!current || current.value == null || current.value === '') {
-            await retry(system.set, setting.key, setting.value, false);
+            await retry(() => system.set(setting.key, setting.value, false));
         }
     }
     try {

@@ -13,8 +13,7 @@
       <col class="col--nodes">
       <col class="col--cards">
       <col class="col--problems">
-      <col class="col--main-level">
-      <col class="col--layers">
+      <col class="col--category">
       <col class="col--views">
       <col class="col--updated">
     </colgroup>
@@ -30,8 +29,7 @@
         <th class="col--nodes">{{ _('Nodes') }}</th>
         <th class="col--cards">{{ _('Cards') }}</th>
         <th class="col--problems">{{ _('Problems') }}</th>
-        <th class="col--main-level">Main</th>
-        <th class="col--layers">Depth</th>
+        <th class="col--category">{{ _('Category') }}</th>
         <th class="col--views">{{ _('Views') }}</th>
         <th class="col--updated">{{ _('Updated') }}</th>
       </tr>
@@ -53,8 +51,17 @@
         <td class="col--nodes">{{ base.listStats.nodeCount if base.listStats else (base.nodes|length if base.nodes else 0) }}</td>
         <td class="col--cards">{{ base.listStats.cardCount if base.listStats else 0 }}</td>
         <td class="col--problems">{{ base.listStats.problemCount if base.listStats else 0 }}</td>
-        <td class="col--main-level">{{ base.listStats.mainLevelCount if base.listStats else 0 }}</td>
-        <td class="col--layers">{{ base.listStats.maxLayers if base.listStats else 0 }}</td>
+        <td class="col--category">
+          {% if base.tag and (base.tag|length) %}
+          <div class="base__tags">
+            {%- for t in base.tag -%}
+              <span class="base__tag typo supplementary">{{ t }}</span>
+            {%- endfor -%}
+          </div>
+          {% else %}
+            -
+          {% endif %}
+        </td>
         <td class="col--views">{{ base.views|default(0) }}</td>
         <td class="col--updated">{{ datetimeSpan(base.updateAt)|safe if base.updateAt else 'N/A' }}</td>
       </tr>
