@@ -3,8 +3,8 @@
 {% set page_name = "base_edit" %}
 
 {% block content %}
-<div class="row">
-  <div class="medium-9 columns">
+<div class="row base-form-page">
+  <div class="medium-9 columns base-form-page__main">
     <div class="section">
       <div class="section__header">
         <h2 class="section__title">
@@ -16,7 +16,7 @@
         </h2>
       </div>
       <div class="section__body">
-        <form method="post">
+        <form method="post" class="base-form-page__form">
           {% if base.docId %}
             <input type="hidden" name="docId" value="{{ base.docId }}">
           {% endif %}
@@ -40,16 +40,15 @@
 
           {{ form.form_text({
                row: false,
-               columns: 9,
+               columns: 12,
                label: _('Tags'),
-               help_text: _('Split by \', \'.'),
+               help_text: _('Split by \', \'. Or pick categories from the sidebar.'),
                name: 'tag',
                value: base['tag']|default([])|join(', ')
              }) }}
 
-          <div class="row">
-            <div class="columns">
-              <button 
+          <div class="base-form-page__actions">
+            <button 
                 name="operation" 
                 value="{% if base.docId %}update{% else %}create{% endif %}" 
                 type="submit" 
@@ -70,7 +69,6 @@
               <button type="button" class="rounded button" onclick="window.history.go(-1)">
                 {{ _('Cancel') }}
               </button>
-            </div>
           </div>
 
         </form>
@@ -78,12 +76,13 @@
     </div>
   </div>
   
-  <div class="medium-3 columns">
-    <div class="section side visiable nojs--hide section--problem-sidebar-tags">
+  <div class="medium-3 columns base-form-page__sidebar">
+    <div class="section side nojs--hide section--base-categories">
       <div class="section__header">
-        <h1 class="section__title">{{ _('Categories') }} ({{ _('click to add') }})</h1>
+        <h2 class="section__title">{{ _('Categories') }}</h2>
+        <p class="typo supplementary">{{ _('click to add') }}</p>
       </div>
-      <div class="section__body problem-sidebar-tags__detail">
+      <div class="section__body section--base-categories__body">
         {% include "partials/category.html" %}
       </div>
     </div>

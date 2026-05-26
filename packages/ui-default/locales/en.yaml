@@ -728,6 +728,15 @@ Base has no nodes: Base has no nodes
 Base Node: Base Node
 Base type: Base type
 base_create: Create Base
+Create Base: Create Base
+Create a knowledge base document for this domain.: Create a knowledge base document for this domain.
+Input base title: Input base title
+BID: BID
+'Optional human-readable identifier, for example: P1001': 'Optional human-readable identifier, for example: P1001'
+"Split by ', '. Or pick categories from the sidebar.": "Split by ', '. Or pick categories from the sidebar."
+"Split by ', '.": "Split by ', '."
+Click to add: Click to add
+'Base bid already exists: {0}': 'Base bid already exists: {0}'
 Each domain can have at most one skill base; choosing Skill again opens the existing one if present.: Each domain can have at most one skill base; choosing Skill again opens the existing one if present.
 Skill knowledge base: Skill knowledge base
 Standard knowledge base: Standard knowledge base
