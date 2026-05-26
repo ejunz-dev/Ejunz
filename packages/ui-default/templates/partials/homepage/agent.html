@@ -1,5 +1,4 @@
 {% set agents = payload %}
-{% set currentDomainId = (domain and domain._id) or (handler and handler.args and handler.args.domainId) or 'system' %}
 {% if agents and agents.length %}
   <div class="section page--agent_main">
     <div class="section__header">
@@ -9,7 +8,7 @@
       {%- for adoc in agents -%}
         {% if adoc and adoc.aid %}
           <p>
-            <a href="{{ url('agent_detail', domainId=currentDomainId, aid=adoc.aid) }}" data-emoji-enabled>
+            <a href="{{ url('agent_detail', aid=adoc.aid) }}" data-emoji-enabled>
               {{ adoc.title|default('Untitled') }}
             </a>
             <span style="float: right">
@@ -25,4 +24,3 @@
     </div>
   </div>
 {% endif %}
-

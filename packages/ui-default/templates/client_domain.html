@@ -8,7 +8,7 @@
                 <h1 class="section__title">{{ _('Client Management') }}</h1>
                 <div class="section__action">
                     {% if handler.user.hasPriv(model.builtin.PRIV.PRIV_USER_PROFILE) %}
-                        <a href="{{ url('client_create', { domainId: domainId }) }}" class="button primary">{{ _('Create Client') }}</a>
+                        <a href="{{ url('client_create') }}" class="button primary">{{ _('Create Client') }}</a>
                     {% endif %}
                 </div>
             </div>

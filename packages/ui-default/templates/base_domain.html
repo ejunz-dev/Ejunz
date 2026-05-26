@@ -1,7 +1,6 @@
 {% set page_name = "base_domain" %}
 {% extends "layout/basic.html" %}
 {% block content %}
-{% set _domain_id = UiContext.domainId or domainId or 'system' %}
   <div class="row">
     <div class="medium-9 columns">
       <div class="section display-mode">
@@ -58,12 +57,12 @@
           <h1 class="section__title">{{ _('Create Base') }}</h1>
         </div>
         <ol class="menu">
-          <li class="menu__item">
-            <a class="menu__link" href="{{ url('base_create', domainId=_domain_id) }}">
-              <span class="icon icon-add"></span>
-              {{ _('Create Base') }}
+          {%- for item in ui.getNodes('BaseAdd') -%}
+            <a href="{{ url(item.name, item.args) }}" class="menu__link">
+              <span class="icon icon-{{ item.args.icon|default('add') }}"></span>
+              {{ _(item.args.text) }}
             </a>
-          </li>
+          {%- endfor -%}
         </ol>
         <div class="section__body">
           <div class="typo supplementary">

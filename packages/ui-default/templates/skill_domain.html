@@ -1,7 +1,6 @@
 {% set page_name = "skill_domain" %}
 {% extends "layout/basic.html" %}
 {% block content %}
-{% set _domain_id = UiContext.domainId or domainId or 'system' %}
   <div class="row">
     <div class="medium-9 columns">
       <div class="section display-mode">
@@ -59,7 +58,7 @@
         </div>
         <ol class="menu">
           <li class="menu__item">
-            <a class="menu__link" href="{{ url('skill_create', domainId=_domain_id) }}">
+            <a class="menu__link" href="{{ url('skill_create') }}">
               <span class="icon icon-add"></span>
               {{ _('Create Skill') }}
             </a>

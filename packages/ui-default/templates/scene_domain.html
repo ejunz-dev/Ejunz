@@ -7,7 +7,7 @@
             <div class="section__header">
                 <h1 class="section__title">场景管理</h1>
                 <div class="section__action">
-                    <a href="{{ url('scene_create', domainId=domainId) }}" class="button primary">{{ _('Create Scene') }}</a>
+                    <a href="{{ url('scene_create') }}" class="button primary">{{ _('Create Scene') }}</a>
                 </div>
             </div>
             <div class="section__body">
@@ -44,7 +44,7 @@
                         {% endfor %}
                     </div>
                 {% else %}
-                    <p class="scene-empty-message">暂无场景，<a href="{{ url('scene_create', domainId=domainId) }}">{{ _('Create Scene') }}</a></p>
+                    <p class="scene-empty-message">暂无场景，<a href="{{ url('scene_create') }}">{{ _('Create Scene') }}</a></p>
                 {% endif %}
             </div>
         </div>

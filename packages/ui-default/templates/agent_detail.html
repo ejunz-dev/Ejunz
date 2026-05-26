@@ -40,7 +40,7 @@
         <!-- Chat Link Section -->
         <div class="section" style="margin-top: 20px;">
           <div class="section__body">
-            <a href="{{ url('agent_chat', domainId=domainId, aid=adoc.aid) }}" class="button primary expanded">
+            <a href="{{ url('agent_chat', aid=adoc.aid) }}" class="button primary expanded">
               <span class="icon icon-comment"></span> {{ _('Chat with Agent') }}
             </a>
           </div>
@@ -49,7 +49,7 @@
 
         <ul class="section__footer supplementary dot list">
           {% if handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) or handler.user.own(adoc) %}
-            <li><a href="{{ url('agent_edit', domainId=domainId, aid=adoc.aid) }}">
+            <li><a href="{{ url('agent_edit', aid=adoc.aid) }}">
               <span class="icon icon-edit"></span> {{ _('Edit') }}
             </a></li>
           {% endif %}
@@ -82,7 +82,7 @@
         <h2>{{ _('Actions') }}</h2>
       </div>
       <div class="section__body">
-        <a href="{{ url('agent_edit', domainId=domainId, aid=adoc.aid) }}" class="button primary expanded">
+        <a href="{{ url('agent_edit', aid=adoc.aid) }}" class="button primary expanded">
           {{ _('Edit') }}
         </a>
       </div>
@@ -111,7 +111,7 @@
           <p class="help-text">{{ _('Skills are not enabled for this agent yet.') }}</p>
           {% endif %}
           {% if handler.user.own(adoc) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) %}
-          <a href="{{ url('agent_skills', domainId=domainId, aid=adoc.aid) }}" class="button secondary expanded" style="margin-top: 12px;">
+          <a href="{{ url('agent_skills', aid=adoc.aid) }}" class="button secondary expanded" style="margin-top: 12px;">
             <span class="icon icon-edit"></span> {{ _('Configure Agent Skills') }}
           </a>
           {% endif %}
@@ -140,7 +140,7 @@
           <p class="help-text">{{ _('No knowledge base is mounted for this agent yet.') }}</p>
           {% endif %}
           {% if handler.user.own(adoc) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) %}
-          <a href="{{ url('agent_bases', domainId=domainId, aid=adoc.aid) }}" class="button secondary expanded" style="margin-top: 12px;">
+          <a href="{{ url('agent_bases', aid=adoc.aid) }}" class="button secondary expanded" style="margin-top: 12px;">
             <span class="icon icon-edit"></span> {{ _('Configure Agent Knowledge Base') }}
           </a>
           {% endif %}
