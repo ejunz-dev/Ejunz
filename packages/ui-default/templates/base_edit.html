@@ -1,6 +1,7 @@
 {% import "components/form.html" as form with context %}
 {% extends "layout/basic.html" %}
 {% set page_name = "base_edit" %}
+{% set base_edit_return_url = UiContext.returnUrl|default('') %}
 
 {% block content %}
 <div class="row base-form-page">
@@ -16,10 +17,22 @@
         </h2>
       </div>
       <div class="section__body">
-        <form method="post" class="base-form-page__form">
+        <form method="post" id="base-form" class="base-form-page__form">
           {% if base.docId %}
             <input type="hidden" name="docId" value="{{ base.docId }}">
           {% endif %}
+          {% if base_edit_return_url %}
+            <input type="hidden" name="returnUrl" value="{{ base_edit_return_url }}">
+          {% endif %}
+
+          {{ form.form_text({
+              columns: 12,
+              label: _('BID'),
+              name: 'bid',
+              placeholder: 'P1001',
+              value: base.bid|default(''),
+              help_text: _('Optional human-readable identifier, for example: P1001')
+          }) }}
 
           {{ form.form_text({
               columns: 12,
@@ -30,6 +43,8 @@
               autofocus: true
           }) }}
 
+          {% if not base_edit_return_url %}
+          <div class="base-form-page__content-field" data-base-edit-compact-hide>
           {{ form.form_textarea({
               columns: 12,
               label: _('Base Content'),
@@ -37,46 +52,49 @@
               value: base.content|default(''),
               markdown: true
           }) }}
+          </div>
+          {% endif %}
 
           {{ form.form_text({
-               row: false,
                columns: 12,
                label: _('Tags'),
                help_text: _('Split by \', \'. Or pick categories from the sidebar.'),
                name: 'tag',
-               value: base['tag']|default([])|join(', ')
+               value: (base.tag or [])|join(', ')
              }) }}
-
-          <div class="base-form-page__actions">
-            <button 
-                name="operation" 
-                value="{% if base.docId %}update{% else %}create{% endif %}" 
-                type="submit" 
-                class="rounded primary button">
-                {% if base.docId %}
-                  {{ _('Update Base') }}
-                {% else %}
-                  {{ _('Create Base') }}
-                {% endif %}
-              </button>
-
-              {% if base.docId and (handler.user.own(base) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) %}
-                <button name="operation" value="delete" type="submit" class="rounded button">
-                  {{ _('Delete Base') }}
-                </button>
-              {% endif %}
-              
-              <button type="button" class="rounded button" onclick="window.history.go(-1)">
-                {{ _('Cancel') }}
-              </button>
-          </div>
-
         </form>
       </div>
     </div>
   </div>
-  
-  <div class="medium-3 columns base-form-page__sidebar">
+
+  <div class="medium-3 columns end base-form-page__sidebar">
+    <div class="section side base-form-page__actions-panel">
+      <div class="section__body base-form-page__actions">
+        <button
+          form="base-form"
+          name="operation"
+          value="{% if base.docId %}update{% else %}create{% endif %}"
+          type="submit"
+          class="rounded primary button expanded">
+          {% if base.docId %}
+            {{ _('Update Base') }}
+          {% else %}
+            {{ _('Create Base') }}
+          {% endif %}
+        </button>
+
+        {% if base.docId and (handler.user.own(base) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) %}
+        <button form="base-form" name="operation" value="delete" type="submit" class="rounded button expanded">
+          {{ _('Delete Base') }}
+        </button>
+        {% endif %}
+
+        <button type="button" class="rounded button expanded" data-base-edit-cancel>
+          {{ _('Cancel') }}
+        </button>
+      </div>
+    </div>
+
     <div class="section side nojs--hide section--base-categories">
       <div class="section__header">
         <h2 class="section__title">{{ _('Categories') }}</h2>
@@ -86,7 +104,12 @@
         {% include "partials/category.html" %}
       </div>
     </div>
+
+    {% if not base_edit_return_url %}
+    <div data-base-edit-compact-hide>
     {% include 'components/md_hint.html' %}
+    </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

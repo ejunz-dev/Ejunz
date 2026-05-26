@@ -1,5 +1,7 @@
 {% import "components/form.html" as form with context %}
 {% extends "layout/basic.html" %}
+{% set page_name = "base_card_edit" %}
+{% set base_edit_return_url = UiContext.returnUrl|default('') %}
 
 {% block content %}
 <div class="row">
@@ -23,8 +25,8 @@
             <input type="hidden" name="nodeId" value="{{ nodeId }}">
           {% endif %}
           <input type="hidden" name="branch" value="{{ branch }}">
-          {% if returnUrl %}
-            <input type="hidden" name="returnUrl" value="{{ returnUrl }}">
+          {% if base_edit_return_url %}
+            <input type="hidden" name="returnUrl" value="{{ base_edit_return_url }}">
           {% endif %}
 
           {{ form.form_text({
@@ -60,7 +62,7 @@
                   {{ _('删除卡片') }}
                 </button>
               {% endif %}
-              <button type="button" class="rounded button" onclick="window.history.go(-1)">
+              <button type="button" class="rounded button" data-base-edit-cancel>
                 {{ _('取消') }}
               </button>
             </div>

@@ -3936,6 +3936,42 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
             </div>
           )}
         </div>
+        {basePath === 'base' && (
+          <a
+            href={(() => {
+              const domainId = (window as any).UiContext?.domainId || 'system';
+              const docSeg = base.docId ?? docId;
+              return `/d/${domainId}/base/${encodeURIComponent(String(docSeg))}/edit`;
+            })()}
+            onClick={() => {
+              sessionStorage.setItem(
+                'baseEditReturnUrl',
+                window.location.pathname + window.location.search,
+              );
+            }}
+            title={String(i18n('Edit'))}
+            style={{
+              padding: '5px 12px',
+              border: `1px solid ${themeStyles.borderPrimary}`,
+              borderRadius: '6px',
+              background: themeStyles.bgButton,
+              color: themeStyles.textPrimary,
+              cursor: 'pointer',
+              fontSize: '13px',
+              fontWeight: 500,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              lineHeight: '20px',
+              textDecoration: 'none',
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style={{ opacity: 0.75 }}>
+              <path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61a.25.25 0 00-.061.098l-.805 2.414a.25.25 0 00.316.316l2.414-.805a.25.25 0 00.098-.061l8.61-8.61a1.75 1.75 0 000-2.474l-1.086-1.086a1.75 1.75 0 00-2.474 0l-7.253 7.253a.25.25 0 00-.064.108l-.511 1.533a.25.25 0 00.316.316l1.533-.511a.25.25 0 00.108-.064l7.253-7.253z"/>
+            </svg>
+            <span>{i18n('Edit')}</span>
+          </a>
+        )}
         <button
           type="button"
           onClick={() => openExplorerFilterDialog()}
@@ -4786,10 +4822,16 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                           ? String(baseDocId).trim()
                           : (basebid && String(basebid).trim() ? String(basebid).trim() : '');
                         if (docSeg) {
-                          return `/d/${domainId}/base/${encodeURIComponent(docSeg)}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit?returnUrl=${encodeURIComponent(window.location.href)}`;
+                          return `/d/${domainId}/base/${encodeURIComponent(docSeg)}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit`;
                         }
                         return '#';
                       })()}
+                      onClick={() => {
+                        sessionStorage.setItem(
+                          'baseEditReturnUrl',
+                          window.location.pathname + window.location.search,
+                        );
+                      }}
                       style={{
                         padding: '6px 12px',
                         backgroundColor: themeStyles.accent,
