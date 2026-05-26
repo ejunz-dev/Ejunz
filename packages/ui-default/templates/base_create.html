@@ -10,7 +10,7 @@
         <p class="typo supplementary base-form-page__intro">{{ _('Create a knowledge base document for this domain.') }}</p>
       </div>
       <div class="section__body">
-        <form method="post" action="{{ url('base_create') }}" class="base-form-page__form">
+        <form method="post" action="{{ url('base_create') }}" id="base-form" class="base-form-page__form">
           {{ form.form_text({
               columns: 12,
               label: _('Title'),
@@ -37,16 +37,19 @@
               name: 'tag',
               value: ''
           }) }}
-
-          <div class="base-form-page__actions">
-            <button type="submit" class="rounded primary button">{{ _('Create Base') }}</button>
-            <button type="button" class="rounded button" onclick="window.history.go(-1)">{{ _('Cancel') }}</button>
-          </div>
         </form>
       </div>
     </div>
   </div>
-  <div class="medium-3 columns base-form-page__sidebar">
+
+  <div class="medium-3 columns end base-form-page__sidebar">
+    <div class="section side base-form-page__actions-panel">
+      <div class="section__body base-form-page__actions">
+        <button form="base-form" type="submit" class="rounded primary button expanded">{{ _('Create Base') }}</button>
+        <button type="button" class="rounded button expanded" onclick="window.history.go(-1)">{{ _('Cancel') }}</button>
+      </div>
+    </div>
+
     <div class="section side nojs--hide section--base-categories">
       <div class="section__header">
         <h2 class="section__title">{{ _('Categories') }}</h2>

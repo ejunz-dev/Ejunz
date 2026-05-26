@@ -10,17 +10,25 @@
 
     &__actions
       display: flex
-      flex-wrap: wrap
+      flex-direction: column
+      align-items: stretch
       gap: rem(10px)
-      margin-top: rem(8px)
-      padding-top: rem(16px)
-      border-top: 1px solid $table-border-color
+      padding: rem($section-gap-v) rem($section-gap-h)
+
+      .button
+        white-space: nowrap
+        width: 100%
+        margin-bottom: 0
+
+    &__actions-panel
+      .section__body
+        padding-top: rem($section-gap-v)
+        padding-bottom: rem($section-gap-v)
 
     &__sidebar
       +above(rupture.mobile-cutoff)
         position: sticky
         top: rem($section-margin)
-        align-self: flex-start
 
   .section--base-categories
     .section__header

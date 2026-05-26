@@ -151,13 +151,18 @@ export class BaseModel {
     static async update(
         domainId: string,
         docId: number,
-        updates: Partial<Pick<BaseDoc, 'title' | 'content' | 'layout' | 'viewport' | 'theme' | 'files' | 'parentId' | 'domainPosition' | 'tag'>>,
+        updates: Partial<Pick<BaseDoc, 'title' | 'content' | 'layout' | 'viewport' | 'theme' | 'files' | 'parentId' | 'domainPosition' | 'tag' | 'bid'>>,
         mapDocType: MindMapDocType = document.TYPE_BASE,
     ): Promise<void> {
         const updatePayload: any = {
             ...updates,
             updateAt: new Date(),
         };
+        const unsetPayload: Record<string, 1> = {};
+        if ('bid' in updates && updates.bid === undefined) {
+            delete updatePayload.bid;
+            unsetPayload.bid = 1;
+        }
         if (updates.tag) {
             updatePayload.tag = Array.isArray(updates.tag) ? updates.tag : [updates.tag];
         }
@@ -187,7 +192,7 @@ export class BaseModel {
                 }
             }
         }
-        await document.set(domainId, mapDocType, docId, updatePayload);
+        await document.set(domainId, mapDocType, docId, updatePayload, Object.keys(unsetPayload).length ? unsetPayload : undefined);
     }
 
     static async updateNode(
