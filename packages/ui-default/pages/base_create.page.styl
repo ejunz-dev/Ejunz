@@ -1,0 +1,64 @@
+.page--base_create,
+.page--base_edit
+  .base-form-page
+    &__intro
+      margin: rem(4px 0 0)
+
+    &__form
+      .form__item:last-child
+        margin-bottom: 0
+
+    &__actions
+      display: flex
+      flex-wrap: wrap
+      gap: rem(10px)
+      margin-top: rem(8px)
+      padding-top: rem(16px)
+      border-top: 1px solid $table-border-color
+
+    &__sidebar
+      +above(rupture.mobile-cutoff)
+        position: sticky
+        top: rem($section-margin)
+        align-self: flex-start
+
+  .section--base-categories
+    .section__header
+      padding-bottom: rem(4px)
+
+      .section__title
+        font-size: 1.1rem
+        margin-bottom: rem(4px)
+
+      .typo.supplementary
+        margin: 0
+        font-size: rem($font-size-small)
+
+    &__body
+      padding-top: rem(8px)
+
+  .widget--category-filter--sidebar
+    display: flex
+    flex-direction: column
+    gap: rem(6px)
+    margin: 0
+
+    .widget--category-filter__category
+      width: 100%
+      margin: 0
+      padding: 0
+
+    .widget--category-filter__tag
+      display: inline-block
+      width: 100%
+      box-sizing: border-box
+      border-radius: rem(4px)
+      cursor: pointer
+      transition: background .15s ease, color .15s ease
+
+    .widget--category-filter__drop
+      width: rem(220px)
+
+    .widget--category-filter__subcategory
+      display: inline-block
+      margin: rem(2px)

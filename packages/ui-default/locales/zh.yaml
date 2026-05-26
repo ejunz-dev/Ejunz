@@ -791,6 +791,15 @@ Back to: 返回
 Base Node: 知识库节点
 Base type: 知识库类型
 base_create: 创建知识库
+Create Base: 创建知识库
+Create a knowledge base document for this domain.: 为此域创建一个知识库。
+Input base title: 输入知识库标题
+BID: 编号（BID）
+'Optional human-readable identifier, for example: P1001': '可选的易读编号，例如：P1001'
+"Split by ', '. Or pick categories from the sidebar.": '使用英文逗号分隔，或从右侧分类栏点击添加。'
+"Split by ', '.": '使用英文逗号（,）分隔。'
+Click to add: 点击添加
+'Base bid already exists: {0}': 'BID 已存在：{0}'
 Each domain can have at most one skill base; choosing Skill again opens the existing one if present.: 每个域最多一个技能库；若已存在则提交「技能库」会进入已有技能库而非新建。
 Skill knowledge base: 技能库
 Standard knowledge base: 普通知识库

@@ -149,6 +149,16 @@ CPU Info: CPU 정보
 Create a branch: 브랜치 만들기
 Create a Discussion: 토론 만들기
 Create Branch: 브랜치 생성
+base_create: 베이스 만들기
+Create Base: 베이스 만들기
+Create a knowledge base document for this domain.: 이 도메인에 지식 베이스를 만듭니다.
+Input base title: 베이스 제목 입력
+BID: BID
+'Optional human-readable identifier, for example: P1001': '선택적 식별자, 예: P1001'
+"Split by ', '. Or pick categories from the sidebar.": "쉼표(,)로 구분하거나 사이드바에서 분류를 클릭하세요."
+"Split by ', '.": "쉼표(,)로 구분하세요."
+Click to add: 클릭하여 추가
+'Base bid already exists: {0}': 'BID가 이미 존재합니다: {0}'
 Create Client: 클라이언트 만들기
 Create Discussion in {0}: '''{0}에 토론 만들기'''
 Create Discussion: 토론 만들기
