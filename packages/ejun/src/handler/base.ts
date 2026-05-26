@@ -32,7 +32,7 @@ import { promisify } from 'util';
 import system from '../model/system';
 import https from 'https';
 import parser from '@ejunz/utils/lib/search';
-import { parseCategory } from './agent';
+import { parseCategory } from '../lib/category';
 import { Logger } from '../utils';
 import { pick, omit } from 'lodash';
 import storage from '../model/storage';

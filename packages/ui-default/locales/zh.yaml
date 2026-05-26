@@ -807,6 +807,9 @@ base_data: 知识库数据
 base_delete: 删除知识库
 base_detail: 知识库详情
 base_domain: 知识库
+Show tags: 显示标签
+Views: 访问
+Updated: 更新
 base_edge: 知识库边
 base_edit: 编辑知识库
 base_editor: 编辑器
