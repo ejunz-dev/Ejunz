@@ -6,12 +6,52 @@
     width: rem(81px)
   .col--title
     min-width: rem(120px)
+  .col--category
+    min-width: rem(100px)
   .col--nodes,
   .col--views
     width: rem(80px)
     text-align: center
   .col--updated
     width: rem(140px)
+
+  .base__tags
+    margin-top: rem(2px)
+
+  .base__tag
+    display: inline-block
+    margin-right: rem(6px)
+    font-size: rem($font-size-small)
+
+.widget--category-filter
+  &__category
+    margin-bottom: rem(6px)
+
+  &__drop
+    position: relative
+    font-size: rem($font-size-small)
+    width: rem(230px)
+    padding: rem(10px)
+    margin-right: rem(10px)
+    background: $menu-drop-bg-color
+    box-shadow: $menu-drop-shadow
+
+  &__tag
+    display: inline-block
+    padding: rem(5px 6px)
+
+    &:hover
+      color: #FFF
+      background: $primary-color
+      text-decoration: none
+
+    &.selected
+      color: #FFF
+      background: $secondary-color
+
+  &__subcategory
+    margin: rem(2px)
+    display: inline-block
 
 .display-mode .display-mode-hide,
 .edit-mode .edit-mode-hide

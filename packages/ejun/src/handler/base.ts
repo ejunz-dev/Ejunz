@@ -32,6 +32,7 @@ import { promisify } from 'util';
 import system from '../model/system';
 import https from 'https';
 import parser from '@ejunz/utils/lib/search';
+import { parseCategory } from './agent';
 import { Logger } from '../utils';
 import { pick, omit } from 'lodash';
 import storage from '../model/storage';
@@ -1569,10 +1570,12 @@ class BaseCreateHandler extends Handler {
 
     @param('title', Types.String)
     @param('bid', Types.String, true)
+    @post('tag', Types.Content, true, null, parseCategory)
     async post(
         domainId: string,
         title: string,
         bid?: string,
+        tag: string[] = [],
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
@@ -1597,7 +1600,8 @@ class BaseCreateHandler extends Handler {
             undefined,
             this.domain.name,
             true,
-            finalBid || undefined
+            finalBid || undefined,
+            tag?.length ? tag : undefined,
         );
 
         let createdBase = await BaseModel.get(actualDomainId, docId);
@@ -1660,19 +1664,22 @@ class BaseEditHandler extends Handler {
     @param('content', Types.String, true)
     @param('parentId', Types.ObjectId, true)
     @post('domainPosition', Types.Any, true)
+    @post('tag', Types.Content, true, null, parseCategory)
     async postUpdate(
         domainId: string,
         docId: number,
         title?: string,
         content?: string,
         parentId?: ObjectId,
-        domainPosition?: { x: number; y: number }
+        domainPosition?: { x: number; y: number },
+        tag?: string[],
     ) {
         const updates: any = {};
         if (title !== undefined) updates.title = title;
         if (content !== undefined) updates.content = content;
         if (parentId !== undefined) updates.parentId = parentId;
         if (domainPosition !== undefined) updates.domainPosition = domainPosition;
+        if (tag !== undefined) updates.tag = tag;
 
         await BaseModel.update(domainId, docId, updates);
         this.response.body = { docId };
@@ -2417,6 +2424,36 @@ class BaseListHandler extends Handler {
 }
 
 
+const BASE_LIST_SEARCH_OPTIONS = {
+    keywords: ['category'],
+    offsets: true,
+    alwaysArray: true,
+    tokenize: true,
+};
+
+function filterBasesBySearchQuery(bases: BaseDoc[], q: string): BaseDoc[] {
+    const trimmed = (q || '').trim();
+    if (!trimmed) return bases;
+    const parsed = parser.parse(trimmed, BASE_LIST_SEARCH_OPTIONS) as {
+        category?: string[];
+        text?: string[];
+    };
+    const categories = (parsed.category || []).map(String).filter(Boolean);
+    const freeText = (parsed.text || []).join(' ').trim().toLowerCase();
+    return bases.filter((b) => {
+        if (categories.length) {
+            const tags = Array.isArray(b.tag) ? b.tag : [];
+            if (!categories.some((c) => tags.includes(c))) return false;
+        }
+        if (freeText) {
+            const hay = `${b.title || ''} ${b.content || ''}`.toLowerCase();
+            if (!hay.includes(freeText)) return false;
+        }
+        return true;
+    });
+}
+
+
 class BaseDomainListHandler extends Handler {
     @param('page', Types.PositiveInt, true)
     @param('q', Types.Content, true)
@@ -2425,15 +2462,12 @@ class BaseDomainListHandler extends Handler {
         const did = typeof domainId === 'string' ? domainId : (this.args?.domainId ?? (domainId as any)?._id ?? 'system');
         const limit = this.ctx.setting.get('pagination.problem') || 20;
         let bases = await BaseModel.getAll(did);
-        const qs = (q || '').trim();
-        if (qs) {
-            const lower = qs.toLowerCase();
-            bases = bases.filter((b) => (b.title || '').toLowerCase().includes(lower) || (b.content || '').toLowerCase().includes(lower));
-        }
+        bases = filterBasesBySearchQuery(bases, q);
         const total = bases.length;
         const ppcount = Math.max(1, Math.ceil(total / limit));
         const page1 = Math.max(1, Math.min(page, ppcount));
         const basesSlice = bases.slice((page1 - 1) * limit, page1 * limit);
+        const qs = (q || '').trim();
         const pageNumericIds = basesSlice.map((b) => Number(b.docId)).filter((n) => Number.isFinite(n) && n > 0);
         const cardStatsPage = await loadCardStatsByBaseDocId(did, pageNumericIds);
         const basesPage = attachBaseListStats(

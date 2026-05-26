@@ -1,5 +1,6 @@
 {% import "components/form.html" as form with context %}
 {% extends "layout/basic.html" %}
+{% set page_name = "base_edit" %}
 
 {% block content %}
 <div class="row">
@@ -37,6 +38,15 @@
               markdown: true
           }) }}
 
+          {{ form.form_text({
+               row: false,
+               columns: 9,
+               label: _('Tags'),
+               help_text: _('Split by \', \'.'),
+               name: 'tag',
+               value: base['tag']|default([])|join(', ')
+             }) }}
+
           <div class="row">
             <div class="columns">
               <button 
@@ -69,6 +79,14 @@
   </div>
   
   <div class="medium-3 columns">
+    <div class="section side visiable nojs--hide section--problem-sidebar-tags">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Categories') }} ({{ _('click to add') }})</h1>
+      </div>
+      <div class="section__body problem-sidebar-tags__detail">
+        {% include "partials/category.html" %}
+      </div>
+    </div>
     {% include 'components/md_hint.html' %}
   </div>
 </div>
