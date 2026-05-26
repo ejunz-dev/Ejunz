@@ -744,6 +744,9 @@ base_data: Base Data
 base_delete: Delete Base
 base_detail: Base Detail
 base_domain: Base
+Show tags: Show tags
+Views: Views
+Updated: Updated
 base_edge: Base Edge
 base_edit: Edit Base
 base_editor: Base Editor

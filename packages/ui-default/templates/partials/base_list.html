@@ -5,15 +5,11 @@
   {{ nothing.render('Sorry, there are no bases in the base.') }}
 {% else %}
   {{ paginator.render(page, ppcount, position='top', add_qs=('q=' + qs if qs else '')) }}
-  <table class="data-table">
+  <table class="data-table base-list-table">
     <colgroup>
       <col class="col--checkbox display-mode-hide">
-      <col class="col--doc-id">
-      <col class="col--title">
-      <col class="col--nodes">
-      <col class="col--cards">
-      <col class="col--problems">
-      <col class="col--category">
+      <col class="col--base-name">
+      <col class="col--base-tags">
       <col class="col--views">
       <col class="col--updated">
     </colgroup>
@@ -24,12 +20,8 @@
             <input type="checkbox" name="select_all" data-checkbox-toggle="base">
           </label>
         </th>
-        <th class="col--doc-id">{{ _('BID') }}</th>
-        <th class="col--title">{{ _('Base') }}</th>
-        <th class="col--nodes">{{ _('Nodes') }}</th>
-        <th class="col--cards">{{ _('Cards') }}</th>
-        <th class="col--problems">{{ _('Problems') }}</th>
-        <th class="col--category">{{ _('Category') }}</th>
+        <th class="col--base-name">{{ _('Base') }}</th>
+        <th class="col--base-tags">{{ _('Show tags') }}</th>
         <th class="col--views">{{ _('Views') }}</th>
         <th class="col--updated">{{ _('Updated') }}</th>
       </tr>
@@ -42,24 +34,23 @@
             <input type="checkbox" data-checkbox-group="base" data-checkbox-range>
           </label>
         </td>
-        <td class="col--doc-id">{{ base.bid or '-' }}</td>
-        <td class="col--title">
+        <td class="col--base-name">
           <a href="{{ url('base_outline_doc_branch', docId=(base.bid or base.docId), branch='main') }}">
-            {{ base.title or _('Untitled') }}
+            <span class="base-list__bid">{{ base.bid if base.bid else ('#' ~ base.docId) }}</span>
+            <span class="base-list__title">{{ base.title or _('Untitled') }}</span>
           </a>
         </td>
-        <td class="col--nodes">{{ base.listStats.nodeCount if base.listStats else (base.nodes|length if base.nodes else 0) }}</td>
-        <td class="col--cards">{{ base.listStats.cardCount if base.listStats else 0 }}</td>
-        <td class="col--problems">{{ base.listStats.problemCount if base.listStats else 0 }}</td>
-        <td class="col--category">
+        <td class="col--base-tags">
           {% if base.tag and (base.tag|length) %}
-          <div class="base__tags">
+          <ul class="base__tags problem__tags">
             {%- for t in base.tag -%}
-              <span class="base__tag typo supplementary">{{ t }}</span>
+            {%- if t -%}
+            <li class="base__tag problem__tag">
+              <span class="problem__tag-link">{{ t }}</span>
+            </li>
+            {%- endif -%}
             {%- endfor -%}
-          </div>
-          {% else %}
-            -
+          </ul>
           {% endif %}
         </td>
         <td class="col--views">{{ base.views|default(0) }}</td>

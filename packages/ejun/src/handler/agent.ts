@@ -44,6 +44,7 @@ import { callToolViaWorker } from './worker';
 import { getDomainMarketToolsForAgent } from './tool';
 import RecordModel from '../model/record';
 import SessionModel from '../model/session';
+import { parseCategory } from '../lib/category';
 const AgentLogger = new Logger('agent');
 
 export function normalizeAgentSkillBindings(adoc: AgentDoc): SkillLibraryBinding[] | undefined {
@@ -221,9 +222,6 @@ function escapeRegExp(s: string) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-export const parseCategory = (value: string) => value.replace(/，/g, ',').split(',').map((e) => e.trim());
-
-// Tool call: try worker first, then direct MCP
 async function callToolWithFallback(
     toolName: string,
     args: any,
