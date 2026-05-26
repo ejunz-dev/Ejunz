@@ -22,7 +22,7 @@
             {% if not edges or not edges.length %}
             <div class="typo">
               <p class="note">暂无已连接的 Edge 设备。请先创建接入点并让设备连接。</p>
-              <a href="{{ url('edge_domain', { domainId: domainId }) }}" class="button">前往 Edge 管理</a>
+              <a href="{{ url('edge_domain', {}) }}" class="button">前往 Edge 管理</a>
             </div>
             {% else %}
             <div style="max-height: 600px; overflow-y: auto; border: 1px solid #ddd; padding: 15px; border-radius: 4px; background: #f9f9f9;">

@@ -7,7 +7,7 @@
             <div class="section__header">
                 <h1 class="section__title">{{ _('Scene Logs') }} - {{ scene.name }}</h1>
                 <div class="section__action">
-                    <a href="{{ url('scene_detail', { domainId: domainId, sid: scene.sid }) }}" class="button">{{ _('Back to Details') }}</a>
+                    <a href="{{ url('scene_detail', { sid: scene.sid }) }}" class="button">{{ _('Back to Details') }}</a>
                     <button id="clearLogs" class="button">{{ _('Clear Logs') }}</button>
                     <button id="scrollLock" class="button">🔒 {{ _('Lock Scroll') }}</button>
                 </div>

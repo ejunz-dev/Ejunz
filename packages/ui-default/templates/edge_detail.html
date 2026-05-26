@@ -7,7 +7,7 @@
       <div class="section__header">
         <h1 class="section__title">Edge 设备详情</h1>
         <div class="section__tools">
-          <a href="{{ url('edge_domain', { domainId: domainId }) }}" class="button">
+          <a href="{{ url('edge_domain', {}) }}" class="button">
             <span class="icon icon-back"></span> 返回列表
           </a>
         </div>
@@ -134,7 +134,7 @@
                   {{ tool.description or '' }}
                 </td>
                 <td class="col--action">
-                  <a href="{{ url('tool_detail', { domainId: domainId, tid: tool.tid }) }}" class="button small">查看详情</a>
+                  <a href="{{ url('tool_detail', { tid: tool.tid }) }}" class="button small">查看详情</a>
                 </td>
               </tr>
               {%- endfor -%}

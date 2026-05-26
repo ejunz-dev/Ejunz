@@ -9,7 +9,7 @@
       <div class="section__body">
         <p class="help-text" style="margin-bottom: 12px;">
           {{ _('Optionally mount one domain knowledge base (outline / cards) for this agent. load_base uses this document and branch.') }}
-          <a href="{{ url('agent_detail', domainId=domainId, aid=adoc.aid) }}" class="supplementary" style="margin-left: 12px;">← {{ _('Back to Agent') }}</a>
+          <a href="{{ url('agent_detail', aid=adoc.aid) }}" class="supplementary" style="margin-left: 12px;">← {{ _('Back to Agent') }}</a>
         </p>
         <form id="agent-base-bindings-form" class="form">
           {% if basesForUi and basesForUi|length > 0 %}
@@ -49,12 +49,12 @@
           </table>
           {% else %}
           <p class="help-text">{{ _('No knowledge bases in this domain yet.') }}
-            <a href="{{ url('base_domain', domainId=domainId) }}">{{ _('Create one') }}</a>
+            <a href="{{ url('base_domain') }}">{{ _('Create one') }}</a>
           </p>
           {% endif %}
           <div style="margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
             <button type="button" class="button primary" id="agent-base-bindings-save">{{ _('Save knowledge base mount') }}</button>
-            <a href="{{ url('agent_detail', domainId=domainId, aid=adoc.aid) }}" class="button secondary">{{ _('Cancel') }}</a>
+            <a href="{{ url('agent_detail', aid=adoc.aid) }}" class="button secondary">{{ _('Cancel') }}</a>
           </div>
         </form>
       </div>
@@ -111,7 +111,7 @@
       });
       const data = await response.json();
       if (response.ok && data.success) {
-        window.location.href = '{{ url("agent_detail", domainId=domainId, aid=adoc.aid) }}';
+        window.location.href = '{{ url("agent_detail", aid=adoc.aid) }}';
       } else {
         alert(data.error || data.message || '{{ _("Failed to save knowledge base mount") }}');
       }

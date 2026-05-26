@@ -7,7 +7,7 @@
         <h1 class="section__title">{{ _('develop_session_history_title') }}</h1>
         <div class="section__tools">
           <a href="{{ developHomeUrl }}" class="button primary">{{ _('develop_session_history_back') }}</a>
-          <a href="{{ url('session_domain', domainId=domainId) }}" class="button">{{ _('session_develop_list_title') }}</a>
+          <a href="{{ url('session_domain') }}" class="button">{{ _('session_develop_list_title') }}</a>
         </div>
       </div>
       <div class="section__body">
@@ -68,7 +68,7 @@
                   {% if session.recordSummaries and session.recordSummaries.length %}
                     {% for rec in session.recordSummaries %}
                       <a
-                        href="{{ url('record_detail', domainId=domainId, rid=rec._id) }}"
+                        href="{{ url('record_detail', rid=rec._id) }}"
                         class="record-block"
                         style="background-color: {{ rec.color }}"
                         title="{{ rec.cardId }} — {{ rec.label }}"
@@ -114,7 +114,7 @@
             <span class="text-gray text-sm font-mono"> · {{ h.rdoc.cardId }}</span>
           </h2>
           <div class="section__tools">
-            <a href="{{ url('record_detail', domainId=domainId, rid=h.rdoc._id) }}" class="button text-sm">{{ _('record_page_title') }}</a>
+            <a href="{{ url('record_detail', rid=h.rdoc._id) }}" class="button text-sm">{{ _('record_page_title') }}</a>
           </div>
         </div>
         <div class="section__body typo no-media">

@@ -1,7 +1,6 @@
 {% extends "layout/basic.html" %}
 {% set page_name = "skill_create" %}
 {% block content %}
-{% set _domain_id = UiContext.domainId or domainId or 'system' %}
 <div class="row">
   <div class="medium-8 large-6 columns">
     <div class="section">
@@ -9,7 +8,7 @@
         <h1 class="section__title">{{ _('Create Skill') }}</h1>
       </div>
       <div class="section__body">
-        <form method="post" action="{{ url('skill_create', domainId=_domain_id) }}">
+        <form method="post" action="{{ url('skill_create') }}">
           <div class="row">
             <div class="columns">
               <label for="title">{{ _('Title') }}</label>

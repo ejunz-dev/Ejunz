@@ -26,10 +26,10 @@
                     <div class="form__group">
                         {% if client %}
                             <button type="submit" name="operation" value="update" class="button primary">{{ _('Save') }}</button>
-                            <a href="{{ url('client_detail', { domainId: domainId, clientId: client.clientId }) }}" class="button">{{ _('Cancel') }}</a>
+                            <a href="{{ url('client_detail', { clientId: client.clientId }) }}" class="button">{{ _('Cancel') }}</a>
                         {% else %}
                             <button type="submit" name="operation" value="create" class="button primary">{{ _('Create') }}</button>
-                            <a href="{{ url('client_domain', { domainId: domainId }) }}" class="button">{{ _('Cancel') }}</a>
+                            <a href="{{ url('client_domain', {}) }}" class="button">{{ _('Cancel') }}</a>
                         {% endif %}
                     </div>
                 </form>

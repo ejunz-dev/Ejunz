@@ -85,11 +85,11 @@
           <button type="button" id="agentChatSidebarToggle" class="button agent-chat-sidebar-toggle" title="{{ _('session_chat_domain') }}" aria-label="{{ _('session_chat_domain') }}">
             <span class="icon icon-menu"></span> {{ _('session_chat_domain') }}
           </button>
-          <a href="{{ url('agent_detail', domainId=domainId, aid=adoc.aid) }}" class="button" id="backToAgentBtn">
+          <a href="{{ url('agent_detail', aid=adoc.aid) }}" class="button" id="backToAgentBtn">
             <span class="icon icon-back"></span> {{ _('Back to Agent') }}
           </a>
           {% else %}
-          <a href="{{ url('agent_detail', domainId=domainId, aid=adoc.aid) }}" class="button">
+          <a href="{{ url('agent_detail', aid=adoc.aid) }}" class="button">
             <span class="icon icon-back"></span> {{ _('Back to Agent') }}
           </a>
           {% endif %}

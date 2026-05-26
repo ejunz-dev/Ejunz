@@ -117,14 +117,14 @@
             </div>
             <div class="section__body">
                 {% if handler.user.own(node) or handler.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN) %}
-                <a href="{{ url('node_edit', domainId=domainId, nid=node.nid) }}" class="button primary expanded">
+                <a href="{{ url('node_edit', nid=node.nid) }}" class="button primary expanded">
                     {{ _('Edit') }}
                 </a>
                 {% endif %}
                 {% if edge %}
                 <div style="margin-top: 1em;">
                     <p><strong>关联 Edge:</strong></p>
-                    <a href="{{ url('edge_detail', { domainId: domainId, eid: edge.eid }) }}" class="button expanded">
+                    <a href="{{ url('edge_detail', { eid: edge.eid }) }}" class="button expanded">
                         查看 Edge 详情 (EID: {{ edge.eid }})
                     </a>
                 </div>

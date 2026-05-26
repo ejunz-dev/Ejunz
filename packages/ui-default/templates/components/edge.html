@@ -3,7 +3,7 @@
 {% set statusText = _('Online') if item.status == 'connected' else (_('Offline') if item.status == 'disconnected' else _('Working')) %}
 {% set detailUrl = '' %}
 {% if type == 'mcp' %}
-  {% set detailUrl = url('mcp_detail', { domainId: handler.args.domainId, serverId: item.serverId }) %}
+  {% set detailUrl = url('mcp_detail', { serverId: item.serverId }) %}
 {% elif type == 'client' %}
   {% set detailUrl = url('client_detail', { domainId: item.domainId|default(handler.args.domainId), clientId: item.clientId }) %}
 {% elif type == 'node' %}
