@@ -68,6 +68,17 @@ function loadQuery() {
   pjax.request({ url: url.toString() });
 }
 
+function handleListTagClick(ev) {
+  ev.preventDefault();
+  ev.stopPropagation();
+  const tag = $(ev.currentTarget).text().trim();
+  if (!tag) return;
+  selectedTags.category = [tag];
+  updateSelection();
+  writeSelectionToInput();
+  loadQuery();
+}
+
 function handleTagSelected(ev) {
   if (ev.shiftKey || ev.metaKey || ev.ctrlKey) return;
   let [type, selection] = ['category', $(ev.currentTarget).text()];
@@ -156,6 +167,8 @@ const page = new NamedPage('base_domain', () => {
   buildLegacyCategoryFilter();
   parseCategorySelection();
   updateSelection();
+
+  $(document).on('click', '.base-list-table .problem__tag-link', (ev) => handleListTagClick(ev));
 
   $(document).on('click', '[name="leave-edit-mode"]', () => {
     $body.removeClass('edit-mode').addClass('display-mode');
