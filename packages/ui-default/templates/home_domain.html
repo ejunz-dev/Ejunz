@@ -43,9 +43,9 @@
             {{ role[ddoc._id]|default('default') }}
           </td>
           <td class="col--action">
-            <a class="typo-a" href="{{ url('homepage', domainId=ddoc['_id']) }}">{{ _('Visit') }}</a>
+            <a class="typo-a" href="{% if ddoc['_id'] != 'system' %}{{ url('homepage', domainId=ddoc['_id']) }}{% else %}{{ url('homepage') }}{% endif %}">{{ _('Visit') }}</a>
           {% if canManage[ddoc['_id']] %}
-            · <a class="typo-a" href="{{ url('domain_dashboard', domainId=ddoc['_id']) }}">{{ _('Manage') }}</a>
+            · <a class="typo-a" href="{% if ddoc['_id'] != 'system' %}{{ url('domain_dashboard', domainId=ddoc['_id']) }}{% else %}{{ url('domain_dashboard') }}{% endif %}">{{ _('Manage') }}</a>
           {% endif %}
           {% if ddoc['_id'] != 'system' and ddoc['owner'] != handler.user._id %}
             · <form class="form--inline" method="post">

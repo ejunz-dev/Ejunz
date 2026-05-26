@@ -46,7 +46,7 @@
         </td>
         <td class="col--doc-id">{{ base.bid or '-' }}</td>
         <td class="col--title">
-          <a href="{{ url('skill_outline_doc_branch', domainId=domainId, docId=(base.bid or base.docId), branch='main') }}">
+          <a href="{{ url('skill_outline_doc_branch', docId=(base.bid or base.docId), branch='main') }}">
             {{ base.title or _('Untitled') }}
           </a>
         </td>

@@ -7,7 +7,7 @@
             <div class="section__header">
                 <h1 class="section__title">工作流管理</h1>
                 <div class="section__action">
-                    <a href="{{ url('workflow_create', domainId=domainId) }}" class="button primary">{{ _('Create Workflow') }}</a>
+                    <a href="{{ url('workflow_create') }}" class="button primary">{{ _('Create Workflow') }}</a>
                 </div>
             </div>
             <div class="section__body">
@@ -41,7 +41,7 @@
                         {% endfor %}
                     </div>
                 {% else %}
-                    <p class="workflow-empty-message">暂无工作流，<a href="{{ url('workflow_create', domainId=domainId) }}">{{ _('Create Workflow') }}</a></p>
+                    <p class="workflow-empty-message">暂无工作流，<a href="{{ url('workflow_create') }}">{{ _('Create Workflow') }}</a></p>
                 {% endif %}
             </div>
         </div>

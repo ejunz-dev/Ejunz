@@ -7,7 +7,7 @@
             <div class="section__header">
                 <h1 class="section__title">{{ _('Client Configuration') }} - {{ client.name }}</h1>
                 <div class="section__action">
-                    <a href="{{ url('client_detail', { domainId: domainId, clientId: client.clientId }) }}" class="button">{{ _('Back to Detail') }}</a>
+                    <a href="{{ url('client_detail', { clientId: client.clientId }) }}" class="button">{{ _('Back to Detail') }}</a>
                 </div>
             </div>
             <div class="section__body">

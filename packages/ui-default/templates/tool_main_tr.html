@@ -14,18 +14,18 @@
     {% if tool.edgeName == 'system' %}
       <code>{{ tool.edgeName }}</code>
     {% else %}
-      <a href="{{ url('edge_detail', { domainId: handler.args.domainId, eid: tool.eid }) }}">
+      <a href="{{ url('edge_detail', { eid: tool.eid }) }}">
         <code>{{ tool.edgeName or tool.eid }}</code>
       </a>
     {% endif %}
   </td>
   <td class="col--name">
     {% if tool.toolKey %}
-      <a href="{{ url('tool_system_detail', { domainId: handler.args.domainId, toolKey: tool.toolKey }) }}">
+      <a href="{{ url('tool_system_detail', { toolKey: tool.toolKey }) }}">
         <code>{{ tool.name }}</code>
       </a>
     {% else %}
-      <a href="{{ url('tool_detail', { domainId: handler.args.domainId, tid: tool.tid }) }}">
+      <a href="{{ url('tool_detail', { tid: tool.tid }) }}">
         <code>{{ tool.name }}</code>
       </a>
     {% endif %}

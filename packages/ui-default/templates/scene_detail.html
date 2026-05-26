@@ -347,8 +347,8 @@ body.display-mode [name="enter-edit-mode"] {
                 <button class="button {% if scene.enabled %}warning{% else %}success{% endif %} scene-toggle-btn" data-sid="{{ scene.sid }}" data-enabled="{{ 'true' if scene.enabled else 'false' }}">
                     {% if scene.enabled %}禁用场景{% else %}启用场景{% endif %}
                 </button>
-                <a href="{{ url('scene_edit', { domainId: domainId, sid: scene.sid }) }}" class="button secondary">编辑场景</a>
-                <a href="{{ url('scene_logs', { domainId: domainId, sid: scene.sid }) }}" class="button secondary">查看日志</a>
+                <a href="{{ url('scene_edit', { sid: scene.sid }) }}" class="button secondary">编辑场景</a>
+                <a href="{{ url('scene_logs', { sid: scene.sid }) }}" class="button secondary">查看日志</a>
             </div>
             <div class="scene-info-grid">
                 <div class="scene-info-item">
@@ -388,7 +388,7 @@ body.display-mode [name="enter-edit-mode"] {
                     <a href="javascript:;" class="menu__link display-mode-hide" name="leave-edit-mode">
                         <span class="icon icon-edit"></span> 退出编辑模式
                     </a>
-                    <a href="{{ url('scene_event_create', { domainId: domainId, sid: scene.sid }) }}" class="button primary">
+                    <a href="{{ url('scene_event_create', { sid: scene.sid }) }}" class="button primary">
                         <span class="icon icon-plus"></span> 创建事件
                     </a>
                 </div>
@@ -453,7 +453,7 @@ body.display-mode [name="enter-edit-mode"] {
                                     </td>
                                     <td>
                                         <div class="event-actions">
-                                            <a href="{{ url('scene_event_edit', { domainId: domainId, sid: scene.sid, eid: event.eid }) }}" class="button small">
+                                            <a href="{{ url('scene_event_edit', { sid: scene.sid, eid: event.eid }) }}" class="button small">
                                                 <span class="icon icon-edit"></span> 编辑
                                             </a>
                                             <button class="button small danger delete-event-btn" data-eid="{{ event.eid }}">
@@ -472,7 +472,7 @@ body.display-mode [name="enter-edit-mode"] {
                         </svg>
                         <p>暂无事件</p>
                         <p style="font-size: 14px; margin-top: 5px;">点击"创建事件"按钮添加第一个事件</p>
-                        <a href="{{ url('scene_event_create', { domainId: domainId, sid: scene.sid }) }}" class="button primary">
+                        <a href="{{ url('scene_event_create', { sid: scene.sid }) }}" class="button primary">
                             创建事件
                         </a>
                     </div>

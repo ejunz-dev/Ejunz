@@ -76,7 +76,7 @@
             <select id="branch-select" style="width: 100%; margin-bottom: 6px;" onchange="(function(){
               var sel = document.getElementById('branch-select');
               var b = sel && sel.value ? sel.value : '{{ currentBranch }}';
-              var url = '{{ url('skill_outline_doc_branch', domainId=domainId, docId=_base_doc_id, branch="__BR__") }}'.replace('__BR__', encodeURIComponent(b));
+              var url = '{{ url('skill_outline_doc_branch', docId=_base_doc_id, branch="__BR__") }}'.replace('__BR__', encodeURIComponent(b));
               window.location.href = url;
             })()">
               {% for b in branches %}
@@ -88,7 +88,7 @@
             <button type="button" class="button success expanded" style="margin-bottom: 8px;" onclick="(function(){
               var name = window.prompt('{{ _('Enter new branch name') }}');
               if (!name) return;
-              var url = '{{ url('base_branch_create_with_param', domainId=domainId, branch='__BR__') }}'.replace('__BR__', encodeURIComponent(name));
+              var url = '{{ url('base_branch_create_with_param', branch='__BR__') }}'.replace('__BR__', encodeURIComponent(name));
               window.location.href = url;
             })()">{{ _('Create Branch') }}</button>
             {% endif %}
@@ -202,7 +202,7 @@
               btn.disabled = true;
               btn.textContent = '{{ _('Committing...') }}';
               
-              fetch('{{ url('base_commit_branch', domainId=domainId, branch=currentBranch) }}', {
+              fetch('{{ url('base_commit_branch', branch=currentBranch) }}', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -239,7 +239,7 @@
               btn.disabled = true;
               btn.textContent = '{{ _('Pushing...') }}';
               
-              fetch('{{ url('base_github_push_branch', domainId=domainId, branch=currentBranch) }}', {
+              fetch('{{ url('base_github_push_branch', branch=currentBranch) }}', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -273,7 +273,7 @@
               btn.disabled = true;
               btn.textContent = '{{ _('Pulling...') }}';
               
-              fetch('{{ url('base_github_pull_branch', domainId=domainId, branch=currentBranch) }}', {
+              fetch('{{ url('base_github_pull_branch', branch=currentBranch) }}', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -307,7 +307,7 @@
               btn.disabled = true;
               btn.textContent = '{{ _('Pushing...') }}';
               
-              fetch('{{ url('base_github_push_branch', domainId=domainId, branch=currentBranch) }}', {
+              fetch('{{ url('base_github_push_branch', branch=currentBranch) }}', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -346,7 +346,7 @@
     if (!historyListEl) return;
     
     try {
-      const response = await fetch('{{ url('base_history_branch', domainId=domainId, branch=currentBranch) }}');
+      const response = await fetch('{{ url('base_history_branch', branch=currentBranch) }}');
       const data = await response.json();
       const history = data.history || [];
       
@@ -392,7 +392,7 @@
     if (!confirm('确定要恢复到该历史节点吗？当前未保存的更改将丢失。')) return;
     
     try {
-      const baseUrl = '{{ url('base_history_restore_branch', domainId=domainId, branch=currentBranch, historyId='__HISTORY_ID__') }}';
+      const baseUrl = '{{ url('base_history_restore_branch', branch=currentBranch, historyId='__HISTORY_ID__') }}';
       const url = baseUrl.replace('__HISTORY_ID__', encodeURIComponent(historyId));
       const response = await fetch(url, {
         method: 'POST',

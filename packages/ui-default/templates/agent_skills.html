@@ -9,7 +9,7 @@
       <div class="section__body">
         <p class="help-text" style="margin-bottom: 12px;">
           {{ _('Select skill libraries and a branch for each. Mark at least one as core: core libraries are fully injected into context; non-core libraries load on demand via tools.') }}
-          <a href="{{ url('agent_detail', domainId=domainId, aid=adoc.aid) }}" class="supplementary" style="margin-left: 12px;">← {{ _('Back to Agent') }}</a>
+          <a href="{{ url('agent_detail', aid=adoc.aid) }}" class="supplementary" style="margin-left: 12px;">← {{ _('Back to Agent') }}</a>
         </p>
         <form id="agent-skill-bindings-form" class="form">
           {% if skillLibrariesForUi and skillLibrariesForUi|length > 0 %}
@@ -56,12 +56,12 @@
           </table>
           {% else %}
           <p class="help-text">{{ _('No skill libraries in this domain yet.') }}
-            <a href="{{ url('skill_domain', domainId=domainId) }}">{{ _('Create one') }}</a>
+            <a href="{{ url('skill_domain') }}">{{ _('Create one') }}</a>
           </p>
           {% endif %}
           <div style="margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
             <button type="button" class="button primary" id="agent-skill-bindings-save">{{ _('Save skill selection') }}</button>
-            <a href="{{ url('agent_detail', domainId=domainId, aid=adoc.aid) }}" class="button secondary">{{ _('Cancel') }}</a>
+            <a href="{{ url('agent_detail', aid=adoc.aid) }}" class="button secondary">{{ _('Cancel') }}</a>
           </div>
         </form>
       </div>
@@ -123,7 +123,7 @@
       });
       const data = await response.json();
       if (response.ok && data.success) {
-        window.location.href = '{{ url("agent_detail", domainId=domainId, aid=adoc.aid) }}';
+        window.location.href = '{{ url("agent_detail", aid=adoc.aid) }}';
       } else {
         alert(data.error || data.message || '{{ _("Failed to save skill selection") }}');
       }
