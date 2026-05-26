@@ -2,6 +2,8 @@ import $ from 'jquery';
 import Dropdown from 'vj/components/dropdown/Dropdown';
 import { NamedPage } from 'vj/misc/Page';
 
+export const BASE_EDIT_RETURN_URL_KEY = 'baseEditReturnUrl';
+
 function appendTag(name) {
   const tag = String(name || '').trim();
   if (!tag) return;
@@ -47,7 +49,40 @@ function buildCategorySidebar() {
   }
 }
 
-const page = new NamedPage(['base_create', 'base_edit'], () => {
+function resolveReturnUrl() {
+  const ctx = window.UiContext;
+  const fromContext = String(ctx?.returnUrl || '').trim();
+  if (fromContext.startsWith('/') && !fromContext.startsWith('//')) return fromContext;
+
+  const stored = sessionStorage.getItem(BASE_EDIT_RETURN_URL_KEY);
+  sessionStorage.removeItem(BASE_EDIT_RETURN_URL_KEY);
+  if (stored && stored.startsWith('/') && !stored.startsWith('//')) {
+    if (ctx) ctx.returnUrl = stored;
+    return stored;
+  }
+  return '';
+}
+
+function applyReturnUrl() {
+  const returnUrl = resolveReturnUrl();
+  const $cancel = $('[data-base-edit-cancel]');
+  $cancel.on('click', () => {
+    if (returnUrl) window.location.href = returnUrl;
+    else window.history.go(-1);
+  });
+
+  if (!returnUrl) return;
+
+  const $form = $('#base-form').length ? $('#base-form') : $('form[method="post"]').first();
+  if (!$form.length) return;
+  if (!$form.find('[name="returnUrl"]').length) {
+    $('<input>', { type: 'hidden', name: 'returnUrl', value: returnUrl }).prependTo($form);
+  }
+  $('[data-base-edit-compact-hide]').remove();
+}
+
+const page = new NamedPage(['base_create', 'base_edit', 'base_card_edit'], () => {
+  applyReturnUrl();
   buildCategorySidebar();
   // Dropdown moves subcategory nodes outside the sidebar; do not scope to .section--problem-sidebar-tags
   $(document).on('click', '.widget--category-filter__tag', (ev) => {

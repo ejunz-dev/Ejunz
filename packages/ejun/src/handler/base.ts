@@ -1639,14 +1639,31 @@ class BaseCreateHandler extends Handler {
 
 
 /**
+ * Resolve return URL from Referer when navigating from outline/list into an edit page.
+ */
+function resolveReturnUrlFromReferer(request: { headers?: Record<string, string | string[] | undefined> }): string {
+    const referer = String(request.headers?.referer || '');
+    if (!referer) return '';
+    try {
+        const { pathname, search } = new URL(referer);
+        if (/\/base\//.test(pathname) && !/\/edit(?:\/|$|\?)/.test(pathname)) {
+            return `${pathname}${search}`;
+        }
+    } catch {
+        // ignore malformed referer
+    }
+    return '';
+}
+
+/**
  * Base Edit Handler
  */
 class BaseEditHandler extends Handler {
     base?: BaseDoc;
 
-    @param('docId', Types.PositiveInt)
-    async _prepare(domainId: string, docId: number) {
-        this.base = await BaseModel.get(domainId, docId);
+    @param('docId', Types.String)
+    async _prepare(domainId: string, docId: string) {
+        this.base = await resolveBaseByDocIdOrBid(domainId, docId);
         if (!this.base) throw new NotFoundError('Base not found');
         
         if (!this.user.own(this.base)) {
@@ -1655,49 +1672,76 @@ class BaseEditHandler extends Handler {
     }
 
     async get() {
+        const returnUrl = resolveReturnUrlFromReferer(this.request);
+        if (returnUrl) this.UiContext.returnUrl = returnUrl;
+
         this.response.template = 'base_edit.html';
-        this.response.body = { base: this.base };
+        this.response.body = {
+            base: this.base,
+        };
     }
 
-    @param('docId', Types.PositiveInt)
+    @param('docId', Types.String)
     @param('title', Types.String, true)
     @param('content', Types.String, true)
+    @param('bid', Types.String, true)
     @param('parentId', Types.ObjectId, true)
     @post('domainPosition', Types.Any, true)
     @post('tag', Types.Content, true, null, parseCategory)
     async postUpdate(
         domainId: string,
-        docId: number,
+        docId: string,
         title?: string,
         content?: string,
+        bid?: string,
         parentId?: ObjectId,
         domainPosition?: { x: number; y: number },
         tag?: string[],
     ) {
+        const baseDoc = this.base!;
         const updates: any = {};
         if (title !== undefined) updates.title = title;
         if (content !== undefined) updates.content = content;
         if (parentId !== undefined) updates.parentId = parentId;
         if (domainPosition !== undefined) updates.domainPosition = domainPosition;
         if (tag !== undefined) updates.tag = tag;
-
-        await BaseModel.update(domainId, docId, updates);
-        this.response.body = { docId };
-        
-        const operation = this.request.body?.operation;
-        if (operation !== 'update') {
-            this.response.redirect = this.url('base_detail', { docId: docId.toString() });
+        if (bid !== undefined) {
+            const finalBid = String(bid).trim();
+            if (finalBid) {
+                const existed = await BaseModel.getBybid(domainId, finalBid);
+                if (existed && existed.docId !== baseDoc.docId) {
+                    throw new ValidationError(this.translate('Base bid already exists: {0}').replace('{0}', finalBid));
+                }
+                updates.bid = finalBid;
+            } else {
+                updates.bid = undefined;
+            }
         }
+
+        await BaseModel.update(domainId, baseDoc.docId, updates);
+        this.response.body = { docId: baseDoc.docId };
+
+        const returnUrl = String(this.request.body?.returnUrl || '').trim();
+        if (returnUrl.startsWith('/') && !returnUrl.startsWith('//')) {
+            this.response.redirect = returnUrl;
+            return;
+        }
+        const outlineDocId = baseDoc.bid || baseDoc.docId;
+        this.response.redirect = this.url('base_outline_doc_branch', {
+            domainId,
+            docId: String(outlineDocId),
+            branch: baseDoc.currentBranch || 'main',
+        });
     }
 
-    @param('docId', Types.PositiveInt)
-    async postDelete(domainId: string, docId: number) {
+    @param('docId', Types.String)
+    async postDelete(domainId: string, docId: string) {
         
         if (!this.user.own(this.base)) {
             this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
         }
         
-        await BaseModel.delete(domainId, docId);
+        await BaseModel.delete(domainId, this.base!.docId);
         this.response.body = { success: true };
         this.response.redirect = this.url('base_list');
     }
@@ -4285,13 +4329,13 @@ class BaseCardEditHandler extends Handler {
         }
         
         this.response.template = 'base_card_edit.html';
-        const returnUrl = this.request.query.returnUrl;
+        const returnUrl = resolveReturnUrlFromReferer(this.request);
+        if (returnUrl) this.UiContext.returnUrl = returnUrl;
         this.response.body = {
             base,
             card,
             nodeId,
             branch: branch || 'main',
-            returnUrl: returnUrl || '',
         };
         this.UiContext.extraTitleContent = `${card?.title || '卡片'} - ${base.title}`;
     }
@@ -4438,8 +4482,8 @@ class BaseCardEditHandler extends Handler {
             await CardModel.update(domainId, cardId, updates);
             
             
-            const returnUrl = this.request.body.returnUrl || this.request.query.returnUrl;
-            if (returnUrl) {
+            const returnUrl = String(this.request.body?.returnUrl || '').trim();
+            if (returnUrl.startsWith('/') && !returnUrl.startsWith('//')) {
                 
                 const returnUrlObj = new URL(returnUrl, `http://${this.request.headers.host || 'localhost'}`);
                 returnUrlObj.searchParams.set('fromEdit', 'true');
