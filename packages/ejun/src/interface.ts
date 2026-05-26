@@ -33,7 +33,7 @@ export interface SystemKeys {
     'server.port': number;
     'server.language': string;
     'limit.problem_files_max': number;
-    'problem.categories': string;
+    'base.categories': string;
     'session.keys': string[];
     'session.saved_expire_seconds': number;
     'session.unsaved_expire_seconds': number;
@@ -232,6 +232,7 @@ export interface BaseDoc {
     owner: number;
     createdAt: Date;
     updateAt: Date;
+    tag?: string[];
 }
 
 export interface RepoDoc {
@@ -369,6 +370,8 @@ export interface BaseDoc {
     files?: FileInfo[];
     /** Custom problem tag names offered in the base editor (+ any tag inferred from cards on load). */
     problemTags?: string[];
+    /** Category labels (same convention as Agent `tag`). */
+    tag?: string[];
 }
 
 export type SkillDoc = Omit<BaseDoc, 'docType'> & {
@@ -956,6 +959,8 @@ export interface DomainDoc extends Record<string, any> {
     roles: Dictionary<string>,
     avatar: string,
     bulletin: string,
+    /** YAML category tree override for Base/Agent; empty → system `base.categories`. */
+    categories?: string,
     _join?: any,
     host?: string[],
     _files: FileInfo[];

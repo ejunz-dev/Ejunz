@@ -45,7 +45,8 @@ export class BaseModel {
         parentId?: ObjectId,
         domainName?: string,
         forceNew?: boolean,
-        bid?: string
+        bid?: string,
+        tag?: string[],
     ): Promise<{ docId: number }> {
         if (!forceNew) {
             const existing = await this.getByDomain(domainId);
@@ -96,6 +97,7 @@ export class BaseModel {
             rpid,
             branch,
             parentId,
+            tag: tag?.length ? tag : undefined,
         };
 
         const nextDocId = await this.generateNextDocId(domainId);
@@ -149,13 +151,16 @@ export class BaseModel {
     static async update(
         domainId: string,
         docId: number,
-        updates: Partial<Pick<BaseDoc, 'title' | 'content' | 'layout' | 'viewport' | 'theme' | 'files' | 'parentId' | 'domainPosition'>>,
+        updates: Partial<Pick<BaseDoc, 'title' | 'content' | 'layout' | 'viewport' | 'theme' | 'files' | 'parentId' | 'domainPosition' | 'tag'>>,
         mapDocType: MindMapDocType = document.TYPE_BASE,
     ): Promise<void> {
         const updatePayload: any = {
             ...updates,
             updateAt: new Date(),
         };
+        if (updates.tag) {
+            updatePayload.tag = Array.isArray(updates.tag) ? updates.tag : [updates.tag];
+        }
         if (typeof updates.title === 'string') {
             const base = await this.get(domainId, docId, mapDocType);
             if (base) {
