@@ -117,6 +117,16 @@ Copied to clipboard: 已複製到剪貼板
 Create a branch: 建立分支
 Create a Discussion: 創建一個討論
 Create Branch: 新建分支
+base_create: 創建知識庫
+Create Base: 創建知識庫
+Create a knowledge base document for this domain.: 為此域創建一個知識庫。
+Input base title: 輸入知識庫標題
+BID: 編號（BID）
+'Optional human-readable identifier, for example: P1001': '可選的易讀編號，例如：P1001'
+"Split by ', '. Or pick categories from the sidebar.": '使用英文逗號分隔，或從右側分類欄點擊添加。'
+"Split by ', '.": '使用英文逗號（,）分隔。'
+Click to add: 點擊添加
+'Base bid already exists: {0}': 'BID 已存在：{0}'
 Create Client: 創建客戶端
 Create Discussion in {0}: 在 {0} 下創建討論
 Create Discussion: 創建討論

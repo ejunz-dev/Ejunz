@@ -16,7 +16,7 @@ function appendTag(name) {
 function buildCategorySidebar() {
   const $container = $('[data-widget-cf-container]');
   if (!$container.length) return;
-  $container.attr('class', 'widget--category-filter row small-up-3 medium-up-2');
+  $container.attr('class', 'widget--category-filter widget--category-filter--sidebar');
   for (const category of $container.children('li').get()) {
     const $category = $(category)
       .attr('class', 'widget--category-filter__category column');

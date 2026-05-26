@@ -1585,7 +1585,7 @@ class BaseCreateHandler extends Handler {
         if (finalBid) {
             const existed = await BaseModel.getBybid(actualDomainId, finalBid);
             if (existed) {
-                throw new ValidationError(`Base bid already exists: ${finalBid}`);
+                throw new ValidationError(this.translate('Base bid already exists: {0}').replace('{0}', finalBid));
             }
         }
         
@@ -6741,7 +6741,7 @@ class BaseMigrateNodeToNewHandler extends Handler {
         if (finalBid) {
             const existed = await BaseModel.getBybid(actualDomainId, finalBid);
             if (existed) {
-                throw new ValidationError(`Base bid already exists: ${finalBid}`);
+                throw new ValidationError(this.translate('Base bid already exists: {0}').replace('{0}', finalBid));
             }
         }
 
