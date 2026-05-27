@@ -235,6 +235,26 @@ export function getTheme(): 'dark' | 'light' {
   return ['light', 'dark'].includes(UserContext.theme) ? UserContext.theme : 'light';
 }
 
+export function domainPathPrefix(domainId?: string): string {
+  if (typeof window === 'undefined') return '';
+  const d = domainId ?? (window as any).UiContext?.domainId ?? 'system';
+  return window.location.pathname.startsWith('/d/') ? `/d/${d}` : '';
+}
+
+export function domainScopedPath(path: string, domainId?: string): string {
+  const d = domainId ?? (window as any).UiContext?.domainId ?? 'system';
+  const normalized = path.startsWith('/') ? path : `/${path}`;
+  const ctxDomain = (window as any).UiContext?.domainId ?? 'system';
+  if (domainId && domainId !== ctxDomain) return `/d/${d}${normalized}`;
+  return `${domainPathPrefix(d)}${normalized}`;
+}
+
+export function domainApiPath(path: string, domainId?: string): string {
+  const d = domainId ?? (window as any).UiContext?.domainId ?? 'system';
+  const normalized = path.startsWith('/') ? path : `/${path}`;
+  return `/d/${d}${normalized}`;
+}
+
 Object.assign(window.Ejunz.utils, {
   i18n,
   rawHtml,

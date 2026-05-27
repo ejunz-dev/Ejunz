@@ -2,7 +2,7 @@ import $ from 'jquery';
 import Dropdown from 'vj/components/dropdown/Dropdown';
 import Notification from 'vj/components/notification';
 import { NamedPage } from 'vj/misc/Page';
-import { i18n, request } from 'vj/utils';
+import { i18n, request, domainApiPath, domainScopedPath } from 'vj/utils';
 
 export const BASE_EDIT_RETURN_URL_KEY = 'baseEditReturnUrl';
 export const BASE_CREATE_PREFILL_KEY = 'baseCreatePrefill';
@@ -104,7 +104,7 @@ function setupBaseCreateMigrateSubmit(prefill) {
     const $submit = $('.base-form-page__actions .button.primary');
     $submit.prop('disabled', true);
     try {
-      const res = await request.post(`/d/${domainId}/base/migrate-node-to-new`, {
+      const res = await request.post(domainApiPath('/base/migrate-node-to-new', domainId), {
         docId,
         branch: branch || 'main',
         nodeId,
@@ -118,7 +118,7 @@ function setupBaseCreateMigrateSubmit(prefill) {
       }
       Notification.success(i18n('Separate as new base success'));
       const openSeg = res.bid ? String(res.bid) : String(res.newDocId);
-      window.location.href = `/d/${domainId}/base/${encodeURIComponent(openSeg)}/outline/branch/${encodeURIComponent(branch || 'main')}`;
+      window.location.href = domainScopedPath(`/base/${encodeURIComponent(openSeg)}/outline/branch/${encodeURIComponent(branch || 'main')}`, domainId);
     } catch (err) {
       Notification.error(err?.message || i18n('Separate as new base failed'));
     } finally {
