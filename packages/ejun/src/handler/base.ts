@@ -6752,7 +6752,7 @@ function collectSubtreeNodeIds(nodes: BaseNode[], edges: BaseEdge[], rootId: str
 }
 
 /**
- * Cut a node subtree into a newly created base (editor migrate action).
+ * Copy a node subtree into a newly created base (source base and nodes unchanged).
  */
 class BaseMigrateNodeToNewHandler extends Handler {
     async post(domainId: string) {
@@ -6790,12 +6790,6 @@ class BaseMigrateNodeToNewHandler extends Handler {
         }
 
         const { nodes, edges } = getBranchData(sourceBase, branch);
-        const getRoot = (ns: BaseNode[], es: BaseEdge[]) => {
-            const incoming = new Set(es.map((e) => e.target));
-            const noIncoming = ns.find((n) => !incoming.has(n.id));
-            return noIncoming?.id || ns[0]?.id || null;
-        };
-        const graphRootId = getRoot(nodes, edges);
 
         if (!nodes.some((n) => n.id === nodeId)) {
             throw new NotFoundError('Node not found in this branch');
@@ -6822,17 +6816,19 @@ class BaseMigrateNodeToNewHandler extends Handler {
         const newDocId = Number(newDocIdNum);
 
         const oldDocIdStr = String(sourceDocId);
+        const newDocIdStr = String(newDocId);
 
-        const migratedNodes: BaseNode[] = nodes
+        const copiedNodes: BaseNode[] = nodes
             .filter((n) => subtreeIds.has(n.id))
-            .map((n) => ({ ...n }));
-        const migratedEdges: BaseEdge[] = edges.filter(
-            (e) => subtreeIds.has(e.source) && subtreeIds.has(e.target),
-        );
+            .map((n) => ({
+                ...n,
+                files: n.files?.map((f) => ({ ...f })),
+            }));
+        const copiedEdges: BaseEdge[] = edges
+            .filter((e) => subtreeIds.has(e.source) && subtreeIds.has(e.target))
+            .map((e) => ({ ...e }));
 
-        const isFullMigration = graphRootId && nodeId === graphRootId;
-
-        const rootInNew = migratedNodes.find((n) => n.id === nodeId);
+        const rootInNew = copiedNodes.find((n) => n.id === nodeId);
         if (rootInNew) {
             const { parentId: _p, ...rest } = rootInNew as any;
             const updatedRoot: BaseNode = {
@@ -6840,101 +6836,81 @@ class BaseMigrateNodeToNewHandler extends Handler {
                 level: 0,
             };
             delete (updatedRoot as any).parentId;
-            const idx = migratedNodes.findIndex((n) => n.id === nodeId);
-            migratedNodes[idx] = updatedRoot;
+            const idx = copiedNodes.findIndex((n) => n.id === nodeId);
+            copiedNodes[idx] = updatedRoot;
         }
 
-        const remainingNodes = nodes.filter((n) => !subtreeIds.has(n.id));
-        const remainingEdges = edges.filter((e) => !subtreeIds.has(e.source) && !subtreeIds.has(e.target));
-
-        let finalSourceNodes = remainingNodes;
-        let finalSourceEdges = remainingEdges;
-
-        if (isFullMigration) {
-            const freshRoot: BaseNode = {
-                id: `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                text: sourceBase.title || '根节点',
-                x: 0,
-                y: 0,
-                level: 0,
-                expanded: true,
-            };
-            finalSourceNodes = [freshRoot];
-            finalSourceEdges = [];
-        }
-
-        const sourceBranchData = { ...(sourceBase.branchData || {}) };
-        sourceBranchData[branch] = { nodes: finalSourceNodes, edges: finalSourceEdges };
-        const sourceUpdate: any = {
-            branchData: sourceBranchData,
-            updateAt: new Date(),
-        };
-        if (branch === 'main') {
-            sourceUpdate.nodes = finalSourceNodes;
-            sourceUpdate.edges = finalSourceEdges;
-        }
-        await BaseModel.updateFull(actualDomainId, sourceDocId, sourceUpdate);
-
-        const createdNew = await BaseModel.get(actualDomainId, newDocId);
-        if (!createdNew) throw new Error('Failed to load new base after create');
-        const newBranchData: any = { ...(createdNew.branchData || {}) };
-        newBranchData.main = { nodes: migratedNodes, edges: migratedEdges };
-        await BaseModel.updateFull(actualDomainId, newDocId, {
-            branchData: newBranchData,
-            nodes: migratedNodes,
-            edges: migratedEdges,
-            title,
-            updateAt: new Date(),
-        });
-
-        const allCards: CardDoc[] = [];
         for (const nid of subtreeIds) {
-            const cs = await CardModel.getByNodeId(actualDomainId, sourceDocId, nid);
-            allCards.push(...cs);
-        }
-
-        const newDocIdStr = String(newDocId);
-        for (const nid of subtreeIds) {
-            const node = nodes.find((n) => n.id === nid);
+            const node = copiedNodes.find((n) => n.id === nid);
             const files = node?.files || [];
             for (const f of files) {
                 const name = f.name || (f as any)._id;
                 if (!name) continue;
-                const oldPath = `base/${actualDomainId}/${oldDocIdStr}/node/${nid}/${name}`;
-                const newPath = `base/${actualDomainId}/${newDocIdStr}/node/${nid}/${name}`;
+                const srcPath = `base/${actualDomainId}/${oldDocIdStr}/node/${nid}/${name}`;
+                const dstPath = `base/${actualDomainId}/${newDocIdStr}/node/${nid}/${name}`;
                 try {
-                    await storage.rename(oldPath, newPath, this.user._id);
+                    await storage.copy(srcPath, dstPath);
                 } catch {
                     // missing file row is ok
                 }
             }
         }
-        for (const card of allCards) {
-            const cid = card.docId.toString();
-            const files = card.files || [];
-            for (const f of files) {
-                const name = f.name || (f as any)._id;
-                if (!name) continue;
-                const oldPath = `base/${actualDomainId}/${oldDocIdStr}/card/${cid}/${name}`;
-                const newPath = `base/${actualDomainId}/${newDocIdStr}/card/${cid}/${name}`;
-                try {
-                    await storage.rename(oldPath, newPath, this.user._id);
-                } catch {
+
+        const createdNew = await BaseModel.get(actualDomainId, newDocId);
+        if (!createdNew) throw new Error('Failed to load new base after create');
+        const newBranchData: any = { ...(createdNew.branchData || {}) };
+        newBranchData.main = { nodes: copiedNodes, edges: copiedEdges };
+        await BaseModel.updateFull(actualDomainId, newDocId, {
+            branchData: newBranchData,
+            nodes: copiedNodes,
+            edges: copiedEdges,
+            title,
+            updateAt: new Date(),
+        });
+
+        for (const nid of subtreeIds) {
+            const cs = await CardModel.getByNodeId(actualDomainId, sourceDocId, nid, branch);
+            for (const card of cs) {
+                const newCardId = await CardModel.create(
+                    actualDomainId,
+                    newDocId,
+                    nid,
+                    this.user._id,
+                    card.title || '',
+                    card.content || '',
+                    this.request.ip,
+                    card.problems,
+                    card.order,
+                    branch,
+                );
+                const cardUpdates: Partial<Pick<CardDoc, 'cardFace' | 'files'>> = {};
+                if (card.cardFace) cardUpdates.cardFace = card.cardFace;
+                const copiedFiles: CardDoc['files'] = [];
+                for (const f of card.files || []) {
+                    const name = f.name || (f as any)._id;
+                    if (!name) continue;
+                    const srcPath = `base/${actualDomainId}/${oldDocIdStr}/card/${card.docId.toString()}/${name}`;
+                    const dstPath = `base/${actualDomainId}/${newDocIdStr}/card/${newCardId}/${name}`;
+                    try {
+                        await storage.copy(srcPath, dstPath);
+                        copiedFiles.push({ ...f });
+                    } catch {
+                        // missing file row is ok
+                    }
+                }
+                if (copiedFiles.length) cardUpdates.files = copiedFiles;
+                if (Object.keys(cardUpdates).length) {
+                    await CardModel.update(actualDomainId, newCardId, cardUpdates);
                 }
             }
-        }
-
-        for (const card of allCards) {
-            await CardModel.update(actualDomainId, card.docId, { baseDocId: newDocId });
         }
 
         try {
             await ensureBaseGitRepo(actualDomainId, newDocId);
         } catch (err) {
-            logger.error('migrate-node: ensureBaseGitRepo failed', err);
+            logger.error('copy-node-to-new: ensureBaseGitRepo failed', err);
         }
 
-        (this.ctx.emit as any)('base/update', sourceDocId);
         (this.ctx.emit as any)('base/update', newDocId);
 
         this.response.body = {

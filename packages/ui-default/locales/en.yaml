@@ -893,6 +893,14 @@ develop: Develop
 'Outline editor popup blocked': The browser blocked the new tab. Allow popups for this site and try again.
 'Outline learn single card': Learn this card only
 'Outline learn single node': Learn this node subtree
+'Separate as new base': Separate as new base
+'Separate as new base create hint': Copy this node and its entire subtree (child nodes, cards, and files) into a new knowledge base. The original base is unchanged. The title defaults to the node name; you can edit it before confirming.
+'Separate as new base title required': Please enter a base title.
+'Separate as new base save node first': Save the node before separating it as a new base.
+'Separate as new base invalid doc': Cannot separate as new base — invalid document ID.
+'Separate as new base save pending first': Save all pending changes in the editor before separating as a new base.
+'Separate as new base failed': Failed to separate as new base.
+'Separate as new base success': New base created; subtree copied.
 'Outline learn start failed': Could not start learning. Try again.
 'Outline learn invalid card': Invalid card id; cannot start learning.
 'Outline card problems button': 'Problem ({0})'

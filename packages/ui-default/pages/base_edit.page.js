@@ -1,8 +1,11 @@
 import $ from 'jquery';
 import Dropdown from 'vj/components/dropdown/Dropdown';
+import Notification from 'vj/components/notification';
 import { NamedPage } from 'vj/misc/Page';
+import { i18n, request } from 'vj/utils';
 
 export const BASE_EDIT_RETURN_URL_KEY = 'baseEditReturnUrl';
+export const BASE_CREATE_PREFILL_KEY = 'baseCreatePrefill';
 
 function appendTag(name) {
   const tag = String(name || '').trim();
@@ -63,6 +66,71 @@ function resolveReturnUrl() {
   return '';
 }
 
+function applyBaseCreatePrefill() {
+  const raw = sessionStorage.getItem(BASE_CREATE_PREFILL_KEY);
+  if (!raw) return;
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    sessionStorage.removeItem(BASE_CREATE_PREFILL_KEY);
+    return;
+  }
+  const title = String(data?.title || '').trim();
+  if (title) $('[name="title"]').val(title);
+  if (data?.migrate) {
+    const $intro = $('.base-form-page__intro');
+    if ($intro.length) {
+      $intro.text(i18n('Separate as new base create hint'));
+    }
+    setupBaseCreateMigrateSubmit(data);
+  }
+}
+
+function setupBaseCreateMigrateSubmit(prefill) {
+  const $form = $('#base-form');
+  if (!$form.length || !prefill?.migrate) return;
+
+  $form.on('submit.baseCreateMigrate', async (ev) => {
+    ev.preventDefault();
+    const title = String($form.find('[name="title"]').val() || '').trim();
+    if (!title) {
+      Notification.error(i18n('Separate as new base title required'));
+      return;
+    }
+    const bid = String($form.find('[name="bid"]').val() || '').trim();
+    const { docId, branch, nodeId } = prefill.migrate;
+    const domainId = window.UiContext?.domainId || 'system';
+    const $submit = $('.base-form-page__actions .button.primary');
+    $submit.prop('disabled', true);
+    try {
+      const res = await request.post(`/d/${domainId}/base/migrate-node-to-new`, {
+        docId,
+        branch: branch || 'main',
+        nodeId,
+        title,
+        bid,
+      });
+      sessionStorage.removeItem(BASE_CREATE_PREFILL_KEY);
+      if (!res?.success) {
+        Notification.error(res?.message || i18n('Separate as new base failed'));
+        return;
+      }
+      Notification.success(i18n('Separate as new base success'));
+      const openSeg = res.bid ? String(res.bid) : String(res.newDocId);
+      window.location.href = `/d/${domainId}/base/${encodeURIComponent(openSeg)}/outline/branch/${encodeURIComponent(branch || 'main')}`;
+    } catch (err) {
+      Notification.error(err?.message || i18n('Separate as new base failed'));
+    } finally {
+      $submit.prop('disabled', false);
+    }
+  });
+
+  $('.base-form-page__actions .button').not('.primary').on('click.baseCreateMigrate', () => {
+    sessionStorage.removeItem(BASE_CREATE_PREFILL_KEY);
+  });
+}
+
 function applyReturnUrl() {
   const returnUrl = resolveReturnUrl();
   const $cancel = $('[data-base-edit-cancel]');
@@ -83,6 +151,7 @@ function applyReturnUrl() {
 
 const page = new NamedPage(['base_create', 'base_edit', 'base_card_edit'], () => {
   applyReturnUrl();
+  applyBaseCreatePrefill();
   buildCategorySidebar();
   // Dropdown moves subcategory nodes outside the sidebar; do not scope to .section--problem-sidebar-tags
   $(document).on('click', '.widget--category-filter__tag', (ev) => {
