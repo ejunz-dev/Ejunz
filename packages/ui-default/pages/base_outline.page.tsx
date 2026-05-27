@@ -3,7 +3,7 @@ import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useR
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
-import { request, i18n } from 'vj/utils';
+import { request, i18n, domainApiPath, domainScopedPath } from 'vj/utils';
 import type {
   Problem,
   ProblemFlip,
@@ -814,7 +814,7 @@ const OutlineView = ({
       ? String(docId).trim()
       : (bid && String(bid).trim() ? String(bid).trim() : '');
     if (docSeg) {
-      return `/d/${domainId}/${basePath}/${encodeURIComponent(docSeg)}/branch/${branch}/node/${nodeId}/cards?cardId=${card.docId}`;
+      return domainScopedPath(`/${basePath}/${encodeURIComponent(docSeg)}/branch/${branch}/node/${nodeId}/cards?cardId=${card.docId}`, domainId);
     }
     return '#';
   }, [basePath]);
@@ -1229,7 +1229,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
 
   const refetchOutlineData = useCallback(async () => {
     const domainId = (window as any).UiContext?.domainId || 'system';
-    const apiPath = basePath === 'skill' ? `/d/${domainId}/skill/data` : `/d/${domainId}/base/data`;
+    const apiPath = domainApiPath(basePath === 'skill' ? '/skill/data' : '/base/data', domainId);
     const apiQs: Record<string, string> = {};
     if (docId) apiQs.docId = docId;
     const curBranch = (window as any).UiContext?.currentBranch;
@@ -1256,7 +1256,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     if (!socketUrl) return;
 
     let closed = false;
-    const apiPath = basePath === 'skill' ? `/d/${domainId}/skill/data` : `/d/${domainId}/base/data`;
+    const apiPath = domainApiPath(basePath === 'skill' ? '/skill/data' : '/base/data', domainId);
     const wsApiQs: Record<string, string> = {};
     if (docId) wsApiQs.docId = docId;
     const wsBranch = (window as any).UiContext?.currentBranch;
@@ -1386,8 +1386,8 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         
         const domainIdForSave = (window as any).UiContext?.domainId || 'system';
         const saveUrl = basePath === 'skill'
-          ? `/d/${domainIdForSave}/skill/save`
-          : `/d/${domainIdForSave}/base/save`;
+          ? domainApiPath('/skill/save', domainIdForSave)
+          : domainApiPath('/base/save', domainIdForSave);
         const saveBranch = (window as any).UiContext?.currentBranch || 'main';
         await request.post(saveUrl, {
           ...(docId ? { docId } : {}),
@@ -2214,7 +2214,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       } else {
         payload.developMapDocType = 70;
       }
-      const res: any = await request.post(`/d/${domainId}/session/develop/start`, payload);
+      const res: any = await request.post(domainApiPath('/session/develop/start', domainId), payload);
       const sessionId = res?.sessionId ?? res?.body?.sessionId;
       if (typeof sessionId !== 'string' || !sessionId.trim()) {
         Notification.error(i18n('Outline editor start failed'));
@@ -2227,7 +2227,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       const bid = (base as any)?.bid;
       const docSeg = bid && String(bid).trim() ? String(bid).trim() : String(baseDocNum);
       const pathPrefix = basePath === 'skill' ? 'skill' : 'base';
-      const editorUrl = `/d/${domainId}/${pathPrefix}/${encodeURIComponent(docSeg)}/branch/${encodeURIComponent(branch)}/editor?${sp.toString()}`;
+      const editorUrl = domainScopedPath(`/${pathPrefix}/${encodeURIComponent(docSeg)}/branch/${encodeURIComponent(branch)}/editor?${sp.toString()}`, domainId);
       const opened = window.open(editorUrl, '_blank');
       if (opened) {
         opened.opener = null;
@@ -2252,12 +2252,12 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     const domainId = outlineUiDomainId();
     setLearnOutlineBusy(true);
     try {
-      const res: any = await request.post(`/d/${domainId}/learn/lesson/start`, {
+      const res: any = await request.post(domainApiPath('/learn/lesson/start', domainId), {
         mode: 'card',
         cardId,
       });
       const redir = res?.redirect ?? res?.body?.redirect ?? res?.data?.redirect;
-      const url = redir || `/d/${domainId}/learn/lesson?cardId=${encodeURIComponent(cardId)}`;
+      const url = redir || domainScopedPath(`/learn/lesson?cardId=${encodeURIComponent(cardId)}`, domainId);
       const opened = window.open(url, '_blank', 'noopener,noreferrer');
       if (opened) {
         opened.opener = null;
@@ -2289,14 +2289,14 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     const domainId = outlineUiDomainId();
     setLearnOutlineBusy(true);
     try {
-      const res: any = await request.post(`/d/${domainId}/learn/lesson/start`, {
+      const res: any = await request.post(domainApiPath('/learn/lesson/start', domainId), {
         mode: 'node',
         nodeId: nid,
         baseDocId: baseDocNum,
         branch,
       });
       const redir = res?.redirect ?? res?.body?.redirect ?? res?.data?.redirect;
-      const url = redir || `/d/${domainId}/learn/lesson`;
+      const url = redir || domainScopedPath('/learn/lesson', domainId);
       const opened = window.open(url, '_blank', 'noopener,noreferrer');
       if (opened) {
         opened.opener = null;
@@ -3397,7 +3397,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       
      
       const domainId = (window as any).UiContext?.domainId || 'system';
-      const dataApiPath = basePath === 'skill' ? `/d/${domainId}/skill/data` : `/d/${domainId}/base/data`;
+      const dataApiPath = domainApiPath(basePath === 'skill' ? '/skill/data' : '/base/data', domainId);
       const dataQs2: Record<string, string> = {};
       if (docId) dataQs2.docId = docId;
       const dBranch2 = (window as any).UiContext?.currentBranch;
@@ -3479,8 +3479,8 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     
     const domainId = (window as any).UiContext?.domainId || 'system';
     const wsUrl = basePath === 'skill'
-      ? `/d/${domainId}/skill/ws?docId=${encodeURIComponent(String(docId))}`
-      : `/d/${domainId}/${basePath}/${docId}/ws`;
+      ? domainApiPath(`/skill/ws?docId=${encodeURIComponent(String(docId))}`, domainId)
+      : domainApiPath(`/${basePath}/${docId}/ws`, domainId);
 
    
     import('../components/socket').then(({ default: WebSocket }) => {
@@ -3528,7 +3528,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
            
             setTimeout(() => {
               const domainId = (window as any).UiContext?.domainId || 'system';
-              const dataApiPath = basePath === 'skill' ? `/d/${domainId}/skill/data` : `/d/${domainId}/base/data`;
+              const dataApiPath = domainApiPath(basePath === 'skill' ? '/skill/data' : '/base/data', domainId);
               const dataQs: Record<string, string> = {};
               if (docId) dataQs.docId = docId;
               const dBranch = (window as any).UiContext?.currentBranch;
@@ -3883,7 +3883,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                 {(base.branches && base.branches.length > 0 ? base.branches : ['main']).map((b) => {
                   const isCurrent = b === (base.currentBranch || 'main');
                   const domainId = (window as any).UiContext?.domainId || 'system';
-                  const href = `/d/${domainId}/base/${docId}/outline/branch/${encodeURIComponent(b)}`;
+                  const href = domainScopedPath(`/base/${docId}/outline/branch/${encodeURIComponent(b)}`, domainId);
                   return (
                     <a
                       key={b}
@@ -3916,7 +3916,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
               <a
                 href={(() => {
                   const domainId = (window as any).UiContext?.domainId || 'system';
-                  return `/d/${domainId}/base/${docId}/branches`;
+                  return domainScopedPath(`/base/${docId}/branches`, domainId);
                 })()}
                 style={{
                   display: 'block',
@@ -3941,7 +3941,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
             href={(() => {
               const domainId = (window as any).UiContext?.domainId || 'system';
               const docSeg = base.docId ?? docId;
-              return `/d/${domainId}/base/${encodeURIComponent(String(docSeg))}/edit`;
+              return domainScopedPath(`/base/${encodeURIComponent(String(docSeg))}/edit`, domainId);
             })()}
             onClick={() => {
               sessionStorage.setItem(
@@ -4822,7 +4822,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                           ? String(baseDocId).trim()
                           : (basebid && String(basebid).trim() ? String(basebid).trim() : '');
                         if (docSeg) {
-                          return `/d/${domainId}/base/${encodeURIComponent(docSeg)}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit`;
+                          return domainScopedPath(`/base/${encodeURIComponent(docSeg)}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit`, domainId);
                         }
                         return '#';
                       })()}
@@ -5365,8 +5365,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
 
 
 const getBaseUrl = (path: string, docId: string): string => {
-  const domainId = (window as any).UiContext?.domainId || 'system';
-  return `/d/${domainId}/base/${docId}${path}`;
+  return domainScopedPath(`/base/${docId}${path}`);
 };
 
 const page = new NamedPage(['base_outline', 'skill_outline', 'skill_outline_branch', 'skill_outline_doc', 'skill_outline_doc_branch', 'base_outline_doc', 'base_outline_doc_branch'], async (pageName) => {
@@ -5387,7 +5386,7 @@ const page = new NamedPage(['base_outline', 'skill_outline', 'skill_outline_bran
     let initialData: BaseDoc;
     try {
      
-      const apiPath = isSkill ? `/d/${domainId}/skill/data` : `/d/${domainId}/base/data`;
+      const apiPath = domainApiPath(isSkill ? '/skill/data' : '/base/data', domainId);
       const branch = (window as any).UiContext?.currentBranch || undefined;
       const params: Record<string, string> = {};
       if (docId) params.docId = docId;

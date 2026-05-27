@@ -3,7 +3,7 @@ import React, { useState, useEffect, useLayoutEffect, useMemo, useCallback, useR
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
-import { request, i18n, tpl } from 'vj/utils';
+import { request, i18n, tpl, domainApiPath, domainScopedPath } from 'vj/utils';
 import Editor from 'vj/components/editor';
 import { Dialog, ActionDialog } from 'vj/components/dialog/index';
 import uploadFiles from 'vj/components/upload';
@@ -2907,7 +2907,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const domainId = (window as any).UiContext?.domainId || 'system';
     const branch = (window as any).UiContext?.currentBranch || 'main';
     request
-      .post(`/d/${domainId}/session/develop/start`, { baseDocId: docIdNum, branch })
+      .post(domainApiPath('/session/develop/start', domainId), { baseDocId: docIdNum, branch })
       .then((res: { sessionId?: string }) => {
         if (cancelled || !res?.sessionId) return;
         if (new URLSearchParams(window.location.search).get('session')) return;
@@ -2944,10 +2944,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const d = (window as any).UiContext?.domainId || 'system';
     setDevelopQueueNavBusy(queueIndex);
     try {
-      const res: any = await request.post(`/d/${d}/session/develop/start`, { baseDocId, branch });
+      const res: any = await request.post(domainApiPath('/session/develop/start', d), { baseDocId, branch });
       const sessionId = res?.sessionId ?? res?.body?.sessionId;
       if (typeof sessionId === 'string' && sessionId.trim()) {
-        window.location.href = `/d/${d}/develop/editor?session=${encodeURIComponent(sessionId.trim())}`;
+        window.location.href = domainScopedPath(`/develop/editor?session=${encodeURIComponent(sessionId.trim())}`, d);
         return;
       }
       Notification.error(i18n('Develop start failed'));
@@ -3022,8 +3022,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
     let closed = false;
     const apiPath = basePath === 'skill'
-      ? `/d/${domainId}/skill/data`
-      : `/d/${domainId}/base/data`;
+      ? domainApiPath('/skill/data', domainId)
+      : domainApiPath('/base/data', domainId);
     const editorApiQs: Record<string, string> = {};
     if (docId) editorApiQs.docId = docId;
     const editorBranch = (window as any).UiContext?.currentBranch;
@@ -3358,8 +3358,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const refetchEditorData = useCallback(async () => {
     const domainId = (window as any).UiContext?.domainId || 'system';
     const apiPath = basePath === 'skill'
-      ? `/d/${domainId}/skill/data`
-      : `/d/${domainId}/base/data`;
+      ? domainApiPath('/skill/data', domainId)
+      : domainApiPath('/base/data', domainId);
     try {
       const qs: Record<string, string> = {};
       if (docId) qs.docId = docId;
@@ -3423,7 +3423,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     if (pendingNodeUploadRef.current) {
       const { nodeId } = pendingNodeUploadRef.current;
       let url: string;
-      url = `/d/${domainId}/base/${docId}/node/${nodeId}/files?branch=${encodeURIComponent(branch)}`;
+      url = domainScopedPath(`/base/${docId}/node/${nodeId}/files?branch=${encodeURIComponent(branch)}`, domainId);
       try {
         await uploadFiles(url, files, {});
         await refetchEditorData();
@@ -3434,7 +3434,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     } else if (pendingCardUploadRef.current) {
       const pending = pendingCardUploadRef.current;
       let url: string;
-      url = `/d/${domainId}/base/${docId}/card/${pending.cardId}/files`;
+      url = domainScopedPath(`/base/${docId}/card/${pending.cardId}/files`, domainId);
       try {
         await uploadFiles(url, files, {});
         await refetchEditorData();
@@ -4015,8 +4015,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
   
   const getBaseUrl = useCallback((path: string, docId?: string): string => {
-    const domainId = (window as any).UiContext?.domainId || 'system';
-    return `/d/${domainId}/${basePath}${path}`;
+    return domainScopedPath(`/${basePath}${path}`);
   }, [basePath]);
 
   useEffect(() => {
@@ -4102,12 +4101,12 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const domainId = editorUiDomainId();
     setEditorLearnBusy(true);
     try {
-      const res: any = await request.post(`/d/${domainId}/learn/lesson/start`, {
+      const res: any = await request.post(domainApiPath('/learn/lesson/start', domainId), {
         mode: 'card',
         cardId,
       });
       const redir = res?.redirect ?? res?.body?.redirect ?? res?.data?.redirect;
-      const url = redir || `/d/${domainId}/learn/lesson?cardId=${encodeURIComponent(cardId)}`;
+      const url = redir || domainScopedPath(`/learn/lesson?cardId=${encodeURIComponent(cardId)}`, domainId);
       const opened = window.open(url, '_blank', 'noopener,noreferrer');
       if (opened) {
         opened.opener = null;
@@ -4140,14 +4139,14 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const domainId = editorUiDomainId();
     setEditorLearnBusy(true);
     try {
-      const res: any = await request.post(`/d/${domainId}/learn/lesson/start`, {
+      const res: any = await request.post(domainApiPath('/learn/lesson/start', domainId), {
         mode: 'node',
         nodeId: nid,
         baseDocId: baseDocNum,
         branch,
       });
       const redir = res?.redirect ?? res?.body?.redirect ?? res?.data?.redirect;
-      const url = redir || `/d/${domainId}/learn/lesson`;
+      const url = redir || domainScopedPath('/learn/lesson', domainId);
       const opened = window.open(url, '_blank', 'noopener,noreferrer');
       if (opened) {
         opened.opener = null;
@@ -5191,8 +5190,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             if (fb) fetchQs.branch = fb;
             currentBase = await request.get(
               basePath === 'skill'
-                ? `/d/${domainId}/skill/data`
-                : `/d/${domainId}/base/data`,
+                ? domainApiPath('/skill/data', domainId)
+                : domainApiPath('/base/data', domainId),
               fetchQs,
             );
           } catch (error: any) {
@@ -5736,8 +5735,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           if (psb) postSaveQs.branch = psb;
           const response = await request.get(
             basePath === 'skill'
-              ? `/d/${domainId}/skill/data`
-              : `/d/${domainId}/base/data`,
+              ? domainApiPath('/skill/data', domainId)
+              : domainApiPath('/base/data', domainId),
             postSaveQs,
           );
           setBase(response);
@@ -6837,7 +6836,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         nodeId,
       },
     }));
-    window.location.href = `/d/${domainId}/base/create`;
+    window.location.href = domainScopedPath('/base/create');
   }, [
     docId,
     currentBranch,
@@ -17708,8 +17707,7 @@ Reply with a JSON code block only for executable operations, using this shape:
 
 
 const getBaseUrl = (path: string, docId: string): string => {
-  const domainId = (window as any).UiContext?.domainId || 'system';
-  return `/d/${domainId}/base/${docId}${path}`;
+  return domainScopedPath(`/base/${docId}${path}`);
 };
 
 const page = new NamedPage(['base_editor', 'base_editor_branch', 'skill_editor', 'skill_editor_branch', 'skill_editor_doc', 'skill_editor_doc_branch', 'develop_editor'], async (pageName) => {
@@ -17731,8 +17729,8 @@ const page = new NamedPage(['base_editor', 'base_editor_branch', 'skill_editor',
     try {
       
       const apiPath = isSkill
-        ? `/d/${domainId}/skill/data`
-        : `/d/${domainId}/base/data`;
+        ? domainApiPath('/skill/data', domainId)
+        : domainApiPath('/base/data', domainId);
       const initQs: Record<string, string> = {};
       if (docId) initQs.docId = docId;
       const initBranch = (window as any).UiContext?.currentBranch;

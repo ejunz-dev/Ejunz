@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
-import { request } from 'vj/utils';
+import { request, domainApiPath, domainScopedPath } from 'vj/utils';
 
 interface BaseItem {
   docId: string;
@@ -43,7 +43,7 @@ function BaseList() {
       if (rpid) params.rpid = rpid;
       if (branch) params.branch = branch;
 
-      const response = await request.get(`/d/${domainId}/base/list`, params);
+      const response = await request.get(domainApiPath('/base/list', domainId), params);
       setBases(response.bases || []);
     } catch (error: any) {
       Notification.error('加载知识库列表失败: ' + (error.message || '未知错误'));
@@ -59,7 +59,7 @@ function BaseList() {
 
     try {
       const domainId = (window as any).UiContext?.domainId || 'system';
-      await request.post(`/d/${domainId}/base/${docId}/edit`, {
+      await request.post(domainApiPath(`/base/${docId}/edit`, domainId), {
         operation: 'delete',
       });
       Notification.success('知识库已删除');
@@ -85,7 +85,7 @@ function BaseList() {
           <a
             href={(() => {
               const domainId = (window as any).UiContext?.domainId || 'system';
-              return `/d/${domainId}/base`;
+              return domainScopedPath('/base', domainId);
             })()}
             style={{
               padding: '8px 16px',
@@ -124,7 +124,7 @@ function BaseList() {
               }}
               onClick={() => {
                 const domainId = (window as any).UiContext?.domainId || '';
-                window.location.href = `/d/${domainId}/base/${base.docId}/outline/branch/main`;
+                window.location.href = domainScopedPath(`/base/${base.docId}/outline/branch/main`, domainId);
               }}
             >
               <h3 style={{ margin: '0 0 10px 0', fontSize: '18px', color: '#333' }}>
@@ -161,7 +161,7 @@ function BaseList() {
                 <a
                   href={(() => {
                     const domainId = (window as any).UiContext?.domainId || 'system';
-                    return `/d/${domainId}/base/${base.docId}/outline/branch/main`;
+                    return domainScopedPath(`/base/${base.docId}/outline/branch/main`, domainId);
                   })()}
                   onClick={(e) => e.stopPropagation()}
                   style={{
@@ -178,7 +178,7 @@ function BaseList() {
                 <a
                   href={(() => {
                     const domainId = (window as any).UiContext?.domainId || 'system';
-                    return `/d/${domainId}/base/${base.docId}/edit`;
+                    return domainScopedPath(`/base/${base.docId}/edit`, domainId);
                   })()}
                   onClick={(e) => e.stopPropagation()}
                   style={{

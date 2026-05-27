@@ -177,7 +177,7 @@ class DevelopSessionEditorHandler extends Handler {
             db: this.ctx.db.db,
             makeEditorUrl: (docId, br) => (mapDt === document.TYPE_SKILL
                 ? `/d/${encodeURIComponent(domainId)}/skill/${encodeURIComponent(String(docId))}/outline/branch/${encodeURIComponent(br)}`
-                : this.url('base_outline_doc_branch', { domainId, docId: String(docId), branch: br })),
+                : this.url('base_outline_doc_branch', { docId: String(docId), branch: br })),
             rootNodeIdFromQuery,
             developPoolUiMode: inferDevelopSessionKind(sess) === 'outline_node' ? 'none' : 'full',
             mapDocType: mapDt,
@@ -325,7 +325,6 @@ class DevelopHandler extends Handler {
                 todayProblems: st.problems,
                 todayGoalsMet,
                 editorUrl: this.url('base_outline_doc_branch', {
-                    domainId: finalDomainId,
                     docId: String(e.baseDocId),
                     branch: e.branch,
                 }),

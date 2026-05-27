@@ -1446,8 +1446,8 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
 export class BaseEditorDocHandler extends Handler {
     base?: BaseDoc;
 
-    protected getEditorOutlineBranchUrl(domainId: string, docId: string, branch: string): string {
-        return this.url('base_outline_doc_branch', { domainId, docId, branch });
+    protected getEditorOutlineBranchUrl(_domainId: string, docId: string, branch: string): string {
+        return this.url('base_outline_doc_branch', { docId, branch });
     }
 
     /** Nunjucks template for develop outline-node session (skill uses `skill_editor.html`). */
@@ -1633,7 +1633,7 @@ class BaseCreateHandler extends Handler {
         }
 
         this.response.body = { docId, bid: finalBid || undefined };
-        this.response.redirect = this.url('base_outline_doc_branch', { domainId: actualDomainId, docId: finalBid || docId.toString(), branch: 'main' });
+        this.response.redirect = this.url('base_outline_doc_branch', { docId: finalBid || docId.toString(), branch: 'main' });
     }
 }
 
@@ -1728,7 +1728,6 @@ class BaseEditHandler extends Handler {
         }
         const outlineDocId = baseDoc.bid || baseDoc.docId;
         this.response.redirect = this.url('base_outline_doc_branch', {
-            domainId,
             docId: String(outlineDocId),
             branch: baseDoc.currentBranch || 'main',
         });
@@ -2584,7 +2583,7 @@ class BaseCreateNewHandler extends Handler {
             this.domain.name,
             true
         );
-        const target = this.url('base_outline_doc_branch', { domainId: did, docId, branch: 'main' });
+        const target = this.url('base_outline_doc_branch', { docId, branch: 'main' });
         this.response.redirect = target;
     }
 }
@@ -2764,7 +2763,7 @@ class BaseOutlineRedirectHandler extends Handler {
         const base = await BaseModel.getByDomain(domainId);
         const b = branch && String(branch).trim() ? branch : 'main';
         if (base) {
-            const target = this.url('base_outline_doc_branch', { domainId, docId: base.docId, branch: b });
+            const target = this.url('base_outline_doc_branch', { docId: base.docId, branch: b });
             this.response.redirect = target;
         } else {
             const target = this.url('base_domain', { domainId });
@@ -6564,7 +6563,7 @@ export class BaseConnectionHandler extends ConnectionHandler {
                     const b = await BaseModel.get(domainId, docId);
                     return b ? ((b.title || '').trim() || String(docId)) : `Base ${docId}`;
                 },
-                makeEditorUrl: (docId, br) => this.url('base_outline_doc_branch', { domainId, docId: String(docId), branch: br }),
+                makeEditorUrl: (docId, br) => this.url('base_outline_doc_branch', { docId: String(docId), branch: br }),
             });
         } catch (e) {
             logger.error('Failed to build develop editor context:', e);
