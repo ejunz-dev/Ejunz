@@ -129,7 +129,9 @@ export class BaseModel {
 
     static async getAll(domainId: string, query?: Filter<BaseDoc>): Promise<BaseDoc[]> {
         const merged = (query || {}) as Filter<BaseDoc>;
-        return await document.getMulti(domainId, document.TYPE_BASE, merged).toArray();
+        return await document.getMulti(domainId, document.TYPE_BASE, merged)
+            .sort({ updateAt: -1, docId: -1 })
+            .toArray();
     }
 
     /** Recently updated knowledge bases (`TYPE_BASE` only). */
@@ -145,7 +147,9 @@ export class BaseModel {
     static async getByRepo(domainId: string, rpid: number, branch?: string): Promise<BaseDoc[]> {
         const andParts: Filter<BaseDoc>[] = [{ rpid } as Filter<BaseDoc>];
         if (branch) andParts.push({ branch } as Filter<BaseDoc>);
-        return await document.getMulti(domainId, document.TYPE_BASE, { $and: andParts } as Filter<BaseDoc>).toArray();
+        return await document.getMulti(domainId, document.TYPE_BASE, { $and: andParts } as Filter<BaseDoc>)
+            .sort({ updateAt: -1, docId: -1 })
+            .toArray();
     }
 
     static async update(
