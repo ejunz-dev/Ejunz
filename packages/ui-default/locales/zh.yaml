@@ -1158,6 +1158,14 @@ develop: 开发
 'Outline editor popup blocked': 浏览器拦截了新标签页，请允许本站弹出窗口后重试。
 'Outline learn single card': 单卡片学习
 'Outline learn single node': 单节点学习
+'Separate as new base': 独立为新的 base
+'Separate as new base create hint': 将此节点及其整棵子树（子节点、卡片与附件）复制到新的知识库，原知识库保持不变。标题默认为节点名称，可在确认前修改。
+'Separate as new base title required': 请输入知识库标题。
+'Separate as new base save node first': 请先将节点保存后再独立为新的 base。
+'Separate as new base invalid doc': 无法独立为新的 base：文档 ID 无效。
+'Separate as new base save pending first': 请先在编辑器中保存所有未提交的修改。
+'Separate as new base failed': 独立为新的 base 失败。
+'Separate as new base success': 已创建新知识库并完成子树复制。
 'Outline learn start failed': 无法开始学习，请重试。
 'Outline learn invalid card': 该卡片 ID 无效，无法开始学习。
 'Outline card problems button': 'Problem（{0}）'
