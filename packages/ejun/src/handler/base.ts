@@ -4276,6 +4276,106 @@ class BaseNodeFilesHandler extends Handler {
 }
 
 /**
+ * Move a file from a node or card to another node (branch-aware).
+ */
+class BaseFileMoveHandler extends Handler {
+    @param('docId', Types.PositiveInt, true)
+    async post(domainId: string, docId: number) {
+        const body = (this.request.body as any) || {};
+        const branch = body.branch || 'main';
+        const fileName = body.fileName as string;
+        const sourceType = body.sourceType as string;
+        const sourceNodeId = body.sourceNodeId as string;
+        const sourceCardId = body.sourceCardId as string | undefined;
+        const targetNodeId = body.targetNodeId as string;
+        if (!fileName || !targetNodeId || !sourceType) throw new ValidationError('fileName, sourceType, targetNodeId');
+        if (sourceType === 'node') {
+            if (!sourceNodeId) throw new ValidationError('sourceNodeId');
+            if (sourceNodeId === targetNodeId) throw new ValidationError('same node');
+        } else if (sourceType === 'card') {
+            if (!sourceCardId) throw new ValidationError('sourceCardId');
+        } else {
+            throw new ValidationError('sourceType');
+        }
+
+        const base = await BaseModel.get(domainId, docId);
+        if (!base) throw new NotFoundError('Base not found');
+        if (!this.user.own(base)) {
+            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+        }
+
+        const { nodes } = getBranchData(base, branch);
+        const targetNode = nodes.find((n) => n.id === targetNodeId);
+        if (!targetNode) throw new NotFoundError('Target node not found');
+        if ((targetNode.files || []).find((f) => f.name === fileName)) throw new FileExistsError(fileName);
+
+        let fileInfo: FileInfo;
+        let srcPath: string;
+
+        if (sourceType === 'card') {
+            const cardOid = new ObjectId(sourceCardId);
+            const card = await CardModel.get(domainId, cardOid);
+            if (!card) throw new NotFoundError('Card not found');
+            fileInfo = (card.files || []).find((f) => f.name === fileName)!;
+            if (!fileInfo) throw new NotFoundError(fileName);
+            srcPath = `base/${domainId}/${docId.toString()}/card/${cardOid.toString()}/${fileName}`;
+        } else {
+            const sourceNode = nodes.find((n) => n.id === sourceNodeId);
+            if (!sourceNode) throw new NotFoundError('Source node not found');
+            fileInfo = (sourceNode.files || []).find((f) => f.name === fileName)!;
+            if (!fileInfo) throw new NotFoundError(fileName);
+            srcPath = `base/${domainId}/${docId.toString()}/node/${sourceNodeId}/${fileName}`;
+        }
+
+        const dstPath = `base/${domainId}/${docId.toString()}/node/${targetNodeId}/${fileName}`;
+        await storage.copy(srcPath, dstPath);
+        await storage.del([srcPath], this.user._id);
+        const meta = await storage.getMeta(dstPath);
+        const payload: FileInfo = {
+            _id: fileName,
+            name: fileName,
+            ...pick(meta || fileInfo, ['size', 'lastModified', 'etag']),
+        };
+
+        if (sourceType === 'card') {
+            const cardOid = new ObjectId(sourceCardId);
+            const card = await CardModel.get(domainId, cardOid);
+            await CardModel.update(domainId, cardOid, {
+                files: (card!.files || []).filter((f) => f.name !== fileName),
+            });
+        }
+
+        const branchData = { ...(base.branchData || {}) };
+        if (!branchData[branch]) {
+            branchData[branch] = { nodes: base.nodes || [], edges: base.edges || [] };
+        }
+        const updatedNodes = [...branchData[branch].nodes];
+        if (sourceType === 'node') {
+            const sIdx = updatedNodes.findIndex((n) => n.id === sourceNodeId);
+            if (sIdx < 0) throw new NotFoundError('Source node not found');
+            updatedNodes[sIdx] = {
+                ...updatedNodes[sIdx],
+                files: (updatedNodes[sIdx].files || []).filter((f) => f.name !== fileName),
+            };
+        }
+        const tIdx = updatedNodes.findIndex((n) => n.id === targetNodeId);
+        if (tIdx < 0) throw new NotFoundError('Target node not found');
+        updatedNodes[tIdx] = {
+            ...updatedNodes[tIdx],
+            files: [...(updatedNodes[tIdx].files || []), payload],
+        };
+        branchData[branch] = { ...branchData[branch], nodes: updatedNodes };
+        const updates: Partial<BaseDoc> = { branchData, updateAt: new Date() };
+        if (branch === 'main') {
+            updates.nodes = updatedNodes;
+            updates.edges = branchData[branch].edges;
+        }
+        await BaseModel.updateFull(domainId, docId, updates);
+        this.response.body = { ok: true };
+    }
+}
+
+/**
  * Node file download
  */
 class BaseNodeFileDownloadHandler extends Handler {
@@ -7076,6 +7176,7 @@ export async function apply(ctx: Context) {
     ctx.Route('base_card_file_download', '/base/:docId/card/:cardId/file/:filename', BaseCardFileDownloadHandler);
     ctx.Route('base_node_files', '/base/:docId/node/:nodeId/files', BaseNodeFilesHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_node_file_download', '/base/:docId/node/:nodeId/file/:filename', BaseNodeFileDownloadHandler);
+    ctx.Route('base_file_move', '/base/:docId/file/move', BaseFileMoveHandler, PRIV.PRIV_USER_PROFILE);
     
     ctx.Route('base_editor', '/base/:docId/editor', BaseEditorDocHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_editor_branch', '/base/:docId/branch/:branch/editor', BaseEditorDocHandler, PRIV.PRIV_USER_PROFILE);

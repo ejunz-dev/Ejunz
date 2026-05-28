@@ -561,6 +561,16 @@ interface PendingDelete {
   nodeId?: string;
 }
 
+interface PendingFileMove {
+  id: string;
+  fileName: string;
+  originalSourceType: 'node' | 'card';
+  originalSourceNodeId: string;
+  originalSourceCardId?: string;
+  targetNodeId: string;
+  file: CardFileInfo;
+}
+
 /** Serializable snapshot to revert one AI assistant turn's `operations[]` effects. */
 interface AiEditorRevertSnapshot {
   base: BaseDoc;
@@ -2663,6 +2673,90 @@ function sortAggregatedFiles(
   });
 }
 
+function applyFileMoveLocally(
+  baseDoc: BaseDoc,
+  nodeCardsMap: Record<string, Card[]>,
+  row: AggregatedFileItem,
+  targetNodeId: string,
+): { base: BaseDoc; nodeCardsMap: Record<string, Card[]> } {
+  const fileMeta: CardFileInfo = {
+    name: row.name,
+    size: row.size,
+    lastModified: row.lastModified,
+    _id: (row as any)._id || row.name,
+    etag: (row as any).etag,
+  };
+  let newMap = { ...nodeCardsMap };
+  let newNodes = baseDoc.nodes.map((n) => ({ ...n }));
+
+  if (row.sourceType === 'card' && row.sourceCardId) {
+    newMap = Object.fromEntries(
+      Object.entries(newMap).map(([nid, cards]) => [
+        nid,
+        cards.map((c) =>
+          String(c.docId) === String(row.sourceCardId)
+            ? { ...c, files: (c.files || []).filter((f) => f.name !== row.name) }
+            : c,
+        ),
+      ]),
+    );
+  } else {
+    newNodes = newNodes.map((n) =>
+      n.id === row.sourceNodeId ? { ...n, files: (n.files || []).filter((f) => f.name !== row.name) } : n,
+    );
+  }
+
+  newNodes = newNodes.map((n) =>
+    n.id === targetNodeId ? { ...n, files: [...(n.files || []), fileMeta] } : n,
+  );
+
+  return { base: { ...baseDoc, nodes: newNodes }, nodeCardsMap: newMap };
+}
+
+function resolveEditorRootNodeId(base: BaseDoc, editorRootNodeId?: string): string {
+  if (editorRootNodeId && base.nodes.some((n) => n.id === editorRootNodeId)) return editorRootNodeId;
+  return base.nodes.find((n) => !base.edges.some((e) => e.target === n.id))?.id || '';
+}
+
+function canDropFileOnNode(row: AggregatedFileItem, targetNodeId: string): boolean {
+  return row.sourceType === 'card' || row.sourceNodeId !== targetNodeId;
+}
+
+let baseEditorFileDragGhost: HTMLDivElement | null = null;
+
+function setBaseEditorFileDragImage(
+  e: React.DragEvent,
+  fileName: string,
+  styles: { bg: string; color: string; border: string },
+) {
+  if (typeof document === 'undefined') return;
+  if (!baseEditorFileDragGhost) {
+    baseEditorFileDragGhost = document.createElement('div');
+    document.body.appendChild(baseEditorFileDragGhost);
+  }
+  baseEditorFileDragGhost.textContent = fileName;
+  Object.assign(baseEditorFileDragGhost.style, {
+    position: 'fixed',
+    top: '-1000px',
+    left: '-1000px',
+    padding: '6px 12px',
+    background: styles.bg,
+    color: styles.color,
+    border: `1px solid ${styles.border}`,
+    borderRadius: '4px',
+    fontSize: '13px',
+    fontWeight: '500',
+    maxWidth: '320px',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    pointerEvents: 'none',
+    zIndex: '99999',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+  });
+  e.dataTransfer.setDragImage(baseEditorFileDragGhost, 12, 16);
+}
+
 type SavedEditorLayout = {
   explorerMode: 'tree' | 'pending' | 'branches' | 'git';
   rightPanelOpen: boolean;
@@ -3690,6 +3784,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [nodeFileListEditMode, setNodeFileListEditMode] = useState(false);
   const [selectedFileListRowKeys, setSelectedFileListRowKeys] = useState<Set<string>>(new Set());
   const [expandedNodeFileFolders, setExpandedNodeFileFolders] = useState<Set<string>>(new Set());
+  const [pendingFileMoves, setPendingFileMoves] = useState<Map<string, PendingFileMove>>(new Map());
+  const [draggingFileItem, setDraggingFileItem] = useState<AggregatedFileItem | null>(null);
+  const draggingFileItemRef = useRef<AggregatedFileItem | null>(null);
+  const [fileDropTargetNodeId, setFileDropTargetNodeId] = useState<string | null>(null);
   const toggleNodeFileFolder = useCallback((folderNodeId: string) => {
     setExpandedNodeFileFolders((prev) => {
       const next = new Set(prev);
@@ -3698,6 +3796,72 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       return next;
     });
   }, []);
+  const queueFileMove = useCallback((row: AggregatedFileItem, targetNodeId: string) => {
+    if (row.sourceType !== 'card' && row.sourceNodeId === targetNodeId) return;
+    const targetNode = base.nodes.find((n) => n.id === targetNodeId);
+    if ((targetNode?.files || []).some((f) => f.name === row.name)) {
+      Notification.error(i18n('A file with the same name already exists on the target node'));
+      return;
+    }
+    setPendingFileMoves((prev) => {
+      const next = new Map(prev);
+      let existingKey: string | null = null;
+      for (const [k, m] of next.entries()) {
+        if (m.fileName !== row.name) continue;
+        if (m.targetNodeId === row.sourceNodeId) {
+          existingKey = k;
+          break;
+        }
+        if (row.sourceType === 'card' && m.originalSourceCardId === row.sourceCardId) {
+          existingKey = k;
+          break;
+        }
+        if (
+          row.sourceType !== 'card' &&
+          m.originalSourceType === 'node' &&
+          m.originalSourceNodeId === row.sourceNodeId &&
+          !m.originalSourceCardId
+        ) {
+          existingKey = k;
+          break;
+        }
+      }
+      if (existingKey) {
+        next.set(existingKey, { ...next.get(existingKey)!, targetNodeId });
+      } else {
+        const id = `${row.sourceType}-${row.sourceNodeId}-${row.sourceCardId || ''}-${row.name}`;
+        next.set(id, {
+          id,
+          fileName: row.name,
+          originalSourceType: row.sourceType === 'card' ? 'card' : 'node',
+          originalSourceNodeId: row.sourceNodeId,
+          originalSourceCardId: row.sourceCardId,
+          targetNodeId,
+          file: {
+            name: row.name,
+            size: row.size,
+            lastModified: row.lastModified,
+            _id: (row as any)._id || row.name,
+            etag: (row as any).etag,
+          },
+        });
+      }
+      return next;
+    });
+    setBase((prev) => {
+      const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+      const result = applyFileMoveLocally(prev, nodeCardsMap, row, targetNodeId);
+      (window as any).UiContext.nodeCardsMap = result.nodeCardsMap;
+      setNodeCardsMapVersion((v) => v + 1);
+      return result.base;
+    });
+    setExpandedNodeFileFolders((prev) => {
+      const next = new Set(prev);
+      next.add(targetNodeId);
+      return next;
+    });
+    Notification.success(i18n('File move queued'));
+  }, [base.nodes]);
   const cardFileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingCardUploadRef = useRef<{ cardId: string; nodeId: string } | null>(null);
   const pendingNodeUploadRef = useRef<{ nodeId: string } | null>(null);
@@ -3935,7 +4099,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     wrapper.style.alignItems = 'center';
     wrapper.style.gap = '8px';
     rightEl.appendChild(wrapper);
-    const pendingCount = pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + Object.keys(pendingCardFaceChanges).length + pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + learnProblemNotesDraftCount;
+    const pendingCount = pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + pendingFileMoves.size + Object.keys(pendingCardFaceChanges).length + pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + learnProblemNotesDraftCount;
     const hasPending = pendingCount > 0;
     ReactDOM.render(
       <>
@@ -3973,7 +4137,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       ReactDOM.unmountComponentAtNode(wrapper);
       wrapper.remove();
     };
-  }, [isMobile, aiBottomOpen, editorAiHidden, isCommitting, pendingChanges.size, pendingDragChanges.size, pendingRenames.size, pendingCreatesCount, pendingDeletes.size, pendingCardFaceChanges, pendingProblemCardIds.size, pendingNewProblemCardIds.size, pendingEditedProblemIds.size, learnProblemNotesDraftCount]);
+  }, [isMobile, aiBottomOpen, editorAiHidden, isCommitting, pendingChanges.size, pendingDragChanges.size, pendingRenames.size, pendingCreatesCount, pendingDeletes.size, pendingFileMoves.size, pendingCardFaceChanges, pendingProblemCardIds.size, pendingNewProblemCardIds.size, pendingEditedProblemIds.size, learnProblemNotesDraftCount]);
 
   
   const getSelectedCard = useCallback((): Card | null => {
@@ -4033,9 +4197,38 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     setOriginalProblemsVersion((v) => v + 1);
   }, [selectedFile?.id, selectedFile?.type, selectedFile?.nodeId, selectedFile?.cardId]);
 
+  const editorRootNodeId = (window as any).UiContext?.editorRootNodeId || '';
+  const resolvedRootNodeId = useMemo(
+    () => resolveEditorRootNodeId(base, editorRootNodeId),
+    [base, editorRootNodeId],
+  );
+
   useEffect(() => {
     setExpandedNodeFileFolders(new Set());
   }, [selectedFile?.nodeId]);
+
+  useEffect(() => {
+    if (!nodeFileListEditMode) {
+      draggingFileItemRef.current = null;
+      setDraggingFileItem(null);
+      setFileDropTargetNodeId(null);
+    }
+  }, [nodeFileListEditMode]);
+
+  useEffect(() => {
+    if (
+      nodeFileListEditMode &&
+      selectedFile?.type === 'node' &&
+      selectedFile.nodeId === resolvedRootNodeId &&
+      resolvedRootNodeId
+    ) {
+      setExpandedNodeFileFolders((prev) => {
+        const next = new Set(prev);
+        next.add(resolvedRootNodeId);
+        return next;
+      });
+    }
+  }, [nodeFileListEditMode, selectedFile?.type, selectedFile?.nodeId, resolvedRootNodeId]);
   
 
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
@@ -4211,7 +4404,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     return () => clearInterval(t);
   }, [explorerMode, basePath, docId, getBaseUrl, fetchGitRemoteStatus]);
 
-  const editorRootNodeId = (window as any).UiContext?.editorRootNodeId || '';
   const currentBranch = (window as any).UiContext?.currentBranch || 'main';
 
   const editorUiDomainId = useCallback((): string => {
@@ -5018,6 +5210,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const hasCreateChanges = pendingCreatesRef.current.size > 0;
     const hasDeleteChanges = pendingDeletes.size > 0;
     const hasProblemChanges = pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0;
+    const hasFileMoveChanges = pendingFileMoves.size > 0;
 
     try {
       const domainId = (window as any).UiContext?.domainId || 'system';
@@ -5765,6 +5958,20 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         }
       }
 
+      const fileMoveCount = pendingFileMoves.size;
+      if (hasFileMoveChanges && docId) {
+        for (const move of pendingFileMoves.values()) {
+          await request.post(getBaseUrl(`/${docId}/file/move`, docId), {
+            branch: saveBranch,
+            fileName: move.fileName,
+            sourceType: move.originalSourceType,
+            sourceNodeId: move.originalSourceNodeId,
+            sourceCardId: move.originalSourceCardId,
+            targetNodeId: move.targetNodeId,
+          });
+        }
+      }
+
       
       
       
@@ -5793,6 +6000,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       pendingCreatesRef.current.clear();
       setPendingCreatesCount(0);
       setPendingDeletes(new Map());
+      setPendingFileMoves(new Map());
       setPendingCardFaceChanges(prev => {
         const next = { ...prev };
         batchSaveData.cardUpdates.forEach((u: any) => delete next[u.cardId]);
@@ -5823,6 +6031,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         + actualRenameCount
         + createCountBeforeSave
         + (hasDeleteChanges ? pendingDeletes.size : 0)
+        + (hasFileMoveChanges ? fileMoveCount : 0)
         + problemChangesCount
         + savedLearnerDraftBucketsForMsg;
 
@@ -5831,6 +6040,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       try {
         if (
           !hasAnyChanges &&
+          !hasFileMoveChanges &&
           Number.isFinite(baseDocIdNumForSave) &&
           baseDocIdNumForSave > 0 &&
           (editorUiPrefsPayload || developSid)
@@ -5857,7 +6067,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         /* layout / develop nav persistence is best-effort */
       }
       
-      if (hasCreateChanges || hasAnyChanges) {
+      if (hasCreateChanges || hasAnyChanges || hasFileMoveChanges) {
         try {
           const postSaveQs: Record<string, string> = {};
           if (docId) postSaveQs.docId = docId;
@@ -5978,7 +6188,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     } finally {
       setIsCommitting(false);
     }
-  }, [pendingChanges, pendingDragChanges, pendingRenames, pendingDeletes, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, learnProblemNotesDraftCount, onLearnerNotesDraftChange, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.nodes, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion, explorerMode, rightPanelOpen, aiBottomOpen, explorerPanelWidth, problemsPanelWidth, aiPanelHeight, editorAiHidden, developEditorContext, basePath]);
+  }, [pendingChanges, pendingDragChanges, pendingRenames, pendingDeletes, pendingFileMoves, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, learnProblemNotesDraftCount, onLearnerNotesDraftChange, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.nodes, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion, explorerMode, rightPanelOpen, aiBottomOpen, explorerPanelWidth, problemsPanelWidth, aiPanelHeight, editorAiHidden, developEditorContext, basePath]);
 
   useEffect(() => {
     saveHandlerRef.current = handleSaveAll;
@@ -6947,6 +7157,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       pendingRenames.size +
       pendingCreatesCount +
       pendingDeletes.size +
+      pendingFileMoves.size +
       Object.keys(pendingCardFaceChanges).length +
       pendingProblemCardIds.size +
       pendingNewProblemCardIds.size +
@@ -12343,6 +12554,13 @@ Reply with a JSON code block only for executable operations, using this shape:
             const isDragged = draggedFile?.id === file.id;
             const isEditing = editingFile?.id === file.id;
             const isExpanded = file.type === 'node' && expandedNodes.has(file.nodeId || '');
+            const isFileDropTarget = !!(
+              nodeFileListEditMode &&
+              draggingFileItem &&
+              file.type === 'node' &&
+              file.nodeId &&
+              fileDropTargetNodeId === file.nodeId
+            );
             
             return (
               <div
@@ -12352,9 +12570,41 @@ Reply with a JSON code block only for executable operations, using this shape:
                 draggable={true}
                 onDragStart={(e) => handleDragStart(e, file)}
                 onDragEnd={handleDragEnd}
-                onDragOver={(e) => handleDragOver(e, file)}
+                onDragOver={(e) => {
+                  const fileDrag = draggingFileItemRef.current;
+                  if (
+                    nodeFileListEditMode &&
+                    fileDrag &&
+                    file.type === 'node' &&
+                    file.nodeId &&
+                    canDropFileOnNode(fileDrag, file.nodeId)
+                  ) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = 'move';
+                    setFileDropTargetNodeId(file.nodeId);
+                    return;
+                  }
+                  handleDragOver(e, file);
+                }}
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => {
+                  const fileDrag = draggingFileItemRef.current;
+                  if (
+                    nodeFileListEditMode &&
+                    fileDrag &&
+                    file.type === 'node' &&
+                    file.nodeId &&
+                    canDropFileOnNode(fileDrag, file.nodeId)
+                  ) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    queueFileMove(fileDrag, file.nodeId);
+                    draggingFileItemRef.current = null;
+                    setDraggingFileItem(null);
+                    setFileDropTargetNodeId(null);
+                    return;
+                  }
                   handleDrop(e, file);
                   
                   if (dragLeaveTimeoutRef.current) {
@@ -12509,16 +12759,20 @@ Reply with a JSON code block only for executable operations, using this shape:
                   color: isHighlighted ? themeStyles.textOnPrimary : themeStyles.textPrimary,
                   backgroundColor: isHighlighted
                     ? themeStyles.bgSelected
-                    : isDragOver
-                      ? themeStyles.bgDragOver
-                      : isDragged
-                        ? themeStyles.bgDragged
-                        : 'transparent',
+                    : isFileDropTarget
+                      ? themeStyles.bgHover
+                      : isDragOver
+                        ? themeStyles.bgDragOver
+                        : isDragged
+                          ? themeStyles.bgDragged
+                          : 'transparent',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
                   opacity: isDragged ? 0.5 : 1,
-                  border: isDragOver 
+                  border: isFileDropTarget
+                    ? `2px dashed ${themeStyles.accent}`
+                    : isDragOver 
                     ? dropPosition === 'into'
                       ? `2px dashed ${themeStyles.accent}` 
                       : `2px solid ${themeStyles.accent}`
@@ -12537,12 +12791,12 @@ Reply with a JSON code block only for executable operations, using this shape:
                     : undefined,
                 }}
                 onMouseEnter={(e) => {
-                  if (!isHighlighted && !isDragOver && !isDragged) {
+                  if (!isHighlighted && !isDragOver && !isDragged && !isFileDropTarget) {
                     e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                   }
                 }}
                 onMouseLeave={(e) => {
-                  if (!isHighlighted && !isDragOver && !isDragged) {
+                  if (!isHighlighted && !isDragOver && !isDragged && !isFileDropTarget) {
                     e.currentTarget.style.backgroundColor = 'transparent';
                   }
                 }}
@@ -15853,22 +16107,22 @@ Reply with a JSON code block only for executable operations, using this shape:
                 console.log('[保存按钮] 点击保存，pendingProblemCardIds:', Array.from(pendingProblemCardIds));
                 handleSaveAll();
               }}
-              disabled={isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)}
+              disabled={isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)}
               style={{
                 padding: isMobile ? '10px 12px' : '4px 12px',
                 minHeight: isMobile ? '44px' : undefined,
                 border: `1px solid ${themeStyles.borderSecondary}`,
                 borderRadius: '3px',
-                backgroundColor: (pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) ? themeStyles.success : (theme === 'dark' ? '#555' : '#6c757d'),
+                backgroundColor: (pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0 || pendingFileMoves.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) ? themeStyles.success : (theme === 'dark' ? '#555' : '#6c757d'),
                 color: themeStyles.textOnPrimary,
-                cursor: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)) ? 'not-allowed' : 'pointer',
+                cursor: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)) ? 'not-allowed' : 'pointer',
                 fontSize: '12px',
                 fontWeight: '500',
-                opacity: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)) ? 0.6 : 1,
+                opacity: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)) ? 0.6 : 1,
               }}
-              title={(pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0) ? i18n('No pending changes') : i18n('Save all changes')}
+              title={(pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0) ? i18n('No pending changes') : i18n('Save all changes')}
             >
-              {isCommitting ? i18n('Saving...') : `${i18n('Save changes')} (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + Object.keys(pendingCardFaceChanges).length + pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + learnProblemNotesDraftCount})`}
+              {isCommitting ? i18n('Saving...') : `${i18n('Save changes')} (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + pendingFileMoves.size + Object.keys(pendingCardFaceChanges).length + pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + learnProblemNotesDraftCount})`}
             </button>
           </div>
           )}
@@ -16312,6 +16566,9 @@ Reply with a JSON code block only for executable operations, using this shape:
                 const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
                 const node = base.nodes.find((n: BaseNode) => n.id === selectedFile!.nodeId);
                 const nodeId = selectedFile!.nodeId!;
+                const rootNodeId = resolveEditorRootNodeId(base, editorRootNodeId);
+                const rootNode = base.nodes.find((n: BaseNode) => n.id === rootNodeId);
+                const isRootView = !!rootNodeId && nodeId === rootNodeId;
                 const { selfFiles, subfolders } = buildNodeFileFolderTree(nodeId, base, nodeCardsMap);
                 const allFiles = flattenNodeFileFolderTree(selfFiles, subfolders);
                 const sortedSelfFiles = sortAggregatedFiles(selfFiles, nodeFileListSortBy, nodeFileListSortOrder);
@@ -16402,7 +16659,74 @@ Reply with a JSON code block only for executable operations, using this shape:
                     Notification.error(e?.message || i18n('Copy failed.'));
                   }
                 };
-                const tableColSpan = (nodeFileListEditMode ? 1 : 0) + 3 + (isMobile ? 1 : 0);
+                const tableColSpan = (nodeFileListEditMode ? 2 : 0) + 3 + (isMobile ? 1 : 0);
+                const fileDragHandleProps = (row: AggregatedFileItem, key: string) => ({
+                  draggable: true as const,
+                  onDragStart: (e: React.DragEvent) => {
+                    draggingFileItemRef.current = row;
+                    e.dataTransfer.setData('text/plain', key);
+                    e.dataTransfer.effectAllowed = 'move';
+                    try {
+                      e.dataTransfer.setData('application/x-base-file-move', key);
+                    } catch {
+                      /* ignore */
+                    }
+                    setBaseEditorFileDragImage(e, row.name, {
+                      bg: themeStyles.bgPrimary,
+                      color: themeStyles.textPrimary,
+                      border: themeStyles.borderSecondary,
+                    });
+                    setDraggingFileItem(row);
+                  },
+                  onDragEnd: () => {
+                    draggingFileItemRef.current = null;
+                    setDraggingFileItem(null);
+                    setFileDropTargetNodeId(null);
+                  },
+                });
+                const fileDragHandleCellStyle: React.CSSProperties = {
+                  padding: '8px 4px',
+                  textAlign: 'center',
+                  cursor: 'grab',
+                  color: themeStyles.textTertiary,
+                  fontSize: '16px',
+                  lineHeight: 1,
+                  userSelect: 'none',
+                  touchAction: 'none',
+                };
+                const fileDropTargetStyle = (targetId: string) =>
+                  fileDropTargetNodeId === targetId ? { backgroundColor: themeStyles.bgHover, outline: `2px dashed ${themeStyles.accent}` } : {};
+                const bindFileDropTarget = (targetId: string) => ({
+                  onDragEnter: (e: React.DragEvent) => {
+                    if (!nodeFileListEditMode || !draggingFileItemRef.current) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setFileDropTargetNodeId(targetId);
+                  },
+                  onDragOver: (e: React.DragEvent) => {
+                    if (!nodeFileListEditMode || !draggingFileItemRef.current) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = 'move';
+                    setFileDropTargetNodeId(targetId);
+                  },
+                  onDragLeave: (e: React.DragEvent) => {
+                    const related = e.relatedTarget as Node | null;
+                    if (related && e.currentTarget.contains(related)) return;
+                    setFileDropTargetNodeId((prev) => (prev === targetId ? null : prev));
+                  },
+                  onDrop: (e: React.DragEvent) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const dragged = draggingFileItemRef.current;
+                    if (dragged && nodeFileListEditMode) {
+                      queueFileMove(dragged, targetId);
+                    }
+                    draggingFileItemRef.current = null;
+                    setDraggingFileItem(null);
+                    setFileDropTargetNodeId(null);
+                  },
+                });
                 const renderFileRow = (row: AggregatedFileItem, depth: number) => {
                   const deleteUrl = row.sourceType === 'self'
                     ? filesListUrl
@@ -16410,10 +16734,14 @@ Reply with a JSON code block only for executable operations, using this shape:
                       ? getBaseUrl(`/${docId}/card/${row.sourceCardId}/files`, docId)
                       : getBaseUrl(`/${docId}/node/${row.sourceNodeId}/files?branch=${encodeURIComponent(branch)}`, docId);
                   const key = rowKey(row);
+                  const isDragging = draggingFileItem && rowKey(draggingFileItem) === key;
                   return (
                     <tr
                       key={key}
-                      style={{ borderBottom: `1px solid ${themeStyles.borderSecondary}` }}
+                      style={{
+                        borderBottom: `1px solid ${themeStyles.borderSecondary}`,
+                        opacity: isDragging ? 0.45 : 1,
+                      }}
                       onContextMenu={(e) => {
                         e.preventDefault();
                         setFileListRowMenu({
@@ -16430,11 +16758,33 @@ Reply with a JSON code block only for executable operations, using this shape:
                           <input type="checkbox" checked={selectedFileListRowKeys.has(key)} onChange={() => toggleRow(key)} />
                         </td>
                       )}
+                      {nodeFileListEditMode && (
+                        <td style={{ width: 44, minWidth: 44, padding: 0, verticalAlign: 'middle' }}>
+                          <div
+                            {...fileDragHandleProps(row, key)}
+                            style={{
+                              ...fileDragHandleCellStyle,
+                              width: '100%',
+                              minHeight: 40,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              boxSizing: 'border-box',
+                            }}
+                            title={i18n('Drag to move')}
+                            aria-label={i18n('Drag to move')}
+                            onMouseDown={(e) => e.stopPropagation()}
+                          >
+                            ⋮⋮
+                          </div>
+                        </td>
+                      )}
                       <td style={{ padding: '8px 12px', paddingLeft: `${12 + depth * 16}px`, overflow: 'hidden', minWidth: 0 }}>
                         <a
                           href={previewUrlFor(row)}
                           target="_blank"
                           rel="noopener noreferrer"
+                          draggable={false}
                           title={row.name}
                           style={{ color: themeStyles.accent, textDecoration: 'none', cursor: 'pointer', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                           onClick={(ev) => handleFilePreviewClick(ev, previewUrlFor(row), row.name, row.size)}
@@ -16487,8 +16837,12 @@ Reply with a JSON code block only for executable operations, using this shape:
                   const rows: React.ReactNode[] = [
                     <tr
                       key={`folder-${folder.nodeId}`}
-                      style={{ borderBottom: `1px solid ${themeStyles.borderSecondary}`, cursor: 'pointer', userSelect: 'none' }}
-                      onClick={() => toggleNodeFileFolder(folder.nodeId)}
+                      style={{
+                        borderBottom: `1px solid ${themeStyles.borderSecondary}`,
+                        userSelect: 'none',
+                        ...fileDropTargetStyle(folder.nodeId),
+                      }}
+                      {...bindFileDropTarget(folder.nodeId)}
                     >
                       <td
                         colSpan={tableColSpan}
@@ -16497,7 +16851,9 @@ Reply with a JSON code block only for executable operations, using this shape:
                           paddingLeft: `${12 + depth * 16}px`,
                           color: themeStyles.textPrimary,
                           fontWeight: 500,
+                          cursor: 'pointer',
                         }}
+                        onClick={() => toggleNodeFileFolder(folder.nodeId)}
                       >
                         <span style={{ marginRight: 4, color: themeStyles.textTertiary, fontSize: 10 }}>{isExpanded ? '▼' : '▶'}</span>
                         <span style={{ marginRight: 6 }}>{isExpanded ? '📁' : '📂'}</span>
@@ -16585,15 +16941,58 @@ Reply with a JSON code block only for executable operations, using this shape:
                                   <input type="checkbox" checked={allFiles.length > 0 && selectedFileListRowKeys.size >= allFiles.length} onChange={toggleSelectAll} title={i18n('Select all')} />
                                 </th>
                               )}
-                              <th style={{ ...thStyle(), width: nodeFileListEditMode ? '55%' : '58%', minWidth: 0 }} onClick={() => toggleSort('name')} title={i18n('Sort')}>{i18n('Filename')}{sortIndicator('name')}</th>
+                              {nodeFileListEditMode && (
+                                <th style={{ width: 44, minWidth: 44, padding: '8px 4px', color: themeStyles.textSecondary }} aria-label={i18n('Drag to move')} />
+                              )}
+                              <th style={{ ...thStyle(), width: nodeFileListEditMode ? '52%' : '58%', minWidth: 0 }} onClick={() => toggleSort('name')} title={i18n('Sort')}>{i18n('Filename')}{sortIndicator('name')}</th>
                               <th style={{ ...thStyle(), width: '14%', minWidth: 0 }} onClick={() => toggleSort('size')} title={i18n('Sort')}>{i18n('Size')}{sortIndicator('size')}</th>
                               <th style={{ ...thStyle(), width: '28%', minWidth: 0 }} onClick={() => toggleSort('time')} title={i18n('Sort')}>{i18n('Time')}{sortIndicator('time')}</th>
                               {isMobile && <th style={{ width: 44, minWidth: 44, padding: '8px 4px', color: themeStyles.textSecondary }} aria-label={i18n('Actions')} />}
                             </tr>
                           </thead>
                           <tbody>
-                            {sortedSelfFiles.map((row) => renderFileRow(row, 0))}
-                            {subfolders.flatMap((folder) => renderFolderRows(folder, 0))}
+                            {nodeFileListEditMode && draggingFileItem && rootNodeId && !isRootView && canDropFileOnNode(draggingFileItem, rootNodeId) && (
+                              <tr
+                                key="drop-target-root-node"
+                                style={{ ...fileDropTargetStyle(rootNodeId) }}
+                                {...bindFileDropTarget(rootNodeId)}
+                              >
+                                <td
+                                  colSpan={tableColSpan}
+                                  style={{ padding: '6px 12px', color: themeStyles.textSecondary, fontSize: 12 }}
+                                >
+                                  {i18n('Drop here to move to root')}: {rootNode?.text || rootNodeId}
+                                </td>
+                              </tr>
+                            )}
+                            {nodeFileListEditMode && draggingFileItem && !isRootView && canDropFileOnNode(draggingFileItem, nodeId) && (
+                              <tr
+                                key="drop-target-current-node"
+                                style={{ ...fileDropTargetStyle(nodeId) }}
+                                {...bindFileDropTarget(nodeId)}
+                              >
+                                <td
+                                  colSpan={tableColSpan}
+                                  style={{ padding: '6px 12px', color: themeStyles.textSecondary, fontSize: 12 }}
+                                >
+                                  {i18n('Drop here to move to this node')}
+                                </td>
+                              </tr>
+                            )}
+                            {isRootView && nodeFileListEditMode ? (
+                              renderFolderRows({
+                                nodeId: rootNodeId,
+                                nodeText: node?.text || rootNodeId,
+                                order: 0,
+                                files: sortedSelfFiles,
+                                subfolders,
+                              }, 0)
+                            ) : (
+                              <>
+                                {sortedSelfFiles.map((row) => renderFileRow(row, 0))}
+                                {subfolders.flatMap((folder) => renderFolderRows(folder, 0))}
+                              </>
+                            )}
                           </tbody>
                         </table>
                       )}
