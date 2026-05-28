@@ -2546,6 +2546,123 @@ function getAggregatedFilesForNode(
   return result;
 }
 
+interface NodeFileFolder {
+  nodeId: string;
+  nodeText: string;
+  order: number;
+  files: AggregatedFileItem[];
+  subfolders: NodeFileFolder[];
+}
+
+function collectDirectNodeFiles(
+  nodeId: string,
+  viewRootId: string,
+  base: BaseDoc,
+  nodeCardsMap: Record<string, Card[]>,
+): AggregatedFileItem[] {
+  const node = base.nodes.find((n) => n.id === nodeId);
+  const result: AggregatedFileItem[] = [];
+  (node?.files || []).forEach((f) => {
+    result.push({
+      ...f,
+      sourceType: nodeId === viewRootId ? 'self' : 'node',
+      sourceNodeId: nodeId,
+      sourceNodeText: node?.text,
+    });
+  });
+  (nodeCardsMap[nodeId] || []).forEach((card: Card) => {
+    (card.files || []).forEach((f) => {
+      result.push({
+        ...f,
+        sourceType: 'card',
+        sourceNodeId: nodeId,
+        sourceNodeText: node?.text,
+        sourceCardId: card.docId,
+        sourceCardTitle: card.title,
+      });
+    });
+  });
+  return result;
+}
+
+function buildChildNodeFileFolder(
+  nodeId: string,
+  viewRootId: string,
+  base: BaseDoc,
+  nodeCardsMap: Record<string, Card[]>,
+): NodeFileFolder | null {
+  const node = base.nodes.find((n) => n.id === nodeId);
+  const files = collectDirectNodeFiles(nodeId, viewRootId, base, nodeCardsMap);
+  const childIds = base.edges.filter((e) => e.source === nodeId).map((e) => e.target);
+  const subfolders = childIds
+    .map((cid) => buildChildNodeFileFolder(cid, viewRootId, base, nodeCardsMap))
+    .filter(Boolean) as NodeFileFolder[];
+  subfolders.sort((a, b) => {
+    const oa = base.nodes.find((n) => n.id === a.nodeId)?.order || 0;
+    const ob = base.nodes.find((n) => n.id === b.nodeId)?.order || 0;
+    return oa - ob;
+  });
+  if (files.length === 0 && subfolders.length === 0) return null;
+  return {
+    nodeId,
+    nodeText: node?.text || nodeId,
+    order: node?.order || 0,
+    files,
+    subfolders,
+  };
+}
+
+function buildNodeFileFolderTree(
+  viewRootId: string,
+  base: BaseDoc,
+  nodeCardsMap: Record<string, Card[]>,
+): { selfFiles: AggregatedFileItem[]; subfolders: NodeFileFolder[] } {
+  const selfFiles = collectDirectNodeFiles(viewRootId, viewRootId, base, nodeCardsMap);
+  const childIds = base.edges.filter((e) => e.source === viewRootId).map((e) => e.target);
+  const subfolders = childIds
+    .map((cid) => {
+      const childNode = base.nodes.find((n) => n.id === cid);
+      const folder = buildChildNodeFileFolder(cid, viewRootId, base, nodeCardsMap);
+      if (!folder) return null;
+      return { ...folder, order: childNode?.order || 0 };
+    })
+    .filter(Boolean)
+    .sort((a, b) => (a!.order || 0) - (b!.order || 0)) as NodeFileFolder[];
+  return { selfFiles, subfolders };
+}
+
+function flattenNodeFileFolderTree(
+  selfFiles: AggregatedFileItem[],
+  subfolders: NodeFileFolder[],
+): AggregatedFileItem[] {
+  const result = [...selfFiles];
+  for (const folder of subfolders) {
+    result.push(...folder.files, ...flattenNodeFileFolderTree([], folder.subfolders));
+  }
+  return result;
+}
+
+function sortAggregatedFiles(
+  files: AggregatedFileItem[],
+  sortBy: 'name' | 'size' | 'time' | 'source',
+  sortOrder: 'asc' | 'desc',
+): AggregatedFileItem[] {
+  const ord = sortOrder === 'asc' ? 1 : -1;
+  const sourceSortKey = (row: AggregatedFileItem) =>
+    row.sourceType === 'self' ? '0' : row.sourceType === 'node' ? `1${row.sourceNodeText || row.sourceNodeId}` : `2${row.sourceCardTitle || row.sourceCardId || ''}`;
+  const timeMs = (row: AggregatedFileItem) => {
+    const v = row.lastModified;
+    if (!v) return 0;
+    return (typeof v === 'string' ? new Date(v) : v).getTime();
+  };
+  return [...files].sort((a, b) => {
+    if (sortBy === 'name') return ord * (a.name.localeCompare(b.name, undefined, { numeric: true }));
+    if (sortBy === 'size') return ord * (a.size - b.size);
+    if (sortBy === 'time') return ord * (timeMs(a) - timeMs(b));
+    return ord * sourceSortKey(a).localeCompare(sourceSortKey(b));
+  });
+}
+
 type SavedEditorLayout = {
   explorerMode: 'tree' | 'pending' | 'branches' | 'git';
   rightPanelOpen: boolean;
@@ -3572,6 +3689,15 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [fileListRowMenu, setFileListRowMenu] = useState<{ x: number; y: number; downloadUrl: string; deleteUrl: string; filename: string } | null>(null);
   const [nodeFileListEditMode, setNodeFileListEditMode] = useState(false);
   const [selectedFileListRowKeys, setSelectedFileListRowKeys] = useState<Set<string>>(new Set());
+  const [expandedNodeFileFolders, setExpandedNodeFileFolders] = useState<Set<string>>(new Set());
+  const toggleNodeFileFolder = useCallback((folderNodeId: string) => {
+    setExpandedNodeFileFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(folderNodeId)) next.delete(folderNodeId);
+      else next.add(folderNodeId);
+      return next;
+    });
+  }, []);
   const cardFileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingCardUploadRef = useRef<{ cardId: string; nodeId: string } | null>(null);
   const pendingNodeUploadRef = useRef<{ nodeId: string } | null>(null);
@@ -3906,6 +4032,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     );
     setOriginalProblemsVersion((v) => v + 1);
   }, [selectedFile?.id, selectedFile?.type, selectedFile?.nodeId, selectedFile?.cardId]);
+
+  useEffect(() => {
+    setExpandedNodeFileFolders(new Set());
+  }, [selectedFile?.nodeId]);
   
 
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
@@ -13344,21 +13474,9 @@ Reply with a JSON code block only for executable operations, using this shape:
       {nodeFileListModal && docId && (() => {
         const branch = (window as any).UiContext?.currentBranch || 'main';
         const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
-        const aggregatedFiles = getAggregatedFilesForNode(nodeFileListModal.nodeId, base, nodeCardsMap);
-        const sourceSortKey = (row: AggregatedFileItem) =>
-          row.sourceType === 'self' ? '0' : row.sourceType === 'node' ? `1${row.sourceNodeText || row.sourceNodeId}` : `2${row.sourceCardTitle || row.sourceCardId || ''}`;
-        const timeMs = (row: AggregatedFileItem) => {
-          const v = row.lastModified;
-          if (!v) return 0;
-          return (typeof v === 'string' ? new Date(v) : v).getTime();
-        };
-        const sortedFiles = [...aggregatedFiles].sort((a, b) => {
-          const ord = nodeFileListSortOrder === 'asc' ? 1 : -1;
-          if (nodeFileListSortBy === 'name') return ord * (a.name.localeCompare(b.name, undefined, { numeric: true }));
-          if (nodeFileListSortBy === 'size') return ord * (a.size - b.size);
-          if (nodeFileListSortBy === 'time') return ord * (timeMs(a) - timeMs(b));
-          return ord * sourceSortKey(a).localeCompare(sourceSortKey(b));
-        });
+        const { selfFiles, subfolders } = buildNodeFileFolderTree(nodeFileListModal.nodeId, base, nodeCardsMap);
+        const allFiles = flattenNodeFileFolderTree(selfFiles, subfolders);
+        const sortedSelfFiles = sortAggregatedFiles(selfFiles, nodeFileListSortBy, nodeFileListSortOrder);
         const nodeFileDownloadUrl = (nid: string, filename: string) => getBaseUrl(`/${docId}/node/${nid}/file/${encodeURIComponent(filename)}?branch=${encodeURIComponent(branch)}`, docId);
         const cardFileDownloadUrl = (cardId: string, filename: string) => getBaseUrl(`/${docId}/card/${cardId}/file/${encodeURIComponent(filename)}`, docId);
         const downloadUrlFor = (row: AggregatedFileItem) => row.sourceType === 'card' && row.sourceCardId ? cardFileDownloadUrl(row.sourceCardId, row.name) : nodeFileDownloadUrl(row.sourceNodeId, row.name);
@@ -13367,6 +13485,77 @@ Reply with a JSON code block only for executable operations, using this shape:
           return u + (u.includes('?') ? '&noDisposition=1' : '?noDisposition=1');
         };
         const filesListUrl = getBaseUrl(`/${docId}/node/${nodeFileListModal.nodeId}/files?branch=${encodeURIComponent(branch)}`, docId);
+        const renderModalFileRow = (row: AggregatedFileItem, idx: number, depth: number) => (
+          <li
+            key={`${row.sourceType}-${row.sourceNodeId}-${row.sourceCardId || ''}-${row.name}-${idx}-${depth}`}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '8px 0',
+              paddingLeft: `${12 + depth * 16}px`,
+              borderBottom: `1px solid ${themeStyles.borderSecondary}`,
+              gap: 8,
+              flexWrap: 'nowrap',
+              minWidth: 0,
+            }}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              const deleteUrl = row.sourceType === 'self'
+                ? filesListUrl
+                : row.sourceType === 'card' && row.sourceCardId
+                  ? getBaseUrl(`/${docId}/card/${row.sourceCardId}/files`, docId)
+                  : getBaseUrl(`/${docId}/node/${row.sourceNodeId}/files?branch=${encodeURIComponent(branch)}`, docId);
+              setFileListRowMenu({
+                x: e.clientX,
+                y: e.clientY,
+                downloadUrl: downloadUrlFor(row),
+                deleteUrl,
+                filename: row.name,
+              });
+            }}
+          >
+            <a
+              href={previewUrlFor(row)}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={row.name}
+              style={{ color: themeStyles.textPrimary, fontSize: 13, flex: '1 1 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, cursor: 'pointer' }}
+              onClick={(ev) => handleFilePreviewClick(ev, previewUrlFor(row), row.name, row.size)}
+            >
+              {row.name}
+            </a>
+          </li>
+        );
+        const renderModalFolder = (folder: NodeFileFolder, depth: number): React.ReactNode[] => {
+          const isExpanded = expandedNodeFileFolders.has(folder.nodeId);
+          const sortedFolderFiles = sortAggregatedFiles(folder.files, nodeFileListSortBy, nodeFileListSortOrder);
+          const rows: React.ReactNode[] = [
+            <li
+              key={`folder-${folder.nodeId}`}
+              style={{
+                padding: '8px 0',
+                paddingLeft: `${12 + depth * 16}px`,
+                borderBottom: `1px solid ${themeStyles.borderSecondary}`,
+                color: themeStyles.textPrimary,
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: 'pointer',
+                userSelect: 'none',
+              }}
+              onClick={() => toggleNodeFileFolder(folder.nodeId)}
+            >
+              <span style={{ marginRight: 4, color: themeStyles.textTertiary, fontSize: 10 }}>{isExpanded ? '▼' : '▶'}</span>
+              <span style={{ marginRight: 4 }}>{isExpanded ? '📁' : '📂'}</span>
+              {folder.nodeText}
+            </li>,
+          ];
+          if (isExpanded) {
+            sortedFolderFiles.forEach((row, idx) => rows.push(renderModalFileRow(row, idx, depth + 1)));
+            folder.subfolders.forEach((sub) => rows.push(...renderModalFolder(sub, depth + 1)));
+          }
+          return rows;
+        };
         return (
           <div
             style={{
@@ -13402,58 +13591,12 @@ Reply with a JSON code block only for executable operations, using this shape:
                 {nodeFileListModal.nodeTitle || 'Node'} — {i18n('Files')}
               </div>
               <div style={{ padding: '12px', overflow: 'auto', flex: 1 }}>
-                {sortedFiles.length === 0 ? (
+                {allFiles.length === 0 ? (
                   <div style={{ color: themeStyles.textSecondary, fontSize: 13 }}>{i18n('No files. Use right-click → Upload file.')}</div>
                 ) : (
                   <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
-                    {sortedFiles.map((row, idx) => (
-                      <li
-                        key={`${row.sourceType}-${row.sourceNodeId}-${row.sourceCardId || ''}-${row.name}-${idx}`}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: '8px 0',
-                          borderBottom: `1px solid ${themeStyles.borderSecondary}`,
-                          gap: 8,
-                          flexWrap: 'nowrap',
-                          minWidth: 0,
-                        }}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          const deleteUrl = row.sourceType === 'self'
-                            ? filesListUrl
-                            : row.sourceType === 'card' && row.sourceCardId
-                              ? getBaseUrl(`/${docId}/card/${row.sourceCardId}/files`, docId)
-                              : getBaseUrl(`/${docId}/node/${row.sourceNodeId}/files?branch=${encodeURIComponent(branch)}`, docId);
-                          setFileListRowMenu({
-                            x: e.clientX,
-                            y: e.clientY,
-                            downloadUrl: downloadUrlFor(row),
-                            deleteUrl,
-                            filename: row.name,
-                          });
-                        }}
-                      >
-                        <a
-                          href={previewUrlFor(row)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title={row.name}
-                          style={{ color: themeStyles.textPrimary, fontSize: 13, flex: '1 1 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, cursor: 'pointer' }}
-                          onClick={(ev) => handleFilePreviewClick(ev, previewUrlFor(row), row.name, row.size)}
-                        >
-                          {row.name}
-                        </a>
-                        <span style={{ fontSize: 12, color: themeStyles.textSecondary, flex: '0 1 45%', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {row.sourceType === 'self' ? i18n('This node') : row.sourceType === 'node' ? (
-                            <button type="button" title={`${i18n('Node')}: ${row.sourceNodeText || row.sourceNodeId}`} style={{ background: 'none', border: 'none', padding: 0, color: themeStyles.accent, cursor: 'pointer', textDecoration: 'underline', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => { const t = fileTree.find((f) => f.type === 'node' && f.nodeId === row.sourceNodeId); if (t) { setNodeFileListModal(null); handleSelectFile(t); } }}>{i18n('Node')}: {row.sourceNodeText || row.sourceNodeId}</button>
-                          ) : (
-                            <button type="button" title={`${i18n('Card')}: ${row.sourceCardTitle || row.sourceCardId}`} style={{ background: 'none', border: 'none', padding: 0, color: themeStyles.accent, cursor: 'pointer', textDecoration: 'underline', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => { const t = fileTree.find((f) => f.type === 'card' && f.cardId === row.sourceCardId); if (t) { setNodeFileListModal(null); handleSelectFile(t); } }}>{i18n('Card')}: {row.sourceCardTitle || row.sourceCardId}</button>
-                          )}
-                        </span>
-                      </li>
-                    ))}
+                    {sortedSelfFiles.map((row, idx) => renderModalFileRow(row, idx, 0))}
+                    {subfolders.flatMap((folder) => renderModalFolder(folder, 0))}
                   </ul>
                 )}
               </div>
@@ -16169,7 +16312,9 @@ Reply with a JSON code block only for executable operations, using this shape:
                 const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
                 const node = base.nodes.find((n: BaseNode) => n.id === selectedFile!.nodeId);
                 const nodeId = selectedFile!.nodeId!;
-                const aggregatedFiles = getAggregatedFilesForNode(nodeId, base, nodeCardsMap);
+                const { selfFiles, subfolders } = buildNodeFileFolderTree(nodeId, base, nodeCardsMap);
+                const allFiles = flattenNodeFileFolderTree(selfFiles, subfolders);
+                const sortedSelfFiles = sortAggregatedFiles(selfFiles, nodeFileListSortBy, nodeFileListSortOrder);
                 const nodeFileDownloadUrl = (nid: string, filename: string) => getBaseUrl(`/${docId}/node/${nid}/file/${encodeURIComponent(filename)}?branch=${encodeURIComponent(branch)}`, docId);
                 const cardFileDownloadUrl = (cardId: string, filename: string) => getBaseUrl(`/${docId}/card/${cardId}/file/${encodeURIComponent(filename)}`, docId);
                 const downloadUrlFor = (row: AggregatedFileItem) => row.sourceType === 'card' && row.sourceCardId ? cardFileDownloadUrl(row.sourceCardId, row.name) : nodeFileDownloadUrl(row.sourceNodeId, row.name);
@@ -16188,24 +16333,10 @@ Reply with a JSON code block only for executable operations, using this shape:
                   const d = typeof v === 'string' ? new Date(v) : v;
                   return d.toLocaleString();
                 };
-                const toggleSort = (col: 'name' | 'size' | 'time' | 'source') => {
+                const toggleSort = (col: 'name' | 'size' | 'time') => {
                   if (nodeFileListSortBy === col) setNodeFileListSortOrder(o => o === 'asc' ? 'desc' : 'asc');
                   else { setNodeFileListSortBy(col); setNodeFileListSortOrder('asc'); }
                 };
-                const sourceSortKey = (row: AggregatedFileItem) =>
-                  row.sourceType === 'self' ? '0' : row.sourceType === 'node' ? `1${row.sourceNodeText || row.sourceNodeId}` : `2${row.sourceCardTitle || row.sourceCardId || ''}`;
-                const timeMs = (row: AggregatedFileItem) => {
-                  const v = row.lastModified;
-                  if (!v) return 0;
-                  return (typeof v === 'string' ? new Date(v) : v).getTime();
-                };
-                const sortedFiles = [...aggregatedFiles].sort((a, b) => {
-                  const ord = nodeFileListSortOrder === 'asc' ? 1 : -1;
-                  if (nodeFileListSortBy === 'name') return ord * (a.name.localeCompare(b.name, undefined, { numeric: true }));
-                  if (nodeFileListSortBy === 'size') return ord * (a.size - b.size);
-                  if (nodeFileListSortBy === 'time') return ord * (timeMs(a) - timeMs(b));
-                  return ord * sourceSortKey(a).localeCompare(sourceSortKey(b));
-                });
                 const thStyle = () => ({
                   textAlign: 'left' as const,
                   padding: '8px 12px',
@@ -16215,10 +16346,10 @@ Reply with a JSON code block only for executable operations, using this shape:
                   userSelect: 'none' as const,
                   whiteSpace: 'nowrap' as const,
                 });
-                const sortIndicator = (col: 'name' | 'size' | 'time' | 'source') =>
+                const sortIndicator = (col: 'name' | 'size' | 'time') =>
                   nodeFileListSortBy === col ? (nodeFileListSortOrder === 'asc' ? ' ↑' : ' ↓') : '';
-                const rowKey = (row: AggregatedFileItem, idx: number) => `${row.sourceType}-${row.sourceNodeId}-${row.sourceCardId || ''}-${row.name}-${idx}`;
-                const selectedRows = sortedFiles.filter((row, idx) => selectedFileListRowKeys.has(rowKey(row, idx)));
+                const rowKey = (row: AggregatedFileItem) => `${row.sourceType}-${row.sourceNodeId}-${row.sourceCardId || ''}-${row.name}`;
+                const selectedRows = allFiles.filter((row) => selectedFileListRowKeys.has(rowKey(row)));
                 const toggleEditMode = () => {
                   setNodeFileListEditMode((v) => !v);
                   setSelectedFileListRowKeys(new Set());
@@ -16232,8 +16363,8 @@ Reply with a JSON code block only for executable operations, using this shape:
                   });
                 };
                 const toggleSelectAll = () => {
-                  if (selectedFileListRowKeys.size >= sortedFiles.length) setSelectedFileListRowKeys(new Set());
-                  else setSelectedFileListRowKeys(new Set(sortedFiles.map((row, idx) => rowKey(row, idx))));
+                  if (selectedFileListRowKeys.size >= allFiles.length) setSelectedFileListRowKeys(new Set());
+                  else setSelectedFileListRowKeys(new Set(allFiles.map((row) => rowKey(row))));
                 };
                 const handleBatchDelete = async () => {
                   try {
@@ -16270,6 +16401,115 @@ Reply with a JSON code block only for executable operations, using this shape:
                   } catch (e: any) {
                     Notification.error(e?.message || i18n('Copy failed.'));
                   }
+                };
+                const tableColSpan = (nodeFileListEditMode ? 1 : 0) + 3 + (isMobile ? 1 : 0);
+                const renderFileRow = (row: AggregatedFileItem, depth: number) => {
+                  const deleteUrl = row.sourceType === 'self'
+                    ? filesListUrl
+                    : row.sourceType === 'card' && row.sourceCardId
+                      ? getBaseUrl(`/${docId}/card/${row.sourceCardId}/files`, docId)
+                      : getBaseUrl(`/${docId}/node/${row.sourceNodeId}/files?branch=${encodeURIComponent(branch)}`, docId);
+                  const key = rowKey(row);
+                  return (
+                    <tr
+                      key={key}
+                      style={{ borderBottom: `1px solid ${themeStyles.borderSecondary}` }}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setFileListRowMenu({
+                          x: e.clientX,
+                          y: e.clientY,
+                          downloadUrl: downloadUrlFor(row),
+                          deleteUrl,
+                          filename: row.name,
+                        });
+                      }}
+                    >
+                      {nodeFileListEditMode && (
+                        <td style={{ width: 36, minWidth: 36, padding: '8px 4px', textAlign: 'center', verticalAlign: 'middle' }} onClick={(e) => e.stopPropagation()}>
+                          <input type="checkbox" checked={selectedFileListRowKeys.has(key)} onChange={() => toggleRow(key)} />
+                        </td>
+                      )}
+                      <td style={{ padding: '8px 12px', paddingLeft: `${12 + depth * 16}px`, overflow: 'hidden', minWidth: 0 }}>
+                        <a
+                          href={previewUrlFor(row)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={row.name}
+                          style={{ color: themeStyles.accent, textDecoration: 'none', cursor: 'pointer', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                          onClick={(ev) => handleFilePreviewClick(ev, previewUrlFor(row), row.name, row.size)}
+                        >
+                          {row.name}
+                        </a>
+                      </td>
+                      {isMobile && (
+                        <td style={{ width: 44, minWidth: 44, padding: '8px 4px', verticalAlign: 'middle', textAlign: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                              setFileListRowMenu({
+                                x: Math.min(rect.left, window.innerWidth - 160),
+                                y: rect.bottom + 4,
+                                downloadUrl: downloadUrlFor(row),
+                                deleteUrl,
+                                filename: row.name,
+                              });
+                            }}
+                            style={{
+                              width: 36,
+                              height: 36,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              border: 'none',
+                              background: 'transparent',
+                              color: themeStyles.textSecondary,
+                              cursor: 'pointer',
+                              fontSize: '18px',
+                              borderRadius: '4px',
+                            }}
+                            aria-label={i18n('Actions')}
+                          >
+                            ⋯
+                          </button>
+                        </td>
+                      )}
+                      <td style={{ padding: '8px 12px', color: themeStyles.textSecondary, overflow: 'hidden', minWidth: 0 }}>{formatSize(row.size)}</td>
+                      <td style={{ padding: '8px 12px', color: themeStyles.textSecondary, overflow: 'hidden', minWidth: 0 }}>{formatTime(row.lastModified)}</td>
+                    </tr>
+                  );
+                };
+                const renderFolderRows = (folder: NodeFileFolder, depth: number): React.ReactNode[] => {
+                  const isExpanded = expandedNodeFileFolders.has(folder.nodeId);
+                  const sortedFolderFiles = sortAggregatedFiles(folder.files, nodeFileListSortBy, nodeFileListSortOrder);
+                  const rows: React.ReactNode[] = [
+                    <tr
+                      key={`folder-${folder.nodeId}`}
+                      style={{ borderBottom: `1px solid ${themeStyles.borderSecondary}`, cursor: 'pointer', userSelect: 'none' }}
+                      onClick={() => toggleNodeFileFolder(folder.nodeId)}
+                    >
+                      <td
+                        colSpan={tableColSpan}
+                        style={{
+                          padding: '8px 12px',
+                          paddingLeft: `${12 + depth * 16}px`,
+                          color: themeStyles.textPrimary,
+                          fontWeight: 500,
+                        }}
+                      >
+                        <span style={{ marginRight: 4, color: themeStyles.textTertiary, fontSize: 10 }}>{isExpanded ? '▼' : '▶'}</span>
+                        <span style={{ marginRight: 6 }}>{isExpanded ? '📁' : '📂'}</span>
+                        {folder.nodeText}
+                      </td>
+                    </tr>,
+                  ];
+                  if (isExpanded) {
+                    sortedFolderFiles.forEach((row) => rows.push(renderFileRow(row, depth + 1)));
+                    folder.subfolders.forEach((sub) => rows.push(...renderFolderRows(sub, depth + 1)));
+                  }
+                  return rows;
                 };
                 return (
                   <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -16332,7 +16572,7 @@ Reply with a JSON code block only for executable operations, using this shape:
                       </div>
                     </div>
                     <div style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
-                      {aggregatedFiles.length === 0 ? (
+                      {allFiles.length === 0 ? (
                         <div style={{ color: themeStyles.textSecondary, fontSize: '14px', textAlign: 'center', padding: '24px' }}>
                           {i18n('There are no files currently.')}
                         </div>
@@ -16342,123 +16582,18 @@ Reply with a JSON code block only for executable operations, using this shape:
                             <tr style={{ borderBottom: `2px solid ${themeStyles.borderPrimary}` }}>
                               {nodeFileListEditMode && (
                                 <th style={{ width: 36, minWidth: 36, padding: '8px 4px', textAlign: 'center', color: themeStyles.textSecondary }}>
-                                  <input type="checkbox" checked={sortedFiles.length > 0 && selectedFileListRowKeys.size >= sortedFiles.length} onChange={toggleSelectAll} title={i18n('Select all')} />
+                                  <input type="checkbox" checked={allFiles.length > 0 && selectedFileListRowKeys.size >= allFiles.length} onChange={toggleSelectAll} title={i18n('Select all')} />
                                 </th>
                               )}
-                              <th style={{ ...thStyle(), width: nodeFileListEditMode ? '40%' : '44%', minWidth: 0 }} onClick={() => toggleSort('name')} title={i18n('Sort')}>{i18n('Filename')}{sortIndicator('name')}</th>
-                              <th style={{ ...thStyle(), width: '12%', minWidth: 0 }} onClick={() => toggleSort('size')} title={i18n('Sort')}>{i18n('Size')}{sortIndicator('size')}</th>
-                              <th style={{ ...thStyle(), width: '22%', minWidth: 0 }} onClick={() => toggleSort('time')} title={i18n('Sort')}>{i18n('Time')}{sortIndicator('time')}</th>
-                              <th style={{ ...thStyle(), width: '22%', minWidth: 0 }} onClick={() => toggleSort('source')} title={i18n('Sort')}>{i18n('Source')}{sortIndicator('source')}</th>
+                              <th style={{ ...thStyle(), width: nodeFileListEditMode ? '55%' : '58%', minWidth: 0 }} onClick={() => toggleSort('name')} title={i18n('Sort')}>{i18n('Filename')}{sortIndicator('name')}</th>
+                              <th style={{ ...thStyle(), width: '14%', minWidth: 0 }} onClick={() => toggleSort('size')} title={i18n('Sort')}>{i18n('Size')}{sortIndicator('size')}</th>
+                              <th style={{ ...thStyle(), width: '28%', minWidth: 0 }} onClick={() => toggleSort('time')} title={i18n('Sort')}>{i18n('Time')}{sortIndicator('time')}</th>
                               {isMobile && <th style={{ width: 44, minWidth: 44, padding: '8px 4px', color: themeStyles.textSecondary }} aria-label={i18n('Actions')} />}
                             </tr>
                           </thead>
                           <tbody>
-                            {sortedFiles.map((row, idx) => {
-                              const deleteUrl = row.sourceType === 'self'
-                                ? filesListUrl
-                                : row.sourceType === 'card' && row.sourceCardId
-                                  ? getBaseUrl(`/${docId}/card/${row.sourceCardId}/files`, docId)
-                                  : getBaseUrl(`/${docId}/node/${row.sourceNodeId}/files?branch=${encodeURIComponent(branch)}`, docId);
-                              const key = rowKey(row, idx);
-                              return (
-                              <tr
-                                key={key}
-                                style={{ borderBottom: `1px solid ${themeStyles.borderSecondary}` }}
-                                onContextMenu={(e) => {
-                                  e.preventDefault();
-                                  setFileListRowMenu({
-                                    x: e.clientX,
-                                    y: e.clientY,
-                                    downloadUrl: downloadUrlFor(row),
-                                    deleteUrl,
-                                    filename: row.name,
-                                  });
-                                }}
-                              >
-                                {nodeFileListEditMode && (
-                                  <td style={{ width: 36, minWidth: 36, padding: '8px 4px', textAlign: 'center', verticalAlign: 'middle' }} onClick={(e) => e.stopPropagation()}>
-                                    <input type="checkbox" checked={selectedFileListRowKeys.has(key)} onChange={() => toggleRow(key)} />
-                                  </td>
-                                )}
-                                <td style={{ padding: '8px 12px', overflow: 'hidden', minWidth: 0 }}>
-                                  <a
-                                    href={previewUrlFor(row)}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    title={row.name}
-                                    style={{ color: themeStyles.accent, textDecoration: 'none', cursor: 'pointer', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                                    onClick={(ev) => handleFilePreviewClick(ev, previewUrlFor(row), row.name, row.size)}
-                                  >
-                                    {row.name}
-                                  </a>
-                                </td>
-                                {isMobile && (
-                                  <td style={{ width: 44, minWidth: 44, padding: '8px 4px', verticalAlign: 'middle', textAlign: 'center' }}>
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                                        setFileListRowMenu({
-                                          x: Math.min(rect.left, window.innerWidth - 160),
-                                          y: rect.bottom + 4,
-                                          downloadUrl: downloadUrlFor(row),
-                                          deleteUrl,
-                                          filename: row.name,
-                                        });
-                                      }}
-                                      style={{
-                                        width: 36,
-                                        height: 36,
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        border: 'none',
-                                        background: 'transparent',
-                                        color: themeStyles.textSecondary,
-                                        cursor: 'pointer',
-                                        fontSize: '18px',
-                                        borderRadius: '4px',
-                                      }}
-                                      aria-label={i18n('Actions')}
-                                    >
-                                      ⋯
-                                    </button>
-                                  </td>
-                                )}
-                                <td style={{ padding: '8px 12px', color: themeStyles.textSecondary, overflow: 'hidden', minWidth: 0 }}>{formatSize(row.size)}</td>
-                                <td style={{ padding: '8px 12px', color: themeStyles.textSecondary, overflow: 'hidden', minWidth: 0 }}>{formatTime(row.lastModified)}</td>
-                                <td style={{ padding: '8px 12px', color: themeStyles.textSecondary, fontSize: '12px', overflow: 'hidden', minWidth: 0 }}>
-                                  {row.sourceType === 'self' ? (
-                                    <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i18n('This node')}</span>
-                                  ) : row.sourceType === 'node' ? (
-                                    <button
-                                      type="button"
-                                      title={`${i18n('Node')}: ${row.sourceNodeText || row.sourceNodeId}`}
-                                      style={{ background: 'none', border: 'none', padding: 0, color: themeStyles.accent, cursor: 'pointer', textDecoration: 'underline', fontSize: '12px', display: 'block', width: '100%', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}
-                                      onClick={() => {
-                                        const target = fileTree.find((f) => f.type === 'node' && f.nodeId === row.sourceNodeId);
-                                        if (target) handleSelectFile(target);
-                                      }}
-                                    >
-                                      {i18n('Node')}: {row.sourceNodeText || row.sourceNodeId}
-                                    </button>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      title={`${i18n('Card')}: ${row.sourceCardTitle || row.sourceCardId}`}
-                                      style={{ background: 'none', border: 'none', padding: 0, color: themeStyles.accent, cursor: 'pointer', textDecoration: 'underline', fontSize: '12px', display: 'block', width: '100%', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}
-                                      onClick={() => {
-                                        const target = fileTree.find((f) => f.type === 'card' && f.cardId === row.sourceCardId);
-                                        if (target) handleSelectFile(target);
-                                      }}
-                                    >
-                                      {i18n('Card')}: {row.sourceCardTitle || row.sourceCardId}
-                                    </button>
-                                  )}
-                                </td>
-                              </tr>
-                            ); })}
+                            {sortedSelfFiles.map((row) => renderFileRow(row, 0))}
+                            {subfolders.flatMap((folder) => renderFolderRows(folder, 0))}
                           </tbody>
                         </table>
                       )}
