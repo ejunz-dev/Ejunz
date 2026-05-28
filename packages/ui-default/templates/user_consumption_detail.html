@@ -15,7 +15,7 @@
         <h1 class="section__title">
           <a href="{{ url('user_detail', uid=udoc._id) }}">{{ udoc.uname }}</a>
           <span style="margin: 0 10px;">/</span>
-          <a href="{% if targetDomain._id != 'system' %}{{ url('homepage', domainId=targetDomain._id) }}{% else %}{{ url('homepage') }}{% endif %}">{{ targetDomain.name }}</a>
+          <a href="{% if targetDomain._id != 'system' %}{{ url('homepage', domainId=targetDomain._id) }}{% else %}/{% endif %}">{{ targetDomain.name }}</a>
           <span style="margin: 0 10px;">/</span>
           {{ date }}
         </h1>
