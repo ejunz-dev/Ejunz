@@ -193,6 +193,25 @@ async function previewOffice(link, src) {
   if (action === 'download') window.open(link);
 }
 
+function previewLinkWithNoDisposition(link: string) {
+  return link.includes('noDisposition=1')
+    ? link
+    : `${link}${link.includes('?') ? '&' : '?'}noDisposition=1`;
+}
+
+function previewLinkForNewTab(link: string) {
+  const withPreview = previewLinkWithNoDisposition(link);
+  return withPreview.includes('view=1')
+    ? withPreview
+    : `${withPreview}${withPreview.includes('?') ? '&' : '?'}view=1`;
+}
+
+/** Open file preview in a new tab with filename as tab title and a real page URL. */
+export function openFilePreviewInNewTab(link: string, filename: string) {
+  if (!link || !filename) return;
+  window.open(previewLinkForNewTab(link), '_blank');
+}
+
 /** Preview by link/filename/filesize (e.g. from React / base_editor). Same preview behavior as /file page (video, image, pdf, office); no edit/save. */
 export async function previewFileByUrl(link: string, filename: string, filesize = 0) {
   if (!link || !filename) return null;
@@ -302,5 +321,5 @@ const dataPreviewPage = new AutoloadPage('dataPreview', () => {
   $(document).on('click', '[data-preview]', previewFile);
 });
 
-window.Ejunz.components.preview = { startEdit, previewFile, previewFileByUrl, previewImage };
+window.Ejunz.components.preview = { startEdit, previewFile, previewFileByUrl, previewImage, openFilePreviewInNewTab };
 export default dataPreviewPage;

@@ -238,13 +238,15 @@ class RemoteStorageService {
         };
     }
 
-    async signDownloadLink(target: string, filename?: string, noExpire = false, useAlternativeEndpointFor?: 'user' | 'judge'): Promise<string> {
+    async signDownloadLink(target: string, filename?: string, noExpire = false, useAlternativeEndpointFor?: 'user' | 'judge', inline = false, _viewPage = false): Promise<string> {
         target = convertPath(target);
         const client = this.alternatives[useAlternativeEndpointFor] || this.client;
         const url = await getSignedUrl(client, new GetObjectCommand({
             Bucket: this.bucket,
             Key: target,
-            ResponseContentDisposition: filename ? `attachment; filename="${encodeRFC5987ValueChars(filename)}"` : '',
+            ResponseContentDisposition: filename
+                ? `${inline ? 'inline' : 'attachment'}; filename="${encodeRFC5987ValueChars(filename)}"`
+                : '',
         }), {
             // aliyun s3 will reject download if expires >= 7 days
             expiresIn: noExpire ? 24 * 60 * 60 * 7 - 1 : 30 * 60,
@@ -351,14 +353,19 @@ class LocalStorageService {
         };
     }
 
-    async signDownloadLink(target: string, filename = '', noExpire = false, useAlternativeEndpointFor?: 'user' | 'judge'): Promise<string> {
+    async signDownloadLink(target: string, filename = '', noExpire = false, useAlternativeEndpointFor?: 'user' | 'judge', inline = false, viewPage = false): Promise<string> {
         target = convertPath(target);
-        const url = new URL('https://localhost/storage');
-        url.searchParams.set('target', target);
-        if (filename) url.searchParams.set('filename', filename);
         const expire = (Date.now() + (noExpire ? 7 * 24 * 3600 : 600) * 1000).toString();
+        const secret = md5(`${target}/${expire}/${this.config.secret}`);
+        const url = inline && viewPage && filename
+            ? new URL(`https://localhost/file/view/${encodeURIComponent(filename)}`)
+            : filename
+                ? new URL(`https://localhost/storage/${encodeURIComponent(filename)}`)
+                : new URL('https://localhost/storage');
+        url.searchParams.set('target', target);
         url.searchParams.set('expire', expire);
-        url.searchParams.set('secret', md5(`${target}/${expire}/${this.config.secret}`));
+        url.searchParams.set('secret', secret);
+        if (inline && !viewPage) url.searchParams.set('inline', '1');
         if (useAlternativeEndpointFor) return this.replaceWithAlternativeUrlFor[useAlternativeEndpointFor](url.toString());
         return `/${url.toString().split('localhost/')[1]}`;
     }
