@@ -12,10 +12,46 @@ import storage from '../model/storage';
 import system from '../model/system';
 import user, { User } from '../model/user';
 import {
-    Handler, param, post, requireSudo, Types,
+    Handler, param, post, requireSudo, route, Types,
 } from '../service/server';
 import { encodeRFC5987ValueChars } from '../service/storage';
 import { sortFiles } from '../utils';
+
+function buildSignedStorageUrl(filename: string, target: string, expire: number | string, secret: string, inline = true) {
+    const qs = new URLSearchParams({
+        target,
+        expire: String(expire),
+        secret,
+    });
+    if (inline) qs.set('inline', '1');
+    return `/storage/${encodeURIComponent(filename)}?${qs.toString()}`;
+}
+
+function escapeHtml(text: string) {
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function buildInlineFileViewHtml(filename: string, storageUrl: string) {
+    const title = escapeHtml(filename);
+    const src = escapeHtml(storageUrl);
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    let body = '';
+    if (['png', 'jpeg', 'jpg', 'gif', 'webp', 'bmp', 'svg', 'ico'].includes(ext)) {
+        body = `<style>body{margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#111}img{max-width:100%;max-height:100vh;object-fit:contain}</style><img src="${src}" alt="">`;
+    } else if (ext === 'pdf') {
+        body = `<style>html,body{margin:0;height:100%}iframe{width:100%;height:100%;border:0}</style><iframe src="${src}"></iframe>`;
+    } else if (['mp4', 'webm', 'ogg'].includes(ext)) {
+        const type = ext === 'ogg' ? 'video/ogg' : ext === 'webm' ? 'video/webm' : 'video/mp4';
+        body = `<style>body{margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#111}video{max-width:100%;max-height:100vh}</style><video controls><source src="${src}" type="${type}"></video>`;
+    } else {
+        body = `<style>html,body{margin:0;height:100%}iframe{width:100%;height:100%;border:0}</style><iframe src="${src}"></iframe>`;
+    }
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title></head><body>${body}</body></html>`;
+}
 
 class SwitchLanguageHandler extends Handler {
     noCheckPermView = true;
@@ -103,7 +139,8 @@ export class FSDownloadHandler extends Handler {
     @param('uid', Types.Int)
     @param('filename', Types.Filename)
     @param('noDisposition', Types.Boolean)
-    async get(domainId: string, uid: number, filename: string, noDisposition = false) {
+    @param('view', Types.Boolean)
+    async get(domainId: string, uid: number, filename: string, noDisposition = false, view = false) {
         const target = `user/${uid}/${filename}`;
         const file = await storage.getMeta(target);
         await oplog.log(this, 'download.file.user', {
@@ -112,7 +149,7 @@ export class FSDownloadHandler extends Handler {
         });
         try {
             this.response.redirect = await storage.signDownloadLink(
-                target, noDisposition ? undefined : filename, false, 'user',
+                target, filename, false, 'user', noDisposition, noDisposition && view,
             );
             this.response.addHeader('Cache-Control', 'public');
         } catch (e) {
@@ -126,18 +163,39 @@ export class StorageHandler extends Handler {
     noCheckPermView = true;
     notUsage = true;
 
+    @route('filename', Types.Filename, true)
     @param('target', Types.Name)
-    @param('filename', Types.Filename, true)
+    @param('inline', Types.Boolean, true)
     @param('expire', Types.UnsignedInt)
     @param('secret', Types.String)
-    async get({ }, target: string, filename = '', expire: number, secret: string) {
+    async get({ }, filename = '', target: string, inline = false, expire: number, secret: string) {
         if (expire < Date.now()) throw new AccessDeniedError();
         if (!(await this.ctx.get('storage')?.isLinkValid?.(`${target}/${expire}/${secret}`))) throw new AccessDeniedError();
         this.response.body = await storage.get(target);
         this.response.type = (target.endsWith('.out') || target.endsWith('.ans'))
             ? 'text/plain'
             : lookup(target) || 'application/octet-stream';
-        if (filename) this.response.disposition = `attachment; filename="${encodeRFC5987ValueChars(filename)}"`;
+        if (filename) {
+            const disposition = inline ? 'inline' : 'attachment';
+            this.response.disposition = `${disposition}; filename="${encodeRFC5987ValueChars(filename)}"`;
+        }
+    }
+}
+
+export class FileViewHandler extends Handler {
+    noCheckPermView = true;
+    notUsage = true;
+
+    @route('filename', Types.Filename)
+    @param('target', Types.Name)
+    @param('expire', Types.UnsignedInt)
+    @param('secret', Types.String)
+    async get({ }, filename: string, target: string, expire: number, secret: string) {
+        if (expire < Date.now()) throw new AccessDeniedError();
+        if (!(await this.ctx.get('storage')?.isLinkValid?.(`${target}/${expire}/${secret}`))) throw new AccessDeniedError();
+        const storageUrl = buildSignedStorageUrl(filename, target, expire, secret);
+        this.response.type = 'text/html';
+        this.response.body = buildInlineFileViewHtml(filename, storageUrl);
     }
 }
 
@@ -169,7 +227,9 @@ class HeapSnapshotHandler extends Handler {
 export async function apply(ctx: Context) {
     ctx.Route('switch_language', '/language/:lang', SwitchLanguageHandler);
     ctx.Route('home_files', '/file', FilesHandler);
+    ctx.Route('file_view', '/file/view/:filename', FileViewHandler);
     ctx.Route('fs_download', '/file/:uid/:filename', FSDownloadHandler);
+    ctx.Route('storage_named', '/storage/:filename', StorageHandler);
     ctx.Route('storage', '/storage', StorageHandler);
     ctx.Route('switch_account', '/account/:uid', SwitchAccountHandler, PRIV.PRIV_EDIT_SYSTEM);
     if (process.argv.includes('--enable-heap-snapshot')) {
