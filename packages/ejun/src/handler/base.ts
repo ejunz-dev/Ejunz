@@ -4117,7 +4117,8 @@ class BaseCardFileDownloadHandler extends Handler {
     @param('cardId', Types.ObjectId, true)
     @param('filename', Types.Filename)
     @param('noDisposition', Types.Boolean)
-    async get(domainId: string, docId: number, cardId: ObjectId, filename: string, noDisposition = false) {
+    @param('view', Types.Boolean)
+    async get(domainId: string, docId: number, cardId: ObjectId, filename: string, noDisposition = false, view = false) {
         const base = await BaseModel.get(domainId, docId);
         if (!base) throw new NotFoundError('Base not found');
         const card = await CardModel.get(domainId, cardId);
@@ -4127,7 +4128,7 @@ class BaseCardFileDownloadHandler extends Handler {
         if (!file) throw new NotFoundError(filename);
         try {
             this.response.redirect = await storage.signDownloadLink(
-                target, noDisposition ? undefined : filename, false, 'user',
+                target, filename, false, 'user', noDisposition, noDisposition && view,
             );
             this.response.addHeader('Cache-Control', 'public');
         } catch (e) {
@@ -4385,8 +4386,9 @@ class BaseNodeFileDownloadHandler extends Handler {
     @param('nodeId', Types.String, true)
     @param('filename', Types.Filename)
     @param('noDisposition', Types.Boolean)
+    @param('view', Types.Boolean)
     @param('branch', Types.String, true)
-    async get(domainId: string, docId: number, nodeId: string, filename: string, noDisposition = false, branch?: string) {
+    async get(domainId: string, docId: number, nodeId: string, filename: string, noDisposition = false, view = false, branch?: string) {
         const base = await BaseModel.get(domainId, docId);
         if (!base) throw new NotFoundError('Base not found');
         const branchName = branch || (base as any).currentBranch || 'main';
@@ -4398,7 +4400,7 @@ class BaseNodeFileDownloadHandler extends Handler {
         if (!file) throw new NotFoundError(filename);
         try {
             this.response.redirect = await storage.signDownloadLink(
-                target, noDisposition ? undefined : filename, false, 'user',
+                target, filename, false, 'user', noDisposition, noDisposition && view,
             );
             this.response.addHeader('Cache-Control', 'public');
         } catch (e) {

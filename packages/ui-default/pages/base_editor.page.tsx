@@ -3658,10 +3658,22 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   }, [basePath, docId, refetchEditorData]);
 
   const handleFilePreviewClick = useCallback(async (e: React.MouseEvent<HTMLAnchorElement>, link: string, filename: string, size: number) => {
-    if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey) {
+      e.preventDefault();
+      const { openFilePreviewInNewTab } = await import('vj/components/preview/preview.page');
+      openFilePreviewInNewTab(link, filename);
+      return;
+    }
     e.preventDefault();
     const { previewFileByUrl } = await import('vj/components/preview/preview.page');
     await previewFileByUrl(link, filename, size);
+  }, []);
+
+  const handleFilePreviewAuxClick = useCallback(async (e: React.MouseEvent<HTMLAnchorElement>, link: string, filename: string) => {
+    if (e.button !== 1) return;
+    e.preventDefault();
+    const { openFilePreviewInNewTab } = await import('vj/components/preview/preview.page');
+    openFilePreviewInNewTab(link, filename);
   }, []);
 
   const dragLeaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -13688,12 +13700,13 @@ Reply with a JSON code block only for executable operations, using this shape:
                         }}
                       >
                         <a
-                          href={previewUrl(f.name)}
+                          href={`${previewUrl(f.name)}&view=1`}
                           target="_blank"
                           rel="noopener noreferrer"
                           title={f.name}
                           style={{ color: themeStyles.textPrimary, fontSize: 13, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}
                           onClick={(ev) => handleFilePreviewClick(ev, previewUrl(f.name), f.name, f.size || 0)}
+                          onAuxClick={(ev) => handleFilePreviewAuxClick(ev, previewUrl(f.name), f.name)}
                         >
                           {f.name}
                         </a>
@@ -13771,12 +13784,13 @@ Reply with a JSON code block only for executable operations, using this shape:
             }}
           >
             <a
-              href={previewUrlFor(row)}
+              href={`${previewUrlFor(row)}&view=1`}
               target="_blank"
               rel="noopener noreferrer"
               title={row.name}
               style={{ color: themeStyles.textPrimary, fontSize: 13, flex: '1 1 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, cursor: 'pointer' }}
               onClick={(ev) => handleFilePreviewClick(ev, previewUrlFor(row), row.name, row.size)}
+              onAuxClick={(ev) => handleFilePreviewAuxClick(ev, previewUrlFor(row), row.name)}
             >
               {row.name}
             </a>
@@ -16783,13 +16797,14 @@ Reply with a JSON code block only for executable operations, using this shape:
                       )}
                       <td style={{ padding: '8px 12px', paddingLeft: `${12 + depth * 16}px`, overflow: 'hidden', minWidth: 0 }}>
                         <a
-                          href={previewUrlFor(row)}
+                          href={`${previewUrlFor(row)}&view=1`}
                           target="_blank"
                           rel="noopener noreferrer"
                           draggable={false}
                           title={row.name}
                           style={{ color: themeStyles.accent, textDecoration: 'none', cursor: 'pointer', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                           onClick={(ev) => handleFilePreviewClick(ev, previewUrlFor(row), row.name, row.size)}
+                          onAuxClick={(ev) => handleFilePreviewAuxClick(ev, previewUrlFor(row), row.name)}
                         >
                           {row.name}
                         </a>

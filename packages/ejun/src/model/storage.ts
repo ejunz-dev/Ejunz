@@ -115,12 +115,12 @@ export class StorageModel {
         };
     }
 
-    static async signDownloadLink(target: string, filename?: string, noExpire = false, useAlternativeEndpointFor?: 'user' | 'judge') {
+    static async signDownloadLink(target: string, filename?: string, noExpire = false, useAlternativeEndpointFor?: 'user' | 'judge', inline = false, viewPage = false) {
         const res = await StorageModel.coll.findOneAndUpdate(
             { path: target, autoDelete: null },
             { $set: { lastUsage: new Date() } },
         );
-        return await storage.signDownloadLink(res?.link || res?._id || target, filename, noExpire, useAlternativeEndpointFor);
+        return await storage.signDownloadLink(res?.link || res?._id || target, filename, noExpire, useAlternativeEndpointFor, inline, viewPage);
     }
 
     static async move(src: string, dst: string) {
