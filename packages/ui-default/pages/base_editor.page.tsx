@@ -2602,6 +2602,7 @@ function buildChildNodeFileFolder(
   nodeCardsMap: Record<string, Card[]>,
 ): NodeFileFolder | null {
   const node = base.nodes.find((n) => n.id === nodeId);
+  if (!node) return null;
   const files = collectDirectNodeFiles(nodeId, viewRootId, base, nodeCardsMap);
   const childIds = base.edges.filter((e) => e.source === nodeId).map((e) => e.target);
   const subfolders = childIds
@@ -2612,11 +2613,10 @@ function buildChildNodeFileFolder(
     const ob = base.nodes.find((n) => n.id === b.nodeId)?.order || 0;
     return oa - ob;
   });
-  if (files.length === 0 && subfolders.length === 0) return null;
   return {
     nodeId,
-    nodeText: node?.text || nodeId,
-    order: node?.order || 0,
+    nodeText: node.text || nodeId,
+    order: node.order || 0,
     files,
     subfolders,
   };
@@ -13731,6 +13731,7 @@ Reply with a JSON code block only for executable operations, using this shape:
         const { selfFiles, subfolders } = buildNodeFileFolderTree(nodeFileListModal.nodeId, base, nodeCardsMap);
         const allFiles = flattenNodeFileFolderTree(selfFiles, subfolders);
         const sortedSelfFiles = sortAggregatedFiles(selfFiles, nodeFileListSortBy, nodeFileListSortOrder);
+        const showNodeFileTree = allFiles.length > 0 || subfolders.length > 0;
         const nodeFileDownloadUrl = (nid: string, filename: string) => getBaseUrl(`/${docId}/node/${nid}/file/${encodeURIComponent(filename)}?branch=${encodeURIComponent(branch)}`, docId);
         const cardFileDownloadUrl = (cardId: string, filename: string) => getBaseUrl(`/${docId}/card/${cardId}/file/${encodeURIComponent(filename)}`, docId);
         const downloadUrlFor = (row: AggregatedFileItem) => row.sourceType === 'card' && row.sourceCardId ? cardFileDownloadUrl(row.sourceCardId, row.name) : nodeFileDownloadUrl(row.sourceNodeId, row.name);
@@ -13845,13 +13846,13 @@ Reply with a JSON code block only for executable operations, using this shape:
                 {nodeFileListModal.nodeTitle || 'Node'} — {i18n('Files')}
               </div>
               <div style={{ padding: '12px', overflow: 'auto', flex: 1 }}>
-                {allFiles.length === 0 ? (
-                  <div style={{ color: themeStyles.textSecondary, fontSize: 13 }}>{i18n('No files. Use right-click → Upload file.')}</div>
-                ) : (
+                {showNodeFileTree ? (
                   <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
                     {sortedSelfFiles.map((row, idx) => renderModalFileRow(row, idx, 0))}
                     {subfolders.flatMap((folder) => renderModalFolder(folder, 0))}
                   </ul>
+                ) : (
+                  <div style={{ color: themeStyles.textSecondary, fontSize: 13 }}>{i18n('No files. Use right-click → Upload file.')}</div>
                 )}
               </div>
               <div style={{ padding: '8px 16px', borderTop: `1px solid ${themeStyles.borderSecondary}`, textAlign: 'right' }}>
@@ -16572,6 +16573,7 @@ Reply with a JSON code block only for executable operations, using this shape:
                 const { selfFiles, subfolders } = buildNodeFileFolderTree(nodeId, base, nodeCardsMap);
                 const allFiles = flattenNodeFileFolderTree(selfFiles, subfolders);
                 const sortedSelfFiles = sortAggregatedFiles(selfFiles, nodeFileListSortBy, nodeFileListSortOrder);
+                const showNodeFileTree = allFiles.length > 0 || subfolders.length > 0 || (isRootView && nodeFileListEditMode);
                 const nodeFileDownloadUrl = (nid: string, filename: string) => getBaseUrl(`/${docId}/node/${nid}/file/${encodeURIComponent(filename)}?branch=${encodeURIComponent(branch)}`, docId);
                 const cardFileDownloadUrl = (cardId: string, filename: string) => getBaseUrl(`/${docId}/card/${cardId}/file/${encodeURIComponent(filename)}`, docId);
                 const downloadUrlFor = (row: AggregatedFileItem) => row.sourceType === 'card' && row.sourceCardId ? cardFileDownloadUrl(row.sourceCardId, row.name) : nodeFileDownloadUrl(row.sourceNodeId, row.name);
@@ -16928,11 +16930,7 @@ Reply with a JSON code block only for executable operations, using this shape:
                       </div>
                     </div>
                     <div style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
-                      {allFiles.length === 0 ? (
-                        <div style={{ color: themeStyles.textSecondary, fontSize: '14px', textAlign: 'center', padding: '24px' }}>
-                          {i18n('There are no files currently.')}
-                        </div>
-                      ) : (
+                      {showNodeFileTree ? (
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', tableLayout: 'fixed' }}>
                           <thead>
                             <tr style={{ borderBottom: `2px solid ${themeStyles.borderPrimary}` }}>
@@ -16995,6 +16993,10 @@ Reply with a JSON code block only for executable operations, using this shape:
                             )}
                           </tbody>
                         </table>
+                      ) : (
+                        <div style={{ color: themeStyles.textSecondary, fontSize: '14px', textAlign: 'center', padding: '24px' }}>
+                          {i18n('There are no files currently.')}
+                        </div>
                       )}
                     </div>
                   </div>
