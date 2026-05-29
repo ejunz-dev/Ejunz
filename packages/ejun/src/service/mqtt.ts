@@ -5,6 +5,7 @@ import { Logger } from '../logger';
 import { ObjectId } from 'mongodb';
 import NodeModel, { NodeDeviceModel } from '../model/node';
 import EdgeModel from '../model/edge';
+import EdgeTokenModel from '../model/edge_token';
 import * as document from '../model/document';
 import { Duplex } from 'stream';
 import type { EdgeBridgeEnvelope, Disposable } from './bus';
@@ -313,6 +314,60 @@ export class MqttService extends Service {
         };
     }
 
+    private normalizeSwitchState(data: Record<string, any>): Record<string, any> {
+        const normalizedState = { ...data };
+
+        if (normalizedState.state !== undefined) {
+            const stateValue = normalizedState.state;
+            if (typeof stateValue === 'string') {
+                normalizedState.on = /^(ON|on|ONLINE|online|true|1)$/i.test(stateValue);
+            } else if (typeof stateValue === 'boolean') {
+                normalizedState.on = stateValue;
+            } else if (typeof stateValue === 'number') {
+                normalizedState.on = stateValue > 0;
+            }
+        }
+
+        if (normalizedState.power !== undefined && normalizedState.on === undefined) {
+            const powerValue = normalizedState.power;
+            if (typeof powerValue === 'string') {
+                normalizedState.on = /^(ON|on|ONLINE|online|true|1)$/i.test(powerValue);
+            } else if (typeof powerValue === 'boolean') {
+                normalizedState.on = powerValue;
+            } else if (typeof powerValue === 'number') {
+                normalizedState.on = powerValue > 0;
+            }
+        }
+
+        return normalizedState;
+    }
+
+    private async upsertDeviceState(
+        nodeId: ObjectId,
+        domainId: string,
+        deviceId: string,
+        state: Record<string, any>,
+        type = 'unknown',
+        capabilities: string[] = [],
+    ) {
+        let device = await NodeDeviceModel.getByDeviceId(nodeId, deviceId);
+        if (!device) {
+            device = await NodeDeviceModel.add({
+                nodeId,
+                domainId,
+                deviceId,
+                name: deviceId,
+                type,
+                state,
+                capabilities,
+            });
+            logger.info('Auto-registered device %s for node %s via MQTT state update', deviceId, nodeId);
+        } else {
+            await NodeDeviceModel.updateState(device._id, state);
+        }
+        (this.ctx.emit as any)('node/device/update', nodeId, deviceId, state);
+    }
+
     private async handleNodeMessage(nodeId: ObjectId, topic: string, payload: string) {
         try {
             const node = await NodeModel.get(nodeId);
@@ -390,51 +445,29 @@ export class MqttService extends Service {
                 const deviceId = topicParts[3];
                 logger.debug('Processing device state update for node %s, deviceId: %s', nodeId, deviceId);
                 if (deviceId) {
-                    // Normalize state: convert common state fields to standard format
-                    const normalizedState = { ...data };
-                    
-                    // Convert state field (e.g., "ON"/"OFF") to boolean on
-                    if (normalizedState.state !== undefined) {
-                        const stateValue = normalizedState.state;
-                        if (typeof stateValue === 'string') {
-                            normalizedState.on = /^(ON|on|ONLINE|online|true|1)$/i.test(stateValue);
-                        } else if (typeof stateValue === 'boolean') {
-                            normalizedState.on = stateValue;
-                        } else if (typeof stateValue === 'number') {
-                            normalizedState.on = stateValue > 0;
+                    const endpointStateKeys = Object.keys(data).filter(k => /^state_l\d+$/i.test(k));
+                    if (endpointStateKeys.length > 0) {
+                        for (const key of endpointStateKeys) {
+                            const endpoint = key.replace(/^state_/i, '');
+                            const endpointDeviceId = `${deviceId}_${endpoint}`;
+                            const normalizedState = this.normalizeSwitchState({ state: data[key] });
+                            await this.upsertDeviceState(
+                                nodeId,
+                                domainId,
+                                endpointDeviceId,
+                                normalizedState,
+                                'switch',
+                                ['on', 'off', 'switch'],
+                            );
                         }
-                    }
-                    
-                    // Convert power field to on if on is not defined
-                    if (normalizedState.power !== undefined && normalizedState.on === undefined) {
-                        const powerValue = normalizedState.power;
-                        if (typeof powerValue === 'string') {
-                            normalizedState.on = /^(ON|on|ONLINE|online|true|1)$/i.test(powerValue);
-                        } else if (typeof powerValue === 'boolean') {
-                            normalizedState.on = powerValue;
-                        } else if (typeof powerValue === 'number') {
-                            normalizedState.on = powerValue > 0;
-                        }
-                    }
-                    
-                    let device = await NodeDeviceModel.getByDeviceId(nodeId, deviceId);
-                    if (!device) {
-                        device = await NodeDeviceModel.add({
-                            nodeId,
-                            domainId,
-                            deviceId,
-                            name: deviceId,
-                            type: 'unknown',
-                            state: normalizedState,
-                            capabilities: [],
-                        });
-                        logger.info('Auto-registered device %s for node %s via MQTT state update', deviceId, nodeId);
+                        logger.debug('Updated multi-endpoint state for device %s via MQTT', deviceId);
+                        (this.ctx.emit as any)('node/devices/update', nodeId);
                     } else {
-                        await NodeDeviceModel.updateState(device._id, normalizedState);
+                        const normalizedState = this.normalizeSwitchState(data);
+                        await this.upsertDeviceState(nodeId, domainId, deviceId, normalizedState);
+                        logger.debug('Updated state for device %s via MQTT', deviceId);
+                        (this.ctx.emit as any)('node/devices/update', nodeId);
                     }
-                    logger.debug('Updated state for device %s via MQTT', deviceId);
-                    (this.ctx.emit as any)('node/device/update', nodeId, deviceId, normalizedState);
-                    (this.ctx.emit as any)('node/devices/update', nodeId);
                 }
             }
             else if (topicParts.length >= 5 && topicParts[0] === 'node' && topicParts[2] === 'devices' && topicParts[4] === 'attributes') {
@@ -674,7 +707,7 @@ export class MqttService extends Service {
             return;
         }
 
-        const domainId = envelope.domainId;
+        const domainId = await this.resolveDomainIdForToken(token, envelope.domainId);
         if (!domainId) {
             logger.warn('MQTT bridge inbound missing domainId: token=%s', token);
             return;
@@ -734,6 +767,27 @@ export class MqttService extends Service {
 
         logger.info('MQTT bridge inbound message: token=%s, topic=%s, trace=%s', token, normalizedTopic, envelope.traceId);
         await this.handleNodeMessage(nodeDocId, normalizedTopic, payloadString);
+    }
+
+    private async resolveDomainIdForToken(token: string, envelopeDomainId?: string): Promise<string | null> {
+        if (token) {
+            try {
+                const tokenDoc = await EdgeTokenModel.getByToken(token);
+                if (tokenDoc?.domainId) {
+                    if (envelopeDomainId && envelopeDomainId !== tokenDoc.domainId) {
+                        logger.debug(
+                            'MQTT bridge using token domainId=%s instead of envelope domainId=%s',
+                            tokenDoc.domainId,
+                            envelopeDomainId,
+                        );
+                    }
+                    return tokenDoc.domainId;
+                }
+            } catch (error) {
+                logger.debug('MQTT bridge failed to resolve domain from token: %s', (error as Error).message);
+            }
+        }
+        return envelopeDomainId || null;
     }
 
     private async getNodeDocId(domainId: string, nodeNumericId: number): Promise<ObjectId | null> {
