@@ -4,7 +4,7 @@ import { Context } from '../context';
 import { Logger } from '../logger';
 import EdgeModel from '../model/edge';
 import ToolModel from '../model/tool';
-import NodeModel from '../model/node';
+import NodeModel, { NodeDeviceModel } from '../model/node';
 import ClientModel from '../model/client';
 import EdgeTokenModel from '../model/edge_token';
 import { PRIV } from '../model/builtin';
@@ -348,7 +348,7 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
                 msg,
                 this.token,
                 'inbound',
-                this.domain._id,
+                this.tokenDomainId!,
             );
             // Auto-fill nodeId from edge association if missing
             await this.autoFillNodeIdFromEdge(envelope);
@@ -372,7 +372,7 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
                 },
                 this.token,
                 'inbound',
-                this.domain._id,
+                this.tokenDomainId!,
             );
             // Auto-fill nodeId from edge association if missing
             await this.autoFillNodeIdFromEdge(normalized);
@@ -422,6 +422,8 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
                 validTools,
                 edge.owner,
             );
+
+            await this.syncDevicesFromTools(tools);
             
             this.send({ type: 'tools/synced', count: validTools.length });
             
@@ -432,6 +434,41 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
         } catch (error: any) {
             logger.error('Failed to sync tools: %s', error.message);
             this.send({ type: 'error', message: error.message });
+        }
+    }
+
+    private async syncDevicesFromTools(tools: any[]) {
+        if (!this.tokenDomainId || !this.token) return;
+
+        try {
+            const edge = await EdgeModel.getByToken(this.tokenDomainId, this.token);
+            if (!edge || edge.type !== 'node' || !edge.nodeId) return;
+
+            const node = await NodeModel.getByNodeId(this.tokenDomainId, edge.nodeId);
+            if (!node) return;
+
+            let synced = 0;
+            for (const tool of tools) {
+                const meta = tool?.metadata;
+                if (!meta || meta.category !== 'zigbee-switch' || !meta.deviceId) continue;
+
+                await NodeDeviceModel.upsertByDeviceId(node._id, meta.deviceId, {
+                    domainId: this.tokenDomainId,
+                    name: meta.friendlyName || meta.deviceId,
+                    type: 'switch',
+                    manufacturer: meta.vendor,
+                    model: meta.model,
+                    capabilities: ['on', 'off', 'switch'],
+                });
+                synced++;
+            }
+
+            if (synced > 0) {
+                (this.ctx.emit as any)('node/devices/update', node._id);
+                logger.info('Synced %d devices from Edge tools: token=%s, nodeId=%d', synced, this.token, edge.nodeId);
+            }
+        } catch (error) {
+            logger.error('Failed to sync devices from tools: %s', (error as Error).message);
         }
     }
 
@@ -508,7 +545,7 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
                     envelope,
                     token,
                     'outbound',
-                    this.domain._id,
+                    this.tokenDomainId!,
                 );
                 const outboundPayload = normalized.protocol === 'mcp'
                     ? EdgeServerConnectionHandler.extractJsonRpcPayload(normalized) ?? normalized.payload
