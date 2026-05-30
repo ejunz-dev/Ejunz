@@ -10,6 +10,16 @@ import { PRIV } from '../model/builtin';
 
 const logger = new Logger('handler/node');
 
+function filterDisplayDevices(devices: Awaited<ReturnType<typeof NodeDeviceModel.getByNode>>) {
+    const endpointParents = new Set<string>();
+    for (const device of devices) {
+        const match = device.deviceId.match(/^(.+)_l\d+$/);
+        if (match) endpointParents.add(match[1]);
+    }
+    if (endpointParents.size === 0) return devices;
+    return devices.filter(d => !endpointParents.has(d.deviceId));
+}
+
 // 获取节点列表
 export class NodeDomainHandler extends Handler<Context> {
     async get() {
@@ -117,11 +127,10 @@ export class NodeDetailHandler extends Handler<Context> {
             throw new PermissionError(PRIV.PRIV_USER_PROFILE);
         }
 
-        const devices = await NodeDeviceModel.getByNode(node._id);
-        
-        // 调试：记录设备状态
-        logger.debug('Device states for node %s: %O', node._id, devices.map(d => ({ 
-            deviceId: d.deviceId, 
+        const devices = filterDisplayDevices(await NodeDeviceModel.getByNode(node._id));
+
+        logger.debug('Device states for node %s: %O', node._id, devices.map(d => ({
+            deviceId: d.deviceId,
             state: d.state,
             hasOn: d.state?.on !== undefined,
             hasState: d.state?.state !== undefined,
@@ -401,7 +410,7 @@ export class NodeConnectionHandler extends ConnectionHandler<Context> {
         logger.info('Node WebSocket connected: %s', this.nodeId);
 
         // 发送初始数据
-        const devices = await NodeDeviceModel.getByNode(this.nodeId);
+        const devices = filterDisplayDevices(await NodeDeviceModel.getByNode(this.nodeId));
         this.send({ type: 'init', node, devices });
 
         // 订阅设备状态更新和 node 状态更新
@@ -433,7 +442,7 @@ export class NodeConnectionHandler extends ConnectionHandler<Context> {
         const dispose3 = this.ctx.on('node/devices/update' as any, async (...args: any[]) => {
             const [updateNodeId] = args;
             if (updateNodeId.toString() === this.nodeId!.toString()) {
-                const devices = await NodeDeviceModel.getByNode(this.nodeId!);
+                const devices = filterDisplayDevices(await NodeDeviceModel.getByNode(this.nodeId!));
                 this.send({ type: 'devices', devices });
             }
         });
@@ -451,7 +460,7 @@ export class NodeConnectionHandler extends ConnectionHandler<Context> {
                 break;
             case 'refresh':
                 {
-                    const devices = await NodeDeviceModel.getByNode(this.nodeId);
+                    const devices = filterDisplayDevices(await NodeDeviceModel.getByNode(this.nodeId));
                     this.send({ type: 'devices', devices });
                 }
                 break;
