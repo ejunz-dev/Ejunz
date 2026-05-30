@@ -22,8 +22,18 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
     } catch (e) {
         console.error('Failed to parse node data:', e);
     }
-    let nodeStatus = $container.data('node-status'); // 从模板获取节点状态（可能为 undefined）
-    let hasConnected = false; // 标记是否曾经成功连接过
+    let nodeStatus = $container.data('node-status');
+    let hasConnected = false;
+    let wsNotified = false;
+
+    function getDomainId() {
+        return (window.UiContext && window.UiContext.domainId) || (nodeData && nodeData.domainId) || 'system';
+    }
+
+    function getNodeWsUrl() {
+        const domainId = getDomainId();
+        return `${window.location.origin}/d/${domainId}/node/ws?nodeId=${nodeId}`;
+    }
 
     async function connectMqtt() {
         if (!nodeData || !nodeData.connectionInfo || !nodeData.connectionInfo.mqtt) {
@@ -89,8 +99,7 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
                 url: mqttUrl
             });
             hasConnected = true;
-            Notification.success('已连接到 MQTT');
-            
+
             const stateTopic = `node/${nodeData.nodeId}/devices/+/state`;
             console.log('Subscribing to state updates:', stateTopic);
             mqttClient.subscribe(stateTopic, { qos: 1 }, (err, granted) => {
@@ -148,9 +157,6 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
 
         mqttClient.on('close', () => {
             console.log('MQTT disconnected');
-            if (hasConnected) {
-                Notification.warn('MQTT 连接已断开');
-            }
             hasConnected = false;
         });
     }
@@ -163,16 +169,20 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
 
         if (sock) {
             sock.close();
+            sock = null;
         }
         
-        const wsUrl = `${window.location.origin}/node/ws?nodeId=${nodeId}`;
+        const wsUrl = getNodeWsUrl();
         console.log('Connecting to WebSocket:', wsUrl);
         sock = new Sock(wsUrl, false, true);
         
         sock.onopen = () => {
             console.log('Node WebSocket connected');
             hasConnected = true;
-            Notification.success('已连接到节点');
+            if (!wsNotified) {
+                wsNotified = true;
+                Notification.success('已连接到节点');
+            }
         };
         
         sock.onmessage = (msg, data) => {
@@ -186,12 +196,8 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
         
         sock.onclose = (code, reason) => {
             console.log('Node WebSocket disconnected', 'code:', code, 'reason:', reason);
-            if (hasConnected) {
-                if (code >= 4000) {
-                    Notification.error(`连接关闭: ${reason || '未知原因'} (code: ${code})`);
-                } else {
-                    Notification.warn('节点连接已断开');
-                }
+            if (hasConnected && code >= 4000) {
+                Notification.error(`连接关闭: ${reason || '未知原因'} (code: ${code})`);
             }
             hasConnected = false;
         };
@@ -210,11 +216,9 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
             updateDevices(data.devices);
             break;
         case 'node/status':
-            // Node 状态更新
             if (data.node) {
                 updateNodeInfo(data.node);
                 nodeStatus = data.node.status;
-                // 如果节点状态变为 active，尝试连接
                 if (data.node.status === 'active') {
                     if (!mqttClient && nodeData && nodeData.connectionInfo && nodeData.connectionInfo.mqtt) {
                         connectMqtt().catch(err => {
@@ -227,7 +231,6 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
                         connectWebSocket();
                     }
                 } else {
-                    // 如果节点状态变为非 active，关闭连接
                     if (mqttClient) {
                         mqttClient.end();
                         mqttClient = null;
@@ -242,7 +245,6 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
                 $('.node-status').removeClass('active inactive disconnected')
                     .addClass(data.status);
                 nodeStatus = data.status;
-                // 如果节点状态变为 active，尝试连接
                 if (data.status === 'active') {
                     if (!mqttClient && nodeData && nodeData.connectionInfo && nodeData.connectionInfo.mqtt) {
                         connectMqtt().catch(err => {
@@ -255,7 +257,6 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
                         connectWebSocket();
                     }
                 } else {
-                    // 如果节点状态变为非 active，关闭连接
                     if (mqttClient) {
                         mqttClient.end();
                         mqttClient = null;
@@ -268,7 +269,6 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
             }
             break;
         case 'pong':
-            // 心跳响应
             break;
         default:
             console.log('Unknown message type:', data.type);
@@ -283,16 +283,28 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
         }
     }
 
+    function filterDisplayDevices(devices) {
+        if (!devices || devices.length === 0) return devices;
+        const endpointParents = new Set();
+        for (const device of devices) {
+            const match = device.deviceId && device.deviceId.match(/^(.+)_l\d+$/);
+            if (match) endpointParents.add(match[1]);
+        }
+        if (endpointParents.size === 0) return devices;
+        return devices.filter(d => !endpointParents.has(d.deviceId));
+    }
+
     function updateDevices(devices) {
         const $deviceList = $('.device-list');
         $deviceList.empty();
         
-        if (!devices || devices.length === 0) {
+        const displayDevices = filterDisplayDevices(devices);
+        if (!displayDevices || displayDevices.length === 0) {
             $deviceList.append('<div class="no-devices">暂无设备</div>');
             return;
         }
         
-        devices.forEach(device => {
+        displayDevices.forEach(device => {
             const $device = createDeviceCard(device);
             $deviceList.append($device);
         });
@@ -318,8 +330,7 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
                 </div>
             </div>
         `);
-        
-        // 绑定滑动开关事件
+
         $card.find('.switch-toggle').on('change', function() {
             const $toggle = $(this);
             const action = $toggle.data('action');
@@ -351,13 +362,11 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
         const capabilities = device.capabilities || [];
         const state = device.state || {};
         let html = '<div class="control-buttons">';
-        
-        // 检查是否应该显示开关：有 capabilities 或状态中有开关相关字段
+
         const hasSwitchCapability = capabilities.some(cap => cap === 'on' || cap === 'off' || cap === 'switch');
         const hasSwitchState = state.on !== undefined || state.state !== undefined || state.power !== undefined;
         
         if (hasSwitchCapability || hasSwitchState) {
-            // 检查设备状态：支持多种格式
             let isOn = false;
             
             if (state.on !== undefined) {
@@ -471,7 +480,7 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
                 }),
             }).then((response) => {
                 console.log('Control command sent successfully via HTTP:', response);
-                Notification.success('控制命令已发送 (HTTP)');
+                updateDeviceState(deviceId, command);
             }).catch((error) => {
                 console.error('Control command failed:', error);
                 Notification.error('控制失败: ' + (error.responseJSON?.error || error.message || '未知错误'));
@@ -480,29 +489,34 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
     }
 
     function updateDeviceState(deviceId, state) {
-        console.log('Updating device state via MQTT:', deviceId, state);
+        console.log('Updating device state:', deviceId, state);
         const $device = $(`.device-card[data-device-id="${deviceId}"]`);
         if (!$device.length) {
             console.warn('Device card not found for deviceId:', deviceId, 'Available devices:', 
                 $('.device-card').map((i, el) => $(el).data('device-id')).get());
             return;
         }
+
+        const normalizedState = { ...state };
+        if (normalizedState.on !== undefined && normalizedState.state === undefined) {
+            normalizedState.state = normalizedState.on ? 'ON' : 'OFF';
+        }
         
         const $stateContainer = $device.find('.device-state');
         if ($stateContainer.length) {
-            $stateContainer.html(renderDeviceState({ state }));
+            $stateContainer.html(renderDeviceState({ state: normalizedState }));
         } else {
             console.warn('State container not found for device:', deviceId);
         }
         
         // Update switch state: supports multiple formats (on, state, power)
-        const hasOnState = state.on !== undefined || state.state !== undefined || state.power !== undefined;
+        const hasOnState = normalizedState.on !== undefined || normalizedState.state !== undefined || normalizedState.power !== undefined;
         if (hasOnState) {
             let isOn = false;
-            if (state.on !== undefined) {
-                isOn = state.on === true || state.on === 1 || state.on === '是' || state.on === 'ON' || state.on === 'on';
-            } else if (state.state !== undefined) {
-                const stateValue = state.state;
+            if (normalizedState.on !== undefined) {
+                isOn = normalizedState.on === true || normalizedState.on === 1 || normalizedState.on === '是' || normalizedState.on === 'ON' || normalizedState.on === 'on';
+            } else if (normalizedState.state !== undefined) {
+                const stateValue = normalizedState.state;
                 if (typeof stateValue === 'string') {
                     isOn = /^(ON|on|ONLINE|online|true|1|是)$/i.test(stateValue);
                 } else if (typeof stateValue === 'boolean') {
@@ -510,8 +524,8 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
                 } else if (typeof stateValue === 'number') {
                     isOn = stateValue > 0;
                 }
-            } else if (state.power !== undefined) {
-                const powerValue = state.power;
+            } else if (normalizedState.power !== undefined) {
+                const powerValue = normalizedState.power;
                 if (typeof powerValue === 'string') {
                     isOn = /^(ON|on|ONLINE|online|true|1|是)$/i.test(powerValue);
                 } else if (typeof powerValue === 'boolean') {
@@ -525,43 +539,33 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
             const $switchText = $device.find('.switch-text');
             
             if ($toggle.length) {
-                console.log('Updating switch state:', { deviceId, isOn, state });
+                console.log('Updating switch state:', { deviceId, isOn, state: normalizedState });
                 // Update without triggering change event to avoid loop
                 $toggle.prop('checked', isOn);
                 if ($switchText.length) {
                     $switchText.text(isOn ? '开启' : '关闭');
                 }
             } else {
-                // 如果开关不存在但应该有开关，重新渲染设备控制区域
                 const $controls = $device.find('.device-controls');
                 if ($controls.length && hasOnState) {
-                    // 获取设备数据并重新渲染控制区域
                     const device = {
                         deviceId: deviceId,
-                        capabilities: [],
-                        state: state
+                        capabilities: ['on', 'off', 'switch'],
+                        state: normalizedState
                     };
                     $controls.html(renderDeviceControls(device));
-                    // 重新绑定事件
-                    $controls.find('.switch-toggle').on('change', function() {
-                        const $toggle = $(this);
-                        const action = $toggle.data('action');
-                        const deviceId = $toggle.data('device-id');
-                        const isChecked = $toggle.is(':checked');
-                        controlDevice(deviceId, action, isChecked);
-                    });
                 }
             }
         }
         
-        if (state.brightness !== undefined) {
+        if (normalizedState.brightness !== undefined) {
             const $slider = $device.find('.brightness-slider');
             const $value = $device.find('.brightness-value');
             if ($slider.length) {
-                $slider.val(state.brightness);
+                $slider.val(normalizedState.brightness);
             }
             if ($value.length) {
-                $value.text(state.brightness);
+                $value.text(normalizedState.brightness);
             }
         }
     }
@@ -588,7 +592,6 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
         return div.innerHTML;
     }
 
-    // 初始化
     if (nodeId) {
         console.log('Initializing node page:', {
             nodeId,
@@ -597,8 +600,7 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
             hasMqttInfo: !!(nodeData && nodeData.connectionInfo && nodeData.connectionInfo.mqtt),
             nodeStatus
         });
-        
-        // 优先使用 MQTT 连接（如果连接信息可用）
+
         if (nodeData && nodeData.connectionInfo && nodeData.connectionInfo.mqtt) {
             console.log('Attempting MQTT connection...');
             connectMqtt().catch(err => {
@@ -607,7 +609,6 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
                     message: err.message,
                     stack: err.stack
                 });
-                // 降级到 WebSocket
                 if (nodeStatus === 'active') {
                     console.log('Falling back to WebSocket');
                     connectWebSocket();
@@ -616,13 +617,11 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
         } else {
             console.log('MQTT connection info not available, checking WebSocket fallback');
             if (nodeStatus === 'active') {
-                // 降级到 WebSocket
                 console.log('Using WebSocket connection');
                 connectWebSocket();
             }
         }
-        
-        // 使用事件委托绑定滑动开关事件（因为设备是动态创建的）
+
         $(document).on('change', '.switch-toggle', function() {
             const $toggle = $(this);
             const action = $toggle.data('action');
@@ -635,8 +634,7 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
                 console.error('Missing deviceId or action:', { deviceId, action });
             }
         });
-        
-        // 绑定亮度滑块事件
+
         $(document).on('input', '.brightness-slider', function() {
             const deviceId = $(this).data('device-id');
             const value = parseInt($(this).val());
@@ -645,7 +643,6 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
     }
 
 
-    // 生成/删除连接 URL
     async function generateEndpoint(domainId, nodeId) {
         try {
             const response = await fetch(`/d/${domainId}/node/${nodeId}`, {
@@ -694,7 +691,6 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
         }
     }
 
-    // 绑定生成/删除连接 URL 按钮
     $(document).on('submit', '.endpoint-form', function(e) {
         e.preventDefault();
         const $form = $(this);
@@ -709,7 +705,6 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
         }
     });
 
-    // 删除节点
     $('.delete-node-btn').on('click', function() {
         if (!confirm('确定要删除这个节点吗？这将删除所有相关设备。')) return;
         
