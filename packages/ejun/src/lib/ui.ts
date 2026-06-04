@@ -61,6 +61,11 @@ export const BaseAdd = (name, args, icon = 'add', text = 'Create Base') => {
 // inject('NavMainDropdown', 'talkspace_main');
 
 
+// Edge type slots — pluggable by extensions
+inject('EdgeType', 'provider', { value: 'provider', label: 'Provider (WebSocket)' });
+inject('EdgeType', 'client', { value: 'client', label: 'Client (WebSocket)' });
+inject('EdgeType', 'node', { value: 'node', label: 'Node (MQTT + WebSocket)' });
+
 inject('Nav', 'homepage', { prefix: 'homepage' });
 inject('Nav', 'learn', { prefix: 'learn' });
 inject('Nav', 'develop', { prefix: 'develop' });

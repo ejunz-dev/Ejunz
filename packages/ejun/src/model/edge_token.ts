@@ -6,7 +6,7 @@ import { randomstring } from '../utils';
 export interface EdgeTokenDoc {
     _id: ObjectId;
     domainId: string;
-    type: 'provider' | 'node' | 'client' | 'repo';
+    type: string;
     token: string;
     owner: number; // 创建 token 的用户 ID
     lastUsedAt: Date;
@@ -23,7 +23,7 @@ class EdgeTokenModel {
 
     static async add(
         domainId: string,
-        type: 'provider' | 'node' | 'client' | 'repo',
+        type: string,
         token: string,
         owner: number,
     ): Promise<EdgeTokenDoc> {

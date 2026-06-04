@@ -792,7 +792,7 @@ declare module './model/edge' {
         domainId: string;
         eid: number;
         token: string;
-        type: 'provider' | 'client' | 'node' | 'repo';
+        type: string;
         status: 'online' | 'offline' | 'working';
         tokenCreatedAt: Date;
         tokenUsedAt?: Date;
@@ -1239,8 +1239,8 @@ export interface Lib {
 }
 
 
-export type UIInjectableFields = 
-    'RepoAdd' | 'AgentAdd' | 'BaseAdd' | 'Notification' | 'Nav' | 'UserDropdown' | 'DomainManage' | 'ControlPanel' | 'ProfileHeaderContact' | 'Home_Domain' | 'NavDropdown' | 'NavMainDropdown'
+export type UIInjectableFields =
+    'RepoAdd' | 'AgentAdd' | 'BaseAdd' | 'Notification' | 'Nav' | 'UserDropdown' | 'DomainManage' | 'ControlPanel' | 'ProfileHeaderContact' | 'Home_Domain' | 'NavDropdown' | 'NavMainDropdown' | 'EdgeType'
 export interface UI {
     nodes: Record<UIInjectableFields, any[]>,
     getNodes: typeof import('./lib/ui').getNodes,
