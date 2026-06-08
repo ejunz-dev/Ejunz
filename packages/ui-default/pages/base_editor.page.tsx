@@ -3199,7 +3199,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const editorAiHidden = false;
   const savedEditorLayout = readSavedBaseEditorUiPrefs(editorAiHidden);
 
-  const [explorerMode, setExplorerMode] = useState<'tree' | 'pending' | 'branches' | 'git'>(
+  const [explorerMode, setExplorerMode] = useState<'tree' | 'pending' | 'branches' | 'git' | 'mcp'>(
     () => savedEditorLayout.explorerMode,
   );
   const [gitRemoteStatus, setGitRemoteStatus] = useState<any>(null);
@@ -12541,6 +12541,27 @@ Reply with a JSON code block only for executable operations, using this shape:
                 </svg>
               </button>
             ) : null}
+            <button
+              type="button"
+              onClick={() => setExplorerMode('mcp')}
+              style={{
+                width: '34px',
+                height: '34px',
+                border: `1px solid ${themeStyles.borderSecondary}`,
+                borderRadius: '3px',
+                backgroundColor: explorerMode === 'mcp' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                color: explorerMode === 'mcp' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+              title="MCP 服务（SSE）"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <rect x="2" y="6" width="5" height="4" rx="1" />
+                <path d="M7 8h3" />
+                <circle cx="12" cy="8" r="2" />
+              </svg>
+            </button>
           </div>
         </div>
         <div
@@ -13019,6 +13040,8 @@ Reply with a JSON code block only for executable operations, using this shape:
                 })}
               </div>
             </div>
+          ) : explorerMode === 'mcp' ? (
+            <McpSidebarPanel themeStyles={themeStyles} />
           ) : explorerMode === 'git' && basePath === 'base' && docId ? (
             <div style={{ padding: '8px', fontSize: '12px', color: themeStyles.textPrimary }}>
               <div style={{ fontWeight: 600, color: themeStyles.textSecondary, marginBottom: '8px', padding: '0 8px' }}>
@@ -18260,6 +18283,176 @@ Reply with a JSON code block only for executable operations, using this shape:
 const getBaseUrl = (path: string, docId: string): string => {
   return domainScopedPath(`/base/${docId}${path}`);
 };
+
+function McpSidebarPanel({ themeStyles }: { themeStyles: any }) {
+  const domainId = (typeof window !== 'undefined' && (window as any).UiContext?.domainId) || 'system';
+  const [loading, setLoading] = useState(false);
+  const [url, setUrl] = useState('');
+  const [command, setCommand] = useState('');
+  const [copied, setCopied] = useState('');
+
+  const enable = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res: any = await request.post(`/d/${domainId}/mcp/sse/token`, {});
+      if (res?.url) {
+        setUrl(res.url);
+        setCommand(res.command || '');
+      } else Notification.error(i18n('Failed to enable MCP server'));
+    } catch (e: any) {
+      Notification.error(e?.message || i18n('Failed to enable MCP server'));
+    } finally {
+      setLoading(false);
+    }
+  }, [domainId]);
+
+  useEffect(() => {
+    if (!url && !loading) enable();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const copyText = useCallback(async (text: string, key: string) => {
+    if (!text) return;
+    const mark = () => { setCopied(key); setTimeout(() => setCopied(''), 1500); };
+    try {
+      await navigator.clipboard.writeText(text);
+      mark();
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); mark(); } catch { /* ignore */ }
+      document.body.removeChild(ta);
+    }
+  }, []);
+
+  return (
+    <div style={{ padding: '8px', fontSize: '12px', color: themeStyles.textPrimary }}>
+      <div style={{ fontWeight: 600, color: themeStyles.textSecondary, marginBottom: '8px', padding: '0 8px' }}>
+        {i18n('MCP Server (SSE)')}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '0 8px' }}>
+        <div style={{ fontSize: '11px', color: themeStyles.textSecondary, lineHeight: 1.5 }}>
+          {i18n('Connect an MCP client to this domain over SSE. For Claude Code, use the command below (header auth is the most reliable).')}
+        </div>
+        {loading ? (
+          <div style={{ fontSize: '12px', color: themeStyles.textSecondary, padding: '4px 0' }}>
+            {i18n('Generating link...')}
+          </div>
+        ) : url ? (
+          <>
+            {command ? (
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <span style={{ color: themeStyles.textSecondary, fontSize: '11px' }}>{i18n('Claude Code command (recommended)')}</span>
+                <textarea
+                  readOnly
+                  value={command}
+                  rows={3}
+                  onFocus={(e) => e.currentTarget.select()}
+                  style={{
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    padding: '6px 8px',
+                    fontFamily: 'monospace',
+                    fontSize: '11px',
+                    resize: 'vertical',
+                    border: `1px solid ${themeStyles.borderSecondary}`,
+                    borderRadius: '4px',
+                    background: themeStyles.bgSecondary,
+                    color: themeStyles.textPrimary,
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => copyText(command, 'cmd')}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '4px',
+                    border: 'none',
+                    alignSelf: 'flex-start',
+                    background: copied === 'cmd' ? themeStyles.success : themeStyles.bgButtonActive,
+                    color: themeStyles.textOnPrimary,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {copied === 'cmd' ? i18n('Copied') : i18n('Copy command')}
+                </button>
+              </label>
+            ) : null}
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <span style={{ color: themeStyles.textSecondary, fontSize: '11px' }}>{i18n('Connection URL (token in query)')}</span>
+              <input
+                type="text"
+                readOnly
+                value={url}
+                onFocus={(e) => e.currentTarget.select()}
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '6px 8px',
+                  fontFamily: 'monospace',
+                  border: `1px solid ${themeStyles.borderSecondary}`,
+                  borderRadius: '4px',
+                  background: themeStyles.bgSecondary,
+                  color: themeStyles.textPrimary,
+                }}
+              />
+            </label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              <button
+                type="button"
+                onClick={() => copyText(url, 'url')}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '4px',
+                  border: 'none',
+                  background: copied === 'url' ? themeStyles.success : themeStyles.bgButtonActive,
+                  color: themeStyles.textOnPrimary,
+                  cursor: 'pointer',
+                }}
+              >
+                {copied === 'url' ? i18n('Copied') : i18n('Copy link')}
+              </button>
+              <button
+                type="button"
+                onClick={enable}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '4px',
+                  border: `1px solid ${themeStyles.borderSecondary}`,
+                  background: themeStyles.bgSecondary,
+                  color: themeStyles.textSecondary,
+                  cursor: 'pointer',
+                }}
+              >
+                {i18n('Regenerate')}
+              </button>
+            </div>
+            <div style={{ fontSize: '11px', color: themeStyles.textTertiary, lineHeight: 1.5 }}>
+              {i18n('Tools enabled for this domain in the Tool Market are exposed to the client.')}
+            </div>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={enable}
+            style={{
+              padding: '6px 12px',
+              borderRadius: '4px',
+              border: 'none',
+              background: themeStyles.bgButtonActive,
+              color: themeStyles.textOnPrimary,
+              cursor: 'pointer',
+              alignSelf: 'flex-start',
+            }}
+          >
+            {i18n('Enable MCP Server')}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 const page = new NamedPage(['base_editor', 'base_editor_branch', 'skill_editor', 'skill_editor_branch', 'skill_editor_doc', 'skill_editor_doc_branch', 'develop_editor'], async (pageName) => {
   try {
