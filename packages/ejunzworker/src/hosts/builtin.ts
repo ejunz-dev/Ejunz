@@ -934,4 +934,56 @@ export async function apply(ctx: EjunzContext) {
             }
         };
     });
+
+    ctx.effect(() => {
+        const handleMcpToolCall = async (t: any) => {
+            if (!t) return;
+            const { domainId, sessionId, rpcId, name, args } = t;
+            const bus = require('ejun/src/service/bus').default;
+            let response: any;
+            try {
+                const { domainMarketHasInstalledToolName } = require('ejun/src/handler/tool');
+                const { executeSystemTool } = require('ejun/src/lib/systemTools');
+                const installed = await domainMarketHasInstalledToolName(domainId, name);
+                if (!installed) {
+                    response = {
+                        jsonrpc: '2.0',
+                        id: rpcId,
+                        result: { content: [{ type: 'text', text: `Tool not enabled for this domain: ${name}` }], isError: true },
+                    };
+                } else {
+                    const result = await executeSystemTool(name, args || {});
+                    const text = typeof result === 'string' ? result : JSON.stringify(result);
+                    response = {
+                        jsonrpc: '2.0',
+                        id: rpcId,
+                        result: { content: [{ type: 'text', text }], isError: false },
+                    };
+                }
+            } catch (e: any) {
+                response = {
+                    jsonrpc: '2.0',
+                    id: rpcId,
+                    result: { content: [{ type: 'text', text: e?.message || String(e) }], isError: true },
+                };
+            }
+            try {
+                bus.broadcast('mcp/deliver', { sessionId, data: JSON.stringify(response) });
+            } catch (e: any) {
+                logger.error('Failed to broadcast MCP result: sessionId=%s, error=%s', sessionId, e?.message || e);
+            }
+        };
+
+        const mcpConcurrency = getConfig('toolcallConcurrency') || 10;
+        const mcpConsumer = TaskModel.consume({ type: 'mcp', subType: 'tool_call' }, handleMcpToolCall, true, mcpConcurrency);
+        logger.info('MCP SSE tool-call consumer started (concurrency=%d)', mcpConcurrency);
+
+        return () => {
+            try {
+                mcpConsumer.destroy();
+            } catch {
+                /* ignore */
+            }
+        };
+    });
 }
