@@ -254,9 +254,11 @@ async function handleJsonRpc(
 }
 
 function detectOrigin(h: Handler<Context>): { protocol: string; host: string } {
-    const protocol = (h.request.headers['x-forwarded-proto'] as string)
-        || (h.request.headers['x-forwarded-ssl'] === 'on' ? 'https' : 'http');
     const host = h.request.host || (h.request.headers.host as string) || 'localhost';
+    const isLocal = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(host);
+    const forwarded = (h.request.headers['x-forwarded-proto'] as string)
+        || (h.request.headers['x-forwarded-ssl'] === 'on' ? 'https' : '');
+    const protocol = forwarded || (isLocal ? 'http' : 'https');
     return { protocol, host };
 }
 

@@ -1,7 +1,10 @@
 import { ObjectId } from 'mongodb';
 import * as document from '../model/document';
-import { BaseModel, CardModel, getBranchData } from '../model/base';
-import type { CardDoc } from '../interface';
+import {
+    BaseModel, CardModel, getBranchData,
+    applyOutlineExplorerUrlFilters, type OutlineExplorerFilters,
+} from '../model/base';
+import type { CardDoc, BaseNode, BaseEdge } from '../interface';
 
 export interface McpToolContext {
     domainId: string;
@@ -120,6 +123,41 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
             additionalProperties: false,
         },
     },
+    {
+        name: 'outline_tree',
+        description: 'Return the whole outline as a nested tree (overview/table of contents). '
+            + 'Each node carries only its id and text (title) and its cards (cardId + title); card content is NOT included. '
+            + 'Use this to grasp the full structure at a glance, then call card_get to read specific cards.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                includeCards: {
+                    type: 'boolean',
+                    description: 'Include each node\'s cards (id + title) in the tree. Default true; set false for a nodes-only outline.',
+                },
+            },
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'outline_search',
+        description: 'Search and/or filter the outline (same semantics as the base outline page). '
+            + 'Provide `query` to match a keyword or an exact id against node titles/ids and card titles/ids. '
+            + 'Provide any of `filterNode` / `filterCard` / `filterProblem` to narrow by node title, card title, or problem content. '
+            + 'You may combine `query` with the filters; all supplied conditions are applied together (intersection). '
+            + 'Returns matching nodes and cards with id, title and the node path; card content is NOT included.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                query: { type: 'string', description: 'Keyword or exact id to match against node text/id and card title/id (case-insensitive).' },
+                filterNode: { type: 'string', description: 'Keep only nodes whose title contains this text (like the outline page filterNode).' },
+                filterCard: { type: 'string', description: 'Keep only nodes that have a card whose title contains this text (filterCard).' },
+                filterProblem: { type: 'string', description: 'Keep only nodes that have a card with a problem matching this text (filterProblem).' },
+                limit: { type: 'number', description: 'Max results to return per kind (nodes/cards). Default 50.' },
+            },
+            additionalProperties: false,
+        },
+    },
 ];
 
 export async function buildMcpInstructions(
@@ -149,10 +187,11 @@ export async function buildMcpInstructions(
     lines.push(
         '',
         'Typical workflow:',
-        '1. outline_list_nodes — inspect the outline tree.',
-        '2. card_list(nodeId) — list cards under a node.',
-        '3. card_get(cardId) — read a card\'s content.',
-        '4. Use the create/update/delete tools to modify nodes and cards.',
+        '1. outline_tree — get the whole outline (nodes + cards, titles only) at a glance.',
+        '2. outline_search(query/filterNode/filterCard/filterProblem) — find nodes/cards by keyword, id or filters.',
+        '3. outline_list_nodes — flat list of nodes; card_list(nodeId) — cards under a node.',
+        '4. card_get(cardId) — read a card\'s full content.',
+        '5. Use the create/update/delete tools to modify nodes and cards.',
     );
     return lines.join('\n');
 }
@@ -186,6 +225,91 @@ function summarizeNode(n: any) {
 
 function summarizeCard(c: CardDoc) {
     return { cardId: String(c.docId), title: c.title, order: c.order ?? 0, nodeId: c.nodeId };
+}
+
+/** Loads all cards of the base/branch grouped by their owning node id. */
+async function loadNodeCardsMap(
+    domainId: string,
+    baseDocId: number,
+    branch: string,
+    nodes: BaseNode[],
+): Promise<Record<string, CardDoc[]>> {
+    const map: Record<string, CardDoc[]> = {};
+    await Promise.all((nodes || []).map(async (n) => {
+        map[n.id] = await CardModel.getByNodeId(domainId, baseDocId, n.id, branch);
+    }));
+    return map;
+}
+
+/** target -> source (child -> parent) map derived from edges. */
+function buildParentMap(edges: BaseEdge[]): Map<string, string> {
+    const m = new Map<string, string>();
+    for (const e of edges || []) m.set(e.target, e.source);
+    return m;
+}
+
+/** Builds the " › " separated node-title path for a node, root first. */
+function pathLabelFor(nodeId: string, parentMap: Map<string, string>, nodeById: Map<string, BaseNode>): string {
+    const chain: string[] = [];
+    const seen = new Set<string>();
+    let cur: string | undefined = nodeId;
+    while (cur && !seen.has(cur)) {
+        seen.add(cur);
+        const n = nodeById.get(cur);
+        chain.push((n?.text || '').trim() || 'Untitled');
+        cur = parentMap.get(cur);
+    }
+    return chain.reverse().join(' › ');
+}
+
+interface OutlineTreeNode {
+    id: string;
+    text: string;
+    cards?: { cardId: string; title: string; order: number }[];
+    children: OutlineTreeNode[];
+}
+
+/** Builds nested outline tree (id + text only; cards as id + title when requested). */
+function buildOutlineTree(
+    nodes: BaseNode[],
+    edges: BaseEdge[],
+    nodeCardsMap: Record<string, CardDoc[]>,
+    includeCards: boolean,
+): OutlineTreeNode[] {
+    const parentMap = buildParentMap(edges);
+    const childrenMap = new Map<string, string[]>();
+    for (const e of edges || []) {
+        if (!childrenMap.has(e.source)) childrenMap.set(e.source, []);
+        childrenMap.get(e.source)!.push(e.target);
+    }
+    const nodeById = new Map((nodes || []).map((n) => [n.id, n]));
+    const orderOf = (id: string) => nodeById.get(id)?.order ?? 0;
+
+    const build = (id: string, seen: Set<string>): OutlineTreeNode | null => {
+        if (seen.has(id)) return null;
+        seen.add(id);
+        const n = nodeById.get(id);
+        if (!n) return null;
+        const childIds = (childrenMap.get(id) || []).slice().sort((a, b) => orderOf(a) - orderOf(b));
+        const out: OutlineTreeNode = {
+            id,
+            text: n.text || '',
+            children: childIds.map((c) => build(c, seen)).filter(Boolean) as OutlineTreeNode[],
+        };
+        if (includeCards) {
+            out.cards = (nodeCardsMap[id] || [])
+                .slice()
+                .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+                .map((c) => ({ cardId: String(c.docId), title: c.title || '', order: c.order ?? 0 }));
+        }
+        return out;
+    };
+
+    const roots = (nodes || [])
+        .filter((n) => !parentMap.has(n.id))
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const seen = new Set<string>();
+    return roots.map((r) => build(r.id, seen)).filter(Boolean) as OutlineTreeNode[];
 }
 
 export async function executeMcpBuiltinTool(
@@ -256,6 +380,76 @@ export async function executeMcpBuiltinTool(
     case 'card_delete': {
         await CardModel.delete(domainId, toObjectId(args.cardId));
         return { ok: true, cardId: String(args.cardId) };
+    }
+    case 'outline_tree': {
+        const includeCards = args.includeCards === undefined ? true : !!args.includeCards;
+        const { nodes, edges } = getBranchData(base, branch);
+        const nodeCardsMap = includeCards
+            ? await loadNodeCardsMap(domainId, baseDocId, branch, nodes || [])
+            : {};
+        const tree = buildOutlineTree(nodes || [], edges || [], nodeCardsMap, includeCards);
+        return { nodeCount: (nodes || []).length, tree };
+    }
+    case 'outline_search': {
+        const limit = Math.max(1, Math.min(500, Number(args.limit) || 50));
+        const filters: OutlineExplorerFilters = {
+            filterNode: String(args.filterNode || ''),
+            filterCard: String(args.filterCard || ''),
+            filterProblem: String(args.filterProblem || ''),
+        };
+        const raw = getBranchData(base, branch);
+        const allNodes = raw.nodes || [];
+        const allEdges = raw.edges || [];
+        const nodeCardsMap = await loadNodeCardsMap(domainId, baseDocId, branch, allNodes);
+
+        const filtered = applyOutlineExplorerUrlFilters(allNodes, allEdges, nodeCardsMap, filters);
+        const scopeNodes = filtered.nodes;
+        const scopeEdges = filtered.edges;
+        const scopeCardsMap = filtered.nodeCardsMap;
+
+        const parentMap = buildParentMap(scopeEdges);
+        const nodeById = new Map(scopeNodes.map((n) => [n.id, n]));
+        const q = String(args.query || '').trim().toLowerCase();
+        const matchText = (s: string | undefined) => !q || (s || '').toLowerCase().includes(q);
+
+        const nodeMatches: any[] = [];
+        for (const n of scopeNodes) {
+            if (matchText(n.text) || matchText(n.id)) {
+                nodeMatches.push({
+                    type: 'node',
+                    id: n.id,
+                    text: n.text || '',
+                    path: pathLabelFor(n.id, parentMap, nodeById),
+                });
+                if (nodeMatches.length >= limit) break;
+            }
+        }
+
+        const cardMatches: any[] = [];
+        outer: for (const nodeId of Object.keys(scopeCardsMap)) {
+            for (const c of scopeCardsMap[nodeId] || []) {
+                const cid = String(c.docId);
+                if (matchText(c.title) || matchText(cid)) {
+                    cardMatches.push({
+                        type: 'card',
+                        cardId: cid,
+                        title: c.title || '',
+                        nodeId: c.nodeId || nodeId,
+                        path: pathLabelFor(c.nodeId || nodeId, parentMap, nodeById),
+                    });
+                    if (cardMatches.length >= limit) break outer;
+                }
+            }
+        }
+
+        return {
+            query: q || null,
+            filters,
+            matchedNodeCount: nodeMatches.length,
+            matchedCardCount: cardMatches.length,
+            nodes: nodeMatches,
+            cards: cardMatches,
+        };
     }
     default:
         throw new Error(`Unknown tool: ${name}`);
