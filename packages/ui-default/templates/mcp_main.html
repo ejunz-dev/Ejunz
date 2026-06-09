@@ -1,0 +1,60 @@
+{% set page_name = "mcp_main" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-12 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">MCP 出站端点</h1>
+      </div>
+      <div class="section__body">
+        <div class="typo">
+          <p>每个 base 在编辑器里放出的 MCP (SSE) 端点都会注册为一个独立的 MCP，默认暴露该 base 的大纲节点与卡片 CRUD 工具。</p>
+        </div>
+      </div>
+      <div class="section__body no-padding">
+        {% if not mcps or not mcps.length %}
+          <div class="typo"><p>暂无 MCP 端点。在编辑器侧边栏的 MCP 面板中启用即可生成。</p></div>
+        {% else %}
+          <table class="data-table">
+            <colgroup>
+              <col class="col--id"><col class="col--status"><col class="col--name">
+              <col class="col--base"><col class="col--action">
+            </colgroup>
+            <thead>
+              <tr>
+                <th class="col--id">MID</th>
+                <th class="col--status">状态</th>
+                <th class="col--name">名称</th>
+                <th class="col--base">Base / 分支</th>
+                <th class="col--action">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {%- for mcp in mcps -%}
+              <tr>
+                <td class="col--id">
+                  <a href="{{ url('mcp_detail', { mid: mcp.mid }) }}"><code>{{ mcp.mid }}</code></a>
+                </td>
+                <td class="col--status">
+                  <span class="edge-status edge-status-{{ 'online' if mcp.online else 'offline' }}">
+                    {{ '在线' if mcp.online else '离线' }}
+                  </span>
+                </td>
+                <td class="col--name">{{ mcp.name or ('MCP-' + mcp.mid) }}</td>
+                <td class="col--base">
+                  {% if mcp.baseDocId %}{{ mcp.baseDocId }} / {{ mcp.branch or 'main' }}{% else %}<span class="text-gray">-</span>{% endif %}
+                </td>
+                <td class="col--action">
+                  <a href="{{ url('mcp_detail', { mid: mcp.mid }) }}" class="button small">查看详情</a>
+                </td>
+              </tr>
+              {%- endfor -%}
+            </tbody>
+          </table>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

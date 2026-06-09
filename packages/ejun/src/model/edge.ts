@@ -10,7 +10,13 @@ const logger = new Logger('model/edge');
 /** 工具市场使用的系统 Edge 固定 token（每个 domain 一个，用于存放从市场添加的 MCP 工具） */
 export const SYSTEM_EDGE_TOKEN = 'system_market';
 
+const OUTBOUND_EDGE_TYPES = new Set(['mcp']);
+
 class EdgeModel {
+    static categoryForType(type: string): 'inbound' | 'outbound' {
+        return OUTBOUND_EDGE_TYPES.has(type) ? 'outbound' : 'inbound';
+    }
+
     static async generateNextEdgeId(domainId: string): Promise<number> {
         const lastEdge = await document.getMulti(domainId, document.TYPE_EDGE, {})
             .sort({ eid: -1 })
@@ -34,6 +40,7 @@ class EdgeModel {
             eid,
             token,
             type: edge.type,
+            category: edge.category || this.categoryForType(edge.type),
             status: 'offline',
             tokenCreatedAt: now,
             tokenUsedAt: undefined,

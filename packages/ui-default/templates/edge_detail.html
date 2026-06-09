@@ -7,6 +7,11 @@
       <div class="section__header">
         <h1 class="section__title">Edge 设备详情</h1>
         <div class="section__tools">
+          {% if edge.category == 'outbound' and edge.type == 'mcp' %}
+            <a href="{{ url('mcp_detail', { mid: edge.mcpId }) if edge.mcpId else url('mcp_main', {}) }}" class="primary button">
+              <span class="icon icon-link"></span> 前往 MCP 页面
+            </a>
+          {% endif %}
           <a href="{{ url('edge_domain', {}) }}" class="button">
             <span class="icon icon-back"></span> 返回列表
           </a>
@@ -34,8 +39,20 @@
                     <span class="badge badge--warning">Client</span>
                   {% elif edge.type == 'repo' %}
                     <span class="badge badge--success">Repo</span>
+                  {% elif edge.type == 'mcp' %}
+                    <span class="badge">{{ edge.typeLabel | default('MCP (SSE)') }}</span>
                   {% else %}
                     <span class="badge">Provider</span>
+                  {% endif %}
+                </td>
+              </tr>
+              <tr>
+                <td class="col--key">方向</td>
+                <td>
+                  {% if edge.category == 'outbound' %}
+                    <span class="badge badge--warning">出站</span>
+                  {% else %}
+                    <span class="badge badge--info">入站</span>
                   {% endif %}
                 </td>
               </tr>
