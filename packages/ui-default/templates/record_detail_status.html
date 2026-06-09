@@ -79,6 +79,40 @@
     <p class="text-gray">{{ _('No chat history available.') }}</p>
     {% endif %}
   </div>
+  {% elif rdoc.recordKind == 'mcp_tool' %}
+  <div class="section__header">
+    <h1 class="section__title">
+      {% if rdoc.mcpTool.isError %}
+        <span class="icon record-status--icon fail"></span>
+      {% else %}
+        <span class="icon record-status--icon pass"></span>
+      {% endif %}
+      {{ _('record_mcp_tool_title') }}: <code>{{ rdoc.mcpTool.tool or '-' }}</code>
+    </h1>
+  </div>
+  <div class="section__body typo">
+    <dl class="large horizontal">
+      <dt>{{ _('record_mcp_status') }}</dt>
+      <dd>
+        {% if rdoc.mcpTool.isError %}
+          <span class="record-status--text fail">{{ _('record_mcp_failed') }}</span>
+        {% else %}
+          <span class="record-status--text pass">{{ _('record_mcp_succeeded') }}</span>
+        {% endif %}
+      </dd>
+      <dt>{{ _('record_mcp_duration') }}</dt>
+      <dd>{{ (rdoc.mcpTool.durationMs | default(0)) }} ms</dd>
+    </dl>
+    <h2 class="section__title" style="margin-top: 12px;">{{ _('record_mcp_args') }}</h2>
+    <pre style="max-height: 400px; overflow: auto; white-space: pre-wrap; word-break: break-word;"><code style="white-space: pre-wrap; word-break: break-word;">{{ rdoc.mcpTool.args | dump(2) }}</code></pre>
+    {% if rdoc.mcpTool.isError %}
+    <h2 class="section__title" style="margin-top: 12px;">{{ _('Error') }}</h2>
+    <div class="alert alert--error" style="white-space: pre-wrap; word-break: break-word;">{{ rdoc.mcpTool.error or rdoc.mcpTool.result or '-' }}</div>
+    {% else %}
+    <h2 class="section__title" style="margin-top: 12px;">{{ _('record_mcp_result') }}</h2>
+    <pre style="max-height: 400px; overflow: auto; white-space: pre-wrap; word-break: break-word;"><code style="white-space: pre-wrap; word-break: break-word;">{{ rdoc.mcpTool.result or '-' }}</code></pre>
+    {% endif %}
+  </div>
   {% else %}
   {% set detailProblems = recordDetailProblems if (recordDetailProblems and recordDetailProblems.length) else [] %}
   <div class="section__header">
