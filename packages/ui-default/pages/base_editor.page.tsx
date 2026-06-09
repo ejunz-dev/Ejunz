@@ -13041,7 +13041,7 @@ Reply with a JSON code block only for executable operations, using this shape:
               </div>
             </div>
           ) : explorerMode === 'mcp' ? (
-            <McpSidebarPanel themeStyles={themeStyles} />
+            <McpSidebarPanel themeStyles={themeStyles} baseId={docId} branch={currentBranch || 'main'} />
           ) : explorerMode === 'git' && basePath === 'base' && docId ? (
             <div style={{ padding: '8px', fontSize: '12px', color: themeStyles.textPrimary }}>
               <div style={{ fontWeight: 600, color: themeStyles.textSecondary, marginBottom: '8px', padding: '0 8px' }}>
@@ -18284,31 +18284,60 @@ const getBaseUrl = (path: string, docId: string): string => {
   return domainScopedPath(`/base/${docId}${path}`);
 };
 
-function McpSidebarPanel({ themeStyles }: { themeStyles: any }) {
+function McpSidebarPanel({ themeStyles, baseId, branch }: { themeStyles: any; baseId?: string; branch?: string }) {
   const domainId = (typeof window !== 'undefined' && (window as any).UiContext?.domainId) || 'system';
   const [loading, setLoading] = useState(false);
   const [url, setUrl] = useState('');
   const [command, setCommand] = useState('');
+  const [mid, setMid] = useState<number | null>(null);
+  const [edgeUrl, setEdgeUrl] = useState<string | null>(null);
+  const [status, setStatus] = useState<string>('pending');
   const [copied, setCopied] = useState('');
 
   const enable = useCallback(async () => {
     setLoading(true);
     try {
-      const res: any = await request.post(`/d/${domainId}/mcp/sse/token`, {});
+      const payload: Record<string, any> = {};
+      if (baseId) payload.baseId = baseId;
+      if (branch) payload.branch = branch;
+      const res: any = await request.post(`/d/${domainId}/mcp/sse/token`, payload);
       if (res?.url) {
         setUrl(res.url);
         setCommand(res.command || '');
+        setMid(typeof res.mid === 'number' ? res.mid : null);
+        setEdgeUrl(res.edgeUrl || null);
+        setStatus(res.status || 'pending');
       } else Notification.error(i18n('Failed to enable MCP server'));
     } catch (e: any) {
       Notification.error(e?.message || i18n('Failed to enable MCP server'));
     } finally {
       setLoading(false);
     }
-  }, [domainId]);
+  }, [domainId, baseId, branch]);
 
   useEffect(() => {
     if (!url && !loading) enable();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!url) return undefined;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const qs: string[] = [];
+        if (baseId) qs.push(`baseId=${encodeURIComponent(baseId)}`);
+        if (branch) qs.push(`branch=${encodeURIComponent(branch)}`);
+        const res: any = await request.get(`/d/${domainId}/mcp/sse/token${qs.length ? `?${qs.join('&')}` : ''}`);
+        if (cancelled || !res?.exists) return;
+        if (typeof res.mid === 'number') setMid(res.mid);
+        setEdgeUrl(res.edgeUrl || null);
+        setStatus(res.status || 'pending');
+      } catch { /* ignore polling errors */ }
+    };
+    poll();
+    const timer = setInterval(poll, 5000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [url, domainId, baseId, branch]);
 
   const copyText = useCallback(async (text: string, key: string) => {
     if (!text) return;
@@ -18427,9 +18456,58 @@ function McpSidebarPanel({ themeStyles }: { themeStyles: any }) {
               >
                 {i18n('Regenerate')}
               </button>
+              {mid ? (
+                <a
+                  href={`/d/${domainId}/mcp/${mid}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '4px',
+                    border: `1px solid ${themeStyles.borderSecondary}`,
+                    background: themeStyles.bgSecondary,
+                    color: themeStyles.textSecondary,
+                    cursor: 'pointer',
+                    textDecoration: 'none',
+                  }}
+                >
+                  {i18n('Open MCP page')}
+                </a>
+              ) : null}
+              {edgeUrl ? (
+                <a
+                  href={edgeUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '4px',
+                    border: `1px solid ${themeStyles.borderSecondary}`,
+                    background: themeStyles.bgSecondary,
+                    color: themeStyles.textSecondary,
+                    cursor: 'pointer',
+                    textDecoration: 'none',
+                  }}
+                >
+                  {i18n('Open Edge page')}
+                </a>
+              ) : null}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: themeStyles.textTertiary }}>
+              <span style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: status === 'online' ? themeStyles.success : (status === 'offline' ? themeStyles.textTertiary : themeStyles.borderSecondary),
+              }} />
+              <span>
+                {status === 'online' ? i18n('Connected (edge registered)')
+                  : status === 'offline' ? i18n('Used before, currently offline')
+                    : i18n('Not connected yet')}
+              </span>
             </div>
             <div style={{ fontSize: '11px', color: themeStyles.textTertiary, lineHeight: 1.5 }}>
-              {i18n('Tools enabled for this domain in the Tool Market are exposed to the client.')}
+              {i18n('This endpoint exposes CRUD tools for this base\'s outline nodes and cards.')}
             </div>
           </>
         ) : (

@@ -793,6 +793,7 @@ declare module './model/edge' {
         eid: number;
         token: string;
         type: string;
+        category?: 'inbound' | 'outbound';
         status: 'online' | 'offline' | 'working';
         tokenCreatedAt: Date;
         tokenUsedAt?: Date;
@@ -805,6 +806,7 @@ declare module './model/edge' {
         toolsCount?: number;
         nodeId?: number;
         clientId?: number;
+        mcpId?: number;
         createdAt: Date;
         updatedAt: Date;
         owner: number;
@@ -812,6 +814,32 @@ declare module './model/edge' {
     }
 }
 export type { EdgeDoc } from './model/edge';
+
+declare module './model/mcp' {
+    interface McpDoc {
+        _id: ObjectId;
+        docType: document['TYPE_MCP'];
+        docId: ObjectId;
+        domainId: string;
+        mid: number;
+        owner: number;
+        token?: string;
+        edgeId?: number;
+        baseDocId?: number;
+        branch?: string;
+        name?: string;
+        description?: string;
+        instructions?: string;
+        tools?: { name: string; description: string }[];
+        status: 'online' | 'offline';
+        lastConnectedAt?: Date;
+        lastDisconnectedAt?: Date;
+        createdAt: Date;
+        updatedAt: Date;
+        content?: string;
+    }
+}
+export type { McpDoc } from './model/mcp';
 
 // Workflow document
 declare module './model/workflow' {

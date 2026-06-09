@@ -18,7 +18,13 @@
     </span>
   </td>
   <td class="col--type">
+    {% set cat = edge.category or ('outbound' if edge.type == 'mcp' else 'inbound') %}
     <span class="badge">{{ edge.typeLabel | default(edge.type) }}</span>
+    {% if cat == 'outbound' %}
+      <span class="badge badge--warning">出站</span>
+    {% else %}
+      <span class="badge badge--info">入站</span>
+    {% endif %}
   </td>
   <td class="col--created">
     {{ datetimeSpan(edge.tokenCreatedAt)|safe }}

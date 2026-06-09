@@ -62,9 +62,10 @@ export const BaseAdd = (name, args, icon = 'add', text = 'Create Base') => {
 
 
 // Edge type slots — pluggable by extensions
-inject('EdgeType', 'provider', { value: 'provider', label: 'Provider (WebSocket)' });
-inject('EdgeType', 'client', { value: 'client', label: 'Client (WebSocket)' });
-inject('EdgeType', 'node', { value: 'node', label: 'Node (MQTT + WebSocket)' });
+inject('EdgeType', 'provider', { value: 'provider', label: 'Provider (WebSocket)', category: 'inbound' });
+inject('EdgeType', 'client', { value: 'client', label: 'Client (WebSocket)', category: 'inbound' });
+inject('EdgeType', 'node', { value: 'node', label: 'Node (MQTT + WebSocket)', category: 'inbound' });
+inject('EdgeType', 'mcp', { value: 'mcp', label: 'MCP (SSE)', category: 'outbound' });
 
 inject('Nav', 'homepage', { prefix: 'homepage' });
 inject('Nav', 'learn', { prefix: 'learn' });

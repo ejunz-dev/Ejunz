@@ -1,0 +1,55 @@
+{% set page_name = "mcp_edit" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-12 columns">
+    <form method="post" action="{{ url('mcp_edit', { mid: mcp.mid }) }}">
+      <input type="hidden" name="csrfToken" value="{{ handler.csrfToken }}">
+      <div class="section">
+        <div class="section__header">
+          <h1 class="section__title">编辑 MCP #{{ mcp.mid }} 描述</h1>
+          <div class="section__tools">
+            <a href="{{ url('mcp_detail', { mid: mcp.mid }) }}" class="button"><span class="icon icon-back"></span> 取消</a>
+            <button type="submit" name="operation" value="reset" class="button" onclick="return confirm('确定用默认描述覆盖当前的 Instructions 和所有工具描述吗？此操作不可撤销。');"><span class="icon icon-refresh"></span> 初始化（恢复默认）</button>
+            <button type="submit" name="operation" value="save" class="primary button"><span class="icon icon-check"></span> 保存</button>
+          </div>
+        </div>
+        <div class="section__body">
+          <div class="typo">
+            <label class="material textbox">名称
+              <input type="text" name="name" value="{{ mcp.name or ('MCP-' + mcp.mid) }}">
+            </label>
+            <label class="material textbox">备注（仅展示，不发给客户端）
+              <textarea name="description" class="textbox" data-markdown rows="2">{{ mcp.description or '' }}</textarea>
+            </label>
+            <label class="material textbox">Instructions（连接时通过 initialize 发给客户端，说明此 MCP 的用途与概念）
+              <textarea name="instructions" class="textbox" data-markdown rows="10">{{ instructions }}</textarea>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section__header"><h1 class="section__title">工具描述（tools/list 发给客户端）</h1></div>
+        <div class="section__body">
+          <div class="typo">
+            {%- for tool in tools -%}
+            <label class="material textbox"><code>{{ tool.name }}</code>
+              <textarea name="tool_{{ tool.name }}" class="textbox" data-markdown rows="3">{{ tool.description }}</textarea>
+            </label>
+            {%- endfor -%}
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section__body">
+          <button type="submit" name="operation" value="save" class="primary rounded button"><span class="icon icon-check"></span> 保存</button>
+          <button type="submit" name="operation" value="reset" class="rounded button" onclick="return confirm('确定用默认描述覆盖当前的 Instructions 和所有工具描述吗？此操作不可撤销。');"><span class="icon icon-refresh"></span> 初始化（恢复默认）</button>
+          <a href="{{ url('mcp_detail', { mid: mcp.mid }) }}" class="rounded button">取消</a>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
