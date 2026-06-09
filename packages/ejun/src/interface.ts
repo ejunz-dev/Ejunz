@@ -1316,7 +1316,8 @@ export interface SessionDoc {
     nodeId?: string;
     cardIndex?: number;
     route?: string;
-    appRoute?: 'learn' | 'develop' | 'agent';
+    appRoute?: 'learn' | 'develop' | 'agent' | 'mcp';
+    mcpId?: number;
     developSessionKind?: 'daily' | 'outline_node';
     /** Develop mind-map storage: 70 = TYPE_BASE, 73 = TYPE_SKILL. Required on `appRoute: develop` session rows. */
     developMapDocType?: number;

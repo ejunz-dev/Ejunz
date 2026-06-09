@@ -5,6 +5,9 @@ import { PRIV } from '../model/builtin';
 import EdgeModel from '../model/edge';
 import EdgeTokenModel from '../model/edge_token';
 import McpModel from '../model/mcp';
+import SessionModel from '../model/session';
+import RecordModel from '../model/record';
+import { BaseModel } from '../model/base';
 import { NotFoundError, ValidationError } from '../error';
 import {
     MCP_BUILTIN_TOOLS_CATALOG, isMcpBuiltinTool, executeMcpBuiltinTool,
@@ -144,6 +147,48 @@ function notifyToolsListChanged(ctx: Context, token: string) {
     const delivered = deliverToToken(token, data);
     (ctx as any).broadcast('mcp/notify', { token, data });
     logger.info('MCP tools/list_changed pushed: localSessions=%d (+broadcast to other processes)', delivered);
+}
+
+const MCP_RECORD_RESULT_MAX = 8000;
+
+async function recordMcpToolCall(input: {
+    domainId: string;
+    uid: number;
+    mcpId?: number;
+    baseDocId: number;
+    branch: string;
+    tool: string;
+    args: Record<string, any>;
+    result?: string;
+    isError?: boolean;
+    error?: string;
+    durationMs: number;
+}): Promise<void> {
+    try {
+        if (!input.uid || !input.mcpId) return;
+        const baseDocId = input.baseDocId || 0;
+        const branch = input.branch || 'main';
+        const session = await SessionModel.getOrCreateMcpSession(input.domainId, input.uid, input.mcpId, baseDocId, branch);
+        const result = typeof input.result === 'string' && input.result.length > MCP_RECORD_RESULT_MAX
+            ? `${input.result.slice(0, MCP_RECORD_RESULT_MAX)}…(+${input.result.length - MCP_RECORD_RESULT_MAX} chars)`
+            : input.result;
+        await RecordModel.insertMcpToolRecord(input.domainId, input.uid, session._id, {
+            mcpId: input.mcpId,
+            baseDocId,
+            branch,
+            meta: {
+                tool: input.tool,
+                args: input.args || {},
+                result,
+                isError: input.isError,
+                error: input.error,
+                durationMs: input.durationMs,
+                sessionRef: session._id.toHexString(),
+            },
+        });
+    } catch (e) {
+        logger.warn('Failed to record MCP tool call: tool=%s, error=%s', input.tool, (e as Error).message);
+    }
 }
 
 type JsonRpcMessage = {
@@ -382,26 +427,44 @@ export class McpMessageHandler extends Handler<Context> {
                 logger.info('MCP tools/call -> %s, tool=%s, id=%s, args=%s', logCtx, name, `${msg.id}`, clipForLog(args));
                 const startedAt = Date.now();
                 let response: any;
+                let resultText: string | undefined;
+                let isError = false;
+                let errorMsg: string | undefined;
                 try {
                     const result = await executeMcpBuiltinTool(toolCtx, name, args);
-                    const text = typeof result === 'string' ? result : JSON.stringify(result);
-                    response = { jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text }] } };
+                    resultText = typeof result === 'string' ? result : JSON.stringify(result);
+                    response = { jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: resultText }] } };
                     logger.info(
                         'MCP tools/call OK: %s, tool=%s, id=%s, %dms, result=%s',
-                        logCtx, name, `${msg.id}`, Date.now() - startedAt, clipForLog(text),
+                        logCtx, name, `${msg.id}`, Date.now() - startedAt, clipForLog(resultText),
                     );
                 } catch (e) {
+                    isError = true;
+                    errorMsg = (e as Error).message;
                     response = {
                         jsonrpc: '2.0',
                         id: msg.id,
-                        result: { content: [{ type: 'text', text: (e as Error).message }], isError: true },
+                        result: { content: [{ type: 'text', text: errorMsg }], isError: true },
                     };
                     logger.warn(
                         'MCP tools/call ERROR: %s, tool=%s, id=%s, %dms, error=%s',
-                        logCtx, name, `${msg.id}`, Date.now() - startedAt, (e as Error).message,
+                        logCtx, name, `${msg.id}`, Date.now() - startedAt, errorMsg,
                     );
                 }
                 deliverOrBroadcast(this.ctx, sessionId, JSON.stringify(response));
+                await recordMcpToolCall({
+                    domainId,
+                    uid: toolCtx.owner,
+                    mcpId: mcpDoc?.mid,
+                    baseDocId: toolCtx.baseDocId,
+                    branch: toolCtx.branch,
+                    tool: name,
+                    args,
+                    result: isError ? undefined : resultText,
+                    isError,
+                    error: errorMsg,
+                    durationMs: Date.now() - startedAt,
+                });
                 continue;
             }
 
@@ -466,9 +529,20 @@ async function getOrCreateMcp(
     return mcp;
 }
 
-function buildMcpConnectionInfo(h: Handler<Context>, domainId: string, token: string) {
+async function resolveBasePathId(domainId: string, baseDocId?: number): Promise<string | undefined> {
+    if (!baseDocId) return undefined;
+    try {
+        const base = await BaseModel.get(domainId, baseDocId);
+        const bid = (base as any)?.bid;
+        if (bid && String(bid).trim()) return String(bid).trim();
+    } catch { /* fall back to docId */ }
+    return String(baseDocId);
+}
+
+function buildMcpConnectionInfo(h: Handler<Context>, domainId: string, token: string, pathId?: string) {
     const { protocol, host } = detectOrigin(h);
-    const baseUrl = `${protocol}://${host}/d/${domainId}/mcp/sse`;
+    const seg = pathId ? `/${encodeURIComponent(pathId)}` : '';
+    const baseUrl = `${protocol}://${host}/d/${domainId}/mcp/sse${seg}`;
     const url = `${baseUrl}?token=${token}`;
     const command = `claude mcp add --transport sse ejunz-${domainId} ${baseUrl} --header "Authorization: Bearer ${token}"`;
     return {
@@ -514,12 +588,13 @@ export class McpTokenHandler extends Handler<Context> {
 
         const token = await getOrCreateMcpToken(domainId, this.user._id, baseDocId, branch);
         const mcp = await getOrCreateMcp(domainId, this.user._id, token, baseDocId, branch);
+        const pathId = await resolveBasePathId(domainId, baseDocId ?? mcp.baseDocId);
         this.response.body = {
             success: true,
             baseDocId,
             branch: branch || mcp.branch || 'main',
             ...buildMcpStatus(domainId, mcp),
-            ...buildMcpConnectionInfo(this, domainId, token),
+            ...buildMcpConnectionInfo(this, domainId, token, pathId),
         };
     }
 
@@ -578,7 +653,10 @@ export class McpDetailHandler extends Handler<Context> {
         const edge = mcp.edgeId ? await EdgeModel.getByEdgeId(domainId, mcp.edgeId) : null;
 
         let info: ReturnType<typeof buildMcpConnectionInfo> | null = null;
-        if (isOwner && mcp.token) info = buildMcpConnectionInfo(this, domainId, mcp.token);
+        if (isOwner && mcp.token) {
+            const pathId = await resolveBasePathId(domainId, mcp.baseDocId);
+            info = buildMcpConnectionInfo(this, domainId, mcp.token, pathId);
+        }
 
         this.response.template = 'mcp_detail.html';
         this.response.body = {
@@ -680,9 +758,9 @@ export async function apply(ctx: Context) {
     (ctx as any).server.addCaptureRoute('/.well-known/openid-configuration', captureWellKnownNotFound);
 
     ctx.Route('mcp_main', '/mcp', McpListHandler);
-    ctx.Route('mcp', '/mcp/sse', McpConnectionHandler);
     ctx.Route('mcp_message', '/mcp/sse/message', McpMessageHandler);
     ctx.Route('mcp_token', '/mcp/sse/token', McpTokenHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mcp', '/mcp/sse/:bid', McpConnectionHandler);
     ctx.Route('mcp_edit', '/mcp/:mid/edit', McpEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mcp_detail', '/mcp/:mid', McpDetailHandler);
 

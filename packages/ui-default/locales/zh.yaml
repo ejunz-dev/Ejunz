@@ -1531,6 +1531,14 @@ session_record_type_develop: 开发编辑
 session_record_type_develop_daily: 每日开发
 session_record_type_develop_outline: 大纲单节点编辑
 session_record_type_agent: 对话
+session_record_type_mcp: Edge / MCP
+record_mcp_tool_title: MCP 工具调用
+record_mcp_status: 状态
+record_mcp_succeeded: 成功
+record_mcp_failed: 失败
+record_mcp_duration: 耗时
+record_mcp_args: 调用参数
+record_mcp_result: 返回结果
 session_status_abandoned: 已放弃
 session_status_active: 在线
 session_status_detached: 离线

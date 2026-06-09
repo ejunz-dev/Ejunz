@@ -1130,6 +1130,14 @@ session_record_type_develop: Develop editor
 session_record_type_develop_daily: Daily develop
 session_record_type_develop_outline: Outline single-node editing
 session_record_type_agent: Chat
+session_record_type_mcp: Edge / MCP
+record_mcp_tool_title: MCP tool call
+record_mcp_status: Status
+record_mcp_succeeded: Succeeded
+record_mcp_failed: Failed
+record_mcp_duration: Duration
+record_mcp_args: Arguments
+record_mcp_result: Result
 session_status_abandoned: Abandoned
 session_status_active: Active
 session_status_detached: Offline
