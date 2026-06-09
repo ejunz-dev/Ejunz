@@ -11,6 +11,7 @@ import { PRIV } from '../model/builtin';
 import { ValidationError, PermissionError, NotFoundError } from '../error';
 import type { EdgeDoc } from '../interface';
 import type { EdgeBridgeEnvelope } from '../service/bus';
+import { isMcpTokenConnected } from './mcp';
 
 const logger = new Logger('edge');
 
@@ -27,7 +28,8 @@ type Subscription = {
 
 export function isEdgeTokenConnected(token: string): boolean {
     return EdgeServerConnectionHandler.active.has(token)
-        || EdgeConnectionHandler.activeByToken.has(token);
+        || EdgeConnectionHandler.activeByToken.has(token)
+        || isMcpTokenConnected(token);
 }
 
 function getEdgeTypeInjectNodes(): Array<{ args: Record<string, any> }> {
@@ -39,8 +41,17 @@ function resolveEdgeTypeLabel(type: string): string {
     return item?.args?.label || type;
 }
 
-function withEdgeTypeLabel<T extends { type: string }>(edge: T): T & { typeLabel: string } {
-    return { ...edge, typeLabel: resolveEdgeTypeLabel(edge.type) };
+function resolveEdgeCategory(type: string): 'inbound' | 'outbound' {
+    const item = getEdgeTypeInjectNodes().find((i) => i.args?.value === type);
+    return item?.args?.category === 'outbound' ? 'outbound' : 'inbound';
+}
+
+function withEdgeTypeLabel<T extends { type: string; category?: string }>(edge: T): T & { typeLabel: string; category: 'inbound' | 'outbound' } {
+    return {
+        ...edge,
+        typeLabel: resolveEdgeTypeLabel(edge.type),
+        category: (edge.category as any) || resolveEdgeCategory(edge.type),
+    };
 }
 
 export class EdgeConnectionHandler extends ConnectionHandler<Context> {
@@ -929,27 +940,26 @@ export class EdgeDomainHandler extends Handler<Context> {
         
         // 计算实时状态：检查是否有Edge服务器在使用这个token
         const edgesWithStatus = await Promise.all(connectedEdges.map(async (edge) => {
-            // Repo 类型的 edge 是内部使用，激活后就是在线状态（不需要 WebSocket 连接）
+            // Repo 类型的 edge 是内部使用，激活后即在线（不需要连接）
             if (edge.type === 'repo') {
-                // repo 类型的 edge 激活后就是在线状态，直接使用数据库中的状态
-                return {
+                return withEdgeTypeLabel({
                     ...edge,
                     status: edge.status || 'online',
-                };
+                });
             }
-            
-            // 检查是否有Edge服务器在使用这个token（通过 /mcp/ws 连接）
+
+            // 入站 edge 通过 /mcp/ws 连接；出站 MCP edge 通过 /mcp/sse 连接，
+            // 两者的活跃状态都由 isEdgeTokenConnected 统一判定。
             let isConnected = isEdgeTokenConnected(edge.token);
-            
+
             let status: 'online' | 'offline' | 'working' = edge.status;
             if (isConnected) {
-                // 检查是否有工具（工作中）
                 const tools = await ToolModel.getByToken(this.domain._id, edge.token);
                 status = tools.length > 0 ? 'working' : 'online';
             } else {
                 status = 'offline';
             }
-            
+
             return withEdgeTypeLabel({
                 ...edge,
                 status,
@@ -964,10 +974,13 @@ export class EdgeDomainHandler extends Handler<Context> {
         const host = this.request.host || this.request.headers.host || 'localhost';
         const wsEndpointBase = `${wsProtocol}://${host}${wsPath}`;
         
-        const edgeTypes = (global.Ejunz?.ui?.nodes?.['EdgeType'] || []).map((item) => ({
-            value: item.args.value,
-            label: item.args.label,
-        }));
+        // 手动生成接入点仅适用于入站 edge；出站 edge（如 MCP SSE）在客户端连接时自动注册。
+        const edgeTypes = (global.Ejunz?.ui?.nodes?.['EdgeType'] || [])
+            .filter((item) => item.args?.category !== 'outbound')
+            .map((item) => ({
+                value: item.args.value,
+                label: item.args.label,
+            }));
 
         this.response.template = 'edge_main.html';
         this.response.body = { 
@@ -1004,8 +1017,11 @@ export class EdgeDetailHandler extends Handler<Context> {
         const tools = await ToolModel.getByEdgeDocId(this.domain._id, this.edge._id);
         const isConnected = isEdgeTokenConnected(this.edge.token);
         
+        const category = (this.edge.category as any) || resolveEdgeCategory(this.edge.type);
         let status: 'online' | 'offline' | 'working' = this.edge.status;
-        if (isConnected) {
+        if (this.edge.type === 'repo') {
+            status = this.edge.status || 'online';
+        } else if (isConnected) {
             status = tools.length > 0 ? 'working' : 'online';
         } else {
             status = 'offline';
@@ -1028,6 +1044,8 @@ export class EdgeDetailHandler extends Handler<Context> {
             edge: {
                 ...this.edge,
                 status,
+                category,
+                typeLabel: resolveEdgeTypeLabel(this.edge.type),
             },
             tools: tools.map(tool => ({
                 ...tool,

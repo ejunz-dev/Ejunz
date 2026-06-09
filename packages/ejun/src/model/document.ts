@@ -8,7 +8,7 @@ import {
     Content, ContestClarificationDoc, DiscussionDoc,
     DiscussionReplyDoc, AgentDoc, BaseDoc, RepoDoc, DocDoc, BlockDoc, NodeDoc, ClientDoc, ClientChatDoc, EdgeDoc, ToolDoc,
     DomainMarketToolDoc, WorkflowDoc, WorkflowNodeDoc, TrainingDoc, CardDoc, SceneDoc, SceneEventDoc,
-    SkillDoc,
+    SkillDoc, McpDoc,
 } from '../interface';
 import bus from '../service/bus';
 import db from '../service/db';
@@ -28,6 +28,7 @@ export const TYPE_DOMAIN_MARKET_TOOL: 22 = 22;
 export const TYPE_NODE: 30 = 30;
 export const TYPE_CLIENT: 40 = 40;
 export const TYPE_CLIENT_CHAT: 41 = 41;
+export const TYPE_MCP: 50 = 50;
 export const TYPE_WORKFLOW: 60 = 60;
 export const TYPE_WORKFLOW_NODE: 61 = 61;
 export const TYPE_BASE: 70 = 70;
@@ -47,6 +48,7 @@ export interface DocType {
     [TYPE_NODE]: NodeDoc;
     [TYPE_CLIENT]: ClientDoc;
     [TYPE_CLIENT_CHAT]: ClientChatDoc;
+    [TYPE_MCP]: McpDoc;
     [TYPE_EDGE]: EdgeDoc;
     [TYPE_TOOL]: ToolDoc;
     [TYPE_DOMAIN_MARKET_TOOL]: DomainMarketToolDoc;
@@ -549,6 +551,7 @@ global.Ejunz.model.document = {
     TYPE_NODE,
     TYPE_CLIENT,
     TYPE_CLIENT_CHAT,
+    TYPE_MCP,
     TYPE_EDGE,
     TYPE_TOOL,
     TYPE_DOMAIN_MARKET_TOOL,

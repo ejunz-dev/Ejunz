@@ -9,6 +9,8 @@ export interface EdgeTokenDoc {
     type: string;
     token: string;
     owner: number; // 创建 token 的用户 ID
+    baseDocId?: number; // MCP 出站 token 绑定的 base（其工具作用于该 base）
+    branch?: string; // MCP 出站 token 绑定的分支
     lastUsedAt: Date;
     createdAt: Date;
     expireAt?: Date | null; // 30分钟后过期（如果未使用），连接后置空以永久有效
@@ -26,6 +28,7 @@ class EdgeTokenModel {
         type: string,
         token: string,
         owner: number,
+        extra?: { baseDocId?: number; branch?: string },
     ): Promise<EdgeTokenDoc> {
         const now = new Date();
         const expireAt = new Date(now.getTime() + 30 * 60 * 1000); // 30分钟后过期
@@ -36,6 +39,8 @@ class EdgeTokenModel {
             type,
             token,
             owner,
+            baseDocId: extra?.baseDocId,
+            branch: extra?.branch,
             lastUsedAt: now,
             createdAt: now,
             expireAt,

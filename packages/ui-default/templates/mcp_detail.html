@@ -1,0 +1,94 @@
+{% set page_name = "mcp_detail" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-12 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">MCP 端点详情</h1>
+        <div class="section__tools">
+          {% if isOwner %}
+          <a href="{{ url('mcp_edit', { mid: mcp.mid }) }}" class="button"><span class="icon icon-edit"></span> 编辑描述</a>
+          {% endif %}
+          <a href="{{ url('mcp_main', {}) }}" class="button"><span class="icon icon-back"></span> 返回列表</a>
+        </div>
+      </div>
+      <div class="section__body">
+        <div class="typo">
+          <h2>基本信息</h2>
+          <table class="data-table">
+            <tbody>
+              <tr><td class="col--key">MID</td><td><code>{{ mcp.mid }}</code></td></tr>
+              <tr><td class="col--key">名称</td><td>{{ mcp.name or ('MCP-' + mcp.mid) }}</td></tr>
+              <tr>
+                <td class="col--key">状态</td>
+                <td>
+                  <span class="edge-status edge-status-{{ mcp.status }}">{{ '在线' if online else '离线' }}</span>
+                </td>
+              </tr>
+              <tr>
+                <td class="col--key">绑定 Base</td>
+                <td>
+                  {% if mcp.baseDocId %}
+                    <a href="{{ url('base_detail', { domainId: domainId, docId: mcp.baseDocId }) }}">Base {{ mcp.baseDocId }}</a>
+                    <span class="text-gray">/ {{ mcp.branch or 'main' }}</span>
+                  {% else %}<span class="text-gray">未绑定</span>{% endif %}
+                </td>
+              </tr>
+              {% if edge %}
+              <tr>
+                <td class="col--key">对应 Edge</td>
+                <td><a href="{{ url('edge_detail', { domainId: domainId, eid: edge.eid }) }}">出站 Edge #{{ edge.eid }}</a></td>
+              </tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    {% if info %}
+    <div class="section">
+      <div class="section__header"><h1 class="section__title">连接信息</h1></div>
+      <div class="section__body">
+        <div class="typo">
+          <label class="material textbox">连接 URL（token 在 query）
+            <input type="text" readonly value="{{ info.url }}" onfocus="this.select()">
+          </label>
+          <label class="material textbox">Claude Code 命令（推荐，header 认证）
+            <textarea readonly rows="3" onfocus="this.select()">{{ info.command }}</textarea>
+          </label>
+          <label class="material textbox">mcpServers 配置
+            <textarea readonly rows="8" onfocus="this.select()">{{ configJson }}</textarea>
+          </label>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if instructions %}
+    <div class="section">
+      <div class="section__header"><h1 class="section__title">Instructions（连接时发给客户端）</h1></div>
+      <div class="section__body">
+        <pre class="typo" style="white-space: pre-wrap;">{{ instructions }}</pre>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="section">
+      <div class="section__header"><h1 class="section__title">暴露的工具 ({{ tools|length }})</h1></div>
+      <div class="section__body no-padding">
+        <table class="data-table">
+          <colgroup><col class="col--name"><col class="col--description"></colgroup>
+          <thead><tr><th class="col--name">工具</th><th class="col--description">说明</th></tr></thead>
+          <tbody>
+            {%- for tool in tools -%}
+            <tr><td class="col--name"><code>{{ tool.name }}</code></td><td class="col--description">{{ tool.description }}</td></tr>
+            {%- endfor -%}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
