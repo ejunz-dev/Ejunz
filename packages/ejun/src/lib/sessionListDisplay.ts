@@ -21,7 +21,7 @@ export {
 const ON_LESSON_RECENT_MS = 3 * 60 * 1000;
 const LEGACY_ACTIVITY_MS = 5 * 60 * 1000;
 
-export type SessionListRecordType = 'daily' | 'single_card' | 'single_node' | 'develop' | 'agent' | 'other';
+export type SessionListRecordType = 'daily' | 'single_card' | 'single_node' | 'develop' | 'agent' | 'mcp' | 'other';
 
 export type SessionListStatus =
     | 'in_progress'
@@ -67,6 +67,10 @@ export function isAgentSessionRow(doc: SessionDoc): boolean {
     return doc.appRoute === 'agent' || doc.route === 'agent';
 }
 
+export function isMcpSessionRow(doc: SessionDoc): boolean {
+    return doc.appRoute === 'mcp' || doc.route === 'mcp';
+}
+
 export function getDevelopSessionSettledAt(doc: SessionDoc | null | undefined): Date | null {
     const p = doc?.progress as Record<string, unknown> | undefined;
     if (!p || typeof p !== 'object') return null;
@@ -88,6 +92,7 @@ export function deriveSessionRecordType(doc: SessionDoc): SessionListRecordType 
         return inferDevelopSessionKind(doc) === 'outline_node' ? 'single_node' : 'daily';
     }
     if (isAgentSessionRow(doc)) return 'agent';
+    if (isMcpSessionRow(doc)) return 'mcp';
     if (!isLearnSessionRow(doc)) return 'other';
     if (isLearnHomePlaceholderSession(doc)) return 'other';
     const mode = doc.lessonMode ?? null;
@@ -121,11 +126,12 @@ export function formatSessionProgressDisplay(doc: SessionDoc): string | null {
     return formatSessionCardProgress(doc);
 }
 
-export type SessionKindUi = 'learn' | 'develop' | 'agent';
+export type SessionKindUi = 'learn' | 'develop' | 'agent' | 'mcp';
 
 export function deriveSessionKind(doc: SessionDoc): SessionKindUi {
     if (isDevelopSessionRow(doc)) return 'develop';
     if (isAgentSessionRow(doc)) return 'agent';
+    if (isMcpSessionRow(doc)) return 'mcp';
     return 'learn';
 }
 

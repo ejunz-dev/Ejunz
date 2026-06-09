@@ -26,8 +26,19 @@ export type RecordProblemState = {
     updatedAt?: Date;
 };
 
-/** Learn: one row per card attempt (`learn_card` or omitted). Develop: editor save. Agent: chat task. */
-export type RecordKind = 'learn_card' | 'develop_save' | 'agent';
+/** Learn: one row per card attempt (`learn_card` or omitted). Develop: editor save. Agent: chat task. MCP: one tool call. */
+export type RecordKind = 'learn_card' | 'develop_save' | 'agent' | 'mcp_tool';
+
+/** Detailed info of a single MCP tool invocation (recordKind `mcp_tool`). */
+export type McpToolCallMeta = {
+    tool: string;
+    args: Record<string, any>;
+    result?: string;
+    isError?: boolean;
+    error?: string;
+    durationMs?: number;
+    sessionRef?: string;
+};
 
 export type AgentRecordMessage = {
     role: 'user' | 'assistant' | 'tool';
@@ -82,6 +93,9 @@ export interface SessionRecordDoc {
     problems: RecordProblemState[];
     recordKind?: RecordKind;
     developMeta?: DevelopSaveMeta;
+    /** MCP tool call (recordKind `mcp_tool`) */
+    mcpId?: number;
+    mcpTool?: McpToolCallMeta;
     /** Agent task (recordKind `agent`) */
     status?: number;
     score?: number;
@@ -227,6 +241,45 @@ export default class RecordModel {
             problems: [],
             recordKind: 'develop_save',
             developMeta: meta,
+            createdAt: now,
+            updatedAt: now,
+            lastActivityAt: now,
+        };
+        await RecordModel.coll.insertOne(doc as any);
+        await SessionModel.addRecord(domainId, uid, sessionMongoId, doc._id);
+        bus.broadcast('record/change', doc);
+        return doc;
+    }
+
+    /** One row per MCP tool invocation; synthetic `cardId` avoids learn_card uniqueness collisions. */
+    static async insertMcpToolRecord(
+        domainId: string,
+        uid: number,
+        sessionMongoId: ObjectId,
+        input: {
+            mcpId: number;
+            baseDocId: number;
+            branch: string;
+            meta: McpToolCallMeta;
+        },
+    ): Promise<SessionRecordDoc> {
+        const now = new Date();
+        const syntheticCardId = new ObjectId().toHexString();
+        const doc: SessionRecordDoc = {
+            _id: new ObjectId(),
+            domainId,
+            uid,
+            sessionId: sessionMongoId,
+            cardId: syntheticCardId,
+            nodeId: '',
+            baseDocId: input.baseDocId,
+            branch: input.branch,
+            problems: [],
+            recordKind: 'mcp_tool',
+            mcpId: input.mcpId,
+            mcpTool: input.meta,
+            status: input.meta.isError ? STATUS.STATUS_TASK_ERROR_TOOL : STATUS.STATUS_TASK_DELIVERED,
+            time: input.meta.durationMs ?? 0,
             createdAt: now,
             updatedAt: now,
             lastActivityAt: now,

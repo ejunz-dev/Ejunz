@@ -336,6 +336,55 @@ export default class SessionModel {
         await this.coll.deleteMany({ domainId, uid });
     }
 
+    static MCP_IDLE_MINUTES = 5;
+
+    /**
+     * Resolve the active MCP session for a client. Reuses the most recent session of this
+     * (domainId, uid, mcpId) that has had activity within the idle window; otherwise starts a
+     * new one. A gap longer than the idle window ends the previous session and opens a new one.
+     */
+    static async getOrCreateMcpSession(
+        domainId: string,
+        uid: number,
+        mcpId: number,
+        baseDocId: number,
+        branch: string,
+        opts?: { idleMinutes?: number },
+    ): Promise<SessionDoc> {
+        const idle = opts?.idleMinutes ?? SessionModel.MCP_IDLE_MINUTES;
+        const existing = await this.coll.findOne(
+            {
+                domainId,
+                uid,
+                appRoute: 'mcp',
+                mcpId,
+                lastActivityAt: { $gte: SessionModel.activeCutoff(idle) },
+            },
+            { sort: { lastActivityAt: -1 } },
+        );
+        if (existing) return existing as SessionDoc;
+        const now = new Date();
+        const doc = {
+            _id: new ObjectId(),
+            domainId,
+            uid,
+            appRoute: 'mcp' as const,
+            route: 'mcp',
+            mcpId,
+            baseDocId,
+            branch,
+            title: `MCP base ${baseDocId} · ${now.toLocaleString()}`,
+            recordIds: [] as ObjectId[],
+            state: 'active' as const,
+            createdAt: now,
+            updatedAt: now,
+            lastActivityAt: now,
+        } as SessionDoc;
+        await this.coll.insertOne(doc as any);
+        bus.broadcast('session/change', doc);
+        return doc;
+    }
+
     static async ensureAgentChatSession(
         domainId: string,
         uid: number,
@@ -609,6 +658,7 @@ export async function apply(ctx: Context) {
         { key: { domainId: 1, appRoute: 1, agentSessionKind: 1, uid: 1, _id: -1 }, name: 'agent_chat_sessions' },
         { key: { domainId: 1, appRoute: 1, agentId: 1, uid: 1, _id: -1 }, name: 'agent_chat_by_agent' },
         { key: { domainId: 1, appRoute: 1, clientId: 1, lastActivityAt: -1 }, name: 'agent_chat_client_activity' },
+        { key: { domainId: 1, appRoute: 1, mcpId: 1, uid: 1, lastActivityAt: -1 }, name: 'mcp_sessions' },
     );
 
     (global.Ejunz.model as any).session = SessionModel;

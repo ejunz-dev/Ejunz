@@ -43,6 +43,12 @@ export function summarizeRecordDoc(r: SessionRecordDoc): { code: string; color: 
             : 0;
         return { code: 'develop', color: '#0366d6', label: n > 0 ? `Editor save (${n})` : 'Editor save' };
     }
+    if (r.recordKind === 'mcp_tool') {
+        const m = r.mcpTool;
+        const tool = m?.tool || 'tool';
+        if (m?.isError) return { code: 'fail', color: '#fb5555', label: `${tool} (error)` };
+        return { code: 'pass', color: '#25ad40', label: tool };
+    }
     const probs = r.problems || [];
     if (!probs.length) return { code: 'pending', color: '#9fa0a0', label: 'Pending' };
     if (probs.some(p => p.status === 'wrong')) return { code: 'fail', color: '#fb5555', label: 'Wrong' };
@@ -172,6 +178,16 @@ async function enrichRecordRowDisplay(
             if (m.nodeUpdates || m.nodeCreates) parts.push(`${m.nodeUpdates + m.nodeCreates} node`);
         }
         return { cardTitle: parts.length ? `Save (${parts.join(', ')})` : 'Editor save', cardUrl: '#' };
+    }
+    if (rd.recordKind === 'mcp_tool') {
+        const m = rd.mcpTool;
+        const tool = m?.tool || 'tool';
+        const argKeys = m?.args && typeof m.args === 'object' ? Object.keys(m.args) : [];
+        const title = argKeys.length ? `${tool}(${argKeys.join(', ')})` : tool;
+        return {
+            cardTitle: title,
+            cardUrl: buildUrl('record_detail', { domainId: rd.domainId, rid: rd._id }),
+        };
     }
     const domainId = rd.domainId;
     const branch = rd.branch && rd.branch.length > 0 ? rd.branch : 'main';
