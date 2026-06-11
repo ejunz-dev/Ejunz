@@ -18289,6 +18289,8 @@ function McpSidebarPanel({ themeStyles, baseId, branch }: { themeStyles: any; ba
   const [loading, setLoading] = useState(false);
   const [url, setUrl] = useState('');
   const [command, setCommand] = useState('');
+  const [httpUrl, setHttpUrl] = useState('');
+  const [httpCommand, setHttpCommand] = useState('');
   const [mid, setMid] = useState<number | null>(null);
   const [edgeUrl, setEdgeUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<string>('pending');
@@ -18301,9 +18303,11 @@ function McpSidebarPanel({ themeStyles, baseId, branch }: { themeStyles: any; ba
       if (baseId) payload.baseId = baseId;
       if (branch) payload.branch = branch;
       const res: any = await request.post(`/d/${domainId}/mcp/sse/token`, payload);
-      if (res?.url) {
-        setUrl(res.url);
+      if (res?.url || res?.httpUrl) {
+        setUrl(res.url || '');
         setCommand(res.command || '');
+        setHttpUrl(res.httpUrl || '');
+        setHttpCommand(res.httpCommand || '');
         setMid(typeof res.mid === 'number' ? res.mid : null);
         setEdgeUrl(res.edgeUrl || null);
         setStatus(res.status || 'pending');
@@ -18316,11 +18320,11 @@ function McpSidebarPanel({ themeStyles, baseId, branch }: { themeStyles: any; ba
   }, [domainId, baseId, branch]);
 
   useEffect(() => {
-    if (!url && !loading) enable();
+    if (!url && !httpUrl && !loading) enable();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!url) return undefined;
+    if (!url && !httpUrl) return undefined;
     let cancelled = false;
     const poll = async () => {
       try {
@@ -18337,7 +18341,7 @@ function McpSidebarPanel({ themeStyles, baseId, branch }: { themeStyles: any; ba
     poll();
     const timer = setInterval(poll, 5000);
     return () => { cancelled = true; clearInterval(timer); };
-  }, [url, domainId, baseId, branch]);
+  }, [url, httpUrl, domainId, baseId, branch]);
 
   const copyText = useCallback(async (text: string, key: string) => {
     if (!text) return;
@@ -18358,24 +18362,24 @@ function McpSidebarPanel({ themeStyles, baseId, branch }: { themeStyles: any; ba
   return (
     <div style={{ padding: '8px', fontSize: '12px', color: themeStyles.textPrimary }}>
       <div style={{ fontWeight: 600, color: themeStyles.textSecondary, marginBottom: '8px', padding: '0 8px' }}>
-        {i18n('MCP Server (SSE)')}
+        {i18n('MCP Server')}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '0 8px' }}>
         <div style={{ fontSize: '11px', color: themeStyles.textSecondary, lineHeight: 1.5 }}>
-          {i18n('Connect an MCP client to this domain over SSE. For Claude Code, use the command below (header auth is the most reliable).')}
+          {i18n('Use Streamable HTTP (recommended). If you previously added an SSE server in Claude Code, remove it first, then run the HTTP command below.')}
         </div>
         {loading ? (
           <div style={{ fontSize: '12px', color: themeStyles.textSecondary, padding: '4px 0' }}>
             {i18n('Generating link...')}
           </div>
-        ) : url ? (
+        ) : (httpUrl || url) ? (
           <>
-            {command ? (
+            {httpCommand ? (
               <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <span style={{ color: themeStyles.textSecondary, fontSize: '11px' }}>{i18n('Claude Code command (recommended)')}</span>
+                <span style={{ color: themeStyles.textSecondary, fontSize: '11px' }}>{i18n('Claude Code command · HTTP (recommended)')}</span>
                 <textarea
                   readOnly
-                  value={command}
+                  value={httpCommand}
                   rows={3}
                   onFocus={(e) => e.currentTarget.select()}
                   style={{
@@ -18393,55 +18397,106 @@ function McpSidebarPanel({ themeStyles, baseId, branch }: { themeStyles: any; ba
                 />
                 <button
                   type="button"
-                  onClick={() => copyText(command, 'cmd')}
+                  onClick={() => copyText(httpCommand, 'http-cmd')}
                   style={{
                     padding: '6px 12px',
                     borderRadius: '4px',
                     border: 'none',
                     alignSelf: 'flex-start',
-                    background: copied === 'cmd' ? themeStyles.success : themeStyles.bgButtonActive,
+                    background: copied === 'http-cmd' ? themeStyles.success : themeStyles.bgButtonActive,
                     color: themeStyles.textOnPrimary,
                     cursor: 'pointer',
                   }}
                 >
-                  {copied === 'cmd' ? i18n('Copied') : i18n('Copy command')}
+                  {copied === 'http-cmd' ? i18n('Copied') : i18n('Copy HTTP command')}
                 </button>
               </label>
             ) : null}
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <span style={{ color: themeStyles.textSecondary, fontSize: '11px' }}>{i18n('Connection URL (token in query)')}</span>
-              <input
-                type="text"
-                readOnly
-                value={url}
-                onFocus={(e) => e.currentTarget.select()}
-                style={{
-                  width: '100%',
-                  boxSizing: 'border-box',
-                  padding: '6px 8px',
-                  fontFamily: 'monospace',
-                  border: `1px solid ${themeStyles.borderSecondary}`,
-                  borderRadius: '4px',
-                  background: themeStyles.bgSecondary,
-                  color: themeStyles.textPrimary,
-                }}
-              />
-            </label>
+            {httpUrl ? (
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <span style={{ color: themeStyles.textSecondary, fontSize: '11px' }}>{i18n('Connection URL · HTTP')}</span>
+                <input
+                  type="text"
+                  readOnly
+                  value={httpUrl}
+                  onFocus={(e) => e.currentTarget.select()}
+                  style={{
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    padding: '6px 8px',
+                    fontFamily: 'monospace',
+                    border: `1px solid ${themeStyles.borderSecondary}`,
+                    borderRadius: '4px',
+                    background: themeStyles.bgSecondary,
+                    color: themeStyles.textPrimary,
+                  }}
+                />
+              </label>
+            ) : null}
+            {command ? (
+              <details style={{ fontSize: '11px', color: themeStyles.textSecondary }}>
+                <summary style={{ cursor: 'pointer', marginBottom: '6px' }}>{i18n('Legacy SSE (may break after server reload)')}</summary>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '8px' }}>
+                  <span>{i18n('Claude Code command · SSE')}</span>
+                  <textarea
+                    readOnly
+                    value={command}
+                    rows={2}
+                    onFocus={(e) => e.currentTarget.select()}
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      padding: '6px 8px',
+                      fontFamily: 'monospace',
+                      fontSize: '11px',
+                      resize: 'vertical',
+                      border: `1px solid ${themeStyles.borderSecondary}`,
+                      borderRadius: '4px',
+                      background: themeStyles.bgSecondary,
+                      color: themeStyles.textPrimary,
+                    }}
+                  />
+                </label>
+                {url ? (
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <span>{i18n('Connection URL · SSE')}</span>
+                    <input
+                      type="text"
+                      readOnly
+                      value={url}
+                      onFocus={(e) => e.currentTarget.select()}
+                      style={{
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        padding: '6px 8px',
+                        fontFamily: 'monospace',
+                        border: `1px solid ${themeStyles.borderSecondary}`,
+                        borderRadius: '4px',
+                        background: themeStyles.bgSecondary,
+                        color: themeStyles.textPrimary,
+                      }}
+                    />
+                  </label>
+                ) : null}
+              </details>
+            ) : null}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-              <button
-                type="button"
-                onClick={() => copyText(url, 'url')}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: '4px',
-                  border: 'none',
-                  background: copied === 'url' ? themeStyles.success : themeStyles.bgButtonActive,
-                  color: themeStyles.textOnPrimary,
-                  cursor: 'pointer',
-                }}
-              >
-                {copied === 'url' ? i18n('Copied') : i18n('Copy link')}
-              </button>
+              {httpUrl ? (
+                <button
+                  type="button"
+                  onClick={() => copyText(httpUrl, 'http-url')}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '4px',
+                    border: 'none',
+                    background: copied === 'http-url' ? themeStyles.success : themeStyles.bgButtonActive,
+                    color: themeStyles.textOnPrimary,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {copied === 'http-url' ? i18n('Copied') : i18n('Copy HTTP link')}
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={enable}

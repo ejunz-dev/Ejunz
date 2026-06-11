@@ -52,13 +52,19 @@
       <div class="section__header"><h1 class="section__title">连接信息</h1></div>
       <div class="section__body">
         <div class="typo">
-          <label class="material textbox">连接 URL（token 在 query）
-            <input type="text" readonly value="{{ info.url }}" onfocus="this.select()">
+          <label class="material textbox">Claude Code 命令 · Streamable HTTP（推荐，重启自动恢复）
+            <textarea readonly rows="3" onfocus="this.select()">{{ info.httpCommand }}</textarea>
           </label>
-          <label class="material textbox">Claude Code 命令（推荐，header 认证）
+          <label class="material textbox">连接 URL · HTTP（token 在 query）
+            <input type="text" readonly value="{{ info.httpUrl }}" onfocus="this.select()">
+          </label>
+          <label class="material textbox">Claude Code 命令 · SSE（备用）
             <textarea readonly rows="3" onfocus="this.select()">{{ info.command }}</textarea>
           </label>
-          <label class="material textbox">mcpServers 配置
+          <label class="material textbox">连接 URL · SSE（token 在 query）
+            <input type="text" readonly value="{{ info.url }}" onfocus="this.select()">
+          </label>
+          <label class="material textbox">mcpServers 配置（SSE）
             <textarea readonly rows="8" onfocus="this.select()">{{ configJson }}</textarea>
           </label>
         </div>
