@@ -324,15 +324,27 @@ export async function executeMcpBuiltinTool(
 
     switch (name) {
     case 'outline_list_nodes': {
-        const { nodes } = getBranchData(base, branch);
-        return (nodes || []).map(summarizeNode);
+        const { nodes, edges } = getBranchData(base, branch);
+        const parentMap = buildParentMap(edges);
+        return (nodes || []).map((n) => ({
+            ...summarizeNode(n),
+            parentId: parentMap.get(n.id) || n.parentId || null,
+        }));
     }
     case 'outline_create_node': {
         const text = String(args.text || '').trim();
         if (!text) throw new Error('text is required');
-        const parentId = args.parentId ? String(args.parentId) : undefined;
-        const res = await BaseModel.addNode(domainId, baseDocId, { text } as any, parentId, branch);
-        return { ok: true, nodeId: res.nodeId, edgeId: res.edgeId };
+        const parentId = args.parentId ? String(args.parentId).trim() : undefined;
+        if (parentId) {
+            const { nodes } = getBranchData(base, branch);
+            if (!(nodes || []).some((n) => n.id === parentId)) {
+                throw new Error(`Parent node not found: ${parentId}`);
+            }
+        }
+        const res = await BaseModel.addNode(
+            domainId, baseDocId, { text } as any, parentId, branch, parentId,
+        );
+        return { ok: true, nodeId: res.nodeId, edgeId: res.edgeId, parentId: parentId ?? null };
     }
     case 'outline_update_node': {
         const nodeId = String(args.nodeId || '');
