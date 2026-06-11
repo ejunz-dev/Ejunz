@@ -122,10 +122,24 @@ function deliverToSession(sessionId: string, data: string): boolean {
 function deliverOrBroadcast(ctx: Context, sessionId: string, data: string) {
     if (deliverToSession(sessionId, data)) {
         logger.info('MCP deliver -> SSE session (local): sessionId=%s, bytes=%d', sessionId, data.length);
-    } else {
-        logger.warn('MCP deliver: session not local, broadcasting: sessionId=%s, bytes=%d', sessionId, data.length);
-        (ctx as any).broadcast('mcp/deliver', { sessionId, data });
+        return;
     }
+    if (process.env.exec_mode === 'cluster_mode') {
+        logger.warn(
+            'MCP deliver: session not on this worker, broadcasting across cluster: sessionId=%s, bytes=%d',
+            sessionId, data.length,
+        );
+    } else {
+        // Not in cluster mode: broadcast only re-emits in this same process, where the session is
+        // already absent — so the response is effectively dropped and the client will hang until it
+        // reconnects. This usually means the SSE stream was closed by a server reload mid-request.
+        logger.warn(
+            'MCP deliver FAILED: SSE session no longer exists in this process and broadcast cannot cross '
+            + 'processes outside cluster mode; response dropped. sessionId=%s, bytes=%d',
+            sessionId, data.length,
+        );
+    }
+    (ctx as any).broadcast('mcp/deliver', { sessionId, data });
 }
 
 function deliverToToken(token: string, data: string): number {
@@ -251,6 +265,92 @@ async function handleJsonRpc(
         }
         return null;
     }
+}
+
+interface McpToolContext {
+    domainId: string;
+    baseDocId: number;
+    branch: string;
+    owner: number;
+}
+
+/**
+ * Process a single inbound JSON-RPC message and return the JSON-RPC response object
+ * (or null for notifications that need no response). Shared by both the SSE and the
+ * Streamable HTTP transports — the caller decides how to deliver the returned response
+ * (write to an SSE stream vs. return inline on the POST response).
+ */
+async function processMcpMessage(
+    ctx: Context,
+    msg: JsonRpcMessage,
+    toolCtx: McpToolContext,
+    meta: McpServerMeta,
+    mcpDoc: { mid: number } | null,
+    logCtx: string,
+): Promise<any | null> {
+    logger.info('MCP recv: %s, method=%s, id=%s', logCtx, msg?.method || '-', `${msg?.id ?? '-'}`);
+
+    if (msg && msg.method === 'tools/call' && msg.id !== undefined && msg.id !== null) {
+        const name = msg.params?.name;
+        const args = msg.params?.arguments || {};
+        if (!name || typeof name !== 'string') {
+            logger.warn('MCP tools/call rejected (missing name): %s, id=%s', logCtx, `${msg.id}`);
+            return { jsonrpc: '2.0', id: msg.id, error: { code: -32602, message: 'Invalid params: name is required' } };
+        }
+        if (!isMcpBuiltinTool(name)) {
+            logger.warn('MCP tools/call unknown tool: %s, tool=%s, id=%s', logCtx, name, `${msg.id}`);
+            return { jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true } };
+        }
+        logger.info('MCP tools/call -> %s, tool=%s, id=%s, args=%s', logCtx, name, `${msg.id}`, clipForLog(args));
+        const startedAt = Date.now();
+        let response: any;
+        let resultText: string | undefined;
+        let isError = false;
+        let errorMsg: string | undefined;
+        try {
+            const result = await executeMcpBuiltinTool(toolCtx, name, args);
+            resultText = typeof result === 'string' ? result : JSON.stringify(result);
+            response = { jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: resultText }] } };
+            logger.info(
+                'MCP tools/call OK: %s, tool=%s, id=%s, %dms, result=%s',
+                logCtx, name, `${msg.id}`, Date.now() - startedAt, clipForLog(resultText),
+            );
+        } catch (e) {
+            isError = true;
+            errorMsg = (e as Error).message;
+            response = { jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: errorMsg }], isError: true } };
+            logger.warn(
+                'MCP tools/call ERROR: %s, tool=%s, id=%s, %dms, error=%s',
+                logCtx, name, `${msg.id}`, Date.now() - startedAt, errorMsg,
+            );
+        }
+        await recordMcpToolCall({
+            domainId: toolCtx.domainId,
+            uid: toolCtx.owner,
+            mcpId: mcpDoc?.mid,
+            baseDocId: toolCtx.baseDocId,
+            branch: toolCtx.branch,
+            tool: name,
+            args,
+            result: isError ? undefined : resultText,
+            isError,
+            error: errorMsg,
+            durationMs: Date.now() - startedAt,
+        });
+        return response;
+    }
+
+    const response = await handleJsonRpc(ctx, toolCtx.domainId, msg, meta);
+    if (!response) {
+        logger.info('MCP handled (no response): %s, method=%s', logCtx, msg?.method || '-');
+        return null;
+    }
+    if (response.error) {
+        logger.warn('MCP %s ERROR: %s, code=%s, msg=%s', msg?.method || '-', logCtx, response.error.code, response.error.message);
+    } else {
+        logger.info('MCP %s OK: %s', msg?.method || '-', logCtx);
+    }
+    return response;
 }
 
 function detectOrigin(h: Handler<Context>): { protocol: string; host: string } {
@@ -380,6 +480,31 @@ export class McpMessageHandler extends Handler<Context> {
         }
 
         const domainId = tokenDoc.domainId;
+
+        // Session affinity guard. The SSE stream behind `sessionId` lives only in this process's
+        // in-memory `mcpSessions` map. If it's gone — a `--watch`/deploy restart killed the process
+        // that held it, or (multi-worker) it was opened on a different worker — tool results have
+        // nowhere to be written back and the client would hang forever waiting on the SSE channel.
+        // Outside pm2 cluster mode the broadcast fallback is a local no-op, so fail fast with 404 to
+        // make the client tear down the dead session and reconnect (GET /mcp/sse) instead of hanging.
+        const clusterMode = process.env.exec_mode === 'cluster_mode';
+        if (!mcpSessions.has(sessionId) && !clusterMode) {
+            logger.warn(
+                'MCP message rejected: SSE session not found in this process '
+                + '(likely closed by a server reload, or never established here); client must reconnect. '
+                + 'sessionId=%s, domainId=%s, ua=%s',
+                sessionId, domainId, this.request.headers['user-agent'] || '-',
+            );
+            this.response.status = 404;
+            this.response.type = 'application/json';
+            this.response.body = JSON.stringify({
+                jsonrpc: '2.0',
+                id: null,
+                error: { code: -32001, message: 'SSE session not found or expired; please reconnect.' },
+            });
+            return;
+        }
+
         const body = this.request.body;
         const messages: JsonRpcMessage[] = Array.isArray(body) ? body : [body];
 
@@ -403,89 +528,99 @@ export class McpMessageHandler extends Handler<Context> {
             + `owner=${toolCtx.owner}, session=${sessionId}`;
 
         for (const msg of messages) {
-            logger.info('MCP recv: %s, method=%s, id=%s', logCtx, msg?.method || '-', `${msg?.id ?? '-'}`);
-
-            if (msg && msg.method === 'tools/call' && msg.id !== undefined && msg.id !== null) {
-                const name = msg.params?.name;
-                const args = msg.params?.arguments || {};
-                if (!name || typeof name !== 'string') {
-                    logger.warn('MCP tools/call rejected (missing name): %s, id=%s', logCtx, `${msg.id}`);
-                    deliverOrBroadcast(this.ctx, sessionId, JSON.stringify({
-                        jsonrpc: '2.0',
-                        id: msg.id,
-                        error: { code: -32602, message: 'Invalid params: name is required' },
-                    }));
-                    continue;
-                }
-                if (!isMcpBuiltinTool(name)) {
-                    logger.warn('MCP tools/call unknown tool: %s, tool=%s, id=%s', logCtx, name, `${msg.id}`);
-                    deliverOrBroadcast(this.ctx, sessionId, JSON.stringify({
-                        jsonrpc: '2.0',
-                        id: msg.id,
-                        result: { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true },
-                    }));
-                    continue;
-                }
-                logger.info('MCP tools/call -> %s, tool=%s, id=%s, args=%s', logCtx, name, `${msg.id}`, clipForLog(args));
-                const startedAt = Date.now();
-                let response: any;
-                let resultText: string | undefined;
-                let isError = false;
-                let errorMsg: string | undefined;
-                try {
-                    const result = await executeMcpBuiltinTool(toolCtx, name, args);
-                    resultText = typeof result === 'string' ? result : JSON.stringify(result);
-                    response = { jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: resultText }] } };
-                    logger.info(
-                        'MCP tools/call OK: %s, tool=%s, id=%s, %dms, result=%s',
-                        logCtx, name, `${msg.id}`, Date.now() - startedAt, clipForLog(resultText),
-                    );
-                } catch (e) {
-                    isError = true;
-                    errorMsg = (e as Error).message;
-                    response = {
-                        jsonrpc: '2.0',
-                        id: msg.id,
-                        result: { content: [{ type: 'text', text: errorMsg }], isError: true },
-                    };
-                    logger.warn(
-                        'MCP tools/call ERROR: %s, tool=%s, id=%s, %dms, error=%s',
-                        logCtx, name, `${msg.id}`, Date.now() - startedAt, errorMsg,
-                    );
-                }
-                deliverOrBroadcast(this.ctx, sessionId, JSON.stringify(response));
-                await recordMcpToolCall({
-                    domainId,
-                    uid: toolCtx.owner,
-                    mcpId: mcpDoc?.mid,
-                    baseDocId: toolCtx.baseDocId,
-                    branch: toolCtx.branch,
-                    tool: name,
-                    args,
-                    result: isError ? undefined : resultText,
-                    isError,
-                    error: errorMsg,
-                    durationMs: Date.now() - startedAt,
-                });
-                continue;
-            }
-
-            const response = await handleJsonRpc(this.ctx, domainId, msg, meta);
-            if (!response) {
-                logger.info('MCP handled (no response): %s, method=%s', logCtx, msg?.method || '-');
-                continue;
-            }
-            if (response.error) {
-                logger.warn('MCP %s ERROR: %s, code=%s, msg=%s', msg?.method || '-', logCtx, response.error.code, response.error.message);
-            } else {
-                logger.info('MCP %s OK: %s', msg?.method || '-', logCtx);
-            }
-            deliverOrBroadcast(this.ctx, sessionId, JSON.stringify(response));
+            const response = await processMcpMessage(this.ctx, msg, toolCtx, meta, mcpDoc, logCtx);
+            if (response) deliverOrBroadcast(this.ctx, sessionId, JSON.stringify(response));
         }
 
         this.response.status = 202;
         this.response.type = 'text/plain';
         this.response.body = 'Accepted';
+    }
+}
+
+/**
+ * MCP Streamable HTTP transport (single endpoint, request/response on the same connection).
+ *
+ * Unlike the SSE transport, the JSON-RPC response is returned inline on the POST response,
+ * so there is no separate persistent stream to find and no per-process session affinity:
+ * a server reload only fails the in-flight request (which the client retries) instead of
+ * orphaning a long-lived SSE session. This is the recommended transport.
+ */
+export class McpStreamableHandler extends Handler<Context> {
+    noCheckPermView = true;
+    notUsage = true;
+    allowCors = true;
+
+    async get() {
+        // We do not offer a server-initiated SSE stream on this endpoint; the spec allows 405.
+        this.response.addHeader('Access-Control-Allow-Origin', '*');
+        this.response.status = 405;
+        this.response.type = 'application/json';
+        this.response.body = JSON.stringify({
+            jsonrpc: '2.0',
+            id: null,
+            error: { code: -32000, message: 'Method Not Allowed: this endpoint does not offer an SSE stream' },
+        });
+    }
+
+    async post() {
+        this.response.addHeader('Access-Control-Allow-Origin', '*');
+        const cred = extractToken(this);
+        const token = cred?.token;
+        const tokenDoc = token ? await EdgeTokenModel.getByToken(token) : null;
+        if (!tokenDoc) {
+            logger.warn(
+                'MCP(http) connect rejected: hasToken=%s, source=%s, ua=%s',
+                !!token, cred?.source || 'none', this.request.headers['user-agent'] || '-',
+            );
+            this.response.status = 401;
+            this.response.type = 'application/json';
+            this.response.body = JSON.stringify({ error: 'Invalid or missing token' });
+            return;
+        }
+        await EdgeTokenModel.markPermanent(token);
+        const domainId = tokenDoc.domainId;
+
+        const body = this.request.body;
+        const isBatch = Array.isArray(body);
+        const messages: JsonRpcMessage[] = isBatch ? body : [body];
+
+        const toolCtx: McpToolContext = {
+            domainId,
+            baseDocId: tokenDoc.baseDocId as number,
+            branch: tokenDoc.branch || 'main',
+            owner: tokenDoc.owner,
+        };
+
+        const mcpDoc = await McpModel.getByToken(domainId, tokenDoc.token);
+        const meta: McpServerMeta = {
+            domainId,
+            baseDocId: tokenDoc.baseDocId as number,
+            branch: tokenDoc.branch || 'main',
+            instructions: mcpDoc?.instructions,
+            toolOverrides: mcpDoc?.tools,
+        };
+
+        const logCtx = `domainId=${domainId}, mid=${mcpDoc?.mid ?? '-'}, base=${toolCtx.baseDocId ?? '-'}/${toolCtx.branch}, `
+            + `owner=${toolCtx.owner}, transport=http`;
+
+        const responses: any[] = [];
+        for (const msg of messages) {
+            const response = await processMcpMessage(this.ctx, msg, toolCtx, meta, mcpDoc, logCtx);
+            if (response) responses.push(response);
+        }
+
+        // Notifications/responses only → nothing to return.
+        if (responses.length === 0) {
+            this.response.status = 202;
+            this.response.type = 'text/plain';
+            this.response.body = 'Accepted';
+            return;
+        }
+
+        this.response.status = 200;
+        this.response.type = 'application/json';
+        this.response.body = JSON.stringify(isBatch ? responses : responses[0]);
     }
 }
 
@@ -547,16 +682,34 @@ function buildMcpConnectionInfo(h: Handler<Context>, domainId: string, token: st
     const baseUrl = `${protocol}://${host}/d/${domainId}/mcp/sse${seg}`;
     const url = `${baseUrl}?token=${token}`;
     const command = `claude mcp add --transport sse ejunz-${domainId} ${baseUrl} --header "Authorization: Bearer ${token}"`;
+
+    // Streamable HTTP transport (recommended): same token, different endpoint/transport.
+    const httpBaseUrl = `${protocol}://${host}/d/${domainId}/mcp/http${seg}`;
+    const httpUrl = `${httpBaseUrl}?token=${token}`;
+    const httpCommand = `claude mcp add --transport http ejunz-${domainId} ${httpBaseUrl} --header "Authorization: Bearer ${token}"`;
+
     return {
         token,
         url,
         baseUrl,
         command,
+        httpUrl,
+        httpBaseUrl,
+        httpCommand,
         config: {
             mcpServers: {
                 ejunz: {
                     type: 'sse',
                     url: baseUrl,
+                    headers: { Authorization: `Bearer ${token}` },
+                },
+            },
+        },
+        httpConfig: {
+            mcpServers: {
+                ejunz: {
+                    type: 'http',
+                    url: httpBaseUrl,
                     headers: { Authorization: `Bearer ${token}` },
                 },
             },
@@ -763,6 +916,9 @@ export async function apply(ctx: Context) {
     ctx.Route('mcp_message', '/mcp/sse/message', McpMessageHandler);
     ctx.Route('mcp_token', '/mcp/sse/token', McpTokenHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mcp', '/mcp/sse/:bid', McpConnectionHandler);
+    // Streamable HTTP transport (recommended): request/response on the same connection.
+    ctx.Route('mcp_http', '/mcp/http', McpStreamableHandler);
+    ctx.Route('mcp_http_bid', '/mcp/http/:bid', McpStreamableHandler);
     ctx.Route('mcp_edit', '/mcp/:mid/edit', McpEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mcp_detail', '/mcp/:mid', McpDetailHandler);
 
