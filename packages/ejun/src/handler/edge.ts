@@ -68,9 +68,12 @@ export class EdgeConnectionHandler extends ConnectionHandler<Context> {
         const token = typeof rawToken === 'string' && rawToken ? rawToken : null;
 
         if (token) {
-            if (EdgeConnectionHandler.activeByToken.has(token)) {
-                try { this.close(1000, 'edge singleton: connection already active'); } catch { /* ignore */ }
-                return;
+            const existing = EdgeConnectionHandler.activeByToken.get(token);
+            if (existing && existing !== this) {
+                logger.warn('Replacing stale edge connection for token=%s (old ip=%s)', token, existing.request?.ip);
+                EdgeConnectionHandler.activeByToken.delete(token);
+                EdgeConnectionHandler.active.delete(existing);
+                try { existing.close(4000, 'replaced by new connection'); } catch { /* ignore */ }
             }
             const tokenDoc = await EdgeTokenModel.getByToken(token);
             if (!tokenDoc) {
@@ -199,7 +202,8 @@ export class EdgeConnectionHandler extends ConnectionHandler<Context> {
         for (const [, p] of this.pending) { try { p.reject(new Error('connection closed')); } catch { /* ignore */ } }
         this.pending.clear();
         if (this.token) {
-            EdgeConnectionHandler.activeByToken.delete(this.token);
+            const current = EdgeConnectionHandler.activeByToken.get(this.token);
+            if (current === this) EdgeConnectionHandler.activeByToken.delete(this.token);
             try {
                 if (this.tokenDomainId) {
                     const edge = await EdgeModel.getByToken(this.tokenDomainId, this.token);
@@ -294,14 +298,12 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
         // 更新 token 最后使用时间（仅在首次连接前有效）
         await EdgeTokenModel.updateLastUsed(token);
 
-        // Singleton pattern: reject new connection if one already exists
-        if (EdgeServerConnectionHandler.active.has(token)) {
-            try { 
-                this.close(1000, 'Edge server singleton: connection already active'); 
-            } catch { 
-                /* ignore */ 
-            }
-            return;
+        // Replace stale connection instead of rejecting reconnects
+        const existing = EdgeServerConnectionHandler.active.get(token);
+        if (existing && existing !== this) {
+            logger.warn('Replacing stale edge server connection for token=%s (old ip=%s)', token, existing.request?.ip);
+            EdgeServerConnectionHandler.active.delete(token);
+            try { existing.close(4000, 'replaced by new connection'); } catch { /* ignore */ }
         }
 
         this.token = token;
@@ -580,8 +582,9 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
         }
         
         if (this.token && this.accepted) {
-            const wasRemoved = EdgeServerConnectionHandler.active.delete(this.token);
-            logger.info('Edge Server WebSocket cleanup: token=%s, wasRemoved=%s, remainingConnections=%d', 
+            const current = EdgeServerConnectionHandler.active.get(this.token);
+            const wasRemoved = current === this && EdgeServerConnectionHandler.active.delete(this.token);
+            logger.info('Edge Server WebSocket cleanup: token=%s, wasRemoved=%s, remainingConnections=%d',
                 this.token, wasRemoved, EdgeServerConnectionHandler.active.size);
             
             // 更新edge状态为离线
