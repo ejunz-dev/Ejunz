@@ -3016,13 +3016,34 @@ function getBaseGitPath(domainId: string, docId: number): string {
     return path.join('/data/git/ejunz', domainId, 'base', String(docId));
 }
 
+const gitSafeDirRegistered = new Set<string>();
+
+/** Git 2.35+ refuses repos owned by a different uid; mark our managed paths as safe. */
+async function ensureGitSafeDirectory(repoPath: string): Promise<string> {
+    const abs = path.resolve(repoPath);
+    await fs.promises.mkdir(abs, { recursive: true });
+    if (gitSafeDirRegistered.has(abs)) return abs;
+    try {
+        const { stdout } = await execFile('git', ['config', '--global', '--get-all', 'safe.directory']);
+        const existing = String(stdout || '').split('\n').map((l) => l.trim()).filter(Boolean);
+        if (!existing.includes(abs)) {
+            await execFile('git', ['config', '--global', '--add', 'safe.directory', abs]);
+        }
+    } catch {
+        try {
+            await execFile('git', ['config', '--global', '--add', 'safe.directory', abs]);
+        } catch { /* ignore duplicate or permission errors */ }
+    }
+    gitSafeDirRegistered.add(abs);
+    return abs;
+}
+
 /**
  * Initialize or get git repository for base
  */
 async function ensureBaseGitRepo(domainId: string, docId: number, remoteUrl?: string): Promise<string> {
     const repoPath = getBaseGitPath(domainId, docId);
-    
-    await fs.promises.mkdir(repoPath, { recursive: true });
+    await ensureGitSafeDirectory(repoPath);
     let isNewRepo = false;
     try {
         await exec('git rev-parse --git-dir', { cwd: repoPath });
@@ -5364,6 +5385,7 @@ async function getBaseGitStatus(
     };
 } | null> {
     const repoGitPath = getBaseGitPath(domainId, docId);
+    await ensureGitSafeDirectory(repoGitPath);
     
     const defaultStatus = {
         hasLocalRepo: false,
@@ -5569,13 +5591,7 @@ async function commitBaseChanges(
     userId: number,
     userName: string
 ): Promise<void> {
-    const repoGitPath = getBaseGitPath(domainId, docId);
-    
-    try {
-        await exec('git rev-parse --git-dir', { cwd: repoGitPath });
-    } catch {
-        await ensureBaseGitRepo(domainId, docId);
-    }
+    const repoGitPath = await ensureBaseGitRepo(domainId, docId);
     
     const botName = system.get('ejunzrepo.github_bot_name') || 'ejunz-bot';
     const botEmail = system.get('ejunzrepo.github_bot_email') || 'bot@ejunz.local';
@@ -7129,6 +7145,189 @@ async function persistBaseEditorSaveSidecars(
             expectedBranch: branchNorm,
         });
     }
+}
+
+/** MCP git tool input (bound base + token owner). */
+export interface McpBaseGitInput {
+    domainId: string;
+    baseDocId: number;
+    branch?: string;
+    owner: number;
+    ownerName?: string;
+    setting?: { get: (k: string) => unknown };
+    githubToken?: string;
+    commitMessage?: string;
+}
+
+function mcpGitSettingCtx(input: McpBaseGitInput): { setting: { get: (k: string) => unknown } } {
+    return { setting: input.setting || { get: () => undefined } };
+}
+
+async function requireBaseForMcpGit(input: McpBaseGitInput): Promise<{ base: BaseDoc; branch: string }> {
+    const base = await BaseModel.get(input.domainId, input.baseDocId, document.TYPE_BASE);
+    if (!base) throw new Error(`Base not found: ${input.baseDocId}`);
+    const branch = (input.branch && String(input.branch).trim()) || 'main';
+    return { base, branch };
+}
+
+async function resolveMcpOwnerName(domainId: string, uid: number, fallback?: string): Promise<string> {
+    if (fallback && fallback.trim()) return fallback.trim();
+    if (!uid) return 'unknown';
+    const u = await UserModel.getById(domainId, uid);
+    return u?.uname || 'unknown';
+}
+
+function baseForGitBranch(base: BaseDoc, branch: string): BaseDoc {
+    return { ...base, currentBranch: branch, branch } as BaseDoc;
+}
+
+export async function mcpBaseGitStatus(input: McpBaseGitInput) {
+    const { base, branch } = await requireBaseForMcpGit(input);
+    const githubRepo = (base.githubRepo || '') as string;
+    let gitStatus: Awaited<ReturnType<typeof getBaseGitStatus>> | null = null;
+    if (githubRepo) {
+        try {
+            const repoUrl = await resolveGithubRemoteUrlForRepo(
+                mcpGitSettingCtx(input),
+                input.domainId,
+                input.owner,
+                githubRepo,
+                input.githubToken,
+            );
+            gitStatus = await getBaseGitStatus(input.domainId, base.docId, branch, repoUrl);
+        } catch {
+            gitStatus = await getBaseGitStatus(input.domainId, base.docId, branch);
+        }
+    } else {
+        gitStatus = await getBaseGitStatus(input.domainId, base.docId, branch);
+    }
+    return { branch, githubRepo: githubRepo || null, gitStatus };
+}
+
+export async function mcpBaseGitCommit(input: McpBaseGitInput) {
+    const { base, branch } = await requireBaseForMcpGit(input);
+    const ownerName = await resolveMcpOwnerName(input.domainId, input.owner, input.ownerName);
+    await ensureBaseGitRepo(input.domainId, base.docId);
+    await commitBaseChanges(
+        input.domainId,
+        base.docId,
+        baseForGitBranch(base, branch),
+        input.commitMessage || '',
+        input.owner,
+        ownerName,
+    );
+    return { ok: true, branch, message: 'Changes committed to local git repository' };
+}
+
+export async function mcpBaseGitPush(input: McpBaseGitInput) {
+    const { base, branch } = await requireBaseForMcpGit(input);
+    const githubRepo = (base.githubRepo || '') as string;
+    if (!githubRepo) {
+        throw new Error('GitHub repository not configured. Use git_config_set or configure it in base settings.');
+    }
+    const ghTok = await resolveGithubToken(
+        mcpGitSettingCtx(input),
+        input.domainId,
+        input.owner,
+        input.githubToken,
+    );
+    assertGithubPushPullToken(githubRepo, ghTok);
+    const repoUrl = buildGithubRemoteUrl(githubRepo, ghTok);
+    const ownerName = await resolveMcpOwnerName(input.domainId, input.owner, input.ownerName);
+    const commitMessage = input.commitMessage
+        || `${input.domainId}/${input.owner}/${ownerName}: Update base`;
+    await ensureBaseGitRepo(input.domainId, base.docId, repoUrl);
+    try {
+        await commitBaseChanges(
+            input.domainId,
+            base.docId,
+            baseForGitBranch(base, branch),
+            commitMessage,
+            input.owner,
+            ownerName,
+        );
+    } catch (err: any) {
+        console.warn('MCP git_push: commit before push failed (may be no changes):', err?.message || err);
+    }
+    await gitInitAndPushBase(input.domainId, base.docId, base, repoUrl, branch, commitMessage);
+    return { ok: true, branch, githubRepo };
+}
+
+export async function mcpBaseGitPull(input: McpBaseGitInput) {
+    const { base, branch } = await requireBaseForMcpGit(input);
+    const githubRepo = (base.githubRepo || '') as string;
+    if (!githubRepo) {
+        throw new Error('GitHub repository not configured. Use git_config_set or configure it in base settings.');
+    }
+    const ghTok = await resolveGithubToken(
+        mcpGitSettingCtx(input),
+        input.domainId,
+        input.owner,
+        input.githubToken,
+    );
+    assertGithubPushPullToken(githubRepo, ghTok);
+    const repoUrl = buildGithubRemoteUrl(githubRepo, ghTok);
+    const repoGitPath = await ensureBaseGitRepo(input.domainId, base.docId, repoUrl);
+    try {
+        try {
+            await exec(`git checkout ${branch}`, { cwd: repoGitPath });
+        } catch {
+            await exec(`git checkout -b ${branch}`, { cwd: repoGitPath });
+        }
+        try {
+            await exec(`git remote set-url origin ${repoUrl}`, { cwd: repoGitPath });
+        } catch {
+            try {
+                await exec(`git remote add origin ${repoUrl}`, { cwd: repoGitPath });
+            } catch { /* ignore */ }
+        }
+        await exec('git fetch origin', { cwd: repoGitPath });
+        await exec(`git reset --hard origin/${branch}`, { cwd: repoGitPath });
+        await cleanupBaseCards(input.domainId, base.docId, []);
+        const { nodes, edges } = await importBaseFromFileStructure(
+            input.domainId,
+            base.docId,
+            repoGitPath,
+            branch,
+            getSyntheticRootTextForFileImport(base, branch),
+        );
+        setBranchData(base, branch, nodes, edges);
+        const readmePath = path.join(repoGitPath, 'README.md');
+        let content = base.content || '';
+        try {
+            content = await fs.promises.readFile(readmePath, 'utf-8');
+        } catch { /* ignore */ }
+        await BaseModel.updateFull(input.domainId, base.docId, {
+            branchData: base.branchData,
+            nodes: base.nodes,
+            edges: base.edges,
+            content,
+        });
+        return { ok: true, branch, githubRepo, message: 'Pulled remote branch and imported into base' };
+    } catch (err: any) {
+        throw new Error(err?.message || String(err));
+    }
+}
+
+export async function mcpBaseGitConfigGet(input: Pick<McpBaseGitInput, 'domainId' | 'baseDocId'>) {
+    const base = await BaseModel.get(input.domainId, input.baseDocId, document.TYPE_BASE);
+    if (!base) throw new Error(`Base not found: ${input.baseDocId}`);
+    const githubRepo = ((base.githubRepo || '') as string) || null;
+    return { githubRepo };
+}
+
+export async function mcpBaseGitConfigSet(
+    input: McpBaseGitInput & { githubRepo: string | null },
+) {
+    const { base } = await requireBaseForMcpGit(input);
+    let repoUrlForStorage = input.githubRepo == null ? '' : String(input.githubRepo).trim();
+    if (repoUrlForStorage && repoUrlForStorage.startsWith('https://') && repoUrlForStorage.includes('@github.com')) {
+        repoUrlForStorage = repoUrlForStorage.replace(/^https:\/\/[^@]+@github\.com\//, 'https://github.com/');
+    }
+    await document.set(input.domainId, document.TYPE_BASE, base.docId, {
+        githubRepo: repoUrlForStorage || null,
+    });
+    return { ok: true, githubRepo: repoUrlForStorage || null };
 }
 
 export async function apply(ctx: Context) {

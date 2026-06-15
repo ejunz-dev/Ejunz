@@ -6,12 +6,22 @@ import {
 } from '../model/base';
 import type { CardDoc, BaseNode, BaseEdge, Problem, ProblemKind } from '../interface';
 import { migrateRawProblem } from '../model/problem';
+import {
+    mcpBaseGitCommit,
+    mcpBaseGitConfigGet,
+    mcpBaseGitConfigSet,
+    mcpBaseGitPull,
+    mcpBaseGitPush,
+    mcpBaseGitStatus,
+    type McpBaseGitInput,
+} from '../handler/base';
 
 export interface McpToolContext {
     domainId: string;
     baseDocId: number;
     branch: string;
     owner: number;
+    setting?: { get: (k: string) => unknown };
 }
 
 export interface McpToolDef {
@@ -233,6 +243,79 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
             additionalProperties: false,
         },
     },
+    {
+        name: 'git_status',
+        description: 'Get git sync status for this base: local/remote branch, ahead/behind, uncommitted changes, and file change lists. '
+            + 'Requires a local git repo (created on first commit/push). Optionally pass `branch` (defaults to MCP-bound branch).',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                branch: { type: 'string', description: 'Git branch to inspect (optional; defaults to bound branch).' },
+                githubToken: { type: 'string', description: 'GitHub PAT override for remote fetch (optional).' },
+            },
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'git_commit',
+        description: 'Export the current base/branch to the local git working tree and commit (does not push). '
+            + 'Use after editing nodes/cards/problems when you want a local snapshot.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                branch: { type: 'string', description: 'Branch to commit on (optional).' },
+                commitMessage: { type: 'string', description: 'Commit message body (optional).' },
+            },
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'git_push',
+        description: 'Commit local changes and push to the configured GitHub remote (`git_config_get`). '
+            + 'Requires githubRepo on the base and a GitHub token (user profile or system setting).',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                branch: { type: 'string', description: 'Branch to push (optional).' },
+                commitMessage: { type: 'string', description: 'Commit message (optional).' },
+                githubToken: { type: 'string', description: 'GitHub PAT override (optional).' },
+            },
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'git_pull',
+        description: 'Pull from GitHub and import the remote branch into this base (overwrites local branch data from remote). '
+            + 'Destructive: replaces outline/cards from the git tree. Requires githubRepo and token.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                branch: { type: 'string', description: 'Branch to pull (optional).' },
+                githubToken: { type: 'string', description: 'GitHub PAT override (optional).' },
+            },
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'git_config_get',
+        description: 'Read the GitHub repository URL/path configured for this base (used by git_push / git_pull).',
+        inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    },
+    {
+        name: 'git_config_set',
+        description: 'Set or clear the GitHub repository for this base. Pass `githubRepo` as owner/repo, full https URL, or null/empty to clear.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                githubRepo: {
+                    type: 'string',
+                    description: 'e.g. org/repo, https://github.com/org/repo, or empty string to clear.',
+                },
+            },
+            required: ['githubRepo'],
+            additionalProperties: false,
+        },
+    },
 ];
 
 export async function buildMcpInstructions(
@@ -268,7 +351,8 @@ export async function buildMcpInstructions(
         '3. outline_list_nodes — flat list of nodes; card_list(nodeId) — cards under a node.',
         '4. card_get(cardId) — read a card\'s full content.',
         '5. problem_list(cardId) / problem_get(cardId, pid) — list or read practice problems on a card.',
-        '6. Use the create/update/delete tools to modify nodes, cards, and problems.',
+        '6. git_status — check local/remote sync; git_commit / git_push / git_pull — sync with GitHub (configure repo via git_config_set).',
+        '7. Use the create/update/delete tools to modify nodes, cards, and problems.',
     );
     return lines.join('\n');
 }
@@ -377,6 +461,21 @@ async function saveCardProblems(domainId: string, card: CardDoc, problems: Probl
 
 function findProblemIndex(problems: Problem[], pid: string): number {
     return problems.findIndex((p) => String(p.pid) === pid);
+}
+
+function toMcpGitInput(ctx: McpToolContext, args: Record<string, any>): McpBaseGitInput {
+    const branchArg = args.branch != null ? String(args.branch).trim() : '';
+    return {
+        domainId: ctx.domainId,
+        baseDocId: ctx.baseDocId,
+        branch: branchArg || ctx.branch,
+        owner: ctx.owner,
+        setting: ctx.setting,
+        githubToken: typeof args.githubToken === 'string' && args.githubToken.trim()
+            ? args.githubToken.trim()
+            : undefined,
+        commitMessage: typeof args.commitMessage === 'string' ? args.commitMessage : undefined,
+    };
 }
 
 function summarizeNode(n: any) {
@@ -674,6 +773,24 @@ export async function executeMcpBuiltinTool(
         const next = problems.filter((_, i) => i !== idx);
         await saveCardProblems(domainId, card, next);
         return { ok: true, cardId: String(card.docId), pid };
+    }
+    case 'git_status':
+        return mcpBaseGitStatus(toMcpGitInput(ctx, args));
+    case 'git_commit':
+        return mcpBaseGitCommit(toMcpGitInput(ctx, args));
+    case 'git_push':
+        return mcpBaseGitPush(toMcpGitInput(ctx, args));
+    case 'git_pull':
+        return mcpBaseGitPull(toMcpGitInput(ctx, args));
+    case 'git_config_get':
+        return mcpBaseGitConfigGet({ domainId: ctx.domainId, baseDocId: ctx.baseDocId });
+    case 'git_config_set': {
+        const raw = args.githubRepo;
+        const githubRepo = raw == null ? null : String(raw).trim();
+        return mcpBaseGitConfigSet({
+            ...toMcpGitInput(ctx, args),
+            githubRepo: githubRepo || null,
+        });
     }
     default:
         throw new Error(`Unknown tool: ${name}`);
