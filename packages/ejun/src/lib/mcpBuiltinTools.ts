@@ -4,7 +4,8 @@ import {
     BaseModel, CardModel, getBranchData,
     applyOutlineExplorerUrlFilters, type OutlineExplorerFilters,
 } from '../model/base';
-import type { CardDoc, BaseNode, BaseEdge } from '../interface';
+import type { CardDoc, BaseNode, BaseEdge, Problem, ProblemKind } from '../interface';
+import { migrateRawProblem } from '../model/problem';
 
 export interface McpToolContext {
     domainId: string;
@@ -158,6 +159,80 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
             additionalProperties: false,
         },
     },
+    {
+        name: 'problem_list',
+        description: 'Problem = a practice exercise attached to a card (quiz, flip card, matching table, etc.). '
+            + 'Lists every problem on one card: pid, type, title, and a short content preview. Use cardId from card_list.',
+        inputSchema: {
+            type: 'object',
+            properties: { cardId: { type: 'string', description: 'Card docId (hex) from card_list.' } },
+            required: ['cardId'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'problem_get',
+        description: 'Read one practice problem in full by cardId + pid. Use pid from problem_list.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                cardId: { type: 'string', description: 'Card docId (hex) from card_list.' },
+                pid: { type: 'string', description: 'Problem id from problem_list.' },
+            },
+            required: ['cardId', 'pid'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'problem_create',
+        description: 'Add a practice problem to a card. Pass `problem` as a JSON object. '
+            + 'Common fields: title (short sidebar label), stem, analysis, tags. '
+            + 'type: single (default) | multi | true_false | flip | fill_blank | matching | super_flip | ai_eval. '
+            + 'single/multi: options[] + answer (index or index array). true_false: stem + answer 0|1. '
+            + 'flip: faceA, faceB, optional hint. fill_blank: stem with ___ + answers[]. '
+            + 'matching: columns[][] (≥2 cols, ≥2 rows) or legacy left/right. '
+            + 'super_flip: headers[] + columns[][] (allows 1×1). ai_eval: stem + points[].',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                cardId: { type: 'string', description: 'Card docId (hex) from card_list.' },
+                problem: {
+                    type: 'object',
+                    description: 'Problem payload. `type` defaults to single choice when omitted.',
+                },
+            },
+            required: ['cardId', 'problem'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'problem_update',
+        description: 'Update an existing problem by pid. Pass `problem` with fields to change (merged with the stored row, then normalized). '
+            + 'Include `type` only when changing the problem kind.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                cardId: { type: 'string', description: 'Card docId (hex) from card_list.' },
+                pid: { type: 'string', description: 'Problem id from problem_list.' },
+                problem: { type: 'object', description: 'Fields to update.' },
+            },
+            required: ['cardId', 'pid', 'problem'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'problem_delete',
+        description: 'Delete a practice problem from a card by pid. Use pid from problem_list.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                cardId: { type: 'string', description: 'Card docId (hex) from card_list.' },
+                pid: { type: 'string', description: 'Problem id from problem_list.' },
+            },
+            required: ['cardId', 'pid'],
+            additionalProperties: false,
+        },
+    },
 ];
 
 export async function buildMcpInstructions(
@@ -169,8 +244,9 @@ export async function buildMcpInstructions(
         'Concepts:',
         '- Outline node: a section/topic in the base\'s outline tree. Nodes form a hierarchy via parentId/level. Each node has an id and text (title).',
         '- Card: a content block (title + markdown body) attached to an outline node. One node can hold multiple ordered cards.',
+        '- Problem: a practice exercise (quiz, flip card, matching, etc.) attached to a card. Types: single, multi, true_false, flip, fill_blank, matching, super_flip, ai_eval.',
         '',
-        'Relationship: base → outline nodes (tree) → cards (content under each node).',
+        'Relationship: base → outline nodes (tree) → cards (content) → problems (exercises on each card).',
     ];
     if (ctx.baseDocId) {
         let title = '';
@@ -191,7 +267,8 @@ export async function buildMcpInstructions(
         '2. outline_search(query/filterNode/filterCard/filterProblem) — find nodes/cards by keyword, id or filters.',
         '3. outline_list_nodes — flat list of nodes; card_list(nodeId) — cards under a node.',
         '4. card_get(cardId) — read a card\'s full content.',
-        '5. Use the create/update/delete tools to modify nodes and cards.',
+        '5. problem_list(cardId) / problem_get(cardId, pid) — list or read practice problems on a card.',
+        '6. Use the create/update/delete tools to modify nodes, cards, and problems.',
     );
     return lines.join('\n');
 }
@@ -217,6 +294,89 @@ function toObjectId(value: unknown): ObjectId {
     const s = String(value || '').trim();
     if (!ObjectId.isValid(s)) throw new Error(`Invalid cardId: ${s}`);
     return new ObjectId(s);
+}
+
+function cardMatchesBranch(card: CardDoc, branch: string): boolean {
+    const cardBranch = (card as CardDoc & { branch?: string }).branch || 'main';
+    if (branch === 'main') return cardBranch === 'main' || !cardBranch;
+    return cardBranch === branch;
+}
+
+async function requireCard(ctx: McpToolContext, cardId: unknown): Promise<CardDoc> {
+    const card = await CardModel.get(ctx.domainId, toObjectId(cardId));
+    if (!card) throw new Error('Card not found');
+    if (String(card.baseDocId) !== String(ctx.baseDocId)) {
+        throw new Error('Card does not belong to this base');
+    }
+    if (!cardMatchesBranch(card, ctx.branch)) {
+        throw new Error(`Card is on branch "${(card as CardDoc & { branch?: string }).branch || 'main'}", not "${ctx.branch}"`);
+    }
+    return card;
+}
+
+function parseProblemPayload(raw: unknown): Record<string, unknown> {
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>;
+    if (typeof raw === 'string' && raw.trim()) {
+        try {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+        } catch { /* fall through */ }
+    }
+    throw new Error('problem must be a JSON object');
+}
+
+function normalizeProblemKind(raw: unknown): ProblemKind | undefined {
+    const s = String(raw || '').toLowerCase().trim();
+    if (!s) return undefined;
+    const kinds: ProblemKind[] = [
+        'single', 'multi', 'true_false', 'flip', 'fill_blank', 'matching', 'super_flip', 'ai_eval',
+    ];
+    return kinds.includes(s as ProblemKind) ? (s as ProblemKind) : undefined;
+}
+
+function buildProblemRaw(payload: Record<string, unknown>, pid: string): Record<string, unknown> {
+    const raw: Record<string, unknown> = { ...payload, pid };
+    const kind = normalizeProblemKind(payload.type ?? payload.problemKind ?? payload.kind);
+    if (kind) raw.type = kind;
+    return raw;
+}
+
+function newProblemPid(): string {
+    return `p_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function problemPreview(p: Problem): string {
+    const type = (p as Problem & { type?: string }).type || 'single';
+    let text = '';
+    if (type === 'flip') {
+        text = String((p as { faceA?: string }).faceA || '');
+    } else if ('stem' in p) {
+        text = String((p as { stem?: string }).stem || '');
+    } else if (type === 'matching' || type === 'super_flip') {
+        const cols = (p as { columns?: string[][] }).columns;
+        if (Array.isArray(cols) && cols[0]?.length) text = cols[0].join(' | ');
+    }
+    const trimmed = text.replace(/\s+/g, ' ').trim();
+    return trimmed.length > 120 ? `${trimmed.slice(0, 117)}…` : trimmed;
+}
+
+function summarizeProblem(p: Problem) {
+    const type = (p as Problem & { type?: string }).type || 'single';
+    return {
+        pid: p.pid,
+        type,
+        title: p.title || '',
+        preview: problemPreview(p),
+        tags: Array.isArray(p.tags) ? p.tags : [],
+    };
+}
+
+async function saveCardProblems(domainId: string, card: CardDoc, problems: Problem[]): Promise<void> {
+    await CardModel.update(domainId, card.docId, { problems });
+}
+
+function findProblemIndex(problems: Problem[], pid: string): number {
+    return problems.findIndex((p) => String(p.pid) === pid);
 }
 
 function summarizeNode(n: any) {
@@ -462,6 +622,58 @@ export async function executeMcpBuiltinTool(
             nodes: nodeMatches,
             cards: cardMatches,
         };
+    }
+    case 'problem_list': {
+        const card = await requireCard(ctx, args.cardId);
+        const problems = card.problems || [];
+        return {
+            cardId: String(card.docId),
+            count: problems.length,
+            problems: problems.map(summarizeProblem),
+        };
+    }
+    case 'problem_get': {
+        const card = await requireCard(ctx, args.cardId);
+        const pid = String(args.pid || '').trim();
+        if (!pid) throw new Error('pid is required');
+        const problems = card.problems || [];
+        const idx = findProblemIndex(problems, pid);
+        if (idx < 0) throw new Error(`Problem not found: ${pid}`);
+        return { cardId: String(card.docId), problem: problems[idx] };
+    }
+    case 'problem_create': {
+        const card = await requireCard(ctx, args.cardId);
+        const payload = parseProblemPayload(args.problem);
+        const pid = newProblemPid();
+        const problem = migrateRawProblem(buildProblemRaw(payload, pid));
+        const problems = [...(card.problems || []), problem];
+        await saveCardProblems(domainId, card, problems);
+        return { ok: true, cardId: String(card.docId), pid: problem.pid, problem };
+    }
+    case 'problem_update': {
+        const card = await requireCard(ctx, args.cardId);
+        const pid = String(args.pid || '').trim();
+        if (!pid) throw new Error('pid is required');
+        const payload = parseProblemPayload(args.problem);
+        const problems = [...(card.problems || [])];
+        const idx = findProblemIndex(problems, pid);
+        if (idx < 0) throw new Error(`Problem not found: ${pid}`);
+        const merged = { ...(problems[idx] as unknown as Record<string, unknown>), ...payload, pid };
+        const problem = migrateRawProblem(buildProblemRaw(merged, pid));
+        problems[idx] = problem;
+        await saveCardProblems(domainId, card, problems);
+        return { ok: true, cardId: String(card.docId), pid, problem };
+    }
+    case 'problem_delete': {
+        const card = await requireCard(ctx, args.cardId);
+        const pid = String(args.pid || '').trim();
+        if (!pid) throw new Error('pid is required');
+        const problems = card.problems || [];
+        const idx = findProblemIndex(problems, pid);
+        if (idx < 0) throw new Error(`Problem not found: ${pid}`);
+        const next = problems.filter((_, i) => i !== idx);
+        await saveCardProblems(domainId, card, next);
+        return { ok: true, cardId: String(card.docId), pid };
     }
     default:
         throw new Error(`Unknown tool: ${name}`);
