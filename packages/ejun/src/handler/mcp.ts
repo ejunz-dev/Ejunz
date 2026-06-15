@@ -21,6 +21,7 @@ const logger = new Logger('handler/mcp');
 const MCP_MUTATING_TOOLS = new Set([
     'outline_create_node', 'outline_update_node', 'outline_delete_node',
     'card_create', 'card_update', 'card_delete',
+    'problem_create', 'problem_update', 'problem_delete',
 ]);
 
 function clipForLog(value: unknown, max = 800): string {
