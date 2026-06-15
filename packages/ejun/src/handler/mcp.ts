@@ -12,6 +12,7 @@ import { NotFoundError, ValidationError } from '../error';
 import {
     MCP_BUILTIN_TOOLS_CATALOG, isMcpBuiltinTool, executeMcpBuiltinTool,
     buildMcpInstructions, defaultMcpToolDescriptions, resolveMcpTools,
+    type McpToolContext,
 } from '../lib/mcpBuiltinTools';
 import { randomstring } from '../utils';
 import type { EdgeTokenDoc } from '../model/edge_token';
@@ -22,6 +23,7 @@ const MCP_MUTATING_TOOLS = new Set([
     'outline_create_node', 'outline_update_node', 'outline_delete_node',
     'card_create', 'card_update', 'card_delete',
     'problem_create', 'problem_update', 'problem_delete',
+    'git_pull', 'git_config_set',
 ]);
 
 function clipForLog(value: unknown, max = 800): string {
@@ -273,13 +275,6 @@ async function handleJsonRpc(
     }
 }
 
-interface McpToolContext {
-    domainId: string;
-    baseDocId: number;
-    branch: string;
-    owner: number;
-}
-
 /**
  * Process a single inbound JSON-RPC message and return the JSON-RPC response object
  * (or null for notifications that need no response). Shared by both the SSE and the
@@ -517,11 +512,12 @@ export class McpMessageHandler extends Handler<Context> {
         const body = this.request.body;
         const messages: JsonRpcMessage[] = Array.isArray(body) ? body : [body];
 
-        const toolCtx = {
+        const toolCtx: McpToolContext = {
             domainId,
             baseDocId: tokenDoc.baseDocId as number,
             branch: tokenDoc.branch || 'main',
             owner: tokenDoc.owner,
+            setting: (this.ctx as any).setting,
         };
 
         const mcpDoc = await McpModel.getByToken(domainId, tokenDoc.token);
@@ -599,6 +595,7 @@ export class McpStreamableHandler extends Handler<Context> {
             baseDocId: tokenDoc.baseDocId as number,
             branch: tokenDoc.branch || 'main',
             owner: tokenDoc.owner,
+            setting: (this.ctx as any).setting,
         };
 
         const mcpDoc = await McpModel.getByToken(domainId, tokenDoc.token);
