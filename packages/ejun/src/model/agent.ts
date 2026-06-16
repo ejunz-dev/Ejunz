@@ -14,7 +14,6 @@ import { Context } from '../context';
 import { FileUploadError, ProblemNotFoundError } from '../error';
 import type { Document, User, AgentDoc
 } from '../interface';
-import type { SkillSourceResolution } from './skill';
 import { parseConfig } from '../lib/testdataConfig';
 import * as bus from '../service/bus';
 import {
@@ -43,7 +42,7 @@ export class AgentModel {
 
     static PROJECTION_DETAIL: Field[] = [
         ...AgentModel.PROJECTION_LIST,
-       'docId', 'aid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply', 'apiKey', 'memory', 'mcpToolIds', 'skillIds', 'skillLibraryBindings', 'baseLibraryBindings'
+       'docId', 'aid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply', 'apiKey', 'memory', 'mcpToolIds', 'baseLibraryBindings'
     ];
 
     static PROJECTION_PUBLIC: Field[] = [
@@ -424,13 +423,10 @@ export class McpClient {
         domainId?: string,
         serverId?: number,
         token?: string,
-        skillBranch?: string,
         toolType?: string,
-        skillSourceByName?: Map<string, SkillSourceResolution>,
-        coreSkillNames?: Set<string> | string[],
         /** Agent-mounted TYPE_BASE docId for load_base; omit to use domain default base. */
         baseDocId?: number,
-        /** Branch for agent-mounted base; falls back to skillBranch when unset. */
+        /** Branch for agent-mounted base. */
         baseBranch?: string,
         /** Chat/task user when tools need the current human (e.g. get_domain_user_progress). */
         toolCallerUid?: number,
@@ -449,16 +445,12 @@ export class McpClient {
                     if (!domainId) {
                         throw new Error('domainId is required for load_base');
                     }
-                    const branchForBase =
-                        (baseBranch && String(baseBranch).trim())
-                        || (skillBranch && String(skillBranch).trim())
-                        || '';
+                    const branchForBase = (baseBranch && String(baseBranch).trim()) || '';
                     if (!branchForBase) {
                         return {
                             success: false,
                             message:
-                                'Base is not enabled: mount a knowledge base on this agent (with branch), '
-                                + 'or select a skill library branch in Agent settings.',
+                                'Base is not enabled: mount a knowledge base on this agent (with branch).',
                         };
                     }
                     const resolvedBaseDocId =
@@ -515,65 +507,6 @@ export class McpClient {
                 }
             }
 
-            if (name === 'load_skill_instructions') {
-                try {
-                    ClientLogger.info('Calling built-in skill loading tool: %s', name);
-                    if (!domainId) {
-                        throw new Error('domainId is required for load_skill_instructions');
-                    }
-                    const { loadSkillInstructions } = require('./skill');
-                    const skillNameRaw = String(args.skillName || args.skill_name || '').trim();
-                    const level = args.level !== undefined ? args.level : (args.maxLevel !== undefined ? args.maxLevel : 2);
-                    if (!skillNameRaw) {
-                        throw new Error('skillName is required');
-                    }
-                    const inCoreSet = coreSkillNames instanceof Set
-                        ? coreSkillNames.has(skillNameRaw)
-                        : (Array.isArray(coreSkillNames) ? coreSkillNames.includes(skillNameRaw) : false);
-                    if (inCoreSet) {
-                        return {
-                            success: true,
-                            skillName: skillNameRaw,
-                            level,
-                            instructions: '',
-                            message:
-                                `Skill "${skillNameRaw}" is from a core library: its full instructions are already in the system message. `
-                                + 'Do not call load_skill_instructions for it; use that content directly.',
-                        };
-                    }
-                    const res = skillSourceByName?.get(skillNameRaw);
-                    const effectiveBranch = (res?.branch && String(res.branch).trim())
-                        || (skillBranch && String(skillBranch).trim())
-                        || '';
-                    const restrictDocId = res?.docId;
-                    if (!effectiveBranch) {
-                        return {
-                            success: false,
-                            skillName: skillNameRaw,
-                            message: 'Skills are not enabled: select a skill branch in Agent settings.',
-                        };
-                    }
-                    ClientLogger.info(
-                        'Loading skill instructions: skillName=%s, level=%d, domainId=%s, branch=%s, docId=%s',
-                        skillNameRaw,
-                        level,
-                        domainId,
-                        effectiveBranch,
-                        restrictDocId ?? '',
-                    );
-                    const instructions = await loadSkillInstructions(domainId, skillNameRaw, level, effectiveBranch, restrictDocId);
-                    return {
-                        success: true,
-                        skillName: skillNameRaw,
-                        level,
-                        instructions,
-                        message: `Successfully loaded skill "${skillNameRaw}" to level ${level}`,
-                    };
-                } catch (e) {
-                    ClientLogger.error('Built-in skill loading tool call failed: %s', (e as Error).message);
-                    throw e;
-                }
-            }
 
             if (name === 'get_domain_user_progress') {
                 try {

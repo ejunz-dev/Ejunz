@@ -3001,32 +3001,6 @@ function BaseEditorDevelopQueueList({
   );
 }
 
-/** JSON Schema defaults for skill markdown `{"tool","arguments"}` snippets. */
-function defaultArgsFromInputSchema(inputSchema: unknown): Record<string, unknown> {
-  if (!inputSchema || typeof inputSchema !== 'object') return {};
-  const schema = inputSchema as { properties?: Record<string, unknown>; required?: string[] };
-  const props = schema.properties;
-  const required: string[] = Array.isArray(schema.required) ? schema.required : [];
-  if (!props || typeof props !== 'object') return {};
-  const out: Record<string, unknown> = {};
-  for (const key of Object.keys(props)) {
-    const p = props[key] as { type?: string; default?: unknown };
-    if (p && typeof p === 'object' && 'default' in p) {
-      out[key] = p.default;
-    } else if (required.includes(key)) {
-      if (p?.type === 'number' || p?.type === 'integer') out[key] = 0;
-      else if (p?.type === 'boolean') out[key] = false;
-      else if (p?.type === 'array') out[key] = [];
-      else out[key] = '';
-    }
-  }
-  return out;
-}
-
-function buildSkillToolCallSnippet(toolName: string, inputSchema: unknown): string {
-  const args = defaultArgsFromInputSchema(inputSchema);
-  return JSON.stringify({ tool: toolName, arguments: args }, null, 2);
-}
 
 export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docId: string | undefined; initialData: BaseDoc; basePath?: string }) {
   
@@ -3142,14 +3116,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   } | null>(null);
 
   const [developQueueNavBusy, setDevelopQueueNavBusy] = useState<number | null>(null);
-  const [editorRightPanelTab, setEditorRightPanelTab] = useState<'problems' | 'develop_queue' | 'skill_tools'>(() =>
-    basePath === 'skill' ? 'skill_tools' : 'problems',
-  );
-
-  const [skillDomainTools, setSkillDomainTools] = useState<
-    Array<{ name: string; description?: string; inputSchema?: unknown; edgeName?: string }>
-  >([]);
-  const [skillToolsLoadState, setSkillToolsLoadState] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [editorRightPanelTab, setEditorRightPanelTab] = useState<'problems' | 'develop_queue'>('problems');
 
   const navigateDevelopQueueItem = useCallback(async (baseDocId: number, branch: string, queueIndex: number) => {
     const d = (window as any).UiContext?.domainId || 'system';
@@ -3186,7 +3153,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
   useEffect(() => {
     if (!developRunQueueState?.items.length) {
-      setEditorRightPanelTab(basePath === 'skill' ? 'skill_tools' : 'problems');
+      setEditorRightPanelTab('problems');
     }
   }, [developRunQueueState, basePath]);
 
@@ -3232,9 +3199,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     if (!socketUrl) return;
 
     let closed = false;
-    const apiPath = basePath === 'skill'
-      ? domainApiPath('/skill/data', domainId)
-      : domainApiPath('/base/data', domainId);
+    const apiPath = domainApiPath('/base/data', domainId);
     const editorApiQs: Record<string, string> = {};
     if (docId) editorApiQs.docId = docId;
     const editorBranch = (window as any).UiContext?.currentBranch;
@@ -3568,9 +3533,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
   const refetchEditorData = useCallback(async () => {
     const domainId = (window as any).UiContext?.domainId || 'system';
-    const apiPath = basePath === 'skill'
-      ? domainApiPath('/skill/data', domainId)
-      : domainApiPath('/base/data', domainId);
+    const apiPath = domainApiPath('/base/data', domainId);
     try {
       const qs: Record<string, string> = {};
       if (docId) qs.docId = docId;
@@ -3887,36 +3850,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [importText, setImportText] = useState('');
   const [rightPanelOpen, setRightPanelOpen] = useState(() => savedEditorLayout.rightPanelOpen);
 
-  useEffect(() => {
-    if (basePath !== 'skill') return;
-    if (!rightPanelOpen || editorRightPanelTab !== 'skill_tools') return;
-    const domainId = (window as any).UiContext?.domainId || 'system';
-    let cancelled = false;
-    setSkillToolsLoadState('loading');
-    request
-      .get(`/d/${domainId}/tool/api/list`)
-      .then((res: any) => {
-        if (cancelled) return;
-        const tools = Array.isArray(res?.tools) ? res.tools : [];
-        setSkillDomainTools(
-          tools
-            .map((t: any) => ({
-              name: String(t.name || '').trim(),
-              description: typeof t.description === 'string' ? t.description : '',
-              inputSchema: t.inputSchema,
-              edgeName: typeof t.edgeName === 'string' ? t.edgeName : '',
-            }))
-            .filter((t: { name: string }) => t.name.length > 0),
-        );
-        setSkillToolsLoadState('idle');
-      })
-      .catch(() => {
-        if (!cancelled) setSkillToolsLoadState('error');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [basePath, rightPanelOpen, editorRightPanelTab]);
   const [aiBottomOpen, setAiBottomOpen] = useState(() => savedEditorLayout.aiBottomOpen);
   const [aiPanelHeight, setAiPanelHeight] = useState(() => savedEditorLayout.aiPanelHeight);
   const [aiPanelMaxHeight, setAiPanelMaxHeight] = useState(640);
@@ -3991,8 +3924,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const EDITOR_MAIN_MIN_H = 160;
   const executeAIOperationsRef = useRef<ExecuteAiOpsFn | null>(null);
   const chatWebSocketRef = useRef<any>(null);
-  const [domainTools, setDomainTools] = useState<any[]>([]);
-  const [domainToolsLoading, setDomainToolsLoading] = useState<boolean>(false);
   const [files] = useState<Array<{ _id: string; name: string; size: number; etag?: string; lastModified?: Date | string }>>(initialData.files || []);
   const [pendingProblemCardIds, setPendingProblemCardIds] = useState<Set<string>>(new Set());
   const [pendingNewProblemCardIds, setPendingNewProblemCardIds] = useState<Set<string>>(new Set());
@@ -4355,12 +4286,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
   useEffect(() => {
     if (typeof window === 'undefined' || !docId) return undefined;
-    if (basePath !== 'base' && basePath !== 'skill') return undefined;
+    if (basePath !== 'base') return undefined;
     const path = window.location.pathname;
     const onDevEd = /\/develop\/editor(?:\/|$)/.test(path);
     const onBaseBrEd = /\/base\/[^/]+\/branch\/[^/]+\/editor(?:\/|$)/.test(path);
-    const onSkillBrEd = /\/skill\/[^/]+\/branch\/[^/]+\/editor(?:\/|$)/.test(path);
-    if (!onDevEd && !onBaseBrEd && !onSkillBrEd) return undefined;
+    if (!onDevEd && !onBaseBrEd) return undefined;
     const sessionHex = new URLSearchParams(window.location.search).get('session')?.trim() || '';
     if (!sessionHex) return undefined;
     const baseDocIdNum = Number(docId);
@@ -5524,9 +5454,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             const fb = (window as any).UiContext?.currentBranch;
             if (fb) fetchQs.branch = fb;
             currentBase = await request.get(
-              basePath === 'skill'
-                ? domainApiPath('/skill/data', domainId)
-                : domainApiPath('/base/data', domainId),
+              domainApiPath('/base/data', domainId),
               fetchQs,
             );
           } catch (error: any) {
@@ -6086,9 +6014,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           const psb = (window as any).UiContext?.currentBranch;
           if (psb) postSaveQs.branch = psb;
           const response = await request.get(
-            basePath === 'skill'
-              ? domainApiPath('/skill/data', domainId)
-              : domainApiPath('/base/data', domainId),
+            domainApiPath('/base/data', domainId),
             postSaveQs,
           );
           setBase(response);
@@ -12302,23 +12228,6 @@ Reply with a JSON code block only for executable operations, using this shape:
     }
   }, [fileContent, editorInstance, selectedFile]);
 
-  useEffect(() => {
-    if (basePath !== 'skill') return;
-    const domainId = (window as any).UiContext?.domainId;
-    if (!domainId) return;
-    setDomainToolsLoading(true);
-    request.get(`/d/${domainId}/tool/api/list`)
-      .then((data: any) => {
-        setDomainTools(data?.tools ?? []);
-      })
-      .catch(() => {
-        setDomainTools([]);
-      })
-      .finally(() => {
-        setDomainToolsLoading(false);
-      });
-  }, [basePath]);
-
   
   useEffect(() => {
     return () => {
@@ -14143,7 +14052,7 @@ Reply with a JSON code block only for executable operations, using this shape:
                   )}
                 </>
               )}
-              {basePath !== 'skill' && docId && contextMenu.file.nodeId && !String(contextMenu.file.nodeId).startsWith('temp-node-') && (
+              {docId && contextMenu.file.nodeId && !String(contextMenu.file.nodeId).startsWith('temp-node-') && (
                 <>
                   <div
                     style={{
@@ -14460,7 +14369,7 @@ Reply with a JSON code block only for executable operations, using this shape:
               >
                 导入 Markdown 卡片
               </div>
-              {basePath !== 'skill' && docId && contextMenu.file.nodeId && !String(contextMenu.file.nodeId).startsWith('temp-node-') && (
+              {docId && contextMenu.file.nodeId && !String(contextMenu.file.nodeId).startsWith('temp-node-') && (
                 <div
                   style={{
                     padding: '6px 16px',
@@ -14568,115 +14477,6 @@ Reply with a JSON code block only for executable operations, using this shape:
                   setContextMenu(null);
                 }}
               >
-                {/* Skill mode: right sidebar, click tool to copy params */}
-      {basePath === 'skill' && (
-        <div style={{
-          width: '280px',
-          flexShrink: 0,
-          height: '100%',
-          minHeight: 0,
-          alignSelf: 'stretch',
-          borderLeft: `1px solid ${themeStyles.borderPrimary}`,
-          backgroundColor: themeStyles.bgSecondary,
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-        }}>
-          <div style={{
-            padding: '12px 16px',
-            borderBottom: `1px solid ${themeStyles.borderPrimary}`,
-            fontSize: '12px',
-            fontWeight: '600',
-            color: themeStyles.textSecondary,
-            backgroundColor: themeStyles.bgPrimary,
-          }}>
-            工具
-          </div>
-          <div style={{ padding: '8px 12px', fontSize: '11px', color: themeStyles.textTertiary, borderBottom: `1px solid ${themeStyles.borderPrimary}` }}>
-            点击工具可复制「工具名 + 参数」到剪贴板
-          </div>
-          <div style={{ flex: 1, overflow: 'auto', padding: '8px 0' }}>
-            {domainToolsLoading ? (
-              <div style={{ padding: '12px 16px', fontSize: '12px', color: themeStyles.textSecondary }}>加载中...</div>
-            ) : domainTools.length === 0 ? (
-              <div style={{ padding: '12px 16px', fontSize: '12px', color: themeStyles.textSecondary }}>当前域下暂无工具。</div>
-            ) : (
-              domainTools.map((tool: any) => {
-                const toolKey = tool.toolKey || tool.name || '';
-                const label = tool.name || tool.toolKey || '';
-                const serverLabel = tool.edgeName || '';
-                const schema = tool.inputSchema;
-                const params: Array<{ name: string; desc?: string; defaultVal?: string }> = [];
-                if (schema?.properties && typeof schema.properties === 'object') {
-                  Object.entries(schema.properties).forEach(([k, v]: [string, any]) => {
-                    params.push({
-                      name: k,
-                      desc: v?.description,
-                      defaultVal: v?.default != null ? String(v.default) : undefined,
-                    });
-                  });
-                }
-                const buildCopyPayload = () => {
-                  const args: Record<string, string> = {};
-                  params.forEach((p) => {
-                    args[p.name] = p.defaultVal ?? '';
-                  });
-                  return JSON.stringify({ tool: toolKey, arguments: args }, null, 2);
-                };
-                const copyPayload = toolKey ? (params.length > 0 ? buildCopyPayload() : JSON.stringify({ tool: toolKey, arguments: {} }, null, 2)) : '';
-                return (
-                  <div
-                    key={tool.tid != null ? `edge-${tool.tid}-${tool.edgeToken}` : `system-${tool.toolKey}`}
-                    title={copyPayload ? '点击复制工具参数' : ''}
-                    onClick={() => {
-                      if (!copyPayload) return;
-                      if (navigator.clipboard && navigator.clipboard.writeText) {
-                        navigator.clipboard.writeText(copyPayload).then(() => {
-                          Notification.success('已复制到剪贴板');
-                        }).catch(() => {
-                          Notification.error(i18n('Copy failed'));
-                        });
-                      } else {
-                        Notification.error('剪贴板不可用');
-                      }
-                    }}
-                    style={{
-                      padding: '10px 16px',
-                      fontSize: '12px',
-                      color: themeStyles.textPrimary,
-                      cursor: copyPayload ? 'pointer' : 'default',
-                      borderBottom: `1px solid ${themeStyles.borderPrimary}`,
-                    }}
-                    onMouseEnter={(e) => {
-                      if (copyPayload) e.currentTarget.style.backgroundColor = themeStyles.bgHover;
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                    }}
-                  >
-                    <div style={{ fontWeight: 500 }}>{label}</div>
-                    {serverLabel && (
-                      <div style={{ fontSize: '11px', color: themeStyles.textSecondary, marginTop: '2px' }}>{serverLabel}</div>
-                    )}
-                    {params.length > 0 && (
-                      <div style={{ marginTop: '6px', fontSize: '11px', color: themeStyles.textSecondary }}>
-                        <div style={{ fontWeight: 600, marginBottom: '4px' }}>参数：</div>
-                        {params.map((p) => (
-                          <div key={p.name} style={{ marginLeft: '4px', marginBottom: '2px' }}>
-                            <code style={{ fontSize: '10px' }}>{p.name}</code>
-                            {p.desc && <span style={{ marginLeft: '4px' }}>— {p.desc}</span>}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-      )}
-
 
 
       {(() => {
@@ -14916,7 +14716,7 @@ Reply with a JSON code block only for executable operations, using this shape:
                   )}
                 </>
               )}
-              {basePath !== 'skill' && docId && contextMenu.file.cardId && !String(contextMenu.file.cardId).startsWith('temp-card-') && (
+              {docId && contextMenu.file.cardId && !String(contextMenu.file.cardId).startsWith('temp-card-') && (
                 <>
                   <div
                     style={{
@@ -17627,72 +17427,7 @@ Reply with a JSON code block only for executable operations, using this shape:
       </div>
 
       {(() => {
-        /* Right sidebar: skill mode → domain tools; base mode → card problems. AI is in editor bottom panel. */
-        const skillToolsBody = (
-          <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px', minHeight: 0 }}>
-            <div style={{ fontSize: '12px', color: themeStyles.textSecondary, marginBottom: '10px', lineHeight: 1.45 }}>
-              下列为当前域已添加到工具市场的工具（含系统工具与 Edge）。可复制 JSON 示例到 Skill 正文中供 Agent 解析调用。
-            </div>
-            {skillToolsLoadState === 'loading' && (
-              <div style={{ color: themeStyles.textSecondary, fontSize: '13px' }}>加载中…</div>
-            )}
-            {skillToolsLoadState === 'error' && (
-              <div style={{ color: '#c62828', fontSize: '13px' }}>加载失败，请稍后重试</div>
-            )}
-            {skillToolsLoadState === 'idle' && skillDomainTools.length === 0 && (
-              <div style={{ color: themeStyles.textSecondary, fontSize: '13px' }}>
-                暂无可用工具，请前往本域工具市场添加
-              </div>
-            )}
-            {skillDomainTools.map((t) => (
-              <div
-                key={t.name}
-                style={{
-                  marginBottom: '12px',
-                  padding: '10px',
-                  border: `1px solid ${themeStyles.borderPrimary}`,
-                  borderRadius: '8px',
-                  background: themeStyles.bgSecondary,
-                }}
-              >
-                <div style={{ fontWeight: 600, fontSize: '13px', color: themeStyles.textPrimary, wordBreak: 'break-word' }}>
-                  {t.name}
-                </div>
-                {t.edgeName ? (
-                  <div style={{ fontSize: '11px', color: themeStyles.textTertiary, marginTop: '4px' }}>{t.edgeName}</div>
-                ) : null}
-                {t.description ? (
-                  <div style={{ fontSize: '12px', color: themeStyles.textSecondary, marginTop: '6px', lineHeight: 1.4 }}>
-                    {t.description.length > 220 ? `${t.description.slice(0, 220)}…` : t.description}
-                  </div>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => {
-                    const snippet = buildSkillToolCallSnippet(t.name, t.inputSchema);
-                    void navigator.clipboard.writeText(snippet).then(
-                      () => Notification.success('已复制调用示例'),
-                      () => Notification.error('复制失败'),
-                    );
-                  }}
-                  style={{
-                    marginTop: '8px',
-                    fontSize: '12px',
-                    padding: '4px 10px',
-                    borderRadius: '4px',
-                    border: `1px solid ${themeStyles.borderPrimary}`,
-                    background: themeStyles.bgButton,
-                    color: themeStyles.textPrimary,
-                    cursor: 'pointer',
-                  }}
-                >
-                  复制调用参数
-                </button>
-              </div>
-            ))}
-          </div>
-        );
-
+        /* Right sidebar: card problems. AI is in editor bottom panel. */
         const problemsBody = (
           <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px', minHeight: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '8px' }}>
@@ -17958,8 +17693,6 @@ Reply with a JSON code block only for executable operations, using this shape:
                         ? ` ${developRunQueueState.currentIndex + 1}/${developRunQueueState.items.length}`
                         : ` · ${developRunQueueState.items.length}`}
                     </>
-                ) : basePath === 'skill' ? (
-                  '工具（本域可用）'
                 ) : (
                   '本卡片的练习题'
                 )}
@@ -18005,8 +17738,6 @@ Reply with a JSON code block only for executable operations, using this shape:
                       : ` · ${developRunQueueState.items.length}`}
                   </>
                 </span>
-              ) : basePath === 'skill' ? (
-                <span style={{ fontWeight: 'bold' }}>工具（本域可用）</span>
               ) : (
                 <span style={{ fontWeight: 'bold' }}>本卡片的练习题</span>
               )}
@@ -18038,8 +17769,6 @@ Reply with a JSON code block only for executable operations, using this shape:
                 busyIndex={developQueueNavBusy}
                 onGo={navigateDevelopQueueItem}
               />
-            ) : basePath === 'skill' && editorRightPanelTab === 'skill_tools' ? (
-              skillToolsBody
             ) : selectedFile?.type === 'card' ? (
                 problemsBody
               ) : (
@@ -18089,35 +17818,6 @@ Reply with a JSON code block only for executable operations, using this shape:
               overflowX: 'hidden',
               WebkitOverflowScrolling: 'touch',
             }}>
-                {basePath === 'skill' ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (rightPanelOpen && editorRightPanelTab === 'skill_tools') {
-                      setRightPanelOpen(false);
-                    } else {
-                      setEditorRightPanelTab('skill_tools');
-                      setRightPanelOpen(true);
-                    }
-                  }}
-                  style={{
-                    width: '34px',
-                    height: '34px',
-                    border: `1px solid ${themeStyles.borderSecondary}`,
-                    borderRadius: '3px',
-                    backgroundColor: rightPanelOpen && editorRightPanelTab === 'skill_tools' ? themeStyles.bgButtonActive : themeStyles.bgButton,
-                    color: rightPanelOpen && editorRightPanelTab === 'skill_tools' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
-                    cursor: 'pointer',
-                    flexShrink: 0,
-                    fontSize: '11px',
-                    fontWeight: 600,
-                  }}
-                  title="本域可用工具"
-                  aria-label="工具"
-                >
-                  工
-                </button>
-                ) : (
                 <button
                   type="button"
                   onClick={() => {
@@ -18145,7 +17845,6 @@ Reply with a JSON code block only for executable operations, using this shape:
                 >
                   题
                 </button>
-                )}
                 {showDevelopQueueInPanels && developEditorContext && developRunQueueState ? (
                   <button
                     type="button"
@@ -18587,13 +18286,9 @@ function McpSidebarPanel({ themeStyles, baseId, branch }: { themeStyles: any; ba
   );
 }
 
-const page = new NamedPage(['base_editor', 'base_editor_branch', 'skill_editor', 'skill_editor_branch', 'skill_editor_doc', 'skill_editor_doc_branch', 'develop_editor'], async (pageName) => {
+const page = new NamedPage(['base_editor', 'base_editor_branch', 'develop_editor'], async (pageName) => {
   try {
-    
-    const isSkill = pageName === 'skill_editor' || pageName === 'skill_editor_branch'
-      || pageName === 'skill_editor_doc' || pageName === 'skill_editor_doc_branch';
-    const containerId = isSkill ? '#skill-editor-mode' : '#base-editor-mode';
-    const $container = $(containerId);
+    const $container = $('#base-editor-mode');
     if (!$container.length) {
       return;
     }
@@ -18605,9 +18300,7 @@ const page = new NamedPage(['base_editor', 'base_editor_branch', 'skill_editor',
     let initialData: BaseDoc;
     try {
       
-      const apiPath = isSkill
-        ? domainApiPath('/skill/data', domainId)
-        : domainApiPath('/base/data', domainId);
+      const apiPath = domainApiPath('/base/data', domainId);
       const initQs: Record<string, string> = {};
       if (docId) initQs.docId = docId;
       const initBranch = (window as any).UiContext?.currentBranch;
@@ -18619,13 +18312,12 @@ const page = new NamedPage(['base_editor', 'base_editor_branch', 'skill_editor',
         initialData.docId = docId || '';
       }
     } catch (error: any) {
-      Notification.error(`加载${isSkill ? 'Skills' : '知识库'}失败: ` + (error.message || '未知错误'));
+      Notification.error('加载知识库失败: ' + (error.message || '未知错误'));
       return;
     }
 
-    const editorBasePath = isSkill ? 'skill' : 'base';
     ReactDOM.render(
-      <BaseEditorMode docId={initialData.docId || ''} initialData={initialData} basePath={editorBasePath} />,
+      <BaseEditorMode docId={initialData.docId || ''} initialData={initialData} basePath="base" />,
       $container[0]
     );
   } catch (error: any) {

@@ -639,8 +639,8 @@ export class SessionChatLiveHandler extends Handler {
             throw new Error('Domain not found');
         }
         
-        const { getAssignedTools, normalizeAgentSkillBindings, appendAgentUniversalAssistantRules, effectiveAgentSkillBranch, effectiveAgentBaseDocId, effectiveAgentBaseBranch } = require('./agent');
-        const tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds, adoc.skillIds, normalizeAgentSkillBindings(adoc));
+        const { getAssignedTools, appendAgentUniversalAssistantRules, effectiveAgentBaseDocId, effectiveAgentBaseBranch } = require('./agent');
+        const tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds);
         
         const agentPrompt = adoc.content || '';
         let systemMessage = agentPrompt;
@@ -672,7 +672,6 @@ export class SessionChatLiveHandler extends Handler {
             apiUrl: (domainInfo as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions',
             agentContent: adoc.content || '',
             agentMemory: adoc.memory || '',
-            skillBranch: effectiveAgentSkillBranch(adoc),
             baseDocId: effectiveAgentBaseDocId(adoc),
             baseBranch: effectiveAgentBaseBranch(adoc),
             tools: tools.map(tool => ({

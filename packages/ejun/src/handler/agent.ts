@@ -12,7 +12,7 @@ import {
 } from '../service/server';
 import Agent from '../model/agent';
 import { PERM, PRIV, STATUS } from '../model/builtin';
-import { AgentDoc } from '../interface';
+import { AgentDoc, BaseDoc } from '../interface';
 import domain from '../model/domain';
 import system from '../model/system';
 import user from '../model/user';
@@ -23,19 +23,6 @@ import { Logger } from '../logger';
 import { PassThrough } from 'stream';
 import EdgeModel from '../model/edge';
 import ToolModel from '../model/tool';
-import {
-    loadCoreSkillsFullContextBlock,
-    loadNonCoreSkillNamesContextBlock,
-    loadSkillInstructions,
-    loadSkillsInstructions,
-    getToolNamesFromSkills,
-    getToolExamplesFromSkills,
-    getSkillNamesAndResolutionMap,
-    SkillModel,
-    listBranchNamesForSkillDoc,
-    type SkillLibraryBinding,
-    type SkillSourceResolution,
-} from '../model/skill';
 import { BaseModel } from '../model/base';
 import { EdgeServerConnectionHandler } from './edge';
 import * as document from '../model/document';
@@ -46,38 +33,6 @@ import RecordModel from '../model/record';
 import SessionModel from '../model/session';
 import { parseCategory } from '../lib/category';
 const AgentLogger = new Logger('agent');
-
-export function normalizeAgentSkillBindings(adoc: AgentDoc): SkillLibraryBinding[] | undefined {
-    const raw = (adoc as any).skillLibraryBindings;
-    if (!Array.isArray(raw) || raw.length === 0) return undefined;
-    const byDoc = new Map<number, { branch: string; core: boolean }>();
-    for (const x of raw) {
-        const docId = Number((x as any).docId);
-        if (!Number.isFinite(docId) || docId <= 0) continue;
-        const branch = String((x as any).branch ?? 'main').trim() || 'main';
-        const core = !!(x as any).core;
-        const prev = byDoc.get(docId);
-        if (prev) {
-            byDoc.set(docId, { branch, core: prev.core || core });
-        } else {
-            byDoc.set(docId, { branch, core });
-        }
-    }
-    if (byDoc.size === 0) return undefined;
-    const entries = [...byDoc.entries()].sort((a, b) => {
-        const ac = a[1].core ? 1 : 0;
-        const bc = b[1].core ? 1 : 0;
-        return bc - ac;
-    });
-    return entries.map(([docId, { branch, core }]) => (core ? { docId, branch, core: true } : { docId, branch }));
-}
-
-export function effectiveAgentSkillBranch(adoc: AgentDoc): string | undefined {
-    const b = normalizeAgentSkillBindings(adoc);
-    const branch = b?.[0]?.branch;
-    const t = branch && String(branch).trim();
-    return t || undefined;
-}
 
 export type BaseLibraryBinding = { docId: number; branch: string };
 
@@ -109,86 +64,26 @@ export function effectiveAgentBaseBranch(adoc: AgentDoc): string | undefined {
     return t || undefined;
 }
 
-async function loadAgentSkillsMetadataBlock(adoc: AgentDoc): Promise<string> {
-    const bindings = normalizeAgentSkillBindings(adoc);
-    if (!bindings?.length) return '';
-    const core = bindings.filter((b) => b.core);
-    const optional = bindings.filter((b) => !b.core);
-    const parts: string[] = [];
-    if (core.length) {
-        const block = await loadCoreSkillsFullContextBlock(adoc.domainId, core);
-        if (block) parts.push(block);
+function listBranchNamesForBaseDoc(base: BaseDoc | Record<string, unknown>): string[] {
+    const s = new Set<string>(['main']);
+    const branches = (base as any).branches;
+    if (Array.isArray(branches)) {
+        for (const b of branches) {
+            if (typeof b === 'string' && b.trim()) s.add(b.trim());
+        }
     }
-    if (optional.length) {
-        const nameCtx = await loadNonCoreSkillNamesContextBlock(adoc.domainId, optional);
-        if (nameCtx) parts.push(nameCtx);
+    const branchData = (base as any).branchData;
+    if (branchData && typeof branchData === 'object' && !Array.isArray(branchData)) {
+        for (const b of Object.keys(branchData)) {
+            if (b.trim()) s.add(b.trim());
+        }
     }
-    return parts.join('');
+    const current = (base as any).currentBranch;
+    if (typeof current === 'string' && current.trim()) s.add(current.trim());
+    return [...s];
 }
 
-async function skillSourceMapForAgent(domainId: string, adoc: AgentDoc): Promise<Map<string, SkillSourceResolution> | undefined> {
-    const bindings = normalizeAgentSkillBindings(adoc)?.filter((b) => !b.core);
-    if (!bindings?.length) return undefined;
-    const { map } = await getSkillNamesAndResolutionMap(domainId, bindings);
-    return map;
-}
-
-async function coreSkillNameSetForAgent(domainId: string, adoc: AgentDoc): Promise<Set<string>> {
-    const coreBindings = normalizeAgentSkillBindings(adoc)?.filter((b) => b.core);
-    if (!coreBindings?.length) return new Set();
-    const { names } = await getSkillNamesAndResolutionMap(domainId, coreBindings);
-    return new Set(names);
-}
-
-function agentHasOnDemandSkillLibraries(adoc: AgentDoc): boolean {
-    const b = normalizeAgentSkillBindings(adoc);
-    return !!(b && b.some((x) => !x.core));
-}
-
-function skillSourceMapToPlain(map: Map<string, SkillSourceResolution>): Record<string, SkillSourceResolution> {
-    return Object.fromEntries(map.entries());
-}
-
-const LOAD_SKILL_INSTRUCTIONS_TOOL_DEF: {
-    name: string;
-    description: string;
-    inputSchema: Record<string, unknown>;
-    token: string;
-    edgeId: null;
-} = {
-    name: 'load_skill_instructions',
-    description:
-        'Load detailed instructions for a specific skill from a non-core library. Parameters: skillName (required, string); '
-        + 'level (optional, number) — omit or use 2 for full content. Call at most once per skill per user request. '
-        + 'Core-library skills are already in the system message — do not use this tool for them. '
-        + 'You have no other tools in this session’s function list until you load a skill; any additional tool names and JSON call examples appear only inside loaded skill text — follow those when executing.',
-    inputSchema: {
-        type: 'object',
-        properties: {
-            skillName: {
-                type: 'string',
-                description: 'The name of the skill to load',
-            },
-            level: {
-                type: 'number',
-                description: 'The maximum level to load (1 for skill overview, 2+ for specific depth, omit for full content).',
-                minimum: 1,
-            },
-        },
-        required: ['skillName'],
-    },
-    token: '',
-    edgeId: null,
-};
-
-/**
- * Functions exposed to the model API: if non-core skill libraries exist, only `load_skill_instructions`;
- * otherwise the agent's assigned and domain-market tools (same as `processAgentChatInternal` paths).
- */
-function toolsForModelApi(adoc: AgentDoc, executionTools: any[]): any[] {
-    if (agentHasOnDemandSkillLibraries(adoc)) {
-        return [{ ...LOAD_SKILL_INSTRUCTIONS_TOOL_DEF }];
-    }
+function toolsForModelApi(_adoc: AgentDoc, executionTools: any[]): any[] {
     return executionTools;
 }
 
@@ -231,14 +126,11 @@ async function callToolWithFallback(
     taskRecordId?: ObjectId,
     useWorker: boolean = true,
     mcpOpts?: {
-        skillBranch?: string;
-        skillSourceByName?: Map<string, SkillSourceResolution>;
-        coreSkillNames?: Set<string>;
         baseDocId?: number;
         baseBranch?: string;
     },
 ): Promise<any> {
-    const preferDirectMcp = toolName === 'load_skill_instructions' || toolName === 'load_base'
+    const preferDirectMcp = toolName === 'load_base'
         || toolName === 'get_domain_user_progress';
     if (useWorker && !preferDirectMcp) {
         try {
@@ -258,10 +150,7 @@ async function callToolWithFallback(
         domainId,
         undefined,
         undefined,
-        mcpOpts?.skillBranch,
         undefined,
-        mcpOpts?.skillSourceByName,
-        mcpOpts?.coreSkillNames,
         mcpOpts?.baseDocId,
         mcpOpts?.baseBranch,
         uid,
@@ -587,11 +476,8 @@ export async function processAgentChatInternal(
                     repoIds: adoc.repoIds?.length || 0,
                     repoIdsArray: adoc.repoIds || []
                 });
-                const loadedTools = await getAssignedTools(adoc.domainId, adoc.mcpToolIds, adoc.repoIds, adoc.skillIds, normalizeAgentSkillBindings(adoc));
+                const loadedTools = await getAssignedTools(adoc.domainId, adoc.mcpToolIds, adoc.repoIds);
                 tools = loadedTools;
-                if (agentHasOnDemandSkillLibraries(adoc)) {
-                    tools = [...tools, { ...LOAD_SKILL_INSTRUCTIONS_TOOL_DEF }];
-                }
                 toolsLoaded = true;
                 AgentLogger.info('processAgentChatInternal: Got tools (async)', { 
                     toolCount: tools.length, 
@@ -610,28 +496,11 @@ export async function processAgentChatInternal(
                 AgentLogger.error('Failed to load tools asynchronously: %s', error.message);
             }
         })();
-        
-        // Load Agent Skills metadata (progressive disclosure); skip if no skill library bindings
-        let skillsInstructions = '';
-        try {
-            skillsInstructions = await loadAgentSkillsMetadataBlock(adoc);
-        } catch (e) {
-            AgentLogger.warn('Failed to load Agent Skills metadata:', e);
-        }
-        
-        const skillSourceByName = await skillSourceMapForAgent(adoc.domainId, adoc);
-        const coreSkillNames = await coreSkillNameSetForAgent(adoc.domainId, adoc);
         const mcpClient = new McpClient();
 
         const agentPrompt = adoc.content || '';
         let systemMessage = agentPrompt;
-        
-        // Append Agent Skills list (after role prompt, before memory)
-        if (skillsInstructions) {
-            systemMessage += skillsInstructions;
-        }
-
-        const truncateMemory = (memory: string, maxLength: number = 2000): string => {
+            const truncateMemory = (memory: string, maxLength: number = 2000): string => {
             if (!memory || memory.length <= maxLength) {
                 return memory;
             }
@@ -752,13 +621,9 @@ export async function processAgentChatInternal(
             try {
                 const requestStartTime = Date.now();
                 
-                // Log request payload (incl. skill bindings; first chunk may omit tools)
+                // Log request payload (first chunk may omit tools)
                 logApiRequest('processAgentChatInternal', adoc.domainId, adoc.aid, model, systemMessage, finalHistory, message, {
                     messages: requestBody.messages,
-                    skillBranch: effectiveAgentSkillBranch(adoc),
-                    skillLibraryBindings: normalizeAgentSkillBindings(adoc),
-                    coreSkillNames: [...coreSkillNames],
-                    skillSourceSkillNames: skillSourceByName?.size ? [...skillSourceByName.keys()] : undefined,
                 });
                 
                 AgentLogger.info('Starting stream request (internal)', { 
@@ -956,9 +821,6 @@ export async function processAgentChatInternal(
                                                         callbacks.taskRecordId,
                                                         true,
                                                         {
-                                                            skillBranch: effectiveAgentSkillBranch(adoc),
-                                                            skillSourceByName,
-                                                            coreSkillNames,
                                                             baseDocId: effectiveAgentBaseDocId(adoc),
                                                             baseBranch: effectiveAgentBaseBranch(adoc),
                                                         },
@@ -1109,111 +971,49 @@ export async function getAssignedTools(
     domainId: string,
     mcpToolIds?: ObjectId[],
     repoIds?: number[],
-    skillIds?: string[],
-    skillLibraryBindings?: SkillLibraryBinding[],
 ): Promise<any[]> {
-    // [Edge disabled] system tools only (skills + domain market + catalog), no Edge tools
-    // const allToolIds = new Set<string>();
-    // if (mcpToolIds) { for (const toolId of mcpToolIds) { allToolIds.add(toolId.toString()); } }
-    // const finalToolIds: ObjectId[] = Array.from(allToolIds).map(id => new ObjectId(id));
-    // const hasEdgeTools = finalToolIds.length > 0;
-    const hasEdgeTools = false; // Edge disabled
-
-    let skillNamesToUse: string[] = [];
-    let sourceByName: Map<string, SkillSourceResolution> | undefined;
-    if (skillLibraryBindings && skillLibraryBindings.length > 0) {
-        const { names, map } = await getSkillNamesAndResolutionMap(domainId, skillLibraryBindings);
-        sourceByName = map;
-        skillNamesToUse = skillIds && skillIds.length > 0
-            ? skillIds.map((s) => String(s).trim()).filter(Boolean)
-            : names;
-    } else {
-        skillNamesToUse = (skillIds && skillIds.length > 0) ? skillIds : [];
-    }
-
-    const auxBranch = skillLibraryBindings && skillLibraryBindings[0] ? skillLibraryBindings[0].branch : undefined;
-
-    if (!hasEdgeTools) {
-        const allowedFromSkills = await getToolNamesFromSkills(domainId, skillNamesToUse, auxBranch, sourceByName);
-        if (allowedFromSkills.size === 0) {
-            AgentLogger.info('getAssignedTools: No Edge tools and no skill-referenced domain tools, returning empty array');
-            return [];
-        }
-        const result: Array<{ name: string; description: string; inputSchema: any; type?: 'system'; system?: boolean }> = [];
-        try {
-            const domainMarketTools = await getDomainMarketToolsForAgent(domainId);
-            const filtered = domainMarketTools.filter(t => allowedFromSkills.has(t.name));
-            result.push(...filtered);
-        } catch (e) {
-            AgentLogger.warn('getAssignedTools: getDomainMarketToolsForAgent failed: %s', (e as Error).message);
-        }
-        // Use domain-market tools only; no catalog backfill — uninstalled tools stay unavailable even if skills reference them
-        if (result.length > 0) {
-            AgentLogger.info('getAssignedTools: returning %d tools from market (skills filter)', result.length);
-            return result;
-        }
-        AgentLogger.info('getAssignedTools: No toolIds specified, returning empty array');
+    if (!mcpToolIds?.length) {
+        AgentLogger.info('getAssignedTools: No explicit toolIds specified, returning empty array');
         return [];
     }
 
-    // [Edge disabled] block commented out: DB/Edge tool lookup, realtime MCP, Edge merge
-    // const dbToolsMap = new Map<string, any>();
-    // const assignedToolNames = new Set<string>();
-    // try { const tools = await document.getMulti(domainId, document.TYPE_TOOL, { _id: { $in: finalToolIds } }); ...
-    //   const edgeDocIds = ...; const edgesMap = ...; for (const tool of tools) { const edge = edgesMap.get(tool.edgeDocId); ... }
-    // } catch { for (const toolId of finalToolIds) { const tool = await ToolModel.get(toolId); const edge = await EdgeModel.get(...); ... } }
-    // let realtimeTools = []; realtimeTools = await Promise.race([mcpClient.getTools(domainId), timeoutPromise]);
-    // for (const realtimeTool of realtimeTools) { ... } for (const [toolName, dbTool] of dbToolsMap) { finalTools.push(dbTool); ... }
+    const finalToolIds = mcpToolIds
+        .map((id) => {
+            try {
+                return typeof id === 'string' ? new ObjectId(id) : id;
+            } catch {
+                return null;
+            }
+        })
+        .filter((id): id is ObjectId => !!id && ObjectId.isValid(id));
+
+    if (!finalToolIds.length) {
+        AgentLogger.info('getAssignedTools: No valid toolIds specified, returning empty array');
+        return [];
+    }
+
     const finalTools: any[] = [];
     const processedNames = new Set<string>();
-
-    // Merge domain market tools + system tools referenced by Skills
-    try {
-        const allowedFromSkills = await getToolNamesFromSkills(domainId, skillNamesToUse, auxBranch, sourceByName);
-        if (allowedFromSkills.size > 0) {
-            const { getDomainMarketToolsForAgent } = await import('./tool');
-            const domainMarketTools = await getDomainMarketToolsForAgent(domainId);
-            for (const t of domainMarketTools) {
-                if (allowedFromSkills.has(t.name) && !processedNames.has(t.name)) {
-                    finalTools.push(t);
-                    processedNames.add(t.name);
-                }
-            }
-            // Domain-market tools only; no catalog backfill; uninstalled tools unavailable
-        }
-    } catch (e) {
-        AgentLogger.warn('getAssignedTools: getDomainMarketToolsForAgent failed: %s', (e as Error).message);
+    const docs = await document.getMulti(domainId, document.TYPE_TOOL, { _id: { $in: finalToolIds } as any }).toArray();
+    for (const tool of docs) {
+        const name = String((tool as any).name || '').trim();
+        if (!name || processedNames.has(name)) continue;
+        finalTools.push(tool);
+        processedNames.add(name);
     }
 
-    // Inject skill-recommended arguments into description + x-skill-example (Option B)
-    try {
-        const skillExamples = await getToolExamplesFromSkills(domainId, skillNamesToUse, auxBranch, sourceByName);
-        if (skillExamples.size > 0) {
-            for (const tool of finalTools) {
-                const args = skillExamples.get(tool.name);
-                if (args != null) {
-                    const desc = (tool.description || '').trim();
-                    tool.description = desc
-                        ? `${desc}\n\nRecommended from assigned skill(s): use arguments ${JSON.stringify(args)}.`
-                        : `Recommended from assigned skill(s): use arguments ${JSON.stringify(args)}.`;
-                    (tool as any)['x-skill-example'] = { arguments: args };
-                }
-            }
-        }
-    } catch (e) {
-        AgentLogger.warn('getAssignedTools: getToolExamplesFromSkills failed: %s', (e as Error).message);
-    }
-
-    AgentLogger.info('getAssignedTools: finalTools=%d (Edge disabled)', finalTools.length);
-
+    AgentLogger.info(
+        'getAssignedTools: finalTools=%d from explicit toolIds (repoIds=%d)',
+        finalTools.length,
+        repoIds?.length || 0,
+    );
     return finalTools;
 }
 
-/** Tools to OpenAI request format (incl. x-skill-example). */
+/** Tools to OpenAI request format. */
 function toolsToApiFormat(tools: any[]): any[] {
     return tools.map(tool => {
         const fn: any = { name: tool.name, description: tool.description, parameters: tool.inputSchema };
-        if (tool['x-skill-example']) fn['x-skill-example'] = tool['x-skill-example'];
         return { type: 'function', function: fn };
     });
 }
@@ -1228,10 +1028,7 @@ class AgentMcpStatusHandler extends Handler {
             return;
         }
         
-        let tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds, adoc.skillIds, normalizeAgentSkillBindings(adoc));
-        if (agentHasOnDemandSkillLibraries(adoc)) {
-            tools = [...tools, { ...LOAD_SKILL_INSTRUCTIONS_TOOL_DEF }];
-        }
+        let tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds);
         this.response.body = { 
             connected: true, 
             toolCount: tools.length 
@@ -1280,30 +1077,6 @@ export class AgentDetailHandler extends Handler {
             const host = this.request.host || this.request.headers.host || 'localhost';
             apiUrl = `${protocol}://${host}/api/agent`;
         }
-
-        const rawBindings = normalizeAgentSkillBindings(adoc) || [];
-        const enabledSkillLibrariesForDisplay: Array<{ docId: number; title: string; bid: string; branch: string; core: boolean }> = [];
-        for (const b of rawBindings) {
-            const lib = await SkillModel.get(domainId, b.docId);
-            if (lib) {
-                enabledSkillLibrariesForDisplay.push({
-                    docId: lib.docId,
-                    title: (lib.title && String(lib.title).trim()) || `Skill #${lib.docId}`,
-                    bid: ((lib as any).bid && String((lib as any).bid).trim()) || '',
-                    branch: String(b.branch || 'main'),
-                    core: !!b.core,
-                });
-            } else {
-                enabledSkillLibrariesForDisplay.push({
-                    docId: b.docId,
-                    title: `Skill #${b.docId}`,
-                    bid: '',
-                    branch: String(b.branch || 'main'),
-                    core: !!b.core,
-                });
-            }
-        }
-
         const rawBaseBindings = normalizeAgentBaseBindings(adoc) || [];
         const enabledBaseLibrariesForDisplay: Array<{ docId: number; title: string; bid: string; branch: string }> = [];
         for (const b of rawBaseBindings) {
@@ -1332,7 +1105,6 @@ export class AgentDetailHandler extends Handler {
             adoc,
             udoc,
             apiUrl,
-            enabledSkillLibrariesForDisplay,
             enabledBaseLibrariesForDisplay,
         };
 
@@ -1426,138 +1198,6 @@ export class AgentDetailHandler extends Handler {
 
 }
 
-/** Configure skill libraries + branches for an agent (dedicated page). */
-export class AgentSkillsEditHandler extends Handler {
-    @param('aid', Types.String)
-    async _prepare(domainId: string, aid: string) {
-        if (!aid) return;
-        const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
-        const adoc = await Agent.get(domainId, normalizedId);
-        if (!adoc) {
-            throw new NotFoundError(`Agent not found for ${typeof normalizedId === 'number' ? 'docId' : 'aid'}: ${normalizedId}`);
-        }
-        if (!this.user.own(adoc) && !this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) {
-            throw new PermissionError('Only owner or system administrator can manage Agent Skills');
-        }
-        this.UiContext.extraTitleContent = adoc.title;
-    }
-
-    @param('aid', Types.String)
-    async get(domainId: string, aid: string) {
-        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
-
-        const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
-        const adoc = await Agent.get(domainId, normalizedId, Agent.PROJECTION_DETAIL);
-        if (!adoc) {
-            throw new NotFoundError(`Agent not found for ${typeof normalizedId === 'number' ? 'docId' : 'aid'}: ${normalizedId}`);
-        }
-        if (!this.user.own(adoc) && !this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) {
-            throw new PermissionError('Only owner or system administrator can manage Agent Skills');
-        }
-
-        const skillLibrariesRaw = await SkillModel.getAll(domainId);
-        const skillLibrariesForUi = skillLibrariesRaw.map((lib) => ({
-            docId: lib.docId,
-            title: (lib.title && String(lib.title).trim()) || `Skill #${lib.docId}`,
-            bid: ((lib as any).bid && String((lib as any).bid).trim()) || '',
-            branches: listBranchNamesForSkillDoc(lib),
-        }));
-
-        const skillBindingsByDocId: Record<string, string> = {};
-        const skillCoreByDocId: Record<string, boolean> = {};
-        for (const b of normalizeAgentSkillBindings(adoc) || []) {
-            const lid = String(b.docId);
-            skillBindingsByDocId[lid] = String(b.branch || 'main');
-            if (b.core) skillCoreByDocId[lid] = true;
-        }
-
-        this.response.template = 'agent_skills.html';
-        this.response.body = {
-            domainId,
-            aid: adoc.aid,
-            adoc,
-            skillLibrariesForUi,
-            skillBindingsByDocId,
-            skillCoreByDocId,
-        };
-    }
-
-    @param('aid', Types.String)
-    @post('skillLibraryBindings', Types.Any, true)
-    async postUpdateSkillLibraryBindings(domainId: string, aid: string, skillLibraryBindings?: unknown) {
-        this.response.template = null;
-
-        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
-
-        const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
-        const adoc = await Agent.get(domainId, normalizedId);
-
-        if (!adoc) {
-            throw new NotFoundError(`Agent not found for ${typeof normalizedId === 'number' ? 'docId' : 'aid'}: ${normalizedId}`);
-        }
-
-        if (!this.user.own(adoc) && !this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) {
-            throw new PermissionError('Only owner or system administrator can update Agent Skills');
-        }
-
-        let rawList: unknown[] = [];
-        if (Array.isArray(skillLibraryBindings)) {
-            rawList = skillLibraryBindings;
-        } else if (typeof skillLibraryBindings === 'string' && skillLibraryBindings.trim()) {
-            try {
-                const parsed = JSON.parse(skillLibraryBindings);
-                if (Array.isArray(parsed)) rawList = parsed;
-            } catch {
-                rawList = [];
-            }
-        }
-
-        const byDoc = new Map<number, { branch: string; core: boolean }>();
-        for (const row of rawList) {
-            if (!row || typeof row !== 'object') continue;
-            const docId = Number((row as any).docId);
-            if (!Number.isFinite(docId) || docId <= 0) continue;
-            const lib = await SkillModel.get(domainId, docId);
-            if (!lib) continue;
-            if (!this.user.own(lib)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
-            let branch = String((row as any).branch ?? 'main').trim() || 'main';
-            const allowed = listBranchNamesForSkillDoc(lib);
-            if (!allowed.includes(branch)) {
-                branch = allowed.includes('main') ? 'main' : (allowed[0] || 'main');
-            }
-            const core = !!(row as any).core;
-            const prev = byDoc.get(docId);
-            if (prev) {
-                byDoc.set(docId, { branch, core: prev.core || core });
-            } else {
-                byDoc.set(docId, { branch, core });
-            }
-        }
-
-        const normalized: SkillLibraryBinding[] = [...byDoc.entries()]
-            .sort((a, b) => {
-                const ac = a[1].core ? 1 : 0;
-                const bc = b[1].core ? 1 : 0;
-                return bc - ac;
-            })
-            .map(([docId, { branch, core }]) => (core ? { docId, branch, core: true } : { docId, branch }));
-
-        if (normalized.length > 0 && !normalized.some((b) => b.core)) {
-            this.response.status = 400;
-            this.response.body = {
-                success: false,
-                error: this.translate('At least one skill library must be marked as core.'),
-            };
-            return;
-        }
-        await Agent.edit(domainId, adoc.aid, {
-            skillLibraryBindings: normalized.length > 0 ? normalized : undefined,
-        });
-
-        this.response.body = { success: true, skillLibraryBindings: normalized };
-    }
-}
-
 /** Configure knowledge-base (TYPE_BASE) mount for an agent (one base + branch). */
 export class AgentBasesEditHandler extends Handler {
     @param('aid', Types.String)
@@ -1593,7 +1233,7 @@ export class AgentBasesEditHandler extends Handler {
             docId: bd.docId,
             title: (bd.title && String(bd.title).trim()) || `Base #${bd.docId}`,
             bid: (bd.bid && String(bd.bid).trim()) || '',
-            branches: listBranchNamesForSkillDoc(bd as any),
+            branches: listBranchNamesForBaseDoc(bd as any),
         }));
 
         const bb = normalizeAgentBaseBindings(adoc)?.[0];
@@ -1650,7 +1290,7 @@ export class AgentBasesEditHandler extends Handler {
             if (!bdoc) continue;
             if (!this.user.own(bdoc)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
             let branch = String((row as any).branch ?? 'main').trim() || 'main';
-            const allowed = listBranchNamesForSkillDoc(bdoc as any);
+            const allowed = listBranchNamesForBaseDoc(bdoc as any);
             if (!allowed.includes(branch)) {
                 branch = allowed.includes('main') ? 'main' : (allowed[0] || 'main');
             }
@@ -1666,7 +1306,7 @@ export class AgentBasesEditHandler extends Handler {
     }
 }
 
-/** Log full prompt to the model: systemMessage, message outline, skill/tool metadata (for debugging skill injection). */
+/** Log full prompt to the model: systemMessage and message outline. */
 export function logAgentContextToModel(params: {
     source: string;
     domainId: string;
@@ -1677,15 +1317,10 @@ export function logAgentContextToModel(params: {
     userMessage?: string;
     /** When provided, matches API message order (system / history / user). */
     messages?: Array<{ role: string; content?: unknown; tool_calls?: unknown; tool_call_id?: unknown }>;
-    skillBranch?: string;
-    skillLibraryBindings?: SkillLibraryBinding[];
-    coreSkillNames?: string[];
-    /** Non-core skill names as keys in skillSourceByName */
-    skillSourceSkillNames?: string[];
 }) {
     const {
         source, domainId, agentId, systemMessage, model = '', chatHistory, userMessage,
-        messages, skillBranch, skillLibraryBindings, coreSkillNames, skillSourceSkillNames,
+        messages,
     } = params;
 
     let messagesOutline = '';
@@ -1712,10 +1347,6 @@ export function logAgentContextToModel(params: {
         + `Domain: ${domainId}\n`
         + `Agent ID: ${agentId}\n`
         + `Model: ${model}\n`
-        + `skillBranch: ${skillBranch ?? '(none)'}\n`
-        + `skillLibraryBindings: ${skillLibraryBindings?.length ? JSON.stringify(skillLibraryBindings) : '(none)'}\n`
-        + `coreSkillNames: ${coreSkillNames?.length ? coreSkillNames.join(', ') : '(none)'}\n`
-        + `skillSource (non-core names): ${skillSourceSkillNames?.length ? skillSourceSkillNames.join(', ') : '(none)'}\n`
         + `System Message Length: ${systemMessage.length} chars (~${Math.ceil(systemMessage.length / 4)} tokens)\n`
         + `--- System Message (full text) ---\n`
         + `${systemMessage}\n`
@@ -1730,10 +1361,6 @@ export function logAgentContextToModel(params: {
         domainId,
         agentId,
         model,
-        skillBranch: skillBranch ?? null,
-        skillLibraryBindings: skillLibraryBindings ?? null,
-        coreSkillNames: coreSkillNames ?? null,
-        skillSourceSkillNames: skillSourceSkillNames ?? null,
         systemMessageLength: systemMessage.length,
         estimatedTokens: Math.ceil(systemMessage.length / 4),
         messagesCount: messages?.length ?? (chatHistory?.length ?? 0) + (userMessage != null ? 1 : 0),
@@ -1743,7 +1370,7 @@ export function logAgentContextToModel(params: {
 
 type LogAgentContextExtras = Pick<
     Parameters<typeof logAgentContextToModel>[0],
-    'skillBranch' | 'skillLibraryBindings' | 'coreSkillNames' | 'skillSourceSkillNames' | 'messages'
+    'messages'
 >;
 
 // Helper: log API request (delegates to logAgentContextToModel)
@@ -2057,36 +1684,13 @@ export class AgentChatHandler extends Handler {
                 throw new Error('Domain not found');
             }
             
-            const tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds, adoc.skillIds, normalizeAgentSkillBindings(adoc));
-            
-            // Load Agent Skills metadata (progressive disclosure); skip if no skill library bindings
-            let skillsInstructions = '';
-            try {
-                skillsInstructions = await loadAgentSkillsMetadataBlock(adoc);
-            } catch (e) {
-                AgentLogger.warn('Failed to load Agent Skills metadata:', e);
-            }
-            
-            // Add built-in load_skill_instructions when non-core skill libraries exist
+            const tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds);
             const finalTools = [...tools];
-            if (agentHasOnDemandSkillLibraries(adoc)) {
-                finalTools.push({ ...LOAD_SKILL_INSTRUCTIONS_TOOL_DEF });
-            }
             const modelTools = toolsForModelApi(adoc, finalTools);
-            
-            const skillSourceForTask = await skillSourceMapForAgent(domainId, adoc);
-            const coreSkillNameList = [...(await coreSkillNameSetForAgent(domainId, adoc))];
             
             // Build full system message (prompt, memory, tools, …)
             const agentPrompt = adoc.content || '';
             let systemMessage = agentPrompt;
-            
-            // Append Agent Skills list after role prompt, before memory
-            // Names + descriptions only; not full instructions (saves tokens)
-            if (skillsInstructions) {
-                systemMessage += skillsInstructions;
-            }
-            
             const truncateMemory = (memory: string, maxLength: number = 2000): string => {
                 if (!memory || memory.length <= maxLength) {
                     return memory;
@@ -2119,12 +1723,9 @@ export class AgentChatHandler extends Handler {
                 // Agent snapshot
                 agentContent: adoc.content || '',
                 agentMemory: adoc.memory || '',
-                skillBranch: effectiveAgentSkillBranch(adoc),
                 baseDocId: effectiveAgentBaseDocId(adoc),
                 baseBranch: effectiveAgentBaseBranch(adoc),
-                skillSourceByName: skillSourceForTask ? skillSourceMapToPlain(skillSourceForTask) : undefined,
-                coreSkillNames: coreSkillNameList.length > 0 ? coreSkillNameList : undefined,
-                /** Serialize only OpenAI function tools; skill text guides real tool calls; server resolves via McpClient (system catalog / domain market). */
+                /** Serialize OpenAI function tools; server resolves via McpClient. */
                 toolsForModel: modelTools.map(tool => ({
                     name: tool.name,
                     description: tool.description,
@@ -2149,7 +1750,6 @@ export class AgentChatHandler extends Handler {
                     ...chatHistory,
                     { role: 'user', content: message },
                 ],
-                skillSourceSkillNames: skillSourceForTask?.size ? [...skillSourceForTask.keys()] : undefined,
             });
             
             // Persist latest context on the session
@@ -2769,33 +2369,13 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
         } catch (e) {
         }
 
-        let tools = await getAssignedTools(domainId, this.adoc.mcpToolIds, this.adoc.repoIds, this.adoc.skillIds, normalizeAgentSkillBindings(this.adoc));
-        if (agentHasOnDemandSkillLibraries(this.adoc)) {
-            tools = [...tools, { ...LOAD_SKILL_INSTRUCTIONS_TOOL_DEF }];
-        }
+        let tools = await getAssignedTools(domainId, this.adoc.mcpToolIds, this.adoc.repoIds);
         const modelTools = toolsForModelApi(this.adoc, tools);
         const mcpClient = new McpClient();
-        const skillSourceByName = await skillSourceMapForAgent(domainId, this.adoc);
-        const coreSkillNames = await coreSkillNameSetForAgent(domainId, this.adoc);
-        
-        // Load Agent Skills metadata (progressive disclosure); skip if no skill library bindings
-        let skillsInstructions = '';
-        try {
-            skillsInstructions = await loadAgentSkillsMetadataBlock(this.adoc);
-        } catch (e) {
-            AgentLogger.warn('Failed to load Agent Skills metadata:', e);
-        }
-        
-        const agentPrompt = this.adoc.content || '';
+const agentPrompt = this.adoc.content || '';
         let systemMessage = agentPrompt;
-        
-        // Append Agent Skills list (after role prompt, before memory)
-        if (skillsInstructions) {
-            systemMessage += skillsInstructions;
-        }
-        
-        // Truncate memory helper
-        const truncateMemory = (memory: string, maxLength: number = 2000): string => {
+// Truncate memory helper
+                    const truncateMemory = (memory: string, maxLength: number = 2000): string => {
             if (!memory || memory.length <= maxLength) {
                 return memory;
             }
@@ -2823,10 +2403,6 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
                 ...chatHistory,
                 { role: 'user', content: message },
             ],
-            skillBranch: effectiveAgentSkillBranch(this.adoc),
-            skillLibraryBindings: normalizeAgentSkillBindings(this.adoc),
-            coreSkillNames: [...coreSkillNames],
-            skillSourceSkillNames: skillSourceByName?.size ? [...skillSourceByName.keys()] : undefined,
         });
 
         try {
@@ -3008,10 +2584,7 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
                                                         domainId,
                                                         undefined,
                                                         undefined,
-                                                        effectiveAgentSkillBranch(this.adoc),
                                                         undefined,
-                                                        skillSourceByName,
-                                                        coreSkillNames,
                                                         effectiveAgentBaseDocId(this.adoc),
                                                         effectiveAgentBaseBranch(this.adoc),
                                                         this.user._id > 0 ? this.user._id : undefined,
@@ -3240,33 +2813,13 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
         } catch (e) {
         }
 
-        let tools = await getAssignedTools(domainId, this.adoc.mcpToolIds, this.adoc.repoIds, this.adoc.skillIds, normalizeAgentSkillBindings(this.adoc));
-        if (agentHasOnDemandSkillLibraries(this.adoc)) {
-            tools = [...tools, { ...LOAD_SKILL_INSTRUCTIONS_TOOL_DEF }];
-        }
+        let tools = await getAssignedTools(domainId, this.adoc.mcpToolIds, this.adoc.repoIds);
         const modelTools = toolsForModelApi(this.adoc, tools);
         const mcpClient = new McpClient();
-        const skillSourceByName = await skillSourceMapForAgent(domainId, this.adoc);
-        const coreSkillNames = await coreSkillNameSetForAgent(domainId, this.adoc);
-        
-        // Load Agent Skills metadata (progressive disclosure); skip if no skill library bindings
-        let skillsInstructions = '';
-        try {
-            skillsInstructions = await loadAgentSkillsMetadataBlock(this.adoc);
-        } catch (e) {
-            AgentLogger.warn('Failed to load Agent Skills metadata:', e);
-        }
-        
-        const agentPrompt = this.adoc.content || '';
+const agentPrompt = this.adoc.content || '';
         let systemMessage = agentPrompt;
-        
-        // Append Agent Skills list (after role prompt, before memory)
-        if (skillsInstructions) {
-            systemMessage += skillsInstructions;
-        }
-        
-        // Truncate memory helper
-        const truncateMemory = (memory: string, maxLength: number = 2000): string => {
+// Truncate memory helper
+                    const truncateMemory = (memory: string, maxLength: number = 2000): string => {
             if (!memory || memory.length <= maxLength) {
                 return memory;
             }
@@ -3294,10 +2847,6 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
                 ...chatHistory,
                 { role: 'user', content: message },
             ],
-            skillBranch: effectiveAgentSkillBranch(this.adoc),
-            skillLibraryBindings: normalizeAgentSkillBindings(this.adoc),
-            coreSkillNames: [...coreSkillNames],
-            skillSourceSkillNames: skillSourceByName?.size ? [...skillSourceByName.keys()] : undefined,
         });
 
         try {
@@ -3475,7 +3024,7 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
                                                     
                                                     let toolResult: any;
                                                     try {
-                                                        toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs, domainId, undefined, undefined, effectiveAgentSkillBranch(this.adoc), undefined, skillSourceByName, coreSkillNames, effectiveAgentBaseDocId(this.adoc), effectiveAgentBaseBranch(this.adoc), this.user._id > 0 ? this.user._id : undefined);
+                                                        toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs, domainId, undefined, undefined, undefined, effectiveAgentBaseDocId(this.adoc), effectiveAgentBaseBranch(this.adoc), this.user._id > 0 ? this.user._id : undefined);
                                                         AgentLogger.info(`Tool ${firstToolCall.function.name} returned (API WS)`, { resultLength: JSON.stringify(toolResult).length });
                                                     } catch (toolError: any) {
                                                         AgentLogger.error(`Tool ${firstToolCall.function.name} failed (API WS):`, toolError);
@@ -3619,32 +3168,12 @@ export class AgentApiHandler extends Handler {
             // ignore parse error
         }
 
-        let tools = await getAssignedTools(adoc.domainId, adoc.mcpToolIds, adoc.repoIds, adoc.skillIds, normalizeAgentSkillBindings(adoc));
-        if (agentHasOnDemandSkillLibraries(adoc)) {
-            tools = [...tools, { ...LOAD_SKILL_INSTRUCTIONS_TOOL_DEF }];
-        }
+        let tools = await getAssignedTools(adoc.domainId, adoc.mcpToolIds, adoc.repoIds);
         const modelTools = toolsForModelApi(adoc, tools);
         const mcpClient = new McpClient();
-        const skillSourceByName = await skillSourceMapForAgent(adoc.domainId, adoc);
-        const coreSkillNames = await coreSkillNameSetForAgent(adoc.domainId, adoc);
-        
-        // Load Agent Skills metadata (progressive disclosure); skip if no skill library bindings
-        let skillsInstructions = '';
-        try {
-            skillsInstructions = await loadAgentSkillsMetadataBlock(adoc);
-        } catch (e) {
-            AgentLogger.warn('Failed to load Agent Skills metadata:', e);
-        }
-        
-        const agentPrompt = adoc.content || '';
+const agentPrompt = adoc.content || '';
         let systemMessage = agentPrompt;
-        
-        // Append Agent Skills list (after role prompt, before memory)
-        if (skillsInstructions) {
-            systemMessage += skillsInstructions;
-        }
-        
-        const truncateMemory = (memory: string, maxLength: number = 2000): string => {
+            const truncateMemory = (memory: string, maxLength: number = 2000): string => {
             if (!memory || memory.length <= maxLength) {
                 return memory;
             }
@@ -3669,10 +3198,6 @@ export class AgentApiHandler extends Handler {
                 ...chatHistory,
                 { role: 'user', content: message },
             ],
-            skillBranch: effectiveAgentSkillBranch(adoc),
-            skillLibraryBindings: normalizeAgentSkillBindings(adoc),
-            coreSkillNames: [...coreSkillNames],
-            skillSourceSkillNames: skillSourceByName?.size ? [...skillSourceByName.keys()] : undefined,
         });
 
         if (stream) {
@@ -3887,7 +3412,7 @@ export class AgentApiHandler extends Handler {
                                                             const toolArgs = firstToolCall.function.name.match(/^repo_\d+_/) 
                                                                 ? { ...parsedArgs, __agentId: (adoc as any).aid || (adoc as any)._id?.toString() || 'unknown', __agentName: (adoc as any).name || 'agent' }
                                                                 : parsedArgs;
-                                                            toolResult = await mcpClient.callTool(firstToolCall.function.name, toolArgs, adoc.domainId, undefined, undefined, effectiveAgentSkillBranch(adoc), undefined, skillSourceByName, coreSkillNames, effectiveAgentBaseDocId(adoc), effectiveAgentBaseBranch(adoc), this.user._id > 0 ? this.user._id : undefined);
+                                                            toolResult = await mcpClient.callTool(firstToolCall.function.name, toolArgs, adoc.domainId, undefined, undefined, undefined, effectiveAgentBaseDocId(adoc), effectiveAgentBaseBranch(adoc), this.user._id > 0 ? this.user._id : undefined);
                                                             AgentLogger.info(`Tool ${firstToolCall.function.name} returned (API)`, { resultLength: JSON.stringify(toolResult).length });
                                                         } catch (toolError: any) {
                                                             AgentLogger.error(`Tool ${firstToolCall.function.name} failed (API):`, toolError);
@@ -4027,7 +3552,7 @@ export class AgentApiHandler extends Handler {
                     const toolArgs = firstToolCall.function?.name?.match(/^repo_\d+_/) 
                         ? { ...parsedArgs, __agentId: (adoc as any).aid || (adoc as any)._id?.toString() || 'unknown', __agentName: (adoc as any).name || 'agent' }
                         : parsedArgs;
-                    const toolResult = await mcpClient.callTool(firstToolCall.function?.name, toolArgs, adoc.domainId, undefined, undefined, effectiveAgentSkillBranch(adoc), undefined, skillSourceByName, coreSkillNames, effectiveAgentBaseDocId(adoc), effectiveAgentBaseBranch(adoc), this.user._id > 0 ? this.user._id : undefined);
+                    const toolResult = await mcpClient.callTool(firstToolCall.function?.name, toolArgs, adoc.domainId, undefined, undefined, undefined, effectiveAgentBaseDocId(adoc), effectiveAgentBaseBranch(adoc), this.user._id > 0 ? this.user._id : undefined);
                     AgentLogger.info('Tool returned:', { toolResult });
                     
                     const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
@@ -4206,9 +3731,8 @@ export class AgentEditHandler extends Handler {
     @post('tag', Types.Content, true, null, parseCategory)
     @post('memory', Types.Content, true)
     @post('toolIds', Types.ArrayOf(Types.String), true)
-    @post('skillIds', Types.ArrayOf(Types.String), true)
     @post('repoIds', Types.ArrayOf(Types.Int), true)
-    async postUpdate(domainId: string, aid: string, title: string, content: string, tag: string[] = [], memory?: string, toolIds?: string[], skillIds?: string[], repoIds?: number[]) {
+    async postUpdate(domainId: string, aid: string, title: string, content: string, tag: string[] = [], memory?: string, toolIds?: string[], repoIds?: number[]) {
         const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
     
     
@@ -4244,7 +3768,6 @@ export class AgentEditHandler extends Handler {
         AgentLogger.info('Updating agent: aid=%s, toolIds=%o, validToolIds=%o, repoIds=%o, validRepoIds=%o', 
             agent.aid, toolIds, validToolIds.map(id => id.toString()), repoIds, validRepoIds);
     
-        const validSkillIds: string[] = Array.isArray(skillIds) ? skillIds.filter((s): s is string => typeof s === 'string' && s.trim() !== '') : [];
         const agentAid = agent.aid;
         const updatedAgent = await Agent.edit(domainId, agentAid, { 
             title, 
@@ -4253,11 +3776,10 @@ export class AgentEditHandler extends Handler {
             memory: memory || null,
             mcpToolIds: validToolIds,
             repoIds: validRepoIds.length > 0 ? validRepoIds : undefined,
-            skillIds: validSkillIds.length > 0 ? validSkillIds : undefined,
         });
         
         if (updatedAgent) {
-            AgentLogger.info('Agent updated: aid=%s, mcpToolIds=%o, skillIds=%o', agentAid, updatedAgent.mcpToolIds?.map(id => id.toString()), updatedAgent.skillIds);
+            AgentLogger.info('Agent updated: aid=%s, mcpToolIds=%o', agentAid, updatedAgent.mcpToolIds?.map(id => id.toString()));
         } else {
             AgentLogger.warn('Agent.edit returned null/undefined for aid=%s', agentAid);
         }
@@ -4779,7 +4301,6 @@ export class DirectAiChatConnectionHandler extends ConnectionHandler {
 export async function apply(ctx: Context) {
     ctx.Route('agent_domain', '/agent', AgentMainHandler);
     ctx.Route('agent_create', '/agent/create', AgentEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('agent_skills', '/agent/:aid/skills', AgentSkillsEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_bases', '/agent/:aid/bases', AgentBasesEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_edge_config', '/agent/:aid/edge-config', AgentEdgeConfigHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_chat_sessions_list', '/agent/:aid/chat/sessions', AgentChatSessionsListHandler, PRIV.PRIV_USER_PROFILE);

@@ -28,7 +28,7 @@ export function registerSystemToolExecutor(fn: SystemToolExecutor): void {
     logger.info('[tool] systemTools: registerSystemToolExecutor hasExecutor=%s', !!registeredExecutor);
 }
 
-/** Executable system tools; used when resolving skill references in getAssignedTools; [] if unregistered. */
+/** Executable system tools; [] if unregistered. */
 export function getSystemToolCatalog(): SystemToolCatalogEntry[] {
     return registeredCatalog;
 }
@@ -46,7 +46,7 @@ export async function executeSystemTool(name: string, args: Record<string, unkno
 
 /**
  * If name is in the registered system-tool list, run it and return the result; else null.
- * callTool fallback when only skills/cards configure tools (no edge metadata).
+ * callTool fallback when no edge metadata is available.
  */
 export async function tryExecuteSystemTool(name: string, args: Record<string, unknown>): Promise<unknown | null> {
     const inCatalog = registeredCatalog.some(t => t.name === name);

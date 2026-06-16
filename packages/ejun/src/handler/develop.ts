@@ -7,7 +7,6 @@ import { MethodNotAllowedError } from '@ejunz/framework';
 import DomainModel from '../model/domain';
 import { BaseModel, type MindMapDocType } from '../model/base';
 import * as document from '../model/document';
-import { SkillModel } from '../model/skill';
 import { NotFoundError, ValidationError } from '../error';
 import SessionModel, {
     readDevelopEditorUrl,
@@ -103,13 +102,11 @@ class DevelopSessionEditorHandler extends Handler {
             throw new NotFoundError(this.translate('Session not found'));
         }
         const mRaw = sess.developMapDocType;
-        if (mRaw !== document.TYPE_BASE && mRaw !== document.TYPE_SKILL) {
+        if (mRaw !== undefined && mRaw !== document.TYPE_BASE) {
             throw new NotFoundError(this.translate('Session not found'));
         }
-        const mapDt: MindMapDocType = mRaw;
-        const base = mapDt === document.TYPE_SKILL
-            ? ((await SkillModel.get(domainId, baseDocId)) as BaseDoc | null)
-            : await BaseModel.get(domainId, baseDocId);
+        const mapDt: MindMapDocType = document.TYPE_BASE;
+        const base = await BaseModel.get(domainId, baseDocId);
         if (!base) throw new NotFoundError('Base not found');
         if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
 
@@ -140,8 +137,7 @@ class DevelopSessionEditorHandler extends Handler {
             sp.set('session', sid);
             if (hasCardInUrl) sp.set('cardId', String(q.cardId).trim());
             if (hasNodeInUrl) sp.set('nodeId', String(q.nodeId).trim());
-            const pathSeg = mapDt === document.TYPE_SKILL ? 'skill' : 'base';
-            this.response.redirect = `/d/${encodeURIComponent(domainId)}/${pathSeg}/${encodeURIComponent(docSeg)}/branch/${encodeURIComponent(requestedBranch)}/editor?${sp.toString()}`;
+            this.response.redirect = `/d/${encodeURIComponent(domainId)}/base/${encodeURIComponent(docSeg)}/branch/${encodeURIComponent(requestedBranch)}/editor?${sp.toString()}`;
             return;
         }
 
@@ -160,7 +156,7 @@ class DevelopSessionEditorHandler extends Handler {
             }
         }
 
-        this.response.template = mapDt === document.TYPE_SKILL ? 'skill_editor.html' : 'base_editor.html';
+        this.response.template = 'base_editor.html';
         const domainName = (this as any).domain?.name || domainId;
         const qNode = typeof q.nodeId === 'string' ? q.nodeId.trim() : '';
         const sessNodeId = typeof (sess as { nodeId?: string }).nodeId === 'string'
@@ -175,9 +171,7 @@ class DevelopSessionEditorHandler extends Handler {
             priv: this.user.priv,
             domainName,
             db: this.ctx.db.db,
-            makeEditorUrl: (docId, br) => (mapDt === document.TYPE_SKILL
-                ? `/d/${encodeURIComponent(domainId)}/skill/${encodeURIComponent(String(docId))}/outline/branch/${encodeURIComponent(br)}`
-                : this.url('base_outline_doc_branch', { docId: String(docId), branch: br })),
+            makeEditorUrl: (docId, br) => this.url('base_outline_doc_branch', { docId: String(docId), branch: br }),
             rootNodeIdFromQuery,
             developPoolUiMode: inferDevelopSessionKind(sess) === 'outline_node' ? 'none' : 'full',
             mapDocType: mapDt,
