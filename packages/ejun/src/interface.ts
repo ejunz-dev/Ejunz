@@ -210,8 +210,6 @@ declare module './model/agent'{
         owner: number;
         apiKey?: string;
         memory?: string;
-        mcpIds?: ObjectId[];
-        mcpToolIds?: ObjectId[];
         repoIds?: number[];
         /** Optional single knowledge-base mount (TYPE_BASE doc + branch) for load_base. */
         baseLibraryBindings?: Array<{ docId: number; branch: string }>;
@@ -383,6 +381,25 @@ export interface PluginNodeData {
     enabled?: boolean;
 }
 
+export interface PluginMcpStatusEntry {
+    key: string;
+    name?: string;
+    mcpId?: number;
+    availability: 'available' | 'unavailable' | 'checking' | 'unknown';
+    checkedAt?: Date;
+    error?: string;
+    toolCount?: number;
+    configHash?: string;
+}
+
+export interface PluginMcpStatus {
+    availability: 'available' | 'unavailable' | 'checking' | 'unknown';
+    hasMcpConfig: boolean;
+    checkedAt?: Date;
+    error?: string;
+    servers?: PluginMcpStatusEntry[];
+}
+
 export interface PluginDoc extends Omit<BaseDoc, 'docType'> {
     docType: document['TYPE_PLUGIN'];
     pluginSlug?: string;
@@ -394,6 +411,7 @@ export interface PluginDoc extends Omit<BaseDoc, 'docType'> {
         path?: string;
     };
     version?: string;
+    mcpStatus?: PluginMcpStatus;
 }
 
 export interface BaseHistoryEntry {
@@ -849,18 +867,26 @@ declare module './model/mcp' {
         description?: string;
         instructions?: string;
         tools?: { name: string; description: string }[];
-        kind?: 'outbound' | 'local' | 'inbound';
+        kind?: 'outbound' | 'local' | 'inbound' | 'plugin';
         source?: {
-            type: 'ejunz_base' | 'ejunztools' | 'edge' | 'external';
+            type: 'ejunz_base' | 'ejunztools' | 'edge' | 'external' | 'plugin';
             edgeDocId?: ObjectId;
             edgeId?: number;
             localKey?: string;
             externalUrl?: string;
+            pluginDocId?: number;
+            pluginCardId?: string;
+            pluginServerKey?: string;
+            configHash?: string;
+            transport?: 'http' | 'sse';
         };
         assignable?: boolean;
         status: 'online' | 'offline';
         lastConnectedAt?: Date;
         lastDisconnectedAt?: Date;
+        lastCheckedAt?: Date;
+        lastCheckError?: string;
+        toolCount?: number;
         createdAt: Date;
         updatedAt: Date;
         content?: string;
@@ -979,8 +1005,15 @@ declare module './model/tool' {
         docType: document['TYPE_TOOL'];
         docId: ObjectId;
         domainId: string;
-        token: string;
-        edgeDocId: ObjectId;
+        token?: string;
+        edgeDocId?: ObjectId;
+        mcpId?: number;
+        source?: {
+            type: 'plugin_mcp' | 'edge' | 'local';
+            pluginDocId?: number;
+            pluginCardId?: string;
+            pluginServerKey?: string;
+        };
         tid: number;
         name: string;
         description: string;

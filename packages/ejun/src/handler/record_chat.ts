@@ -640,7 +640,7 @@ export class SessionChatLiveHandler extends Handler {
         }
         
         const { getAssignedTools, appendAgentUniversalAssistantRules, effectiveAgentBaseDocId, effectiveAgentBaseBranch } = require('./agent');
-        const tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds, adoc.mcpIds);
+        const tools = await getAssignedTools(domainId, adoc);
         
         const agentPrompt = adoc.content || '';
         let systemMessage = agentPrompt;

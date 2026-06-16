@@ -56,6 +56,33 @@ interface PluginNodeData {
   enabled?: boolean;
 }
 
+type AvailableMcpToolForPlugin = {
+  uniqueId: string;
+  name: string;
+  description?: string;
+  kind?: string;
+  toolDocId?: string;
+  toolKey?: string;
+  edgeDocId?: string;
+  edgeId?: number;
+  type?: string;
+};
+
+type AvailableMcpServiceForPlugin = {
+  mid: number;
+  kind: string;
+  sourceLabel?: string;
+  name: string;
+  description?: string;
+  status: string;
+  online?: boolean;
+  assignable?: boolean;
+  toolCount?: number;
+  tools?: AvailableMcpToolForPlugin[];
+};
+
+type EditorRightPanelTab = 'problems' | 'develop_queue' | 'plugin_node' | 'plugin_mcp_services';
+
 interface BaseNode {
   id: string;
   text: string;
@@ -3137,7 +3164,15 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   } | null>(null);
 
   const [developQueueNavBusy, setDevelopQueueNavBusy] = useState<number | null>(null);
-  const [editorRightPanelTab, setEditorRightPanelTab] = useState<'problems' | 'develop_queue'>('problems');
+  const [editorRightPanelTab, setEditorRightPanelTab] = useState<EditorRightPanelTab>(isPluginEditor ? 'plugin_mcp_services' : 'problems');
+  const availableMcpServices = useMemo<AvailableMcpServiceForPlugin[]>(() => {
+    const raw = (window as any).UiContext?.availableMcpServices;
+    return Array.isArray(raw) ? raw.filter((x) => x && typeof x === 'object') : [];
+  }, []);
+  const pluginAvailableMcpServices = useMemo(
+    () => availableMcpServices.filter((svc) => svc.assignable !== false && svc.kind !== 'outbound'),
+    [availableMcpServices],
+  );
 
   const navigateDevelopQueueItem = useCallback(async (baseDocId: number, branch: string, queueIndex: number) => {
     const d = (window as any).UiContext?.domainId || 'system';
@@ -5778,8 +5813,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       if (hasAnyChanges) {
         
         try {
+          if (isPluginEditor) Notification.info(i18n('Testing plugin MCP connections before saving'));
           const response = await request.post(getBaseUrl('/batch-save'), batchSaveData);
-          
+
           if (response.success) {
             savedLearnerDraftBucketsForMsg = learnProblemNotesDraftRef.current.size;
             learnProblemNotesDraftRef.current.clear();
@@ -5961,9 +5997,14 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               Notification.warn(i18n('Save completed, but {0} error(s) occurred', response.errors.length));
             }
           } else {
-            const r = response as { url?: string; errors?: string[] };
+            const r = response as { url?: string; errors?: string[]; code?: string };
             if (typeof r.url === 'string' && r.url && /\/login(\?|#|$)/i.test(r.url)) {
               throw Object.assign(new Error("You're not logged in."), { rawMessage: "You're not logged in." });
+            }
+            if (r.code === 'PLUGIN_MCP_TEST_FAILED') {
+              const message = r.errors?.join('\n') || i18n('Plugin MCP test failed; save blocked');
+              Notification.error(message);
+              return;
             }
             throw new Error(r.errors?.join(', ') || i18n('Batch save failed'));
           }
@@ -8960,6 +9001,27 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   );
 
   
+  const formatAvailableMcpServicesForPrompt = useCallback((): string => {
+    const onlineServices = pluginAvailableMcpServices.filter((svc) => svc.online === true || svc.status === 'online');
+    if (!onlineServices.length) {
+      return 'No online assignable non-outbound MCP services are currently available in this domain.';
+    }
+    return onlineServices.map((svc) => {
+      const tools = Array.isArray(svc.tools) ? svc.tools : [];
+      const toolLines = tools.length
+        ? tools.map((tool) => {
+          const ids = [
+            tool.toolDocId ? `ToolDoc ID: ${tool.toolDocId}` : '',
+            tool.uniqueId ? `Unique tool ID: ${tool.uniqueId}` : '',
+            tool.toolKey ? `toolKey: ${tool.toolKey}` : '',
+          ].filter(Boolean).join('; ');
+          return `  - ${tool.name}${ids ? ` (${ids})` : ''}${tool.description ? `: ${tool.description}` : ''}`;
+        }).join('\n')
+        : '  - No tools exposed';
+      return `- ${svc.name} (MID ${svc.mid}, kind: ${svc.kind}, status: ${svc.status}, tools: ${tools.length})\n${toolLines}`;
+    }).join('\n');
+  }, [pluginAvailableMcpServices]);
+
   const convertBaseToText = useCallback((): string => {
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     const nodeMap = new Map<string, { node: BaseNode; children: string[] }>();
@@ -9230,8 +9292,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
       
       const baseText = convertBaseToText();
-      
-      
+      const availableMcpServicesText = isPluginEditor ? formatAvailableMcpServicesForPrompt() : '';
+
+
       const finalUserMessage = expandedMessage;
 
       
@@ -9529,7 +9592,19 @@ Reply with a JSON code block only for executable operations, using this shape:
 - Cards are markdown files under folders. Use create_card for plugin files such as usage-guide.md, export.md, exporter-tools.md.
 - skill, command, and mcp definitions live in card markdown frontmatter + body, not as typed nodes.
 - Runtime variables available in command card bodies: {{args}}, {{userMessage}}, {{agent.title}}, {{domainId}}.
-- MCP cards may list existing ToolDoc ObjectIds in frontmatter. If the user has not provided real ObjectIds, keep toolIds: [] and explain what to configure in the markdown body.
+- MCP cards may list existing ToolDoc ObjectIds or local Ejunz Tools Unique tool IDs in frontmatter. For local/site tools, use the exact Unique tool ID shown below, e.g. local:ejunztools:get_current_time.
+
+[Available domain MCP services]
+These are current-domain assignable, non-outbound MCP services visible to this plugin editor.
+
+${availableMcpServicesText}
+
+Rules for using this MCP context:
+- For plugin MCP cards that use mcp.toolIds, use real ToolDoc ID values when the service shows ToolDoc ID.
+- For local Ejunz Tools entries, use the exact Unique tool ID value, e.g. local:ejunztools:get_current_time.
+- Never invent ObjectIds or Unique tool IDs. Copy them exactly from the available MCP context.
+- toolKey values are useful for discussion, but mcp.toolIds must use ToolDoc ID or Unique tool ID values.
+- If the desired service shows neither a ToolDoc ID nor a Unique tool ID, keep toolIds: [] and explain what remains to configure.
 
 [Current plugin structure]
 ${baseText}
@@ -9571,13 +9646,14 @@ type: mcp
 slug: exporter-tools
 description: Tool bundle for exporter operations
 mcp:
-  toolIds: []
+  toolIds:
+    - local:ejunztools:get_current_time
 security:
   mutating: true
   requireConfirmation: true
 ---
 
-Instructions for when and how agents should use these tools. If toolIds is empty, tell the user which ToolDoc IDs to add.
+Instructions for when and how agents should use these tools. Prefer copying ToolDoc ID or Unique tool ID values from the MCP context into toolIds.
 
 [Response format for mutations]
 Reply with a JSON code block only for executable operations. For same-response folder+file scaffolding, give new folders a clientId and use that clientId as child card nodeId:
@@ -9618,7 +9694,7 @@ Reply with a JSON code block only for executable operations. For same-response f
       "type": "create_card",
       "nodeId": "mcp-folder",
       "title": "exporter-tools.md",
-      "content": "---\\ntype: mcp\\nslug: exporter-tools\\ndescription: Exporter tool bundle\\nmcp:\\n  toolIds: []\\nsecurity:\\n  mutating: true\\n  requireConfirmation: true\\n---\\n\\nUse these tools only after the user confirms target and format. Add real ToolDoc ObjectIds to toolIds when available."
+      "content": "---\\ntype: mcp\\nslug: exporter-tools\\ndescription: Exporter tool bundle\\nmcp:\\n  toolIds:\\n    - local:ejunztools:get_current_time\\nsecurity:\\n  mutating: true\\n  requireConfirmation: true\\n---\\n\\nUse these tools only after the user confirms target and format. Copy real ToolDoc ID or Unique tool ID values from the MCP context into toolIds."
     },
     { "type": "rename_card", "cardId": "card_xxx", "newTitle": "new-name.md" },
     { "type": "update_card_content", "cardId": "card_xxx", "newContent": "---\\ntype: skill\\nslug: revised\\n---\\n\\nRevised markdown body" },
@@ -9640,7 +9716,7 @@ Reply with a JSON code block only for executable operations. For same-response f
 6. Prefer lowercase stable slugs using only a-z, 0-9, dot, underscore, and dash. Keep descriptions concise.
 7. Complete scaffolding requests should create useful folders plus markdown cards in one operations[] block.
 8. Use real node IDs from the current plugin structure for parentId, nodeId, and targetNodeId. When referencing folders created earlier in the same operations[] block, use their clientId.
-9. MCP toolIds must be real existing ToolDoc ObjectIds supplied by the user or visible context. If absent, set toolIds to [] and write markdown instructions telling the user what to configure.
+9. MCP toolIds must be copied from the visible MCP context: use values labeled ToolDoc ID for persisted tools, or values labeled Unique tool ID for local Ejunz Tools (for example local:ejunztools:get_current_time). Never use bare toolKey values, and never invent IDs.
 10. **Valid JSON**: never put raw line breaks or unescaped " inside a string value; use standard JSON escaping (backslash + quote, backslash + n for newline).
 11. **Streaming**: emit each operations[] entry as a fully closed { ... } object before starting the next. The editor applies each finished object immediately.
 `;
@@ -12476,11 +12552,11 @@ Reply with a JSON code block only for executable operations. For same-response f
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             <strong>{selectedNode.text || i18n('Unnamed Node')}</strong>
             <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 999, background: themeStyles.bgButtonActive, color: themeStyles.textOnPrimary }}>
-              Folder
+              {i18n('Folder')}
             </span>
           </div>
           <div style={{ fontSize: 12, color: themeStyles.textSecondary, lineHeight: 1.5 }}>
-            Plugin nodes are folders. Add markdown cards under folders for skill, command, and MCP definitions.
+            {i18n('Plugin nodes are folders. Add markdown cards under folders for skill, command, and MCP definitions.')}
           </div>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
             Slug
@@ -12512,6 +12588,48 @@ Reply with a JSON code block only for executable operations. For same-response f
       ) : (
         <div style={{ color: themeStyles.textSecondary, textAlign: 'center', marginTop: 40 }}>{i18n('Select a plugin folder to edit its metadata.')}</div>
       )}
+    </div>
+  ) : null;
+
+  const pluginMcpServicesBody = isPluginEditor ? (
+    <div style={{ padding: 14, overflowY: 'auto', flex: 1, color: themeStyles.textPrimary }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ fontSize: 12, color: themeStyles.textSecondary, lineHeight: 1.5 }}>
+          {i18n('Assignable MCP services in this domain')}. {i18n('Use ToolDoc IDs in plugin MCP cards')}.
+        </div>
+        {pluginAvailableMcpServices.length === 0 ? (
+          <div style={{ color: themeStyles.textSecondary, textAlign: 'center', marginTop: 40 }}>{i18n('No available MCP services')}</div>
+        ) : pluginAvailableMcpServices.map((svc) => {
+          const tools = Array.isArray(svc.tools) ? svc.tools : [];
+          return (
+            <details key={`${svc.kind}-${svc.mid}`} style={{ border: `1px solid ${themeStyles.borderSecondary}`, borderRadius: 6, background: themeStyles.bgSecondary, padding: 10 }}>
+              <summary style={{ cursor: 'pointer', listStylePosition: 'inside' }}>
+                <span style={{ fontWeight: 700 }}>{svc.name}</span>
+                <span className={`edge-status edge-status-${svc.status || 'offline'}`} style={{ marginLeft: 8 }}>{svc.status || 'offline'}</span>
+                <span style={{ marginLeft: 8, fontSize: 11, color: themeStyles.textTertiary }}>
+                  MID #{svc.mid} · {svc.kind} · {tools.length} tools
+                </span>
+              </summary>
+              <div style={{ marginTop: 8, fontSize: 11, color: themeStyles.textTertiary }}>
+                {svc.sourceLabel ? `${svc.sourceLabel} · ` : ''}{svc.description || ''}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10 }}>
+                {tools.length ? tools.map((tool) => (
+                  <div key={tool.uniqueId || tool.name} style={{ borderTop: `1px solid ${themeStyles.borderPrimary}`, paddingTop: 6 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600 }}>{tool.name}</div>
+                    {tool.description ? <div style={{ marginTop: 2, fontSize: 11, color: themeStyles.textSecondary, lineHeight: 1.4 }}>{tool.description}</div> : null}
+                    <div style={{ marginTop: 3, fontSize: 10, color: themeStyles.textTertiary, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', wordBreak: 'break-all' }}>
+                      {tool.toolDocId ? <div>{i18n('ToolDoc ID')}: {tool.toolDocId}</div> : null}
+                      {tool.uniqueId ? <div>{i18n('Unique tool ID')}: {tool.uniqueId}</div> : null}
+                      {tool.toolKey ? <div>toolKey: {tool.toolKey}</div> : null}
+                    </div>
+                  </div>
+                )) : <div style={{ fontSize: 12, color: themeStyles.textSecondary }}>{i18n('No tools exposed')}</div>}
+              </div>
+            </details>
+          );
+        })}
+      </div>
     </div>
   ) : null;
 
@@ -12691,19 +12809,26 @@ Reply with a JSON code block only for executable operations. For same-response f
             {isPluginEditor ? (
               <button
                 type="button"
-                onClick={() => setRightPanelOpen((prev) => !prev)}
+                onClick={() => {
+                  if (rightPanelOpen && editorRightPanelTab === 'plugin_node') {
+                    setRightPanelOpen(false);
+                  } else {
+                    setEditorRightPanelTab('plugin_node');
+                    setRightPanelOpen(true);
+                  }
+                }}
                 style={{
                   width: '34px',
                   height: '34px',
                   border: `1px solid ${themeStyles.borderSecondary}`,
                   borderRadius: '3px',
-                  backgroundColor: rightPanelOpen ? themeStyles.bgButtonActive : themeStyles.bgButton,
-                  color: rightPanelOpen ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                  backgroundColor: rightPanelOpen && editorRightPanelTab === 'plugin_node' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                  color: rightPanelOpen && editorRightPanelTab === 'plugin_node' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
                   cursor: 'pointer',
                   flexShrink: 0,
                   fontWeight: 700,
                 }}
-                title="Plugin node definition"
+                title={i18n('Plugin node definition')}
               >
                 P
               </button>
@@ -17998,10 +18123,12 @@ Reply with a JSON code block only for executable operations. For same-response f
                         ? ` ${developRunQueueState.currentIndex + 1}/${developRunQueueState.items.length}`
                         : ` · ${developRunQueueState.items.length}`}
                     </>
+                ) : isPluginEditor && editorRightPanelTab === 'plugin_node' ? (
+                  i18n('Plugin node definition')
                 ) : isPluginEditor ? (
-                  'Plugin node definition'
+                  i18n('Available MCP services')
                 ) : (
-                  '本卡片的练习题'
+                  i18n('Card problems')
                 )}
               </span>
               <button
@@ -18045,10 +18172,12 @@ Reply with a JSON code block only for executable operations. For same-response f
                       : ` · ${developRunQueueState.items.length}`}
                   </>
                 </span>
+              ) : isPluginEditor && editorRightPanelTab === 'plugin_node' ? (
+                <span style={{ fontWeight: 'bold' }}>{i18n('Plugin node definition')}</span>
               ) : isPluginEditor ? (
-                <span style={{ fontWeight: 'bold' }}>Plugin node definition</span>
+                <span style={{ fontWeight: 'bold' }}>{i18n('Available MCP services')}</span>
               ) : (
-                <span style={{ fontWeight: 'bold' }}>本卡片的练习题</span>
+                <span style={{ fontWeight: 'bold' }}>{i18n('Card problems')}</span>
               )}
               <button
                 type="button"
@@ -18078,8 +18207,10 @@ Reply with a JSON code block only for executable operations. For same-response f
                 busyIndex={developQueueNavBusy}
                 onGo={navigateDevelopQueueItem}
               />
-            ) : isPluginEditor ? (
+            ) : isPluginEditor && editorRightPanelTab === 'plugin_node' ? (
                 pluginNodePropertiesBody
+              ) : isPluginEditor ? (
+                pluginMcpServicesBody
               ) : selectedFile?.type === 'card' ? (
                 problemsBody
               ) : (
@@ -18132,10 +18263,11 @@ Reply with a JSON code block only for executable operations. For same-response f
                 <button
                   type="button"
                   onClick={() => {
-                    if (rightPanelOpen && editorRightPanelTab === 'problems') {
+                    const tab: EditorRightPanelTab = isPluginEditor ? 'plugin_mcp_services' : 'problems';
+                    if (rightPanelOpen && editorRightPanelTab === tab) {
                       setRightPanelOpen(false);
                     } else {
-                      setEditorRightPanelTab('problems');
+                      setEditorRightPanelTab(tab);
                       setRightPanelOpen(true);
                     }
                   }}
@@ -18144,17 +18276,17 @@ Reply with a JSON code block only for executable operations. For same-response f
                     height: '34px',
                     border: `1px solid ${themeStyles.borderSecondary}`,
                     borderRadius: '3px',
-                    backgroundColor: rightPanelOpen && editorRightPanelTab === 'problems' ? themeStyles.bgButtonActive : themeStyles.bgButton,
-                    color: rightPanelOpen && editorRightPanelTab === 'problems' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                    backgroundColor: rightPanelOpen && editorRightPanelTab === (isPluginEditor ? 'plugin_mcp_services' : 'problems') ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                    color: rightPanelOpen && editorRightPanelTab === (isPluginEditor ? 'plugin_mcp_services' : 'problems') ? themeStyles.textOnPrimary : themeStyles.textSecondary,
                     cursor: 'pointer',
                     flexShrink: 0,
                     fontSize: '11px',
                     fontWeight: 600,
                   }}
-                  title="本卡片的练习题"
-                  aria-label="题目"
+                  title={isPluginEditor ? i18n('Available MCP services') : i18n('Card problems')}
+                  aria-label={isPluginEditor ? i18n('Available MCP services') : i18n('Card problems')}
                 >
-                  题
+                  {isPluginEditor ? 'MCP' : '题'}
                 </button>
                 {showDevelopQueueInPanels && developEditorContext && developRunQueueState ? (
                   <button
