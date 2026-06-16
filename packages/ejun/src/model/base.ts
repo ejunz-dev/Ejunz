@@ -2,13 +2,14 @@ import { _, ObjectId, Filter } from '../libs';
 import * as document from './document';
 import { buildProjection } from '../utils';
 import type { Context } from '../context';
-import type { BaseDoc, BaseNode, BaseEdge, CardDoc, BaseHistoryEntry } from '../interface';
+import type { BaseDoc, BaseNode, BaseEdge, CardDoc, BaseHistoryEntry, PluginDoc } from '../interface';
 import db from '../service/db';
 import { Collection } from 'mongodb';
 
 export const TYPE_CARD: 71 = 71;
 
-export type MindMapDocType = typeof document.TYPE_BASE;
+export type MindMapDocType = typeof document.TYPE_BASE | typeof document.TYPE_PLUGIN;
+export type MindMapDoc = BaseDoc | PluginDoc;
 
 export class BaseModel {
     private static getRootNodeId(nodes: BaseNode[] = [], edges: BaseEdge[] = []): string | null {
@@ -20,8 +21,8 @@ export class BaseModel {
         return noIncoming ? noIncoming.id : nodes[0].id;
     }
 
-    static async generateNextDocId(domainId: string): Promise<number> {
-        const lastBase = await document.getMulti(domainId, document.TYPE_BASE, { docId: { $type: 'number' } } as any)
+    static async generateNextDocId(domainId: string, mapDocType: MindMapDocType = document.TYPE_BASE): Promise<number> {
+        const lastBase = await document.getMulti(domainId, mapDocType, { docId: { $type: 'number' } } as any)
             .sort({ docId: -1 })
             .limit(1)
             .project({ docId: 1 })
@@ -29,9 +30,9 @@ export class BaseModel {
         return (Number(lastBase[0]?.docId) || 0) + 1;
     }
 
-    static async getByDomain(domainId: string): Promise<BaseDoc | null> {
-        const result = await document.getMulti(domainId, document.TYPE_BASE, {}).limit(1).toArray();
-        return result.length > 0 ? result[0] : null;
+    static async getByDomain(domainId: string, mapDocType: MindMapDocType = document.TYPE_BASE): Promise<BaseDoc | null> {
+        const result = await document.getMulti(domainId, mapDocType, {}).limit(1).toArray();
+        return result.length > 0 ? result[0] as BaseDoc : null;
     }
 
     static async create(
@@ -47,8 +48,11 @@ export class BaseModel {
         forceNew?: boolean,
         bid?: string,
         tag?: string[],
+        mapDocType: MindMapDocType = document.TYPE_BASE,
+        rootNodeData?: Partial<BaseNode>,
+        extraPayload?: Partial<MindMapDoc>,
     ): Promise<{ docId: number }> {
-        if (!forceNew) {
+        if (mapDocType === document.TYPE_BASE && !forceNew) {
             const existing = await this.getByDomain(domainId);
             if (existing) {
                 if (title && title !== existing.title) {
@@ -69,12 +73,13 @@ export class BaseModel {
             y: 0,
             level: 0,
             expanded: true,
+            ...rootNodeData,
         };
 
-        const payload: Partial<BaseDoc> = {
-            docType: document.TYPE_BASE,
+        const payload: Partial<MindMapDoc> = {
+            docType: mapDocType,
             domainId,
-            title: title || '未命名思维导图',
+            title: title || (mapDocType === document.TYPE_PLUGIN ? '未命名插件' : '未命名思维导图'),
             content: content || '',
             owner,
             bid: bid ? String(bid).trim() : undefined,
@@ -98,14 +103,15 @@ export class BaseModel {
             branch,
             parentId,
             tag: tag?.length ? tag : undefined,
+            ...extraPayload,
         };
 
-        const nextDocId = await this.generateNextDocId(domainId);
+        const nextDocId = await this.generateNextDocId(domainId, mapDocType);
         const docId = await document.add(
             domainId,
             payload.content!,
             payload.owner!,
-            document.TYPE_BASE,
+            mapDocType,
             nextDocId,
             null,
             null,
@@ -127,11 +133,11 @@ export class BaseModel {
         return list.length > 0 ? (list[0] as BaseDoc) : null;
     }
 
-    static async getAll(domainId: string, query?: Filter<BaseDoc>): Promise<BaseDoc[]> {
+    static async getAll(domainId: string, query?: Filter<BaseDoc>, mapDocType: MindMapDocType = document.TYPE_BASE): Promise<BaseDoc[]> {
         const merged = (query || {}) as Filter<BaseDoc>;
-        return await document.getMulti(domainId, document.TYPE_BASE, merged)
+        return await document.getMulti(domainId, mapDocType, merged as any)
             .sort({ updateAt: -1, docId: -1 })
-            .toArray();
+            .toArray() as BaseDoc[];
     }
 
     /** Recently updated knowledge bases (`TYPE_BASE` only). */

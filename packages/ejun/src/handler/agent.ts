@@ -24,6 +24,15 @@ import { PassThrough } from 'stream';
 import EdgeModel from '../model/edge';
 import ToolModel from '../model/tool';
 import { BaseModel } from '../model/base';
+import PluginModel from '../model/plugin';
+import {
+    normalizeAgentPluginBindings,
+    parseAgentSlashInvocation,
+    renderSlashSystemBlock,
+    resolveAgentPluginTools,
+    resolveAgentSlashCatalog,
+    visiblePluginsForUser,
+} from '../lib/pluginRuntime';
 import { EdgeServerConnectionHandler } from './edge';
 import * as document from '../model/document';
 import NodeModel from '../model/node';
@@ -1098,6 +1107,14 @@ export class AgentDetailHandler extends Handler {
             }
         }
 
+        const enabledPluginsForDisplay = [] as Array<{ docId: number; title: string; pluginSlug?: string; slashCount: number }>;
+        for (const b of normalizeAgentPluginBindings(adoc)) {
+            const p = await PluginModel.get(domainId, b.docId);
+            if (!p) continue;
+            const slashCount = (await resolveAgentSlashCatalog(domainId, { ...adoc, pluginBindings: [b] } as AgentDoc)).length;
+            enabledPluginsForDisplay.push({ docId: p.docId, title: p.title, pluginSlug: p.pluginSlug, slashCount });
+        }
+
         this.response.template = 'agent_detail.html';
         this.response.body = {
             domainId,
@@ -1106,6 +1123,7 @@ export class AgentDetailHandler extends Handler {
             udoc,
             apiUrl,
             enabledBaseLibrariesForDisplay,
+            enabledPluginsForDisplay,
         };
 
     }
@@ -1492,6 +1510,7 @@ export class AgentChatHandler extends Handler {
         const apiKey = (this.domain as any)['apiKey'] || '';
         const aiModel = (this.domain as any)['model'] || 'deepseek-chat';
         const apiUrl = (this.domain as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions';
+        const slashCatalog = await resolveAgentSlashCatalog(domainId, adoc);
 
         // WebSocket URL is built in templates
         const host = this.domain?.host;
@@ -1548,6 +1567,7 @@ export class AgentChatHandler extends Handler {
             chatSessionId: currentChatSessionId?.toString(),
             recordHistory,
             chatSessions: chatSessionsWithRecords,
+            slashCatalog,
         };
     }
 
@@ -1613,7 +1633,36 @@ export class AgentChatHandler extends Handler {
             // Parse failed; use empty history
             chatHistory = [];
         }
-        
+
+        let slashInvocation: any = null;
+        let slashSystemBlock = '';
+        if (String(message).trimStart().startsWith('/')) {
+            const slashCatalog = await resolveAgentSlashCatalog(domainId, adoc);
+            const parsedSlash = parseAgentSlashInvocation(String(message), slashCatalog) as any;
+            if (parsedSlash?.error) {
+                this.response.status = 400;
+                this.response.body = {
+                    error: parsedSlash.error,
+                    suggestions: (parsedSlash.suggestions || []).map((x: any) => ({
+                        name: x.name,
+                        kind: x.kind,
+                        description: x.description,
+                    })),
+                };
+                return;
+            }
+            if (parsedSlash?.entry) {
+                slashInvocation = {
+                    name: parsedSlash.entry.name,
+                    kind: parsedSlash.entry.kind,
+                    pluginDocId: parsedSlash.entry.pluginDocId,
+                    nodeId: parsedSlash.entry.nodeId,
+                    args: parsedSlash.args,
+                };
+                slashSystemBlock = renderSlashSystemBlock(parsedSlash.entry, parsedSlash.args || '', domainId, adoc, parsedSlash.raw || String(message));
+            }
+        }
+
         let chatSessionId: ObjectId | undefined;
         const chatSessionIdParam = this.request.body?.chatSessionId;
         if (chatSessionIdParam) {
@@ -1685,7 +1734,15 @@ export class AgentChatHandler extends Handler {
             }
             
             const tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds);
+            const pluginTools = await resolveAgentPluginTools(domainId, adoc);
             const finalTools = [...tools];
+            const existingToolNames = new Set(finalTools.map((t: any) => t.name));
+            for (const tool of pluginTools) {
+                if (!existingToolNames.has((tool as any).name)) {
+                    finalTools.push(tool as any);
+                    existingToolNames.add((tool as any).name);
+                }
+            }
             const modelTools = toolsForModelApi(adoc, finalTools);
             
             // Build full system message (prompt, memory, tools, …)
@@ -1703,7 +1760,8 @@ export class AgentChatHandler extends Handler {
             }
             
             systemMessage = appendAgentUniversalAssistantRules(systemMessage);
-            
+            if (slashSystemBlock) systemMessage += slashSystemBlock;
+
             if (modelTools.length > 0) {
                 const toolErrorCodesHint = '\n\n[Tool error codes] When a tool returns a `code`, reply as follows: TOOL_NOT_ADDED → tell the user the tool is not installed for this domain and they should add it from the Tool Market, then retry; TOOL_NOT_FOUND → tool unavailable or invalid; TIMEOUT / NETWORK_ERROR / SERVER_ERROR → suggest retry or check network; other codes → one short sentence plus one suggested action. Keep replies to 1–2 sentences.\n\n';
                 const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
@@ -1737,6 +1795,7 @@ export class AgentChatHandler extends Handler {
                 })),
                 // Complete system message
                 systemMessage,
+                ...(slashInvocation ? { slashInvocation } : {}),
             };
 
             logAgentContextToModel({
@@ -3669,6 +3728,8 @@ export class AgentEditHandler extends Handler {
                 adoc: null, 
                 allRepos: [],
                 assignedRepoIds: [],
+                allPlugins: [],
+                assignedPluginDocIds: [],
             };
             return;
         }
@@ -3680,6 +3741,14 @@ export class AgentEditHandler extends Handler {
 
         // Selected repo IDs
         const assignedRepoIds = (agent.repoIds || []).map(id => id.toString());
+        const allPlugins = (await visiblePluginsForUser(domainId, this.user)).map((p) => ({
+            docId: p.docId,
+            title: p.title,
+            pluginSlug: p.pluginSlug,
+            enabled: p.enabled !== false,
+            visibility: p.visibility || 'private',
+        }));
+        const assignedPluginDocIds = normalizeAgentPluginBindings(agent).map((b) => String(b.docId));
 
         this.response.template = 'agent_edit.html';
         this.response.body = {
@@ -3688,6 +3757,8 @@ export class AgentEditHandler extends Handler {
             udoc,
             allRepos,
             assignedRepoIds,
+            allPlugins,
+            assignedPluginDocIds,
         };
         this.UiContext.extraTitleContent = agent.title;
     }
@@ -3732,7 +3803,8 @@ export class AgentEditHandler extends Handler {
     @post('memory', Types.Content, true)
     @post('toolIds', Types.ArrayOf(Types.String), true)
     @post('repoIds', Types.ArrayOf(Types.Int), true)
-    async postUpdate(domainId: string, aid: string, title: string, content: string, tag: string[] = [], memory?: string, toolIds?: string[], repoIds?: number[]) {
+    @post('pluginDocIds', Types.ArrayOf(Types.Int), true)
+    async postUpdate(domainId: string, aid: string, title: string, content: string, tag: string[] = [], memory?: string, toolIds?: string[], repoIds?: number[], pluginDocIds?: number[]) {
         const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
     
     
@@ -3764,8 +3836,21 @@ export class AgentEditHandler extends Handler {
         if (repoIds && Array.isArray(repoIds)) {
             AgentLogger.warn('Repo functionality is no longer available, ignoring repoIds');
         }
-        
-        AgentLogger.info('Updating agent: aid=%s, toolIds=%o, validToolIds=%o, repoIds=%o, validRepoIds=%o', 
+
+        const pluginBindings: Array<{ docId: number; branch: string }> = [];
+        if (pluginDocIds && Array.isArray(pluginDocIds)) {
+            const seenPluginIds = new Set<number>();
+            for (const pid of pluginDocIds) {
+                const docId = Number(pid);
+                if (!Number.isFinite(docId) || docId <= 0 || seenPluginIds.has(docId)) continue;
+                seenPluginIds.add(docId);
+                const plugin = await PluginModel.get(domainId, docId);
+                if (!plugin || !PluginModel.canRead(this.user, plugin)) continue;
+                pluginBindings.push({ docId, branch: 'main' });
+            }
+        }
+
+        AgentLogger.info('Updating agent: aid=%s, toolIds=%o, validToolIds=%o, repoIds=%o, validRepoIds=%o',
             agent.aid, toolIds, validToolIds.map(id => id.toString()), repoIds, validRepoIds);
     
         const agentAid = agent.aid;
@@ -3776,6 +3861,7 @@ export class AgentEditHandler extends Handler {
             memory: memory || null,
             mcpToolIds: validToolIds,
             repoIds: validRepoIds.length > 0 ? validRepoIds : undefined,
+            pluginBindings,
         });
         
         if (updatedAgent) {

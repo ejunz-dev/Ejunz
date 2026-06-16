@@ -39,11 +39,17 @@
   {% if editorUiMode %}
   {{ set(UiContext, 'editorUiMode', editorUiMode) }}
   {% endif %}
+  {{ set(UiContext, 'editorMode', editorMode or 'base') }}
+  {{ set(UiContext, 'editorApiBasePath', editorApiBasePath or 'base') }}
   {% set _sessws = '' %}
   {% if developEditorSessionHex is defined and developEditorSessionHex %}
   {% set _sessws = '&developEditorSession=' + developEditorSessionHex %}
   {% endif %}
+  {% if socketUrl is defined %}
+  {{ set(UiContext, 'socketUrl', socketUrl) }}
+  {% else %}
   {{ set(UiContext, 'socketUrl', 'base/ws?domainId=' + (domainId or (base and base.domainId) or '') + '&docId=' + _base_doc_id + _sessws) }}
+  {% endif %}
 </script>
 <div class="row base-editor-page">
   <div class="large-12 columns base-editor-page__col">

@@ -65,6 +65,27 @@
               </p>
             </div>
           </div>
+          <div class="row">
+            <div class="medium-12 columns">
+              <label>{{ _('Plugins') }}</label>
+              <div class="section" style="margin-top: 6px;">
+                <div class="section__body">
+                  {% if allPlugins and allPlugins|length > 0 %}
+                    {% for plugin in allPlugins %}
+                    <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                      <input type="checkbox" name="pluginDocIds" value="{{ plugin.docId }}" {% if (plugin.docId|string) in assignedPluginDocIds %}checked{% endif %}>
+                      <span><strong>{{ plugin.title }}</strong> <code>/{{ plugin.pluginSlug or plugin.docId }}</code></span>
+                      <span class="supplementary">{{ plugin.visibility }}{% if not plugin.enabled %} · disabled{% endif %}</span>
+                    </label>
+                    {% endfor %}
+                  {% else %}
+                    <p class="help-text">{{ _('No plugins available yet.') }} <a href="{{ url('plugin_create') }}">{{ _('Create Plugin') }}</a></p>
+                  {% endif %}
+                </div>
+              </div>
+              <p class="help-text">{{ _('Bound plugins provide /commands in Agent Chat and can contribute MCP tools.') }}</p>
+            </div>
+          </div>
           {% endif %}
 
           <div class="row">
