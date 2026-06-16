@@ -115,7 +115,7 @@ export class ToolDomainHandler extends Handler<Context> {
     }
 }
 
-/** Returns domain tools list as JSON (for skill editor sidebar). */
+/** Returns domain tools list as JSON. */
 export class ToolListApiHandler extends Handler<Context> {
     async get() {
         const edges = await EdgeModel.getByDomain(this.domain._id);

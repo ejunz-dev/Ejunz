@@ -1059,7 +1059,7 @@ const page = new NamedPage('agent_chat', async () => {
     }
   }
 
-  /** Parse tool message JSON and prefer markdown bodies (e.g. load_base / load_skill_instructions `instructions`). */
+  /** Parse tool message JSON and prefer markdown bodies (e.g. load_base `instructions`). */
   function extractToolResultDisplayPayload(rawContent: string | object): { mode: 'markdown' | 'pre'; text: string } {
     if (rawContent == null) return { mode: 'pre', text: '' };
 

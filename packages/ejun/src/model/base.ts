@@ -8,7 +8,7 @@ import { Collection } from 'mongodb';
 
 export const TYPE_CARD: 71 = 71;
 
-export type MindMapDocType = typeof document.TYPE_BASE | typeof document.TYPE_SKILL;
+export type MindMapDocType = typeof document.TYPE_BASE;
 
 export class BaseModel {
     private static getRootNodeId(nodes: BaseNode[] = [], edges: BaseEdge[] = []): string | null {

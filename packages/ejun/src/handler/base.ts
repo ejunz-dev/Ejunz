@@ -22,7 +22,7 @@ import {
 } from '../model/base';
 
 export { readOptionalRequestBaseDocId, getBranchData, setBranchData };
-import type { BaseDoc, BaseNode, BaseEdge, CardDoc, FileInfo, ProblemFlip, ProblemTrueFalse, ProblemFillBlank, ProblemSingle, ProblemMulti, ProblemMatching, ProblemSuperFlip, Problem, SkillDoc } from '../interface';
+import type { BaseDoc, BaseNode, BaseEdge, CardDoc, FileInfo, ProblemFlip, ProblemTrueFalse, ProblemFillBlank, ProblemSingle, ProblemMulti, ProblemMatching, ProblemSuperFlip, Problem } from '../interface';
 import * as document from '../model/document';
 import { exec as execCb, execFile as execFileCb } from 'child_process';
 import fs from 'fs';
@@ -49,7 +49,6 @@ import {
     loadUserDevelopPool,
     resolveDevelopRunProgressForSession,
 } from '../lib/developPoolShared';
-import { SkillModel } from '../model/skill';
 import RecordModel, { type DevelopSaveChangeLine } from '../model/record';
 import SessionModel, {
     readDevelopEditorUrl,
@@ -911,7 +910,7 @@ class BaseStudyHandler extends Handler {
 
 export interface BaseOutlineOptions {
     template: string;
-    editorMode: 'base' | 'skill';
+    editorMode: 'base';
     redirectRouteName: string;
     getRequestedBranch: (branch?: string) => string;
     getBase: (domainId: string, requestedBranch: string) => Promise<BaseDoc | null>;
@@ -1120,9 +1119,9 @@ export class BaseOutlineHandler extends Handler {
 
 export interface BaseEditorOptions {
     template: string;
-    editorMode: 'base' | 'skill';
+    editorMode: 'base';
     redirectRouteName: string;
-    /** When set, sets `page_name` on the HTML payload (e.g. skill editor route for NamedPage). */
+    /** When set, sets `page_name` on the HTML payload. */
     responsePageName?: string;
     getRequestedBranch: (branch?: string) => string;
     getBase: (domainId: string, requestedBranch: string) => Promise<BaseDoc | null>;
@@ -1310,7 +1309,7 @@ export type BuildBaseEditorPageBodyArgs = {
     mapDocType?: MindMapDocType;
 };
 
-/** Shared HTML payload for `base_editor.html` / `skill_editor.html` (normal editor URL or `/develop/editor?session=`). */
+/** Shared HTML payload for `base_editor.html` (normal editor URL or `/develop/editor?session=`). */
 export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs): Promise<Record<string, unknown>> {
     const {
         domainId, base, requestedBranch, uid, priv, domainName, db, makeEditorUrl,
@@ -1319,8 +1318,7 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
         mapDocType: mapDocTypeArg,
     } = args;
 
-    const mdt: MindMapDocType = mapDocTypeArg
-        ?? (((base as { docType?: number }).docType === document.TYPE_SKILL) ? document.TYPE_SKILL : document.TYPE_BASE);
+    const mdt: MindMapDocType = mapDocTypeArg ?? document.TYPE_BASE;
 
     let nodes: BaseNode[] = [];
     let edges: BaseEdge[] = [];
@@ -1335,7 +1333,7 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
     }
 
     if (nodes.length === 0) {
-        const rootNode: Omit<BaseNode, 'id'> = { text: domainName || (mdt === document.TYPE_SKILL ? 'Skills' : '知识库'), level: 0 };
+        const rootNode: Omit<BaseNode, 'id'> = { text: domainName || '知识库', level: 0 };
         await BaseModel.addNode(domainId, base.docId, rootNode, undefined, requestedBranch, undefined, mdt);
         const updated = await BaseModel.get(domainId, base.docId, mdt);
         if (updated) {
@@ -1411,10 +1409,6 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
             baseDocId: base.docId,
             branch: requestedBranch,
             getBaseTitle: async (docId) => {
-                if (mdt === document.TYPE_SKILL) {
-                    const s = await SkillModel.get(domainId, docId);
-                    return s ? ((s.title || '').trim() || String(docId)) : `Skill ${docId}`;
-                }
                 const b = await BaseModel.get(domainId, docId);
                 return b ? ((b.title || '').trim() || String(docId)) : `Base ${docId}`;
             },
@@ -1428,7 +1422,7 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
         nodeCardsMap,
         files: base.files || [],
         domainId,
-        editorMode: mdt === document.TYPE_SKILL ? 'skill' : 'base',
+        editorMode: 'base',
         todayContribution,
         todayContributionAllDomains: todayAllDomains,
         contributions,
@@ -1450,7 +1444,7 @@ export class BaseEditorDocHandler extends Handler {
         return this.url('base_outline_doc_branch', { docId, branch });
     }
 
-    /** Nunjucks template for develop outline-node session (skill uses `skill_editor.html`). */
+    /** Nunjucks template for develop outline-node session. */
     protected editorDocDevelopPageTemplate(): string {
         return 'base_editor.html';
     }
@@ -1487,9 +1481,7 @@ export class BaseEditorDocHandler extends Handler {
                     ? String(outlineSess.branch).trim()
                     : 'main';
                 const sessMdt = outlineSess.developMapDocType;
-                const baseMdt: MindMapDocType = ((base as { docType?: number }).docType === document.TYPE_SKILL)
-                    ? document.TYPE_SKILL
-                    : document.TYPE_BASE;
+                const baseMdt: MindMapDocType = document.TYPE_BASE;
                 if (
                     Number(outlineSess.baseDocId) === Number(base.docId)
                     && brSess === requestedBranch
@@ -2157,7 +2149,7 @@ export class BaseEdgeHandler extends Handler {
 
 export class BaseSaveHandler extends Handler {
 
-    protected saveMindMapDocType(): typeof document.TYPE_BASE | typeof document.TYPE_SKILL {
+    protected saveMindMapDocType(): typeof document.TYPE_BASE {
         return document.TYPE_BASE;
     }
 
@@ -2590,11 +2582,11 @@ class BaseCreateNewHandler extends Handler {
 
 
 export class BaseOutlineDocHandler extends Handler {
-    protected outlineDocBranchRouteName(): 'base_outline_doc_branch' | 'skill_outline_doc_branch' {
+    protected outlineDocBranchRouteName(): 'base_outline_doc_branch' {
         return 'base_outline_doc_branch';
     }
 
-    /** Nunjucks template for the outline page (skill uses `skill_outline.html`). */
+    /** Nunjucks template for the outline page. */
     protected outlineDocPageTemplate(): string {
         return 'base_outline.html';
     }
@@ -2605,7 +2597,7 @@ export class BaseOutlineDocHandler extends Handler {
         return this.domain.name || '根节点';
     }
 
-    protected getOutlineDocEditorMode(): 'base' | 'skill' {
+    protected getOutlineDocEditorMode(): 'base' {
         return 'base';
     }
 
@@ -2649,9 +2641,7 @@ export class BaseOutlineDocHandler extends Handler {
         nodes = cleaned.nodes;
         edges = cleaned.edges;
 
-        const mapDt: MindMapDocType = (base as BaseDoc | SkillDoc).docType === document.TYPE_SKILL
-            ? document.TYPE_SKILL
-            : document.TYPE_BASE;
+        const mapDt: MindMapDocType = document.TYPE_BASE;
 
         if (nodes.length === 0) {
             const rootNode: Omit<BaseNode, 'id'> = { text: this.getOutlineDocRootLabel(base), level: 0 };
@@ -4729,8 +4719,8 @@ class BaseCardDetailHandler extends Handler {
 
 
 export interface BatchSaveOptions {
-    type: 'base' | 'skill';
-    mapDocType: typeof document.TYPE_BASE | typeof document.TYPE_SKILL;
+    type: 'base';
+    mapDocType: typeof document.TYPE_BASE;
     getBase: (actualDomainId: string) => Promise<BaseDoc | null>;
     createBase: (actualDomainId: string) => Promise<BaseDoc>;
     getBranch: (base: BaseDoc) => string;
@@ -6891,9 +6881,6 @@ class BaseMigrateNodeToNewHandler extends Handler {
 
         const sourceBase = await BaseModel.get(actualDomainId, sourceDocId);
         if (!sourceBase) {
-            if (await SkillModel.get(actualDomainId, sourceDocId)) {
-                throw new ValidationError('Cannot migrate from skill base');
-            }
             throw new NotFoundError('Base not found');
         }
         if (!this.user.own(sourceBase)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);

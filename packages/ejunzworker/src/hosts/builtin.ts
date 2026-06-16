@@ -327,15 +327,6 @@ export async function apply(ctx: EjunzContext) {
                     if (iterations === 1) {
                         try {
                             const { logAgentContextToModel } = require('ejun/src/handler/agent');
-                            const plainSrc = (context as any)?.skillSourceByName;
-                            const skillSourceSkillNames =
-                                plainSrc && typeof plainSrc === 'object' && !Array.isArray(plainSrc)
-                                    ? Object.keys(plainSrc)
-                                    : undefined;
-                            const coreRaw = (context as any)?.coreSkillNames;
-                            const coreSkillNamesLog = Array.isArray(coreRaw)
-                                ? coreRaw.map((x: any) => String(x))
-                                : undefined;
                             logAgentContextToModel({
                                 source: `ejunzworker/builtin first LLM request recordId=${rid?.toString()} taskId=${String(taskId)}`,
                                 domainId,
@@ -343,9 +334,6 @@ export async function apply(ctx: EjunzContext) {
                                 model: context.model,
                                 systemMessage: context.systemMessage || '',
                                 messages: requestBody.messages,
-                                skillBranch: (context as any)?.skillBranch,
-                                coreSkillNames: coreSkillNamesLog,
-                                skillSourceSkillNames,
                             });
                         } catch (e: any) {
                             logger.warn('logAgentContextToModel failed: %s', e?.message || e);
@@ -672,15 +660,6 @@ export async function apply(ctx: EjunzContext) {
                         let toolServerId: number | undefined = undefined;
                         const toolType: string | undefined = undefined;
                         logger.info('[tool] worker: name=%s (resolve via McpClient; no context.tools)', toolName);
-                        
-                        const plainSrc = (context as any)?.skillSourceByName;
-                        const skillSourceByName = plainSrc && typeof plainSrc === 'object' && !Array.isArray(plainSrc)
-                            ? new Map(Object.entries(plainSrc) as [string, { branch: string; docId: number }][])
-                            : undefined;
-                        const rawCoreNames = (context as any)?.coreSkillNames;
-                        const coreSkillNames = Array.isArray(rawCoreNames) && rawCoreNames.length > 0
-                            ? new Set(rawCoreNames.map((x: any) => String(x)))
-                            : undefined;
 
                         toolCallCount++;
                         
@@ -693,10 +672,7 @@ export async function apply(ctx: EjunzContext) {
                                 domainId,
                                 toolServerId,
                                 toolToken,
-                                (context as any)?.skillBranch,
                                 toolType,
-                                skillSourceByName,
-                                coreSkillNames,
                                 (context as any)?.baseDocId,
                                 (context as any)?.baseBranch,
                                 typeof uid === 'number' && uid > 0 ? uid : undefined,

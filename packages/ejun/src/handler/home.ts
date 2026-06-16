@@ -21,7 +21,6 @@ import * as discussion from '../model/discussion';
 import domain from '../model/domain';
 import message from '../model/message';
 import { BaseModel } from '../model/base';
-import { SkillModel } from '../model/skill';
 import AgentModel from '../model/agent';
 import WorkflowModel from '../model/workflow';
 import EdgeModel from '../model/edge';
@@ -76,17 +75,9 @@ export class HomeHandler extends Handler {
 
     async getBase(domainId: string, limit = 10) {
         const limitNum = typeof limit === 'number' ? limit : 10;
-        const [bases, skills] = await Promise.all([
-            BaseModel.getRecentUpdated(domainId, limitNum),
-            SkillModel.getRecentUpdated(domainId, limitNum),
-        ]);
-        const merged = [...bases, ...skills].sort((a, b) => {
-            const ta = a.updateAt ? new Date(a.updateAt as Date).getTime() : 0;
-            const tb = b.updateAt ? new Date(b.updateAt as Date).getTime() : 0;
-            return tb - ta;
-        }).slice(0, limitNum);
-        this.collectUser(merged.map((b) => b.owner));
-        return merged.map((b) => ({
+        const bases = await BaseModel.getRecentUpdated(domainId, limitNum);
+        this.collectUser(bases.map((b) => b.owner));
+        return bases.map((b) => ({
             ...b,
             docId: b.docId != null ? String(b.docId) : b.docId,
         }));

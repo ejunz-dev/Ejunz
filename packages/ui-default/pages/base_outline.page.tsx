@@ -1229,7 +1229,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
 
   const refetchOutlineData = useCallback(async () => {
     const domainId = (window as any).UiContext?.domainId || 'system';
-    const apiPath = domainApiPath(basePath === 'skill' ? '/skill/data' : '/base/data', domainId);
+    const apiPath = domainApiPath('/base/data', domainId);
     const apiQs: Record<string, string> = {};
     if (docId) apiQs.docId = docId;
     const curBranch = (window as any).UiContext?.currentBranch;
@@ -1256,7 +1256,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     if (!socketUrl) return;
 
     let closed = false;
-    const apiPath = domainApiPath(basePath === 'skill' ? '/skill/data' : '/base/data', domainId);
+    const apiPath = domainApiPath('/base/data', domainId);
     const wsApiQs: Record<string, string> = {};
     if (docId) wsApiQs.docId = docId;
     const wsBranch = (window as any).UiContext?.currentBranch;
@@ -1385,9 +1385,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         );
         
         const domainIdForSave = (window as any).UiContext?.domainId || 'system';
-        const saveUrl = basePath === 'skill'
-          ? domainApiPath('/skill/save', domainIdForSave)
-          : domainApiPath('/base/save', domainIdForSave);
+        const saveUrl = domainApiPath('/base/save', domainIdForSave);
         const saveBranch = (window as any).UiContext?.currentBranch || 'main';
         await request.post(saveUrl, {
           ...(docId ? { docId } : {}),
@@ -2209,11 +2207,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         fromOutline: true,
         nodeId,
       };
-      if (basePath === 'skill') {
-        payload.developMapDocType = 73;
-      } else {
-        payload.developMapDocType = 70;
-      }
+      payload.developMapDocType = 70;
       const res: any = await request.post(domainApiPath('/session/develop/start', domainId), payload);
       const sessionId = res?.sessionId ?? res?.body?.sessionId;
       if (typeof sessionId !== 'string' || !sessionId.trim()) {
@@ -2226,8 +2220,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       });
       const bid = (base as any)?.bid;
       const docSeg = bid && String(bid).trim() ? String(bid).trim() : String(baseDocNum);
-      const pathPrefix = basePath === 'skill' ? 'skill' : 'base';
-      const editorUrl = domainScopedPath(`/${pathPrefix}/${encodeURIComponent(docSeg)}/branch/${encodeURIComponent(branch)}/editor?${sp.toString()}`, domainId);
+      const editorUrl = domainScopedPath(`/base/${encodeURIComponent(docSeg)}/branch/${encodeURIComponent(branch)}/editor?${sp.toString()}`, domainId);
       const opened = window.open(editorUrl, '_blank');
       if (opened) {
         opened.opener = null;
@@ -3397,7 +3390,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       
      
       const domainId = (window as any).UiContext?.domainId || 'system';
-      const dataApiPath = domainApiPath(basePath === 'skill' ? '/skill/data' : '/base/data', domainId);
+      const dataApiPath = domainApiPath('/base/data', domainId);
       const dataQs2: Record<string, string> = {};
       if (docId) dataQs2.docId = docId;
       const dBranch2 = (window as any).UiContext?.currentBranch;
@@ -3478,9 +3471,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     cleanupOldConnection();
     
     const domainId = (window as any).UiContext?.domainId || 'system';
-    const wsUrl = basePath === 'skill'
-      ? domainApiPath(`/skill/ws?docId=${encodeURIComponent(String(docId))}`, domainId)
-      : domainApiPath(`/${basePath}/${docId}/ws`, domainId);
+    const wsUrl = domainApiPath(`/base/${docId}/ws`, domainId);
 
    
     import('../components/socket').then(({ default: WebSocket }) => {
@@ -3528,7 +3519,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
            
             setTimeout(() => {
               const domainId = (window as any).UiContext?.domainId || 'system';
-              const dataApiPath = domainApiPath(basePath === 'skill' ? '/skill/data' : '/base/data', domainId);
+              const dataApiPath = domainApiPath('/base/data', domainId);
               const dataQs: Record<string, string> = {};
               if (docId) dataQs.docId = docId;
               const dBranch = (window as any).UiContext?.currentBranch;
@@ -5181,7 +5172,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           >
             {contextMenu.file.type === 'card' ? (
               <>
-                {basePath !== 'skill' && contextMenu.file.cardId ? (
+                {contextMenu.file.cardId ? (
                   <>
                     <div
                       style={{
@@ -5287,7 +5278,6 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                     >
                       {i18n('Outline editor start session')}
                     </div>
-                    {basePath !== 'skill' ? (
                     <div
                       style={{
                         padding: isMobile ? '12px 16px' : '6px 16px',
@@ -5316,7 +5306,6 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                     >
                       {i18n('Outline learn single node')}
                     </div>
-                    ) : null}
                     <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
                   </>
                 ) : null}
@@ -5368,13 +5357,9 @@ const getBaseUrl = (path: string, docId: string): string => {
   return domainScopedPath(`/base/${docId}${path}`);
 };
 
-const page = new NamedPage(['base_outline', 'skill_outline', 'skill_outline_branch', 'skill_outline_doc', 'skill_outline_doc_branch', 'base_outline_doc', 'base_outline_doc_branch'], async (pageName) => {
+const page = new NamedPage(['base_outline', 'base_outline_doc', 'base_outline_doc_branch'], async (pageName) => {
   try {
-   
-    const isSkill = pageName === 'skill_outline' || pageName === 'skill_outline_branch'
-      || pageName === 'skill_outline_doc' || pageName === 'skill_outline_doc_branch';
-    const containerId = isSkill ? '#skill-outline-editor' : '#base-outline-editor';
-    const $container = $(containerId);
+    const $container = $('#base-outline-editor');
     if (!$container.length) {
       return;
     }
@@ -5386,7 +5371,7 @@ const page = new NamedPage(['base_outline', 'skill_outline', 'skill_outline_bran
     let initialData: BaseDoc;
     try {
      
-      const apiPath = domainApiPath(isSkill ? '/skill/data' : '/base/data', domainId);
+      const apiPath = domainApiPath('/base/data', domainId);
       const branch = (window as any).UiContext?.currentBranch || undefined;
       const params: Record<string, string> = {};
       if (docId) params.docId = docId;
@@ -5412,13 +5397,13 @@ const page = new NamedPage(['base_outline', 'skill_outline', 'skill_outline_bran
       }
     } catch (error: any) {
       console.error('[BaseOutline] Failed to load data:', error);
-      Notification.error(`加载${isSkill ? 'Skills' : '知识库'}失败: ` + (error.message || '未知错误'));
+      Notification.error('加载知识库失败: ' + (error.message || '未知错误'));
       return;
     }
 
     console.log('[BaseOutline] Rendering BaseOutlineEditor...');
     ReactDOM.render(
-      <BaseOutlineEditor docId={initialData.docId || ''} initialData={initialData} basePath={isSkill ? 'skill' : 'base'} />,
+      <BaseOutlineEditor docId={initialData.docId || ''} initialData={initialData} basePath="base" />,
       $container[0]
     );
     console.log('[BaseOutline] Render complete');
