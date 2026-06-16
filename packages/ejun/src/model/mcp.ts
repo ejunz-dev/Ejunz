@@ -31,6 +31,9 @@ class McpModel {
             description: mcp.description,
             instructions: mcp.instructions,
             tools: mcp.tools,
+            kind: mcp.kind,
+            source: mcp.source,
+            assignable: mcp.assignable,
             status: mcp.status || 'offline',
             createdAt: now,
             updatedAt: now,
@@ -70,6 +73,26 @@ class McpModel {
 
     static async getByEdgeId(domainId: string, edgeId: number): Promise<McpDoc | null> {
         const list = await document.getMulti(domainId, document.TYPE_MCP, { edgeId })
+            .limit(1)
+            .toArray();
+        return (list[0] as McpDoc) || null;
+    }
+
+    static async getBySourceLocalKey(domainId: string, localKey: string): Promise<McpDoc | null> {
+        const list = await document.getMulti(domainId, document.TYPE_MCP, {
+            kind: 'local',
+            'source.localKey': localKey,
+        } as any)
+            .limit(1)
+            .toArray();
+        return (list[0] as McpDoc) || null;
+    }
+
+    static async getBySourceEdgeDocId(domainId: string, edgeDocId: ObjectId): Promise<McpDoc | null> {
+        const list = await document.getMulti(domainId, document.TYPE_MCP, {
+            kind: 'inbound',
+            'source.edgeDocId': edgeDocId,
+        } as any)
             .limit(1)
             .toArray();
         return (list[0] as McpDoc) || null;

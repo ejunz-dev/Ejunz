@@ -7,11 +7,11 @@
       <div class="section__header">
         <h1 class="section__title">{{ _('tool_market') }}</h1>
         <div class="section__tools">
-          <a href="{{ url('tool_domain', {}) }}" class="button">{{ _('Back to Tools List') }}</a>
+          <a href="{{ url('mcp_main', {}) }}" class="button">{{ _('Back to MCP') }}</a>
         </div>
       </div>
       <div class="section__body">
-        <p class="typo">{{ _('System MCP tools (not from Edge). Click "Add" to add to current domain ') }}<a href="{{ url('tool_domain', {}) }}">{{ _('Tools List') }}</a>{{ _(' for use by Agent etc.') }}</p>
+        <p class="typo">{{ _('System MCP tools (not from Edge). Click "Add" to add to current domain ') }}<a href="{{ url('mcp_main', {}) }}">{{ _('MCP Dashboard') }}</a>{{ _(' for use by Agent etc.') }}</p>
         {% if not marketTools or not marketTools.length %}
           <div class="typo">
             <p>{{ _('No system tools.') }}</p>

@@ -210,6 +210,7 @@ declare module './model/agent'{
         owner: number;
         apiKey?: string;
         memory?: string;
+        mcpIds?: ObjectId[];
         mcpToolIds?: ObjectId[];
         repoIds?: number[];
         /** Optional single knowledge-base mount (TYPE_BASE doc + branch) for load_base. */
@@ -848,6 +849,15 @@ declare module './model/mcp' {
         description?: string;
         instructions?: string;
         tools?: { name: string; description: string }[];
+        kind?: 'outbound' | 'local' | 'inbound';
+        source?: {
+            type: 'ejunz_base' | 'ejunztools' | 'edge' | 'external';
+            edgeDocId?: ObjectId;
+            edgeId?: number;
+            localKey?: string;
+            externalUrl?: string;
+        };
+        assignable?: boolean;
         status: 'online' | 'offline';
         lastConnectedAt?: Date;
         lastDisconnectedAt?: Date;
@@ -992,7 +1002,7 @@ export interface AssignedToolEntry {
     inputSchema: any;
     token?: string;
     edgeId?: ObjectId;
-    type?: 'system';
+    type?: 'system' | 'edge';
     system?: boolean;
 }
 export type { DomainMarketToolDoc } from './model/domain_market_tool';
