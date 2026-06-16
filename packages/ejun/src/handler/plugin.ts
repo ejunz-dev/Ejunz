@@ -1,11 +1,21 @@
 import { Filter } from 'mongodb';
 import type { Context } from '../context';
 import { BadRequestError, ForbiddenError, NotFoundError, ValidationError } from '../error';
-import type { BaseDoc, BaseNode, CardDoc, PluginDoc } from '../interface';
-import { sanitizePluginNodeData, summarizePluginDefinitions } from '../lib/pluginRuntime';
+import type { BaseDoc, BaseNode, CardDoc, DomainDoc, PluginDoc } from '../interface';
+import { loadPluginCardDefinitions, sanitizePluginNodeData, summarizePluginDefinitions } from '../lib/pluginRuntime';
+import {
+    parseDraftPluginMcpDefinitions,
+    refreshPluginMcpStatus,
+    summarizePluginMcpAvailability,
+    syncPluginManagedMcps,
+    testPluginMcpDefinitions,
+    checkAllEnabledPluginMcpStatus,
+} from '../lib/pluginMcp';
+import { listDomainMcps } from '../lib/mcpRegistry';
 import { BaseModel, CardModel, getBranchData, TYPE_CARD, type MindMapDocType } from '../model/base';
 import { PERM, PRIV } from '../model/builtin';
 import * as document from '../model/document';
+import DomainModel from '../model/domain';
 import PluginModel from '../model/plugin';
 import { Handler, param, post, query, Types } from '../service/server';
 import { BaseBatchSaveHandler, buildBaseEditorPageBody } from './base';
@@ -28,7 +38,36 @@ async function buildPluginView(domainId: string, plugin: PluginDoc) {
     return {
         ...plugin,
         summary: await summarizePluginDefinitions(domainId, plugin),
+        mcpAvailability: await summarizePluginMcpAvailability(domainId, plugin, plugin.currentBranch || 'main'),
     };
+}
+
+async function buildAvailableMcpServicesForPluginEditor(domainId: string, user: any) {
+    const rows = await listDomainMcps(domainId, user);
+    return rows
+        .filter((row) => row.assignable && row.kind !== 'outbound')
+        .map((row) => ({
+            mid: row.mid,
+            kind: row.kind,
+            sourceLabel: row.sourceLabel,
+            name: row.name,
+            description: String(row.description || '').slice(0, 1000),
+            status: row.status,
+            online: row.online,
+            assignable: row.assignable,
+            toolCount: row.toolCount,
+            tools: (row.tools || []).map((tool) => ({
+                uniqueId: tool.uniqueId,
+                name: tool.name,
+                description: String(tool.description || '').slice(0, 1000),
+                kind: tool.kind,
+                toolDocId: tool.toolDocId?.toString(),
+                toolKey: tool.toolKey,
+                edgeDocId: tool.edgeDocId?.toString(),
+                edgeId: tool.edgeId,
+                type: tool.type,
+            })),
+        }));
 }
 
 export class PluginDomainHandler extends Handler {
@@ -146,6 +185,12 @@ export class PluginEditorHandler extends Handler {
         const branch = typeof this.request.query?.branch === 'string' && this.request.query.branch.trim()
             ? this.request.query.branch.trim()
             : 'main';
+        let availableMcpServices: any[] = [];
+        try {
+            availableMcpServices = await buildAvailableMcpServicesForPluginEditor(domainId, this.user);
+        } catch (err: any) {
+            console.warn('[plugin-editor] failed to load available MCP services:', err?.message || err);
+        }
         const body = await buildBaseEditorPageBody({
             domainId,
             base: this.plugin as BaseDoc,
@@ -165,6 +210,7 @@ export class PluginEditorHandler extends Handler {
         this.response.template = 'base_editor.html';
         this.response.body = {
             ...body,
+            availableMcpServices,
             page_name: 'plugin_editor',
         };
     }
@@ -226,6 +272,48 @@ export class PluginBatchSaveHandler extends BaseBatchSaveHandler {
         }
         return payload;
     }
+
+    protected async beforeBatchApply(ctx: { domainId: string; docId: number; branch: string; base: BaseDoc; mapDocType: MindMapDocType; data: any }) {
+        const plugin = ctx.base as PluginDoc;
+        const definitions = await parseDraftPluginMcpDefinitions({
+            domainId: ctx.domainId,
+            plugin,
+            branch: ctx.branch,
+            batch: ctx.data,
+        });
+        if (!definitions.some((def) => (def.mcpConfigs?.length || 0) > 0 || (def.mcpConfigErrors?.length || 0) > 0)) return { success: true as const };
+        const summary = await testPluginMcpDefinitions({
+            domainId: ctx.domainId,
+            plugin,
+            branch: ctx.branch,
+            definitions,
+        });
+        if (!summary.ok) {
+            return {
+                success: false as const,
+                code: 'PLUGIN_MCP_TEST_FAILED',
+                errors: summary.errors.length ? summary.errors : ['Plugin MCP test failed; save blocked.'],
+                details: summary.results,
+            };
+        }
+        (ctx.data as any).__pluginMcpPreflight = { definitions, summary };
+        return { success: true as const };
+    }
+
+    protected async afterSuccessfulBatchApply(ctx: { domainId: string; docId: number; branch: string; base: BaseDoc; mapDocType: MindMapDocType; data: any }) {
+        const plugin = await PluginModel.get(ctx.domainId, ctx.docId);
+        if (!plugin) return;
+        const cached = (ctx.data as any).__pluginMcpPreflight;
+        const definitions = await loadPluginCardDefinitions(ctx.domainId, plugin, ctx.branch);
+        const summary = cached?.summary || await testPluginMcpDefinitions({
+            domainId: ctx.domainId,
+            plugin,
+            branch: ctx.branch,
+            definitions,
+        });
+        await syncPluginManagedMcps({ domainId: ctx.domainId, plugin, branch: ctx.branch, definitions, testSummary: summary });
+        await refreshPluginMcpStatus({ domainId: ctx.domainId, plugin, branch: ctx.branch, reason: 'save', definitions, testSummary: summary });
+    }
 }
 
 export class PluginCatalogHandler extends Handler {
@@ -240,6 +328,18 @@ export class PluginCatalogHandler extends Handler {
 }
 
 export async function apply(ctx: Context) {
+    if (process.env.NODE_APP_INSTANCE === '0' || process.env.NODE_APP_INSTANCE === undefined) {
+        const intervalMs = Math.max(60_000, Number(process.env.PLUGIN_MCP_CHECK_INTERVAL_MS) || 5 * 60_000);
+        setInterval(async () => {
+            try {
+                const domains = await DomainModel.getMulti({}).project({ _id: 1 }).toArray() as Pick<DomainDoc, '_id'>[];
+                for (const d of domains) await checkAllEnabledPluginMcpStatus(d._id);
+            } catch (err: any) {
+                console.warn('[plugin-mcp] periodic check failed:', err?.message || err);
+            }
+        }, intervalMs);
+    }
+
     ctx.Route('plugin_domain', '/plugins', PluginDomainHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('plugin_create', '/plugins/create', PluginCreateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('plugin_catalog', '/plugins/catalog', PluginCatalogHandler, PRIV.PRIV_USER_PROFILE);

@@ -11,7 +11,7 @@ import { EdgeServerConnectionHandler } from '../handler/edge';
 import { SYSTEM_TOOLS_CATALOG } from '@ejunz/ejunztools';
 import { resolveMcpTools } from './mcpBuiltinTools';
 
-export type McpKind = 'outbound' | 'local' | 'inbound';
+export type McpKind = 'outbound' | 'local' | 'inbound' | 'plugin';
 
 export interface NormalizedMcpTool {
     uniqueId: string;
@@ -24,7 +24,7 @@ export interface NormalizedMcpTool {
     toolDocId?: ObjectId;
     edgeDocId?: ObjectId;
     edgeId?: number;
-    type?: 'system' | 'edge';
+    type?: 'system' | 'edge' | 'plugin_mcp';
     system?: boolean;
 }
 
@@ -57,6 +57,10 @@ export function uniqueLocalToolId(toolKey: string): string {
 
 export function uniqueInboundToolId(edgeDocId: ObjectId, toolDocId: ObjectId): string {
     return `inbound:${edgeDocId.toString()}:${toolDocId.toString()}`;
+}
+
+export function uniquePluginToolId(mcp: McpDoc, toolDocId: ObjectId): string {
+    return `plugin:${mcp._id.toString()}:${toolDocId.toString()}`;
 }
 
 function localCatalogEntry(toolKey: string) {
@@ -116,6 +120,19 @@ async function outboundTools(mcp: McpDoc): Promise<NormalizedMcpTool[]> {
     }));
 }
 
+async function pluginTools(domainId: string, mcp: McpDoc): Promise<NormalizedMcpTool[]> {
+    const docs = await ToolModel.getByMcpId(domainId, mcp.mid);
+    return docs.map((tool) => ({
+        uniqueId: uniquePluginToolId(mcp, tool._id),
+        name: tool.name,
+        description: tool.description || '',
+        inputSchema: tool.inputSchema,
+        kind: 'plugin' as const,
+        toolDocId: tool._id,
+        type: 'plugin_mcp' as const,
+    })).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export async function ensureLocalEjunzToolsMcp(domainId: string, owner: number): Promise<McpDoc> {
     let mcp = await McpModel.getBySourceLocalKey(domainId, 'ejunztools');
     if (mcp) return mcp;
@@ -153,6 +170,7 @@ export async function getMcpTools(domainId: string, mcp: McpDoc): Promise<Normal
     const kind = mcpKind(mcp);
     if (kind === 'outbound') return outboundTools(mcp);
     if (kind === 'local') return localTools(domainId);
+    if (kind === 'plugin' || mcp.source?.type === 'plugin') return pluginTools(domainId, mcp);
 
     const edgeDocId = mcp.source?.edgeDocId;
     let edge: EdgeDoc | null = null;
@@ -174,7 +192,7 @@ export async function getNormalizedMcp(domainId: string, mid: number): Promise<N
     } else if (kind === 'outbound' && mcp.edgeId) {
         edge = await EdgeModel.getByEdgeId(domainId, mcp.edgeId);
     }
-    const online = kind === 'outbound'
+    const online = kind === 'outbound' || kind === 'plugin'
         ? mcp.status === 'online'
         : kind === 'local'
             ? true
@@ -184,8 +202,8 @@ export async function getNormalizedMcp(domainId: string, mid: number): Promise<N
         mcp,
         mid: mcp.mid,
         kind,
-        sourceLabel: kind === 'local' ? 'ejunztools' : kind === 'inbound' ? (edge ? edgeDisplayName(edge) : 'external') : 'outbound endpoint',
-        name: mcp.name || (kind === 'local' ? 'Ejunz Tools' : kind === 'inbound' ? 'Inbound MCP' : `MCP-${mcp.mid}`),
+        sourceLabel: kind === 'local' ? 'ejunztools' : kind === 'inbound' ? (edge ? edgeDisplayName(edge) : 'external') : kind === 'plugin' ? 'plugin MCP' : 'outbound endpoint',
+        name: mcp.name || (kind === 'local' ? 'Ejunz Tools' : kind === 'inbound' ? 'Inbound MCP' : kind === 'plugin' ? 'Plugin MCP' : `MCP-${mcp.mid}`),
         description: mcp.description || '',
         status: online ? 'online' : (kind === 'outbound' && !mcp.edgeId ? 'pending' : 'offline'),
         online,
@@ -222,23 +240,9 @@ export async function listDomainMcps(domainId: string, user?: User): Promise<Nor
     const rows = (await Promise.all(docs.map((mcp) => getNormalizedMcp(domainId, mcp.mid))))
         .filter((row): row is NormalizedMcpRow => !!row);
     rows.sort((a, b) => {
-        const order = { outbound: 0, local: 1, inbound: 2 } as Record<McpKind, number>;
+        const order = { outbound: 0, local: 1, inbound: 2, plugin: 3 } as Record<McpKind, number>;
         if (order[a.kind] !== order[b.kind]) return order[a.kind] - order[b.kind];
         return (a.mid || 0) - (b.mid || 0);
     });
     return rows;
-}
-
-export async function expandAssignedMcpTools(domainId: string, mcpIds?: ObjectId[]): Promise<NormalizedMcpTool[]> {
-    if (!mcpIds?.length) return [];
-    const out: NormalizedMcpTool[] = [];
-    for (const raw of mcpIds) {
-        const id = typeof raw === 'string' ? new ObjectId(raw) : raw;
-        if (!ObjectId.isValid(id)) continue;
-        const mcp = await McpModel.get(id);
-        if (!mcp || mcp.domainId !== domainId || mcpKind(mcp) === 'outbound') continue;
-        const tools = await getMcpTools(domainId, mcp);
-        out.push(...tools);
-    }
-    return out;
 }

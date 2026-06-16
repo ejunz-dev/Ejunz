@@ -304,7 +304,7 @@ export class WorkflowExecutor {
         }
 
         // 获取工具列表
-        const tools = await getAssignedTools(context.domainId, agent.mcpToolIds, agent.repoIds, agent.mcpIds);
+        const tools = await getAssignedTools(context.domainId, agent);
 
         // 构建系统消息
         const agentPrompt = agent.content || '';

@@ -35,6 +35,9 @@ class McpModel {
             source: mcp.source,
             assignable: mcp.assignable,
             status: mcp.status || 'offline',
+            lastCheckedAt: mcp.lastCheckedAt,
+            lastCheckError: mcp.lastCheckError,
+            toolCount: mcp.toolCount,
             createdAt: now,
             updatedAt: now,
         };
@@ -92,6 +95,19 @@ class McpModel {
         const list = await document.getMulti(domainId, document.TYPE_MCP, {
             kind: 'inbound',
             'source.edgeDocId': edgeDocId,
+        } as any)
+            .limit(1)
+            .toArray();
+        return (list[0] as McpDoc) || null;
+    }
+
+    static async getByPluginSource(domainId: string, pluginDocId: number, pluginCardId: string, pluginServerKey: string): Promise<McpDoc | null> {
+        const list = await document.getMulti(domainId, document.TYPE_MCP, {
+            kind: 'plugin',
+            'source.type': 'plugin',
+            'source.pluginDocId': pluginDocId,
+            'source.pluginCardId': pluginCardId,
+            'source.pluginServerKey': pluginServerKey,
         } as any)
             .limit(1)
             .toArray();

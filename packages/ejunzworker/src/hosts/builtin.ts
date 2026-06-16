@@ -25,6 +25,33 @@ function registerSystemToolsIfAvailable() {
     }
 }
 
+function normalizeToolParameters(raw: any) {
+    const parameters = raw && typeof raw === 'object' && !Array.isArray(raw) ? { ...raw } : {};
+    if (parameters.type !== 'object') parameters.type = 'object';
+    if (!parameters.properties || typeof parameters.properties !== 'object' || Array.isArray(parameters.properties)) {
+        parameters.properties = {};
+    }
+    if (!Array.isArray(parameters.required)) parameters.required = [];
+    return parameters;
+}
+
+function findExecutionTool(executionTools: any[], toolName: string): any | undefined {
+    return (executionTools || []).find((tool) => tool?.name === toolName || tool?.modelName === toolName);
+}
+
+function prepareExecutionArgs(executionTool: any, toolArgs: any) {
+    if (executionTool?.type === 'plugin_mcp') {
+        const mcpId = Number(executionTool?.mcpId);
+        if (!Number.isFinite(mcpId) || mcpId <= 0) {
+            const err = new Error(`Plugin MCP metadata missing for tool: ${executionTool?.name || 'unknown'}`);
+            (err as any).code = 'PLUGIN_MCP_METADATA_MISSING';
+            throw err;
+        }
+        return { ...(toolArgs || {}), __mcpId: mcpId };
+    }
+    return toolArgs || {};
+}
+
 export async function apply(ctx: EjunzContext) {
     registerSystemToolsIfAvailable();
     if (isCreatingConsumer) {
@@ -281,30 +308,18 @@ export async function apply(ctx: EjunzContext) {
                 const toolsForApi = (context.toolsForModel && context.toolsForModel.length > 0)
                     ? context.toolsForModel
                     : (context.tools && context.tools.length > 0 ? context.tools : []);
-                if (toolsForApi.length > 0) {
-                    requestBody.tools = toolsForApi.map((tool: any) => {
-                        let parameters = tool.inputSchema || {};
-                        if (typeof parameters !== 'object' || Array.isArray(parameters)) {
-                            parameters = {};
-                        }
-                        if (!parameters.type) {
-                            parameters.type = 'object';
-                        }
-                        if (!parameters.properties) {
-                            parameters.properties = {};
-                        }
-                        if (!parameters.required) {
-                            parameters.required = [];
-                        }
-                        return {
-                            type: 'function',
-                            function: {
-                                name: tool.name || '',
-                                description: tool.description || '',
-                                parameters,
-                            },
-                        };
-                    });
+                const executionTools = Array.isArray(toolsForApi) ? toolsForApi : [];
+                if (executionTools.length > 0) {
+                    requestBody.tools = executionTools.map((tool: any) => ({
+                        type: 'function',
+                        function: {
+                            name: tool.modelName || tool.name || '',
+                            description: tool.description || '',
+                            parameters: normalizeToolParameters(tool.inputSchema),
+                        },
+                    }));
+                    requestBody.tool_choice = 'auto';
+                    requestBody.parallel_tool_calls = false;
                 }
                 
                 const systemMessage = context.systemMessage || '';
@@ -656,19 +671,25 @@ export async function apply(ctx: EjunzContext) {
                             toolArgs = {};
                         }
                         
-                        let toolToken: string | undefined = undefined;
-                        let toolServerId: number | undefined = undefined;
-                        const toolType: string | undefined = undefined;
-                        logger.info('[tool] worker: name=%s (resolve via McpClient; no context.tools)', toolName);
+                        const executionTool = findExecutionTool(executionTools, toolName);
+                        if (!executionTool) {
+                            logger.warn('[tool] worker: no execution metadata for model tool name=%s', toolName);
+                        }
+                        const toolToken: string | undefined = executionTool?.token;
+                        const toolServerId: number | undefined = executionTool?.edgeId;
+                        const toolType: string | undefined = executionTool?.type;
+                        const callToolName = executionTool?.name || toolName;
+                        logger.info('[tool] worker: modelName=%s callName=%s type=%s mcpId=%s token=%s', toolName, callToolName, toolType || '(none)', executionTool?.mcpId || '(none)', toolToken ? 'yes' : 'no');
 
                         toolCallCount++;
-                        
+
                         let toolResult: any;
                         const STATUS = require('ejun/src/model/builtin').STATUS;
                         try {
+                            const executionArgs = prepareExecutionArgs(executionTool, toolArgs);
                             toolResult = await mcpClient.callTool(
-                                toolName,
-                                toolArgs,
+                                callToolName,
+                                executionArgs,
                                 domainId,
                                 toolServerId,
                                 toolToken,

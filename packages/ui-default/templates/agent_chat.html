@@ -66,7 +66,7 @@
   {% endif %}
 
   <!-- Main Content Area -->
-  <div class="{% if mode == 'chat' %}medium-9{% else %}medium-9{% endif %} columns">
+  <div class="{% if mode == 'chat' %}medium-6{% else %}medium-9{% endif %} columns">
     <div class="section">
       <div class="section__header" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
         <h1 class="section__title" style="margin: 0;">{{ adoc.title }} - {{ _('Chat') }}</h1>
@@ -148,6 +148,69 @@
       </div>
     </div>
   </div>
+
+  {% if mode == 'chat' %}
+  <!-- Chat Mode: Right Sidebar (Agent Plugin Status) -->
+  <div class="medium-3 columns agent-chat-plugin-column">
+    <div class="section side">
+      <div class="section__header">
+        <h2 class="section__title">Agent Plugins</h2>
+      </div>
+      <div class="section__body agent-chat-plugin-body">
+        {% if enabledPluginsForChat and enabledPluginsForChat.length > 0 %}
+        <div class="agent-chat-plugin-list">
+          {% for plugin in enabledPluginsForChat %}
+          <div class="agent-chat-plugin-item">
+            <div class="agent-chat-plugin-title">{{ plugin.title }}</div>
+            <div class="agent-chat-plugin-meta">
+              {% if plugin.pluginSlug %}<code>{{ plugin.pluginSlug }}</code>{% endif %}
+              <span>{{ plugin.slashCount }} /commands</span>
+            </div>
+            {% if plugin.hasMcpConfig or (plugin.mcpServers and plugin.mcpServers.length > 0) %}
+            <div class="agent-chat-plugin-mcp-list">
+              {% if plugin.mcpServers and plugin.mcpServers.length > 0 %}
+                {% for server in plugin.mcpServers %}
+                  {% set status = server.status or 'unknown' %}
+                  {% set statusClass = 'pending' if status == 'pending' else ('online' if status == 'online' else 'offline') %}
+                  <div class="agent-chat-plugin-mcp-item">
+                    <div class="agent-chat-plugin-mcp-main">
+                      {% if server.mid %}
+                      <a href="{{ url('mcp_detail', { mid: server.mid }) }}">{{ server.name }}</a>
+                      {% else %}
+                      <span>{{ server.name }}</span>
+                      {% endif %}
+                      <span class="edge-status edge-status-{{ statusClass }}">
+                        {% if status == 'online' %}在线{% elif status == 'pending' %}待连接{% elif status == 'unknown' %}未知{% else %}离线{% endif %}
+                      </span>
+                    </div>
+                    <div class="agent-chat-plugin-mcp-meta">
+                      <span>{{ server.toolCount }} tools</span>
+                      {% if server.key %}<code>{{ server.key }}</code>{% endif %}
+                    </div>
+                    {% if server.error %}
+                    <div class="agent-chat-plugin-mcp-error">{{ server.error|truncate(120) }}</div>
+                    {% endif %}
+                  </div>
+                {% endfor %}
+              {% else %}
+              <div class="agent-chat-plugin-mcp-empty">MCP configured, waiting for status.</div>
+              {% endif %}
+            </div>
+            {% else %}
+            <div class="agent-chat-plugin-mcp-empty">No MCP</div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="typo">
+          <p class="text-gray">No plugins configured for this agent.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
 
 </div>
 {% endblock %}

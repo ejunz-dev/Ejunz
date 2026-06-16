@@ -4,8 +4,11 @@ import type { AgentDoc, BaseNode, CardDoc, PluginDoc, PluginNodeData, ToolDoc } 
 import { getBranchData } from '../model/base';
 import * as document from '../model/document';
 import PluginModel from '../model/plugin';
+import DomainMarketToolModel from '../model/domain_market_tool';
+import { SYSTEM_TOOLS_CATALOG } from '@ejunz/ejunztools';
 
 const SLUG_RE = /^[a-zA-Z0-9._-]{1,80}$/;
+export const LOCAL_EJUNZTOOLS_TOOL_ID_PREFIX = 'local:ejunztools:';
 
 function trimString(v: unknown, max = 4000): string | undefined {
     if (typeof v !== 'string') return undefined;
@@ -41,7 +44,19 @@ export async function sanitizePluginNodeData(raw: unknown, _domainId?: string): 
 
 type PluginCardType = 'skill' | 'command' | 'mcp';
 
-type PluginCardDefinition = {
+export type PluginMcpTransport = 'http' | 'sse';
+
+export type PluginMcpConfig = {
+    serverKey: string;
+    name?: string;
+    transport: PluginMcpTransport;
+    url: string;
+    headers?: Record<string, string>;
+    toolAllowlist?: string[];
+    requireConfirmation?: boolean;
+};
+
+export type PluginCardDefinition = {
     kind: PluginCardType;
     name: string;
     aliases: string[];
@@ -55,6 +70,8 @@ type PluginCardDefinition = {
     instructions?: string;
     promptTemplate?: string;
     toolIds?: string[];
+    mcpConfigs?: PluginMcpConfig[];
+    mcpConfigErrors?: string[];
     requireConfirmation?: boolean;
 };
 
@@ -79,6 +96,77 @@ function cardTitleSlug(title: string): string {
         .replace(/[^a-z0-9._-]+/g, '-')
         .replace(/^-+|-+$/g, '')
         .slice(0, 80);
+}
+
+function normalizeServerKey(raw: unknown, fallback: string): string {
+    const s = trimString(raw, 80) || fallback;
+    return SLUG_RE.test(s) ? s : s.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || fallback;
+}
+
+function normalizeHeaders(raw: unknown): Record<string, string> | undefined {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+    const out: Record<string, string> = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+        const k = trimString(key, 120);
+        if (!k) continue;
+        const v = typeof value === 'string' ? value : value == null ? '' : String(value);
+        out[k] = v.slice(0, 4000);
+    }
+    return Object.keys(out).length ? out : undefined;
+}
+
+function normalizeTransport(raw: unknown): PluginMcpTransport | undefined {
+    const t = String(raw || 'http').trim().toLowerCase();
+    if (t === 'http' || t === 'streamable_http' || t === 'streamable-http') return 'http';
+    if (t === 'sse') return 'sse';
+    return undefined;
+}
+
+function normalizeMcpConfig(raw: unknown, fallbackKey: string, requireConfirmation: boolean): PluginMcpConfig | null {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const o = raw as Record<string, any>;
+    const url = trimString(o.url, 4000);
+    if (!url) return null;
+    const transport = normalizeTransport(o.type ?? o.transport);
+    if (!transport) return null;
+    const serverKey = normalizeServerKey(o.key ?? o.name ?? o.serverKey, fallbackKey);
+    const cfg: PluginMcpConfig = {
+        serverKey,
+        transport,
+        url,
+        requireConfirmation: o.requireConfirmation === true || requireConfirmation,
+    };
+    const name = trimString(o.title ?? o.displayName ?? o.name, 200);
+    if (name) cfg.name = name;
+    const headers = normalizeHeaders(o.headers);
+    if (headers) cfg.headers = headers;
+    const allow = trimStringArray(o.tools?.allow ?? o.toolAllowlist ?? o.allowTools, 200, 200);
+    if (allow) cfg.toolAllowlist = allow;
+    return cfg;
+}
+
+function parsePluginMcpConfigs(o: Record<string, any>, baseName: string, requireConfirmation: boolean): { configs: PluginMcpConfig[]; errors: string[] } {
+    const configs: PluginMcpConfig[] = [];
+    const errors: string[] = [];
+    const mcp = o.mcp && typeof o.mcp === 'object' && !Array.isArray(o.mcp) ? o.mcp as Record<string, any> : {};
+    const add = (cfg: PluginMcpConfig | null, label: string) => {
+        if (!cfg) {
+            errors.push(`Invalid MCP config: ${label}`);
+            return;
+        }
+        if (!configs.some((x) => x.serverKey === cfg.serverKey)) configs.push(cfg);
+    };
+
+    if (mcp.config) add(normalizeMcpConfig(mcp.config, baseName, requireConfirmation), baseName);
+    if (Array.isArray(mcp.configs)) {
+        for (const [i, raw] of mcp.configs.entries()) add(normalizeMcpConfig(raw, `${baseName}-${i + 1}`, requireConfirmation), `${baseName}-${i + 1}`);
+    }
+    if (o.mcpServers && typeof o.mcpServers === 'object' && !Array.isArray(o.mcpServers)) {
+        for (const [key, raw] of Object.entries(o.mcpServers as Record<string, unknown>)) {
+            add(normalizeMcpConfig({ ...(raw as any), key }, normalizeServerKey(key, baseName), requireConfirmation), key);
+        }
+    }
+    return { configs, errors };
 }
 
 async function sanitizePluginCardDefinition(raw: unknown, body: string, card: CardDoc, node: BaseNode, plugin: PluginDoc, domainId?: string): Promise<PluginCardDefinition | null> {
@@ -118,17 +206,31 @@ async function sanitizePluginCardDefinition(raw: unknown, body: string, card: Ca
         const toolIds: string[] = [];
         for (const idRaw of toolIdsRaw.slice(0, 100)) {
             const id = String(idRaw || '').trim();
-            if (!ObjectId.isValid(id)) continue;
-            if (domainId) {
-                const tool = await document.get(domainId, document.TYPE_TOOL, new ObjectId(id));
-                if (!tool) continue;
+            if (!id) continue;
+            if (ObjectId.isValid(id)) {
+                if (domainId) {
+                    const tool = await document.get(domainId, document.TYPE_TOOL, new ObjectId(id));
+                    if (!tool) continue;
+                }
+                toolIds.push(id);
+                continue;
             }
-            toolIds.push(id);
+            if (id.startsWith(LOCAL_EJUNZTOOLS_TOOL_ID_PREFIX)) {
+                const toolKey = id.slice(LOCAL_EJUNZTOOLS_TOOL_ID_PREFIX.length).trim();
+                if (!toolKey || !SLUG_RE.test(toolKey)) continue;
+                const entry = SYSTEM_TOOLS_CATALOG.find((tool) => tool.id === toolKey);
+                if (!entry) continue;
+                if (domainId && !(await DomainMarketToolModel.has(domainId, toolKey))) continue;
+                toolIds.push(`${LOCAL_EJUNZTOOLS_TOOL_ID_PREFIX}${toolKey}`);
+            }
         }
         base.toolIds = Array.from(new Set(toolIds));
         const instructions = trimString(o.mcp?.instructions ?? o.instructions, 20000) || body;
         if (instructions) base.instructions = instructions;
         base.requireConfirmation = o.mcp?.requireConfirmation === true || security.requireConfirmation === true;
+        const parsedMcpConfigs = parsePluginMcpConfigs(o, name, base.requireConfirmation === true);
+        base.mcpConfigs = parsedMcpConfigs.configs;
+        if (parsedMcpConfigs.errors.length) base.mcpConfigErrors = parsedMcpConfigs.errors;
     }
     return base;
 }
@@ -139,7 +241,7 @@ export async function parsePluginCardDefinition(card: CardDoc, node: BaseNode, p
     return sanitizePluginCardDefinition(meta, body, card, node, plugin, domainId);
 }
 
-async function loadPluginCardDefinitions(domainId: string, plugin: PluginDoc, branch = 'main', enabledNodeIds?: Set<string>): Promise<PluginCardDefinition[]> {
+export async function loadPluginCardDefinitions(domainId: string, plugin: PluginDoc, branch = 'main', enabledNodeIds?: Set<string>): Promise<PluginCardDefinition[]> {
     const data = getBranchData(plugin as any, branch);
     const nodes = data.nodes || [];
     const out: PluginCardDefinition[] = [];
@@ -151,6 +253,24 @@ async function loadPluginCardDefinitions(domainId: string, plugin: PluginDoc, br
         const cards = await document.getMulti(domainId, document.TYPE_CARD, filter).sort({ order: 1, cid: 1 }).toArray() as CardDoc[];
         for (const card of cards) {
             const def = await parsePluginCardDefinition(card, node, plugin, domainId);
+            if (def) out.push(def);
+        }
+    }
+    return out;
+}
+
+export async function parsePluginDefinitionsFromSnapshot(input: {
+    domainId: string;
+    plugin: PluginDoc;
+    branch?: string;
+    nodes: BaseNode[];
+    nodeCardsMap: Record<string, CardDoc[]>;
+}): Promise<PluginCardDefinition[]> {
+    const out: PluginCardDefinition[] = [];
+    for (const node of input.nodes || []) {
+        const cards = input.nodeCardsMap[node.id] || [];
+        for (const card of cards) {
+            const def = await parsePluginCardDefinition(card, node, input.plugin, input.domainId);
             if (def) out.push(def);
         }
     }
@@ -244,19 +364,115 @@ export async function resolveAgentSlashCatalog(domainId: string, adoc: AgentDoc)
     return out;
 }
 
-export async function resolveAgentPluginTools(domainId: string, adoc: AgentDoc): Promise<ToolDoc[]> {
-    const byId = new Map<string, ToolDoc>();
+export type AgentPluginTool = ToolDoc & {
+    token?: string;
+    type?: 'system' | 'edge' | 'plugin_mcp';
+    edgeId?: ObjectId;
+    toolDocId?: ObjectId;
+    mcpId?: number;
+    pluginDocId?: number;
+    pluginCardId?: string;
+    pluginServerKey?: string;
+    toolKey?: string;
+    system?: boolean;
+};
+
+function shouldRefreshPluginMcpStatus(status: PluginDoc['mcpStatus']): boolean {
+    if (!status) return true;
+    if (status.availability === 'unknown' || status.availability === 'checking') return true;
+    const checkedAt = status.checkedAt ? new Date(status.checkedAt).getTime() : 0;
+    if (!checkedAt || Number.isNaN(checkedAt)) return true;
+    return Date.now() - checkedAt > 5 * 60 * 1000;
+}
+
+export async function resolveAgentPluginTools(domainId: string, adoc: AgentDoc): Promise<AgentPluginTool[]> {
+    const byId = new Map<string, AgentPluginTool>();
     for (const { plugin, branch, enabledNodeIds } of await loadBoundPluginDocs(domainId, adoc)) {
-        for (const def of await loadPluginCardDefinitions(domainId, plugin, branch, enabledNodeIds)) {
+        const definitions = await loadPluginCardDefinitions(domainId, plugin, branch, enabledNodeIds);
+        let mcpStatus = plugin.mcpStatus;
+        if (definitions.some((def) => def.kind === 'mcp' && (def.mcpConfigs?.length || 0) > 0) && shouldRefreshPluginMcpStatus(mcpStatus)) {
+            try {
+                const { testPluginMcpDefinitions, syncPluginManagedMcps, refreshPluginMcpStatus } = require('./pluginMcp');
+                const summary = await testPluginMcpDefinitions({ domainId, plugin, branch, definitions });
+                await syncPluginManagedMcps({ domainId, plugin, branch, definitions, testSummary: summary });
+                mcpStatus = await refreshPluginMcpStatus({ domainId, plugin, branch, reason: 'manual', definitions, testSummary: summary });
+            } catch (err: any) {
+                console.warn('[plugin-runtime] refresh plugin MCP tools failed:', err?.message || err);
+            }
+        }
+        for (const def of definitions) {
             if (def.kind !== 'mcp') continue;
             for (const id of def.toolIds || []) {
+                if (id.startsWith(LOCAL_EJUNZTOOLS_TOOL_ID_PREFIX)) {
+                    if (byId.has(id)) continue;
+                    const toolKey = id.slice(LOCAL_EJUNZTOOLS_TOOL_ID_PREFIX.length).trim();
+                    const entry = SYSTEM_TOOLS_CATALOG.find((tool) => tool.id === toolKey);
+                    if (!entry || !(await DomainMarketToolModel.has(domainId, toolKey))) continue;
+                    byId.set(id, {
+                        name: entry.name,
+                        description: entry.description || '',
+                        inputSchema: entry.inputSchema || { type: 'object', properties: {} },
+                        type: 'system',
+                        system: true,
+                        toolKey,
+                        source: { type: 'local' },
+                    } as AgentPluginTool);
+                    continue;
+                }
                 if (!ObjectId.isValid(id) || byId.has(id)) continue;
                 const tool = await document.get(domainId, document.TYPE_TOOL, new ObjectId(id));
-                if (tool) byId.set(id, tool as ToolDoc);
+                if (tool) byId.set(id, tool as AgentPluginTool);
+            }
+            if (def.mcpConfigs?.length && mcpStatus?.availability === 'available') {
+                for (const cfg of def.mcpConfigs) {
+                    const serverStatus = mcpStatus.servers?.find((s) => s.key === cfg.serverKey);
+                    if (serverStatus && serverStatus.availability !== 'available') continue;
+                    const tools = await document.getMulti(domainId, document.TYPE_TOOL, {
+                        'source.type': 'plugin_mcp',
+                        'source.pluginDocId': plugin.docId,
+                        'source.pluginCardId': def.cardId,
+                        'source.pluginServerKey': cfg.serverKey,
+                    } as any).toArray() as ToolDoc[];
+                    for (const tool of tools) byId.set(`plugin:${tool.docId.toString()}`, tool as AgentPluginTool);
+                }
             }
         }
     }
-    return [...byId.values()];
+
+    const tools = [...byId.values()];
+    const edgeIds = tools.map((tool) => tool.edgeDocId).filter(Boolean);
+    const edges = edgeIds.length
+        ? await document.getMulti(domainId, document.TYPE_EDGE, { _id: { $in: edgeIds } as any }).toArray()
+        : [];
+    const edgeById = new Map(edges.map((edge: any) => [edge._id.toString(), edge]));
+    return tools.map((tool) => {
+        if (tool.type === 'system' || tool.source?.type === 'local') {
+            return {
+                ...tool,
+                type: 'system' as const,
+                system: true,
+            };
+        }
+        if (tool.source?.type === 'plugin_mcp') {
+            return {
+                ...tool,
+                type: 'plugin_mcp' as const,
+                toolDocId: tool._id,
+                mcpId: tool.mcpId,
+                pluginDocId: tool.source.pluginDocId,
+                pluginCardId: tool.source.pluginCardId,
+                pluginServerKey: tool.source.pluginServerKey,
+            };
+        }
+        const edge = tool.edgeDocId ? edgeById.get(tool.edgeDocId.toString()) : null;
+        return {
+            ...tool,
+            type: 'edge' as const,
+            token: edge?.token || tool.token,
+            edgeId: edge?._id || tool.edgeDocId,
+            toolDocId: tool._id,
+        };
+    });
 }
 
 export function parseAgentSlashInvocation(message: string, catalog: SlashCatalogEntry[]) {

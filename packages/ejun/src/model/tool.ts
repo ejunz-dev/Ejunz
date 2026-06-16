@@ -8,8 +8,9 @@ import EdgeModel from './edge';
 const logger = new Logger('model/tool');
 
 class ToolModel {
-    static async generateNextToolId(domainId: string, token: string): Promise<number> {
-        const lastTool = await document.getMulti(domainId, document.TYPE_TOOL, { token })
+    static async generateNextToolId(domainId: string, token: string, mcpId?: number): Promise<number> {
+        const query = token ? { token } : { mcpId };
+        const lastTool = await document.getMulti(domainId, document.TYPE_TOOL, query as any)
             .sort({ tid: -1 })
             .limit(1)
             .project({ tid: 1 })
@@ -20,21 +21,23 @@ class ToolModel {
     static async add(
         tool: Partial<ToolDoc> & {
             domainId: string;
-            token: string;
-            edgeDocId: ObjectId;
+            token?: string;
+            edgeDocId?: ObjectId;
             name: string;
             description: string;
             inputSchema: ToolDoc['inputSchema'];
             owner: number;
         },
     ): Promise<ToolDoc> {
-        const tid = await this.generateNextToolId(tool.domainId, tool.token);
+        const tid = await this.generateNextToolId(tool.domainId, tool.token || '', tool.mcpId);
         const now = new Date();
         
         const payload: Partial<ToolDoc> = {
             domainId: tool.domainId,
             token: tool.token,
             edgeDocId: tool.edgeDocId,
+            mcpId: tool.mcpId,
+            source: tool.source,
             tid,
             name: tool.name,
             description: tool.description,
@@ -56,13 +59,17 @@ class ToolModel {
         );
 
         // 更新 Edge 的工具数量
-        const edge = await EdgeModel.getByToken(tool.domainId, tool.token);
-        if (edge) {
-            const toolsCount = await this.countByToken(tool.domainId, tool.token);
-            await EdgeModel.update(tool.domainId, edge.eid, { toolsCount });
+        if (tool.token) {
+            const edge = await EdgeModel.getByToken(tool.domainId, tool.token);
+            if (edge) {
+                const toolsCount = await this.countByToken(tool.domainId, tool.token);
+                await EdgeModel.update(tool.domainId, edge.eid, { toolsCount });
+            }
         }
 
-        return await this.getByToolId(tool.domainId, tool.token, tid) as ToolDoc;
+        if (tool.token) return await this.getByToolId(tool.domainId, tool.token, tid) as ToolDoc;
+        const list = await document.getMulti(tool.domainId, document.TYPE_TOOL, { mcpId: tool.mcpId, tid }).limit(1).toArray();
+        return list[0] as ToolDoc;
     }
 
     static async get(_id: ObjectId): Promise<ToolDoc | null> {
@@ -101,6 +108,14 @@ class ToolModel {
 
     static async deleteByToken(domainId: string, token: string) {
         return await document.deleteMulti(domainId, document.TYPE_TOOL, { token });
+    }
+
+    static async getByMcpId(domainId: string, mcpId: number): Promise<ToolDoc[]> {
+        return await document.getMulti(domainId, document.TYPE_TOOL, { mcpId }).toArray() as ToolDoc[];
+    }
+
+    static async deleteByMcpId(domainId: string, mcpId: number) {
+        return await document.deleteMulti(domainId, document.TYPE_TOOL, { mcpId });
     }
 
     static async getByToolId(domainId: string, token: string, tid: number): Promise<ToolDoc | null> {
@@ -246,6 +261,48 @@ class ToolModel {
         }
         
         logger.info('Tools sync completed: token=%s, toolsCount=%d', token, toolsCount);
+    }
+
+    static async syncToolsFromPluginMcp(
+        domainId: string,
+        mcpId: number,
+        source: NonNullable<ToolDoc['source']>,
+        tools: Array<{ name: string; description?: string; inputSchema?: ToolDoc['inputSchema'] }>,
+        owner: number,
+    ): Promise<void> {
+        const existingTools = await this.getByMcpId(domainId, mcpId);
+        const existingToolMap = new Map<string, ToolDoc>();
+        for (const tool of existingTools) {
+            if (!existingToolMap.has(tool.name)) existingToolMap.set(tool.name, tool);
+        }
+
+        const newToolNames = new Set(tools.map((t) => t.name));
+        for (const tool of tools) {
+            const existing = existingToolMap.get(tool.name);
+            const description = tool.description || '';
+            const inputSchema = tool.inputSchema || { type: 'object', properties: {} };
+            if (!existing) {
+                await this.add({
+                    domainId,
+                    mcpId,
+                    source,
+                    name: tool.name,
+                    description,
+                    inputSchema,
+                    owner,
+                });
+            } else if (existing.description !== description || JSON.stringify(existing.inputSchema) !== JSON.stringify(inputSchema)) {
+                await document.set(domainId, document.TYPE_TOOL, existing.docId, {
+                    description,
+                    inputSchema,
+                    updatedAt: new Date(),
+                } as Partial<ToolDoc>);
+            }
+        }
+
+        for (const existing of existingTools) {
+            if (!newToolNames.has(existing.name)) await document.deleteOne(domainId, document.TYPE_TOOL, existing.docId);
+        }
     }
 }
 

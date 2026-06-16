@@ -970,6 +970,18 @@ node_edit: Edit Node
 node_logs: Node Logs
 nodes: nodes
 Nodes: Nodes
+'Assignable MCP services in this domain': Assignable MCP services in this domain
+'Available MCP services': Available MCP services
+'Card problems': Card problems
+Folder: Folder
+'No available MCP services': No available MCP services
+'No tools exposed': No tools exposed
+Not available: Not available
+'Plugin node definition': Plugin node definition
+'Plugin nodes are folders. Add markdown cards under folders for skill, command, and MCP definitions.': Plugin nodes are folders. Add markdown cards under folders for skill, command, and MCP definitions.
+'ToolDoc ID': ToolDoc ID
+'Unique tool ID': Unique tool ID
+'Use ToolDoc IDs in plugin MCP cards': Use ToolDoc IDs in plugin MCP cards
 Offline: Offline
 Online: Online
 page.problem_detail.sidebar.show_category: Click to Show
