@@ -13,7 +13,7 @@ const page = new NamedPage('tool_market', async () => {
     if (!toolKey) return;
     $btn.prop('disabled', true).text(i18n('Adding...'));
     try {
-      await request.post(`/d/${domainId}/tool/market/add`, { toolKey });
+      await request.post(`/d/${domainId}/mcp/market/add`, { toolKey });
       Notification.success(i18n('Added to tool list.'));
       $btn.replaceWith(`<button type="button" class="rounded button tool_market__remove-btn" data-tool-key="${toolKey}">${i18n('Uninstall')}</button>`);
     } catch (e: any) {
@@ -28,7 +28,7 @@ const page = new NamedPage('tool_market', async () => {
     if (!toolKey) return;
     $btn.prop('disabled', true).text(i18n('Uninstalling...'));
     try {
-      await request.post(`/d/${domainId}/tool/market/remove`, { toolKey });
+      await request.post(`/d/${domainId}/mcp/market/remove`, { toolKey });
       Notification.success(i18n('Tool uninstalled.'));
       $btn.replaceWith(`<button type="button" class="primary button tool_market__add-btn" data-tool-key="${toolKey}">${i18n('Add')}</button>`);
     } catch (e: any) {

@@ -42,7 +42,7 @@ export class AgentModel {
 
     static PROJECTION_DETAIL: Field[] = [
         ...AgentModel.PROJECTION_LIST,
-       'docId', 'aid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply', 'apiKey', 'memory', 'mcpToolIds', 'baseLibraryBindings', 'pluginBindings'
+       'docId', 'aid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply', 'apiKey', 'memory', 'mcpIds', 'mcpToolIds', 'baseLibraryBindings', 'pluginBindings'
     ];
 
     static PROJECTION_PUBLIC: Field[] = [
@@ -595,16 +595,16 @@ export class McpClient {
                 }
             }
 
-            // [Edge adapter disabled] If token is provided, try to call tool directly using that token
-            // if (token) {
-            //     try {
-            //         const connection = EdgeServerConnectionHandler.getConnection(token);
-            //         if (connection) {
-            //             const result = await connection.callTool(name, args);
-            //             ...
-            //         }
-            //     } catch (e) { ... }
-            // }
+            if (token) {
+                const connection = EdgeServerConnectionHandler.getConnection(token);
+                if (!connection) {
+                    const err = new Error(`Assigned inbound MCP is offline for tool: ${name}`);
+                    (err as any).code = 'MCP_OFFLINE';
+                    throw err;
+                }
+                ClientLogger.info('[tool] callTool: name=%s -> branch=edge token=%s', name, token);
+                return await connection.callTool(name, args || {});
+            }
 
             // [Edge adapter disabled] First try to call via edge (if available)
             // try {

@@ -5,10 +5,10 @@
   <div class="medium-12 columns">
     <div class="section">
       <div class="section__header">
-        <h1 class="section__title">MCP 端点详情</h1>
+        <h1 class="section__title">MCP 详情</h1>
         <div class="section__tools">
-          {% if isOwner %}
-          <a href="{{ url('mcp_edit', { mid: mcp.mid }) }}" class="button"><span class="icon icon-edit"></span> 编辑描述</a>
+          {% if canEdit %}
+          <a href="{{ url('mcp_edit', { mid: mcp.mid }) }}" class="button"><span class="icon icon-edit"></span> 编辑出站描述</a>
           {% endif %}
           <a href="{{ url('mcp_main', {}) }}" class="button"><span class="icon icon-back"></span> 返回列表</a>
         </div>
@@ -19,13 +19,14 @@
           <table class="data-table">
             <tbody>
               <tr><td class="col--key">MID</td><td><code>{{ mcp.mid }}</code></td></tr>
-              <tr><td class="col--key">名称</td><td>{{ mcp.name or ('MCP-' + mcp.mid) }}</td></tr>
+              <tr><td class="col--key">名称</td><td>{{ normalized.name }}</td></tr>
+              <tr><td class="col--key">类型</td><td><span class="problem__tag">{{ kind }}</span> <span class="supplementary">{{ normalized.sourceLabel }}</span></td></tr>
+              <tr><td class="col--key">可分配给 Agent</td><td>{{ '是' if normalized.assignable else '否' }}</td></tr>
               <tr>
                 <td class="col--key">状态</td>
-                <td>
-                  <span class="edge-status edge-status-{{ mcp.status }}">{{ '在线' if online else '离线' }}</span>
-                </td>
+                <td><span class="edge-status edge-status-{{ mcp.status }}">{% if mcp.status == 'online' %}在线{% elif mcp.status == 'pending' %}待连接{% else %}离线{% endif %}</span></td>
               </tr>
+              {% if kind == 'outbound' %}
               <tr>
                 <td class="col--key">绑定 Base</td>
                 <td>
@@ -35,10 +36,11 @@
                   {% else %}<span class="text-gray">未绑定</span>{% endif %}
                 </td>
               </tr>
+              {% endif %}
               {% if edge %}
               <tr>
                 <td class="col--key">对应 Edge</td>
-                <td><a href="{{ url('edge_detail', { domainId: domainId, eid: edge.eid }) }}">出站 Edge #{{ edge.eid }}</a></td>
+                <td><a href="{{ url('edge_detail', { domainId: domainId, eid: edge.eid }) }}">{{ '出站' if kind == 'outbound' else '入站' }} Edge #{{ edge.eid }}</a></td>
               </tr>
               {% endif %}
             </tbody>
@@ -47,9 +49,33 @@
       </div>
     </div>
 
+    {% if kind == 'local' %}
+    <div class="section">
+      <div class="section__header"><h1 class="section__title">本站 Ejunz Tools</h1></div>
+      <div class="section__body">
+        <div class="typo">
+          <p>这个 MCP 代表当前 domain 已启用的本站内置 ejunztools。Agent 分配该 MCP 后，会获得下方所有已启用工具。</p>
+          <p><a href="{{ url('mcp_market', {}) }}" class="button">管理 Ejunz Tools</a></p>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if kind == 'inbound' %}
+    <div class="section">
+      <div class="section__header"><h1 class="section__title">入站 MCP / 外部 Provider</h1></div>
+      <div class="section__body">
+        <div class="typo">
+          <p>这个 MCP 镜像外部 Edge/provider 暴露的工具。当前只展示并允许分配已有 ToolDoc；更深的外部链接逻辑后续再扩展。</p>
+          {% if edge and edge.wsEndpoint %}<p>外部地址：<code>{{ edge.wsEndpoint }}</code></p>{% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     {% if info %}
     <div class="section">
-      <div class="section__header"><h1 class="section__title">连接信息</h1></div>
+      <div class="section__header"><h1 class="section__title">出站连接信息</h1></div>
       <div class="section__body">
         <div class="typo">
           <label class="material textbox">Claude Code 命令 · Streamable HTTP（推荐，重启自动恢复）
@@ -82,14 +108,18 @@
     {% endif %}
 
     <div class="section">
-      <div class="section__header"><h1 class="section__title">暴露的工具 ({{ tools|length }})</h1></div>
+      <div class="section__header"><h1 class="section__title">工具 ({{ tools|length }})</h1></div>
       <div class="section__body no-padding">
         <table class="data-table">
-          <colgroup><col class="col--name"><col class="col--description"></colgroup>
-          <thead><tr><th class="col--name">工具</th><th class="col--description">说明</th></tr></thead>
+          <colgroup><col class="col--id"><col class="col--name"><col class="col--description"></colgroup>
+          <thead><tr><th class="col--id">唯一 ID</th><th class="col--name">函数名</th><th class="col--description">说明</th></tr></thead>
           <tbody>
             {%- for tool in tools -%}
-            <tr><td class="col--name"><code>{{ tool.name }}</code></td><td class="col--description">{{ tool.description }}</td></tr>
+            <tr>
+              <td class="col--id"><code>{{ tool.uniqueId }}</code></td>
+              <td class="col--name"><code>{{ tool.name }}</code></td>
+              <td class="col--description">{{ tool.description }}</td>
+            </tr>
             {%- endfor -%}
           </tbody>
         </table>

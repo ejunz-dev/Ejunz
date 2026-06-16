@@ -453,8 +453,11 @@ export async function apply(ctx: Context) {
     ctx.Route('tool_domain', '/tool/list', ToolDomainHandler);
     ctx.Route('tool_list_api', '/tool/api/list', ToolListApiHandler);
     ctx.Route('tool_market', '/tool/market', ToolMarketHandler);
+    ctx.Route('mcp_market', '/mcp/market', ToolMarketHandler);
     ctx.Route('tool_market_add', '/tool/market/add', ToolMarketAddHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mcp_market_add', '/mcp/market/add', ToolMarketAddHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('tool_market_remove', '/tool/market/remove', ToolMarketRemoveHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mcp_market_remove', '/mcp/market/remove', ToolMarketRemoveHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('tool_system_detail', '/tool/system/:toolKey', ToolSystemDetailHandler);
     ctx.Route('tool_detail', '/tool/:tid', ToolDetailHandler);
     ctx.Connection('tool_status_conn', '/tool/status/ws', ToolStatusConnectionHandler);

@@ -38,6 +38,8 @@ import * as document from '../model/document';
 import NodeModel from '../model/node';
 import { callToolViaWorker } from './worker';
 import { getDomainMarketToolsForAgent } from './tool';
+import McpModel from '../model/mcp';
+import { expandAssignedMcpTools, getMcpTools, listDomainMcps, mcpKind } from '../lib/mcpRegistry';
 import RecordModel from '../model/record';
 import SessionModel from '../model/session';
 import { parseCategory } from '../lib/category';
@@ -126,6 +128,10 @@ function escapeRegExp(s: string) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function findExecutionTool(executionTools: any[] | undefined, toolName: string): any | undefined {
+    return (executionTools || []).find((tool) => tool?.name === toolName);
+}
+
 async function callToolWithFallback(
     toolName: string,
     args: any,
@@ -137,10 +143,15 @@ async function callToolWithFallback(
     mcpOpts?: {
         baseDocId?: number;
         baseBranch?: string;
+        executionTools?: any[];
     },
 ): Promise<any> {
+    const executionTool = findExecutionTool(mcpOpts?.executionTools, toolName);
     const preferDirectMcp = toolName === 'load_base'
-        || toolName === 'get_domain_user_progress';
+        || toolName === 'get_domain_user_progress'
+        || executionTool?.token
+        || executionTool?.type === 'system'
+        || executionTool?.type === 'edge';
     if (useWorker && !preferDirectMcp) {
         try {
             const ctx = (global as any).app || (global as any).Ejunz;
@@ -158,10 +169,34 @@ async function callToolWithFallback(
         args,
         domainId,
         undefined,
-        undefined,
-        undefined,
+        executionTool?.token,
+        executionTool?.type,
         mcpOpts?.baseDocId,
         mcpOpts?.baseBranch,
+        uid,
+    );
+}
+
+async function callAssignedTool(
+    mcpClient: McpClient,
+    executionTools: any[] | undefined,
+    toolName: string,
+    args: any,
+    domainId: string,
+    baseDocId?: number,
+    baseBranch?: string,
+    uid?: number,
+): Promise<any> {
+    const executionTool = findExecutionTool(executionTools, toolName);
+    return await mcpClient.callTool(
+        toolName,
+        args,
+        domainId,
+        undefined,
+        executionTool?.token,
+        executionTool?.type,
+        baseDocId,
+        baseBranch,
         uid,
     );
 }
@@ -485,7 +520,7 @@ export async function processAgentChatInternal(
                     repoIds: adoc.repoIds?.length || 0,
                     repoIdsArray: adoc.repoIds || []
                 });
-                const loadedTools = await getAssignedTools(adoc.domainId, adoc.mcpToolIds, adoc.repoIds);
+                const loadedTools = await getAssignedTools(adoc.domainId, adoc.mcpToolIds, adoc.repoIds, adoc.mcpIds);
                 tools = loadedTools;
                 toolsLoaded = true;
                 AgentLogger.info('processAgentChatInternal: Got tools (async)', { 
@@ -832,6 +867,7 @@ export async function processAgentChatInternal(
                                                         {
                                                             baseDocId: effectiveAgentBaseDocId(adoc),
                                                             baseBranch: effectiveAgentBaseBranch(adoc),
+                                                            executionTools: tools,
                                                         },
                                                     );
                                                     AgentLogger.info(`Tool ${firstToolName} returned (internal)`, { resultLength: JSON.stringify(toolResult).length });
@@ -980,13 +1016,25 @@ export async function getAssignedTools(
     domainId: string,
     mcpToolIds?: ObjectId[],
     repoIds?: number[],
+    mcpIds?: ObjectId[],
 ): Promise<any[]> {
-    if (!mcpToolIds?.length) {
-        AgentLogger.info('getAssignedTools: No explicit toolIds specified, returning empty array');
-        return [];
-    }
+    const finalTools: any[] = [];
+    const processedNames = new Set<string>();
 
-    const finalToolIds = mcpToolIds
+    const addTool = (tool: any) => {
+        const name = String(tool?.name || '').trim();
+        if (!name || processedNames.has(name)) return;
+        finalTools.push(tool);
+        processedNames.add(name);
+    };
+
+    // MCP-level assignments are expanded first, with deterministic priority:
+    // local ejunztools → inbound edge MCP → legacy explicit TYPE_TOOL docs.
+    const mcpTools = await expandAssignedMcpTools(domainId, mcpIds);
+    for (const tool of mcpTools.filter((t) => t.kind === 'local')) addTool(tool);
+    for (const tool of mcpTools.filter((t) => t.kind === 'inbound')) addTool(tool);
+
+    const finalToolIds = (mcpToolIds || [])
         .map((id) => {
             try {
                 return typeof id === 'string' ? new ObjectId(id) : id;
@@ -996,24 +1044,31 @@ export async function getAssignedTools(
         })
         .filter((id): id is ObjectId => !!id && ObjectId.isValid(id));
 
-    if (!finalToolIds.length) {
-        AgentLogger.info('getAssignedTools: No valid toolIds specified, returning empty array');
-        return [];
-    }
-
-    const finalTools: any[] = [];
-    const processedNames = new Set<string>();
-    const docs = await document.getMulti(domainId, document.TYPE_TOOL, { _id: { $in: finalToolIds } as any }).toArray();
-    for (const tool of docs) {
-        const name = String((tool as any).name || '').trim();
-        if (!name || processedNames.has(name)) continue;
-        finalTools.push(tool);
-        processedNames.add(name);
+    if (finalToolIds.length) {
+        const docs = await document.getMulti(domainId, document.TYPE_TOOL, { _id: { $in: finalToolIds } as any }).toArray();
+        const edgeDocIds = docs.map((tool: any) => tool.edgeDocId).filter(Boolean);
+        const edges = edgeDocIds.length
+            ? await document.getMulti(domainId, document.TYPE_EDGE, { _id: { $in: edgeDocIds } as any }).toArray()
+            : [];
+        const edgeById = new Map(edges.map((edge: any) => [edge._id.toString(), edge]));
+        for (const tool of docs) {
+            const edge = tool.edgeDocId ? edgeById.get(tool.edgeDocId.toString()) : null;
+            addTool({
+                ...tool,
+                type: 'edge',
+                token: edge?.token || tool.token,
+                edgeId: edge?._id || tool.edgeDocId,
+                edgeDocId: tool.edgeDocId,
+                toolDocId: tool._id,
+            });
+        }
     }
 
     AgentLogger.info(
-        'getAssignedTools: finalTools=%d from explicit toolIds (repoIds=%d)',
+        'getAssignedTools: finalTools=%d from mcpIds=%d, legacyToolIds=%d (repoIds=%d)',
         finalTools.length,
+        mcpIds?.length || 0,
+        mcpToolIds?.length || 0,
         repoIds?.length || 0,
     );
     return finalTools;
@@ -1037,7 +1092,7 @@ class AgentMcpStatusHandler extends Handler {
             return;
         }
         
-        let tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds);
+        let tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds, adoc.mcpIds);
         this.response.body = { 
             connected: true, 
             toolCount: tools.length 
@@ -1107,6 +1162,16 @@ export class AgentDetailHandler extends Handler {
             }
         }
 
+        const enabledMcpsForDisplay = [] as Array<{ name: string; kind: string; toolCount: number }>;
+        const assignedMcpIds = new Set((adoc.mcpIds || []).map(id => id.toString()));
+        if (assignedMcpIds.size > 0) {
+            const rows = await listDomainMcps(domainId, this.user);
+            for (const row of rows) {
+                if (!assignedMcpIds.has(row.mcp._id.toString())) continue;
+                enabledMcpsForDisplay.push({ name: row.name, kind: row.kind, toolCount: row.toolCount });
+            }
+        }
+
         const enabledPluginsForDisplay = [] as Array<{ docId: number; title: string; pluginSlug?: string; slashCount: number }>;
         for (const b of normalizeAgentPluginBindings(adoc)) {
             const p = await PluginModel.get(domainId, b.docId);
@@ -1123,6 +1188,7 @@ export class AgentDetailHandler extends Handler {
             udoc,
             apiUrl,
             enabledBaseLibrariesForDisplay,
+            enabledMcpsForDisplay,
             enabledPluginsForDisplay,
         };
 
@@ -1733,7 +1799,7 @@ export class AgentChatHandler extends Handler {
                 throw new Error('Domain not found');
             }
             
-            const tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds);
+            const tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds, adoc.mcpIds);
             const pluginTools = await resolveAgentPluginTools(domainId, adoc);
             const finalTools = [...tools];
             const existingToolNames = new Set(finalTools.map((t: any) => t.name));
@@ -2428,7 +2494,7 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
         } catch (e) {
         }
 
-        let tools = await getAssignedTools(domainId, this.adoc.mcpToolIds, this.adoc.repoIds);
+        let tools = await getAssignedTools(domainId, this.adoc.mcpToolIds, this.adoc.repoIds, this.adoc.mcpIds);
         const modelTools = toolsForModelApi(this.adoc, tools);
         const mcpClient = new McpClient();
 const agentPrompt = this.adoc.content || '';
@@ -2637,13 +2703,12 @@ const agentPrompt = this.adoc.content || '';
                                                 // Execute tool call
                                                 let toolResult: any;
                                                 try {
-                                                    toolResult = await mcpClient.callTool(
+                                                    toolResult = await callAssignedTool(
+                                                        mcpClient,
+                                                        tools,
                                                         firstToolCall.function.name,
                                                         parsedArgs,
                                                         domainId,
-                                                        undefined,
-                                                        undefined,
-                                                        undefined,
                                                         effectiveAgentBaseDocId(this.adoc),
                                                         effectiveAgentBaseBranch(this.adoc),
                                                         this.user._id > 0 ? this.user._id : undefined,
@@ -2872,7 +2937,7 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
         } catch (e) {
         }
 
-        let tools = await getAssignedTools(domainId, this.adoc.mcpToolIds, this.adoc.repoIds);
+        let tools = await getAssignedTools(domainId, this.adoc.mcpToolIds, this.adoc.repoIds, this.adoc.mcpIds);
         const modelTools = toolsForModelApi(this.adoc, tools);
         const mcpClient = new McpClient();
 const agentPrompt = this.adoc.content || '';
@@ -3083,7 +3148,7 @@ const agentPrompt = this.adoc.content || '';
                                                     
                                                     let toolResult: any;
                                                     try {
-                                                        toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs, domainId, undefined, undefined, undefined, effectiveAgentBaseDocId(this.adoc), effectiveAgentBaseBranch(this.adoc), this.user._id > 0 ? this.user._id : undefined);
+                                                        toolResult = await callAssignedTool(mcpClient, tools, firstToolCall.function.name, parsedArgs, domainId, effectiveAgentBaseDocId(this.adoc), effectiveAgentBaseBranch(this.adoc), this.user._id > 0 ? this.user._id : undefined);
                                                         AgentLogger.info(`Tool ${firstToolCall.function.name} returned (API WS)`, { resultLength: JSON.stringify(toolResult).length });
                                                     } catch (toolError: any) {
                                                         AgentLogger.error(`Tool ${firstToolCall.function.name} failed (API WS):`, toolError);
@@ -3227,7 +3292,7 @@ export class AgentApiHandler extends Handler {
             // ignore parse error
         }
 
-        let tools = await getAssignedTools(adoc.domainId, adoc.mcpToolIds, adoc.repoIds);
+        let tools = await getAssignedTools(adoc.domainId, adoc.mcpToolIds, adoc.repoIds, adoc.mcpIds);
         const modelTools = toolsForModelApi(adoc, tools);
         const mcpClient = new McpClient();
 const agentPrompt = adoc.content || '';
@@ -3471,7 +3536,7 @@ const agentPrompt = adoc.content || '';
                                                             const toolArgs = firstToolCall.function.name.match(/^repo_\d+_/) 
                                                                 ? { ...parsedArgs, __agentId: (adoc as any).aid || (adoc as any)._id?.toString() || 'unknown', __agentName: (adoc as any).name || 'agent' }
                                                                 : parsedArgs;
-                                                            toolResult = await mcpClient.callTool(firstToolCall.function.name, toolArgs, adoc.domainId, undefined, undefined, undefined, effectiveAgentBaseDocId(adoc), effectiveAgentBaseBranch(adoc), this.user._id > 0 ? this.user._id : undefined);
+                                                            toolResult = await callAssignedTool(mcpClient, tools, firstToolCall.function.name, toolArgs, adoc.domainId, effectiveAgentBaseDocId(adoc), effectiveAgentBaseBranch(adoc), this.user._id > 0 ? this.user._id : undefined);
                                                             AgentLogger.info(`Tool ${firstToolCall.function.name} returned (API)`, { resultLength: JSON.stringify(toolResult).length });
                                                         } catch (toolError: any) {
                                                             AgentLogger.error(`Tool ${firstToolCall.function.name} failed (API):`, toolError);
@@ -3611,7 +3676,7 @@ const agentPrompt = adoc.content || '';
                     const toolArgs = firstToolCall.function?.name?.match(/^repo_\d+_/) 
                         ? { ...parsedArgs, __agentId: (adoc as any).aid || (adoc as any)._id?.toString() || 'unknown', __agentName: (adoc as any).name || 'agent' }
                         : parsedArgs;
-                    const toolResult = await mcpClient.callTool(firstToolCall.function?.name, toolArgs, adoc.domainId, undefined, undefined, undefined, effectiveAgentBaseDocId(adoc), effectiveAgentBaseBranch(adoc), this.user._id > 0 ? this.user._id : undefined);
+                    const toolResult = await callAssignedTool(mcpClient, tools, firstToolCall.function?.name, toolArgs, adoc.domainId, effectiveAgentBaseDocId(adoc), effectiveAgentBaseBranch(adoc), this.user._id > 0 ? this.user._id : undefined);
                     AgentLogger.info('Tool returned:', { toolResult });
                     
                     const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
@@ -3884,7 +3949,7 @@ export class AgentEdgeConfigHandler extends Handler {
     @param('aid', Types.String)
     async prepare(domainId: string, aid: string) {
         const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
-        this.adoc = await Agent.get(domainId, normalizedId);
+        this.adoc = await Agent.get(domainId, normalizedId, Agent.PROJECTION_DETAIL);
         if (!this.adoc) {
             throw new NotFoundError(`Agent not found for ${typeof normalizedId === 'number' ? 'docId' : 'aid'}: ${normalizedId}`);
         }
@@ -3895,76 +3960,84 @@ export class AgentEdgeConfigHandler extends Handler {
 
     @param('aid', Types.String)
     async get(domainId: string, aid: string) {
-        const edges = await EdgeModel.getByDomain(domainId);
-        const connectedEdges = edges.filter(edge => edge.tokenUsedAt);
-        
-        const edgesWithTools: any[] = [];
-        const assignedToolIds = new Set((this.adoc!.mcpToolIds || []).map(id => id.toString()));
-        
-        for (const edge of connectedEdges) {
-            const tools = await ToolModel.getByEdgeDocId(domainId, edge._id);
-            const isConnected = EdgeServerConnectionHandler.active.has(edge.token);
-            
-            let status: 'online' | 'offline' | 'working' = edge.status;
-            if (isConnected) {
-                status = tools.length > 0 ? 'working' : 'online';
-            } else {
-                status = 'offline';
-            }
-            
-            edgesWithTools.push({
-                ...edge,
-                status,
-                tools: tools.map(tool => ({
-                    ...tool,
-                    isAssigned: assignedToolIds.has(tool._id.toString()),
-                })),
-            });
-        }
-        
-        edgesWithTools.sort((a, b) => (a.eid || 0) - (b.eid || 0));
-        
+        const assignedMcpIds = new Set((this.adoc!.mcpIds || []).map(id => id.toString()));
+        const rows = await listDomainMcps(domainId, this.user);
+        const mcps = rows
+            .filter(row => row.kind !== 'outbound')
+            .map(row => ({
+                ...row,
+                isAssigned: assignedMcpIds.has(row.mcp._id.toString()),
+                disabled: !row.assignable,
+                tools: row.tools || [],
+            }));
+
         this.response.template = 'agent_edge_config.html';
         this.response.body = {
             adoc: this.adoc,
-            edges: edgesWithTools,
+            mcps,
             domainId: this.domain._id,
         };
     }
 
     @param('aid', Types.String)
+    @post('mcpIds', Types.ArrayOf(Types.String), true)
     @post('toolIds', Types.ArrayOf(Types.String), true)
-    async post(domainId: string, aid: string, toolIds?: string[]) {
+    async post(domainId: string, aid: string, mcpIds?: string[], toolIds?: string[]) {
         const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
-        const agent = await Agent.get(domainId, normalizedId);
+        const agent = await Agent.get(domainId, normalizedId, Agent.PROJECTION_DETAIL);
         if (!agent) {
             throw new NotFoundError(`Agent not found`);
         }
-        
+        if (agent.owner !== this.user._id) {
+            this.checkPriv(PRIV.PRIV_EDIT_SYSTEM);
+        }
+
+        const validMcpIds: ObjectId[] = [];
+        if (mcpIds && Array.isArray(mcpIds)) {
+            for (const mcpIdStr of mcpIds) {
+                try {
+                    const mcpId = new ObjectId(mcpIdStr);
+                    const mcp = await McpModel.get(mcpId);
+                    if (!mcp || mcp.domainId !== domainId || mcpKind(mcp) === 'outbound') {
+                        AgentLogger.warn('MCP not assignable: %s', mcpIdStr);
+                        continue;
+                    }
+                    const tools = await getMcpTools(domainId, mcp);
+                    if (!tools.length) {
+                        AgentLogger.warn('MCP has no assignable tools: %s', mcpIdStr);
+                        continue;
+                    }
+                    validMcpIds.push(mcpId);
+                } catch (error) {
+                    AgentLogger.warn('Invalid MCP ID: %s', mcpIdStr);
+                }
+            }
+        }
+
+        // Legacy explicit TYPE_TOOL assignment remains accepted for compatibility.
         const validToolIds: ObjectId[] = [];
         if (toolIds && Array.isArray(toolIds)) {
             for (const toolIdStr of toolIds) {
                 try {
                     const toolId = new ObjectId(toolIdStr);
                     const tool = await document.get(domainId, document.TYPE_TOOL, toolId);
-                    if (tool) {
-                        validToolIds.push(toolId);
-                    } else {
-                        AgentLogger.warn('Tool not found: %s', toolIdStr);
-                    }
+                    if (tool) validToolIds.push(toolId);
+                    else AgentLogger.warn('Tool not found: %s', toolIdStr);
                 } catch (error) {
                     AgentLogger.warn('Invalid tool ID: %s', toolIdStr);
                 }
             }
         }
-        
+
         const agentAid = agent.aid;
-        await Agent.edit(domainId, agentAid, { 
-            mcpToolIds: validToolIds,
+        await Agent.edit(domainId, agentAid, {
+            mcpIds: validMcpIds,
+            mcpToolIds: validToolIds.length ? validToolIds : agent.mcpToolIds,
         });
-        
-        AgentLogger.info('Agent edge tools updated: aid=%s, toolIds=%o', agentAid, validToolIds.map(id => id.toString()));
-        
+
+        AgentLogger.info('Agent MCP assignments updated: aid=%s, mcpIds=%o, legacyToolIds=%o',
+            agentAid, validMcpIds.map(id => id.toString()), validToolIds.map(id => id.toString()));
+
         this.response.body = { aid: agentAid };
         this.response.redirect = this.url('agent_detail', { uid: this.user._id, aid: agentAid });
     }
