@@ -424,11 +424,8 @@ export class McpClient {
         serverId?: number,
         token?: string,
         toolType?: string,
-        /** Agent-mounted TYPE_BASE docId for load_base; omit to use domain default base. */
         baseDocId?: number,
-        /** Branch for agent-mounted base. */
         baseBranch?: string,
-        /** Chat/task user when tools need the current human (e.g. get_domain_user_progress). */
         toolCallerUid?: number,
     ): Promise<any> {
         try {
@@ -438,113 +435,7 @@ export class McpClient {
                 throw new Error('Context not available');
             }
 
-            // Built-in loading tools (handled in core; do not dispatch to executeSystemTool)
-            if (name === 'load_base') {
-                try {
-                    ClientLogger.info('Calling built-in base loading tool: %s', name);
-                    if (!domainId) {
-                        throw new Error('domainId is required for load_base');
-                    }
-                    const branchForBase = (baseBranch && String(baseBranch).trim()) || '';
-                    if (!branchForBase) {
-                        return {
-                            success: false,
-                            message:
-                                'Base is not enabled: mount a knowledge base on this agent (with branch).',
-                        };
-                    }
-                    const resolvedBaseDocId =
-                        baseDocId != null && Number.isFinite(baseDocId) && baseDocId > 0 ? baseDocId : undefined;
-                    const { loadBaseInstructions, loadBaseInstructionsByUrls } = require('../lib/baseLoader');
-                    const urls = args.urls;
-                    const useUrls = Array.isArray(urls) && urls.length > 0;
-                    const filterArgs = args && typeof args === 'object' ? (args as Record<string, unknown>) : {};
-
-                    if (useUrls) {
-                        ClientLogger.info(
-                            'Loading base by urls: count=%s, domainId=%s, baseDocId=%s',
-                            urls.length,
-                            domainId,
-                            resolvedBaseDocId ?? '(domain default)',
-                        );
-                        const instructions = await loadBaseInstructionsByUrls(
-                            domainId,
-                            urls,
-                            branchForBase,
-                            resolvedBaseDocId,
-                            filterArgs,
-                        );
-                        return {
-                            success: true,
-                            instructions: instructions ?? '',
-                            message: instructions ? `Successfully loaded ${urls.length} card/node URL(s).` : 'No content resolved from the given URLs.'
-                        };
-                    }
-                    const level = args.level !== undefined ? args.level : (args.maxLevel !== undefined ? args.maxLevel : -1);
-                    ClientLogger.info(
-                        'Loading base: level=%s, domainId=%s, branch=%s, baseDocId=%s',
-                        level,
-                        domainId,
-                        branchForBase,
-                        resolvedBaseDocId ?? '(domain default)',
-                    );
-                    const instructions = await loadBaseInstructions(
-                        domainId,
-                        level,
-                        branchForBase,
-                        resolvedBaseDocId,
-                        filterArgs,
-                    );
-                    return {
-                        success: true,
-                        level,
-                        instructions: instructions ?? '',
-                        message: instructions ? `Successfully loaded base to level ${level}` : 'Base has no content for this branch.'
-                    };
-                } catch (e) {
-                    ClientLogger.error('Built-in base loading tool call failed: %s', (e as Error).message);
-                    throw e;
-                }
-            }
-
-
-            if (name === 'get_domain_user_progress') {
-                try {
-                    ClientLogger.info('Calling built-in domain user progress tool: %s', name);
-                    if (!domainId) {
-                        throw new Error('domainId is required for get_domain_user_progress');
-                    }
-                    if (toolCallerUid == null || !Number.isFinite(Number(toolCallerUid)) || Number(toolCallerUid) <= 0) {
-                        return {
-                            success: false,
-                            message:
-                                '无法识别当前对话用户。该工具仅汇报已登录用户在域内的学习/开发进度；'
-                                + '请通过站点内 Agent 聊天（非仅 API Key 的匿名调用）使用。',
-                        };
-                    }
-                    const mongoDb = db.db;
-                    if (!mongoDb) {
-                        throw new Error('Database not available');
-                    }
-                    const { getDomainUserProgressForTool } = require('../lib/domainUserProgress');
-                    const uid = Number(toolCallerUid);
-                    const payload = await getDomainUserProgressForTool(domainId, uid, mongoDb);
-                    if ((payload as { needJoinDomain?: boolean }).needJoinDomain) {
-                        return {
-                            success: false,
-                            needJoinDomain: true,
-                            domainId,
-                            message: '用户未加入该域或无权查看。',
-                        };
-                    }
-                    return { success: true, ...payload };
-                } catch (e) {
-                    ClientLogger.error('Built-in get_domain_user_progress failed: %s', (e as Error).message);
-                    throw e;
-                }
-            }
-
-            // Registered system tools: only if this domain installed the tool on the market (same policy as getDomainMarketToolsForAgent)
+            // Registered system tools: only if this domain installed the tool on the market.
             if (domainId && await domainMarketHasInstalledToolName(domainId, name)) {
                 const { tryExecuteSystemTool } = require('../lib/systemTools');
                 const sysEarly = await tryExecuteSystemTool(name, args || {});

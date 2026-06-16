@@ -211,7 +211,7 @@ declare module './model/agent'{
         apiKey?: string;
         memory?: string;
         repoIds?: number[];
-        /** Optional single knowledge-base mount (TYPE_BASE doc + branch) for load_base. */
+        /** Optional single knowledge-base mount (TYPE_BASE doc + branch). */
         baseLibraryBindings?: Array<{ docId: number; branch: string }>;
         /** Web plugin mounts (TYPE_PLUGIN docs) enabled for slash commands and plugin-provided tools. */
         pluginBindings?: Array<{ docId: number; branch?: string; enabledNodeIds?: string[] }>;

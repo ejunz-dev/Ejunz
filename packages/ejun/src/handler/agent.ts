@@ -145,9 +145,7 @@ async function callToolWithFallback(
     },
 ): Promise<any> {
     const executionTool = findExecutionTool(mcpOpts?.executionTools, toolName);
-    const preferDirectMcp = toolName === 'load_base'
-        || toolName === 'get_domain_user_progress'
-        || executionTool?.token
+    const preferDirectMcp = executionTool?.token
         || executionTool?.type === 'system'
         || executionTool?.type === 'edge'
         || executionTool?.type === 'plugin_mcp';
