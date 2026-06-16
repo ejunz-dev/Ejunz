@@ -1,0 +1,69 @@
+{% import "components/form.html" as form with context %}
+{% set page_name = "plugin_edit" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-9 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Plugin') }}</h1>
+      </div>
+      <div class="section__body">
+        <form method="post">
+          <div class="row">
+            <div class="medium-8 columns">
+              <label>
+                {{ _('Title') }}
+                <input name="title" class="textbox" required autofocus value="{{ plugin.title|default('') }}">
+              </label>
+            </div>
+            <div class="medium-4 columns">
+              <label>
+                {{ _('Slug') }}
+                <input name="pluginSlug" class="textbox" value="{{ plugin.pluginSlug|default('') }}" placeholder="my-plugin">
+              </label>
+            </div>
+          </div>
+          {{ form.form_textarea({
+            columns: 12,
+            label: _('Description'),
+            name: 'content',
+            value: plugin.content|default(''),
+            markdown: false,
+            required: false,
+            extra_style: 'height: 140px'
+          }) }}
+          {% if plugin %}
+          <div class="row">
+            <div class="medium-4 columns">
+              <label>{{ _('Visibility') }}
+                <select name="visibility" class="select">
+                  <option value="private" {% if (plugin.visibility or 'private') == 'private' %}selected{% endif %}>private</option>
+                  <option value="domain" {% if plugin.visibility == 'domain' %}selected{% endif %}>domain</option>
+                  {% if handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) %}<option value="system" {% if plugin.visibility == 'system' %}selected{% endif %}>system</option>{% endif %}
+                </select>
+              </label>
+            </div>
+            <div class="medium-4 columns">
+              <label style="margin-top: 28px; display: inline-flex; align-items: center; gap: 8px;">
+                <input type="checkbox" name="enabled" value="true" {% if plugin.enabled is not sameas(false) %}checked{% endif %}> {{ _('Enabled') }}
+              </label>
+            </div>
+          </div>
+          {% endif %}
+          <div class="row"><div class="columns">
+            <button type="submit" class="rounded primary button">{{ _('Create') if not plugin else _('Update') }}</button>
+            <button type="button" class="rounded button" onclick="window.history.go(-1)">{{ _('Cancel') }}</button>
+          </div></div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="medium-3 columns">
+    <div class="section side">
+      <div class="section__header"><h1 class="section__title">{{ _('Plugin Structure') }}</h1></div>
+      <div class="section__body"><p class="help-text">{{ _('After creating the plugin, the editor opens where you can add folders and markdown cards for skills, commands, and MCP tool bundles.') }}</p></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

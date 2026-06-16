@@ -214,6 +214,8 @@ declare module './model/agent'{
         repoIds?: number[];
         /** Optional single knowledge-base mount (TYPE_BASE doc + branch) for load_base. */
         baseLibraryBindings?: Array<{ docId: number; branch: string }>;
+        /** Web plugin mounts (TYPE_PLUGIN docs) enabled for slash commands and plugin-provided tools. */
+        pluginBindings?: Array<{ docId: number; branch?: string; enabledNodeIds?: string[] }>;
     }
 }
 export type { AgentDoc } from './model/agent';
@@ -369,6 +371,28 @@ export interface BaseDoc {
     problemTags?: string[];
     /** Category labels (same convention as Agent `tag`). */
     tag?: string[];
+}
+
+export type PluginNodeType = 'folder';
+
+export interface PluginNodeData {
+    pluginNodeType: PluginNodeType;
+    slug?: string;
+    description?: string;
+    enabled?: boolean;
+}
+
+export interface PluginDoc extends Omit<BaseDoc, 'docType'> {
+    docType: document['TYPE_PLUGIN'];
+    pluginSlug?: string;
+    enabled?: boolean;
+    visibility?: 'private' | 'domain' | 'system';
+    source?: {
+        type: 'web' | 'code';
+        addonName?: string;
+        path?: string;
+    };
+    version?: string;
 }
 
 export interface BaseHistoryEntry {

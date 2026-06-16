@@ -6,6 +6,7 @@
   {{ set(UiContext, 'STATUS', model.builtin.STATUS) }}
   {{ set(UiContext, 'mode', mode|default('list')) }}
   {{ set(UiContext, 'chatSessionId', chatSessionId|default('')) }}
+  {{ set(UiContext, 'slashCatalog', slashCatalog or []) }}
   {% if recordHistory is defined %}
   {{ set(UiContext, 'recordHistory', recordHistory) }}
   {% endif %}
@@ -137,7 +138,8 @@
 
           <div id="chatContainer" class="chat-container">
             <div class="chat-messages" id="chatMessages"></div>
-            <div class="chat-input-container">
+            <div class="chat-input-container" style="position: relative;">
+              <div id="slashCommandPalette" style="display:none; position:absolute; left:0; right:92px; bottom:100%; margin-bottom:6px; z-index:20; background: var(--section-bg-color, #fff); border:1px solid rgba(128,128,128,.25); border-radius:8px; box-shadow:0 10px 28px rgba(0,0,0,.18); max-height:260px; overflow:auto;"></div>
               <textarea id="chatInput" placeholder="{{ _('Type your message...') }}" rows="3"></textarea>
               <button id="sendButton" class="button send-button">{{ _('Send') }}</button>
             </div>

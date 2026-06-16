@@ -118,6 +118,23 @@
       </div>
     </div>
 
+    <div class="section">
+      <div class="section__header">
+        <h2 class="section__title">{{ _('Agent Plugins') }}</h2>
+      </div>
+      <div class="section__body">
+        {% if enabledPluginsForDisplay and enabledPluginsForDisplay|length > 0 %}
+        <ul class="supplementary dot list" style="font-size: 13px;">
+          {% for row in enabledPluginsForDisplay %}
+          <li><strong>{{ row.title }}</strong> <code>/{{ row.pluginSlug or row.docId }}</code> · {{ row.slashCount }} slash commands</li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="help-text">{{ _('No plugins are bound for this agent yet.') }}</p>
+        {% endif %}
+      </div>
+    </div>
+
     {% if handler.user.own(adoc) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) %}
     <div class="section">
       <div class="section__header">

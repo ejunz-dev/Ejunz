@@ -47,6 +47,15 @@ import {
   getProblemTagList,
   aiEvalRubricSumMax,
 } from 'ejun/src/model/problem';
+type PluginNodeType = 'folder';
+
+interface PluginNodeData {
+  pluginNodeType?: PluginNodeType;
+  slug?: string;
+  description?: string;
+  enabled?: boolean;
+}
+
 interface BaseNode {
   id: string;
   text: string;
@@ -59,7 +68,10 @@ interface BaseNode {
   parentId?: string;
   children?: string[];
   expanded?: boolean;
+  level?: number;
   order?: number;
+  style?: Record<string, any>;
+  data?: PluginNodeData | Record<string, any>;
   files?: CardFileInfo[];
 }
 
@@ -476,8 +488,11 @@ function summarizeAiOperationOneLine(op: any): string {
     return s.length > max ? `${s.slice(0, max)}…` : s;
   };
   switch (t) {
-    case 'create_node':
-      return `Create node "${String(op.text || '').slice(0, 40)}${String(op.text || '').length > 40 ? '…' : ''}" under ${short(op.parentId)}`;
+    case 'create_node': {
+      const pluginType = op.pluginNodeType || op.nodeType || op.data?.pluginNodeType || op.pluginData?.pluginNodeType;
+      const typePrefix = pluginType ? `${String(pluginType)} ` : '';
+      return `Create ${typePrefix}node "${String(op.text || '').slice(0, 40)}${String(op.text || '').length > 40 ? '…' : ''}" under ${short(op.parentId)}`;
+    }
     case 'create_card':
       return `Create card "${String(op.title || '').slice(0, 36)}${String(op.title || '').length > 36 ? '…' : ''}" on ${short(op.nodeId)}`;
     case 'move_node':
@@ -553,6 +568,7 @@ interface PendingCreate {
   title?: string;
   text?: string;
   tempId: string;
+  data?: PluginNodeData;
 }
 
 interface PendingDelete {
@@ -580,6 +596,7 @@ interface AiEditorRevertSnapshot {
   pendingRenamesEntries: [string, PendingRename][];
   pendingDeletesEntries: [string, PendingDelete][];
   pendingDragChangesArr: string[];
+  pendingPluginNodeDataIdsArr: string[];
   expandedNodesArr: string[];
   pendingProblemCardIdsArr: string[];
   pendingNewProblemCardIdsArr: string[];
@@ -600,6 +617,7 @@ function buildAiEditorRevertSnapshot(opts: {
   pendingRenames: Map<string, PendingRename>;
   pendingDeletes: Map<string, PendingDelete>;
   pendingDragChanges: Set<string>;
+  pendingPluginNodeDataIds: Set<string>;
   expandedNodes: ReadonlySet<string>;
   pendingProblemCardIds: Set<string>;
   pendingNewProblemCardIds: Set<string>;
@@ -623,6 +641,7 @@ function buildAiEditorRevertSnapshot(opts: {
     pendingRenamesEntries: Array.from(opts.pendingRenames.entries()),
     pendingDeletesEntries: Array.from(opts.pendingDeletes.entries()),
     pendingDragChangesArr: Array.from(opts.pendingDragChanges),
+    pendingPluginNodeDataIdsArr: Array.from(opts.pendingPluginNodeDataIds),
     expandedNodesArr: Array.from(opts.expandedNodes),
     pendingProblemCardIdsArr: Array.from(opts.pendingProblemCardIds),
     pendingNewProblemCardIdsArr: Array.from(opts.pendingNewProblemCardIds),
@@ -3003,7 +3022,9 @@ function BaseEditorDevelopQueueList({
 
 
 export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docId: string | undefined; initialData: BaseDoc; basePath?: string }) {
-  
+  const editorMode = String((window as any).UiContext?.editorMode || 'base');
+  const isPluginEditor = editorMode === 'plugins';
+
   const getTheme = useCallback(() => {
     try {
       if ((window as any).Ejunz?.utils?.getTheme) {
@@ -3199,7 +3220,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     if (!socketUrl) return;
 
     let closed = false;
-    const apiPath = domainApiPath('/base/data', domainId);
+    const apiPath = domainApiPath(`/${basePath}/data`, domainId);
     const editorApiQs: Record<string, string> = {};
     if (docId) editorApiQs.docId = docId;
     const editorBranch = (window as any).UiContext?.currentBranch;
@@ -3512,6 +3533,40 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [editingName, setEditingName] = useState<string>('');
   const [pendingDragChanges, setPendingDragChanges] = useState<Set<string>>(new Set());
   const [nodeCardsMapVersion, setNodeCardsMapVersion] = useState(0);
+  const [pendingPluginNodeDataIds, setPendingPluginNodeDataIds] = useState<Set<string>>(new Set());
+
+  const makeDefaultPluginNodeData = useCallback((_type: PluginNodeType = 'folder', title?: string): PluginNodeData => {
+    const baseSlug = String(title || 'folder').trim().toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80) || 'folder';
+    return { pluginNodeType: 'folder', slug: baseSlug, enabled: true, description: '' };
+  }, []);
+
+  const selectedNode = selectedFile?.type === 'node'
+    ? base.nodes.find(n => n.id === (selectedFile.nodeId || selectedFile.id)) || null
+    : null;
+  const selectedPluginNodeData = (selectedNode?.data || {}) as PluginNodeData;
+  const updateSelectedPluginNodeData = useCallback((patch: Partial<PluginNodeData>) => {
+    if (!selectedNode) return;
+    setBase(prev => {
+      const next = {
+        ...prev,
+        nodes: prev.nodes.map(n => n.id === selectedNode.id ? { ...n, data: { ...(n.data || {}), ...patch } } : n),
+      };
+      baseRef.current = next;
+      return next;
+    });
+    if (!selectedNode.id.startsWith('temp-node-')) {
+      setPendingPluginNodeDataIds(prev => new Set(prev).add(selectedNode.id));
+    } else {
+      const create = pendingCreatesRef.current.get(selectedNode.id);
+      if (create) {
+        create.data = { ...(create.data || {}), ...patch };
+        pendingCreatesRef.current.set(selectedNode.id, create);
+      }
+    }
+  }, [selectedNode]);
 
   const pendingChangesRef = useRef(pendingChanges);
   const pendingRenamesRef = useRef(pendingRenames);
@@ -3533,7 +3588,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
   const refetchEditorData = useCallback(async () => {
     const domainId = (window as any).UiContext?.domainId || 'system';
-    const apiPath = domainApiPath('/base/data', domainId);
+    const apiPath = domainApiPath(`/${basePath}/data`, domainId);
     try {
       const qs: Record<string, string> = {};
       if (docId) qs.docId = docId;
@@ -3923,6 +3978,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const AI_TERMINAL_MIN_H = 120;
   const EDITOR_MAIN_MIN_H = 160;
   const executeAIOperationsRef = useRef<ExecuteAiOpsFn | null>(null);
+  const aiOperationClientNodeIdsRef = useRef<Map<string, string>>(new Map());
   const chatWebSocketRef = useRef<any>(null);
   const [files] = useState<Array<{ _id: string; name: string; size: number; etag?: string; lastModified?: Date | string }>>(initialData.files || []);
   const [pendingProblemCardIds, setPendingProblemCardIds] = useState<Set<string>>(new Set());
@@ -4042,7 +4098,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     wrapper.style.alignItems = 'center';
     wrapper.style.gap = '8px';
     rightEl.appendChild(wrapper);
-    const pendingCount = pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + pendingFileMoves.size + Object.keys(pendingCardFaceChanges).length + pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + learnProblemNotesDraftCount;
+    const pendingCount = pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + pendingFileMoves.size + pendingPluginNodeDataIds.size + Object.keys(pendingCardFaceChanges).length + pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + learnProblemNotesDraftCount;
     const hasPending = pendingCount > 0;
     ReactDOM.render(
       <>
@@ -4080,7 +4136,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       ReactDOM.unmountComponentAtNode(wrapper);
       wrapper.remove();
     };
-  }, [isMobile, aiBottomOpen, editorAiHidden, isCommitting, pendingChanges.size, pendingDragChanges.size, pendingRenames.size, pendingCreatesCount, pendingDeletes.size, pendingFileMoves.size, pendingCardFaceChanges, pendingProblemCardIds.size, pendingNewProblemCardIds.size, pendingEditedProblemIds.size, learnProblemNotesDraftCount]);
+  }, [isMobile, aiBottomOpen, editorAiHidden, isCommitting, pendingChanges.size, pendingDragChanges.size, pendingRenames.size, pendingCreatesCount, pendingDeletes.size, pendingFileMoves.size, pendingPluginNodeDataIds.size, pendingCardFaceChanges, pendingProblemCardIds.size, pendingNewProblemCardIds.size, pendingEditedProblemIds.size, learnProblemNotesDraftCount]);
 
   
   const getSelectedCard = useCallback((): Card | null => {
@@ -4233,6 +4289,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     setPendingRenames(new Map(snap.pendingRenamesEntries));
     setPendingDeletes(new Map(snap.pendingDeletesEntries));
     setPendingDragChanges(new Set(snap.pendingDragChangesArr));
+    setPendingPluginNodeDataIds(new Set(snap.pendingPluginNodeDataIdsArr || []));
 
     setExpandedNodes(new Set(snap.expandedNodesArr));
 
@@ -5153,6 +5210,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const hasDeleteChanges = pendingDeletes.size > 0;
     const hasProblemChanges = pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0;
     const hasFileMoveChanges = pendingFileMoves.size > 0;
+    const hasPluginNodeDataChanges = pendingPluginNodeDataIds.size > 0;
 
     try {
       const domainId = (window as any).UiContext?.domainId || 'system';
@@ -5218,14 +5276,19 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           const nodeText = renameRecord ? renameRecord.newName : (create.text || i18n('New node'));
           const existingNode = base.nodes.find(n => n.id === create.tempId);
           const nodeOrder = existingNode?.order;
-          batchSaveData.nodeCreates.push({
+          const nodeCreatePayload: any = {
             tempId: create.tempId,
             text: nodeText,
             parentId: create.nodeId,
             x: (create as any).x,
             y: (create as any).y,
             ...(nodeOrder !== undefined && nodeOrder !== null && { order: nodeOrder }),
-          });
+          };
+          if (isPluginEditor) {
+            const existingData = (existingNode?.data as PluginNodeData | undefined) || (create as any).data;
+            if (existingData) nodeCreatePayload.data = existingData;
+          }
+          batchSaveData.nodeCreates.push(nodeCreatePayload);
         }
         
         
@@ -5288,9 +5351,20 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       }
       
       
+      if (hasPluginNodeDataChanges) {
+        for (const nodeId of pendingPluginNodeDataIds) {
+          if (!nodeId || nodeId.startsWith('temp-node-')) continue;
+          const node = base.nodes.find(n => n.id === nodeId);
+          if (!node?.data) continue;
+          const existingUpdate = batchSaveData.nodeUpdates.find((u: any) => u.nodeId === nodeId);
+          if (existingUpdate) existingUpdate.data = node.data;
+          else batchSaveData.nodeUpdates.push({ nodeId, data: node.data });
+        }
+      }
+
       if (hasContentChanges) {
-        
-        
+
+
         const tempNodeKeysToRemove: string[] = [];
         for (const [key, change] of allChanges.entries()) {
           if (change.file.type === 'node') {
@@ -5454,7 +5528,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             const fb = (window as any).UiContext?.currentBranch;
             if (fb) fetchQs.branch = fb;
             currentBase = await request.get(
-              domainApiPath('/base/data', domainId),
+              domainApiPath(`/${basePath}/data`, domainId),
               fetchQs,
             );
           } catch (error: any) {
@@ -5691,7 +5765,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
       mergeLearnProblemNoteDraftsIntoBatch(batchSaveData, learnProblemNotesDraftRef.current);
 
-      const hasAnyChanges = 
+      const hasAnyChanges =
         batchSaveData.nodeCreates.length > 0 ||
         batchSaveData.nodeUpdates.length > 0 ||
         batchSaveData.nodeDeletes.length > 0 ||
@@ -5941,6 +6015,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       setPendingCreatesCount(0);
       setPendingDeletes(new Map());
       setPendingFileMoves(new Map());
+      setPendingPluginNodeDataIds(new Set());
       setPendingCardFaceChanges(prev => {
         const next = { ...prev };
         batchSaveData.cardUpdates.forEach((u: any) => delete next[u.cardId]);
@@ -5972,6 +6047,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         + createCountBeforeSave
         + (hasDeleteChanges ? pendingDeletes.size : 0)
         + (hasFileMoveChanges ? fileMoveCount : 0)
+        + pendingPluginNodeDataIds.size
         + problemChangesCount
         + savedLearnerDraftBucketsForMsg;
 
@@ -6014,7 +6090,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           const psb = (window as any).UiContext?.currentBranch;
           if (psb) postSaveQs.branch = psb;
           const response = await request.get(
-            domainApiPath('/base/data', domainId),
+            domainApiPath(`/${basePath}/data`, domainId),
             postSaveQs,
           );
           setBase(response);
@@ -6126,7 +6202,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     } finally {
       setIsCommitting(false);
     }
-  }, [pendingChanges, pendingDragChanges, pendingRenames, pendingDeletes, pendingFileMoves, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, learnProblemNotesDraftCount, onLearnerNotesDraftChange, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.nodes, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion, explorerMode, rightPanelOpen, aiBottomOpen, explorerPanelWidth, problemsPanelWidth, aiPanelHeight, editorAiHidden, developEditorContext, basePath]);
+  }, [pendingChanges, pendingDragChanges, pendingRenames, pendingDeletes, pendingFileMoves, pendingPluginNodeDataIds, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, learnProblemNotesDraftCount, onLearnerNotesDraftChange, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.nodes, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion, explorerMode, rightPanelOpen, aiBottomOpen, explorerPanelWidth, problemsPanelWidth, aiPanelHeight, editorAiHidden, developEditorContext, basePath]);
 
   useEffect(() => {
     saveHandlerRef.current = handleSaveAll;
@@ -6593,7 +6669,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   }, [cardFaceWindow?.file?.id]);
 
   
-  const handleNewChildNode = useCallback((parentNodeId: string) => {
+  const handleNewChildNode = useCallback((parentNodeId: string, pluginNodeType?: PluginNodeType) => {
     const tempId = `temp-node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
     
@@ -6612,22 +6688,26 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       ? Math.max(...nodeCards.map((c: Card) => c.order || 0))
       : 0;
     const maxOrder = Math.max(maxNodeOrder, maxCardOrder);
-    
+    const nodeTitle = isPluginEditor && pluginNodeType ? `${pluginNodeType[0].toUpperCase()}${pluginNodeType.slice(1)}` : i18n('New node');
+    const pluginData = isPluginEditor ? makeDefaultPluginNodeData(pluginNodeType || 'folder', nodeTitle) : undefined;
+
     const newChildNode: PendingCreate = {
       type: 'node',
       nodeId: parentNodeId,
-      text: i18n('New node'),
+      text: nodeTitle,
       tempId,
+      ...(pluginData ? { data: pluginData } : {}),
     };
     
     pendingCreatesRef.current.set(tempId, newChildNode);
     setPendingCreatesCount(pendingCreatesRef.current.size);
-    
-    
+
+
     const tempNode: BaseNode = {
       id: tempId,
-      text: i18n('New node'),
+      text: nodeTitle,
       order: maxOrder + 1,
+      ...(pluginData ? { data: pluginData } : {}),
     };
     
     
@@ -6666,9 +6746,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     });
     
     setContextMenu(null);
-  }, [triggerExpandAutoSave]);
+  }, [triggerExpandAutoSave, isPluginEditor, makeDefaultPluginNodeData]);
 
-  const handleNewRootNode = useCallback(() => {
+  const handleNewRootNode = useCallback((pluginNodeType?: PluginNodeType) => {
     const tempId = `temp-node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     const rootNodes = base.nodes.filter(node => 
@@ -6678,11 +6758,14 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       ? Math.max(...rootNodes.map(n => n.order || 0))
       : 0;
     
+    const nodeTitle = isPluginEditor && pluginNodeType ? `${pluginNodeType[0].toUpperCase()}${pluginNodeType.slice(1)}` : i18n('New node');
+    const pluginData = isPluginEditor ? makeDefaultPluginNodeData(pluginNodeType || 'folder', nodeTitle) : undefined;
     const newRootNode: PendingCreate = {
       type: 'node',
       nodeId: '', // root has no parent
-      text: i18n('New node'),
+      text: nodeTitle,
       tempId,
+      ...(pluginData ? { data: pluginData } : {}),
     };
     
     pendingCreatesRef.current.set(tempId, newRootNode);
@@ -6691,8 +6774,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     
     const tempNode: BaseNode = {
       id: tempId,
-      text: i18n('New node'),
+      text: nodeTitle,
       order: maxOrder + 1,
+      ...(pluginData ? { data: pluginData } : {}),
     };
     
     
@@ -6713,7 +6797,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     });
     
     setEmptyAreaContextMenu(null);
-  }, [base.nodes, base.edges, handleNewChildNode]);
+  }, [base.nodes, base.edges, handleNewChildNode, isPluginEditor, makeDefaultPluginNodeData]);
 
   const handleNewSiblingNodePlacement = useCallback((
     referenceNodeId: string,
@@ -9129,6 +9213,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         pendingRenames: pendingRenamesRef.current,
         pendingDeletes: pendingDeletesRef.current,
         pendingDragChanges: pendingDragChangesRef.current,
+        pendingPluginNodeDataIds,
         expandedNodes: expandedNodesRef.current,
         pendingProblemCardIds,
         pendingNewProblemCardIds,
@@ -9269,7 +9354,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       }
 
       
-      const systemPrompt = `You are a knowledge-base assistant. You help users edit their outline (nodes) and cards.
+      const knowledgeBasePrompt = `You are a knowledge-base assistant. You help users edit their outline (nodes) and cards.
 
 [Core responsibilities]
 1. **create_node**: create a new node under a parent when asked
@@ -9436,6 +9521,131 @@ Reply with a JSON code block only for executable operations, using this shape:
 10. **Referenced practice problem**: If the user attached a **problem** in the AI terminal (\`#\` chip) or the expanded text includes \`problem pid:\`, treat requests as **editing that row**—output one \`create_problem\` with matching \`pid\` and the same \`cardId\`; do **not** omit \`pid\` or you will create a duplicate.
 11. **Completing / 补全 a draft problem**: When the user asks to complete, fill in, or polish a practice row (with or without a terminal chip), use \`create_problem\` with \`pid\` if that row exists, and supply values for **all** relevant empty fields—not limited to super_flip/matching \`columns\`—including \`analysis\` (解析), \`title\`, \`stem\`, correct \`answer\`/\`answers\`, flip \`hint\`, and any empty cells or options; **preserve** fields the user already filled.
 `;
+
+      const pluginEditorPrompt = `You are a plugin-building assistant. You help users scaffold Ejunz plugins in the plugin editor terminal.
+
+[Plugin filesystem model]
+- Nodes are folders/directories only. Use create_node for folders such as skills/, commands/, mcp/, workflows/.
+- Cards are markdown files under folders. Use create_card for plugin files such as usage-guide.md, export.md, exporter-tools.md.
+- skill, command, and mcp definitions live in card markdown frontmatter + body, not as typed nodes.
+- Runtime variables available in command card bodies: {{args}}, {{userMessage}}, {{agent.title}}, {{domainId}}.
+- MCP cards may list existing ToolDoc ObjectIds in frontmatter. If the user has not provided real ObjectIds, keep toolIds: [] and explain what to configure in the markdown body.
+
+[Current plugin structure]
+${baseText}
+
+[Editor selection path]
+The user's current selection in the plugin tree:
+${editorShellPath}
+
+[Markdown card formats]
+Skill card:
+---
+type: skill
+slug: usage-guide
+description: Guide agents through exporter workflows
+aliases:
+  - exporter-help
+---
+
+Skill instructions in markdown. Explain behavior, triggers, constraints, and examples.
+
+Command card:
+---
+type: command
+slug: export
+description: Prepare an export plan from user arguments
+aliases:
+  - xport
+command:
+  requireConfirmation: true
+security:
+  requireConfirmation: true
+---
+
+Use {{args}} and {{userMessage}} to prepare the command prompt template. Mention {{agent.title}} and {{domainId}} when useful.
+
+MCP card:
+---
+type: mcp
+slug: exporter-tools
+description: Tool bundle for exporter operations
+mcp:
+  toolIds: []
+security:
+  mutating: true
+  requireConfirmation: true
+---
+
+Instructions for when and how agents should use these tools. If toolIds is empty, tell the user which ToolDoc IDs to add.
+
+[Response format for mutations]
+Reply with a JSON code block only for executable operations. For same-response folder+file scaffolding, give new folders a clientId and use that clientId as child card nodeId:
+\`\`\`json
+{
+  "operations": [
+    {
+      "type": "create_node",
+      "clientId": "commands-folder",
+      "parentId": "node_xxx",
+      "text": "commands"
+    },
+    {
+      "type": "create_card",
+      "nodeId": "commands-folder",
+      "title": "export.md",
+      "content": "---\\ntype: command\\nslug: export\\ndescription: Export workflow\\ncommand:\\n  requireConfirmation: true\\nsecurity:\\n  requireConfirmation: true\\n---\\n\\nUse {{args}} to prepare an export plan. Ask for confirmation before irreversible writes."
+    },
+    {
+      "type": "create_node",
+      "clientId": "skills-folder",
+      "parentId": "node_xxx",
+      "text": "skills"
+    },
+    {
+      "type": "create_card",
+      "nodeId": "skills-folder",
+      "title": "usage-guide.md",
+      "content": "---\\ntype: skill\\nslug: usage-guide\\ndescription: Exporter usage guide\\naliases:\\n  - exporter-help\\n---\\n\\nGuide the agent through exporter workflows. Ask for missing output format, target scope, and destination before mutating anything."
+    },
+    {
+      "type": "create_node",
+      "clientId": "mcp-folder",
+      "parentId": "node_xxx",
+      "text": "mcp"
+    },
+    {
+      "type": "create_card",
+      "nodeId": "mcp-folder",
+      "title": "exporter-tools.md",
+      "content": "---\\ntype: mcp\\nslug: exporter-tools\\ndescription: Exporter tool bundle\\nmcp:\\n  toolIds: []\\nsecurity:\\n  mutating: true\\n  requireConfirmation: true\\n---\\n\\nUse these tools only after the user confirms target and format. Add real ToolDoc ObjectIds to toolIds when available."
+    },
+    { "type": "rename_card", "cardId": "card_xxx", "newTitle": "new-name.md" },
+    { "type": "update_card_content", "cardId": "card_xxx", "newContent": "---\\ntype: skill\\nslug: revised\\n---\\n\\nRevised markdown body" },
+    { "type": "move_card", "cardId": "card_xxx", "targetNodeId": "node_yyy" },
+    { "type": "delete_card", "cardId": "card_xxx" },
+    { "type": "rename_node", "nodeId": "node_xxx", "newText": "folder-name" },
+    { "type": "move_node", "nodeId": "node_xxx", "targetParentId": "node_yyy" },
+    { "type": "delete_node", "nodeId": "node_xxx" }
+  ]
+}
+\`\`\`
+
+[Rules]
+1. When edits are needed, output **only** a \`\`\`json ... \`\`\` block with operations; no prose around it.
+2. If the user only asks a question, answer plain text and do not output JSON.
+3. In plugin editor mode, create folders with create_node and plugin markdown files with create_card. Do not model skills/commands/mcp as typed nodes.
+4. Never use create_problem in plugin editor mode.
+5. Every skill/command/mcp card should be a .md card with YAML frontmatter containing type, slug, description, and type-specific fields as needed.
+6. Prefer lowercase stable slugs using only a-z, 0-9, dot, underscore, and dash. Keep descriptions concise.
+7. Complete scaffolding requests should create useful folders plus markdown cards in one operations[] block.
+8. Use real node IDs from the current plugin structure for parentId, nodeId, and targetNodeId. When referencing folders created earlier in the same operations[] block, use their clientId.
+9. MCP toolIds must be real existing ToolDoc ObjectIds supplied by the user or visible context. If absent, set toolIds to [] and write markdown instructions telling the user what to configure.
+10. **Valid JSON**: never put raw line breaks or unescaped " inside a string value; use standard JSON escaping (backslash + quote, backslash + n for newline).
+11. **Streaming**: emit each operations[] entry as a fully closed { ... } object before starting the next. The editor applies each finished object immediately.
+`;
+
+      const systemPrompt = isPluginEditor ? pluginEditorPrompt : knowledgeBasePrompt;
 
       
       if (chatWebSocketRef.current) {
@@ -9730,6 +9940,7 @@ Reply with a JSON code block only for executable operations, using this shape:
     editedProblemIds,
     fileContent,
     applyAiEditorRevertSnapshot,
+    isPluginEditor,
   ]);
 
   
@@ -9740,48 +9951,63 @@ Reply with a JSON code block only for executable operations, using this shape:
     const quiet = Boolean(execOpts?.quiet);
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     const errors: string[] = [];
-    
+    const aiCreatedNodeIds = aiOperationClientNodeIdsRef.current;
+    if (!execOpts?.quiet) aiCreatedNodeIds.clear();
+
     for (const op of operations) {
       try {
         if (op.type === 'create_node') {
           const tempId = `temp-node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          if (op.clientId || op.tempRef) aiCreatedNodeIds.set(String(op.clientId || op.tempRef), tempId);
+          const requestedParentId = op.parentId;
+          const parentId = requestedParentId && aiCreatedNodeIds.has(String(requestedParentId)) ? aiCreatedNodeIds.get(String(requestedParentId)) : requestedParentId;
+          const nodeText = op.text || i18n('New node');
+          const pluginData = isPluginEditor
+            ? makeDefaultPluginNodeData('folder', nodeText)
+            : undefined;
           const newChildNode: PendingCreate = {
             type: 'node',
-            nodeId: op.parentId || '',
-            text: op.text || i18n('New node'),
+            nodeId: parentId || '',
+            text: nodeText,
             tempId,
+            ...(pluginData ? { data: pluginData } : {}),
           };
-          
+
           pendingCreatesRef.current.set(tempId, newChildNode);
           setPendingCreatesCount(pendingCreatesRef.current.size);
-          
+
           const tempNode: BaseNode = {
             id: tempId,
-            text: op.text || i18n('New node'),
+            text: nodeText,
+            ...(pluginData ? { data: pluginData } : {}),
           };
-          
-          setBase(prev => ({
-            ...prev,
-            nodes: [...prev.nodes, tempNode],
-            edges: op.parentId ? [...prev.edges, {
-              id: `temp-edge-${Date.now()}`,
-              source: op.parentId,
-              target: tempId,
-            }] : prev.edges,
-          }));
-          
-          if (op.parentId) {
+
+          setBase(prev => {
+            const updated = {
+              ...prev,
+              nodes: [...prev.nodes, tempNode],
+              edges: parentId ? [...prev.edges, {
+                id: `temp-edge-${Date.now()}`,
+                source: parentId,
+                target: tempId,
+              }] : prev.edges,
+            };
+            baseRef.current = updated;
+            return updated;
+          });
+
+          if (parentId) {
             setExpandedNodes(prev => {
               const newSet = new Set(prev);
               newSet.add(tempId);
-              if (!newSet.has(op.parentId)) {
-                newSet.add(op.parentId);
+              if (!newSet.has(parentId)) {
+                newSet.add(parentId);
                 expandedNodesRef.current = newSet;
                 setBase(prev => {
                   const updated = {
                     ...prev,
                     nodes: prev.nodes.map(n =>
-                      n.id === op.parentId
+                      n.id === parentId
                         ? { ...n, expanded: true }
                         : n
                     ),
@@ -9803,10 +10029,12 @@ Reply with a JSON code block only for executable operations, using this shape:
             });
           }
         } else if (op.type === 'create_card') {
+          const requestedNodeId = op.nodeId;
+          const resolvedNodeId = requestedNodeId && aiCreatedNodeIds.has(String(requestedNodeId)) ? aiCreatedNodeIds.get(String(requestedNodeId)) : requestedNodeId;
           const tempId = `temp-card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
           const newCard: PendingCreate = {
             type: 'card',
-            nodeId: op.nodeId,
+            nodeId: resolvedNodeId,
             title: op.title || i18n('New card'),
             tempId,
           };
@@ -9814,28 +10042,28 @@ Reply with a JSON code block only for executable operations, using this shape:
           pendingCreatesRef.current.set(tempId, newCard);
           setPendingCreatesCount(pendingCreatesRef.current.size);
           
-          if (!nodeCardsMap[op.nodeId]) {
-            nodeCardsMap[op.nodeId] = [];
+          if (!nodeCardsMap[resolvedNodeId]) {
+            nodeCardsMap[resolvedNodeId] = [];
           }
-          const maxOrder = nodeCardsMap[op.nodeId].length > 0 
-            ? Math.max(...nodeCardsMap[op.nodeId].map((c: Card) => c.order || 0))
+          const maxOrder = nodeCardsMap[resolvedNodeId].length > 0 
+            ? Math.max(...nodeCardsMap[resolvedNodeId].map((c: Card) => c.order || 0))
             : 0;
           
           const tempCard: Card = {
             docId: tempId,
             cid: 0,
-            nodeId: op.nodeId,
+            nodeId: resolvedNodeId,
             title: op.title || i18n('New card'),
             content: op.content || '',
             order: maxOrder + 1,
             updateAt: new Date().toISOString(),
           } as Card;
           
-          nodeCardsMap[op.nodeId].push(tempCard);
-          nodeCardsMap[op.nodeId].sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
+          nodeCardsMap[resolvedNodeId].push(tempCard);
+          nodeCardsMap[resolvedNodeId].sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
           (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
           setNodeCardsMapVersion(prev => prev + 1);
-          setExpandedNodes(prev => new Set(prev).add(op.nodeId));
+          setExpandedNodes(prev => new Set(prev).add(resolvedNodeId));
         } else if (op.type === 'move_node') {
           let nodeId = op.nodeId;
           const targetParentId = op.targetParentId;
@@ -10329,6 +10557,12 @@ Reply with a JSON code block only for executable operations, using this shape:
             setNodeCardsMapVersion(prev => prev + 1);
           }
         } else if (op.type === 'create_problem') {
+          if (isPluginEditor) {
+            const errorMsg = 'Plugin editor does not support practice problems; create plugin folders with create_node and markdown files with create_card.';
+            Notification.error(errorMsg);
+            errors.push(errorMsg);
+            continue;
+          }
           const cardId = op.cardId;
           const analysis = op.analysis;
 
@@ -10758,7 +10992,7 @@ Reply with a JSON code block only for executable operations, using this shape:
     }
     
     return { success: errors.length === 0, errors };
-  }, [base, setBase, selectedFile, editorInstance, setFileContent, triggerExpandAutoSave, setNodeCardsMapVersion, setPendingProblemCardIds, setPendingNewProblemCardIds, setNewProblemIds, setEditedProblemIds, setPendingEditedProblemIds]);
+  }, [base, setBase, selectedFile, editorInstance, setFileContent, triggerExpandAutoSave, setNodeCardsMapVersion, setPendingProblemCardIds, setPendingNewProblemCardIds, setNewProblemIds, setEditedProblemIds, setPendingEditedProblemIds, isPluginEditor, makeDefaultPluginNodeData]);
 
   
   useEffect(() => {
@@ -12231,9 +12465,55 @@ Reply with a JSON code block only for executable operations, using this shape:
   
   useEffect(() => {
     return () => {
-      
+
     };
   }, []);
+
+  const pluginNodePropertiesBody = isPluginEditor ? (
+    <div style={{ padding: 14, overflowY: 'auto', flex: 1, color: themeStyles.textPrimary }}>
+      {selectedNode ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <strong>{selectedNode.text || i18n('Unnamed Node')}</strong>
+            <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 999, background: themeStyles.bgButtonActive, color: themeStyles.textOnPrimary }}>
+              Folder
+            </span>
+          </div>
+          <div style={{ fontSize: 12, color: themeStyles.textSecondary, lineHeight: 1.5 }}>
+            Plugin nodes are folders. Add markdown cards under folders for skill, command, and MCP definitions.
+          </div>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+            Slug
+            <input
+              value={selectedPluginNodeData.slug || ''}
+              onChange={(e) => updateSelectedPluginNodeData({ slug: e.target.value, pluginNodeType: 'folder' })}
+              placeholder="folder-name"
+              style={{ padding: '7px 8px', border: `1px solid ${themeStyles.borderSecondary}`, background: themeStyles.bgSecondary, color: themeStyles.textPrimary }}
+            />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+            {i18n('Description')}
+            <textarea
+              value={selectedPluginNodeData.description || ''}
+              onChange={(e) => updateSelectedPluginNodeData({ description: e.target.value, pluginNodeType: 'folder' })}
+              rows={3}
+              style={{ padding: 8, border: `1px solid ${themeStyles.borderSecondary}`, background: themeStyles.bgSecondary, color: themeStyles.textPrimary, resize: 'vertical' }}
+            />
+          </label>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+            <input
+              type="checkbox"
+              checked={selectedPluginNodeData.enabled !== false}
+              onChange={(e) => updateSelectedPluginNodeData({ enabled: e.target.checked, pluginNodeType: 'folder' })}
+            />
+            {i18n('Enabled')}
+          </label>
+        </div>
+      ) : (
+        <div style={{ color: themeStyles.textSecondary, textAlign: 'center', marginTop: 40 }}>{i18n('Select a plugin folder to edit its metadata.')}</div>
+      )}
+    </div>
+  ) : null;
 
   return (
     <div style={{
@@ -12408,6 +12688,26 @@ Reply with a JSON code block only for executable operations, using this shape:
                 <path d="M6 6h4M6 8.5h4M6 11h3" />
               </svg>
             </button>
+            {isPluginEditor ? (
+              <button
+                type="button"
+                onClick={() => setRightPanelOpen((prev) => !prev)}
+                style={{
+                  width: '34px',
+                  height: '34px',
+                  border: `1px solid ${themeStyles.borderSecondary}`,
+                  borderRadius: '3px',
+                  backgroundColor: rightPanelOpen ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                  color: rightPanelOpen ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                  fontWeight: 700,
+                }}
+                title="Plugin node definition"
+              >
+                P
+              </button>
+            ) : null}
             <button
               onClick={() => setExplorerMode('branches')}
               style={{
@@ -12789,8 +13089,13 @@ Reply with a JSON code block only for executable operations, using this shape:
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}>
-                    {isExpanded ? '📁' : '📂'}
+                    {isPluginEditor ? '◆' : (isExpanded ? '📁' : '📂')}
                   </span>
+                  {isPluginEditor && (() => {
+                    const node = base.nodes.find(n => n.id === (file.nodeId || file.id));
+                    const t = String((node?.data as PluginNodeData | undefined)?.pluginNodeType || 'folder');
+                    return <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 999, background: themeStyles.bgSecondary, color: themeStyles.textTertiary, textTransform: 'uppercase' }}>{t}</span>;
+                  })()}
                 </>
               ) : (
                 <span style={{ 
@@ -15945,22 +16250,22 @@ Reply with a JSON code block only for executable operations, using this shape:
                 console.log('[保存按钮] 点击保存，pendingProblemCardIds:', Array.from(pendingProblemCardIds));
                 handleSaveAll();
               }}
-              disabled={isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)}
+              disabled={isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && pendingPluginNodeDataIds.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)}
               style={{
                 padding: isMobile ? '10px 12px' : '4px 12px',
                 minHeight: isMobile ? '44px' : undefined,
                 border: `1px solid ${themeStyles.borderSecondary}`,
                 borderRadius: '3px',
-                backgroundColor: (pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0 || pendingFileMoves.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) ? themeStyles.success : (theme === 'dark' ? '#555' : '#6c757d'),
+                backgroundColor: (pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0 || pendingFileMoves.size > 0 || pendingPluginNodeDataIds.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) ? themeStyles.success : (theme === 'dark' ? '#555' : '#6c757d'),
                 color: themeStyles.textOnPrimary,
-                cursor: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)) ? 'not-allowed' : 'pointer',
+                cursor: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && pendingPluginNodeDataIds.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)) ? 'not-allowed' : 'pointer',
                 fontSize: '12px',
                 fontWeight: '500',
-                opacity: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)) ? 0.6 : 1,
+                opacity: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && pendingPluginNodeDataIds.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)) ? 0.6 : 1,
               }}
-              title={(pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0) ? i18n('No pending changes') : i18n('Save all changes')}
+              title={(pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && pendingPluginNodeDataIds.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0) ? i18n('No pending changes') : i18n('Save all changes')}
             >
-              {isCommitting ? i18n('Saving...') : `${i18n('Save changes')} (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + pendingFileMoves.size + Object.keys(pendingCardFaceChanges).length + pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + learnProblemNotesDraftCount})`}
+              {isCommitting ? i18n('Saving...') : `${i18n('Save changes')} (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + pendingFileMoves.size + pendingPluginNodeDataIds.size + Object.keys(pendingCardFaceChanges).length + pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + learnProblemNotesDraftCount})`}
             </button>
           </div>
           )}
@@ -17693,6 +17998,8 @@ Reply with a JSON code block only for executable operations, using this shape:
                         ? ` ${developRunQueueState.currentIndex + 1}/${developRunQueueState.items.length}`
                         : ` · ${developRunQueueState.items.length}`}
                     </>
+                ) : isPluginEditor ? (
+                  'Plugin node definition'
                 ) : (
                   '本卡片的练习题'
                 )}
@@ -17738,6 +18045,8 @@ Reply with a JSON code block only for executable operations, using this shape:
                       : ` · ${developRunQueueState.items.length}`}
                   </>
                 </span>
+              ) : isPluginEditor ? (
+                <span style={{ fontWeight: 'bold' }}>Plugin node definition</span>
               ) : (
                 <span style={{ fontWeight: 'bold' }}>本卡片的练习题</span>
               )}
@@ -17769,7 +18078,9 @@ Reply with a JSON code block only for executable operations, using this shape:
                 busyIndex={developQueueNavBusy}
                 onGo={navigateDevelopQueueItem}
               />
-            ) : selectedFile?.type === 'card' ? (
+            ) : isPluginEditor ? (
+                pluginNodePropertiesBody
+              ) : selectedFile?.type === 'card' ? (
                 problemsBody
               ) : (
                 <div style={{
@@ -18286,7 +18597,7 @@ function McpSidebarPanel({ themeStyles, baseId, branch }: { themeStyles: any; ba
   );
 }
 
-const page = new NamedPage(['base_editor', 'base_editor_branch', 'develop_editor'], async (pageName) => {
+const page = new NamedPage(['base_editor', 'base_editor_branch', 'develop_editor', 'plugin_editor'], async (pageName) => {
   try {
     const $container = $('#base-editor-mode');
     if (!$container.length) {
@@ -18300,7 +18611,8 @@ const page = new NamedPage(['base_editor', 'base_editor_branch', 'develop_editor
     let initialData: BaseDoc;
     try {
       
-      const apiPath = domainApiPath('/base/data', domainId);
+      const editorApiBasePath = (window as any).UiContext?.editorApiBasePath || 'base';
+      const apiPath = domainApiPath(`/${editorApiBasePath}/data`, domainId);
       const initQs: Record<string, string> = {};
       if (docId) initQs.docId = docId;
       const initBranch = (window as any).UiContext?.currentBranch;
@@ -18317,7 +18629,7 @@ const page = new NamedPage(['base_editor', 'base_editor_branch', 'develop_editor
     }
 
     ReactDOM.render(
-      <BaseEditorMode docId={initialData.docId || ''} initialData={initialData} basePath="base" />,
+      <BaseEditorMode docId={initialData.docId || ''} initialData={initialData} basePath={(window as any).UiContext?.editorApiBasePath || 'base'} />,
       $container[0]
     );
   } catch (error: any) {
