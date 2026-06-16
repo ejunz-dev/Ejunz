@@ -42,7 +42,7 @@ __langname: 简体中文
 'Agent Knowledge Base': Agent 知识库
 'Configure Agent Knowledge Base': 配置 Agent 知识库
 'No knowledge base is mounted for this agent yet.': 此 Agent 尚未挂载知识库。
-'Optionally mount one domain knowledge base (outline / cards) for this agent. load_base uses this document and branch.': 可选：为此 Agent 挂载一个域内知识库（大纲/卡片）。load_base 将使用该文档及分支。
+'Optionally mount one domain knowledge base (outline / cards) for this agent.': 可选：为此 Agent 挂载一个域内知识库（大纲/卡片）。
 'Save knowledge base mount': 保存知识库挂载
 'Failed to save knowledge base mount': 保存知识库挂载失败。
 'Knowledge base': 知识库

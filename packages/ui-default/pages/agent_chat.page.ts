@@ -1061,7 +1061,7 @@ const page = new NamedPage('agent_chat', async () => {
     }
   }
 
-  /** Parse tool message JSON and prefer markdown bodies (e.g. load_base `instructions`). */
+  /** Parse tool message JSON and prefer markdown bodies when available. */
   function extractToolResultDisplayPayload(rawContent: string | object): { mode: 'markdown' | 'pre'; text: string } {
     if (rawContent == null) return { mode: 'pre', text: '' };
 

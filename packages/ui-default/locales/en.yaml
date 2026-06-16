@@ -29,7 +29,7 @@ __langname: English
 'Agent Knowledge Base': Agent Knowledge Base
 'Configure Agent Knowledge Base': Configure Agent Knowledge Base
 'No knowledge base is mounted for this agent yet.': No knowledge base is mounted for this agent yet.
-'Optionally mount one domain knowledge base (outline / cards) for this agent. load_base uses this document and branch.': Optionally mount one domain knowledge base (outline / cards) for this agent. The load_base tool uses this document and branch.
+'Optionally mount one domain knowledge base (outline / cards) for this agent.': Optionally mount one domain knowledge base (outline / cards) for this agent.
 'Save knowledge base mount': Save knowledge base mount
 'Failed to save knowledge base mount': Failed to save knowledge base mount.
 'Knowledge base': Knowledge base
