@@ -41,6 +41,7 @@
   {% endif %}
   {{ set(UiContext, 'editorMode', editorMode or 'base') }}
   {{ set(UiContext, 'editorApiBasePath', editorApiBasePath or 'base') }}
+  {{ set(UiContext, 'availableMcpServices', availableMcpServices or []) }}
   {% set _sessws = '' %}
   {% if developEditorSessionHex is defined and developEditorSessionHex %}
   {% set _sessws = '&developEditorSession=' + developEditorSessionHex %}

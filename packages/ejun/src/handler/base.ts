@@ -4924,6 +4924,14 @@ export class BaseBatchSaveHandler extends Handler {
         return true;
     }
 
+    protected async beforeBatchApply(_ctx: { domainId: string; docId: number; branch: string; base: BaseDoc; mapDocType: MindMapDocType; data: any }): Promise<{ success: true } | { success: false; code?: string; errors: string[]; details?: any }> {
+        return { success: true };
+    }
+
+    protected async afterSuccessfulBatchApply(_ctx: { domainId: string; docId: number; branch: string; base: BaseDoc; mapDocType: MindMapDocType; data: any; nodeIdMap: Map<string, string>; cardIdMap: Map<string, string> }): Promise<void> {
+        // Subclasses may sync derived state after the batch has been persisted.
+    }
+
     protected getBatchSaveOptions(): BatchSaveOptions {
         return {
             type: 'base',
@@ -4980,6 +4988,17 @@ export class BaseBatchSaveHandler extends Handler {
                 branch,
                 mdt,
             );
+        }
+
+        const preflight = await this.beforeBatchApply({ domainId: actualDomainId, docId, branch, base, mapDocType: mdt, data });
+        if (!preflight.success) {
+            this.response.body = {
+                success: false,
+                code: preflight.code,
+                errors: preflight.errors || [],
+                details: preflight.details,
+            };
+            return;
         }
 
         const {
@@ -5215,7 +5234,15 @@ export class BaseBatchSaveHandler extends Handler {
         
         (this.ctx.emit as any)('base/update', docId, null, branch);
 
-        const batchSuccess = errors.length === 0;
+        let batchSuccess = errors.length === 0;
+        if (batchSuccess) {
+            try {
+                await this.afterSuccessfulBatchApply({ domainId: actualDomainId, docId, branch, base, mapDocType: mdt, data, nodeIdMap, cardIdMap });
+            } catch (err: any) {
+                errors.push(`保存后同步失败: ${err.message || '未知错误'}`);
+                batchSuccess = false;
+            }
+        }
         if (batchSuccess && this.shouldWriteLearningSidecars()) {
             const incNodes = nodeCreates.length + nodeUpdates.length;
             const incCards = cardCreates.length + cardUpdates.length;

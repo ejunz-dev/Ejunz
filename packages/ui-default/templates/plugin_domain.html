@@ -47,11 +47,14 @@
               </td>
               <td><span class="plugin-badge plugin-badge--{{ plugin.visibility or 'private' }}">{{ plugin.visibility or 'private' }}</span></td>
               <td>
-                {% if plugin.enabled is not sameas(false) %}
-                <span class="plugin-status plugin-status--on">{{ _('Enabled') }}</span>
-                {% else %}
-                <span class="plugin-status plugin-status--off">{{ _('Disabled') }}</span>
-                {% endif %}
+                {% set mcp = plugin.mcpAvailability %}
+                <div style="margin-top: 6px;">
+                  {% if mcp.availability == 'unavailable' %}
+                  <span class="edge-status edge-status-offline">{{ _('Not available') }}</span>
+                  {% else %}
+                  <span class="edge-status edge-status-online">{{ _('Online') }}</span>
+                  {% endif %}
+                </div>
               </td>
               <td>
                 <span class="plugin-pill">S {{ plugin.summary.skill }}</span>

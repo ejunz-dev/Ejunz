@@ -132,13 +132,11 @@
             <colgroup>
               <col class="col--name">
               <col class="col--description">
-              <col class="col--action">
             </colgroup>
             <thead>
               <tr>
                 <th class="col--name">工具名称</th>
                 <th class="col--description">描述</th>
-                <th class="col--action">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -149,9 +147,6 @@
                 </td>
                 <td class="col--description">
                   {{ tool.description or '' }}
-                </td>
-                <td class="col--action">
-                  <a href="{{ url('tool_detail', { tid: tool.tid }) }}" class="button small">查看详情</a>
                 </td>
               </tr>
               {%- endfor -%}

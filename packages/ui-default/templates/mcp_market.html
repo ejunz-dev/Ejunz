@@ -1,11 +1,11 @@
-{% set page_name = "tool_market" %}
+{% set page_name = "mcp_market" %}
 {% extends "layout/basic.html" %}
 {% block content %}
 <div class="row">
   <div class="medium-12 columns">
     <div class="section">
       <div class="section__header">
-        <h1 class="section__title">{{ _('tool_market') }}</h1>
+        <h1 class="section__title">MCP Market</h1>
         <div class="section__tools">
           <a href="{{ url('mcp_main', {}) }}" class="button">{{ _('Back to MCP') }}</a>
         </div>
@@ -17,7 +17,7 @@
             <p>{{ _('No system tools.') }}</p>
           </div>
         {% else %}
-          <table class="data-table tool_market__table">
+          <table class="data-table mcp_market__table">
             <colgroup>
               <col class="col--name">
               <col class="col--description">
@@ -37,9 +37,9 @@
                 <td class="col--description">{{ tool.description or '' }}</td>
                 <td class="col--action">
                   {% if tool.name in addedNames %}
-                    <button type="button" class="rounded button tool_market__remove-btn" data-tool-key="{{ tool.id }}">{{ _('Uninstall') }}</button>
+                    <button type="button" class="rounded button mcp_market__remove-btn" data-tool-key="{{ tool.id }}">{{ _('Uninstall') }}</button>
                   {% else %}
-                    <button type="button" class="primary button tool_market__add-btn" data-tool-key="{{ tool.id }}">{{ _('Add') }}</button>
+                    <button type="button" class="primary button mcp_market__add-btn" data-tool-key="{{ tool.id }}">{{ _('Add') }}</button>
                   {% endif %}
                 </td>
               </tr>

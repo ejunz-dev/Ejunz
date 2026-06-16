@@ -21,11 +21,11 @@ import { randomstring } from '@ejunz/utils';
 import { McpClient, ChatMessage } from '../model/agent';
 import { Logger } from '../logger';
 import { PassThrough } from 'stream';
-import EdgeModel from '../model/edge';
-import ToolModel from '../model/tool';
 import { BaseModel } from '../model/base';
 import PluginModel from '../model/plugin';
 import {
+    LOCAL_EJUNZTOOLS_TOOL_ID_PREFIX,
+    loadPluginCardDefinitions,
     normalizeAgentPluginBindings,
     parseAgentSlashInvocation,
     renderSlashSystemBlock,
@@ -33,16 +33,14 @@ import {
     resolveAgentSlashCatalog,
     visiblePluginsForUser,
 } from '../lib/pluginRuntime';
-import { EdgeServerConnectionHandler } from './edge';
 import * as document from '../model/document';
 import NodeModel from '../model/node';
 import { callToolViaWorker } from './worker';
-import { getDomainMarketToolsForAgent } from './tool';
-import McpModel from '../model/mcp';
-import { expandAssignedMcpTools, getMcpTools, listDomainMcps, mcpKind } from '../lib/mcpRegistry';
 import RecordModel from '../model/record';
 import SessionModel from '../model/session';
 import { parseCategory } from '../lib/category';
+import { summarizePluginMcpAvailability } from '../lib/pluginMcp';
+import { listDomainMcps } from '../lib/mcpRegistry';
 const AgentLogger = new Logger('agent');
 
 export type BaseLibraryBinding = { docId: number; branch: string };
@@ -151,7 +149,8 @@ async function callToolWithFallback(
         || toolName === 'get_domain_user_progress'
         || executionTool?.token
         || executionTool?.type === 'system'
-        || executionTool?.type === 'edge';
+        || executionTool?.type === 'edge'
+        || executionTool?.type === 'plugin_mcp';
     if (useWorker && !preferDirectMcp) {
         try {
             const ctx = (global as any).app || (global as any).Ejunz;
@@ -166,7 +165,9 @@ async function callToolWithFallback(
     const mcpClient = new McpClient();
     return await mcpClient.callTool(
         toolName,
-        args,
+        executionTool?.type === 'plugin_mcp'
+            ? { ...(args || {}), __mcpId: executionTool?.mcpId }
+            : args,
         domainId,
         undefined,
         executionTool?.token,
@@ -190,7 +191,9 @@ async function callAssignedTool(
     const executionTool = findExecutionTool(executionTools, toolName);
     return await mcpClient.callTool(
         toolName,
-        args,
+        executionTool?.type === 'plugin_mcp'
+            ? { ...(args || {}), __mcpId: executionTool?.mcpId }
+            : args,
         domainId,
         undefined,
         executionTool?.token,
@@ -506,40 +509,30 @@ export async function processAgentChatInternal(
             chatHistory = history;
         }
 
-        // Start loading tools asynchronously - don't block streaming at all
-        // First stage reply is "naked" (no tool info needed)
-        // Tools will be loaded in background and available for subsequent tool calls
         let tools: any[] = [];
         let toolsLoaded = false;
-        const toolsPromise = (async () => {
-            try {
-                AgentLogger.info('processAgentChatInternal: Getting assigned tools (async, non-blocking)', { 
-                    domainId: adoc.domainId, 
-                    mcpToolIds: adoc.mcpToolIds?.length || 0,
-                    mcpToolIdsArray: adoc.mcpToolIds?.map(id => id.toString()) || [],
-                    repoIds: adoc.repoIds?.length || 0,
-                    repoIdsArray: adoc.repoIds || []
+        try {
+            AgentLogger.info('processAgentChatInternal: Getting assigned tools before first request', {
+                domainId: adoc.domainId,
+                repoIds: adoc.repoIds?.length || 0,
+                repoIdsArray: adoc.repoIds || []
+            });
+            tools = await getAssignedTools(adoc.domainId, adoc);
+            toolsLoaded = true;
+            AgentLogger.info('processAgentChatInternal: Got tools before first request', {
+                toolCount: tools.length,
+                toolNames: tools.map(t => t.name),
+                tools: tools.map(t => ({ name: t.name, type: t.type, mcpId: t.mcpId, hasSchema: !!t.inputSchema }))
+            });
+            if (tools.length === 0) {
+                AgentLogger.warn('processAgentChatInternal: No tools found!', {
+                    domainId: adoc.domainId,
+                    agentId: adoc.aid
                 });
-                const loadedTools = await getAssignedTools(adoc.domainId, adoc.mcpToolIds, adoc.repoIds, adoc.mcpIds);
-                tools = loadedTools;
-                toolsLoaded = true;
-                AgentLogger.info('processAgentChatInternal: Got tools (async)', { 
-                    toolCount: tools.length, 
-                    toolNames: tools.map(t => t.name),
-                    tools: tools.map(t => ({ name: t.name, hasSchema: !!t.inputSchema }))
-                });
-                
-                if (tools.length === 0) {
-                    AgentLogger.warn('processAgentChatInternal: No tools found!', {
-                        domainId: adoc.domainId,
-                        mcpToolIds: adoc.mcpToolIds?.length || 0,
-                        agentId: adoc.aid
-                    });
-                }
-            } catch (error: any) {
-                AgentLogger.error('Failed to load tools asynchronously: %s', error.message);
             }
-        })();
+        } catch (error: any) {
+            AgentLogger.error('Failed to load tools before first request: %s', error.message);
+        }
         const mcpClient = new McpClient();
 
         const agentPrompt = adoc.content || '';
@@ -639,12 +632,16 @@ export async function processAgentChatInternal(
             stream: true,
         };
 
-        // Don't add tools to first request - start streaming immediately with "naked" reply
-        // Tools will be loaded in background and added to subsequent requests if needed
-        AgentLogger.info('processAgentChatInternal: Starting stream immediately (tools loading in background)', { 
-            domainId: adoc.domainId, 
-            mcpToolIds: adoc.mcpToolIds?.length || 0,
-            toolsLoaded: false // Tools still loading
+        if (tools.length > 0) {
+            const modelTools = toolsForModelApi(adoc, tools);
+            requestBody.tools = toolsToApiFormat(modelTools);
+            attachToolRequestSettings(requestBody);
+        }
+        AgentLogger.info('processAgentChatInternal: Starting stream with assigned tools available', {
+            domainId: adoc.domainId,
+            toolsLoaded,
+            toolCount: tools.length,
+            requestBodyHasTools: !!requestBody.tools,
         });
 
         let messagesForTurn: any[] = [
@@ -920,6 +917,7 @@ export async function processAgentChatInternal(
                                                     const modelTools = toolsForModelApi(adoc, tools);
                                                     // Add tools to request body (model-visible list only)
                                                     requestBody.tools = toolsToApiFormat(modelTools);
+                                                    attachToolRequestSettings(requestBody);
                                                     
                                                     // Update system message with tools info if not already added
                                                     let updatedSystemMessage = systemMessage;
@@ -1009,77 +1007,44 @@ export async function processAgentChatInternal(
     }
 }
 
-// Enhanced to also fetch from real-time MCP connections to ensure all tools are available
-// If mcpToolIds is empty, returns all available tools from database (since tools are synced from MCP servers to DB)
-// Also includes tools from repos specified in repoIds
-export async function getAssignedTools(
-    domainId: string,
-    mcpToolIds?: ObjectId[],
-    repoIds?: number[],
-    mcpIds?: ObjectId[],
-): Promise<any[]> {
+// Resolve tools available to an Agent from hidden/legacy MCP assignments and plugin MCP cards.
+// Agent edit no longer manually assigns MCPs; bound plugins contribute MCP tools automatically.
+export async function getAssignedTools(domainId: string, adoc?: AgentDoc): Promise<any[]> {
     const finalTools: any[] = [];
     const processedNames = new Set<string>();
-
-    const addTool = (tool: any) => {
+    const pluginTools = adoc ? await resolveAgentPluginTools(domainId, adoc) : [];
+    for (const tool of pluginTools) {
         const name = String(tool?.name || '').trim();
-        if (!name || processedNames.has(name)) return;
+        if (!name || processedNames.has(name)) continue;
         finalTools.push(tool);
         processedNames.add(name);
-    };
-
-    // MCP-level assignments are expanded first, with deterministic priority:
-    // local ejunztools → inbound edge MCP → legacy explicit TYPE_TOOL docs.
-    const mcpTools = await expandAssignedMcpTools(domainId, mcpIds);
-    for (const tool of mcpTools.filter((t) => t.kind === 'local')) addTool(tool);
-    for (const tool of mcpTools.filter((t) => t.kind === 'inbound')) addTool(tool);
-
-    const finalToolIds = (mcpToolIds || [])
-        .map((id) => {
-            try {
-                return typeof id === 'string' ? new ObjectId(id) : id;
-            } catch {
-                return null;
-            }
-        })
-        .filter((id): id is ObjectId => !!id && ObjectId.isValid(id));
-
-    if (finalToolIds.length) {
-        const docs = await document.getMulti(domainId, document.TYPE_TOOL, { _id: { $in: finalToolIds } as any }).toArray();
-        const edgeDocIds = docs.map((tool: any) => tool.edgeDocId).filter(Boolean);
-        const edges = edgeDocIds.length
-            ? await document.getMulti(domainId, document.TYPE_EDGE, { _id: { $in: edgeDocIds } as any }).toArray()
-            : [];
-        const edgeById = new Map(edges.map((edge: any) => [edge._id.toString(), edge]));
-        for (const tool of docs) {
-            const edge = tool.edgeDocId ? edgeById.get(tool.edgeDocId.toString()) : null;
-            addTool({
-                ...tool,
-                type: 'edge',
-                token: edge?.token || tool.token,
-                edgeId: edge?._id || tool.edgeDocId,
-                edgeDocId: tool.edgeDocId,
-                toolDocId: tool._id,
-            });
-        }
     }
-
-    AgentLogger.info(
-        'getAssignedTools: finalTools=%d from mcpIds=%d, legacyToolIds=%d (repoIds=%d)',
-        finalTools.length,
-        mcpIds?.length || 0,
-        mcpToolIds?.length || 0,
-        repoIds?.length || 0,
-    );
+    AgentLogger.info('getAssignedTools: finalTools=%d from pluginTools=%d', finalTools.length, pluginTools.length);
     return finalTools;
 }
 
+
 /** Tools to OpenAI request format. */
+function normalizeToolParameters(raw: any) {
+    const parameters = raw && typeof raw === 'object' && !Array.isArray(raw) ? { ...raw } : {};
+    if (parameters.type !== 'object') parameters.type = 'object';
+    if (!parameters.properties || typeof parameters.properties !== 'object' || Array.isArray(parameters.properties)) parameters.properties = {};
+    if (!Array.isArray(parameters.required)) parameters.required = [];
+    return parameters;
+}
+
 function toolsToApiFormat(tools: any[]): any[] {
     return tools.map(tool => {
-        const fn: any = { name: tool.name, description: tool.description, parameters: tool.inputSchema };
+        const fn: any = { name: tool.modelName || tool.name, description: tool.description || '', parameters: normalizeToolParameters(tool.inputSchema) };
         return { type: 'function', function: fn };
     });
+}
+
+function attachToolRequestSettings(requestBody: any) {
+    if (Array.isArray(requestBody.tools) && requestBody.tools.length > 0) {
+        requestBody.tool_choice = 'auto';
+        requestBody.parallel_tool_calls = false;
+    }
 }
 
 class AgentMcpStatusHandler extends Handler {
@@ -1092,7 +1057,7 @@ class AgentMcpStatusHandler extends Handler {
             return;
         }
         
-        let tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds, adoc.mcpIds);
+        let tools = await getAssignedTools(domainId, adoc);
         this.response.body = { 
             connected: true, 
             toolCount: tools.length 
@@ -1162,16 +1127,6 @@ export class AgentDetailHandler extends Handler {
             }
         }
 
-        const enabledMcpsForDisplay = [] as Array<{ name: string; kind: string; toolCount: number }>;
-        const assignedMcpIds = new Set((adoc.mcpIds || []).map(id => id.toString()));
-        if (assignedMcpIds.size > 0) {
-            const rows = await listDomainMcps(domainId, this.user);
-            for (const row of rows) {
-                if (!assignedMcpIds.has(row.mcp._id.toString())) continue;
-                enabledMcpsForDisplay.push({ name: row.name, kind: row.kind, toolCount: row.toolCount });
-            }
-        }
-
         const enabledPluginsForDisplay = [] as Array<{ docId: number; title: string; pluginSlug?: string; slashCount: number }>;
         for (const b of normalizeAgentPluginBindings(adoc)) {
             const p = await PluginModel.get(domainId, b.docId);
@@ -1188,7 +1143,6 @@ export class AgentDetailHandler extends Handler {
             udoc,
             apiUrl,
             enabledBaseLibrariesForDisplay,
-            enabledMcpsForDisplay,
             enabledPluginsForDisplay,
         };
 
@@ -1238,47 +1192,6 @@ export class AgentDetailHandler extends Handler {
         this.response.body = { success: true };
     }
 
-    @param('aid', Types.String)
-    @post('toolIds', Types.ArrayOf(Types.String), true)
-    async postAssignTools(domainId: string, aid: string, toolIds?: string[]) {
-        this.response.template = null;
-        
-        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        
-        const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
-        const adoc = await Agent.get(domainId, normalizedId);
-        
-        if (!adoc) {
-            throw new NotFoundError(`Agent not found for ${typeof normalizedId === 'number' ? 'docId' : 'aid'}: ${normalizedId}`);
-        }
-
-        if (!this.user.own(adoc) && !this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) {
-            throw new PermissionError('Only owner or system administrator can assign tools');
-        }
-
-        const validToolIds: ObjectId[] = [];
-        if (toolIds && Array.isArray(toolIds)) {
-            for (const toolIdStr of toolIds) {
-                try {
-                    const toolId = new ObjectId(toolIdStr);
-                    const tool = await document.get(domainId, document.TYPE_TOOL, toolId);
-                    if (tool) {
-                        validToolIds.push(toolId);
-                    }
-                } catch (error) {
-                    AgentLogger.warn('Invalid tool ID: %s', toolIdStr);
-                }
-            }
-        }
-
-        await Agent.edit(domainId, adoc.aid, { mcpToolIds: validToolIds });
-
-        this.response.body = { 
-            success: true, 
-            message: `Assigned ${validToolIds.length} tools`,
-            toolCount: validToolIds.length
-        };
-    }
 
 }
 
@@ -1577,47 +1490,93 @@ export class AgentChatHandler extends Handler {
         const aiModel = (this.domain as any)['model'] || 'deepseek-chat';
         const apiUrl = (this.domain as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions';
         const slashCatalog = await resolveAgentSlashCatalog(domainId, adoc);
+        const mcpRows = await listDomainMcps(domainId, this.user);
+        const pluginMcpRows = mcpRows.filter((row) => row.kind === 'plugin');
+        const localEjunzToolsRow = mcpRows.find((row) => row.kind === 'local' && row.mcp.source?.type === 'ejunztools');
+        const enabledPluginsForChat = [] as Array<{
+            docId: number;
+            title: string;
+            pluginSlug?: string;
+            slashCount: number;
+            mcpAvailability: string;
+            hasMcpConfig: boolean;
+            mcpServers: Array<{
+                key: string;
+                name: string;
+                mid?: number;
+                status: 'online' | 'offline' | 'pending' | 'unknown';
+                availability: string;
+                toolCount: number;
+                error?: string;
+            }>;
+        }>;
+        for (const binding of normalizeAgentPluginBindings(adoc)) {
+            const plugin = await PluginModel.get(domainId, binding.docId);
+            if (!plugin) continue;
+            const slashCount = (await resolveAgentSlashCatalog(domainId, { ...adoc, pluginBindings: [binding] } as AgentDoc)).length;
+            const branch = binding.branch || plugin.currentBranch || 'main';
+            const definitions = await loadPluginCardDefinitions(domainId, plugin, branch, binding.enabledNodeIds?.length ? new Set(binding.enabledNodeIds) : undefined);
+            const localToolIds = Array.from(new Set(definitions
+                .filter((def) => def.kind === 'mcp')
+                .flatMap((def) => def.toolIds || [])
+                .filter((id) => id.startsWith(LOCAL_EJUNZTOOLS_TOOL_ID_PREFIX))));
+            const mcpAvailability = await summarizePluginMcpAvailability(domainId, plugin, branch);
+            const rowsForPlugin = pluginMcpRows.filter((row) => Number((row.mcp.source as any)?.pluginDocId) === plugin.docId);
+            const rowsByServerKey = new Map(rowsForPlugin.map((row) => [String((row.mcp.source as any)?.pluginServerKey || row.mid), row]));
+            const usedMids = new Set<number>();
+            const mcpServers = (mcpAvailability.servers || []).map((server) => {
+                const row = rowsByServerKey.get(String(server.key))
+                    || rowsForPlugin.find((item) => item.mid === server.mcpId);
+                if (row) usedMids.add(row.mid);
+                return {
+                    key: server.key,
+                    name: server.name || row?.name || server.key,
+                    mid: row?.mid || server.mcpId,
+                    status: row?.status || 'unknown' as const,
+                    availability: server.availability,
+                    toolCount: row?.toolCount ?? server.toolCount ?? 0,
+                    error: server.error,
+                };
+            });
+            for (const row of rowsForPlugin) {
+                if (usedMids.has(row.mid)) continue;
+                mcpServers.push({
+                    key: String((row.mcp.source as any)?.pluginServerKey || row.mid),
+                    name: row.name,
+                    mid: row.mid,
+                    status: row.status,
+                    availability: row.online ? 'available' : 'unavailable',
+                    toolCount: row.toolCount,
+                    error: row.mcp.lastCheckError,
+                });
+            }
+            for (const id of localToolIds) {
+                const toolKey = id.slice(LOCAL_EJUNZTOOLS_TOOL_ID_PREFIX.length);
+                const localTool = localEjunzToolsRow?.tools?.find((tool) => tool.toolKey === toolKey || tool.name === toolKey);
+                mcpServers.push({
+                    key: id,
+                    name: localTool?.name || toolKey,
+                    mid: localEjunzToolsRow?.mid,
+                    status: localEjunzToolsRow?.status || 'unknown',
+                    availability: localEjunzToolsRow?.online ? 'available' : 'unknown',
+                    toolCount: localTool ? 1 : 0,
+                });
+            }
+            enabledPluginsForChat.push({
+                docId: plugin.docId,
+                title: plugin.title,
+                pluginSlug: plugin.pluginSlug,
+                slashCount,
+                mcpAvailability: mcpAvailability.availability,
+                hasMcpConfig: !!mcpAvailability.hasMcpConfig || mcpServers.length > 0,
+                mcpServers,
+            });
+        }
 
         // WebSocket URL is built in templates
         const host = this.domain?.host;
 
-        const assignedToolIds = new Set((adoc.mcpToolIds || []).map(id => id.toString()));
 
-        // Load tools from Edge/Tool model
-        const edgesWithTools: any[] = [];
-
-        try {
-            const edges = await EdgeModel.getByDomain(domainId);
-            const connectedEdges = edges.filter(edge => edge.tokenUsedAt);
-            
-            for (const edge of connectedEdges) {
-                const allTools = await ToolModel.getByEdgeDocId(domainId, edge._id);
-                const assignedTools = allTools.filter(tool => assignedToolIds.has(tool._id.toString()));
-                
-                if (assignedTools.length > 0) {
-                    const isConnected = EdgeServerConnectionHandler.active.has(edge.token);
-                    const status = isConnected ? (allTools.length > 0 ? 'working' : 'online') : 'offline';
-                    
-                    edgesWithTools.push({
-                        edgeId: edge._id,
-                        eid: edge.eid,
-                        name: edge.name || `Edge-${edge.eid}`,
-                        description: edge.description || '',
-                        status: status,
-                        toolsCount: assignedTools.length,
-                        tools: assignedTools.map(tool => ({
-                            _id: tool._id,
-                            tid: tool.tid,
-                            name: tool.name,
-                            description: tool.description,
-                            inputSchema: tool.inputSchema,
-                        })),
-                    });
-                }
-            }
-        } catch (error: any) {
-            AgentLogger.error('Failed to load Edge servers and tools: %s', error.message);
-        }
 
         this.response.template = 'agent_chat.html';
         this.response.body = {
@@ -1628,12 +1587,12 @@ export class AgentChatHandler extends Handler {
             apiKey,
             aiModel,
             apiUrl,
-            edgesWithTools,
             mode: 'chat', // Chat mode
             chatSessionId: currentChatSessionId?.toString(),
             recordHistory,
             chatSessions: chatSessionsWithRecords,
             slashCatalog,
+            enabledPluginsForChat,
         };
     }
 
@@ -1799,17 +1758,8 @@ export class AgentChatHandler extends Handler {
                 throw new Error('Domain not found');
             }
             
-            const tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds, adoc.mcpIds);
-            const pluginTools = await resolveAgentPluginTools(domainId, adoc);
-            const finalTools = [...tools];
-            const existingToolNames = new Set(finalTools.map((t: any) => t.name));
-            for (const tool of pluginTools) {
-                if (!existingToolNames.has((tool as any).name)) {
-                    finalTools.push(tool as any);
-                    existingToolNames.add((tool as any).name);
-                }
-            }
-            const modelTools = toolsForModelApi(adoc, finalTools);
+            const tools = await getAssignedTools(domainId, adoc);
+            const modelTools = toolsForModelApi(adoc, tools);
             
             // Build full system message (prompt, memory, tools, …)
             const agentPrompt = adoc.content || '';
@@ -1857,6 +1807,7 @@ export class AgentChatHandler extends Handler {
                     token: tool.token,
                     edgeId: tool.edgeId,
                     type: tool.type,
+                    mcpId: (tool as any).mcpId,
                     system: (tool as any).system === true,
                 })),
                 // Complete system message
@@ -2494,7 +2445,7 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
         } catch (e) {
         }
 
-        let tools = await getAssignedTools(domainId, this.adoc.mcpToolIds, this.adoc.repoIds, this.adoc.mcpIds);
+        let tools = await getAssignedTools(domainId, this.adoc);
         const modelTools = toolsForModelApi(this.adoc, tools);
         const mcpClient = new McpClient();
 const agentPrompt = this.adoc.content || '';
@@ -2544,6 +2495,7 @@ const agentPrompt = this.adoc.content || '';
 
             if (modelTools.length > 0) {
                 requestBody.tools = toolsToApiFormat(modelTools);
+                attachToolRequestSettings(requestBody);
             }
 
             let messagesForTurn: any[] = [
@@ -2937,7 +2889,7 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
         } catch (e) {
         }
 
-        let tools = await getAssignedTools(domainId, this.adoc.mcpToolIds, this.adoc.repoIds, this.adoc.mcpIds);
+        let tools = await getAssignedTools(domainId, this.adoc);
         const modelTools = toolsForModelApi(this.adoc, tools);
         const mcpClient = new McpClient();
 const agentPrompt = this.adoc.content || '';
@@ -2987,6 +2939,7 @@ const agentPrompt = this.adoc.content || '';
 
             if (modelTools.length > 0) {
                 requestBody.tools = toolsToApiFormat(modelTools);
+                attachToolRequestSettings(requestBody);
             }
 
             let messagesForTurn: any[] = [
@@ -3292,7 +3245,7 @@ export class AgentApiHandler extends Handler {
             // ignore parse error
         }
 
-        let tools = await getAssignedTools(adoc.domainId, adoc.mcpToolIds, adoc.repoIds, adoc.mcpIds);
+        let tools = await getAssignedTools(adoc.domainId, adoc);
         const modelTools = toolsForModelApi(adoc, tools);
         const mcpClient = new McpClient();
 const agentPrompt = adoc.content || '';
@@ -3347,6 +3300,7 @@ const agentPrompt = adoc.content || '';
 
             if (modelTools.length > 0) {
                 requestBody.tools = toolsToApiFormat(modelTools);
+                attachToolRequestSettings(requestBody);
             }
 
             let messagesForTurn: any[] = [
@@ -3866,10 +3820,9 @@ export class AgentEditHandler extends Handler {
     @param('content', Types.Content)
     @post('tag', Types.Content, true, null, parseCategory)
     @post('memory', Types.Content, true)
-    @post('toolIds', Types.ArrayOf(Types.String), true)
     @post('repoIds', Types.ArrayOf(Types.Int), true)
     @post('pluginDocIds', Types.ArrayOf(Types.Int), true)
-    async postUpdate(domainId: string, aid: string, title: string, content: string, tag: string[] = [], memory?: string, toolIds?: string[], repoIds?: number[], pluginDocIds?: number[]) {
+    async postUpdate(domainId: string, aid: string, title: string, content: string, tag: string[] = [], memory?: string, repoIds?: number[], pluginDocIds?: number[]) {
         const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
     
     
@@ -3877,24 +3830,12 @@ export class AgentEditHandler extends Handler {
         if (!agent) {
             throw new NotFoundError(`Agent not found for ${typeof normalizedId === 'number' ? 'docId' : 'aid'}=${normalizedId}`);
         }
-    
-        const validToolIds: ObjectId[] = [];
-        if (toolIds && Array.isArray(toolIds)) {
-            for (const toolIdStr of toolIds) {
-                try {
-                    const toolId = new ObjectId(toolIdStr);
-                    const tool = await document.get(domainId, document.TYPE_TOOL, toolId);
-                    if (tool) {
-                        validToolIds.push(toolId);
-                    } else {
-                        AgentLogger.warn('Tool not found: %s', toolIdStr);
-                    }
-                } catch (error) {
-                    AgentLogger.warn('Invalid tool ID: %s', toolIdStr);
-                }
-            }
+        const forbiddenMcpFields = ['mcpIds', 'assignedMcpIds', 'serverIds', 'toolIds'];
+        if (forbiddenMcpFields.some((field) => Object.prototype.hasOwnProperty.call(this.request.body || {}, field))) {
+            throw new ValidationError('Direct MCP assignment is not allowed for agents. Bind a plugin that provides MCP tools instead.');
         }
-        
+
+
         // Validate repo id
         // RepoModel has been removed, repo functionality is no longer available
         const validRepoIds: number[] = [];
@@ -3915,8 +3856,8 @@ export class AgentEditHandler extends Handler {
             }
         }
 
-        AgentLogger.info('Updating agent: aid=%s, toolIds=%o, validToolIds=%o, repoIds=%o, validRepoIds=%o',
-            agent.aid, toolIds, validToolIds.map(id => id.toString()), repoIds, validRepoIds);
+        AgentLogger.info('Updating agent: aid=%s, repoIds=%o, validRepoIds=%o',
+            agent.aid, repoIds, validRepoIds);
     
         const agentAid = agent.aid;
         const updatedAgent = await Agent.edit(domainId, agentAid, { 
@@ -3924,13 +3865,12 @@ export class AgentEditHandler extends Handler {
             content, 
             tag: tag ?? [], 
             memory: memory || null,
-            mcpToolIds: validToolIds,
             repoIds: validRepoIds.length > 0 ? validRepoIds : undefined,
             pluginBindings,
         });
         
         if (updatedAgent) {
-            AgentLogger.info('Agent updated: aid=%s, mcpToolIds=%o', agentAid, updatedAgent.mcpToolIds?.map(id => id.toString()));
+            AgentLogger.info('Agent updated: aid=%s', agentAid);
         } else {
             AgentLogger.warn('Agent.edit returned null/undefined for aid=%s', agentAid);
         }
@@ -3941,106 +3881,6 @@ export class AgentEditHandler extends Handler {
     }
     
 
-}
-
-export class AgentEdgeConfigHandler extends Handler {
-    adoc?: AgentDoc;
-
-    @param('aid', Types.String)
-    async prepare(domainId: string, aid: string) {
-        const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
-        this.adoc = await Agent.get(domainId, normalizedId, Agent.PROJECTION_DETAIL);
-        if (!this.adoc) {
-            throw new NotFoundError(`Agent not found for ${typeof normalizedId === 'number' ? 'docId' : 'aid'}: ${normalizedId}`);
-        }
-        if (this.adoc.owner !== this.user._id) {
-            this.checkPriv(PRIV.PRIV_EDIT_SYSTEM);
-        }
-    }
-
-    @param('aid', Types.String)
-    async get(domainId: string, aid: string) {
-        const assignedMcpIds = new Set((this.adoc!.mcpIds || []).map(id => id.toString()));
-        const rows = await listDomainMcps(domainId, this.user);
-        const mcps = rows
-            .filter(row => row.kind !== 'outbound')
-            .map(row => ({
-                ...row,
-                isAssigned: assignedMcpIds.has(row.mcp._id.toString()),
-                disabled: !row.assignable,
-                tools: row.tools || [],
-            }));
-
-        this.response.template = 'agent_edge_config.html';
-        this.response.body = {
-            adoc: this.adoc,
-            mcps,
-            domainId: this.domain._id,
-        };
-    }
-
-    @param('aid', Types.String)
-    @post('mcpIds', Types.ArrayOf(Types.String), true)
-    @post('toolIds', Types.ArrayOf(Types.String), true)
-    async post(domainId: string, aid: string, mcpIds?: string[], toolIds?: string[]) {
-        const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
-        const agent = await Agent.get(domainId, normalizedId, Agent.PROJECTION_DETAIL);
-        if (!agent) {
-            throw new NotFoundError(`Agent not found`);
-        }
-        if (agent.owner !== this.user._id) {
-            this.checkPriv(PRIV.PRIV_EDIT_SYSTEM);
-        }
-
-        const validMcpIds: ObjectId[] = [];
-        if (mcpIds && Array.isArray(mcpIds)) {
-            for (const mcpIdStr of mcpIds) {
-                try {
-                    const mcpId = new ObjectId(mcpIdStr);
-                    const mcp = await McpModel.get(mcpId);
-                    if (!mcp || mcp.domainId !== domainId || mcpKind(mcp) === 'outbound') {
-                        AgentLogger.warn('MCP not assignable: %s', mcpIdStr);
-                        continue;
-                    }
-                    const tools = await getMcpTools(domainId, mcp);
-                    if (!tools.length) {
-                        AgentLogger.warn('MCP has no assignable tools: %s', mcpIdStr);
-                        continue;
-                    }
-                    validMcpIds.push(mcpId);
-                } catch (error) {
-                    AgentLogger.warn('Invalid MCP ID: %s', mcpIdStr);
-                }
-            }
-        }
-
-        // Legacy explicit TYPE_TOOL assignment remains accepted for compatibility.
-        const validToolIds: ObjectId[] = [];
-        if (toolIds && Array.isArray(toolIds)) {
-            for (const toolIdStr of toolIds) {
-                try {
-                    const toolId = new ObjectId(toolIdStr);
-                    const tool = await document.get(domainId, document.TYPE_TOOL, toolId);
-                    if (tool) validToolIds.push(toolId);
-                    else AgentLogger.warn('Tool not found: %s', toolIdStr);
-                } catch (error) {
-                    AgentLogger.warn('Invalid tool ID: %s', toolIdStr);
-                }
-            }
-        }
-
-        const agentAid = agent.aid;
-        await Agent.edit(domainId, agentAid, {
-            mcpIds: validMcpIds,
-            mcpToolIds: validToolIds.length ? validToolIds : agent.mcpToolIds,
-        });
-
-        AgentLogger.info('Agent MCP assignments updated: aid=%s, mcpIds=%o, legacyToolIds=%o',
-            agentAid, validMcpIds.map(id => id.toString()), validToolIds.map(id => id.toString()));
-
-        this.response.body = { aid: agentAid };
-        this.response.redirect = this.url('agent_detail', { uid: this.user._id, aid: agentAid });
-    }
 }
 
 export class DirectAiChatHandler extends Handler {
@@ -4461,7 +4301,6 @@ export async function apply(ctx: Context) {
     ctx.Route('agent_domain', '/agent', AgentMainHandler);
     ctx.Route('agent_create', '/agent/create', AgentEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_bases', '/agent/:aid/bases', AgentBasesEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('agent_edge_config', '/agent/:aid/edge-config', AgentEdgeConfigHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_chat_sessions_list', '/agent/:aid/chat/sessions', AgentChatSessionsListHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_chat_session_history', '/agent/:aid/chat/session/:sid/history', AgentChatSessionHistoryHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_chat', '/agent/:aid/chat', AgentChatHandler, PRIV.PRIV_USER_PROFILE);

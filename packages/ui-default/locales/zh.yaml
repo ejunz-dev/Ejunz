@@ -1271,7 +1271,18 @@ Node ID: 节点ID
 node_domain: 节点管理
 nodes: 个节点
 Nodes: 节点
+'Assignable MCP services in this domain': 当前域可用的 MCP 服务
+'Available MCP services': 可用 MCP 服务
+'Card problems': 本卡片的练习题
+Folder: 文件夹
+'No available MCP services': 暂无可用 MCP 服务
+'No tools exposed': 暂无工具
 None: 无
+'Plugin node definition': 插件节点定义
+'Plugin nodes are folders. Add markdown cards under folders for skill, command, and MCP definitions.': 插件节点是文件夹。请在文件夹下添加 markdown 卡片来定义 skill、command 和 MCP。
+'ToolDoc ID': ToolDoc ID
+'Unique tool ID': 唯一工具 ID
+'Use ToolDoc IDs in plugin MCP cards': 在插件 MCP 卡片中使用 ToolDoc ID
 Not Attended: 未参加
 Not available: 不可用
 Not Claimed: 未认领

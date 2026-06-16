@@ -42,7 +42,7 @@ export class AgentModel {
 
     static PROJECTION_DETAIL: Field[] = [
         ...AgentModel.PROJECTION_LIST,
-       'docId', 'aid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply', 'apiKey', 'memory', 'mcpIds', 'mcpToolIds', 'baseLibraryBindings', 'pluginBindings'
+       'docId', 'aid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply', 'apiKey', 'memory', 'baseLibraryBindings', 'pluginBindings'
     ];
 
     static PROJECTION_PUBLIC: Field[] = [
@@ -593,6 +593,15 @@ export class McpClient {
                     ClientLogger.error('Repo internal MCP tool call failed: %s', (e as Error).message);
                     throw e;
                 }
+            }
+
+            if (toolType === 'plugin_mcp' && domainId) {
+                const mcpId = Number((args as any)?.__mcpId);
+                const cleanArgs = { ...(args || {}) };
+                delete (cleanArgs as any).__mcpId;
+                if (!Number.isFinite(mcpId) || mcpId <= 0) throw new Error(`Plugin MCP metadata missing for tool: ${name}`);
+                const { callPluginMcpTool } = require('../lib/pluginMcp');
+                return await callPluginMcpTool({ domainId, mcpId, name, args: cleanArgs });
             }
 
             if (token) {

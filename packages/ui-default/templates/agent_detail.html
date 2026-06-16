@@ -120,28 +120,6 @@
 
     <div class="section">
       <div class="section__header">
-        <h2 class="section__title">{{ _('Agent MCPs') }}</h2>
-      </div>
-      <div class="section__body">
-        {% if enabledMcpsForDisplay and enabledMcpsForDisplay|length > 0 %}
-        <ul class="supplementary dot list" style="font-size: 13px;">
-          {% for row in enabledMcpsForDisplay %}
-          <li><strong>{{ row.name }}</strong> <code>{{ row.kind }}</code> · {{ row.toolCount }} tools</li>
-          {% endfor %}
-        </ul>
-        {% else %}
-        <p class="help-text">{{ _('No MCPs are assigned for this agent yet.') }}</p>
-        {% endif %}
-        {% if handler.user.own(adoc) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) %}
-        <a href="{{ url('agent_edge_config', aid=adoc.aid) }}" class="button secondary expanded" style="margin-top: 12px;">
-          <span class="icon icon-edit"></span> {{ _('Configure Agent MCPs') }}
-        </a>
-        {% endif %}
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="section__header">
         <h2 class="section__title">{{ _('Agent Plugins') }}</h2>
       </div>
       <div class="section__body">
