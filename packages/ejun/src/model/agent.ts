@@ -42,7 +42,7 @@ export class AgentModel {
 
     static PROJECTION_DETAIL: Field[] = [
         ...AgentModel.PROJECTION_LIST,
-       'docId', 'aid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply', 'apiKey', 'memory', 'mcpToolIds', 'baseLibraryBindings'
+       'docId', 'aid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply', 'apiKey', 'memory', 'mcpToolIds', 'baseLibraryBindings', 'pluginBindings'
     ];
 
     static PROJECTION_PUBLIC: Field[] = [

@@ -1,0 +1,85 @@
+{% set page_name = "plugin_domain" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-9 columns">
+    <div class="section display-mode plugin-console">
+      <div class="section__body no-padding">
+        <form method="get" id="pluginSearchForm">
+          <div class="search">
+            <input name="q" type="text" value="{{ qs }}" placeholder="{{ _('Search plugins') }}">
+            <button type="submit"><span class="icon icon-search"></span></button>
+          </div>
+        </form>
+      </div>
+      <div class="section__body no-padding">
+        <table class="data-table plugin-table">
+          <colgroup>
+            <col class="col--checkbox">
+            <col>
+            <col style="width: 120px;">
+            <col style="width: 140px;">
+            <col style="width: 170px;">
+            <col style="width: 140px;">
+          </colgroup>
+          <thead>
+            <tr>
+              <th><input type="checkbox" data-checkbox-toggle="plugin"></th>
+              <th>{{ _('Plugin') }}</th>
+              <th>{{ _('Visibility') }}</th>
+              <th>{{ _('Status') }}</th>
+              <th>{{ _('Definitions') }}</th>
+              <th>{{ _('Actions') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for plugin in plugins %}
+            <tr data-plugin-doc-id="{{ plugin.docId }}">
+              <td><input type="checkbox" data-checkbox-group="plugin"></td>
+              <td>
+                <div style="font-weight: 700; letter-spacing: .01em;">
+                  <a href="{{ url('plugin_editor', docId=plugin.docId) }}">{{ plugin.title }}</a>
+                </div>
+                <div class="supplementary" style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">
+                  /{{ plugin.pluginSlug or plugin.docId }} · #{{ plugin.docId }}
+                </div>
+                {% if plugin.content %}<div class="supplementary">{{ plugin.content|truncate(110) }}</div>{% endif %}
+              </td>
+              <td><span class="plugin-badge plugin-badge--{{ plugin.visibility or 'private' }}">{{ plugin.visibility or 'private' }}</span></td>
+              <td>
+                {% if plugin.enabled is not sameas(false) %}
+                <span class="plugin-status plugin-status--on">{{ _('Enabled') }}</span>
+                {% else %}
+                <span class="plugin-status plugin-status--off">{{ _('Disabled') }}</span>
+                {% endif %}
+              </td>
+              <td>
+                <span class="plugin-pill">S {{ plugin.summary.skill }}</span>
+                <span class="plugin-pill">C {{ plugin.summary.command }}</span>
+                <span class="plugin-pill">M {{ plugin.summary.mcp }}</span>
+              </td>
+              <td>
+                <a class="button compact" href="{{ url('plugin_editor', docId=plugin.docId) }}">{{ _('Edit') }}</a>
+                <button class="button compact plugin-delete-btn" type="button" data-doc-id="{{ plugin.docId }}">{{ _('Delete') }}</button>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6"><div class="typo"><p class="help-text">{{ _('No web plugins yet. Create one to define skills, commands, and MCP tool bundles.') }}</p></div></td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+  <div class="medium-3 columns">
+    <div class="section side">
+      <div class="section__header"><h1 class="section__title">{{ _('Create Plugin') }}</h1></div>
+      <ol class="menu">
+        <a href="{{ url('plugin_create') }}" class="menu__link"><span class="icon icon-add"></span>{{ _('New Web Plugin') }}</a>
+      </ol>
+      <div class="section__body"><p class="help-text">{{ _('Plugins are folders with markdown cards. Skill, command, and MCP definitions live in card frontmatter.') }}</p></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

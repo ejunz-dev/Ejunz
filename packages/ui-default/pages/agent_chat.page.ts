@@ -13,7 +13,9 @@ const page = new NamedPage('agent_chat', async () => {
   const mode = UiContext?.mode || 'list';
   const serverChatSessionId = UiContext?.chatSessionId || '';
   const aid = UiContext?.aid;
-  
+  const slashCatalog: Array<{ name: string; kind: string; description?: string; pluginTitle?: string; aliases?: string[] }> = Array.isArray(UiContext?.slashCatalog) ? UiContext.slashCatalog : [];
+  let slashPaletteIndex = 0;
+
   if (!domainId || !aid) {
     console.error('[AgentChat] Missing domainId or aid');
     return;
@@ -3229,7 +3231,10 @@ const page = new NamedPage('agent_chat', async () => {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        addMessage('error', 'Send failed: ' + (errorData.error || 'Unknown error'));
+        const suggestions = Array.isArray(errorData.suggestions) && errorData.suggestions.length
+          ? `\nSuggestions: ${errorData.suggestions.map((s: any) => `/${s.name}`).join(', ')}`
+          : '';
+        addMessage('error', 'Send failed: ' + (errorData.error || 'Unknown error') + suggestions);
         setLoading(false);
         return;
       }
@@ -3482,10 +3487,76 @@ const page = new NamedPage('agent_chat', async () => {
 
   // Use shared sendMessage function (already defined in list mode)
 
+  const slashPalette = document.getElementById('slashCommandPalette') as HTMLElement | null;
+  const renderSlashPalette = () => {
+    if (!slashPalette || !chatInput) return;
+    const value = chatInput.value;
+    const match = value.match(/^\/([^\s]*)$/);
+    if (!match) {
+      slashPalette.style.display = 'none';
+      slashPalette.innerHTML = '';
+      return;
+    }
+    const token = match[1].toLowerCase();
+    const entries = slashCatalog
+      .filter((x) => x.name.toLowerCase().includes(token) || (x.aliases || []).some(a => a.toLowerCase().includes(token)))
+      .slice(0, 10);
+    if (!entries.length) {
+      slashPalette.style.display = 'block';
+      slashPalette.innerHTML = `<div style="padding:10px 12px; font-size:12px; color:#888;">${slashCatalog.length ? 'No matching plugin command' : 'No plugin commands bound to this agent'}</div>`;
+      return;
+    }
+    slashPaletteIndex = Math.max(0, Math.min(slashPaletteIndex, entries.length - 1));
+    slashPalette.style.display = 'block';
+    slashPalette.innerHTML = entries.map((entry, idx) => `
+      <div data-slash-name="${entry.name}" style="padding:9px 12px; cursor:pointer; background:${idx === slashPaletteIndex ? 'rgba(80,120,255,.14)' : 'transparent'}; border-bottom:1px solid rgba(128,128,128,.12);">
+        <div style="display:flex; gap:8px; align-items:center;">
+          <code>/${entry.name}</code>
+          <span style="font-size:10px; text-transform:uppercase; opacity:.7;">${entry.kind}</span>
+          <span style="margin-left:auto; font-size:11px; opacity:.65;">${entry.pluginTitle || ''}</span>
+        </div>
+        <div style="font-size:12px; opacity:.75; margin-top:3px;">${entry.description || ''}</div>
+      </div>
+    `).join('');
+    slashPalette.querySelectorAll('[data-slash-name]').forEach((el) => {
+      el.addEventListener('mousedown', (ev) => {
+        ev.preventDefault();
+        const name = (el as HTMLElement).getAttribute('data-slash-name') || '';
+        chatInput.value = `/${name} `;
+        slashPalette.style.display = 'none';
+        chatInput.focus();
+      });
+    });
+  };
+
+  chatInput.addEventListener('input', () => {
+    slashPaletteIndex = 0;
+    renderSlashPalette();
+  });
   sendButton.addEventListener('click', sendMessage);
   chatInput.addEventListener('keydown', (e) => {
+    const visible = slashPalette && slashPalette.style.display !== 'none' && chatInput.value.startsWith('/');
+    if (visible && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      e.preventDefault();
+      const count = slashPalette!.querySelectorAll('[data-slash-name]').length;
+      if (count > 0) {
+        slashPaletteIndex = e.key === 'ArrowDown' ? (slashPaletteIndex + 1) % count : (slashPaletteIndex - 1 + count) % count;
+        renderSlashPalette();
+      }
+      return;
+    }
+    if (visible && (e.key === 'Tab')) {
+      const selected = slashPalette!.querySelectorAll('[data-slash-name]')[slashPaletteIndex] as HTMLElement | undefined;
+      if (selected) {
+        e.preventDefault();
+        chatInput.value = `/${selected.getAttribute('data-slash-name') || ''} `;
+        slashPalette!.style.display = 'none';
+      }
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      slashPalette && (slashPalette.style.display = 'none');
       sendMessage();
     }
   });

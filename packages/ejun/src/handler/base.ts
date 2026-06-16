@@ -1307,6 +1307,10 @@ export type BuildBaseEditorPageBodyArgs = {
     developPoolUiMode?: 'full' | 'none';
     /** Mind-map storage; inferred from `base.docType` when omitted. */
     mapDocType?: MindMapDocType;
+    editorMode?: 'base' | 'plugins';
+    editorApiBasePath?: 'base' | 'plugins';
+    socketUrl?: string;
+    includeContribution?: boolean;
 };
 
 /** Shared HTML payload for `base_editor.html` (normal editor URL or `/develop/editor?session=`). */
@@ -1316,6 +1320,10 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
         rootNodeIdFromQuery = '',
         developPoolUiMode = 'full',
         mapDocType: mapDocTypeArg,
+        editorMode = 'base',
+        editorApiBasePath = 'base',
+        socketUrl = '',
+        includeContribution = true,
     } = args;
 
     const mdt: MindMapDocType = mapDocTypeArg ?? document.TYPE_BASE;
@@ -1343,35 +1351,38 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
         }
     }
 
-    const docCardFilter: any = { baseDocId: base.docId };
-    if (requestedBranch === 'main') {
-        docCardFilter.$or = [{ branch: 'main' }, { branch: { $exists: false } }];
-    } else {
-        docCardFilter.branch = requestedBranch;
-    }
-    const allCards = await document.getMulti(domainId, TYPE_CARD, docCardFilter)
-        .sort({ order: 1, cid: 1 })
-        .toArray() as CardDoc[];
     const nodeCardsMap: Record<string, CardDoc[]> = {};
-    for (const card of allCards) {
-        if (card.nodeId) {
-            if (!nodeCardsMap[card.nodeId]) nodeCardsMap[card.nodeId] = [];
-            nodeCardsMap[card.nodeId].push(card);
+    if (mdt === document.TYPE_BASE || mdt === document.TYPE_PLUGIN) {
+        const docCardFilter: any = { baseDocId: base.docId };
+        if (requestedBranch === 'main') {
+            docCardFilter.$or = [{ branch: 'main' }, { branch: { $exists: false } }];
+        } else {
+            docCardFilter.branch = requestedBranch;
         }
-    }
-    for (const nodeId of Object.keys(nodeCardsMap)) {
-        nodeCardsMap[nodeId].sort((a, b) =>
-            (a.order ?? 999999) - (b.order ?? 999999) || (a.cid - b.cid));
+        const allCards = await document.getMulti(domainId, TYPE_CARD, docCardFilter)
+            .sort({ order: 1, cid: 1 })
+            .toArray() as CardDoc[];
+        for (const card of allCards) {
+            if (card.nodeId) {
+                if (!nodeCardsMap[card.nodeId]) nodeCardsMap[card.nodeId] = [];
+                nodeCardsMap[card.nodeId].push(card);
+            }
+        }
+        for (const nodeId of Object.keys(nodeCardsMap)) {
+            nodeCardsMap[nodeId].sort((a, b) =>
+                (a.order ?? 999999) - (b.order ?? 999999) || (a.cid - b.cid));
+        }
     }
 
     const branches = Array.isArray((base as any)?.branches) ? (base as any).branches : ['main'];
     if (!branches.includes('main')) branches.unshift('main');
 
     const baseForContrib = { ...base, nodes };
-    const [contrib, todayAllDomains] = await Promise.all([
+    const emptyContribution = { todayContribution: { nodes: 0, cards: 0, problems: 0, nodeChars: 0, cardChars: 0, problemChars: 0 }, contributions: [], contributionDetails: {} };
+    const [contrib, todayAllDomains] = includeContribution ? await Promise.all([
         buildContributionDataForDomain(domainId, uid, domainName, baseForContrib),
         buildTodayContributionAllDomains(uid),
-    ]);
+    ]) : [emptyContribution, { nodes: 0, cards: 0, problems: 0, nodeChars: 0, cardChars: 0, problemChars: 0 }];
     const { todayContribution, contributions, contributionDetails } = contrib;
 
     let baseExpandState: string[] = [];
@@ -1422,7 +1433,9 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
         nodeCardsMap,
         files: base.files || [],
         domainId,
-        editorMode: 'base',
+        editorMode,
+        editorApiBasePath,
+        socketUrl,
         todayContribution,
         todayContributionAllDomains: todayAllDomains,
         contributions,
@@ -4719,8 +4732,8 @@ class BaseCardDetailHandler extends Handler {
 
 
 export interface BatchSaveOptions {
-    type: 'base';
-    mapDocType: typeof document.TYPE_BASE;
+    type: 'base' | 'plugin';
+    mapDocType: MindMapDocType;
     getBase: (actualDomainId: string) => Promise<BaseDoc | null>;
     createBase: (actualDomainId: string) => Promise<BaseDoc>;
     getBranch: (base: BaseDoc) => string;
@@ -4889,6 +4902,28 @@ async function appendDevelopSaveRecordAfterBatchSave(
 }
 
 export class BaseBatchSaveHandler extends Handler {
+    protected async sanitizeNodeCreatePayload(nodeCreate: any, realParentId: string | undefined, _ctx: { domainId: string; docId: number; branch: string; base: BaseDoc; mapDocType: MindMapDocType }): Promise<Partial<BaseNode>> {
+        const nodePayload: Partial<BaseNode> = {
+            text: nodeCreate.text,
+            x: nodeCreate.x,
+            y: nodeCreate.y,
+            parentId: realParentId,
+        };
+        if (nodeCreate.order != null) nodePayload.order = nodeCreate.order;
+        return nodePayload;
+    }
+
+    protected async sanitizeNodeUpdatePayload(nodeUpdate: any, _ctx: { domainId: string; docId: number; branch: string; base: BaseDoc; mapDocType: MindMapDocType }): Promise<Partial<BaseNode>> {
+        const updates: Partial<BaseNode> = {};
+        if (nodeUpdate.text != null) updates.text = nodeUpdate.text;
+        if (nodeUpdate.order != null) updates.order = nodeUpdate.order;
+        return updates;
+    }
+
+    protected shouldWriteLearningSidecars(): boolean {
+        return true;
+    }
+
     protected getBatchSaveOptions(): BatchSaveOptions {
         return {
             type: 'base',
@@ -5012,13 +5047,13 @@ export class BaseBatchSaveHandler extends Handler {
                         }
                     }
                     
-                    const nodePayload: Partial<BaseNode> = {
-                        text: nodeCreate.text,
-                        x: nodeCreate.x,
-                        y: nodeCreate.y,
-                        parentId: realParentId,
-                    };
-                    if (nodeCreate.order != null) nodePayload.order = nodeCreate.order;
+                    const nodePayload = await this.sanitizeNodeCreatePayload(nodeCreate, realParentId, {
+                        domainId: actualDomainId,
+                        docId,
+                        branch,
+                        base,
+                        mapDocType: mdt,
+                    });
                     const result = await BaseModel.addNode(
                         actualDomainId,
                         docId,
@@ -5047,9 +5082,13 @@ export class BaseBatchSaveHandler extends Handler {
         
         for (const nodeUpdate of nodeUpdates) {
             try {
-                const updates: Partial<BaseNode> = {};
-                if (nodeUpdate.text != null) updates.text = nodeUpdate.text;
-                if (nodeUpdate.order != null) updates.order = nodeUpdate.order;
+                const updates = await this.sanitizeNodeUpdatePayload(nodeUpdate, {
+                    domainId: actualDomainId,
+                    docId,
+                    branch,
+                    base,
+                    mapDocType: mdt,
+                });
                 if (Object.keys(updates).length === 0) continue;
                 await BaseModel.updateNode(actualDomainId, docId, nodeUpdate.nodeId, updates, branch, mdt);
             } catch (error: any) {
@@ -5177,7 +5216,7 @@ export class BaseBatchSaveHandler extends Handler {
         (this.ctx.emit as any)('base/update', docId, null, branch);
 
         const batchSuccess = errors.length === 0;
-        if (batchSuccess) {
+        if (batchSuccess && this.shouldWriteLearningSidecars()) {
             const incNodes = nodeCreates.length + nodeUpdates.length;
             const incCards = cardCreates.length + cardUpdates.length;
             let incProblems = 0;
