@@ -16,6 +16,7 @@ import {
 } from '../lib/mcpBuiltinTools';
 import { randomstring } from '../utils';
 import type { EdgeTokenDoc } from '../model/edge_token';
+import { getNormalizedMcp, listDomainMcps, mcpKind } from '../lib/mcpRegistry';
 
 const logger = new Logger('handler/mcp');
 
@@ -665,6 +666,9 @@ async function getOrCreateMcp(
             baseDocId,
             branch,
             name: baseDocId ? `MCP · base ${baseDocId}` : 'MCP',
+            kind: 'outbound',
+            source: { type: 'ejunz_base' },
+            assignable: false,
             instructions,
             tools: defaultMcpToolDescriptions(),
         });
@@ -786,13 +790,7 @@ export class McpTokenHandler extends Handler<Context> {
 export class McpListHandler extends Handler<Context> {
     async get() {
         const domainId = this.domain._id;
-        const all = await McpModel.getByDomain(domainId);
-        const mcps = all
-            .map((m) => ({
-                ...m,
-                online: mcpActiveSessionCount(m.token || '') > 0,
-            }))
-            .sort((a, b) => (a.mid || 0) - (b.mid || 0));
+        const mcps = await listDomainMcps(domainId, this.user);
         this.response.template = 'mcp_main.html';
         this.response.body = { domainId, mcps };
     }
@@ -809,12 +807,16 @@ export class McpDetailHandler extends Handler<Context> {
         const mcp = await McpModel.getByMcpId(domainId, mid);
         if (!mcp) throw new NotFoundError('Mcp not found');
 
+        const normalized = await getNormalizedMcp(domainId, mid);
+        if (!normalized) throw new NotFoundError('Mcp not found');
+
         const isOwner = this.user._id === mcp.owner || this.user.hasPriv(PRIV.PRIV_USER_PROFILE);
-        const online = mcpActiveSessionCount(mcp.token || '') > 0;
-        const edge = mcp.edgeId ? await EdgeModel.getByEdgeId(domainId, mcp.edgeId) : null;
+        const kind = mcpKind(mcp);
+        const online = normalized.online;
+        const edge = normalized.edge || null;
 
         let info: ReturnType<typeof buildMcpConnectionInfo> | null = null;
-        if (isOwner && mcp.token) {
+        if (kind === 'outbound' && isOwner && mcp.token) {
             const pathId = await resolveBasePathId(domainId, mcp.baseDocId);
             info = buildMcpConnectionInfo(this, domainId, mcp.token, pathId);
         }
@@ -822,14 +824,17 @@ export class McpDetailHandler extends Handler<Context> {
         this.response.template = 'mcp_detail.html';
         this.response.body = {
             domainId,
-            mcp: { ...mcp, status: online ? 'online' : 'offline' },
+            mcp: { ...mcp, status: normalized.status },
+            kind,
+            normalized,
             online,
             isOwner,
+            canEdit: kind === 'outbound' && isOwner,
             edge,
             info,
             configJson: info ? JSON.stringify(info.config, null, 2) : '',
-            instructions: mcp.instructions || '',
-            tools: resolveMcpTools(mcp.tools),
+            instructions: kind === 'outbound' ? (mcp.instructions || '') : '',
+            tools: normalized.tools || [],
         };
     }
 }
@@ -847,6 +852,9 @@ export class McpEditHandler extends Handler<Context> {
         if (!mcp) throw new NotFoundError('Mcp not found');
         if (this.user._id !== mcp.owner && !this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) {
             throw new ValidationError('You are not allowed to edit this MCP.');
+        }
+        if (mcpKind(mcp) !== 'outbound') {
+            throw new ValidationError('Only outbound MCP endpoints can be edited here.');
         }
 
         this.response.template = 'mcp_edit.html';
@@ -872,6 +880,9 @@ export class McpEditHandler extends Handler<Context> {
         if (!mcp) throw new NotFoundError('Mcp not found');
         if (this.user._id !== mcp.owner && !this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) {
             throw new ValidationError('You are not allowed to edit this MCP.');
+        }
+        if (mcpKind(mcp) !== 'outbound') {
+            throw new ValidationError('Only outbound MCP endpoints can be edited here.');
         }
 
         const body = this.request.body || {};
