@@ -3094,8 +3094,8 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                     }
                     
                     // 收集完整的上下文信息，供 worker 使用
-                    const { getAssignedTools, normalizeAgentSkillBindings, effectiveAgentSkillBranch, effectiveAgentBaseDocId, effectiveAgentBaseBranch } = require('./agent');
-                    const tools = await getAssignedTools(this.domain._id, agent.mcpToolIds, agent.repoIds, agent.skillIds, normalizeAgentSkillBindings(agent));
+                    const { getAssignedTools, effectiveAgentBaseDocId, effectiveAgentBaseBranch } = require('./agent');
+                    const tools = await getAssignedTools(this.domain._id, agent.mcpToolIds, agent.repoIds);
                     
                     const agentPrompt = agent.content || '';
                     let systemMessage = agentPrompt;
@@ -3117,7 +3117,6 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                         apiUrl: (domainInfo as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions',
                         agentContent: agent.content || '',
                         agentMemory: agent.memory || '',
-                        skillBranch: effectiveAgentSkillBranch(agent),
                         baseDocId: effectiveAgentBaseDocId(agent),
                         baseBranch: effectiveAgentBaseBranch(agent),
                         tools: tools.map(tool => ({

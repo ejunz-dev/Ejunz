@@ -212,9 +212,6 @@ declare module './model/agent'{
         memory?: string;
         mcpToolIds?: ObjectId[];
         repoIds?: number[];
-        skillIds?: string[]; // Assigned skill names; domain market tools only when referenced in these skills
-        /** Selected skill libraries (TYPE_SKILL doc) + branch for this Agent. */
-        skillLibraryBindings?: Array<{ docId: number; branch: string; core?: boolean }>;
         /** Optional single knowledge-base mount (TYPE_BASE doc + branch) for load_base. */
         baseLibraryBindings?: Array<{ docId: number; branch: string }>;
     }
@@ -373,10 +370,6 @@ export interface BaseDoc {
     /** Category labels (same convention as Agent `tag`). */
     tag?: string[];
 }
-
-export type SkillDoc = Omit<BaseDoc, 'docType'> & {
-    docType: document['TYPE_SKILL'];
-};
 
 export interface BaseHistoryEntry {
     id: string;
@@ -1319,7 +1312,7 @@ export interface SessionDoc {
     appRoute?: 'learn' | 'develop' | 'agent' | 'mcp';
     mcpId?: number;
     developSessionKind?: 'daily' | 'outline_node';
-    /** Develop mind-map storage: 70 = TYPE_BASE, 73 = TYPE_SKILL. Required on `appRoute: develop` session rows. */
+    /** Develop mind-map storage: 70 = TYPE_BASE. Required on `appRoute: develop` session rows. */
     developMapDocType?: number;
     agentId?: string;
     agentSessionKind?: 'chat' | 'client';

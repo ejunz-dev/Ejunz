@@ -9,7 +9,7 @@ import { NodeDeviceModel } from './node';
 import AgentModel from './agent';
 import message from './message';
 import ClientModel from './client';
-import { getAssignedTools, normalizeAgentSkillBindings, appendAgentUniversalAssistantRules, effectiveAgentSkillBranch, effectiveAgentBaseDocId, effectiveAgentBaseBranch } from '../handler/agent';
+import { getAssignedTools, appendAgentUniversalAssistantRules, effectiveAgentBaseDocId, effectiveAgentBaseBranch } from '../handler/agent';
 import SessionModel from './session';
 
 const logger = new Logger('model/workflow_executor');
@@ -304,7 +304,7 @@ export class WorkflowExecutor {
         }
 
         // 获取工具列表
-        const tools = await getAssignedTools(context.domainId, agent.mcpToolIds, agent.repoIds, agent.skillIds, normalizeAgentSkillBindings(agent as any));
+        const tools = await getAssignedTools(context.domainId, agent.mcpToolIds, agent.repoIds);
 
         // 构建系统消息
         const agentPrompt = agent.content || '';
@@ -355,7 +355,6 @@ export class WorkflowExecutor {
             apiUrl: (domainInfo as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions',
             agentContent: agent.content || '',
             agentMemory: agent.memory || '',
-            skillBranch: effectiveAgentSkillBranch(agent as any),
             baseDocId: effectiveAgentBaseDocId(agent as any),
             baseBranch: effectiveAgentBaseBranch(agent as any),
             tools: tools.map(tool => ({
