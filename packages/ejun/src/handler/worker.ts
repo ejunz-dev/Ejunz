@@ -12,7 +12,7 @@ import RecordModel, { AgentRecordMessage } from '../model/record';
 import * as setting from '../model/setting';
 import task, { Consumer } from '../model/task';
 import {
-    isWorkerPaused, markWorkerOffline, removeWorkerStatus, upsertWorkerStatus,
+    allocateWorkerId, isWorkerPaused, markWorkerOffline, removeWorkerStatus, upsertWorkerStatus,
 } from '../model/workerStatus';
 import bus from '../service/bus';
 import {
@@ -411,6 +411,7 @@ export class EjunzWorkerConnectionHandler extends ConnectionHandler {
     workerName = '';
     workerLabel = '';
     workerVersion = '';
+    workerSourceId = '';
     processWorkerId = '';
     heartbeatTimer?: ReturnType<typeof setInterval>;
     statusRegistered = false;
@@ -447,6 +448,7 @@ export class EjunzWorkerConnectionHandler extends ConnectionHandler {
         if (!this.statusRegistered) return;
         await upsertWorkerStatus({
             workerId: this.workerId,
+            workerSourceId: this.workerSourceId,
             processWorkerId: this.processWorkerId,
             workerName: this.workerName,
             workerLabel: this.workerLabel || this.workerName,
@@ -517,7 +519,8 @@ export class EjunzWorkerConnectionHandler extends ConnectionHandler {
             }
             const previousWorkerId = this.workerId;
             if (msg.processWorkerId) this.processWorkerId = String(msg.processWorkerId);
-            if (msg.workerId) this.workerId = String(msg.workerId);
+            this.workerSourceId = String(msg.workerId || this.workerSourceId || this.processWorkerId || '').trim();
+            this.workerId = await allocateWorkerId('websocket', this.workerSourceId);
             if (msg.workerName) this.workerName = String(msg.workerName);
             if (msg.workerLabel) this.workerLabel = String(msg.workerLabel);
             if (msg.workerVersion || msg.version) this.workerVersion = String(msg.workerVersion || msg.version);
@@ -542,6 +545,9 @@ export class EjunzWorkerConnectionHandler extends ConnectionHandler {
             });
             if (previousWorkerId && previousWorkerId !== this.workerId) {
                 await removeWorkerStatus(previousWorkerId);
+            }
+            if (this.workerSourceId && this.workerSourceId !== this.workerId) {
+                await removeWorkerStatus(this.workerSourceId);
             }
             return;
         }

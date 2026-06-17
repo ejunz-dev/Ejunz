@@ -4,6 +4,7 @@ export const coll = db.collection('worker_status');
 
 export type WorkerStatusInput = {
     workerId: string;
+    workerSourceId?: string;
     workerName?: string;
     workerLabel?: string;
     workerKind?: string;
@@ -32,6 +33,23 @@ function cleanObject<T extends Record<string, any>>(input: T): Partial<T> {
     return output;
 }
 
+export async function allocateWorkerId(workerKind: 'builtin' | 'websocket', workerSourceId: string) {
+    const sourceId = String(workerSourceId || '').trim();
+    if (!sourceId) throw new Error('Missing workerSourceId');
+    const rows = await coll.find(
+        {
+            type: 'worker',
+            workerId: { $regex: '^\\d+$' },
+            workerSourceId: { $ne: sourceId },
+        },
+        { projection: { workerId: 1 } },
+    ).toArray();
+    const used = new Set(rows.map((row) => Number(row.workerId)).filter((id) => Number.isSafeInteger(id) && id > 0));
+    let next = workerKind === 'builtin' ? 1 : 2;
+    while (used.has(next)) next += 2;
+    return String(next);
+}
+
 export async function upsertWorkerStatus(input: WorkerStatusInput) {
     const now = new Date();
     const $set = cleanObject({
@@ -42,8 +60,14 @@ export async function upsertWorkerStatus(input: WorkerStatusInput) {
     });
     delete ($set as any).version;
     delete ($set as any).startedAt;
-    delete ($set as any).workerName;
     if (input.paused !== undefined) ($set as any).paused = input.paused;
+    if (input.workerSourceId) {
+        await coll.deleteMany({
+            type: 'worker',
+            workerSourceId: input.workerSourceId,
+            workerId: { $ne: input.workerId },
+        });
+    }
     return coll.findOneAndUpdate(
         { type: 'worker', workerId: input.workerId },
         {

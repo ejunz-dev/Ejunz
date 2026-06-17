@@ -76,6 +76,7 @@
                     <td class="col--worker">
                       <small>ID: {{ worker.workerId or '-' }}</small>
                       <br><small>Name: {{ worker.workerName or '-' }}</small>
+                      <br><small>Type: {{ worker.workerKind or '-' }}</small>
                       {% if worker.workerNameMixed %}<br><small>{{ _('Mixed names; saving applies to all grouped workers') }}</small>{% endif %}
                     </td>
                     <td class="col--worker-version">{{ worker.workerVersion or '-' }}</td>

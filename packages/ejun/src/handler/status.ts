@@ -21,10 +21,16 @@ async function getStatus() {
         ...await workerStatusColl.find({ processWorkerId: { $exists: true, $ne: '' } }).sort({ updateAt: -1 }).toArray(),
     ];
     const now = Date.now();
+    const offlineBuiltinWorkerIds: string[] = [];
     for (const stat of stats) {
         let desc = '';
         const offlineAfter = stat.type === 'worker' ? WORKER_OFFLINE_AFTER : DEFAULT_OFFLINE_AFTER;
         const online = new Date(stat.updateAt).getTime() > now - offlineAfter;
+        if (stat.type === 'worker' && stat.workerKind === 'builtin' && !online) {
+            if (stat.workerId) offlineBuiltinWorkerIds.push(stat.workerId);
+            stat.__removeOfflineBuiltin = true;
+            continue;
+        }
         if (!online) desc = 'Offline';
         else if (stat.type === 'worker' && stat.paused) desc = 'Paused';
         else if (stat.type === 'worker' && stat.processingCount > 0) desc = 'Working';
@@ -32,7 +38,10 @@ async function getStatus() {
         stat.isOnline = online;
         stat.status = desc;
     }
-    return stats;
+    if (offlineBuiltinWorkerIds.length) {
+        await workerStatusColl.deleteMany({ type: 'worker', workerId: { $in: offlineBuiltinWorkerIds }, workerKind: 'builtin' });
+    }
+    return stats.filter((stat) => !stat.__removeOfflineBuiltin);
 }
 
 function workerGroupKey(worker) {
