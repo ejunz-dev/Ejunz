@@ -180,6 +180,7 @@ export default class Ejunz implements Session {
             this.send({ key: 'config', ...this.identity() });
             this.sendStatus({ status: 'online' });
             this.send({ key: 'start' });
+            log.info(`[${this.config.host}] Worker websocket registered and start requested`);
             this.heartbeatTimer = setInterval(() => {
                 this.send('ping');
                 this.sendStatus({ status: 'online' });
@@ -214,8 +215,12 @@ export default class Ejunz implements Session {
             this.scheduleReconnect();
         });
 
-        ws.on('error', (err) => {
-            log.warn(`[${this.config.host}] Worker websocket error: ${err.message || err}`);
+        ws.on('error', (err: any) => {
+            const response = err?.response;
+            const status = response?.statusCode || response?.status;
+            const body = response?.body || response?.statusMessage;
+            const detail = status ? ` status=${status}${body ? ` body=${body}` : ''}` : '';
+            log.warn(`[${this.config.host}] Worker websocket error: ${err.message || err}${detail}`);
         });
     }
 

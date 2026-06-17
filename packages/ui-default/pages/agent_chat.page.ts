@@ -2771,10 +2771,14 @@ const page = new NamedPage('agent_chat', async () => {
   
   function getWorkerBadgeText(workerMeta?: any): string {
     if (!workerMeta) return '';
-    const label = workerMeta.workerLabel || workerMeta.workerName || workerMeta.workerId || '';
-    if (!label) return '';
+    const workerId = workerMeta.workerId ? String(workerMeta.workerId) : '';
+    const label = workerMeta.workerLabel || workerMeta.workerName || '';
+    const workerText = workerId
+      ? `worker ${workerId}${label && label !== workerId ? `（${label}）` : ''}`
+      : label ? `worker ${label}` : '';
+    if (!workerText) return '';
     const version = workerMeta.workerVersion ? ` · v${workerMeta.workerVersion}` : '';
-    return `由 ${label} worker 处理${version}`;
+    return `由 ${workerText} 处理${version}`;
   }
 
   function upsertWorkerBadge(messageEl: Element | null, workerMeta?: any) {
@@ -2788,11 +2792,11 @@ const page = new NamedPage('agent_chat', async () => {
     if (!badge) {
       badge = document.createElement('div');
       badge.className = 'message-worker';
-      const status = messageEl.querySelector('.message-status');
-      if (status?.parentElement === messageEl) status.insertAdjacentElement('afterend', badge);
-      else messageEl.insertBefore(badge, messageEl.firstChild);
     }
     badge.textContent = text;
+    const bubble = messageEl.querySelector('.message-bubble');
+    if (bubble?.parentElement === messageEl) bubble.insertAdjacentElement('afterend', badge);
+    else messageEl.appendChild(badge);
   }
 
   async function addMessage(role: string, content: string, toolName?: string, toolCalls?: any[], bubbleId?: string, isHistorical?: boolean, workerMeta?: any) {
@@ -3021,7 +3025,6 @@ const page = new NamedPage('agent_chat', async () => {
         // Initially show status (will be hidden when completed)
         statusDiv.style.display = 'block';
         messageDiv.appendChild(statusDiv);
-        upsertWorkerBadge(messageDiv, workerMeta);
       }
 
       const messageBubble = document.createElement('div');
@@ -3043,6 +3046,7 @@ const page = new NamedPage('agent_chat', async () => {
     
       messageBubble.appendChild(contentDiv);
       messageDiv.appendChild(messageBubble);
+      if (role === 'assistant') upsertWorkerBadge(messageDiv, workerMeta);
     chatMessages.appendChild(messageDiv);
     
     // Update DOM reference in state
