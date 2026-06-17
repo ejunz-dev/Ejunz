@@ -1832,7 +1832,7 @@ const page = new NamedPage('agent_chat', async () => {
             }
           }
           
-          if (bubbleId && msgData.role === 'assistant') {
+          if (bubbleId && msgData.role === 'assistant' && processedMsg.type !== 'tool_call_result') {
             const allAssistantMessages = Array.from(chatMessages.children).filter(
               (el: any) => el.classList.contains('chat-message') && el.classList.contains('assistant')
             );
