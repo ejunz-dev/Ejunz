@@ -1,0 +1,42 @@
+<tbody data-fragment-id="status-worker-tbody">
+  {%- for worker in workerStats -%}
+  <tr class="worker-status-row worker-status-row--{{ worker.status|lower }}">
+    <td class="col--worker">
+      <small>ID: {{ worker.workerId or '-' }}</small>
+      <br><small>Name: {{ worker.workerName or '-' }}</small>
+      <br><small>Type: {{ worker.workerKind or '-' }}</small>
+      {% if worker.workerNameMixed %}<br><small>{{ _('Mixed names; saving applies to all grouped workers') }}</small>{% endif %}
+    </td>
+    <td class="col--worker-version">{{ worker.workerVersion or '-' }}</td>
+    <td class="col--worker-status">
+      <span class="worker-status-badge worker-status-badge--{{ worker.status|lower }}">{{ worker.status }}</span>
+    </td>
+    <td class="col--worker-action">
+      <button class="rounded button button--compact worker-edit-btn" type="button"
+        data-worker-ids="{{ worker.workerIds|join(',') }}"
+        data-worker-id="{{ worker.workerId or '' }}"
+        data-worker-name="{{ worker.workerName or '' }}"
+        data-worker-status="{{ worker.status }}"
+        data-worker-paused="{{ 'true' if worker.paused else 'false' }}"
+        data-worker-online="{{ 'true' if worker.isOnline else 'false' }}">{{ _('Edit') }}</button>
+    </td>
+    <td class="col--worker-processing">{{ worker.processingCount or 0 }}/{{ worker.concurrency or 0 }}</td>
+    <td class="col--worker-task">
+      {% if worker.activeTasks and worker.activeTasks|length %}
+        {% set task = worker.activeTasks[0] %}
+        <span data-tooltip="{{ task.recordId or task.taskId or task.toolName or '' }}">{{ task.agentId or task.toolName or task.recordId or task.taskId }}</span>
+        {% if worker.activeTasks|length > 1 %}<small>+{{ worker.activeTasks|length - 1 }}</small>{% endif %}
+      {% else %}
+        -
+      {% endif %}
+    </td>
+    <td class="col--worker-host">{{ worker.host or '-' }}{% if worker.pid %} / {{ worker.pid }}{% endif %}</td>
+    <td class="col--worker-seen">{{ datetimeSpan(worker.updateAt)|safe }}</td>
+    <td class="col--request">{{ worker.reqCount or 0 }}</td>
+  </tr>
+  {%- else -%}
+  <tr>
+    <td colspan="9" class="empty">{{ _('No workers connected') }}</td>
+  </tr>
+  {%- endfor -%}
+</tbody>
