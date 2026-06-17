@@ -336,6 +336,35 @@ async function executeAgentTask(task: any, reporter: WorkerTaskReporter, config:
 
         if (finishReason === 'tool_calls' && toolCalls.length > 0) {
             const toolCall = toolCalls[0];
+            const persistedToolCalls = [{
+                id: toolCall.id,
+                type: 'function',
+                function: {
+                    name: toolCall.function.name,
+                    arguments: toolCall.function.arguments,
+                },
+            }];
+            if (currentBubbleId) {
+                await reporter.patchMessage({ bubbleId: currentBubbleId }, {
+                    tool_calls: persistedToolCalls,
+                    bubbleState: 'completed',
+                });
+            } else {
+                currentBubbleId = !hasStartedAssistantBubble && context.assistantbubbleId
+                    ? context.assistantbubbleId
+                    : randomUUID();
+                hasStartedAssistantBubble = true;
+                const contentHash = createHash('md5').update('').digest('hex').substring(0, 16);
+                await reporter.appendMessage({
+                    role: 'assistant',
+                    content: '',
+                    timestamp: new Date(),
+                    bubbleId: currentBubbleId,
+                    bubbleState: 'completed',
+                    contentHash,
+                    tool_calls: persistedToolCalls,
+                });
+            }
             const toolName = toolCall.function?.name || '';
             const executionTool = findExecutionTool(executionTools, toolName);
             let toolArgs: any = {};
