@@ -672,7 +672,6 @@ export class ToolCallInternalHandler extends Handler {
 
     @post('toolName', Types.String, true)
     @post('args', Types.Any, true)
-    @post('domainId', Types.String, true)
     @post('baseDocId', Types.Int, true)
     @post('baseBranch', Types.String, true)
     @post('owner', Types.Int, true)
@@ -683,6 +682,10 @@ export class ToolCallInternalHandler extends Handler {
         const mcpClient = new (require('../model/agent').McpClient)();
         try {
             const callArgs = toolType === 'plugin_mcp' && mcpId ? { ...(args || {}), __mcpId: mcpId } : args;
+            logger.info(
+                'Internal worker tool call: tool=%s type=%s hasToken=%s baseDocId=%s baseBranch=%s owner=%s mcpId=%s',
+                toolName, toolType || '', !!token, baseDocId || '', baseBranch || '', owner || '', mcpId || '',
+            );
             const result = await mcpClient.callTool(toolName, callArgs, domainId, undefined, token, toolType, baseDocId, baseBranch, owner);
             this.response.body = { result };
         } catch (error: any) {
