@@ -41,12 +41,12 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
     {
         name: 'outline_create_node',
         description: 'Create a new outline node (section/topic). '
-            + 'Pass parentId to nest it under an existing node, or omit it to create a top-level node.',
+            + 'Pass parentId to nest it under an existing node; omit parentId to create it under the bound base root node.',
         inputSchema: {
             type: 'object',
             properties: {
                 text: { type: 'string', description: 'Node title/text.' },
-                parentId: { type: 'string', description: 'Parent node id from outline_list_nodes (optional; omit for a root-level node).' },
+                parentId: { type: 'string', description: 'Parent node id from outline_list_nodes (optional; omit to place under the base root node).' },
             },
             required: ['text'],
             additionalProperties: false,
@@ -357,8 +357,19 @@ export async function buildMcpInstructions(
     return lines.join('\n');
 }
 
+const MCP_BUILTIN_MUTATING_TOOLS = new Set([
+    'outline_create_node', 'outline_update_node', 'outline_delete_node',
+    'card_create', 'card_update', 'card_delete',
+    'problem_create', 'problem_update', 'problem_delete',
+    'git_pull', 'git_config_set',
+]);
+
 export function isMcpBuiltinTool(name: string): boolean {
     return MCP_BUILTIN_TOOLS_CATALOG.some((t) => t.name === name);
+}
+
+export function isMcpBuiltinMutatingTool(name: string): boolean {
+    return MCP_BUILTIN_MUTATING_TOOLS.has(name);
 }
 
 export function defaultMcpToolDescriptions(): { name: string; description: string }[] {
@@ -507,6 +518,14 @@ function buildParentMap(edges: BaseEdge[]): Map<string, string> {
     return m;
 }
 
+function findRootNodeId(nodes: BaseNode[] = [], edges: BaseEdge[] = []): string | undefined {
+    if (!nodes.length) return undefined;
+    const levelRoot = nodes.find((n) => n.level === 0);
+    if (levelRoot?.id) return levelRoot.id;
+    const parentMap = buildParentMap(edges);
+    return nodes.find((n) => !parentMap.has(n.id))?.id || nodes[0]?.id;
+}
+
 /** Builds the " › " separated node-title path for a node, root first. */
 function pathLabelFor(nodeId: string, parentMap: Map<string, string>, nodeById: Map<string, BaseNode>): string {
     const chain: string[] = [];
@@ -593,12 +612,12 @@ export async function executeMcpBuiltinTool(
     case 'outline_create_node': {
         const text = String(args.text || '').trim();
         if (!text) throw new Error('text is required');
-        const parentId = args.parentId ? String(args.parentId).trim() : undefined;
-        if (parentId) {
-            const { nodes } = getBranchData(base, branch);
-            if (!(nodes || []).some((n) => n.id === parentId)) {
-                throw new Error(`Parent node not found: ${parentId}`);
-            }
+        const { nodes, edges } = getBranchData(base, branch);
+        const parentId = args.parentId
+            ? String(args.parentId).trim()
+            : findRootNodeId(nodes || [], edges || []);
+        if (parentId && !(nodes || []).some((n) => n.id === parentId)) {
+            throw new Error(`Parent node not found: ${parentId}`);
         }
         const res = await BaseModel.addNode(
             domainId, baseDocId, { text } as any, parentId, branch, parentId,

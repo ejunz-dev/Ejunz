@@ -12,6 +12,7 @@ import { NotFoundError, ValidationError } from '../error';
 import {
     MCP_BUILTIN_TOOLS_CATALOG, isMcpBuiltinTool, executeMcpBuiltinTool,
     buildMcpInstructions, defaultMcpToolDescriptions, resolveMcpTools,
+    isMcpBuiltinMutatingTool,
     type McpToolContext,
 } from '../lib/mcpBuiltinTools';
 import { randomstring } from '../utils';
@@ -19,13 +20,6 @@ import type { EdgeTokenDoc } from '../model/edge_token';
 import { getNormalizedMcp, listDomainMcps, mcpKind } from '../lib/mcpRegistry';
 
 const logger = new Logger('handler/mcp');
-
-const MCP_MUTATING_TOOLS = new Set([
-    'outline_create_node', 'outline_update_node', 'outline_delete_node',
-    'card_create', 'card_update', 'card_delete',
-    'problem_create', 'problem_update', 'problem_delete',
-    'git_pull', 'git_config_set',
-]);
 
 function clipForLog(value: unknown, max = 800): string {
     let s: string;
@@ -317,7 +311,7 @@ async function processMcpMessage(
                 'MCP tools/call OK: %s, tool=%s, id=%s, %dms, result=%s',
                 logCtx, name, `${msg.id}`, Date.now() - startedAt, clipForLog(resultText),
             );
-            if (MCP_MUTATING_TOOLS.has(name)) {
+            if (isMcpBuiltinMutatingTool(name)) {
                 (ctx.emit as any)('base/update', toolCtx.baseDocId, null, toolCtx.branch);
             }
         } catch (e) {

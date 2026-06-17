@@ -867,9 +867,9 @@ declare module './model/mcp' {
         description?: string;
         instructions?: string;
         tools?: { name: string; description: string }[];
-        kind?: 'outbound' | 'local' | 'inbound' | 'plugin';
+        kind?: 'outbound' | 'system' | 'inbound' | 'plugin';
         source?: {
-            type: 'ejunz_base' | 'ejunztools' | 'edge' | 'external' | 'plugin';
+            type: 'ejunz_base' | 'system_tools' | 'edge' | 'external' | 'plugin';
             edgeDocId?: ObjectId;
             edgeId?: number;
             localKey?: string;
@@ -1009,7 +1009,7 @@ declare module './model/tool' {
         edgeDocId?: ObjectId;
         mcpId?: number;
         source?: {
-            type: 'plugin_mcp' | 'edge' | 'local';
+            type: 'plugin_mcp' | 'edge' | 'system_tools';
             pluginDocId?: number;
             pluginCardId?: string;
             pluginServerKey?: string;

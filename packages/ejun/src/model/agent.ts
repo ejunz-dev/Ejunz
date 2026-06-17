@@ -435,26 +435,27 @@ export class McpClient {
                 throw new Error('Context not available');
             }
 
-            // Registered system tools: only if this domain installed the tool on the market.
+            const systemToolContext = {
+                domainId,
+                baseDocId,
+                branch: baseBranch || 'main',
+                owner: toolCallerUid,
+            };
+
+            // Local MCP tools: default system tools or domain-market enabled MCP tools.
             if (domainId && await domainMarketHasInstalledToolName(domainId, name)) {
                 const { tryExecuteSystemTool } = require('../lib/systemTools');
-                const sysEarly = await tryExecuteSystemTool(name, args || {});
+                const sysEarly = await tryExecuteSystemTool(name, args || {}, systemToolContext);
                 if (sysEarly !== null) {
                     return sysEarly;
                 }
             }
 
-            // toolType system → executeSystemTool (not Edge); still require domain market install
+            // toolType system → built-in editor/base System Tools. These are default tools, not Tool Market installs.
             if (toolType === 'system') {
-                if (!domainId || !(await domainMarketHasInstalledToolName(domainId, name))) {
-                    ClientLogger.warn('[tool] callTool: name=%s toolType=system but not on domain market', name);
-                    const err = new Error(`Tool not added: ${name}. Please add it from the tool market for this domain.`);
-                    (err as any).code = 'TOOL_NOT_ADDED';
-                    throw err;
-                }
                 const { executeSystemTool } = require('../lib/systemTools');
                 ClientLogger.info('[tool] callTool: name=%s -> branch=system (executeSystemTool)', name);
-                return executeSystemTool(name, args || {});
+                return executeSystemTool(name, args || {}, systemToolContext);
             }
 
             // Check if it's a repo internal MCP tool (format: repo_{rpid}_{operation}...)
@@ -518,14 +519,21 @@ export class McpClient {
             //     for (const edge of connectedEdges) { ... }
             // }
 
-            // Local/system tools (domain market)
+            // Local MCP tools (default system + market MCP)
             try {
                 if (domainId) {
                     const localTools = await ctx.serial('mcp/tools/list/local', { domainId }).catch(() => []);
                     const inLocal = (localTools || []).some((t: EdgeTool) => t.name === name);
                     if (inLocal) {
                         ClientLogger.info('[tool] callTool: name=%s -> branch=local', name);
-                        return await ctx.serial('mcp/tool/call/local', { name, args });
+                        return await ctx.serial('mcp/tool/call/local', {
+                            name,
+                            args,
+                            domainId,
+                            baseDocId,
+                            branch: baseBranch || 'main',
+                            owner: toolCallerUid,
+                        });
                     }
                 }
             } catch (e) {
