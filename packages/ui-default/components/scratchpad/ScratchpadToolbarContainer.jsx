@@ -102,7 +102,7 @@ export default connect(mapStateToProps, mapDispatchToProps)(class ScratchpadTool
   render() {
     let canUsePretest = UiContext.pdoc.config?.type === 'default';
     const langInfo = availableLangs[this.props.editorLang];
-    if (UiContext.pdoc.config?.type === 'remote_judge' && langInfo) {
+    if (UiContext.pdoc.config?.type === 'remote_worker' && langInfo) {
       if (langInfo.pretest) canUsePretest = true;
       if (langInfo.validAs && !langInfo.hidden) canUsePretest = true;
     }

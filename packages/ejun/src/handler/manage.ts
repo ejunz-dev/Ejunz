@@ -87,47 +87,6 @@ class SystemDashboardHandler extends SystemHandler {
     }
 }
 
-// class SystemScriptHandler extends SystemHandler {
-//     async get() {
-//         this.response.template = 'manage_script.html';
-//         this.response.body.scripts = global.Ejunz.script;
-//     }
-
-//     @param('id', Types.Name)
-//     @param('args', Types.Content, true)
-//     async post(domainId: string, id: string, raw = '{}') {
-//         if (!global.Ejunz.script[id]) throw new ValidationError('id');
-//         let args = JSON.parse(raw);
-//         if (typeof global.Ejunz.script[id].validate === 'function') {
-//             args = global.Ejunz.script[id].validate(args);
-//         }
-//         const rid = await record.add(domainId, -1, this.user._id, '-', id, false, { input: raw, type: 'pretest' });
-//         const c = new JudgeResultCallbackContext(this.ctx, { type: 'judge', domainId, rid });
-//         c.next({ message: `Running script: ${id} `, status: STATUS.STATUS_JUDGING });
-//         const start = Date.now();
-//         // Maybe async?
-//         global.Ejunz.script[id].run(args, (data) => c.next(data))
-//             .then((ret: any) => c.end({
-//                 status: STATUS.STATUS_ACCEPTED,
-//                 message: inspect(ret, false, 10, true),
-//                 judger: 1,
-//                 time: Date.now() - start,
-//                 memory: 0,
-//             }))
-//             .catch((err: Error) => {
-//                 logger.error(err);
-//                 c.end({
-//                     status: STATUS.STATUS_SYSTEM_ERROR,
-//                     message: `${err.message} \n${(err as any).params || []} \n${err.stack} `,
-//                     judger: 1,
-//                     time: Date.now() - start,
-//                     memory: 0,
-//                 });
-//             });
-//         this.response.body = { rid };
-//         this.response.redirect = this.url('record_detail', { rid });
-//     }
-// }
 
 class SystemSettingHandler extends SystemHandler {
     @requireSudo

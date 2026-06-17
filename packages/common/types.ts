@@ -9,7 +9,7 @@ export enum ProblemType {
     Interactive = 'interactive',
     Communication = 'communication',
     Objective = 'objective',
-    Remote = 'remote_judge',
+    Remote = 'remote_worker',
 }
 
 export interface TestCaseConfig {
@@ -49,7 +49,7 @@ export interface ProblemConfigFile {
     checker_type?: string;
     num_processes?: number;
     user_extra_files?: string[];
-    judge_extra_files?: string[];
+    worker_extra_files?: string[];
     detail?: DetailType | boolean;
     answers?: Record<string, [string | string[], number]>;
     redirect?: string;
@@ -75,35 +75,35 @@ export interface FileInfo {
     lastModified: Date;
 }
 
-export interface JudgeMeta {
+export interface WorkerRequestMeta {
     problemOwner: number;
-    hackRejudge?: string;
-    rejudge?: boolean | 'controlled';
+    hackRerun?: string;
+    rerun?: boolean | 'controlled';
     // FIXME stricter types
     type?: string;
 }
 
-export interface RecordJudgeInfo {
+export interface RecordWorkerInfo {
     score: number;
     memory: number;
     time: number;
-    judgeTexts: (string | JudgeMessage)[];
+    workerTexts: (string | WorkerMessage)[];
     compilerTexts: string[];
     testCases: Required<TestCase>[];
-    /** judge uid */
-    judger: number;
-    judgeAt: Date;
+    /** worker uid */
+    worker: number;
+    workerAt: Date;
     status: number;
     subtasks?: Record<number, SubtaskResult>;
 }
 
-export interface RecordPayload extends RecordJudgeInfo {
+export interface RecordPayload extends RecordWorkerInfo {
     domainId: string;
     pid: number;
     uid: number;
     lang: string;
     code: string;
-    rejudged: boolean;
+    rerund: boolean;
     source?: string;
     progress?: number;
     /** pretest */
@@ -116,12 +116,12 @@ export interface RecordPayload extends RecordJudgeInfo {
     files?: Record<string, string>;
 }
 
-export interface JudgeRequest extends Omit<RecordPayload, 'testCases'> {
+export interface WorkerRequest extends Omit<RecordPayload, 'testCases'> {
     priority: number;
-    type: 'judge' | 'generate';
+    type: 'worker' | 'generate';
     rid: string;
     config: ProblemConfigFile;
-    meta: JudgeMeta;
+    meta: WorkerRequestMeta;
     data: FileInfo[];
     source: string;
     trusted: boolean;
@@ -137,7 +137,7 @@ export interface TestCase {
     message: string;
 }
 
-export interface JudgeMessage {
+export interface WorkerMessage {
     message: string;
     params?: string[];
     stack?: string;
@@ -149,11 +149,11 @@ export interface SubtaskResult {
     status: number;
 }
 
-export interface JudgeResultBody {
+export interface WorkerResultBody {
     key: string;
     domainId: string;
     rid: string;
-    judger?: number;
+    worker?: number;
     progress?: number;
     addProgress?: number;
     case?: TestCase;
@@ -164,7 +164,7 @@ export interface JudgeResultBody {
     time?: number;
     /** in kilobytes */
     memory?: number;
-    message?: string | JudgeMessage;
+    message?: string | WorkerMessage;
     compilerText?: string;
     nop?: boolean;
     subtasks?: Record<number, SubtaskResult>;

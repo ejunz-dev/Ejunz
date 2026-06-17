@@ -1,19 +1,19 @@
-import { omit } from 'lodash';
+import { hostname } from 'os';
 import { ObjectId } from 'mongodb';
-import {
-    JudgeResultBody, TestCase,
-} from '@ejunz/common';
 import { Context } from '../context';
 import {
-    BadRequestError, ValidationError,
+    BadRequestError,
 } from '../error';
-import { RecordDoc, Task } from '../interface';
+import { Task } from '../interface';
 import { Logger } from '../logger';
 import * as builtin from '../model/builtin';
 import { STATUS } from '../model/builtin';
-import RecordModel from '../model/record';
+import RecordModel, { AgentRecordMessage } from '../model/record';
 import * as setting from '../model/setting';
 import task, { Consumer } from '../model/task';
+import {
+    isWorkerPaused, markWorkerOffline, removeWorkerStatus, upsertWorkerStatus,
+} from '../model/workerStatus';
 import bus from '../service/bus';
 import {
     ConnectionHandler, Handler, post, subscribe, Types,
@@ -21,142 +21,112 @@ import {
 
 const logger = new Logger('worker');
 
-function parseCaseResult(body: TestCase): Required<TestCase> {
-    return {
-        ...body,
-        id: body.id || 0,
-        subtaskId: body.subtaskId || 0,
-        score: body.score || 0,
-        message: body.message || '',
-    };
+const WORKER_PROTOCOL = 'ejunz-worker-v1';
+const DEFAULT_TASK_TYPES = ['agent_task', 'tool_call', 'mcp_tool_call'];
+
+type EjunzWorkerTaskType = 'agent_task' | 'tool_call' | 'mcp_tool_call';
+
+type WorkerMeta = {
+    workerId: string;
+    workerName: string;
+    workerLabel: string;
+    workerKind: string;
+    workerVersion: string;
+};
+
+function toObjectId(value: unknown): ObjectId | null {
+    if (value instanceof ObjectId) return value;
+    if (typeof value === 'string' && ObjectId.isValid(value)) return new ObjectId(value);
+    return null;
 }
 
-function processPayload(body: Partial<JudgeResultBody>) {
-    const $set: Partial<RecordDoc> = {};
-    const $push: any = {};
-    const $unset: any = {};
-    const $inc: any = {};
-    if (body.cases?.length) {
-        const c = body.cases.map(parseCaseResult);
-        $push.testCases = { $each: c };
-    } else if (body.case) {
-        const c = parseCaseResult(body.case);
-        $push.testCases = c;
+function normalizeDate(value: unknown): Date {
+    if (value instanceof Date) return value;
+    if (typeof value === 'string' || typeof value === 'number') {
+        const d = new Date(value);
+        if (!Number.isNaN(d.getTime())) return d;
     }
-    if (body.message) {
-        $push.judgeTexts = body.message;
-    }
-    if (body.compilerText) {
-        $push.compilerTexts = body.compilerText;
-    }
-    if (body.status) $set.status = body.status;
-    if (Number.isFinite(body.score)) $set.score = Math.floor(body.score * 100) / 100;
-    if (Number.isFinite(body.time)) $set.time = body.time;
-    if (Number.isFinite(body.memory)) $set.memory = body.memory;
-    if (body.progress !== undefined) $set.progress = body.progress;
-    if (body.subtasks) $set.subtasks = body.subtasks;
-    if (body.addProgress) $inc.progress = body.addProgress;
-    return {
-        $set, $push, $unset, $inc,
-    };
+    return new Date();
 }
 
-export class WorkerResultCallbackContext {
+function taskWithoutId(t: Task): Omit<Task, '_id'> & { type: string } {
+    const { _id, ...rest } = t as any;
+    return rest;
+}
+
+function taskTypeFromDbTask(t: Task): EjunzWorkerTaskType | null {
+    if (t.type === 'task') return 'agent_task';
+    if (t.type === 'tool_call') return 'tool_call';
+    if (t.type === 'mcp' && (t as any).subType === 'tool_call') return 'mcp_tool_call';
+    return null;
+}
+
+function buildTaskQuery(taskTypes: string[], minPriority?: number) {
+    const clauses: any[] = [];
+    if (taskTypes.includes('agent_task')) clauses.push({ type: 'task' });
+    if (taskTypes.includes('tool_call')) clauses.push({ type: 'tool_call' });
+    if (taskTypes.includes('mcp_tool_call')) clauses.push({ type: 'mcp', subType: 'tool_call' });
+    const query: any = clauses.length === 1 ? { ...clauses[0] } : { $or: clauses.length ? clauses : [{ type: '__never__' }] };
+    if (Number.isFinite(minPriority)) query.priority = { $gt: minPriority };
+    return query;
+}
+
+function cleanTaskTypes(taskTypes: unknown): string[] {
+    if (!(taskTypes instanceof Array)) return DEFAULT_TASK_TYPES.slice();
+    const allowed = new Set(DEFAULT_TASK_TYPES);
+    const out = taskTypes.map((i) => String(i)).filter((i) => allowed.has(i));
+    return out.length ? out : DEFAULT_TASK_TYPES.slice();
+}
+
+abstract class EjunzTaskCallbackContext {
     private resolve: (_: any) => void;
-    private finishPromise: Promise<any>;
-    private operationPromise = Promise.resolve(null);
-    private relatedId = new ObjectId();
-    private meta: any;
+    protected finishPromise: Promise<any>;
+    protected operationPromise = Promise.resolve(null);
+    protected completed = false;
 
-    constructor(public ctx: Context, public readonly task: Omit<Task, '_id'> & { type: string }) { // eslint-disable-line ts/no-shadow
-        this.meta = task.meta || {};
+    constructor(
+        public ctx: Context,
+        public readonly dbTask: Task,
+        public readonly taskType: EjunzWorkerTaskType,
+        private readonly metaProvider: (taskType: EjunzWorkerTaskType) => WorkerMeta,
+    ) {
         this.finishPromise = new Promise((resolve) => {
             this.resolve = resolve;
         });
     }
 
-    async _next(body: Partial<JudgeResultBody>) {
-        const {
-            $set, $push, $unset, $inc,
-        } = processPayload(body);
-        if (this.meta?.rejudge === 'controlled') {
-            await RecordModel.judgeHistoryColl.updateOne({
-                _id: this.relatedId,
-            }, {
-                $set, $push, $unset, $inc,
-            }, { upsert: true });
-        } else {
-            const rdoc = await RecordModel.judgeUpdate(this.task.domainId, new ObjectId(this.task.rid as string), $set, $push, $unset, $inc);
-            if (rdoc) this.ctx.broadcast('judge_record/change', rdoc, $set, $push, body);
-        }
+    get taskId() {
+        return this.dbTask._id?.toString?.() || String(this.dbTask._id || '');
     }
 
-    static async next(domainId: string, rid: ObjectId, body: Partial<JudgeResultBody>) {
-        const {
-            $set, $push, $unset, $inc,
-        } = processPayload(body);
-        const rdoc = await RecordModel.judgeUpdate(domainId, rid, $set, $push, $unset, $inc);
-        if (rdoc) bus.broadcast('judge_record/change', rdoc, $set, $push, body);
+    protected workerMeta() {
+        return this.metaProvider(this.taskType);
     }
 
-    next(body: Partial<JudgeResultBody>) {
-        this.operationPromise = this.operationPromise.then(() => this._next(body));
+    protected finish(value: any = null) {
+        if (this.completed) return;
+        this.completed = true;
+        this.resolve(value);
+    }
+
+    enqueue(op: () => Promise<void>) {
+        this.operationPromise = this.operationPromise.then(op);
         return this.operationPromise;
     }
 
-    static async postWorker(rdoc: RecordDoc, context?: WorkerResultCallbackContext) {
-        // Worker 完成后的处理逻辑
-        await bus.broadcast('judge_record/worker', rdoc, true, null, context);
-    }
+    abstract start(): Promise<void>;
+    abstract accepted(body?: any): Promise<void>;
+    abstract complete(body?: any): Promise<void>;
+    abstract error(body?: any): Promise<void>;
+    abstract reset(): Promise<void>;
 
-    async _end(body: Partial<JudgeResultBody>) {
-        const { $set, $push } = processPayload(body);
-        const $unset: any = { progress: '' };
-        $set.judgeAt = new Date();
-        $set.judger = body.judger ?? 1;
-
-        if (this.meta?.rejudge === 'controlled') {
-            await RecordModel.judgeHistoryColl.updateOne({
-                _id: this.relatedId,
-            }, {
-                $set, $push, $unset,
-            }, { upsert: true });
-            this.resolve(null);
-            return;
-        }
-
-        const rdoc = await RecordModel.judgeUpdate(this.task.domainId, new ObjectId(this.task.rid as string), $set, $push, $unset);
-        if (rdoc) {
-            bus.broadcast('judge_record/change', rdoc, null, null, body); // trigger a full update
-            await WorkerResultCallbackContext.postWorker(rdoc, this);
-        }
-        this.resolve(rdoc);
-    }
-
-    static async end(domainId: string, rid: ObjectId, body: Partial<JudgeResultBody>) {
-        const { $set, $push } = processPayload(body);
-        const $unset: any = { progress: '' };
-        $set.judgeAt = new Date();
-        $set.judger = body.judger ?? 1;
-        const rdoc = await RecordModel.judgeUpdate(domainId, rid, $set, $push, $unset);
-        if (rdoc) {
-            bus.broadcast('judge_record/change', rdoc, null, null, body); // trigger a full update
-            await WorkerResultCallbackContext.postWorker(rdoc);
-        }
-    }
-
-    end(body?: Partial<JudgeResultBody>) {
-        if (!body) this.resolve(null);
-        else this.operationPromise = this.operationPromise.then(() => this._end(body));
-        return this.operationPromise;
-    }
-
-    reset() {
-        return this.operationPromise.then(async () => {
-            const rdoc = await RecordModel.judgeReset(this.task.domainId, this.task.rid, false);
-            this.ctx.broadcast('judge_record/change', rdoc);
-            return task.add(this.task);
-        });
+    summary() {
+        return {
+            taskId: this.taskId,
+            taskType: this.taskType,
+            recordId: (this.dbTask as any).recordId?.toString?.(),
+            toolName: (this.dbTask as any).toolName || (this.dbTask as any).name,
+        };
     }
 
     then(onfulfilled?: (value: any) => void, onrejected?: (reason: any) => void) {
@@ -164,128 +134,470 @@ export class WorkerResultCallbackContext {
     }
 }
 
-/** @deprecated use WorkerResultCallbackContext.postWorker instead */
-export const postWorker = (rdoc: RecordDoc) => WorkerResultCallbackContext.postWorker(rdoc);
+class AgentTaskCallbackContext extends EjunzTaskCallbackContext {
+    private get domainId() {
+        return (this.dbTask as any).domainId as string;
+    }
 
-export class WorkerConnectionHandler extends ConnectionHandler {
+    private get recordId() {
+        return toObjectId((this.dbTask as any).recordId);
+    }
+
+    private withWorkerMeta(message: Partial<AgentRecordMessage>): AgentRecordMessage {
+        const meta = this.workerMeta();
+        return {
+            role: message.role || 'assistant',
+            content: message.content || '',
+            timestamp: normalizeDate(message.timestamp),
+            ...message,
+            ...meta,
+        } as AgentRecordMessage;
+    }
+
+    async start() {
+        const rid = this.recordId;
+        if (!rid) return;
+        await RecordModel.updateAgentTask(this.domainId, rid, {
+            status: STATUS.STATUS_TASK_FETCHED,
+            ...this.workerMeta(),
+        });
+        await RecordModel.updateAgentTask(this.domainId, rid, {
+            status: STATUS.STATUS_TASK_PROCESSING,
+            ...this.workerMeta(),
+        });
+    }
+
+    async accepted() {
+        const rid = this.recordId;
+        if (!rid) return;
+        await RecordModel.updateAgentTask(this.domainId, rid, {
+            status: STATUS.STATUS_TASK_PROCESSING,
+            ...this.workerMeta(),
+        });
+    }
+
+    appendMessage(message: Partial<AgentRecordMessage>) {
+        return this.enqueue(async () => {
+            const rid = this.recordId;
+            if (!rid) return;
+            await RecordModel.updateAgentTask(this.domainId, rid, {
+                agentMessages: [this.withWorkerMeta(message)],
+                ...this.workerMeta(),
+            });
+        });
+    }
+
+    patchMessage(selector: { bubbleId?: string }, set: Record<string, any>) {
+        return this.enqueue(async () => {
+            const rid = this.recordId;
+            if (!rid || !selector?.bubbleId) return;
+            const rdoc = await RecordModel.get(this.domainId, rid);
+            const messages = rdoc?.agentMessages || [];
+            const index = messages.findIndex((m) => m.bubbleId === selector.bubbleId);
+            if (index < 0) return;
+            const $set: any = {};
+            const allowed = new Set([
+                'content', 'timestamp', 'bubbleState', 'contentHash', 'toolName',
+                'toolResult', 'tool_call_id', 'tool_calls', 'bubbleId',
+            ]);
+            for (const [key, value] of Object.entries(set || {})) {
+                if (!allowed.has(key)) continue;
+                $set[`agentMessages.${index}.${key}`] = key === 'timestamp' ? normalizeDate(value) : value;
+            }
+            const meta = this.workerMeta();
+            $set[`agentMessages.${index}.workerId`] = meta.workerId;
+            $set[`agentMessages.${index}.workerName`] = meta.workerName;
+            $set[`agentMessages.${index}.workerLabel`] = meta.workerLabel;
+            $set[`agentMessages.${index}.workerKind`] = meta.workerKind;
+            $set[`agentMessages.${index}.workerVersion`] = meta.workerVersion;
+            await RecordModel.rawAgentUpdate(this.domainId, rid, $set);
+        });
+    }
+
+    stream(body: any) {
+        const rid = this.recordId;
+        if (!rid) return;
+        bus.broadcast('bubble/stream' as any, {
+            recordId: rid.toString(),
+            domainId: this.domainId,
+            ...body,
+        });
+    }
+
+    status(body: any) {
+        return this.enqueue(async () => {
+            const rid = this.recordId;
+            if (!rid) return;
+            await RecordModel.updateAgentTask(this.domainId, rid, {
+                status: Number.isFinite(body?.status) ? Number(body.status) : undefined,
+                score: Number.isFinite(body?.score) ? Number(body.score) : undefined,
+                time: Number.isFinite(body?.time) ? Number(body.time) : undefined,
+                agentToolCallCount: Number.isFinite(body?.agentToolCallCount) ? Number(body.agentToolCallCount) : undefined,
+                ...this.workerMeta(),
+            });
+        });
+    }
+
+    toolResult(body: any) {
+        return this.enqueue(async () => {
+            const rid = this.recordId;
+            if (!rid) return;
+            const message = this.withWorkerMeta({
+                role: 'tool',
+                content: body?.content ?? JSON.stringify(body?.result ?? body?.error ?? null),
+                toolName: body?.toolName,
+                toolResult: body?.result,
+                tool_call_id: body?.tool_call_id,
+                timestamp: normalizeDate(body?.timestamp),
+            });
+            await RecordModel.updateAgentTask(this.domainId, rid, {
+                agentToolCallCount: Number.isFinite(body?.agentToolCallCount) ? Number(body.agentToolCallCount) : undefined,
+                agentMessages: [message],
+                ...this.workerMeta(),
+            });
+        });
+    }
+
+    async complete(body: any = {}) {
+        await this.enqueue(async () => {
+            const rid = this.recordId;
+            if (!rid) return;
+            await RecordModel.updateAgentTask(this.domainId, rid, {
+                status: STATUS.STATUS_TASK_PENDING,
+                time: Number.isFinite(body?.time) ? Number(body.time) : undefined,
+                agentToolCallCount: Number.isFinite(body?.agentToolCallCount) ? Number(body.agentToolCallCount) : undefined,
+                ...this.workerMeta(),
+            });
+            await RecordModel.updateAgentTask(this.domainId, rid, {
+                status: Number.isFinite(body?.status) ? Number(body.status) : STATUS.STATUS_TASK_DELIVERED,
+                score: Number.isFinite(body?.score) ? Number(body.score) : 100,
+                ...this.workerMeta(),
+            });
+            (bus.broadcast as any)('task/agent-completed', {
+                recordId: rid.toString(),
+                domainId: this.domainId,
+                taskId: this.taskId,
+            });
+        });
+        this.finish(null);
+    }
+
+    async error(body: any = {}) {
+        await this.enqueue(async () => {
+            const rid = this.recordId;
+            if (!rid) return;
+            const err = body?.error || body;
+            await RecordModel.updateAgentTask(this.domainId, rid, {
+                status: Number.isFinite(body?.status) ? Number(body.status) : STATUS.STATUS_TASK_ERROR_SYSTEM,
+                score: Number.isFinite(body?.score) ? Number(body.score) : 0,
+                time: Number.isFinite(body?.time) ? Number(body.time) : undefined,
+                agentError: {
+                    message: err?.message || String(err || 'Worker task failed'),
+                    code: err?.code || 'WORKER_ERROR',
+                    stack: err?.stack,
+                },
+                ...this.workerMeta(),
+            });
+        });
+        this.finish(null);
+    }
+
+    async reset() {
+        if (this.completed) return;
+        await this.enqueue(async () => {
+            const rid = this.recordId;
+            if (rid) {
+                await RecordModel.updateAgentTask(this.domainId, rid, {
+                    status: STATUS.STATUS_TASK_WAITING,
+                    agentError: {
+                        message: 'Worker disconnected before completing this task; the task was requeued.',
+                        code: 'WORKER_DISCONNECTED',
+                    },
+                    ...this.workerMeta(),
+                });
+            }
+            await task.add(taskWithoutId(this.dbTask));
+        });
+        this.finish(null);
+    }
+}
+
+class ToolCallTaskCallbackContext extends EjunzTaskCallbackContext {
+    async start() {}
+
+    async accepted() {}
+
+    async complete(body: any = {}) {
+        await this.enqueue(async () => {
+            const result = body?.result !== undefined ? body.result : body?.data;
+            (bus.broadcast as any)('toolcall/complete', this.dbTask._id, result);
+        });
+        this.finish(null);
+    }
+
+    async error(body: any = {}) {
+        await this.enqueue(async () => {
+            const err = body?.error || body;
+            (bus.broadcast as any)('toolcall/complete', this.dbTask._id, {
+                error: true,
+                message: err?.message || String(err || 'Tool call failed'),
+                code: err?.code || 'WORKER_TOOL_CALL_ERROR',
+            });
+        });
+        this.finish(null);
+    }
+
+    async reset() {
+        if (this.completed) return;
+        await this.enqueue(async () => {
+            await task.add(taskWithoutId(this.dbTask));
+        });
+        this.finish(null);
+    }
+}
+
+class McpToolCallCallbackContext extends EjunzTaskCallbackContext {
+    async start() {}
+
+    async accepted() {}
+
+    private deliver(response: any) {
+        const sessionId = (this.dbTask as any).sessionId;
+        if (!sessionId) return;
+        const data = typeof response === 'string' ? response : JSON.stringify(response);
+        (bus.broadcast as any)('mcp/deliver', { sessionId, data });
+    }
+
+    async complete(body: any = {}) {
+        await this.enqueue(async () => {
+            this.deliver(body?.data || body?.response || body?.result);
+        });
+        this.finish(null);
+    }
+
+    async error(body: any = {}) {
+        await this.enqueue(async () => {
+            const err = body?.error || body;
+            this.deliver({
+                jsonrpc: '2.0',
+                id: (this.dbTask as any).rpcId,
+                result: {
+                    content: [{ type: 'text', text: err?.message || String(err || 'MCP tool call failed') }],
+                    isError: true,
+                },
+            });
+        });
+        this.finish(null);
+    }
+
+    async reset() {
+        if (this.completed) return;
+        await this.enqueue(async () => {
+            await task.add(taskWithoutId(this.dbTask));
+        });
+        this.finish(null);
+    }
+}
+
+export class EjunzWorkerConnectionHandler extends ConnectionHandler {
     category = '#worker';
-    query: any = { type: { $in: ['worker', 'generate'] } };
+    taskTypes = DEFAULT_TASK_TYPES.slice();
+    minPriority?: number;
+    query: any = buildTaskQuery(this.taskTypes);
     concurrency = 1;
     consumer: Consumer = null;
-    tasks: Record<string, WorkerResultCallbackContext> = {};
+    tasks: Record<string, EjunzTaskCallbackContext> = {};
+    workerId = '';
+    workerName = '';
+    workerLabel = '';
+    workerVersion = '';
+    processWorkerId = '';
+    heartbeatTimer?: ReturnType<typeof setInterval>;
+    statusRegistered = false;
+    reqCount = 0;
+    startedAt = new Date();
 
     async prepare() {
-        logger.info('Worker daemon connected from ', this.request.ip);
-        this.sendLanguageConfig();
+        this.processWorkerId = `ws-${hostname()}-${this.request.ip || 'unknown'}`;
+        this.workerId = this.processWorkerId;
+        this.workerName = `worker@${this.request.ip || hostname()}`;
+        this.workerLabel = this.workerName;
+        this.workerVersion = process.env.EJUNZ_WORKER_VERSION || 'unknown';
+        logger.info('Ejunz worker connected from %s', this.request.ip);
+        this.heartbeatTimer = setInterval(() => this.updateWorkerStatus().catch(() => {}), 10000);
+        this.send({ key: 'hello', protocol: WORKER_PROTOCOL, serverTime: new Date().toISOString() });
+        this.sendServerConfig();
+    }
+
+    private workerMeta(taskType: EjunzWorkerTaskType): WorkerMeta {
+        return {
+            workerId: this.workerId,
+            workerName: this.workerName,
+            workerLabel: this.workerLabel || this.workerName,
+            workerKind: taskType,
+            workerVersion: this.workerVersion,
+        };
+    }
+
+    private activeTaskSummaries() {
+        return Object.values(this.tasks).map((cb) => cb.summary()).slice(0, 20);
+    }
+
+    async updateWorkerStatus(extra: Record<string, any> = {}) {
+        if (!this.statusRegistered) return;
+        await upsertWorkerStatus({
+            workerId: this.workerId,
+            processWorkerId: this.processWorkerId,
+            workerName: this.workerName,
+            workerLabel: this.workerLabel || this.workerName,
+            workerKind: 'websocket',
+            workerVersion: this.workerVersion,
+            host: extra.host || hostname(),
+            pid: extra.pid || process.pid,
+            consuming: !!this.consumer?.consuming,
+            concurrency: this.concurrency,
+            processingCount: Object.keys(this.tasks).length,
+            activeTasks: this.activeTaskSummaries(),
+            reqCount: this.reqCount,
+            startedAt: this.startedAt,
+            status: 'online',
+            ...extra,
+        });
     }
 
     @subscribe('system/setting')
-    sendLanguageConfig() {
-        this.send({ language: setting.langs });
+    sendServerConfig() {
+        this.send({ key: 'server_config', language: setting.langs });
+    }
+
+    private refreshQuery() {
+        this.query = buildTaskQuery(this.taskTypes, this.minPriority);
+        this.consumer?.setQuery(this.query);
+    }
+
+    private createCallbackContext(t: Task, taskType: EjunzWorkerTaskType) {
+        if (taskType === 'agent_task') return new AgentTaskCallbackContext(this.ctx, t, taskType, this.workerMeta.bind(this));
+        if (taskType === 'tool_call') return new ToolCallTaskCallbackContext(this.ctx, t, taskType, this.workerMeta.bind(this));
+        return new McpToolCallCallbackContext(this.ctx, t, taskType, this.workerMeta.bind(this));
     }
 
     async newTask(t: Task) {
-        const rid = t.rid.toHexString();
-        this.tasks[rid] = new WorkerResultCallbackContext(this.ctx, t);
-        this.send({ task: t });
-        this.tasks[rid].next({ status: STATUS.STATUS_TASK_FETCHED });
-        await this.tasks[rid];
-        delete this.tasks[rid];
+        const taskType = taskTypeFromDbTask(t);
+        if (!taskType) {
+            logger.warn('Ignoring unsupported worker task type: %o', { taskId: t._id?.toString?.(), type: t.type, subType: (t as any).subType });
+            return;
+        }
+        const taskId = t._id.toString();
+        const cb = this.createCallbackContext(t, taskType);
+        this.tasks[taskId] = cb;
+        try {
+            await cb.start();
+            await this.updateWorkerStatus({ lastTaskAt: new Date() });
+            this.send({ key: 'task', taskId, taskType, payload: t });
+            await cb;
+            this.reqCount++;
+        } finally {
+            delete this.tasks[taskId];
+            await this.updateWorkerStatus({ lastTaskAt: new Date() });
+        }
     }
 
-    async message(msg) {
-        if (!['ping', 'prio', 'config', 'start'].includes(msg.key)) {
-            const method = ['status', 'next'].includes(msg.key) ? 'debug' : 'info';
-            const keys = method === 'debug' ? ['key'] : ['key', 'subtasks', 'cases'];
-            logger[method]('%o', omit(msg, keys));
+    async message(raw: any) {
+        const msg = typeof raw === 'string' && raw !== 'ping' ? JSON.parse(raw) : raw;
+        if (msg === 'ping' || msg?.key === 'ping') {
+            this.send('pong' as any);
+            return;
         }
-        if (['next', 'end'].includes(msg.key)) {
-            const t = this.tasks[msg.rid];
-            if (!t) return;
-            if (msg.key === 'next') t.next(msg);
-            if (msg.key === 'end') t.end(msg.nop ? undefined : { judger: this.user._id, ...msg });
-        } else if (msg.key === 'status') {
-        } else if (msg.key === 'config') {
-            if (Number.isSafeInteger(msg.prio)) {
-                this.query.priority = { $gt: msg.prio };
-                this.consumer?.setQuery(this.query);
+        if (!msg || typeof msg !== 'object') return;
+        if (!['status', 'agent.stream'].includes(msg.key)) logger.info('Worker message: %s task=%s', msg.key, msg.taskId || '');
+
+        if (msg.key === 'config') {
+            if (msg.protocol && msg.protocol !== WORKER_PROTOCOL) {
+                logger.warn('Worker protocol mismatch: expected=%s got=%s', WORKER_PROTOCOL, msg.protocol);
             }
+            const previousWorkerId = this.workerId;
+            if (msg.processWorkerId) this.processWorkerId = String(msg.processWorkerId);
+            if (msg.workerId) this.workerId = String(msg.workerId);
+            if (msg.workerName) this.workerName = String(msg.workerName);
+            if (msg.workerLabel) this.workerLabel = String(msg.workerLabel);
+            if (msg.workerVersion || msg.version) this.workerVersion = String(msg.workerVersion || msg.version);
             if (Number.isSafeInteger(msg.concurrency) && msg.concurrency > 0) {
                 this.concurrency = msg.concurrency;
                 this.consumer?.setConcurrency(msg.concurrency);
             }
-            if (msg.lang instanceof Array && msg.lang.every((i) => typeof i === 'string')) {
-                this.query.lang = { $in: msg.lang };
-                this.consumer?.setQuery(this.query);
+            if (Number.isFinite(msg.minPriority)) {
+                this.minPriority = Number(msg.minPriority);
+                this.refreshQuery();
             }
-            if (msg.type instanceof Array && msg.type.every((i) => typeof i === 'string')) {
-                this.query.type = { $in: msg.type };
-                this.consumer?.setQuery(this.query);
+            this.taskTypes = cleanTaskTypes(msg.taskTypes);
+            this.refreshQuery();
+            this.statusRegistered = true;
+            await this.updateWorkerStatus({
+                status: 'online',
+                taskTypes: this.taskTypes,
+                protocol: msg.protocol || WORKER_PROTOCOL,
+                host: msg.host,
+                pid: msg.pid,
+                nodeAppInstance: msg.nodeAppInstance,
+            });
+            if (previousWorkerId && previousWorkerId !== this.workerId) {
+                await removeWorkerStatus(previousWorkerId);
             }
-        } else if (msg.key === 'start') {
-            if (this.consumer) throw new BadRequestError('Worker daemon already started');
-            this.consumer = task.consume(this.query, this.newTask.bind(this), true, this.concurrency);
-            logger.info('Worker daemon started');
+            return;
         }
+
+        if (msg.key === 'status') {
+            const status = msg.status && typeof msg.status === 'object' ? msg.status : {};
+            await this.updateWorkerStatus({
+                ...status,
+                status: status.status || 'online',
+                taskTypes: this.taskTypes,
+                host: msg.host || status.host,
+                pid: msg.pid || status.pid,
+            });
+            return;
+        }
+
+        if (msg.key === 'start') {
+            if (this.consumer) throw new BadRequestError('Worker daemon already started');
+            this.consumer = task.consume(
+                this.query,
+                this.newTask.bind(this),
+                false,
+                this.concurrency,
+                () => isWorkerPaused(this.workerId),
+            );
+            await this.updateWorkerStatus({ status: 'online' });
+            logger.info('Ejunz worker started: workerId=%s concurrency=%d taskTypes=%o', this.workerId, this.concurrency, this.taskTypes);
+            return;
+        }
+
+        const cb = this.tasks[msg.taskId];
+        if (!cb) {
+            logger.warn('Worker message for unknown task: key=%s taskId=%s', msg.key, msg.taskId);
+            return;
+        }
+
+        if (msg.key === 'task.accepted') await cb.accepted(msg);
+        else if (msg.key === 'agent.status' && cb instanceof AgentTaskCallbackContext) await cb.status(msg);
+        else if (msg.key === 'agent.stream' && cb instanceof AgentTaskCallbackContext) cb.stream(msg);
+        else if (msg.key === 'agent.message.append' && cb instanceof AgentTaskCallbackContext) await cb.appendMessage(msg.message || msg);
+        else if (msg.key === 'agent.message.patch' && cb instanceof AgentTaskCallbackContext) await cb.patchMessage(msg.selector || { bubbleId: msg.bubbleId }, msg.set || msg.message || {});
+        else if (msg.key === 'agent.tool_result' && cb instanceof AgentTaskCallbackContext) await cb.toolResult(msg);
+        else if (msg.key === 'task.complete') await cb.complete(msg);
+        else if (msg.key === 'task.error') await cb.error(msg);
+        else if (msg.key === 'tool_call.complete') await cb.complete(msg);
+        else if (msg.key === 'tool_call.error') await cb.error(msg);
+        else if (msg.key === 'mcp_tool_call.complete') await cb.complete(msg);
+        else if (msg.key === 'mcp_tool_call.error') await cb.error(msg);
     }
 
     async cleanup() {
+        if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
         this.consumer?.destroy();
-        logger.info('Worker daemon disconnected from ', this.request.ip);
-        await Promise.all(Object.values(this.tasks).map((cb) => cb.reset()));
-    }
-}
-
-export class ToolCallResultCallbackContext {
-    private resolve: (_: any) => void;
-    private finishPromise: Promise<any>;
-    private operationPromise = Promise.resolve(null);
-    private result: any = null;
-
-    constructor(public ctx: Context, public readonly task: Omit<Task, '_id'> & { type: string; taskRecordId?: ObjectId }) {
-        this.finishPromise = new Promise((resolve) => {
-            this.resolve = resolve;
-        });
-    }
-
-    async _next(body: { result?: any; error?: any; status?: string }) {
-        // 工具调用中间结果可以通过 next 传递
-        if (body.result !== undefined) {
-            this.result = body.result;
-        }
-        if (body.error !== undefined) {
-            this.result = { error: true, ...body.error };
-        }
-    }
-
-    next(body: { result?: any; error?: any; status?: string }) {
-        this.operationPromise = this.operationPromise.then(() => this._next(body));
-        return this.operationPromise;
-    }
-
-    async _end(body?: { result?: any; error?: any; status?: string }) {
-        // 工具调用完成，返回结果
-        const result = body?.result || body?.error || this.result || null;
-        this.resolve(result);
-        // 发送完成事件
-        bus.broadcast('toolcall/complete', this.task._id, result);
-    }
-
-    end(body?: { result?: any; error?: any; status?: string }) {
-        if (!body) this.resolve(this.result);
-        else this.operationPromise = this.operationPromise.then(() => this._end(body));
-        return this.operationPromise;
-    }
-
-    reset() {
-        return this.operationPromise.then(async () => {
-            // 重新添加任务
-            return task.add(this.task);
-        });
-    }
-
-    then(onfulfilled?: (value: any) => void, onrejected?: (reason: any) => void) {
-        return this.finishPromise.then(onfulfilled, onrejected);
+        if (this.statusRegistered) await markWorkerOffline(this.workerId);
+        logger.info('Ejunz worker disconnected from %s', this.request.ip);
+        await Promise.all(Object.values(this.tasks).map((cb) => cb.reset().catch((e) => logger.error(e))));
     }
 }
 
@@ -307,7 +619,6 @@ export async function callToolViaWorker(
         mcpId?: number;
     } = {},
 ): Promise<any> {
-    // 创建任务
     const taskId = await task.add({
         type: 'tool_call',
         taskRecordId,
@@ -324,24 +635,19 @@ export async function callToolViaWorker(
         mcpId: toolContext.mcpId,
         priority,
     });
-    
-    // 等待 worker 处理并返回结果
+
     return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
             dispose();
             reject(new Error(`Tool call timeout: ${toolName}`));
         }, 30000);
-        
-        // 通过事件总线监听任务完成
+
         const handler = (completedTaskId: ObjectId, result: any) => {
             if (completedTaskId.toString() === taskId.toString()) {
                 clearTimeout(timeout);
                 dispose();
-                if (result?.error) {
-                    reject(new Error(result.message || 'Tool call failed'));
-                } else {
-                    resolve(result);
-                }
+                if (result?.error) reject(new Error(result.message || 'Tool call failed'));
+                else resolve(result);
             }
         };
         const dispose = (bus as any).on('toolcall/complete', handler);
@@ -379,15 +685,6 @@ export class ToolCallInternalHandler extends Handler {
 }
 
 export async function apply(ctx: Context) {
-    ctx.Connection('worker_conn', '/worker/conn', WorkerConnectionHandler, builtin.PRIV.PRIV_JUDGE);
-    ctx.Route('toolcall_internal', '/toolcall/internal', ToolCallInternalHandler, builtin.PRIV.PRIV_JUDGE);
+    ctx.Connection('worker_conn', '/worker/conn', EjunzWorkerConnectionHandler, builtin.PRIV.PRIV_WORKER);
+    ctx.Route('toolcall_internal', '/toolcall/internal', ToolCallInternalHandler, builtin.PRIV.PRIV_WORKER);
 }
-
-/** @deprecated use WorkerResultCallbackContext.next instead */
-export const next = (payload: any) => WorkerResultCallbackContext.next(payload.domainId, payload.rid, payload);
-/** @deprecated use WorkerResultCallbackContext.end instead */
-export const end = (payload: any) => WorkerResultCallbackContext.end(payload.domainId, payload.rid, payload);
-/** @deprecated use WorkerResultCallbackContext.next instead */
-apply.next = next;
-/** @deprecated use WorkerResultCallbackContext.end instead */
-apply.end = end;

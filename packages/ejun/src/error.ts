@@ -7,7 +7,7 @@ import {
 } from '@ejunz/framework';
 
 export * from '@ejunz/framework/error';
-export const RemoteOnlineJudgeError = Err('RemoteOnlineJudgeError', UserFacingError, 'RemoteOnlineJudgeError', 500);
+export const RemoteWorkerError = Err('RemoteWorkerError', UserFacingError, 'RemoteWorkerError', 500);
 export const SendMailError = Err('SendMailError', UserFacingError, 'Failed to send mail to {0}. (1)', 500);
 
 export const AlreadyVotedError = Err('AlreadyVotedError', ForbiddenError, "You've already voted.");
@@ -58,8 +58,8 @@ export const ProblemNotAllowPretestError = Err('ProblemNotAllowPretestError', Fo
 export const ProblemNotAllowLanguageError = Err('ProblemNotAllowSubmitError', ForbiddenError, 'This language is not allowed to submit.');
 export const ProblemNotAllowCopyError = Err('ProblemNotAllowCopyError', ForbiddenError, 'You are not allowed to copy this problem from {0} to {1}.');
 
-export const PretestRejudgeFailedError = Err('PretestRejudgeFailedError', BadRequestError, 'Cannot rejudge a pretest record.');
-export const HackRejudgeFailedError = Err('HackRejudgeFailedError', BadRequestError, 'Cannot rejudge a hack record.');
+export const PretestRerunFailedError = Err('PretestRerunFailedError', BadRequestError, 'Cannot rerun a pretest record.');
+export const HackRerunFailedError = Err('HackRerunFailedError', BadRequestError, 'Cannot rerun a hack record.');
 export const CannotDeleteSystemDomainError = Err('CannotDeleteSystemDomainError', BadRequestError, 'You are not allowed to delete system domain.');
 export const OnlyOwnerCanDeleteDomainError = Err('OnlyOwnerCanDeleteDomainError', BadRequestError, 'You are not the owner of this domain.');
 export const CannotEditSuperAdminError = Err('CannotEditSuperAdminError', BadRequestError, 'You are not allowed to edit super admin in web.');
