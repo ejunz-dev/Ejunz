@@ -4,6 +4,12 @@ import type { StatusUpdate } from '@ejunz/utils/lib/sysinfo';
 import * as sysinfo from '@ejunz/utils/lib/sysinfo';
 import { Context } from '../context';
 import { Logger } from '../logger';
+import * as DocumentModel from '../model/document';
+import DomainModel from '../model/domain';
+import MessageModel from '../model/message';
+import RecordModel from '../model/record';
+import SystemModel from '../model/system';
+import UserModel from '../model/user';
 import bus from './bus';
 import db from './db';
 
@@ -11,17 +17,14 @@ const coll = db.collection('status');
 const logger = new Logger('monitor');
 
 export async function feedback(): Promise<[string, StatusUpdate]> {
-    const {
-        system, domain, document, user, record,
-    } = global.Ejunz.model;
     const version = require('ejun/package.json').version;
     const [mid, $update, inf] = await sysinfo.update();
-    const [installId, name, url] = system.getMany(['installid', 'server.name', 'server.url']);
+    const [installId, name, url] = SystemModel.getMany(['installid', 'server.name', 'server.url']);
     const [domainCount, userCount, problemCount, discussionCount, recordCount] = await Promise.all([
-        domain.coll.count(),
-        user.coll.count(),
-        document.coll.count({ docType: document.TYPE_DISCUSSION }),
-        record.coll.count(),
+        DomainModel.coll.count(),
+        UserModel.coll.count(),
+        DocumentModel.coll.count({ docType: DocumentModel.TYPE_DISCUSSION }),
+        RecordModel.coll.count(),
     ]);
     const info: Record<string, any> = {
         mid: mid.toString(),
@@ -49,12 +52,12 @@ export async function feedback(): Promise<[string, StatusUpdate]> {
         },
     });
     if (process.env.CI) return [mid, $update];
-    superagent.post(`${system.get('server.center')}/report`)
+    superagent.post(`${SystemModel.get('server.center')}/report`)
         .send({ installId, payload })
         .then((res) => {
-            if (res.body.updateUrl?.startsWith('https://')) system.set('server.center', res.body.updateUrl);
-            if (res.body.notification) global.Ejunz.model.message.sendNotification(res.body.notification);
-            if (res.body.reassignId) system.set('installid', res.body.reassignId);
+            if (res.body.updateUrl?.startsWith('https://')) SystemModel.set('server.center', res.body.updateUrl);
+            if (res.body.notification) MessageModel.sendNotification(res.body.notification);
+            if (res.body.reassignId) SystemModel.set('installid', res.body.reassignId);
         })
         .catch(() => logger.debug('Cannot connect to ejunz center.'));
     return [mid, $update];
