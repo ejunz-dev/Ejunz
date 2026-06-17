@@ -235,6 +235,7 @@ async function executeAgentTask(task: any, reporter: WorkerTaskReporter, config:
     let toolCallCount = 0;
     let score = 100;
     let errorStatus: number | undefined;
+    let hasStartedAssistantBubble = false;
 
     for (let iterations = 0; iterations < 10; iterations++) {
         let currentBubbleId: string | null = null;
@@ -274,7 +275,10 @@ async function executeAgentTask(task: any, reporter: WorkerTaskReporter, config:
                                 if (delta?.content) {
                                     accumulatedContent += delta.content;
                                     if (!currentBubbleId) {
-                                        currentBubbleId = context.assistantbubbleId || randomUUID();
+                                        currentBubbleId = !hasStartedAssistantBubble && context.assistantbubbleId
+                                            ? context.assistantbubbleId
+                                            : randomUUID();
+                                        hasStartedAssistantBubble = true;
                                         const contentHash = createHash('md5').update('').digest('hex').substring(0, 16);
                                         reporter.stream({ bubbleId: currentBubbleId, content: '', isNew: true });
                                         reporter.appendMessage({
@@ -548,7 +552,13 @@ function createBuiltinReporter(ctx: EjunzContext, dbTask: any, taskType: string,
         if (!recordId || !selector?.bubbleId) return;
         const rdoc = await RecordModel.get(domainId, recordId);
         const messages = rdoc?.agentMessages || [];
-        const index = messages.findIndex((m) => m.bubbleId === selector.bubbleId);
+        let index = -1;
+        for (let i = messages.length - 1; i >= 0; i--) {
+            if (messages[i].bubbleId === selector.bubbleId) {
+                index = i;
+                break;
+            }
+        }
         if (index < 0) return;
         const $set: any = {};
         const allowed = new Set([
@@ -696,7 +706,7 @@ export async function apply(ctx: EjunzContext) {
     const TaskModel = getTaskModel();
     const RecordModel = getRecordModel();
     const workerStatusModel = getWorkerStatusModel();
-    const { coll: workerStatusColl, removeWorkerStatus, upsertWorkerStatus } = workerStatusModel;
+    const { coll: workerStatusColl, isWorkerPaused, removeWorkerStatus, upsertWorkerStatus } = workerStatusModel;
     const workerHost = hostname();
     const workerSourceId = configuredBuiltinWorkerSourceId() || `builtin:${workerHost}:${process.env.NODE_APP_INSTANCE || '0'}`;
     allocatedBuiltinWorkerId = await allocateBuiltinWorkerId(workerStatusModel, workerSourceId);
@@ -774,6 +784,7 @@ export async function apply(ctx: EjunzContext) {
         handleTask,
         false,
         concurrency,
+        () => isWorkerPaused(workerId),
     );
     await updateStatus();
     const statusTimer = setInterval(() => updateStatus().catch(() => {}), 10000);

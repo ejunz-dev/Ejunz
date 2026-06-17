@@ -193,7 +193,13 @@ class AgentTaskCallbackContext extends EjunzTaskCallbackContext {
             if (!rid || !selector?.bubbleId) return;
             const rdoc = await RecordModel.get(this.domainId, rid);
             const messages = rdoc?.agentMessages || [];
-            const index = messages.findIndex((m) => m.bubbleId === selector.bubbleId);
+            let index = -1;
+            for (let i = messages.length - 1; i >= 0; i--) {
+                if (messages[i].bubbleId === selector.bubbleId) {
+                    index = i;
+                    break;
+                }
+            }
             if (index < 0) return;
             const $set: any = {};
             const allowed = new Set([
