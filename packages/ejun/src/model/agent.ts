@@ -31,6 +31,7 @@ import EdgeModel from './edge';
 import ToolModel from './tool';
 import { EdgeServerConnectionHandler } from '../handler/edge';
 import { domainMarketHasInstalledToolName } from '../handler/tool';
+import { findLocalSystemToolByIdOrName } from '../lib/localSystemTools';
 import _ from 'lodash';
 
 export type Field = keyof AgentDoc;
@@ -452,9 +453,11 @@ export class McpClient {
             }
 
             // toolType system → built-in editor/base System Tools. These are default tools, not Tool Market installs.
-            if (toolType === 'system') {
+            // Also protect known local system tools from stale/missing type metadata, without shadowing explicit edge/plugin tools.
+            const isLocalSystemTool = !!findLocalSystemToolByIdOrName(name);
+            if (toolType === 'system' || (!toolType && isLocalSystemTool)) {
                 const { executeSystemTool } = require('../lib/systemTools');
-                ClientLogger.info('[tool] callTool: name=%s -> branch=system (executeSystemTool)', name);
+                ClientLogger.info('[tool] callTool: name=%s -> branch=system (executeSystemTool, type=%s, hasToken=%s)', name, toolType || '', !!token);
                 return executeSystemTool(name, args || {}, systemToolContext);
             }
 
