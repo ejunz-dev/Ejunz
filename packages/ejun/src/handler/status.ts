@@ -133,6 +133,7 @@ class StatusHandler extends Handler {
             else result.push({ key: [key], message });
         }
         this.response.body = { stats, workerStats, compilers: result };
+        this.response.pjax = 'partials/status_worker_tbody.html';
         this.response.template = 'status.html';
     }
 }
