@@ -1,18 +1,21 @@
 /* eslint-disable no-await-in-loop */
-import {
-    Context as EjunzContext,
-    TaskModel,
-} from 'ejun';
-import Agent, { McpClient } from 'ejun/src/model/agent';
-import RecordModel from 'ejun/src/model/record';
-import { getConfig } from '../config';
-import logger from '../log';
+import { createHash, randomUUID } from 'crypto';
+import { STATUS } from '@ejunz/common';
 import superagent from 'superagent';
+import logger from '../log';
+import { ToolCallTaskHandler } from '../toolcall';
 
-let taskConsumerInstance: any = null;
-let isCreatingConsumer = false;
+export interface WorkerTaskReporter {
+    accepted(data?: any): Promise<void>;
+    status(data?: any): Promise<void>;
+    stream(data?: any): Promise<void>;
+    appendMessage(message: any): Promise<void>;
+    patchMessage(selector: any, set: any): Promise<void>;
+    toolResult(data?: any): Promise<void>;
+    complete(data?: any): Promise<void>;
+    error(error: any): Promise<void>;
+}
 
-/** Register core editor/base system tools in the worker, matching ejun handler/tool. */
 function registerSystemToolsIfAvailable() {
     try {
         const { getLocalSystemToolCatalog, executeLocalSystemTool } = require('ejun/src/lib/localSystemTools');
@@ -36,997 +39,365 @@ function normalizeToolParameters(raw: any) {
     return parameters;
 }
 
+function toolsToApiFormat(tools: any[]) {
+    return (tools || []).map((tool: any) => ({
+        type: 'function',
+        function: {
+            name: tool.modelName || tool.name || '',
+            description: tool.description || '',
+            parameters: normalizeToolParameters(tool.inputSchema),
+        },
+    })).filter((tool: any) => tool.function.name);
+}
+
+function truncateMessages(messages: any[], maxMessages: number = 20, maxChars: number = 8000): any[] {
+    if (messages.length <= maxMessages) {
+        const totalChars = messages.reduce((sum, msg) => sum + (typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || '')).length, 0);
+        if (totalChars <= maxChars) return messages;
+    }
+
+    const systemMsg = messages[0]?.role === 'system' ? messages[0] : null;
+    const otherMessages = systemMsg ? messages.slice(1) : messages;
+    const finalMessages: any[] = systemMsg ? [systemMsg] : [];
+    let totalChars = systemMsg ? (typeof systemMsg.content === 'string' ? systemMsg.content.length : JSON.stringify(systemMsg.content || '').length) : 0;
+
+    for (let i = otherMessages.length - 1; i >= 0; i--) {
+        const msg = otherMessages[i];
+        const msgStr = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || '');
+        totalChars += msgStr.length;
+        if (totalChars > maxChars && finalMessages.length > (systemMsg ? 1 : 0)) break;
+        finalMessages.push(msg);
+        if (finalMessages.length > maxMessages + (systemMsg ? 1 : 0)) {
+            if (systemMsg && finalMessages.length > maxMessages + 1) finalMessages.splice(1, 1);
+            else if (!systemMsg && finalMessages.length > maxMessages) finalMessages.shift();
+        }
+    }
+
+    return systemMsg ? [systemMsg, ...finalMessages.slice(1).reverse()] : finalMessages.reverse();
+}
+
+function normalizeMessages(messages: any[]): any[] {
+    const normalized: any[] = [];
+    const usedToolCallIds = new Set<string>();
+    let lastAssistantToolCallIds: string[] = [];
+
+    for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i];
+        const normalizedMsg: any = { role: msg.role, content: msg.content || '' };
+
+        if (msg.role === 'assistant' && Array.isArray(msg.tool_calls)) {
+            lastAssistantToolCallIds = [];
+            normalizedMsg.tool_calls = msg.tool_calls.map((tc: any) => {
+                const toolCallId = tc.id || '';
+                const toolCallName = tc.function?.name || tc.name || '';
+                const toolCallArgs = typeof tc.function?.arguments === 'string'
+                    ? tc.function.arguments
+                    : typeof tc.arguments === 'string'
+                        ? tc.arguments
+                        : JSON.stringify(tc.arguments || tc.function?.arguments || {});
+                if (toolCallId) lastAssistantToolCallIds.push(toolCallId);
+                return {
+                    id: toolCallId,
+                    type: 'function',
+                    function: { name: toolCallName, arguments: toolCallArgs },
+                };
+            });
+        }
+
+        if (msg.role === 'tool') {
+            let toolCallId: string | null = msg.tool_call_id || null;
+            if (!toolCallId && lastAssistantToolCallIds.length > 0) toolCallId = lastAssistantToolCallIds[0];
+            if (!toolCallId || usedToolCallIds.has(toolCallId)) continue;
+            normalizedMsg.tool_call_id = toolCallId;
+            usedToolCallIds.add(toolCallId);
+            const index = lastAssistantToolCallIds.indexOf(toolCallId);
+            if (index > -1) lastAssistantToolCallIds.splice(index, 1);
+        }
+
+        normalized.push(normalizedMsg);
+    }
+
+    return normalized;
+}
+
 function findExecutionTool(executionTools: any[], toolName: string): any | undefined {
     return (executionTools || []).find((tool) => tool?.name === toolName || tool?.modelName === toolName);
 }
 
-function prepareExecutionArgs(executionTool: any, toolArgs: any) {
-    if (executionTool?.type === 'plugin_mcp') {
-        const mcpId = Number(executionTool?.mcpId);
-        if (!Number.isFinite(mcpId) || mcpId <= 0) {
-            const err = new Error(`Plugin MCP metadata missing for tool: ${executionTool?.name || 'unknown'}`);
-            (err as any).code = 'PLUGIN_MCP_METADATA_MISSING';
-            throw err;
-        }
-        return { ...(toolArgs || {}), __mcpId: mcpId };
-    }
-    return toolArgs || {};
+async function executeToolViaServer(config: any, task: any, executionTool: any, modelToolName: string, args: any) {
+    const handler = new ToolCallTaskHandler(config.server_url, config.cookie, config.token);
+    const callTask = {
+        domainId: task.domainId,
+        toolName: executionTool?.name || modelToolName,
+        args: executionTool?.type === 'plugin_mcp' && executionTool?.mcpId
+            ? { ...(args || {}), __mcpId: executionTool.mcpId }
+            : (args || {}),
+        baseDocId: task.context?.baseDocId,
+        baseBranch: task.context?.baseBranch,
+        owner: task.context?.owner || task.uid,
+        toolType: executionTool?.type,
+        token: executionTool?.token,
+        mcpId: executionTool?.mcpId,
+    };
+    let final: any = null;
+    await handler.handle(callTask, async () => {}, async (data) => { final = data; });
+    if (final?.error) throw Object.assign(new Error(final.error.message || 'Tool call failed'), final.error);
+    return final?.result;
 }
 
-function positiveUid(raw: unknown): number | undefined {
-    const uid = Number(raw);
-    return Number.isFinite(uid) && uid > 0 ? uid : undefined;
-}
+async function executeAgentTask(task: any, reporter: WorkerTaskReporter, config: any) {
+    const { domainId, agentId, uid, message, history, context = {}, workflowConfig, _id: taskId } = task;
+    if (!context.apiKey || !context.systemMessage || !context.apiUrl) throw new Error('Task missing required agent context');
 
-function firstBaseBinding(agentDoc: any): { docId: number; branch: string } | undefined {
-    const raw = agentDoc?.baseLibraryBindings;
-    if (!Array.isArray(raw)) return undefined;
-    for (const b of raw) {
-        const docId = Number(b?.docId);
-        if (!Number.isFinite(docId) || docId <= 0) continue;
-        const branch = String(b?.branch || 'main').trim() || 'main';
-        return { docId, branch };
-    }
-    return undefined;
-}
+    await reporter.accepted();
+    await reporter.status({ status: STATUS.STATUS_TASK_PROCESSING });
 
-async function loadTaskAgentDoc(domainId: string, agentId: unknown): Promise<any | null> {
-    const id = String(agentId || '').trim();
-    if (!domainId || !id) return null;
+    const startTime = Date.now();
+    let chatHistory: any[] = [];
     try {
-        return await (Agent as any).getByAid(domainId, id);
-    } catch (e: any) {
-        logger.warn('Failed to hydrate agent context for %s/%s: %s', domainId, id, e?.message || e);
-        return null;
+        chatHistory = typeof history === 'string' ? JSON.parse(history) : history || [];
+    } catch (e) {
+        logger.warn('Failed to parse history: %s', (e as Error).message);
     }
-}
 
-function hydrateTaskContext(rawContext: any, agentDoc: any, uid: unknown): any {
-    const out = { ...(rawContext || {}) };
-    const binding = firstBaseBinding(agentDoc);
-    if (!out.baseDocId && binding) out.baseDocId = binding.docId;
-    if (!out.baseBranch && binding) out.baseBranch = binding.branch;
-    if (!out.owner) out.owner = positiveUid(uid) || positiveUid(agentDoc?.owner);
-    return out;
-}
-
-export async function apply(ctx: EjunzContext) {
-    registerSystemToolsIfAvailable();
-    if (isCreatingConsumer) {
-        let waitCount = 0;
-        while (isCreatingConsumer && waitCount < 50) {
-            await new Promise(resolve => setTimeout(resolve, 100));
-            waitCount++;
-        }
-        if (isCreatingConsumer) {
-            logger.error('Timeout waiting for consumer creation');
-            return;
-        }
+    const executionTools = Array.isArray(context.toolsForModel)
+        ? context.toolsForModel
+        : Array.isArray(context.tools) ? context.tools : [];
+    const requestBody: any = {
+        model: context.model || 'deepseek-chat',
+        max_tokens: context.max_tokens || 1024,
+        messages: [
+            { role: 'system', content: context.systemMessage },
+            ...normalizeMessages(truncateMessages(chatHistory)),
+            { role: 'user', content: message },
+        ],
+        stream: true,
+    };
+    if (executionTools.length) {
+        requestBody.tools = toolsToApiFormat(executionTools);
+        requestBody.tool_choice = 'auto';
+        requestBody.parallel_tool_calls = false;
     }
-    
-    if (taskConsumerInstance) {
-        logger.warn('Task consumer already exists, destroying old instance');
-        taskConsumerInstance.destroy();
-        taskConsumerInstance = null;
-    }
-    
-    ctx.effect(() => {
-        const handleTask = async (t: any) => {
-            if (!t) {
-                logger.error('handleTask received null/undefined task');
-                return;
-            }
-            
-            const { domainId, agentId, uid, message, history, context: rawContext, workflowConfig, _id: taskId } = t;
-            const rid = t.recordId;
-            if (!rid) {
-                logger.error('Task missing recordId: taskId=%s', taskId?.toString());
-                throw new Error('Task missing recordId');
-            }
-            
-            const startTime = Date.now();
-            const STATUS = require('ejun/src/model/builtin').STATUS;
-            
-            try {
-                const currentRecordDoc = await RecordModel.get(domainId, rid);
-                if (!currentRecordDoc) {
-                    logger.error('Agent record not found: recordId=%s, taskId=%s', rid?.toString(), taskId?.toString());
-                    throw new Error(`Agent record not found: ${rid?.toString()}`);
-                }
-                
-                const currentStatus = (currentRecordDoc as any).status as number | undefined;
-                if (currentStatus !== undefined && currentStatus !== STATUS.STATUS_TASK_WAITING) {
-                    logger.warn('Task already being processed or completed: recordId=%s, taskId=%s, currentStatus=%d, skipping', 
-                        rid?.toString(), 
-                        taskId?.toString(),
-                        currentStatus);
-                    return;
-                }
-                
-                await RecordModel.updateAgentTask(domainId, rid, {
-                    status: STATUS.STATUS_TASK_FETCHED,
-                });
-                
-                if (!rawContext || !rawContext.apiKey || !rawContext.systemMessage) {
-                    logger.error('Task missing required context information', {
-                        taskId: taskId?.toString(),
-                        recordId: rid?.toString(),
-                        hasContext: !!rawContext,
-                        hasApiKey: !!rawContext?.apiKey,
-                        hasSystemMessage: !!rawContext?.systemMessage,
-                    });
-                    throw new Error('Task missing required context information');
-                }
 
-                const hydratedAgentDoc = await loadTaskAgentDoc(domainId, agentId);
-                const context = hydrateTaskContext(rawContext, hydratedAgentDoc, uid);
+    let messagesForTurn = truncateMessages(chatHistory);
+    let toolCallCount = 0;
+    let score = 100;
+    let errorStatus: number | undefined;
 
-                await RecordModel.updateAgentTask(domainId, rid, {
-                    status: STATUS.STATUS_TASK_PROCESSING,
-                });
-                
-                let chatHistory: any[] = [];
-                try {
-                    chatHistory = typeof history === 'string' ? JSON.parse(history) : history || [];
-                } catch (e) {
-                    logger.warn('Failed to parse history:', e);
-                }
-                
-                const { processAgentChatInternal } = require('ejun/src/handler/agent');
-                
-                const adoc = {
-                    ...(hydratedAgentDoc || {}),
-                    domainId,
-                    aid: agentId,
-                    content: context.agentContent || hydratedAgentDoc?.content || '',
-                    memory: context.agentMemory || hydratedAgentDoc?.memory || '',
-                    baseLibraryBindings: context.baseDocId
-                        ? [{ docId: context.baseDocId, branch: context.baseBranch || 'main' }]
-                        : hydratedAgentDoc?.baseLibraryBindings,
-                    owner: context.owner || hydratedAgentDoc?.owner,
-                    mcpToolIds: [],
-                    repoIds: [],
-                };
-                
-                const request = require('superagent');
-                const { McpClient } = require('ejun/src/model/agent');
-                const mcpClient = new McpClient();
-                
-                const truncateMessages = (messages: any[], maxMessages: number = 20, maxChars: number = 8000): any[] => {
-                    if (messages.length <= maxMessages) {
-                        let totalChars = 0;
-                        for (const msg of messages) {
-                            const msgStr = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || '');
-                            totalChars += msgStr.length;
-                        }
-                        if (totalChars <= maxChars) {
-                            return messages;
-                        }
-                    }
-                    
-                    const systemMsg = messages[0]?.role === 'system' ? messages[0] : null;
-                    const otherMessages = systemMsg ? messages.slice(1) : messages;
-                    
-                    let totalChars = systemMsg ? (typeof systemMsg.content === 'string' ? systemMsg.content.length : JSON.stringify(systemMsg.content || '').length) : 0;
-                    const finalMessages: any[] = systemMsg ? [systemMsg] : [];
-                    
-                    for (let i = otherMessages.length - 1; i >= 0; i--) {
-                        const msg = otherMessages[i];
-                        const msgStr = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || '');
-                        totalChars += msgStr.length;
-                        if (totalChars > maxChars && finalMessages.length > (systemMsg ? 1 : 0)) {
-                            break;
-                        }
-                        finalMessages.push(msg);
-                        if (finalMessages.length > maxMessages + (systemMsg ? 1 : 0)) {
-                            if (systemMsg && finalMessages.length > maxMessages + 1) {
-                                finalMessages.splice(1, 1);
-                            } else if (!systemMsg && finalMessages.length > maxMessages) {
-                                finalMessages.shift();
-                            }
-                        }
-                    }
-                    
-                    if (systemMsg) {
-                        return [systemMsg, ...finalMessages.slice(1).reverse()];
-                    } else {
-                        return finalMessages.reverse();
-                    }
-                };
-                
-                let limitedHistory = truncateMessages(chatHistory);
-                
-                const normalizeMessages = (messages: any[]): any[] => {
-                    const normalized: any[] = [];
-                    const usedToolCallIds = new Set<string>();
-                    let lastAssistantToolCallIds: string[] = [];
-                    
-                    for (let i = 0; i < messages.length; i++) {
-                        const msg = messages[i];
-                        const normalizedMsg: any = {
-                            role: msg.role,
-                            content: msg.content || '',
-                        };
-                        
-                        if (msg.role === 'assistant' && msg.tool_calls && Array.isArray(msg.tool_calls)) {
-                            lastAssistantToolCallIds = [];
-                            normalizedMsg.tool_calls = msg.tool_calls.map((tc: any) => {
-                                let toolCallId = '';
-                                let toolCallName = '';
-                                let toolCallArgs = '';
-                                
-                                if (typeof tc === 'object' && tc.function) {
-                                    toolCallId = tc.id || '';
-                                    toolCallName = tc.function.name || '';
-                                    toolCallArgs = typeof tc.function.arguments === 'string' 
-                                        ? tc.function.arguments 
-                                        : JSON.stringify(tc.function.arguments || {});
-                                } else if (typeof tc === 'object') {
-                                    toolCallId = tc.id || '';
-                                    toolCallName = tc.name || tc.function?.name || '';
-                                    toolCallArgs = typeof tc.arguments === 'string'
-                                        ? tc.arguments
-                                        : JSON.stringify(tc.arguments || tc.function?.arguments || {});
+    for (let iterations = 0; iterations < 10; iterations++) {
+        let currentBubbleId: string | null = null;
+        let accumulatedContent = '';
+        let finishReason = '';
+        let toolCalls: any[] = [];
+
+        await new Promise<void>((resolve, reject) => {
+            const req = superagent.post(context.apiUrl)
+                .set('Authorization', `Bearer ${context.apiKey}`)
+                .set('content-type', 'application/json')
+                .buffer(false)
+                .send(requestBody)
+                .timeout(120000)
+                .parse((res, callback) => {
+                    let responseStatus = res.status || 200;
+                    res.setEncoding('utf8');
+                    let buffer = '';
+
+                    res.on('data', (chunk: string) => {
+                        buffer += chunk;
+                        const lines = buffer.split('\n');
+                        buffer = lines.pop() || '';
+                        for (const line of lines) {
+                            if (!line.trim() || !line.startsWith('data: ')) continue;
+                            const data = line.slice(6).trim();
+                            if (data === '[DONE]') continue;
+                            if (!data) continue;
+                            try {
+                                const parsed = JSON.parse(data);
+                                if (parsed.error) {
+                                    reject(new Error(parsed.error.message || JSON.stringify(parsed.error)));
+                                    return;
                                 }
-                                
-                                if (toolCallId) {
-                                    lastAssistantToolCallIds.push(toolCallId);
-                                }
-                                
-                                return {
-                                    id: toolCallId,
-                                    type: 'function',
-                                    function: {
-                                        name: toolCallName,
-                                        arguments: toolCallArgs,
-                                    },
-                                };
-                            });
-                        }
-                        
-                        if (msg.role === 'tool') {
-                            let toolCallId: string | null = null;
-                            
-                            if (msg.tool_call_id) {
-                                toolCallId = msg.tool_call_id;
-                            } else if (lastAssistantToolCallIds.length > 0) {
-                                toolCallId = lastAssistantToolCallIds[0];
-                            } else {
-                                for (let j = i - 1; j >= 0; j--) {
-                                    const prevMsg = messages[j];
-                                    if (prevMsg.role === 'assistant' && prevMsg.tool_calls && Array.isArray(prevMsg.tool_calls) && prevMsg.tool_calls.length > 0) {
-                                        const firstToolCall = prevMsg.tool_calls[0];
-                                        if (firstToolCall && firstToolCall.id) {
-                                            toolCallId = firstToolCall.id;
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            if (toolCallId && usedToolCallIds.has(toolCallId)) {
-                                logger.warn('Duplicate tool message detected for tool_call_id: %s, skipping', toolCallId);
-                                continue;
-                            }
-                            
-                            if (toolCallId) {
-                                normalizedMsg.tool_call_id = toolCallId;
-                                usedToolCallIds.add(toolCallId);
-                                const index = lastAssistantToolCallIds.indexOf(toolCallId);
-                                if (index > -1) {
-                                    lastAssistantToolCallIds.splice(index, 1);
-                                }
-                            } else {
-                                logger.warn('Tool message missing tool_call_id at index %d, skipping', i);
-                                continue;
-                            }
-                        }
-                        
-                        normalized.push(normalizedMsg);
-                    }
-                    
-                    return normalized;
-                };
-                
-                const normalizedHistory = normalizeMessages(limitedHistory);
-                
-                for (const msg of normalizedHistory) {
-                    if (msg.role === 'assistant' && msg.tool_calls) {
-                        for (const tc of msg.tool_calls) {
-                            if (!tc.id || !tc.function || !tc.function.name) {
-                                logger.warn('Invalid tool_call format: %s', JSON.stringify(tc));
-                            }
-                        }
-                    }
-                }
-                
-                const requestBody: any = {
-                    model: context.model || 'deepseek-chat',
-                    max_tokens: 1024,
-                    messages: [
-                        { role: 'system', content: context.systemMessage },
-                        ...normalizedHistory,
-                        { role: 'user', content: message },
-                    ],
-                    stream: true,
-                };
-                
-                const toolsForApi = (context.toolsForModel && context.toolsForModel.length > 0)
-                    ? context.toolsForModel
-                    : (context.tools && context.tools.length > 0 ? context.tools : []);
-                const executionTools = Array.isArray(toolsForApi) ? toolsForApi : [];
-                if (executionTools.length > 0) {
-                    requestBody.tools = executionTools.map((tool: any) => ({
-                        type: 'function',
-                        function: {
-                            name: tool.modelName || tool.name || '',
-                            description: tool.description || '',
-                            parameters: normalizeToolParameters(tool.inputSchema),
-                        },
-                    }));
-                    requestBody.tool_choice = 'auto';
-                    requestBody.parallel_tool_calls = false;
-                }
-                
-                const systemMessage = context.systemMessage || '';
-                
-                if (normalizedHistory.length > 0) {
-                }
-                
-                let iterations = 0;
-                const maxIterations = 10;
-                let messagesForTurn = limitedHistory;
-                let accumulatedContent = '';
-                let toolCallCount = 0;
-                let hasToolError = false;
-                let errorStatus: number | null = null;
-                let score = 100;
-                
-                while (iterations < maxIterations) {
-                    iterations++;
-                    
-                    if (iterations === 1) {
-                        try {
-                            const { logAgentContextToModel } = require('ejun/src/handler/agent');
-                            logAgentContextToModel({
-                                source: `ejunzworker/builtin first LLM request recordId=${rid?.toString()} taskId=${String(taskId)}`,
-                                domainId,
-                                agentId: String(agentId),
-                                model: context.model,
-                                systemMessage: context.systemMessage || '',
-                                messages: requestBody.messages,
-                            });
-                        } catch (e: any) {
-                            logger.warn('logAgentContextToModel failed: %s', e?.message || e);
-                        }
-                    }
-                    
-                    let currentBubbleId: string | null = null;
-                    let bubbleStarted = false;
-                    const updateRecordContent = async (content: string, toolCalls?: any[]) => {
-                        try {
-                            if (!currentBubbleId) {
-                                const currentRecordDoc = await RecordModel.get(domainId, rid);
-                                const currentMessages = (currentRecordDoc as any)?.agentMessages || [];
-                                const lastMessage = currentMessages[currentMessages.length - 1];
-                                
-                                if (lastMessage && lastMessage.role === 'assistant' && lastMessage.bubbleId) {
-                                    currentBubbleId = lastMessage.bubbleId;
-                                    bubbleStarted = true;
-                                } else {
-                                    const { randomUUID, createHash } = require('crypto');
-                                    const hasAssistant = currentMessages.some((m: any) => m.role === 'assistant');
-                                    currentBubbleId = !hasAssistant && (context as any)?.assistantbubbleId
-                                        ? (context as any).assistantbubbleId
-                                        : randomUUID();
-                                    const contentHash = createHash('md5').update(content || '').digest('hex').substring(0, 16);
-                                    
-                                    const bus = require('ejun/src/service/bus').default;
-                                    bus.broadcast('bubble/stream', {
-                                        recordId: rid.toString(),
-                                        domainId,
-                                        bubbleId: currentBubbleId,
-                                        content: '',
-                                        isNew: true,
-                                    });
-                                    
-                                    await RecordModel.updateAgentTask(domainId, rid, {
-                                        agentMessages: [{
+                                const choice = parsed.choices?.[0];
+                                const delta = choice?.delta;
+                                if (delta?.content) {
+                                    accumulatedContent += delta.content;
+                                    if (!currentBubbleId) {
+                                        currentBubbleId = context.assistantbubbleId || randomUUID();
+                                        const contentHash = createHash('md5').update('').digest('hex').substring(0, 16);
+                                        reporter.stream({ bubbleId: currentBubbleId, content: '', isNew: true });
+                                        reporter.appendMessage({
                                             role: 'assistant',
-                                            content: content || '',
+                                            content: '',
                                             timestamp: new Date(),
                                             bubbleId: currentBubbleId,
                                             bubbleState: 'streaming',
-                                            contentHash: contentHash,
-                                        }],
-                                    });
-                                    
-                                    bubbleStarted = true;
+                                            contentHash,
+                                        }).catch((e) => logger.warn('append assistant message failed: %s', e?.message || e));
+                                    }
+                                    reporter.stream({ bubbleId: currentBubbleId, content: accumulatedContent, isNew: false });
                                 }
+                                if (choice?.finish_reason) finishReason = choice.finish_reason;
+                                if (delta?.tool_calls) {
+                                    for (const toolCall of delta.tool_calls || []) {
+                                        const idx = toolCall.index || 0;
+                                        if (!toolCalls[idx]) toolCalls[idx] = { id: '', type: 'function', function: { name: '', arguments: '' } };
+                                        if (toolCall.id) toolCalls[idx].id = toolCall.id;
+                                        if (toolCall.function?.name) toolCalls[idx].function.name = toolCall.function.name;
+                                        if (toolCall.function?.arguments) toolCalls[idx].function.arguments += toolCall.function.arguments;
+                                    }
+                                }
+                            } catch (e) {
+                                logger.warn('Parse error in stream: %s', (e as Error).message);
                             }
-                            
-                            if (!currentBubbleId) {
-                                logger.error('updateRecordContent: currentBubbleId is empty', {
-                                    recordId: rid.toString(),
-                                    contentLength: content ? content.length : 0,
-                                });
-                                return;
-                            }
-                            
-                            const bus = require('ejun/src/service/bus').default;
-                            bus.broadcast('bubble/stream', {
-                                recordId: rid.toString(),
-                                domainId,
-                                bubbleId: currentBubbleId,
-                                content: content,
-                                isNew: false,
-                            });
-                            
-                        } catch (e) {
-                            logger.error(`[bubble ${currentBubbleId ? currentBubbleId.substring(0, 8) : 'unknown'}] updateRecordContent error:`, {
-                                error: e,
-                                recordId: rid.toString(),
-                                bubbleId: currentBubbleId,
-                                contentLength: content ? content.length : 0,
-                            });
                         }
-                    };
-                    
-                    let finishReason = '';
-                    let toolCalls: any[] = [];
-                    let streamFinished = false;
-                    let streamResolve: (() => void) | null = null;
-                    let streamReject: ((err: any) => void) | null = null;
-                    
-                    
-                    await new Promise<void>((resolve, reject) => {
-                        streamResolve = resolve;
-                        streamReject = reject;
-                        
-                        const req = superagent.post(context.apiUrl)
-                            .set('Authorization', `Bearer ${context.apiKey}`)
-                            .set('content-type', 'application/json')
-                            .buffer(false)
-                            .send(requestBody)
-                            .timeout(120000)
-                            .parse((res, callback) => {
-                                let responseStatus = res.status || 200;
-                                
-                                if (responseStatus >= 400) {
-                                    logger.warn('API response status: %d, but continuing to process stream', responseStatus);
-                                }
-                                
-                                res.setEncoding('utf8');
-                                let buffer = '';
-                                
-                                res.on('data', (chunk: string) => {
-                                    if (streamFinished) return;
-                                    
-                                    buffer += chunk;
-                                    const lines = buffer.split('\n');
-                                    buffer = lines.pop() || '';
-                                    
-                                    for (const line of lines) {
-                                        if (!line.trim() || !line.startsWith('data: ')) continue;
-                                        const data = line.slice(6).trim();
-                                        if (data === '[DONE]') {
-                                            streamFinished = true;
-                                            continue;
-                                        }
-                                        if (!data) continue;
-                                        
-                                        try {
-                                            const parsed = JSON.parse(data);
-                                            
-                                            if (parsed.error) {
-                                                logger.error('API error in stream: %s', JSON.stringify(parsed.error));
-                                                streamFinished = true;
-                                                const error = new Error(parsed.error.message || JSON.stringify(parsed.error));
-                                                callback(error, undefined);
-                                                if (streamReject) {
-                                                    streamReject(error);
-                                                } else {
-                                                    reject(error);
-                                                }
-                                                return;
-                                            }
-                                            
-                                            const choice = parsed.choices?.[0];
-                                            const delta = choice?.delta;
-                                            
-                                            
-                                            if (delta?.content) {
-                                                accumulatedContent += delta.content;
-                                                updateRecordContent(accumulatedContent, toolCalls.length > 0 ? toolCalls : undefined).catch((err) => {
-                                                    logger.error('updateRecordContent failed', {
-                                                        recordId: rid.toString(),
-                                                        error: err,
-                                                    });
-                                                });
-                                                
-                                                if (workflowConfig && workflowConfig.returnType === 'tts' && workflowConfig.clientId) {
-                                                    (async () => {
-                                                        try {
-                                                            const { ClientConnectionHandler } = require('ejun/src/handler/client');
-                                                            const clientHandler = ClientConnectionHandler.getConnection(workflowConfig.clientId);
-                                                            if (clientHandler) {
-                                                                await clientHandler.addTtsText(delta.content).catch((error: any) => {
-                                                                    logger.warn('addTtsText failed in workflow: %s', error.message);
-                                                                });
-                                                            }
-                                                        } catch (e) {
-                                                            logger.warn('Failed to send TTS in workflow: %s', (e as Error).message);
-                                                        }
-                                                    })();
-                                                }
-                                            }
-                                            
-                                            if (choice?.finish_reason) {
-                                                finishReason = choice.finish_reason;
-                                            }
-                                            
-                                            if (delta?.tool_calls) {
-                                                for (const toolCall of delta.tool_calls || []) {
-                                                    const idx = toolCall.index || 0;
-                                                    if (idx === 0) {
-                                                        if (!toolCalls[0]) toolCalls[0] = { id: '', type: 'function', function: { name: '', arguments: '' } };
-                                                        if (toolCall.id) toolCalls[0].id = toolCall.id;
-                                                        if (toolCall.function?.name) toolCalls[0].function.name = toolCall.function.name;
-                                                        if (toolCall.function?.arguments) toolCalls[0].function.arguments += toolCall.function.arguments;
-                                                    }
-                                                }
-                                            }
-                                        } catch (e) {
-                                        }
-                                    }
-                                });
-                                
-                                res.on('end', () => {
-                                    streamFinished = true;
-                                    
-                                    if (responseStatus >= 400 && accumulatedContent.length === 0 && toolCalls.length === 0 && !finishReason) {
-                                        const error = new Error(`API request failed with status ${responseStatus}`);
-                                        callback(error, undefined);
-                                        if (streamReject) {
-                                            streamReject(error);
-                                        } else {
-                                            reject(error);
-                                        }
-                                    } else {
-                                        callback(null, undefined);
-                                        if (streamResolve) {
-                                            streamResolve();
-                                        }
-                                    }
-                                });
-                                
-                                res.on('error', (err) => {
-                                    streamFinished = true;
-                                    logger.error('Stream error: %s', err.message || String(err));
-                                    if (streamReject) {
-                                        streamReject(err);
-                                    } else {
-                                        reject(err);
-                                    }
-                                });
-                            });
-                        
-                        req.on('error', (err: any) => {
-                            streamFinished = true;
-                            logger.error('Request error: %s', err.message || String(err));
-                            if (streamReject) {
-                                streamReject(err);
-                            } else {
-                                reject(err);
-                            }
-                        });
-                        
-                        req.end((err, res) => {
-                            if (err && !streamFinished) {
-                                streamFinished = true;
-                                logger.error('Request network error: %s', err.message || String(err));
-                                if (streamReject) {
-                                    streamReject(err);
-                                } else {
-                                    reject(err);
-                                }
-                            }
-                        });
                     });
-                    
-                    if (accumulatedContent) {
-                        let finalBubbleId = currentBubbleId;
-                        if (!finalBubbleId) {
-                            const currentRecordDoc = await RecordModel.get(domainId, rid);
-                            const currentMessages = (currentRecordDoc as any)?.agentMessages || [];
-                            const lastMessage = currentMessages[currentMessages.length - 1];
-                            if (lastMessage && lastMessage.role === 'assistant' && lastMessage.bubbleId) {
-                                finalBubbleId = lastMessage.bubbleId;
-                            }
-                        }
-                        
-                        if (finalBubbleId) {
-                            const bus = require('ejun/src/service/bus').default;
-                            bus.broadcast('bubble/stream', {
-                                recordId: rid.toString(),
-                                domainId,
-                                bubbleId: finalBubbleId,
-                                content: accumulatedContent,
-                                isNew: false,
-                            });
+
+                    res.on('end', () => {
+                        if (responseStatus >= 400 && !accumulatedContent && !toolCalls.length && !finishReason) {
+                            const err = new Error(`API request failed with status ${responseStatus}`);
+                            callback(err, undefined);
+                            reject(err);
                         } else {
-                            logger.warn('Cannot send final bubble_stream: no bubbleId available', { 
-                                recordId: rid.toString() 
-                            });
+                            callback(null, undefined);
+                            resolve();
                         }
-                    }
-                    
-                    const hasToolCalls = finishReason === 'tool_calls' && toolCalls.length > 0;
-                    
-                    if (hasToolCalls) {
-                        const toolCall = toolCalls[0];
-                        if (accumulatedContent) {
-                            const currentRecordDoc = await RecordModel.get(domainId, rid);
-                            const currentMessages = (currentRecordDoc as any)?.agentMessages || [];
-                            let lastAssistantIndex = -1;
-                            for (let k = currentMessages.length - 1; k >= 0; k--) {
-                                if (currentMessages[k].role === 'assistant') {
-                                    lastAssistantIndex = k;
-                                    break;
-                                }
-                            }
-                            if (lastAssistantIndex >= 0) {
-                                const { createHash } = require('crypto');
-                                const contentHash = createHash('md5').update(accumulatedContent || '').digest('hex').substring(0, 16);
-                                const $setContent: any = {
-                                    [`agentMessages.${lastAssistantIndex}.content`]: accumulatedContent,
-                                    [`agentMessages.${lastAssistantIndex}.timestamp`]: new Date(),
-                                    [`agentMessages.${lastAssistantIndex}.contentHash`]: contentHash,
-                                    [`agentMessages.${lastAssistantIndex}.bubbleState`]: 'completed',
-                                };
-                                await RecordModel.rawAgentUpdate(domainId, rid, $setContent);
-                            }
-                        }
-                        const currentRecordDocForToolCalls = await RecordModel.get(domainId, rid);
-                        const messagesForToolCalls = (currentRecordDocForToolCalls as any)?.agentMessages || [];
-                        let lastAssistantIdx = -1;
-                        for (let k = messagesForToolCalls.length - 1; k >= 0; k--) {
-                            if (messagesForToolCalls[k].role === 'assistant') {
-                                lastAssistantIdx = k;
-                                break;
-                            }
-                        }
-                        if (lastAssistantIdx >= 0) {
-                            const toolCallsForAssistant = [{
-                                id: toolCall.id,
-                                type: 'function',
-                                function: {
-                                    name: toolCall.function?.name || '',
-                                    arguments: toolCall.function?.arguments || '',
-                                },
-                            }];
-                            await RecordModel.rawAgentUpdate(domainId, rid, {
-                                [`agentMessages.${lastAssistantIdx}.tool_calls`]: toolCallsForAssistant,
-                            } as any);
-                        }
-                        const toolName = toolCall.function?.name;
-                        let toolArgs: any = {};
-                        try {
-                            toolArgs = JSON.parse(toolCall.function?.arguments || '{}');
-                        } catch (e) {
-                            toolArgs = {};
-                        }
-                        
-                        const executionTool = findExecutionTool(executionTools, toolName);
-                        if (!executionTool) {
-                            logger.warn('[tool] worker: no execution metadata for model tool name=%s', toolName);
-                        }
-                        const toolToken: string | undefined = executionTool?.token;
-                        const toolServerId: number | undefined = executionTool?.edgeId;
-                        const toolType: string | undefined = executionTool?.type;
-                        const callToolName = executionTool?.name || toolName;
-                        logger.info('[tool] worker: modelName=%s callName=%s type=%s mcpId=%s token=%s', toolName, callToolName, toolType || '(none)', executionTool?.mcpId || '(none)', toolToken ? 'yes' : 'no');
-
-                        toolCallCount++;
-
-                        let toolResult: any;
-                        const STATUS = require('ejun/src/model/builtin').STATUS;
-                        try {
-                            const executionArgs = prepareExecutionArgs(executionTool, toolArgs);
-                            toolResult = await mcpClient.callTool(
-                                callToolName,
-                                executionArgs,
-                                domainId,
-                                toolServerId,
-                                toolToken,
-                                toolType,
-                                (context as any)?.baseDocId,
-                                (context as any)?.baseBranch,
-                                positiveUid((context as any)?.owner) || positiveUid(uid),
-                            );
-                            logger.info('[tool] worker: name=%s done success', toolName);
-                            
-                            // On success:false tool results, still persist and continue so the model can reply; avoid aborting UI
-                            if (toolResult === false || (typeof toolResult === 'object' && toolResult !== null && toolResult.success === false)) {
-                                score = Math.max(0, score - 20);
-                            }
-                            
-                            await RecordModel.updateAgentTask(domainId, rid, {
-                                agentToolCallCount: toolCallCount,
-                                agentMessages: [{
-                                    role: 'tool',
-                                    content: JSON.stringify(toolResult),
-                                    toolName,
-                                    tool_call_id: toolCall.id,
-                                    timestamp: new Date(),
-                                }],
-                            });
-                        } catch (toolError: any) {
-                            hasToolError = true;
-                            const errorMessage = toolError.message || String(toolError);
-                            const errorCode = toolError.code || 'UNKNOWN_ERROR';
-                            logger.warn('[tool] worker: name=%s done error %s', toolName, errorMessage);
-                            
-                            if (errorCode === 'TOOL_NOT_ADDED') {
-                                errorStatus = STATUS.STATUS_TASK_ERROR_NOT_ADDED;
-                            } else if (errorCode === 'TOOL_NOT_FOUND' || errorMessage.toLowerCase().includes('not found')) {
-                                errorStatus = STATUS.STATUS_TASK_ERROR_NOT_FOUND;
-                            } else if (errorMessage.toLowerCase().includes('timeout') || errorCode === 'TIMEOUT') {
-                                errorStatus = STATUS.STATUS_TASK_ERROR_TIMEOUT;
-                            } else if (errorMessage.toLowerCase().includes('network') || errorCode === 'NETWORK_ERROR') {
-                                errorStatus = STATUS.STATUS_TASK_ERROR_NETWORK;
-                            } else if (errorMessage.toLowerCase().includes('server') || errorCode === 'SERVER_ERROR') {
-                                errorStatus = STATUS.STATUS_TASK_ERROR_SERVER;
-                            } else if (errorMessage.toLowerCase().includes('system') || errorCode === 'SYSTEM_ERROR') {
-                                errorStatus = STATUS.STATUS_TASK_ERROR_SYSTEM;
-                            } else {
-                                errorStatus = STATUS.STATUS_TASK_ERROR_UNKNOWN;
-                            }
-                            
-                            score = Math.max(0, score - 40);
-                            
-                            toolResult = {
-                                error: true,
-                                message: errorMessage,
-                                code: errorCode,
-                            };
-                            
-                            await RecordModel.updateAgentTask(domainId, rid, {
-                                status: errorStatus,
-                                score,
-                                agentToolCallCount: toolCallCount,
-                                agentMessages: [{
-                                    role: 'tool',
-                                    content: JSON.stringify(toolResult),
-                                    toolName,
-                                    tool_call_id: toolCall.id,
-                                    timestamp: new Date(),
-                                }],
-                            });
-                            // Do not break: feed error into next model turn
-                        }
-                        
-                        const assistantMsg = {
-                            role: 'assistant',
-                            content: accumulatedContent || null,
-                            tool_calls: [{
-                                id: toolCall.id,
-                                type: 'function',
-                                function: {
-                                    name: toolCall.function.name,
-                                    arguments: toolCall.function.arguments,
-                                },
-                            }],
-                        };
-                        
-                        const toolMsg = {
-                            role: 'tool',
-                            content: JSON.stringify(toolResult),
-                            tool_call_id: toolCall.id,
-                        };
-                        
-                        // Next turn must include the user message so the model still sees URL/intent
-                        messagesForTurn = [
-                            ...messagesForTurn,
-                            { role: 'user', content: message },
-                            assistantMsg,
-                            toolMsg,
-                        ];
-                        
-                        messagesForTurn = truncateMessages(messagesForTurn);
-                        const normalizedMessagesForTurn = normalizeMessages(messagesForTurn);
-                        
-                        requestBody.messages = [
-                            { role: 'system', content: context.systemMessage },
-                            ...normalizedMessagesForTurn,
-                        ];
-                        
-                        
-                        accumulatedContent = '';
-                    } else {
-                        if (accumulatedContent) {
-                            const currentRecordDoc = await RecordModel.get(domainId, rid);
-                            const currentMessages = (currentRecordDoc as any)?.agentMessages || [];
-                            const lastMessage = currentMessages[currentMessages.length - 1];
-                            
-                            const { createHash, randomUUID } = require('crypto');
-                            const contentHash = createHash('md5').update(accumulatedContent || '').digest('hex').substring(0, 16);
-                            const bubbleIdToUse = currentBubbleId || (lastMessage?.bubbleId) || randomUUID();
-                            
-                            if (lastMessage && lastMessage.role === 'assistant' && lastMessage.bubbleId === bubbleIdToUse) {
-                                const updateData: any = {
-                                    [`agentMessages.${currentMessages.length - 1}.content`]: accumulatedContent,
-                                    [`agentMessages.${currentMessages.length - 1}.timestamp`]: new Date(),
-                                    [`agentMessages.${currentMessages.length - 1}.contentHash`]: contentHash,
-                                    [`agentMessages.${currentMessages.length - 1}.bubbleState`]: 'completed',
-                                };
-                                await RecordModel.rawAgentUpdate(domainId, rid, updateData);
-                            } else {
-                                await RecordModel.updateAgentTask(domainId, rid, {
-                                    agentMessages: [{
-                                        role: 'assistant',
-                                        content: accumulatedContent,
-                                        timestamp: new Date(),
-                                        bubbleId: bubbleIdToUse,
-                                        bubbleState: 'completed',
-                                        contentHash: contentHash,
-                                    }],
-                                });
-                                logger.warn('Bubble completed but message not found, created new message', { 
-                                    recordId: rid.toString(), 
-                                    bubbleId: bubbleIdToUse,
-                                    contentLength: accumulatedContent.length,
-                                });
-                            }
-                            
-                            currentBubbleId = null;
-                            bubbleStarted = false;
-                        }
-                        
-                        const bus = require('ejun/src/service/bus').default;
-                        bus.broadcast('task/agent-completed', {
-                            recordId: rid.toString(),
-                            domainId,
-                            taskId: taskId?.toString(),
-                        });
-                        
-                        break;
-                    }
-                }
-                
-                const endTime = Date.now();
-                const elapsedTime = endTime - startTime;
-                
-                await RecordModel.updateAgentTask(domainId, rid, {
-                    status: STATUS.STATUS_TASK_PENDING,
-                    time: elapsedTime,
-                    agentToolCallCount: toolCallCount,
-                });
-                
-                if (hasToolError && errorStatus) {
-                    await RecordModel.updateAgentTask(domainId, rid, {
-                        status: errorStatus,
                     });
-                } else {
-                    await RecordModel.updateAgentTask(domainId, rid, {
-                        status: STATUS.STATUS_TASK_DELIVERED,
-                        score: 100,
+                    res.on('error', reject);
                 });
-                }
-                
-            } catch (error: any) {
-                logger.error('Task failed: %s, error: %s', taskId?.toString(), error.message);
-                
-                if (rid) {
-                    try {
-                        const endTime = Date.now();
-                        const elapsedTime = endTime - startTime;
-                        const STATUS = require('ejun/src/model/builtin').STATUS;
-                        await RecordModel.updateAgentTask(domainId, rid, {
-                            status: STATUS.STATUS_TASK_ERROR_SYSTEM,
-                            score: 0,
-                            time: elapsedTime,
-                            agentError: {
-                                message: error.message || String(error),
-                                code: error.code || 'UNKNOWN_ERROR',
-                            },
-                        });
-                    } catch (e) {
-                        logger.warn('Failed to update task record error:', e);
-                    }
-                }
-            }
-        };
-        
-        const taskConcurrency = getConfig('toolcallConcurrency') || 10;
-        
-        if (taskConsumerInstance) {
-            logger.warn('Task consumer already exists, destroying old instance');
-            taskConsumerInstance.destroy();
-            taskConsumerInstance = null;
-        }
-        
-        if (isCreatingConsumer) {
-            logger.error('Consumer is already being created, this should not happen');
-            return;
-        }
-        
-        isCreatingConsumer = true;
-        let taskConsumer: any = null;
-        
-        try {
-            taskConsumer = TaskModel.consume(
-                { type: 'task' },
-                handleTask,
-                true,
-                taskConcurrency,
-            );
-            
-            taskConsumerInstance = taskConsumer;
-            (taskConsumer as any).__instanceId = `${process.env.NODE_APP_INSTANCE}-${process.pid}-${Date.now()}`;
-        } finally {
-            isCreatingConsumer = false;
-        }
-        
-        return () => {
-            if (taskConsumerInstance === taskConsumer) {
-                taskConsumerInstance = null;
-            }
-            if (taskConsumer) {
-                taskConsumer.destroy();
-            }
-        };
-    });
+            req.on('error', reject);
+            req.end((err) => { if (err) reject(err); });
+        });
 
-    ctx.effect(() => {
-        const handleMcpToolCall = async (t: any) => {
-            if (!t) return;
-            const { domainId, sessionId, rpcId, name, args } = t;
-            const bus = require('ejun/src/service/bus').default;
-            let response: any;
+        if (accumulatedContent && currentBubbleId) {
+            const contentHash = createHash('md5').update(accumulatedContent || '').digest('hex').substring(0, 16);
+            await reporter.patchMessage({ bubbleId: currentBubbleId }, {
+                content: accumulatedContent,
+                timestamp: new Date(),
+                contentHash,
+                bubbleState: 'completed',
+            });
+        }
+
+        if (finishReason === 'tool_calls' && toolCalls.length > 0) {
+            const toolCall = toolCalls[0];
+            const toolName = toolCall.function?.name || '';
+            const executionTool = findExecutionTool(executionTools, toolName);
+            let toolArgs: any = {};
             try {
-                const { domainMarketHasInstalledToolName } = require('ejun/src/handler/tool');
-                const { executeSystemTool } = require('ejun/src/lib/systemTools');
-                const installed = await domainMarketHasInstalledToolName(domainId, name);
-                if (!installed) {
-                    response = {
-                        jsonrpc: '2.0',
-                        id: rpcId,
-                        result: { content: [{ type: 'text', text: `Tool not enabled for this domain: ${name}` }], isError: true },
-                    };
-                } else {
-                    const result = await executeSystemTool(name, args || {});
-                    const text = typeof result === 'string' ? result : JSON.stringify(result);
-                    response = {
-                        jsonrpc: '2.0',
-                        id: rpcId,
-                        result: { content: [{ type: 'text', text }], isError: false },
-                    };
+                toolArgs = JSON.parse(toolCall.function?.arguments || '{}');
+            } catch {
+                toolArgs = {};
+            }
+
+            toolCallCount++;
+            let toolResult: any;
+            try {
+                toolResult = await executeToolViaServer(config, task, executionTool, toolName, toolArgs);
+                if (toolResult === false || (typeof toolResult === 'object' && toolResult !== null && toolResult.success === false)) {
+                    score = Math.max(0, score - 20);
                 }
             } catch (e: any) {
-                response = {
-                    jsonrpc: '2.0',
-                    id: rpcId,
-                    result: { content: [{ type: 'text', text: e?.message || String(e) }], isError: true },
+                score = Math.max(0, score - 40);
+                errorStatus = STATUS.STATUS_TASK_ERROR_SYSTEM;
+                toolResult = {
+                    error: true,
+                    message: e?.message || String(e),
+                    code: e?.code || 'UNKNOWN_ERROR',
                 };
             }
-            try {
-                bus.broadcast('mcp/deliver', { sessionId, data: JSON.stringify(response) });
-            } catch (e: any) {
-                logger.error('Failed to broadcast MCP result: sessionId=%s, error=%s', sessionId, e?.message || e);
-            }
-        };
 
-        const mcpConcurrency = getConfig('toolcallConcurrency') || 10;
-        const mcpConsumer = TaskModel.consume({ type: 'mcp', subType: 'tool_call' }, handleMcpToolCall, true, mcpConcurrency);
-        logger.info('MCP SSE tool-call consumer started (concurrency=%d)', mcpConcurrency);
+            await reporter.toolResult({
+                agentToolCallCount: toolCallCount,
+                toolName,
+                result: toolResult,
+                content: JSON.stringify(toolResult),
+                tool_call_id: toolCall.id,
+            });
 
-        return () => {
-            try {
-                mcpConsumer.destroy();
-            } catch {
-                /* ignore */
-            }
+            const assistantMsg = {
+                role: 'assistant',
+                content: accumulatedContent || null,
+                tool_calls: [{
+                    id: toolCall.id,
+                    type: 'function',
+                    function: {
+                        name: toolCall.function.name,
+                        arguments: toolCall.function.arguments,
+                    },
+                }],
+            };
+            const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: toolCall.id };
+            messagesForTurn = truncateMessages([
+                ...messagesForTurn,
+                { role: 'user', content: message },
+                assistantMsg,
+                toolMsg,
+            ]);
+            requestBody.messages = [{ role: 'system', content: context.systemMessage }, ...normalizeMessages(messagesForTurn)];
+            continue;
+        }
+
+        await reporter.complete({
+            status: errorStatus || undefined,
+            score,
+            time: Date.now() - startTime,
+            agentToolCallCount: toolCallCount,
+            domainId,
+            agentId,
+            uid,
+            taskId: taskId?.toString?.() || taskId,
+            workflowConfig,
+        });
+        return;
+    }
+
+    throw new Error('Agent task exceeded maximum tool-call iterations');
+}
+
+async function executeToolCallTask(task: any, reporter: WorkerTaskReporter, config: any) {
+    const handler = new ToolCallTaskHandler(config.server_url, config.cookie, config.token);
+    await reporter.accepted();
+    await handler.handle(
+        task,
+        async (data) => reporter.status(data),
+        async (data) => {
+            if (data?.error) await reporter.error(data.error);
+            else await reporter.complete({ result: data?.result });
+        },
+    );
+}
+
+async function executeMcpToolCallTask(task: any, reporter: WorkerTaskReporter) {
+    await reporter.accepted();
+    let response: any;
+    try {
+        registerSystemToolsIfAvailable();
+        const { executeSystemTool } = require('ejun/src/lib/systemTools');
+        const result = await executeSystemTool(task.name, task.args || {});
+        const text = typeof result === 'string' ? result : JSON.stringify(result);
+        response = {
+            jsonrpc: '2.0',
+            id: task.rpcId,
+            result: { content: [{ type: 'text', text }], isError: false },
         };
-    });
+    } catch (e: any) {
+        response = {
+            jsonrpc: '2.0',
+            id: task.rpcId,
+            result: { content: [{ type: 'text', text: e?.message || String(e) }], isError: true },
+        };
+    }
+    await reporter.complete({ response });
+}
+
+export async function executeWorkerTask(taskType: string, task: any, reporter: WorkerTaskReporter, config: any = {}) {
+    if (taskType === 'agent_task') return executeAgentTask(task, reporter, config);
+    if (taskType === 'tool_call') return executeToolCallTask(task, reporter, config);
+    if (taskType === 'mcp_tool_call') return executeMcpToolCallTask(task, reporter);
+    throw new Error(`Unsupported worker task type: ${taskType}`);
+}
+
+export async function apply() {
+    registerSystemToolsIfAvailable();
+    logger.info('Ejunz worker plugin loaded; standalone task consumption is handled by /worker/conn WebSocket clients.');
 }

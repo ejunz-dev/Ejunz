@@ -654,7 +654,7 @@ function learnRecordProblemIds(card: { problems?: Array<{ pid?: string }> } | nu
     const raw = (card?.problems || [])
         .map((p) => p.pid)
         .filter((id): id is string => typeof id === 'string' && id.length > 0);
-    return raw.length > 0 ? raw : ['browse_judge'];
+    return raw.length > 0 ? raw : ['browse_worker'];
 }
 
 function learnRecordScoreFromDoc(doc: Pick<SessionRecordDoc, 'problems'> | null | undefined): number {
@@ -5087,7 +5087,7 @@ class LessonHandler extends Handler {
                 ? answerHistory
                 : (card.problems && card.problems.length > 0)
                     ? []
-                    : [{ problemId: 'browse_judge', correct: true, selected: 0, timeSpent: totalTime || 0, attempts: 1 }];
+                    : [{ problemId: 'browse_worker', correct: true, selected: 0, timeSpent: totalTime || 0, attempts: 1 }];
             const branchLR = branchLearnPass;
             let baseDocLR = Number((card as any).baseDocId);
             if (!baseDocLR) {
@@ -5259,7 +5259,7 @@ class LessonHandler extends Handler {
             }
 
             const effectiveHistoryCE = isBrowseOnlyCE
-                ? [{ problemId: 'browse_judge', correct: true, selected: 0, timeSpent: totalTime || 0, attempts: 1 }]
+                ? [{ problemId: 'browse_worker', correct: true, selected: 0, timeSpent: totalTime || 0, attempts: 1 }]
                 : answerHistory;
 
             let baseDocCE = Number((cardCE as any).baseDocId);
@@ -5529,7 +5529,7 @@ class LessonHandler extends Handler {
                     nextIndexAfterPass = maxF + 1;
                 }
             } else {
-                // Card view "Know it": no problems -> synthetic browse_judge pass, record result, then next card / node-result (no result page).
+                // Card view "Know it": no problems -> synthetic browse_worker pass, record result, then next card / node-result (no result page).
                 const qKnow = (sNodePass?.lessonCardQueue ?? [])[idxNode] as LessonCardQueueItem | undefined;
                 const nodeKnowSlot =
                     typeof qKnow?.learnSectionOrderIndex === 'number' && qKnow.learnSectionOrderIndex >= 0
@@ -5539,7 +5539,7 @@ class LessonHandler extends Handler {
                             ? sNodePass.lessonQueueLearnSectionOrderIndex
                             : 0);
                 await learn.setCardPassed(finalDomainId, this.user._id, currentCardId, currentCardNodeId, nodeKnowSlot);
-                const browseHistory = [{ problemId: 'browse_judge', correct: true, selected: 0, timeSpent: totalTime || 0, attempts: 1 }];
+                const browseHistory = [{ problemId: 'browse_worker', correct: true, selected: 0, timeSpent: totalTime || 0, attempts: 1 }];
                 const baseDocBrowse = Number((card as any).baseDocId) || firstBasePass;
                 const branchBrowse = cardStorageBranch(card as any) || branchLearnPass;
                 const recScoreBrowse = await syncLearnPassToRecord(
@@ -5809,9 +5809,9 @@ class LessonHandler extends Handler {
         const cardIndex = cards.findIndex(c => c.docId.toString() === currentCardId.toString());
         const currentCardDoc = cards[cardIndex];
 
-        // Single card without problems ("Know it"): persist browse_judge as correct.
+        // Single card without problems ("Know it"): persist browse_worker as correct.
         const effectiveHistory = isBrowseOnly
-            ? [{ problemId: 'browse_judge', correct: true, selected: 0, timeSpent: totalTime || 0, attempts: 1 }]
+            ? [{ problemId: 'browse_worker', correct: true, selected: 0, timeSpent: totalTime || 0, attempts: 1 }]
             : answerHistory;
 
         let qPassMain = typeof body.session === 'string' ? body.session.trim() : '';
@@ -5936,10 +5936,10 @@ class LessonHandler extends Handler {
 
         let problemStats: Array<{ problem: any; totalTime: number; attempts: number; correct: boolean }>;
         if (allProblems.length === 0 && result.answerHistory && result.answerHistory.length > 0) {
-            // Card-view browse_judge row when the card has no problems (Know it / No impression).
-            const judgeLabel = this.translate('Know it') + ' / ' + this.translate('No impression');
+            // Card-view browse_worker row when the card has no problems (Know it / No impression).
+            const workerLabel = this.translate('Know it') + ' / ' + this.translate('No impression');
             problemStats = result.answerHistory.map((h: any) => ({
-                problem: { stem: h.problemId === 'browse_judge' ? judgeLabel : String(h.problemId), pid: h.problemId, options: [], answer: 0 },
+                problem: { stem: h.problemId === 'browse_worker' ? workerLabel : String(h.problemId), pid: h.problemId, options: [], answer: 0 },
                 totalTime: h.timeSpent || 0,
                 attempts: h.attempts || 1,
                 correct: !!h.correct,
@@ -6052,7 +6052,7 @@ class LessonNodeResultHandler extends Handler {
         let totalCorrect = 0;
         let totalProblems = 0;
         let totalTime = 0;
-        const judgeLabel = this.translate('Know it') + ' / ' + this.translate('No impression');
+        const workerLabel = this.translate('Know it') + ' / ' + this.translate('No impression');
 
         for (let i = 0; i < flatCards.length; i++) {
             const item = flatCards[i];
@@ -6075,7 +6075,7 @@ class LessonNodeResultHandler extends Handler {
                     totalCorrect += h.correct ? 1 : 0;
                     totalProblems++;
                     return {
-                        problem: { stem: h.problemId === 'browse_judge' ? judgeLabel : String(h.problemId), pid: h.problemId },
+                        problem: { stem: h.problemId === 'browse_worker' ? workerLabel : String(h.problemId), pid: h.problemId },
                         totalTime: h.timeSpent || 0,
                         attempts: h.attempts || 1,
                         correct: !!h.correct,

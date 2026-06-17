@@ -69,7 +69,7 @@ const FileSetting = Schema.intersect([
             Schema.const('s3').description('S3'),
         ] as const).i18n({ en: 'Storage Provider Type', zh: '存储提供商类型' }),
         endPointForUser: Schema.string().default('/fs/'),
-        endPointForJudge: Schema.string().default('/fs/'),
+        endPointForWorker: Schema.string().default('/fs/'),
     }).i18n({ en: 'File Storage Setting', zh: '文件存储设置' }),
     Schema.union([
         Schema.object({
@@ -95,10 +95,10 @@ class RemoteStorageService {
     public client: S3Client;
     public error = '';
     public bucket = 'ejunz';
-    private replaceWithAlternativeUrlFor: Partial<Record<'user' | 'judge', (originalUrl: string) => string>>;
-    private alternatives: Record<'user' | 'judge', S3Client> = {
+    private replaceWithAlternativeUrlFor: Partial<Record<'user' | 'worker', (originalUrl: string) => string>>;
+    private alternatives: Record<'user' | 'worker', S3Client> = {
         user: null,
-        judge: null,
+        worker: null,
     };
 
     constructor(private config: ReturnType<typeof FileSetting>) {
@@ -115,7 +115,7 @@ class RemoteStorageService {
                 region,
                 pathStyle,
                 endPointForUser,
-                endPointForJudge,
+                endPointForWorker,
             } = this.config;
             this.bucket = bucket;
             const base = {
@@ -139,13 +139,13 @@ class RemoteStorageService {
             } else {
                 this.replaceWithAlternativeUrlFor.user = parseAlternativeEndpointUrl(endPointForUser);
             }
-            if (/^https?:\/\//.test(endPointForJudge)) {
-                this.alternatives.judge = new S3Client({
-                    endpoint: endPointForJudge,
+            if (/^https?:\/\//.test(endPointForWorker)) {
+                this.alternatives.worker = new S3Client({
+                    endpoint: endPointForWorker,
                     ...base,
                 });
             } else {
-                this.replaceWithAlternativeUrlFor.judge = parseAlternativeEndpointUrl(endPointForJudge);
+                this.replaceWithAlternativeUrlFor.worker = parseAlternativeEndpointUrl(endPointForWorker);
             }
             logger.success('Storage connected.');
             this.error = null;
@@ -238,7 +238,7 @@ class RemoteStorageService {
         };
     }
 
-    async signDownloadLink(target: string, filename?: string, noExpire = false, useAlternativeEndpointFor?: 'user' | 'judge', inline = false, _viewPage = false): Promise<string> {
+    async signDownloadLink(target: string, filename?: string, noExpire = false, useAlternativeEndpointFor?: 'user' | 'worker', inline = false, _viewPage = false): Promise<string> {
         target = convertPath(target);
         const client = this.alternatives[useAlternativeEndpointFor] || this.client;
         const url = await getSignedUrl(client, new GetObjectCommand({
@@ -302,7 +302,7 @@ class LocalStorageService {
     error = '';
     dir: string;
     opts: null;
-    private replaceWithAlternativeUrlFor: Record<'user' | 'judge', (originalUrl: string) => string>;
+    private replaceWithAlternativeUrlFor: Record<'user' | 'worker', (originalUrl: string) => string>;
 
     constructor(private config: ReturnType<typeof FileSetting>) {
     }
@@ -313,7 +313,7 @@ class LocalStorageService {
         this.dir = this.config.path;
         this.replaceWithAlternativeUrlFor = {
             user: parseAlternativeEndpointUrl(this.config.endPointForUser),
-            judge: parseAlternativeEndpointUrl(this.config.endPointForJudge),
+            worker: parseAlternativeEndpointUrl(this.config.endPointForWorker),
         };
     }
 
@@ -353,7 +353,7 @@ class LocalStorageService {
         };
     }
 
-    async signDownloadLink(target: string, filename = '', noExpire = false, useAlternativeEndpointFor?: 'user' | 'judge', inline = false, viewPage = false): Promise<string> {
+    async signDownloadLink(target: string, filename = '', noExpire = false, useAlternativeEndpointFor?: 'user' | 'worker', inline = false, viewPage = false): Promise<string> {
         target = convertPath(target);
         const expire = (Date.now() + (noExpire ? 7 * 24 * 3600 : 600) * 1000).toString();
         const secret = md5(`${target}/${expire}/${this.config.secret}`);

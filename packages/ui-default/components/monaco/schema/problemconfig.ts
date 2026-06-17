@@ -66,7 +66,7 @@ const problemConfigSchema: JSONSchema7 = {
   properties: {
     redirect: { type: 'string', pattern: '[0-9a-zA-Z_-]+\\/[0-9]+' },
     key: { type: 'string', pattern: '[0-9a-f]{32}' },
-    type: { enum: ['default', 'interactive', 'communication', 'submit_answer', 'objective', 'remote_judge'] },
+    type: { enum: ['default', 'interactive', 'communication', 'submit_answer', 'objective', 'remote_worker'] },
     subType: { type: 'string' },
     langs: { type: 'array', items: { type: 'string' } },
     target: { type: 'string' },
@@ -82,7 +82,7 @@ const problemConfigSchema: JSONSchema7 = {
     num_processes: { type: 'number', minimum: 1, maximum: 5 },
     validator: { $ref: '#/definitions/compilableFile' },
     user_extra_files: { type: 'array', items: { type: 'string' } },
-    judge_extra_files: { type: 'array', items: { type: 'string' } },
+    worker_extra_files: { type: 'array', items: { type: 'string' } },
     cases: { $ref: '#/definitions/cases' },
     subtasks: { type: 'array', items: { $ref: '#/definitions/subtask' } },
     filename: { type: 'string' },

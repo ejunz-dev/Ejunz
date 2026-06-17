@@ -53,7 +53,13 @@ export class Consumer {
     running?: any;
     notify: (res?: any) => void;
 
-    constructor(public filter: any, public func: (t: Task) => Promise<void>, public destroyOnError = true, private concurrency = 1) {
+    constructor(
+        public filter: any,
+        public func: (t: Task) => Promise<void>,
+        public destroyOnError = true,
+        private concurrency = 1,
+        private pauseChecker?: () => boolean | Promise<boolean>,
+    ) {
         this.consuming = true;
         this.consume();
         bus.on('app/exit', this.destroy);
@@ -69,8 +75,16 @@ export class Consumer {
                     });
                     continue;
                 }
+                if (await this.pauseChecker?.()) {
+                    // eslint-disable-next-line no-await-in-loop
+                    await Promise.race([
+                        new Promise((resolve) => { this.notify = resolve; }),
+                        sleep(1000),
+                    ]);
+                    continue;
+                }
                 const res = await getFirst(this.filter); // eslint-disable-line no-await-in-loop
-                
+
                 if (!res) {
                     // eslint-disable-next-line no-await-in-loop
                     await Promise.race([
@@ -116,6 +130,11 @@ export class Consumer {
         this.filter = query;
         this.notify?.();
     }
+
+    setPauseChecker(pauseChecker?: () => boolean | Promise<boolean>) {
+        this.pauseChecker = pauseChecker;
+        this.notify?.();
+    }
 }
 
 class TaskModel {
@@ -154,8 +173,14 @@ class TaskModel {
 
     static getFirst = getFirst;
 
-    static consume(query: any, cb: (t: Task) => Promise<void>, destroyOnError = true, concurrency = 1) {
-        return new Consumer(query, cb, destroyOnError, concurrency);
+    static consume(
+        query: any,
+        cb: (t: Task) => Promise<void>,
+        destroyOnError = true,
+        concurrency = 1,
+        pauseChecker?: () => boolean | Promise<boolean>,
+    ) {
+        return new Consumer(query, cb, destroyOnError, concurrency, pauseChecker);
     }
 }
 

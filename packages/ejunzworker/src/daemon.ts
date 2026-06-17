@@ -40,7 +40,7 @@ async function daemon() {
         await hosts[i].init();
     }
     for (const i in hosts) {
-        hosts[i].consumeToolCall(queue);
+        hosts[i].connectWorker(queue);
     }
 }
 

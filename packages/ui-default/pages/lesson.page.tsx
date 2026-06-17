@@ -2969,7 +2969,7 @@ function LessonPage() {
         pointLines.length ? `Evaluation points (rubric):\n${pointLines.join('\n')}` : '',
         pointLines.length ? `pointScores length must be exactly ${pointLines.length}` : '',
         pointLines.length ? `pointReasons length must be exactly ${pointLines.length}` : '',
-        'The learner filled one text field per numbered point below; judge each point using only the text on that line (and the rubric for that point).',
+        'The learner filled one text field per numbered point below; evaluate each point using only the text on that line (and the rubric for that point).',
         'Scoring attitude: when the learner clearly expresses the same in-game / scenario meaning as the rubric (including common shortenings, one missing character at the end of a fixed phrase, or obvious synonymous wording in Chinese), treat it as satisfying that point. Do not treat tiny surface differences as wrong if the referent is the same.',
         'Order (mandatory): parent evaluation points (same text before " · " in rubric titles) must appear in rubric order when reading the composed answer top-to-bottom. Sub-point order inside one parent is not enforced. If order is violated, the system zeros that parent group.',
         'Each point score must be an integer and must not exceed that point max score.',

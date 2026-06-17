@@ -14,7 +14,63 @@
   .col--request
     width: 130px
 
+  .col--worker
+    width: 220px
+
+  .col--worker-version
+    width: 90px
+
+  .col--worker-status
+    width: 110px
+
+  .col--worker-action
+    width: 90px
+
+  .col--worker-processing
+    width: 110px
+
+  .col--worker-host
+    width: 160px
+
+  .col--worker-seen
+    width: 130px
+
+  .worker-status-badge
+    display: inline-block
+    padding: 2px 8px
+    border-radius: 999px
+    font-size: 12px
+    line-height: 18px
+    background: #e5e7eb
+    color: #4b5563
+
+    &--online
+      background: #dcfce7
+      color: #166534
+
+    &--working
+      background: #dbeafe
+      color: #1d4ed8
+
+    &--paused
+      background: #ffedd5
+      color: #c2410c
+
+    &--offline
+      background: #f3f4f6
+      color: #6b7280
+
+  .button--compact
+    padding: 4px 10px
+    font-size: 12px
+
+  .worker-status-row--offline
+    opacity: .68
+
   +mobile()
     .col--os
     .col--cpu
+    .col--worker-task
+    .col--worker-host
+    .col--worker-seen
       display: none

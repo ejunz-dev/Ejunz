@@ -115,7 +115,7 @@ export class StorageModel {
         };
     }
 
-    static async signDownloadLink(target: string, filename?: string, noExpire = false, useAlternativeEndpointFor?: 'user' | 'judge', inline = false, viewPage = false) {
+    static async signDownloadLink(target: string, filename?: string, noExpire = false, useAlternativeEndpointFor?: 'user' | 'worker', inline = false, viewPage = false) {
         const res = await StorageModel.coll.findOneAndUpdate(
             { path: target, autoDelete: null },
             { $set: { lastUsage: new Date() } },
