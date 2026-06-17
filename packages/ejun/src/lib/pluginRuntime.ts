@@ -4,11 +4,13 @@ import type { AgentDoc, BaseNode, CardDoc, PluginDoc, PluginNodeData, ToolDoc } 
 import { getBranchData } from '../model/base';
 import * as document from '../model/document';
 import PluginModel from '../model/plugin';
-import DomainMarketToolModel from '../model/domain_market_tool';
-import { SYSTEM_TOOLS_CATALOG } from '@ejunz/ejunztools';
+import {
+    findLocalMcpToolByIdOrName,
+    isLocalMcpToolAvailableInDomain,
+} from './localSystemTools';
 
 const SLUG_RE = /^[a-zA-Z0-9._-]{1,80}$/;
-export const LOCAL_EJUNZTOOLS_TOOL_ID_PREFIX = 'local:ejunztools:';
+export const SYSTEM_TOOL_ID_PREFIX = 'system:';
 
 function trimString(v: unknown, max = 4000): string | undefined {
     if (typeof v !== 'string') return undefined;
@@ -215,13 +217,13 @@ async function sanitizePluginCardDefinition(raw: unknown, body: string, card: Ca
                 toolIds.push(id);
                 continue;
             }
-            if (id.startsWith(LOCAL_EJUNZTOOLS_TOOL_ID_PREFIX)) {
-                const toolKey = id.slice(LOCAL_EJUNZTOOLS_TOOL_ID_PREFIX.length).trim();
+            if (id.startsWith(SYSTEM_TOOL_ID_PREFIX)) {
+                const toolKey = id.slice(SYSTEM_TOOL_ID_PREFIX.length).trim();
                 if (!toolKey || !SLUG_RE.test(toolKey)) continue;
-                const entry = SYSTEM_TOOLS_CATALOG.find((tool) => tool.id === toolKey);
+                const entry = findLocalMcpToolByIdOrName(toolKey);
                 if (!entry) continue;
-                if (domainId && !(await DomainMarketToolModel.has(domainId, toolKey))) continue;
-                toolIds.push(`${LOCAL_EJUNZTOOLS_TOOL_ID_PREFIX}${toolKey}`);
+                if (domainId && !(await isLocalMcpToolAvailableInDomain(domainId, toolKey))) continue;
+                toolIds.push(`${SYSTEM_TOOL_ID_PREFIX}${toolKey}`);
             }
         }
         base.toolIds = Array.from(new Set(toolIds));
@@ -366,7 +368,7 @@ export async function resolveAgentSlashCatalog(domainId: string, adoc: AgentDoc)
 
 export type AgentPluginTool = ToolDoc & {
     token?: string;
-    type?: 'system' | 'edge' | 'plugin_mcp';
+    type?: 'system' | 'market_mcp' | 'edge' | 'plugin_mcp';
     edgeId?: ObjectId;
     toolDocId?: ObjectId;
     mcpId?: number;
@@ -403,19 +405,19 @@ export async function resolveAgentPluginTools(domainId: string, adoc: AgentDoc):
         for (const def of definitions) {
             if (def.kind !== 'mcp') continue;
             for (const id of def.toolIds || []) {
-                if (id.startsWith(LOCAL_EJUNZTOOLS_TOOL_ID_PREFIX)) {
+                if (id.startsWith(SYSTEM_TOOL_ID_PREFIX)) {
                     if (byId.has(id)) continue;
-                    const toolKey = id.slice(LOCAL_EJUNZTOOLS_TOOL_ID_PREFIX.length).trim();
-                    const entry = SYSTEM_TOOLS_CATALOG.find((tool) => tool.id === toolKey);
-                    if (!entry || !(await DomainMarketToolModel.has(domainId, toolKey))) continue;
+                    const toolKey = id.slice(SYSTEM_TOOL_ID_PREFIX.length).trim();
+                    const entry = findLocalMcpToolByIdOrName(toolKey);
+                    if (!entry || !(await isLocalMcpToolAvailableInDomain(domainId, toolKey))) continue;
                     byId.set(id, {
                         name: entry.name,
                         description: entry.description || '',
                         inputSchema: entry.inputSchema || { type: 'object', properties: {} },
-                        type: 'system',
-                        system: true,
+                        type: entry.source === 'system' ? 'system' as const : 'market_mcp' as const,
+                        ...(entry.source === 'system' ? { system: true } : {}),
                         toolKey,
-                        source: { type: 'local' },
+                        source: { type: 'system_tools' },
                     } as AgentPluginTool);
                     continue;
                 }
@@ -446,12 +448,10 @@ export async function resolveAgentPluginTools(domainId: string, adoc: AgentDoc):
         : [];
     const edgeById = new Map(edges.map((edge: any) => [edge._id.toString(), edge]));
     return tools.map((tool) => {
-        if (tool.type === 'system' || tool.source?.type === 'local') {
-            return {
-                ...tool,
-                type: 'system' as const,
-                system: true,
-            };
+        if (tool.source?.type === 'system_tools') {
+            return tool.type === 'system'
+                ? { ...tool, type: 'system' as const, system: true }
+                : { ...tool, type: 'market_mcp' as const, system: false };
         }
         if (tool.source?.type === 'plugin_mcp') {
             return {

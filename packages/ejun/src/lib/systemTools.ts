@@ -7,7 +7,14 @@ import { Logger } from '../logger';
 const logger = new Logger('systemTools');
 
 export type SystemToolCatalogEntry = { name: string; description: string; inputSchema: any };
-export type SystemToolExecutor = (name: string, args: Record<string, unknown>) => Promise<unknown>;
+export interface SystemToolExecutionContext {
+    domainId?: string;
+    baseDocId?: number;
+    branch?: string;
+    owner?: number;
+    setting?: { get: (k: string) => unknown };
+}
+export type SystemToolExecutor = (name: string, args: Record<string, unknown>, context?: SystemToolExecutionContext) => Promise<unknown>;
 
 let registeredCatalog: SystemToolCatalogEntry[] = [];
 let registeredExecutor: SystemToolExecutor | null = null;
@@ -34,12 +41,12 @@ export function getSystemToolCatalog(): SystemToolCatalogEntry[] {
 }
 
 /** Run a system tool via plugin executor; throws if not registered. */
-export async function executeSystemTool(name: string, args: Record<string, unknown>): Promise<unknown> {
+export async function executeSystemTool(name: string, args: Record<string, unknown>, context?: SystemToolExecutionContext): Promise<unknown> {
     logger.info('[tool] systemTools: executeSystemTool name=%s hasExecutor=%s', name, !!registeredExecutor);
     if (!registeredExecutor) {
         throw new Error('System tool executor not registered (plugin not loaded)');
     }
-    const result = await registeredExecutor(name, args || {});
+    const result = await registeredExecutor(name, args || {}, context);
     logger.info('[tool] systemTools: executeSystemTool name=%s done', name);
     return result;
 }
@@ -48,12 +55,12 @@ export async function executeSystemTool(name: string, args: Record<string, unkno
  * If name is in the registered system-tool list, run it and return the result; else null.
  * callTool fallback when no edge metadata is available.
  */
-export async function tryExecuteSystemTool(name: string, args: Record<string, unknown>): Promise<unknown | null> {
+export async function tryExecuteSystemTool(name: string, args: Record<string, unknown>, context?: SystemToolExecutionContext): Promise<unknown | null> {
     const inCatalog = registeredCatalog.some(t => t.name === name);
     logger.info('[tool] systemTools: tryExecuteSystemTool name=%s inCatalog=%s hasExecutor=%s', name, inCatalog, !!registeredExecutor);
     if (!registeredExecutor || !inCatalog) return null;
     try {
-        const result = await registeredExecutor(name, args || {});
+        const result = await registeredExecutor(name, args || {}, context);
         logger.info('[tool] systemTools: tryExecuteSystemTool name=%s done ok', name);
         return result;
     } catch (e) {

@@ -3,7 +3,7 @@ import {
     Context as EjunzContext,
     TaskModel,
 } from 'ejun';
-import { McpClient } from 'ejun/src/model/agent';
+import Agent, { McpClient } from 'ejun/src/model/agent';
 import RecordModel from 'ejun/src/model/record';
 import { getConfig } from '../config';
 import logger from '../log';
@@ -12,16 +12,17 @@ import superagent from 'superagent';
 let taskConsumerInstance: any = null;
 let isCreatingConsumer = false;
 
-/** Register system tool catalog and executor so worker can run get_current_time etc. (same as ejun handler/tool). */
+/** Register core editor/base system tools in the worker, matching ejun handler/tool. */
 function registerSystemToolsIfAvailable() {
     try {
-        const { SYSTEM_TOOLS_CATALOG, executeSystemTool } = require('@ejunz/ejunztools');
+        const { getLocalSystemToolCatalog, executeLocalSystemTool } = require('ejun/src/lib/localSystemTools');
         const { registerSystemToolCatalog, registerSystemToolExecutor } = require('ejun/src/lib/systemTools');
-        registerSystemToolCatalog(SYSTEM_TOOLS_CATALOG);
-        registerSystemToolExecutor(executeSystemTool);
-        logger.info('System tools registered for worker (get_current_time, fetch_webpage, etc.)');
+        const catalog = getLocalSystemToolCatalog();
+        registerSystemToolCatalog(catalog);
+        registerSystemToolExecutor(executeLocalSystemTool);
+        logger.info('Core System Tools registered for worker (count=%d)', catalog.length);
     } catch (e: any) {
-        logger.warn('System tools not registered (ejunztools may be missing): %s', e?.message || e);
+        logger.warn('Core System Tools not registered in worker: %s', e?.message || e);
     }
 }
 
@@ -52,6 +53,43 @@ function prepareExecutionArgs(executionTool: any, toolArgs: any) {
     return toolArgs || {};
 }
 
+function positiveUid(raw: unknown): number | undefined {
+    const uid = Number(raw);
+    return Number.isFinite(uid) && uid > 0 ? uid : undefined;
+}
+
+function firstBaseBinding(agentDoc: any): { docId: number; branch: string } | undefined {
+    const raw = agentDoc?.baseLibraryBindings;
+    if (!Array.isArray(raw)) return undefined;
+    for (const b of raw) {
+        const docId = Number(b?.docId);
+        if (!Number.isFinite(docId) || docId <= 0) continue;
+        const branch = String(b?.branch || 'main').trim() || 'main';
+        return { docId, branch };
+    }
+    return undefined;
+}
+
+async function loadTaskAgentDoc(domainId: string, agentId: unknown): Promise<any | null> {
+    const id = String(agentId || '').trim();
+    if (!domainId || !id) return null;
+    try {
+        return await (Agent as any).getByAid(domainId, id);
+    } catch (e: any) {
+        logger.warn('Failed to hydrate agent context for %s/%s: %s', domainId, id, e?.message || e);
+        return null;
+    }
+}
+
+function hydrateTaskContext(rawContext: any, agentDoc: any, uid: unknown): any {
+    const out = { ...(rawContext || {}) };
+    const binding = firstBaseBinding(agentDoc);
+    if (!out.baseDocId && binding) out.baseDocId = binding.docId;
+    if (!out.baseBranch && binding) out.baseBranch = binding.branch;
+    if (!out.owner) out.owner = positiveUid(uid) || positiveUid(agentDoc?.owner);
+    return out;
+}
+
 export async function apply(ctx: EjunzContext) {
     registerSystemToolsIfAvailable();
     if (isCreatingConsumer) {
@@ -79,7 +117,7 @@ export async function apply(ctx: EjunzContext) {
                 return;
             }
             
-            const { domainId, agentId, uid, message, history, context, workflowConfig, _id: taskId } = t;
+            const { domainId, agentId, uid, message, history, context: rawContext, workflowConfig, _id: taskId } = t;
             const rid = t.recordId;
             if (!rid) {
                 logger.error('Task missing recordId: taskId=%s', taskId?.toString());
@@ -109,17 +147,20 @@ export async function apply(ctx: EjunzContext) {
                     status: STATUS.STATUS_TASK_FETCHED,
                 });
                 
-                if (!context || !context.apiKey || !context.systemMessage) {
+                if (!rawContext || !rawContext.apiKey || !rawContext.systemMessage) {
                     logger.error('Task missing required context information', {
                         taskId: taskId?.toString(),
                         recordId: rid?.toString(),
-                        hasContext: !!context,
-                        hasApiKey: !!context?.apiKey,
-                        hasSystemMessage: !!context?.systemMessage,
+                        hasContext: !!rawContext,
+                        hasApiKey: !!rawContext?.apiKey,
+                        hasSystemMessage: !!rawContext?.systemMessage,
                     });
                     throw new Error('Task missing required context information');
                 }
-                
+
+                const hydratedAgentDoc = await loadTaskAgentDoc(domainId, agentId);
+                const context = hydrateTaskContext(rawContext, hydratedAgentDoc, uid);
+
                 await RecordModel.updateAgentTask(domainId, rid, {
                     status: STATUS.STATUS_TASK_PROCESSING,
                 });
@@ -134,10 +175,15 @@ export async function apply(ctx: EjunzContext) {
                 const { processAgentChatInternal } = require('ejun/src/handler/agent');
                 
                 const adoc = {
+                    ...(hydratedAgentDoc || {}),
                     domainId,
                     aid: agentId,
-                    content: context.agentContent || '',
-                    memory: context.agentMemory || '',
+                    content: context.agentContent || hydratedAgentDoc?.content || '',
+                    memory: context.agentMemory || hydratedAgentDoc?.memory || '',
+                    baseLibraryBindings: context.baseDocId
+                        ? [{ docId: context.baseDocId, branch: context.baseBranch || 'main' }]
+                        : hydratedAgentDoc?.baseLibraryBindings,
+                    owner: context.owner || hydratedAgentDoc?.owner,
                     mcpToolIds: [],
                     repoIds: [],
                 };
@@ -696,7 +742,7 @@ export async function apply(ctx: EjunzContext) {
                                 toolType,
                                 (context as any)?.baseDocId,
                                 (context as any)?.baseBranch,
-                                typeof uid === 'number' && uid > 0 ? uid : undefined,
+                                positiveUid((context as any)?.owner) || positiveUid(uid),
                             );
                             logger.info('[tool] worker: name=%s done success', toolName);
                             
