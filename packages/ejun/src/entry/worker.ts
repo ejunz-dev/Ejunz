@@ -51,11 +51,11 @@ export async function apply(ctx: Context) {
     });
     require('../lib/index');
 
-    // ctx.plugin(require('../service/monitor'));
     ctx.plugin(require('../service/check').default);
     await service(pending, fail, ctx);
     await builtinModel(ctx);
     await model(pending, fail, ctx);
+    ctx.plugin(require('../service/monitor'));
     ctx = await new Promise((resolve) => {
         ctx.inject(['worker', 'setting'], (c) => {
             resolve(c);

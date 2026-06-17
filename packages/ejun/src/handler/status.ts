@@ -2,7 +2,6 @@ import { Context } from '../context';
 import { PRIV } from '../model/builtin';
 import * as DocumentModel from '../model/document';
 import DomainModel from '../model/domain';
-import * as SettingModel from '../model/setting';
 import UserModel from '../model/user';
 import {
     cleanWorkerIds, coll as workerStatusColl, getWorkersByIds,
@@ -133,13 +132,7 @@ class StatusHandler extends Handler {
             if (t) t.key.push(key);
             else result.push({ key: [key], message });
         }
-        const LANGS = SettingModel.langs;
-        const languages = {};
-        for (const key in LANGS) {
-            if (LANGS[key].hidden) continue;
-            languages[`${LANGS[key].display}(${key})`] = LANGS[key].compile || LANGS[key].execute;
-        }
-        this.response.body = { stats, workerStats, languages, compilers: result };
+        this.response.body = { stats, workerStats, compilers: result };
         this.response.template = 'status.html';
     }
 }
