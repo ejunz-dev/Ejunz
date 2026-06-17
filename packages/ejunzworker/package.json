@@ -1,7 +1,7 @@
 {
     "name": "@ejunz/ejunzworker",
     "bin": "bin/ejunzworker.js",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "main": "./src/index.ts",
     "repository": "https://github.com/ejunz-dev/Ejunz.git",
     "dependencies": {
