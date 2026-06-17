@@ -93,7 +93,17 @@ export class Consumer {
                     ]);
                     continue;
                 }
-                
+
+                if (await this.pauseChecker?.()) {
+                    await coll.insertOne(res); // eslint-disable-line no-await-in-loop
+                    // eslint-disable-next-line no-await-in-loop
+                    await Promise.race([
+                        new Promise((resolve) => { this.notify = resolve; }),
+                        sleep(1000),
+                    ]);
+                    continue;
+                }
+
                 if (this.processing.has(res)) {
                     logger.warn('Task already being processed, skipping', { taskId: res._id?.toString() });
                     continue;
