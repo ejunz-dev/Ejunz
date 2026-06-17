@@ -1,8 +1,13 @@
 /* eslint-disable no-await-in-loop */
 import { createHash, randomUUID } from 'crypto';
+import { hostname } from 'os';
+import { ObjectId } from 'mongodb';
 import { STATUS } from '@ejunz/common';
+import type { Context as EjunzContext } from 'ejun';
+import type { AgentRecordMessage } from 'ejun/src/model/record';
 import superagent from 'superagent';
 import logger from '../log';
+import { getConfig } from '../config';
 import { ToolCallTaskHandler } from '../toolcall';
 
 export interface WorkerTaskReporter {
@@ -124,8 +129,38 @@ function findExecutionTool(executionTools: any[], toolName: string): any | undef
     return (executionTools || []).find((tool) => tool?.name === toolName || tool?.modelName === toolName);
 }
 
+function toObjectId(value: unknown): ObjectId | null {
+    if (value instanceof ObjectId) return value;
+    if (typeof value === 'string' && ObjectId.isValid(value)) return new ObjectId(value);
+    return null;
+}
+
+function normalizeDate(value: unknown): Date {
+    if (value instanceof Date) return value;
+    if (typeof value === 'string' || typeof value === 'number') {
+        const d = new Date(value);
+        if (!Number.isNaN(d.getTime())) return d;
+    }
+    return new Date();
+}
+
+function getMcpClient() {
+    return require('ejun/src/model/agent').McpClient;
+}
+
+function getRecordModel() {
+    return require('ejun/src/model/record').default;
+}
+
+function getTaskModel() {
+    return require('ejun/src/model/task').default;
+}
+
+function getWorkerStatusModel() {
+    return require('ejun/src/model/workerStatus');
+}
+
 async function executeToolViaServer(config: any, task: any, executionTool: any, modelToolName: string, args: any) {
-    const handler = new ToolCallTaskHandler(config.server_url, config.cookie, config.token);
     const callTask = {
         domainId: task.domainId,
         toolName: executionTool?.name || modelToolName,
@@ -139,6 +174,23 @@ async function executeToolViaServer(config: any, task: any, executionTool: any, 
         token: executionTool?.token,
         mcpId: executionTool?.mcpId,
     };
+    if (!config.server_url) {
+        const McpClient = getMcpClient();
+        const mcpClient = new McpClient();
+        const result = await mcpClient.callTool(
+            callTask.toolName,
+            callTask.args,
+            callTask.domainId,
+            undefined,
+            callTask.token,
+            callTask.toolType,
+            callTask.baseDocId,
+            callTask.baseBranch,
+            callTask.owner,
+        );
+        return result;
+    }
+    const handler = new ToolCallTaskHandler(config.server_url, config.cookie, config.token);
     let final: any = null;
     await handler.handle(callTask, async () => {}, async (data) => { final = data; });
     if (final?.error) throw Object.assign(new Error(final.error.message || 'Tool call failed'), final.error);
@@ -355,8 +407,30 @@ async function executeAgentTask(task: any, reporter: WorkerTaskReporter, config:
 }
 
 async function executeToolCallTask(task: any, reporter: WorkerTaskReporter, config: any) {
-    const handler = new ToolCallTaskHandler(config.server_url, config.cookie, config.token);
     await reporter.accepted();
+    if (!config.server_url) {
+        const McpClient = getMcpClient();
+        const mcpClient = new McpClient();
+        try {
+            await reporter.status({ status: 'running', toolName: task.toolName || task.name });
+            const result = await mcpClient.callTool(
+                task.toolName || task.name,
+                task.args || {},
+                task.domainId,
+                undefined,
+                task.token,
+                task.toolType,
+                task.baseDocId,
+                task.baseBranch,
+                task.owner,
+            );
+            await reporter.complete({ result });
+        } catch (e: any) {
+            await reporter.error({ message: e?.message || String(e), code: e?.code || 'WORKER_TOOL_CALL_ERROR', stack: e?.stack });
+        }
+        return;
+    }
+    const handler = new ToolCallTaskHandler(config.server_url, config.cookie, config.token);
     await handler.handle(
         task,
         async (data) => reporter.status(data),
@@ -397,7 +471,316 @@ export async function executeWorkerTask(taskType: string, task: any, reporter: W
     throw new Error(`Unsupported worker task type: ${taskType}`);
 }
 
-export async function apply() {
+type BuiltinWorkerMeta = {
+    workerId: string;
+    workerName: string;
+    workerLabel: string;
+    workerKind: string;
+    workerVersion: string;
+};
+
+function taskTypeFromDbTask(t: any) {
+    if (t.type === 'task') return 'agent_task';
+    if (t.type === 'tool_call') return 'tool_call';
+    if (t.type === 'mcp' && t.subType === 'tool_call') return 'mcp_tool_call';
+    return null;
+}
+
+function builtinWorkerVersion() {
+    return process.env.EJUNZ_WORKER_VERSION || (() => {
+        try {
+            return require('../../package.json').version;
+        } catch {
+            return 'unknown';
+        }
+    })();
+}
+
+let allocatedBuiltinWorkerId = '';
+
+function configuredBuiltinWorkerSourceId() {
+    return process.env.EJUNZ_WORKER_ID || getConfig('workerId') || '';
+}
+
+async function allocateBuiltinWorkerId(workerStatusModel: any, workerSourceId: string) {
+    return workerStatusModel.allocateWorkerId('builtin', workerSourceId);
+}
+
+function builtinWorkerId() {
+    return allocatedBuiltinWorkerId || '1';
+}
+
+function builtinWorkerMeta(taskType: string): BuiltinWorkerMeta {
+    const workerId = builtinWorkerId();
+    const workerLabel = process.env.EJUNZ_WORKER_LABEL || getConfig('workerLabel') || 'Builtin';
+    return {
+        workerId,
+        workerName: workerLabel,
+        workerLabel,
+        workerKind: taskType,
+        workerVersion: process.env.EJUNZ_WORKER_VERSION || getConfig('workerVersion') || builtinWorkerVersion(),
+    };
+}
+
+function withWorkerMeta(message: Partial<AgentRecordMessage>, meta: BuiltinWorkerMeta): AgentRecordMessage {
+    return {
+        role: message.role || 'assistant',
+        content: message.content || '',
+        timestamp: normalizeDate(message.timestamp),
+        ...message,
+        ...meta,
+    } as AgentRecordMessage;
+}
+
+function createBuiltinReporter(ctx: EjunzContext, dbTask: any, taskType: string, meta: BuiltinWorkerMeta): WorkerTaskReporter {
+    const RecordModel = getRecordModel();
+    const taskId = dbTask._id?.toString?.() || String(dbTask._id || '');
+    const domainId = dbTask.domainId;
+    const recordId = toObjectId(dbTask.recordId);
+    const enqueue = (() => {
+        let operation = Promise.resolve(null as any);
+        return (op: () => Promise<void>) => {
+            operation = operation.then(op);
+            return operation;
+        };
+    })();
+    const patchMessage = (selector: { bubbleId?: string }, set: Record<string, any>) => enqueue(async () => {
+        if (!recordId || !selector?.bubbleId) return;
+        const rdoc = await RecordModel.get(domainId, recordId);
+        const messages = rdoc?.agentMessages || [];
+        const index = messages.findIndex((m) => m.bubbleId === selector.bubbleId);
+        if (index < 0) return;
+        const $set: any = {};
+        const allowed = new Set([
+            'content', 'timestamp', 'bubbleState', 'contentHash', 'toolName',
+            'toolResult', 'tool_call_id', 'tool_calls', 'bubbleId',
+        ]);
+        for (const [key, value] of Object.entries(set || {})) {
+            if (!allowed.has(key)) continue;
+            $set[`agentMessages.${index}.${key}`] = key === 'timestamp' ? normalizeDate(value) : value;
+        }
+        $set[`agentMessages.${index}.workerId`] = meta.workerId;
+        $set[`agentMessages.${index}.workerName`] = meta.workerName;
+        $set[`agentMessages.${index}.workerLabel`] = meta.workerLabel;
+        $set[`agentMessages.${index}.workerKind`] = meta.workerKind;
+        $set[`agentMessages.${index}.workerVersion`] = meta.workerVersion;
+        await RecordModel.rawAgentUpdate(domainId, recordId, $set);
+    });
+    return {
+        accepted: async () => {
+            if (taskType !== 'agent_task' || !recordId) return;
+            await RecordModel.updateAgentTask(domainId, recordId, {
+                status: STATUS.STATUS_TASK_PROCESSING,
+                ...meta,
+            });
+        },
+        status: async (data?: any) => {
+            if (taskType !== 'agent_task' || !recordId) return;
+            await RecordModel.updateAgentTask(domainId, recordId, {
+                status: Number.isFinite(data?.status) ? Number(data.status) : undefined,
+                score: Number.isFinite(data?.score) ? Number(data.score) : undefined,
+                time: Number.isFinite(data?.time) ? Number(data.time) : undefined,
+                agentToolCallCount: Number.isFinite(data?.agentToolCallCount) ? Number(data.agentToolCallCount) : undefined,
+                ...meta,
+            });
+        },
+        stream: async (data?: any) => {
+            if (taskType !== 'agent_task' || !recordId) return;
+            (ctx.broadcast as any)('bubble/stream', {
+                recordId: recordId.toString(),
+                domainId,
+                ...data,
+            });
+        },
+        appendMessage: (message: any) => enqueue(async () => {
+            if (taskType !== 'agent_task' || !recordId) return;
+            await RecordModel.updateAgentTask(domainId, recordId, {
+                agentMessages: [withWorkerMeta(message, meta)],
+                ...meta,
+            });
+        }),
+        patchMessage,
+        toolResult: (data?: any) => enqueue(async () => {
+            if (taskType !== 'agent_task' || !recordId) return;
+            await RecordModel.updateAgentTask(domainId, recordId, {
+                agentToolCallCount: Number.isFinite(data?.agentToolCallCount) ? Number(data.agentToolCallCount) : undefined,
+                agentMessages: [withWorkerMeta({
+                    role: 'tool',
+                    content: data?.content ?? JSON.stringify(data?.result ?? data?.error ?? null),
+                    toolName: data?.toolName,
+                    toolResult: data?.result,
+                    tool_call_id: data?.tool_call_id,
+                    timestamp: normalizeDate(data?.timestamp),
+                }, meta)],
+                ...meta,
+            });
+        }),
+        complete: async (data?: any) => {
+            if (taskType === 'tool_call') {
+                (ctx.broadcast as any)('toolcall/complete', dbTask._id, data?.result ?? data?.data);
+                return;
+            }
+            if (taskType === 'mcp_tool_call') {
+                const sessionId = dbTask.sessionId;
+                if (!sessionId) return;
+                const response = data?.data || data?.response || data?.result;
+                (ctx.broadcast as any)('mcp/deliver', { sessionId, data: typeof response === 'string' ? response : JSON.stringify(response) });
+                return;
+            }
+            if (!recordId) return;
+            await RecordModel.updateAgentTask(domainId, recordId, {
+                status: STATUS.STATUS_TASK_PENDING,
+                time: Number.isFinite(data?.time) ? Number(data.time) : undefined,
+                agentToolCallCount: Number.isFinite(data?.agentToolCallCount) ? Number(data.agentToolCallCount) : undefined,
+                ...meta,
+            });
+            await RecordModel.updateAgentTask(domainId, recordId, {
+                status: Number.isFinite(data?.status) ? Number(data.status) : STATUS.STATUS_TASK_DELIVERED,
+                score: Number.isFinite(data?.score) ? Number(data.score) : 100,
+                ...meta,
+            });
+            (ctx.broadcast as any)('task/agent-completed', {
+                recordId: recordId.toString(),
+                domainId,
+                taskId,
+            });
+        },
+        error: async (error: any) => {
+            if (taskType === 'tool_call') {
+                const err = error?.error || error;
+                (ctx.broadcast as any)('toolcall/complete', dbTask._id, {
+                    error: true,
+                    message: err?.message || String(err || 'Tool call failed'),
+                    code: err?.code || 'WORKER_TOOL_CALL_ERROR',
+                });
+                return;
+            }
+            if (taskType === 'mcp_tool_call') {
+                const sessionId = dbTask.sessionId;
+                if (!sessionId) return;
+                const err = error?.error || error;
+                (ctx.broadcast as any)('mcp/deliver', {
+                    sessionId,
+                    data: JSON.stringify({
+                        jsonrpc: '2.0',
+                        id: dbTask.rpcId,
+                        result: {
+                            content: [{ type: 'text', text: err?.message || String(err || 'MCP tool call failed') }],
+                            isError: true,
+                        },
+                    }),
+                });
+                return;
+            }
+            if (!recordId) return;
+            const err = error?.error || error;
+            await RecordModel.updateAgentTask(domainId, recordId, {
+                status: Number.isFinite(error?.status) ? Number(error.status) : STATUS.STATUS_TASK_ERROR_SYSTEM,
+                score: Number.isFinite(error?.score) ? Number(error.score) : 0,
+                time: Number.isFinite(error?.time) ? Number(error.time) : undefined,
+                agentError: {
+                    message: err?.message || String(err || 'Worker task failed'),
+                    code: err?.code || 'WORKER_ERROR',
+                    stack: err?.stack,
+                },
+                ...meta,
+            });
+        },
+    };
+}
+
+export async function apply(ctx: EjunzContext) {
     registerSystemToolsIfAvailable();
-    logger.info('Ejunz worker plugin loaded; standalone task consumption is handled by /worker/conn WebSocket clients.');
+    if (process.env.NODE_APP_INSTANCE && process.env.NODE_APP_INSTANCE !== '0') return;
+
+    const TaskModel = getTaskModel();
+    const RecordModel = getRecordModel();
+    const workerStatusModel = getWorkerStatusModel();
+    const { coll: workerStatusColl, removeWorkerStatus, upsertWorkerStatus } = workerStatusModel;
+    const workerHost = hostname();
+    const workerSourceId = configuredBuiltinWorkerSourceId() || `builtin:${workerHost}:${process.env.NODE_APP_INSTANCE || '0'}`;
+    allocatedBuiltinWorkerId = await allocateBuiltinWorkerId(workerStatusModel, workerSourceId);
+    const workerId = builtinWorkerId();
+    const concurrency = getConfig('toolcallConcurrency') || 10;
+    const activeTasks = new Map<string, any>();
+    let reqCount = 0;
+    const startedAt = new Date();
+    let consumer: any;
+
+    const updateStatus = async () => upsertWorkerStatus({
+        workerId,
+        workerSourceId,
+        processWorkerId: workerId,
+        workerName: process.env.EJUNZ_WORKER_LABEL || getConfig('workerLabel') || 'Builtin',
+        workerLabel: process.env.EJUNZ_WORKER_LABEL || getConfig('workerLabel') || 'Builtin',
+        workerKind: 'builtin',
+        workerVersion: process.env.EJUNZ_WORKER_VERSION || getConfig('workerVersion') || builtinWorkerVersion(),
+        host: workerHost,
+        pid: process.pid,
+        nodeAppInstance: process.env.NODE_APP_INSTANCE,
+        consuming: !!consumer?.consuming,
+        concurrency,
+        processingCount: activeTasks.size,
+        activeTasks: Array.from(activeTasks.values()).slice(0, 20),
+        reqCount,
+        startedAt,
+        status: 'online',
+    });
+
+    const handleTask = async (t: any) => {
+        const taskType = taskTypeFromDbTask(t);
+        if (!taskType) return;
+        const meta = builtinWorkerMeta(taskType);
+        const taskId = t._id?.toString?.() || String(t._id || '');
+        activeTasks.set(taskId, {
+            taskId,
+            taskType,
+            recordId: t.recordId?.toString?.() || t.recordId,
+            toolName: t.toolName || t.name,
+            startedAt: new Date(),
+        });
+        await updateStatus();
+        const reporter = createBuiltinReporter(ctx, t, taskType, meta);
+        try {
+            if (taskType === 'agent_task' && t.recordId) {
+                const recordId = toObjectId(t.recordId);
+                if (recordId) await RecordModel.updateAgentTask(t.domainId, recordId, {
+                    status: STATUS.STATUS_TASK_FETCHED,
+                    ...meta,
+                });
+            }
+            await executeWorkerTask(taskType, t, reporter, {});
+        } catch (e: any) {
+            logger.error('Builtin worker task failed: taskType=%s taskId=%s', taskType, taskId);
+            logger.error(e?.stack || e?.message || e);
+            await reporter.error(e);
+        } finally {
+            activeTasks.delete(taskId);
+            reqCount++;
+            await updateStatus();
+        }
+    };
+
+    await workerStatusColl.deleteMany({
+        type: 'worker',
+        workerKind: 'builtin',
+        host: workerHost,
+        nodeAppInstance: process.env.NODE_APP_INSTANCE,
+        workerSourceId: { $ne: workerSourceId },
+    });
+
+    consumer = TaskModel.consume(
+        { $or: [{ type: 'task' }, { type: 'tool_call' }, { type: 'mcp', subType: 'tool_call' }] },
+        handleTask,
+        false,
+        concurrency,
+    );
+    await updateStatus();
+    const statusTimer = setInterval(() => updateStatus().catch(() => {}), 10000);
+    logger.info('Ejunz builtin worker consumer started (concurrency=%d)', concurrency);
+    return () => {
+        clearInterval(statusTimer);
+        consumer?.destroy?.();
+        removeWorkerStatus(workerId).catch(() => {});
+    };
 }
