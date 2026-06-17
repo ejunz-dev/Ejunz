@@ -1243,6 +1243,7 @@ declare module './service/db' {
         'message': MessageDoc;
         'token': TokenDoc;
         'status': any;
+        'worker_status': any;
         'oauth': OauthMap;
         'system': System;
         'task': Task;
@@ -1264,7 +1265,7 @@ declare module './service/db' {
         /** Per-domain user lesson/live progress (Learn). */
         'session': SessionDoc;
         'session_record': import('./model/record').SessionRecordDoc;
-        /** Judge / worker submission rows (Mongo `record`, not session_record). */
+        /** Worker submission rows (Mongo `record`, not session_record). */
         'record': import('@ejunz/common/types').RecordDoc;
         'record_history': any;
         'rating': any;
@@ -1476,7 +1477,7 @@ export interface AgentChatSessionDoc {
 }
 
 declare module '@ejunz/common/types' {
-    /** Mongo `record` collection (judge / worker submission, including agent task rows). */
+    /** Mongo `record` collection (worker submission rows, including agent task rows). */
     export interface RecordDoc extends RecordPayload {
         _id: import('mongodb').ObjectId;
         agentId?: string;

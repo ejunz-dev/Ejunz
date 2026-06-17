@@ -51,6 +51,11 @@ export type AgentRecordMessage = {
     tool_calls?: any[];
     bubbleState?: 'streaming' | 'completed';
     contentHash?: string;
+    workerId?: string;
+    workerName?: string;
+    workerLabel?: string;
+    workerKind?: string;
+    workerVersion?: string;
 };
 
 export type DevelopSaveChangeOp =
@@ -107,6 +112,11 @@ export interface SessionRecordDoc {
     agentToolCallCount?: number;
     agentTotalToolCalls?: number;
     agentError?: { message: string; code?: string; stack?: string };
+    workerId?: string;
+    workerName?: string;
+    workerLabel?: string;
+    workerKind?: string;
+    workerVersion?: string;
     createdAt: Date;
     updatedAt: Date;
     lastActivityAt: Date;
@@ -121,15 +131,16 @@ export const AGENT_RECORD_PROJECTION_LIST: (keyof SessionRecordDoc)[] = [
     '_id', 'status', 'score', 'time', 'domainId', 'uid', 'sessionId',
     'agentId', 'agentChatSessionId', 'recordKind',
     'agentMessages', 'agentToolCallCount', 'agentTotalToolCalls', 'agentError', 'code',
+    'workerId', 'workerName', 'workerLabel', 'workerKind', 'workerVersion',
     'lastActivityAt', 'updatedAt',
 ];
 
 export default class RecordModel {
     static coll = db.collection('session_record');
 
-    /** Judge / worker rows in Mongo `record` (not agent `session_record`). */
-    static judgeColl = db.collection('record');
-    static judgeHistoryColl = db.collection('record_history');
+    /** Worker rows in Mongo `record` (not agent `session_record`). */
+    static workerColl = db.collection('record');
+    static workerHistoryColl = db.collection('record_history');
 
     static getMulti(domainId: string, query: Filter<SessionRecordDoc> = {}, options?: FindOptions) {
         return RecordModel.coll.find({ domainId, ...query } as Filter<SessionRecordDoc>, options);
@@ -378,6 +389,11 @@ export default class RecordModel {
             agentToolCallCount?: number;
             agentError?: { message: string; code?: string; stack?: string };
             agentMessages?: AgentRecordMessage[];
+            workerId?: string;
+            workerName?: string;
+            workerLabel?: string;
+            workerKind?: string;
+            workerVersion?: string;
         },
     ): Promise<SessionRecordDoc | null> {
         const cur = await RecordModel.get(domainId, recordId);
@@ -388,6 +404,11 @@ export default class RecordModel {
         if (update.time !== undefined) $set.time = update.time;
         if (update.agentToolCallCount !== undefined) $set.agentToolCallCount = update.agentToolCallCount;
         if (update.agentError !== undefined) $set.agentError = update.agentError;
+        if (update.workerId !== undefined) $set.workerId = update.workerId;
+        if (update.workerName !== undefined) $set.workerName = update.workerName;
+        if (update.workerLabel !== undefined) $set.workerLabel = update.workerLabel;
+        if (update.workerKind !== undefined) $set.workerKind = update.workerKind;
+        if (update.workerVersion !== undefined) $set.workerVersion = update.workerVersion;
         let updated: SessionRecordDoc | null = null;
         if (update.agentMessages) {
             const existing = cur;
@@ -507,38 +528,38 @@ export default class RecordModel {
         return await RecordModel.coll.findOne({ _id, domainId, recordKind: 'agent' });
     }
 
-    static async judgeGet(_id: ObjectId): Promise<RecordDoc | null>;
-    static async judgeGet(domainId: string, _id: ObjectId): Promise<RecordDoc | null>;
-    static async judgeGet(arg0: string | ObjectId, arg1?: any): Promise<RecordDoc | null> {
+    static async workerGet(_id: ObjectId): Promise<RecordDoc | null>;
+    static async workerGet(domainId: string, _id: ObjectId): Promise<RecordDoc | null>;
+    static async workerGet(arg0: string | ObjectId, arg1?: any): Promise<RecordDoc | null> {
         const _id = arg1 || arg0;
         const domainId = arg1 ? arg0 : null;
-        const res = await RecordModel.judgeColl.findOne({ _id });
+        const res = await RecordModel.workerColl.findOne({ _id });
         if (!res) return null;
         if (res.domainId === (domainId || res.domainId)) return res as RecordDoc;
         return null;
     }
 
     @ArgMethod
-    static async judgeStat(domainId?: string) {
+    static async workerStat(domainId?: string) {
         const [d5min, d1h, day, week, month, year, total] = await Promise.all([
-            RecordModel.judgeColl.find({ _id: { $gte: Time.getObjectID(moment().add(-5, 'minutes')) }, ...domainId ? { domainId } : {} }).count(),
-            RecordModel.judgeColl.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'hour')) }, ...domainId ? { domainId } : {} }).count(),
-            RecordModel.judgeColl.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'day')) }, ...domainId ? { domainId } : {} }).count(),
-            RecordModel.judgeColl.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'week')) }, ...domainId ? { domainId } : {} }).count(),
-            RecordModel.judgeColl.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'month')) }, ...domainId ? { domainId } : {} }).count(),
-            RecordModel.judgeColl.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'year')) }, ...domainId ? { domainId } : {} }).count(),
-            RecordModel.judgeColl.find(domainId ? { domainId } : {}).count(),
+            RecordModel.workerColl.find({ _id: { $gte: Time.getObjectID(moment().add(-5, 'minutes')) }, ...domainId ? { domainId } : {} }).count(),
+            RecordModel.workerColl.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'hour')) }, ...domainId ? { domainId } : {} }).count(),
+            RecordModel.workerColl.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'day')) }, ...domainId ? { domainId } : {} }).count(),
+            RecordModel.workerColl.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'week')) }, ...domainId ? { domainId } : {} }).count(),
+            RecordModel.workerColl.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'month')) }, ...domainId ? { domainId } : {} }).count(),
+            RecordModel.workerColl.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'year')) }, ...domainId ? { domainId } : {} }).count(),
+            RecordModel.workerColl.find(domainId ? { domainId } : {}).count(),
         ]);
         return {
             d5min, d1h, day, week, month, year, total,
         };
     }
 
-    static judgeFind(domainId: string, query: Record<string, unknown> = {}, options?: FindOptions) {
-        return RecordModel.judgeColl.find({ domainId, ...query }, options);
+    static workerFind(domainId: string, query: Record<string, unknown> = {}, options?: FindOptions) {
+        return RecordModel.workerColl.find({ domainId, ...query }, options);
     }
 
-    static async judgeUpdate(
+    static async workerUpdate(
         domainId: string,
         _id: MaybeArray<ObjectId>,
         $set?: MatchKeysAndValues<RecordDoc>,
@@ -552,11 +573,11 @@ export default class RecordModel {
         if ($unset && Object.keys($unset).length) $update.$unset = $unset;
         if ($inc && Object.keys($inc).length) $update.$inc = $inc;
         if (_id instanceof Array) {
-            await RecordModel.judgeColl.updateMany({ _id: { $in: _id }, domainId }, $update);
+            await RecordModel.workerColl.updateMany({ _id: { $in: _id }, domainId }, $update);
             return null;
         }
         if (Object.keys($update).length) {
-            const updated = await RecordModel.judgeColl.findOneAndUpdate(
+            const updated = await RecordModel.workerColl.findOneAndUpdate(
                 { _id, domainId },
                 $update,
                 { returnDocument: 'after' },
@@ -564,25 +585,25 @@ export default class RecordModel {
             const val = updated && typeof updated === 'object' && 'value' in updated
                 ? (updated as { value: RecordDoc | null }).value
                 : (updated as RecordDoc | null);
-            if (val) (bus as any).broadcast('judge_record/change', val);
+            if (val) (bus as any).broadcast('worker_record/change', val);
             return val;
         }
-        return await RecordModel.judgeColl.findOne({ _id, domainId }, { readPreference: 'primary' }) as RecordDoc | null;
+        return await RecordModel.workerColl.findOne({ _id, domainId }, { readPreference: 'primary' }) as RecordDoc | null;
     }
 
-    static async judgeReset(domainId: string, rid: string | ObjectId, _full = false): Promise<RecordDoc | null> {
+    static async workerReset(domainId: string, rid: string | ObjectId, _full = false): Promise<RecordDoc | null> {
         const oid = typeof rid === 'string' ? new ObjectId(rid) : rid;
-        return RecordModel.judgeGet(domainId, oid);
+        return RecordModel.workerGet(domainId, oid);
     }
 }
 
 export async function apply(ctx: Context) {
     ctx.on('domain/delete', (domainId) => {
         RecordModel.coll.deleteMany({ domainId });
-        RecordModel.judgeColl.deleteMany({ domainId });
+        RecordModel.workerColl.deleteMany({ domainId });
     });
 
-    ctx.on('task/agent-completed', async (payload: { recordId: string; domainId: string; taskId?: string }) => {
+    (ctx.on as any)('task/agent-completed', async (payload: { recordId: string; domainId: string; taskId?: string }) => {
         try {
             const rid = payload.recordId;
             if (!rid) return;
@@ -619,10 +640,10 @@ export async function apply(ctx: Context) {
         { key: { domainId: 1, recordKind: 1, status: 1, _id: -1 }, name: 'domain_agent_status' },
     );
     await db.ensureIndexes(
-        RecordModel.judgeColl,
-        { key: { domainId: 1, _id: -1 }, name: 'judge_basic' },
-        { key: { domainId: 1, uid: 1, _id: -1 }, name: 'judge_withUser' },
-        { key: { domainId: 1, status: 1, _id: -1 }, name: 'judge_withStatus' },
+        RecordModel.workerColl,
+        { key: { domainId: 1, _id: -1 }, name: 'worker_basic' },
+        { key: { domainId: 1, uid: 1, _id: -1 }, name: 'worker_withUser' },
+        { key: { domainId: 1, status: 1, _id: -1 }, name: 'worker_withStatus' },
     );
 
     const TIMEOUT_MS = 2 * 60 * 1000;

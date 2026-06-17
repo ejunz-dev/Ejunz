@@ -229,7 +229,7 @@ export class TemplateService extends Service {
       env.render(name, {
         page_name: name.split('.')[0],
         ...state,
-        formatJudgeTexts: (texts) => texts.map((text) => {
+        formatWorkerTexts: (texts) => texts.map((text) => {
           if (typeof text === 'string') return text;
           return state._(text.message).format(...text.params || []) + ((process.env.DEV && text.stack) ? `\n${text.stack}` : '');
         }).join('\n'),

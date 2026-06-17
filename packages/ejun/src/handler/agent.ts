@@ -1473,6 +1473,11 @@ export class AgentChatHandler extends Handler {
                                                 toolName: msg.toolName,
                                                 tool_call_id: msg.tool_call_id,
                                                 bubbleId: msg.bubbleId,
+                                                workerId: msg.workerId,
+                                                workerName: msg.workerName,
+                                                workerLabel: msg.workerLabel,
+                                                workerKind: msg.workerKind,
+                                                workerVersion: msg.workerVersion,
                                             });
                                         }
                                     }
@@ -2014,6 +2019,11 @@ export class AgentChatSessionHistoryHandler extends Handler {
                                     toolName: msg.toolName,
                                     tool_call_id: msg.tool_call_id,
                                     bubbleId: msg.bubbleId,
+                                    workerId: msg.workerId,
+                                    workerName: msg.workerName,
+                                    workerLabel: msg.workerLabel,
+                                    workerKind: msg.workerKind,
+                                    workerVersion: msg.workerVersion,
                                 });
                             }
                         }

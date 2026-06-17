@@ -1308,10 +1308,10 @@ const page = new NamedPage('agent_chat', async () => {
           if (processedMsg.type === 'user') {
             await addMessage('user', processedMsg.data.content, undefined, undefined, processedMsg.bubbleId, true);
           } else if (processedMsg.type === 'assistant_before' || processedMsg.type === 'assistant_after') {
-            await addMessage('assistant', processedMsg.data.content, undefined, undefined, processedMsg.bubbleId, true);
+            await addMessage('assistant', processedMsg.data.content, undefined, undefined, processedMsg.bubbleId, true, processedMsg.data);
           } else if (processedMsg.type === 'tool_call_result') {
             // Add tool call container
-            await addMessage('assistant', '', undefined, processedMsg.data.tool_calls, processedMsg.bubbleId, true);
+            await addMessage('assistant', '', undefined, processedMsg.data.tool_calls, processedMsg.bubbleId, true, processedMsg.data);
             
             // Add tool result if available
             if (processedMsg.toolResult && processedMsg.toolCallId) {
@@ -1742,6 +1742,12 @@ const page = new NamedPage('agent_chat', async () => {
           if (messageState === 'completed' && bubbleId && messageContentHash) {
             const lastRenderedHash = renderedMarkdownIds.get(bubbleId);
             if (lastRenderedHash === messageContentHash) {
+              const existingRenderedMsg = Array.from(chatMessages.children).find(
+                (el: any) => getbubbleId(el) === bubbleId &&
+                            el.classList.contains('chat-message') &&
+                            el.classList.contains('assistant')
+              );
+              upsertWorkerBadge(existingRenderedMsg || null, msgData);
               // Content already rendered with same hash, skip this message completely
               console.log('[AgentChat] Skipping completed message with unchanged content:', { bubbleId, contentHash: messageContentHash });
               continue;
@@ -1766,6 +1772,7 @@ const page = new NamedPage('agent_chat', async () => {
                   
                   // If content hash matches, skip completely
                   if (currentHash === messageContentHash && messageContentHash) {
+                    upsertWorkerBadge(existingMsg, msgData);
                     console.log('[AgentChat] Skipping message with matching content hash:', { bubbleId, contentHash: messageContentHash });
                     continue;
                   }
@@ -1829,7 +1836,9 @@ const page = new NamedPage('agent_chat', async () => {
             const allAssistantMessages = Array.from(chatMessages.children).filter(
               (el: any) => el.classList.contains('chat-message') && el.classList.contains('assistant')
             );
-            
+            const existingAssistant = allAssistantMessages.find((el: any) => getbubbleId(el) === bubbleId);
+            upsertWorkerBadge(existingAssistant || null, msgData);
+
             // Backend should provide bubbleId, but if not, just mark as displayed
               displayedbubbleIds.add(bubbleId);
               displayedbubbleIdsGlobal.add(bubbleId);
@@ -1966,7 +1975,7 @@ const page = new NamedPage('agent_chat', async () => {
               (el: any) => getbubbleId(el) === bubbleId && el.classList.contains('tool-call-container')
             );
             if (!finalCheckInDOMForTool) {
-              await addMessage('assistant', '', undefined, toolCalls, bubbleId);
+              await addMessage('assistant', '', undefined, toolCalls, bubbleId, undefined, msgData);
             } else {
               console.log('[AgentChat] Tool call container already exists, skipping creation:', { bubbleId });
             }
@@ -2018,6 +2027,12 @@ const page = new NamedPage('agent_chat', async () => {
             const msgStateCheck = getFrontendBubbleState(bubbleId);
             const backendStateCheck = getBackendBubbleState(bubbleId);
             if (msgStateCheck === FrontendBubbleState.COMPLETED) {
+              const existingCompletedMsg = Array.from(chatMessages.children).find(
+                (el: any) => getbubbleId(el) === bubbleId &&
+                            el.classList.contains('chat-message') &&
+                            el.classList.contains('assistant')
+              );
+              upsertWorkerBadge(existingCompletedMsg, msgData);
               // Frontend is completed, skip all processing
               continue;
             }
@@ -2040,6 +2055,7 @@ const page = new NamedPage('agent_chat', async () => {
                     const newContent = content?.trim() || '';
                     // If content hasn't changed, skip this update completely
                     if (currentContent === newContent) {
+                      upsertWorkerBadge(existingMsg, msgData);
                       continue;
                     }
                   }
@@ -2360,6 +2376,7 @@ const page = new NamedPage('agent_chat', async () => {
                     const newContent = content?.trim() || '';
                     // If content hasn't changed, skip completely to prevent duplicate markdown rendering
                     if (currentContent === newContent) {
+                      upsertWorkerBadge(assistantMsg, msgData);
                       continue;
                     }
                   }
@@ -2454,7 +2471,7 @@ const page = new NamedPage('agent_chat', async () => {
                   updateLastMessage(content, toolCalls, isStreaming);
                 } else {
                 const contentToSet = isStreaming ? '' : (content || '');
-                await addMessage('assistant', contentToSet, undefined, toolCalls, bubbleId);
+                await addMessage('assistant', contentToSet, undefined, toolCalls, bubbleId, undefined, msgData);
                 }
               } else {
                 updateLastMessage(content, toolCalls, isStreaming);
@@ -2670,7 +2687,7 @@ const page = new NamedPage('agent_chat', async () => {
           }
           
               const contentToSet = isStreaming ? '' : content;
-              await addMessage('assistant', contentToSet, undefined, toolCalls, bubbleId);
+              await addMessage('assistant', contentToSet, undefined, toolCalls, bubbleId, undefined, msgData);
             }
                 continue;
               }
@@ -2697,7 +2714,7 @@ const page = new NamedPage('agent_chat', async () => {
               const toolResult = nextMsg;
               const toolCallId = toolCalls[0]?.id;
               displayedbubbleIdsGlobal.add(toolBubbleId);
-              await addMessage('assistant', '', undefined, toolCalls, toolBubbleId);
+              await addMessage('assistant', '', undefined, toolCalls, toolBubbleId, undefined, msg);
               const toolCallItem = Array.from(chatMessages.querySelectorAll('.tool-call-item')).find(
                 (el: any) => el.getAttribute('data-tool-call-id') === toolCallId
               ) as Element | null;
@@ -2752,7 +2769,33 @@ const page = new NamedPage('agent_chat', async () => {
     }
   };
   
-  async function addMessage(role: string, content: string, toolName?: string, toolCalls?: any[], bubbleId?: string, isHistorical?: boolean) {
+  function getWorkerBadgeText(workerMeta?: any): string {
+    if (!workerMeta) return '';
+    const label = workerMeta.workerLabel || workerMeta.workerName || workerMeta.workerId || '';
+    if (!label) return '';
+    const version = workerMeta.workerVersion ? ` · v${workerMeta.workerVersion}` : '';
+    return `由 ${label} worker 处理${version}`;
+  }
+
+  function upsertWorkerBadge(messageEl: Element | null, workerMeta?: any) {
+    if (!messageEl) return;
+    const text = getWorkerBadgeText(workerMeta);
+    let badge = messageEl.querySelector('.message-worker') as HTMLElement | null;
+    if (!text) {
+      badge?.remove();
+      return;
+    }
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.className = 'message-worker';
+      const status = messageEl.querySelector('.message-status');
+      if (status?.parentElement === messageEl) status.insertAdjacentElement('afterend', badge);
+      else messageEl.insertBefore(badge, messageEl.firstChild);
+    }
+    badge.textContent = text;
+  }
+
+  async function addMessage(role: string, content: string, toolName?: string, toolCalls?: any[], bubbleId?: string, isHistorical?: boolean, workerMeta?: any) {
     const chatMessages = document.getElementById('chatMessages');
     if (!chatMessages) return;
     
@@ -2978,8 +3021,9 @@ const page = new NamedPage('agent_chat', async () => {
         // Initially show status (will be hidden when completed)
         statusDiv.style.display = 'block';
         messageDiv.appendChild(statusDiv);
+        upsertWorkerBadge(messageDiv, workerMeta);
       }
-      
+
       const messageBubble = document.createElement('div');
       messageBubble.className = 'message-bubble';
       
@@ -3413,10 +3457,10 @@ const page = new NamedPage('agent_chat', async () => {
       if (processedMsg.type === 'user') {
         await addMessage('user', processedMsg.data.content, undefined, undefined, processedMsg.bubbleId);
       } else if (processedMsg.type === 'assistant_before' || processedMsg.type === 'assistant_after') {
-        await addMessage('assistant', processedMsg.data.content, undefined, undefined, processedMsg.bubbleId);
+        await addMessage('assistant', processedMsg.data.content, undefined, undefined, processedMsg.bubbleId, true, processedMsg.data);
       } else if (processedMsg.type === 'tool_call_result') {
         // Add tool call container
-        await addMessage('assistant', '', undefined, processedMsg.data.tool_calls, processedMsg.bubbleId);
+        await addMessage('assistant', '', undefined, processedMsg.data.tool_calls, processedMsg.bubbleId, true, processedMsg.data);
         
         // Add tool result if available
         if (processedMsg.toolResult && processedMsg.toolCallId) {
