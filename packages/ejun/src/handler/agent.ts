@@ -24,7 +24,7 @@ import { PassThrough } from 'stream';
 import { BaseModel } from '../model/base';
 import PluginModel from '../model/plugin';
 import {
-    LOCAL_EJUNZTOOLS_TOOL_ID_PREFIX,
+    SYSTEM_TOOL_ID_PREFIX,
     loadPluginCardDefinitions,
     normalizeAgentPluginBindings,
     parseAgentSlashInvocation,
@@ -71,6 +71,26 @@ export function effectiveAgentBaseBranch(adoc: AgentDoc): string | undefined {
     const br = b?.[0]?.branch;
     const t = br && String(br).trim();
     return t || undefined;
+}
+
+function positiveUid(raw: unknown): number | undefined {
+    const uid = Number(raw);
+    return Number.isFinite(uid) && uid > 0 ? uid : undefined;
+}
+
+export function effectiveAgentToolOwnerUid(adoc: AgentDoc, userOrUid?: any): number | undefined {
+    const requestUid = typeof userOrUid === 'number'
+        ? positiveUid(userOrUid)
+        : positiveUid(userOrUid?._id);
+    return requestUid || positiveUid((adoc as any)?.owner);
+}
+
+export function buildAgentToolContext(adoc: AgentDoc, userOrUid?: any): { baseDocId?: number; baseBranch?: string; owner?: number } {
+    return {
+        baseDocId: effectiveAgentBaseDocId(adoc),
+        baseBranch: effectiveAgentBaseBranch(adoc),
+        owner: effectiveAgentToolOwnerUid(adoc, userOrUid),
+    };
 }
 
 function listBranchNamesForBaseDoc(base: BaseDoc | Record<string, unknown>): string[] {
@@ -153,7 +173,14 @@ async function callToolWithFallback(
         try {
             const ctx = (global as any).app || (global as any).Ejunz;
             if (ctx) {
-                return await callToolViaWorker(ctx, toolName, args, domainId, agentId, uid, taskRecordId);
+                return await callToolViaWorker(ctx, toolName, args, domainId, agentId, uid, taskRecordId, 0, {
+                    baseDocId: mcpOpts?.baseDocId,
+                    baseBranch: mcpOpts?.baseBranch,
+                    owner: uid,
+                    toolType: executionTool?.type,
+                    token: executionTool?.token,
+                    mcpId: executionTool?.mcpId,
+                });
             }
         } catch (e) {
             AgentLogger.warn(`Worker tool call failed, falling back to direct call: ${toolName}`, e);
@@ -851,17 +878,18 @@ export async function processAgentChatInternal(
                                                         : parsedArgs;
                                                     const agentId = (adoc as any).aid || (adoc as any)._id?.toString();
                                                     const uid = (adoc as any).uid || (adoc as any).owner;
+                                                    const toolContext = buildAgentToolContext(adoc, uid);
                                                     toolResult = await callToolWithFallback(
                                                         firstToolName,
                                                         toolArgs,
                                                         adoc.domainId,
                                                         agentId,
-                                                        uid,
+                                                        toolContext.owner,
                                                         callbacks.taskRecordId,
                                                         true,
                                                         {
-                                                            baseDocId: effectiveAgentBaseDocId(adoc),
-                                                            baseBranch: effectiveAgentBaseBranch(adoc),
+                                                            baseDocId: toolContext.baseDocId,
+                                                            baseBranch: toolContext.baseBranch,
                                                             executionTools: tools,
                                                         },
                                                     );
@@ -1490,7 +1518,7 @@ export class AgentChatHandler extends Handler {
         const slashCatalog = await resolveAgentSlashCatalog(domainId, adoc);
         const mcpRows = await listDomainMcps(domainId, this.user);
         const pluginMcpRows = mcpRows.filter((row) => row.kind === 'plugin');
-        const localEjunzToolsRow = mcpRows.find((row) => row.kind === 'local' && row.mcp.source?.type === 'ejunztools');
+        const systemToolsRow = mcpRows.find((row) => row.kind === 'system' && row.mcp.source?.type === 'system_tools');
         const enabledPluginsForChat = [] as Array<{
             docId: number;
             title: string;
@@ -1514,15 +1542,23 @@ export class AgentChatHandler extends Handler {
             const slashCount = (await resolveAgentSlashCatalog(domainId, { ...adoc, pluginBindings: [binding] } as AgentDoc)).length;
             const branch = binding.branch || plugin.currentBranch || 'main';
             const definitions = await loadPluginCardDefinitions(domainId, plugin, branch, binding.enabledNodeIds?.length ? new Set(binding.enabledNodeIds) : undefined);
-            const localToolIds = Array.from(new Set(definitions
+            const systemToolIds = Array.from(new Set(definitions
                 .filter((def) => def.kind === 'mcp')
                 .flatMap((def) => def.toolIds || [])
-                .filter((id) => id.startsWith(LOCAL_EJUNZTOOLS_TOOL_ID_PREFIX))));
+                .filter((id) => id.startsWith(SYSTEM_TOOL_ID_PREFIX))));
             const mcpAvailability = await summarizePluginMcpAvailability(domainId, plugin, branch);
             const rowsForPlugin = pluginMcpRows.filter((row) => Number((row.mcp.source as any)?.pluginDocId) === plugin.docId);
             const rowsByServerKey = new Map(rowsForPlugin.map((row) => [String((row.mcp.source as any)?.pluginServerKey || row.mid), row]));
             const usedMids = new Set<number>();
-            const mcpServers = (mcpAvailability.servers || []).map((server) => {
+            const mcpServers: Array<{
+                key: string;
+                name: string;
+                mid?: number;
+                status: 'online' | 'offline' | 'pending' | 'unknown';
+                availability: string;
+                toolCount: number;
+                error?: string;
+            }> = (mcpAvailability.servers || []).map((server) => {
                 const row = rowsByServerKey.get(String(server.key))
                     || rowsForPlugin.find((item) => item.mid === server.mcpId);
                 if (row) usedMids.add(row.mid);
@@ -1548,16 +1584,16 @@ export class AgentChatHandler extends Handler {
                     error: row.mcp.lastCheckError,
                 });
             }
-            for (const id of localToolIds) {
-                const toolKey = id.slice(LOCAL_EJUNZTOOLS_TOOL_ID_PREFIX.length);
-                const localTool = localEjunzToolsRow?.tools?.find((tool) => tool.toolKey === toolKey || tool.name === toolKey);
+            for (const id of systemToolIds) {
+                const toolKey = id.slice(SYSTEM_TOOL_ID_PREFIX.length);
+                const systemTool = systemToolsRow?.tools?.find((tool) => tool.toolKey === toolKey || tool.name === toolKey);
                 mcpServers.push({
                     key: id,
-                    name: localTool?.name || toolKey,
-                    mid: localEjunzToolsRow?.mid,
-                    status: localEjunzToolsRow?.status || 'unknown',
-                    availability: localEjunzToolsRow?.online ? 'available' : 'unknown',
-                    toolCount: localTool ? 1 : 0,
+                    name: systemTool?.name || toolKey,
+                    mid: systemToolsRow?.mid,
+                    status: systemToolsRow?.status || 'unknown',
+                    availability: systemToolsRow?.online ? 'available' : 'unknown',
+                    toolCount: systemTool ? 1 : 0,
                 });
             }
             enabledPluginsForChat.push({
@@ -2653,15 +2689,16 @@ const agentPrompt = this.adoc.content || '';
                                                 // Execute tool call
                                                 let toolResult: any;
                                                 try {
+                                                    const toolContext = buildAgentToolContext(this.adoc, this.user);
                                                     toolResult = await callAssignedTool(
                                                         mcpClient,
                                                         tools,
                                                         firstToolCall.function.name,
                                                         parsedArgs,
                                                         domainId,
-                                                        effectiveAgentBaseDocId(this.adoc),
-                                                        effectiveAgentBaseBranch(this.adoc),
-                                                        this.user._id > 0 ? this.user._id : undefined,
+                                                        toolContext.baseDocId,
+                                                        toolContext.baseBranch,
+                                                        toolContext.owner,
                                                     );
                                                     AgentLogger.info(`Tool ${firstToolCall.function.name} returned (Stream)`, { resultLength: JSON.stringify(toolResult).length });
                                                     
@@ -3099,7 +3136,8 @@ const agentPrompt = this.adoc.content || '';
                                                     
                                                     let toolResult: any;
                                                     try {
-                                                        toolResult = await callAssignedTool(mcpClient, tools, firstToolCall.function.name, parsedArgs, domainId, effectiveAgentBaseDocId(this.adoc), effectiveAgentBaseBranch(this.adoc), this.user._id > 0 ? this.user._id : undefined);
+                                                        const toolContext = buildAgentToolContext(this.adoc, this.user);
+                                                        toolResult = await callAssignedTool(mcpClient, tools, firstToolCall.function.name, parsedArgs, domainId, toolContext.baseDocId, toolContext.baseBranch, toolContext.owner);
                                                         AgentLogger.info(`Tool ${firstToolCall.function.name} returned (API WS)`, { resultLength: JSON.stringify(toolResult).length });
                                                     } catch (toolError: any) {
                                                         AgentLogger.error(`Tool ${firstToolCall.function.name} failed (API WS):`, toolError);
@@ -3488,7 +3526,8 @@ const agentPrompt = adoc.content || '';
                                                             const toolArgs = firstToolCall.function.name.match(/^repo_\d+_/) 
                                                                 ? { ...parsedArgs, __agentId: (adoc as any).aid || (adoc as any)._id?.toString() || 'unknown', __agentName: (adoc as any).name || 'agent' }
                                                                 : parsedArgs;
-                                                            toolResult = await callAssignedTool(mcpClient, tools, firstToolCall.function.name, toolArgs, adoc.domainId, effectiveAgentBaseDocId(adoc), effectiveAgentBaseBranch(adoc), this.user._id > 0 ? this.user._id : undefined);
+                                                            const toolContext = buildAgentToolContext(adoc, this.user);
+                                                            toolResult = await callAssignedTool(mcpClient, tools, firstToolCall.function.name, toolArgs, adoc.domainId, toolContext.baseDocId, toolContext.baseBranch, toolContext.owner);
                                                             AgentLogger.info(`Tool ${firstToolCall.function.name} returned (API)`, { resultLength: JSON.stringify(toolResult).length });
                                                         } catch (toolError: any) {
                                                             AgentLogger.error(`Tool ${firstToolCall.function.name} failed (API):`, toolError);
@@ -3628,7 +3667,8 @@ const agentPrompt = adoc.content || '';
                     const toolArgs = firstToolCall.function?.name?.match(/^repo_\d+_/) 
                         ? { ...parsedArgs, __agentId: (adoc as any).aid || (adoc as any)._id?.toString() || 'unknown', __agentName: (adoc as any).name || 'agent' }
                         : parsedArgs;
-                    const toolResult = await callAssignedTool(mcpClient, tools, firstToolCall.function?.name, toolArgs, adoc.domainId, effectiveAgentBaseDocId(adoc), effectiveAgentBaseBranch(adoc), this.user._id > 0 ? this.user._id : undefined);
+                    const toolContext = buildAgentToolContext(adoc, this.user);
+                    const toolResult = await callAssignedTool(mcpClient, tools, firstToolCall.function?.name, toolArgs, adoc.domainId, toolContext.baseDocId, toolContext.baseBranch, toolContext.owner);
                     AgentLogger.info('Tool returned:', { toolResult });
                     
                     const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };

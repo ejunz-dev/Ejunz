@@ -298,6 +298,14 @@ export async function callToolViaWorker(
     uid?: number,
     taskRecordId?: ObjectId,
     priority: number = 0,
+    toolContext: {
+        baseDocId?: number;
+        baseBranch?: string;
+        owner?: number;
+        toolType?: string;
+        token?: string;
+        mcpId?: number;
+    } = {},
 ): Promise<any> {
     // 创建任务
     const taskId = await task.add({
@@ -306,6 +314,14 @@ export async function callToolViaWorker(
         toolName,
         args,
         domainId,
+        agentId,
+        uid,
+        baseDocId: toolContext.baseDocId,
+        baseBranch: toolContext.baseBranch,
+        owner: toolContext.owner,
+        toolType: toolContext.toolType,
+        token: toolContext.token,
+        mcpId: toolContext.mcpId,
         priority,
     });
     
@@ -339,10 +355,17 @@ export class ToolCallInternalHandler extends Handler {
     @post('toolName', Types.String, true)
     @post('args', Types.Any, true)
     @post('domainId', Types.String, true)
-    async post(domainId: string, toolName: string, args: any) {
+    @post('baseDocId', Types.Int, true)
+    @post('baseBranch', Types.String, true)
+    @post('owner', Types.Int, true)
+    @post('toolType', Types.String, true)
+    @post('token', Types.String, true)
+    @post('mcpId', Types.Int, true)
+    async post(domainId: string, toolName: string, args: any, baseDocId?: number, baseBranch?: string, owner?: number, toolType?: string, token?: string, mcpId?: number) {
         const mcpClient = new (require('../model/agent').McpClient)();
         try {
-            const result = await mcpClient.callTool(toolName, args, domainId);
+            const callArgs = toolType === 'plugin_mcp' && mcpId ? { ...(args || {}), __mcpId: mcpId } : args;
+            const result = await mcpClient.callTool(toolName, callArgs, domainId, undefined, token, toolType, baseDocId, baseBranch, owner);
             this.response.body = { result };
         } catch (error: any) {
             this.response.body = {

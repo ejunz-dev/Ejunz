@@ -81,10 +81,11 @@ class McpModel {
         return (list[0] as McpDoc) || null;
     }
 
-    static async getBySourceLocalKey(domainId: string, localKey: string): Promise<McpDoc | null> {
+    static async getBySourceSystemKey(domainId: string, systemKey: string): Promise<McpDoc | null> {
         const list = await document.getMulti(domainId, document.TYPE_MCP, {
-            kind: 'local',
-            'source.localKey': localKey,
+            kind: 'system',
+            'source.type': 'system_tools',
+            'source.localKey': systemKey,
         } as any)
             .limit(1)
             .toArray();

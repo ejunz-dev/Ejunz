@@ -9592,7 +9592,7 @@ Reply with a JSON code block only for executable operations, using this shape:
 - Cards are markdown files under folders. Use create_card for plugin files such as usage-guide.md, export.md, exporter-tools.md.
 - skill, command, and mcp definitions live in card markdown frontmatter + body, not as typed nodes.
 - Runtime variables available in command card bodies: {{args}}, {{userMessage}}, {{agent.title}}, {{domainId}}.
-- MCP cards may list existing ToolDoc ObjectIds or local Ejunz Tools Unique tool IDs in frontmatter. For local/site tools, use the exact Unique tool ID shown below, e.g. local:ejunztools:get_current_time.
+- MCP cards may list existing ToolDoc ObjectIds or system tool Unique IDs in frontmatter. For System Tools and market MCP tools, use the exact Unique tool ID shown below, e.g. system:get_current_time.
 
 [Available domain MCP services]
 These are current-domain assignable, non-outbound MCP services visible to this plugin editor.
@@ -9601,7 +9601,7 @@ ${availableMcpServicesText}
 
 Rules for using this MCP context:
 - For plugin MCP cards that use mcp.toolIds, use real ToolDoc ID values when the service shows ToolDoc ID.
-- For local Ejunz Tools entries, use the exact Unique tool ID value, e.g. local:ejunztools:get_current_time.
+- For System Tools entries, use the exact Unique tool ID value, e.g. system:get_current_time.
 - Never invent ObjectIds or Unique tool IDs. Copy them exactly from the available MCP context.
 - toolKey values are useful for discussion, but mcp.toolIds must use ToolDoc ID or Unique tool ID values.
 - If the desired service shows neither a ToolDoc ID nor a Unique tool ID, keep toolIds: [] and explain what remains to configure.
@@ -9647,7 +9647,7 @@ slug: exporter-tools
 description: Tool bundle for exporter operations
 mcp:
   toolIds:
-    - local:ejunztools:get_current_time
+    - system:get_current_time
 security:
   mutating: true
   requireConfirmation: true
@@ -9694,7 +9694,7 @@ Reply with a JSON code block only for executable operations. For same-response f
       "type": "create_card",
       "nodeId": "mcp-folder",
       "title": "exporter-tools.md",
-      "content": "---\\ntype: mcp\\nslug: exporter-tools\\ndescription: Exporter tool bundle\\nmcp:\\n  toolIds:\\n    - local:ejunztools:get_current_time\\nsecurity:\\n  mutating: true\\n  requireConfirmation: true\\n---\\n\\nUse these tools only after the user confirms target and format. Copy real ToolDoc ID or Unique tool ID values from the MCP context into toolIds."
+      "content": "---\\ntype: mcp\\nslug: exporter-tools\\ndescription: Exporter tool bundle\\nmcp:\\n  toolIds:\\n    - system:get_current_time\\nsecurity:\\n  mutating: true\\n  requireConfirmation: true\\n---\\n\\nUse these tools only after the user confirms target and format. Copy real ToolDoc ID or Unique tool ID values from the MCP context into toolIds."
     },
     { "type": "rename_card", "cardId": "card_xxx", "newTitle": "new-name.md" },
     { "type": "update_card_content", "cardId": "card_xxx", "newContent": "---\\ntype: skill\\nslug: revised\\n---\\n\\nRevised markdown body" },
@@ -9716,7 +9716,7 @@ Reply with a JSON code block only for executable operations. For same-response f
 6. Prefer lowercase stable slugs using only a-z, 0-9, dot, underscore, and dash. Keep descriptions concise.
 7. Complete scaffolding requests should create useful folders plus markdown cards in one operations[] block.
 8. Use real node IDs from the current plugin structure for parentId, nodeId, and targetNodeId. When referencing folders created earlier in the same operations[] block, use their clientId.
-9. MCP toolIds must be copied from the visible MCP context: use values labeled ToolDoc ID for persisted tools, or values labeled Unique tool ID for local Ejunz Tools (for example local:ejunztools:get_current_time). Never use bare toolKey values, and never invent IDs.
+9. MCP toolIds must be copied from the visible MCP context: use values labeled ToolDoc ID for persisted tools, or values labeled Unique tool ID for System Tools entries (for example system:get_current_time). Never use bare toolKey values, and never invent IDs.
 10. **Valid JSON**: never put raw line breaks or unescaped " inside a string value; use standard JSON escaping (backslash + quote, backslash + n for newline).
 11. **Streaming**: emit each operations[] entry as a fully closed { ... } object before starting the next. The editor applies each finished object immediately.
 `;

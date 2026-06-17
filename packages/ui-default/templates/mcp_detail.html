@@ -20,8 +20,8 @@
             <tbody>
               <tr><td class="col--key">MID</td><td><code>{{ mcp.mid }}</code></td></tr>
               <tr><td class="col--key">名称</td><td>{{ normalized.name }}</td></tr>
-              <tr><td class="col--key">类型</td><td><span class="problem__tag">{{ kind }}</span> <span class="supplementary">{{ normalized.sourceLabel }}</span></td></tr>
-              <tr><td class="col--key">可分配给 Agent</td><td>{{ '是' if normalized.assignable else '否' }}</td></tr>
+              <tr><td class="col--key">类型</td><td><span class="problem__tag">{{ normalized.kindLabel or kind }}</span> <span class="supplementary">{{ normalized.sourceLabel }}</span></td></tr>
+              <tr><td class="col--key">可分配给 Agent</td><td>{{ normalized.assignableLabel or ('是' if normalized.assignable else '否') }}</td></tr>
               <tr>
                 <td class="col--key">状态</td>
                 <td><span class="edge-status edge-status-{{ mcp.status }}">{% if mcp.status == 'online' %}在线{% elif mcp.status == 'pending' %}待连接{% else %}离线{% endif %}</span></td>
@@ -49,13 +49,13 @@
       </div>
     </div>
 
-    {% if kind == 'local' %}
+    {% if kind == 'system' %}
     <div class="section">
-      <div class="section__header"><h1 class="section__title">本站 Ejunz Tools</h1></div>
+      <div class="section__header"><h1 class="section__title">System Tools</h1></div>
       <div class="section__body">
         <div class="typo">
-          <p>这个 MCP 代表当前 domain 已启用的本站内置 ejunztools。Agent 分配该 MCP 后，会获得下方所有已启用工具。</p>
-          <p><a href="{{ url('mcp_market', {}) }}" class="button">管理 Ejunz Tools</a></p>
+          <p>这个 MCP 代表当前 domain 已启用的本站内置 System Tools。Agent 分配该 MCP 后，会获得下方所有已启用工具。</p>
+          <p><a href="{{ url('mcp_market', {}) }}" class="button">管理 System Tools</a></p>
         </div>
       </div>
     </div>

@@ -3,6 +3,7 @@ import { LRUCache } from 'lru-cache';
 import { Filter } from 'mongodb';
 import { Context } from '../context';
 import { DomainDoc } from '../interface';
+import { ensureDomainSystemDefaults } from '../lib/systemDefaultPlugin';
 import bus from '../service/bus';
 import db from '../service/db';
 import { MaybeArray, NumberKeys } from '../typeutils';
@@ -56,10 +57,12 @@ class DomainModel {
             bulletin,
             roles: {},
             avatar: '',
+            _files: [],
         };
         await bus.parallel('domain/create', ddoc);
         await coll.insertOne(ddoc);
         await DomainModel.setUserRole(domainId, owner, 'root', true);
+        await ensureDomainSystemDefaults(domainId, owner);
         return domainId;
     }
 

@@ -7,12 +7,12 @@
       <div class="section__header">
         <h1 class="section__title">MCP Dashboard</h1>
         <div class="section__tools">
-          <a href="{{ url('mcp_market', {}) }}" class="button">管理 Ejunz Tools</a>
+          <a href="{{ url('mcp_market', {}) }}" class="button">管理 System Tools</a>
         </div>
       </div>
       <div class="section__body">
         <div class="typo">
-          <p>MCP 现在是工具的顶层对象：这里同时显示出站 MCP、本地 Ejunz Tools MCP，以及外部接入的入站 MCP。点击任意 MCP 可查看其下工具与唯一工具 ID。</p>
+          <p>MCP 现在是工具的顶层对象：这里同时显示出站 MCP、System Tools MCP，以及外部接入的入站 MCP。点击任意 MCP 可查看其下工具与唯一工具 ID。</p>
         </div>
       </div>
       <div class="section__body no-padding">
@@ -50,9 +50,9 @@
                   {% if mcp.description %}<div class="supplementary">{{ mcp.description }}</div>{% endif %}
                 </td>
                 <td class="col--type">
-                  <span class="problem__tag">{{ mcp.kind }}</span>
+                  <span class="problem__tag">{{ mcp.kindLabel or mcp.kind }}</span>
                   <span class="supplementary">{{ mcp.sourceLabel }}</span>
-                  {% if mcp.assignable %}<span class="problem__tag">assignable</span>{% else %}<span class="supplementary">not assignable</span>{% endif %}
+                  <span class="problem__tag">{{ mcp.assignableLabel }}</span>
                 </td>
                 <td class="col--count">{{ mcp.toolCount }}</td>
                 <td class="col--action">
