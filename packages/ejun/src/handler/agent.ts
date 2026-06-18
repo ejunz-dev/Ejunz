@@ -150,6 +150,24 @@ function findExecutionTool(executionTools: any[] | undefined, toolName: string):
     return (executionTools || []).find((tool) => tool?.name === toolName);
 }
 
+function makeToolUnavailableError(toolName: string, code = 'TOOL_NOT_FOUND') {
+    const err = new Error(`Tool not available to this agent/domain: ${toolName}`);
+    (err as any).code = code;
+    return err;
+}
+
+function isFatalToolResolutionCode(code?: string) {
+    return new Set(['TOOL_NOT_FOUND', 'TOOL_NOT_ADDED', 'MCP_NOT_FOUND']).has(String(code || ''));
+}
+
+function normalizeToolError(toolError: any) {
+    return {
+        error: true,
+        message: toolError?.message || String(toolError),
+        code: toolError?.code || 'UNKNOWN_ERROR',
+    };
+}
+
 async function callToolWithFallback(
     toolName: string,
     args: any,
@@ -165,6 +183,8 @@ async function callToolWithFallback(
     },
 ): Promise<any> {
     const executionTool = findExecutionTool(mcpOpts?.executionTools, toolName);
+    if (!executionTool) throw makeToolUnavailableError(toolName, 'TOOL_NOT_FOUND');
+    if (executionTool.type === 'plugin_mcp' && !executionTool.mcpId) throw makeToolUnavailableError(toolName, 'MCP_NOT_FOUND');
     const preferDirectMcp = executionTool?.token
         || executionTool?.type === 'system'
         || executionTool?.type === 'edge'
@@ -183,7 +203,8 @@ async function callToolWithFallback(
                     mcpId: executionTool?.mcpId,
                 });
             }
-        } catch (e) {
+        } catch (e: any) {
+            if (isFatalToolResolutionCode(e?.code) || e?.code === 'MCP_OFFLINE') throw e;
             AgentLogger.warn(`Worker tool call failed, falling back to direct call: ${toolName}`, e);
         }
     }
@@ -215,6 +236,8 @@ async function callAssignedTool(
     uid?: number,
 ): Promise<any> {
     const executionTool = findExecutionTool(executionTools, toolName);
+    if (!executionTool) throw makeToolUnavailableError(toolName, 'TOOL_NOT_FOUND');
+    if (executionTool.type === 'plugin_mcp' && !executionTool.mcpId) throw makeToolUnavailableError(toolName, 'MCP_NOT_FOUND');
     return await mcpClient.callTool(
         toolName,
         executionTool?.type === 'plugin_mcp'
@@ -853,17 +876,18 @@ export async function processAgentChatInternal(
                                                     AgentLogger.info(`Tool ${firstToolName} returned (internal)`, { resultLength: JSON.stringify(toolResult).length });
                                                 } catch (toolError: any) {
                                                     AgentLogger.error(`Tool ${firstToolName} failed (internal):`, toolError);
-                                                    toolResult = {
-                                                        error: true,
-                                                        message: toolError.message || String(toolError),
-                                                        code: toolError.code || 'UNKNOWN_ERROR',
-                                                    };
+                                                    toolResult = normalizeToolError(toolError);
                                                     // Do not update records here; worker handles all record updates
                                                     AgentLogger.error('processAgentChatInternal: tool call failed', {
                                                         toolName: firstToolName,
                                                         error: toolError.message || String(toolError),
                                                         recordId: taskRecordId?.toString(),
                                                     });
+                                                    if (isFatalToolResolutionCode(toolResult.code)) {
+                                                        callbacks.onToolResult?.(firstToolName, toolResult);
+                                                        callbacks.onError?.(toolResult.message);
+                                                        return;
+                                                    }
                                                 }
 
                                                 callbacks.onToolResult?.(firstToolName, toolResult);
@@ -2843,25 +2867,30 @@ const agentPrompt = this.adoc.content || '';
                                                 } catch (toolError: any) {
                                                     // Tool call failed
                                                     AgentLogger.error(`Tool ${firstToolCall.function.name} failed (Stream):`, toolError);
-                                                    toolResult = {
-                                                        error: true,
-                                                        message: toolError.message || String(toolError),
-                                                        code: toolError.code || 'UNKNOWN_ERROR',
-                                                    };
-                                                    
+                                                    toolResult = normalizeToolError(toolError);
+
                                                     // Emit error payload immediately
-                                                    this.logSend({ 
-                                                        type: 'tool_result', 
-                                                        tool: firstToolCall.function.name, 
+                                                    this.logSend({
+                                                        type: 'tool_result',
+                                                        tool: firstToolCall.function.name,
                                                         result: toolResult,
                                                         error: true
                                                     });
+                                                    if (isFatalToolResolutionCode(toolResult.code)) {
+                                                        this.logSend({ type: 'error', error: toolResult.message });
+                                                        return;
+                                                    }
                                                 }
-                                                
+
                                                 // Create tool result message (only contains the first tool's result)
-                                                const toolMsg = { 
-                                                    role: 'tool', 
-                                                    content: JSON.stringify(toolResult), 
+                                                if (isFatalToolResolutionCode(toolResult?.code)) {
+                                                    this.logSend({ type: 'error', error: toolResult.message });
+                                                    return;
+                                                }
+
+                                                const toolMsg = {
+                                                    role: 'tool',
+                                                    content: JSON.stringify(toolResult),
                                                     tool_call_id: firstToolCall.id || assistantForTools.tool_calls[0].id
                                                 };
                                                 
@@ -3272,16 +3301,16 @@ const agentPrompt = this.adoc.content || '';
                                                         AgentLogger.info(`Tool ${firstToolCall.function.name} returned (API WS)`, { resultLength: JSON.stringify(toolResult).length });
                                                     } catch (toolError: any) {
                                                         AgentLogger.error(`Tool ${firstToolCall.function.name} failed (API WS):`, toolError);
-                                                        toolResult = {
-                                                            error: true,
-                                                            message: toolError.message || String(toolError),
-                                                            code: toolError.code || 'UNKNOWN_ERROR',
-                                                        };
+                                                        toolResult = normalizeToolError(toolError);
                                                     }
-                                                    
+
                                                     const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
-                                                    
+
                                                     this.send({ type: 'tool_result', tool: firstToolCall.function.name, result: toolResult });
+                                                    if (isFatalToolResolutionCode(toolResult?.code)) {
+                                                        this.send({ type: 'error', error: toolResult.message });
+                                                        return;
+                                                    }
                                                     this.send({ type: 'tool_call_complete' });
                                                     
                                                     messagesForTurn = [
@@ -3662,18 +3691,18 @@ const agentPrompt = adoc.content || '';
                                                             AgentLogger.info(`Tool ${firstToolCall.function.name} returned (API)`, { resultLength: JSON.stringify(toolResult).length });
                                                         } catch (toolError: any) {
                                                             AgentLogger.error(`Tool ${firstToolCall.function.name} failed (API):`, toolError);
-                                                            toolResult = {
-                                                                error: true,
-                                                                message: toolError.message || String(toolError),
-                                                                code: toolError.code || 'UNKNOWN_ERROR',
-                                                            };
+                                                            toolResult = normalizeToolError(toolError);
                                                         }
-                                                        
+
                                                         const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
-                                                        
+
                                                         if (!streamResponse.destroyed && !streamResponse.writableEnded) {
                                                             streamResponse.write(`data: ${JSON.stringify({ type: 'tool_result', tool: firstToolCall.function.name, result: toolResult })}\n\n`);
                                                             streamResponse.write(`data: ${JSON.stringify({ type: 'tool_call_complete' })}\n\n`);
+                                                            if (isFatalToolResolutionCode(toolResult?.code)) {
+                                                                streamResponse.write(`data: ${JSON.stringify({ type: 'error', error: toolResult.message })}\n\n`);
+                                                                return;
+                                                            }
                                                         }
                                                         
                                                         messagesForTurn = [
@@ -3801,7 +3830,8 @@ const agentPrompt = adoc.content || '';
                     const toolContext = buildAgentToolContext(adoc, this.user);
                     const toolResult = await callAssignedTool(mcpClient, tools, firstToolCall.function?.name, toolArgs, adoc.domainId, toolContext.baseDocId, toolContext.baseBranch, toolContext.owner);
                     AgentLogger.info('Tool returned:', { toolResult });
-                    
+                    if (isFatalToolResolutionCode(toolResult?.code)) throw makeToolUnavailableError(firstToolCall.function?.name, toolResult.code);
+
                     const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
                     
                     const assistantForTools: any = { 

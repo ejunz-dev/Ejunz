@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import { ObjectId } from 'mongodb';
 import request from 'superagent';
-import type { BaseNode, CardDoc, PluginDoc, PluginMcpStatus } from '../interface';
+import type { BaseNode, CardDoc, McpDoc, PluginDoc, PluginMcpStatus, ToolDoc } from '../interface';
 import { getBranchData } from '../model/base';
 import * as document from '../model/document';
 import McpModel from '../model/mcp';
@@ -41,6 +41,11 @@ export type BuiltinPluginMcpRuntime = {
     localKey: string;
     packageName?: string;
     version?: string;
+    name?: string;
+    description?: string;
+    domainInstallable?: boolean;
+    ensureDomainMcp?(input: { domainId: string; owner: number }): Promise<any>;
+    removeDomainMcp?(input: { domainId: string }): Promise<any>;
     tools: Array<{ name: string; description?: string; inputSchema?: any }>;
     callTool(input: {
         domainId: string;
@@ -64,6 +69,69 @@ export function registerBuiltinPluginMcpRuntime(runtime: BuiltinPluginMcpRuntime
 
 export function getBuiltinPluginMcpRuntime(localKey: string): BuiltinPluginMcpRuntime | null {
     return builtinPluginRuntimeMap().get(localKey) || null;
+}
+
+export function listBuiltinPluginMcpRuntimes(): BuiltinPluginMcpRuntime[] {
+    return Array.from(builtinPluginRuntimeMap().values());
+}
+
+function cleanupSourceQuery(input: {
+    pluginDocId?: number;
+    localKey?: string;
+    packageName?: string;
+    runtimeMode?: string;
+}, prefix: 'source') {
+    const query: Record<string, unknown> = {};
+    if (input.pluginDocId !== undefined) query[`${prefix}.pluginDocId`] = input.pluginDocId;
+    if (input.localKey) query[`${prefix}.localKey`] = input.localKey;
+    if (input.packageName) query[`${prefix}.packageName`] = input.packageName;
+    if (input.runtimeMode) query[`${prefix}.runtimeMode`] = input.runtimeMode;
+    return query;
+}
+
+export async function cleanupPluginMcpArtifacts(input: {
+    domainId?: string;
+    pluginDocId?: number;
+    localKey?: string;
+    packageName?: string;
+    runtimeMode?: 'builtin' | 'ws' | string;
+}): Promise<{ mcpsDeleted: number; toolsDeleted: number }> {
+    if (!input.pluginDocId && !input.localKey && !input.packageName) {
+        throw new Error('cleanupPluginMcpArtifacts requires pluginDocId, localKey, or packageName');
+    }
+
+    const sourceQuery = cleanupSourceQuery(input, 'source');
+    const mcpQuery = {
+        docType: document.TYPE_MCP,
+        kind: 'plugin',
+        'source.type': 'plugin',
+        ...sourceQuery,
+        ...(input.domainId ? { domainId: input.domainId } : {}),
+    } as any;
+    const mcps = await document.coll.find(mcpQuery).toArray() as McpDoc[];
+    let toolsDeleted = 0;
+    let mcpsDeleted = 0;
+
+    for (const mcp of mcps) {
+        const toolRes = await ToolModel.deleteByMcpId(mcp.domainId, mcp.mid) as any;
+        toolsDeleted += Number(toolRes?.deletedCount || 0);
+        await McpModel.del(mcp.domainId, mcp.mid);
+        mcpsDeleted++;
+    }
+
+    const orphanToolQuery = {
+        docType: document.TYPE_TOOL,
+        'source.type': 'plugin_mcp',
+        ...sourceQuery,
+        ...(input.domainId ? { domainId: input.domainId } : {}),
+    } as any;
+    const orphanTools = await document.coll.find(orphanToolQuery).toArray() as ToolDoc[];
+    for (const tool of orphanTools) {
+        await document.deleteOne(tool.domainId, document.TYPE_TOOL, tool.docId);
+        toolsDeleted++;
+    }
+
+    return { mcpsDeleted, toolsDeleted };
 }
 
 function configHash(cfg: PluginMcpConfig): string {
@@ -474,7 +542,17 @@ export async function callPluginMcpTool(input: {
     timeoutMs?: number;
 }): Promise<any> {
     const mcp = await McpModel.getByMcpId(input.domainId, input.mcpId);
-    if (!mcp || mcp.kind !== 'plugin' || mcp.status !== 'online') {
+    if (!mcp) {
+        const err = new Error(`Plugin MCP not found for tool: ${input.name}`);
+        (err as any).code = 'MCP_NOT_FOUND';
+        throw err;
+    }
+    if (mcp.kind !== 'plugin') {
+        const err = new Error(`MCP is not a plugin MCP for tool: ${input.name}`);
+        (err as any).code = 'MCP_NOT_FOUND';
+        throw err;
+    }
+    if (mcp.status !== 'online') {
         const err = new Error(`Plugin MCP is offline for tool: ${input.name}`);
         (err as any).code = 'MCP_OFFLINE';
         throw err;
