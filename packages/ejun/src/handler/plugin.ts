@@ -10,6 +10,7 @@ import {
     syncPluginManagedMcps,
     testPluginMcpDefinitions,
     checkAllEnabledPluginMcpStatus,
+    cleanupPluginMcpArtifacts,
 } from '../lib/pluginMcp';
 import { listDomainMcps } from '../lib/mcpRegistry';
 import { BaseModel, CardModel, getBranchData, TYPE_CARD, type MindMapDocType } from '../model/base';
@@ -40,6 +41,18 @@ async function buildPluginView(domainId: string, plugin: PluginDoc) {
         summary: await summarizePluginDefinitions(domainId, plugin),
         mcpAvailability: await summarizePluginMcpAvailability(domainId, plugin, plugin.currentBranch || 'main'),
     };
+}
+
+async function cleanupDeletedPluginArtifacts(domainId: string, pluginDocId: number) {
+    await cleanupPluginMcpArtifacts({ domainId, pluginDocId });
+    await document.deleteMulti(domainId, document.TYPE_CARD, { baseDocId: pluginDocId } as any);
+    await document.coll.updateMany({
+        domainId,
+        docType: document.TYPE_AGENT,
+        'pluginBindings.docId': pluginDocId,
+    } as any, {
+        $pull: { pluginBindings: { docId: pluginDocId } },
+    } as any);
 }
 
 async function buildAvailableMcpServicesForPluginEditor(domainId: string, user: any) {
@@ -143,13 +156,16 @@ export class PluginMetaEditHandler extends Handler {
         assertPluginEditable(this, this.plugin!);
         const vis = visibility === 'domain' || visibility === 'system' ? visibility : 'private';
         if (vis === 'system' && !this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) throw new ForbiddenError('Only administrator can create system plugins');
+        const nextEnabled = enabled !== 'off' && enabled !== 'false';
+        const wasEnabled = this.plugin!.enabled !== false;
         await PluginModel.update(domainId, docId, {
             title,
             content,
             pluginSlug: parsePluginSlug(pluginSlug, title),
             visibility: vis,
-            enabled: enabled !== 'off' && enabled !== 'false',
+            enabled: nextEnabled,
         } as Partial<PluginDoc>);
+        if (wasEnabled && !nextEnabled) await cleanupPluginMcpArtifacts({ domainId, pluginDocId: docId });
         this.response.redirect = this.url('plugin_editor', { docId });
     }
 }
@@ -161,6 +177,7 @@ export class PluginDeleteHandler extends Handler {
         const plugin = await PluginModel.get(domainId, docId);
         if (!plugin) throw new NotFoundError('Plugin not found');
         assertPluginEditable(this, plugin);
+        await cleanupDeletedPluginArtifacts(domainId, docId);
         await PluginModel.delete(domainId, docId);
         this.response.body = { success: true };
         this.response.redirect = this.url('plugin_domain');
