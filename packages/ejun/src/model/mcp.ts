@@ -114,6 +114,17 @@ class McpModel {
         return (list[0] as McpDoc) || null;
     }
 
+    static async getByPluginLocalKey(domainId: string, localKey: string): Promise<McpDoc | null> {
+        const list = await document.getMulti(domainId, document.TYPE_MCP, {
+            kind: 'plugin',
+            'source.type': 'plugin',
+            'source.localKey': localKey,
+        } as any)
+            .limit(1)
+            .toArray();
+        return (list[0] as McpDoc) || null;
+    }
+
     static async getByDomain(domainId: string): Promise<McpDoc[]> {
         return await document.getMulti(domainId, document.TYPE_MCP, {}).toArray() as McpDoc[];
     }
