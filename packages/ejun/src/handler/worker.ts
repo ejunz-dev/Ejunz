@@ -651,15 +651,20 @@ export async function callToolViaWorker(
     return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
             dispose();
-            reject(new Error(`Tool call timeout: ${toolName}`));
+            const err = new Error(`Tool call timeout: ${toolName}`);
+            (err as any).code = 'TIMEOUT';
+            reject(err);
         }, 30000);
 
         const handler = (completedTaskId: ObjectId, result: any) => {
             if (completedTaskId.toString() === taskId.toString()) {
                 clearTimeout(timeout);
                 dispose();
-                if (result?.error) reject(new Error(result.message || 'Tool call failed'));
-                else resolve(result);
+                if (result?.error) {
+                    const err = new Error(result.message || 'Tool call failed');
+                    (err as any).code = result.code || 'WORKER_TOOL_CALL_ERROR';
+                    reject(err);
+                } else resolve(result);
             }
         };
         const dispose = (bus as any).on('toolcall/complete', handler);

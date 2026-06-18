@@ -126,7 +126,7 @@ async function systemTools(domainId: string): Promise<NormalizedMcpTool[]> {
             name: entry.name,
             description: entry.description || '',
             inputSchema: entry.inputSchema,
-            kind: SYSTEM_TOOLS_MCP_KIND,
+            kind: SYSTEM_TOOLS_MCP_KIND as McpKind,
             toolKey: entry.id,
             type: entry.source === 'system' ? 'system' as const : 'market_mcp' as const,
             system: entry.source === 'system' ? true : undefined,
@@ -213,13 +213,24 @@ export async function getBuiltinEjunzToolsMcp(domainId: string): Promise<McpDoc 
         && mcp.source?.localKey === EJUNZ_TOOLS_MCP_LOCAL_KEY) || null;
 }
 
+export async function removeBuiltinEjunzToolsMcp(domainId: string): Promise<boolean> {
+    const mcps = (await McpModel.getByDomain(domainId)).filter((mcp) => mcp.kind === EJUNZ_TOOLS_MCP_KIND
+        && mcp.source?.type === EJUNZ_TOOLS_MCP_SOURCE_TYPE
+        && mcp.source?.localKey === EJUNZ_TOOLS_MCP_LOCAL_KEY);
+    for (const mcp of mcps) {
+        await ToolModel.deleteByMcpId(domainId, mcp.mid);
+        await McpModel.del(domainId, mcp.mid);
+    }
+    return mcps.length > 0;
+}
+
 export async function ensureBuiltinEjunzToolsMcp(domainId: string, owner: number): Promise<McpDoc | null> {
     const runtime = getBuiltinEjunzToolsRuntime();
     const runtimeActive = !!runtime;
     const version = getBuiltinEjunzToolsVersion();
     const name = getBuiltinEjunzToolsLabel();
     const source = {
-        type: EJUNZ_TOOLS_MCP_SOURCE_TYPE as const,
+        type: EJUNZ_TOOLS_MCP_SOURCE_TYPE as 'ejunztools',
         localKey: EJUNZ_TOOLS_MCP_LOCAL_KEY,
         runtimeMode: 'builtin' as const,
         runtimeVersion: version,

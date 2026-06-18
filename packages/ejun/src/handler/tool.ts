@@ -19,12 +19,18 @@ import { isMcpBuiltinMutatingTool } from '../lib/mcpBuiltinTools';
 import {
     EJUNZ_TOOLS_MCP_LOCAL_KEY,
     ensureBuiltinEjunzToolsMcp,
+    removeBuiltinEjunzToolsMcp,
 } from '../lib/mcpRegistry';
 import {
     getBuiltinEjunzToolsRuntime,
     getBuiltinEjunzToolsVersion,
     getEjunzToolsCatalog,
 } from '../lib/ejunzToolsMcp';
+import {
+    cleanupPluginMcpArtifacts,
+    getBuiltinPluginMcpRuntime,
+    listBuiltinPluginMcpRuntimes,
+} from '../lib/pluginMcp';
 
 // Register default editor/base MCP tools as system tools in core.
 registerSystemToolCatalog(getLocalSystemToolCatalog());
@@ -61,8 +67,24 @@ function ejunzToolsMarketEntry() {
     };
 }
 
+function builtinPluginMarketEntries() {
+    return listBuiltinPluginMcpRuntimes()
+        .filter((runtime) => runtime.domainInstallable)
+        .map((runtime) => ({
+            id: runtime.localKey,
+            name: runtime.name || runtime.localKey,
+            description: runtime.description || `${runtime.packageName || runtime.localKey} builtin plugin MCP provider (${runtime.tools.length} tools).`,
+            inputSchema: { type: 'object', properties: {} } as ToolDoc['inputSchema'],
+            kind: 'mcp_provider',
+            runtimeMode: 'builtin',
+            runtimeVersion: runtime.version,
+            status: 'online',
+            toolCount: runtime.tools.length,
+        }));
+}
+
 function marketEntries() {
-    return [ejunzToolsMarketEntry()];
+    return [ejunzToolsMarketEntry(), ...builtinPluginMarketEntries()];
 }
 
 /** MCP market page: list local/site MCP tools and enable them for the current domain. */
@@ -102,6 +124,14 @@ export class McpMarketAddHandler extends Handler<Context> {
             this.response.body = { ok: true, mid: mcp?.mid };
             return;
         }
+        const runtime = getBuiltinPluginMcpRuntime(toolKey);
+        if (runtime) {
+            if (!runtime.ensureDomainMcp) throw new ValidationError('Builtin plugin MCP cannot be installed for a domain');
+            const mcp = await runtime.ensureDomainMcp({ domainId: this.domain._id, owner: this.user._id });
+            (this.ctx.emit as any)('mcp/tools/update', toolKey);
+            this.response.body = { ok: true, mid: mcp?.mid };
+            return;
+        }
         (this.ctx.emit as any)('mcp/tools/update', 'system');
         this.response.body = { ok: true };
     }
@@ -121,7 +151,19 @@ export class McpMarketRemoveHandler extends Handler<Context> {
             return;
         }
         await DomainMarketToolModel.remove(this.domain._id, toolKey);
-        (this.ctx.emit as any)('mcp/tools/update', toolKey === EJUNZ_TOOLS_MCP_LOCAL_KEY ? 'ejunztools' : 'system');
+        if (toolKey === EJUNZ_TOOLS_MCP_LOCAL_KEY) {
+            await removeBuiltinEjunzToolsMcp(this.domain._id);
+            (this.ctx.emit as any)('mcp/tools/update', 'ejunztools');
+            this.response.body = { ok: true };
+            return;
+        }
+        const runtime = getBuiltinPluginMcpRuntime(toolKey);
+        if (runtime?.removeDomainMcp) {
+            await runtime.removeDomainMcp({ domainId: this.domain._id });
+        } else if (runtime) {
+            await cleanupPluginMcpArtifacts({ domainId: this.domain._id, localKey: toolKey });
+        }
+        (this.ctx.emit as any)('mcp/tools/update', runtime ? toolKey : 'system');
         this.response.body = { ok: true };
     }
 }
