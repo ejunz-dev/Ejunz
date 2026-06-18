@@ -21,12 +21,14 @@
             <colgroup>
               <col class="col--name">
               <col class="col--description">
+              <col class="col--type">
               <col class="col--action">
             </colgroup>
             <thead>
               <tr>
-                <th class="col--name">{{ _('Tool Name') }}</th>
+                <th class="col--name">{{ _('Name') }}</th>
                 <th class="col--description">{{ _('Description') }}</th>
+                <th class="col--type">{{ _('Type / Version') }}</th>
                 <th class="col--action">{{ _('Actions') }}</th>
               </tr>
             </thead>
@@ -35,6 +37,12 @@
               <tr data-tool-id="{{ tool.id }}">
                 <td class="col--name"><code>{{ tool.name }}</code></td>
                 <td class="col--description">{{ tool.description or '' }}</td>
+                <td class="col--type">
+                  {% if tool.runtimeMode %}<span class="problem__tag">{{ tool.runtimeMode }}</span>{% endif %}
+                  {% if tool.runtimeVersion %}<span class="problem__tag">v{{ tool.runtimeVersion }}</span>{% endif %}
+                  {% if tool.status %}<span class="edge-status edge-status-{{ tool.status }}">{% if tool.status == 'online' %}在线{% else %}离线{% endif %}</span>{% endif %}
+                  {% if tool.toolCount %}<span class="supplementary">{{ tool.toolCount }} tools</span>{% endif %}
+                </td>
                 <td class="col--action">
                   {% if tool.name in addedNames %}
                     <button type="button" class="rounded button mcp_market__remove-btn" data-tool-key="{{ tool.id }}">{{ _('Uninstall') }}</button>
