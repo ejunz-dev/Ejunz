@@ -16,6 +16,15 @@ import {
     isLocalSystemToolAvailableInDomain,
 } from '../lib/localSystemTools';
 import { isMcpBuiltinMutatingTool } from '../lib/mcpBuiltinTools';
+import {
+    EJUNZ_TOOLS_MCP_LOCAL_KEY,
+    ensureBuiltinEjunzToolsMcp,
+} from '../lib/mcpRegistry';
+import {
+    getBuiltinEjunzToolsRuntime,
+    getBuiltinEjunzToolsVersion,
+    getEjunzToolsCatalog,
+} from '../lib/ejunzToolsMcp';
 
 // Register default editor/base MCP tools as system tools in core.
 registerSystemToolCatalog(getLocalSystemToolCatalog());
@@ -35,17 +44,38 @@ export const MARKET_TOOLS_CATALOG = getMarketMcpTools() as Array<{
     inputSchema: ToolDoc['inputSchema'];
 }>;
 
+function ejunzToolsMarketEntry() {
+    const runtime = getBuiltinEjunzToolsRuntime();
+    const version = getBuiltinEjunzToolsVersion();
+    const toolCount = getEjunzToolsCatalog().length;
+    return {
+        id: EJUNZ_TOOLS_MCP_LOCAL_KEY,
+        name: 'Ejunz Tools',
+        description: `Ejunz Tools builtin MCP provider (${runtime ? 'online' : 'offline'}, version ${version}, ${toolCount} tools).`,
+        inputSchema: { type: 'object', properties: {} } as ToolDoc['inputSchema'],
+        kind: 'mcp_provider',
+        runtimeMode: 'builtin',
+        runtimeVersion: version,
+        status: runtime ? 'online' : 'offline',
+        toolCount,
+    };
+}
+
+function marketEntries() {
+    return [ejunzToolsMarketEntry()];
+}
+
 /** MCP market page: list local/site MCP tools and enable them for the current domain. */
 export class McpMarketHandler extends Handler<Context> {
     async get() {
         const enabled = await DomainMarketToolModel.getByDomain(this.domain._id);
         const addedNames = enabled.map((doc) => {
-            const entry = MARKET_TOOLS_CATALOG.find((c) => c.id === doc.toolKey);
+            const entry = marketEntries().find((c) => c.id === doc.toolKey);
             return entry?.name;
         }).filter(Boolean) as string[];
         this.response.template = 'mcp_market.html';
         this.response.body = {
-            marketTools: MARKET_TOOLS_CATALOG,
+            marketTools: marketEntries(),
             addedNames,
             domainId: this.domain._id,
         };
@@ -57,7 +87,7 @@ export class McpMarketAddHandler extends Handler<Context> {
     async post() {
         const toolKey = this.request.body?.toolKey;
         if (!toolKey || typeof toolKey !== 'string') throw new ValidationError('toolKey');
-        const entry = MARKET_TOOLS_CATALOG.find(e => e.id === toolKey);
+        const entry = marketEntries().find(e => e.id === toolKey);
         if (!entry) throw new ValidationError('Unknown tool in catalog');
 
         const has = await DomainMarketToolModel.has(this.domain._id, toolKey);
@@ -66,6 +96,12 @@ export class McpMarketAddHandler extends Handler<Context> {
             return;
         }
         await DomainMarketToolModel.add(this.domain._id, toolKey, this.user._id);
+        if (toolKey === EJUNZ_TOOLS_MCP_LOCAL_KEY) {
+            const mcp = await ensureBuiltinEjunzToolsMcp(this.domain._id, this.user._id);
+            (this.ctx.emit as any)('mcp/tools/update', 'ejunztools');
+            this.response.body = { ok: true, mid: mcp?.mid };
+            return;
+        }
         (this.ctx.emit as any)('mcp/tools/update', 'system');
         this.response.body = { ok: true };
     }
@@ -76,7 +112,7 @@ export class McpMarketRemoveHandler extends Handler<Context> {
     async post() {
         const toolKey = this.request.body?.toolKey;
         if (!toolKey || typeof toolKey !== 'string') throw new ValidationError('toolKey');
-        const entry = MARKET_TOOLS_CATALOG.find(e => e.id === toolKey);
+        const entry = marketEntries().find(e => e.id === toolKey);
         if (!entry) throw new ValidationError('Unknown tool in catalog');
 
         const has = await DomainMarketToolModel.has(this.domain._id, toolKey);
@@ -85,16 +121,12 @@ export class McpMarketRemoveHandler extends Handler<Context> {
             return;
         }
         await DomainMarketToolModel.remove(this.domain._id, toolKey);
-        (this.ctx.emit as any)('mcp/tools/update', 'system');
+        (this.ctx.emit as any)('mcp/tools/update', toolKey === EJUNZ_TOOLS_MCP_LOCAL_KEY ? 'ejunztools' : 'system');
         this.response.body = { ok: true };
     }
 }
 
 export async function apply(ctx: Context) {
-    ctx.Route('mcp_market', '/mcp/market', McpMarketHandler);
-    ctx.Route('mcp_market_add', '/mcp/market/add', McpMarketAddHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('mcp_market_remove', '/mcp/market/remove', McpMarketRemoveHandler, PRIV.PRIV_USER_PROFILE);
-
     (ctx as any).on('mcp/tools/list/local', async (payload?: { domainId?: string }) => {
         const domainId = payload?.domainId;
         if (!domainId) return [];

@@ -18,6 +18,7 @@ import {
 import { randomstring } from '../utils';
 import type { EdgeTokenDoc } from '../model/edge_token';
 import { getNormalizedMcp, listDomainMcps, mcpKind } from '../lib/mcpRegistry';
+import { McpMarketAddHandler, McpMarketHandler, McpMarketRemoveHandler } from './tool';
 
 const logger = new Logger('handler/mcp');
 
@@ -924,6 +925,9 @@ export async function apply(ctx: Context) {
     (ctx as any).server.addCaptureRoute('/.well-known/openid-configuration', captureWellKnownNotFound);
 
     ctx.Route('mcp_main', '/mcp', McpListHandler);
+    ctx.Route('mcp_market', '/mcp/market', McpMarketHandler);
+    ctx.Route('mcp_market_add', '/mcp/market/add', McpMarketAddHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mcp_market_remove', '/mcp/market/remove', McpMarketRemoveHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mcp_message', '/mcp/sse/message', McpMessageHandler);
     ctx.Route('mcp_token', '/mcp/sse/token', McpTokenHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mcp', '/mcp/sse/:bid', McpConnectionHandler);

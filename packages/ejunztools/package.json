@@ -1,9 +1,19 @@
 {
     "name": "@ejunz/ejunztools",
+    "bin": "bin/ejunztools.js",
     "version": "0.1.0",
     "main": "src/index.ts",
     "types": "src/index.ts",
     "repository": "https://github.com/ejunz-dev/Ejunz",
+    "dependencies": {
+        "@ejunz/utils": "workspace:^",
+        "cac": "^6.7.14",
+        "schemastery": "^3.17.2",
+        "ws": "^8.18.3"
+    },
+    "devDependencies": {
+        "@types/ws": "^8.18.1"
+    },
     "license": "AGPL-3.0-or-later",
     "sideEffects": false
 }

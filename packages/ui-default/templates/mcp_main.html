@@ -52,6 +52,8 @@
                 <td class="col--type">
                   <span class="problem__tag">{{ mcp.kindLabel or mcp.kind }}</span>
                   <span class="supplementary">{{ mcp.sourceLabel }}</span>
+                  {% if mcp.runtimeMode %}<span class="problem__tag">{{ mcp.runtimeMode }}</span>{% endif %}
+                  {% if mcp.runtimeVersion %}<span class="problem__tag">v{{ mcp.runtimeVersion }}</span>{% endif %}
                   <span class="problem__tag">{{ mcp.assignableLabel }}</span>
                 </td>
                 <td class="col--count">{{ mcp.toolCount }}</td>

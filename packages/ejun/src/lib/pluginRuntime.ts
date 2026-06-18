@@ -368,7 +368,7 @@ export async function resolveAgentSlashCatalog(domainId: string, adoc: AgentDoc)
 
 export type AgentPluginTool = ToolDoc & {
     token?: string;
-    type?: 'system' | 'market_mcp' | 'edge' | 'plugin_mcp';
+    type?: 'system' | 'market_mcp' | 'edge' | 'plugin_mcp' | 'ejunztools';
     edgeId?: ObjectId;
     toolDocId?: ObjectId;
     mcpId?: number;

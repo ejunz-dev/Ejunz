@@ -490,6 +490,12 @@ export class McpClient {
                 }
             }
 
+            if (toolType === 'ejunztools') {
+                const { executeBuiltinEjunzToolsTool } = require('../lib/ejunzToolsMcp');
+                ClientLogger.info('[tool] callTool: name=%s -> branch=ejunztools', name);
+                return await executeBuiltinEjunzToolsTool(name, args || {});
+            }
+
             if (toolType === 'plugin_mcp' && domainId) {
                 const mcpId = Number((args as any)?.__mcpId);
                 const cleanArgs = { ...(args || {}) };
