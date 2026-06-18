@@ -21,10 +21,12 @@
               <tr><td class="col--key">MID</td><td><code>{{ mcp.mid }}</code></td></tr>
               <tr><td class="col--key">名称</td><td>{{ normalized.name }}</td></tr>
               <tr><td class="col--key">类型</td><td><span class="problem__tag">{{ normalized.kindLabel or kind }}</span> <span class="supplementary">{{ normalized.sourceLabel }}</span></td></tr>
+              {% if normalized.runtimeMode %}<tr><td class="col--key">启动方式</td><td><span class="problem__tag">{{ normalized.runtimeMode }}</span></td></tr>{% endif %}
+              {% if normalized.runtimeVersion %}<tr><td class="col--key">版本</td><td><code>{{ normalized.runtimeVersion }}</code></td></tr>{% endif %}
               <tr><td class="col--key">可分配给 Agent</td><td>{{ normalized.assignableLabel or ('是' if normalized.assignable else '否') }}</td></tr>
               <tr>
                 <td class="col--key">状态</td>
-                <td><span class="edge-status edge-status-{{ mcp.status }}">{% if mcp.status == 'online' %}在线{% elif mcp.status == 'pending' %}待连接{% else %}离线{% endif %}</span></td>
+                <td><span class="edge-status edge-status-{{ normalized.status }}">{% if normalized.status == 'online' %}在线{% elif normalized.status == 'pending' %}待连接{% else %}离线{% endif %}</span></td>
               </tr>
               {% if kind == 'outbound' %}
               <tr>
@@ -48,6 +50,23 @@
         </div>
       </div>
     </div>
+
+    {% if kind == 'ejunztools' %}
+    <div class="section">
+      <div class="section__header"><h1 class="section__title">Ejunz Tools</h1></div>
+      <div class="section__body">
+        <div class="typo">
+          {% if normalized.runtimeMode == 'builtin' %}
+          <p>这个 MCP 由站内 builtin <code>@ejunz/ejunztools</code> 提供。</p>
+          {% elif normalized.runtimeMode == 'ws' %}
+          <p>这个 MCP 由外部 <code>ejunztools</code> WebSocket 进程提供。</p>
+          {% else %}
+          <p>这个 MCP 由 <code>@ejunz/ejunztools</code> 提供。</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
 
     {% if kind == 'system' %}
     <div class="section">

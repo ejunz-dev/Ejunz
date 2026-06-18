@@ -168,6 +168,7 @@ async function callToolWithFallback(
     const preferDirectMcp = executionTool?.token
         || executionTool?.type === 'system'
         || executionTool?.type === 'edge'
+        || executionTool?.type === 'ejunztools'
         || executionTool?.type === 'plugin_mcp';
     if (useWorker && !preferDirectMcp) {
         try {
@@ -580,50 +581,6 @@ export async function processAgentChatInternal(
         // First stage reply doesn't need tool information
         // Tools info will be added to system message when tools are loaded (for subsequent requests)
 
-        const truncateMessages = (messages: any[], maxMessages: number = 20, maxChars: number = 8000): any[] => {
-            if (messages.length <= maxMessages) {
-                let totalChars = 0;
-                for (const msg of messages) {
-                    const msgStr = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || '');
-                    totalChars += msgStr.length;
-                }
-                if (totalChars <= maxChars) {
-                    return messages;
-                }
-            }
-            
-            const systemMsg = messages[0]?.role === 'system' ? messages[0] : null;
-            const otherMessages = systemMsg ? messages.slice(1) : messages;
-            
-            let totalChars = systemMsg ? (typeof systemMsg.content === 'string' ? systemMsg.content.length : JSON.stringify(systemMsg.content || '').length) : 0;
-            const finalMessages: any[] = systemMsg ? [systemMsg] : [];
-            
-            for (let i = otherMessages.length - 1; i >= 0; i--) {
-                const msg = otherMessages[i];
-                const msgStr = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || '');
-                totalChars += msgStr.length;
-                if (totalChars > maxChars && finalMessages.length > (systemMsg ? 1 : 0)) {
-                    break;
-                }
-                finalMessages.push(msg);
-                if (finalMessages.length > maxMessages + (systemMsg ? 1 : 0)) {
-                    // If over message cap, drop oldest non-system messages
-                    if (systemMsg && finalMessages.length > maxMessages + 1) {
-                        finalMessages.splice(1, 1);
-                    } else if (!systemMsg && finalMessages.length > maxMessages) {
-                        finalMessages.shift();
-                    }
-                }
-            }
-            
-            // Restore order: system first, then chronological
-            if (systemMsg) {
-                return [systemMsg, ...finalMessages.slice(1).reverse()];
-            } else {
-                return finalMessages.reverse();
-            }
-        };
-        
         // Cap history size to limit request body
         // Keep last 20 messages or ≤8000 chars of history
         let limitedHistory = [...chatHistory];
@@ -649,7 +606,7 @@ export async function processAgentChatInternal(
         const requestBody: any = {
             model,
             max_tokens: 1024,
-            messages: truncateMessages([
+            messages: prepareAgentMessages([
                 { role: 'system', content: systemMessage },
                 ...finalHistory,
                 { role: 'user', content: message },
@@ -929,12 +886,12 @@ export async function processAgentChatInternal(
                                                     toolMsg,
                                                 ];
                                                 
-                                                messagesForTurn = truncateMessages(updatedMessages);
+                                                messagesForTurn = truncateAgentMessages(updatedMessages);
                                                 accumulatedContent = '';
                                                 finishReason = '';
                                                 toolCalls = [];
                                                 waitingForToolCall = false;
-                                                requestBody.messages = messagesForTurn;
+                                                requestBody.messages = prepareAgentMessages(messagesForTurn);
                                                 requestBody.stream = true;
                                                 
                                                 // Check if tools are now loaded and add them to request
@@ -1071,6 +1028,155 @@ function attachToolRequestSettings(requestBody: any) {
         requestBody.tool_choice = 'auto';
         requestBody.parallel_tool_calls = false;
     }
+}
+
+function agentSafeStringify(value: any, fallback: string = ''): string {
+    if (value === undefined || value === null) return fallback;
+    if (typeof value === 'string') return value;
+    try {
+        return JSON.stringify(value);
+    } catch {
+        return String(value);
+    }
+}
+
+function agentNormalizeContent(content: any): string {
+    return agentSafeStringify(content);
+}
+
+function agentMessageSize(msg: any): number {
+    if (!msg) return 0;
+    let total = agentNormalizeContent(msg.content).length;
+    if (msg.tool_call_id) total += String(msg.tool_call_id).length;
+    if (Array.isArray(msg.tool_calls)) total += agentSafeStringify(msg.tool_calls).length;
+    return total;
+}
+
+function agentNormalizeToolCalls(toolCalls: any[]): any[] {
+    return (toolCalls || []).map((tc: any) => {
+        const id = String(tc?.id || '').trim();
+        const name = String(tc?.function?.name || tc?.name || '').trim();
+        const args = typeof tc?.function?.arguments === 'string'
+            ? tc.function.arguments
+            : typeof tc?.arguments === 'string'
+                ? tc.arguments
+                : agentSafeStringify(tc?.arguments ?? tc?.function?.arguments ?? {}, '{}');
+        if (!id || !name) return null;
+        return {
+            id,
+            type: 'function',
+            function: { name, arguments: args || '{}' },
+        };
+    }).filter(Boolean);
+}
+
+function groupAgentMessagesForTruncation(messages: any[]): any[][] {
+    const groups: any[][] = [];
+    for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i];
+        if (!msg) continue;
+        if (msg.role === 'assistant' && Array.isArray(msg.tool_calls) && msg.tool_calls.length) {
+            const callIds = new Set(agentNormalizeToolCalls(msg.tool_calls).map((tc: any) => tc.id));
+            const group = [msg];
+            let j = i + 1;
+            while (j < messages.length && messages[j]?.role === 'tool') {
+                const toolCallId = String(messages[j]?.tool_call_id || '');
+                if (callIds.has(toolCallId)) group.push(messages[j]);
+                j++;
+            }
+            groups.push(group);
+            i = j - 1;
+            continue;
+        }
+        groups.push([msg]);
+    }
+    return groups;
+}
+
+function truncateAgentMessages(messages: any[], maxMessages: number = 20, maxChars: number = 8000): any[] {
+    const systemMsg = messages[0]?.role === 'system' ? messages[0] : null;
+    const otherMessages = systemMsg ? messages.slice(1) : messages;
+    const groups = groupAgentMessagesForTruncation(otherMessages);
+    const selectedGroups: any[][] = [];
+    let totalChars = systemMsg ? agentMessageSize(systemMsg) : 0;
+    let totalMessages = systemMsg ? 1 : 0;
+
+    for (let i = groups.length - 1; i >= 0; i--) {
+        const group = groups[i];
+        const groupChars = group.reduce((sum, msg) => sum + agentMessageSize(msg), 0);
+        const groupMessages = group.length;
+        const wouldExceedChars = totalChars + groupChars > maxChars;
+        const wouldExceedMessages = totalMessages + groupMessages > maxMessages + (systemMsg ? 1 : 0);
+        if ((wouldExceedChars || wouldExceedMessages) && selectedGroups.length > 0) break;
+        selectedGroups.push(group);
+        totalChars += groupChars;
+        totalMessages += groupMessages;
+    }
+
+    const truncated = selectedGroups.reverse().flat();
+    return systemMsg ? [systemMsg, ...truncated] : truncated;
+}
+
+function normalizeAgentMessages(messages: any[]): any[] {
+    const normalized: any[] = [];
+    for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i];
+        if (!msg?.role) continue;
+        if (msg.role === 'tool') continue;
+
+        if (msg.role === 'assistant' && Array.isArray(msg.tool_calls) && msg.tool_calls.length) {
+            const calls = agentNormalizeToolCalls(msg.tool_calls);
+            if (!calls.length) {
+                const content = agentNormalizeContent(msg.content);
+                if (content) normalized.push({ role: 'assistant', content });
+                continue;
+            }
+
+            const callIds = new Set(calls.map((tc: any) => tc.id));
+            const seenToolIds = new Set<string>();
+            const toolMessages: any[] = [];
+            let j = i + 1;
+            while (j < messages.length && messages[j]?.role === 'tool') {
+                const toolMsg = messages[j];
+                const toolCallId = String(toolMsg.tool_call_id || '');
+                if (callIds.has(toolCallId) && !seenToolIds.has(toolCallId)) {
+                    toolMessages.push({
+                        role: 'tool',
+                        content: agentNormalizeContent(toolMsg.content),
+                        tool_call_id: toolCallId,
+                    });
+                    seenToolIds.add(toolCallId);
+                }
+                j++;
+            }
+
+            const matchedCalls = calls.filter((tc: any) => seenToolIds.has(tc.id));
+            if (matchedCalls.length) {
+                normalized.push({
+                    role: 'assistant',
+                    content: agentNormalizeContent(msg.content),
+                    tool_calls: matchedCalls,
+                });
+                for (const toolMsg of toolMessages) {
+                    if (matchedCalls.some((tc: any) => tc.id === toolMsg.tool_call_id)) normalized.push(toolMsg);
+                }
+            } else {
+                const content = agentNormalizeContent(msg.content);
+                if (content) normalized.push({ role: 'assistant', content });
+            }
+            i = j - 1;
+            continue;
+        }
+
+        if (msg.role === 'system' || msg.role === 'user' || msg.role === 'assistant') {
+            normalized.push({ role: msg.role, content: agentNormalizeContent(msg.content) });
+        }
+    }
+    return normalized;
+}
+
+function prepareAgentMessages(messages: any[]): any[] {
+    return normalizeAgentMessages(truncateAgentMessages(messages));
 }
 
 class AgentMcpStatusHandler extends Handler {
@@ -1860,11 +1966,11 @@ export class AgentChatHandler extends Handler {
                 agentId: String(adoc.aid || adoc.docId?.toString() || ''),
                 model: (domainInfo as any)['model'] || 'deepseek-chat',
                 systemMessage,
-                messages: [
+                messages: prepareAgentMessages([
                     { role: 'system', content: systemMessage },
                     ...chatHistory,
                     { role: 'user', content: message },
-                ],
+                ]),
             });
             
             // Persist latest context on the session
@@ -2529,11 +2635,11 @@ const agentPrompt = this.adoc.content || '';
             const requestBody: any = {
                 model,
                 max_tokens: 1024,
-                messages: [
+                messages: prepareAgentMessages([
                     { role: 'system', content: systemMessage },
                     ...chatHistory,
                     { role: 'user', content: message },
-                ],
+                ]),
                 stream: true,
             };
 
@@ -2764,7 +2870,7 @@ const agentPrompt = this.adoc.content || '';
                                                 finishReason = '';
                                                 toolCalls = [];
                                                 waitingForToolCall = false;
-                                                requestBody.messages = messagesForTurn;
+                                                requestBody.messages = prepareAgentMessages(messagesForTurn);
                                                 requestBody.stream = true;
                                                 
                                                 AgentLogger.info('Continuing stream after first tool call (Stream)', { 
@@ -2974,11 +3080,11 @@ const agentPrompt = this.adoc.content || '';
             const requestBody: any = {
                 model,
                 max_tokens: 1024,
-                messages: [
+                messages: prepareAgentMessages([
                     { role: 'system', content: systemMessage },
                     ...chatHistory,
                     { role: 'user', content: message },
-                ],
+                ]),
                 stream: true,
             };
 
@@ -3176,7 +3282,7 @@ const agentPrompt = this.adoc.content || '';
                                                     finishReason = '';
                                                     toolCalls = [];
                                                     waitingForToolCall = false;
-                                                    requestBody.messages = messagesForTurn;
+                                                    requestBody.messages = prepareAgentMessages(messagesForTurn);
                                                     requestBody.stream = true;
                                                     AgentLogger.info('Continuing stream after first tool call (API WS)', { 
                                                         toolName: firstToolCall.function.name,
@@ -3336,11 +3442,11 @@ const agentPrompt = adoc.content || '';
             const requestBody: any = {
                 model,
                 max_tokens: 1024,
-                messages: [
+                messages: prepareAgentMessages([
                     { role: 'system', content: systemMessage },
                     ...chatHistory,
                     { role: 'user', content: message },
-                ],
+                ]),
                 stream: stream,
             };
 
@@ -3568,7 +3674,7 @@ const agentPrompt = adoc.content || '';
                                                         finishReason = '';
                                                         toolCalls = [];
                                                         waitingForToolCall = false;
-                                                        requestBody.messages = messagesForTurn;
+                                                        requestBody.messages = prepareAgentMessages(messagesForTurn);
                                                         requestBody.stream = true;
                                                         AgentLogger.info('Continuing stream after first tool call (API)', { 
                                                             toolName: firstToolCall.function.name,
@@ -3702,7 +3808,7 @@ const agentPrompt = adoc.content || '';
                         .send({
                             model,
                             max_tokens: 1024,
-                            messages: messagesForTurn,
+                            messages: prepareAgentMessages(messagesForTurn),
                             tools: requestBody.tools,
                         })
                         .set('Authorization', `Bearer ${aiApiKey}`)
@@ -4009,13 +4115,13 @@ export class DirectAiChatHandler extends Handler {
                     const req = request.post(apiUrl)
                         .send({
                             model,
-                            messages: [
+                            messages: prepareAgentMessages([
                                 ...chatHistory,
                                 {
                                     role: 'user',
                                     content: message,
                                 },
-                            ],
+                            ]),
                             stream: true,
                         })
                         .set('Authorization', `Bearer ${apiKey}`)
@@ -4154,13 +4260,13 @@ export class DirectAiChatHandler extends Handler {
                 const response = await request.post(apiUrl)
                     .send({
                         model,
-                        messages: [
+                        messages: prepareAgentMessages([
                             ...chatHistory,
                             {
                                 role: 'user',
                                 content: message,
                             },
-                        ],
+                        ]),
                         stream: false,
                     })
                     .set('Authorization', `Bearer ${apiKey}`)
@@ -4248,13 +4354,13 @@ export class DirectAiChatConnectionHandler extends ConnectionHandler {
                 const req = request.post(apiUrl)
                     .send({
                         model,
-                        messages: [
+                        messages: prepareAgentMessages([
                             ...chatHistory,
                             {
                                 role: 'user',
                                 content: message,
                             },
-                        ],
+                        ]),
                         stream: true,
                     })
                     .set('Authorization', `Bearer ${apiKey}`)

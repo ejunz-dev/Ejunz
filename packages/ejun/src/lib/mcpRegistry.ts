@@ -1,5 +1,6 @@
 import { ObjectId } from 'mongodb';
 import type { User } from '../interface';
+import { Logger } from '../logger';
 import type { McpDoc } from '../model/mcp';
 import type { EdgeDoc } from '../model/edge';
 import type { ToolDoc } from '../model/tool';
@@ -10,8 +11,15 @@ import DomainMarketToolModel from '../model/domain_market_tool';
 import { EdgeServerConnectionHandler } from '../handler/edge';
 import { getLocalMcpToolCatalog } from './localSystemTools';
 import { resolveMcpTools } from './mcpBuiltinTools';
+import {
+    getBuiltinEjunzToolsLabel,
+    getBuiltinEjunzToolsRuntime,
+    getBuiltinEjunzToolsVersion,
+    getEjunzToolsCatalog,
+} from './ejunzToolsMcp';
 
-export type McpKind = 'outbound' | 'system' | 'inbound' | 'plugin';
+export type McpKind = 'outbound' | 'system' | 'inbound' | 'plugin' | 'ejunztools';
+export type McpRuntimeMode = 'builtin' | 'ws';
 
 const SYSTEM_TOOLS_MCP_NAME = 'System Tools';
 const SYSTEM_TOOLS_MCP_DESCRIPTION = '本站内置的 System Tools 工具集合，按 domain 启用。';
@@ -19,6 +27,15 @@ const SYSTEM_TOOLS_MCP_SOURCE_LABEL = 'system_tools';
 const SYSTEM_TOOLS_MCP_KIND = 'system';
 const SYSTEM_TOOLS_MCP_SOURCE_TYPE = 'system_tools';
 const SYSTEM_TOOLS_MCP_LOCAL_KEY = 'system_tools';
+
+const logger = new Logger('mcpRegistry');
+
+const EJUNZ_TOOLS_MCP_NAME = 'Ejunz Tools';
+const EJUNZ_TOOLS_MCP_DESCRIPTION = 'Ejunz Tools MCP provider，支持 builtin / ws 启动方式。';
+const EJUNZ_TOOLS_MCP_KIND = 'ejunztools';
+const EJUNZ_TOOLS_MCP_SOURCE_TYPE = 'ejunztools';
+export const EJUNZ_TOOLS_MCP_LOCAL_KEY = 'ejunztools';
+export const EJUNZ_TOOLS_PACKAGE_NAME = '@ejunz/ejunztools';
 
 export interface NormalizedMcpTool {
     uniqueId: string;
@@ -31,7 +48,7 @@ export interface NormalizedMcpTool {
     toolDocId?: ObjectId;
     edgeDocId?: ObjectId;
     edgeId?: number;
-    type?: 'system' | 'market_mcp' | 'edge' | 'plugin_mcp';
+    type?: 'system' | 'market_mcp' | 'edge' | 'plugin_mcp' | 'ejunztools';
     system?: boolean;
 }
 
@@ -50,6 +67,9 @@ export interface NormalizedMcpRow {
     toolCount: number;
     tools?: NormalizedMcpTool[];
     edge?: EdgeDoc | null;
+    runtimeMode?: McpRuntimeMode;
+    runtimeVersion?: string;
+    runtimeLabel?: string;
 }
 
 export function mcpKind(mcp: Partial<McpDoc>): McpKind {
@@ -64,6 +84,10 @@ export function uniqueSystemToolId(toolKey: string): string {
     return `system:${toolKey}`;
 }
 
+export function uniqueEjunzToolsToolId(toolKey: string): string {
+    return `ejunztools:${toolKey}`;
+}
+
 export function uniqueInboundToolId(edgeDocId: ObjectId, toolDocId: ObjectId): string {
     return `inbound:${edgeDocId.toString()}:${toolDocId.toString()}`;
 }
@@ -74,6 +98,22 @@ export function uniquePluginToolId(mcp: McpDoc, toolDocId: ObjectId): string {
 
 function edgeDisplayName(edge: EdgeDoc): string {
     return edge.name || `Edge-${edge.eid}`;
+}
+
+function edgeIsEjunzTools(edge: EdgeDoc): boolean {
+    return edge.provider?.packageName === EJUNZ_TOOLS_PACKAGE_NAME
+        || edge.provider?.name === 'ejunztools'
+        || edge.provider?.name === EJUNZ_TOOLS_PACKAGE_NAME;
+}
+
+function edgeRuntimeMode(edge?: EdgeDoc | null): McpRuntimeMode | undefined {
+    return edge?.provider?.runtimeMode === 'ws' || edge?.provider?.runtimeMode === 'builtin'
+        ? edge.provider.runtimeMode
+        : undefined;
+}
+
+function edgeRuntimeVersion(edge?: EdgeDoc | null): string | undefined {
+    return edge?.provider?.runtimeVersion;
 }
 
 async function systemTools(domainId: string): Promise<NormalizedMcpTool[]> {
@@ -95,7 +135,21 @@ async function systemTools(domainId: string): Promise<NormalizedMcpTool[]> {
     return tools;
 }
 
-async function inboundTools(domainId: string, edge: EdgeDoc): Promise<NormalizedMcpTool[]> {
+async function builtinEjunzTools(): Promise<NormalizedMcpTool[]> {
+    return getEjunzToolsCatalog()
+        .map((entry) => ({
+            uniqueId: uniqueEjunzToolsToolId(entry.id),
+            name: entry.name,
+            description: entry.description || '',
+            inputSchema: entry.inputSchema || { type: 'object', properties: {} },
+            kind: EJUNZ_TOOLS_MCP_KIND as McpKind,
+            toolKey: entry.id,
+            type: 'ejunztools' as const,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+async function inboundTools(domainId: string, edge: EdgeDoc, kind: McpKind = 'inbound'): Promise<NormalizedMcpTool[]> {
     const docs = await ToolModel.getByEdgeDocId(domainId, edge._id);
     return docs
         .map((tool) => ({
@@ -103,7 +157,7 @@ async function inboundTools(domainId: string, edge: EdgeDoc): Promise<Normalized
             name: tool.name,
             description: tool.description || '',
             inputSchema: tool.inputSchema,
-            kind: 'inbound' as const,
+            kind,
             token: edge.token,
             toolDocId: tool._id,
             edgeDocId: edge._id,
@@ -152,19 +206,79 @@ export async function ensureSystemToolsMcp(domainId: string, owner: number): Pro
     return mcp;
 }
 
+export async function getBuiltinEjunzToolsMcp(domainId: string): Promise<McpDoc | null> {
+    const docs = await McpModel.getByDomain(domainId);
+    return docs.find((mcp) => mcp.kind === EJUNZ_TOOLS_MCP_KIND
+        && mcp.source?.type === EJUNZ_TOOLS_MCP_SOURCE_TYPE
+        && mcp.source?.localKey === EJUNZ_TOOLS_MCP_LOCAL_KEY) || null;
+}
+
+export async function ensureBuiltinEjunzToolsMcp(domainId: string, owner: number): Promise<McpDoc | null> {
+    const runtime = getBuiltinEjunzToolsRuntime();
+    const runtimeActive = !!runtime;
+    const version = getBuiltinEjunzToolsVersion();
+    const name = getBuiltinEjunzToolsLabel();
+    const source = {
+        type: EJUNZ_TOOLS_MCP_SOURCE_TYPE as const,
+        localKey: EJUNZ_TOOLS_MCP_LOCAL_KEY,
+        runtimeMode: 'builtin' as const,
+        runtimeVersion: version,
+        packageName: EJUNZ_TOOLS_PACKAGE_NAME,
+    };
+    const tools = await builtinEjunzTools();
+    let mcp = await getBuiltinEjunzToolsMcp(domainId);
+    if (mcp) {
+        await McpModel.update(domainId, mcp.mid, {
+            name: mcp.name || name,
+            description: mcp.description || EJUNZ_TOOLS_MCP_DESCRIPTION,
+            source,
+            assignable: true,
+            status: runtimeActive ? 'online' : 'offline',
+            toolCount: tools.length,
+        });
+        const updated = await McpModel.getByMcpId(domainId, mcp.mid) || mcp;
+        logger.info('ensured builtin ejunztools MCP: domain=%s mid=%d version=%s tools=%d', domainId, updated.mid, version, tools.length);
+        return updated;
+    }
+    mcp = await McpModel.add({
+        domainId,
+        owner,
+        kind: EJUNZ_TOOLS_MCP_KIND,
+        source,
+        assignable: true,
+        status: runtimeActive ? 'online' : 'offline',
+        name,
+        description: EJUNZ_TOOLS_MCP_DESCRIPTION,
+        toolCount: tools.length,
+    });
+    logger.info('created builtin ejunztools MCP: domain=%s mid=%d version=%s tools=%d', domainId, mcp.mid, version, tools.length);
+    return mcp;
+}
+
 export async function ensureInboundMcpForEdge(domainId: string, edge: EdgeDoc): Promise<McpDoc> {
     let mcp = await McpModel.getBySourceEdgeDocId(domainId, edge._id);
     if (mcp) return mcp;
+    const isEjunzTools = edgeIsEjunzTools(edge);
     mcp = await McpModel.add({
         domainId,
         owner: edge.owner,
-        kind: 'inbound',
-        source: { type: 'edge', edgeDocId: edge._id, edgeId: edge.eid, externalUrl: edge.wsEndpoint },
+        kind: isEjunzTools ? EJUNZ_TOOLS_MCP_KIND : 'inbound',
+        source: {
+            type: isEjunzTools ? EJUNZ_TOOLS_MCP_SOURCE_TYPE : 'edge',
+            edgeDocId: edge._id,
+            edgeId: edge.eid,
+            externalUrl: edge.wsEndpoint,
+            ...(isEjunzTools ? {
+                runtimeMode: 'ws' as const,
+                runtimeVersion: edge.provider?.runtimeVersion,
+                packageName: EJUNZ_TOOLS_PACKAGE_NAME,
+            } : {}),
+        },
         assignable: false,
         status: edge.status === 'online' || edge.status === 'working' ? 'online' : 'offline',
         edgeId: edge.eid,
-        name: edgeDisplayName(edge),
-        description: edge.description || '外部接入的 MCP / Edge provider。',
+        name: isEjunzTools ? (edge.name || EJUNZ_TOOLS_MCP_NAME) : edgeDisplayName(edge),
+        description: edge.description || (isEjunzTools ? '外部 ejunztools WebSocket MCP provider。' : '外部接入的 MCP / Edge provider。'),
     });
     return mcp;
 }
@@ -174,13 +288,16 @@ export async function getMcpTools(domainId: string, mcp: McpDoc): Promise<Normal
     if (kind === 'outbound') return outboundTools(mcp);
     if (kind === SYSTEM_TOOLS_MCP_KIND) return systemTools(domainId);
     if (kind === 'plugin' || mcp.source?.type === 'plugin') return pluginTools(domainId, mcp);
+    if (kind === EJUNZ_TOOLS_MCP_KIND && mcp.source?.runtimeMode === 'builtin') {
+        return getBuiltinEjunzToolsRuntime() ? builtinEjunzTools() : [];
+    }
 
     const edgeDocId = mcp.source?.edgeDocId;
     let edge: EdgeDoc | null = null;
     if (edgeDocId) edge = await EdgeModel.get(edgeDocId);
     if (!edge && mcp.edgeId) edge = await EdgeModel.getByEdgeId(domainId, mcp.edgeId);
     if (!edge) return [];
-    return inboundTools(domainId, edge);
+    return inboundTools(domainId, edge, kind === EJUNZ_TOOLS_MCP_KIND ? EJUNZ_TOOLS_MCP_KIND : 'inbound');
 }
 
 export async function getNormalizedMcp(domainId: string, mid: number): Promise<NormalizedMcpRow | null> {
@@ -189,26 +306,39 @@ export async function getNormalizedMcp(domainId: string, mid: number): Promise<N
     const kind = mcpKind(mcp);
     const tools = await getMcpTools(domainId, mcp);
     let edge: EdgeDoc | null = null;
-    if (kind === 'inbound') {
+    if (kind === 'inbound' || (kind === EJUNZ_TOOLS_MCP_KIND && mcp.source?.edgeDocId)) {
         if (mcp.source?.edgeDocId) edge = await EdgeModel.get(mcp.source.edgeDocId);
         if (!edge && mcp.edgeId) edge = await EdgeModel.getByEdgeId(domainId, mcp.edgeId);
     } else if (kind === 'outbound' && mcp.edgeId) {
         edge = await EdgeModel.getByEdgeId(domainId, mcp.edgeId);
     }
+    const runtimeMode = (mcp.source?.runtimeMode || edgeRuntimeMode(edge)) as McpRuntimeMode | undefined;
+    const runtimeVersion = mcp.source?.runtimeVersion || edgeRuntimeVersion(edge);
     const online = kind === 'outbound' || kind === 'plugin'
         ? mcp.status === 'online'
         : kind === SYSTEM_TOOLS_MCP_KIND
             ? true
-            : !!edge && EdgeServerConnectionHandler.active.has(edge.token);
+            : kind === EJUNZ_TOOLS_MCP_KIND && runtimeMode === 'builtin'
+                ? !!getBuiltinEjunzToolsRuntime()
+                : !!edge && EdgeServerConnectionHandler.active.has(edge.token);
     const assignable = kind !== 'outbound' && tools.length > 0 && mcp.assignable !== false;
+    const sourceLabel = kind === SYSTEM_TOOLS_MCP_KIND
+        ? SYSTEM_TOOLS_MCP_SOURCE_LABEL
+        : kind === EJUNZ_TOOLS_MCP_KIND
+            ? (runtimeMode === 'ws' && edge ? edgeDisplayName(edge) : EJUNZ_TOOLS_PACKAGE_NAME)
+            : kind === 'inbound'
+                ? (edge ? edgeDisplayName(edge) : 'external')
+                : kind === 'plugin'
+                    ? 'plugin MCP'
+                    : 'outbound endpoint';
     return {
         mcp,
         mid: mcp.mid,
         kind,
-        sourceLabel: kind === SYSTEM_TOOLS_MCP_KIND ? SYSTEM_TOOLS_MCP_SOURCE_LABEL : kind === 'inbound' ? (edge ? edgeDisplayName(edge) : 'external') : kind === 'plugin' ? 'plugin MCP' : 'outbound endpoint',
+        sourceLabel,
         kindLabel: kind,
         assignableLabel: assignable ? '可分配' : '不可分配',
-        name: mcp.name || (kind === SYSTEM_TOOLS_MCP_KIND ? SYSTEM_TOOLS_MCP_NAME : kind === 'inbound' ? 'Inbound MCP' : kind === 'plugin' ? 'Plugin MCP' : `MCP-${mcp.mid}`),
+        name: mcp.name || (kind === SYSTEM_TOOLS_MCP_KIND ? SYSTEM_TOOLS_MCP_NAME : kind === EJUNZ_TOOLS_MCP_KIND ? EJUNZ_TOOLS_MCP_NAME : kind === 'inbound' ? 'Inbound MCP' : kind === 'plugin' ? 'Plugin MCP' : `MCP-${mcp.mid}`),
         description: mcp.description || '',
         status: online ? 'online' : (kind === 'outbound' && !mcp.edgeId ? 'pending' : 'offline'),
         online,
@@ -216,12 +346,17 @@ export async function getNormalizedMcp(domainId: string, mid: number): Promise<N
         toolCount: tools.length,
         tools,
         edge,
+        runtimeMode,
+        runtimeVersion,
+        runtimeLabel: runtimeMode ? `${runtimeMode}${runtimeVersion ? ` v${runtimeVersion}` : ''}` : undefined,
     };
 }
 
 export async function listDomainMcps(domainId: string, user?: User): Promise<NormalizedMcpRow[]> {
     const owner = user?._id || 1;
     await ensureSystemToolsMcp(domainId, owner);
+    const ejunzToolsInstalled = await DomainMarketToolModel.has(domainId, EJUNZ_TOOLS_MCP_LOCAL_KEY);
+    if (ejunzToolsInstalled) await ensureBuiltinEjunzToolsMcp(domainId, owner);
 
     const edges = await EdgeModel.getByDomain(domainId);
     for (const edge of edges) {
@@ -229,23 +364,41 @@ export async function listDomainMcps(domainId: string, user?: User): Promise<Nor
         const tools = await ToolModel.getByEdgeDocId(domainId, edge._id);
         if (edge.tokenUsedAt || tools.length > 0) {
             const mcp = await ensureInboundMcpForEdge(domainId, edge);
+            const isEjunzTools = edgeIsEjunzTools(edge) || mcp.kind === EJUNZ_TOOLS_MCP_KIND;
             const assignable = tools.length > 0;
             const status = EdgeServerConnectionHandler.active.has(edge.token) ? 'online' : 'offline';
             await McpModel.update(domainId, mcp.mid, {
-                name: mcp.name || edgeDisplayName(edge),
+                kind: isEjunzTools ? EJUNZ_TOOLS_MCP_KIND : mcp.kind,
+                name: isEjunzTools ? (edge.name || EJUNZ_TOOLS_MCP_NAME) : (mcp.name || edgeDisplayName(edge)),
                 edgeId: edge.eid,
                 assignable,
                 status,
-                source: { ...(mcp.source || { type: 'edge' }), edgeDocId: edge._id, edgeId: edge.eid, externalUrl: edge.wsEndpoint },
+                toolCount: tools.length,
+                source: {
+                    ...(mcp.source || { type: isEjunzTools ? EJUNZ_TOOLS_MCP_SOURCE_TYPE : 'edge' }),
+                    type: isEjunzTools ? EJUNZ_TOOLS_MCP_SOURCE_TYPE : 'edge',
+                    edgeDocId: edge._id,
+                    edgeId: edge.eid,
+                    externalUrl: edge.wsEndpoint,
+                    ...(isEjunzTools ? {
+                        runtimeMode: 'ws' as const,
+                        runtimeVersion: edge.provider?.runtimeVersion,
+                        packageName: EJUNZ_TOOLS_PACKAGE_NAME,
+                    } : {}),
+                },
             });
         }
     }
 
     const docs = await McpModel.getByDomain(domainId);
-    const rows = (await Promise.all(docs.map((mcp) => getNormalizedMcp(domainId, mcp.mid))))
+    const visibleDocs = docs.filter((mcp) => !(mcp.kind === EJUNZ_TOOLS_MCP_KIND
+        && mcp.source?.type === EJUNZ_TOOLS_MCP_SOURCE_TYPE
+        && mcp.source?.localKey === EJUNZ_TOOLS_MCP_LOCAL_KEY
+        && !ejunzToolsInstalled));
+    const rows = (await Promise.all(visibleDocs.map((mcp) => getNormalizedMcp(domainId, mcp.mid))))
         .filter((row): row is NormalizedMcpRow => !!row);
     rows.sort((a, b) => {
-        const order = { outbound: 0, system: 1, inbound: 2, plugin: 3 } as Record<McpKind, number>;
+        const order = { outbound: 0, system: 1, ejunztools: 2, inbound: 3, plugin: 4 } as Record<McpKind, number>;
         if (order[a.kind] !== order[b.kind]) return order[a.kind] - order[b.kind];
         return (a.mid || 0) - (b.mid || 0);
     });

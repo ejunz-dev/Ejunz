@@ -94,7 +94,6 @@ class McpModel {
 
     static async getBySourceEdgeDocId(domainId: string, edgeDocId: ObjectId): Promise<McpDoc | null> {
         const list = await document.getMulti(domainId, document.TYPE_MCP, {
-            kind: 'inbound',
             'source.edgeDocId': edgeDocId,
         } as any)
             .limit(1)

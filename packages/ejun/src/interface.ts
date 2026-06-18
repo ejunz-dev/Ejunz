@@ -835,6 +835,12 @@ declare module './model/edge' {
         tokenUsedAt?: Date;
         name?: string;
         description?: string;
+        provider?: {
+            name?: string;
+            packageName?: string;
+            runtimeMode?: 'builtin' | 'ws';
+            runtimeVersion?: string;
+        };
         wsEndpoint?: string;
         lastConnectedAt?: Date;
         lastDisconnectedAt?: Date;
@@ -867,9 +873,9 @@ declare module './model/mcp' {
         description?: string;
         instructions?: string;
         tools?: { name: string; description: string }[];
-        kind?: 'outbound' | 'system' | 'inbound' | 'plugin';
+        kind?: 'outbound' | 'system' | 'inbound' | 'plugin' | 'ejunztools';
         source?: {
-            type: 'ejunz_base' | 'system_tools' | 'edge' | 'external' | 'plugin';
+            type: 'ejunz_base' | 'system_tools' | 'edge' | 'external' | 'plugin' | 'ejunztools';
             edgeDocId?: ObjectId;
             edgeId?: number;
             localKey?: string;
@@ -877,6 +883,9 @@ declare module './model/mcp' {
             pluginDocId?: number;
             pluginCardId?: string;
             pluginServerKey?: string;
+            runtimeMode?: 'builtin' | 'ws';
+            runtimeVersion?: string;
+            packageName?: string;
             configHash?: string;
             transport?: 'http' | 'sse';
         };
@@ -1035,7 +1044,7 @@ export interface AssignedToolEntry {
     inputSchema: any;
     token?: string;
     edgeId?: ObjectId;
-    type?: 'system' | 'edge';
+    type?: 'system' | 'edge' | 'market_mcp' | 'plugin_mcp' | 'ejunztools';
     system?: boolean;
 }
 export type { DomainMarketToolDoc } from './model/domain_market_tool';

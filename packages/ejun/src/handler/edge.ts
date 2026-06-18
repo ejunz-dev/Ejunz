@@ -288,7 +288,7 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
             edge = await EdgeModel.add({
                 domainId: this.tokenDomainId,
                 type: tokenDoc.type,
-                owner: this.user._id,
+                owner: tokenDoc.owner,
                 token: tokenDoc.token,
             });
             logger.info('Created edge on connection: eid=%d, token=%s, type=%s, domainId=%s (from token.domainId=%s)', 
@@ -527,6 +527,34 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
         }
     }
 
+    private async updateProviderMetadataFromInitialize(params: any) {
+        if (!this.tokenDomainId || !this.token) return;
+        const clientInfo = params?.clientInfo || params?.serverInfo || {};
+        const ejunzInfo = params?.ejunz || {};
+        const packageName = String(clientInfo.name || ejunzInfo.packageName || '');
+        const providerName = String(ejunzInfo.provider || packageName || '');
+        const isEjunzTools = providerName === 'ejunztools' || packageName === '@ejunz/ejunztools';
+        if (!isEjunzTools) return;
+        try {
+            const edge = await EdgeModel.getByToken(this.tokenDomainId, this.token);
+            if (!edge) return;
+            await EdgeModel.update(this.tokenDomainId, edge.eid, {
+                name: edge.name || 'Ejunz Tools',
+                description: edge.description || 'Ejunz Tools WebSocket provider',
+                provider: {
+                    ...(edge.provider || {}),
+                    name: 'ejunztools',
+                    packageName: '@ejunz/ejunztools',
+                    runtimeMode: 'ws',
+                    runtimeVersion: String(clientInfo.version || ejunzInfo.version || 'unknown'),
+                },
+            });
+            logger.info('Registered ejunztools websocket provider metadata: token=%s version=%s', this.token, clientInfo.version || 'unknown');
+        } catch (error) {
+            logger.error('Failed to update ejunztools provider metadata: %s', (error as Error).message);
+        }
+    }
+
     private async syncDevicesFromTools(tools: any[]) {
         if (!this.tokenDomainId || !this.token) return;
 
@@ -709,6 +737,7 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
 
             if (msg.method === 'initialize') {
                 logger.info('Edge server sent initialize request: token=%s', this.token);
+                await this.updateProviderMetadataFromInitialize(msg.params || {});
                 reply({
                     protocolVersion: '2024-11-05',
                     capabilities: {

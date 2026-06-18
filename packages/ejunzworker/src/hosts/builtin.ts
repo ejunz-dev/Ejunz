@@ -55,74 +55,162 @@ function toolsToApiFormat(tools: any[]) {
     })).filter((tool: any) => tool.function.name);
 }
 
-function truncateMessages(messages: any[], maxMessages: number = 20, maxChars: number = 8000): any[] {
-    if (messages.length <= maxMessages) {
-        const totalChars = messages.reduce((sum, msg) => sum + (typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || '')).length, 0);
-        if (totalChars <= maxChars) return messages;
+function safeStringify(value: any, fallback: string = ''): string {
+    if (value === undefined || value === null) return fallback;
+    if (typeof value === 'string') return value;
+    try {
+        return JSON.stringify(value);
+    } catch {
+        return String(value);
     }
+}
 
+function normalizeContent(content: any): string {
+    return safeStringify(content);
+}
+
+function messageSize(msg: any): number {
+    if (!msg) return 0;
+    let total = normalizeContent(msg.content).length;
+    if (msg.tool_call_id) total += String(msg.tool_call_id).length;
+    if (Array.isArray(msg.tool_calls)) total += safeStringify(msg.tool_calls).length;
+    return total;
+}
+
+function normalizeToolCalls(toolCalls: any[]): any[] {
+    return (toolCalls || []).map((tc: any) => {
+        const id = String(tc?.id || '').trim();
+        const name = String(tc?.function?.name || tc?.name || '').trim();
+        const args = typeof tc?.function?.arguments === 'string'
+            ? tc.function.arguments
+            : typeof tc?.arguments === 'string'
+                ? tc.arguments
+                : safeStringify(tc?.arguments ?? tc?.function?.arguments ?? {}, '{}');
+        if (!id || !name) return null;
+        return {
+            id,
+            type: 'function',
+            function: { name, arguments: args || '{}' },
+        };
+    }).filter(Boolean);
+}
+
+function groupMessagesForTruncation(messages: any[]): any[][] {
+    const groups: any[][] = [];
+    for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i];
+        if (!msg) continue;
+        if (msg.role === 'assistant' && Array.isArray(msg.tool_calls) && msg.tool_calls.length) {
+            const callIds = new Set(normalizeToolCalls(msg.tool_calls).map((tc: any) => tc.id));
+            const group = [msg];
+            let j = i + 1;
+            while (j < messages.length && messages[j]?.role === 'tool') {
+                const toolCallId = String(messages[j]?.tool_call_id || '');
+                if (callIds.has(toolCallId)) group.push(messages[j]);
+                j++;
+            }
+            groups.push(group);
+            i = j - 1;
+            continue;
+        }
+        groups.push([msg]);
+    }
+    return groups;
+}
+
+function truncateMessages(messages: any[], maxMessages: number = 20, maxChars: number = 8000): any[] {
     const systemMsg = messages[0]?.role === 'system' ? messages[0] : null;
     const otherMessages = systemMsg ? messages.slice(1) : messages;
-    const finalMessages: any[] = systemMsg ? [systemMsg] : [];
-    let totalChars = systemMsg ? (typeof systemMsg.content === 'string' ? systemMsg.content.length : JSON.stringify(systemMsg.content || '').length) : 0;
+    const groups = groupMessagesForTruncation(otherMessages);
+    const selectedGroups: any[][] = [];
+    let totalChars = systemMsg ? messageSize(systemMsg) : 0;
+    let totalMessages = systemMsg ? 1 : 0;
 
-    for (let i = otherMessages.length - 1; i >= 0; i--) {
-        const msg = otherMessages[i];
-        const msgStr = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || '');
-        totalChars += msgStr.length;
-        if (totalChars > maxChars && finalMessages.length > (systemMsg ? 1 : 0)) break;
-        finalMessages.push(msg);
-        if (finalMessages.length > maxMessages + (systemMsg ? 1 : 0)) {
-            if (systemMsg && finalMessages.length > maxMessages + 1) finalMessages.splice(1, 1);
-            else if (!systemMsg && finalMessages.length > maxMessages) finalMessages.shift();
-        }
+    for (let i = groups.length - 1; i >= 0; i--) {
+        const group = groups[i];
+        const groupChars = group.reduce((sum, msg) => sum + messageSize(msg), 0);
+        const groupMessages = group.length;
+        const wouldExceedChars = totalChars + groupChars > maxChars;
+        const wouldExceedMessages = totalMessages + groupMessages > maxMessages + (systemMsg ? 1 : 0);
+        if ((wouldExceedChars || wouldExceedMessages) && selectedGroups.length > 0) break;
+        selectedGroups.push(group);
+        totalChars += groupChars;
+        totalMessages += groupMessages;
     }
 
-    return systemMsg ? [systemMsg, ...finalMessages.slice(1).reverse()] : finalMessages.reverse();
+    const truncated = selectedGroups.reverse().flat();
+    return systemMsg ? [systemMsg, ...truncated] : truncated;
 }
 
 function normalizeMessages(messages: any[]): any[] {
     const normalized: any[] = [];
-    const usedToolCallIds = new Set<string>();
-    let lastAssistantToolCallIds: string[] = [];
 
     for (let i = 0; i < messages.length; i++) {
         const msg = messages[i];
-        const normalizedMsg: any = { role: msg.role, content: msg.content || '' };
+        if (!msg?.role) continue;
 
-        if (msg.role === 'assistant' && Array.isArray(msg.tool_calls)) {
-            lastAssistantToolCallIds = [];
-            normalizedMsg.tool_calls = msg.tool_calls.map((tc: any) => {
-                const toolCallId = tc.id || '';
-                const toolCallName = tc.function?.name || tc.name || '';
-                const toolCallArgs = typeof tc.function?.arguments === 'string'
-                    ? tc.function.arguments
-                    : typeof tc.arguments === 'string'
-                        ? tc.arguments
-                        : JSON.stringify(tc.arguments || tc.function?.arguments || {});
-                if (toolCallId) lastAssistantToolCallIds.push(toolCallId);
-                return {
-                    id: toolCallId,
-                    type: 'function',
-                    function: { name: toolCallName, arguments: toolCallArgs },
-                };
-            });
+        if (msg.role === 'tool') continue;
+
+        if (msg.role === 'assistant' && Array.isArray(msg.tool_calls) && msg.tool_calls.length) {
+            const calls = normalizeToolCalls(msg.tool_calls);
+            if (!calls.length) {
+                const content = normalizeContent(msg.content);
+                if (content) normalized.push({ role: 'assistant', content });
+                continue;
+            }
+
+            const callIds = new Set(calls.map((tc: any) => tc.id));
+            const seenToolIds = new Set<string>();
+            const toolMessages: any[] = [];
+            let j = i + 1;
+            while (j < messages.length && messages[j]?.role === 'tool') {
+                const toolMsg = messages[j];
+                const toolCallId = String(toolMsg.tool_call_id || '');
+                if (callIds.has(toolCallId) && !seenToolIds.has(toolCallId)) {
+                    toolMessages.push({
+                        role: 'tool',
+                        content: normalizeContent(toolMsg.content),
+                        tool_call_id: toolCallId,
+                    });
+                    seenToolIds.add(toolCallId);
+                }
+                j++;
+            }
+
+            const matchedCalls = calls.filter((tc: any) => seenToolIds.has(tc.id));
+            if (matchedCalls.length) {
+                normalized.push({
+                    role: 'assistant',
+                    content: normalizeContent(msg.content),
+                    tool_calls: matchedCalls,
+                });
+                for (const toolMsg of toolMessages) {
+                    if (matchedCalls.some((tc: any) => tc.id === toolMsg.tool_call_id)) normalized.push(toolMsg);
+                }
+            } else {
+                const content = normalizeContent(msg.content);
+                if (content) normalized.push({ role: 'assistant', content });
+            }
+            i = j - 1;
+            continue;
         }
 
-        if (msg.role === 'tool') {
-            let toolCallId: string | null = msg.tool_call_id || null;
-            if (!toolCallId && lastAssistantToolCallIds.length > 0) toolCallId = lastAssistantToolCallIds[0];
-            if (!toolCallId || usedToolCallIds.has(toolCallId)) continue;
-            normalizedMsg.tool_call_id = toolCallId;
-            usedToolCallIds.add(toolCallId);
-            const index = lastAssistantToolCallIds.indexOf(toolCallId);
-            if (index > -1) lastAssistantToolCallIds.splice(index, 1);
+        if (msg.role === 'system' || msg.role === 'user' || msg.role === 'assistant') {
+            normalized.push({ role: msg.role, content: normalizeContent(msg.content) });
         }
-
-        normalized.push(normalizedMsg);
     }
 
     return normalized;
+}
+
+function messageOutline(messages: any[]) {
+    return (messages || []).map((msg: any, index: number) => ({
+        index,
+        role: msg?.role,
+        contentLength: normalizeContent(msg?.content).length,
+        toolCallIds: Array.isArray(msg?.tool_calls) ? msg.tool_calls.map((tc: any) => tc?.id).filter(Boolean) : undefined,
+        tool_call_id: msg?.tool_call_id,
+    }));
 }
 
 function findExecutionTool(executionTools: any[], toolName: string): any | undefined {
@@ -215,13 +303,16 @@ async function executeAgentTask(task: any, reporter: WorkerTaskReporter, config:
     const executionTools = Array.isArray(context.toolsForModel)
         ? context.toolsForModel
         : Array.isArray(context.tools) ? context.tools : [];
+    let messagesForTurn = truncateMessages([
+        ...chatHistory,
+        { role: 'user', content: message },
+    ]);
     const requestBody: any = {
         model: context.model || 'deepseek-chat',
         max_tokens: context.max_tokens || 1024,
         messages: [
             { role: 'system', content: context.systemMessage },
-            ...normalizeMessages(truncateMessages(chatHistory)),
-            { role: 'user', content: message },
+            ...normalizeMessages(messagesForTurn),
         ],
         stream: true,
     };
@@ -231,7 +322,6 @@ async function executeAgentTask(task: any, reporter: WorkerTaskReporter, config:
         requestBody.parallel_tool_calls = false;
     }
 
-    let messagesForTurn = truncateMessages(chatHistory);
     let toolCallCount = 0;
     let score = 100;
     let errorStatus: number | undefined;
@@ -242,6 +332,13 @@ async function executeAgentTask(task: any, reporter: WorkerTaskReporter, config:
         let accumulatedContent = '';
         let finishReason = '';
         let toolCalls: any[] = [];
+
+        logger.info('Agent task model request outline', {
+            recordId: taskId?.toString?.() || taskId,
+            iteration: iterations,
+            messageCount: requestBody.messages.length,
+            messages: messageOutline(requestBody.messages),
+        });
 
         await new Promise<void>((resolve, reject) => {
             const req = superagent.post(context.apiUrl)
@@ -254,8 +351,10 @@ async function executeAgentTask(task: any, reporter: WorkerTaskReporter, config:
                     let responseStatus = res.status || 200;
                     res.setEncoding('utf8');
                     let buffer = '';
+                    let rawResponse = '';
 
                     res.on('data', (chunk: string) => {
+                        rawResponse += chunk;
                         buffer += chunk;
                         const lines = buffer.split('\n');
                         buffer = lines.pop() || '';
@@ -310,7 +409,24 @@ async function executeAgentTask(task: any, reporter: WorkerTaskReporter, config:
 
                     res.on('end', () => {
                         if (responseStatus >= 400 && !accumulatedContent && !toolCalls.length && !finishReason) {
-                            const err = new Error(`API request failed with status ${responseStatus}`);
+                            let errorMessage = `API request failed with status ${responseStatus}`;
+                            let errorCode = 'API_BAD_RESPONSE';
+                            const responseText = rawResponse.trim();
+                            if (responseText) {
+                                try {
+                                    const parsed = JSON.parse(responseText);
+                                    const parsedError = parsed?.error || parsed;
+                                    errorMessage = parsedError?.message || parsed?.message || responseText;
+                                    errorCode = parsedError?.code || parsed?.code || errorCode;
+                                } catch {
+                                    errorMessage = responseText;
+                                }
+                            }
+                            const err: any = new Error(errorMessage);
+                            err.status = responseStatus;
+                            err.code = errorCode;
+                            err.responseBody = responseText;
+                            err.requestOutline = messageOutline(requestBody.messages);
                             callback(err, undefined);
                             reject(err);
                         } else {
@@ -320,8 +436,28 @@ async function executeAgentTask(task: any, reporter: WorkerTaskReporter, config:
                     });
                     res.on('error', reject);
                 });
-            req.on('error', reject);
-            req.end((err) => { if (err) reject(err); });
+            req.on('error', (err: any) => {
+                err.requestOutline = err.requestOutline || messageOutline(requestBody.messages);
+                reject(err);
+            });
+            req.end((err: any) => {
+                if (!err) return;
+                const responseBody = err?.response?.text || (err?.response?.body ? safeStringify(err.response.body) : '');
+                if (responseBody) {
+                    err.responseBody = responseBody;
+                    try {
+                        const parsed = JSON.parse(responseBody);
+                        const parsedError = parsed?.error || parsed;
+                        err.message = parsedError?.message || parsed?.message || err.message;
+                        err.code = parsedError?.code || parsed?.code || err.code;
+                    } catch {
+                        err.message = responseBody || err.message;
+                    }
+                }
+                err.status = err.status || err?.response?.status;
+                err.requestOutline = err.requestOutline || messageOutline(requestBody.messages);
+                reject(err);
+            });
         });
 
         if (accumulatedContent && currentBubbleId) {
@@ -336,8 +472,9 @@ async function executeAgentTask(task: any, reporter: WorkerTaskReporter, config:
 
         if (finishReason === 'tool_calls' && toolCalls.length > 0) {
             const toolCall = toolCalls[0];
+            const toolCallId = toolCall.id || `call_${toolCallCount + 1}`;
             const persistedToolCalls = [{
-                id: toolCall.id,
+                id: toolCallId,
                 type: 'function',
                 function: {
                     name: toolCall.function.name,
@@ -396,14 +533,14 @@ async function executeAgentTask(task: any, reporter: WorkerTaskReporter, config:
                 toolName,
                 result: toolResult,
                 content: JSON.stringify(toolResult),
-                tool_call_id: toolCall.id,
+                tool_call_id: toolCallId,
             });
 
             const assistantMsg = {
                 role: 'assistant',
                 content: accumulatedContent || null,
                 tool_calls: [{
-                    id: toolCall.id,
+                    id: toolCallId,
                     type: 'function',
                     function: {
                         name: toolCall.function.name,
@@ -411,10 +548,9 @@ async function executeAgentTask(task: any, reporter: WorkerTaskReporter, config:
                     },
                 }],
             };
-            const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: toolCall.id };
+            const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: toolCallId };
             messagesForTurn = truncateMessages([
                 ...messagesForTurn,
-                { role: 'user', content: message },
                 assistantMsg,
                 toolMsg,
             ]);
@@ -721,6 +857,9 @@ function createBuiltinReporter(ctx: EjunzContext, dbTask: any, taskType: string,
                     message: err?.message || String(err || 'Worker task failed'),
                     code: err?.code || 'WORKER_ERROR',
                     stack: err?.stack,
+                    status: err?.status,
+                    responseBody: err?.responseBody,
+                    requestOutline: err?.requestOutline,
                 },
                 ...meta,
             });
