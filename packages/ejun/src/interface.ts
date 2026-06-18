@@ -1022,6 +1022,9 @@ declare module './model/tool' {
             pluginDocId?: number;
             pluginCardId?: string;
             pluginServerKey?: string;
+            localKey?: string;
+            packageName?: string;
+            runtimeMode?: 'builtin' | 'ws';
         };
         tid: number;
         name: string;

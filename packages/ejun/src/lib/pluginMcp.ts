@@ -37,6 +37,35 @@ export type PluginMcpTestSummary = {
     errors: string[];
 };
 
+export type BuiltinPluginMcpRuntime = {
+    localKey: string;
+    packageName?: string;
+    version?: string;
+    tools: Array<{ name: string; description?: string; inputSchema?: any }>;
+    callTool(input: {
+        domainId: string;
+        mcpId: number;
+        name: string;
+        args: any;
+        timeoutMs?: number;
+    }): Promise<any>;
+};
+
+function builtinPluginRuntimeMap(): Map<string, BuiltinPluginMcpRuntime> {
+    const g = globalThis as any;
+    if (!g.__ejunzBuiltinPluginMcpRuntimes) g.__ejunzBuiltinPluginMcpRuntimes = new Map<string, BuiltinPluginMcpRuntime>();
+    return g.__ejunzBuiltinPluginMcpRuntimes;
+}
+
+export function registerBuiltinPluginMcpRuntime(runtime: BuiltinPluginMcpRuntime) {
+    if (!runtime?.localKey) throw new Error('Builtin plugin MCP runtime localKey is required');
+    builtinPluginRuntimeMap().set(runtime.localKey, runtime);
+}
+
+export function getBuiltinPluginMcpRuntime(localKey: string): BuiltinPluginMcpRuntime | null {
+    return builtinPluginRuntimeMap().get(localKey) || null;
+}
+
 function configHash(cfg: PluginMcpConfig): string {
     return createHash('sha256')
         .update(JSON.stringify({ transport: cfg.transport, url: cfg.url, headers: cfg.headers || {}, allow: cfg.toolAllowlist || [] }))
@@ -449,6 +478,21 @@ export async function callPluginMcpTool(input: {
         const err = new Error(`Plugin MCP is offline for tool: ${input.name}`);
         (err as any).code = 'MCP_OFFLINE';
         throw err;
+    }
+    if (mcp.source?.type === 'plugin' && mcp.source?.runtimeMode === 'builtin' && mcp.source?.localKey) {
+        const runtime = getBuiltinPluginMcpRuntime(mcp.source.localKey);
+        if (!runtime) {
+            const err = new Error(`Builtin plugin MCP runtime is offline for tool: ${input.name}`);
+            (err as any).code = 'MCP_OFFLINE';
+            throw err;
+        }
+        return runtime.callTool({
+            domainId: input.domainId,
+            mcpId: input.mcpId,
+            name: input.name,
+            args: input.args || {},
+            timeoutMs: input.timeoutMs,
+        });
     }
     const pluginDocId = mcp.source?.pluginDocId;
     const pluginCardId = mcp.source?.pluginCardId;

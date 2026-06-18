@@ -11,6 +11,7 @@ import {
 
 const SLUG_RE = /^[a-zA-Z0-9._-]{1,80}$/;
 export const SYSTEM_TOOL_ID_PREFIX = 'system:';
+const PLUGIN_TOOL_ID_PREFIX = 'plugin:';
 
 function trimString(v: unknown, max = 4000): string | undefined {
     if (typeof v !== 'string') return undefined;
@@ -224,6 +225,17 @@ async function sanitizePluginCardDefinition(raw: unknown, body: string, card: Ca
                 if (!entry) continue;
                 if (domainId && !(await isLocalMcpToolAvailableInDomain(domainId, toolKey))) continue;
                 toolIds.push(`${SYSTEM_TOOL_ID_PREFIX}${toolKey}`);
+                continue;
+            }
+            if (id.startsWith(PLUGIN_TOOL_ID_PREFIX)) {
+                const parts = id.slice(PLUGIN_TOOL_ID_PREFIX.length).split(':').map((x) => x.trim()).filter(Boolean);
+                const toolDocId = parts.length ? parts[parts.length - 1] : '';
+                if (!ObjectId.isValid(toolDocId)) continue;
+                if (domainId) {
+                    const tool = await document.get(domainId, document.TYPE_TOOL, new ObjectId(toolDocId));
+                    if (!tool) continue;
+                }
+                toolIds.push(toolDocId);
             }
         }
         base.toolIds = Array.from(new Set(toolIds));

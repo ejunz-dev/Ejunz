@@ -1653,10 +1653,11 @@ export class AgentChatHandler extends Handler {
             const slashCount = (await resolveAgentSlashCatalog(domainId, { ...adoc, pluginBindings: [binding] } as AgentDoc)).length;
             const branch = binding.branch || plugin.currentBranch || 'main';
             const definitions = await loadPluginCardDefinitions(domainId, plugin, branch, binding.enabledNodeIds?.length ? new Set(binding.enabledNodeIds) : undefined);
-            const systemToolIds = Array.from(new Set(definitions
+            const pluginToolIds = Array.from(new Set(definitions
                 .filter((def) => def.kind === 'mcp')
-                .flatMap((def) => def.toolIds || [])
-                .filter((id) => id.startsWith(SYSTEM_TOOL_ID_PREFIX))));
+                .flatMap((def) => def.toolIds || [])));
+            const systemToolIds = pluginToolIds.filter((id) => id.startsWith(SYSTEM_TOOL_ID_PREFIX));
+            const legacyPluginToolIds = pluginToolIds.filter((id) => !id.startsWith(SYSTEM_TOOL_ID_PREFIX) && ObjectId.isValid(id));
             const mcpAvailability = await summarizePluginMcpAvailability(domainId, plugin, branch);
             const rowsForPlugin = pluginMcpRows.filter((row) => Number((row.mcp.source as any)?.pluginDocId) === plugin.docId);
             const rowsByServerKey = new Map(rowsForPlugin.map((row) => [String((row.mcp.source as any)?.pluginServerKey || row.mid), row]));
@@ -1705,6 +1706,20 @@ export class AgentChatHandler extends Handler {
                     status: systemToolsRow?.status || 'unknown',
                     availability: systemToolsRow?.online ? 'available' : 'unknown',
                     toolCount: systemTool ? 1 : 0,
+                });
+            }
+            for (const id of legacyPluginToolIds) {
+                const tool = await document.get(domainId, document.TYPE_TOOL, new ObjectId(id));
+                if (!tool) continue;
+                const row = pluginMcpRows.find((item) => item.mid === (tool as any).mcpId);
+                mcpServers.push({
+                    key: `plugin:${id}`,
+                    name: row?.name || (tool as any).name || 'Plugin MCP',
+                    mid: (tool as any).mcpId,
+                    status: row?.status || 'unknown',
+                    availability: row?.online ? 'available' : 'unknown',
+                    toolCount: 1,
+                    error: row?.mcp.lastCheckError,
                 });
             }
             enabledPluginsForChat.push({
