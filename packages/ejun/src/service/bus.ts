@@ -99,6 +99,8 @@ export interface EventMap {
     'learn_result/add': (domainId: string) => VoidReturn;
     'session/change': (doc: SessionDoc) => VoidReturn;
     'record/change': (doc: SessionRecordDoc) => VoidReturn;
+    'agent_schedule/change': (doc: any) => VoidReturn;
+    'agent_schedule_run/change': (doc: any) => VoidReturn;
 }
 
 export function apply(ctx: Context) {

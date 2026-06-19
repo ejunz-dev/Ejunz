@@ -635,7 +635,9 @@ export async function callToolViaWorker(
         type: 'tool_call',
         taskRecordId,
         toolName,
-        args,
+        args: toolName === 'schedule_create' && agentId && !(args || {}).agentId
+            ? { ...(args || {}), __agentId: agentId }
+            : args,
         domainId,
         agentId,
         uid,

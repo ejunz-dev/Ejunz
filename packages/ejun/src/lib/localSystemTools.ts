@@ -7,8 +7,14 @@ import {
     type McpToolContext,
 } from './mcpBuiltinTools';
 import type { SystemToolCatalogEntry, SystemToolExecutionContext } from './systemTools';
+import {
+    SCHEDULE_SYSTEM_TOOLS_CATALOG,
+    executeScheduleSystemTool,
+    isScheduleSystemTool,
+    isScheduleSystemToolMutating,
+} from './scheduleSystemTools';
 
-export type LocalMcpToolSource = 'system' | 'market_mcp';
+export type LocalMcpToolSource = 'system' | 'schedule' | 'market_mcp';
 
 export interface LocalMcpToolEntry extends SystemToolCatalogEntry {
     id: string;
@@ -29,6 +35,17 @@ const defaultSystemToolEntries: LocalMcpToolEntry[] = MCP_BUILTIN_TOOLS_CATALOG.
     mutating: isMcpBuiltinMutatingTool(tool.name),
 }));
 
+const scheduleSystemToolEntries: LocalMcpToolEntry[] = SCHEDULE_SYSTEM_TOOLS_CATALOG.map((tool) => ({
+    id: tool.name,
+    name: tool.name,
+    description: `${tool.description}\n\nRequires a domain execution context.`,
+    inputSchema: tool.inputSchema,
+    source: 'system',
+    defaultEnabled: true,
+    requiresBaseContext: false,
+    mutating: isScheduleSystemToolMutating(tool.name),
+}));
+
 const marketMcpToolEntries: LocalMcpToolEntry[] = SYSTEM_TOOLS_CATALOG.map((tool) => ({
     id: tool.id,
     name: tool.name,
@@ -41,7 +58,7 @@ const marketMcpToolEntries: LocalMcpToolEntry[] = SYSTEM_TOOLS_CATALOG.map((tool
 const localMcpToolCatalog: LocalMcpToolEntry[] = (() => {
     const out: LocalMcpToolEntry[] = [];
     const seen = new Set<string>();
-    for (const tool of [...defaultSystemToolEntries, ...marketMcpToolEntries]) {
+    for (const tool of [...defaultSystemToolEntries, ...scheduleSystemToolEntries, ...marketMcpToolEntries]) {
         const key = tool.id || tool.name;
         if (!key || seen.has(key)) continue;
         seen.add(key);
@@ -51,7 +68,7 @@ const localMcpToolCatalog: LocalMcpToolEntry[] = (() => {
 })();
 
 export function getLocalSystemToolCatalog(): LocalMcpToolEntry[] {
-    return defaultSystemToolEntries;
+    return [...defaultSystemToolEntries, ...scheduleSystemToolEntries];
 }
 
 export function getLocalMcpToolCatalog(): LocalMcpToolEntry[] {
@@ -67,7 +84,7 @@ export function findLocalMcpToolByIdOrName(idOrName: string): LocalMcpToolEntry 
 }
 
 export function findLocalSystemToolByIdOrName(idOrName: string): LocalMcpToolEntry | undefined {
-    return defaultSystemToolEntries.find((tool) => tool.id === idOrName || tool.name === idOrName);
+    return getLocalSystemToolCatalog().find((tool) => tool.id === idOrName || tool.name === idOrName);
 }
 
 export function isDefaultLocalSystemTool(toolKey: string): boolean {
@@ -111,6 +128,9 @@ export async function executeLocalSystemTool(
 ): Promise<unknown> {
     const entry = findLocalSystemToolByIdOrName(name);
     if (!entry) throw new Error(`Unknown system tool: ${name}`);
+    if (entry.source === 'schedule' || isScheduleSystemTool(entry.name)) {
+        return executeScheduleSystemTool(entry.name, args || {}, context);
+    }
     return executeMcpBuiltinTool(requireMcpToolContext(entry, context), entry.name, args || {});
 }
 

@@ -175,7 +175,7 @@ export async function apply(ctx: Context) {
         const enabled = await DomainMarketToolModel.getByDomain(domainId);
         const enabledKeys = new Set(enabled.map((doc) => doc.toolKey));
         return getLocalMcpToolCatalog()
-            .filter((entry) => entry.source === 'system' || enabledKeys.has(entry.id))
+            .filter((entry) => entry.defaultEnabled || entry.source === 'system' || enabledKeys.has(entry.id))
             .map((entry) => ({ name: entry.name, description: entry.description, inputSchema: entry.inputSchema }));
     });
     (ctx as any).on('mcp/tool/call/local', async (payload: {

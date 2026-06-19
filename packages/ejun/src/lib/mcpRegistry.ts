@@ -192,7 +192,25 @@ async function pluginTools(domainId: string, mcp: McpDoc): Promise<NormalizedMcp
 
 export async function ensureSystemToolsMcp(domainId: string, owner: number): Promise<McpDoc> {
     let mcp = await McpModel.getBySourceSystemKey(domainId, SYSTEM_TOOLS_MCP_LOCAL_KEY);
-    if (mcp) return mcp;
+    if (mcp) {
+        const tools = await systemTools(domainId);
+        await McpModel.update(domainId, mcp.mid, {
+            kind: SYSTEM_TOOLS_MCP_KIND,
+            source: { type: SYSTEM_TOOLS_MCP_SOURCE_TYPE, localKey: SYSTEM_TOOLS_MCP_LOCAL_KEY },
+            assignable: true,
+            status: 'online',
+            name: mcp.name || SYSTEM_TOOLS_MCP_NAME,
+            description: mcp.description || SYSTEM_TOOLS_MCP_DESCRIPTION,
+            toolCount: tools.length,
+        });
+        try {
+            const { ensureSystemDefaultPlugin } = await import('./systemDefaultPlugin');
+            await ensureSystemDefaultPlugin(domainId, owner);
+        } catch (e) {
+            logger.warn('failed to sync System Default plugin for domain=%s: %s', domainId, (e as Error).message);
+        }
+        return await McpModel.getByMcpId(domainId, mcp.mid) || mcp;
+    }
     mcp = await McpModel.add({
         domainId,
         owner,
