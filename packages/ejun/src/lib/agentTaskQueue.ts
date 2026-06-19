@@ -92,6 +92,7 @@ export interface EnqueueAgentTaskInput {
     source?: 'chat' | 'schedule';
     scheduleId?: ObjectId;
     scheduleRunId?: ObjectId;
+    parseSlashCommand?: boolean;
 }
 
 export interface EnqueueAgentTaskResult {
@@ -117,7 +118,7 @@ export async function enqueueAgentTask(input: EnqueueAgentTaskInput): Promise<En
     const history = normalizeChatHistory(input.history);
     let slashInvocation: any = null;
     let slashSystemBlock = '';
-    if (message.trimStart().startsWith('/')) {
+    if (input.parseSlashCommand === true && message.trimStart().startsWith('/')) {
         const slashCatalog = await resolveAgentSlashCatalog(input.domainId, adoc);
         const parsedSlash = parseAgentSlashInvocation(message, slashCatalog) as any;
         if (parsedSlash?.error) {

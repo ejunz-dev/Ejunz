@@ -228,7 +228,7 @@ export default class AgentScheduleModel {
                 description: input.description,
             },
         };
-        if (!doc.command) throw new Error('command is required');
+        if (!doc.command) throw new Error('scheduled message is required');
         if (doc.scheduleType === 'once' && !doc.executeAt) throw new Error('executeAt is required for once schedules');
         doc.nextRunAt = computeNextRun(doc, now);
         if (doc.enabled && !doc.nextRunAt) throw new Error('Schedule has no future run time');
@@ -277,7 +277,7 @@ export default class AgentScheduleModel {
         if (Object.prototype.hasOwnProperty.call(patch, 'endAt')) next.endAt = normalizeDate(patch.endAt, 'endAt');
         if (patch.timezone !== undefined) next.timezone = String(patch.timezone || 'UTC').trim() || 'UTC';
         if (patch.description !== undefined) next.meta = { ...(next.meta || {}), description: patch.description };
-        if (!next.command) throw new Error('command is required');
+        if (!next.command) throw new Error('scheduled message is required');
         if (next.scheduleType !== 'once' && next.scheduleType !== 'interval') throw new Error('scheduleType must be once or interval');
         if (next.scheduleType === 'interval') {
             next.intervalCount ||= 1;
