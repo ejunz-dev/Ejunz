@@ -5,6 +5,7 @@ import {
     ConnectionHandler,
     Handler,
     query,
+    route,
     subscribe,
     Types,
 } from '../service/server';
@@ -23,6 +24,7 @@ function scheduleDisplay(self: Handler | ConnectionHandler, doc: AgentScheduleDo
         ...AgentScheduleModel.toView(doc),
         commandPreview: commandPreview(doc.command),
         statusLabel: doc.deletedAt ? 'deleted' : doc.endedAt ? 'ended' : doc.enabled ? 'enabled' : 'paused',
+        editUrl: self.url('schedule_edit', { domainId: doc.domainId, scheduleId: id }),
         historyUrl: `${self.url('schedule_history', { domainId: doc.domainId })}?scheduleId=${encodeURIComponent(id)}`,
     };
 }
@@ -61,6 +63,27 @@ function queryString(parts: Record<string, string | undefined>): string {
         if (parts[key]) params.set(key, parts[key]!);
     }
     return params.toString();
+}
+
+async function loadEditableSchedule(self: Handler, domainId: string, scheduleId: string, allowEnded = false) {
+    if (!scheduleId || !ObjectId.isValid(scheduleId)) throw new Error('Invalid schedule id');
+    const doc = await AgentScheduleModel.get(domainId, scheduleId);
+    if (!doc) throw new Error('Schedule not found');
+    if (!self.user.hasPerm(PERM.PERM_VIEW_RECORD) && doc.uid !== self.user._id) throw new Error('Schedule not found');
+    if (!allowEnded && (doc.deletedAt || doc.endedAt)) throw new Error('Schedule is no longer editable');
+    return doc;
+}
+
+function schedulePatchFromArgs(args: Record<string, any>) {
+    const patch: any = {};
+    for (const key of ['agentId', 'title', 'command', 'scheduleType', 'executeAt', 'intervalUnit', 'timezone', 'description', 'endAt']) {
+        if (args[key] !== undefined) patch[key] = args[key];
+    }
+    for (const key of ['intervalCount', 'maxRuns']) {
+        if (args[key] !== undefined && args[key] !== '') patch[key] = Number(args[key]);
+        else if (args[key] === '') patch[key] = undefined;
+    }
+    return patch;
 }
 
 class ScheduleMainHandler extends Handler {
@@ -215,6 +238,45 @@ class ScheduleMainConnectionHandler extends ConnectionHandler {
     }
 }
 
+class ScheduleEditHandler extends Handler {
+    @route('scheduleId', Types.String)
+    async get(domainId: string, scheduleId: string) {
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const doc = await loadEditableSchedule(this, domainId, scheduleId);
+        this.response.template = 'schedule_edit.html';
+        this.response.body = {
+            schedule: scheduleDisplay(this, doc),
+        };
+    }
+
+    @route('scheduleId', Types.String)
+    async postSave(domainId: string, scheduleId: string) {
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const body = this.request.body || {};
+        const doc = await loadEditableSchedule(this, domainId, scheduleId);
+        const patch = schedulePatchFromArgs(body);
+        const targetStatus = String(body.status || (doc.enabled ? 'enabled' : 'paused'));
+        if (doc.enabled && targetStatus === 'paused') {
+            const paused = await AgentScheduleModel.pause(domainId, doc._id);
+            await AgentScheduleModel.update(domainId, paused._id, patch);
+        } else if (!doc.enabled && targetStatus === 'enabled') {
+            const updated = await AgentScheduleModel.update(domainId, doc._id, patch);
+            await AgentScheduleModel.resume(domainId, updated._id);
+        } else {
+            await AgentScheduleModel.update(domainId, doc._id, patch);
+        }
+        this.response.redirect = `${this.url('schedule_main', { domainId })}?scheduleId=${encodeURIComponent(doc._id.toHexString())}`;
+    }
+
+    @route('scheduleId', Types.String)
+    async postDelete(domainId: string, scheduleId: string) {
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const doc = await loadEditableSchedule(this, domainId, scheduleId, true);
+        await AgentScheduleModel.softDelete(domainId, doc._id);
+        this.response.redirect = this.url('schedule_main', { domainId });
+    }
+}
+
 class ScheduleActionHandler extends Handler {
     async post(domainId: string | Record<string, any>, args: Record<string, any> = {}) {
         await this.checkPriv(PRIV.PRIV_USER_PROFILE);
@@ -222,11 +284,7 @@ class ScheduleActionHandler extends Handler {
         args = this.request.body || (typeof domainId === 'object' ? domainId : args) || {};
         const scheduleId = String(args.scheduleId || '').trim();
         const action = String(args.action || '').trim();
-        if (!scheduleId || !ObjectId.isValid(scheduleId)) throw new Error('Invalid schedule id');
-        const doc = await AgentScheduleModel.get(actualDomainId, scheduleId);
-        if (!doc) throw new Error('Schedule not found');
-        if (!this.user.hasPerm(PERM.PERM_VIEW_RECORD) && doc.uid !== this.user._id) throw new Error('Schedule not found');
-        if (action !== 'delete' && (doc.deletedAt || doc.endedAt)) throw new Error('Schedule is no longer editable');
+        const doc = await loadEditableSchedule(this, actualDomainId, scheduleId, action === 'delete');
         if (action === 'pause') {
             const updated = await AgentScheduleModel.pause(actualDomainId, doc._id);
             this.response.body = { ok: 1, schedule: AgentScheduleModel.toView(updated) };
@@ -243,14 +301,7 @@ class ScheduleActionHandler extends Handler {
             return;
         }
         if (action === 'update') {
-            const patch: any = {};
-            for (const key of ['agentId', 'title', 'command', 'scheduleType', 'executeAt', 'intervalUnit', 'timezone', 'description', 'endAt']) {
-                if (args[key] !== undefined) patch[key] = args[key];
-            }
-            for (const key of ['intervalCount', 'maxRuns']) {
-                if (args[key] !== undefined && args[key] !== '') patch[key] = Number(args[key]);
-                else if (args[key] === '') patch[key] = undefined;
-            }
+            const patch = schedulePatchFromArgs(args);
             const updated = await AgentScheduleModel.update(actualDomainId, doc._id, patch);
             this.response.body = { ok: 1, schedule: AgentScheduleModel.toView(updated) };
             return;
@@ -340,6 +391,7 @@ class ScheduleHistoryConnectionHandler extends ConnectionHandler {
 
 export async function apply(ctx: Context) {
     ctx.Route('schedule_main', '/schedule', ScheduleMainHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('schedule_edit', '/schedule/:scheduleId/edit', ScheduleEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('schedule_history', '/schedule/history', ScheduleHistoryHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('schedule_action', '/schedule/action', ScheduleActionHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Connection('schedule_conn', '/schedule-conn', ScheduleMainConnectionHandler, PRIV.PRIV_USER_PROFILE);

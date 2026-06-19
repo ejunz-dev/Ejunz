@@ -3,7 +3,6 @@
 {% import "components/user.html" as user with context %}
 {% block content %}
 {{ set(UiContext, 'socketUrl', 'schedule-conn?' + scheduleConnQuery) }}
-{{ set(UiContext, 'scheduleActionUrl', url('schedule_action')) }}
 {{ set(UiContext, 'scheduleIds', schedules.map(eval("s=>s.id"))) }}
 <div class="row">
   <div class="medium-12 columns">
