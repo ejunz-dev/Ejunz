@@ -1101,6 +1101,7 @@ session_record_type_develop: Develop editor
 session_record_type_develop_daily: Daily develop
 session_record_type_develop_outline: Outline single-node editing
 session_record_type_agent: Chat
+session_record_type_schedule: Scheduled task
 session_record_type_mcp: Edge / MCP
 record_mcp_tool_title: MCP tool call
 record_mcp_status: Status
