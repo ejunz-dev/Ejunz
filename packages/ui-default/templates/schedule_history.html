@@ -1,0 +1,65 @@
+{% set page_name = "schedule_history" %}
+{% extends "layout/basic.html" %}
+{% import "components/user.html" as user with context %}
+{% block content %}
+{{ set(UiContext, 'socketUrl', 'schedule/history-conn?' + scheduleHistoryConnQuery) }}
+{{ set(UiContext, 'scheduleRunIds', runs.map(eval("r=>r.id"))) }}
+<div class="row">
+  <div class="medium-12 columns">
+    <form method="get">
+      <div class="section">
+        <div class="section__header">
+          <h1 class="section__title">Schedule History Filter</h1>
+          <div class="section__tools">
+            <button type="submit" class="primary button"><span class="icon icon-filter"></span> {{ _('Filter') }}</button>
+            <a href="{{ url('schedule_history') }}" class="button">{{ _('Reset') }}</a>
+          </div>
+        </div>
+        <div class="section__body">
+          <div class="row">
+            <div class="medium-4 columns"><label>Schedule ID<input name="scheduleId" type="text" class="textbox" value="{{ filterScheduleId }}"></label></div>
+            <div class="medium-4 columns"><label>Agent<input name="agentId" type="text" class="textbox" value="{{ filterAgentId }}"></label></div>
+            <div class="medium-4 columns"><label>Status<input name="status" type="text" class="textbox" value="{{ filterStatus }}" placeholder="queued / success / error / skipped"></label></div>
+          </div>
+        </div>
+      </div>
+    </form>
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">Scheduled Agent Task History</h1>
+        <div class="section__tools"><a href="{{ url('schedule_main') }}" class="button text-sm">Schedules</a></div>
+      </div>
+      <div class="section__body no-padding">
+        <table class="data-table schedule_history__table">
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Schedule</th>
+              <th>Agent</th>
+              <th>Command</th>
+              <th>Planned</th>
+              <th>Completed</th>
+              <th>User</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody>
+          {%- for run in runs -%}
+            {% set udoc = udict[run['uid']] %}
+            {% include 'schedule_history_tr.html' %}
+          {%- else -%}
+            <tr class="schedule_history__empty"><td colspan="8" class="empty">No scheduled task history.</td></tr>
+          {%- endfor -%}
+          </tbody>
+        </table>
+        {% if pageCount > 1 %}
+        <ul class="pager">
+          {% if page > 1 %}<li><a class="pager__item prev link" href="?page={{ page - 1 }}{{ ('&scheduleId=' + filterScheduleId) if filterScheduleId else '' }}{{ ('&agentId=' + filterAgentId) if filterAgentId else '' }}{{ ('&status=' + filterStatus) if filterStatus else '' }}">{{ _('pager_prev') }}</a></li>{% endif %}
+          {% if page < pageCount %}<li><a class="pager__item next link" href="?page={{ page + 1 }}{{ ('&scheduleId=' + filterScheduleId) if filterScheduleId else '' }}{{ ('&agentId=' + filterAgentId) if filterAgentId else '' }}{{ ('&status=' + filterStatus) if filterStatus else '' }}">{{ _('pager_next') }}</a></li>{% endif %}
+        </ul>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

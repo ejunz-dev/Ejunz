@@ -24,6 +24,7 @@ export * as BuiltinModel from './model/builtin';
 export { default as TokenModel } from './model/token';
 export { default as UserModel } from './model/user';
 export { default as ScheduleModel } from './model/schedule';
+export { default as AgentScheduleModel } from './model/agent_schedule';
 export { default as MessageModel } from './model/message';
 export { default as OauthModel } from './model/oauth';
 export { default as BlackListModel } from './model/blacklist';

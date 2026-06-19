@@ -113,6 +113,57 @@ Use this skill when the user asks about domain System Tools or when you need gui
 `;
 }
 
+function scheduleCommandCard(): string {
+    return `---
+type: command
+slug: schedule
+description: Show scheduled agent tasks for this domain.
+command:
+  requireConfirmation: false
+security:
+  requireConfirmation: false
+---
+
+## Task
+
+Show scheduled agent tasks for domain {{domainId}}.
+
+## Instructions
+
+- Use the \`schedule_list\` System Tool.
+- Use {{args}} and {{userMessage}} to decide whether to filter by agent or enabled status.
+- Present a concise table with schedule id, title, agent, rule, enabled state, next run, last run status, and history URL.
+- Copy any URLs returned by the tool exactly.
+`;
+}
+
+function scheduleHistoryCommandCard(): string {
+    return `---
+type: command
+slug: schedule/history
+aliases:
+  - schedule-history
+  - schedule.history
+description: Show executed scheduled agent task history for this domain.
+command:
+  requireConfirmation: false
+security:
+  requireConfirmation: false
+---
+
+## Task
+
+Show scheduled agent task execution history for domain {{domainId}}.
+
+## Instructions
+
+- Use the \`schedule_history\` System Tool.
+- Use {{args}} and {{userMessage}} to decide whether to filter by schedule id, agent, or status.
+- Present a concise table with run id, schedule id, agent, planned time, status, record URL, and session URL.
+- The record URL is the best detail link for what the agent did. Copy all URLs returned by the tool exactly.
+`;
+}
+
 function systemToolsHelpCard(): string {
     return `---
 type: command
@@ -242,6 +293,26 @@ export async function syncSystemDefaultPluginShape(domainId: string, plugin: Plu
         'system-tools-help.md',
         systemToolsHelpCard(),
         1,
+        cards,
+    );
+    await upsertDefaultCard(
+        domainId,
+        plugin,
+        owner,
+        folders.commands.id,
+        'schedule.md',
+        scheduleCommandCard(),
+        2,
+        cards,
+    );
+    await upsertDefaultCard(
+        domainId,
+        plugin,
+        owner,
+        folders.commands.id,
+        'schedule-history.md',
+        scheduleHistoryCommandCard(),
+        3,
         cards,
     );
     await upsertDefaultCard(

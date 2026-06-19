@@ -10,6 +10,7 @@ import {
 } from './localSystemTools';
 
 const SLUG_RE = /^[a-zA-Z0-9._-]{1,80}$/;
+const SLASH_NAME_RE = /^[a-zA-Z0-9._-]{1,80}(?:\/[a-zA-Z0-9._-]{1,80}){0,2}$/;
 export const SYSTEM_TOOL_ID_PREFIX = 'system:';
 const PLUGIN_TOOL_ID_PREFIX = 'plugin:';
 
@@ -177,9 +178,11 @@ async function sanitizePluginCardDefinition(raw: unknown, body: string, card: Ca
     const o = raw as Record<string, any>;
     const rawType = String(o.type || o.pluginType || o.kind || '').trim().toLowerCase();
     if (rawType !== 'skill' && rawType !== 'command' && rawType !== 'mcp') return null;
-    const slugRaw = trimString(o.slug, 80) || cardTitleSlug(card.title) || rawType;
-    const name = SLUG_RE.test(slugRaw) ? slugRaw : slugRaw.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || rawType;
-    const aliases = trimStringArray(o.aliases, 20, 80)?.filter((x) => SLUG_RE.test(x)) || [];
+    const slugRaw = trimString(o.slug, 240) || cardTitleSlug(card.title) || rawType;
+    const nameRe = rawType === 'skill' || rawType === 'command' ? SLASH_NAME_RE : SLUG_RE;
+    const sanitizedSlug = slugRaw.replace(/[^a-zA-Z0-9._/-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 240);
+    const name = nameRe.test(slugRaw) ? slugRaw : (nameRe.test(sanitizedSlug) ? sanitizedSlug : rawType);
+    const aliases = trimStringArray(o.aliases, 20, 240)?.filter((x) => nameRe.test(x)) || [];
     const description = trimString(o.description, 2000) || card.title || node.text || '';
     const security = o.security && typeof o.security === 'object' && !Array.isArray(o.security) ? o.security : {};
     const base: PluginCardDefinition = {
