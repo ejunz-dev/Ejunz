@@ -403,7 +403,7 @@ function parseSessionListKind(s?: string): 'learn' | 'develop' | 'agent' | undef
 }
 
 function parseSessionListRecordType(s?: string): SessionListRecordType | undefined {
-    const allowed: SessionListRecordType[] = ['daily', 'single_card', 'single_node', 'develop', 'agent', 'mcp', 'other'];
+    const allowed: SessionListRecordType[] = ['daily', 'single_card', 'single_node', 'develop', 'agent', 'schedule', 'mcp', 'other'];
     if (s && allowed.includes(s as SessionListRecordType)) return s as SessionListRecordType;
     return undefined;
 }
