@@ -6,7 +6,38 @@ import {
   i18n, pjax, request, tpl,
 } from 'vj/utils';
 
+let refreshTimer: ReturnType<typeof window.setInterval> | null = null;
+let refreshInFlight = false;
+
+async function refreshWorkerStatus() {
+  if (refreshInFlight || document.hidden) return;
+  refreshInFlight = true;
+  try {
+    await pjax.request({ push: false });
+  } finally {
+    refreshInFlight = false;
+  }
+}
+
+function cleanupRefreshTimer() {
+  if (refreshTimer) {
+    window.clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+  $(document).off('visibilitychange.statusWorkerRefresh');
+  $(window).off('beforeunload.statusWorkerRefresh pagehide.statusWorkerRefresh');
+}
+
 const page = new NamedPage('status', () => {
+  cleanupRefreshTimer();
+  refreshTimer = window.setInterval(() => {
+    refreshWorkerStatus();
+  }, 10000);
+  $(document).on('visibilitychange.statusWorkerRefresh', () => {
+    if (!document.hidden) refreshWorkerStatus();
+  });
+  $(window).on('beforeunload.statusWorkerRefresh pagehide.statusWorkerRefresh', cleanupRefreshTimer);
+
   $(document).on('click', '.worker-edit-btn', async function openWorkerEditDialog() {
     const $btn = $(this);
     const workerIds = String($btn.attr('data-worker-ids') || '');
@@ -52,7 +83,7 @@ const page = new NamedPage('status', () => {
         deleteWorker,
       });
       Notification.success(i18n('Worker updated'));
-      await pjax.request({ push: false });
+      await refreshWorkerStatus();
     } catch (error) {
       Notification.error(error.message);
     }

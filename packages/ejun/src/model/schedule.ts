@@ -101,7 +101,11 @@ export async function apply(ctx: Context) {
             interval: [1, 'day'],
         });
     }
-    await db.ensureIndexes(coll, { name: 'schedule', key: { type: 1, subType: 1, executeAfter: -1 } });
+    await db.ensureIndexes(
+        coll,
+        { name: 'schedule', key: { type: 1, subType: 1, executeAfter: -1 } },
+        { name: 'schedule_subtype_scheduleId', key: { type: 1, subType: 1, domainId: 1, scheduleId: 1 } },
+    );
 }
 
 export default ScheduleModel;

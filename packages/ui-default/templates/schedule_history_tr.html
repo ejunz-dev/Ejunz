@@ -1,0 +1,30 @@
+{% import "components/user.html" as user with context %}
+<tr data-run-id="{{ run.id }}">
+  <td>
+    {% if run.status == 'success' %}
+      <span class="icon record-status--icon pass"></span>
+    {% elif run.status == 'error' %}
+      <span class="icon record-status--icon fail"></span>
+    {% elif run.status == 'skipped' %}
+      <span class="icon record-status--icon unknown"></span>
+    {% else %}
+      <span class="icon record-status--icon progress"></span>
+    {% endif %}
+    <span class="text-sm">{{ run.status }}</span>
+    {% if run.error %}<br><span class="text-red text-sm">{{ run.error.message }}</span>{% endif %}
+  </td>
+  <td>
+    <span class="typo">{{ run.scheduleTitle }}</span><br>
+    <a class="font-mono text-sm" href="{{ url('schedule_main') }}?scheduleId={{ run.scheduleId }}">{{ run.scheduleId }}</a>
+  </td>
+  <td><span class="font-mono">{{ run.agentId }}</span></td>
+  <td><span class="typo">{{ run.commandPreview }}</span></td>
+  <td>{% if run.plannedAt %}{{ datetimeSpan(run.plannedAt)|safe }}{% else %}<span class="text-gray">-</span>{% endif %}</td>
+  <td>{% if run.completedAt %}{{ datetimeSpan(run.completedAt)|safe }}{% elif run.queuedAt %}{{ datetimeSpan(run.queuedAt)|safe }}{% else %}<span class="text-gray">-</span>{% endif %}</td>
+  <td>{% if udoc %}{{ user.render_inline(udoc, avatar=false, badge=false) }}{% else %}<span class="text-gray">-</span>{% endif %}</td>
+  <td>
+    {% if run.recordUrl %}<a href="{{ run.recordUrl }}" class="button compact">Record</a>{% endif %}
+    {% if run.sessionUrl %}<a href="{{ run.sessionUrl }}" class="button compact">Session</a>{% endif %}
+    {% if not run.recordUrl and not run.sessionUrl %}<span class="text-gray">-</span>{% endif %}
+  </td>
+</tr>

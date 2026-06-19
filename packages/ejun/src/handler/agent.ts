@@ -194,7 +194,10 @@ async function callToolWithFallback(
         try {
             const ctx = (global as any).app || (global as any).Ejunz;
             if (ctx) {
-                return await callToolViaWorker(ctx, toolName, args, domainId, agentId, uid, taskRecordId, 0, {
+                const callArgs = toolName === 'schedule_create' && agentId && !(args || {}).agentId
+                    ? { ...(args || {}), __agentId: agentId }
+                    : args;
+                return await callToolViaWorker(ctx, toolName, callArgs, domainId, agentId, uid, taskRecordId, 0, {
                     baseDocId: mcpOpts?.baseDocId,
                     baseBranch: mcpOpts?.baseBranch,
                     owner: uid,
@@ -210,11 +213,14 @@ async function callToolWithFallback(
     }
     // Fallback: direct MCP call
     const mcpClient = new McpClient();
+    const directArgs = executionTool?.type === 'plugin_mcp'
+        ? { ...(args || {}), __mcpId: executionTool?.mcpId }
+        : (toolName === 'schedule_create' && agentId && !(args || {}).agentId
+            ? { ...(args || {}), __agentId: agentId }
+            : args);
     return await mcpClient.callTool(
         toolName,
-        executionTool?.type === 'plugin_mcp'
-            ? { ...(args || {}), __mcpId: executionTool?.mcpId }
-            : args,
+        directArgs,
         domainId,
         undefined,
         executionTool?.token,
@@ -234,15 +240,19 @@ async function callAssignedTool(
     baseDocId?: number,
     baseBranch?: string,
     uid?: number,
+    currentAgentId?: string,
 ): Promise<any> {
     const executionTool = findExecutionTool(executionTools, toolName);
     if (!executionTool) throw makeToolUnavailableError(toolName, 'TOOL_NOT_FOUND');
     if (executionTool.type === 'plugin_mcp' && !executionTool.mcpId) throw makeToolUnavailableError(toolName, 'MCP_NOT_FOUND');
+    const callArgs = executionTool?.type === 'plugin_mcp'
+        ? { ...(args || {}), __mcpId: executionTool?.mcpId }
+        : (toolName === 'schedule_create' && currentAgentId && !(args || {}).agentId
+            ? { ...(args || {}), __agentId: currentAgentId }
+            : args);
     return await mcpClient.callTool(
         toolName,
-        executionTool?.type === 'plugin_mcp'
-            ? { ...(args || {}), __mcpId: executionTool?.mcpId }
-            : args,
+        callArgs,
         domainId,
         undefined,
         executionTool?.token,
@@ -2854,6 +2864,7 @@ const agentPrompt = this.adoc.content || '';
                                                         toolContext.baseDocId,
                                                         toolContext.baseBranch,
                                                         toolContext.owner,
+                                                        (this.adoc as any).aid || (this.adoc as any).docId?.toString(),
                                                     );
                                                     AgentLogger.info(`Tool ${firstToolCall.function.name} returned (Stream)`, { resultLength: JSON.stringify(toolResult).length });
                                                     
@@ -3297,7 +3308,7 @@ const agentPrompt = this.adoc.content || '';
                                                     let toolResult: any;
                                                     try {
                                                         const toolContext = buildAgentToolContext(this.adoc, this.user);
-                                                        toolResult = await callAssignedTool(mcpClient, tools, firstToolCall.function.name, parsedArgs, domainId, toolContext.baseDocId, toolContext.baseBranch, toolContext.owner);
+                                                        toolResult = await callAssignedTool(mcpClient, tools, firstToolCall.function.name, parsedArgs, domainId, toolContext.baseDocId, toolContext.baseBranch, toolContext.owner, (this.adoc as any).aid || (this.adoc as any).docId?.toString());
                                                         AgentLogger.info(`Tool ${firstToolCall.function.name} returned (API WS)`, { resultLength: JSON.stringify(toolResult).length });
                                                     } catch (toolError: any) {
                                                         AgentLogger.error(`Tool ${firstToolCall.function.name} failed (API WS):`, toolError);
@@ -3687,7 +3698,7 @@ const agentPrompt = adoc.content || '';
                                                                 ? { ...parsedArgs, __agentId: (adoc as any).aid || (adoc as any)._id?.toString() || 'unknown', __agentName: (adoc as any).name || 'agent' }
                                                                 : parsedArgs;
                                                             const toolContext = buildAgentToolContext(adoc, this.user);
-                                                            toolResult = await callAssignedTool(mcpClient, tools, firstToolCall.function.name, toolArgs, adoc.domainId, toolContext.baseDocId, toolContext.baseBranch, toolContext.owner);
+                                                            toolResult = await callAssignedTool(mcpClient, tools, firstToolCall.function.name, toolArgs, adoc.domainId, toolContext.baseDocId, toolContext.baseBranch, toolContext.owner, (adoc as any).aid || (adoc as any).docId?.toString());
                                                             AgentLogger.info(`Tool ${firstToolCall.function.name} returned (API)`, { resultLength: JSON.stringify(toolResult).length });
                                                         } catch (toolError: any) {
                                                             AgentLogger.error(`Tool ${firstToolCall.function.name} failed (API):`, toolError);
@@ -3828,7 +3839,7 @@ const agentPrompt = adoc.content || '';
                         ? { ...parsedArgs, __agentId: (adoc as any).aid || (adoc as any)._id?.toString() || 'unknown', __agentName: (adoc as any).name || 'agent' }
                         : parsedArgs;
                     const toolContext = buildAgentToolContext(adoc, this.user);
-                    const toolResult = await callAssignedTool(mcpClient, tools, firstToolCall.function?.name, toolArgs, adoc.domainId, toolContext.baseDocId, toolContext.baseBranch, toolContext.owner);
+                    const toolResult = await callAssignedTool(mcpClient, tools, firstToolCall.function?.name, toolArgs, adoc.domainId, toolContext.baseDocId, toolContext.baseBranch, toolContext.owner, (adoc as any).aid || (adoc as any).docId?.toString());
                     AgentLogger.info('Tool returned:', { toolResult });
                     if (isFatalToolResolutionCode(toolResult?.code)) throw makeToolUnavailableError(firstToolCall.function?.name, toolResult.code);
 
