@@ -1502,6 +1502,7 @@ session_record_type_develop: 开发编辑
 session_record_type_develop_daily: 每日开发
 session_record_type_develop_outline: 大纲单节点编辑
 session_record_type_agent: 对话
+session_record_type_schedule: 定时任务
 session_record_type_mcp: Edge / MCP
 record_mcp_tool_title: MCP 工具调用
 record_mcp_status: 状态

@@ -21,7 +21,7 @@ export {
 const ON_LESSON_RECENT_MS = 3 * 60 * 1000;
 const LEGACY_ACTIVITY_MS = 5 * 60 * 1000;
 
-export type SessionListRecordType = 'daily' | 'single_card' | 'single_node' | 'develop' | 'agent' | 'mcp' | 'other';
+export type SessionListRecordType = 'daily' | 'single_card' | 'single_node' | 'develop' | 'agent' | 'schedule' | 'mcp' | 'other';
 
 export type SessionListStatus =
     | 'in_progress'
@@ -71,6 +71,14 @@ export function isMcpSessionRow(doc: SessionDoc): boolean {
     return doc.appRoute === 'mcp' || doc.route === 'mcp';
 }
 
+export function isScheduleAgentSessionRow(doc: SessionDoc): boolean {
+    return isAgentSessionRow(doc) && (
+        doc.context?.source === 'schedule'
+        || !!doc.context?.scheduleId
+        || !!doc.context?.scheduleRunId
+    );
+}
+
 export function getDevelopSessionSettledAt(doc: SessionDoc | null | undefined): Date | null {
     const p = doc?.progress as Record<string, unknown> | undefined;
     if (!p || typeof p !== 'object') return null;
@@ -91,6 +99,7 @@ export function deriveSessionRecordType(doc: SessionDoc): SessionListRecordType 
     if (isDevelopSessionRow(doc)) {
         return inferDevelopSessionKind(doc) === 'outline_node' ? 'single_node' : 'daily';
     }
+    if (isScheduleAgentSessionRow(doc)) return 'schedule';
     if (isAgentSessionRow(doc)) return 'agent';
     if (isMcpSessionRow(doc)) return 'mcp';
     if (!isLearnSessionRow(doc)) return 'other';
