@@ -1102,6 +1102,11 @@ session_record_type_develop_daily: Daily develop
 session_record_type_develop_outline: Outline single-node editing
 session_record_type_agent: Chat
 session_record_type_schedule: Scheduled task
+Edit scheduled task: Edit scheduled task
+Cancel scheduled task: Cancel scheduled task
+Cancel this scheduled task?: Cancel this scheduled task?
+Schedule updated and paused: Schedule updated and paused
+Schedule updated and enabled: Schedule updated and enabled
 session_record_type_mcp: Edge / MCP
 record_mcp_tool_title: MCP tool call
 record_mcp_status: Status

@@ -973,6 +973,13 @@ Email: 电子邮件
 Enable File Mode: 启用文件模式
 Enable Iterative Mode: 启用迭代模式
 Enabled: 开启
+Edit scheduled task: 编辑定时任务
+Paused: 已暂停
+Cancel scheduled task: 取消定时任务
+Cancel this scheduled task?: 确定取消该定时任务？
+Schedule deleted: 定时任务已取消
+Schedule updated and paused: 定时任务已更新并暂停
+Schedule updated and enabled: 定时任务已更新并启用
 End at: 结束于
 End Date: 结束日期
 End Time: 结束时间
