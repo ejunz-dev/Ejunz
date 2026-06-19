@@ -22,13 +22,13 @@ export const SCHEDULE_SYSTEM_TOOL_NAMES = new Set([
 export const SCHEDULE_SYSTEM_TOOLS_CATALOG: SystemToolCatalogEntry[] = [
     {
         name: 'schedule_create',
-        description: 'Create a domain-scoped scheduled task that invokes an agent with a command at a future time or interval.',
+        description: 'Create a domain-scoped scheduled task that sends a clear prompt/message to an agent at a future time or interval. When creating a schedule from a user request, rewrite the user intent into a self-contained instruction that the future agent can execute directly.',
         inputSchema: {
             type: 'object',
             properties: {
                 agentId: { type: 'string', description: 'Agent aid or numeric docId. Optional; defaults to the current executing agent when called by an agent.' },
                 title: { type: 'string' },
-                command: { type: 'string', description: 'Message or slash command to send to the agent.' },
+                command: { type: 'string', description: 'Self-contained prompt/message to send to the agent when the schedule fires. The caller should rewrite the user request into an explicit future instruction, including which tool to use when relevant (for example: "请调用 bot_notify_send_message 发送消息：..."), rather than storing a terse slash command or ambiguous user wording. Leading slashes are treated as normal message text by default.' },
                 scheduleType: { type: 'string', enum: ['once', 'interval'] },
                 executeAt: { type: 'string', description: 'ISO datetime for one-shot schedules.' },
                 intervalCount: { type: 'number' },
@@ -78,7 +78,7 @@ export const SCHEDULE_SYSTEM_TOOLS_CATALOG: SystemToolCatalogEntry[] = [
                 scheduleId: { type: 'string' },
                 agentId: { type: 'string' },
                 title: { type: 'string' },
-                command: { type: 'string' },
+                command: { type: 'string', description: 'Self-contained prompt/message to send to the agent when the schedule fires. The caller should rewrite the user request into an explicit future instruction, including which tool to use when relevant (for example: "请调用 bot_notify_send_message 发送消息：..."), rather than storing a terse slash command or ambiguous user wording. Leading slashes are treated as normal message text by default.' },
                 scheduleType: { type: 'string', enum: ['once', 'interval'] },
                 executeAt: { type: 'string' },
                 intervalCount: { type: 'number' },

@@ -75,7 +75,7 @@ function bindScheduleActions() {
         <label>${i18n('Agent')}
           <input class="textbox" name="agentId" type="text" value="${String($row.attr('data-agent-id') || '')}">
         </label>
-        <label>${i18n('Command')}
+        <label>${i18n('Message')}
           <textarea class="textbox" name="command" rows="3">${String($row.attr('data-command') || '')}</textarea>
         </label>
         <label>${i18n('Type')}
