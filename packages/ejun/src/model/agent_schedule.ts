@@ -293,13 +293,15 @@ export default class AgentScheduleModel {
         if (next.enabled && !next.nextRunAt) throw new Error('Schedule has no future run time');
         next.updatedAt = new Date();
         const { _id: _ignoredId, ...setDoc } = next as any;
+        const unsetDoc = {
+            ...(next.scheduleType === 'once' ? { intervalCount: '', intervalUnit: '', maxRuns: '', endAt: '' } : { executeAt: '' }),
+            ...(next.maxRuns ? {} : { maxRuns: '' }),
+            ...(next.endAt ? {} : { endAt: '' }),
+        };
+        for (const key of Object.keys(unsetDoc)) delete setDoc[key];
         await coll.updateOne({ _id: cur._id, domainId }, {
             $set: { ...setDoc, nextRunAt: next.nextRunAt || null },
-            $unset: {
-                ...(next.scheduleType === 'once' ? { intervalCount: '', intervalUnit: '', maxRuns: '', endAt: '' } : { executeAt: '' }),
-                ...(next.maxRuns ? {} : { maxRuns: '' }),
-                ...(next.endAt ? {} : { endAt: '' }),
-            },
+            $unset: unsetDoc,
         });
         (bus.broadcast as any)('agent_schedule/change', next);
         await this.clearPendingTriggers(domainId, cur._id);

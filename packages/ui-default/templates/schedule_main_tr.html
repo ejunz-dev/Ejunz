@@ -1,16 +1,5 @@
 {% import "components/user.html" as user with context %}
-<tr data-schedule-id="{{ schedule.id }}"
-  data-title="{{ schedule.title }}"
-  data-agent-id="{{ schedule.agentId }}"
-  data-command="{{ schedule.command }}"
-  data-schedule-type="{{ schedule.scheduleType }}"
-  data-execute-at="{{ schedule.executeAt.toISOString() if schedule.executeAt else '' }}"
-  data-interval-count="{{ schedule.intervalCount or '' }}"
-  data-interval-unit="{{ schedule.intervalUnit or '' }}"
-  data-timezone="{{ schedule.timezone or 'UTC' }}"
-  data-max-runs="{{ schedule.maxRuns or '' }}"
-  data-end-at="{{ schedule.endAt.toISOString() if schedule.endAt else '' }}"
-  data-description="{{ schedule.meta.description if schedule.meta and schedule.meta.description else '' }}">
+<tr data-schedule-id="{{ schedule.id }}">
   <td>
     {% if schedule.statusLabel == 'enabled' %}
       <span class="icon record-status--icon pass"></span>
@@ -38,13 +27,6 @@
     {% if udoc %}{{ user.render_inline(udoc, avatar=false, badge=false) }}{% else %}<span class="text-gray">-</span>{% endif %}
   </td>
   <td>
-    <a href="{{ schedule.historyUrl }}" class="button compact">History</a>
-    <button type="button" class="button compact schedule-edit-btn" data-schedule-id="{{ schedule.id }}">Edit</button>
-    {% if schedule.enabled %}
-      <button type="button" class="button compact schedule-pause-btn" data-schedule-id="{{ schedule.id }}">Pause</button>
-    {% else %}
-      <button type="button" class="button compact schedule-resume-btn" data-schedule-id="{{ schedule.id }}">Resume</button>
-    {% endif %}
-    <button type="button" class="button compact schedule-delete-btn" data-schedule-id="{{ schedule.id }}">Delete</button>
+    <a href="{{ schedule.editUrl }}" class="button text-sm">Edit</a>
   </td>
 </tr>

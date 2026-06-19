@@ -1,0 +1,107 @@
+{% set page_name = "schedule_edit" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-12 columns">
+    <form method="post" action="{{ url('schedule_edit', { scheduleId: schedule.id }) }}">
+      <input type="hidden" name="csrfToken" value="{{ handler.csrfToken }}">
+      <div class="section">
+        <div class="section__header">
+          <h1 class="section__title">{{ _('Edit scheduled task') }}</h1>
+          <div class="section__tools">
+            <a href="{{ url('schedule_main') }}" class="button"><span class="icon icon-back"></span> {{ _('Cancel') }}</a>
+            <button type="submit" name="operation" value="save" class="primary button"><span class="icon icon-check"></span> {{ _('Save') }}</button>
+          </div>
+        </div>
+        <div class="section__body">
+          <div class="typo schedule-edit-form">
+            <div class="row">
+              <div class="medium-6 columns">
+                <label>{{ _('Title') }}
+                  <input class="textbox" name="title" type="text" value="{{ schedule.title }}" data-autofocus>
+                </label>
+              </div>
+              <div class="medium-6 columns">
+                <label>{{ _('Status') }}
+                  <select class="select" name="status">
+                    <option value="enabled" {{ 'selected' if schedule.enabled else '' }}>{{ _('Enabled') }}</option>
+                    <option value="paused" {{ 'selected' if not schedule.enabled else '' }}>{{ _('Paused') }}</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+            <div class="row">
+              <div class="medium-6 columns">
+                <label>{{ _('Agent') }}
+                  <input class="textbox" name="agentId" type="text" value="{{ schedule.agentId }}">
+                </label>
+              </div>
+              <div class="medium-6 columns">
+                <label>{{ _('Type') }}
+                  <select class="select" name="scheduleType">
+                    <option value="once" {{ 'selected' if schedule.scheduleType == 'once' else '' }}>once</option>
+                    <option value="interval" {{ 'selected' if schedule.scheduleType == 'interval' else '' }}>interval</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+            <label>{{ _('Message') }}
+              <textarea class="textbox" name="command" rows="4">{{ schedule.command }}</textarea>
+            </label>
+            <div class="schedule-edit-once">
+              <label>{{ _('Execute at') }}
+                <input class="textbox" name="executeAt" type="text" value="{{ schedule.executeAt.toISOString() if schedule.executeAt else '' }}" placeholder="2026-06-19T12:00:00.000Z">
+              </label>
+            </div>
+            <div class="schedule-edit-interval">
+              <div class="row">
+                <div class="medium-6 columns">
+                  <label>{{ _('Interval count') }}
+                    <input class="textbox" name="intervalCount" type="number" min="1" value="{{ schedule.intervalCount or '1' }}">
+                  </label>
+                </div>
+                <div class="medium-6 columns">
+                  <label>{{ _('Interval unit') }}
+                    <select class="select" name="intervalUnit">
+                      <option value="minute" {{ 'selected' if schedule.intervalUnit == 'minute' else '' }}>minute</option>
+                      <option value="hour" {{ 'selected' if schedule.intervalUnit == 'hour' else '' }}>hour</option>
+                      <option value="day" {{ 'selected' if schedule.intervalUnit == 'day' or not schedule.intervalUnit else '' }}>day</option>
+                      <option value="week" {{ 'selected' if schedule.intervalUnit == 'week' else '' }}>week</option>
+                      <option value="month" {{ 'selected' if schedule.intervalUnit == 'month' else '' }}>month</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+              <div class="row">
+                <div class="medium-6 columns">
+                  <label>{{ _('Max runs') }}
+                    <input class="textbox" name="maxRuns" type="number" min="1" value="{{ schedule.maxRuns or '' }}" placeholder="optional">
+                  </label>
+                </div>
+                <div class="medium-6 columns">
+                  <label>{{ _('End at') }}
+                    <input class="textbox" name="endAt" type="text" value="{{ schedule.endAt.toISOString() if schedule.endAt else '' }}" placeholder="optional ISO datetime">
+                  </label>
+                </div>
+              </div>
+            </div>
+            <label>{{ _('Timezone') }}
+              <input class="textbox" name="timezone" type="text" value="{{ schedule.timezone or 'UTC' }}">
+            </label>
+            <label>{{ _('Description') }}
+              <textarea class="textbox" name="description" rows="3">{{ schedule.meta.description if schedule.meta and schedule.meta.description else '' }}</textarea>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section__body">
+          <button type="submit" name="operation" value="save" class="primary rounded button"><span class="icon icon-check"></span> {{ _('Save') }}</button>
+          <a href="{{ url('schedule_main') }}" class="rounded button">{{ _('Cancel') }}</a>
+          <button type="submit" name="operation" value="delete" class="rounded button schedule-edit-delete"><span class="icon icon-delete"></span> {{ _('Cancel scheduled task') }}</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
