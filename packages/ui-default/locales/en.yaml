@@ -1152,3 +1152,67 @@ View Card: View Card
 wiki_about: About
 wiki_help: Help
 workflow_domain: Workflow
+roadmap_main: Roadmaps
+All Roadmaps: All Roadmaps
+Roadmap: Roadmap
+'Roadmap Editor': Roadmap Editor
+'Create Roadmap': Create Roadmap
+'Edit graph': Edit graph
+'Manage Roadmap': Manage Roadmap
+'Update Roadmap': Update Roadmap
+'Delete Roadmap': Delete Roadmap
+'Back to list': Back to list
+'Search roadmaps': Search roadmaps
+'Create a roadmap document for this domain.': Create a roadmap document for this domain.
+'Create a roadmap to get started.': Create a roadmap to get started.
+'Sorry, there are no roadmaps yet.': Sorry, there are no roadmaps yet.
+'You have permission to create roadmaps for this domain.': You have permission to create roadmaps for this domain.
+'Enter roadmap title': Enter roadmap title
+'Input roadmap title': Input roadmap title
+'Optional human-readable roadmap identifier, for example: R1001': 'Optional human-readable roadmap identifier, for example: R1001'
+'Optional short description shown in list views.': Optional short description shown in list views.
+'Please select at least one roadmap to delete.': Please select at least one roadmap to delete.
+'Confirm deleting {0} selected roadmap(s)?': Confirm deleting {0} selected roadmap(s)?
+'Selected roadmaps have been deleted.': Selected roadmaps have been deleted.
+'Roadmap rid already exists: {0}': 'Roadmap rid already exists: {0}'
+Untitled: Untitled
+edges: edges
+Stats: Stats
+'Roadmap load failed': Failed to load roadmap.
+'Roadmap save operation': Save roadmap
+'Roadmap saved': Roadmap saved.
+'Roadmap save failed': Failed to save roadmap.
+'Roadmap fit canvas': Fit to canvas
+'Roadmap delete edge': Delete edge
+'Roadmap node inspector': Node inspector
+'Roadmap lane': Lane
+'Roadmap lane option': 'Lane {0}'
+'Roadmap priority': Priority
+'Roadmap owner': Owner
+Date: Date
+'Roadmap edge inspector': Edge inspector
+'Roadmap edge label': Dependency note
+'Roadmap line style': Line style
+'Roadmap line solid': Solid
+'Roadmap line dashed': Dashed
+'Roadmap edge source': Source
+'Roadmap edge target': Target
+'Roadmap inspector empty title': Select a node or edge
+'Roadmap inspector empty hint': Click an edge to select it; use the sidebar to switch solid/dashed lines. Solid horizontal links share the same row; dashed links are free-form. Delete / Backspace removes the selection.
+'Roadmap detail empty': This roadmap has no content yet.
+'Roadmap status in progress': In progress
+'Roadmap status done': Done
+'Roadmap status blocked': Blocked
+'Roadmap status planned': Planned
+'Roadmap node type root': Overview
+'Roadmap node type milestone': Milestone
+'Roadmap node type decision': Decision
+'Roadmap node type release': Release
+'Roadmap node type task': Task
+'Roadmap priority low': Low
+'Roadmap priority medium': Medium
+'Roadmap priority high': High
+'Roadmap new milestone': New milestone
+'Roadmap new release': New release
+'Roadmap new decision': New decision
+'Roadmap new task': New task

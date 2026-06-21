@@ -656,3 +656,68 @@ Your role: 당신의 역할
 'Outline explorer filter apply': 적용
 'Outline explorer filter clear': 지우기
 'Outline explorer filter aria': 키워드로 아웃라인 축소(서버)
+roadmap_main: 로드맵
+All Roadmaps: 모든 로드맵
+Roadmap: 로드맵
+'Roadmap Editor': 로드맵 편집기
+'Create Roadmap': 로드맵 만들기
+'Edit graph': 그래프 편집
+'Manage Roadmap': 로드맵 관리
+'Update Roadmap': 로드맵 업데이트
+'Delete Roadmap': 로드맵 삭제
+'Back to list': 목록으로 돌아가기
+'Search roadmaps': 로드맵 검색
+'Create a roadmap document for this domain.': 이 도메인용 로드맵 문서를 만듭니다.
+'Create a roadmap to get started.': 로드맵을 만들어 시작하세요.
+'Sorry, there are no roadmaps yet.': 아직 로드맵이 없습니다.
+'You have permission to create roadmaps for this domain.': 이 도메인에서 로드맵을 만들 권한이 있습니다.
+'Enter roadmap title': 로드맵 제목 입력
+'Input roadmap title': 로드맵 제목 입력
+'Optional human-readable roadmap identifier, for example: R1001': '선택적 사람이 읽을 수 있는 로드맵 식별자, 예: R1001'
+'Optional short description shown in list views.': 목록에 표시할 선택적 짧은 설명입니다.
+'Please select at least one roadmap to delete.': 삭제할 로드맵을 하나 이상 선택하세요.
+'Confirm deleting {0} selected roadmap(s)?': 선택한 로드맵 {0}개를 삭제하시겠습니까?
+'Selected roadmaps have been deleted.': 선택한 로드맵이 삭제되었습니다.
+'Roadmap rid already exists: {0}': '로드맵 RID가 이미 존재합니다: {0}'
+Untitled: 제목 없음
+edges: 개 연결
+Stats: 통계
+'Roadmap load failed': 로드맵을 불러오지 못했습니다.
+'Roadmap save operation': 로드맵 저장
+'Roadmap saved': 로드맵이 저장되었습니다.
+'Roadmap save failed': 로드맵 저장에 실패했습니다.
+'Roadmap fit canvas': 캔버스에 맞추기
+'Roadmap delete edge': 연결 삭제
+'Roadmap node inspector': 노드 검사기
+'Roadmap lane': 레인
+'Roadmap lane option': '레인 {0}'
+'Roadmap priority': 우선순위
+'Roadmap owner': 담당자
+Status: 상태
+Date: 날짜
+'Roadmap edge inspector': 연결 검사기
+'Roadmap edge label': 의존성 메모
+'Roadmap line style': 선 스타일
+'Roadmap line solid': 실선
+'Roadmap line dashed': 점선
+'Roadmap edge source': 소스
+'Roadmap edge target': 대상
+'Roadmap inspector empty title': 노드 또는 연결을 선택하세요
+'Roadmap inspector empty hint': 연결을 클릭해 선택하고, 사이드바에서 실선/점선을 전환하세요. 좌우 실선은 같은 행에 연동되고, 점선은 자유롭게 배치됩니다. Delete / Backspace로 삭제할 수 있습니다.
+'Roadmap detail empty': 이 로드맵에는 아직 내용이 없습니다.
+'Roadmap status in progress': 진행 중
+'Roadmap status done': 완료
+'Roadmap status blocked': 차단됨
+'Roadmap status planned': 계획됨
+'Roadmap node type root': 개요
+'Roadmap node type milestone': 마일스톤
+'Roadmap node type decision': 결정
+'Roadmap node type release': 릴리스
+'Roadmap node type task': 작업
+'Roadmap priority low': 낮음
+'Roadmap priority medium': 보통
+'Roadmap priority high': 높음
+'Roadmap new milestone': 새 마일스톤
+'Roadmap new release': 새 릴리스
+'Roadmap new decision': 새 결정
+'Roadmap new task': 새 작업

@@ -1,71 +1,101 @@
 import $ from 'jquery';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
-import { request } from 'vj/utils';
+import { request, i18n } from 'vj/utils';
+import ReactFlow, { ConnectionMode, useEdgesState, useNodesState } from 'reactflow';
+import 'reactflow/dist/style.css';
 import {
-  computeRoadmapAspectRatio,
-  renderRoadmapSvg,
-} from './roadmap_svg';
+  roadmapFlowNodeTypes,
+  roadmapScrollFlowProps,
+  toRoadmapViewEdges,
+  useRoadmapScrollLayout,
+} from 'vj/components/roadmap/flow_shared';
+import { alignNodesInSolidComponents } from 'vj/components/roadmap/solid_links';
 import {
+  getNodeLane,
+  isRoadmapFlowNode,
+  snapNodeToLane,
+} from 'vj/components/roadmap/lanes';
+import {
+  baseEdgeToFlowEdge,
+  baseNodeToFlowNode,
   getRoadmapDocFromContext,
   getRoadmapQueryContext,
   normalizeRoadmapDoc,
   roadmapApiPath,
   RoadmapDoc,
-} from './roadmap_shared';
+} from 'vj/components/roadmap/shared';
 
-function RoadmapSvgViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: HTMLElement }) {
+function toLaneFlowNodes(
+  baseNodes: ReturnType<typeof normalizeRoadmapDoc>['nodes'],
+  baseEdges: ReturnType<typeof normalizeRoadmapDoc>['edges'],
+) {
+  const flowEdges = (baseEdges || []).map(baseEdgeToFlowEdge);
+  const flowNodes = (baseNodes || []).map((node, index) => {
+    const flowNode = baseNodeToFlowNode(node, index);
+    return snapNodeToLane(flowNode, getNodeLane(flowNode));
+  });
+  return alignNodesInSolidComponents(flowNodes, flowEdges);
+}
+
+function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: HTMLElement }) {
   const context = useMemo(() => getRoadmapQueryContext(mount), [mount]);
   const [doc, setDoc] = useState(() => normalizeRoadmapDoc(initialDoc));
-  const svgWrapRef = useRef<HTMLDivElement>(null);
-  const aspectRef = useRef<HTMLDivElement>(null);
+  const [nodes, setNodes, onNodesChange] = useNodesState(toLaneFlowNodes(doc.nodes, doc.edges));
+  const [edges, setEdges, onEdgesChange] = useEdgesState((doc.edges || []).map(baseEdgeToFlowEdge));
+  const viewEdges = useMemo(() => toRoadmapViewEdges(edges), [edges]);
+  const layoutNodes = useMemo(() => nodes.filter(isRoadmapFlowNode), [nodes]);
+  const {
+    outerRef,
+    canvasHeight,
+    lockedZoom,
+    onFlowInit,
+  } = useRoadmapScrollLayout(layoutNodes);
 
   useEffect(() => {
     if (doc.nodes?.length || !context.docId) return;
     request.get(roadmapApiPath('/data', context.domainId), { docId: context.docId })
-      .then((data: any) => setDoc(normalizeRoadmapDoc(data)))
-      .catch((err) => Notification.error(err.message || '加载路线图失败'));
-  }, [context.docId, context.domainId, doc.nodes?.length]);
-
-  useEffect(() => {
-    const wrap = svgWrapRef.current;
-    const aspect = aspectRef.current;
-    if (!wrap) return;
-
-    wrap.replaceChildren();
-    if (!doc.nodes?.length) {
-      aspect?.style.removeProperty('--roadmap-aspect-ratio');
-      return;
-    }
-
-    const svg = renderRoadmapSvg(doc.nodes, doc.edges || []);
-    wrap.appendChild(svg);
-
-    const ratio = computeRoadmapAspectRatio(svg);
-    if (aspect && Number.isFinite(ratio) && ratio > 0) {
-      aspect.style.setProperty('--roadmap-aspect-ratio', String(ratio));
-    }
-  }, [doc.edges, doc.nodes]);
+      .then((data: any) => {
+        const next = normalizeRoadmapDoc(data);
+        setDoc(next);
+        setNodes(toLaneFlowNodes(next.nodes, next.edges));
+        setEdges((next.edges || []).map(baseEdgeToFlowEdge));
+      })
+      .catch((err) => Notification.error(err.message || i18n('Roadmap load failed')));
+  }, [context.docId, context.domainId, doc.nodes?.length, setEdges, setNodes]);
 
   if (!doc.nodes?.length) {
     return (
       <div className="roadmap-view__empty">
-        <p>路线图还没有内容。</p>
+        <p>{i18n('Roadmap detail empty')}</p>
       </div>
     );
   }
 
   return (
     <div className="roadmap-view">
-      <div ref={aspectRef} className="roadmap-view__aspect">
-        <div
-          ref={svgWrapRef}
-          id="roadmap-svg-wrap"
-          className="roadmap-view__svg"
-          data-renderer="svg"
-        />
+      <div ref={outerRef} className="roadmap-flow roadmap-flow--scroll">
+        <div className="roadmap-flow__canvas" style={{ height: canvasHeight }}>
+          <ReactFlow
+            nodes={nodes}
+            edges={viewEdges}
+            nodeTypes={roadmapFlowNodeTypes}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onInit={onFlowInit}
+            connectionMode={ConnectionMode.Loose}
+            nodesDraggable={false}
+            nodesConnectable={false}
+            elementsSelectable={false}
+            nodesFocusable={false}
+            edgesFocusable={false}
+            minZoom={lockedZoom}
+            maxZoom={lockedZoom}
+            {...roadmapScrollFlowProps}
+          />
+        </div>
       </div>
     </div>
   );
@@ -75,7 +105,7 @@ const page = new NamedPage('roadmap_detail', async () => {
   const $viewer = $('#roadmap-viewer');
   if (!$viewer.length) return;
   const initialDoc = normalizeRoadmapDoc(getRoadmapDocFromContext());
-  ReactDOM.render(<RoadmapSvgViewer initialDoc={initialDoc} mount={$viewer[0]} />, $viewer[0]);
+  ReactDOM.render(<RoadmapFlowViewer initialDoc={initialDoc} mount={$viewer[0]} />, $viewer[0]);
 });
 
 export default page;

@@ -1,6 +1,5 @@
 import type { Edge, Node } from 'reactflow';
-import { MarkerType } from 'reactflow';
-import { domainApiPath } from 'vj/utils';
+import { domainApiPath, i18n } from 'vj/utils';
 
 export type RoadmapStatus = 'planned' | 'in_progress' | 'done' | 'blocked';
 export type RoadmapNodeType = 'root' | 'milestone' | 'task' | 'decision' | 'release';
@@ -13,6 +12,7 @@ export interface RoadmapNodeData {
   dueDate?: string;
   description?: string;
   priority?: RoadmapPriority;
+  lane?: 1 | 2 | 3;
 }
 
 export interface BaseRoadmapNode {
@@ -39,7 +39,10 @@ export interface BaseRoadmapEdge {
   id: string;
   source: string;
   target: string;
+  sourceHandle?: string | null;
+  targetHandle?: string | null;
   label?: string;
+  lineStyle?: 'solid' | 'dashed';
   style?: Record<string, any>;
   type?: 'straight' | 'curved' | 'bezier';
   color?: string;
@@ -65,23 +68,46 @@ export interface RoadmapQueryContext {
 
 export function statusLabel(status?: RoadmapStatus): string {
   switch (status) {
-    case 'in_progress': return '进行中';
-    case 'done': return '已完成';
-    case 'blocked': return '阻塞';
+    case 'in_progress': return i18n('Roadmap status in progress');
+    case 'done': return i18n('Roadmap status done');
+    case 'blocked': return i18n('Roadmap status blocked');
     case 'planned':
-    default: return '计划中';
+    default: return i18n('Roadmap status planned');
   }
 }
 
 export function nodeTypeLabel(type?: RoadmapNodeType): string {
   switch (type) {
-    case 'root': return '总览';
-    case 'milestone': return '里程碑';
-    case 'decision': return '决策';
-    case 'release': return '发布';
+    case 'root': return i18n('Roadmap node type root');
+    case 'milestone': return i18n('Roadmap node type milestone');
+    case 'decision': return i18n('Roadmap node type decision');
+    case 'release': return i18n('Roadmap node type release');
     case 'task':
-    default: return '任务';
+    default: return i18n('Roadmap node type task');
   }
+}
+
+export function priorityLabel(priority?: RoadmapPriority): string {
+  switch (priority) {
+    case 'low': return i18n('Roadmap priority low');
+    case 'high': return i18n('Roadmap priority high');
+    case 'medium':
+    default: return i18n('Roadmap priority medium');
+  }
+}
+
+export function defaultNodeLabel(type: RoadmapNodeType): string {
+  switch (type) {
+    case 'milestone': return i18n('Roadmap new milestone');
+    case 'release': return i18n('Roadmap new release');
+    case 'decision': return i18n('Roadmap new decision');
+    case 'task':
+    default: return i18n('Roadmap new task');
+  }
+}
+
+export function roadmapUntitledNodeLabel(): string {
+  return i18n('Unnamed Node');
 }
 
 export function statusColor(status?: RoadmapStatus): string {
@@ -105,35 +131,52 @@ export function baseNodeToFlowNode(node: BaseRoadmapNode, index = 0): Node {
     },
     data: {
       ...data,
-      label: node.text || '未命名节点',
+      label: node.text || roadmapUntitledNodeLabel(),
       originalNode: node,
     },
   };
 }
 
+export type RoadmapEdgeLineStyle = 'solid' | 'dashed';
+
+export const ROADMAP_EDGE_DASH = '8 6';
+
+export function roadmapEdgeDashStyle(lineStyle?: RoadmapEdgeLineStyle): Record<string, string> {
+  return lineStyle === 'dashed' ? { strokeDasharray: ROADMAP_EDGE_DASH } : {};
+}
+
+export function roadmapEdgeLineStyleFromStyle(style?: Record<string, any>): RoadmapEdgeLineStyle {
+  return style?.strokeDasharray ? 'dashed' : 'solid';
+}
+
+export function roadmapFlowEdgeType(lineStyle?: RoadmapEdgeLineStyle): 'straight' | 'default' {
+  return lineStyle === 'dashed' ? 'default' : 'straight';
+}
+
 export function baseEdgeToFlowEdge(edge: BaseRoadmapEdge): Edge {
+  const lineStyle = edge.lineStyle || roadmapEdgeLineStyleFromStyle(edge.style);
   return {
     id: edge.id || `edge_${edge.source}_${edge.target}`,
     source: edge.source,
     target: edge.target,
+    sourceHandle: edge.sourceHandle,
+    targetHandle: edge.targetHandle,
     label: edge.label,
-    type: 'smoothstep',
+    type: roadmapFlowEdgeType(lineStyle),
+    data: { lineStyle },
     animated: (edge as any).animated ?? false,
     style: {
-      stroke: edge.color || '#d8b46a',
-      strokeWidth: edge.width || 2,
+      stroke: edge.color || '#2b78e4',
+      strokeWidth: edge.width || 3,
+      ...roadmapEdgeDashStyle(lineStyle),
       ...(edge.style || {}),
-    },
-    markerEnd: {
-      type: MarkerType.ArrowClosed,
-      color: edge.color || '#d8b46a',
     },
   };
 }
 
 export function flowNodeToBaseNode(node: Node): BaseRoadmapNode {
   const original = (node.data?.originalNode || {}) as BaseRoadmapNode;
-  const label = String(node.data?.label || original.text || '未命名节点').trim() || '未命名节点';
+  const label = String(node.data?.label || original.text || roadmapUntitledNodeLabel()).trim() || roadmapUntitledNodeLabel();
   const {
     label: _label,
     originalNode: _originalNode,
@@ -147,20 +190,28 @@ export function flowNodeToBaseNode(node: Node): BaseRoadmapNode {
     text: label,
     x: node.position.x,
     y: node.position.y,
+    parentId: undefined,
+    children: undefined,
     expanded: original.expanded ?? true,
     data: roadmapData,
   };
 }
 
 export function flowEdgeToBaseEdge(edge: Edge): BaseRoadmapEdge {
+  const style = (edge.style || {}) as Record<string, any>;
+  const lineStyle = roadmapEdgeLineStyleFromStyle(style);
   return {
     id: edge.id,
     source: edge.source,
     target: edge.target,
+    sourceHandle: edge.sourceHandle,
+    targetHandle: edge.targetHandle,
     label: typeof edge.label === 'string' ? edge.label : undefined,
-    type: 'bezier',
-    color: (edge.style as any)?.stroke || '#d8b46a',
-    width: Number((edge.style as any)?.strokeWidth) || 2,
+    type: lineStyle === 'solid' ? 'straight' : 'bezier',
+    color: style.stroke || '#2b78e4',
+    width: Number(style.strokeWidth) || 3,
+    lineStyle,
+    style: lineStyle === 'dashed' ? { strokeDasharray: style.strokeDasharray || ROADMAP_EDGE_DASH } : undefined,
   };
 }
 
@@ -189,6 +240,6 @@ export function normalizeRoadmapDoc(data: RoadmapDoc | null | undefined): Roadma
     ...data,
     nodes: data?.nodes || [],
     edges: data?.edges || [],
-    title: data?.title || 'Roadmap',
+    title: data?.title || i18n('Roadmap'),
   };
 }

@@ -17,7 +17,7 @@
   {% if roadmap %}
     <header class="roadmap-view-page__header">
       <div>
-        <h1 class="roadmap-view-page__title">{{ roadmap.title if roadmap else 'Roadmap' }}</h1>
+        <h1 class="roadmap-view-page__title">{{ roadmap.title if roadmap else _('Roadmap') }}</h1>
         {% if roadmap.rid %}
           <p class="roadmap-view-page__rid">{{ roadmap.rid }}</p>
         {% endif %}
