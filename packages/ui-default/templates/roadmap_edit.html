@@ -1,0 +1,43 @@
+{% set page_name = "roadmap_edit" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<script>
+  {{ set(UiContext, 'editorApiBasePath', 'roadmap') }}
+  {{ set(UiContext, 'editorMode', 'roadmap') }}
+  {{ set(UiContext, 'roadmap', {
+    domainId: roadmap.domainId if roadmap else domainId,
+    docId: roadmap.docId if roadmap else '',
+    rid: roadmap.rid if roadmap else '',
+    nodes: roadmap.nodes if roadmap else [],
+    edges: roadmap.edges if roadmap else [],
+    title: roadmap.title if roadmap else 'Roadmap',
+    layout: roadmap.layout if roadmap else {},
+    viewport: roadmap.viewport if roadmap else {}
+  }) }}
+</script>
+<div class="row">
+  <div class="large-12 columns">
+    <div class="section roadmap-shell roadmap-shell--editor">
+      <div class="section__header roadmap-shell__header">
+        <div>
+          <div class="roadmap-kicker">Roadmap Editor</div>
+          <h1 class="section__title roadmap-title">{{ roadmap.title if roadmap else 'Roadmap' }}</h1>
+        </div>
+        <div class="section__tools roadmap-actions">
+          {% if roadmap %}
+            <a class="button secondary" href="{{ url('roadmap_main') }}">{{ _('All Roadmaps') }}</a>
+            <a class="button secondary" href="{{ url('roadmap_detail', docId=roadmap.docId) }}">{{ _('View') }}</a>
+            <a class="button secondary" href="{{ url('roadmap_manage', docId=roadmap.docId) }}">{{ _('Manage') }}</a>
+          {% else %}
+            <a class="button secondary" href="{{ url('roadmap_main') }}">{{ _('All Roadmaps') }}</a>
+            <a class="button secondary" href="{{ url('roadmap_create') }}">{{ _('Create Roadmap') }}</a>
+          {% endif %}
+        </div>
+      </div>
+      <div class="section__body no-padding roadmap-shell__body">
+        <div id="roadmap-editor" data-doc-id="{{ roadmap.docId if roadmap else '' }}"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
