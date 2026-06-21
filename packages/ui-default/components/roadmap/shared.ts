@@ -96,14 +96,8 @@ export function priorityLabel(priority?: RoadmapPriority): string {
   }
 }
 
-export function defaultNodeLabel(type: RoadmapNodeType): string {
-  switch (type) {
-    case 'milestone': return i18n('Roadmap new milestone');
-    case 'release': return i18n('Roadmap new release');
-    case 'decision': return i18n('Roadmap new decision');
-    case 'task':
-    default: return i18n('Roadmap new task');
-  }
+export function newNodeLabel(): string {
+  return i18n('Roadmap new node');
 }
 
 export function roadmapUntitledNodeLabel(): string {

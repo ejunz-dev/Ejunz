@@ -1198,7 +1198,7 @@ Date: Date
 'Roadmap edge source': Source
 'Roadmap edge target': Target
 'Roadmap inspector empty title': Select a node or edge
-'Roadmap inspector empty hint': Click an edge to select it; use the sidebar to switch solid/dashed lines. Solid horizontal links share the same row; dashed links are free-form. Delete / Backspace removes the selection.
+'Roadmap inspector empty hint': Click a node to edit its markdown content, or click an edge to change line style. Solid horizontal links share the same row; dashed links are free-form. Delete / Backspace removes the selection. Save writes the graph and node content together.
 'Roadmap detail empty': This roadmap has no content yet.
 'Roadmap status in progress': In progress
 'Roadmap status done': Done
@@ -1216,3 +1216,9 @@ Date: Date
 'Roadmap new release': New release
 'Roadmap new decision': New decision
 'Roadmap new task': New task
+'Roadmap add node': Add node
+'Roadmap new node': New node
+'Roadmap node editor': Node editor
+'Roadmap node content': Node content
+'Roadmap node content empty': This node has no content yet.
+'Roadmap markdown preview failed': Failed to render markdown.

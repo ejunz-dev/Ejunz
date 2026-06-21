@@ -1,11 +1,13 @@
 import $ from 'jquery';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
+import Editor from 'vj/components/editor';
 import { request, i18n } from 'vj/utils';
 import ReactFlow, {
   addEdge,
+  EdgeChange,
   Connection,
   ConnectionMode,
   Controls,
@@ -21,6 +23,7 @@ import {
   roadmapFlowNodeTypes,
   RoadmapLaneOverlay,
   toRoadmapViewEdges,
+  toRoadmapViewNodes,
   useRoadmapEditorLayout,
 } from 'vj/components/roadmap/flow_shared';
 import {
@@ -34,36 +37,24 @@ import {
   laneCenterX,
   nearestLaneFromX,
   nextLaneNodeY,
-  RoadmapLane,
-  ROADMAP_LANES,
   snapNodeToLane,
 } from 'vj/components/roadmap/lanes';
 import {
   baseEdgeToFlowEdge,
   baseNodeToFlowNode,
-  defaultNodeLabel,
+  newNodeLabel,
   flowEdgeToBaseEdge,
   flowNodeToBaseNode,
   getRoadmapDocFromContext,
   getRoadmapQueryContext,
-  nodeTypeLabel,
   normalizeRoadmapDoc,
   roadmapApiPath,
   roadmapFlowEdgeType,
   RoadmapDoc,
   RoadmapEdgeLineStyle,
-  RoadmapNodeType,
-  RoadmapPriority,
-  RoadmapStatus,
   roadmapEdgeDashStyle,
   roadmapEdgeLineStyleFromStyle,
-  priorityLabel,
-  statusLabel,
 } from 'vj/components/roadmap/shared';
-
-const NODE_TYPES: RoadmapNodeType[] = ['milestone', 'task', 'decision', 'release'];
-const STATUSES: RoadmapStatus[] = ['planned', 'in_progress', 'done', 'blocked'];
-const PRIORITIES: RoadmapPriority[] = ['low', 'medium', 'high'];
 
 function newNodeId(): string {
   return `node_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -104,10 +95,17 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
   const [doc, setDoc] = useState(() => normalizeRoadmapDoc(initialDoc));
   const [nodes, setNodes, onNodesChange] = useNodesState(toLaneFlowNodes(doc.nodes, doc.edges));
   const [edges, setEdges, onEdgesChange] = useEdgesState((doc.edges || []).map(baseEdgeToFlowEdge));
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(nodes[0]?.id || null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [reactFlow, setReactFlow] = useState<ReactFlowInstance | null>(null);
+  const editorRef = useRef<HTMLTextAreaElement>(null);
+  const editorInstanceRef = useRef<InstanceType<typeof Editor> | null>(null);
+  const isInitializingEditorRef = useRef(false);
+  const updateSelectedNodeRef = useRef<(patch: Record<string, any>) => void>(() => {});
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+  const viewNodes = useMemo(() => toRoadmapViewNodes(nodes, selectedNodeId), [nodes, selectedNodeId]);
   const viewEdges = useMemo(() => toRoadmapViewEdges(edges, selectedEdgeId), [edges, selectedEdgeId]);
   const {
     outerRef,
@@ -118,6 +116,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
   const handleNodesChange = useCallback((changes: NodeChange[]) => {
     const applied: NodeChange[] = [];
     changes.forEach((change) => {
+      if (change.type === 'select') return;
       if (change.type !== 'position' || !change.position || !('id' in change)) {
         applied.push(change);
         return;
@@ -153,6 +152,10 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
     onNodesChange(applied);
   }, [edges, nodes, onNodesChange]);
 
+  const handleEdgesChange = useCallback((changes: EdgeChange[]) => {
+    onEdgesChange(changes.filter((change) => change.type !== 'select'));
+  }, [onEdgesChange]);
+
   useEffect(() => {
     if (doc.nodes?.length || !context.docId) return;
     request.get(roadmapApiPath('/data', context.domainId), { docId: context.docId })
@@ -162,7 +165,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
         const nextNodes = toLaneFlowNodes(next.nodes, next.edges);
         setNodes(nextNodes);
         setEdges((next.edges || []).map(baseEdgeToFlowEdge));
-        setSelectedNodeId(nextNodes[0]?.id || null);
+        setSelectedNodeId(null);
       })
       .catch((err) => Notification.error(err.message || i18n('Roadmap load failed')));
   }, [context.docId, context.domainId, doc.nodes?.length, setEdges, setNodes]);
@@ -177,7 +180,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
     [edges, selectedEdgeId],
   );
 
-  const addRoadmapNode = useCallback((type: RoadmapNodeType) => {
+  const addRoadmapNode = useCallback(() => {
     const id = newNodeId();
     const lane = selectedNode ? getNodeLane(selectedNode) : 1;
     const node: Node = {
@@ -188,17 +191,15 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
         y: nextLaneNodeY(nodes, lane),
       },
       data: {
-        label: defaultNodeLabel(type),
-        roadmapNodeType: type,
+        label: newNodeLabel(),
         status: 'planned',
-        priority: type === 'milestone' || type === 'release' ? 'high' : 'medium',
+        priority: 'medium',
         description: '',
         lane,
       },
     };
     setNodes((current) => [...current, snapNodeToLane(node, lane)]);
     setSelectedNodeId(id);
-    setSelectedEdgeId(null);
   }, [nodes, selectedNode, setNodes]);
 
   const onConnect = useCallback((connection: Connection) => {
@@ -228,16 +229,68 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
   }, [setEdges, setNodes]);
 
   const updateSelectedNode = useCallback((patch: Record<string, any>) => {
-    setNodes((current) => {
-      const next = patchNodeData(current, selectedNodeId, patch);
-      if (!patch.lane || !selectedNodeId) return next;
-      return next.map((node) => (
-        node.id === selectedNodeId
-          ? snapNodeToLane(node, Number(patch.lane) as RoadmapLane)
-          : node
-      ));
-    });
+    setNodes((current) => patchNodeData(current, selectedNodeId, patch));
   }, [selectedNodeId, setNodes]);
+
+  updateSelectedNodeRef.current = updateSelectedNode;
+
+  useEffect(() => {
+    if (!selectedNodeId) {
+      if (editorInstanceRef.current) {
+        try {
+          editorInstanceRef.current.destroy();
+        } catch {
+          /* ignore */
+        }
+        editorInstanceRef.current = null;
+      }
+      return undefined;
+    }
+
+    isInitializingEditorRef.current = true;
+    let currentEditor: InstanceType<typeof Editor> | null = null;
+    const node = nodesRef.current.find((item) => item.id === selectedNodeId);
+    const content = String(node?.data?.description || '');
+
+    const timer = window.setTimeout(() => {
+      const el = editorRef.current;
+      if (!el) {
+        isInitializingEditorRef.current = false;
+        return;
+      }
+      const $textarea = $(el);
+      $textarea.attr('data-markdown', 'true');
+      $textarea.val(content);
+      try {
+        currentEditor = new Editor($textarea, {
+          value: content,
+          onChange: (value: string) => {
+            if (isInitializingEditorRef.current) return;
+            updateSelectedNodeRef.current({ description: value });
+          },
+        });
+        editorInstanceRef.current = currentEditor;
+        window.setTimeout(() => {
+          isInitializingEditorRef.current = false;
+        }, 100);
+      } catch {
+        isInitializingEditorRef.current = false;
+      }
+    }, 200);
+
+    return () => {
+      window.clearTimeout(timer);
+      if (currentEditor) {
+        try {
+          currentEditor.destroy();
+        } catch {
+          /* ignore */
+        }
+      }
+      editorInstanceRef.current = null;
+      isInitializingEditorRef.current = false;
+    };
+  }, [selectedNodeId]);
 
   const onNodeDragStop = useCallback((_: React.MouseEvent, dragged: Node) => {
     setNodes((current) => {
@@ -306,6 +359,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return;
+      if (target.closest('.md-editor') || target.closest('.monaco-editor')) return;
       if (!selectedEdgeId && !selectedNodeId) return;
       e.preventDefault();
       deleteSelection();
@@ -347,11 +401,9 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
           <div className="roadmap-toolbar__title">{doc.title || i18n('Roadmap')}</div>
         </div>
         <div className="roadmap-toolbar__actions">
-          {NODE_TYPES.map((type) => (
-            <button key={type} type="button" className="roadmap-tool-button" onClick={() => addRoadmapNode(type)}>
-              + {nodeTypeLabel(type)}
-            </button>
-          ))}
+          <button type="button" className="roadmap-tool-button" onClick={addRoadmapNode}>
+            + {i18n('Roadmap add node')}
+          </button>
           <button type="button" className="roadmap-tool-button" onClick={fitToContent}>
             {i18n('Roadmap fit canvas')}
           </button>
@@ -364,86 +416,64 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
         </div>
       </div>
 
-      <div className="roadmap-editor-grid">
-        <div ref={outerRef} className="roadmap-flow roadmap-flow--editor">
-          <div className="roadmap-flow__canvas">
-            <ReactFlow
-              nodes={nodes}
-              edges={viewEdges}
-              nodeTypes={roadmapFlowNodeTypes}
-              onNodesChange={handleNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
-              onInit={handleFlowInit}
-              onNodeDragStop={onNodeDragStop}
-              onNodeClick={(_, node) => {
-                if (node.type !== 'roadmap') return;
-                setSelectedNodeId(node.id);
-                setSelectedEdgeId(null);
-              }}
-              onEdgeClick={(_, edge) => { setSelectedEdgeId(edge.id); setSelectedNodeId(null); }}
-              onPaneClick={() => { setSelectedNodeId(null); setSelectedEdgeId(null); }}
-              elementsSelectable
-              edgesFocusable
-              connectionMode={ConnectionMode.Loose}
-              {...roadmapEditorFlowProps}
-            >
-              <RoadmapLaneOverlay />
-              <Controls showInteractive={false} />
-            </ReactFlow>
+      <div className="roadmap-editor-body">
+        <aside className="roadmap-canvas-panel">
+          <div ref={outerRef} className="roadmap-flow roadmap-flow--editor">
+            <div className="roadmap-flow__canvas">
+              <ReactFlow
+                nodes={viewNodes}
+                edges={viewEdges}
+                nodeTypes={roadmapFlowNodeTypes}
+                onNodesChange={handleNodesChange}
+                onEdgesChange={handleEdgesChange}
+                onConnect={onConnect}
+                onInit={handleFlowInit}
+                onNodeDragStop={onNodeDragStop}
+                onNodeClick={(_, node) => {
+                  if (node.type !== 'roadmap') return;
+                  setSelectedNodeId(node.id);
+                }}
+                onEdgeClick={(_, edge) => { setSelectedEdgeId(edge.id); }}
+                onPaneClick={() => { setSelectedNodeId(null); setSelectedEdgeId(null); }}
+                elementsSelectable
+                edgesFocusable
+                connectionMode={ConnectionMode.Loose}
+                {...roadmapEditorFlowProps}
+              >
+                <RoadmapLaneOverlay />
+                <Controls showInteractive={false} />
+              </ReactFlow>
+            </div>
           </div>
-        </div>
+        </aside>
 
-        <aside className="roadmap-inspector">
+        <main className="roadmap-editor-main">
           {selectedNode ? (
             <>
-              <div className="roadmap-inspector__kicker">{i18n('Roadmap node inspector')}</div>
-              <label>
-                {i18n('Title')}
-                <input value={selectedNode.data?.label || ''} onChange={(e) => updateSelectedNode({ label: e.currentTarget.value })} />
-              </label>
-              <label>
-                {i18n('Roadmap lane')}
-                <select
-                  value={String(getNodeLane(selectedNode))}
-                  onChange={(e) => updateSelectedNode({ lane: Number(e.currentTarget.value) as RoadmapLane })}
-                >
-                  {ROADMAP_LANES.map((lane) => <option key={lane} value={lane}>{i18n('Roadmap lane option', lane)}</option>)}
-                </select>
-              </label>
-              <label>
-                {i18n('Type')}
-                <select value={selectedNode.data?.roadmapNodeType || 'task'} onChange={(e) => updateSelectedNode({ roadmapNodeType: e.currentTarget.value })}>
-                  {['root', ...NODE_TYPES].map((type) => <option key={type} value={type}>{nodeTypeLabel(type as RoadmapNodeType)}</option>)}
-                </select>
-              </label>
-              <label>
-                {i18n('Status')}
-                <select value={selectedNode.data?.status || 'planned'} onChange={(e) => updateSelectedNode({ status: e.currentTarget.value })}>
-                  {STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
-                </select>
-              </label>
-              <label>
-                {i18n('Roadmap priority')}
-                <select value={selectedNode.data?.priority || 'medium'} onChange={(e) => updateSelectedNode({ priority: e.currentTarget.value })}>
-                  {PRIORITIES.map((priority) => <option key={priority} value={priority}>{priorityLabel(priority)}</option>)}
-                </select>
-              </label>
-              <label>
-                {i18n('Roadmap owner')}
-                <input value={selectedNode.data?.owner || ''} onChange={(e) => updateSelectedNode({ owner: e.currentTarget.value })} />
-              </label>
-              <label>
-                {i18n('Date')}
-                <input type="date" value={selectedNode.data?.dueDate || ''} onChange={(e) => updateSelectedNode({ dueDate: e.currentTarget.value })} />
-              </label>
-              <label>
-                {i18n('Description')}
-                <textarea rows={5} value={selectedNode.data?.description || ''} onChange={(e) => updateSelectedNode({ description: e.currentTarget.value })} />
-              </label>
+              <div className="roadmap-editor-main__header">
+                <label className="roadmap-editor-main__title-field">
+                  {i18n('Title')}
+                  <input
+                    value={selectedNode.data?.label || ''}
+                    onChange={(e) => updateSelectedNode({ label: e.currentTarget.value })}
+                  />
+                </label>
+              </div>
+              <div id="roadmap-editor-container" className="roadmap-node-markdown-editor">
+                <textarea
+                  key={selectedNode.id}
+                  ref={editorRef}
+                  defaultValue={String(selectedNode.data?.description || '')}
+                  className="roadmap-node-markdown-editor__textarea"
+                />
+              </div>
             </>
-          ) : selectedEdge ? (
-            <>
+          ) : null}
+        </main>
+
+        <aside className="roadmap-side-panel roadmap-side-panel--edge">
+          {selectedEdge ? (
+            <div className="roadmap-inspector">
               <div className="roadmap-inspector__kicker">{i18n('Roadmap edge inspector')}</div>
               <label>
                 {i18n('Roadmap edge label')}
@@ -464,13 +494,8 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
               <button type="button" className="roadmap-tool-button roadmap-tool-button--danger" onClick={deleteSelectedEdge}>
                 {i18n('Roadmap delete edge')}
               </button>
-            </>
-          ) : (
-            <div className="roadmap-inspector__empty">
-              <div>{i18n('Roadmap inspector empty title')}</div>
-              <p>{i18n('Roadmap inspector empty hint')}</p>
             </div>
-          )}
+          ) : null}
         </aside>
       </div>
     </div>
