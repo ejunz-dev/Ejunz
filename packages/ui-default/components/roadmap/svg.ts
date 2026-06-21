@@ -1,4 +1,4 @@
-import type { BaseRoadmapEdge, BaseRoadmapNode, RoadmapStatus } from './roadmap_shared';
+import type { BaseRoadmapEdge, BaseRoadmapNode, RoadmapStatus } from './shared';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const PADDING = 48;
