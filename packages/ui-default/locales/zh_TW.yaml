@@ -506,3 +506,68 @@ Your role: 您的角色
 'Outline explorer filter apply': 套用
 'Outline explorer filter clear': 清除
 'Outline explorer filter aria': 以關鍵字縮小大綱（伺服器端）
+roadmap_main: 路線圖
+All Roadmaps: 全部路線圖
+Roadmap: 路線圖
+'Roadmap Editor': 路線圖編輯器
+'Create Roadmap': 建立路線圖
+'Edit graph': 編輯圖譜
+'Manage Roadmap': 管理路線圖
+'Update Roadmap': 更新路線圖
+'Delete Roadmap': 刪除路線圖
+'Back to list': 返回列表
+'Search roadmaps': 搜尋路線圖
+'Create a roadmap document for this domain.': 為本域建立路線圖文件。
+'Create a roadmap to get started.': 建立路線圖以開始。
+'Sorry, there are no roadmaps yet.': 抱歉，目前還沒有路線圖。
+'You have permission to create roadmaps for this domain.': 您有權為本域建立路線圖。
+'Enter roadmap title': 輸入路線圖標題
+'Input roadmap title': 輸入路線圖標題
+'Optional human-readable roadmap identifier, for example: R1001': '可選的人類可讀路線圖識別碼，例如：R1001'
+'Optional short description shown in list views.': 可選的簡短描述，顯示在列表視圖中。
+'Please select at least one roadmap to delete.': 請至少選擇一條路線圖再刪除。
+'Confirm deleting {0} selected roadmap(s)?': 確認刪除已選的 {0} 條路線圖？
+'Selected roadmaps have been deleted.': 已刪除所選路線圖。
+'Roadmap rid already exists: {0}': '路線圖 RID 已存在：{0}'
+Untitled: 未命名
+edges: 條連線
+Stats: 統計
+'Roadmap load failed': 載入路線圖失敗。
+'Roadmap save operation': 儲存路線圖
+'Roadmap saved': 路線圖已儲存。
+'Roadmap save failed': 儲存路線圖失敗。
+'Roadmap fit canvas': 適應畫布
+'Roadmap delete edge': 刪除連線
+'Roadmap node inspector': 節點檢查器
+'Roadmap lane': 區域
+'Roadmap lane option': '區域 {0}'
+'Roadmap priority': 優先級
+'Roadmap owner': 負責人
+Status: 狀態
+Date: 日期
+'Roadmap edge inspector': 連線檢查器
+'Roadmap edge label': 依賴說明
+'Roadmap line style': 線型
+'Roadmap line solid': 實線
+'Roadmap line dashed': 虛線
+'Roadmap edge source': 源節點
+'Roadmap edge target': 目標節點
+'Roadmap inspector empty title': 選擇一個節點或連線
+'Roadmap inspector empty hint': 點擊連線可選中；側欄可切換實線/虛線。左右實線同行聯動，虛線自由佈局。Delete / Backspace 可刪除。
+'Roadmap detail empty': 路線圖還沒有內容。
+'Roadmap status in progress': 進行中
+'Roadmap status done': 已完成
+'Roadmap status blocked': 阻塞
+'Roadmap status planned': 計劃中
+'Roadmap node type root': 總覽
+'Roadmap node type milestone': 里程碑
+'Roadmap node type decision': 決策
+'Roadmap node type release': 發布
+'Roadmap node type task': 任務
+'Roadmap priority low': 低
+'Roadmap priority medium': 中
+'Roadmap priority high': 高
+'Roadmap new milestone': 新里程碑
+'Roadmap new release': 新發布
+'Roadmap new decision': 新決策
+'Roadmap new task': 新任務

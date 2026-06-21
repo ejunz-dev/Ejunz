@@ -1692,3 +1692,67 @@ You need to enter the invitation code to join the domain.: 您需要输入邀请
 You're not logged in.: 您没有登录。
 Your permission: 您的权限
 Your role: 您的角色
+roadmap_main: 路线图
+All Roadmaps: 全部路线图
+Roadmap: 路线图
+'Roadmap Editor': 路线图编辑器
+'Create Roadmap': 创建路线图
+'Edit graph': 编辑图谱
+'Manage Roadmap': 管理路线图
+'Update Roadmap': 更新路线图
+'Delete Roadmap': 删除路线图
+'Back to list': 返回列表
+'Search roadmaps': 搜索路线图
+'Create a roadmap document for this domain.': 为本域创建路线图文档。
+'Create a roadmap to get started.': 创建路线图以开始。
+'Sorry, there are no roadmaps yet.': 抱歉，目前还没有路线图。
+'You have permission to create roadmaps for this domain.': 您有权为本域创建路线图。
+'Enter roadmap title': 输入路线图标题
+'Input roadmap title': 输入路线图标题
+'Optional human-readable roadmap identifier, for example: R1001': '可选的人类可读路线图标识，例如：R1001'
+'Optional short description shown in list views.': 可选的简短描述，显示在列表视图中。
+'Please select at least one roadmap to delete.': 请至少选择一条路线图再删除。
+'Confirm deleting {0} selected roadmap(s)?': 确认删除已选的 {0} 条路线图？
+'Selected roadmaps have been deleted.': 已删除所选路线图。
+'Roadmap rid already exists: {0}': '路线图 RID 已存在：{0}'
+Untitled: 未命名
+edges: 条连线
+Stats: 统计
+'Roadmap load failed': 加载路线图失败。
+'Roadmap save operation': 保存路线图
+'Roadmap saved': 路线图已保存。
+'Roadmap save failed': 保存路线图失败。
+'Roadmap fit canvas': 适应画布
+'Roadmap delete edge': 删除连线
+'Roadmap node inspector': 节点检查器
+'Roadmap lane': 区域
+'Roadmap lane option': '区域 {0}'
+'Roadmap priority': 优先级
+'Roadmap owner': 负责人
+Date: 日期
+'Roadmap edge inspector': 连线检查器
+'Roadmap edge label': 依赖说明
+'Roadmap line style': 线型
+'Roadmap line solid': 实线
+'Roadmap line dashed': 虚线
+'Roadmap edge source': 源节点
+'Roadmap edge target': 目标节点
+'Roadmap inspector empty title': 选择一个节点或连线
+'Roadmap inspector empty hint': 点击连线可选中；侧栏可切换实线/虚线。左右实线同行联动，虚线自由布局。Delete / Backspace 可删除。
+'Roadmap detail empty': 路线图还没有内容。
+'Roadmap status in progress': 进行中
+'Roadmap status done': 已完成
+'Roadmap status blocked': 阻塞
+'Roadmap status planned': 计划中
+'Roadmap node type root': 总览
+'Roadmap node type milestone': 里程碑
+'Roadmap node type decision': 决策
+'Roadmap node type release': 发布
+'Roadmap node type task': 任务
+'Roadmap priority low': 低
+'Roadmap priority medium': 中
+'Roadmap priority high': 高
+'Roadmap new milestone': 新里程碑
+'Roadmap new release': 新发布
+'Roadmap new decision': 新决策
+'Roadmap new task': 新任务

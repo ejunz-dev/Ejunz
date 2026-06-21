@@ -20,8 +20,8 @@
     <div class="section roadmap-shell roadmap-shell--editor">
       <div class="section__header roadmap-shell__header">
         <div>
-          <div class="roadmap-kicker">Roadmap Editor</div>
-          <h1 class="section__title roadmap-title">{{ roadmap.title if roadmap else 'Roadmap' }}</h1>
+          <div class="roadmap-kicker">{{ _('Roadmap Editor') }}</div>
+          <h1 class="section__title roadmap-title">{{ roadmap.title if roadmap else _('Roadmap') }}</h1>
         </div>
         <div class="section__tools roadmap-actions">
           {% if roadmap %}
