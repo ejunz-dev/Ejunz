@@ -1,0 +1,40 @@
+{% set page_name = "roadmap_detail" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<script>
+  {{ set(UiContext, 'roadmap', {
+    domainId: roadmap.domainId if roadmap else domainId,
+    docId: roadmap.docId if roadmap else '',
+    rid: roadmap.rid if roadmap else '',
+    nodes: roadmap.nodes if roadmap else [],
+    edges: roadmap.edges if roadmap else [],
+    title: roadmap.title if roadmap else 'Roadmap',
+    layout: roadmap.layout if roadmap else {},
+    viewport: roadmap.viewport if roadmap else {}
+  }) }}
+</script>
+<div class="roadmap-view-page">
+  {% if roadmap %}
+    <header class="roadmap-view-page__header">
+      <div>
+        <h1 class="roadmap-view-page__title">{{ roadmap.title if roadmap else 'Roadmap' }}</h1>
+        {% if roadmap.rid %}
+          <p class="roadmap-view-page__rid">{{ roadmap.rid }}</p>
+        {% endif %}
+      </div>
+      <div class="roadmap-view-page__actions">
+        <a class="button small secondary" href="{{ url('roadmap_main') }}">{{ _('All Roadmaps') }}</a>
+        <a class="button small secondary" href="{{ url('roadmap_manage', docId=roadmap.docId) }}">{{ _('Manage') }}</a>
+        <a class="button small" href="{{ url('roadmap_edit', docId=roadmap.docId) }}">{{ _('Edit graph') }}</a>
+      </div>
+    </header>
+    <div id="roadmap-viewer" data-doc-id="{{ roadmap.docId }}"></div>
+  {% else %}
+    <div class="roadmap-view__empty">
+      <h2>{{ _('Sorry, there are no roadmaps yet.') }}</h2>
+      <p>{{ _('Create a roadmap to get started.') }}</p>
+      <a class="button" href="{{ url('roadmap_create') }}">{{ _('Create Roadmap') }}</a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

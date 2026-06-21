@@ -53,6 +53,9 @@ export const AgentAdd = (name, args, icon = 'add', text = 'Create Agent') => {
 export const BaseAdd = (name, args, icon = 'add', text = 'Create Base') => {
     inject('BaseAdd', name, { ...args, icon, text });
 };
+export const RoadmapAdd = (name, args, icon = 'add', text = 'Create Roadmap') => {
+    inject('RoadmapAdd', name, { ...args, icon, text });
+};
 // inject('NavMainDropdown', 'homepage', { prefix: 'homepage' });
 // inject('NavMainDropdown', 'workspace_main', { prefix: 'workspace' });
 // inject('NavMainDropdown', 'production_main', { prefix: 'productionhub' });
@@ -71,6 +74,7 @@ inject('Nav', 'homepage', { prefix: 'homepage' });
 inject('Nav', 'learn', { prefix: 'learn' });
 inject('Nav', 'develop', { prefix: 'develop' });
 inject('Nav', 'base_domain', { prefix: 'base' });
+inject('Nav', 'roadmap_main', { prefix: 'roadmap' });
 inject('Nav', 'agent_domain', { prefix: 'agent' });
 // inject('Nav', 'edge_domain', { prefix: 'edge' });
 inject('Nav', 'session_domain', { prefix: 'session' }, PERM.PERM_VIEW_RECORD);
@@ -87,6 +91,7 @@ inject('NavDropdown', 'domain_dashboard', { prefix: 'domain' }, PERM.PERM_EDIT_D
 inject('NavDropdown', 'manage_dashboard', { prefix: 'manage' }, PRIV.PRIV_EDIT_SYSTEM);
 inject('AgentAdd', 'agent_create', { icon: 'add', text: 'Create Agent' });
 inject('BaseAdd', 'base_create', { icon: 'add', text: 'Create Base' });
+inject('RoadmapAdd', 'roadmap_create', { icon: 'add', text: 'Create Roadmap' });
 inject('ControlPanel', 'manage_dashboard');
 inject('ControlPanel', 'manage_script');
 inject('ControlPanel', 'manage_user_import');

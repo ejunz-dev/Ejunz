@@ -1,0 +1,72 @@
+{% import "components/form.html" as form with context %}
+{% extends "layout/basic.html" %}
+{% set page_name = "roadmap_create" %}
+{% block content %}
+<div class="row base-form-page">
+  <div class="medium-9 columns base-form-page__main">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Create Roadmap') }}</h1>
+        <p class="typo supplementary base-form-page__intro">{{ _('Create a roadmap document for this domain.') }}</p>
+      </div>
+      <div class="section__body">
+        <form method="post" action="{{ url('roadmap_create') }}" id="roadmap-form" class="base-form-page__form">
+          {{ form.form_text({
+              columns: 12,
+              label: _('Title'),
+              name: 'title',
+              placeholder: _('Input roadmap title'),
+              value: '',
+              autofocus: true,
+              required: true
+          }) }}
+
+          {{ form.form_text({
+              columns: 12,
+              label: _('RID'),
+              name: 'rid',
+              placeholder: 'R1001',
+              value: '',
+              help_text: _('Optional human-readable roadmap identifier, for example: R1001')
+          }) }}
+
+          {{ form.form_text({
+              columns: 12,
+              label: _('Description'),
+              name: 'content',
+              value: '',
+              help_text: _('Optional short description shown in list views.')
+          }) }}
+
+          {{ form.form_text({
+              columns: 12,
+              label: _('Tags'),
+              help_text: _('Split by \', \'.'),
+              name: 'tag',
+              value: ''
+          }) }}
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="medium-3 columns end base-form-page__sidebar">
+    <div class="section side base-form-page__actions-panel">
+      <div class="section__body base-form-page__actions">
+        <button form="roadmap-form" type="submit" class="rounded primary button expanded">{{ _('Create Roadmap') }}</button>
+        <a href="{{ url('roadmap_main') }}" class="rounded button expanded">{{ _('Cancel') }}</a>
+      </div>
+    </div>
+
+    <div class="section side nojs--hide section--base-categories">
+      <div class="section__header">
+        <h2 class="section__title">{{ _('Categories') }}</h2>
+        <p class="typo supplementary">{{ _('click to add') }}</p>
+      </div>
+      <div class="section__body section--base-categories__body">
+        {% include "partials/category.html" %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

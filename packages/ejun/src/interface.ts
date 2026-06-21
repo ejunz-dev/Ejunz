@@ -400,6 +400,12 @@ export interface PluginMcpStatus {
     servers?: PluginMcpStatusEntry[];
 }
 
+export interface RoadmapDoc extends Omit<BaseDoc, 'docType'> {
+    docType: document['TYPE_ROADMAP'];
+    /** Human-readable roadmap identifier. */
+    rid?: string | number;
+}
+
 export interface PluginDoc extends Omit<BaseDoc, 'docType'> {
     docType: document['TYPE_PLUGIN'];
     pluginSlug?: string;
@@ -1344,7 +1350,7 @@ export interface Lib {
 
 
 export type UIInjectableFields =
-    'RepoAdd' | 'AgentAdd' | 'BaseAdd' | 'Notification' | 'Nav' | 'UserDropdown' | 'DomainManage' | 'ControlPanel' | 'ProfileHeaderContact' | 'Home_Domain' | 'NavDropdown' | 'NavMainDropdown' | 'EdgeType'
+    'RepoAdd' | 'AgentAdd' | 'BaseAdd' | 'RoadmapAdd' | 'Notification' | 'Nav' | 'UserDropdown' | 'DomainManage' | 'ControlPanel' | 'ProfileHeaderContact' | 'Home_Domain' | 'NavDropdown' | 'NavMainDropdown' | 'EdgeType'
 export interface UI {
     nodes: Record<UIInjectableFields, any[]>,
     getNodes: typeof import('./lib/ui').getNodes,
