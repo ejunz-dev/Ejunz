@@ -703,7 +703,7 @@ Date: 날짜
 'Roadmap edge source': 소스
 'Roadmap edge target': 대상
 'Roadmap inspector empty title': 노드 또는 연결을 선택하세요
-'Roadmap inspector empty hint': 연결을 클릭해 선택하고, 사이드바에서 실선/점선을 전환하세요. 좌우 실선은 같은 행에 연동되고, 점선은 자유롭게 배치됩니다. Delete / Backspace로 삭제할 수 있습니다.
+'Roadmap inspector empty hint': 노드를 클릭하면 Markdown 내용을 편집하고, 연결을 클릭하면 선 스타일을 바꿀 수 있습니다. 좌우 실선은 같은 행에 연동되고, 점선은 자유롭게 배치됩니다. Delete / Backspace로 삭제할 수 있습니다. 저장 시 그래프와 노드 내용이 함께 기록됩니다.
 'Roadmap detail empty': 이 로드맵에는 아직 내용이 없습니다.
 'Roadmap status in progress': 진행 중
 'Roadmap status done': 완료
@@ -721,3 +721,9 @@ Date: 날짜
 'Roadmap new release': 새 릴리스
 'Roadmap new decision': 새 결정
 'Roadmap new task': 새 작업
+'Roadmap add node': 노드
+'Roadmap new node': 새 노드
+'Roadmap node editor': 노드 편집
+'Roadmap node content': 노드 내용
+'Roadmap node content empty': 이 노드에 내용이 없습니다.
+'Roadmap markdown preview failed': Markdown 렌더링에 실패했습니다.

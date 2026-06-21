@@ -70,6 +70,21 @@
 
   .roadmap-shell__body
     background: #ffffff
+    flex: 1
+    min-height: 0
+    display: flex
+    flex-direction: column
+
+  .roadmap-shell--editor
+    display: flex
+    flex-direction: column
+    min-height: calc(100vh - 180px)
+
+  #roadmap-editor
+    flex: 1
+    min-height: 0
+    display: flex
+    flex-direction: column
 
 .roadmap-view
   width: 100%
@@ -104,14 +119,28 @@
     height: 100%
 
 .roadmap-flow--editor
-  height: min(72vh, 720px)
-  min-height: 480px
-  border: 1px solid #e8e8e8
-  border-radius: 12px
+  flex: 1
+  min-height: 0
+  height: 100%
+  border: 0
+  border-radius: 0
   overflow: hidden
 
   .roadmap-flow__canvas
     height: 100%
+
+  .react-flow__edge.selected .react-flow__edge-path,
+  .react-flow__edge:hover .react-flow__edge-path
+    stroke: #1a5fb4 !important
+    stroke-width: 4 !important
+
+  .react-flow__edge
+    cursor: pointer
+
+  .react-flow__node.selected .roadmap-sh-node,
+  .roadmap-sh-node.is-selected
+    border-color: #1a5fb4
+    box-shadow: 0 0 0 3px rgba(26, 95, 180, 0.35)
 
 .roadmap-lane-overlay
   position: absolute
@@ -168,7 +197,8 @@
   cursor: default
 
   &.is-selected
-    box-shadow: 0 0 0 3px rgba(65, 53, 214, 0.28)
+    border-color: #1a5fb4
+    box-shadow: 0 0 0 3px rgba(26, 95, 180, 0.35)
 
 .roadmap-sh-node--done
   background: #cbcbcb
@@ -227,6 +257,74 @@
 .roadmap-editor-layout
   color: #111111
   position: relative
+  display: flex
+  flex-direction: column
+  flex: 1
+  min-height: 0
+  height: 100%
+
+.roadmap-editor-body
+  display: flex
+  flex: 1
+  min-height: 0
+  overflow: hidden
+  align-items: stretch
+
+.roadmap-canvas-panel
+  width: 360px
+  flex-shrink: 0
+  border-right: 1px solid #ececec
+  background: #fafafa
+  display: flex
+  flex-direction: column
+  min-height: 0
+  min-width: 0
+
+.roadmap-editor-main
+  flex: 1
+  min-width: 0
+  min-height: 0
+  display: flex
+  flex-direction: column
+  overflow: hidden
+  background: #ffffff
+
+.roadmap-editor-main__header
+  flex-shrink: 0
+  padding: 8px 16px
+  border-bottom: 1px solid #ececec
+  background: #ffffff
+
+.roadmap-editor-main__title-field
+  display: block
+  margin: 0
+  color: #555555
+  font-size: 12px
+  letter-spacing: 0.04em
+
+  input
+    display: block
+    width: 100%
+    margin-top: 6px
+    border-radius: 8px
+    border: 1px solid #d8d8d8
+    background: #ffffff
+    color: #111111
+    padding: 8px 10px
+    font-size: 14px
+
+.roadmap-side-panel
+  display: flex
+  flex-direction: column
+  min-height: 0
+
+.roadmap-side-panel--edge
+  width: 320px
+  flex-shrink: 0
+  border-left: 1px solid #ececec
+  background: #fafafa
+  overflow-y: auto
+  min-height: 0
 
 .roadmap-toolbar
   min-height: 96px
@@ -258,9 +356,90 @@
   justify-content: flex-end
   gap: 8px
 
-.roadmap-editor-grid
+.roadmap-node-markdown-editor
+  flex: 1
+  min-height: 0
+  overflow: hidden
+  position: relative
+
+  .roadmap-node-markdown-editor__textarea
+    width: 100%
+    height: 100%
+    border: 0
+    resize: none
+
+  .textbox,
+  .md-editor
+    height: 100% !important
+    min-height: 0 !important
+
+.roadmap-detail-layout
   display: grid
-  grid-template-columns: minmax(0, 1fr) 330px
+  grid-template-columns: minmax(0, 1fr)
+  gap: 0
+  align-items: start
+
+.roadmap-detail-layout--open
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 36%)
+  gap: 20px
+
+.roadmap-detail-sidebar
+  position: sticky
+  top: 24px
+  max-height: calc(100vh - 120px)
+  overflow: auto
+  border: 1px solid #e8e8e8
+  border-radius: 12px
+  background: #ffffff
+  padding: 0 0 18px
+
+  .roadmap-node-markdown-preview__title
+    margin: 0
+    padding: 0 18px 14px
+
+.roadmap-detail-sidebar__header
+  display: flex
+  align-items: center
+  justify-content: space-between
+  gap: 12px
+  padding: 16px 18px
+  border-bottom: 1px solid #ececec
+  background: #fafafa
+
+  .roadmap-inspector__kicker
+    margin-bottom: 0
+
+.roadmap-detail-sidebar__close
+  border: 0
+  background: transparent
+  color: #666666
+  font-size: 24px
+  line-height: 1
+  cursor: pointer
+  padding: 0 4px
+
+.roadmap-node-markdown-preview
+  padding: 18px
+
+.roadmap-node-markdown-preview__title
+  margin: 0 0 14px
+  font-size: 22px
+  line-height: 1.2
+  color: #111111
+
+.roadmap-node-markdown-preview__body
+  color: #222222
+  padding: 0 18px
+
+.roadmap-node-markdown-preview--empty,
+.roadmap-node-markdown-preview--loading,
+.roadmap-node-markdown-preview--error
+  padding: 24px 18px
+  color: #666666
+  text-align: center
+
+.page--roadmap_detail .roadmap-sh-node
+  cursor: pointer
 
 .roadmap-tool-button
   border: 1px solid #d8d8d8
@@ -289,9 +468,7 @@
   color: #1f7a3f
 
 .roadmap-inspector
-  border-left: 1px solid #ececec
   padding: 22px
-  background: #fafafa
   color: #111111
 
   label
@@ -331,13 +508,27 @@
   color: #666666
   line-height: 1.6
 
-@media (max-width: 900px)
-  .roadmap-editor-grid
-    grid-template-columns: 1fr
+@media (max-width: 1100px)
+  .roadmap-editor-body
+    flex-direction: column
+    overflow: auto
 
-  .roadmap-inspector
+  .roadmap-canvas-panel
+    width: 100%
+    height: min(52vh, 520px)
+    border-right: 0
+    border-bottom: 1px solid #ececec
+
+  .roadmap-editor-main
+    min-height: 420px
+
+  .roadmap-side-panel--edge
+    width: 100%
     border-left: 0
     border-top: 1px solid #ececec
+
+  .roadmap-detail-layout--open
+    grid-template-columns: 1fr
 
   .roadmap-toolbar
     align-items: flex-start
