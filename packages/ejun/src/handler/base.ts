@@ -2162,7 +2162,7 @@ export class BaseEdgeHandler extends Handler {
 
 export class BaseSaveHandler extends Handler {
 
-    protected saveMindMapDocType(): typeof document.TYPE_BASE {
+    protected saveMindMapDocType(): MindMapDocType {
         return document.TYPE_BASE;
     }
 

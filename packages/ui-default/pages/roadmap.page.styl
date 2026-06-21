@@ -1,0 +1,327 @@
+.page--roadmap_detail
+  background: #ffffff
+
+  .roadmap-view-page
+    max-width: 1000px
+    margin: 0 auto
+    padding: 24px 16px 64px
+
+  .roadmap-view-page__header
+    display: flex
+    align-items: flex-start
+    justify-content: space-between
+    gap: 16px
+    margin-bottom: 20px
+
+  .roadmap-view-page__title
+    margin: 0
+    font-size: 32px
+    line-height: 1.1
+    letter-spacing: -0.04em
+    color: #111111
+
+  .roadmap-view-page__branch
+    margin: 8px 0 0
+    color: #666666
+    font-size: 13px
+
+  .roadmap-view-page__actions
+    flex-shrink: 0
+
+  .roadmap-view
+    width: 100%
+
+  .roadmap-view__aspect
+    width: 100%
+
+  .roadmap-view__svg
+    width: 100%
+
+  .roadmap-view__svg svg
+    width: 100%
+    height: auto
+    display: block
+
+  .roadmap-view__svg svg text tspan
+    -webkit-font-smoothing: antialiased
+    -moz-osx-font-smoothing: grayscale
+    text-rendering: optimizeSpeed
+    user-select: none
+
+  .roadmap-view__svg svg g[data-type]:hover > rect
+    filter: brightness(0.96)
+
+  .roadmap-view__svg svg g.done > rect
+    fill: #cbcbcb !important
+
+  .roadmap-view__svg svg g.learning > rect
+    fill: #dad1fd !important
+
+  .roadmap-view__svg svg g.blocked > rect
+    fill: #ffcfcf !important
+
+  .roadmap-view__empty
+    min-height: 320px
+    display: flex
+    flex-direction: column
+    align-items: center
+    justify-content: center
+    text-align: center
+    gap: 12px
+    color: #444444
+
+.page--roadmap_edit
+  background: #12140f
+
+  .roadmap-shell
+    background: linear-gradient(135deg, #191b15 0%, #242116 56%, #101310 100%)
+    border: 1px solid rgba(230, 196, 120, 0.32)
+    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.34)
+    overflow: hidden
+
+  .roadmap-shell__header
+    color: #f5ead4
+    border-bottom: 1px solid rgba(230, 196, 120, 0.22)
+    background: radial-gradient(circle at 0% 0%, rgba(120, 199, 210, 0.18), transparent 34%), radial-gradient(circle at 100% 20%, rgba(240, 182, 90, 0.16), transparent 34%)
+
+  .roadmap-title
+    color: #fff4dc
+    letter-spacing: -0.04em
+    font-family: Georgia, 'Times New Roman', serif
+
+  .roadmap-kicker
+    text-transform: uppercase
+    letter-spacing: 0.18em
+    font-size: 11px
+    color: #d8b46a
+    margin-bottom: 6px
+
+  .roadmap-actions
+    display: flex
+    gap: 8px
+    align-items: center
+
+  .roadmap-shell__body
+    background: #12140f
+
+.roadmap-empty
+  color: #f5ead4
+  min-height: 420px
+  display: flex
+  flex-direction: column
+  align-items: center
+  justify-content: center
+  text-align: center
+  gap: 12px
+
+.roadmap-empty__mark
+  width: 76px
+  height: 76px
+  border: 1px solid rgba(216, 180, 106, 0.55)
+  border-radius: 50%
+  display: flex
+  align-items: center
+  justify-content: center
+  color: #78c7d2
+  font-size: 42px
+
+.roadmap-canvas-wrap,
+.roadmap-editor-layout
+  min-height: 720px
+  color: #f5ead4
+  position: relative
+
+.roadmap-hero,
+.roadmap-toolbar
+  min-height: 96px
+  display: flex
+  align-items: center
+  justify-content: space-between
+  gap: 18px
+  padding: 20px 24px
+  border-bottom: 1px solid rgba(216, 180, 106, 0.18)
+  background: linear-gradient(90deg, rgba(245, 234, 212, 0.06), rgba(120, 199, 210, 0.06))
+
+.roadmap-hero__eyebrow
+  text-transform: uppercase
+  letter-spacing: 0.2em
+  font-size: 11px
+  color: #78c7d2
+  margin-bottom: 6px
+
+.roadmap-hero__title,
+.roadmap-toolbar__title
+  font-family: Georgia, 'Times New Roman', serif
+  font-size: 34px
+  line-height: 1
+  letter-spacing: -0.05em
+  color: #fff4dc
+
+.roadmap-hero__stats,
+.roadmap-toolbar__actions
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  justify-content: flex-end
+  gap: 8px
+
+.roadmap-hero__stats span
+  padding: 6px 10px
+  border-radius: 999px
+  border: 1px solid rgba(216, 180, 106, 0.34)
+  color: #d8b46a
+  font-size: 12px
+
+.roadmap-flow
+  width: 100%
+  height: 624px
+  background: radial-gradient(circle at 20% 20%, rgba(120, 199, 210, 0.12), transparent 28%), #151712
+
+.roadmap-flow--editor
+  height: 650px
+
+.roadmap-editor-grid
+  display: grid
+  grid-template-columns: minmax(0, 1fr) 330px
+  min-height: 650px
+
+.roadmap-node
+  position: relative
+  min-width: 210px
+  max-width: 260px
+  padding: 14px 16px
+  border-radius: 18px
+  color: #f5ead4
+  background: linear-gradient(150deg, rgba(35, 36, 29, 0.98), rgba(22, 24, 20, 0.98))
+  border: 1px solid rgba(216, 180, 106, 0.32)
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.05)
+
+  &.is-selected
+    border-color: #78c7d2
+    box-shadow: 0 0 0 2px rgba(120, 199, 210, 0.2), 0 20px 42px rgba(0, 0, 0, 0.36)
+
+.roadmap-node__topline,
+.roadmap-node__meta
+  display: flex
+  align-items: center
+  justify-content: space-between
+  gap: 8px
+
+.roadmap-node__type,
+.roadmap-node__priority
+  border: 1px solid rgba(216, 180, 106, 0.36)
+  border-radius: 999px
+  padding: 3px 8px
+  font-size: 10px
+  text-transform: uppercase
+  letter-spacing: 0.08em
+
+.roadmap-node__priority--high
+  color: #ef7b72
+
+.roadmap-node__priority--medium
+  color: #f0b65a
+
+.roadmap-node__priority--low
+  color: #8fd6a3
+
+.roadmap-node__title
+  margin-top: 12px
+  font-size: 18px
+  font-weight: 700
+  letter-spacing: -0.02em
+
+.roadmap-node__desc
+  margin-top: 8px
+  color: rgba(245, 234, 212, 0.68)
+  font-size: 12px
+  line-height: 1.45
+
+.roadmap-node__meta
+  margin-top: 12px
+  color: rgba(245, 234, 212, 0.64)
+  font-size: 11px
+
+.roadmap-node__handle
+  width: 10px
+  height: 10px
+  border: 2px solid #151712
+  background: #d8b46a
+
+.roadmap-tool-button
+  border: 1px solid rgba(216, 180, 106, 0.36)
+  border-radius: 999px
+  background: rgba(245, 234, 212, 0.06)
+  color: #f5ead4
+  padding: 8px 12px
+  cursor: pointer
+  transition: 0.18s ease
+
+  &:hover:not(:disabled)
+    border-color: #78c7d2
+    color: #78c7d2
+    transform: translateY(-1px)
+
+  &:disabled
+    opacity: 0.45
+    cursor: not-allowed
+
+.roadmap-tool-button--danger
+  border-color: rgba(239, 123, 114, 0.45)
+  color: #ef7b72
+
+.roadmap-tool-button--save
+  border-color: rgba(143, 214, 163, 0.5)
+  color: #8fd6a3
+
+.roadmap-inspector
+  border-left: 1px solid rgba(216, 180, 106, 0.22)
+  padding: 22px
+  background: rgba(18, 20, 15, 0.94)
+  color: #f5ead4
+
+  label
+    display: block
+    margin-bottom: 14px
+    color: #d8b46a
+    font-size: 12px
+    letter-spacing: 0.04em
+
+  input,
+  select,
+  textarea
+    display: block
+    width: 100%
+    margin-top: 6px
+    border-radius: 10px
+    border: 1px solid rgba(216, 180, 106, 0.32)
+    background: rgba(245, 234, 212, 0.06)
+    color: #f5ead4
+    padding: 9px 10px
+
+  textarea
+    resize: vertical
+
+.roadmap-inspector__kicker
+  color: #78c7d2
+  text-transform: uppercase
+  letter-spacing: 0.18em
+  font-size: 11px
+  margin-bottom: 18px
+
+.roadmap-inspector__empty
+  color: rgba(245, 234, 212, 0.72)
+  line-height: 1.6
+
+@media (max-width: 900px)
+  .roadmap-editor-grid
+    grid-template-columns: 1fr
+
+  .roadmap-inspector
+    border-left: 0
+    border-top: 1px solid rgba(216, 180, 106, 0.22)
+
+  .roadmap-hero,
+  .roadmap-toolbar
+    align-items: flex-start
+    flex-direction: column
