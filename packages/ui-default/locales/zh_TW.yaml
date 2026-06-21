@@ -553,7 +553,7 @@ Date: 日期
 'Roadmap edge source': 源節點
 'Roadmap edge target': 目標節點
 'Roadmap inspector empty title': 選擇一個節點或連線
-'Roadmap inspector empty hint': 點擊連線可選中；側欄可切換實線/虛線。左右實線同行聯動，虛線自由佈局。Delete / Backspace 可刪除。
+'Roadmap inspector empty hint': 點擊節點可編輯 Markdown 內容；點擊連線可切換線型。左右實線同行聯動，虛線自由佈局。Delete / Backspace 可刪除。儲存時會一併寫入圖譜與節點內容。
 'Roadmap detail empty': 路線圖還沒有內容。
 'Roadmap status in progress': 進行中
 'Roadmap status done': 已完成
@@ -571,3 +571,9 @@ Date: 日期
 'Roadmap new release': 新發布
 'Roadmap new decision': 新決策
 'Roadmap new task': 新任務
+'Roadmap add node': 節點
+'Roadmap new node': 新節點
+'Roadmap node editor': 節點編輯
+'Roadmap node content': 節點內容
+'Roadmap node content empty': 此節點暫無內容。
+'Roadmap markdown preview failed': Markdown 渲染失敗。

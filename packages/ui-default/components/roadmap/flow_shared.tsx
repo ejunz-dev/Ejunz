@@ -87,6 +87,13 @@ export function RoadmapLaneOverlay() {
   );
 }
 
+export function toRoadmapViewNodes(nodes: Node[], selectedNodeId?: string | null): Node[] {
+  return nodes.map((node) => ({
+    ...node,
+    selected: node.id === selectedNodeId,
+  }));
+}
+
 export function toRoadmapViewEdges(edges: Edge[], selectedEdgeId?: string | null): Edge[] {
   return edges.map((edge) => {
     const isSelected = edge.id === selectedEdgeId;
