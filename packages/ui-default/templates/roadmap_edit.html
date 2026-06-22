@@ -15,27 +15,11 @@
     viewport: roadmap.viewport if roadmap else {}
   }) }}
 </script>
-<div class="row">
-  <div class="large-12 columns">
-    <div class="section roadmap-shell roadmap-shell--editor">
-      <div class="section__header roadmap-shell__header">
-        <div>
-          <div class="roadmap-kicker">{{ _('Roadmap Editor') }}</div>
-          <h1 class="section__title roadmap-title">{{ roadmap.title if roadmap else _('Roadmap') }}</h1>
-        </div>
-        <div class="section__tools roadmap-actions">
-          {% if roadmap %}
-            <a class="button secondary" href="{{ url('roadmap_main') }}">{{ _('All Roadmaps') }}</a>
-            <a class="button secondary" href="{{ url('roadmap_detail', docId=roadmap.docId) }}">{{ _('View') }}</a>
-            <a class="button secondary" href="{{ url('roadmap_manage', docId=roadmap.docId) }}">{{ _('Manage') }}</a>
-          {% else %}
-            <a class="button secondary" href="{{ url('roadmap_main') }}">{{ _('All Roadmaps') }}</a>
-            <a class="button secondary" href="{{ url('roadmap_create') }}">{{ _('Create Roadmap') }}</a>
-          {% endif %}
-        </div>
-      </div>
-      <div class="section__body no-padding roadmap-shell__body">
-        <div id="roadmap-editor" data-doc-id="{{ roadmap.docId if roadmap else '' }}"></div>
+<div class="row base-editor-page roadmap-editor-page">
+  <div class="large-12 columns base-editor-page__col">
+    <div class="section base-editor-section" style="background: transparent; border: none; box-shadow: none; margin: 0;">
+      <div class="section__body no-padding base-editor-section-body" style="background: transparent; padding: 0;">
+        <div id="roadmap-editor" class="base-editor-mount" data-doc-id="{{ roadmap.docId if roadmap else '' }}"></div>
       </div>
     </div>
   </div>

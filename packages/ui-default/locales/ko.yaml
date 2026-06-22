@@ -696,6 +696,12 @@ Stats: 통계
 Status: 상태
 Date: 날짜
 'Roadmap edge inspector': 연결 검사기
+'Roadmap canvas': 캔버스
+'Roadmap AI terminal hint': 로드맵 AI 어시스턴트는 아직 연결되지 않았습니다.
+'Resize sidebar': 사이드바 크기 조절
+'Resize terminal panel': 터미널 높이 조절
+'Terminal input': 터미널 입력
+'Collapse panel': 패널 접기
 'Roadmap edge label': 의존성 메모
 'Roadmap line style': 선 스타일
 'Roadmap line solid': 실선

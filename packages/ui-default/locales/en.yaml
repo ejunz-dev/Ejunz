@@ -1191,6 +1191,12 @@ Stats: Stats
 'Roadmap owner': Owner
 Date: Date
 'Roadmap edge inspector': Edge inspector
+'Roadmap canvas': Canvas
+'Roadmap AI terminal hint': Roadmap AI assistant is not connected yet.
+'Resize sidebar': Resize sidebar
+'Resize terminal panel': Resize terminal panel
+'Terminal input': Terminal input
+'Collapse panel': Collapse panel
 'Roadmap edge label': Dependency note
 'Roadmap line style': Line style
 'Roadmap line solid': Solid

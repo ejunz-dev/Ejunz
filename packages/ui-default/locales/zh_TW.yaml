@@ -546,6 +546,12 @@ Stats: 統計
 Status: 狀態
 Date: 日期
 'Roadmap edge inspector': 連線檢查器
+'Roadmap canvas': 畫布
+'Roadmap AI terminal hint': 路線圖 AI 助手尚未接入。
+'Resize sidebar': 調整側欄寬度
+'Resize terminal panel': 調整終端高度
+'Terminal input': 終端輸入
+'Collapse panel': 收起面板
 'Roadmap edge label': 依賴說明
 'Roadmap line style': 線型
 'Roadmap line solid': 實線
