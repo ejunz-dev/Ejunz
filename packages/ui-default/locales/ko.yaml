@@ -697,6 +697,15 @@ Status: 상태
 Date: 날짜
 'Roadmap edge inspector': 연결 검사기
 'Roadmap canvas': 캔버스
+'Roadmap panel pending': 저장 대기
+'Roadmap pending empty': 저장 대기 변경 없음
+'Roadmap pending created nodes': 새 노드
+'Roadmap pending updated nodes': 노드 변경
+'Roadmap pending deleted nodes': 삭제된 노드
+'Roadmap pending created edges': 새 연결
+'Roadmap pending updated edges': 연결 변경
+'Roadmap pending deleted edges': 삭제된 연결
+'Roadmap pending viewport changed': 뷰포트 변경
 'Roadmap AI terminal hint': 로드맵 AI 어시스턴트는 아직 연결되지 않았습니다.
 'Resize sidebar': 사이드바 크기 조절
 'Resize terminal panel': 터미널 높이 조절

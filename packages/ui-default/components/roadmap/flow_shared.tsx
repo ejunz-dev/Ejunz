@@ -17,6 +17,12 @@ import {
   ROADMAP_LANES,
 } from './lanes';
 import { roadmapEdgeLineStyleFromStyle, RoadmapStatus, roadmapUntitledNodeLabel } from './shared';
+import {
+  ROADMAP_PENDING_COLORS,
+  resolveRoadmapEdgePendingStatus,
+  type RoadmapPendingStatus,
+  type RoadmapPendingStatusMaps,
+} from './pending_changes';
 
 export const FLOW_PADDING = 48;
 export const NODE_LAYOUT_WIDTH = 260;
@@ -42,8 +48,11 @@ export interface RoadmapScrollLayout {
 
 export const RoadmapShNode = ({ data, selected }: NodeProps) => {
   const status = (data.status || 'planned') as RoadmapStatus;
+  const pendingStatus = data.pendingStatus as RoadmapPendingStatus | undefined;
+  const pendingClass = pendingStatus ? ` roadmap-sh-node--pending-${pendingStatus}` : '';
+  const ghostClass = data.isPendingGhost ? ' roadmap-sh-node--pending-ghost' : '';
   return (
-    <div className={`roadmap-sh-node roadmap-sh-node--${status} ${selected ? 'is-selected' : ''}`}>
+    <div className={`roadmap-sh-node roadmap-sh-node--${status}${pendingClass}${ghostClass} ${selected ? 'is-selected' : ''}`}>
       <Handle type="target" position={Position.Top} id="top" className="roadmap-sh-node__handle" />
       <Handle type="source" position={Position.Bottom} id="bottom" className="roadmap-sh-node__handle" />
       <Handle type="target" position={Position.Left} id="left" className="roadmap-sh-node__handle" />
@@ -87,35 +96,64 @@ export function RoadmapLaneOverlay() {
   );
 }
 
-export function toRoadmapViewNodes(nodes: Node[], selectedNodeId?: string | null): Node[] {
-  return nodes.map((node) => ({
-    ...node,
-    selected: node.id === selectedNodeId,
-  }));
+export function toRoadmapViewNodes(
+  nodes: Node[],
+  selectedNodeId?: string | null,
+  pending?: RoadmapPendingStatusMaps,
+): Node[] {
+  return nodes.map((node) => {
+    const pendingStatus = pending?.nodeStatus.get(node.id);
+    return {
+      ...node,
+      selected: node.id === selectedNodeId,
+      data: {
+        ...node.data,
+        ...(pendingStatus ? { pendingStatus } : {}),
+      },
+    };
+  });
 }
 
-export function toRoadmapViewEdges(edges: Edge[], selectedEdgeId?: string | null): Edge[] {
+function roadmapEdgePendingStyle(pendingStatus: RoadmapPendingStatus, isSelected: boolean) {
+  return {
+    stroke: ROADMAP_PENDING_COLORS[pendingStatus],
+    strokeWidth: isSelected ? 4 : 3,
+    strokeDasharray: '5,5',
+  };
+}
+
+export function toRoadmapViewEdges(
+  edges: Edge[],
+  selectedEdgeId?: string | null,
+  pending?: RoadmapPendingStatusMaps,
+): Edge[] {
   return edges.map((edge) => {
     const isSelected = edge.id === selectedEdgeId;
-    const stroke = isSelected ? '#1a5fb4' : '#2b78e4';
+    const pendingStatus = pending ? resolveRoadmapEdgePendingStatus(edge, pending) : undefined;
     const dash = (edge.style as any)?.strokeDasharray;
     const lineStyle = roadmapEdgeLineStyleFromStyle(edge.style as Record<string, any>);
+    const pendingStyle = pendingStatus ? roadmapEdgePendingStyle(pendingStatus, isSelected) : null;
+    const stroke = pendingStyle?.stroke || (isSelected ? '#1a5fb4' : '#2b78e4');
     return {
       ...edge,
       type: lineStyle === 'dashed' ? 'default' : 'straight',
       selected: isSelected,
-      interactionWidth: 24,
+      interactionWidth: pendingStatus === 'delete' ? 12 : 24,
       sourceHandle: edge.sourceHandle,
       targetHandle: edge.targetHandle,
       style: {
         stroke,
-        strokeWidth: isSelected ? 4 : 3,
-        ...(dash ? { strokeDasharray: dash } : {}),
+        strokeWidth: pendingStyle?.strokeWidth || (isSelected ? 4 : 3),
+        ...(pendingStyle?.strokeDasharray
+          ? { strokeDasharray: pendingStyle.strokeDasharray }
+          : (dash ? { strokeDasharray: dash } : {})),
+        ...(pendingStatus === 'delete' ? { opacity: 0.72 } : {}),
       },
       markerEnd: undefined,
       data: {
         ...(edge.data || {}),
         lineStyle,
+        ...(pendingStatus ? { pendingStatus } : {}),
       },
     };
   });
