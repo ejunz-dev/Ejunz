@@ -62,6 +62,10 @@ import {
   roadmapEdgeDashStyle,
   roadmapEdgeLineStyleFromStyle,
 } from 'vj/components/roadmap/shared';
+import {
+  initialRoadmapSelectedNodeId,
+  useRoadmapNodeUrlSync,
+} from 'vj/components/roadmap/url_sync';
 
 function newNodeId(): string {
   return `node_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -100,9 +104,12 @@ function toLaneFlowNodes(
 function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: HTMLElement }) {
   const context = useMemo(() => getRoadmapQueryContext(mount), [mount]);
   const [doc, setDoc] = useState(() => normalizeRoadmapDoc(initialDoc));
-  const [nodes, setNodes, onNodesChange] = useNodesState(toLaneFlowNodes(doc.nodes, doc.edges));
+  const initialFlowNodes = useMemo(() => toLaneFlowNodes(doc.nodes, doc.edges), [doc.nodes, doc.edges]);
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialFlowNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState((doc.edges || []).map(baseEdgeToFlowEdge));
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(
+    () => initialRoadmapSelectedNodeId(initialFlowNodes.map((node) => node.id)),
+  );
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
@@ -119,6 +126,12 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
   nodesRef.current = nodes;
   const viewNodes = useMemo(() => toRoadmapViewNodes(nodes, selectedNodeId), [nodes, selectedNodeId]);
   const viewEdges = useMemo(() => toRoadmapViewEdges(edges, selectedEdgeId), [edges, selectedEdgeId]);
+  const roadmapNodeIds = useMemo(() => nodes.map((node) => node.id), [nodes]);
+  useRoadmapNodeUrlSync({
+    nodeIds: roadmapNodeIds,
+    selectedNodeId,
+    setSelectedNodeId,
+  });
   const {
     outerRef,
     onFlowInit,
@@ -177,7 +190,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
         const nextNodes = toLaneFlowNodes(next.nodes, next.edges);
         setNodes(nextNodes);
         setEdges((next.edges || []).map(baseEdgeToFlowEdge));
-        setSelectedNodeId(null);
+        setSelectedNodeId(initialRoadmapSelectedNodeId(nextNodes.map((node) => node.id)));
       })
       .catch((err) => Notification.error(err.message || i18n('Roadmap load failed')));
   }, [context.docId, context.domainId, doc.nodes?.length, setEdges, setNodes]);
