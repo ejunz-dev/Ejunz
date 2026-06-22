@@ -1201,6 +1201,7 @@ Date: Date
 'Roadmap pending updated edges': Updated edges
 'Roadmap pending deleted edges': Deleted edges
 'Roadmap pending viewport changed': Viewport changed
+'Roadmap pending updated problems': Problem changes
 'Roadmap AI terminal hint': Roadmap AI assistant is not connected yet.
 'Resize sidebar': Resize sidebar
 'Resize terminal panel': Resize terminal panel

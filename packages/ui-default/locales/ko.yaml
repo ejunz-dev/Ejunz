@@ -706,6 +706,7 @@ Date: 날짜
 'Roadmap pending updated edges': 연결 변경
 'Roadmap pending deleted edges': 삭제된 연결
 'Roadmap pending viewport changed': 뷰포트 변경
+'Roadmap pending updated problems': 문제 변경
 'Roadmap AI terminal hint': 로드맵 AI 어시스턴트는 아직 연결되지 않았습니다.
 'Resize sidebar': 사이드바 크기 조절
 'Resize terminal panel': 터미널 높이 조절
