@@ -4,6 +4,9 @@
 <script>
   {{ set(UiContext, 'editorApiBasePath', 'roadmap') }}
   {{ set(UiContext, 'editorMode', 'roadmap') }}
+  {{ set(UiContext, 'currentBranch', currentBranch or 'main') }}
+  {{ set(UiContext, 'githubRepo', githubRepo or '') }}
+  {{ set(UiContext, 'userGithubTokenConfigured', userGithubTokenConfigured or false) }}
   {{ set(UiContext, 'roadmap', {
     domainId: roadmap.domainId if roadmap else domainId,
     docId: roadmap.docId if roadmap else '',
@@ -12,7 +15,9 @@
     edges: roadmap.edges if roadmap else [],
     title: roadmap.title if roadmap else 'Roadmap',
     layout: roadmap.layout if roadmap else {},
-    viewport: roadmap.viewport if roadmap else {}
+    viewport: roadmap.viewport if roadmap else {},
+    currentBranch: currentBranch or 'main',
+    branches: roadmap.branches if roadmap and roadmap.branches else ['main']
   }) }}
 </script>
 <div class="row base-editor-page roadmap-editor-page">
