@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo } from 'react';
+import ReactDOM from 'react-dom';
 import { i18n } from 'vj/utils';
 import type { Problem } from 'ejun/src/interface';
 import { statusColor, statusLabel, type RoadmapStatus } from './shared';
@@ -79,7 +80,7 @@ export function RoadmapNodeDrawer({
 
   const status = nodeStatus || 'planned';
 
-  return (
+  return ReactDOM.createPortal(
     <>
       <div className="roadmap-detail-backdrop" aria-hidden />
       <aside className="roadmap-detail-drawer" aria-label={nodeLabel}>
@@ -137,6 +138,7 @@ export function RoadmapNodeDrawer({
           ) : null}
         </div>
       </aside>
-    </>
+    </>,
+    document.body,
   );
 }
