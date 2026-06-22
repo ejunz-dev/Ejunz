@@ -11,7 +11,6 @@ import {
   Viewport,
 } from 'reactflow';
 import {
-  estimateRoadmapLaneGuideHeight,
   LANE_GUIDE_HEIGHT,
   LANE_WIDTH,
   laneRegionX,
@@ -116,25 +115,6 @@ export function RoadmapLaneOverlay({ guideHeight }: { guideHeight?: number }) {
         x={tx}
         y={ty}
         zoom={zoom}
-      />
-    </div>
-  );
-}
-
-export function RoadmapLaneBackground({
-  viewport,
-  guideHeight,
-}: {
-  viewport: Viewport;
-  guideHeight: number;
-}) {
-  return (
-    <div className="roadmap-lane-background" aria-hidden>
-      <RoadmapLaneGuidesWorld
-        guideHeight={guideHeight}
-        x={viewport.x}
-        y={viewport.y}
-        zoom={viewport.zoom}
       />
     </div>
   );
@@ -359,18 +339,11 @@ export function useRoadmapScrollLayout(nodes: Node[], options?: { fillContainer?
     deferSetViewport(instance, layout.viewport);
   }, [layout.viewport]);
 
-  const laneGuideHeight = useMemo(
-    () => estimateRoadmapLaneGuideHeight(nodes),
-    [nodes],
-  );
-
   return {
     outerRef,
     flowRef,
     canvasHeight,
     lockedZoom: layout.zoom,
-    viewport: layout.viewport,
-    laneGuideHeight,
     onFlowInit,
   };
 }
