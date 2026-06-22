@@ -55,6 +55,8 @@ export interface RoadmapDoc {
   rid?: string | number;
   title?: string;
   currentBranch?: string;
+  branches?: string[];
+  githubRepo?: string;
   nodes?: BaseRoadmapNode[];
   edges?: BaseRoadmapEdge[];
   layout?: Record<string, any>;

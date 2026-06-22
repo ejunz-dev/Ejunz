@@ -7,6 +7,12 @@ import { PERM, PRIV } from '../model/builtin';
 import RoadmapModel from '../model/roadmap';
 import { readOptionalRequestBaseDocId } from '../model/base';
 import { Handler, param, post, Types } from '../service/server';
+import {
+    applyRoadmapGitRoutes,
+    checkoutRoadmapGitBranch,
+    fetchRoadmapGithubContext,
+} from '../lib/roadmap_git';
+import * as document from '../model/document';
 
 const ROADMAP_LIST_SEARCH_OPTIONS = {
     keywords: ['category'],
@@ -89,16 +95,51 @@ function ensureRoadmapEditable(handler: Handler, roadmap: RoadmapDoc): void {
     if (!handler.user.own(roadmap)) handler.checkPerm(PERM.PERM_EDIT_DISCUSSION);
 }
 
-async function renderRoadmapPage(handler: Handler, domainId: string, docId: number, editable: boolean): Promise<void> {
+async function applyRoadmapBranchSwitch(
+    handler: Handler,
+    domainId: string,
+    roadmap: RoadmapDoc,
+    requestedBranch: string,
+): Promise<RoadmapDoc> {
+    const currentBaseBranch = (roadmap as any).currentBranch || 'main';
+    if (requestedBranch !== currentBaseBranch) {
+        await document.set(domainId, document.TYPE_ROADMAP, roadmap.docId, {
+            currentBranch: requestedBranch,
+        } as any);
+        (roadmap as any).currentBranch = requestedBranch;
+        try {
+            await checkoutRoadmapGitBranch(domainId, roadmap.docId, requestedBranch);
+        } catch (err) {
+            console.error('Failed to checkout roadmap git branch:', err);
+        }
+    }
+    return RoadmapModel.withGraph(roadmap, requestedBranch);
+}
+
+async function renderRoadmapPage(
+    handler: Handler,
+    domainId: string,
+    docId: number,
+    editable: boolean,
+    branch?: string,
+): Promise<void> {
     const roadmap = await RoadmapModel.get(domainId, docId);
     if (!roadmap) throw new NotFoundError('Roadmap not found');
     if (editable) ensureRoadmapEditable(handler, roadmap);
 
-    const viewRoadmap = RoadmapModel.withGraph(roadmap);
+    const requestedBranch = (branch && String(branch).trim()) || (roadmap as any).currentBranch || 'main';
+    const viewRoadmap = await applyRoadmapBranchSwitch(handler, domainId, roadmap, requestedBranch);
+    const githubCtx = editable
+        ? await fetchRoadmapGithubContext(domainId, handler.user._id)
+        : { userGithubTokenConfigured: false };
+
     handler.response.template = editable ? 'roadmap_edit.html' : 'roadmap_detail.html';
     handler.response.body = {
         roadmap: viewRoadmap,
         domainId,
+        currentBranch: requestedBranch,
+        githubRepo: ((roadmap as any).githubRepo || '') as string,
+        userGithubTokenConfigured: githubCtx.userGithubTokenConfigured,
     };
 }
 
@@ -276,35 +317,55 @@ export class RoadmapManageHandler extends Handler {
 
 export class RoadmapDetailHandler extends Handler {
     @param('docId', Types.PositiveInt)
-    async get(domainId: string, docId: number) {
+    @param('branch', Types.String, true)
+    async get(domainId: string, docId: number, branch?: string) {
         const roadmap = await RoadmapModel.get(domainId, docId);
         if (!roadmap) throw new NotFoundError('Roadmap not found');
+        if (!branch || !String(branch).trim()) {
+            this.response.redirect = this.url('roadmap_detail_branch', {
+                docId: docId.toString(),
+                branch: 'main',
+            });
+            return;
+        }
         await RoadmapModel.incrementViews(domainId, docId);
-        const viewRoadmap = RoadmapModel.withGraph(roadmap);
+        const requestedBranch = String(branch).trim();
+        const viewRoadmap = await applyRoadmapBranchSwitch(this, domainId, roadmap, requestedBranch);
 
         this.response.template = 'roadmap_detail.html';
         this.response.body = {
             roadmap: viewRoadmap,
             domainId,
+            currentBranch: requestedBranch,
         };
     }
 }
 
 export class RoadmapEditPageHandler extends Handler {
     @param('docId', Types.PositiveInt)
-    async get(domainId: string, docId: number) {
-        await renderRoadmapPage(this, domainId, docId, true);
+    @param('branch', Types.String, true)
+    async get(domainId: string, docId: number, branch?: string) {
+        if (!branch || !String(branch).trim()) {
+            this.response.redirect = this.url('roadmap_edit_branch', {
+                docId: docId.toString(),
+                branch: 'main',
+            });
+            return;
+        }
+        await renderRoadmapPage(this, domainId, docId, true, branch);
     }
 }
 
 export class RoadmapDataHandler extends Handler {
     @param('docId', Types.PositiveInt, true)
-    async get(domainId: string, docId?: number) {
+    @param('branch', Types.String, true)
+    async get(domainId: string, docId?: number, branch?: string) {
         if (!docId) throw new BadRequestError('docId');
         const roadmap = await RoadmapModel.get(domainId, docId);
         if (!roadmap) throw new NotFoundError('Roadmap not found');
         if (!this.user.own(roadmap)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
-        this.response.body = RoadmapModel.withGraph(roadmap);
+        const qBranch = branch || this.request.query?.branch;
+        this.response.body = RoadmapModel.withGraph(roadmap, qBranch ? String(qBranch) : undefined);
     }
 }
 
@@ -326,6 +387,7 @@ export class RoadmapSaveHandler extends Handler {
             layout: data.layout,
             viewport: data.viewport,
             theme: data.theme,
+            branch: data.branch || (roadmap as any).currentBranch || 'main',
         });
         this.response.body = { success: true };
     }
@@ -337,8 +399,12 @@ export async function apply(ctx: Context) {
     ctx.Route('roadmap_create', '/roadmap/create', RoadmapCreateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('roadmap_data', '/roadmap/data', RoadmapDataHandler);
     ctx.Route('roadmap_save', '/roadmap/save', RoadmapSaveHandler, PRIV.PRIV_USER_PROFILE);
+    // Static /roadmap/* paths must register before /roadmap/:docId (otherwise "branch" matches as docId).
+    await applyRoadmapGitRoutes(ctx);
     ctx.Route('roadmap_manage', '/roadmap/:docId/manage', RoadmapManageHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('roadmap_edit', '/roadmap/:docId/edit', RoadmapEditPageHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('roadmap_edit_branch', '/roadmap/:docId/branch/:branch/edit', RoadmapEditPageHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('roadmap_detail', '/roadmap/:docId', RoadmapDetailHandler);
+    ctx.Route('roadmap_detail_branch', '/roadmap/:docId/branch/:branch', RoadmapDetailHandler);
 }
 

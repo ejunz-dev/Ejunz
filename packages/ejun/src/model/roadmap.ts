@@ -110,14 +110,69 @@ export class RoadmapModel {
         await BaseModel.incrementViews(domainId, docId, document.TYPE_ROADMAP);
     }
 
-    static withGraph(roadmap: RoadmapDoc): RoadmapDoc {
-        const branchData = getBranchData(roadmap as any, 'main');
+    static getBranchMeta(roadmap: RoadmapDoc, branch: string): {
+        layout?: RoadmapDoc['layout'];
+        viewport?: RoadmapDoc['viewport'];
+        theme?: Record<string, any>;
+    } {
+        const branchName = branch || 'main';
+        const metaMap = (roadmap as any).roadmapBranchMeta || {};
+        const meta = metaMap[branchName] || {};
+        return {
+            layout: meta.layout ?? roadmap.layout,
+            viewport: meta.viewport ?? roadmap.viewport,
+            theme: meta.theme ?? (roadmap as any).theme,
+        };
+    }
+
+    static setBranchMeta(
+        roadmap: RoadmapDoc,
+        branch: string,
+        meta: {
+            layout?: RoadmapDoc['layout'];
+            viewport?: RoadmapDoc['viewport'];
+            theme?: Record<string, any>;
+        },
+    ): void {
+        const branchName = branch || 'main';
+        if (!(roadmap as any).roadmapBranchMeta) {
+            (roadmap as any).roadmapBranchMeta = {};
+        }
+        (roadmap as any).roadmapBranchMeta[branchName] = {
+            ...(roadmap as any).roadmapBranchMeta[branchName],
+            ...meta,
+        };
+    }
+
+    static withGraph(roadmap: RoadmapDoc, branch?: string): RoadmapDoc {
+        const effectiveBranch = branch || (roadmap as any).currentBranch || 'main';
+        const branchData = getBranchData(roadmap as any, effectiveBranch);
+        const meta = this.getBranchMeta(roadmap, effectiveBranch);
+        const branchesArr: string[] = Array.isArray((roadmap as any).branches) ? (roadmap as any).branches : [];
+        const branchSet = new Set(branchesArr);
+        branchSet.add('main');
+        const branchDataKeys = Object.keys((roadmap as any).branchData || {});
+        for (const k of branchDataKeys) branchSet.add(k);
+        const branches = Array.from(branchSet);
+        branches.sort((a, b) => (a === 'main' ? -1 : b === 'main' ? 1 : a.localeCompare(b)));
         return {
             ...roadmap,
             nodes: branchData.nodes || [],
             edges: branchData.edges || [],
-            currentBranch: 'main',
+            currentBranch: effectiveBranch,
+            branches,
+            layout: meta.layout,
+            viewport: meta.viewport,
+            theme: meta.theme,
         };
+    }
+
+    static async updateFull(
+        domainId: string,
+        docId: number,
+        updates: Partial<RoadmapDoc>,
+    ): Promise<void> {
+        await BaseModel.updateFull(domainId, docId, updates, document.TYPE_ROADMAP);
     }
 
     static async saveGraph(
@@ -129,12 +184,14 @@ export class RoadmapModel {
             layout?: RoadmapDoc['layout'];
             viewport?: RoadmapDoc['viewport'];
             theme?: RoadmapDoc['theme'];
+            branch?: string;
         },
     ): Promise<void> {
         const roadmap = await this.get(domainId, docId);
         if (!roadmap) throw new Error('Roadmap not found');
 
         let { nodes, edges, layout, viewport, theme } = payload;
+        const branch = payload.branch || (roadmap as any).currentBranch || 'main';
         if (nodes && Array.isArray(nodes)) {
             nodes = nodes.filter((node) => {
                 if (!node.id) return false;
@@ -153,15 +210,17 @@ export class RoadmapModel {
         }
 
         const working = { ...roadmap } as RoadmapDoc;
-        setBranchData(working as any, 'main', nodes || [], edges || []);
-        await BaseModel.updateFull(domainId, docId, {
+        setBranchData(working as any, branch, nodes || [], edges || []);
+        this.setBranchMeta(working, branch, { layout, viewport, theme });
+        await this.updateFull(domainId, docId, {
             branchData: working.branchData,
             nodes: working.nodes,
             edges: working.edges,
+            roadmapBranchMeta: (working as any).roadmapBranchMeta,
             layout,
             viewport,
             theme,
-        }, document.TYPE_ROADMAP);
+        } as Partial<RoadmapDoc>);
     }
 }
 

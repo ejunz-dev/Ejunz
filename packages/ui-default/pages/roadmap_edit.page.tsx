@@ -79,6 +79,7 @@ import {
   type RoadmapViewport,
 } from 'vj/components/roadmap/pending_changes';
 import { RoadmapPendingPanel } from 'vj/components/roadmap/RoadmapPendingPanel';
+import { RoadmapGitPanel, RoadmapGitHubRailIcon } from 'vj/components/roadmap/RoadmapGitPanel';
 
 function newNodeId(): string {
   return `node_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -142,7 +143,7 @@ function roadmapContextMenuItemStyle(themeStyles: EditorThemeStyles, danger = fa
   };
 }
 
-type RoadmapLeftPanelTab = 'canvas' | 'pending';
+type RoadmapLeftPanelTab = 'canvas' | 'pending' | 'git';
 
 function RoadmapCanvasRailIcon() {
   return (
@@ -177,6 +178,12 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
   const [saving, setSaving] = useState(false);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [leftPanelTab, setLeftPanelTab] = useState<RoadmapLeftPanelTab>('canvas');
+  const [branches, setBranches] = useState<string[]>(() => {
+    const list = initialDoc.branches?.length ? [...initialDoc.branches] : ['main'];
+    if (!list.includes('main')) list.unshift('main');
+    return list;
+  });
+  const currentBranch = doc.currentBranch || (window as any).UiContext?.currentBranch || 'main';
   const [contextMenu, setContextMenu] = useState<RoadmapContextMenuState>(null);
   const [viewport, setViewport] = useState<RoadmapViewport>(() => doc.viewport || { x: 0, y: 0, zoom: 1 });
   const [savedSnapshot, setSavedSnapshot] = useState<RoadmapSnapshot>(() => buildRoadmapSnapshot(
@@ -259,6 +266,32 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
     setSavedSnapshot(buildRoadmapSnapshot(nextNodes, nextEdges, vp));
   }, [viewport]);
 
+  const applyRoadmapData = useCallback((data: RoadmapDoc) => {
+    const next = normalizeRoadmapDoc(data);
+    setDoc(next);
+    const nextNodes = toLaneFlowNodes(next.nodes, next.edges);
+    const nextEdges = (next.edges || []).map(baseEdgeToFlowEdge);
+    setNodes(nextNodes);
+    setEdges(nextEdges);
+    setSelectedNodeId(initialRoadmapSelectedNodeId(nextNodes.map((node) => node.id)));
+    if (next.viewport) setViewport(next.viewport);
+    refreshSavedSnapshot(nextNodes, nextEdges, next.viewport || null);
+    if (next.branches?.length) {
+      const list = [...next.branches];
+      if (!list.includes('main')) list.unshift('main');
+      setBranches(list);
+    }
+  }, [refreshSavedSnapshot, setEdges, setNodes]);
+
+  const refetchRoadmapData = useCallback(async () => {
+    if (!context.docId) return;
+    const data: any = await request.get(roadmapApiPath('/data', context.domainId), {
+      docId: context.docId,
+      branch: currentBranch,
+    });
+    applyRoadmapData(data);
+  }, [applyRoadmapData, context.docId, context.domainId, currentBranch]);
+
   const handleNodesChange = useCallback((changes: NodeChange[]) => {
     const applied: NodeChange[] = [];
     changes.forEach((change) => {
@@ -304,20 +337,13 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
 
   useEffect(() => {
     if (doc.nodes?.length || !context.docId) return;
-    request.get(roadmapApiPath('/data', context.domainId), { docId: context.docId })
-      .then((data: any) => {
-        const next = normalizeRoadmapDoc(data);
-        setDoc(next);
-        const nextNodes = toLaneFlowNodes(next.nodes, next.edges);
-        const nextEdges = (next.edges || []).map(baseEdgeToFlowEdge);
-        setNodes(nextNodes);
-        setEdges(nextEdges);
-        setSelectedNodeId(initialRoadmapSelectedNodeId(nextNodes.map((node) => node.id)));
-        if (next.viewport) setViewport(next.viewport);
-        refreshSavedSnapshot(nextNodes, nextEdges, next.viewport || null);
-      })
+    request.get(roadmapApiPath('/data', context.domainId), {
+      docId: context.docId,
+      branch: currentBranch,
+    })
+      .then((data: any) => applyRoadmapData(data))
       .catch((err) => Notification.error(err.message || i18n('Roadmap load failed')));
-  }, [context.docId, context.domainId, doc.nodes?.length, refreshSavedSnapshot, setEdges, setNodes]);
+  }, [applyRoadmapData, context.docId, context.domainId, currentBranch, doc.nodes?.length]);
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selectedNodeId) || null,
@@ -550,6 +576,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
       const nextViewport = reactFlow?.getViewport?.() || viewport;
       await request.post(roadmapApiPath('/save', context.domainId), {
         docId: Number(context.docId || doc.docId),
+        branch: currentBranch,
         nodes: nodes.map(flowNodeToBaseNode),
         edges: edges.map(flowEdgeToBaseEdge),
         layout: doc.layout || { type: 'manual', direction: 'TB', spacing: { x: 260, y: 140 } },
@@ -565,7 +592,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
     } finally {
       setSaving(false);
     }
-  }, [context.domainId, context.docId, doc.docId, doc.layout, edges, nodes, reactFlow, refreshSavedSnapshot, viewport]);
+  }, [context.domainId, context.docId, currentBranch, doc.docId, doc.layout, edges, nodes, reactFlow, refreshSavedSnapshot, viewport]);
 
   const saveRoadmapRef = useRef(saveRoadmap);
   saveRoadmapRef.current = saveRoadmap;
@@ -596,6 +623,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
 
   const canvasRailBtn = useRailIconButtonStyle(themeStyles, leftPanelTab === 'canvas');
   const pendingRailBtn = useRailIconButtonStyle(themeStyles, leftPanelTab === 'pending');
+  const gitRailBtn = useRailIconButtonStyle(themeStyles, leftPanelTab === 'git');
   const edgeRailBtn = useRailIconButtonStyle(themeStyles, rightPanelOpen);
   const contextEdge = contextMenu?.kind === 'edge'
     ? edges.find((edge) => edge.id === contextMenu.edgeId) || null
@@ -606,6 +634,9 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
         <span style={{ fontSize: '13px', fontWeight: 600, color: themeStyles.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {doc.title || i18n('Roadmap')}
+        </span>
+        <span style={{ fontSize: '11px', color: themeStyles.textSecondary, flexShrink: 0 }}>
+          {currentBranch}
         </span>
         {selectedNode ? (
           <label style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1, fontSize: '12px', color: themeStyles.textSecondary }}>
@@ -706,9 +737,24 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
               </span>
             ) : null}
           </button>
+          <button
+            type="button"
+            onClick={() => setLeftPanelTab('git')}
+            style={gitRailBtn}
+            title="GitHub 同步"
+            aria-label="GitHub 同步"
+          >
+            <RoadmapGitHubRailIcon />
+          </button>
         </>
       )}
-      leftPanelTitle={leftPanelTab === 'canvas' ? i18n('Roadmap canvas') : i18n('Uncommitted changes')}
+      leftPanelTitle={
+        leftPanelTab === 'canvas'
+          ? i18n('Roadmap canvas')
+          : leftPanelTab === 'pending'
+            ? i18n('Uncommitted changes')
+            : 'GitHub'
+      }
       leftPanel={(
         leftPanelTab === 'canvas' ? (
           <div ref={outerRef} className="roadmap-flow roadmap-flow--workspace">
@@ -771,7 +817,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
               </ReactFlow>
             </div>
           </div>
-        ) : (
+        ) : leftPanelTab === 'pending' ? (
           <RoadmapPendingPanel
             pending={pendingChanges}
             themeStyles={themeStyles}
@@ -785,6 +831,16 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
               setSelectedEdgeId(edgeId);
               setRightPanelOpen(true);
             }}
+          />
+        ) : (
+          <RoadmapGitPanel
+            domainId={context.domainId}
+            docId={String(context.docId || doc.docId || '')}
+            currentBranch={currentBranch}
+            branches={branches}
+            themeStyles={themeStyles}
+            onPullComplete={refetchRoadmapData}
+            onBranchesChange={setBranches}
           />
         )
       )}
