@@ -28,6 +28,10 @@ import {
   roadmapApiPath,
   RoadmapDoc,
 } from 'vj/components/roadmap/shared';
+import {
+  initialRoadmapSelectedNodeId,
+  useRoadmapNodeUrlSync,
+} from 'vj/components/roadmap/url_sync';
 
 function toLaneFlowNodes(
   baseNodes: ReturnType<typeof normalizeRoadmapDoc>['nodes'],
@@ -44,13 +48,22 @@ function toLaneFlowNodes(
 function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: HTMLElement }) {
   const context = useMemo(() => getRoadmapQueryContext(mount), [mount]);
   const [doc, setDoc] = useState(() => normalizeRoadmapDoc(initialDoc));
-  const [nodes, setNodes, onNodesChange] = useNodesState(toLaneFlowNodes(doc.nodes, doc.edges));
+  const initialFlowNodes = useMemo(() => toLaneFlowNodes(doc.nodes, doc.edges), [doc.nodes, doc.edges]);
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialFlowNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState((doc.edges || []).map(baseEdgeToFlowEdge));
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(
+    () => initialRoadmapSelectedNodeId(initialFlowNodes.map((node) => node.id)),
+  );
   const contentRef = useRef<HTMLDivElement>(null);
   const layoutNodes = useMemo(() => nodes.filter(isRoadmapFlowNode), [nodes]);
   const viewNodes = useMemo(() => toRoadmapViewNodes(layoutNodes, selectedNodeId), [layoutNodes, selectedNodeId]);
   const viewEdges = useMemo(() => toRoadmapViewEdges(edges), [edges]);
+  const roadmapNodeIds = useMemo(() => layoutNodes.map((node) => node.id), [layoutNodes]);
+  useRoadmapNodeUrlSync({
+    nodeIds: roadmapNodeIds,
+    selectedNodeId,
+    setSelectedNodeId,
+  });
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selectedNodeId) || null,
     [nodes, selectedNodeId],
@@ -68,9 +81,12 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
       .then((data: any) => {
         const next = normalizeRoadmapDoc(data);
         setDoc(next);
-        setNodes(toLaneFlowNodes(next.nodes, next.edges));
+        const nextFlowNodes = toLaneFlowNodes(next.nodes, next.edges);
+        setNodes(nextFlowNodes);
         setEdges((next.edges || []).map(baseEdgeToFlowEdge));
-        setSelectedNodeId(null);
+        setSelectedNodeId(initialRoadmapSelectedNodeId(
+          nextFlowNodes.filter(isRoadmapFlowNode).map((node) => node.id),
+        ));
       })
       .catch((err) => Notification.error(err.message || i18n('Roadmap load failed')));
   }, [context.docId, context.domainId, doc.nodes?.length, setEdges, setNodes]);
