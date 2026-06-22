@@ -35,7 +35,8 @@ import {
 } from 'vj/components/roadmap/solid_links';
 import {
   getNodeLane,
-  laneCenterX,
+  getRoadmapNodeWidth,
+  laneNodeX,
   nearestLaneFromX,
   nextLaneNodeY,
   snapNodeToLane,
@@ -256,15 +257,16 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
     return [...live, ...ghosts];
   }, [nodes, selectedNodeId, pendingStatusMaps, deletedNodeIds, savedSnapshot]);
   const viewEdges = useMemo(() => {
-    const live = toRoadmapViewEdges(edges, selectedEdgeId, pendingStatusMaps);
+    const live = toRoadmapViewEdges(edges, selectedEdgeId, pendingStatusMaps, theme);
     if (!deletedEdgeIds.size) return live;
     const ghosts = toRoadmapViewEdges(
       buildDeletedGhostEdges(savedSnapshot, deletedEdgeIds),
       null,
       pendingStatusMaps,
+      theme,
     );
     return [...live, ...ghosts];
-  }, [edges, selectedEdgeId, pendingStatusMaps, deletedEdgeIds, savedSnapshot]);
+  }, [edges, selectedEdgeId, pendingStatusMaps, deletedEdgeIds, savedSnapshot, theme]);
   useRoadmapNodeUrlSync({
     nodeIds: roadmapNodeIds,
     selectedNodeId,
@@ -321,7 +323,10 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
         return;
       }
       const id = String(change.id);
-      const x = laneCenterX(nearestLaneFromX(change.position.x));
+      const draggedNode = nodes.find((node) => node.id === id);
+      const nodeWidth = draggedNode ? getRoadmapNodeWidth(draggedNode) : undefined;
+      const lane = nearestLaneFromX(change.position.x + (nodeWidth || 260) / 2);
+      const x = laneNodeX(lane, nodeWidth);
       const y = change.position.y;
       const linked = getSolidLinkedNodeIds(id, edges, nodes);
       const sharedY = linked.size > 1 ? y : y;
@@ -340,7 +345,10 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
             type: 'position',
             id: peerId,
             position: {
-              x: laneCenterX(nearestLaneFromX(peer.position.x)),
+              x: laneNodeX(
+                nearestLaneFromX(peer.position.x + getRoadmapNodeWidth(peer) / 2),
+                getRoadmapNodeWidth(peer),
+              ),
               y: sharedY,
             },
             dragging: change.dragging,
@@ -508,7 +516,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
       const linked = getSolidLinkedNodeIds(dragged.id, edges, current);
       const snapped = current.map((node) => {
         if (node.id !== dragged.id && !linked.has(node.id)) return node;
-        return snapNodeToLane(node, nearestLaneFromX(node.position.x));
+        return snapNodeToLane(node, nearestLaneFromX(node.position.x + getRoadmapNodeWidth(node) / 2));
       });
       return alignNodesInSolidComponents(snapped, edges);
     });
