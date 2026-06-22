@@ -22,4 +22,6 @@ export {
   useEditorThemeStyles,
   useRailIconButtonStyle,
 } from './theme';
+export { CardProblemsPanel, collectPendingRoadmapCardCreates, collectPendingRoadmapCardUpdates, applyRoadmapCardIdMap } from './card_problems_panel';
+export { EditableProblem, makeBlankSingleProblem, type LearnProblemNotesDraftBatch } from './editable_problem';
 export type { AiTerminalStyles, EditorTheme, EditorThemeStyles } from './theme';

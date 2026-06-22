@@ -1,6 +1,6 @@
-import { Filter } from 'mongodb';
-import type { BaseEdge, BaseNode, RoadmapDoc } from '../interface';
-import { BaseModel, getBranchData, setBranchData } from './base';
+import { Filter, ObjectId } from 'mongodb';
+import type { BaseEdge, BaseNode, CardDoc, Problem, RoadmapDoc } from '../interface';
+import { BaseModel, CardModel, getBranchData, setBranchData } from './base';
 import * as document from './document';
 
 export interface RoadmapCreateOptions {
@@ -13,6 +13,39 @@ export interface RoadmapCreateOptions {
 function readRid(raw: unknown): string | undefined {
     const rid = String(raw || '').trim();
     return rid || undefined;
+}
+
+function mergeIncomingProblemsPreserveStoredTags(incoming: Problem[], stored?: Problem[] | null): Problem[] {
+    if (!Array.isArray(stored) || stored.length === 0) return incoming;
+    const byPid = new Map<string, Problem>();
+    for (const row of stored) {
+        const pid = row?.pid != null ? String(row.pid) : '';
+        if (!pid) continue;
+        byPid.set(pid, row);
+    }
+    return incoming.map((inc) => {
+        const pid = inc?.pid != null ? String(inc.pid) : '';
+        if (!pid || !byPid.has(pid)) return inc;
+        const st = byPid.get(pid)!;
+        const merged: Problem = { ...inc };
+        if (Object.prototype.hasOwnProperty.call(st, 'tags')) {
+            if (Array.isArray(st.tags) && st.tags.length >= 0) {
+                merged.tags = [...st.tags];
+            } else {
+                delete (merged as { tags?: string[] }).tags;
+            }
+        } else {
+            delete (merged as { tags?: string[] }).tags;
+        }
+        return merged;
+    });
+}
+
+function cardBranchFilter(branch: string): Record<string, unknown> {
+    if (branch === 'main') {
+        return { $or: [{ branch: 'main' }, { branch: { $exists: false } }] };
+    }
+    return { branch };
 }
 
 export class RoadmapModel {
@@ -221,6 +254,104 @@ export class RoadmapModel {
             viewport,
             theme,
         } as Partial<RoadmapDoc>);
+    }
+
+    static async buildNodeCardsMap(
+        domainId: string,
+        docId: number,
+        branch: string,
+    ): Promise<Record<string, Array<Record<string, unknown>>>> {
+        const filter: Record<string, unknown> = {
+            baseDocId: docId,
+            ...cardBranchFilter(branch || 'main'),
+        };
+        const cards = await document.getMulti(domainId, document.TYPE_CARD, filter).toArray() as CardDoc[];
+        const map: Record<string, Array<Record<string, unknown>>> = {};
+        for (const card of cards) {
+            if (!card.nodeId) continue;
+            if (!map[card.nodeId]) map[card.nodeId] = [];
+            map[card.nodeId].push({
+                ...card,
+                docId: card.docId.toString(),
+                updateAt: card.updateAt instanceof Date ? card.updateAt.toISOString() : card.updateAt,
+                createdAt: card.createdAt instanceof Date ? card.createdAt.toISOString() : card.createdAt,
+            });
+        }
+        for (const nodeId of Object.keys(map)) {
+            map[nodeId].sort((a, b) => {
+                const ao = Number(a.order ?? 0);
+                const bo = Number(b.order ?? 0);
+                if (ao !== bo) return ao - bo;
+                return Number(a.cid ?? 0) - Number(b.cid ?? 0);
+            });
+        }
+        return map;
+    }
+
+    static async applyCardMutations(
+        domainId: string,
+        docId: number,
+        branch: string,
+        owner: number,
+        ip: string | undefined,
+        cardCreates: Array<{
+            tempId?: string;
+            nodeId: string;
+            title?: string;
+            content?: string;
+            problems?: Problem[];
+        }> = [],
+        cardUpdates: Array<{
+            cardId: string;
+            nodeId?: string;
+            title?: string;
+            content?: string;
+            problems?: Problem[];
+        }> = [],
+    ): Promise<Record<string, string>> {
+        const cardIdMap: Record<string, string> = {};
+        const effectiveBranch = branch || 'main';
+
+        for (const create of cardCreates) {
+            const nodeId = String(create.nodeId || '').trim();
+            if (!nodeId || nodeId.startsWith('temp-node-')) continue;
+            const newId = await CardModel.create(
+                domainId,
+                docId,
+                nodeId,
+                owner,
+                create.title || '题目卡片',
+                create.content || '',
+                ip,
+                create.problems,
+                undefined,
+                effectiveBranch,
+            );
+            const idStr = newId.toString();
+            if (create.tempId) cardIdMap[String(create.tempId)] = idStr;
+        }
+
+        for (const update of cardUpdates) {
+            const cardId = String(update.cardId || '').trim();
+            if (!cardId || cardId.startsWith('temp-card-') || !ObjectId.isValid(cardId)) continue;
+            const oid = new ObjectId(cardId);
+            const prev = await CardModel.get(domainId, oid);
+            if (!prev || Number(prev.baseDocId) !== Number(docId)) continue;
+
+            const payload: Partial<CardDoc> = {};
+            if (update.title !== undefined) payload.title = update.title;
+            if (update.content !== undefined) payload.content = update.content;
+            if (update.problems !== undefined) {
+                payload.problems = mergeIncomingProblemsPreserveStoredTags(
+                    update.problems,
+                    prev.problems as Problem[] | undefined,
+                );
+            }
+            if (Object.keys(payload).length === 0) continue;
+            await CardModel.update(domainId, oid, payload);
+        }
+
+        return cardIdMap;
     }
 }
 
