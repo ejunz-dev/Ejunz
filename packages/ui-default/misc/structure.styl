@@ -49,7 +49,8 @@ html
 .monaco-editor .main
   padding: 0
 
-#panel:has(.base-editor-page)
+#panel:has(.base-editor-page),
+#panel:has(.roadmap-editor-page)
   display: flex
   flex-direction: column
   height: 100vh
@@ -57,7 +58,8 @@ html
   min-height: 0
   overflow: hidden
 
-.main:has(.base-editor-page)
+.main:has(.base-editor-page),
+.main:has(.roadmap-editor-page)
   padding-top: rem(55px)
   // Keep editor workspace visually separated from the global footer (Language / Theme bar).
   padding-bottom: rem(12px)

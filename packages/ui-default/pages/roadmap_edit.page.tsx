@@ -40,6 +40,13 @@ import {
   snapNodeToLane,
 } from 'vj/components/roadmap/lanes';
 import {
+  EditorWorkspaceShell,
+  useEditorTheme,
+  useEditorThemeStyles,
+  useRailIconButtonStyle,
+  buildAiTerminalStyles,
+} from 'vj/components/editor_workspace';
+import {
   baseEdgeToFlowEdge,
   baseNodeToFlowNode,
   newNodeLabel,
@@ -98,6 +105,11 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [rightPanelOpen, setRightPanelOpen] = useState(true);
+  const [terminalInput, setTerminalInput] = useState('');
+  const theme = useEditorTheme();
+  const themeStyles = useEditorThemeStyles(theme);
+  const terminalStyles = useMemo(() => buildAiTerminalStyles(theme), [theme]);
   const [reactFlow, setReactFlow] = useState<ReactFlowInstance | null>(null);
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const editorInstanceRef = useRef<InstanceType<typeof Editor> | null>(null);
@@ -393,88 +405,130 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
     onFlowInit(instance);
   }, [onFlowInit]);
 
-  return (
-    <div className="roadmap-editor-layout">
-      <div className="roadmap-toolbar">
-        <div>
-          <div className="roadmap-hero__eyebrow">{i18n('Roadmap Editor')}</div>
-          <div className="roadmap-toolbar__title">{doc.title || i18n('Roadmap')}</div>
-        </div>
-        <div className="roadmap-toolbar__actions">
-          <button type="button" className="roadmap-tool-button" onClick={addRoadmapNode}>
-            + {i18n('Roadmap add node')}
-          </button>
-          <button type="button" className="roadmap-tool-button" onClick={fitToContent}>
-            {i18n('Roadmap fit canvas')}
-          </button>
-          <button type="button" className="roadmap-tool-button roadmap-tool-button--danger" onClick={deleteSelection} disabled={!selectedNodeId && !selectedEdgeId}>
-            {selectedEdgeId ? i18n('Roadmap delete edge') : i18n('Delete')}
-          </button>
-          <button type="button" className="roadmap-tool-button roadmap-tool-button--save" onClick={saveRoadmap} disabled={saving}>
-            {saving ? i18n('Saving...') : i18n('Save')}
-          </button>
-        </div>
+  const railBtn = useRailIconButtonStyle(themeStyles, false);
+  const edgeRailBtn = useRailIconButtonStyle(themeStyles, rightPanelOpen);
+
+  const centerHeader = (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
+        <span style={{ fontSize: '13px', fontWeight: 600, color: themeStyles.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {doc.title || i18n('Roadmap')}
+        </span>
+        {selectedNode ? (
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1, fontSize: '12px', color: themeStyles.textSecondary }}>
+            <span style={{ flexShrink: 0 }}>{i18n('Title')}</span>
+            <input
+              value={selectedNode.data?.label || ''}
+              onChange={(e) => updateSelectedNode({ label: e.currentTarget.value })}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                borderRadius: '4px',
+                border: `1px solid ${themeStyles.borderSecondary}`,
+                background: themeStyles.bgPrimary,
+                color: themeStyles.textPrimary,
+                padding: '4px 8px',
+                fontSize: '13px',
+              }}
+            />
+          </label>
+        ) : null}
       </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
+        <button
+          type="button"
+          onClick={saveRoadmap}
+          disabled={saving}
+          style={{
+            padding: '4px 12px',
+            minHeight: '28px',
+            border: `1px solid ${themeStyles.borderSecondary}`,
+            borderRadius: '3px',
+            backgroundColor: themeStyles.success,
+            color: themeStyles.textOnPrimary,
+            cursor: saving ? 'not-allowed' : 'pointer',
+            fontSize: '12px',
+            fontWeight: 500,
+            opacity: saving ? 0.6 : 1,
+          }}
+        >
+          {saving ? i18n('Saving...') : i18n('Save')}
+        </button>
+      </div>
+    </>
+  );
 
-      <div className="roadmap-editor-body">
-        <aside className="roadmap-canvas-panel">
-          <div ref={outerRef} className="roadmap-flow roadmap-flow--editor">
-            <div className="roadmap-flow__canvas">
-              <ReactFlow
-                nodes={viewNodes}
-                edges={viewEdges}
-                nodeTypes={roadmapFlowNodeTypes}
-                onNodesChange={handleNodesChange}
-                onEdgesChange={handleEdgesChange}
-                onConnect={onConnect}
-                onInit={handleFlowInit}
-                onNodeDragStop={onNodeDragStop}
-                onNodeClick={(_, node) => {
-                  if (node.type !== 'roadmap') return;
-                  setSelectedNodeId(node.id);
-                }}
-                onEdgeClick={(_, edge) => { setSelectedEdgeId(edge.id); }}
-                onPaneClick={() => { setSelectedNodeId(null); setSelectedEdgeId(null); }}
-                elementsSelectable
-                edgesFocusable
-                connectionMode={ConnectionMode.Loose}
-                {...roadmapEditorFlowProps}
-              >
-                <RoadmapLaneOverlay />
-                <Controls showInteractive={false} />
-              </ReactFlow>
-            </div>
+  return (
+    <EditorWorkspaceShell
+      layoutStorageKey="roadmapEditorLayout"
+      leftPanelTitle={i18n('Roadmap canvas')}
+      leftRail={(
+        <>
+          <button type="button" onClick={addRoadmapNode} style={railBtn} title={i18n('Roadmap add node')} aria-label={i18n('Roadmap add node')}>+</button>
+          <button type="button" onClick={fitToContent} style={railBtn} title={i18n('Roadmap fit canvas')} aria-label={i18n('Roadmap fit canvas')}>⊡</button>
+          <button
+            type="button"
+            onClick={deleteSelection}
+            disabled={!selectedNodeId && !selectedEdgeId}
+            style={{ ...railBtn, color: themeStyles.error, opacity: (!selectedNodeId && !selectedEdgeId) ? 0.45 : 1 }}
+            title={selectedEdgeId ? i18n('Roadmap delete edge') : i18n('Delete')}
+            aria-label={selectedEdgeId ? i18n('Roadmap delete edge') : i18n('Delete')}
+          >
+            ×
+          </button>
+        </>
+      )}
+      leftPanel={(
+        <div ref={outerRef} className="roadmap-flow roadmap-flow--workspace">
+          <div className="roadmap-flow__canvas">
+            <ReactFlow
+              nodes={viewNodes}
+              edges={viewEdges}
+              nodeTypes={roadmapFlowNodeTypes}
+              onNodesChange={handleNodesChange}
+              onEdgesChange={handleEdgesChange}
+              onConnect={onConnect}
+              onInit={handleFlowInit}
+              onNodeDragStop={onNodeDragStop}
+              onNodeClick={(_, node) => {
+                if (node.type !== 'roadmap') return;
+                setSelectedNodeId(node.id);
+              }}
+              onEdgeClick={(_, edge) => {
+                setSelectedEdgeId(edge.id);
+                setRightPanelOpen(true);
+              }}
+              onPaneClick={() => { setSelectedNodeId(null); setSelectedEdgeId(null); }}
+              elementsSelectable
+              edgesFocusable
+              connectionMode={ConnectionMode.Loose}
+              {...roadmapEditorFlowProps}
+            >
+              <RoadmapLaneOverlay />
+              <Controls showInteractive={false} />
+            </ReactFlow>
           </div>
-        </aside>
-
-        <main className="roadmap-editor-main">
-          {selectedNode ? (
-            <>
-              <div className="roadmap-editor-main__header">
-                <label className="roadmap-editor-main__title-field">
-                  {i18n('Title')}
-                  <input
-                    value={selectedNode.data?.label || ''}
-                    onChange={(e) => updateSelectedNode({ label: e.currentTarget.value })}
-                  />
-                </label>
-              </div>
-              <div id="roadmap-editor-container" className="roadmap-node-markdown-editor">
-                <textarea
-                  key={selectedNode.id}
-                  ref={editorRef}
-                  defaultValue={String(selectedNode.data?.description || '')}
-                  className="roadmap-node-markdown-editor__textarea"
-                />
-              </div>
-            </>
-          ) : null}
-        </main>
-
-        <aside className="roadmap-side-panel roadmap-side-panel--edge">
+        </div>
+      )}
+      centerHeader={centerHeader}
+      centerMain={selectedNode ? (
+        <div className="roadmap-node-markdown-editor">
+          <textarea
+            key={selectedNode.id}
+            ref={editorRef}
+            defaultValue={String(selectedNode.data?.description || '')}
+            className="roadmap-node-markdown-editor__textarea"
+          />
+        </div>
+      ) : null}
+      centerMainId="editor-container"
+      rightPanelTitle={i18n('Roadmap edge inspector')}
+      rightPanelOpen={rightPanelOpen}
+      onRightPanelOpenChange={setRightPanelOpen}
+      rightPanel={(
+        <div className="roadmap-inspector roadmap-inspector--workspace">
           {selectedEdge ? (
-            <div className="roadmap-inspector">
-              <div className="roadmap-inspector__kicker">{i18n('Roadmap edge inspector')}</div>
+            <>
               <label>
                 {i18n('Roadmap edge label')}
                 <input value={String(selectedEdge.label || '')} onChange={(e) => updateSelectedEdge({ label: e.currentTarget.value })} />
@@ -494,11 +548,32 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
               <button type="button" className="roadmap-tool-button roadmap-tool-button--danger" onClick={deleteSelectedEdge}>
                 {i18n('Roadmap delete edge')}
               </button>
-            </div>
+            </>
           ) : null}
-        </aside>
-      </div>
-    </div>
+        </div>
+      )}
+      rightRail={(
+        <button
+          type="button"
+          onClick={() => setRightPanelOpen((open) => !open)}
+          style={edgeRailBtn}
+          title={i18n('Roadmap edge inspector')}
+          aria-label={i18n('Roadmap edge inspector')}
+        >
+          线
+        </button>
+      )}
+      bottomTerminal={(
+        <div style={{ color: terminalStyles.textDim, fontSize: '12px' }}>
+          <span style={{ color: terminalStyles.promptAi }}>[ai]</span>
+          {' '}
+          {i18n('Roadmap AI terminal hint')}
+        </div>
+      )}
+      bottomTerminalInputValue={terminalInput}
+      onBottomTerminalInputChange={setTerminalInput}
+      bottomTerminalInputDisabled
+    />
   );
 }
 
