@@ -7,7 +7,6 @@ import { request, i18n } from 'vj/utils';
 import ReactFlow, { ConnectionMode, useEdgesState, useNodesState } from 'reactflow';
 import 'reactflow/dist/style.css';
 import {
-  RoadmapLaneBackground,
   roadmapFlowNodeTypes,
   roadmapScrollFlowProps,
   toRoadmapViewEdges,
@@ -77,8 +76,6 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
     outerRef,
     canvasHeight,
     lockedZoom,
-    viewport,
-    laneGuideHeight,
     onFlowInit,
   } = useRoadmapScrollLayout(layoutNodes, { fillContainer: true });
 
@@ -161,7 +158,6 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
       <div className="roadmap-view">
         <div ref={outerRef} className="roadmap-flow roadmap-flow--scroll">
           <div className="roadmap-flow__canvas" style={{ height: canvasHeight }}>
-            <RoadmapLaneBackground viewport={viewport} guideHeight={laneGuideHeight} />
             <ReactFlow
               nodes={viewNodes}
               edges={viewEdges}
