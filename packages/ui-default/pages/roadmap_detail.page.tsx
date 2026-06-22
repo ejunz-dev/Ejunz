@@ -32,6 +32,8 @@ import {
   initialRoadmapSelectedNodeId,
   useRoadmapNodeUrlSync,
 } from 'vj/components/roadmap/url_sync';
+import { RoadmapNodeDrawer } from 'vj/components/roadmap/RoadmapNodeDrawer';
+import type { RoadmapStatus } from 'vj/components/roadmap/shared';
 
 function toLaneFlowNodes(
   baseNodes: ReturnType<typeof normalizeRoadmapDoc>['nodes'],
@@ -73,7 +75,7 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
     canvasHeight,
     lockedZoom,
     onFlowInit,
-  } = useRoadmapScrollLayout(layoutNodes);
+  } = useRoadmapScrollLayout(layoutNodes, { fillContainer: true });
 
   useEffect(() => {
     if (doc.nodes?.length || !context.docId) return;
@@ -128,6 +130,19 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
     };
   }, [selectedNode, selectedNodeId]);
 
+  useEffect(() => {
+    if (!selectedNodeId) return undefined;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (!target) return;
+      if (target.closest('.roadmap-detail-drawer')) return;
+      if (target.closest('.react-flow__node')) return;
+      setSelectedNodeId(null);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [selectedNodeId]);
+
   if (!doc.nodes?.length) {
     return (
       <div className="roadmap-view__empty">
@@ -137,7 +152,7 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
   }
 
   return (
-    <div className={`roadmap-detail-layout${selectedNode ? ' roadmap-detail-layout--open' : ''}`}>
+    <div className="roadmap-detail-layout">
       <div className="roadmap-view">
         <div ref={outerRef} className="roadmap-flow roadmap-flow--scroll">
           <div className="roadmap-flow__canvas" style={{ height: canvasHeight }}>
@@ -167,25 +182,14 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
         </div>
       </div>
 
-      {selectedNode ? (
-        <aside className="roadmap-detail-sidebar">
-          <div className="roadmap-detail-sidebar__header">
-            <div className="roadmap-inspector__kicker">{i18n('Roadmap node content')}</div>
-            <button
-              type="button"
-              className="roadmap-detail-sidebar__close"
-              onClick={() => setSelectedNodeId(null)}
-              aria-label={i18n('Close')}
-            >
-              ×
-            </button>
-          </div>
-          {selectedNode.data?.label ? (
-            <h2 className="roadmap-node-markdown-preview__title">{String(selectedNode.data.label)}</h2>
-          ) : null}
-          <div ref={contentRef} className="roadmap-node-markdown-preview__body typo" />
-        </aside>
-      ) : null}
+      <RoadmapNodeDrawer
+        open={!!selectedNode}
+        nodeId={selectedNodeId || ''}
+        nodeLabel={String(selectedNode?.data?.label || i18n('Unnamed Node'))}
+        nodeStatus={selectedNode?.data?.status as RoadmapStatus | undefined}
+        contentRef={contentRef}
+        onClose={() => setSelectedNodeId(null)}
+      />
     </div>
   );
 }

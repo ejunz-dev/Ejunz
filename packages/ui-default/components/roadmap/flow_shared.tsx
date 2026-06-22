@@ -199,25 +199,38 @@ export function computeScrollLayout(nodes: Node[], containerWidth: number): Road
   };
 }
 
-function useContainerWidth(outerRef: React.RefObject<HTMLDivElement>) {
-  const [containerWidth, setContainerWidth] = useState(0);
+function useContainerSize(outerRef: React.RefObject<HTMLDivElement>) {
+  const [size, setSize] = useState({ width: 0, height: 0 });
 
   useLayoutEffect(() => {
     installRoadmapResizeObserverErrorGuard();
 
-    const syncWidth = () => {
+    const syncSize = () => {
       const el = outerRef.current;
       if (!el) return;
       const nextWidth = el.clientWidth;
-      setContainerWidth((prev) => (prev === nextWidth ? prev : nextWidth));
+      const nextHeight = el.clientHeight;
+      setSize((prev) => (
+        prev.width === nextWidth && prev.height === nextHeight
+          ? prev
+          : { width: nextWidth, height: nextHeight }
+      ));
     };
 
-    syncWidth();
-    window.addEventListener('resize', syncWidth);
-    return () => window.removeEventListener('resize', syncWidth);
+    syncSize();
+    window.addEventListener('resize', syncSize);
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && outerRef.current) {
+      observer = new ResizeObserver(syncSize);
+      observer.observe(outerRef.current);
+    }
+    return () => {
+      window.removeEventListener('resize', syncSize);
+      observer?.disconnect();
+    };
   }, [outerRef]);
 
-  return containerWidth;
+  return size;
 }
 
 function deferSetViewport(instance: ReactFlowInstance, viewport: Viewport) {
@@ -228,10 +241,11 @@ function deferSetViewport(instance: ReactFlowInstance, viewport: Viewport) {
   });
 }
 
-export function useRoadmapScrollLayout(nodes: Node[]) {
+export function useRoadmapScrollLayout(nodes: Node[], options?: { fillContainer?: boolean }) {
+  const fillContainer = options?.fillContainer ?? false;
   const outerRef = useRef<HTMLDivElement>(null);
   const flowRef = useRef<ReactFlowInstance | null>(null);
-  const containerWidth = useContainerWidth(outerRef);
+  const { width: containerWidth, height: containerHeight } = useContainerSize(outerRef);
   const [canvasHeight, setCanvasHeight] = useState(320);
 
   const layout = useMemo(
@@ -242,7 +256,10 @@ export function useRoadmapScrollLayout(nodes: Node[]) {
   useEffect(() => {
     let outerFrame = 0;
     let innerFrame = 0;
-    const nextHeight = layout.height;
+    const contentHeight = layout.height;
+    const nextHeight = fillContainer && containerHeight > 0
+      ? Math.max(contentHeight, containerHeight)
+      : contentHeight;
 
     outerFrame = requestAnimationFrame(() => {
       innerFrame = requestAnimationFrame(() => {
@@ -254,7 +271,7 @@ export function useRoadmapScrollLayout(nodes: Node[]) {
       cancelAnimationFrame(outerFrame);
       cancelAnimationFrame(innerFrame);
     };
-  }, [layout.height]);
+  }, [containerHeight, fillContainer, layout.height]);
 
   useEffect(() => {
     const instance = flowRef.current;
@@ -280,7 +297,7 @@ export function useRoadmapScrollLayout(nodes: Node[]) {
 export function useRoadmapEditorLayout(nodes: Node[]) {
   const outerRef = useRef<HTMLDivElement>(null);
   const flowRef = useRef<ReactFlowInstance | null>(null);
-  const containerWidth = useContainerWidth(outerRef);
+  const { width: containerWidth } = useContainerSize(outerRef);
   const lastFitKeyRef = useRef('');
 
   const fitToContent = useCallback(() => {

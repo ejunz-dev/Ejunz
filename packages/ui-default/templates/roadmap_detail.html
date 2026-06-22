@@ -12,22 +12,10 @@
     layout: roadmap.layout if roadmap else {},
     viewport: roadmap.viewport if roadmap else {}
   }) }}
+  {{ set(UiContext, 'nodeCardsMap', nodeCardsMap if nodeCardsMap is defined else {}) }}
 </script>
-<div class="roadmap-view-page">
+<div class="roadmap-view-page roadmap-detail-page">
   {% if roadmap %}
-    <header class="roadmap-view-page__header">
-      <div>
-        <h1 class="roadmap-view-page__title">{{ roadmap.title if roadmap else _('Roadmap') }}</h1>
-        {% if roadmap.rid %}
-          <p class="roadmap-view-page__rid">{{ roadmap.rid }}</p>
-        {% endif %}
-      </div>
-      <div class="roadmap-view-page__actions">
-        <a class="button small secondary" href="{{ url('roadmap_main') }}">{{ _('All Roadmaps') }}</a>
-        <a class="button small secondary" href="{{ url('roadmap_manage', docId=roadmap.docId) }}">{{ _('Manage') }}</a>
-        <a class="button small" href="{{ url('roadmap_edit', docId=roadmap.docId) }}">{{ _('Edit graph') }}</a>
-      </div>
-    </header>
     <div id="roadmap-viewer" data-doc-id="{{ roadmap.docId }}"></div>
   {% else %}
     <div class="roadmap-view__empty">
