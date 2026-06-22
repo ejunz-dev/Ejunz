@@ -11,10 +11,13 @@ import {
   Viewport,
 } from 'reactflow';
 import {
+  estimateRoadmapLaneGuideHeight,
   LANE_GUIDE_HEIGHT,
   LANE_WIDTH,
   laneRegionX,
+  ROADMAP_LANE_AXIS_X,
   ROADMAP_LANES,
+  ROADMAP_LANES_SPAN_WIDTH,
 } from './lanes';
 import { roadmapEdgeLineStyleFromStyle, RoadmapStatus, roadmapUntitledNodeLabel } from './shared';
 import {
@@ -23,6 +26,7 @@ import {
   type RoadmapPendingStatus,
   type RoadmapPendingStatusMaps,
 } from './pending_changes';
+import { readEditorTheme, type EditorTheme } from '../editor_workspace/theme';
 
 export const FLOW_PADDING = 48;
 export const NODE_LAYOUT_WIDTH = 260;
@@ -66,7 +70,40 @@ export const roadmapShNodeTypes: NodeTypes = { roadmap: RoadmapShNode };
 
 export const roadmapFlowNodeTypes: NodeTypes = { roadmap: RoadmapShNode };
 
-export function RoadmapLaneOverlay() {
+function RoadmapLaneGuidesWorld({
+  guideHeight,
+  x,
+  y,
+  zoom,
+}: {
+  guideHeight: number;
+  x: number;
+  y: number;
+  zoom: number;
+}) {
+  return (
+    <div
+      className="roadmap-lane-overlay__world"
+      style={{ transform: `translate(${x}px, ${y}px) scale(${zoom})` }}
+    >
+      {ROADMAP_LANES.map((lane) => (
+        <div
+          key={lane}
+          className="roadmap-lane-guide"
+          style={{
+            left: laneRegionX(lane),
+            width: LANE_WIDTH,
+            height: guideHeight,
+          }}
+        >
+          <div className="roadmap-lane-guide__label">{lane}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function RoadmapLaneOverlay({ guideHeight }: { guideHeight?: number }) {
   const transform = useStore((state) => state.transform);
   const width = useStore((state) => state.width);
   const height = useStore((state) => state.height);
@@ -74,24 +111,31 @@ export function RoadmapLaneOverlay() {
 
   return (
     <div className="roadmap-lane-overlay" style={{ width, height }}>
-      <div
-        className="roadmap-lane-overlay__world"
-        style={{ transform: `translate(${tx}px, ${ty}px) scale(${zoom})` }}
-      >
-        {ROADMAP_LANES.map((lane) => (
-          <div
-            key={lane}
-            className="roadmap-lane-guide"
-            style={{
-              left: laneRegionX(lane),
-              width: LANE_WIDTH,
-              height: LANE_GUIDE_HEIGHT,
-            }}
-          >
-            <div className="roadmap-lane-guide__label">{lane}</div>
-          </div>
-        ))}
-      </div>
+      <RoadmapLaneGuidesWorld
+        guideHeight={guideHeight ?? LANE_GUIDE_HEIGHT}
+        x={tx}
+        y={ty}
+        zoom={zoom}
+      />
+    </div>
+  );
+}
+
+export function RoadmapLaneBackground({
+  viewport,
+  guideHeight,
+}: {
+  viewport: Viewport;
+  guideHeight: number;
+}) {
+  return (
+    <div className="roadmap-lane-background" aria-hidden>
+      <RoadmapLaneGuidesWorld
+        guideHeight={guideHeight}
+        x={viewport.x}
+        y={viewport.y}
+        zoom={viewport.zoom}
+      />
     </div>
   );
 }
@@ -122,10 +166,17 @@ function roadmapEdgePendingStyle(pendingStatus: RoadmapPendingStatus, isSelected
   };
 }
 
+function roadmapFlowEdgeStroke(theme: EditorTheme, isSelected: boolean): string {
+  const isDark = theme === 'dark';
+  if (isSelected) return isDark ? '#8ec5ff' : '#1a5fb4';
+  return isDark ? '#6eb3ff' : '#2b78e4';
+}
+
 export function toRoadmapViewEdges(
   edges: Edge[],
   selectedEdgeId?: string | null,
   pending?: RoadmapPendingStatusMaps,
+  theme: EditorTheme = readEditorTheme(),
 ): Edge[] {
   return edges.map((edge) => {
     const isSelected = edge.id === selectedEdgeId;
@@ -133,7 +184,7 @@ export function toRoadmapViewEdges(
     const dash = (edge.style as any)?.strokeDasharray;
     const lineStyle = roadmapEdgeLineStyleFromStyle(edge.style as Record<string, any>);
     const pendingStyle = pendingStatus ? roadmapEdgePendingStyle(pendingStatus, isSelected) : null;
-    const stroke = pendingStyle?.stroke || (isSelected ? '#1a5fb4' : '#2b78e4');
+    const stroke = pendingStyle?.stroke || roadmapFlowEdgeStroke(theme, isSelected);
     return {
       ...edge,
       type: lineStyle === 'dashed' ? 'default' : 'straight',
@@ -159,41 +210,64 @@ export function toRoadmapViewEdges(
   });
 }
 
-export function computeScrollLayout(nodes: Node[], containerWidth: number): RoadmapScrollLayout {
-  if (!nodes.length) {
-    return { height: 320, viewport: { x: FLOW_PADDING, y: FLOW_PADDING, zoom: 1 }, zoom: 1 };
-  }
-
-  let minX = Infinity;
+function computeRoadmapContentBounds(nodes: Node[]) {
   let minY = Infinity;
-  let maxX = -Infinity;
   let maxY = -Infinity;
 
   nodes.forEach((node) => {
-    const width = node.width || NODE_LAYOUT_WIDTH;
     const height = node.height || NODE_LAYOUT_HEIGHT;
-    minX = Math.min(minX, node.position.x);
     minY = Math.min(minY, node.position.y);
-    maxX = Math.max(maxX, node.position.x + width);
     maxY = Math.max(maxY, node.position.y + height);
   });
 
-  const bounds = {
-    x: minX,
+  return {
     y: minY,
-    width: maxX - minX,
-    height: maxY - minY,
+    height: Math.max(maxY - minY, NODE_LAYOUT_HEIGHT),
   };
+}
 
+export function computeRoadmapAxisViewport(
+  nodes: Node[],
+  containerWidth: number,
+  containerHeight: number,
+  options?: { padding?: number; maxZoom?: number },
+): Viewport {
+  const padding = options?.padding ?? 0.15;
+  const maxZoom = options?.maxZoom ?? 2;
+  const width = Math.max(containerWidth, 320);
+  const height = Math.max(containerHeight, 320);
+  const innerWidth = Math.max(width * (1 - padding * 2), 320);
+  const innerHeight = Math.max(height * (1 - padding * 2), 240);
+  const content = nodes.length ? computeRoadmapContentBounds(nodes) : { y: 0, height: NODE_LAYOUT_HEIGHT };
+  const zoomX = innerWidth / ROADMAP_LANES_SPAN_WIDTH;
+  const zoomY = innerHeight / content.height;
+  const zoom = Math.min(maxZoom, zoomX, zoomY);
+  const x = width / 2 - ROADMAP_LANE_AXIS_X * zoom;
+  const y = (height - content.height * zoom) / 2 - content.y * zoom;
+
+  return { x, y, zoom };
+}
+
+export function computeScrollLayout(nodes: Node[], containerWidth: number): RoadmapScrollLayout {
+  if (!nodes.length) {
+    const width = Math.max(containerWidth, 320);
+    return {
+      height: 320,
+      viewport: { x: width / 2 - ROADMAP_LANE_AXIS_X, y: FLOW_PADDING, zoom: 1 },
+      zoom: 1,
+    };
+  }
+
+  const content = computeRoadmapContentBounds(nodes);
   const width = Math.max(containerWidth, 320);
   const innerWidth = Math.max(width - FLOW_PADDING * 2, 320);
-  const zoom = Math.min(1, innerWidth / bounds.width);
-  const height = bounds.height * zoom + FLOW_PADDING * 2;
-  const x = (width - bounds.width * zoom) / 2 - bounds.x * zoom;
-  const y = FLOW_PADDING - bounds.y * zoom;
+  const zoom = Math.min(1, innerWidth / ROADMAP_LANES_SPAN_WIDTH);
+  const layoutHeight = content.height * zoom + FLOW_PADDING * 2;
+  const x = width / 2 - ROADMAP_LANE_AXIS_X * zoom;
+  const y = FLOW_PADDING - content.y * zoom;
 
   return {
-    height: Math.max(height, 320),
+    height: Math.max(layoutHeight, 320),
     viewport: { x, y, zoom },
     zoom,
   };
@@ -285,11 +359,18 @@ export function useRoadmapScrollLayout(nodes: Node[], options?: { fillContainer?
     deferSetViewport(instance, layout.viewport);
   }, [layout.viewport]);
 
+  const laneGuideHeight = useMemo(
+    () => estimateRoadmapLaneGuideHeight(nodes),
+    [nodes],
+  );
+
   return {
     outerRef,
     flowRef,
     canvasHeight,
     lockedZoom: layout.zoom,
+    viewport: layout.viewport,
+    laneGuideHeight,
     onFlowInit,
   };
 }
@@ -297,34 +378,41 @@ export function useRoadmapScrollLayout(nodes: Node[], options?: { fillContainer?
 export function useRoadmapEditorLayout(nodes: Node[]) {
   const outerRef = useRef<HTMLDivElement>(null);
   const flowRef = useRef<ReactFlowInstance | null>(null);
-  const { width: containerWidth } = useContainerSize(outerRef);
+  const { width: containerWidth, height: containerHeight } = useContainerSize(outerRef);
   const lastFitKeyRef = useRef('');
+
+  const applyAxisViewport = useCallback((instance: ReactFlowInstance, duration = 0) => {
+    if (!containerWidth || !containerHeight) return;
+    const viewport = computeRoadmapAxisViewport(nodes, containerWidth, containerHeight, {
+      padding: 0.15,
+      maxZoom: 2,
+    });
+    instance.setViewport(viewport, { duration });
+  }, [containerHeight, containerWidth, nodes]);
 
   const fitToContent = useCallback(() => {
     const instance = flowRef.current;
-    if (!instance || !nodes.length) return;
-    instance.fitView({ padding: 0.15, duration: 200 });
-  }, [nodes.length]);
+    if (!instance) return;
+    applyAxisViewport(instance, 200);
+  }, [applyAxisViewport]);
 
   useEffect(() => {
     const instance = flowRef.current;
-    if (!instance || !nodes.length || !containerWidth) return;
-    const fitKey = `${containerWidth}:${nodes.length}`;
+    if (!instance || !containerWidth || !containerHeight) return;
+    const fitKey = `${containerWidth}:${containerHeight}:${nodes.length}`;
     if (fitKey === lastFitKeyRef.current) return;
     lastFitKeyRef.current = fitKey;
     requestAnimationFrame(() => {
-      instance.fitView({ padding: 0.15, duration: 0 });
+      applyAxisViewport(instance, 0);
     });
-  }, [containerWidth, nodes.length]);
+  }, [applyAxisViewport, containerHeight, containerWidth, nodes.length]);
 
   const onFlowInit = useCallback((instance: ReactFlowInstance) => {
     flowRef.current = instance;
-    if (nodes.length) {
-      requestAnimationFrame(() => {
-        instance.fitView({ padding: 0.15, duration: 0 });
-      });
-    }
-  }, [nodes.length]);
+    requestAnimationFrame(() => {
+      applyAxisViewport(instance, 0);
+    });
+  }, [applyAxisViewport]);
 
   return {
     outerRef,
