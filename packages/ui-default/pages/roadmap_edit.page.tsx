@@ -46,6 +46,10 @@ import {
   useEditorThemeStyles,
   useRailIconButtonStyle,
   buildAiTerminalStyles,
+  CardProblemsPanel,
+  collectPendingRoadmapCardCreates,
+  collectPendingRoadmapCardUpdates,
+  applyRoadmapCardIdMap,
   type EditorThemeStyles,
 } from 'vj/components/editor_workspace';
 import {
@@ -144,6 +148,7 @@ function roadmapContextMenuItemStyle(themeStyles: EditorThemeStyles, danger = fa
 }
 
 type RoadmapLeftPanelTab = 'canvas' | 'pending' | 'git';
+type RoadmapRightPanelTab = 'edge' | 'problems';
 
 function RoadmapCanvasRailIcon() {
   return (
@@ -177,6 +182,8 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
+  const [rightPanelTab, setRightPanelTab] = useState<RoadmapRightPanelTab>('problems');
+  const [pendingProblemCardIds, setPendingProblemCardIds] = useState<Set<string>>(new Set());
   const [leftPanelTab, setLeftPanelTab] = useState<RoadmapLeftPanelTab>('canvas');
   const [branches, setBranches] = useState<string[]>(() => {
     const list = initialDoc.branches?.length ? [...initialDoc.branches] : ['main'];
@@ -218,6 +225,8 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
     [savedSnapshot, currentSnapshot],
   );
   const pendingCount = useMemo(() => countRoadmapPendingChanges(pendingChanges), [pendingChanges]);
+  const problemPendingCount = pendingProblemCardIds.size;
+  const totalPendingCount = pendingCount + problemPendingCount;
   const pendingStatusMaps = useMemo(
     () => buildRoadmapPendingStatusMaps(pendingChanges),
     [pendingChanges],
@@ -266,9 +275,12 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
     setSavedSnapshot(buildRoadmapSnapshot(nextNodes, nextEdges, vp));
   }, [viewport]);
 
-  const applyRoadmapData = useCallback((data: RoadmapDoc) => {
+  const applyRoadmapData = useCallback((data: RoadmapDoc & { nodeCardsMap?: Record<string, unknown[]> }) => {
     const next = normalizeRoadmapDoc(data);
     setDoc(next);
+    if (data.nodeCardsMap && (window as any).UiContext) {
+      (window as any).UiContext.nodeCardsMap = data.nodeCardsMap;
+    }
     const nextNodes = toLaneFlowNodes(next.nodes, next.edges);
     const nextEdges = (next.edges || []).map(baseEdgeToFlowEdge);
     setNodes(nextNodes);
@@ -349,6 +361,19 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
     () => nodes.find((node) => node.id === selectedNodeId) || null,
     [nodes, selectedNodeId],
   );
+  const selectedNodeLabel = selectedNode?.data?.label || i18n('Roadmap new node');
+
+  const getRoadmapEditorUrl = useCallback((_path: string, _docId?: string) => {
+    return roadmapApiPath('/save', context.domainId);
+  }, [context.domainId]);
+
+  const markProblemsDirty = useCallback((cardId: string) => {
+    setPendingProblemCardIds((prev) => {
+      const next = new Set(prev);
+      next.add(cardId);
+      return next;
+    });
+  }, []);
 
   const selectedEdge = useMemo(
     () => edges.find((edge) => edge.id === selectedEdgeId) || null,
@@ -574,7 +599,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
     setSaving(true);
     try {
       const nextViewport = reactFlow?.getViewport?.() || viewport;
-      await request.post(roadmapApiPath('/save', context.domainId), {
+      const res: any = await request.post(roadmapApiPath('/save', context.domainId), {
         docId: Number(context.docId || doc.docId),
         branch: currentBranch,
         nodes: nodes.map(flowNodeToBaseNode),
@@ -582,7 +607,14 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
         layout: doc.layout || { type: 'manual', direction: 'TB', spacing: { x: 260, y: 140 } },
         viewport: nextViewport,
         operationDescription: i18n('Roadmap save operation'),
+        cardCreates: collectPendingRoadmapCardCreates(pendingProblemCardIds),
+        cardUpdates: collectPendingRoadmapCardUpdates(pendingProblemCardIds),
       });
+      if (res?.cardIdMap) applyRoadmapCardIdMap(res.cardIdMap);
+      if (res?.nodeCardsMap && (window as any).UiContext) {
+        (window as any).UiContext.nodeCardsMap = res.nodeCardsMap;
+      }
+      setPendingProblemCardIds(new Set());
       setViewport(nextViewport);
       setDoc((prev) => ({ ...prev, viewport: nextViewport }));
       refreshSavedSnapshot(nodes, edges, nextViewport);
@@ -592,7 +624,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
     } finally {
       setSaving(false);
     }
-  }, [context.domainId, context.docId, currentBranch, doc.docId, doc.layout, edges, nodes, reactFlow, refreshSavedSnapshot, viewport]);
+  }, [context.domainId, context.docId, currentBranch, doc.docId, doc.layout, edges, nodes, pendingProblemCardIds, reactFlow, refreshSavedSnapshot, viewport]);
 
   const saveRoadmapRef = useRef(saveRoadmap);
   saveRoadmapRef.current = saveRoadmap;
@@ -624,7 +656,8 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
   const canvasRailBtn = useRailIconButtonStyle(themeStyles, leftPanelTab === 'canvas');
   const pendingRailBtn = useRailIconButtonStyle(themeStyles, leftPanelTab === 'pending');
   const gitRailBtn = useRailIconButtonStyle(themeStyles, leftPanelTab === 'git');
-  const edgeRailBtn = useRailIconButtonStyle(themeStyles, rightPanelOpen);
+  const edgeRailBtn = useRailIconButtonStyle(themeStyles, rightPanelOpen && rightPanelTab === 'edge');
+  const problemsRailBtn = useRailIconButtonStyle(themeStyles, rightPanelOpen && rightPanelTab === 'problems');
   const contextEdge = contextMenu?.kind === 'edge'
     ? edges.find((edge) => edge.id === contextMenu.edgeId) || null
     : null;
@@ -659,19 +692,19 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
         ) : null}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
-        {pendingCount > 0 ? (
+        {totalPendingCount > 0 ? (
           <span style={{ fontSize: '12px', color: themeStyles.textSecondary }}>
             {i18n('Uncommitted changes')}
             {' '}
             (
-            {pendingCount}
+            {totalPendingCount}
             )
           </span>
         ) : null}
         <button
           type="button"
           onClick={saveRoadmap}
-          disabled={saving || pendingCount === 0}
+          disabled={saving || totalPendingCount === 0}
           style={{
             padding: '4px 12px',
             minHeight: '28px',
@@ -679,13 +712,13 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
             borderRadius: '3px',
             backgroundColor: themeStyles.success,
             color: themeStyles.textOnPrimary,
-            cursor: (saving || pendingCount === 0) ? 'not-allowed' : 'pointer',
+            cursor: (saving || totalPendingCount === 0) ? 'not-allowed' : 'pointer',
             fontSize: '12px',
             fontWeight: 500,
-            opacity: (saving || pendingCount === 0) ? 0.6 : 1,
+            opacity: (saving || totalPendingCount === 0) ? 0.6 : 1,
           }}
         >
-          {saving ? i18n('Saving...') : `${i18n('Save')}${pendingCount > 0 ? ` (${pendingCount})` : ''}`}
+          {saving ? i18n('Saving...') : `${i18n('Save')}${totalPendingCount > 0 ? ` (${totalPendingCount})` : ''}`}
         </button>
       </div>
     </>
@@ -777,6 +810,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
                 onEdgeClick={(_, edge) => {
                   if (edge.data?.isPendingGhost) return;
                   setSelectedEdgeId(edge.id);
+                  setRightPanelTab('edge');
                   setRightPanelOpen(true);
                 }}
                 onPaneClick={() => { setSelectedNodeId(null); setSelectedEdgeId(null); }}
@@ -856,10 +890,20 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
         </div>
       ) : null}
       centerMainId="editor-container"
-      rightPanelTitle={i18n('Roadmap edge inspector')}
+      rightPanelTitle={rightPanelTab === 'problems' ? i18n('Card problems') : i18n('Roadmap edge inspector')}
       rightPanelOpen={rightPanelOpen}
       onRightPanelOpenChange={setRightPanelOpen}
       rightPanel={(
+        rightPanelTab === 'problems' ? (
+          <CardProblemsPanel
+            nodeId={selectedNodeId}
+            nodeLabel={selectedNodeLabel}
+            docId={String(context.docId || doc.docId || '')}
+            themeStyles={themeStyles}
+            getEditorUrl={getRoadmapEditorUrl}
+            onProblemsDirty={markProblemsDirty}
+          />
+        ) : (
         <div className="roadmap-inspector roadmap-inspector--workspace">
           {selectedEdge ? (
             <>
@@ -885,17 +929,49 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
             </>
           ) : null}
         </div>
+        )
       )}
       rightRail={(
-        <button
-          type="button"
-          onClick={() => setRightPanelOpen((open) => !open)}
-          style={edgeRailBtn}
-          title={i18n('Roadmap edge inspector')}
-          aria-label={i18n('Roadmap edge inspector')}
-        >
-          线
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={() => {
+              if (rightPanelOpen && rightPanelTab === 'problems') {
+                setRightPanelOpen(false);
+              } else {
+                setRightPanelTab('problems');
+                setRightPanelOpen(true);
+              }
+            }}
+            style={{
+              ...problemsRailBtn,
+              width: '34px',
+              height: '34px',
+              fontSize: '11px',
+              fontWeight: 600,
+            }}
+            title={i18n('Card problems')}
+            aria-label={i18n('Card problems')}
+          >
+            题
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (rightPanelOpen && rightPanelTab === 'edge') {
+                setRightPanelOpen(false);
+              } else {
+                setRightPanelTab('edge');
+                setRightPanelOpen(true);
+              }
+            }}
+            style={edgeRailBtn}
+            title={i18n('Roadmap edge inspector')}
+            aria-label={i18n('Roadmap edge inspector')}
+          >
+            线
+          </button>
+        </>
       )}
       bottomTerminal={(
         <div style={{ color: terminalStyles.textDim, fontSize: '12px' }}>
