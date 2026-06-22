@@ -1192,6 +1192,15 @@ Stats: Stats
 Date: Date
 'Roadmap edge inspector': Edge inspector
 'Roadmap canvas': Canvas
+'Roadmap panel pending': Pending
+'Roadmap pending empty': No uncommitted changes
+'Roadmap pending created nodes': New nodes
+'Roadmap pending updated nodes': Updated nodes
+'Roadmap pending deleted nodes': Deleted nodes
+'Roadmap pending created edges': New edges
+'Roadmap pending updated edges': Updated edges
+'Roadmap pending deleted edges': Deleted edges
+'Roadmap pending viewport changed': Viewport changed
 'Roadmap AI terminal hint': Roadmap AI assistant is not connected yet.
 'Resize sidebar': Resize sidebar
 'Resize terminal panel': Resize terminal panel

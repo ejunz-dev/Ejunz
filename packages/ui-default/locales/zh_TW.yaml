@@ -547,6 +547,15 @@ Status: 狀態
 Date: 日期
 'Roadmap edge inspector': 連線檢查器
 'Roadmap canvas': 畫布
+'Roadmap panel pending': 待保存
+'Roadmap pending empty': 暫無待提交的更改
+'Roadmap pending created nodes': 新建節點
+'Roadmap pending updated nodes': 節點更改
+'Roadmap pending deleted nodes': 刪除節點
+'Roadmap pending created edges': 新建連線
+'Roadmap pending updated edges': 連線更改
+'Roadmap pending deleted edges': 刪除連線
+'Roadmap pending viewport changed': 視口更改
 'Roadmap AI terminal hint': 路線圖 AI 助手尚未接入。
 'Resize sidebar': 調整側欄寬度
 'Resize terminal panel': 調整終端高度

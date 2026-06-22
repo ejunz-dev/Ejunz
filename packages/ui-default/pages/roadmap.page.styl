@@ -235,6 +235,33 @@
 .roadmap-sh-node--blocked
   background: #ffcfcf
 
+.roadmap-sh-node--pending-create
+  border-color: #4caf50
+  border-style: dashed
+  background: rgba(76, 175, 80, 0.08)
+
+.roadmap-sh-node--pending-update
+  border-color: #ff9800
+  border-style: dashed
+  background: rgba(255, 152, 0, 0.08)
+
+.roadmap-sh-node--pending-delete,
+.roadmap-sh-node--pending-ghost
+  border-color: #f44336
+  border-style: dashed
+  background: rgba(244, 67, 54, 0.08)
+  opacity: 0.72
+
+.roadmap-sh-node--pending-create.is-selected
+  box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.28)
+
+.roadmap-sh-node--pending-update.is-selected
+  box-shadow: 0 0 0 3px rgba(255, 152, 0, 0.28)
+
+.roadmap-sh-node--pending-delete.is-selected,
+.roadmap-sh-node--pending-ghost.is-selected
+  box-shadow: 0 0 0 3px rgba(244, 67, 54, 0.28)
+
 .roadmap-sh-node__title
   font-size: 15px
   font-weight: 500
