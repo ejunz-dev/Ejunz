@@ -7,11 +7,7 @@ import { PERM, PRIV } from '../model/builtin';
 import RoadmapModel from '../model/roadmap';
 import { readOptionalRequestBaseDocId } from '../model/base';
 import { Handler, param, post, Types } from '../service/server';
-import {
-    applyRoadmapGitRoutes,
-    checkoutRoadmapGitBranch,
-    fetchRoadmapGithubContext,
-} from '../lib/roadmap_git';
+import { applyRoadmapGitRoutes, checkoutRoadmapGitBranch, fetchRoadmapGithubContext } from '../lib/roadmap_git';
 import * as document from '../model/document';
 
 const ROADMAP_LIST_SEARCH_OPTIONS = {
@@ -129,6 +125,7 @@ async function renderRoadmapPage(
 
     const requestedBranch = (branch && String(branch).trim()) || (roadmap as any).currentBranch || 'main';
     const viewRoadmap = await applyRoadmapBranchSwitch(handler, domainId, roadmap, requestedBranch);
+    const nodeCardsMap = await RoadmapModel.buildNodeCardsMap(domainId, docId, requestedBranch);
     const githubCtx = editable
         ? await fetchRoadmapGithubContext(domainId, handler.user._id)
         : { userGithubTokenConfigured: false };
@@ -140,6 +137,7 @@ async function renderRoadmapPage(
         currentBranch: requestedBranch,
         githubRepo: ((roadmap as any).githubRepo || '') as string,
         userGithubTokenConfigured: githubCtx.userGithubTokenConfigured,
+        nodeCardsMap,
     };
 }
 
@@ -365,7 +363,10 @@ export class RoadmapDataHandler extends Handler {
         if (!roadmap) throw new NotFoundError('Roadmap not found');
         if (!this.user.own(roadmap)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         const qBranch = branch || this.request.query?.branch;
-        this.response.body = RoadmapModel.withGraph(roadmap, qBranch ? String(qBranch) : undefined);
+        const effectiveBranch = qBranch ? String(qBranch) : ((roadmap as any).currentBranch || 'main');
+        const view = RoadmapModel.withGraph(roadmap, effectiveBranch);
+        const nodeCardsMap = await RoadmapModel.buildNodeCardsMap(domainId, docId, effectiveBranch);
+        this.response.body = { ...view, nodeCardsMap };
     }
 }
 
@@ -381,15 +382,32 @@ export class RoadmapSaveHandler extends Handler {
         if (!this.user.own(roadmap)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
 
         const data = this.request.body || {};
+        const branch = data.branch || (roadmap as any).currentBranch || 'main';
         await RoadmapModel.saveGraph(did, docId, {
             nodes: data.nodes,
             edges: data.edges,
             layout: data.layout,
             viewport: data.viewport,
             theme: data.theme,
-            branch: data.branch || (roadmap as any).currentBranch || 'main',
+            branch,
         });
-        this.response.body = { success: true };
+
+        const cardCreates = Array.isArray(data.cardCreates) ? data.cardCreates : [];
+        const cardUpdates = Array.isArray(data.cardUpdates) ? data.cardUpdates : [];
+        const cardIdMap = (cardCreates.length || cardUpdates.length)
+            ? await RoadmapModel.applyCardMutations(
+                did,
+                docId,
+                branch,
+                this.user._id,
+                this.request.ip,
+                cardCreates,
+                cardUpdates,
+            )
+            : {};
+
+        const nodeCardsMap = await RoadmapModel.buildNodeCardsMap(did, docId, branch);
+        this.response.body = { success: true, cardIdMap, nodeCardsMap };
     }
 }
 
