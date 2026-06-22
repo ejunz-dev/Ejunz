@@ -40,15 +40,23 @@
   color: var(--roadmap-text-primary)
 
 .page--roadmap_detail
+  &.hasjs .nav
+    position: relative !important
+    top: auto
+    left: auto
+
+  .nav--shadow
+    display: none
+
   .roadmap-view-page
-    position: fixed
-    top: rem($nav-item-height)
-    left: 0
-    right: 0
-    bottom: 0
-    z-index: 1
-    flex: 1
-    min-height: 0
+    position: relative
+    top: auto
+    left: auto
+    right: auto
+    bottom: auto
+    z-index: auto
+    flex: none
+    min-height: calc(100dvh - rem($nav-item-height))
     display: flex
     flex-direction: column
     max-width: none
@@ -57,7 +65,7 @@
     background: var(--roadmap-bg-page)
 
     +mobile()
-      top: 0
+      min-height: 100dvh
 
   #roadmap-viewer
     flex: 1
@@ -149,18 +157,19 @@
     cursor: pointer
 
 .page--roadmap_detail .roadmap-flow--scroll
-  flex: 1
+  flex: none
   min-height: 0
-  height: 100%
+  height: auto
   max-width: none
   margin: 0
-  overflow-x: hidden
-  overflow-y: auto
-  -webkit-overflow-scrolling: touch
+  overflow: visible
 
   .roadmap-flow__canvas
-    min-height: 100%
+    min-height: calc(100dvh - rem($nav-item-height))
     width: 100%
+
+    +mobile()
+      min-height: 100dvh
 
   .react-flow__renderer,
   .react-flow__viewport
@@ -488,21 +497,23 @@
   flex-direction: column
   flex: 1
   min-height: 0
-  height: 100%
-  overflow: hidden
   position: relative
+
+.page--roadmap_detail .roadmap-detail-layout
+  height: auto
+  overflow: visible
 
 .page--roadmap_detail .roadmap-view
   flex: 1
   min-height: 0
-  height: 100%
+  height: auto
   display: flex
   flex-direction: column
-  overflow: hidden
+  overflow: visible
 
 .roadmap-detail-backdrop
   position: fixed
-  top: rem($nav-item-height)
+  top: 0
   right: 0
   bottom: 0
   left: 0
@@ -514,12 +525,9 @@
   pointer-events: none
   animation: roadmap-detail-fade-in 0.2s ease
 
-  +mobile()
-    top: 0
-
 .roadmap-detail-drawer
   position: fixed
-  top: rem($nav-item-height)
+  top: 0
   right: 0
   bottom: 0
   width: min(420px, 36vw)
@@ -534,7 +542,6 @@
   animation: roadmap-detail-slide-in 0.24s ease
 
   +mobile()
-    top: 0
     width: min(100%, 420px)
 
 .roadmap-detail-drawer__header

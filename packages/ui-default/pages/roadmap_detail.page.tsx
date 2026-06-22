@@ -77,7 +77,7 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
     canvasHeight,
     lockedZoom,
     onFlowInit,
-  } = useRoadmapScrollLayout(layoutNodes, { fillContainer: true });
+  } = useRoadmapScrollLayout(layoutNodes, { fillContainer: false });
 
   useEffect(() => {
     if (doc.nodes?.length || !context.docId) return;
