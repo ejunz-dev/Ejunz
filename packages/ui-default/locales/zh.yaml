@@ -1741,6 +1741,7 @@ Date: 日期
 'Roadmap pending updated edges': 连线更改
 'Roadmap pending deleted edges': 删除连线
 'Roadmap pending viewport changed': 视口更改
+'Roadmap pending updated problems': 题目更改
 'Roadmap AI terminal hint': 路线图 AI 助手尚未接入。
 'Resize sidebar': 调整侧栏宽度
 'Resize terminal panel': 调整终端高度

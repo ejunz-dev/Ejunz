@@ -69,14 +69,18 @@ function PendingSection({
 
 export function RoadmapPendingPanel({
   pending,
+  pendingProblemCards = [],
   themeStyles,
   onSelectNode,
   onSelectEdge,
+  onSelectProblemNode,
 }: {
   pending: RoadmapPendingChanges;
+  pendingProblemCards?: RoadmapPendingItem[];
   themeStyles: EditorThemeStyles;
   onSelectNode: (nodeId: string) => void;
   onSelectEdge: (edgeId: string) => void;
+  onSelectProblemNode?: (nodeId: string) => void;
 }) {
   const empty = !pending.createdNodes.length
     && !pending.deletedNodes.length
@@ -84,7 +88,8 @@ export function RoadmapPendingPanel({
     && !pending.createdEdges.length
     && !pending.deletedEdges.length
     && !pending.updatedEdges.length
-    && !pending.viewportChanged;
+    && !pending.viewportChanged
+    && !pendingProblemCards.length;
 
   const color = (kind: 'create' | 'update' | 'delete') => ROADMAP_PENDING_COLORS[kind];
 
@@ -158,6 +163,13 @@ export function RoadmapPendingPanel({
                 </div>
               </div>
             ) : null}
+            <PendingSection
+              title={i18n('Roadmap pending updated problems')}
+              items={pendingProblemCards}
+              themeStyles={themeStyles}
+              accentColor={color('update')}
+              onSelect={onSelectProblemNode}
+            />
           </>
         )}
       </div>

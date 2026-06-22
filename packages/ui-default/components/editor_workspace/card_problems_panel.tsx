@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Notification from 'vj/components/notification';
 import { i18n } from 'vj/utils';
 import type { Problem } from 'ejun/src/interface';
@@ -70,6 +70,7 @@ export function CardProblemsPanel({
   themeStyles,
   getEditorUrl,
   onProblemsDirty,
+  reloadEpoch = 0,
 }: CardProblemsPanelProps) {
   const [, bump] = useState(0);
   const refresh = useCallback(() => bump((v) => v + 1), []);
@@ -78,6 +79,25 @@ export function CardProblemsPanel({
   const [newProblemIds, setNewProblemIds] = useState<Set<string>>(new Set());
   const [editedProblemIds, setEditedProblemIds] = useState<Set<string>>(new Set());
   const [originalProblemsVersion, setOriginalProblemsVersion] = useState(0);
+
+  useEffect(() => {
+    if (!nodeId) return;
+    const baselineCard = problemsCardForNode(nodeId, nodeLabel, false);
+    if (!baselineCard) return;
+    const cardIdStr = String(baselineCard.docId);
+    const originalProblems = new Map<string, Problem>();
+    (baselineCard.problems || []).forEach((p) => {
+      originalProblems.set(p.pid, { ...p });
+    });
+    originalProblemsRef.current.set(cardIdStr, originalProblems);
+    originalProblemsOrderRef.current.set(
+      cardIdStr,
+      (baselineCard.problems || []).map((p) => p.pid),
+    );
+    setNewProblemIds(new Set());
+    setEditedProblemIds(new Set());
+    setOriginalProblemsVersion((v) => v + 1);
+  }, [nodeId, nodeLabel, reloadEpoch]);
 
   const card = useMemo(() => {
     if (!nodeId) return null;
@@ -318,4 +338,27 @@ export function applyRoadmapCardIdMap(cardIdMap: Record<string, string>) {
     });
   }
   setNodeCardsMap(next);
+}
+
+export function buildRoadmapProblemPendingItems(
+  pendingCardIds: Set<string>,
+  nodeLabels: Map<string, string>,
+): Array<{ id: string; label: string }> {
+  const map = getNodeCardsMap();
+  const items: Array<{ id: string; label: string }> = [];
+  for (const cardId of pendingCardIds) {
+    const id = String(cardId);
+    for (const nodeId of Object.keys(map)) {
+      const card = (map[nodeId] || []).find((c) => sameCardDocId(c.docId, id));
+      if (!card) continue;
+      const nodeLabel = nodeLabels.get(nodeId) || card.title || nodeId;
+      const count = (card.problems || []).length;
+      items.push({
+        id: nodeId,
+        label: count > 0 ? `${nodeLabel} (${count})` : nodeLabel,
+      });
+      break;
+    }
+  }
+  return items;
 }
