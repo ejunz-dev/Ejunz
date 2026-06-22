@@ -4,31 +4,29 @@
 
 .page--roadmap_detail
   .roadmap-view-page
-    max-width: 100%
-    margin: 0 auto
-    padding: 24px 16px 64px
-
-  .roadmap-view-page__header
+    position: fixed
+    top: rem($nav-item-height)
+    left: 0
+    right: 0
+    bottom: 0
+    z-index: 1
+    flex: 1
+    min-height: 0
     display: flex
-    align-items: flex-start
-    justify-content: space-between
-    gap: 16px
-    margin-bottom: 20px
-
-  .roadmap-view-page__title
+    flex-direction: column
+    max-width: none
     margin: 0
-    font-size: 32px
-    line-height: 1.1
-    letter-spacing: -0.04em
-    color: #111111
+    padding: 0
 
-  .roadmap-view-page__branch
-    margin: 8px 0 0
-    color: #666666
-    font-size: 13px
+    +mobile()
+      top: 0
 
-  .roadmap-view-page__actions
-    flex-shrink: 0
+  #roadmap-viewer
+    flex: 1
+    min-height: 0
+    display: flex
+    flex-direction: column
+    width: 100%
 
   .roadmap-view__empty
     min-height: 320px
@@ -110,6 +108,24 @@
 
   .react-flow__edge
     cursor: pointer
+
+.page--roadmap_detail .roadmap-flow--scroll
+  flex: 1
+  min-height: 0
+  height: 100%
+  max-width: none
+  margin: 0
+  overflow-x: hidden
+  overflow-y: auto
+  -webkit-overflow-scrolling: touch
+
+  .roadmap-flow__canvas
+    min-height: 100%
+    width: 100%
+
+  .react-flow__renderer,
+  .react-flow__viewport
+    overflow: visible
 
 .roadmap-flow__canvas
   width: 100%
@@ -427,49 +443,201 @@
     min-height: 0 !important
 
 .roadmap-detail-layout
-  display: grid
-  grid-template-columns: minmax(0, 1fr)
-  gap: 0
-  align-items: start
+  display: flex
+  flex-direction: column
+  flex: 1
+  min-height: 0
+  height: 100%
+  overflow: hidden
+  position: relative
 
-.roadmap-detail-layout--open
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 36%)
-  gap: 20px
+.page--roadmap_detail .roadmap-view
+  flex: 1
+  min-height: 0
+  height: 100%
+  display: flex
+  flex-direction: column
+  overflow: hidden
 
-.roadmap-detail-sidebar
-  position: sticky
-  top: 24px
-  max-height: calc(100vh - 120px)
-  overflow: auto
-  border: 1px solid #e8e8e8
-  border-radius: 12px
+.roadmap-detail-backdrop
+  position: fixed
+  top: rem($nav-item-height)
+  right: 0
+  bottom: 0
+  left: 0
+  border: 0
+  padding: 0
+  margin: 0
+  background: rgba(0, 0, 0, 0.42)
+  z-index: 120
+  pointer-events: none
+  animation: roadmap-detail-fade-in 0.2s ease
+
+  +mobile()
+    top: 0
+
+.roadmap-detail-drawer
+  position: fixed
+  top: rem($nav-item-height)
+  right: 0
+  bottom: 0
+  width: min(420px, 36vw)
+  max-width: 100%
+  z-index: 130
+  pointer-events: auto
   background: #ffffff
-  padding: 0 0 18px
+  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.14)
+  display: flex
+  flex-direction: column
+  animation: roadmap-detail-slide-in 0.24s ease
 
-  .roadmap-node-markdown-preview__title
-    margin: 0
-    padding: 0 18px 14px
+  +mobile()
+    top: 0
+    width: min(100%, 420px)
 
-.roadmap-detail-sidebar__header
+.roadmap-detail-drawer__header
   display: flex
   align-items: center
   justify-content: space-between
   gap: 12px
-  padding: 16px 18px
+  padding: 14px 16px
   border-bottom: 1px solid #ececec
   background: #fafafa
+  flex-shrink: 0
 
-  .roadmap-inspector__kicker
-    margin-bottom: 0
+.roadmap-detail-drawer__tabs
+  display: flex
+  align-items: center
+  gap: 6px
 
-.roadmap-detail-sidebar__close
+.roadmap-detail-drawer__tab
+  border: 1px solid #d8d8d8
+  background: #ffffff
+  color: #444444
+  border-radius: 999px
+  padding: 6px 14px
+  font-size: 12px
+  font-weight: 600
+  cursor: pointer
+  line-height: 1.2
+
+  &.is-active
+    background: #111111
+    border-color: #111111
+    color: #ffffff
+
+.roadmap-detail-drawer__header-actions
+  display: flex
+  align-items: center
+  gap: 10px
+  flex-shrink: 0
+
+.roadmap-detail-drawer__status
+  display: inline-flex
+  align-items: center
+  gap: 6px
+  padding: 5px 10px
+  border-radius: 999px
+  border: 1px solid #e0e0e0
+  background: #ffffff
+  font-size: 12px
+  color: #333333
+  white-space: nowrap
+
+.roadmap-detail-drawer__status-dot
+  width: 8px
+  height: 8px
+  border-radius: 50%
+  background: var(--roadmap-status-color, #78c7d2)
+  flex-shrink: 0
+
+.roadmap-detail-drawer__close
   border: 0
   background: transparent
   color: #666666
-  font-size: 24px
+  font-size: 26px
   line-height: 1
   cursor: pointer
-  padding: 0 4px
+  padding: 0 2px
+
+.roadmap-detail-drawer__body
+  flex: 1
+  min-height: 0
+  overflow-y: auto
+  padding: 22px 22px 28px
+  -webkit-overflow-scrolling: touch
+
+.roadmap-detail-drawer__title
+  margin: 0 0 14px
+  font-size: 28px
+  line-height: 1.15
+  letter-spacing: -0.03em
+  color: #111111
+
+.roadmap-detail-drawer__markdown
+  color: #333333
+  font-size: 14px
+  line-height: 1.65
+  margin-bottom: 24px
+
+.roadmap-detail-drawer__section
+  margin-top: 8px
+  padding-top: 18px
+  border-top: 1px solid #ececec
+
+.roadmap-detail-drawer__section-title
+  margin: 0 0 12px
+  font-size: 13px
+  font-weight: 700
+  letter-spacing: 0.06em
+  text-transform: uppercase
+  color: #666666
+
+.roadmap-detail-drawer__resource-list
+  list-style: none
+  margin: 0
+  padding: 0
+  display: flex
+  flex-direction: column
+  gap: 10px
+
+.roadmap-detail-drawer__resource-item
+  display: flex
+  align-items: flex-start
+  gap: 10px
+  padding: 12px 14px
+  border: 1px solid #e8e8e8
+  border-radius: 10px
+  background: #fafafa
+
+.roadmap-detail-drawer__resource-badge
+  flex-shrink: 0
+  padding: 3px 8px
+  border-radius: 6px
+  background: #fff3cd
+  color: #7a5b00
+  font-size: 11px
+  font-weight: 600
+  line-height: 1.3
+
+.roadmap-detail-drawer__resource-label
+  flex: 1
+  min-width: 0
+  font-size: 14px
+  line-height: 1.45
+  color: #222222
+
+@keyframes roadmap-detail-fade-in
+  from
+    opacity: 0
+  to
+    opacity: 1
+
+@keyframes roadmap-detail-slide-in
+  from
+    transform: translateX(100%)
+  to
+    transform: translateX(0)
 
 .roadmap-node-markdown-preview
   padding: 18px
@@ -579,9 +747,6 @@
     width: 100%
     border-left: 0
     border-top: 1px solid #ececec
-
-  .roadmap-detail-layout--open
-    grid-template-columns: 1fr
 
   .roadmap-toolbar
     align-items: flex-start
