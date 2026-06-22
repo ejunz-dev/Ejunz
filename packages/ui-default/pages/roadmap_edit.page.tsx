@@ -50,6 +50,7 @@ import {
   collectPendingRoadmapCardCreates,
   collectPendingRoadmapCardUpdates,
   applyRoadmapCardIdMap,
+  buildRoadmapProblemPendingItems,
   type EditorThemeStyles,
 } from 'vj/components/editor_workspace';
 import {
@@ -184,6 +185,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [rightPanelTab, setRightPanelTab] = useState<RoadmapRightPanelTab>('problems');
   const [pendingProblemCardIds, setPendingProblemCardIds] = useState<Set<string>>(new Set());
+  const [cardsReloadEpoch, setCardsReloadEpoch] = useState(0);
   const [leftPanelTab, setLeftPanelTab] = useState<RoadmapLeftPanelTab>('canvas');
   const [branches, setBranches] = useState<string[]>(() => {
     const list = initialDoc.branches?.length ? [...initialDoc.branches] : ['main'];
@@ -227,6 +229,10 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
   const pendingCount = useMemo(() => countRoadmapPendingChanges(pendingChanges), [pendingChanges]);
   const problemPendingCount = pendingProblemCardIds.size;
   const totalPendingCount = pendingCount + problemPendingCount;
+  const pendingProblemItems = useMemo(() => {
+    const nodeLabels = new Map(nodes.map((node) => [node.id, String(node.data?.label || node.id)]));
+    return buildRoadmapProblemPendingItems(pendingProblemCardIds, nodeLabels);
+  }, [nodes, pendingProblemCardIds]);
   const pendingStatusMaps = useMemo(
     () => buildRoadmapPendingStatusMaps(pendingChanges),
     [pendingChanges],
@@ -281,6 +287,8 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
     if (data.nodeCardsMap && (window as any).UiContext) {
       (window as any).UiContext.nodeCardsMap = data.nodeCardsMap;
     }
+    setPendingProblemCardIds(new Set());
+    setCardsReloadEpoch((epoch) => epoch + 1);
     const nextNodes = toLaneFlowNodes(next.nodes, next.edges);
     const nextEdges = (next.edges || []).map(baseEdgeToFlowEdge);
     setNodes(nextNodes);
@@ -615,6 +623,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
         (window as any).UiContext.nodeCardsMap = res.nodeCardsMap;
       }
       setPendingProblemCardIds(new Set());
+      setCardsReloadEpoch((epoch) => epoch + 1);
       setViewport(nextViewport);
       setDoc((prev) => ({ ...prev, viewport: nextViewport }));
       refreshSavedSnapshot(nodes, edges, nextViewport);
@@ -747,7 +756,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
             aria-label={i18n('View pending changes')}
           >
             <RoadmapPendingRailIcon />
-            {pendingCount > 0 ? (
+            {totalPendingCount > 0 ? (
               <span
                 style={{
                   position: 'absolute',
@@ -766,7 +775,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
                   pointerEvents: 'none',
                 }}
               >
-                {pendingCount > 99 ? '99+' : pendingCount}
+                {totalPendingCount > 99 ? '99+' : totalPendingCount}
               </span>
             ) : null}
           </button>
@@ -854,6 +863,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
         ) : leftPanelTab === 'pending' ? (
           <RoadmapPendingPanel
             pending={pendingChanges}
+            pendingProblemCards={pendingProblemItems}
             themeStyles={themeStyles}
             onSelectNode={(nodeId) => {
               setLeftPanelTab('canvas');
@@ -863,6 +873,13 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
             onSelectEdge={(edgeId) => {
               setLeftPanelTab('canvas');
               setSelectedEdgeId(edgeId);
+              setRightPanelOpen(true);
+            }}
+            onSelectProblemNode={(nodeId) => {
+              setLeftPanelTab('canvas');
+              setSelectedNodeId(nodeId);
+              setSelectedEdgeId(null);
+              setRightPanelTab('problems');
               setRightPanelOpen(true);
             }}
           />
@@ -902,6 +919,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
             themeStyles={themeStyles}
             getEditorUrl={getRoadmapEditorUrl}
             onProblemsDirty={markProblemsDirty}
+            reloadEpoch={cardsReloadEpoch}
           />
         ) : (
         <div className="roadmap-inspector roadmap-inspector--workspace">
