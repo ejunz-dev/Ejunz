@@ -31,6 +31,7 @@ import {
 } from 'vj/components/roadmap/shared';
 import {
   initialRoadmapSelectedNodeId,
+  useRoadmapNodeUrlScroll,
   useRoadmapNodeUrlSync,
 } from 'vj/components/roadmap/url_sync';
 import { RoadmapNodeDrawer } from 'vj/components/roadmap/RoadmapNodeDrawer';
@@ -58,6 +59,7 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
     () => initialRoadmapSelectedNodeId(initialFlowNodes.map((node) => node.id)),
   );
   const contentRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
   const theme = useEditorTheme();
   const layoutNodes = useMemo(() => nodes.filter(isRoadmapFlowNode), [nodes]);
   const viewNodes = useMemo(() => toRoadmapViewNodes(layoutNodes, selectedNodeId), [layoutNodes, selectedNodeId]);
@@ -76,8 +78,17 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
     outerRef,
     canvasHeight,
     lockedZoom,
+    viewport,
     onFlowInit,
   } = useRoadmapScrollLayout(layoutNodes, { fillContainer: false });
+
+  useRoadmapNodeUrlScroll({
+    selectedNodeId,
+    nodes: layoutNodes,
+    viewport,
+    canvasRef,
+    canvasHeight,
+  });
 
   useEffect(() => {
     if (doc.nodes?.length || !context.docId) return;
@@ -157,7 +168,7 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
     <div className="roadmap-detail-layout">
       <div className="roadmap-view">
         <div ref={outerRef} className="roadmap-flow roadmap-flow--scroll">
-          <div className="roadmap-flow__canvas" style={{ height: canvasHeight }}>
+          <div ref={canvasRef} className="roadmap-flow__canvas" style={{ height: canvasHeight }}>
             <ReactFlow
               nodes={viewNodes}
               edges={viewEdges}
