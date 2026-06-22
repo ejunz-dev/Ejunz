@@ -344,6 +344,7 @@ export function useRoadmapScrollLayout(nodes: Node[], options?: { fillContainer?
     flowRef,
     canvasHeight,
     lockedZoom: layout.zoom,
+    viewport: layout.viewport,
     onFlowInit,
   };
 }

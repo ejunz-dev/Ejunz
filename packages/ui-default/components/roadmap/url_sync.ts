@@ -1,4 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
+import type { Node, Viewport } from 'reactflow';
+import { scrollToRoadmapNode } from './node_scroll';
 
 export function getRoadmapNodeIdFromUrl(): string | null {
   const nodeId = new URLSearchParams(window.location.search).get('nodeId');
@@ -87,4 +89,50 @@ export function useRoadmapNodeUrlSync(options: {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, [setSelectedNodeId]);
+}
+
+export function useRoadmapNodeUrlScroll(options: {
+  selectedNodeId: string | null;
+  nodes: Node[];
+  viewport: Viewport;
+  canvasRef: RefObject<HTMLElement | null>;
+  canvasHeight: number;
+}) {
+  const { selectedNodeId, nodes, viewport, canvasRef, canvasHeight } = options;
+  const lastScrollKeyRef = useRef('');
+
+  useEffect(() => {
+    const urlNodeId = getRoadmapNodeIdFromUrl();
+    if (!urlNodeId || urlNodeId !== selectedNodeId) return;
+    if (!canvasRef.current || canvasHeight < 120) return;
+
+    const node = nodes.find((item) => item.id === urlNodeId);
+    if (!node) return;
+
+    const scrollKey = [
+      urlNodeId,
+      canvasHeight,
+      viewport.x,
+      viewport.y,
+      viewport.zoom,
+      node.position.x,
+      node.position.y,
+    ].join(':');
+    if (scrollKey === lastScrollKeyRef.current) return;
+
+    let outerFrame = 0;
+    let innerFrame = 0;
+    outerFrame = requestAnimationFrame(() => {
+      innerFrame = requestAnimationFrame(() => {
+        if (!canvasRef.current) return;
+        scrollToRoadmapNode(node, viewport, canvasRef.current, { behavior: 'smooth' });
+        lastScrollKeyRef.current = scrollKey;
+      });
+    });
+
+    return () => {
+      cancelAnimationFrame(outerFrame);
+      cancelAnimationFrame(innerFrame);
+    };
+  }, [canvasHeight, canvasRef, nodes, selectedNodeId, viewport]);
 }
