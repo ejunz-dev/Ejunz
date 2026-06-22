@@ -50,7 +50,8 @@ html
   padding: 0
 
 #panel:has(.base-editor-page),
-#panel:has(.roadmap-editor-page)
+#panel:has(.roadmap-editor-page),
+#panel:has(.roadmap-detail-page)
   display: flex
   flex-direction: column
   height: 100vh
@@ -75,6 +76,16 @@ html
   +mobile()
     padding-top: 0
     padding-bottom: rem(10px)
+
+.main:has(.roadmap-detail-page)
+  padding: 0
+  flex: 1
+  min-height: 0
+  display: flex
+  flex-direction: column
+
+#panel:has(.roadmap-detail-page) .footer
+  display: none
 
 .base-editor-page
   flex: 1
