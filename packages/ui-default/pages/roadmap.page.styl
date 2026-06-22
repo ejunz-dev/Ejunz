@@ -1,6 +1,43 @@
 .page--roadmap_detail,
 .page--roadmap_edit
-  background: #ffffff
+  --roadmap-bg-page: #ffffff
+  --roadmap-bg-canvas: #ffffff
+  --roadmap-bg-surface: #fafafa
+  --roadmap-bg-elevated: #ffffff
+  --roadmap-text-primary: #111111
+  --roadmap-text-secondary: #666666
+  --roadmap-text-muted: #444444
+  --roadmap-text-body: #333333
+  --roadmap-border: #ececec
+  --roadmap-border-input: #d8d8d8
+  --roadmap-border-card: #e8e8e8
+  --roadmap-accent: #4135d6
+  --roadmap-accent-blue: #1a5fb4
+  --roadmap-edge: #2b78e4
+  --roadmap-edge-hover: #1a5fb4
+  --roadmap-node-border: #4135d6
+  --roadmap-node-text: #111111
+  --roadmap-node-bg-planned: #ffe599
+  --roadmap-node-bg-done: #cbcbcb
+  --roadmap-node-bg-in_progress: #dad1fd
+  --roadmap-node-bg-blocked: #ffcfcf
+  --roadmap-handle-border: #ffffff
+  --roadmap-handle-bg: #2b78e4
+  --roadmap-drawer-shadow: -12px 0 40px rgba(0, 0, 0, 0.14)
+  --roadmap-backdrop: rgba(0, 0, 0, 0.42)
+  --roadmap-tab-bg: #ffffff
+  --roadmap-tab-fg: #444444
+  --roadmap-tab-active-bg: #111111
+  --roadmap-tab-active-fg: #ffffff
+  --roadmap-badge-bg: #fff3cd
+  --roadmap-badge-fg: #7a5b00
+  --roadmap-lane-border: rgba(65, 53, 214, 0.22)
+  --roadmap-lane-fill: rgba(65, 53, 214, 0.05)
+  --roadmap-lane-fill-end: rgba(65, 53, 214, 0.02)
+  --roadmap-lane-label-bg: rgba(255, 255, 255, 0.92)
+  --roadmap-lane-label-border: rgba(65, 53, 214, 0.28)
+  background: var(--roadmap-bg-page)
+  color: var(--roadmap-text-primary)
 
 .page--roadmap_detail
   .roadmap-view-page
@@ -17,6 +54,7 @@
     max-width: none
     margin: 0
     padding: 0
+    background: var(--roadmap-bg-page)
 
     +mobile()
       top: 0
@@ -27,6 +65,7 @@
     display: flex
     flex-direction: column
     width: 100%
+    background: var(--roadmap-bg-canvas)
 
   .roadmap-view__empty
     min-height: 320px
@@ -36,7 +75,7 @@
     justify-content: center
     text-align: center
     gap: 12px
-    color: #444444
+    color: var(--roadmap-text-muted)
 
 .page--roadmap_edit
   .roadmap-shell
@@ -91,7 +130,7 @@
   width: 100%
   max-width: 1100px
   margin: 0 auto
-  background: #ffffff
+  background: var(--roadmap-bg-canvas)
   overflow: visible
 
   .react-flow
@@ -103,7 +142,7 @@
 
   .react-flow__edge.selected .react-flow__edge-path,
   .react-flow__edge:hover .react-flow__edge-path
-    stroke: #1a5fb4 !important
+    stroke: var(--roadmap-edge-hover) !important
     stroke-width: 4 !important
 
   .react-flow__edge
@@ -122,6 +161,22 @@
   .roadmap-flow__canvas
     min-height: 100%
     width: 100%
+    position: relative
+
+  .roadmap-lane-background
+    position: absolute
+    inset: 0
+    pointer-events: none
+    z-index: 0
+    overflow: hidden
+
+  .react-flow
+    position: relative
+    z-index: 1
+    background: transparent !important
+
+  .react-flow__pane
+    background: transparent !important
 
   .react-flow__renderer,
   .react-flow__viewport
@@ -129,6 +184,7 @@
 
 .roadmap-flow__canvas
   width: 100%
+  position: relative
 
   .react-flow
     width: 100%
@@ -148,7 +204,7 @@
 
   .react-flow__edge.selected .react-flow__edge-path,
   .react-flow__edge:hover .react-flow__edge-path
-    stroke: #1a5fb4 !important
+    stroke: var(--roadmap-edge-hover) !important
     stroke-width: 4 !important
 
   .react-flow__edge
@@ -202,9 +258,9 @@
   position: absolute
   top: 0
   pointer-events: none
-  border-left: 1px dashed rgba(65, 53, 214, 0.22)
-  border-right: 1px dashed rgba(65, 53, 214, 0.22)
-  background: linear-gradient(180deg, rgba(65, 53, 214, 0.05) 0%, rgba(65, 53, 214, 0.02) 100%)
+  border-left: 1px dashed var(--roadmap-lane-border)
+  border-right: 1px dashed var(--roadmap-lane-border)
+  background: linear-gradient(180deg, var(--roadmap-lane-fill) 0%, var(--roadmap-lane-fill-end) 100%)
   border-radius: 12px
   box-sizing: border-box
 
@@ -221,35 +277,37 @@
   justify-content: center
   font-size: 13px
   font-weight: 700
-  color: #4135d6
-  background: rgba(255, 255, 255, 0.92)
-  border: 1px solid rgba(65, 53, 214, 0.28)
+  color: var(--roadmap-accent)
+  background: var(--roadmap-lane-label-bg)
+  border: 1px solid var(--roadmap-lane-label-border)
   box-shadow: 0 2px 8px rgba(65, 53, 214, 0.08)
 
 .roadmap-sh-node
-  min-width: 132px
+  width: 260px
+  min-width: 260px
   max-width: 260px
+  box-sizing: border-box
   padding: 10px 16px
-  border: 2px solid #4135d6
+  border: 2px solid var(--roadmap-node-border)
   border-radius: 8px
-  background: #ffe599
-  color: #111111
+  background: var(--roadmap-node-bg-planned)
+  color: var(--roadmap-node-text)
   text-align: center
   box-shadow: none
   cursor: default
 
   &.is-selected
-    border-color: #1a5fb4
+    border-color: var(--roadmap-accent-blue)
     box-shadow: 0 0 0 3px rgba(26, 95, 180, 0.35)
 
 .roadmap-sh-node--done
-  background: #cbcbcb
+  background: var(--roadmap-node-bg-done)
 
 .roadmap-sh-node--in_progress
-  background: #dad1fd
+  background: var(--roadmap-node-bg-in_progress)
 
 .roadmap-sh-node--blocked
-  background: #ffcfcf
+  background: var(--roadmap-node-bg-blocked)
 
 .roadmap-sh-node--pending-create
   border-color: #4caf50
@@ -287,8 +345,8 @@
 .roadmap-sh-node__handle
   width: 10px
   height: 10px
-  border: 2px solid #ffffff
-  background: #2b78e4
+  border: 2px solid var(--roadmap-handle-border)
+  background: var(--roadmap-handle-bg)
 
 .page--roadmap_edit .roadmap-sh-node
   cursor: grab
@@ -468,7 +526,7 @@
   border: 0
   padding: 0
   margin: 0
-  background: rgba(0, 0, 0, 0.42)
+  background: var(--roadmap-backdrop)
   z-index: 120
   pointer-events: none
   animation: roadmap-detail-fade-in 0.2s ease
@@ -485,8 +543,9 @@
   max-width: 100%
   z-index: 130
   pointer-events: auto
-  background: #ffffff
-  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.14)
+  background: var(--roadmap-bg-elevated)
+  color: var(--roadmap-text-primary)
+  box-shadow: var(--roadmap-drawer-shadow)
   display: flex
   flex-direction: column
   animation: roadmap-detail-slide-in 0.24s ease
@@ -501,8 +560,8 @@
   justify-content: space-between
   gap: 12px
   padding: 14px 16px
-  border-bottom: 1px solid #ececec
-  background: #fafafa
+  border-bottom: 1px solid var(--roadmap-border)
+  background: var(--roadmap-bg-surface)
   flex-shrink: 0
 
 .roadmap-detail-drawer__tabs
@@ -511,9 +570,9 @@
   gap: 6px
 
 .roadmap-detail-drawer__tab
-  border: 1px solid #d8d8d8
-  background: #ffffff
-  color: #444444
+  border: 1px solid var(--roadmap-border-input)
+  background: var(--roadmap-tab-bg)
+  color: var(--roadmap-tab-fg)
   border-radius: 999px
   padding: 6px 14px
   font-size: 12px
@@ -522,9 +581,9 @@
   line-height: 1.2
 
   &.is-active
-    background: #111111
-    border-color: #111111
-    color: #ffffff
+    background: var(--roadmap-tab-active-bg)
+    border-color: var(--roadmap-tab-active-bg)
+    color: var(--roadmap-tab-active-fg)
 
 .roadmap-detail-drawer__header-actions
   display: flex
@@ -538,10 +597,10 @@
   gap: 6px
   padding: 5px 10px
   border-radius: 999px
-  border: 1px solid #e0e0e0
-  background: #ffffff
+  border: 1px solid var(--roadmap-border-card)
+  background: var(--roadmap-bg-elevated)
   font-size: 12px
-  color: #333333
+  color: var(--roadmap-text-body)
   white-space: nowrap
 
 .roadmap-detail-drawer__status-dot
@@ -554,7 +613,7 @@
 .roadmap-detail-drawer__close
   border: 0
   background: transparent
-  color: #666666
+  color: var(--roadmap-text-secondary)
   font-size: 26px
   line-height: 1
   cursor: pointer
@@ -572,10 +631,10 @@
   font-size: 28px
   line-height: 1.15
   letter-spacing: -0.03em
-  color: #111111
+  color: var(--roadmap-text-primary)
 
 .roadmap-detail-drawer__markdown
-  color: #333333
+  color: var(--roadmap-text-body)
   font-size: 14px
   line-height: 1.65
   margin-bottom: 24px
@@ -583,7 +642,7 @@
 .roadmap-detail-drawer__section
   margin-top: 8px
   padding-top: 18px
-  border-top: 1px solid #ececec
+  border-top: 1px solid var(--roadmap-border)
 
 .roadmap-detail-drawer__section-title
   margin: 0 0 12px
@@ -591,7 +650,7 @@
   font-weight: 700
   letter-spacing: 0.06em
   text-transform: uppercase
-  color: #666666
+  color: var(--roadmap-text-secondary)
 
 .roadmap-detail-drawer__resource-list
   list-style: none
@@ -606,16 +665,16 @@
   align-items: flex-start
   gap: 10px
   padding: 12px 14px
-  border: 1px solid #e8e8e8
+  border: 1px solid var(--roadmap-border-card)
   border-radius: 10px
-  background: #fafafa
+  background: var(--roadmap-bg-surface)
 
 .roadmap-detail-drawer__resource-badge
   flex-shrink: 0
   padding: 3px 8px
   border-radius: 6px
-  background: #fff3cd
-  color: #7a5b00
+  background: var(--roadmap-badge-bg)
+  color: var(--roadmap-badge-fg)
   font-size: 11px
   font-weight: 600
   line-height: 1.3
@@ -625,7 +684,7 @@
   min-width: 0
   font-size: 14px
   line-height: 1.45
-  color: #222222
+  color: var(--roadmap-text-primary)
 
 @keyframes roadmap-detail-fade-in
   from
@@ -726,8 +785,141 @@
   margin-bottom: 18px
 
 .roadmap-inspector__empty
-  color: #666666
+  color: var(--roadmap-text-secondary)
   line-height: 1.6
+
+.theme--dark.page--roadmap_detail,
+.theme--dark.page--roadmap_edit
+  --roadmap-bg-page: #121212
+  --roadmap-bg-canvas: #121212
+  --roadmap-bg-surface: #1e1e1e
+  --roadmap-bg-elevated: #252526
+  --roadmap-text-primary: #eeeeee
+  --roadmap-text-secondary: #bdbdbd
+  --roadmap-text-muted: #999999
+  --roadmap-text-body: #cccccc
+  --roadmap-border: #3c3c3c
+  --roadmap-border-input: #555555
+  --roadmap-border-card: #424242
+  --roadmap-accent: #9d93f0
+  --roadmap-accent-blue: #8ec5ff
+  --roadmap-edge: #6eb3ff
+  --roadmap-edge-hover: #8ec5ff
+  --roadmap-node-border: #9d93f0
+  --roadmap-node-text: #eeeeee
+  --roadmap-node-bg-planned: #5c4a1a
+  --roadmap-node-bg-done: #4a4a4a
+  --roadmap-node-bg-in_progress: #4a3d6b
+  --roadmap-node-bg-blocked: #6b2f2f
+  --roadmap-handle-border: #252526
+  --roadmap-handle-bg: #6eb3ff
+  --roadmap-drawer-shadow: -12px 0 40px rgba(0, 0, 0, 0.45)
+  --roadmap-backdrop: rgba(0, 0, 0, 0.58)
+  --roadmap-tab-bg: #323334
+  --roadmap-tab-fg: #cccccc
+  --roadmap-tab-active-bg: #eeeeee
+  --roadmap-tab-active-fg: #121212
+  --roadmap-badge-bg: #4a3f1a
+  --roadmap-badge-fg: #f0d878
+  --roadmap-lane-border: rgba(157, 147, 240, 0.5)
+  --roadmap-lane-fill: rgba(157, 147, 240, 0.14)
+  --roadmap-lane-fill-end: rgba(157, 147, 240, 0.06)
+  --roadmap-lane-label-bg: rgba(37, 37, 38, 0.94)
+  --roadmap-lane-label-border: rgba(157, 147, 240, 0.35)
+
+.theme--dark.page--roadmap_edit
+  .roadmap-shell
+    background: var(--roadmap-bg-elevated)
+    border-color: var(--roadmap-border-card)
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35)
+
+  .roadmap-shell__header
+    color: var(--roadmap-text-primary)
+    border-bottom-color: var(--roadmap-border)
+    background: var(--roadmap-bg-surface)
+
+  .roadmap-title
+    color: var(--roadmap-text-primary)
+
+  .roadmap-kicker
+    color: var(--roadmap-text-secondary)
+
+  .roadmap-shell__body,
+  .roadmap-editor-main,
+  .roadmap-editor-main__header
+    background: var(--roadmap-bg-page)
+
+  .roadmap-canvas-panel,
+  .roadmap-side-panel--edge
+    background: var(--roadmap-bg-surface)
+    border-color: var(--roadmap-border)
+
+  .roadmap-editor-main__header
+    border-bottom-color: var(--roadmap-border)
+
+  .roadmap-editor-main__title-field
+    color: var(--roadmap-text-secondary)
+
+    input
+      border-color: var(--roadmap-border-input)
+      background: var(--roadmap-bg-elevated)
+      color: var(--roadmap-text-primary)
+
+.theme--dark.page--roadmap_detail,
+.theme--dark.page--roadmap_edit
+  .roadmap-inspector
+    color: var(--roadmap-text-primary)
+
+    label
+      color: var(--roadmap-text-secondary)
+
+    input,
+    select,
+    textarea
+      border-color: var(--roadmap-border-input)
+      background: var(--roadmap-bg-elevated)
+      color: var(--roadmap-text-primary)
+
+    p
+      color: var(--roadmap-text-secondary)
+
+  .roadmap-inspector__kicker
+    color: var(--roadmap-accent)
+
+  .roadmap-tool-button
+    border-color: var(--roadmap-border-input)
+    background: var(--roadmap-bg-elevated)
+    color: var(--roadmap-text-body)
+
+    &:hover:not(:disabled)
+      border-color: var(--roadmap-accent)
+      color: var(--roadmap-accent)
+
+  .roadmap-flow__canvas .react-flow
+    background: var(--roadmap-bg-canvas)
+
+  .react-flow__pane
+    background: transparent
+
+  .roadmap-lane-guide__label
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35)
+
+  .react-flow__controls
+    box-shadow: 0 0 0 1px var(--roadmap-border-card)
+
+  .react-flow__controls-button
+    background: var(--roadmap-bg-elevated)
+    border-bottom-color: var(--roadmap-border)
+
+    &:hover
+      background: var(--roadmap-tab-bg)
+
+    svg
+      fill: var(--roadmap-text-primary)
+
+    &:disabled svg
+      fill: var(--roadmap-text-muted)
+      fill-opacity: 0.5
 
 @media (max-width: 1100px)
   .roadmap-editor-body

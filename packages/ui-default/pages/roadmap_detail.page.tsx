@@ -7,12 +7,14 @@ import { request, i18n } from 'vj/utils';
 import ReactFlow, { ConnectionMode, useEdgesState, useNodesState } from 'reactflow';
 import 'reactflow/dist/style.css';
 import {
+  RoadmapLaneBackground,
   roadmapFlowNodeTypes,
   roadmapScrollFlowProps,
   toRoadmapViewEdges,
   toRoadmapViewNodes,
   useRoadmapScrollLayout,
 } from 'vj/components/roadmap/flow_shared';
+import { useEditorTheme } from 'vj/components/editor_workspace';
 import { alignNodesInSolidComponents } from 'vj/components/roadmap/solid_links';
 import {
   getNodeLane,
@@ -57,9 +59,10 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
     () => initialRoadmapSelectedNodeId(initialFlowNodes.map((node) => node.id)),
   );
   const contentRef = useRef<HTMLDivElement>(null);
+  const theme = useEditorTheme();
   const layoutNodes = useMemo(() => nodes.filter(isRoadmapFlowNode), [nodes]);
   const viewNodes = useMemo(() => toRoadmapViewNodes(layoutNodes, selectedNodeId), [layoutNodes, selectedNodeId]);
-  const viewEdges = useMemo(() => toRoadmapViewEdges(edges), [edges]);
+  const viewEdges = useMemo(() => toRoadmapViewEdges(edges, null, undefined, theme), [edges, theme]);
   const roadmapNodeIds = useMemo(() => layoutNodes.map((node) => node.id), [layoutNodes]);
   useRoadmapNodeUrlSync({
     nodeIds: roadmapNodeIds,
@@ -74,6 +77,8 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
     outerRef,
     canvasHeight,
     lockedZoom,
+    viewport,
+    laneGuideHeight,
     onFlowInit,
   } = useRoadmapScrollLayout(layoutNodes, { fillContainer: true });
 
@@ -156,6 +161,7 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
       <div className="roadmap-view">
         <div ref={outerRef} className="roadmap-flow roadmap-flow--scroll">
           <div className="roadmap-flow__canvas" style={{ height: canvasHeight }}>
+            <RoadmapLaneBackground viewport={viewport} guideHeight={laneGuideHeight} />
             <ReactFlow
               nodes={viewNodes}
               edges={viewEdges}
