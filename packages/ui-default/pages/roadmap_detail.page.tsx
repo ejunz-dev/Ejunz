@@ -36,6 +36,7 @@ import {
 } from 'vj/components/roadmap/url_sync';
 import { RoadmapNodeDrawer } from 'vj/components/roadmap/RoadmapNodeDrawer';
 import { RoadmapDetailHeader } from 'vj/components/roadmap/RoadmapDetailHeader';
+import { RoadmapAiTutor } from 'vj/components/roadmap/RoadmapAiTutor';
 import { isHookNodeType, isTextNodeType } from 'vj/components/roadmap/node_kinds';
 import type { RoadmapStatus } from 'vj/components/roadmap/shared';
 
@@ -60,6 +61,7 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(
     () => initialRoadmapSelectedNodeId(initialFlowNodes.map((node) => node.id)),
   );
+  const [aiTutorOpen, setAiTutorOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const theme = useEditorTheme();
@@ -99,6 +101,9 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
       .then((data: any) => {
         const next = normalizeRoadmapDoc(data);
         setDoc(next);
+        if (data.nodeCardsMap && (window as any).UiContext) {
+          (window as any).UiContext.nodeCardsMap = data.nodeCardsMap;
+        }
         const nextFlowNodes = toLaneFlowNodes(next.nodes, next.edges);
         setNodes(nextFlowNodes);
         setEdges((next.edges || []).map(baseEdgeToFlowEdge));
@@ -152,6 +157,8 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
       const target = event.target as Element | null;
       if (!target) return;
       if (target.closest('.roadmap-detail-drawer')) return;
+      if (target.closest('.roadmap-ai-tutor-modal')) return;
+      if (target.closest('.roadmap-ai-tutor-bar')) return;
       if (target.closest('.react-flow__node')) return;
       setSelectedNodeId(null);
     };
@@ -169,6 +176,8 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
     branch: roadmapBranch,
     nodes: doc.nodes || [],
     edges: doc.edges || [],
+    aiTutorActive: aiTutorOpen,
+    onAiTutorClick: () => setAiTutorOpen(true),
   };
 
   if (!doc.nodes?.length) {
@@ -225,6 +234,17 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
         nodeStatus={selectedNode?.data?.status as RoadmapStatus | undefined}
         contentRef={contentRef}
         onClose={() => setSelectedNodeId(null)}
+      />
+
+      <RoadmapAiTutor
+        nodes={layoutNodes}
+        edges={edges}
+        docTitle={roadmapTitle}
+        branch={roadmapBranch}
+        docDescription={doc.content}
+        selectedNode={selectedNode}
+        open={aiTutorOpen}
+        onOpenChange={setAiTutorOpen}
       />
     </div>
   );

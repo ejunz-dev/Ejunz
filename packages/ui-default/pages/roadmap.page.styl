@@ -860,6 +860,12 @@ roadmap-text-btn-styles()
   color: var(--roadmap-text-muted)
   border-bottom: 2px solid transparent
   margin-bottom: -1px
+  background: none
+  border-top: none
+  border-left: none
+  border-right: none
+  cursor: pointer
+  font-family: inherit
 
   &.is-active
     color: var(--roadmap-text-primary)
@@ -1310,3 +1316,267 @@ roadmap-text-btn-styles()
   .roadmap-toolbar
     align-items: flex-start
     flex-direction: column
+
+// --- Roadmap detail AI Tutor ---
+$roadmap-tutor-gold = #e8a317
+$roadmap-tutor-gold-soft = #fff8e6
+$roadmap-tutor-bar-bg = #1a1a1a
+
+.roadmap-ai-tutor-bar
+  position: fixed
+  left: 50%
+  bottom: 28px
+  transform: translateX(-50%)
+  z-index: 120
+  display: inline-flex
+  align-items: center
+  gap: 16px
+  width: fit-content
+  max-width: calc(100vw - 32px)
+  padding: 10px 18px
+  border: none
+  border-radius: 999px
+  background: $roadmap-tutor-bar-bg
+  color: #ffffff
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28)
+  cursor: pointer
+  font-family: inherit
+  white-space: nowrap
+  transition: transform 0.15s ease, box-shadow 0.15s ease
+
+  &:hover
+    transform: translateX(-50%) translateY(-1px)
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32)
+
+  +mobile()
+    bottom: 16px
+    gap: 10px
+    padding: 9px 14px
+
+.roadmap-ai-tutor-bar__brand
+  display: inline-flex
+  align-items: center
+  gap: 8px
+  flex-shrink: 0
+  font-size: 15px
+  font-weight: 700
+  color: $roadmap-tutor-gold
+
+  svg
+    color: $roadmap-tutor-gold
+
+.roadmap-ai-tutor-bar__hint
+  font-size: 14px
+  font-weight: 400
+  color: rgba(255, 255, 255, 0.92)
+  min-width: 0
+  overflow: hidden
+  text-overflow: ellipsis
+
+  +mobile()
+    font-size: 13px
+
+.roadmap-ai-tutor-backdrop
+  position: fixed
+  inset: 0
+  z-index: 130
+  background: rgba(0, 0, 0, 0.35)
+  animation: roadmap-detail-fade-in 0.2s ease
+
+.roadmap-ai-tutor-modal
+  position: fixed
+  left: 50%
+  top: 50%
+  transform: translate(-50%, -50%)
+  z-index: 140
+  width: calc(100vw - 32px)
+  max-width: 640px
+  max-height: unquote('min(720px, calc(100dvh - 48px))')
+  display: flex
+  flex-direction: column
+  background: #ffffff
+  border-radius: 16px
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.18)
+  overflow: hidden
+  animation: roadmap-ai-tutor-modal-in 0.24s ease
+
+  +mobile()
+    top: auto
+    bottom: 0
+    left: 0
+    right: 0
+    transform: none
+    width: 100%
+    max-height: unquote('min(88dvh, 720px)')
+    border-radius: 16px 16px 0 0
+    animation: roadmap-ai-tutor-sheet-in 0.24s ease
+
+.roadmap-ai-tutor-modal__header
+  display: flex
+  align-items: center
+  justify-content: space-between
+  padding: 14px 16px
+  border-bottom: 1px solid var(--roadmap-border)
+
+.roadmap-ai-tutor-modal__title
+  display: inline-flex
+  align-items: center
+  gap: 8px
+  font-size: 16px
+  font-weight: 700
+  color: var(--roadmap-text-primary)
+
+.roadmap-ai-tutor-modal__close
+  display: inline-flex
+  align-items: center
+  justify-content: center
+  width: 32px
+  height: 32px
+  border: none
+  border-radius: 8px
+  background: #fee2e2
+  color: #b91c1c
+  cursor: pointer
+
+  &:hover
+    background: #fecaca
+
+.roadmap-ai-tutor-modal__body
+  flex: 1
+  min-height: 0
+  overflow-y: auto
+  padding: 16px
+
+.roadmap-ai-tutor-modal__footer
+  flex-shrink: 0
+  padding: 12px 16px 16px
+  border-top: 1px solid var(--roadmap-border)
+  background: #fafafa
+
+.roadmap-ai-tutor-greeting
+  display: flex
+  align-items: flex-start
+  gap: 10px
+  padding: 12px 14px
+  margin-bottom: 16px
+  border-radius: 12px
+  background: $roadmap-tutor-gold-soft
+  color: var(--roadmap-text-body)
+  font-size: 14px
+  line-height: 1.5
+
+.roadmap-ai-tutor-greeting__icon
+  flex-shrink: 0
+  color: $roadmap-tutor-gold
+
+.roadmap-ai-tutor-msg
+  margin-bottom: 12px
+  padding: 10px 12px
+  border-radius: 10px
+  font-size: 14px
+  line-height: 1.55
+  white-space: pre-wrap
+  word-break: break-word
+
+  &--user
+    margin-left: 24px
+    background: #f3f4f6
+    color: var(--roadmap-text-primary)
+
+  &--assistant
+    margin-right: 24px
+    background: $roadmap-tutor-gold-soft
+    color: var(--roadmap-text-body)
+
+.roadmap-ai-tutor-suggestions
+  margin-top: 8px
+
+.roadmap-ai-tutor-suggestions__lead
+  margin: 0 0 12px
+  font-size: 14px
+  color: var(--roadmap-text-secondary)
+
+.roadmap-ai-tutor-suggestions__list
+  display: flex
+  flex-direction: column
+  gap: 10px
+
+.roadmap-ai-tutor-suggestions__pill
+  display: block
+  width: 100%
+  text-align: left
+  padding: 12px 14px
+  border: 1px solid rgba(232, 163, 23, 0.35)
+  border-radius: 12px
+  background: $roadmap-tutor-gold-soft
+  color: var(--roadmap-text-primary)
+  font-size: 14px
+  line-height: 1.45
+  cursor: pointer
+  font-family: inherit
+  transition: background 0.15s ease, border-color 0.15s ease
+
+  &:hover:not(:disabled)
+    background: #fff3d4
+    border-color: rgba(232, 163, 23, 0.55)
+
+  &:disabled
+    opacity: 0.6
+    cursor: not-allowed
+
+.roadmap-ai-tutor-input-wrap
+  display: flex
+  align-items: center
+  gap: 8px
+  padding: 6px 8px 6px 14px
+  border: 1px solid var(--roadmap-border-input)
+  border-radius: 999px
+  background: #ffffff
+
+.roadmap-ai-tutor-input
+  flex: 1
+  min-width: 0
+  border: none
+  outline: none
+  background: transparent
+  font-size: 14px
+  color: var(--roadmap-text-primary)
+  font-family: inherit
+
+  &::placeholder
+    color: var(--roadmap-text-muted)
+
+.roadmap-ai-tutor-send
+  display: inline-flex
+  align-items: center
+  justify-content: center
+  width: 36px
+  height: 36px
+  border: none
+  border-radius: 50%
+  background: transparent
+  color: var(--roadmap-text-muted)
+  cursor: pointer
+
+  &:hover:not(:disabled)
+    color: $roadmap-tutor-gold
+
+  &:disabled
+    opacity: 0.45
+    cursor: not-allowed
+
+@keyframes roadmap-ai-tutor-modal-in
+  from
+    opacity: 0
+    transform: translate(-50%, calc(-50% + 12px))
+  to
+    opacity: 1
+    transform: translate(-50%, -50%)
+
+@keyframes roadmap-ai-tutor-sheet-in
+  from
+    opacity: 0
+    transform: translateY(100%)
+  to
+    opacity: 1
+    transform: translateY(0)

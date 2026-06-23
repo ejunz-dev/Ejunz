@@ -53,6 +53,19 @@ function downloadRoadmapSvg(nodes: BaseRoadmapNode[], edges: BaseRoadmapEdge[], 
   URL.revokeObjectURL(url);
 }
 
+function AiTutorTabIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d="M8 2l1 3h3l-2.5 2 1 3L8 8.5 5.5 10l1-3L4 5h3L8 2z"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function RoadmapDetailHeader({
   title,
   description,
@@ -61,6 +74,8 @@ export function RoadmapDetailHeader({
   branch,
   nodes,
   edges,
+  aiTutorActive,
+  onAiTutorClick,
 }: {
   title: string;
   description?: string;
@@ -69,6 +84,8 @@ export function RoadmapDetailHeader({
   branch: string;
   nodes: BaseRoadmapNode[];
   edges: BaseRoadmapEdge[];
+  aiTutorActive?: boolean;
+  onAiTutorClick?: () => void;
 }) {
   const listUrl = domainScopedPath('/roadmap', domainId);
   const editUrl = roadmapEditUrl(domainId, docId, branch);
@@ -136,10 +153,20 @@ export function RoadmapDetailHeader({
       </div>
 
       <div className="roadmap-detail-header-card__tabs">
-        <span className="roadmap-detail-header-card__tab is-active">
+        <span className={`roadmap-detail-header-card__tab${aiTutorActive ? '' : ' is-active'}`}>
           <RoadmapTabIcon />
           {i18n('Roadmap')}
         </span>
+        {onAiTutorClick ? (
+          <button
+            type="button"
+            className={`roadmap-detail-header-card__tab${aiTutorActive ? ' is-active' : ''}`}
+            onClick={onAiTutorClick}
+          >
+            <AiTutorTabIcon />
+            {i18n('Roadmap AI tutor')}
+          </button>
+        ) : null}
       </div>
     </header>
   );

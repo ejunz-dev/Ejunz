@@ -1758,6 +1758,17 @@ Date: 日期
 'Roadmap AI parse error': '无法解析 AI 操作：{0}'
 'Roadmap AI execute error': '执行操作失败：{0}'
 'Roadmap AI problem missing nodeId': create_problem 需要有效的 nodeId
+'Roadmap AI tutor': AI 导师
+'Roadmap AI tutor open': 打开 AI 导师
+'Roadmap AI tutor bar hint': 有问题？在这里输入
+'Roadmap AI tutor greeting': 你好，今天我能帮你什么？
+'Roadmap AI tutor suggestions lead': 关于这条路线图，你可能想问：
+'Roadmap AI tutor input placeholder': 问我任何关于这条路线图的问题…
+'Roadmap AI tutor question node': 关于路线图中的「{0}」，我应该了解什么？
+'Roadmap AI tutor question overview': 这条路线图「{0}」主要讲什么？
+'Roadmap AI tutor question order': 我应该按什么顺序学习这条路线图？
+'Roadmap AI tutor question start': 我应该从这条路线图的哪里开始？
+'Roadmap AI tutor question progress': 如何跟踪我在这条路线图上的学习进度？
 'Resize sidebar': 调整侧栏宽度
 'Resize terminal panel': 调整终端高度
 'Terminal input': 终端输入

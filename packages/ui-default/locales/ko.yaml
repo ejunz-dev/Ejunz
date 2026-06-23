@@ -723,6 +723,17 @@ Date: 날짜
 'Roadmap AI parse error': 'AI 작업 파싱 실패: {0}'
 'Roadmap AI execute error': '작업 실행 실패: {0}'
 'Roadmap AI problem missing nodeId': create_problem에는 유효한 nodeId가 필요합니다
+'Roadmap AI tutor': AI 튜터
+'Roadmap AI tutor open': AI 튜터 열기
+'Roadmap AI tutor bar hint': 질문이 있으신가요? 여기에 입력하세요
+'Roadmap AI tutor greeting': 안녕하세요, 무엇을 도와드릴까요?
+'Roadmap AI tutor suggestions lead': '이 로드맵에 대해 이런 질문을 해볼 수 있어요:'
+'Roadmap AI tutor input placeholder': 이 로드맵에 대해 무엇이든 물어보세요…
+'Roadmap AI tutor question node': 이 로드맵에서 "{0}"에 대해 무엇을 알아야 할까요?
+'Roadmap AI tutor question overview': 로드맵 "{0}"은 무엇에 관한 것인가요?
+'Roadmap AI tutor question order': 이 로드맵은 어떤 순서로 진행해야 하나요?
+'Roadmap AI tutor question start': 이 로드맵은 어디서 시작해야 하나요?
+'Roadmap AI tutor question progress': 이 로드맵에서 학습 진행 상황을 어떻게 추적할 수 있나요?
 'Resize sidebar': 사이드바 크기 조절
 'Resize terminal panel': 터미널 높이 조절
 'Terminal input': 터미널 입력
