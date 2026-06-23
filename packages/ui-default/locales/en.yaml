@@ -1218,6 +1218,17 @@ Date: Date
 'Roadmap AI parse error': 'Failed to parse AI operations: {0}'
 'Roadmap AI execute error': 'Failed to run operations: {0}'
 'Roadmap AI problem missing nodeId': create_problem requires a valid nodeId
+'Roadmap AI tutor': AI Tutor
+'Roadmap AI tutor open': Open AI Tutor
+'Roadmap AI tutor bar hint': 'Have a question? Type here'
+'Roadmap AI tutor greeting': 'Hello, how can I help you today?'
+'Roadmap AI tutor suggestions lead': 'Some questions you might have about this roadmap:'
+'Roadmap AI tutor input placeholder': 'Ask me anything about this roadmap…'
+'Roadmap AI tutor question node': 'What should I know about "{0}" in this roadmap?'
+'Roadmap AI tutor question overview': 'What is this roadmap "{0}" about?'
+'Roadmap AI tutor question order': 'What order should I follow through this roadmap?'
+'Roadmap AI tutor question start': 'Where should I start on this roadmap?'
+'Roadmap AI tutor question progress': 'How can I track my progress on this roadmap?'
 'Resize sidebar': Resize sidebar
 'Resize terminal panel': Resize terminal panel
 'Terminal input': Terminal input
