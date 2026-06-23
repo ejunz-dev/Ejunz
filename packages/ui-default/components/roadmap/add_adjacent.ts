@@ -1,9 +1,10 @@
 import type { Connection, Edge, Node } from 'reactflow';
 import {
+  ADJACENT_VERTICAL_GAP,
   getNodeLane,
+  getRoadmapNodeHeight,
   getRoadmapNodeWidth,
   laneNodeX,
-  LANE_ADD_GAP,
   LANE_NODE_HEIGHT,
   LANE_START_Y,
   nextLaneNodeY,
@@ -19,7 +20,6 @@ import {
   roadmapFlowEdgeType,
   type RoadmapEdgeLineStyle,
 } from './shared';
-import { shouldAlignSolidConnection } from './solid_links';
 
 export type AddAdjacentDirection = 'top' | 'bottom' | 'left' | 'right';
 
@@ -31,6 +31,46 @@ export function oppositeAddDirection(direction: AddAdjacentDirection): AddAdjace
     case 'right': return 'left';
     default: return 'bottom';
   }
+}
+
+function isHorizontalEdge(edge: Edge): boolean {
+  const sourceHandle = edge.sourceHandle || '';
+  const targetHandle = edge.targetHandle || '';
+  return sourceHandle === 'left'
+    || sourceHandle === 'right'
+    || targetHandle === 'left'
+    || targetHandle === 'right';
+}
+
+export function getBlockedAddAdjacentDirections(
+  nodeId: string,
+  edges: Edge[],
+  nodes: Node[],
+): Set<AddAdjacentDirection> {
+  const blocked = new Set<AddAdjacentDirection>();
+  const node = nodes.find((item) => item.id === nodeId);
+  if (!node) return blocked;
+
+  const lane = getNodeLane(node);
+  if (lane <= 1) blocked.add('left');
+  if (lane >= 3) blocked.add('right');
+
+  const laneNodes = nodes.filter((item) => getNodeLane(item) === lane);
+  if (laneNodes.length) {
+    const minY = Math.min(...laneNodes.map((item) => item.position.y));
+    if (node.position.y <= minY + 1) blocked.add('top');
+  }
+
+  edges.forEach((edge) => {
+    if (isHorizontalEdge(edge)) {
+      if (edge.source === nodeId) blocked.add('right');
+      if (edge.target === nodeId) blocked.add('left');
+      return;
+    }
+    if (edge.source === nodeId) blocked.add('bottom');
+    if (edge.target === nodeId) blocked.add('top');
+  });
+  return blocked;
 }
 
 function handlesForDirection(direction: AddAdjacentDirection): {
@@ -65,10 +105,11 @@ export function computeAdjacentNodePlacement(
 } | null {
   const lane = getNodeLane(sourceNode);
   const nodeWidth = getRoadmapNodeWidth(sourceNode);
+  const sourceHeight = getRoadmapNodeHeight(sourceNode);
   const handles = handlesForDirection(direction);
 
   if (direction === 'bottom') {
-    const y = sourceNode.position.y + LANE_ADD_GAP;
+    const y = sourceNode.position.y + sourceHeight + ADJACENT_VERTICAL_GAP;
     return {
       lane,
       position: { x: laneNodeX(lane, nodeWidth), y },
@@ -80,7 +121,10 @@ export function computeAdjacentNodePlacement(
   }
 
   if (direction === 'top') {
-    const y = Math.max(LANE_START_Y, sourceNode.position.y - LANE_ADD_GAP);
+    const y = Math.max(
+      LANE_START_Y,
+      sourceNode.position.y - ADJACENT_VERTICAL_GAP - LANE_NODE_HEIGHT,
+    );
     return {
       lane,
       position: { x: laneNodeX(lane, nodeWidth), y },
@@ -176,10 +220,27 @@ export function snapAdjacentNodes(
 export function minYForLane(nodes: Node[], lane: RoadmapLane): number {
   const laneNodes = nodes.filter((node) => getNodeLane(node) === lane);
   if (!laneNodes.length) return LANE_START_Y;
-  return Math.max(...laneNodes.map((node) => node.position.y + LANE_NODE_HEIGHT));
+  return Math.max(...laneNodes.map((node) => node.position.y + getRoadmapNodeHeight(node)));
 }
 
 export function placementYForBottom(nodes: Node[], lane: RoadmapLane, fallbackY: number): number {
   const nextY = nextLaneNodeY(nodes, lane);
   return Math.max(nextY, fallbackY);
+}
+
+export function placementYForTop(
+  nodes: Node[],
+  lane: RoadmapLane,
+  fallbackY: number,
+  newNodeHeight = LANE_NODE_HEIGHT,
+): number {
+  let candidate = Math.max(LANE_START_Y, fallbackY);
+  const laneNodes = nodes.filter((node) => getNodeLane(node) === lane);
+  laneNodes.forEach((node) => {
+    const nodeBottom = node.position.y + getRoadmapNodeHeight(node) + ADJACENT_VERTICAL_GAP;
+    if (candidate + newNodeHeight + ADJACENT_VERTICAL_GAP > node.position.y && candidate < nodeBottom) {
+      candidate = node.position.y - ADJACENT_VERTICAL_GAP - newNodeHeight;
+    }
+  });
+  return Math.max(LANE_START_Y, candidate);
 }
