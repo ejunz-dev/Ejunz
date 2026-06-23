@@ -35,6 +35,7 @@ import {
   useRoadmapNodeUrlSync,
 } from 'vj/components/roadmap/url_sync';
 import { RoadmapNodeDrawer } from 'vj/components/roadmap/RoadmapNodeDrawer';
+import { RoadmapDetailHeader } from 'vj/components/roadmap/RoadmapDetailHeader';
 import type { RoadmapStatus } from 'vj/components/roadmap/shared';
 
 function toLaneFlowNodes(
@@ -156,16 +157,32 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
     return () => document.removeEventListener('pointerdown', onPointerDown);
   }, [selectedNodeId]);
 
+  const roadmapTitle = doc.title || i18n('Roadmap');
+  const roadmapBranch = doc.currentBranch || 'main';
+  const headerProps = {
+    title: roadmapTitle,
+    description: doc.content,
+    domainId: context.domainId,
+    docId: context.docId,
+    branch: roadmapBranch,
+    nodes: doc.nodes || [],
+    edges: doc.edges || [],
+  };
+
   if (!doc.nodes?.length) {
     return (
-      <div className="roadmap-view__empty">
-        <p>{i18n('Roadmap detail empty')}</p>
+      <div className="roadmap-detail-layout">
+        <RoadmapDetailHeader {...headerProps} />
+        <div className="roadmap-view__empty">
+          <p>{i18n('Roadmap detail empty')}</p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="roadmap-detail-layout">
+      <RoadmapDetailHeader {...headerProps} />
       <div className="roadmap-view">
         <div ref={outerRef} className="roadmap-flow roadmap-flow--scroll">
           <div ref={canvasRef} className="roadmap-flow__canvas" style={{ height: canvasHeight }}>
