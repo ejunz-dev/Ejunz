@@ -734,6 +734,26 @@ Date: 날짜
 'Roadmap AI tutor question order': 이 로드맵은 어떤 순서로 진행해야 하나요?
 'Roadmap AI tutor question start': 이 로드맵은 어디서 시작해야 하나요?
 'Roadmap AI tutor question progress': 이 로드맵에서 학습 진행 상황을 어떻게 추적할 수 있나요?
+'Roadmap detail search placeholder': '노드와 문제 검색…'
+'Roadmap detail search aria': 로드맵 검색
+'Roadmap detail search no results': 일치하는 결과 없음
+'Roadmap detail search kind node': 노드
+'Roadmap detail search kind problem': 문제
+'Roadmap detail search problem untitled': 제목 없는 문제
+'Roadmap detail filter open': 필터
+'Roadmap detail filter aria': 캔버스에서 로드맵 노드 필터링
+'Roadmap detail filter dialog title': 로드맵 필터
+'Roadmap detail filter dialog hint': '일치하지 않는 노드는 캔버스에서 흐리게 표시됩니다. 필터는 URL과 동기화됩니다.'
+'Roadmap detail filter node label': 노드 제목
+'Roadmap detail filter node placeholder': '노드 제목…'
+'Roadmap detail filter content label': 노드 내용
+'Roadmap detail filter content placeholder': 'Markdown 본문…'
+'Roadmap detail filter problem label': 연습 문제
+'Roadmap detail filter problem placeholder': '문제 텍스트…'
+'Roadmap detail filter apply': 적용
+'Roadmap detail filter clear': 지우기
+'Roadmap detail filter cancel': 취소
+'Roadmap detail filter match count': '{0}개 일치'
 'Resize sidebar': 사이드바 크기 조절
 'Resize terminal panel': 터미널 높이 조절
 'Terminal input': 터미널 입력

@@ -1769,6 +1769,26 @@ Date: 日期
 'Roadmap AI tutor question order': 我应该按什么顺序学习这条路线图？
 'Roadmap AI tutor question start': 我应该从这条路线图的哪里开始？
 'Roadmap AI tutor question progress': 如何跟踪我在这条路线图上的学习进度？
+'Roadmap detail search placeholder': 搜索节点和题目…
+'Roadmap detail search aria': 搜索路线图
+'Roadmap detail search no results': 无匹配结果
+'Roadmap detail search kind node': 节点
+'Roadmap detail search kind problem': 题目
+'Roadmap detail search problem untitled': 未命名题目
+'Roadmap detail filter open': 筛选
+'Roadmap detail filter aria': 在画布上筛选路线图节点
+'Roadmap detail filter dialog title': 筛选路线图
+'Roadmap detail filter dialog hint': 不匹配的节点会在画布上变淡。筛选条件会同步到 URL。
+'Roadmap detail filter node label': 节点标题
+'Roadmap detail filter node placeholder': 节点标题…
+'Roadmap detail filter content label': 节点内容
+'Roadmap detail filter content placeholder': Markdown 正文…
+'Roadmap detail filter problem label': 练习题
+'Roadmap detail filter problem placeholder': 题目文本…
+'Roadmap detail filter apply': 应用
+'Roadmap detail filter clear': 清除
+'Roadmap detail filter cancel': 取消
+'Roadmap detail filter match count': 匹配 {0} 个
 'Resize sidebar': 调整侧栏宽度
 'Resize terminal panel': 调整终端高度
 'Terminal input': 终端输入
