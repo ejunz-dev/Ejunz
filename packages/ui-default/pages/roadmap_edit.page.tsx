@@ -459,7 +459,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
         y: flowPosition?.y ?? nextLaneNodeY(nodes, lane),
       },
       data: {
-        label: newNodeLabel(),
+        label: kind === 'text' ? '' : newNodeLabel(),
         lane,
         ...defaultNodeDataForKind(kind),
       },
@@ -491,7 +491,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
       type: 'roadmap',
       position,
       data: {
-        label: newNodeLabel(),
+        label: kind === 'text' ? '' : newNodeLabel(),
         lane: placement.lane,
         ...defaultNodeDataForKind(kind),
       },
@@ -837,7 +837,9 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
                   const kind = e.currentTarget.value;
                   updateSelectedNode({
                     ...defaultNodeDataForKind(kind as typeof ROADMAP_NODE_KINDS[number]),
-                    label: selectedNode.data?.label || newNodeLabel(),
+                    label: kind === 'text'
+                      ? ''
+                      : (selectedNode.data?.label || newNodeLabel()),
                   });
                 }}
                 style={{
@@ -854,23 +856,25 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
                 ))}
               </select>
             </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1, fontSize: '12px', color: themeStyles.textSecondary }}>
-              <span style={{ flexShrink: 0 }}>{i18n('Title')}</span>
-              <input
-                value={selectedNode.data?.label || ''}
-                onChange={(e) => updateSelectedNode({ label: e.currentTarget.value })}
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                  borderRadius: '4px',
-                  border: `1px solid ${themeStyles.borderSecondary}`,
-                  background: themeStyles.bgPrimary,
-                  color: themeStyles.textPrimary,
-                  padding: '4px 8px',
-                  fontSize: '13px',
-                }}
-              />
-            </label>
+            {selectedNodeKind !== 'text' ? (
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1, fontSize: '12px', color: themeStyles.textSecondary }}>
+                <span style={{ flexShrink: 0 }}>{i18n('Title')}</span>
+                <input
+                  value={selectedNode.data?.label || ''}
+                  onChange={(e) => updateSelectedNode({ label: e.currentTarget.value })}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    borderRadius: '4px',
+                    border: `1px solid ${themeStyles.borderSecondary}`,
+                    background: themeStyles.bgPrimary,
+                    color: themeStyles.textPrimary,
+                    padding: '4px 8px',
+                    fontSize: '13px',
+                  }}
+                />
+              </label>
+            ) : null}
           </>
         ) : null}
       </div>

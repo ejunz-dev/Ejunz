@@ -13,6 +13,21 @@ export function RoadmapTextNodeLead({ markdown }: { markdown: string }) {
     $(el).trigger('vjContentNew');
   }, [html]);
 
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return undefined;
+    const stopFlowCapture = (event: Event) => {
+      const target = event.target as Element | null;
+      if (target?.closest('a')) event.stopPropagation();
+    };
+    el.addEventListener('pointerdown', stopFlowCapture);
+    el.addEventListener('click', stopFlowCapture);
+    return () => {
+      el.removeEventListener('pointerdown', stopFlowCapture);
+      el.removeEventListener('click', stopFlowCapture);
+    };
+  }, [html]);
+
   if (!trimmed) return null;
 
   return (
