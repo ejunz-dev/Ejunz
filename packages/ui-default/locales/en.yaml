@@ -1306,5 +1306,10 @@ Date: Date
 'Roadmap node content': Node content
 'Roadmap node content empty': This node has no content yet.
 'Roadmap drawer resources': Resources
+'Roadmap drawer content': Content
+'Roadmap drawer problems': Problems
+'Roadmap drawer problems empty': No practice problems on this node yet.
+'Roadmap drawer problem tap reveal answer': Tap to reveal answer
+'Roadmap drawer problem reveal back': Tap to reveal back
 'Roadmap drawer practice problems': Practice problems
 'Roadmap markdown preview failed': Failed to render markdown.
