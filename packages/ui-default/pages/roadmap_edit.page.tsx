@@ -8,8 +8,6 @@ import { request, i18n } from 'vj/utils';
 import ReactFlow, {
   addEdge,
   EdgeChange,
-  Connection,
-  ConnectionMode,
   Controls,
   Node,
   NodeChange,
@@ -86,6 +84,24 @@ import {
 } from 'vj/components/roadmap/pending_changes';
 import { RoadmapPendingPanel } from 'vj/components/roadmap/RoadmapPendingPanel';
 import { RoadmapGitPanel, RoadmapGitHubRailIcon } from 'vj/components/roadmap/RoadmapGitPanel';
+import { RoadmapHookPicker } from 'vj/components/roadmap/RoadmapHookPicker';
+import {
+  buildEdgeForNodes,
+  computeAdjacentNodePlacement,
+  connectionFromEdge,
+  placementYForBottom,
+  type AddAdjacentDirection,
+} from 'vj/components/roadmap/add_adjacent';
+import {
+  defaultNodeDataForKind,
+  getRoadmapNodeKind,
+  isHookNodeType,
+  isTextNodeType,
+  ROADMAP_NODE_KINDS,
+  roadmapNodeKindLabel,
+  validateRoadmapConnection,
+  type RoadmapNodeKind,
+} from 'vj/components/roadmap/node_kinds';
 
 function newNodeId(): string {
   return `node_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -126,6 +142,13 @@ type RoadmapContextMenuState =
   | { kind: 'pane'; x: number; y: number; flowX: number; flowY: number }
   | { kind: 'node'; x: number; y: number; nodeId: string }
   | { kind: 'edge'; x: number; y: number; edgeId: string };
+
+type NodeAddMenuState = {
+  nodeId: string;
+  direction: AddAdjacentDirection;
+  x: number;
+  y: number;
+} | null;
 
 function roadmapContextMenuShellStyle(themeStyles: EditorThemeStyles, theme: 'light' | 'dark'): React.CSSProperties {
   return {
@@ -195,6 +218,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
   });
   const currentBranch = doc.currentBranch || (window as any).UiContext?.currentBranch || 'main';
   const [contextMenu, setContextMenu] = useState<RoadmapContextMenuState>(null);
+  const [nodeAddMenu, setNodeAddMenu] = useState<NodeAddMenuState>(null);
   const [viewport, setViewport] = useState<RoadmapViewport>(() => doc.viewport || { x: 0, y: 0, zoom: 1 });
   const [savedSnapshot, setSavedSnapshot] = useState<RoadmapSnapshot>(() => buildRoadmapSnapshot(
     initialFlowNodes,
@@ -212,6 +236,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
   const updateSelectedNodeRef = useRef<(patch: Record<string, any>) => void>(() => {});
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
+  const emptyRoadmapBootstrapRef = useRef(false);
   const roadmapNodeIds = useMemo(() => nodes.map((node) => node.id), [nodes]);
   const {
     outerRef,
@@ -247,7 +272,23 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
     [pendingChanges.deletedEdges],
   );
   const viewNodes = useMemo(() => {
-    const live = toRoadmapViewNodes(nodes, selectedNodeId, pendingStatusMaps);
+    const live = toRoadmapViewNodes(nodes, selectedNodeId, pendingStatusMaps).map((node) => ({
+      ...node,
+      data: {
+        ...node.data,
+        editable: !deletedNodeIds.has(node.id),
+        onRequestAddAdjacent: (direction: AddAdjacentDirection, event: React.MouseEvent) => {
+          event.stopPropagation();
+          setNodeAddMenu({
+            nodeId: node.id,
+            direction,
+            x: event.clientX,
+            y: event.clientY,
+          });
+          setContextMenu(null);
+        },
+      },
+    }));
     if (!deletedNodeIds.size) return live;
     const ghosts = toRoadmapViewNodes(
       buildDeletedGhostNodes(savedSnapshot, deletedNodeIds),
@@ -364,13 +405,22 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
   }, [onEdgesChange]);
 
   useEffect(() => {
-    if (doc.nodes?.length || !context.docId) return;
+    if (!context.docId || emptyRoadmapBootstrapRef.current) return;
+    if (doc.nodes?.length) return;
+    emptyRoadmapBootstrapRef.current = true;
     request.get(roadmapApiPath('/data', context.domainId), {
       docId: context.docId,
       branch: currentBranch,
     })
-      .then((data: any) => applyRoadmapData(data))
-      .catch((err) => Notification.error(err.message || i18n('Roadmap load failed')));
+      .then((data: any) => {
+        const serverNodeCount = (data?.nodes || []).length;
+        if (serverNodeCount === 0 && nodesRef.current.length > 0) return;
+        applyRoadmapData(data);
+      })
+      .catch((err) => {
+        emptyRoadmapBootstrapRef.current = false;
+        Notification.error(err.message || i18n('Roadmap load failed'));
+      });
   }, [applyRoadmapData, context.docId, context.domainId, currentBranch, doc.nodes?.length]);
 
   const selectedNode = useMemo(
@@ -396,7 +446,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
     [edges, selectedEdgeId],
   );
 
-  const addRoadmapNodeAt = useCallback((flowPosition?: { x: number; y: number }) => {
+  const addRoadmapNodeAt = useCallback((flowPosition?: { x: number; y: number }, kind: RoadmapNodeKind = 'sub') => {
     const id = newNodeId();
     const lane = flowPosition
       ? nearestLaneFromX(flowPosition.x)
@@ -410,10 +460,8 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
       },
       data: {
         label: newNodeLabel(),
-        status: 'planned',
-        priority: 'medium',
-        description: '',
         lane,
+        ...defaultNodeDataForKind(kind),
       },
     };
     setNodes((current) => [...current, snapNodeToLane(node, lane)]);
@@ -421,31 +469,67 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
     setSelectedEdgeId(null);
   }, [nodes, selectedNode, setNodes]);
 
-  const onConnect = useCallback((connection: Connection) => {
-    if (!connection.source || !connection.target) return;
-    const sourceId = connection.source;
-    const targetId = connection.target;
-    const edgeId = newEdgeId(sourceId, targetId);
-    const newEdge = {
-      ...connection,
-      id: edgeId,
-      type: roadmapFlowEdgeType('solid'),
-      data: { lineStyle: 'solid' as const },
-      style: { stroke: '#2b78e4', strokeWidth: 3 },
-      animated: false,
+  const addAdjacentNode = useCallback((
+    sourceNodeId: string,
+    direction: AddAdjacentDirection,
+    kind: RoadmapNodeKind,
+  ) => {
+    const sourceNode = nodes.find((node) => node.id === sourceNodeId);
+    if (!sourceNode) return;
+    const placement = computeAdjacentNodePlacement(sourceNode, direction, nodes);
+    if (!placement) {
+      Notification.error(i18n('Roadmap add adjacent blocked'));
+      return;
+    }
+    const newId = newNodeId();
+    const position = { ...placement.position };
+    if (direction === 'bottom') {
+      position.y = placementYForBottom(nodes, placement.lane, position.y);
+    }
+    const newNode: Node = {
+      id: newId,
+      type: 'roadmap',
+      position,
+      data: {
+        label: newNodeLabel(),
+        lane: placement.lane,
+        ...defaultNodeDataForKind(kind),
+      },
     };
-    setEdges((current) => {
-      const nextEdges = addEdge(newEdge, current);
-      if (shouldAlignSolidConnection(connection)) {
-        setNodes((currentNodes) => {
-          const source = currentNodes.find((node) => node.id === sourceId);
-          if (!source) return currentNodes;
-          return applySharedSolidY(currentNodes, sourceId, source.position.y, nextEdges);
-        });
-      }
+    const sourceId = placement.sourceId || newId;
+    const targetId = placement.targetId || newId;
+    const sourceType = sourceId === newId
+      ? kind
+      : nodes.find((node) => node.id === sourceId)?.data?.roadmapNodeType;
+    const targetType = targetId === newId
+      ? kind
+      : nodes.find((node) => node.id === targetId)?.data?.roadmapNodeType;
+    const edge = buildEdgeForNodes(
+      sourceId,
+      targetId,
+      placement.sourceHandle,
+      placement.targetHandle,
+      sourceType,
+      targetType,
+      newEdgeId(sourceId, targetId),
+    );
+    const connection = connectionFromEdge(edge);
+
+    setEdges((currentEdges) => {
+      const nextEdges = addEdge(edge, currentEdges);
+      setNodes((currentNodes) => {
+        const withNew = [...currentNodes, snapNodeToLane(newNode, placement.lane)];
+        if (shouldAlignSolidConnection(connection)) {
+          return alignNodesInSolidComponents(withNew, nextEdges);
+        }
+        return withNew;
+      });
       return nextEdges;
     });
-  }, [setEdges, setNodes]);
+    setSelectedNodeId(newId);
+    setSelectedEdgeId(null);
+    setNodeAddMenu(null);
+  }, [nodes, setEdges, setNodes]);
 
   const updateSelectedNode = useCallback((patch: Record<string, any>) => {
     setNodes((current) => patchNodeData(current, selectedNodeId, patch));
@@ -466,10 +550,25 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
       return undefined;
     }
 
+    const node = nodesRef.current.find((item) => item.id === selectedNodeId);
+    const isTextNode = isTextNodeType(node?.data?.roadmapNodeType);
+    if (!node || isHookNodeType(node.data?.roadmapNodeType)) {
+      if (editorInstanceRef.current) {
+        try {
+          editorInstanceRef.current.destroy();
+        } catch {
+          /* ignore */
+        }
+        editorInstanceRef.current = null;
+      }
+      return undefined;
+    }
+
     isInitializingEditorRef.current = true;
     let currentEditor: InstanceType<typeof Editor> | null = null;
-    const node = nodesRef.current.find((item) => item.id === selectedNodeId);
-    const content = String(node?.data?.description || '');
+    const content = isTextNode
+      ? String(node?.data?.nodeText || '')
+      : String(node?.data?.description || '');
 
     const timer = window.setTimeout(() => {
       const el = editorRef.current;
@@ -485,7 +584,9 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
           value: content,
           onChange: (value: string) => {
             if (isInitializingEditorRef.current) return;
-            updateSelectedNodeRef.current({ description: value });
+            updateSelectedNodeRef.current(
+              isTextNode ? { nodeText: value } : { description: value },
+            );
           },
         });
         editorInstanceRef.current = currentEditor;
@@ -524,6 +625,19 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
 
   const updateEdge = useCallback((edgeId: string, patch: { label?: string; lineStyle?: RoadmapEdgeLineStyle }) => {
     setEdges((current) => {
+      const edge = current.find((item) => item.id === edgeId);
+      if (patch.lineStyle && edge) {
+        const targetNode = nodes.find((node) => node.id === edge.target);
+        const sourceNode = nodes.find((node) => node.id === edge.source);
+        if (!validateRoadmapConnection(
+          targetNode?.data?.roadmapNodeType,
+          patch.lineStyle,
+          true,
+          sourceNode?.data?.roadmapNodeType,
+        )) {
+          return current;
+        }
+      }
       const nextEdges = current.map((edge) => {
         if (edge.id !== edgeId) return edge;
         const nextStyle = { ...(edge.style || {}) };
@@ -551,7 +665,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
       }
       return nextEdges;
     });
-  }, [setEdges, setNodes]);
+  }, [nodes, setEdges, setNodes]);
 
   const updateSelectedEdge = useCallback((patch: { label?: string; lineStyle?: RoadmapEdgeLineStyle }) => {
     if (!selectedEdgeId) return;
@@ -592,13 +706,17 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
   }, [closeContextMenu]);
 
   useEffect(() => {
-    if (!contextMenu) return undefined;
+    if (!contextMenu && !nodeAddMenu) return undefined;
     const onEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeContextMenu();
+      if (e.key === 'Escape') {
+        closeContextMenu();
+        setNodeAddMenu(null);
+      }
     };
     const onDocClose = (ev: MouseEvent) => {
       if ((ev.target as Element | null)?.closest?.('[data-roadmap-ctx-root]')) return;
       closeContextMenu();
+      setNodeAddMenu(null);
     };
     const tid = window.setTimeout(() => {
       window.addEventListener('click', onDocClose);
@@ -609,7 +727,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
       window.removeEventListener('click', onDocClose);
       window.removeEventListener('keydown', onEsc);
     };
-  }, [closeContextMenu, contextMenu]);
+  }, [closeContextMenu, contextMenu, nodeAddMenu]);
 
   const saveRoadmap = useCallback(async () => {
     setSaving(true);
@@ -679,6 +797,27 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
     ? edges.find((edge) => edge.id === contextMenu.edgeId) || null
     : null;
 
+  const renderAddNodeMenuItems = (flowPosition?: { x: number; y: number }) => (
+    <>
+      <div style={{ padding: '6px 12px 4px', fontSize: '11px', color: themeStyles.textSecondary }}>
+        {i18n('Roadmap add node')}
+      </div>
+      {ROADMAP_NODE_KINDS.map((kind) => (
+        <div
+          key={kind}
+          style={roadmapContextMenuItemStyle(themeStyles)}
+          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = themeStyles.bgHover; }}
+          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+          onClick={() => runContextAction(() => addRoadmapNodeAt(flowPosition, kind))}
+        >
+          {roadmapNodeKindLabel(kind)}
+        </div>
+      ))}
+    </>
+  );
+
+  const selectedNodeKind = selectedNode ? getRoadmapNodeKind(selectedNode.data?.roadmapNodeType) : null;
+
   const centerHeader = (
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
@@ -689,23 +828,50 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
           {currentBranch}
         </span>
         {selectedNode ? (
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1, fontSize: '12px', color: themeStyles.textSecondary }}>
-            <span style={{ flexShrink: 0 }}>{i18n('Title')}</span>
-            <input
-              value={selectedNode.data?.label || ''}
-              onChange={(e) => updateSelectedNode({ label: e.currentTarget.value })}
-              style={{
-                flex: 1,
-                minWidth: 0,
-                borderRadius: '4px',
-                border: `1px solid ${themeStyles.borderSecondary}`,
-                background: themeStyles.bgPrimary,
-                color: themeStyles.textPrimary,
-                padding: '4px 8px',
-                fontSize: '13px',
-              }}
-            />
-          </label>
+          <>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: themeStyles.textSecondary, flexShrink: 0 }}>
+              <span>{i18n('Roadmap node type')}</span>
+              <select
+                value={selectedNodeKind || 'sub'}
+                onChange={(e) => {
+                  const kind = e.currentTarget.value;
+                  updateSelectedNode({
+                    ...defaultNodeDataForKind(kind as typeof ROADMAP_NODE_KINDS[number]),
+                    label: selectedNode.data?.label || newNodeLabel(),
+                  });
+                }}
+                style={{
+                  borderRadius: '4px',
+                  border: `1px solid ${themeStyles.borderSecondary}`,
+                  background: themeStyles.bgPrimary,
+                  color: themeStyles.textPrimary,
+                  padding: '4px 8px',
+                  fontSize: '12px',
+                }}
+              >
+                {ROADMAP_NODE_KINDS.map((kind) => (
+                  <option key={kind} value={kind}>{roadmapNodeKindLabel(kind)}</option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1, fontSize: '12px', color: themeStyles.textSecondary }}>
+              <span style={{ flexShrink: 0 }}>{i18n('Title')}</span>
+              <input
+                value={selectedNode.data?.label || ''}
+                onChange={(e) => updateSelectedNode({ label: e.currentTarget.value })}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  borderRadius: '4px',
+                  border: `1px solid ${themeStyles.borderSecondary}`,
+                  background: themeStyles.bgPrimary,
+                  color: themeStyles.textPrimary,
+                  padding: '4px 8px',
+                  fontSize: '13px',
+                }}
+              />
+            </label>
+          </>
         ) : null}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
@@ -815,7 +981,6 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
                 nodeTypes={roadmapFlowNodeTypes}
                 onNodesChange={handleNodesChange}
                 onEdgesChange={handleEdgesChange}
-                onConnect={onConnect}
                 onInit={handleFlowInit}
                 onNodeDragStop={onNodeDragStop}
                 onMoveEnd={(_, nextViewport) => setViewport(nextViewport)}
@@ -830,11 +995,16 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
                   setRightPanelTab('edge');
                   setRightPanelOpen(true);
                 }}
-                onPaneClick={() => { setSelectedNodeId(null); setSelectedEdgeId(null); }}
+                onPaneClick={() => {
+                  setSelectedNodeId(null);
+                  setSelectedEdgeId(null);
+                  setNodeAddMenu(null);
+                }}
                 onPaneContextMenu={(e) => {
                   e.preventDefault();
                   const flowPosition = reactFlow?.screenToFlowPosition({ x: e.clientX, y: e.clientY })
                     || { x: 0, y: nextLaneNodeY(nodes, 1) };
+                  setNodeAddMenu(null);
                   setContextMenu({
                     kind: 'pane',
                     x: e.clientX,
@@ -848,6 +1018,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
                   e.preventDefault();
                   e.stopPropagation();
                   setSelectedNodeId(node.id);
+                  setNodeAddMenu(null);
                   setContextMenu({ kind: 'node', x: e.clientX, y: e.clientY, nodeId: node.id });
                 }}
                 onEdgeContextMenu={(e, edge) => {
@@ -856,11 +1027,12 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
                   e.stopPropagation();
                   setSelectedEdgeId(edge.id);
                   setRightPanelOpen(true);
+                  setNodeAddMenu(null);
                   setContextMenu({ kind: 'edge', x: e.clientX, y: e.clientY, edgeId: edge.id });
                 }}
                 elementsSelectable
-                edgesFocusable
-                connectionMode={ConnectionMode.Loose}
+                edgesFocusable={false}
+                nodesConnectable={false}
                 {...roadmapEditorFlowProps}
               >
                 <RoadmapLaneOverlay />
@@ -904,7 +1076,23 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
         )
       )}
       centerHeader={centerHeader}
-      centerMain={selectedNode ? (
+      centerMain={selectedNode && isHookNodeType(selectedNode.data?.roadmapNodeType) ? (
+        <RoadmapHookPicker
+          domainId={context.domainId}
+          docId={selectedNode.data?.hookRoadmapDocId}
+          branch={selectedNode.data?.hookRoadmapBranch}
+          title={selectedNode.data?.hookRoadmapTitle}
+          onChange={({ docId, branch, title }) => {
+            const trimmedTitle = String(title || '').trim();
+            updateSelectedNode({
+              hookRoadmapDocId: docId,
+              hookRoadmapBranch: branch,
+              hookRoadmapTitle: title,
+              ...(trimmedTitle ? { label: trimmedTitle } : {}),
+            });
+          }}
+        />
+      ) : selectedNode ? (
         <div className="roadmap-node-markdown-editor">
           <textarea
             key={selectedNode.id}
@@ -1023,14 +1211,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
       >
         {contextMenu.kind === 'pane' ? (
           <>
-            <div
-              style={roadmapContextMenuItemStyle(themeStyles)}
-              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = themeStyles.bgHover; }}
-              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-              onClick={() => runContextAction(() => addRoadmapNodeAt({ x: contextMenu.flowX, y: contextMenu.flowY }))}
-            >
-              {i18n('Roadmap add node')}
-            </div>
+            {renderAddNodeMenuItems({ x: contextMenu.flowX, y: contextMenu.flowY })}
             <div
               style={roadmapContextMenuItemStyle(themeStyles)}
               onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = themeStyles.bgHover; }}
@@ -1053,14 +1234,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
         ) : null}
         {contextMenu.kind === 'node' ? (
           <>
-            <div
-              style={roadmapContextMenuItemStyle(themeStyles)}
-              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = themeStyles.bgHover; }}
-              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-              onClick={() => runContextAction(() => addRoadmapNodeAt())}
-            >
-              {i18n('Roadmap add node')}
-            </div>
+            {renderAddNodeMenuItems()}
             <div
               style={roadmapContextMenuItemStyle(themeStyles)}
               onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = themeStyles.bgHover; }}
@@ -1127,6 +1301,33 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
             </div>
           </>
         ) : null}
+      </div>
+    ) : null}
+    {nodeAddMenu ? (
+      <div
+        data-roadmap-ctx-root
+        style={{
+          ...roadmapContextMenuShellStyle(themeStyles, theme),
+          left: nodeAddMenu.x,
+          top: nodeAddMenu.y,
+        }}
+        onClick={(e) => e.stopPropagation()}
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        <div style={{ padding: '6px 12px 4px', fontSize: '11px', color: themeStyles.textSecondary }}>
+          {i18n('Roadmap add node')}
+        </div>
+        {ROADMAP_NODE_KINDS.map((kind) => (
+          <div
+            key={kind}
+            style={roadmapContextMenuItemStyle(themeStyles)}
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = themeStyles.bgHover; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+            onClick={() => addAdjacentNode(nodeAddMenu.nodeId, nodeAddMenu.direction, kind)}
+          >
+            {roadmapNodeKindLabel(kind)}
+          </div>
+        ))}
       </div>
     ) : null}
     </>

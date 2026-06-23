@@ -36,6 +36,7 @@ import {
 } from 'vj/components/roadmap/url_sync';
 import { RoadmapNodeDrawer } from 'vj/components/roadmap/RoadmapNodeDrawer';
 import { RoadmapDetailHeader } from 'vj/components/roadmap/RoadmapDetailHeader';
+import { isHookNodeType, isTextNodeType } from 'vj/components/roadmap/node_kinds';
 import type { RoadmapStatus } from 'vj/components/roadmap/shared';
 
 function toLaneFlowNodes(
@@ -193,8 +194,10 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onInit={onFlowInit}
-              onNodeClick={(_, node) => {
+                onNodeClick={(_, node) => {
                 if (node.type !== 'roadmap') return;
+                if (isHookNodeType(node.data?.roadmapNodeType)) return;
+                if (isTextNodeType(node.data?.roadmapNodeType)) return;
                 setSelectedNodeId(node.id);
               }}
               onPaneClick={() => setSelectedNodeId(null)}
@@ -213,7 +216,7 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
       </div>
 
       <RoadmapNodeDrawer
-        open={!!selectedNode}
+        open={!!selectedNode && !isTextNodeType(selectedNode.data?.roadmapNodeType)}
         nodeId={selectedNodeId || ''}
         nodeLabel={String(selectedNode?.data?.label || i18n('Unnamed Node'))}
         nodeStatus={selectedNode?.data?.status as RoadmapStatus | undefined}

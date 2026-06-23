@@ -1765,6 +1765,20 @@ Date: 日期
 'Roadmap node type decision': 决策
 'Roadmap node type release': 发布
 'Roadmap node type task': 任务
+'Roadmap node type main': 主节点
+'Roadmap node type sub': 子节点
+'Roadmap node type hook': 跳转节点
+'Roadmap node type text': 文本节点
+'Roadmap node type': 节点类型
+'Roadmap node lead text': 引导文本
+'Roadmap hook node hint': 为该跳转节点选择目标路线图，不支持编辑正文内容。
+'Roadmap hook linked': 已链接路线图
+'Roadmap hook target': 目标路线图
+'Roadmap hook select placeholder': 选择路线图
+'Roadmap branch': 分支
+'Roadmap main node dashed target forbidden': 主节点不能作为虚线终点。
+'Roadmap sub node solid target forbidden': 子节点只能作为主节点的实线终点；其他来源请使用虚线，或从主节点连线。
+'Roadmap connection not allowed': 该目标节点类型不允许此连接。
 'Roadmap priority low': 低
 'Roadmap priority medium': 中
 'Roadmap priority high': 高
@@ -1773,6 +1787,7 @@ Date: 日期
 'Roadmap new decision': 新决策
 'Roadmap new task': 新任务
 'Roadmap add node': 节点
+'Roadmap add adjacent blocked': 该方向没有可用的相邻泳道
 'Roadmap new node': 新节点
 'Roadmap node editor': 节点编辑
 'Roadmap node content': 节点内容

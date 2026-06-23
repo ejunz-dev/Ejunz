@@ -1,4 +1,5 @@
 import type { BaseRoadmapEdge, BaseRoadmapNode, RoadmapStatus } from './shared';
+import { getRoadmapNodeKind, nodeKindBackground } from './node_kinds';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const PADDING = 48;
@@ -45,6 +46,8 @@ function layoutNodes(nodes: BaseRoadmapNode[]): Map<string, LayoutNode> {
 
 function nodeFill(node: BaseRoadmapNode): string {
   if (node.backgroundColor) return node.backgroundColor;
+  const kind = getRoadmapNodeKind(node.data?.roadmapNodeType);
+  if (['main', 'sub', 'hook', 'text'].includes(kind)) return nodeKindBackground(kind);
   const status = node.data?.status as RoadmapStatus | undefined;
   switch (status) {
     case 'done': return '#cbcbcb';

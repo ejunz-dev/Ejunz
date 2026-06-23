@@ -112,6 +112,29 @@ async function applyRoadmapBranchSwitch(
     return RoadmapModel.withGraph(roadmap, requestedBranch);
 }
 
+function enrichRoadmapHookNodeUrls(handler: Handler, roadmap: RoadmapDoc): RoadmapDoc {
+    if (!roadmap.nodes?.length) return roadmap;
+    const nodes = roadmap.nodes.map((node) => {
+        const data = node.data || {};
+        if (data.roadmapNodeType !== 'hook') return node;
+        const hookDocId = data.hookRoadmapDocId;
+        if (!hookDocId) return node;
+        const branch = String(data.hookRoadmapBranch || 'main').trim() || 'main';
+        const hookRoadmapUrl = handler.url('roadmap_detail_branch', {
+            docId: String(hookDocId),
+            branch,
+        });
+        return {
+            ...node,
+            data: {
+                ...data,
+                hookRoadmapUrl,
+            },
+        };
+    });
+    return { ...roadmap, nodes };
+}
+
 async function renderRoadmapPage(
     handler: Handler,
     domainId: string,
@@ -328,7 +351,10 @@ export class RoadmapDetailHandler extends Handler {
         }
         await RoadmapModel.incrementViews(domainId, docId);
         const requestedBranch = String(branch).trim();
-        const viewRoadmap = await applyRoadmapBranchSwitch(this, domainId, roadmap, requestedBranch);
+        const viewRoadmap = enrichRoadmapHookNodeUrls(
+            this,
+            await applyRoadmapBranchSwitch(this, domainId, roadmap, requestedBranch),
+        );
 
         this.response.template = 'roadmap_detail.html';
         this.response.body = {

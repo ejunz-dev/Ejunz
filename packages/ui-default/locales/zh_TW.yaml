@@ -588,6 +588,7 @@ Date: 日期
 'Roadmap new decision': 新決策
 'Roadmap new task': 新任務
 'Roadmap add node': 節點
+'Roadmap add adjacent blocked': 此方向沒有可用的相鄰泳道
 'Roadmap new node': 新節點
 'Roadmap node editor': 節點編輯
 'Roadmap node content': 節點內容
