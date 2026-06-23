@@ -67,8 +67,13 @@ export const RoadmapShNode = ({ data, selected }: NodeProps) => {
   const onRequestAddAdjacent = data.onRequestAddAdjacent as
     | ((direction: AddAdjacentDirection, event: React.MouseEvent) => void)
     | undefined;
+  const blockedAddDirections = new Set(
+    (data.blockedAddDirections as AddAdjacentDirection[] | undefined) || [],
+  );
 
-  const plusBtn = (direction: AddAdjacentDirection, className: string) => (
+  const plusBtn = (direction: AddAdjacentDirection, className: string) => {
+    if (blockedAddDirections.has(direction)) return null;
+    return (
     <button
       type="button"
       className={`roadmap-sh-node__add ${className}`}
@@ -81,7 +86,8 @@ export const RoadmapShNode = ({ data, selected }: NodeProps) => {
     >
       +
     </button>
-  );
+    );
+  };
 
   const nodeClassName = `roadmap-sh-node roadmap-sh-node--kind-${kind}${pendingClass}${ghostClass}${isHookLink ? ' roadmap-sh-node--hook-link' : ''} ${selected ? 'is-selected' : ''}`;
 

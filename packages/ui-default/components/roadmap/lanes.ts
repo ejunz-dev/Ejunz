@@ -8,6 +8,7 @@ export const LANE_GAP = 48;
 export const LANE_START_X = 40;
 export const LANE_START_Y = 72;
 export const LANE_ADD_GAP = 120;
+export const ADJACENT_VERTICAL_GAP = 32;
 export const LANE_GUIDE_HEIGHT = 2400;
 export const LANE_NODE_WIDTH = 260;
 export const LANE_NODE_HEIGHT = 48;
@@ -32,6 +33,13 @@ export function laneNodeX(lane: RoadmapLane, nodeWidth = LANE_NODE_WIDTH): numbe
 
 export function laneCenterX(lane: RoadmapLane): number {
   return laneNodeX(lane, LANE_NODE_WIDTH);
+}
+
+export function getRoadmapNodeHeight(node: Node): number {
+  if (typeof node.height === 'number' && node.height > 0) return node.height;
+  const measured = (node as Node & { measured?: { height?: number } }).measured?.height;
+  if (typeof measured === 'number' && measured > 0) return measured;
+  return LANE_NODE_HEIGHT;
 }
 
 export function getRoadmapNodeWidth(node: Node): number {
@@ -94,7 +102,7 @@ export function snapRoadmapNodesToLanes(nodes: Node[], movedNodeId?: string): No
 export function nextLaneNodeY(nodes: Node[], lane: RoadmapLane): number {
   const laneNodes = nodes.filter((node) => getNodeLane(node) === lane);
   if (!laneNodes.length) return LANE_START_Y;
-  return Math.max(...laneNodes.map((node) => node.position.y)) + LANE_ADD_GAP;
+  return Math.max(...laneNodes.map((node) => node.position.y + getRoadmapNodeHeight(node))) + LANE_ADD_GAP;
 }
 
 export function estimateLaneLayoutHeight(nodes: Node[]): number {
