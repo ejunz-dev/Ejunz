@@ -8,6 +8,7 @@ import RoadmapModel from '../model/roadmap';
 import { readOptionalRequestBaseDocId } from '../model/base';
 import { Handler, param, post, Types } from '../service/server';
 import { applyRoadmapGitRoutes, checkoutRoadmapGitBranch, fetchRoadmapGithubContext } from '../lib/roadmap_git';
+import { loadRoadmapDetailUiPrefs, sanitizeRoadmapDetailUiPrefs } from '../lib/roadmapDetailUiPrefs';
 import * as document from '../model/document';
 
 const ROADMAP_LIST_SEARCH_OPTIONS = {
@@ -355,13 +356,55 @@ export class RoadmapDetailHandler extends Handler {
             this,
             await applyRoadmapBranchSwitch(this, domainId, roadmap, requestedBranch),
         );
+        const nodeCardsMap = await RoadmapModel.buildNodeCardsMap(domainId, docId, requestedBranch);
+        const roadmapDetailUiPrefs = await loadRoadmapDetailUiPrefs(
+            this.ctx.db.db,
+            domainId,
+            docId,
+            requestedBranch,
+            this.user._id,
+        );
 
         this.response.template = 'roadmap_detail.html';
         this.response.body = {
             roadmap: viewRoadmap,
             domainId,
             currentBranch: requestedBranch,
+            nodeCardsMap,
+            roadmapDetailUiPrefs,
         };
+    }
+}
+
+/** Per-user roadmap detail display prefs (POST only; load via UiContext). */
+export class RoadmapDetailUiPrefsHandler extends Handler {
+    @post('docId', Types.PositiveInt)
+    @post('branch', Types.String, true)
+    @post('displayPrefs', Types.Any, true)
+    async post(domainId: string, docId: number, branch?: string, displayPrefs?: unknown) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const roadmap = await RoadmapModel.get(domainId, docId);
+        if (!roadmap) throw new NotFoundError('Roadmap not found');
+
+        const branchNorm = branch && String(branch).trim() ? String(branch).trim() : 'main';
+        const sanitized = sanitizeRoadmapDetailUiPrefs(displayPrefs);
+        const coll = this.ctx.db.db.collection('roadmap.userDetailUi');
+        await coll.updateOne(
+            { domainId, roadmapDocId: docId, branch: branchNorm, uid: this.user._id },
+            {
+                $set: {
+                    domainId,
+                    roadmapDocId: docId,
+                    branch: branchNorm,
+                    uid: this.user._id,
+                    prefs: sanitized,
+                    updateAt: new Date(),
+                },
+            },
+            { upsert: true },
+        );
+
+        this.response.body = { success: true };
     }
 }
 
@@ -443,6 +486,7 @@ export async function apply(ctx: Context) {
     ctx.Route('roadmap_create', '/roadmap/create', RoadmapCreateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('roadmap_data', '/roadmap/data', RoadmapDataHandler);
     ctx.Route('roadmap_save', '/roadmap/save', RoadmapSaveHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('roadmap_detail_ui_prefs', '/roadmap/detail-ui-prefs', RoadmapDetailUiPrefsHandler, PRIV.PRIV_USER_PROFILE);
     // Static /roadmap/* paths must register before /roadmap/:docId (otherwise "branch" matches as docId).
     await applyRoadmapGitRoutes(ctx);
     ctx.Route('roadmap_manage', '/roadmap/:docId/manage', RoadmapManageHandler, PRIV.PRIV_USER_PROFILE);

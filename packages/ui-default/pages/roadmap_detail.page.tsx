@@ -1,5 +1,5 @@
 import $ from 'jquery';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
@@ -38,6 +38,12 @@ import { RoadmapNodeDrawer } from 'vj/components/roadmap/RoadmapNodeDrawer';
 import { RoadmapDetailHeader } from 'vj/components/roadmap/RoadmapDetailHeader';
 import { RoadmapAiTutor } from 'vj/components/roadmap/RoadmapAiTutor';
 import { RoadmapDetailExplorer } from 'vj/components/roadmap/RoadmapDetailExplorer';
+import { RoadmapDetailSettingsPanel } from 'vj/components/roadmap/RoadmapDetailSettingsPanel';
+import {
+  buildRoadmapNodeProblemCountMap,
+  readRoadmapDetailDisplaySettings,
+  type RoadmapDetailDisplaySettings,
+} from 'vj/components/roadmap/detail_display_settings';
 import {
   computeRoadmapDetailMatchedNodeIds,
   emptyRoadmapDetailFilter,
@@ -71,6 +77,11 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
     () => initialRoadmapSelectedNodeId(initialFlowNodes.map((node) => node.id)),
   );
   const [aiTutorOpen, setAiTutorOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [displaySettings, setDisplaySettings] = useState<RoadmapDetailDisplaySettings>(() => (
+    readRoadmapDetailDisplaySettings()
+  ));
+  const [displaySettingsSaving, setDisplaySettingsSaving] = useState(false);
   const [detailFilters, setDetailFilters] = useState<RoadmapDetailFilter>(() => readRoadmapDetailFilterFromLocation());
   const [nodeCardsMap, setNodeCardsMap] = useState<Record<string, EditorCard[]>>(
     () => (((window as any).UiContext?.nodeCardsMap || {}) as Record<string, EditorCard[]>),
@@ -87,8 +98,22 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
     () => isRoadmapDetailFilterActive(detailFilters),
     [detailFilters],
   );
+  const problemCountByNodeId = useMemo(
+    () => buildRoadmapNodeProblemCountMap(
+      layoutNodes.map((node) => node.id),
+      nodeCardsMap,
+    ),
+    [layoutNodes, nodeCardsMap],
+  );
   const viewNodes = useMemo(() => {
-    const base = toRoadmapViewNodes(layoutNodes, selectedNodeId);
+    let base = toRoadmapViewNodes(layoutNodes, selectedNodeId).map((node) => ({
+      ...node,
+      data: {
+        ...node.data,
+        showProblemCountBadge: displaySettings.showProblemCount,
+        problemCount: problemCountByNodeId.get(node.id) || 0,
+      },
+    }));
     if (!matchedNodeIds) return base;
     return base.map((node) => {
       const matched = matchedNodeIds.has(node.id);
@@ -108,7 +133,7 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
         },
       };
     });
-  }, [layoutNodes, matchedNodeIds, selectedNodeId]);
+  }, [displaySettings.showProblemCount, layoutNodes, matchedNodeIds, problemCountByNodeId, selectedNodeId]);
   const viewEdges = useMemo(() => {
     const base = toRoadmapViewEdges(edges, null, undefined, theme);
     if (!matchedNodeIds) return base;
@@ -221,6 +246,7 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
       if (target.closest('.roadmap-ai-tutor-bar')) return;
       if (target.closest('.roadmap-detail-explorer')) return;
       if (target.closest('.roadmap-detail-explorer__dialog')) return;
+      if (target.closest('.roadmap-detail-settings__dialog')) return;
       if (target.closest('.react-flow__node')) return;
       setSelectedNodeId(null);
     };
@@ -240,7 +266,28 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
     edges: doc.edges || [],
     aiTutorActive: aiTutorOpen,
     onAiTutorClick: () => setAiTutorOpen(true),
+    onSettingsClick: () => setSettingsOpen(true),
+    settingsActive: settingsOpen,
   };
+
+  const handleDisplaySettingsSave = useCallback(async (next: RoadmapDetailDisplaySettings) => {
+    if (!context.docId) return;
+    setDisplaySettingsSaving(true);
+    try {
+      await request.post(roadmapApiPath('/detail-ui-prefs', context.domainId), {
+        docId: Number(context.docId),
+        branch: doc.currentBranch || 'main',
+        displayPrefs: next,
+      });
+      setDisplaySettings(next);
+      setSettingsOpen(false);
+      Notification.success(i18n('Roadmap detail settings saved'));
+    } catch (err: any) {
+      Notification.error(err?.message || i18n('Roadmap detail settings save failed'));
+    } finally {
+      setDisplaySettingsSaving(false);
+    }
+  }, [context.docId, context.domainId, doc.currentBranch]);
 
   if (!doc.nodes?.length) {
     return (
@@ -249,6 +296,13 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
         <div className="roadmap-view__empty">
           <p>{i18n('Roadmap detail empty')}</p>
         </div>
+        <RoadmapDetailSettingsPanel
+          open={settingsOpen}
+          settings={displaySettings}
+          saving={displaySettingsSaving}
+          onClose={() => setSettingsOpen(false)}
+          onSave={handleDisplaySettingsSave}
+        />
       </div>
     );
   }
@@ -317,6 +371,14 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
         selectedNode={selectedNode}
         open={aiTutorOpen}
         onOpenChange={setAiTutorOpen}
+      />
+
+      <RoadmapDetailSettingsPanel
+        open={settingsOpen}
+        settings={displaySettings}
+        saving={displaySettingsSaving}
+        onClose={() => setSettingsOpen(false)}
+        onSave={handleDisplaySettingsSave}
       />
     </div>
   );

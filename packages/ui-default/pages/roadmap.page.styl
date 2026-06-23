@@ -31,6 +31,8 @@
   --roadmap-tab-active-fg: #ffffff
   --roadmap-badge-bg: #fff3cd
   --roadmap-badge-fg: #7a5b00
+  --roadmap-problem-badge-bg: #4135d6
+  --roadmap-problem-badge-shadow: rgba(65, 53, 214, 0.35)
   --roadmap-lane-border: rgba(65, 53, 214, 0.22)
   --roadmap-lane-fill: rgba(65, 53, 214, 0.05)
   --roadmap-lane-fill-end: rgba(65, 53, 214, 0.02)
@@ -177,6 +179,9 @@
 
   .react-flow__renderer,
   .react-flow__viewport
+    overflow: visible
+
+  .react-flow__node
     overflow: visible
 
 .roadmap-flow__canvas
@@ -523,6 +528,25 @@ roadmap-text-btn-styles()
   line-height: 1.35
   word-break: break-word
 
+.roadmap-sh-node__problem-badge
+  position: absolute
+  top: -8px
+  right: -8px
+  z-index: 2
+  min-width: 20px
+  height: 20px
+  padding: 0 6px
+  border-radius: 999px
+  background: var(--roadmap-problem-badge-bg)
+  color: #ffffff
+  font-size: 11px
+  font-weight: 700
+  line-height: 20px
+  text-align: center
+  box-shadow: 0 2px 8px var(--roadmap-problem-badge-shadow)
+  pointer-events: none
+  user-select: none
+
 .roadmap-sh-node__handle
   width: 10px
   height: 10px
@@ -822,6 +846,11 @@ roadmap-text-btn-styles()
 .roadmap-detail-header-card__btn--icon
   min-width: 36px
   padding: 0 10px
+
+  &.is-active
+    border-color: var(--roadmap-accent)
+    color: var(--roadmap-accent)
+    background: rgba(65, 53, 214, 0.08)
 
 .roadmap-detail-header-card__body
   margin-bottom: 4px
@@ -1423,6 +1452,8 @@ roadmap-text-btn-styles()
   --roadmap-tab-active-fg: #121212
   --roadmap-badge-bg: #4a3f1a
   --roadmap-badge-fg: #f0d878
+  --roadmap-problem-badge-bg: #9d93f0
+  --roadmap-problem-badge-shadow: rgba(157, 147, 240, 0.42)
   --roadmap-lane-border: rgba(157, 147, 240, 0.5)
   --roadmap-lane-fill: rgba(157, 147, 240, 0.14)
   --roadmap-lane-fill-end: rgba(157, 147, 240, 0.06)
@@ -1809,3 +1840,129 @@ $roadmap-tutor-bar-bg = #1a1a1a
   to
     opacity: 1
     transform: translateY(0)
+
+.roadmap-detail-settings__backdrop
+  position: fixed
+  inset: 0
+  z-index: 150
+  background: rgba(0, 0, 0, 0.35)
+  animation: roadmap-detail-fade-in 0.2s ease
+
+.roadmap-detail-settings__dialog
+  position: fixed
+  left: 50%
+  top: 50%
+  transform: translate(-50%, -50%)
+  z-index: 160
+  width: calc(100vw - 32px)
+  max-width: 420px
+  box-sizing: border-box
+  padding: 18px 20px
+  background: #ffffff
+  border: 1px solid var(--roadmap-border-card)
+  border-radius: 12px
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.16)
+  animation: roadmap-ai-tutor-modal-in 0.24s ease
+
+.roadmap-detail-settings__header
+  display: flex
+  align-items: center
+  justify-content: space-between
+  gap: 12px
+  margin-bottom: 8px
+
+.roadmap-detail-settings__title
+  display: inline-flex
+  align-items: center
+  gap: 8px
+  margin: 0
+  font-size: 16px
+  font-weight: 700
+  color: var(--roadmap-text-primary)
+
+.roadmap-detail-settings__close
+  width: 32px
+  height: 32px
+  border: none
+  border-radius: 8px
+  background: var(--roadmap-bg-surface)
+  color: var(--roadmap-text-secondary)
+  font-size: 20px
+  line-height: 1
+  cursor: pointer
+
+  &:hover
+    background: var(--roadmap-bg-page)
+
+.roadmap-detail-settings__hint
+  margin: 0 0 16px
+  font-size: 13px
+  line-height: 1.5
+  color: var(--roadmap-text-secondary)
+
+.roadmap-detail-settings__list
+  display: flex
+  flex-direction: column
+  gap: 12px
+
+.roadmap-detail-settings__row
+  display: flex
+  align-items: center
+  justify-content: space-between
+  gap: 16px
+  padding: 12px 14px
+  border: 1px solid var(--roadmap-border)
+  border-radius: 10px
+  background: var(--roadmap-bg-surface)
+  cursor: pointer
+
+.roadmap-detail-settings__row-text
+  display: flex
+  flex-direction: column
+  gap: 4px
+  min-width: 0
+
+.roadmap-detail-settings__row-label
+  font-size: 14px
+  font-weight: 600
+  color: var(--roadmap-text-primary)
+
+.roadmap-detail-settings__row-desc
+  font-size: 12px
+  line-height: 1.45
+  color: var(--roadmap-text-secondary)
+
+.roadmap-detail-settings__toggle
+  width: 18px
+  height: 18px
+  flex-shrink: 0
+  accent-color: var(--roadmap-accent)
+  cursor: pointer
+
+.roadmap-detail-settings__actions
+  display: flex
+  flex-wrap: wrap
+  justify-content: flex-end
+  gap: 8px
+  margin-top: 18px
+
+.roadmap-detail-settings__btn
+  min-height: 34px
+  padding: 0 14px
+  border: 1px solid var(--roadmap-border)
+  border-radius: 8px
+  background: var(--roadmap-bg-surface)
+  color: var(--roadmap-text-primary)
+  font-size: 13px
+  font-weight: 500
+  cursor: pointer
+  font-family: inherit
+
+  &:disabled
+    opacity: 0.6
+    cursor: not-allowed
+
+  &--primary
+    border-color: var(--roadmap-accent)
+    background: var(--roadmap-accent)
+    color: #ffffff

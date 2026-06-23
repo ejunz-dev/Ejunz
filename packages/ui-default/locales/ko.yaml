@@ -754,6 +754,13 @@ Date: 날짜
 'Roadmap detail filter clear': 지우기
 'Roadmap detail filter cancel': 취소
 'Roadmap detail filter match count': '{0}개 일치'
+'Roadmap detail settings open': 표시 설정
+'Roadmap detail settings title': 표시 설정
+'Roadmap detail settings hint': '이 페이지에서 로드맵 캔버스 표시 방식을 제어합니다.'
+'Roadmap detail settings show problem count': 문제 수 배지 표시
+'Roadmap detail settings show problem count hint': '각 노드 우측 상단에 연습 문제 수를 말풍선 숫자로 표시합니다.'
+'Roadmap detail settings saved': 표시 설정이 저장되었습니다.
+'Roadmap detail settings save failed': 표시 설정 저장에 실패했습니다.
 'Resize sidebar': 사이드바 크기 조절
 'Resize terminal panel': 터미널 높이 조절
 'Terminal input': 터미널 입력

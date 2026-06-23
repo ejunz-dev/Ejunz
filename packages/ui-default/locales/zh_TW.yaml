@@ -604,6 +604,13 @@ Date: 日期
 'Roadmap detail filter clear': 清除
 'Roadmap detail filter cancel': 取消
 'Roadmap detail filter match count': 匹配 {0} 個
+'Roadmap detail settings open': 顯示設定
+'Roadmap detail settings title': 顯示設定
+'Roadmap detail settings hint': 控制此頁路線圖畫布的顯示方式。
+'Roadmap detail settings show problem count': 顯示題目數量
+'Roadmap detail settings show problem count hint': 在節點右上角以氣泡數字顯示該節點的練習題數量。
+'Roadmap detail settings saved': 顯示設定已儲存。
+'Roadmap detail settings save failed': 顯示設定儲存失敗。
 'Resize sidebar': 調整側欄寬度
 'Resize terminal panel': 調整終端高度
 'Terminal input': 終端輸入
