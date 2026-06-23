@@ -1202,7 +1202,22 @@ Date: Date
 'Roadmap pending deleted edges': Deleted edges
 'Roadmap pending viewport changed': Viewport changed
 'Roadmap pending updated problems': Problem changes
-'Roadmap AI terminal hint': Roadmap AI assistant is not connected yet.
+'Roadmap AI terminal hint': AI ready. Describe nodes, edges, or problems below and press Enter; changes apply to the canvas locally until you Save.
+'Roadmap AI thinking': Thinking…
+'Roadmap AI receiving operations': Receiving operations…
+'Roadmap AI waiting for operations': Waiting for operation list…
+'Roadmap AI processing': Processing
+'Roadmap AI applying operations': Applying {0} operation(s)
+'Roadmap AI operations applied': AI operations applied
+'Roadmap AI operations failed': |-
+  Operations failed:
+  {0}
+
+  Fix the issues above and try again.
+'Roadmap AI chat error': 'Error: {0}'
+'Roadmap AI parse error': 'Failed to parse AI operations: {0}'
+'Roadmap AI execute error': 'Failed to run operations: {0}'
+'Roadmap AI problem missing nodeId': create_problem requires a valid nodeId
 'Resize sidebar': Resize sidebar
 'Resize terminal panel': Resize terminal panel
 'Terminal input': Terminal input

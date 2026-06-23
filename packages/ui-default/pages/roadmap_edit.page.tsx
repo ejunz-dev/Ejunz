@@ -104,6 +104,8 @@ import {
   validateRoadmapConnection,
   type RoadmapNodeKind,
 } from 'vj/components/roadmap/node_kinds';
+import { RoadmapAiTerminalView } from 'vj/components/roadmap/ai/RoadmapAiTerminalView';
+import { useRoadmapAiChat } from 'vj/components/roadmap/ai/useRoadmapAiChat';
 
 function newNodeId(): string {
   return `node_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -443,6 +445,30 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
       return next;
     });
   }, []);
+
+  const {
+    chatMessages,
+    setChatMessages,
+    isChatLoading,
+    handleSend: handleRoadmapAiSend,
+    chatMessagesEndRef,
+    summarizeRoadmapAiOperation,
+  } = useRoadmapAiChat({
+    nodes,
+    edges,
+    setNodes,
+    setEdges,
+    setSelectedNodeId,
+    markProblemsDirty,
+    setCardsReloadEpoch,
+    selectedNode,
+    docTitle: doc.title || i18n('Roadmap'),
+    branch: currentBranch,
+    terminalInput,
+    setTerminalInput,
+    newNodeId,
+    newEdgeId,
+  });
 
   const selectedEdge = useMemo(
     () => edges.find((edge) => edge.id === selectedEdgeId) || null,
@@ -1197,15 +1223,27 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
         </>
       )}
       bottomTerminal={(
-        <div style={{ color: terminalStyles.textDim, fontSize: '12px' }}>
-          <span style={{ color: terminalStyles.promptAi }}>[ai]</span>
-          {' '}
-          {i18n('Roadmap AI terminal hint')}
-        </div>
+        <RoadmapAiTerminalView
+          messages={chatMessages}
+          isLoading={isChatLoading}
+          terminalStyles={terminalStyles}
+          messagesEndRef={chatMessagesEndRef}
+          onToggleOperationExpanded={(index) => {
+            setChatMessages((prev) => {
+              const next = [...prev];
+              if (next[index]?.role === 'operation') {
+                next[index] = { ...next[index], isExpanded: !next[index].isExpanded };
+              }
+              return next;
+            });
+          }}
+          summarizeOperation={summarizeRoadmapAiOperation}
+        />
       )}
       bottomTerminalInputValue={terminalInput}
       onBottomTerminalInputChange={setTerminalInput}
-      bottomTerminalInputDisabled
+      onBottomTerminalInputSubmit={handleRoadmapAiSend}
+      bottomTerminalInputDisabled={isChatLoading}
     />
     {contextMenu ? (
       <div
