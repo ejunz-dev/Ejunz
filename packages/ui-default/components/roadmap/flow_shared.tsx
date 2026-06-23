@@ -70,6 +70,18 @@ export const RoadmapShNode = ({ data, selected }: NodeProps) => {
   const blockedAddDirections = new Set(
     (data.blockedAddDirections as AddAdjacentDirection[] | undefined) || [],
   );
+  const showProblemCountBadge = Boolean(data.showProblemCountBadge);
+  const problemCount = typeof data.problemCount === 'number' ? data.problemCount : 0;
+
+  const problemBadge = showProblemCountBadge ? (
+    <span
+      className="roadmap-sh-node__problem-badge"
+      aria-label={String(problemCount)}
+      title={String(problemCount)}
+    >
+      {problemCount}
+    </span>
+  ) : null;
 
   const plusBtn = (direction: AddAdjacentDirection, className: string) => {
     if (blockedAddDirections.has(direction)) return null;
@@ -93,6 +105,7 @@ export const RoadmapShNode = ({ data, selected }: NodeProps) => {
 
   const nodeBody = (
     <>
+      {problemBadge}
       {showResizer ? (
         <NodeResizer
           minWidth={180}

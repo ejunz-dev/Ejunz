@@ -1789,6 +1789,13 @@ Date: 日期
 'Roadmap detail filter clear': 清除
 'Roadmap detail filter cancel': 取消
 'Roadmap detail filter match count': 匹配 {0} 个
+'Roadmap detail settings open': 显示设置
+'Roadmap detail settings title': 显示设置
+'Roadmap detail settings hint': 控制此页路线图画布的显示方式。
+'Roadmap detail settings show problem count': 显示题目数量
+'Roadmap detail settings show problem count hint': 在节点右上角以气泡数字显示该节点的练习题数量。
+'Roadmap detail settings saved': 显示设置已保存。
+'Roadmap detail settings save failed': 显示设置保存失败。
 'Resize sidebar': 调整侧栏宽度
 'Resize terminal panel': 调整终端高度
 'Terminal input': 终端输入

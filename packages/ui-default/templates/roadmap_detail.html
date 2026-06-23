@@ -15,6 +15,7 @@
     viewport: roadmap.viewport if roadmap else {}
   }) }}
   {{ set(UiContext, 'nodeCardsMap', nodeCardsMap if nodeCardsMap is defined else {}) }}
+  {{ set(UiContext, 'roadmapDetailUiPrefs', roadmapDetailUiPrefs if roadmapDetailUiPrefs is defined else {}) }}
 </script>
 <div class="roadmap-view-page roadmap-detail-page">
   {% if roadmap %}

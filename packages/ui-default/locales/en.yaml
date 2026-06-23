@@ -1249,6 +1249,13 @@ Date: Date
 'Roadmap detail filter clear': 'Clear'
 'Roadmap detail filter cancel': 'Cancel'
 'Roadmap detail filter match count': '{0} matches'
+'Roadmap detail settings open': Display settings
+'Roadmap detail settings title': Display settings
+'Roadmap detail settings hint': Control how the roadmap canvas is displayed on this page.
+'Roadmap detail settings show problem count': Show problem count badge
+'Roadmap detail settings show problem count hint': Show a bubble with the number of practice problems on each node.
+'Roadmap detail settings saved': Display settings saved.
+'Roadmap detail settings save failed': Failed to save display settings.
 'Resize sidebar': Resize sidebar
 'Resize terminal panel': Resize terminal panel
 'Terminal input': Terminal input
