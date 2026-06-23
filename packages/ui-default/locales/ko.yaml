@@ -797,5 +797,10 @@ Date: 날짜
 'Roadmap node content': 노드 내용
 'Roadmap node content empty': 이 노드에 내용이 없습니다.
 'Roadmap drawer resources': 리소스
+'Roadmap drawer content': 내용
+'Roadmap drawer problems': 문제
+'Roadmap drawer problems empty': 이 노드에 연습 문제가 없습니다.
+'Roadmap drawer problem tap reveal answer': 탭하여 정답 표시
+'Roadmap drawer problem reveal back': 탭하여 뒷면 표시
 'Roadmap drawer practice problems': 연습 문제
 'Roadmap markdown preview failed': Markdown 렌더링에 실패했습니다.
