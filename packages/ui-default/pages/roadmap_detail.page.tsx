@@ -111,7 +111,7 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
 
   useEffect(() => {
     const contentDiv = contentRef.current;
-    if (!contentDiv || !selectedNode) return undefined;
+    if (!contentDiv || !selectedNode || isTextNodeType(selectedNode.data?.roadmapNodeType)) return undefined;
 
     const markdown = String(selectedNode.data?.description || '');
     if (!markdown.trim()) {
@@ -200,7 +200,6 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
                 onNodeClick={(_, node) => {
                   if (node.type !== 'roadmap') return;
                   if (isHookNodeType(node.data?.roadmapNodeType)) return;
-                  if (isTextNodeType(node.data?.roadmapNodeType)) return;
                   setSelectedNodeId(node.id);
                 }}
                 onPaneClick={() => setSelectedNodeId(null)}
