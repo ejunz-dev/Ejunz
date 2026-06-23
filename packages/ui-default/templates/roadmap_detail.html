@@ -9,6 +9,8 @@
     nodes: roadmap.nodes if roadmap else [],
     edges: roadmap.edges if roadmap else [],
     title: roadmap.title if roadmap else 'Roadmap',
+    content: roadmap.content if roadmap else '',
+    currentBranch: currentBranch if currentBranch is defined else 'main',
     layout: roadmap.layout if roadmap else {},
     viewport: roadmap.viewport if roadmap else {}
   }) }}

@@ -54,6 +54,7 @@ export interface RoadmapDoc {
   docId?: number | string;
   rid?: string | number;
   title?: string;
+  content?: string;
   currentBranch?: string;
   branches?: string[];
   githubRepo?: string;
@@ -237,5 +238,6 @@ export function normalizeRoadmapDoc(data: RoadmapDoc | null | undefined): Roadma
     nodes: data?.nodes || [],
     edges: data?.edges || [],
     title: data?.title || i18n('Roadmap'),
+    content: data?.content || '',
   };
 }
