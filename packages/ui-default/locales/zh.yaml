@@ -1742,7 +1742,22 @@ Date: 日期
 'Roadmap pending deleted edges': 删除连线
 'Roadmap pending viewport changed': 视口更改
 'Roadmap pending updated problems': 题目更改
-'Roadmap AI terminal hint': 路线图 AI 助手尚未接入。
+'Roadmap AI terminal hint': AI 已就绪。描述要创建或修改的节点、连线或题目，在下方输入后按 Enter 发送；变更会立即应用到画布，记得保存。
+'Roadmap AI thinking': 思考中…
+'Roadmap AI receiving operations': 正在接收操作…
+'Roadmap AI waiting for operations': 等待操作列表…
+'Roadmap AI processing': 处理中
+'Roadmap AI applying operations': 正在应用 {0} 个操作
+'Roadmap AI operations applied': AI 操作已应用
+'Roadmap AI operations failed': |-
+  操作失败：
+  {0}
+
+  请修正上述问题后重试。
+'Roadmap AI chat error': '错误：{0}'
+'Roadmap AI parse error': '无法解析 AI 操作：{0}'
+'Roadmap AI execute error': '执行操作失败：{0}'
+'Roadmap AI problem missing nodeId': create_problem 需要有效的 nodeId
 'Resize sidebar': 调整侧栏宽度
 'Resize terminal panel': 调整终端高度
 'Terminal input': 终端输入
