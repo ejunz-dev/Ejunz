@@ -1846,5 +1846,10 @@ Date: 日期
 'Roadmap node content': 节点内容
 'Roadmap node content empty': 此节点暂无内容。
 'Roadmap drawer resources': 资源
+'Roadmap drawer content': 内容
+'Roadmap drawer problems': 题目
+'Roadmap drawer problems empty': 该节点暂无练习题。
+'Roadmap drawer problem tap reveal answer': 点击显示答案
+'Roadmap drawer problem reveal back': 点击显示背面
 'Roadmap drawer practice problems': 练习题
 'Roadmap markdown preview failed': Markdown 渲染失败。

@@ -3,8 +3,9 @@ import ReactDOM from 'react-dom';
 import { i18n } from 'vj/utils';
 import type { Problem } from 'ejun/src/interface';
 import { statusColor, statusLabel, type RoadmapStatus } from './shared';
+import { RoadmapDrawerProblemList } from './RoadmapDrawerProblemList';
 
-type DrawerTab = 'resources';
+type DrawerTab = 'content' | 'problems';
 
 interface NodeCard {
   docId?: string;
@@ -15,31 +16,6 @@ interface NodeCard {
 function getNodeCards(nodeId: string): NodeCard[] {
   const map = ((window as any).UiContext?.nodeCardsMap || {}) as Record<string, NodeCard[]>;
   return map[nodeId] || [];
-}
-
-function problemDisplayTitle(problem: Problem): string {
-  const title = String(problem.title || '').trim();
-  if (title) return title;
-  const stem = String((problem as { stem?: string }).stem || '').trim();
-  if (!stem) return i18n('Unnamed');
-  return stem.replace(/<[^>]+>/g, '').slice(0, 80);
-}
-
-function problemKindI18nKey(type?: string): string {
-  switch (type) {
-    case 'multi': return 'Problem kind multi';
-    case 'true_false': return 'Problem kind true false';
-    case 'flip': return 'Problem kind flip';
-    case 'fill_blank': return 'Problem kind fill blank';
-    case 'matching': return 'Problem kind matching';
-    case 'super_flip': return 'Problem kind super flip';
-    case 'ai_eval': return 'Problem kind ai eval';
-    default: return 'Problem kind single';
-  }
-}
-
-function problemKindBadge(problem: Problem): string {
-  return i18n(problemKindI18nKey(problem.type));
 }
 
 export function RoadmapNodeDrawer({
@@ -57,7 +33,7 @@ export function RoadmapNodeDrawer({
   contentRef: React.RefObject<HTMLDivElement>;
   onClose: () => void;
 }) {
-  const [tab, setTab] = React.useState<DrawerTab>('resources');
+  const [tab, setTab] = React.useState<DrawerTab>('content');
   const problems = useMemo(() => {
     const cards = getNodeCards(nodeId);
     const list: Problem[] = [];
@@ -69,12 +45,13 @@ export function RoadmapNodeDrawer({
 
   useEffect(() => {
     if (!open) return undefined;
+    setTab('content');
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open, onClose]);
+  }, [open, nodeId, onClose]);
 
   if (!open) return null;
 
@@ -85,13 +62,25 @@ export function RoadmapNodeDrawer({
       <div className="roadmap-detail-backdrop" aria-hidden />
       <aside className="roadmap-detail-drawer" aria-label={nodeLabel}>
         <div className="roadmap-detail-drawer__header">
-          <div className="roadmap-detail-drawer__tabs">
+          <div className="roadmap-detail-drawer__tabs" role="tablist" aria-label={nodeLabel}>
             <button
               type="button"
-              className={`roadmap-detail-drawer__tab${tab === 'resources' ? ' is-active' : ''}`}
-              onClick={() => setTab('resources')}
+              role="tab"
+              aria-selected={tab === 'content'}
+              className={`roadmap-detail-drawer__tab${tab === 'content' ? ' is-active' : ''}`}
+              onClick={() => setTab('content')}
             >
-              {i18n('Roadmap drawer resources')}
+              {i18n('Roadmap drawer content')}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'problems'}
+              className={`roadmap-detail-drawer__tab${tab === 'problems' ? ' is-active' : ''}`}
+              onClick={() => setTab('problems')}
+            >
+              {i18n('Roadmap drawer problems')}
+              <span className="roadmap-detail-drawer__tab-count">{problems.length}</span>
             </button>
           </div>
           <div className="roadmap-detail-drawer__header-actions">
@@ -114,28 +103,23 @@ export function RoadmapNodeDrawer({
         </div>
 
         <div className="roadmap-detail-drawer__body">
-          <h1 className="roadmap-detail-drawer__title">{nodeLabel}</h1>
-          <div ref={contentRef} className="roadmap-detail-drawer__markdown typo" />
+          <div
+            className={`roadmap-detail-drawer__panel${tab === 'content' ? ' is-active' : ''}`}
+            role="tabpanel"
+            hidden={tab !== 'content'}
+          >
+            <h1 className="roadmap-detail-drawer__title">{nodeLabel}</h1>
+            <div ref={contentRef} className="roadmap-detail-drawer__markdown typo" />
+          </div>
 
-          {problems.length > 0 ? (
-            <section className="roadmap-detail-drawer__section">
-              <h2 className="roadmap-detail-drawer__section-title">
-                {i18n('Roadmap drawer practice problems')}
-              </h2>
-              <ul className="roadmap-detail-drawer__resource-list">
-                {problems.map((problem) => (
-                  <li key={problem.pid} className="roadmap-detail-drawer__resource-item">
-                    <span className="roadmap-detail-drawer__resource-badge">
-                      {problemKindBadge(problem)}
-                    </span>
-                    <span className="roadmap-detail-drawer__resource-label">
-                      {problemDisplayTitle(problem)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
+          <div
+            className={`roadmap-detail-drawer__panel${tab === 'problems' ? ' is-active' : ''}`}
+            role="tabpanel"
+            hidden={tab !== 'problems'}
+          >
+            <h1 className="roadmap-detail-drawer__title">{nodeLabel}</h1>
+            <RoadmapDrawerProblemList problems={problems} resetKey={`${nodeId}:${open}`} />
+          </div>
         </div>
       </aside>
     </>,

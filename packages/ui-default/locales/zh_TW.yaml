@@ -647,5 +647,10 @@ Date: 日期
 'Roadmap node content': 節點內容
 'Roadmap node content empty': 此節點暫無內容。
 'Roadmap drawer resources': 資源
+'Roadmap drawer content': 內容
+'Roadmap drawer problems': 題目
+'Roadmap drawer problems empty': 該節點暫無練習題。
+'Roadmap drawer problem tap reveal answer': 點擊顯示答案
+'Roadmap drawer problem reveal back': 點擊顯示背面
 'Roadmap drawer practice problems': 練習題
 'Roadmap markdown preview failed': Markdown 渲染失敗。
