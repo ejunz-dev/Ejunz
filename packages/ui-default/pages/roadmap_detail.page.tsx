@@ -81,6 +81,7 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
     canvasHeight,
     lockedZoom,
     viewport,
+    layoutReady,
     onFlowInit,
   } = useRoadmapScrollLayout(layoutNodes, { fillContainer: false });
 
@@ -187,30 +188,33 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
       <div className="roadmap-view">
         <div ref={outerRef} className="roadmap-flow roadmap-flow--scroll">
           <div ref={canvasRef} className="roadmap-flow__canvas" style={{ height: canvasHeight }}>
-            <ReactFlow
-              nodes={viewNodes}
-              edges={viewEdges}
-              nodeTypes={roadmapFlowNodeTypes}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onInit={onFlowInit}
+            {layoutReady ? (
+              <ReactFlow
+                nodes={viewNodes}
+                edges={viewEdges}
+                nodeTypes={roadmapFlowNodeTypes}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onInit={onFlowInit}
+                defaultViewport={viewport}
                 onNodeClick={(_, node) => {
-                if (node.type !== 'roadmap') return;
-                if (isHookNodeType(node.data?.roadmapNodeType)) return;
-                if (isTextNodeType(node.data?.roadmapNodeType)) return;
-                setSelectedNodeId(node.id);
-              }}
-              onPaneClick={() => setSelectedNodeId(null)}
-              connectionMode={ConnectionMode.Loose}
-              nodesDraggable={false}
-              nodesConnectable={false}
-              elementsSelectable
-              nodesFocusable={false}
-              edgesFocusable={false}
-              minZoom={lockedZoom}
-              maxZoom={lockedZoom}
-              {...roadmapScrollFlowProps}
-            />
+                  if (node.type !== 'roadmap') return;
+                  if (isHookNodeType(node.data?.roadmapNodeType)) return;
+                  if (isTextNodeType(node.data?.roadmapNodeType)) return;
+                  setSelectedNodeId(node.id);
+                }}
+                onPaneClick={() => setSelectedNodeId(null)}
+                connectionMode={ConnectionMode.Loose}
+                nodesDraggable={false}
+                nodesConnectable={false}
+                elementsSelectable
+                nodesFocusable={false}
+                edgesFocusable={false}
+                minZoom={lockedZoom}
+                maxZoom={lockedZoom}
+                {...roadmapScrollFlowProps}
+              />
+            ) : null}
           </div>
         </div>
       </div>
