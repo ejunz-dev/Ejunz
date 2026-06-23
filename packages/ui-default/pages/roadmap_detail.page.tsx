@@ -37,8 +37,17 @@ import {
 import { RoadmapNodeDrawer } from 'vj/components/roadmap/RoadmapNodeDrawer';
 import { RoadmapDetailHeader } from 'vj/components/roadmap/RoadmapDetailHeader';
 import { RoadmapAiTutor } from 'vj/components/roadmap/RoadmapAiTutor';
+import { RoadmapDetailExplorer } from 'vj/components/roadmap/RoadmapDetailExplorer';
+import {
+  computeRoadmapDetailMatchedNodeIds,
+  emptyRoadmapDetailFilter,
+  isRoadmapDetailFilterActive,
+  readRoadmapDetailFilterFromLocation,
+  type RoadmapDetailFilter,
+} from 'vj/components/roadmap/detail_explorer';
 import { isHookNodeType, isTextNodeType } from 'vj/components/roadmap/node_kinds';
 import type { RoadmapStatus } from 'vj/components/roadmap/shared';
+import type { EditorCard } from 'vj/components/editor_workspace/card_problems_panel';
 
 function toLaneFlowNodes(
   baseNodes: ReturnType<typeof normalizeRoadmapDoc>['nodes'],
@@ -62,12 +71,61 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
     () => initialRoadmapSelectedNodeId(initialFlowNodes.map((node) => node.id)),
   );
   const [aiTutorOpen, setAiTutorOpen] = useState(false);
+  const [detailFilters, setDetailFilters] = useState<RoadmapDetailFilter>(() => readRoadmapDetailFilterFromLocation());
+  const [nodeCardsMap, setNodeCardsMap] = useState<Record<string, EditorCard[]>>(
+    () => (((window as any).UiContext?.nodeCardsMap || {}) as Record<string, EditorCard[]>),
+  );
   const contentRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const theme = useEditorTheme();
   const layoutNodes = useMemo(() => nodes.filter(isRoadmapFlowNode), [nodes]);
-  const viewNodes = useMemo(() => toRoadmapViewNodes(layoutNodes, selectedNodeId), [layoutNodes, selectedNodeId]);
-  const viewEdges = useMemo(() => toRoadmapViewEdges(edges, null, undefined, theme), [edges, theme]);
+  const matchedNodeIds = useMemo(
+    () => computeRoadmapDetailMatchedNodeIds(layoutNodes, detailFilters, nodeCardsMap),
+    [detailFilters, layoutNodes, nodeCardsMap],
+  );
+  const detailFiltersActive = useMemo(
+    () => isRoadmapDetailFilterActive(detailFilters),
+    [detailFilters],
+  );
+  const viewNodes = useMemo(() => {
+    const base = toRoadmapViewNodes(layoutNodes, selectedNodeId);
+    if (!matchedNodeIds) return base;
+    return base.map((node) => {
+      const matched = matchedNodeIds.has(node.id);
+      const dimmed = !matched;
+      return {
+        ...node,
+        selectable: matched,
+        data: {
+          ...node.data,
+          explorerDimmed: dimmed,
+        },
+        style: {
+          ...(node.style || {}),
+          opacity: dimmed ? 0.2 : 1,
+          pointerEvents: dimmed ? 'none' as const : 'all' as const,
+          transition: 'opacity 0.2s ease',
+        },
+      };
+    });
+  }, [layoutNodes, matchedNodeIds, selectedNodeId]);
+  const viewEdges = useMemo(() => {
+    const base = toRoadmapViewEdges(edges, null, undefined, theme);
+    if (!matchedNodeIds) return base;
+    return base.map((edge) => {
+      const visible = matchedNodeIds.has(edge.source) && matchedNodeIds.has(edge.target);
+      return {
+        ...edge,
+        selectable: visible,
+        style: {
+          ...(edge.style || {}),
+          opacity: visible ? 1 : 0.1,
+          pointerEvents: visible ? 'all' as const : 'none' as const,
+          transition: 'opacity 0.2s ease',
+        },
+      };
+    });
+  }, [edges, matchedNodeIds, theme]);
   const roadmapNodeIds = useMemo(() => layoutNodes.map((node) => node.id), [layoutNodes]);
   useRoadmapNodeUrlSync({
     nodeIds: roadmapNodeIds,
@@ -101,8 +159,10 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
       .then((data: any) => {
         const next = normalizeRoadmapDoc(data);
         setDoc(next);
-        if (data.nodeCardsMap && (window as any).UiContext) {
-          (window as any).UiContext.nodeCardsMap = data.nodeCardsMap;
+        if (data.nodeCardsMap) {
+          const nextMap = data.nodeCardsMap as Record<string, EditorCard[]>;
+          (window as any).UiContext.nodeCardsMap = nextMap;
+          setNodeCardsMap(nextMap);
         }
         const nextFlowNodes = toLaneFlowNodes(next.nodes, next.edges);
         setNodes(nextFlowNodes);
@@ -159,6 +219,8 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
       if (target.closest('.roadmap-detail-drawer')) return;
       if (target.closest('.roadmap-ai-tutor-modal')) return;
       if (target.closest('.roadmap-ai-tutor-bar')) return;
+      if (target.closest('.roadmap-detail-explorer')) return;
+      if (target.closest('.roadmap-detail-explorer__dialog')) return;
       if (target.closest('.react-flow__node')) return;
       setSelectedNodeId(null);
     };
@@ -194,6 +256,16 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
   return (
     <div className="roadmap-detail-layout">
       <RoadmapDetailHeader {...headerProps} />
+      <RoadmapDetailExplorer
+        nodes={layoutNodes}
+        nodeCardsMap={nodeCardsMap}
+        filters={detailFilters}
+        filtersActive={detailFiltersActive}
+        matchedCount={matchedNodeIds?.size ?? layoutNodes.length}
+        onApplyFilters={setDetailFilters}
+        onClearFilters={() => setDetailFilters(emptyRoadmapDetailFilter())}
+        onSelectNode={(nodeId) => setSelectedNodeId(nodeId)}
+      />
       <div className="roadmap-view">
         <div ref={outerRef} className="roadmap-flow roadmap-flow--scroll">
           <div ref={canvasRef} className="roadmap-flow__canvas" style={{ height: canvasHeight }}>
