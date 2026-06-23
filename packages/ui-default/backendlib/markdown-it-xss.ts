@@ -19,7 +19,7 @@ const depedentTags = {
   dt: ['dl'],
   dd: ['dl'],
 };
-const whitelistClasses = ['row', 'columns', 'typo', 'note', 'warn'].concat(Array.from({ length: 12 }).fill(0).map((_, i) => `medium-${i + 1}`));
+const whitelistClasses = ['row', 'columns', 'typo', 'note', 'warn', 'roadmap-text-btn', 'roadmap-text-btn--auto', 'roadmap-text-btn--align-left', 'roadmap-text-btn--align-right'].concat(Array.from({ length: 12 }).fill(0).map((_, i) => `medium-${i + 1}`));
 
 const tagCheck = new FilterXSS({
   css: false,
@@ -61,6 +61,7 @@ const cssFilterOptions = {
     'text-align': true,
     'text-indent': true,
     'margin-left': true,
+    'margin-right': true,
     position: /relative/,
     padding: true,
     height: true,

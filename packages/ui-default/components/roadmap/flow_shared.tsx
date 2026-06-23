@@ -110,11 +110,6 @@ export const RoadmapShNode = ({ data, selected }: NodeProps) => {
       ) : null}
       {isTextKind ? (
         <RoadmapTextNodeLead markdown={String(data.nodeText || '')} />
-      ) : null}
-      {isTextKind ? (
-        <div className="roadmap-sh-node__title-box">
-          <div className="roadmap-sh-node__title">{titleText}</div>
-        </div>
       ) : (
         <div className="roadmap-sh-node__title">{titleText}</div>
       )}
