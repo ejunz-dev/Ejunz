@@ -89,7 +89,9 @@ import {
   buildEdgeForNodes,
   computeAdjacentNodePlacement,
   connectionFromEdge,
+  getBlockedAddAdjacentDirections,
   placementYForBottom,
+  placementYForTop,
   type AddAdjacentDirection,
 } from 'vj/components/roadmap/add_adjacent';
 import {
@@ -277,6 +279,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
       data: {
         ...node.data,
         editable: !deletedNodeIds.has(node.id),
+        blockedAddDirections: [...getBlockedAddAdjacentDirections(node.id, edges, nodes)],
         onRequestAddAdjacent: (direction: AddAdjacentDirection, event: React.MouseEvent) => {
           event.stopPropagation();
           setNodeAddMenu({
@@ -296,7 +299,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
       pendingStatusMaps,
     );
     return [...live, ...ghosts];
-  }, [nodes, selectedNodeId, pendingStatusMaps, deletedNodeIds, savedSnapshot]);
+  }, [edges, nodes, selectedNodeId, pendingStatusMaps, deletedNodeIds, savedSnapshot]);
   const viewEdges = useMemo(() => {
     const live = toRoadmapViewEdges(edges, selectedEdgeId, pendingStatusMaps, theme);
     if (!deletedEdgeIds.size) return live;
@@ -485,6 +488,8 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
     const position = { ...placement.position };
     if (direction === 'bottom') {
       position.y = placementYForBottom(nodes, placement.lane, position.y);
+    } else if (direction === 'top') {
+      position.y = placementYForTop(nodes, placement.lane, position.y);
     }
     const newNode: Node = {
       id: newId,
