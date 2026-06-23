@@ -496,6 +496,144 @@
     height: 100% !important
     min-height: 0 !important
 
+.roadmap-detail-header-card
+  width: calc(100% - 320px)
+  max-width: calc(1100px - 320px)
+  margin: 0 auto 20px
+
+  +mobile()
+    width: calc(100% - 32px)
+    max-width: calc(1100px - 32px)
+  padding: 20px 24px 0
+  box-sizing: border-box
+  background: var(--roadmap-bg-elevated)
+  border: 1px solid var(--roadmap-border-card)
+  border-radius: 12px
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05)
+
+.roadmap-detail-header-card__top
+  display: flex
+  align-items: flex-start
+  justify-content: space-between
+  gap: 16px
+  margin-bottom: 20px
+
+  +mobile()
+    flex-direction: column
+    align-items: stretch
+
+.roadmap-detail-header-card__back
+  display: inline-flex
+  align-items: center
+  gap: 6px
+  font-size: 14px
+  font-weight: 500
+  color: var(--roadmap-text-secondary)
+  text-decoration: none
+  flex-shrink: 0
+
+  &:hover
+    color: var(--roadmap-text-primary)
+
+.roadmap-detail-header-card__back-arrow
+  font-size: 16px
+  line-height: 1
+
+.roadmap-detail-header-card__actions
+  display: flex
+  align-items: center
+  justify-content: flex-end
+  gap: 8px
+  flex-wrap: wrap
+
+  +mobile()
+    justify-content: flex-start
+
+.roadmap-detail-header-card__btn
+  display: inline-flex
+  align-items: center
+  justify-content: center
+  gap: 6px
+  min-height: 36px
+  padding: 0 14px
+  border-radius: 8px
+  border: 1px solid var(--roadmap-border)
+  background: var(--roadmap-bg-surface)
+  font-size: 13px
+  font-weight: 500
+  line-height: 1
+  color: var(--roadmap-text-primary)
+  text-decoration: none
+  cursor: pointer
+  white-space: nowrap
+  transition: background 0.15s ease, border-color 0.15s ease
+
+  &:hover
+    background: var(--roadmap-bg-page)
+    border-color: var(--roadmap-border-input)
+
+  .icon
+    font-size: 14px
+
+.roadmap-detail-header-card__btn--primary
+  background: #ffd24a
+  border-color: #e8bc2e
+  color: #111111
+
+  &:hover
+    background: #ffda66
+    border-color: #d9ad28
+
+.roadmap-detail-header-card__btn--icon
+  min-width: 36px
+  padding: 0 10px
+
+.roadmap-detail-header-card__body
+  margin-bottom: 4px
+
+.roadmap-detail-header-card__title
+  margin: 0
+  font-size: 40px
+  font-weight: 700
+  line-height: 1.15
+  letter-spacing: -0.03em
+  color: var(--roadmap-text-primary)
+
+  +mobile()
+    font-size: 30px
+
+.roadmap-detail-header-card__desc
+  margin: 10px 0 0
+  font-size: 15px
+  line-height: 1.5
+  color: var(--roadmap-text-secondary)
+
+.roadmap-detail-header-card__tabs
+  display: flex
+  align-items: center
+  margin-top: 20px
+  border-top: 1px solid var(--roadmap-border)
+
+.roadmap-detail-header-card__tab
+  display: inline-flex
+  align-items: center
+  gap: 8px
+  margin-right: 24px
+  padding: 14px 2px
+  font-size: 14px
+  font-weight: 500
+  color: var(--roadmap-text-muted)
+  border-bottom: 2px solid transparent
+  margin-bottom: -1px
+
+  &.is-active
+    color: var(--roadmap-text-primary)
+    border-bottom-color: var(--roadmap-text-primary)
+
+.page--roadmap_detail .roadmap-detail-layout
+  padding: 24px 16px 0
+  box-sizing: border-box
+
 .roadmap-detail-layout
   display: flex
   flex-direction: column
