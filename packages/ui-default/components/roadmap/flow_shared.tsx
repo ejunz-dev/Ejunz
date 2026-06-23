@@ -4,6 +4,7 @@ import {
   Handle,
   Node,
   NodeProps,
+  NodeResizer,
   NodeTypes,
   Position,
   ReactFlowInstance,
@@ -18,7 +19,10 @@ import {
   ROADMAP_LANES,
   ROADMAP_LANES_SPAN_WIDTH,
 } from './lanes';
-import { roadmapEdgeLineStyleFromStyle, RoadmapStatus, roadmapUntitledNodeLabel } from './shared';
+import { roadmapEdgeDashStyle, roadmapEdgeLineStyleFromStyle, roadmapUntitledNodeLabel } from './shared';
+import { getRoadmapNodeKind, isSubNodeType } from './node_kinds';
+import type { AddAdjacentDirection } from './add_adjacent';
+import { RoadmapTextNodeLead } from './RoadmapTextNodeLead';
 import {
   ROADMAP_PENDING_COLORS,
   resolveRoadmapEdgePendingStatus,
@@ -50,17 +54,92 @@ export interface RoadmapScrollLayout {
 }
 
 export const RoadmapShNode = ({ data, selected }: NodeProps) => {
-  const status = (data.status || 'planned') as RoadmapStatus;
+  const kind = getRoadmapNodeKind(data.roadmapNodeType);
   const pendingStatus = data.pendingStatus as RoadmapPendingStatus | undefined;
   const pendingClass = pendingStatus ? ` roadmap-sh-node--pending-${pendingStatus}` : '';
   const ghostClass = data.isPendingGhost ? ' roadmap-sh-node--pending-ghost' : '';
-  return (
-    <div className={`roadmap-sh-node roadmap-sh-node--${status}${pendingClass}${ghostClass} ${selected ? 'is-selected' : ''}`}>
+  const titleText = String(data.label || roadmapUntitledNodeLabel());
+  const isTextKind = kind === 'text';
+  const showResizer = isSubNodeType(data.roadmapNodeType) && selected && !data.isPendingGhost;
+  const editable = Boolean(data.editable) && !data.isPendingGhost;
+  const hookUrl = String(data.hookRoadmapUrl || '').trim();
+  const isHookLink = kind === 'hook' && !editable && hookUrl;
+  const onRequestAddAdjacent = data.onRequestAddAdjacent as
+    | ((direction: AddAdjacentDirection, event: React.MouseEvent) => void)
+    | undefined;
+
+  const plusBtn = (direction: AddAdjacentDirection, className: string) => (
+    <button
+      type="button"
+      className={`roadmap-sh-node__add ${className}`}
+      aria-label={direction}
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation();
+        onRequestAddAdjacent?.(direction, event);
+      }}
+    >
+      +
+    </button>
+  );
+
+  const nodeClassName = `roadmap-sh-node roadmap-sh-node--kind-${kind}${pendingClass}${ghostClass}${isHookLink ? ' roadmap-sh-node--hook-link' : ''} ${selected ? 'is-selected' : ''}`;
+
+  const nodeBody = (
+    <>
+      {showResizer ? (
+        <NodeResizer
+          minWidth={180}
+          maxWidth={520}
+          isVisible={selected}
+          lineClassName="roadmap-sh-node__resize-line"
+          handleClassName="roadmap-sh-node__resize-handle"
+        />
+      ) : null}
       <Handle type="target" position={Position.Top} id="top" className="roadmap-sh-node__handle" />
       <Handle type="source" position={Position.Bottom} id="bottom" className="roadmap-sh-node__handle" />
       <Handle type="target" position={Position.Left} id="left" className="roadmap-sh-node__handle" />
       <Handle type="source" position={Position.Right} id="right" className="roadmap-sh-node__handle" />
-      <div className="roadmap-sh-node__title">{data.label || roadmapUntitledNodeLabel()}</div>
+      {editable ? (
+        <>
+          {plusBtn('top', 'roadmap-sh-node__add--top')}
+          {plusBtn('bottom', 'roadmap-sh-node__add--bottom')}
+          {plusBtn('left', 'roadmap-sh-node__add--left')}
+          {plusBtn('right', 'roadmap-sh-node__add--right')}
+        </>
+      ) : null}
+      {isTextKind ? (
+        <RoadmapTextNodeLead markdown={String(data.nodeText || '')} />
+      ) : null}
+      {isTextKind ? (
+        <div className="roadmap-sh-node__title-box">
+          <div className="roadmap-sh-node__title">{titleText}</div>
+        </div>
+      ) : (
+        <div className="roadmap-sh-node__title">{titleText}</div>
+      )}
+      {kind === 'hook' && editable && data.hookRoadmapTitle && String(data.hookRoadmapTitle) !== titleText ? (
+        <div className="roadmap-sh-node__hook-target">{String(data.hookRoadmapTitle)}</div>
+      ) : null}
+    </>
+  );
+
+  if (isHookLink) {
+    return (
+      <a
+        className={nodeClassName}
+        href={hookUrl}
+        onClick={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        {nodeBody}
+      </a>
+    );
+  }
+
+  return (
+    <div className={nodeClassName}>
+      {nodeBody}
     </div>
   );
 };
@@ -141,8 +220,8 @@ export function toRoadmapViewNodes(
 function roadmapEdgePendingStyle(pendingStatus: RoadmapPendingStatus, isSelected: boolean) {
   return {
     stroke: ROADMAP_PENDING_COLORS[pendingStatus],
-    strokeWidth: isSelected ? 4 : 3,
-    strokeDasharray: '5,5',
+    strokeWidth: isSelected ? 5 : 4,
+    opacity: pendingStatus === 'delete' ? 0.72 : 0.9,
   };
 }
 
@@ -161,10 +240,10 @@ export function toRoadmapViewEdges(
   return edges.map((edge) => {
     const isSelected = edge.id === selectedEdgeId;
     const pendingStatus = pending ? resolveRoadmapEdgePendingStatus(edge, pending) : undefined;
-    const dash = (edge.style as any)?.strokeDasharray;
     const lineStyle = roadmapEdgeLineStyleFromStyle(edge.style as Record<string, any>);
     const pendingStyle = pendingStatus ? roadmapEdgePendingStyle(pendingStatus, isSelected) : null;
     const stroke = pendingStyle?.stroke || roadmapFlowEdgeStroke(theme, isSelected);
+    const lineDashStyle = lineStyle === 'dashed' ? roadmapEdgeDashStyle('dashed') : {};
     return {
       ...edge,
       type: lineStyle === 'dashed' ? 'default' : 'straight',
@@ -175,10 +254,8 @@ export function toRoadmapViewEdges(
       style: {
         stroke,
         strokeWidth: pendingStyle?.strokeWidth || (isSelected ? 4 : 3),
-        ...(pendingStyle?.strokeDasharray
-          ? { strokeDasharray: pendingStyle.strokeDasharray }
-          : (dash ? { strokeDasharray: dash } : {})),
-        ...(pendingStatus === 'delete' ? { opacity: 0.72 } : {}),
+        ...lineDashStyle,
+        ...(pendingStyle?.opacity != null ? { opacity: pendingStyle.opacity } : {}),
       },
       markerEnd: undefined,
       data: {

@@ -738,6 +738,7 @@ Date: 날짜
 'Roadmap new decision': 새 결정
 'Roadmap new task': 새 작업
 'Roadmap add node': 노드
+'Roadmap add adjacent blocked': 이 방향에는 인접 레인이 없습니다
 'Roadmap new node': 새 노드
 'Roadmap node editor': 노드 편집
 'Roadmap node content': 노드 내용

@@ -2,7 +2,7 @@ import type { Edge, Node } from 'reactflow';
 import { domainApiPath, i18n } from 'vj/utils';
 
 export type RoadmapStatus = 'planned' | 'in_progress' | 'done' | 'blocked';
-export type RoadmapNodeType = 'root' | 'milestone' | 'task' | 'decision' | 'release';
+export type RoadmapNodeType = 'main' | 'sub' | 'hook' | 'text' | 'root' | 'milestone' | 'task' | 'decision' | 'release';
 export type RoadmapPriority = 'low' | 'medium' | 'high';
 
 export interface RoadmapNodeData {
@@ -11,6 +11,11 @@ export interface RoadmapNodeData {
   owner?: string;
   dueDate?: string;
   description?: string;
+  nodeText?: string;
+  hookRoadmapDocId?: string | number;
+  hookRoadmapBranch?: string;
+  hookRoadmapTitle?: string;
+  hookRoadmapUrl?: string;
   priority?: RoadmapPriority;
   lane?: 1 | 2 | 3;
 }
@@ -81,6 +86,10 @@ export function statusLabel(status?: RoadmapStatus): string {
 
 export function nodeTypeLabel(type?: RoadmapNodeType): string {
   switch (type) {
+    case 'main': return i18n('Roadmap node type main');
+    case 'sub': return i18n('Roadmap node type sub');
+    case 'hook': return i18n('Roadmap node type hook');
+    case 'text': return i18n('Roadmap node type text');
     case 'root': return i18n('Roadmap node type root');
     case 'milestone': return i18n('Roadmap node type milestone');
     case 'decision': return i18n('Roadmap node type decision');
@@ -119,6 +128,7 @@ export function statusColor(status?: RoadmapStatus): string {
 
 export function baseNodeToFlowNode(node: BaseRoadmapNode, index = 0): Node {
   const data = node.data || {};
+  const width = typeof node.width === 'number' && node.width > 0 ? node.width : undefined;
   return {
     id: node.id,
     type: 'roadmap',
@@ -126,6 +136,8 @@ export function baseNodeToFlowNode(node: BaseRoadmapNode, index = 0): Node {
       x: typeof node.x === 'number' && Number.isFinite(node.x) ? node.x : 120 + (index % 4) * 280,
       y: typeof node.y === 'number' && Number.isFinite(node.y) ? node.y : 100 + Math.floor(index / 4) * 170,
     },
+    ...(width ? { width, style: { width } } : {}),
+    ...(typeof node.height === 'number' && node.height > 0 ? { height: node.height } : {}),
     data: {
       ...data,
       label: node.text || roadmapUntitledNodeLabel(),
@@ -187,6 +199,8 @@ export function flowNodeToBaseNode(node: Node): BaseRoadmapNode {
     text: label,
     x: node.position.x,
     y: node.position.y,
+    ...(typeof node.width === 'number' && node.width > 0 ? { width: node.width } : {}),
+    ...(typeof node.height === 'number' && node.height > 0 ? { height: node.height } : {}),
     parentId: undefined,
     children: undefined,
     expanded: original.expanded ?? true,
