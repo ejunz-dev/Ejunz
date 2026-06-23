@@ -707,7 +707,22 @@ Date: 날짜
 'Roadmap pending deleted edges': 삭제된 연결
 'Roadmap pending viewport changed': 뷰포트 변경
 'Roadmap pending updated problems': 문제 변경
-'Roadmap AI terminal hint': 로드맵 AI 어시스턴트는 아직 연결되지 않았습니다.
+'Roadmap AI terminal hint': 생성·수정할 노드, 연결선, 문제를 설명하세요. 변경은 저장 전까지 캔버스에 바로 반영됩니다.
+'Roadmap AI thinking': 생각 중…
+'Roadmap AI receiving operations': 작업 수신 중…
+'Roadmap AI waiting for operations': 작업 목록 대기 중…
+'Roadmap AI processing': 처리 중
+'Roadmap AI applying operations': '{0}개 작업 적용 중'
+'Roadmap AI operations applied': AI 작업이 적용되었습니다
+'Roadmap AI operations failed': |-
+  작업 실패:
+  {0}
+
+  위 문제를 수정한 뒤 다시 시도하세요.
+'Roadmap AI chat error': '오류: {0}'
+'Roadmap AI parse error': 'AI 작업 파싱 실패: {0}'
+'Roadmap AI execute error': '작업 실행 실패: {0}'
+'Roadmap AI problem missing nodeId': create_problem에는 유효한 nodeId가 필요합니다
 'Resize sidebar': 사이드바 크기 조절
 'Resize terminal panel': 터미널 높이 조절
 'Terminal input': 터미널 입력

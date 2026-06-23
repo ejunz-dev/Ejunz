@@ -557,7 +557,22 @@ Date: 日期
 'Roadmap pending deleted edges': 刪除連線
 'Roadmap pending viewport changed': 視口更改
 'Roadmap pending updated problems': 題目更改
-'Roadmap AI terminal hint': 路線圖 AI 助手尚未接入。
+'Roadmap AI terminal hint': AI 已就緒。描述要建立或修改的節點、連線或題目，在下方輸入後按 Enter 傳送；變更會立即套用到畫布，記得儲存。
+'Roadmap AI thinking': 思考中…
+'Roadmap AI receiving operations': 正在接收操作…
+'Roadmap AI waiting for operations': 等待操作列表…
+'Roadmap AI processing': 處理中
+'Roadmap AI applying operations': 正在套用 {0} 個操作
+'Roadmap AI operations applied': AI 操作已套用
+'Roadmap AI operations failed': |-
+  操作失敗：
+  {0}
+
+  請修正上述問題後重試。
+'Roadmap AI chat error': '錯誤：{0}'
+'Roadmap AI parse error': '無法解析 AI 操作：{0}'
+'Roadmap AI execute error': '執行操作失敗：{0}'
+'Roadmap AI problem missing nodeId': create_problem 需要有效的 nodeId
 'Resize sidebar': 調整側欄寬度
 'Resize terminal panel': 調整終端高度
 'Terminal input': 終端輸入
