@@ -7,6 +7,7 @@ import TOC from 'markdown-it-table-of-contents';
 import Imsize from '../../backendlib/markdown-it-imsize';
 import { Media } from '../../backendlib/markdown-it-media';
 import { xssProtector } from '../../backendlib/markdown-it-xss';
+import { RoadmapButton } from './markdown-it-roadmap-button';
 
 let renderer: MarkdownIt | null = null;
 
@@ -26,12 +27,13 @@ function getRoadmapMarkdownRenderer(): MarkdownIt {
   mdit.use(Anchor);
   mdit.use(TOC);
   mdit.use(MergeCells);
+  mdit.use(RoadmapButton);
   mdit.use(xssProtector);
   renderer = mdit;
   return mdit;
 }
 
-/** Client-side markdown render — same plugin stack as md-editor (mdeditor.ts). */
+/** Client-side markdown render — same plugin stack as md-editor (mdeditor.ts), including @button on roadmap pages. */
 export function renderRoadmapMarkdown(text: string): string {
   const trimmed = String(text || '').trim();
   if (!trimmed) return '';

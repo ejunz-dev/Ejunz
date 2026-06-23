@@ -9,9 +9,11 @@ import { config, MdEditor } from 'md-editor-rt';
 import Imsize from '../../backendlib/markdown-it-imsize';
 import { Media } from '../../backendlib/markdown-it-media';
 import { xssProtector } from '../../backendlib/markdown-it-xss';
+import { RoadmapButton } from '../roadmap/markdown-it-roadmap-button';
 
 const pagename = document.documentElement.getAttribute('data-page');
 const isProblemPage = ['problem_create', 'problem_edit'].includes(pagename);
+const isRoadmapEditorPage = pagename === 'roadmap_edit';
 
 config({
   markdownItConfig(mdit) {
@@ -27,6 +29,7 @@ config({
     mdit.use(Anchor);
     mdit.use(TOC);
     mdit.use(MergeCells);
+    if (isRoadmapEditorPage) mdit.use(RoadmapButton);
     mdit.use(xssProtector);
     if (isProblemPage) {
       mdit.core.ruler.before('normalize', 'xss', (state) => {
