@@ -1225,6 +1225,20 @@ Date: Date
 'Roadmap node type decision': Decision
 'Roadmap node type release': Release
 'Roadmap node type task': Task
+'Roadmap node type main': Main
+'Roadmap node type sub': Sub
+'Roadmap node type hook': Hook
+'Roadmap node type text': Text
+'Roadmap node type': Node type
+'Roadmap node lead text': Lead text
+'Roadmap hook node hint': Select another roadmap for this hook node. Content editing is disabled.
+'Roadmap hook linked': Linked roadmap
+'Roadmap hook target': Target roadmap
+'Roadmap hook select placeholder': Select a roadmap
+'Roadmap branch': Branch
+'Roadmap main node dashed target forbidden': Main nodes cannot be the target of dashed edges.
+'Roadmap sub node solid target forbidden': Sub nodes can only be solid targets of main nodes. Use a dashed line or connect from a main node.
+'Roadmap connection not allowed': This connection is not allowed for the target node type.
 'Roadmap priority low': Low
 'Roadmap priority medium': Medium
 'Roadmap priority high': High
@@ -1233,6 +1247,7 @@ Date: Date
 'Roadmap new decision': New decision
 'Roadmap new task': New task
 'Roadmap add node': Add node
+'Roadmap add adjacent blocked': No adjacent lane in this direction
 'Roadmap new node': New node
 'Roadmap node editor': Node editor
 'Roadmap node content': Node content
