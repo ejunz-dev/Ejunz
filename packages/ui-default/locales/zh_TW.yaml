@@ -573,6 +573,7 @@ Date: 日期
 'Roadmap AI parse error': '無法解析 AI 操作：{0}'
 'Roadmap AI execute error': '執行操作失敗：{0}'
 'Roadmap AI problem missing nodeId': create_problem 需要有效的 nodeId
+'Roadmap practice problems node type forbidden': 只有 main 和 sub 節點支援練習題
 'Roadmap AI tutor': AI 導師
 'Roadmap AI tutor open': 開啟 AI 導師
 'Roadmap AI tutor bar hint': 有問題？在這裡輸入

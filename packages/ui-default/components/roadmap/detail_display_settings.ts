@@ -1,3 +1,5 @@
+import { supportsRoadmapPracticeProblems } from './node_kinds';
+
 export type RoadmapDetailDisplaySettings = {
   showProblemCount: boolean;
 };
@@ -16,17 +18,21 @@ export function readRoadmapDetailDisplaySettings(): RoadmapDetailDisplaySettings
 }
 
 export function buildRoadmapNodeProblemCountMap(
-  nodeIds: string[],
+  nodes: Array<{ id: string; data?: { roadmapNodeType?: string } }>,
   nodeCardsMap: Record<string, { problems?: unknown[] }[]>,
 ): Map<string, number> {
   const map = new Map<string, number>();
-  nodeIds.forEach((nodeId) => {
-    const cards = nodeCardsMap[nodeId] || [];
+  nodes.forEach((node) => {
+    if (!supportsRoadmapPracticeProblems(node.data?.roadmapNodeType)) {
+      map.set(node.id, 0);
+      return;
+    }
+    const cards = nodeCardsMap[node.id] || [];
     const count = cards.reduce(
       (sum, card) => sum + (card.problems || []).length,
       0,
     );
-    map.set(nodeId, count);
+    map.set(node.id, count);
   });
   return map;
 }

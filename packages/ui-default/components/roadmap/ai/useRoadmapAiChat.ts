@@ -38,6 +38,7 @@ export interface UseRoadmapAiChatOptions {
   setEdges: React.Dispatch<React.SetStateAction<Edge[]>>;
   setSelectedNodeId: (id: string | null) => void;
   markProblemsDirty: (cardId: string) => void;
+  onNodePracticeDisabled?: (nodeId: string) => void;
   setCardsReloadEpoch: React.Dispatch<React.SetStateAction<number>>;
   selectedNode: Node | null;
   docTitle: string;
@@ -56,6 +57,7 @@ export function useRoadmapAiChat(options: UseRoadmapAiChatOptions) {
     setEdges,
     setSelectedNodeId,
     markProblemsDirty,
+    onNodePracticeDisabled,
     setCardsReloadEpoch,
     selectedNode,
     docTitle,
@@ -95,12 +97,13 @@ export function useRoadmapAiChat(options: UseRoadmapAiChatOptions) {
       setEdges,
       setSelectedNodeId,
       markProblemsDirty,
+      onNodePracticeDisabled,
       setCardsReloadEpoch,
       newNodeId,
       newEdgeId,
       aiCreatedNodeIdsRef: aiOperationClientNodeIdsRef,
     }, execOpts);
-  }, [markProblemsDirty, newEdgeId, newNodeId, setCardsReloadEpoch, setEdges, setNodes, setSelectedNodeId]);
+  }, [markProblemsDirty, newEdgeId, newNodeId, onNodePracticeDisabled, setCardsReloadEpoch, setEdges, setNodes, setSelectedNodeId]);
 
   useEffect(() => {
     executeOpsRef.current = executeRoadmapAiOps;

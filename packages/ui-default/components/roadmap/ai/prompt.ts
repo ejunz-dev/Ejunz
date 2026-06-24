@@ -1,7 +1,7 @@
 import type { Edge, Node } from 'reactflow';
 import { i18n } from 'vj/utils';
 import { flowEdgeToBaseEdge, flowNodeToBaseNode } from '../shared';
-import { getRoadmapNodeKind, roadmapNodeKindLabel } from '../node_kinds';
+import { getRoadmapNodeKind, roadmapNodeKindLabel, supportsRoadmapPracticeProblems } from '../node_kinds';
 import { getNodeLane } from '../lanes';
 import type { EditorCard } from '../../editor_workspace/card_problems_panel';
 
@@ -44,9 +44,13 @@ export function convertRoadmapToText(
       if (kind === 'text' && base.data?.nodeText) {
         lines.push(`    nodeText: ${String(base.data.nodeText).slice(0, 200)}${String(base.data.nodeText).length > 200 ? '…' : ''}`);
       }
-      const card = (nodeCardsMap[node.id] || [])[0];
-      lines.push(`    problems: ${formatNodeProblems(card)}`);
-      if (card) lines.push(`    cardId: ${card.docId}`);
+      if (supportsRoadmapPracticeProblems(kind)) {
+        const card = (nodeCardsMap[node.id] || [])[0];
+        lines.push(`    problems: ${formatNodeProblems(card)}`);
+        if (card) lines.push(`    cardId: ${card.docId}`);
+      } else {
+        lines.push('    problems: (not supported for this node kind)');
+      }
     });
   }
   lines.push('', 'Edges:');
@@ -72,9 +76,13 @@ export function buildSelectedRoadmapNodeContext(
   const base = flowNodeToBaseNode(selectedNode);
   const kind = getRoadmapNodeKind(base.data?.roadmapNodeType);
   const label = String(selectedNode.data?.label || base.text || i18n('Unnamed Node')).trim();
-  const card = (nodeCardsMap[selectedNode.id] || [])[0];
+  const card = supportsRoadmapPracticeProblems(kind)
+    ? (nodeCardsMap[selectedNode.id] || [])[0]
+    : undefined;
   const problems = card?.problems || [];
-  const problemsText = problems.length
+  const problemsText = !supportsRoadmapPracticeProblems(kind)
+    ? '  (not supported for hook or text nodes)'
+    : problems.length
     ? problems.map((p, index) => {
       const title = String((p as { title?: string }).title || '').trim();
       const kindName = String((p as { type?: string }).type || 'single');
@@ -90,9 +98,11 @@ export function buildSelectedRoadmapNodeContext(
 - status: ${base.data?.status || 'planned'}
 - description: ${base.data?.description || i18n('(No content)')}
 ${kind === 'text' ? `- nodeText: ${base.data?.nodeText || ''}` : ''}
-- cardId: ${card?.docId || `temp-card-${selectedNode.id}`}
+${supportsRoadmapPracticeProblems(kind)
+    ? `- cardId: ${card?.docId || `temp-card-${selectedNode.id}`}
 - problems:
-${problemsText}
+${problemsText}`
+    : '- practice problems: not supported for this node kind'}
 `;
 }
 
@@ -120,7 +130,7 @@ ${selectedNodeContext}
 4. create_roadmap_edge — connect two nodes (respect lineStyle rules)
 5. update_roadmap_edge — change edge label or lineStyle
 6. delete_roadmap_edge — remove an edge
-7. create_problem — add or update a practice problem on a node's card (use nodeId; include pid to update)
+7. create_problem — add or update a practice problem on a main or sub node's card (use nodeId; include pid to update)
 
 [Response format]
 When performing mutations, include a JSON code block:
@@ -167,7 +177,7 @@ When performing mutations, include a JSON code block:
 - For create_roadmap_node: set kind (main|sub|hook|text). Prefer relativeToNodeId + direction (top|bottom|left|right). Optional clientId lets later ops in the same batch reference the new node before it gets a real id.
 - For text nodes use nodeText (markdown) instead of description when adding body content.
 - create_roadmap_edge: sourceHandle bottom→targetHandle top for vertical; right→left for horizontal dashed links.
-- create_problem: problemKind single|multi|true_false|flip|fill_blank|matching|super_flip|ai_eval. Include title (short sidebar label). Use pid only to update an existing problem on that card.
+- create_problem: only on main or sub nodes. problemKind single|multi|true_false|flip|fill_blank|matching|super_flip|ai_eval. Include title (short sidebar label). Use pid only to update an existing problem on that card.
 - Emit one complete JSON object per operation inside the array. Stream-friendly: finish each { ... } before starting the next.
 - Reply briefly in natural language outside the JSON block; put executable ops only in JSON.`;
 }
