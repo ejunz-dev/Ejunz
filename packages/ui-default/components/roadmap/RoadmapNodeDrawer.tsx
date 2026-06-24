@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { i18n } from 'vj/utils';
+import Notification from 'vj/components/notification';
+import { domainApiPath, domainScopedPath, i18n, request } from 'vj/utils';
 import type { Problem } from 'ejun/src/interface';
-import { statusColor, statusLabel, type RoadmapStatus } from './shared';
+import { getRoadmapQueryContext, statusColor, statusLabel, type RoadmapStatus } from './shared';
 import { RoadmapDrawerProblemList } from './RoadmapDrawerProblemList';
 import { supportsRoadmapPracticeProblems } from './node_kinds';
 
@@ -37,6 +38,7 @@ export function RoadmapNodeDrawer({
   onClose: () => void;
 }) {
   const [tab, setTab] = React.useState<DrawerTab>('content');
+  const [practiceBusy, setPracticeBusy] = useState(false);
   const supportsPractice = supportsRoadmapPracticeProblems(roadmapNodeType);
   const problems = useMemo(() => {
     if (!supportsPractice) return [];
@@ -47,6 +49,49 @@ export function RoadmapNodeDrawer({
     });
     return list;
   }, [nodeId, open, supportsPractice]);
+
+  const startNodePractice = useCallback(async () => {
+    const nid = String(nodeId || '').trim();
+    if (!nid || practiceBusy || !supportsPractice) return;
+    const { domainId, docId } = getRoadmapQueryContext();
+    const roadmapDocNum = Number(docId);
+    if (!Number.isFinite(roadmapDocNum) || roadmapDocNum <= 0) {
+      Notification.error(i18n('Roadmap drawer start node practice invalid doc'));
+      return;
+    }
+    const branch = String((window as any).UiContext?.roadmap?.currentBranch || 'main').trim() || 'main';
+    setPracticeBusy(true);
+    try {
+      const res: any = await request.post(domainApiPath('/learn/lesson/start', domainId), {
+        mode: 'node',
+        nodeId: nid,
+        baseDocId: roadmapDocNum,
+        branch,
+        learnSource: 'roadmap',
+      });
+      const redir = res?.redirect ?? res?.body?.redirect ?? res?.data?.redirect;
+      const url = redir || domainScopedPath('/learn/lesson', domainId);
+      const opened = window.open(url, '_blank', 'noopener,noreferrer');
+      if (opened) {
+        opened.opener = null;
+      } else {
+        Notification.error(i18n('Outline editor popup blocked'));
+      }
+    } catch (e: any) {
+      const raw = typeof e?.message === 'string' ? e.message : String(e ?? '');
+      const cleaned = raw.replace(/^[A-Za-z]+Error:\s*/i, '').trim();
+      const msg = cleaned === 'No cards match session card filter'
+        || cleaned === 'Learn requires cards with problems'
+        ? i18n('Learn requires cards with problems')
+        : cleaned === 'That node is not part of this branch.'
+        || cleaned === 'That node is not part of this base branch'
+        ? i18n('Outline editor start invalid node')
+        : (cleaned || i18n('Outline learn start failed'));
+      Notification.error(msg);
+    } finally {
+      setPracticeBusy(false);
+    }
+  }, [nodeId, practiceBusy, supportsPractice]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -126,6 +171,18 @@ export function RoadmapNodeDrawer({
               hidden={tab !== 'problems'}
             >
               <h1 className="roadmap-detail-drawer__title">{nodeLabel}</h1>
+              <div className="roadmap-detail-drawer__practice-action">
+                <button
+                  type="button"
+                  className="roadmap-detail-drawer__practice-btn"
+                  disabled={practiceBusy || problems.length === 0}
+                  onClick={() => { void startNodePractice(); }}
+                >
+                  {practiceBusy
+                    ? i18n('Roadmap drawer start node practice busy')
+                    : i18n('Roadmap drawer start node practice')}
+                </button>
+              </div>
               <RoadmapDrawerProblemList problems={problems} resetKey={`${nodeId}:${open}`} />
             </div>
           ) : null}
