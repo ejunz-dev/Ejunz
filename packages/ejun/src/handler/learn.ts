@@ -497,8 +497,21 @@ function branchesForBaseDoc(base: BaseDoc): string[] {
 /** Bump when single-base learn DAG generation rules change (invalidates `learn_dag` rows for that base+branch). */
 const LEARN_BASE_DAG_CACHE_REVISION = 4;
 
-async function computeLearnBaseDAGVersion(domainId: string, baseDocId: number, _branch: string): Promise<number> {
-    const b = await BaseModel.get(domainId, baseDocId) ?? await RoadmapModel.get(domainId, baseDocId);
+function learnSourceHintFromDoc(doc: BaseDoc | null | undefined): 'base' | 'roadmap' | null {
+    if (!doc) return null;
+    const dt = (doc as { docType?: number }).docType;
+    if (dt === document.TYPE_ROADMAP) return 'roadmap';
+    if (dt === document.TYPE_BASE) return 'base';
+    return null;
+}
+
+async function computeLearnBaseDAGVersion(
+    domainId: string,
+    baseDocId: number,
+    _branch: string,
+    learnSourceHint?: 'base' | 'roadmap' | null,
+): Promise<number> {
+    const b = await getLearnSourceDoc(domainId, baseDocId, learnSourceHint ?? null);
     const tBase = b?.updateAt instanceof Date ? b.updateAt.getTime() : 0;
     const tCards = await CardModel.maxUpdateAtMsForBase(domainId, baseDocId);
     const t = Math.max(tBase, tCards);
@@ -510,14 +523,16 @@ async function ensureLearnDAGCached(
     docId: number,
     branch: string,
     translate: (key: string) => string,
+    opts: { learnSourceHint?: 'base' | 'roadmap' | null; skipCache?: boolean } = {},
 ): Promise<{ sections: LearnDAGNode[]; allDagNodes: LearnDAGNode[] }> {
     const br = branch?.trim() || 'main';
-    const version = await computeLearnBaseDAGVersion(domainId, docId, br);
-    const cached = await learn.getDAG(domainId, docId, br);
+    const hint = opts.learnSourceHint ?? null;
+    const version = await computeLearnBaseDAGVersion(domainId, docId, br, hint);
+    const cached = opts.skipCache ? null : await learn.getDAG(domainId, docId, br);
     if (cached?.sections?.length && (cached.version || 0) >= version) {
         return { sections: cached.sections, allDagNodes: cached.dag || [] };
     }
-    const doc = await getLearnSourceDoc(domainId, docId);
+    const doc = await getLearnSourceDoc(domainId, docId, hint);
     const { nodes, edges } = getBranchData(doc, br);
     if (!nodes.length) {
         return { sections: [], allDagNodes: [] };
@@ -2386,6 +2401,7 @@ async function collectOutlineSubtreeFlatCardsForNodeLesson(
     branch: string,
     rootNodeId: string,
     learnSectionOrderIndex: number,
+    learnSourceHint?: 'base' | 'roadmap' | null,
 ): Promise<
     Array<{
         nodeId: string;
@@ -2396,10 +2412,9 @@ async function collectOutlineSubtreeFlatCardsForNodeLesson(
         learnSectionOrderIndex: number;
     }>
 > {
-    const base = await BaseModel.get(domainId, baseDocId);
-    if (!base) return [];
+    const sourceDoc = await getLearnSourceDoc(domainId, baseDocId, learnSourceHint ?? null);
     const br = branch?.trim() || 'main';
-    const { nodes, edges } = getBranchData(base, br);
+    const { nodes, edges } = getBranchData(sourceDoc, br);
     const nodeMap = new Map<string, BaseNode>();
     nodes.forEach((node) => nodeMap.set(node.id, node));
     if (!nodeMap.has(rootNodeId)) return [];
@@ -2458,6 +2473,16 @@ async function collectOutlineSubtreeFlatCardsForNodeLesson(
 
     await visit(rootNodeId);
     return out;
+}
+
+async function learnCardIdsHaveProblems(domainId: string, cardIds: Iterable<string>): Promise<boolean> {
+    const ids = [...new Set([...cardIds].map((x) => String(x).trim()).filter(Boolean))];
+    if (ids.length === 0) return false;
+    const presence = await buildCardIdProblemsPresenceMap(domainId, ids);
+    return ids.some((id) => {
+        const oidHex = ObjectId.isValid(id) ? new ObjectId(id).toString() : id;
+        return !!(presence.get(id) ?? presence.get(oidHex));
+    });
 }
 
 interface BaseNodeWithCards {
@@ -4154,7 +4179,7 @@ class LessonHandler extends Handler {
                 && Number.isFinite(sidBid)
                 && sidBid > 0
             ) {
-                pageBaseLesson = await getLearnSourceDoc(finalDomainId, sidBid, learnModeLesson);
+                pageBaseLesson = await getLearnSourceDoc(finalDomainId, sidBid);
                 if (!this.user.own(pageBaseLesson)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
                 const sb = sForBase.branch && String(sForBase.branch).trim() ? String(sForBase.branch).trim() : '';
                 learnBrLesson = sb || learnBranchFromDudoc(dudoc) || ((pageBaseLesson as any).currentBranch || 'main');
@@ -4354,11 +4379,30 @@ class LessonHandler extends Handler {
                 learnBidLesson,
                 learnBrLesson,
                 (k: string) => this.translate(k),
+                {
+                    learnSourceHint: learnSourceHintFromDoc(pageBaseLesson),
+                    skipCache: learnSourceHintFromDoc(pageBaseLesson) === 'roadmap',
+                },
             );
             const nodeMap = new Map<string, LearnDAGNode>();
             trainSecNode.forEach(n => nodeMap.set(n._id, n));
             allDagNodes.forEach(n => nodeMap.set(n._id, n));
-            const rootNode = nodeMap.get(lessonNodeId);
+            const lessonSourceHint = learnSourceHintFromDoc(pageBaseLesson);
+            let rootNode = nodeMap.get(lessonNodeId);
+            if (!rootNode && lessonSourceHint === 'roadmap') {
+                const branchNodes = getBranchData(pageBaseLesson, learnBrLesson).nodes || [];
+                const branchNode = branchNodes.find((n) => n.id === lessonNodeId);
+                if (branchNode) {
+                    rootNode = {
+                        _id: lessonNodeId,
+                        title: branchNode.text || '',
+                        requireNids: [],
+                        cards: [],
+                        order: 0,
+                    };
+                    nodeMap.set(lessonNodeId, rootNode);
+                }
+            }
             if (!rootNode) throw new NotFoundError('Node not found');
 
             const orderedSectionsNode = applyUserSectionOrder(trainSecNode, (dudoc as any)?.learnSectionOrder);
@@ -4494,6 +4538,7 @@ class LessonHandler extends Handler {
                         learnBrLesson,
                         lessonNodeId,
                         resolvedSectionSlot,
+                        lessonSourceHint,
                     );
                     if (fbFrozen.length > 0) {
                         const sliceFbFrozen = sliceNodeFlatCardsFromLearnStartIfSectionRoot(fbFrozen, sliceOptsNode);
@@ -4541,6 +4586,7 @@ class LessonHandler extends Handler {
                         learnBrLesson,
                         lessonNodeId,
                         resolvedSectionSlot,
+                        lessonSourceHint,
                     );
                     if (fb.length > 0) {
                         const sliceFb = sliceNodeFlatCardsFromLearnStartIfSectionRoot(fb, sliceOptsNode);
@@ -4838,7 +4884,7 @@ class LessonHandler extends Handler {
                     : (queueBaseHint || learnBidLesson));
             if (!resolvedBase) throw new NotFoundError('Base not found for this domain');
             const nodeLessonBranch = learnBrLesson;
-            const baseDocForNode = await getLearnSourceDoc(finalDomainId, resolvedBase, learnModeLesson);
+            const baseDocForNode = await getLearnSourceDoc(finalDomainId, resolvedBase);
             const currentNode = (getBranchData(baseDocForNode, nodeLessonBranch).nodes || []).find(n => n.id === currentItem.nodeId)
                 || ({ id: currentItem.nodeId, title: currentItem.nodeTitle, text: '' } as any);
             const currentCardListRawNodeLesson = await CardModel.getByNodeId(finalDomainId, resolvedBase, currentItem.nodeId, nodeLessonBranch);
@@ -5285,58 +5331,81 @@ class LessonHandler extends Handler {
 
         if (mode === 'node') {
             const explicitBaseNum = (() => {
-                const raw = body.baseDocId;
+                const raw = body.baseDocId ?? body.roadmapDocId;
                 if (raw === undefined || raw === null || raw === '') return NaN;
                 const n = Number(raw);
                 return Number.isFinite(n) && n > 0 ? n : NaN;
             })();
+            const learnSourceHint = body.learnSource === 'roadmap'
+                ? 'roadmap' as const
+                : body.learnSource === 'base'
+                    ? 'base' as const
+                    : null;
+            const nodeNotInBranchMsg = this.translate('Outline editor start invalid node')
+                || 'That node is not part of this branch.';
             let baseNodeStart: BaseDoc;
             let brN: string;
             if (Number.isFinite(explicitBaseNum) && explicitBaseNum > 0) {
-                const b = await BaseModel.get(finalDomainId, explicitBaseNum);
-                if (!b) throw new NotFoundError('Base not found');
-                if (!this.user.own(b)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+                baseNodeStart = await getLearnSourceDoc(finalDomainId, explicitBaseNum, learnSourceHint);
+                if (!this.user.own(baseNodeStart)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
                 brN = typeof body.branch === 'string' && body.branch.trim()
                     ? body.branch.trim()
-                    : ((b as any).currentBranch || 'main');
-                const { nodes } = getBranchData(b, brN);
+                    : ((baseNodeStart as any).currentBranch || 'main');
+                const { nodes } = getBranchData(baseNodeStart, brN);
                 if (!nodes.some((n: BaseNode) => n.id === nodeIdStart)) {
-                    throw new ValidationError('That node is not part of this base branch');
+                    throw new ValidationError(nodeNotInBranchMsg);
                 }
-                baseNodeStart = b;
             } else {
-                baseNodeStart = await requireLearnPageBase(finalDomainId, this.user._id, this.user.priv);
-                brN = learnBrSt;
+                const active = await requireLearnPageActiveSource(finalDomainId, this.user._id, this.user.priv);
+                baseNodeStart = active.source;
+                brN = typeof body.branch === 'string' && body.branch.trim()
+                    ? body.branch.trim()
+                    : active.learnBranch;
             }
             const nodeLearnBaseDocId = Number(baseNodeStart.docId);
+            const nodeSourceHint = learnSourceHint ?? learnSourceHintFromDoc(baseNodeStart);
+            const isRoadmapNodeStart = nodeSourceHint === 'roadmap';
             const { sections: nodeSections, allDagNodes: nodeAllDag } = await ensureLearnDAGCached(
                 finalDomainId,
                 nodeLearnBaseDocId,
                 brN,
                 (k: string) => this.translate(k),
+                { learnSourceHint: nodeSourceHint, skipCache: isRoadmapNodeStart },
             );
             const nodeEntryMap = new Map<string, LearnDAGNode>();
             nodeSections.forEach((n) => nodeEntryMap.set(n._id, n));
             nodeAllDag.forEach((n) => nodeEntryMap.set(n._id, n));
-            if (!nodeEntryMap.has(nodeIdStart)) {
-                throw new ValidationError('That node is not part of this base branch');
+            const outlineSlot = learnSectionOrderIndexStart ?? 0;
+            let outlineFlatCards: Awaited<ReturnType<typeof collectOutlineSubtreeFlatCardsForNodeLesson>> = [];
+            if (isRoadmapNodeStart) {
+                outlineFlatCards = await collectOutlineSubtreeFlatCardsForNodeLesson(
+                    finalDomainId,
+                    nodeLearnBaseDocId,
+                    brN,
+                    nodeIdStart,
+                    outlineSlot,
+                    nodeSourceHint,
+                );
             }
-            const nodeCardIds = collectTrainingScopeCardIdSet(
+            if (!nodeEntryMap.has(nodeIdStart)) {
+                if (!(isRoadmapNodeStart && outlineFlatCards.length > 0)) {
+                    throw new ValidationError(nodeNotInBranchMsg);
+                }
+            }
+            let nodeCardIds = collectTrainingScopeCardIdSet(
                 [{ _id: nodeIdStart } as LearnDAGNode],
                 nodeAllDag,
             );
+            if (nodeCardIds.size === 0 && outlineFlatCards.length > 0) {
+                nodeCardIds = new Set(outlineFlatCards.map((row) => String(row.cardId)));
+            }
             if (nodeCardIds.size === 0) {
                 throw new ValidationError(
                     this.translate('Learn requires cards with problems')
                     || 'At least one card with problems is required to start learning.',
                 );
             }
-            const nodeCardPresence = await buildCardIdProblemsPresenceMap(finalDomainId, [...nodeCardIds]);
-            const nodeHasProblemCards = [...nodeCardIds].some((cid) => {
-                const id = String(cid);
-                const oidHex = ObjectId.isValid(id) ? new ObjectId(id).toString() : id;
-                return !!(nodeCardPresence.get(id) ?? nodeCardPresence.get(oidHex));
-            });
+            const nodeHasProblemCards = await learnCardIdsHaveProblems(finalDomainId, nodeCardIds);
             if (!nodeHasProblemCards) {
                 throw new ValidationError(
                     this.translate('Learn requires cards with problems')
@@ -6507,7 +6576,7 @@ class LessonHandler extends Handler {
         }
 
         const baseDocMain = baseNumericId(card.baseDocId) > 0 ? baseNumericId(card.baseDocId) : firstBasePass;
-        const bMain = await getLearnSourceDoc(finalDomainId, baseDocMain, learnModePassMain);
+        const bMain = await getLearnSourceDoc(finalDomainId, baseDocMain);
         const brMain = cardStorageBranch(card as any) || branchLearnPass;
         const node = (getBranchData(bMain, brMain).nodes || []).find(n => n.id === currentCardNodeId);
         const cards = await CardModel.getByNodeId(finalDomainId, baseDocMain, currentCardNodeId!, brMain);
@@ -6631,7 +6700,7 @@ class LessonHandler extends Handler {
         const baseDocRes = baseNumericId(card.baseDocId) > 0
             ? baseNumericId(card.baseDocId)
             : (learnDocResNum ?? 0);
-        const bRes = await getLearnSourceDoc(finalDomainId, baseDocRes, learnModeRes);
+        const bRes = await getLearnSourceDoc(finalDomainId, baseDocRes);
         const brRes = cardStorageBranch(card as any) || learnBranchFromDudoc(dudocRes);
         const node = (getBranchData(bRes, brRes).nodes || []).find(n => n.id === result.nodeId)
             || ({ id: result.nodeId, title: '', text: '' } as any);
@@ -6691,21 +6760,62 @@ class LessonNodeResultHandler extends Handler {
         if (!nodeId) throw new ValidationError('nodeId is required');
 
         const dudocNr = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
-        const baseNr = getLearnBaseDocId(dudocNr);
-        if (baseNr === null) throw new ValidationError(this.translate('Please select a knowledge base for learning first'));
-        const brNr = learnBranchFromDudoc(dudocNr);
+        const sNr = await SessionModel.get(finalDomainId, this.user._id);
+        const sessionDocId = (typeof sNr?.lessonQueueBaseDocId === 'number' && sNr.lessonQueueBaseDocId > 0)
+            ? sNr.lessonQueueBaseDocId
+            : (typeof sNr?.baseDocId === 'number' && sNr.baseDocId > 0 ? sNr.baseDocId : null);
+
+        let learnDocNr: number | null = sessionDocId;
+        let learnSourceHint: 'base' | 'roadmap' | null = null;
+        if (learnDocNr !== null) {
+            const hintedDoc = await tryGetLearnSourceDoc(finalDomainId, learnDocNr);
+            learnSourceHint = learnSourceHintFromDoc(hintedDoc);
+        } else {
+            const learnModeNr = getLearnMode(dudocNr);
+            learnDocNr = learnModeNr === 'roadmap'
+                ? getLearnRoadmapDocId(dudocNr)
+                : getLearnBaseDocId(dudocNr);
+            learnSourceHint = learnModeNr === 'roadmap' ? 'roadmap' : 'base';
+        }
+
+        if (learnDocNr === null) {
+            throw new ValidationError(
+                learnSourceHint === 'roadmap'
+                    ? (this.translate('Please select a roadmap for learning first') || 'Please select a roadmap for learning first')
+                    : (this.translate('Please select a knowledge base for learning first') || 'Please select a knowledge base for learning first'),
+            );
+        }
+
+        const brNr = (typeof sNr?.branch === 'string' && sNr.branch.trim())
+            || (typeof sNr?.lessonQueueLearnBranch === 'string' && sNr.lessonQueueLearnBranch.trim())
+            || learnBranchFromDudoc(dudocNr);
+        const sourceDoc = await getLearnSourceDoc(finalDomainId, learnDocNr, learnSourceHint);
 
         const { sections: secNr, allDagNodes: dagNr } = await ensureLearnDAGCached(
             finalDomainId,
-            baseNr,
+            learnDocNr,
             brNr,
             (k: string) => this.translate(k),
+            { learnSourceHint, skipCache: learnSourceHint === 'roadmap' },
         );
         const allDagNodes = dagNr;
         const nodeMap = new Map<string, LearnDAGNode>();
         secNr.forEach((n: LearnDAGNode) => nodeMap.set(n._id, n));
         allDagNodes.forEach((n: LearnDAGNode) => nodeMap.set(n._id, n));
-        const rootNode = nodeMap.get(nodeId);
+        let rootNode = nodeMap.get(nodeId);
+        if (!rootNode && learnSourceHint === 'roadmap') {
+            const branchNode = (getBranchData(sourceDoc, brNr).nodes || []).find((n) => n.id === nodeId);
+            if (branchNode) {
+                rootNode = {
+                    _id: nodeId,
+                    title: branchNode.text || '',
+                    requireNids: [],
+                    cards: [],
+                    order: 0,
+                };
+                nodeMap.set(nodeId, rootNode);
+            }
+        }
         if (!rootNode) throw new NotFoundError('Node not found');
 
         const getChildNodes = (parentId: string): LearnDAGNode[] =>
@@ -6717,7 +6827,7 @@ class LessonNodeResultHandler extends Handler {
             const node = nodeMap.get(nid);
             if (!node) return;
             const rawId = node._id;
-            const bId = baseNr;
+            const bId = learnDocNr!;
             for (const c of (node.cards || []).sort((a, b) => (a.order ?? 0) - (b.order ?? 0))) {
                 flatCards.push({
                     nodeId: rawId,
@@ -6730,6 +6840,27 @@ class LessonNodeResultHandler extends Handler {
             for (const ch of getChildNodes(nid)) collectUnder(ch._id);
         };
         collectUnder(nodeId);
+        if (flatCards.length === 0) {
+            const outlineFlat = await collectOutlineSubtreeFlatCardsForNodeLesson(
+                finalDomainId,
+                learnDocNr,
+                brNr,
+                nodeId,
+                typeof sNr?.lessonQueueLearnSectionOrderIndex === 'number' && sNr.lessonQueueLearnSectionOrderIndex >= 0
+                    ? sNr.lessonQueueLearnSectionOrderIndex
+                    : 0,
+                learnSourceHint,
+            );
+            for (const item of outlineFlat) {
+                flatCards.push({
+                    nodeId: item.nodeId,
+                    cardId: item.cardId,
+                    nodeTitle: item.nodeTitle,
+                    cardTitle: item.cardTitle,
+                    baseDocId: item.baseDocId,
+                });
+            }
+        }
         const cardIdsSet = new Set(flatCards.map(c => c.cardId));
         const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
         const allResults = await learn.getResults(finalDomainId, this.user._id, {
@@ -6769,7 +6900,7 @@ class LessonNodeResultHandler extends Handler {
             if (!cardDoc) continue;
             const bNrItem = (typeof item.baseDocId === 'number' && item.baseDocId > 0)
                 ? item.baseDocId
-                : (Number((cardDoc as any).baseDocId) || baseNr);
+                : (Number((cardDoc as any).baseDocId) || learnDocNr);
             const bNrDoc = bNrItem ? await tryGetLearnSourceDoc(finalDomainId, bNrItem) : null;
             const brNrCard = cardStorageBranch(cardDoc as any) || brNr;
             const nodeDoc = bNrDoc
@@ -6815,7 +6946,7 @@ class LessonNodeResultHandler extends Handler {
         this.response.template = 'lesson_node_result.html';
         this.response.body = {
             domainId: finalDomainId,
-            baseDocId: String(baseNr),
+            baseDocId: String(learnDocNr),
             rootNodeTitle: rootNode.title || '',
             rootNodeId: nodeId,
             cardResults,

@@ -1313,6 +1313,29 @@ roadmap-text-btn-styles()
   letter-spacing: -0.03em
   color: var(--roadmap-text-primary)
 
+.roadmap-detail-drawer__practice-action
+  margin-bottom: 16px
+
+.roadmap-detail-drawer__practice-btn
+  border: 1px solid #4135d6
+  border-radius: 999px
+  background: #4135d6
+  color: #ffffff
+  padding: 10px 18px
+  font-size: 14px
+  font-weight: 600
+  cursor: pointer
+  transition: 0.18s ease
+
+  &:hover:not(:disabled)
+    background: #3529c4
+    border-color: #3529c4
+    transform: translateY(-1px)
+
+  &:disabled
+    opacity: 0.45
+    cursor: not-allowed
+
 .roadmap-detail-drawer__markdown
   color: var(--roadmap-text-body)
   font-size: 14px
