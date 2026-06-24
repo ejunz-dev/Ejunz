@@ -292,6 +292,24 @@ __langname: English
 'Last Disconnected Time': Last Disconnected Time
 'Learn session mode': Session order (next daily run)
 'Learn session preferences': Session preferences
+'Learn mode knowledge base': Knowledge base
+'Learn mode roadmap': Roadmap
+'Current knowledge base (Learn)': Current knowledge base (Learn)
+'Current roadmap (Learn)': Current roadmap (Learn)
+'Pending selection': Pending selection
+'Select learn base': Select knowledge base
+'Select learn roadmap': Select roadmap
+'Select learn base and branch': Select knowledge base and branch
+'Select learn roadmap and branch': Select roadmap and branch
+'Select a knowledge base before learning': Select a knowledge base before learning
+'Select a roadmap before learning': Select a roadmap before learning
+'Choose a base and branch, then save to continue learning.': Choose a base and branch, then save to continue learning.
+'Choose a roadmap and branch, then save to continue learning.': Choose a roadmap and branch, then save to continue learning.
+'Choose which knowledge base and branch to use for Learn.': Choose which knowledge base and branch to use for Learn.
+'Choose which roadmap and branch to use for Learn.': Choose which roadmap and branch to use for Learn.
+'No knowledge base in this domain.': No knowledge base in this domain.
+'No roadmap in this domain.': No roadmap in this domain.
+'This roadmap branch has no practice nodes': This roadmap branch has no practice nodes
 'Learn session card filter': Card filter (next daily run)
 'Learn session card filter all': All cards (including cards without problems)
 'Learn session card filter with problems': Only cards that have problems
@@ -430,6 +448,9 @@ __langname: English
 'Play Recording': Play Recording
 'Please create a base first.': Please create a base first.
 'Please create a base with at least one section.': Please create a base with at least one section.
+'Please create a base with at least one section first.': Please create a base with at least one section first.
+'Please create a roadmap with at least one practice node.': Please create a roadmap with at least one practice node.
+'Please create a roadmap with at least one practice node first.': Please create a roadmap with at least one practice node first.
 'Please create a base with course structure (course -> section -> unit -> lesson)': Please create a base with course structure (course -> section -> unit -> lesson)
 'Please generate token on': Please generate token on
 'Please join the domain to view': Please join the domain to view

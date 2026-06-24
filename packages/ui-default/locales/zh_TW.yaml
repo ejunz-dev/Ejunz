@@ -21,6 +21,24 @@ __langname: 正體中文
 'Last check-in': 上次打卡
 'Learning consumption': 學習消耗
 'Learn session preferences': 學習會話設定
+'Learn mode knowledge base': 知識庫
+'Learn mode roadmap': 路線圖
+'Current knowledge base (Learn)': 當前知識庫（學習）
+'Current roadmap (Learn)': 當前路線圖（學習）
+'Pending selection': 待選擇
+'Select learn base': 選擇知識庫
+'Select learn roadmap': 選擇路線圖
+'Select learn base and branch': 選擇知識庫與分支
+'Select learn roadmap and branch': 選擇路線圖與分支
+'Select a knowledge base before learning': 請先選擇知識庫再開始學習
+'Select a roadmap before learning': 請先選擇路線圖再開始學習
+'Choose a base and branch, then save to continue learning.': 選擇知識庫與分支並儲存後即可繼續學習。
+'Choose a roadmap and branch, then save to continue learning.': 選擇路線圖與分支並儲存後即可繼續學習。
+'Choose which knowledge base and branch to use for Learn.': 選擇用於學習的知識庫與分支。
+'Choose which roadmap and branch to use for Learn.': 選擇用於學習的路線圖與分支。
+'No knowledge base in this domain.': 該域內還沒有知識庫。
+'No roadmap in this domain.': 該域內還沒有路線圖。
+'This roadmap branch has no practice nodes': 該路線圖分支沒有可練習的節點
 'Section Order': 學習路徑節序
 'Max consecutive': 最長連續
 'No': 否

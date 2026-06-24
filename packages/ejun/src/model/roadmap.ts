@@ -35,7 +35,7 @@ export function supportsRoadmapPracticeProblems(type?: string): boolean {
     return kind === 'main' || kind === 'sub';
 }
 
-function roadmapNodeTypeFromNode(node: BaseNode | undefined): string | undefined {
+export function roadmapNodeTypeFromNode(node: BaseNode | undefined): string | undefined {
     const data = (node as { data?: { roadmapNodeType?: string } } | undefined)?.data;
     return data?.roadmapNodeType;
 }

@@ -319,6 +319,24 @@ __langname: 简体中文
 'Last Disconnected Time': 最后断开时间
 'Learn session mode': 学习模式（下次会话）
 'Learn session preferences': 学习会话设置
+'Learn mode knowledge base': 知识库
+'Learn mode roadmap': 路线图
+'Current knowledge base (Learn)': 当前知识库（学习）
+'Current roadmap (Learn)': 当前路线图（学习）
+'Pending selection': 待选择
+'Select learn base': 选择知识库
+'Select learn roadmap': 选择路线图
+'Select learn base and branch': 选择知识库与分支
+'Select learn roadmap and branch': 选择路线图与分支
+'Select a knowledge base before learning': 请先选择知识库再开始学习
+'Select a roadmap before learning': 请先选择路线图再开始学习
+'Choose a base and branch, then save to continue learning.': 选择知识库与分支并保存后即可继续学习。
+'Choose a roadmap and branch, then save to continue learning.': 选择路线图与分支并保存后即可继续学习。
+'Choose which knowledge base and branch to use for Learn.': 选择用于学习的知识库与分支。
+'Choose which roadmap and branch to use for Learn.': 选择用于学习的路线图与分支。
+'No knowledge base in this domain.': 该域内还没有知识库。
+'No roadmap in this domain.': 该域内还没有路线图。
+'This roadmap branch has no practice nodes': 该路线图分支没有可练习的节点
 'Learn session card filter': 卡片过滤（下次会话）
 'Learn session card filter all': 学习所有卡片（含无题目的）
 'Learn session card filter with problems': 只学有题目的卡片
@@ -461,6 +479,9 @@ __langname: 简体中文
 'Play Recording': 播放录音
 'Please create a base first.': 请先创建知识库。
 'Please create a base with at least one section.': 请创建至少包含一个章节的知识库。
+'Please create a base with at least one section first.': 请先创建至少包含一个章节的知识库。
+'Please create a roadmap with at least one practice node.': 请创建至少包含一个可练习节点的路线图。
+'Please create a roadmap with at least one practice node first.': 请先创建至少包含一个可练习节点的路线图。
 'Please create a base with course structure (course -> section -> unit -> lesson)': 请创建包含课程结构的知识库（课程 -> 阶段 -> 单元 -> 课程）
 'Please generate token on': 请在
 'Please join the domain to view': 请加入该域以显示
