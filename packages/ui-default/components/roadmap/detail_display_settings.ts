@@ -2,10 +2,12 @@ import { supportsRoadmapPracticeProblems } from './node_kinds';
 
 export type RoadmapDetailDisplaySettings = {
   showProblemCount: boolean;
+  showNodeNumber: boolean;
 };
 
 export const defaultRoadmapDetailDisplaySettings = (): RoadmapDetailDisplaySettings => ({
   showProblemCount: false,
+  showNodeNumber: false,
 });
 
 export function readRoadmapDetailDisplaySettings(): RoadmapDetailDisplaySettings {
@@ -14,6 +16,7 @@ export function readRoadmapDetailDisplaySettings(): RoadmapDetailDisplaySettings
   if (!raw || typeof raw !== 'object') return defaultRoadmapDetailDisplaySettings();
   return {
     showProblemCount: Boolean((raw as Record<string, unknown>).showProblemCount),
+    showNodeNumber: Boolean((raw as Record<string, unknown>).showNodeNumber),
   };
 }
 
@@ -24,6 +27,7 @@ export function readRoadmapEditorDisplaySettings(): RoadmapDetailDisplaySettings
   if (!raw || typeof raw !== 'object') return defaultRoadmapDetailDisplaySettings();
   return {
     showProblemCount: Boolean((raw as Record<string, unknown>).showProblemCount),
+    showNodeNumber: Boolean((raw as Record<string, unknown>).showNodeNumber),
   };
 }
 
@@ -34,6 +38,7 @@ export function editorDisplaySettingsFromDoc(
   if (!raw || typeof raw !== 'object') return defaultRoadmapDetailDisplaySettings();
   return {
     showProblemCount: Boolean(raw.showProblemCount),
+    showNodeNumber: Boolean(raw.showNodeNumber),
   };
 }
 
@@ -41,7 +46,7 @@ export function roadmapDetailDisplaySettingsEqual(
   a: RoadmapDetailDisplaySettings,
   b: RoadmapDetailDisplaySettings,
 ): boolean {
-  return a.showProblemCount === b.showProblemCount;
+  return a.showProblemCount === b.showProblemCount && a.showNodeNumber === b.showNodeNumber;
 }
 
 export function buildRoadmapNodeProblemCountMap(

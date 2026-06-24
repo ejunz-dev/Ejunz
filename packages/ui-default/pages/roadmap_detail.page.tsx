@@ -51,6 +51,9 @@ import {
   readRoadmapDetailFilterFromLocation,
   type RoadmapDetailFilter,
 } from 'vj/components/roadmap/detail_explorer';
+import {
+  computeRoadmapNodeNumbers,
+} from 'vj/components/roadmap/node_numbering';
 import { isHookNodeType, isTextNodeType, supportsRoadmapPracticeProblems } from 'vj/components/roadmap/node_kinds';
 import type { RoadmapStatus } from 'vj/components/roadmap/shared';
 import type { EditorCard } from 'vj/components/editor_workspace/card_problems_panel';
@@ -102,6 +105,10 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
     () => buildRoadmapNodeProblemCountMap(layoutNodes, nodeCardsMap),
     [layoutNodes, nodeCardsMap],
   );
+  const nodeNumberMap = useMemo(
+    () => computeRoadmapNodeNumbers(layoutNodes, edges),
+    [layoutNodes, edges],
+  );
   const viewNodes = useMemo(() => {
     let base = toRoadmapViewNodes(layoutNodes, selectedNodeId).map((node) => ({
       ...node,
@@ -110,6 +117,8 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
         showProblemCountBadge: displaySettings.showProblemCount
           && supportsRoadmapPracticeProblems(node.data?.roadmapNodeType),
         problemCount: problemCountByNodeId.get(node.id) || 0,
+        showNodeNumber: displaySettings.showNodeNumber,
+        nodeNumber: nodeNumberMap.get(node.id) || '',
       },
     }));
     if (!matchedNodeIds) return base;
@@ -131,7 +140,7 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
         },
       };
     });
-  }, [displaySettings.showProblemCount, layoutNodes, matchedNodeIds, problemCountByNodeId, selectedNodeId]);
+  }, [displaySettings.showProblemCount, displaySettings.showNodeNumber, layoutNodes, matchedNodeIds, nodeNumberMap, problemCountByNodeId, selectedNodeId]);
   const viewEdges = useMemo(() => {
     const base = toRoadmapViewEdges(edges, null, undefined, theme);
     if (!matchedNodeIds) return base;

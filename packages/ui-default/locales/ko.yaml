@@ -764,6 +764,12 @@ Date: 날짜
 'Roadmap detail settings hint': '이 페이지에서 로드맵 캔버스 표시 방식을 제어합니다.'
 'Roadmap detail settings show problem count': 문제 수 배지 표시
 'Roadmap detail settings show problem count hint': '각 노드 우측 상단에 연습 문제 수를 말풍선 숫자로 표시합니다.'
+'Roadmap detail settings show node number': 노드 번호 표시
+'Roadmap detail settings show node number hint': 'main/sub 노드 좌측 상단에 녹색 번호를 표시합니다.'
+'Roadmap node number': 노드 번호
+'Roadmap node number format hint': '형식 x.y (예: 1.1)'
+'Roadmap sub node number invalid': '하위 노드 번호는 x.y 형식이어야 합니다.'
+'Roadmap sub node number missing': '하위 노드 "{0}"에 번호가 없습니다.'
 'Roadmap detail settings saved': 표시 설정이 저장되었습니다.
 'Roadmap detail settings save failed': 표시 설정 저장에 실패했습니다.
 'Resize sidebar': 사이드바 크기 조절
