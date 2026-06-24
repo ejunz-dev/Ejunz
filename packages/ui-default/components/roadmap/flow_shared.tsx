@@ -72,6 +72,18 @@ export const RoadmapShNode = ({ data, selected }: NodeProps) => {
   );
   const showProblemCountBadge = Boolean(data.showProblemCountBadge);
   const problemCount = typeof data.problemCount === 'number' ? data.problemCount : 0;
+  const showNodeNumber = Boolean(data.showNodeNumber);
+  const nodeNumber = String(data.nodeNumber || '');
+
+  const numberBadge = showNodeNumber && nodeNumber ? (
+    <span
+      className="roadmap-sh-node__number"
+      aria-label={nodeNumber}
+      title={nodeNumber}
+    >
+      {nodeNumber}
+    </span>
+  ) : null;
 
   const problemBadge = showProblemCountBadge ? (
     <span
@@ -105,6 +117,7 @@ export const RoadmapShNode = ({ data, selected }: NodeProps) => {
 
   const nodeBody = (
     <>
+      {numberBadge}
       {problemBadge}
       {showResizer ? (
         <NodeResizer

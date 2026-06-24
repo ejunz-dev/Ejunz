@@ -419,6 +419,7 @@ export class RoadmapModel {
         if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
         const o = raw as Record<string, unknown>;
         if (typeof o.showProblemCount === 'boolean') out.showProblemCount = o.showProblemCount;
+        if (typeof o.showNodeNumber === 'boolean') out.showNodeNumber = o.showNodeNumber;
         return out;
     }
 
