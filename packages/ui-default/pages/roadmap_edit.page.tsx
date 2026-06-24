@@ -96,6 +96,11 @@ import {
   roadmapDetailDisplaySettingsEqual,
   type RoadmapDetailDisplaySettings,
 } from 'vj/components/roadmap/detail_display_settings';
+import {
+  computeRoadmapNodeNumbers,
+  isValidRoadmapSubNumber,
+  validateRoadmapSubNodeNumbers,
+} from 'vj/components/roadmap/node_numbering';
 import { RoadmapGitPanel, RoadmapGitHubRailIcon } from 'vj/components/roadmap/RoadmapGitPanel';
 import { RoadmapHookPicker } from 'vj/components/roadmap/RoadmapHookPicker';
 import {
@@ -299,6 +304,10 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
     ),
     [nodeCardsMap, nodes],
   );
+  const nodeNumberMap = useMemo(
+    () => computeRoadmapNodeNumbers(nodes.filter(isRoadmapFlowNode), edges),
+    [nodes, edges],
+  );
   const pendingProblemItems = useMemo(() => {
     const nodeLabels = new Map(nodes.map((node) => [node.id, String(node.data?.label || node.id)]));
     return buildRoadmapProblemPendingItems(pendingProblemCardIds, nodeLabels)
@@ -327,6 +336,8 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
         showProblemCountBadge: displaySettings.showProblemCount
           && supportsRoadmapPracticeProblems(node.data?.roadmapNodeType),
         problemCount: problemCountByNodeId.get(node.id) || 0,
+        showNodeNumber: displaySettings.showNodeNumber,
+        nodeNumber: nodeNumberMap.get(node.id) || '',
         editable: !deletedNodeIds.has(node.id),
         blockedAddDirections: [...getBlockedAddAdjacentDirections(node.id, edges, nodes)],
         onRequestAddAdjacent: (direction: AddAdjacentDirection, event: React.MouseEvent) => {
@@ -348,7 +359,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
       pendingStatusMaps,
     );
     return [...live, ...ghosts];
-  }, [displaySettings.showProblemCount, edges, nodes, problemCountByNodeId, selectedNodeId, pendingStatusMaps, deletedNodeIds, savedSnapshot]);
+  }, [displaySettings.showProblemCount, displaySettings.showNodeNumber, edges, nodes, problemCountByNodeId, selectedNodeId, pendingStatusMaps, deletedNodeIds, savedSnapshot, nodeNumberMap]);
   const viewEdges = useMemo(() => {
     const live = toRoadmapViewEdges(edges, selectedEdgeId, pendingStatusMaps, theme);
     if (!deletedEdgeIds.size) return live;
@@ -837,6 +848,11 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
   }, [closeContextMenu, contextMenu, nodeAddMenu]);
 
   const saveRoadmap = useCallback(async () => {
+    const numberErrors = validateRoadmapSubNodeNumbers(nodes.filter(isRoadmapFlowNode));
+    if (numberErrors.length) {
+      Notification.error(numberErrors.join('\n'));
+      return;
+    }
     setSaving(true);
     try {
       const nextViewport = reactFlow?.getViewport?.() || viewport;
@@ -1002,23 +1018,52 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
               </select>
             </label>
             {selectedNodeKind !== 'text' ? (
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1, fontSize: '12px', color: themeStyles.textSecondary }}>
-                <span style={{ flexShrink: 0 }}>{i18n('Title')}</span>
-                <input
-                  value={selectedNode.data?.label || ''}
-                  onChange={(e) => updateSelectedNode({ label: e.currentTarget.value })}
-                  style={{
-                    flex: 1,
-                    minWidth: 0,
-                    borderRadius: '4px',
-                    border: `1px solid ${themeStyles.borderSecondary}`,
-                    background: themeStyles.bgPrimary,
-                    color: themeStyles.textPrimary,
-                    padding: '4px 8px',
-                    fontSize: '13px',
-                  }}
-                />
-              </label>
+              <>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1, fontSize: '12px', color: themeStyles.textSecondary }}>
+                  <span style={{ flexShrink: 0 }}>{i18n('Title')}</span>
+                  <input
+                    value={selectedNode.data?.label || ''}
+                    onChange={(e) => updateSelectedNode({ label: e.currentTarget.value })}
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      borderRadius: '4px',
+                      border: `1px solid ${themeStyles.borderSecondary}`,
+                      background: themeStyles.bgPrimary,
+                      color: themeStyles.textPrimary,
+                      padding: '4px 8px',
+                      fontSize: '13px',
+                    }}
+                  />
+                </label>
+                {selectedNodeKind === 'sub' ? (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1, fontSize: '12px', color: themeStyles.textSecondary }}>
+                    <span style={{ flexShrink: 0 }}>{i18n('Roadmap node number')}</span>
+                    <input
+                      value={String(selectedNode.data?.nodeNumber || '')}
+                      placeholder={i18n('Roadmap node number format hint')}
+                      onChange={(e) => {
+                        const value = e.currentTarget.value;
+                        updateSelectedNode({ nodeNumber: value });
+                      }}
+                      style={{
+                        width: 80,
+                        borderRadius: '4px',
+                        border: `1px solid ${
+                          String(selectedNode.data?.nodeNumber || '').trim()
+                            && !isValidRoadmapSubNumber(String(selectedNode.data?.nodeNumber || ''))
+                            ? themeStyles.error
+                            : themeStyles.borderSecondary
+                        }`,
+                        background: themeStyles.bgPrimary,
+                        color: themeStyles.textPrimary,
+                        padding: '4px 8px',
+                        fontSize: '13px',
+                      }}
+                    />
+                  </label>
+                ) : null}
+              </>
             ) : null}
           </>
         ) : null}

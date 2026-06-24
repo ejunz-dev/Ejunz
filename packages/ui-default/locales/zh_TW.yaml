@@ -614,6 +614,12 @@ Date: 日期
 'Roadmap detail settings hint': 控制此頁路線圖畫布的顯示方式。
 'Roadmap detail settings show problem count': 顯示題目數量
 'Roadmap detail settings show problem count hint': 在節點右上角以氣泡數字顯示該節點的練習題數量。
+'Roadmap detail settings show node number': 顯示節點序號
+'Roadmap detail settings show node number hint': 在 main/sub 節點左上角以綠色字體顯示拓撲順序序號。
+'Roadmap node number': 節點序號
+'Roadmap node number format hint': 格式 x.y（如 1.1）
+'Roadmap sub node number invalid': 子節點序號必須是 x.y 格式。
+'Roadmap sub node number missing': 子節點 "{0}" 缺少序號。
 'Roadmap detail settings saved': 顯示設定已儲存。
 'Roadmap detail settings save failed': 顯示設定儲存失敗。
 'Resize sidebar': 調整側欄寬度
