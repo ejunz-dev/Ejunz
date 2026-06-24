@@ -24,6 +24,7 @@ interface LearnSectionsTreeProps {
   sections: LearnDAGNode[];
   dag: LearnDAGNode[];
   domainId: string;
+  learnMode?: 'base' | 'roadmap';
   currentSectionId: string | null;
   currentLearnSectionIndex: number | null;
   currentLearnStartCardId: string | null;
@@ -86,7 +87,7 @@ function getTheme(): 'light' | 'dark' {
   return 'light';
 }
 
-function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentLearnSectionIndex, currentLearnStartCardId }: LearnSectionsTreeProps) {
+function LearnSectionsTree({ sections, dag, domainId, learnMode = 'base', currentSectionId, currentLearnSectionIndex, currentLearnStartCardId }: LearnSectionsTreeProps) {
   const [selectedSectionIndex, setSelectedSectionIndex] = useState<number>(0);
   const [theme, setTheme] = useState<'light' | 'dark'>(getTheme);
   const learnIdx = coerceLearnIndex(currentLearnSectionIndex);
@@ -475,7 +476,9 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
     return (
       <div style={{ padding: '24px 32px', textAlign: 'center', color: themeStyles.textSecondary, fontSize: '14px' }}>
         <p>{i18n('No sections available.')}</p>
-        <p>{i18n('Please create a base with at least one section.')}</p>
+        <p>{learnMode === 'roadmap'
+          ? i18n('Please create a roadmap with at least one practice node.')
+          : i18n('Please create a base with at least one section.')}</p>
       </div>
     );
   }
@@ -823,11 +826,16 @@ const page = new NamedPage('learnSectionsPage', async () => {
     const currentLearnStartCardId =
       typeof rawStartCard === 'string' && rawStartCard.trim() ? rawStartCard.trim() : null;
 
+    const learnMode = String((window as any).UiContext?.learnMode || 'base').trim().toLowerCase() === 'roadmap'
+      ? 'roadmap'
+      : 'base';
+
     ReactDOM.render(
       <LearnSectionsTree
         sections={sections}
         dag={dag}
         domainId={domainId}
+        learnMode={learnMode}
         currentSectionId={currentSectionId}
         currentLearnSectionIndex={currentLearnSectionIndex}
         currentLearnStartCardId={currentLearnStartCardId}

@@ -36,9 +36,13 @@
   {{ set(UiContext, 'passedCardKeys', passedCardKeys or []) }}
   {{ set(UiContext, 'passedLegacyCardIds', passedLegacyCardIds or []) }}
   {{ set(UiContext, 'learnBases', learnBases or []) }}
-  {{ set(UiContext, 'selectedLearnBaseDocId', selectedLearnBaseDocId) }}
+  {{ set(UiContext, 'selectedLearnBaseDocId', selectedLearnBaseDocId if selectedLearnBaseDocId is defined else '') }}
+  {{ set(UiContext, 'learnRoadmaps', learnRoadmaps or []) }}
+  {{ set(UiContext, 'selectedLearnRoadmapDocId', selectedLearnRoadmapDocId if selectedLearnRoadmapDocId is defined else '') }}
+  {{ set(UiContext, 'learnMode', learnMode or 'base') }}
   {{ set(UiContext, 'learnBranch', learnBranch or 'main') }}
-  {{ set(UiContext, 'requireBaseSelection', requireBaseSelection) }}
+  {{ set(UiContext, 'requireBaseSelection', requireBaseSelection if requireBaseSelection is defined else false) }}
+  {{ set(UiContext, 'requireRoadmapSelection', requireRoadmapSelection if requireRoadmapSelection is defined else false) }}
   {{ set(UiContext, 'todayLessonResumableSessionId', todayLessonResumableSessionId or '') }}
   {{ set(UiContext, 'todayLessonResumeUrl', todayLessonResumeUrl or '') }}
   {{ set(UiContext, 'todayLessonCardProgressText', todayLessonCardProgressText or '') }}
