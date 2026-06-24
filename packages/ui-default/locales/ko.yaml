@@ -832,4 +832,7 @@ Date: 날짜
 'Roadmap drawer problem tap reveal answer': 탭하여 정답 표시
 'Roadmap drawer problem reveal back': 탭하여 뒷면 표시
 'Roadmap drawer practice problems': 연습 문제
+'Roadmap drawer start node practice': 단일 노드 연습 시작
+'Roadmap drawer start node practice busy': 연습 시작 중…
+'Roadmap drawer start node practice invalid doc': 이 로드맵이 유효하지 않아 연습을 시작할 수 없습니다.
 'Roadmap markdown preview failed': Markdown 렌더링에 실패했습니다.
