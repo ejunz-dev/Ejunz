@@ -13,6 +13,7 @@ import {
 import {
   defaultNodeDataForKind,
   ROADMAP_NODE_KINDS,
+  supportsRoadmapPracticeProblems,
   validateRoadmapConnection,
   type RoadmapNodeKind,
 } from '../node_kinds';
@@ -29,6 +30,7 @@ export interface RoadmapAiExecuteContext {
   setEdges: React.Dispatch<React.SetStateAction<Edge[]>>;
   setSelectedNodeId: (id: string | null) => void;
   markProblemsDirty: (cardId: string) => void;
+  onNodePracticeDisabled?: (nodeId: string) => void;
   setCardsReloadEpoch: React.Dispatch<React.SetStateAction<number>>;
   newNodeId: () => string;
   newEdgeId: (source: string, target: string) => string;
@@ -172,6 +174,10 @@ export async function executeRoadmapAiOperations(
         });
         workingNodes.splice(0, workingNodes.length, ...nextNodes);
         ctx.setNodes(nextNodes);
+        const updatedNode = nextNodes.find((node) => node.id === nodeId);
+        if (updatedNode && !supportsRoadmapPracticeProblems(updatedNode.data?.roadmapNodeType)) {
+          ctx.onNodePracticeDisabled?.(nodeId);
+        }
       } else if (type === 'delete_roadmap_node') {
         const nodeId = resolveWorkingNodeId(op.nodeId);
         if (!nodeId) {
@@ -184,6 +190,7 @@ export async function executeRoadmapAiOperations(
         workingEdges.splice(0, workingEdges.length, ...nextEdges);
         ctx.setNodes(nextNodes);
         ctx.setEdges(nextEdges);
+        ctx.onNodePracticeDisabled?.(nodeId);
       } else if (type === 'create_roadmap_edge') {
         const source = resolveWorkingNodeId(op.source);
         const target = resolveWorkingNodeId(op.target);
@@ -254,7 +261,10 @@ export async function executeRoadmapAiOperations(
         workingEdges.splice(0, workingEdges.length, ...nextEdges);
         ctx.setEdges(nextEdges);
       } else if (type === 'create_problem') {
-        const result = applyCreateProblemOp(op, nodeCardsMap, aiCreatedNodeIds);
+        const nodeTypeById = new Map(
+          workingNodes.map((node) => [node.id, node.data?.roadmapNodeType as string | undefined]),
+        );
+        const result = applyCreateProblemOp(op, nodeCardsMap, aiCreatedNodeIds, nodeTypeById);
         if (result.error) {
           errors.push(result.error);
           continue;

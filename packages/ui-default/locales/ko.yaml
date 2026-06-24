@@ -723,6 +723,7 @@ Date: 날짜
 'Roadmap AI parse error': 'AI 작업 파싱 실패: {0}'
 'Roadmap AI execute error': '작업 실행 실패: {0}'
 'Roadmap AI problem missing nodeId': create_problem에는 유효한 nodeId가 필요합니다
+'Roadmap practice problems node type forbidden': main 및 sub 노드만 연습 문제를 지원합니다
 'Roadmap AI tutor': AI 튜터
 'Roadmap AI tutor open': AI 튜터 열기
 'Roadmap AI tutor bar hint': 질문이 있으신가요? 여기에 입력하세요

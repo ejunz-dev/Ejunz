@@ -1218,6 +1218,7 @@ Date: Date
 'Roadmap AI parse error': 'Failed to parse AI operations: {0}'
 'Roadmap AI execute error': 'Failed to run operations: {0}'
 'Roadmap AI problem missing nodeId': create_problem requires a valid nodeId
+'Roadmap practice problems node type forbidden': Only main and sub nodes support practice problems
 'Roadmap AI tutor': AI Tutor
 'Roadmap AI tutor open': Open AI Tutor
 'Roadmap AI tutor bar hint': 'Have a question? Type here'
@@ -1253,7 +1254,7 @@ Date: Date
 'Roadmap detail settings title': Display settings
 'Roadmap detail settings hint': Control how the roadmap canvas is displayed on this page.
 'Roadmap detail settings show problem count': Show problem count badge
-'Roadmap detail settings show problem count hint': Show a bubble with the number of practice problems on each node.
+'Roadmap detail settings show problem count hint': Show a bubble with the number of practice problems on main and sub nodes.
 'Roadmap detail settings saved': Display settings saved.
 'Roadmap detail settings save failed': Failed to save display settings.
 'Resize sidebar': Resize sidebar

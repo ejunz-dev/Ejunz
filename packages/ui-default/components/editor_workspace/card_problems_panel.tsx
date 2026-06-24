@@ -61,6 +61,8 @@ export interface CardProblemsPanelProps {
   getEditorUrl: (path: string) => string;
   onProblemsDirty?: (cardId: string) => void;
   reloadEpoch?: number;
+  /** When false, problem CRUD is disabled (e.g. roadmap hook/text nodes). */
+  canEditProblems?: boolean;
 }
 
 export function CardProblemsPanel({
@@ -71,6 +73,7 @@ export function CardProblemsPanel({
   getEditorUrl,
   onProblemsDirty,
   reloadEpoch = 0,
+  canEditProblems = true,
 }: CardProblemsPanelProps) {
   const [, bump] = useState(0);
   const refresh = useCallback(() => bump((v) => v + 1), []);
@@ -114,6 +117,10 @@ export function CardProblemsPanel({
   }, [nodeId, nodeLabel, refresh]);
 
   const handleAddBlankProblem = useCallback(() => {
+    if (!canEditProblems) {
+      Notification.error(i18n('Roadmap practice problems node type forbidden'));
+      return;
+    }
     if (!nodeId) {
       Notification.error(i18n('Please select a node first'));
       return;
@@ -132,10 +139,10 @@ export function CardProblemsPanel({
     setOriginalProblemsVersion((v) => v + 1);
     onProblemsDirty?.(String(target.docId));
     refresh();
-  }, [ensureCard, nodeId, onProblemsDirty, refresh]);
+  }, [canEditProblems, ensureCard, nodeId, onProblemsDirty, refresh]);
 
   const reorderProblems = useCallback((from: number, to: number) => {
-    if (!nodeId || !card) return;
+    if (!canEditProblems || !nodeId || !card) return;
     const map = getNodeCardsMap();
     const nodeCards = [...(map[nodeId] || [])];
     const cardIndex = nodeCards.findIndex((c) => sameCardDocId(c.docId, card.docId));
@@ -148,7 +155,7 @@ export function CardProblemsPanel({
     setNodeCardsMap({ ...map, [nodeId]: nodeCards });
     onProblemsDirty?.(String(card.docId));
     refresh();
-  }, [card, nodeId, onProblemsDirty, refresh]);
+  }, [canEditProblems, card, nodeId, onProblemsDirty, refresh]);
 
   if (!nodeId) {
     return (
@@ -164,6 +171,25 @@ export function CardProblemsPanel({
       }}
       >
         {i18n('Please select a node first')}
+      </div>
+    );
+  }
+
+  if (!canEditProblems) {
+    return (
+      <div style={{
+        flex: 1,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '16px',
+        color: themeStyles.textSecondary,
+        fontSize: '13px',
+        textAlign: 'center',
+        lineHeight: 1.5,
+      }}
+      >
+        {i18n('Roadmap practice problems node type forbidden')}
       </div>
     );
   }
@@ -241,7 +267,7 @@ export function CardProblemsPanel({
             reorderDisableUp={index <= 0}
             reorderDisableDown={index >= problems.length - 1}
             onUpdate={(updatedProblem) => {
-              if (!nodeId || !card) return;
+              if (!canEditProblems || !nodeId || !card) return;
               const map = getNodeCardsMap();
               const nodeCards = [...(map[nodeId] || [])];
               const cardIndex = nodeCards.findIndex((c) => sameCardDocId(c.docId, card.docId));
@@ -258,7 +284,7 @@ export function CardProblemsPanel({
               refresh();
             }}
             onDelete={() => {
-              if (!nodeId || !card) return;
+              if (!canEditProblems || !nodeId || !card) return;
               const map = getNodeCardsMap();
               const nodeCards = [...(map[nodeId] || [])];
               const cardIndex = nodeCards.findIndex((c) => sameCardDocId(c.docId, card.docId));
@@ -283,12 +309,14 @@ export function CardProblemsPanel({
 
 export function collectPendingRoadmapCardUpdates(
   pendingCardIds: Set<string>,
+  allowedNodeIds?: Set<string>,
 ): Array<{ cardId: string; nodeId: string; problems: Problem[]; title?: string; content?: string }> {
   const map = getNodeCardsMap();
   const updates: Array<{ cardId: string; nodeId: string; problems: Problem[]; title?: string; content?: string }> = [];
   for (const cardId of pendingCardIds) {
     if (String(cardId).startsWith('temp-card-')) continue;
     for (const nodeId of Object.keys(map)) {
+      if (allowedNodeIds && !allowedNodeIds.has(nodeId)) continue;
       const card = (map[nodeId] || []).find((c) => sameCardDocId(c.docId, cardId));
       if (card) {
         updates.push({
@@ -307,6 +335,7 @@ export function collectPendingRoadmapCardUpdates(
 
 export function collectPendingRoadmapCardCreates(
   pendingCardIds: Set<string>,
+  allowedNodeIds?: Set<string>,
 ): Array<{ tempId: string; nodeId: string; title: string; content: string; problems: Problem[] }> {
   const map = getNodeCardsMap();
   const creates: Array<{ tempId: string; nodeId: string; title: string; content: string; problems: Problem[] }> = [];
@@ -314,6 +343,7 @@ export function collectPendingRoadmapCardCreates(
     const id = String(cardId);
     if (!id.startsWith('temp-card-')) continue;
     const nodeId = id.replace(/^temp-card-/, '');
+    if (allowedNodeIds && !allowedNodeIds.has(nodeId)) continue;
     const card = (map[nodeId] || []).find((c) => sameCardDocId(c.docId, id));
     if (!card) continue;
     creates.push({

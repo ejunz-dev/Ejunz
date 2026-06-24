@@ -1,7 +1,7 @@
 import type { Node } from 'reactflow';
 import { i18n } from 'vj/utils';
 import type { EditorCard } from '../editor_workspace/card_problems_panel';
-import { getRoadmapNodeKind } from './node_kinds';
+import { getRoadmapNodeKind, supportsRoadmapPracticeProblems } from './node_kinds';
 
 export type RoadmapDetailFilter = {
   filterNode: string;
@@ -110,6 +110,7 @@ export function computeRoadmapDetailSearchHits(
     }
 
     cardProblems(node.id, nodeCardsMap).forEach((problem) => {
+      if (!supportsRoadmapPracticeProblems(node.data?.roadmapNodeType)) return;
       const text = problemSearchText(problem as Record<string, unknown>);
       const title = String((problem as { title?: string }).title || '').trim();
       if (text.toLowerCase().includes(raw)) {
@@ -163,6 +164,7 @@ export function computeRoadmapDetailMatchedNodeIds(
     if (nodeQ && !label.includes(nodeQ)) return;
     if (cardQ && !content.includes(cardQ)) return;
     if (problemQ) {
+      if (!supportsRoadmapPracticeProblems(node.data?.roadmapNodeType)) return;
       const hasProblem = cardProblems(node.id, nodeCardsMap).some((problem) => (
         problemSearchText(problem as Record<string, unknown>).toLowerCase().includes(problemQ)
       ));

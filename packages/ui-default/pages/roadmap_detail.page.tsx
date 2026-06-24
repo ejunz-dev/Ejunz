@@ -51,7 +51,7 @@ import {
   readRoadmapDetailFilterFromLocation,
   type RoadmapDetailFilter,
 } from 'vj/components/roadmap/detail_explorer';
-import { isHookNodeType, isTextNodeType } from 'vj/components/roadmap/node_kinds';
+import { isHookNodeType, isTextNodeType, supportsRoadmapPracticeProblems } from 'vj/components/roadmap/node_kinds';
 import type { RoadmapStatus } from 'vj/components/roadmap/shared';
 import type { EditorCard } from 'vj/components/editor_workspace/card_problems_panel';
 
@@ -99,10 +99,7 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
     [detailFilters],
   );
   const problemCountByNodeId = useMemo(
-    () => buildRoadmapNodeProblemCountMap(
-      layoutNodes.map((node) => node.id),
-      nodeCardsMap,
-    ),
+    () => buildRoadmapNodeProblemCountMap(layoutNodes, nodeCardsMap),
     [layoutNodes, nodeCardsMap],
   );
   const viewNodes = useMemo(() => {
@@ -110,7 +107,8 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
       ...node,
       data: {
         ...node.data,
-        showProblemCountBadge: displaySettings.showProblemCount,
+        showProblemCountBadge: displaySettings.showProblemCount
+          && supportsRoadmapPracticeProblems(node.data?.roadmapNodeType),
         problemCount: problemCountByNodeId.get(node.id) || 0,
       },
     }));
@@ -358,6 +356,7 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
         nodeId={selectedNodeId || ''}
         nodeLabel={String(selectedNode?.data?.label || i18n('Unnamed Node'))}
         nodeStatus={selectedNode?.data?.status as RoadmapStatus | undefined}
+        roadmapNodeType={selectedNode?.data?.roadmapNodeType}
         contentRef={contentRef}
         onClose={() => setSelectedNodeId(null)}
       />

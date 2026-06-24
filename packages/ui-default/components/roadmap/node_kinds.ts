@@ -113,6 +113,16 @@ export function isSubNodeType(type?: RoadmapNodeType | string): boolean {
   return getRoadmapNodeKind(type) === 'sub';
 }
 
+export function isMainNodeType(type?: RoadmapNodeType | string): boolean {
+  return getRoadmapNodeKind(type) === 'main';
+}
+
+/** Only main and sub nodes may have practice problems in roadmap. */
+export function supportsRoadmapPracticeProblems(type?: RoadmapNodeType | string): boolean {
+  const kind = getRoadmapNodeKind(type);
+  return kind === 'main' || kind === 'sub';
+}
+
 export function nodeKindBackground(kind: RoadmapNodeKind): string {
   switch (kind) {
     case 'main': return '#ffeb3b';
