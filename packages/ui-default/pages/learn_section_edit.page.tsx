@@ -34,6 +34,7 @@ interface LearnSectionEditProps {
   allSections: LearnDAGNode[];
   dag: LearnDAGNode[];
   domainId: string;
+  learnMode?: 'base' | 'roadmap';
   targetUid: number;
   targetUser: { uname: string; _id: number } | null;
   currentLearnSectionIndex?: number | null;
@@ -72,7 +73,7 @@ function coerceLearnIndex(v: unknown): number | null {
   return null;
 }
 
-function LearnSectionEdit({ sections: initialSections, allSections: allSectionsProp = [], dag: dagProp = [], domainId, targetUid, targetUser, currentLearnSectionIndex: initialLearnIndex = null, currentLearnSectionId: initialLearnId = null }: LearnSectionEditProps) {
+function LearnSectionEdit({ sections: initialSections, allSections: allSectionsProp = [], dag: dagProp = [], domainId, learnMode = 'base', targetUid, targetUser, currentLearnSectionIndex: initialLearnIndex = null, currentLearnSectionId: initialLearnId = null }: LearnSectionEditProps) {
   const [sections, setSections] = useState<LearnDAGNode[]>(() => orderSectionsForEdit(initialSections || []));
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -380,7 +381,9 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
       }}>
         <p>{i18n('No sections available.')}</p>
         <p style={{ marginTop: '8px', fontSize: '13px' }}>
-          {i18n('Please create a base with at least one section first.')}
+          {learnMode === 'roadmap'
+            ? i18n('Please create a roadmap with at least one practice node first.')
+            : i18n('Please create a base with at least one section first.')}
         </p>
         <a
           href={`/d/${domainId}/learn/sections`}
@@ -957,6 +960,9 @@ const page = new NamedPage('learnSectionEditPage', async () => {
     const domainId = (window as any).UiContext?.domainId || 'system';
     const targetUid = (window as any).UiContext?.targetUid ?? (window as any).UserContext?._id;
     const targetUser = (window as any).UiContext?.targetUser || null;
+    const learnMode = String((window as any).UiContext?.learnMode || 'base').trim().toLowerCase() === 'roadmap'
+      ? 'roadmap'
+      : 'base';
     const currentLearnSectionIndex = (window as any).UiContext?.currentLearnSectionIndex ?? null;
     const currentLearnSectionId = (window as any).UiContext?.currentLearnSectionId ?? null;
 
@@ -966,6 +972,7 @@ const page = new NamedPage('learnSectionEditPage', async () => {
         allSections={allSections}
         dag={dag}
         domainId={domainId}
+        learnMode={learnMode}
         targetUid={targetUid}
         targetUser={targetUser}
         currentLearnSectionIndex={currentLearnSectionIndex}

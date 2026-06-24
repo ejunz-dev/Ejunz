@@ -25,6 +25,24 @@ __langname: 한국어
 'Last check-in': 마지막 체크인
 'Learning consumption': 학습 소모
 'Learn session preferences': 학습 세션 설정
+'Learn mode knowledge base': 지식 베이스
+'Learn mode roadmap': 로드맵
+'Current knowledge base (Learn)': 현재 지식 베이스 (학습)
+'Current roadmap (Learn)': 현재 로드맵 (학습)
+'Pending selection': 선택 대기
+'Select learn base': 지식 베이스 선택
+'Select learn roadmap': 로드맵 선택
+'Select learn base and branch': 지식 베이스 및 브랜치 선택
+'Select learn roadmap and branch': 로드맵 및 브랜치 선택
+'Select a knowledge base before learning': 학습 전에 지식 베이스를 선택하세요
+'Select a roadmap before learning': 학습 전에 로드맵을 선택하세요
+'Choose a base and branch, then save to continue learning.': 지식 베이스와 브랜치를 선택한 뒤 저장하면 학습을 계속할 수 있습니다.
+'Choose a roadmap and branch, then save to continue learning.': 로드맵과 브랜치를 선택한 뒤 저장하면 학습을 계속할 수 있습니다.
+'Choose which knowledge base and branch to use for Learn.': 학습에 사용할 지식 베이스와 브랜치를 선택하세요.
+'Choose which roadmap and branch to use for Learn.': 학습에 사용할 로드맵과 브랜치를 선택하세요.
+'No knowledge base in this domain.': 이 도메인에 지식 베이스가 없습니다.
+'No roadmap in this domain.': 이 도메인에 로드맵이 없습니다.
+'This roadmap branch has no practice nodes': 이 로드맵 브랜치에 연습 가능한 노드가 없습니다
 'Section Order': 학습 경로 순서
 'Max consecutive': 최대 연속
 'No': 아니오
