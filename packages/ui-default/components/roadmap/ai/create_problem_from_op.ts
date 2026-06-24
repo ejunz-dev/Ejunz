@@ -11,6 +11,7 @@ import {
   MATCHING_PAIR_MIN,
 } from 'ejun/src/model/problem';
 import { sameCardDocId, type EditorCard } from '../../editor_workspace/card_problems_panel';
+import { supportsRoadmapPracticeProblems } from '../node_kinds';
 
 function ensureNodeCard(
   nodeId: string,
@@ -54,10 +55,18 @@ export function applyCreateProblemOp(
   op: Record<string, unknown>,
   nodeCardsMap: Record<string, EditorCard[]>,
   aiCreatedNodeIds: Map<string, string>,
+  nodeTypeById?: Map<string, string | undefined>,
 ): { error?: string; cardId?: string; nodeId?: string } {
   const nodeId = resolveNodeIdFromOp(op, nodeCardsMap, aiCreatedNodeIds);
   if (!nodeId) {
     const msg = i18n('Roadmap AI problem missing nodeId');
+    Notification.error(msg);
+    return { error: msg };
+  }
+
+  const nodeType = nodeTypeById?.get(nodeId);
+  if (nodeTypeById && !supportsRoadmapPracticeProblems(nodeType)) {
+    const msg = i18n('Roadmap practice problems node type forbidden');
     Notification.error(msg);
     return { error: msg };
   }

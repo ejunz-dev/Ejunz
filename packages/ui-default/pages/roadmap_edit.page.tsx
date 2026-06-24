@@ -101,11 +101,17 @@ import {
   isTextNodeType,
   ROADMAP_NODE_KINDS,
   roadmapNodeKindLabel,
+  supportsRoadmapPracticeProblems,
   validateRoadmapConnection,
   type RoadmapNodeKind,
 } from 'vj/components/roadmap/node_kinds';
 import { RoadmapAiTerminalView } from 'vj/components/roadmap/ai/RoadmapAiTerminalView';
 import { useRoadmapAiChat } from 'vj/components/roadmap/ai/useRoadmapAiChat';
+import {
+  cardSupportsPracticeProblems,
+  practiceNodeIdSet,
+  removePendingProblemCardsForNode,
+} from 'vj/components/roadmap/practice_guard';
 
 function newNodeId(): string {
   return `node_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -261,7 +267,11 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
   const totalPendingCount = pendingCount + problemPendingCount;
   const pendingProblemItems = useMemo(() => {
     const nodeLabels = new Map(nodes.map((node) => [node.id, String(node.data?.label || node.id)]));
-    return buildRoadmapProblemPendingItems(pendingProblemCardIds, nodeLabels);
+    return buildRoadmapProblemPendingItems(pendingProblemCardIds, nodeLabels)
+      .filter((item) => {
+        const node = nodes.find((entry) => entry.id === item.id);
+        return node && supportsRoadmapPracticeProblems(node.data?.roadmapNodeType);
+      });
   }, [nodes, pendingProblemCardIds]);
   const pendingStatusMaps = useMemo(
     () => buildRoadmapPendingStatusMaps(pendingChanges),
@@ -438,13 +448,35 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
     return roadmapApiPath('/save', context.domainId);
   }, [context.domainId]);
 
+  const practiceNodeIds = useMemo(() => practiceNodeIdSet(nodes), [nodes]);
+
+  const clearNodeProblemPending = useCallback((nodeId: string) => {
+    setPendingProblemCardIds((prev) => removePendingProblemCardsForNode(nodeId, prev));
+  }, []);
+
+  useEffect(() => {
+    setPendingProblemCardIds((prev) => {
+      let next: Set<string> | null = null;
+      for (const cardId of prev) {
+        if (cardSupportsPracticeProblems(cardId, nodes)) continue;
+        if (!next) next = new Set(prev);
+        next.delete(cardId);
+      }
+      return next || prev;
+    });
+  }, [nodes]);
+
   const markProblemsDirty = useCallback((cardId: string) => {
+    if (!cardSupportsPracticeProblems(cardId, nodes)) {
+      Notification.error(i18n('Roadmap practice problems node type forbidden'));
+      return;
+    }
     setPendingProblemCardIds((prev) => {
       const next = new Set(prev);
       next.add(cardId);
       return next;
     });
-  }, []);
+  }, [nodes]);
 
   const {
     chatMessages,
@@ -460,6 +492,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
     setEdges,
     setSelectedNodeId,
     markProblemsDirty,
+    onNodePracticeDisabled: clearNodeProblemPending,
     setCardsReloadEpoch,
     selectedNode,
     docTitle: doc.title || i18n('Roadmap'),
@@ -772,8 +805,8 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
         layout: doc.layout || { type: 'manual', direction: 'TB', spacing: { x: 260, y: 140 } },
         viewport: nextViewport,
         operationDescription: i18n('Roadmap save operation'),
-        cardCreates: collectPendingRoadmapCardCreates(pendingProblemCardIds),
-        cardUpdates: collectPendingRoadmapCardUpdates(pendingProblemCardIds),
+        cardCreates: collectPendingRoadmapCardCreates(pendingProblemCardIds, practiceNodeIds),
+        cardUpdates: collectPendingRoadmapCardUpdates(pendingProblemCardIds, practiceNodeIds),
       });
       if (res?.cardIdMap) applyRoadmapCardIdMap(res.cardIdMap);
       if (res?.nodeCardsMap && (window as any).UiContext) {
@@ -790,7 +823,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
     } finally {
       setSaving(false);
     }
-  }, [context.domainId, context.docId, currentBranch, doc.docId, doc.layout, edges, nodes, pendingProblemCardIds, reactFlow, refreshSavedSnapshot, viewport]);
+  }, [context.domainId, context.docId, currentBranch, doc.docId, doc.layout, edges, nodes, pendingProblemCardIds, practiceNodeIds, reactFlow, refreshSavedSnapshot, viewport]);
 
   const saveRoadmapRef = useRef(saveRoadmap);
   saveRoadmapRef.current = saveRoadmap;
@@ -848,6 +881,16 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
   );
 
   const selectedNodeKind = selectedNode ? getRoadmapNodeKind(selectedNode.data?.roadmapNodeType) : null;
+  const selectedSupportsPractice = selectedNode
+    ? supportsRoadmapPracticeProblems(selectedNode.data?.roadmapNodeType)
+    : false;
+
+  useEffect(() => {
+    if (selectedSupportsPractice) return;
+    if (rightPanelOpen && rightPanelTab === 'problems') {
+      setRightPanelOpen(false);
+    }
+  }, [rightPanelOpen, rightPanelTab, selectedSupportsPractice]);
 
   const centerHeader = (
     <>
@@ -872,6 +915,9 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
                       ? ''
                       : (selectedNode.data?.label || newNodeLabel()),
                   });
+                  if (!supportsRoadmapPracticeProblems(kind) && selectedNodeId) {
+                    clearNodeProblemPending(selectedNodeId);
+                  }
                 }}
                 style={{
                   borderRadius: '4px',
@@ -1091,6 +1137,8 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
               setRightPanelOpen(true);
             }}
             onSelectProblemNode={(nodeId) => {
+              const target = nodes.find((node) => node.id === nodeId);
+              if (!target || !supportsRoadmapPracticeProblems(target.data?.roadmapNodeType)) return;
               setLeftPanelTab('canvas');
               setSelectedNodeId(nodeId);
               setSelectedEdgeId(null);
@@ -1142,7 +1190,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
       rightPanelOpen={rightPanelOpen}
       onRightPanelOpenChange={setRightPanelOpen}
       rightPanel={(
-        rightPanelTab === 'problems' ? (
+        rightPanelTab === 'problems' && selectedSupportsPractice ? (
           <CardProblemsPanel
             nodeId={selectedNodeId}
             nodeLabel={selectedNodeLabel}
@@ -1151,6 +1199,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
             getEditorUrl={getRoadmapEditorUrl}
             onProblemsDirty={markProblemsDirty}
             reloadEpoch={cardsReloadEpoch}
+            canEditProblems={selectedSupportsPractice}
           />
         ) : (
         <div className="roadmap-inspector roadmap-inspector--workspace">
@@ -1182,28 +1231,30 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
       )}
       rightRail={(
         <>
-          <button
-            type="button"
-            onClick={() => {
-              if (rightPanelOpen && rightPanelTab === 'problems') {
-                setRightPanelOpen(false);
-              } else {
-                setRightPanelTab('problems');
-                setRightPanelOpen(true);
-              }
-            }}
-            style={{
-              ...problemsRailBtn,
-              width: '34px',
-              height: '34px',
-              fontSize: '11px',
-              fontWeight: 600,
-            }}
-            title={i18n('Card problems')}
-            aria-label={i18n('Card problems')}
-          >
-            题
-          </button>
+          {selectedSupportsPractice ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (rightPanelOpen && rightPanelTab === 'problems') {
+                  setRightPanelOpen(false);
+                } else {
+                  setRightPanelTab('problems');
+                  setRightPanelOpen(true);
+                }
+              }}
+              style={{
+                ...problemsRailBtn,
+                width: '34px',
+                height: '34px',
+                fontSize: '11px',
+                fontWeight: 600,
+              }}
+              title={i18n('Card problems')}
+              aria-label={i18n('Card problems')}
+            >
+              题
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => {

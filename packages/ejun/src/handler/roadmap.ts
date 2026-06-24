@@ -1,7 +1,7 @@
 import parser from '@ejunz/utils/lib/search';
 import type { Context } from '../context';
 import { BadRequestError, NotFoundError, ValidationError } from '../error';
-import type { RoadmapDoc } from '../interface';
+import type { RoadmapDoc, BaseNode } from '../interface';
 import { parseCategory } from '../lib/category';
 import { PERM, PRIV } from '../model/builtin';
 import RoadmapModel from '../model/roadmap';
@@ -149,7 +149,12 @@ async function renderRoadmapPage(
 
     const requestedBranch = (branch && String(branch).trim()) || (roadmap as any).currentBranch || 'main';
     const viewRoadmap = await applyRoadmapBranchSwitch(handler, domainId, roadmap, requestedBranch);
-    const nodeCardsMap = await RoadmapModel.buildNodeCardsMap(domainId, docId, requestedBranch);
+    const nodeCardsMap = await RoadmapModel.buildNodeCardsMap(
+        domainId,
+        docId,
+        requestedBranch,
+        (viewRoadmap as { nodes?: BaseNode[] }).nodes,
+    );
     const githubCtx = editable
         ? await fetchRoadmapGithubContext(domainId, handler.user._id)
         : { userGithubTokenConfigured: false };
@@ -356,7 +361,12 @@ export class RoadmapDetailHandler extends Handler {
             this,
             await applyRoadmapBranchSwitch(this, domainId, roadmap, requestedBranch),
         );
-        const nodeCardsMap = await RoadmapModel.buildNodeCardsMap(domainId, docId, requestedBranch);
+        const nodeCardsMap = await RoadmapModel.buildNodeCardsMap(
+            domainId,
+            docId,
+            requestedBranch,
+            (viewRoadmap as { nodes?: BaseNode[] }).nodes,
+        );
         const roadmapDetailUiPrefs = await loadRoadmapDetailUiPrefs(
             this.ctx.db.db,
             domainId,
@@ -434,7 +444,12 @@ export class RoadmapDataHandler extends Handler {
         const qBranch = branch || this.request.query?.branch;
         const effectiveBranch = qBranch ? String(qBranch) : ((roadmap as any).currentBranch || 'main');
         const view = RoadmapModel.withGraph(roadmap, effectiveBranch);
-        const nodeCardsMap = await RoadmapModel.buildNodeCardsMap(domainId, docId, effectiveBranch);
+        const nodeCardsMap = await RoadmapModel.buildNodeCardsMap(
+            domainId,
+            docId,
+            effectiveBranch,
+            (view as { nodes?: BaseNode[] }).nodes,
+        );
         this.response.body = { ...view, nodeCardsMap };
     }
 }
@@ -461,6 +476,7 @@ export class RoadmapSaveHandler extends Handler {
             branch,
         });
 
+        const savedNodes = Array.isArray(data.nodes) ? data.nodes as BaseNode[] : [];
         const cardCreates = Array.isArray(data.cardCreates) ? data.cardCreates : [];
         const cardUpdates = Array.isArray(data.cardUpdates) ? data.cardUpdates : [];
         const cardIdMap = (cardCreates.length || cardUpdates.length)
@@ -470,12 +486,13 @@ export class RoadmapSaveHandler extends Handler {
                 branch,
                 this.user._id,
                 this.request.ip,
+                savedNodes,
                 cardCreates,
                 cardUpdates,
             )
             : {};
 
-        const nodeCardsMap = await RoadmapModel.buildNodeCardsMap(did, docId, branch);
+        const nodeCardsMap = await RoadmapModel.buildNodeCardsMap(did, docId, branch, savedNodes);
         this.response.body = { success: true, cardIdMap, nodeCardsMap };
     }
 }

@@ -15,6 +15,41 @@ function readRid(raw: unknown): string | undefined {
     return rid || undefined;
 }
 
+const ROADMAP_NODE_KINDS = new Set(['main', 'sub', 'hook', 'text']);
+const ROADMAP_LEGACY_KIND_MAP: Record<string, string> = {
+    root: 'main',
+    milestone: 'main',
+    task: 'sub',
+    decision: 'sub',
+    release: 'sub',
+};
+
+export function roadmapNodeKindFromType(type?: string): string {
+    const raw = String(type || '').trim();
+    if (ROADMAP_NODE_KINDS.has(raw)) return raw;
+    return ROADMAP_LEGACY_KIND_MAP[raw] || 'sub';
+}
+
+export function supportsRoadmapPracticeProblems(type?: string): boolean {
+    const kind = roadmapNodeKindFromType(type);
+    return kind === 'main' || kind === 'sub';
+}
+
+function roadmapNodeTypeFromNode(node: BaseNode | undefined): string | undefined {
+    const data = (node as { data?: { roadmapNodeType?: string } } | undefined)?.data;
+    return data?.roadmapNodeType;
+}
+
+function practiceNodeIdSet(nodes: BaseNode[] | undefined): Set<string> {
+    const ids = new Set<string>();
+    for (const node of nodes || []) {
+        if (supportsRoadmapPracticeProblems(roadmapNodeTypeFromNode(node))) {
+            ids.add(String(node.id));
+        }
+    }
+    return ids;
+}
+
 function mergeIncomingProblemsPreserveStoredTags(incoming: Problem[], stored?: Problem[] | null): Problem[] {
     if (!Array.isArray(stored) || stored.length === 0) return incoming;
     const byPid = new Map<string, Problem>();
@@ -260,7 +295,9 @@ export class RoadmapModel {
         domainId: string,
         docId: number,
         branch: string,
+        nodes?: BaseNode[],
     ): Promise<Record<string, Array<Record<string, unknown>>>> {
+        const practiceNodeIds = nodes?.length ? practiceNodeIdSet(nodes) : null;
         const filter: Record<string, unknown> = {
             baseDocId: docId,
             ...cardBranchFilter(branch || 'main'),
@@ -270,8 +307,10 @@ export class RoadmapModel {
         for (const card of cards) {
             if (!card.nodeId) continue;
             if (!map[card.nodeId]) map[card.nodeId] = [];
+            const includeProblems = !practiceNodeIds || practiceNodeIds.has(card.nodeId);
             map[card.nodeId].push({
                 ...card,
+                ...(includeProblems ? {} : { problems: [] }),
                 docId: card.docId.toString(),
                 updateAt: card.updateAt instanceof Date ? card.updateAt.toISOString() : card.updateAt,
                 createdAt: card.createdAt instanceof Date ? card.createdAt.toISOString() : card.createdAt,
@@ -294,6 +333,7 @@ export class RoadmapModel {
         branch: string,
         owner: number,
         ip: string | undefined,
+        nodes: BaseNode[] | undefined,
         cardCreates: Array<{
             tempId?: string;
             nodeId: string;
@@ -311,10 +351,12 @@ export class RoadmapModel {
     ): Promise<Record<string, string>> {
         const cardIdMap: Record<string, string> = {};
         const effectiveBranch = branch || 'main';
+        const practiceNodeIds = practiceNodeIdSet(nodes);
 
         for (const create of cardCreates) {
             const nodeId = String(create.nodeId || '').trim();
             if (!nodeId || nodeId.startsWith('temp-node-')) continue;
+            const problems = practiceNodeIds.has(nodeId) ? create.problems : undefined;
             const newId = await CardModel.create(
                 domainId,
                 docId,
@@ -323,7 +365,7 @@ export class RoadmapModel {
                 create.title || '题目卡片',
                 create.content || '',
                 ip,
-                create.problems,
+                problems,
                 undefined,
                 effectiveBranch,
             );
@@ -342,10 +384,13 @@ export class RoadmapModel {
             if (update.title !== undefined) payload.title = update.title;
             if (update.content !== undefined) payload.content = update.content;
             if (update.problems !== undefined) {
-                payload.problems = mergeIncomingProblemsPreserveStoredTags(
-                    update.problems,
-                    prev.problems as Problem[] | undefined,
-                );
+                const nodeIdForCard = String(update.nodeId || prev.nodeId || '').trim();
+                if (practiceNodeIds.has(nodeIdForCard)) {
+                    payload.problems = mergeIncomingProblemsPreserveStoredTags(
+                        update.problems,
+                        prev.problems as Problem[] | undefined,
+                    );
+                }
             }
             if (Object.keys(payload).length === 0) continue;
             await CardModel.update(domainId, oid, payload);
