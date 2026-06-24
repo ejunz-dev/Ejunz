@@ -70,17 +70,21 @@ function PendingSection({
 export function RoadmapPendingPanel({
   pending,
   pendingProblemCards = [],
+  displaySettingsPending = false,
   themeStyles,
   onSelectNode,
   onSelectEdge,
   onSelectProblemNode,
+  onSelectDisplaySettings,
 }: {
   pending: RoadmapPendingChanges;
   pendingProblemCards?: RoadmapPendingItem[];
+  displaySettingsPending?: boolean;
   themeStyles: EditorThemeStyles;
   onSelectNode: (nodeId: string) => void;
   onSelectEdge: (edgeId: string) => void;
   onSelectProblemNode?: (nodeId: string) => void;
+  onSelectDisplaySettings?: () => void;
 }) {
   const empty = !pending.createdNodes.length
     && !pending.deletedNodes.length
@@ -89,7 +93,8 @@ export function RoadmapPendingPanel({
     && !pending.deletedEdges.length
     && !pending.updatedEdges.length
     && !pending.viewportChanged
-    && !pendingProblemCards.length;
+    && !pendingProblemCards.length
+    && !displaySettingsPending;
 
   const color = (kind: 'create' | 'update' | 'delete') => ROADMAP_PENDING_COLORS[kind];
 
@@ -160,6 +165,29 @@ export function RoadmapPendingPanel({
               <div>
                 <div style={{ fontWeight: 500, marginBottom: 4, color: color('update') }}>
                   {i18n('Roadmap pending viewport changed')}
+                </div>
+              </div>
+            ) : null}
+            {displaySettingsPending ? (
+              <div>
+                <div
+                  style={{
+                    fontWeight: 500,
+                    marginBottom: 4,
+                    color: color('update'),
+                    cursor: onSelectDisplaySettings ? 'pointer' : 'default',
+                  }}
+                  onClick={onSelectDisplaySettings}
+                  onKeyDown={onSelectDisplaySettings ? (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onSelectDisplaySettings();
+                    }
+                  } : undefined}
+                  role={onSelectDisplaySettings ? 'button' : undefined}
+                  tabIndex={onSelectDisplaySettings ? 0 : undefined}
+                >
+                  {i18n('Roadmap pending display settings')}
                 </div>
               </div>
             ) : null}

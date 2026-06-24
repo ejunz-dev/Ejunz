@@ -607,6 +607,10 @@ Date: 日期
 'Roadmap detail filter match count': 匹配 {0} 個
 'Roadmap detail settings open': 顯示設定
 'Roadmap detail settings title': 顯示設定
+'Roadmap editor settings title': 顯示設定
+'Roadmap editor settings hint': 修改會立即在畫布預覽中生效，點擊保存後進入待提交；與圖譜變更一起使用頂部 Save 提交到 roadmap 文件（與 detail 頁的 personal 顯示設定無關）。
+'Roadmap editor settings applied pending': 顯示設定已更新，請使用 Save 提交。
+'Roadmap pending display settings': 顯示設定
 'Roadmap detail settings hint': 控制此頁路線圖畫布的顯示方式。
 'Roadmap detail settings show problem count': 顯示題目數量
 'Roadmap detail settings show problem count hint': 在節點右上角以氣泡數字顯示該節點的練習題數量。

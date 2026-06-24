@@ -34,6 +34,7 @@ import {
 import {
   getNodeLane,
   getRoadmapNodeWidth,
+  isRoadmapFlowNode,
   laneNodeX,
   nearestLaneFromX,
   nextLaneNodeY,
@@ -52,6 +53,7 @@ import {
   buildRoadmapProblemPendingItems,
   type EditorThemeStyles,
 } from 'vj/components/editor_workspace';
+import type { EditorCard } from 'vj/components/editor_workspace/card_problems_panel';
 import {
   baseEdgeToFlowEdge,
   baseNodeToFlowNode,
@@ -83,6 +85,17 @@ import {
   type RoadmapViewport,
 } from 'vj/components/roadmap/pending_changes';
 import { RoadmapPendingPanel } from 'vj/components/roadmap/RoadmapPendingPanel';
+import {
+  RoadmapEditorSettingsPanel,
+  RoadmapSettingsRailIcon,
+} from 'vj/components/roadmap/RoadmapEditorSettingsPanel';
+import {
+  buildRoadmapNodeProblemCountMap,
+  editorDisplaySettingsFromDoc,
+  readRoadmapEditorDisplaySettings,
+  roadmapDetailDisplaySettingsEqual,
+  type RoadmapDetailDisplaySettings,
+} from 'vj/components/roadmap/detail_display_settings';
 import { RoadmapGitPanel, RoadmapGitHubRailIcon } from 'vj/components/roadmap/RoadmapGitPanel';
 import { RoadmapHookPicker } from 'vj/components/roadmap/RoadmapHookPicker';
 import {
@@ -182,7 +195,7 @@ function roadmapContextMenuItemStyle(themeStyles: EditorThemeStyles, danger = fa
   };
 }
 
-type RoadmapLeftPanelTab = 'canvas' | 'pending' | 'git';
+type RoadmapLeftPanelTab = 'canvas' | 'pending' | 'git' | 'settings';
 type RoadmapRightPanelTab = 'edge' | 'problems';
 
 function RoadmapCanvasRailIcon() {
@@ -221,6 +234,12 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
   const [pendingProblemCardIds, setPendingProblemCardIds] = useState<Set<string>>(new Set());
   const [cardsReloadEpoch, setCardsReloadEpoch] = useState(0);
   const [leftPanelTab, setLeftPanelTab] = useState<RoadmapLeftPanelTab>('canvas');
+  const [savedDisplaySettings, setSavedDisplaySettings] = useState<RoadmapDetailDisplaySettings>(
+    () => readRoadmapEditorDisplaySettings(),
+  );
+  const [displaySettings, setDisplaySettings] = useState<RoadmapDetailDisplaySettings>(
+    () => readRoadmapEditorDisplaySettings(),
+  );
   const [branches, setBranches] = useState<string[]>(() => {
     const list = initialDoc.branches?.length ? [...initialDoc.branches] : ['main'];
     if (!list.includes('main')) list.unshift('main');
@@ -264,7 +283,22 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
   );
   const pendingCount = useMemo(() => countRoadmapPendingChanges(pendingChanges), [pendingChanges]);
   const problemPendingCount = pendingProblemCardIds.size;
-  const totalPendingCount = pendingCount + problemPendingCount;
+  const displaySettingsPending = useMemo(
+    () => !roadmapDetailDisplaySettingsEqual(displaySettings, savedDisplaySettings),
+    [displaySettings, savedDisplaySettings],
+  );
+  const totalPendingCount = pendingCount + problemPendingCount + (displaySettingsPending ? 1 : 0);
+  const nodeCardsMap = useMemo(
+    () => (((window as any).UiContext?.nodeCardsMap || {}) as Record<string, EditorCard[]>),
+    [cardsReloadEpoch],
+  );
+  const problemCountByNodeId = useMemo(
+    () => buildRoadmapNodeProblemCountMap(
+      nodes.filter(isRoadmapFlowNode),
+      nodeCardsMap,
+    ),
+    [nodeCardsMap, nodes],
+  );
   const pendingProblemItems = useMemo(() => {
     const nodeLabels = new Map(nodes.map((node) => [node.id, String(node.data?.label || node.id)]));
     return buildRoadmapProblemPendingItems(pendingProblemCardIds, nodeLabels)
@@ -290,6 +324,9 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
       ...node,
       data: {
         ...node.data,
+        showProblemCountBadge: displaySettings.showProblemCount
+          && supportsRoadmapPracticeProblems(node.data?.roadmapNodeType),
+        problemCount: problemCountByNodeId.get(node.id) || 0,
         editable: !deletedNodeIds.has(node.id),
         blockedAddDirections: [...getBlockedAddAdjacentDirections(node.id, edges, nodes)],
         onRequestAddAdjacent: (direction: AddAdjacentDirection, event: React.MouseEvent) => {
@@ -311,7 +348,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
       pendingStatusMaps,
     );
     return [...live, ...ghosts];
-  }, [edges, nodes, selectedNodeId, pendingStatusMaps, deletedNodeIds, savedSnapshot]);
+  }, [displaySettings.showProblemCount, edges, nodes, problemCountByNodeId, selectedNodeId, pendingStatusMaps, deletedNodeIds, savedSnapshot]);
   const viewEdges = useMemo(() => {
     const live = toRoadmapViewEdges(edges, selectedEdgeId, pendingStatusMaps, theme);
     if (!deletedEdgeIds.size) return live;
@@ -345,6 +382,12 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
     if (data.nodeCardsMap && (window as any).UiContext) {
       (window as any).UiContext.nodeCardsMap = data.nodeCardsMap;
     }
+    const nextEditorUi = editorDisplaySettingsFromDoc(next);
+    if ((window as any).UiContext) {
+      (window as any).UiContext.roadmapEditorUiPrefs = nextEditorUi;
+    }
+    setDisplaySettings(nextEditorUi);
+    setSavedDisplaySettings(nextEditorUi);
     setPendingProblemCardIds(new Set());
     setCardsReloadEpoch((epoch) => epoch + 1);
     const nextNodes = toLaneFlowNodes(next.nodes, next.edges);
@@ -805,6 +848,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
         layout: doc.layout || { type: 'manual', direction: 'TB', spacing: { x: 260, y: 140 } },
         viewport: nextViewport,
         operationDescription: i18n('Roadmap save operation'),
+        editorUi: displaySettings,
         cardCreates: collectPendingRoadmapCardCreates(pendingProblemCardIds, practiceNodeIds),
         cardUpdates: collectPendingRoadmapCardUpdates(pendingProblemCardIds, practiceNodeIds),
       });
@@ -812,6 +856,10 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
       if (res?.nodeCardsMap && (window as any).UiContext) {
         (window as any).UiContext.nodeCardsMap = res.nodeCardsMap;
       }
+      if ((window as any).UiContext) {
+        (window as any).UiContext.roadmapEditorUiPrefs = displaySettings;
+      }
+      setSavedDisplaySettings(displaySettings);
       setPendingProblemCardIds(new Set());
       setCardsReloadEpoch((epoch) => epoch + 1);
       setViewport(nextViewport);
@@ -823,7 +871,26 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
     } finally {
       setSaving(false);
     }
-  }, [context.domainId, context.docId, currentBranch, doc.docId, doc.layout, edges, nodes, pendingProblemCardIds, practiceNodeIds, reactFlow, refreshSavedSnapshot, viewport]);
+  }, [
+    context.domainId,
+    context.docId,
+    currentBranch,
+    displaySettings,
+    doc.docId,
+    doc.layout,
+    edges,
+    nodes,
+    pendingProblemCardIds,
+    practiceNodeIds,
+    reactFlow,
+    refreshSavedSnapshot,
+    viewport,
+  ]);
+
+  const handleApplyDisplaySettings = useCallback((next: RoadmapDetailDisplaySettings) => {
+    setDisplaySettings(next);
+    Notification.success(i18n('Roadmap editor settings applied pending'));
+  }, []);
 
   const saveRoadmapRef = useRef(saveRoadmap);
   saveRoadmapRef.current = saveRoadmap;
@@ -854,6 +921,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
 
   const canvasRailBtn = useRailIconButtonStyle(themeStyles, leftPanelTab === 'canvas');
   const pendingRailBtn = useRailIconButtonStyle(themeStyles, leftPanelTab === 'pending');
+  const settingsRailBtn = useRailIconButtonStyle(themeStyles, leftPanelTab === 'settings');
   const gitRailBtn = useRailIconButtonStyle(themeStyles, leftPanelTab === 'git');
   const edgeRailBtn = useRailIconButtonStyle(themeStyles, rightPanelOpen && rightPanelTab === 'edge');
   const problemsRailBtn = useRailIconButtonStyle(themeStyles, rightPanelOpen && rightPanelTab === 'problems');
@@ -1036,6 +1104,15 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
           </button>
           <button
             type="button"
+            onClick={() => setLeftPanelTab('settings')}
+            style={settingsRailBtn}
+            title={i18n('Roadmap editor settings title')}
+            aria-label={i18n('Roadmap editor settings title')}
+          >
+            <RoadmapSettingsRailIcon />
+          </button>
+          <button
+            type="button"
             onClick={() => setLeftPanelTab('git')}
             style={gitRailBtn}
             title="GitHub 同步"
@@ -1050,7 +1127,9 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
           ? i18n('Roadmap canvas')
           : leftPanelTab === 'pending'
             ? i18n('Uncommitted changes')
-            : 'GitHub'
+            : leftPanelTab === 'settings'
+              ? i18n('Roadmap editor settings title')
+              : 'GitHub'
       }
       leftPanel={(
         leftPanelTab === 'canvas' ? (
@@ -1125,6 +1204,7 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
           <RoadmapPendingPanel
             pending={pendingChanges}
             pendingProblemCards={pendingProblemItems}
+            displaySettingsPending={displaySettingsPending}
             themeStyles={themeStyles}
             onSelectNode={(nodeId) => {
               setLeftPanelTab('canvas');
@@ -1145,6 +1225,13 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
               setRightPanelTab('problems');
               setRightPanelOpen(true);
             }}
+            onSelectDisplaySettings={() => setLeftPanelTab('settings')}
+          />
+        ) : leftPanelTab === 'settings' ? (
+          <RoadmapEditorSettingsPanel
+            settings={displaySettings}
+            themeStyles={themeStyles}
+            onApply={handleApplyDisplaySettings}
           />
         ) : (
           <RoadmapGitPanel

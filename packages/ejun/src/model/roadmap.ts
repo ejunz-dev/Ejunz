@@ -1,4 +1,4 @@
-import { Filter, ObjectId } from 'mongodb';
+import { Filter, ObjectId, type Db } from 'mongodb';
 import type { BaseEdge, BaseNode, CardDoc, Problem, RoadmapDoc } from '../interface';
 import { BaseModel, CardModel, getBranchData, setBranchData } from './base';
 import * as document from './document';
@@ -182,6 +182,7 @@ export class RoadmapModel {
         layout?: RoadmapDoc['layout'];
         viewport?: RoadmapDoc['viewport'];
         theme?: Record<string, any>;
+        editorUi?: Record<string, boolean>;
     } {
         const branchName = branch || 'main';
         const metaMap = (roadmap as any).roadmapBranchMeta || {};
@@ -190,6 +191,7 @@ export class RoadmapModel {
             layout: meta.layout ?? roadmap.layout,
             viewport: meta.viewport ?? roadmap.viewport,
             theme: meta.theme ?? (roadmap as any).theme,
+            editorUi: meta.editorUi,
         };
     }
 
@@ -200,6 +202,7 @@ export class RoadmapModel {
             layout?: RoadmapDoc['layout'];
             viewport?: RoadmapDoc['viewport'];
             theme?: Record<string, any>;
+            editorUi?: Record<string, boolean>;
         },
     ): void {
         const branchName = branch || 'main';
@@ -232,6 +235,7 @@ export class RoadmapModel {
             layout: meta.layout,
             viewport: meta.viewport,
             theme: meta.theme,
+            editorUi: meta.editorUi,
         };
     }
 
@@ -253,12 +257,13 @@ export class RoadmapModel {
             viewport?: RoadmapDoc['viewport'];
             theme?: RoadmapDoc['theme'];
             branch?: string;
+            editorUi?: Record<string, boolean>;
         },
     ): Promise<void> {
         const roadmap = await this.get(domainId, docId);
         if (!roadmap) throw new Error('Roadmap not found');
 
-        let { nodes, edges, layout, viewport, theme } = payload;
+        let { nodes, edges, layout, viewport, theme, editorUi } = payload;
         const branch = payload.branch || (roadmap as any).currentBranch || 'main';
         if (nodes && Array.isArray(nodes)) {
             nodes = nodes.filter((node) => {
@@ -279,7 +284,16 @@ export class RoadmapModel {
 
         const working = { ...roadmap } as RoadmapDoc;
         setBranchData(working as any, branch, nodes || [], edges || []);
-        this.setBranchMeta(working, branch, { layout, viewport, theme });
+        const metaPatch: {
+            layout?: RoadmapDoc['layout'];
+            viewport?: RoadmapDoc['viewport'];
+            theme?: Record<string, any>;
+            editorUi?: Record<string, boolean>;
+        } = { layout, viewport, theme };
+        if (editorUi !== undefined) {
+            metaPatch.editorUi = editorUi;
+        }
+        this.setBranchMeta(working, branch, metaPatch);
         await this.updateFull(domainId, docId, {
             branchData: working.branchData,
             nodes: working.nodes,
@@ -397,6 +411,64 @@ export class RoadmapModel {
         }
 
         return cardIdMap;
+    }
+
+    /** Whitelist detail/editor display prefs from DB or client body. */
+    static sanitizeDisplayUiPrefs(raw: unknown): Record<string, boolean> {
+        const out: Record<string, boolean> = {};
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+        const o = raw as Record<string, unknown>;
+        if (typeof o.showProblemCount === 'boolean') out.showProblemCount = o.showProblemCount;
+        return out;
+    }
+
+    /** Editor canvas display prefs stored on the roadmap document (per branch). */
+    static sanitizeEditorUi(raw: unknown): Record<string, boolean> {
+        return RoadmapModel.sanitizeDisplayUiPrefs(raw);
+    }
+
+    static async loadUserDetailUiPrefs(
+        db: Db,
+        domainId: string,
+        roadmapDocId: number,
+        branch: string,
+        uid: unknown,
+    ): Promise<Record<string, boolean>> {
+        try {
+            const coll = db.collection('roadmap.userDetailUi');
+            const b = branch && String(branch).trim() ? String(branch).trim() : 'main';
+            const doc = await coll.findOne({ domainId, roadmapDocId, branch: b, uid });
+            return RoadmapModel.sanitizeDisplayUiPrefs(doc?.prefs);
+        } catch {
+            return {};
+        }
+    }
+
+    static async saveUserDetailUiPrefs(
+        db: Db,
+        domainId: string,
+        roadmapDocId: number,
+        branch: string,
+        uid: unknown,
+        displayPrefs: unknown,
+    ): Promise<void> {
+        const branchNorm = branch && String(branch).trim() ? String(branch).trim() : 'main';
+        const sanitized = RoadmapModel.sanitizeDisplayUiPrefs(displayPrefs);
+        const coll = db.collection('roadmap.userDetailUi');
+        await coll.updateOne(
+            { domainId, roadmapDocId, branch: branchNorm, uid },
+            {
+                $set: {
+                    domainId,
+                    roadmapDocId,
+                    branch: branchNorm,
+                    uid,
+                    prefs: sanitized,
+                    updateAt: new Date(),
+                },
+            },
+            { upsert: true },
+        );
     }
 }
 

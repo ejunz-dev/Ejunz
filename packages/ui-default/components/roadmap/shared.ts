@@ -67,6 +67,7 @@ export interface RoadmapDoc {
   edges?: BaseRoadmapEdge[];
   layout?: Record<string, any>;
   viewport?: { x: number; y: number; zoom: number };
+  editorUi?: { showProblemCount?: boolean };
 }
 
 export interface RoadmapQueryContext {

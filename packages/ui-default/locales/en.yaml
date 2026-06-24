@@ -1252,6 +1252,10 @@ Date: Date
 'Roadmap detail filter match count': '{0} matches'
 'Roadmap detail settings open': Display settings
 'Roadmap detail settings title': Display settings
+'Roadmap editor settings title': Display settings
+'Roadmap editor settings hint': Changes preview on the canvas after Save here and stay pending until you use the top Save button, which stores them on the roadmap document (separate from detail page personal display prefs).
+'Roadmap editor settings applied pending': Display settings updated. Use Save to commit.
+'Roadmap pending display settings': Display settings
 'Roadmap detail settings hint': Control how the roadmap canvas is displayed on this page.
 'Roadmap detail settings show problem count': Show problem count badge
 'Roadmap detail settings show problem count hint': Show a bubble with the number of practice problems on main and sub nodes.
