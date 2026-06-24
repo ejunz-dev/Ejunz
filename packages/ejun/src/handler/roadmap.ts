@@ -8,7 +8,6 @@ import RoadmapModel from '../model/roadmap';
 import { readOptionalRequestBaseDocId } from '../model/base';
 import { Handler, param, post, Types } from '../service/server';
 import { applyRoadmapGitRoutes, checkoutRoadmapGitBranch, fetchRoadmapGithubContext } from '../lib/roadmap_git';
-import { loadRoadmapDetailUiPrefs, sanitizeRoadmapDetailUiPrefs } from '../lib/roadmapDetailUiPrefs';
 import * as document from '../model/document';
 
 const ROADMAP_LIST_SEARCH_OPTIONS = {
@@ -158,6 +157,8 @@ async function renderRoadmapPage(
     const githubCtx = editable
         ? await fetchRoadmapGithubContext(domainId, handler.user._id)
         : { userGithubTokenConfigured: false };
+    const editorBranchMeta = RoadmapModel.getBranchMeta(roadmap, requestedBranch);
+    const roadmapEditorUiPrefs = RoadmapModel.sanitizeEditorUi(editorBranchMeta.editorUi);
 
     handler.response.template = editable ? 'roadmap_edit.html' : 'roadmap_detail.html';
     handler.response.body = {
@@ -167,6 +168,7 @@ async function renderRoadmapPage(
         githubRepo: ((roadmap as any).githubRepo || '') as string,
         userGithubTokenConfigured: githubCtx.userGithubTokenConfigured,
         nodeCardsMap,
+        roadmapEditorUiPrefs,
     };
 }
 
@@ -367,7 +369,7 @@ export class RoadmapDetailHandler extends Handler {
             requestedBranch,
             (viewRoadmap as { nodes?: BaseNode[] }).nodes,
         );
-        const roadmapDetailUiPrefs = await loadRoadmapDetailUiPrefs(
+        const roadmapDetailUiPrefs = await RoadmapModel.loadUserDetailUiPrefs(
             this.ctx.db.db,
             domainId,
             docId,
@@ -397,21 +399,13 @@ export class RoadmapDetailUiPrefsHandler extends Handler {
         if (!roadmap) throw new NotFoundError('Roadmap not found');
 
         const branchNorm = branch && String(branch).trim() ? String(branch).trim() : 'main';
-        const sanitized = sanitizeRoadmapDetailUiPrefs(displayPrefs);
-        const coll = this.ctx.db.db.collection('roadmap.userDetailUi');
-        await coll.updateOne(
-            { domainId, roadmapDocId: docId, branch: branchNorm, uid: this.user._id },
-            {
-                $set: {
-                    domainId,
-                    roadmapDocId: docId,
-                    branch: branchNorm,
-                    uid: this.user._id,
-                    prefs: sanitized,
-                    updateAt: new Date(),
-                },
-            },
-            { upsert: true },
+        await RoadmapModel.saveUserDetailUiPrefs(
+            this.ctx.db.db,
+            domainId,
+            docId,
+            branchNorm,
+            this.user._id,
+            displayPrefs,
         );
 
         this.response.body = { success: true };
@@ -467,6 +461,9 @@ export class RoadmapSaveHandler extends Handler {
 
         const data = this.request.body || {};
         const branch = data.branch || (roadmap as any).currentBranch || 'main';
+        const editorUi = data.editorUi !== undefined && data.editorUi !== null
+            ? RoadmapModel.sanitizeEditorUi(data.editorUi)
+            : undefined;
         await RoadmapModel.saveGraph(did, docId, {
             nodes: data.nodes,
             edges: data.edges,
@@ -474,6 +471,7 @@ export class RoadmapSaveHandler extends Handler {
             viewport: data.viewport,
             theme: data.theme,
             branch,
+            editorUi,
         });
 
         const savedNodes = Array.isArray(data.nodes) ? data.nodes as BaseNode[] : [];

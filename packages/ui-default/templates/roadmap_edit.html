@@ -8,6 +8,7 @@
   {{ set(UiContext, 'githubRepo', githubRepo or '') }}
   {{ set(UiContext, 'userGithubTokenConfigured', userGithubTokenConfigured or false) }}
   {{ set(UiContext, 'nodeCardsMap', nodeCardsMap if nodeCardsMap is defined else {}) }}
+  {{ set(UiContext, 'roadmapEditorUiPrefs', roadmapEditorUiPrefs if roadmapEditorUiPrefs is defined else {}) }}
   {{ set(UiContext, 'roadmap', {
     domainId: roadmap.domainId if roadmap else domainId,
     docId: roadmap.docId if roadmap else '',

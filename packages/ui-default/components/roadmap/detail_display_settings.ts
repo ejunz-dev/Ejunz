@@ -17,6 +17,33 @@ export function readRoadmapDetailDisplaySettings(): RoadmapDetailDisplaySettings
   };
 }
 
+/** Editor canvas display prefs persisted on the roadmap document (per branch). */
+export function readRoadmapEditorDisplaySettings(): RoadmapDetailDisplaySettings {
+  const raw =
+    (typeof window !== 'undefined' && (window as any).UiContext?.roadmapEditorUiPrefs) || null;
+  if (!raw || typeof raw !== 'object') return defaultRoadmapDetailDisplaySettings();
+  return {
+    showProblemCount: Boolean((raw as Record<string, unknown>).showProblemCount),
+  };
+}
+
+export function editorDisplaySettingsFromDoc(
+  doc?: { editorUi?: Record<string, unknown> } | null,
+): RoadmapDetailDisplaySettings {
+  const raw = doc?.editorUi;
+  if (!raw || typeof raw !== 'object') return defaultRoadmapDetailDisplaySettings();
+  return {
+    showProblemCount: Boolean(raw.showProblemCount),
+  };
+}
+
+export function roadmapDetailDisplaySettingsEqual(
+  a: RoadmapDetailDisplaySettings,
+  b: RoadmapDetailDisplaySettings,
+): boolean {
+  return a.showProblemCount === b.showProblemCount;
+}
+
 export function buildRoadmapNodeProblemCountMap(
   nodes: Array<{ id: string; data?: { roadmapNodeType?: string } }>,
   nodeCardsMap: Record<string, { problems?: unknown[] }[]>,
