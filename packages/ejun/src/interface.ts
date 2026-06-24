@@ -404,6 +404,8 @@ export interface RoadmapDoc extends Omit<BaseDoc, 'docType'> {
     docType: document['TYPE_ROADMAP'];
     /** Human-readable roadmap identifier. */
     rid?: string | number;
+    /** Per-branch editor canvas display prefs (from roadmapBranchMeta). */
+    editorUi?: Record<string, boolean>;
 }
 
 export interface PluginDoc extends Omit<BaseDoc, 'docType'> {

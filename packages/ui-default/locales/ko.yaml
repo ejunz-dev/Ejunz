@@ -757,6 +757,10 @@ Date: 날짜
 'Roadmap detail filter match count': '{0}개 일치'
 'Roadmap detail settings open': 표시 설정
 'Roadmap detail settings title': 표시 설정
+'Roadmap editor settings title': 표시 설정
+'Roadmap editor settings hint': 저장하면 캔버스에 바로 반영되며, 상단 Save로 로드맵 문서에 함께 제출됩니다(detail 페이지 personal 표시 설정과 별개).
+'Roadmap editor settings applied pending': 표시 설정이 업데이트되었습니다. Save로 제출하세요.
+'Roadmap pending display settings': 표시 설정
 'Roadmap detail settings hint': '이 페이지에서 로드맵 캔버스 표시 방식을 제어합니다.'
 'Roadmap detail settings show problem count': 문제 수 배지 표시
 'Roadmap detail settings show problem count hint': '각 노드 우측 상단에 연습 문제 수를 말풍선 숫자로 표시합니다.'
