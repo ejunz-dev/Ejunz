@@ -27,6 +27,11 @@ __langname: 한국어
 'Learn session preferences': 학습 세션 설정
 'Learn mode knowledge base': 지식 베이스
 'Learn mode roadmap': 로드맵
+'Develop mode knowledge base': 지식 베이스
+'Develop mode roadmap': 로드맵
+'Develop edit pool hint roadmap': 로드맵과 브랜치를 선택하고 일일 목표를 설정하세요. ↑↓로 순서를 정한 뒤 저장하면 「개발 시작」이 해당 순서로 로드맵 편집기로 이동합니다.
+'Develop no roadmaps': 이 도메인에 아직 로드맵이 없습니다. 먼저 로드맵을 만드세요.
+'Develop unknown roadmap': 로드맵을 찾을 수 없습니다
 'Current knowledge base (Learn)': 현재 지식 베이스 (학습)
 'Current roadmap (Learn)': 현재 로드맵 (학습)
 'Pending selection': 선택 대기

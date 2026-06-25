@@ -1726,42 +1726,15 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     () => ((window as any).UiContext?.developEditorContext as DevelopEditorContextWire) ?? null,
   );
   const [developSwitchModalOpen, setDevelopSwitchModalOpen] = useState(false);
-  const [developSettleBusy, setDevelopSettleBusy] = useState(false);
-  const [developSessionEditTotals, setDevelopSessionEditTotals] = useState(() => {
-    const t = (typeof window !== 'undefined' && (window as any).UiContext?.developSessionEditTotals) || null;
-    if (t && typeof t === 'object') {
-      return {
-        nodes: Number((t as any).nodes) || 0,
-        cards: Number((t as any).cards) || 0,
-        problems: Number((t as any).problems) || 0,
-      };
-    }
-    return { nodes: 0, cards: 0, problems: 0 };
-  });
 
   const pathnameForDevelopUi = typeof window !== 'undefined' ? window.location.pathname : '';
   const developSessionParamFromUrl =
     typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('session') : null;
   const onDevelopEditorPath = /\/develop\/editor(\/|$)/.test(pathnameForDevelopUi);
-  const onBaseBranchEditorPath = /\/base\/[^/]+\/branch\/[^/]+\/editor(?:\/|$)/.test(pathnameForDevelopUi);
-  const showDevelopSessionStripUi =
-    Boolean(developSessionParamFromUrl) && (onDevelopEditorPath || onBaseBranchEditorPath);
   const editorDevelopSessionKindFromUi =
     typeof window !== 'undefined'
       ? String(((window as any).UiContext?.editorDevelopSessionKind) || '')
       : '';
-  const developSessionStartedAtIsoFromUi =
-    typeof window !== 'undefined'
-      ? String(((window as any).UiContext?.developSessionStartedAtIso) || '')
-      : '';
-
-  const [developSessionClock, setDevelopSessionClock] = useState(0);
-  useEffect(() => {
-    if (!showDevelopSessionStripUi) return undefined;
-    if (!developSessionStartedAtIsoFromUi) return undefined;
-    const id = window.setInterval(() => setDevelopSessionClock((c) => c + 1), 10000);
-    return () => window.clearInterval(id);
-  }, [showDevelopSessionStripUi, developSessionStartedAtIsoFromUi]);
 
   /** Develop-pool editor: ensure `?session=` points at an `appRoute: develop` row for batch-save audit records. */
   useEffect(() => {
@@ -4456,14 +4429,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             learnProblemNotesDraftRef.current.clear();
             setLearnProblemNotesDraftCount(0);
             setLearnerNotesReloadEpoch((e) => e + 1);
-            const det = (response as any).developSessionEditTotals;
-            if (det && typeof det === 'object') {
-              setDevelopSessionEditTotals({
-                nodes: Number(det.nodes) || 0,
-                cards: Number(det.cards) || 0,
-                problems: Number(det.problems) || 0,
-              });
-            }
             if (response.nodeIdMap) {
               Object.entries(response.nodeIdMap).forEach(([tempId, realId]) => {
                 nodeIdMap.set(tempId, realId as string);
@@ -15089,23 +15054,6 @@ Reply with a JSON code block only for executable operations. For same-response f
               </div>
             );
           };
-          const formatDevelopElapsed = (ms: number) => {
-            let sec = Math.max(0, Math.floor(ms / 1000));
-            const h = Math.floor(sec / 3600);
-            sec -= h * 3600;
-            const m = Math.floor(sec / 60);
-            sec -= m * 60;
-            if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
-            return `${m}:${String(sec).padStart(2, '0')}`;
-          };
-          const startedAtMs = developSessionStartedAtIsoFromUi
-            ? new Date(developSessionStartedAtIsoFromUi).getTime()
-            : NaN;
-          const developSessionElapsedText = Number.isFinite(startedAtMs)
-            ? formatDevelopElapsed(Date.now() - startedAtMs)
-            : '';
-          void developSessionClock;
-
           const developPoolCardFullWidth = devCtx ? (
             <div style={{
               ...cardStyle,
@@ -15200,84 +15148,11 @@ Reply with a JSON code block only for executable operations. For same-response f
             </div>
           ) : null;
 
-          const developSessionStrip = showDevelopSessionStripUi && developSessionParamFromUrl ? (
-            <div
-              style={{
-                flexShrink: 0,
-                padding: isMobile ? '6px 10px 8px' : '10px 16px 12px',
-                borderBottom: `1px solid ${themeStyles.borderPrimary}`,
-                backgroundColor: themeStyles.bgSecondary,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: isMobile ? '6px' : '8px',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
-                <span style={{ fontSize: isMobile ? '12px' : '13px', fontWeight: 600, color: themeStyles.textPrimary }}>
-                  {i18n('Develop session contribution')}
-                </span>
-                <button
-                  type="button"
-                  title={i18n('Develop editor end session')}
-                  aria-label={i18n('Develop editor end session')}
-                  disabled={developSettleBusy}
-                  onClick={async () => {
-                    const sid = developSessionParamFromUrl;
-                    if (!sid) return;
-                    const d = (window as any).UiContext?.domainId || 'system';
-                    setDevelopSettleBusy(true);
-                    try {
-                      const res: any = await request.post(`/d/${d}/session/develop/settle`, { sessionId: sid });
-                      if (res?.redirect) {
-                        window.location.href = res.redirect;
-                        return;
-                      }
-                      Notification.error(i18n('Develop settle failed'));
-                    } catch (e: any) {
-                      Notification.error(e?.message || i18n('Develop settle failed'));
-                    } finally {
-                      setDevelopSettleBusy(false);
-                    }
-                  }}
-                  style={{
-                    flexShrink: 0,
-                    padding: isMobile ? '6px 10px' : '4px 12px',
-                    fontSize: 11,
-                    fontWeight: 600,
-                    lineHeight: 1.2,
-                    borderRadius: 6,
-                    border: `1px solid ${themeStyles.borderSecondary}`,
-                    background: themeStyles.bgButton,
-                    color: themeStyles.textPrimary,
-                    cursor: developSettleBusy ? 'wait' : 'pointer',
-                    opacity: developSettleBusy ? 0.75 : 1,
-                  }}
-                >
-                  {developSettleBusy ? '…' : i18n('Develop editor end session')}
-                </button>
-              </div>
-              {developSessionElapsedText ? (
-                <div style={{ fontSize: 10, color: themeStyles.textSecondary }}>
-                  {i18n('Develop session elapsed label')}
-                  {` ${developSessionElapsedText}`}
-                </div>
-              ) : null}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: isMobile ? '8px 12px' : '12px 16px', alignItems: 'center' }}>
-                <Stat label={i18n('Nodes')} value={formatNum(developSessionEditTotals.nodes)} color={themeStyles.statNode} />
-                <Stat label={i18n('Cards')} value={formatNum(developSessionEditTotals.cards)} color={themeStyles.statCard} />
-                <Stat label={i18n('Problems')} value={formatNum(developSessionEditTotals.problems)} color={themeStyles.statProblem} />
-              </div>
-            </div>
-          ) : null;
-
           const showDevelopPoolRow = !!(devCtx && editorDevelopSessionKindFromUi !== 'outline_node');
-          const showTodayContributionRow = !showDevelopPoolRow
-            && !onDevelopEditorPath
-            && !(showDevelopSessionStripUi && editorDevelopSessionKindFromUi === 'outline_node');
+          const showTodayContributionRow = !showDevelopPoolRow && !onDevelopEditorPath;
 
           return (
             <>
-              {developSessionStrip}
               {showDevelopPoolRow ? (
                 <div
                   style={{

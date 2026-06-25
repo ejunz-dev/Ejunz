@@ -5,6 +5,9 @@
   {{ set(UiContext, 'domainId', domainId) }}
   {{ set(UiContext, 'developPool', developPool or []) }}
   {{ set(UiContext, 'learnBases', learnBases or []) }}
+  {{ set(UiContext, 'developMode', developMode or 'base') }}
+  {{ set(UiContext, 'developRoadmaps', developRoadmaps or []) }}
+  {{ set(UiContext, 'developMapDocTypeRoadmap', developMapDocTypeRoadmap or 74) }}
   {{ set(UiContext, 'developDateUtc', developDateUtc or '') }}
   {{ set(UiContext, 'developTotalCheckinDays', developTotalCheckinDays or 0) }}
   {{ set(UiContext, 'developConsecutiveDays', developConsecutiveDays or 0) }}
