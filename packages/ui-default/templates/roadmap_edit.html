@@ -9,6 +9,18 @@
   {{ set(UiContext, 'userGithubTokenConfigured', userGithubTokenConfigured or false) }}
   {{ set(UiContext, 'nodeCardsMap', nodeCardsMap if nodeCardsMap is defined else {}) }}
   {{ set(UiContext, 'roadmapEditorUiPrefs', roadmapEditorUiPrefs if roadmapEditorUiPrefs is defined else {}) }}
+  {% if editorDevelopSessionKind is defined and editorDevelopSessionKind %}
+  {{ set(UiContext, 'editorDevelopSessionKind', editorDevelopSessionKind) }}
+  {% endif %}
+  {% if developSessionEditTotals is defined and developSessionEditTotals %}
+  {{ set(UiContext, 'developSessionEditTotals', developSessionEditTotals) }}
+  {% endif %}
+  {% if developSessionStartedAtIso is defined and developSessionStartedAtIso %}
+  {{ set(UiContext, 'developSessionStartedAtIso', developSessionStartedAtIso) }}
+  {% endif %}
+  {% if developEditorContext is defined and developEditorContext %}
+  {{ set(UiContext, 'developEditorContext', developEditorContext) }}
+  {% endif %}
   {{ set(UiContext, 'roadmap', {
     domainId: roadmap.domainId if roadmap else domainId,
     docId: roadmap.docId if roadmap else '',

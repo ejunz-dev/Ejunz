@@ -1,14 +1,23 @@
 import parser from '@ejunz/utils/lib/search';
 import type { Context } from '../context';
+import { ObjectId } from 'mongodb';
 import { BadRequestError, NotFoundError, ValidationError } from '../error';
 import type { RoadmapDoc, BaseNode } from '../interface';
 import { parseCategory } from '../lib/category';
+import { buildDevelopRoadmapEditorExtras } from '../lib/developRoadmapEditorExtras';
 import { PERM, PRIV } from '../model/builtin';
 import RoadmapModel from '../model/roadmap';
 import { readOptionalRequestBaseDocId } from '../model/base';
+import SessionModel, { readDevelopSessionEditTotals, type SessionDoc } from '../model/session';
 import { Handler, param, post, Types } from '../service/server';
 import { applyRoadmapGitRoutes, checkoutRoadmapGitBranch, fetchRoadmapGithubContext } from '../lib/roadmap_git';
 import * as document from '../model/document';
+import { deriveSessionLearnStatus } from '../lib/sessionListDisplay';
+import {
+    appendDevelopSaveRecordAfterBatchSave,
+    assertDevelopSessionAllowsEdits,
+    refreshDevelopSessionRunProgressAfterBatchSave,
+} from './base';
 
 const ROADMAP_LIST_SEARCH_OPTIONS = {
     keywords: ['category'],
@@ -135,7 +144,62 @@ function enrichRoadmapHookNodeUrls(handler: Handler, roadmap: RoadmapDoc): Roadm
     return { ...roadmap, nodes };
 }
 
-async function renderRoadmapPage(
+function developSaveDeltaToBatchShape(delta: Record<string, unknown>): Record<string, unknown> {
+    const n = (k: string) => Math.max(0, parseInt(String(delta[k] ?? 0), 10) || 0);
+    const fill = (count: number) => Array.from({ length: count }, () => ({}));
+    return {
+        nodeCreates: fill(n('nodeCreates')),
+        nodeUpdates: fill(n('nodeUpdates')),
+        nodeDeletes: fill(n('nodeDeletes')),
+        cardCreates: fill(n('cardCreates')),
+        cardUpdates: fill(n('cardUpdates')),
+        cardDeletes: fill(n('cardDeletes')),
+        edgeCreates: fill(n('edgeCreates')),
+        edgeDeletes: fill(n('edgeDeletes')),
+    };
+}
+
+async function loadRoadmapDevelopSessionExtras(
+    handler: Handler,
+    domainId: string,
+    docId: number,
+    branch: string,
+): Promise<Record<string, unknown>> {
+    const sessionHex = typeof handler.request.query?.session === 'string'
+        ? handler.request.query.session.trim()
+        : '';
+    if (!sessionHex || !ObjectId.isValid(sessionHex)) return {};
+    const sess = await SessionModel.coll.findOne({
+        _id: new ObjectId(sessionHex),
+        domainId,
+        uid: handler.user._id,
+        appRoute: 'develop',
+    }) as SessionDoc | null;
+    if (!sess) return {};
+    if (sess.developMapDocType !== document.TYPE_ROADMAP) return {};
+    const brSess = sess.branch && String(sess.branch).trim() ? String(sess.branch).trim() : 'main';
+    if (Number(sess.baseDocId) !== Number(docId) || brSess !== branch) return {};
+    const histSt = deriveSessionLearnStatus(sess);
+    if (histSt === 'timed_out' || histSt === 'finished' || histSt === 'abandoned') {
+        const histBase = handler.url('develop_session_history', { domainId });
+        const sep = histBase.includes('?') ? '&' : '?';
+        handler.response.redirect = `${histBase}${sep}session=${encodeURIComponent(sessionHex)}`;
+        return {};
+    }
+    return buildDevelopRoadmapEditorExtras({
+        db: handler.ctx.db.db,
+        domainId,
+        uid: handler.user._id,
+        priv: handler.user.priv,
+        sess,
+        makeEditorUrl: (poolDocId, poolBranch) => handler.url('roadmap_edit_branch', {
+            docId: String(poolDocId),
+            branch: poolBranch,
+        }),
+    });
+}
+
+export async function renderRoadmapPage(
     handler: Handler,
     domainId: string,
     docId: number,
@@ -424,6 +488,9 @@ export class RoadmapEditPageHandler extends Handler {
             return;
         }
         await renderRoadmapPage(this, domainId, docId, true, branch);
+        const developExtras = await loadRoadmapDevelopSessionExtras(this, domainId, docId, branch);
+        if (this.response.redirect) return;
+        Object.assign(this.response.body, developExtras);
     }
 }
 
@@ -491,7 +558,83 @@ export class RoadmapSaveHandler extends Handler {
             : {};
 
         const nodeCardsMap = await RoadmapModel.buildNodeCardsMap(did, docId, branch, savedNodes);
-        this.response.body = { success: true, cardIdMap, nodeCardsMap };
+        let developSessionEditTotalsResponse: ReturnType<typeof readDevelopSessionEditTotals> | undefined;
+        const developSessionRaw = typeof data.developSessionId === 'string' ? data.developSessionId.trim() : '';
+        let developSessionAllowed = false;
+        if (developSessionRaw && ObjectId.isValid(developSessionRaw)) {
+            try {
+                await assertDevelopSessionAllowsEdits(
+                    this,
+                    did,
+                    this.user._id,
+                    developSessionRaw,
+                    docId,
+                    branch,
+                    document.TYPE_ROADMAP,
+                );
+                developSessionAllowed = true;
+            } catch {
+                developSessionAllowed = false;
+            }
+            if (developSessionAllowed) {
+                const locRaw = data.developEditorLocation;
+                if (typeof locRaw === 'string' && locRaw.trim()) {
+                    await SessionModel.persistDevelopEditorUrl(did, this.user._id, {
+                        sessionHex: developSessionRaw,
+                        locationUrl: locRaw.trim(),
+                        expectedBaseDocId: docId,
+                        expectedBranch: branch,
+                    });
+                }
+                const delta = data.developSaveDelta && typeof data.developSaveDelta === 'object'
+                    ? data.developSaveDelta as Record<string, unknown>
+                    : null;
+                if (delta) {
+                    const batchShape = developSaveDeltaToBatchShape(delta);
+                    const cardIdMapObj = cardIdMap && typeof cardIdMap === 'object'
+                        ? new Map(Object.entries(cardIdMap as Record<string, string>))
+                        : new Map<string, string>();
+                    try {
+                        await refreshDevelopSessionRunProgressAfterBatchSave(
+                            this.ctx.db.db,
+                            did,
+                            this.user._id,
+                            this.user.priv,
+                            developSessionRaw,
+                        );
+                        await appendDevelopSaveRecordAfterBatchSave(
+                            did,
+                            this.user._id,
+                            docId,
+                            branch,
+                            developSessionRaw,
+                            batchShape,
+                            cardIdMapObj,
+                            [],
+                            document.TYPE_ROADMAP,
+                        );
+                    } catch {
+                        /* develop audit best-effort */
+                    }
+                }
+                const sdoc = await SessionModel.coll.findOne({
+                    _id: new ObjectId(developSessionRaw),
+                    domainId: did,
+                    uid: this.user._id,
+                    appRoute: 'develop',
+                }) as SessionDoc | null;
+                if (sdoc) developSessionEditTotalsResponse = readDevelopSessionEditTotals(sdoc);
+            }
+        }
+
+        this.response.body = {
+            success: true,
+            cardIdMap,
+            nodeCardsMap,
+            ...(developSessionEditTotalsResponse
+                ? { developSessionEditTotals: developSessionEditTotalsResponse }
+                : {}),
+        };
     }
 }
 

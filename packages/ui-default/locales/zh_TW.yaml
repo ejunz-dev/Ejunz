@@ -23,6 +23,11 @@ __langname: 正體中文
 'Learn session preferences': 學習會話設定
 'Learn mode knowledge base': 知識庫
 'Learn mode roadmap': 路線圖
+'Develop mode knowledge base': 知識庫
+'Develop mode roadmap': 路線圖
+'Develop edit pool hint roadmap': 選擇路線圖與分支，並設定每日節點、卡片、題目目標；用 ↑↓ 調整順序後儲存。「開始開發」將按該順序進入路線圖編輯器。
+'Develop no roadmaps': 當前域內還沒有路線圖，請先建立路線圖。
+'Develop unknown roadmap': 路線圖不存在
 'Current knowledge base (Learn)': 當前知識庫（學習）
 'Current roadmap (Learn)': 當前路線圖（學習）
 'Pending selection': 待選擇

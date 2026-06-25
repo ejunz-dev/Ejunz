@@ -827,6 +827,11 @@ Learn wall result problems_done: '{0} problems'
 Learn wall result time_sec: 'Time {0}s'
 develop: Develop
 'Develop': Develop
+'Develop mode knowledge base': Knowledge base
+'Develop mode roadmap': Roadmap
+'Develop edit pool hint roadmap': Pick roadmaps and branches, set daily goals. Use ↑↓ to set order, then save. Start develop follows this order into the roadmap editor.
+'Develop no roadmaps': No roadmaps in this domain yet. Create a roadmap first.
+'Develop unknown roadmap': Roadmap not found
 'Develop branch': Branch
 'Develop add row': Add entry
 'Develop edit pool hint': Pick bases and branches, set daily goals. Use ↑↓ to set order, then save. Start develop follows this order.

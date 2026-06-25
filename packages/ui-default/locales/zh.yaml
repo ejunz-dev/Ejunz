@@ -1100,6 +1100,11 @@ Learn wall result problems_done: '{0} 道题'
 Learn wall result time_sec: '用时 {0} 秒'
 develop: 开发
 'Develop': 开发
+'Develop mode knowledge base': 知识库
+'Develop mode roadmap': 路线图
+'Develop edit pool hint roadmap': 选择路线图与分支，并设置每日节点、卡片、题目目标；用 ↑↓ 调整顺序后保存。「开始开发」将按该顺序进入路线图编辑器。
+'Develop no roadmaps': 当前域内还没有路线图，请先创建路线图。
+'Develop unknown roadmap': 路线图不存在
 'Develop branch': 分支
 'Develop add row': 添加一项
 'Develop edit pool hint': 选择知识库与分支，并设置每日节点、卡片、题目目标；用 ↑↓ 调整顺序后保存。「开始开发」将按该顺序进入编辑器。

@@ -8,6 +8,7 @@ import Notification from 'vj/components/notification';
 import { ContributionWall, type ContributionDetail } from '../components/ContributionWall';
 
 type LearnBaseOption = { docId: number; title?: string; branches?: string[] };
+type DevelopSourceMode = 'base' | 'roadmap';
 
 type PoolEntry = {
   baseDocId: number;
@@ -108,7 +109,12 @@ function MiniProgress({
 
 function DevelopPage() {
   const domainId = (window as any).UiContext?.domainId as string;
+  const developMode = (String((window as any).UiContext?.developMode || 'base').trim().toLowerCase() === 'roadmap'
+    ? 'roadmap'
+    : 'base') as DevelopSourceMode;
   const learnBases = ((window as any).UiContext?.learnBases || []) as LearnBaseOption[];
+  const developRoadmaps = ((window as any).UiContext?.developRoadmaps || []) as LearnBaseOption[];
+  const developMapDocTypeRoadmap = Number((window as any).UiContext?.developMapDocTypeRoadmap) || 74;
   const developDateUtc = String((window as any).UiContext?.developDateUtc || '').trim();
   const developTotalCheckinDays = Number((window as any).UiContext?.developTotalCheckinDays) || 0;
   const developConsecutiveDays = Number((window as any).UiContext?.developConsecutiveDays) || 0;
@@ -173,6 +179,7 @@ function DevelopPage() {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [showConsecutiveTip, setShowConsecutiveTip] = useState(false);
   const [checkinSubmitting, setCheckinSubmitting] = useState(false);
+  const [modeSwitchBusy, setModeSwitchBusy] = useState(false);
   const [developStartBusy, setDevelopStartBusy] = useState(false);
   const consecutiveBubbleRef = useRef<HTMLButtonElement>(null);
 
@@ -258,11 +265,20 @@ function DevelopPage() {
 
   const poolCount = displayPool.length;
 
-  const baseMeta = useMemo(() => {
+  const poolSources = developMode === 'roadmap' ? developRoadmaps : learnBases;
+
+  const sourceMeta = useMemo(() => {
+    const byId = new Map<number, LearnBaseOption>();
+    for (const s of poolSources) byId.set(Number(s.docId), s);
+    return byId;
+  }, [poolSources]);
+
+  const allSourceMeta = useMemo(() => {
     const byId = new Map<number, LearnBaseOption>();
     for (const b of learnBases) byId.set(Number(b.docId), b);
+    for (const r of developRoadmaps) byId.set(Number(r.docId), r);
     return byId;
-  }, [learnBases]);
+  }, [learnBases, developRoadmaps]);
 
   const handleConsecutiveBubbleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -297,8 +313,21 @@ function DevelopPage() {
     setEditModalOpen(false);
   }, []);
 
+  const switchDevelopMode = useCallback(async (mode: DevelopSourceMode) => {
+    if (!domainId || modeSwitchBusy || mode === developMode) return;
+    setModeSwitchBusy(true);
+    try {
+      await request.post(`/d/${domainId}/develop/mode`, { developMode: mode });
+      window.location.reload();
+    } catch (e: any) {
+      const msg = e?.response?.data?.message ?? e?.message ?? i18n('Develop save failed');
+      Notification.error(typeof msg === 'string' ? msg : String(msg));
+      setModeSwitchBusy(false);
+    }
+  }, [domainId, developMode, modeSwitchBusy]);
+
   const addEditRow = useCallback(() => {
-    const first = learnBases[0];
+    const first = poolSources[0];
     if (!first) return;
     setEditDraft((d) => [...d, {
       baseDocId: Number(first.docId),
@@ -308,7 +337,7 @@ function DevelopPage() {
       dailyProblemGoal: 0,
       sortOrder: d.length,
     }]);
-  }, [learnBases]);
+  }, [poolSources]);
 
   const removeEditRow = useCallback((idx: number) => {
     setEditDraft((d) => d.filter((_, i) => i !== idx));
@@ -340,7 +369,7 @@ function DevelopPage() {
         dailyProblemGoal: row.dailyProblemGoal,
         sortOrder: i,
       }));
-      await request.post(`/d/${domainId}/develop/pool`, { pool });
+      await request.post(`/d/${domainId}/develop/pool`, { pool, poolKind: developMode });
       window.location.reload();
     } catch (e: any) {
       const msg = e?.response?.data?.message ?? e?.message ?? i18n('Develop save failed');
@@ -348,7 +377,7 @@ function DevelopPage() {
     } finally {
       setSaving(false);
     }
-  }, [domainId, editDraft, saving]);
+  }, [domainId, developMode, editDraft, saving]);
 
   const startDevelopOrdered = useCallback(async () => {
     if (!domainId || displayPool.length === 0 || developStartBusy) return;
@@ -375,10 +404,14 @@ function DevelopPage() {
     }
     const first = queue[0];
     try {
-      const res: any = await request.post(`/d/${domainId}/session/develop/start`, {
+      const startBody: Record<string, unknown> = {
         baseDocId: first.baseDocId,
         branch: first.branch,
-      });
+      };
+      if (developMode === 'roadmap') {
+        startBody.developMapDocType = developMapDocTypeRoadmap;
+      }
+      const res: any = await request.post(`/d/${domainId}/session/develop/start`, startBody);
       const sessionId = res?.sessionId ?? res?.body?.sessionId;
       if (typeof sessionId === 'string' && sessionId.trim()) {
         window.location.href = `/d/${domainId}/develop/editor?session=${encodeURIComponent(sessionId.trim())}`;
@@ -391,7 +424,7 @@ function DevelopPage() {
     } finally {
       setDevelopStartBusy(false);
     }
-  }, [domainId, displayPool, pendingRunPool, developStartBusy, todayDevelopResumeUrl]);
+  }, [domainId, developMode, developMapDocTypeRoadmap, displayPool, pendingRunPool, developStartBusy, todayDevelopResumeUrl]);
 
   const hasAnyGoal = useMemo(
     () => displayPool.some((r) => r.dailyNodeGoal > 0 || r.dailyCardGoal > 0 || r.dailyProblemGoal > 0),
@@ -428,10 +461,12 @@ function DevelopPage() {
     }
   }, [domainId, checkinSubmitting, checkinDisabled]);
 
-  const hasBases = learnBases.length > 0;
+  const hasSources = poolSources.length > 0;
+  const noSourcesHint = developMode === 'roadmap' ? i18n('Develop no roadmaps') : i18n('Develop no bases');
+  const editPoolHint = developMode === 'roadmap' ? i18n('Develop edit pool hint roadmap') : i18n('Develop edit pool hint');
 
   const renderDevelopPoolRow = (row: DisplayRow, poolIndex: number) => {
-    const b = baseMeta.get(row.baseDocId);
+    const b = allSourceMeta.get(row.baseDocId);
     const title = (row.baseTitle || (b?.title || '').trim() || String(row.baseDocId));
     const doneToday = !!row.todayGoalsMet && rowHasDailyGoal(row);
     return (
@@ -790,6 +825,61 @@ function DevelopPage() {
 
           <div style={{
             display: 'flex',
+            gap: 4,
+            padding: 4,
+            background: themeStyles.bgSecondary,
+            borderRadius: 12,
+            border: `1px solid ${themeStyles.border}`,
+            marginBottom: 16,
+          }}>
+            <button
+              type="button"
+              disabled={modeSwitchBusy}
+              onClick={() => { void switchDevelopMode('base'); }}
+              style={{
+                flex: 1,
+                padding: isMobile ? '10px 8px' : '10px 12px',
+                minHeight: isMobile ? 44 : undefined,
+                fontSize: isMobile ? 12 : 14,
+                fontWeight: 600,
+                border: 'none',
+                borderRadius: 8,
+                cursor: developMode === 'base' || modeSwitchBusy ? 'default' : 'pointer',
+                background: developMode === 'base' ? themeStyles.bgCard : 'transparent',
+                color: developMode === 'base' ? themeStyles.textPrimary : themeStyles.textSecondary,
+                boxShadow: developMode === 'base' ? (theme === 'dark' ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 6px rgba(0,0,0,0.08)') : 'none',
+                transition: 'all 0.2s',
+                opacity: modeSwitchBusy ? 0.7 : 1,
+              }}
+            >
+              {i18n('Develop mode knowledge base')}
+            </button>
+            <button
+              type="button"
+              disabled={modeSwitchBusy}
+              onClick={() => { void switchDevelopMode('roadmap'); }}
+              style={{
+                flex: 1,
+                padding: isMobile ? '10px 8px' : '10px 12px',
+                minHeight: isMobile ? 44 : undefined,
+                fontSize: isMobile ? 12 : 14,
+                fontWeight: 600,
+                border: 'none',
+                borderRadius: 8,
+                cursor: developMode === 'roadmap' || modeSwitchBusy ? 'default' : 'pointer',
+                background: developMode === 'roadmap' ? themeStyles.bgCard : 'transparent',
+                color: developMode === 'roadmap' ? themeStyles.textPrimary : themeStyles.textSecondary,
+                boxShadow: developMode === 'roadmap' ? (theme === 'dark' ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 6px rgba(0,0,0,0.08)') : 'none',
+                transition: 'all 0.2s',
+                opacity: modeSwitchBusy ? 0.7 : 1,
+              }}
+            >
+              {i18n('Develop mode roadmap')}
+            </button>
+          </div>
+
+          <div style={{
+            display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             marginBottom: 20,
@@ -877,12 +967,12 @@ function DevelopPage() {
           <div style={btnRowStyle}>
             <button
               type="button"
-              disabled={!hasBases}
+              disabled={!hasSources}
               onClick={openEditModal}
               style={{
                 ...outlineBtn,
-                opacity: hasBases ? 1 : 0.5,
-                cursor: hasBases ? 'pointer' : 'not-allowed',
+                opacity: hasSources ? 1 : 0.5,
+                cursor: hasSources ? 'pointer' : 'not-allowed',
               }}
             >
               {i18n('Edit')}
@@ -942,8 +1032,8 @@ function DevelopPage() {
             </p>
           ) : null}
 
-          {!hasBases ? (
-            <p style={{ color: themeStyles.textSecondary, fontSize: 14, marginTop: 16 }}>{i18n('Develop no bases')}</p>
+          {!hasSources ? (
+            <p style={{ color: themeStyles.textSecondary, fontSize: 14, marginTop: 16 }}>{noSourcesHint}</p>
           ) : poolCount === 0 ? (
             <div style={{
               marginTop: 16,
@@ -1093,7 +1183,7 @@ function DevelopPage() {
                                 }}
                                 >
                                   {se.baseBreakdown.map((b) => {
-                                    const title = baseMeta.get(b.baseDocId)?.title?.trim()
+                                    const title = allSourceMeta.get(b.baseDocId)?.title?.trim()
                                       || i18n('Develop wall base fallback title', b.baseDocId);
                                     return (
                                       <li key={`${b.baseDocId}-${b.branch}`} style={{ marginBottom: 2 }}>
@@ -1356,16 +1446,16 @@ function DevelopPage() {
                 {i18n('Develop edit pool')}
               </div>
               <div style={{ fontSize: 12, color: themeStyles.textSecondary, marginTop: 6 }}>
-                {i18n('Develop edit pool hint')}
+                {editPoolHint}
               </div>
             </div>
             <div style={{ padding: 16 }}>
-              {!learnBases.length ? (
-                <p style={{ color: themeStyles.textSecondary }}>{i18n('Develop no bases')}</p>
+              {!poolSources.length ? (
+                <p style={{ color: themeStyles.textSecondary }}>{noSourcesHint}</p>
               ) : (
                 <>
                   {editDraft.map((row, idx) => {
-                    const b = baseMeta.get(row.baseDocId);
+                    const b = sourceMeta.get(row.baseDocId);
                     const branches = b?.branches?.length ? b.branches : ['main'];
                     return (
                       <div
@@ -1383,7 +1473,7 @@ function DevelopPage() {
                             value={row.baseDocId}
                             onChange={(ev) => {
                               const docId = parseInt(ev.target.value, 10);
-                              const nb = baseMeta.get(docId);
+                              const nb = sourceMeta.get(docId);
                               const brs = nb?.branches?.length ? nb.branches : ['main'];
                               updateEditRow(idx, { baseDocId: docId, branch: brs[0] || 'main' });
                             }}
@@ -1396,7 +1486,7 @@ function DevelopPage() {
                               color: themeStyles.textPrimary,
                             }}
                           >
-                            {learnBases.map((lb) => (
+                            {poolSources.map((lb) => (
                               <option key={lb.docId} value={lb.docId}>{(lb.title || '').trim() || lb.docId}</option>
                             ))}
                           </select>
@@ -1537,7 +1627,7 @@ function DevelopPage() {
               </button>
               <button
                 type="button"
-                disabled={saving || !learnBases.length}
+                disabled={saving || !poolSources.length}
                 onClick={() => { void savePoolFromEdit(); }}
                 style={{
                   flex: 1,
@@ -1546,8 +1636,8 @@ function DevelopPage() {
                   border: 'none',
                   background: themeStyles.primary,
                   color: '#fff',
-                  cursor: saving || !learnBases.length ? 'not-allowed' : 'pointer',
-                  opacity: !learnBases.length ? 0.6 : 1,
+                  cursor: saving || !poolSources.length ? 'not-allowed' : 'pointer',
+                  opacity: !poolSources.length ? 0.6 : 1,
                 }}
               >
                 {saving ? i18n('Saving...') : i18n('Develop save pool')}
