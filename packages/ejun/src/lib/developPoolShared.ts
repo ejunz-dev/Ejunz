@@ -1,5 +1,10 @@
 import DomainModel from '../model/domain';
 import { developBranchKey, developTodayUtcYmd, getDevelopBranchDailyMany } from './developBranchDaily';
+import {
+    developPoolFieldForMode,
+    getDevelopMode,
+    type DevelopSourceMode,
+} from './developModePrefs';
 
 /** Re-export for handlers that import pool helpers from this module (e.g. `session.ts`). */
 export { developBranchKey };
@@ -168,8 +173,11 @@ export async function loadDevelopRunQueuePool(
     domainId: string,
     uid: number,
     priv: number,
+    mode?: DevelopSourceMode,
 ): Promise<DevelopPoolEntryWire[]> {
-    const full = await loadUserDevelopPool(domainId, uid, priv);
+    const full = mode
+        ? await loadUserDevelopPoolByMode(domainId, uid, priv, mode)
+        : await loadUserDevelopPool(domainId, uid, priv);
     if (!full.length) return [];
     const date = developTodayUtcYmd();
     const stats = await getDevelopBranchDailyMany(db, domainId, uid, date, full);
@@ -207,8 +215,32 @@ export async function loadUserDevelopPool(
     uid: number,
     priv: number,
 ): Promise<DevelopPoolEntryWire[]> {
+    return loadUserDevelopPoolByMode(domainId, uid, priv, 'base');
+}
+
+export async function loadUserDevelopPoolByMode(
+    domainId: string,
+    uid: number,
+    priv: number,
+    mode: DevelopSourceMode,
+): Promise<DevelopPoolEntryWire[]> {
     const dudoc = await DomainModel.getDomainUser(domainId, { _id: uid, priv });
-    return normalizeDevelopPool((dudoc as any)?.developPool);
+    const field = developPoolFieldForMode(mode);
+    return normalizeDevelopPool((dudoc as any)?.[field]);
+}
+
+export async function loadUserDevelopPoolForActiveMode(
+    domainId: string,
+    uid: number,
+    priv: number,
+): Promise<{ mode: DevelopSourceMode; pool: DevelopPoolEntryWire[] }> {
+    const dudoc = await DomainModel.getDomainUser(domainId, { _id: uid, priv }) as Record<string, unknown> | null;
+    const mode = getDevelopMode(dudoc);
+    const field = developPoolFieldForMode(mode);
+    return {
+        mode,
+        pool: normalizeDevelopPool(dudoc?.[field]),
+    };
 }
 
 /**

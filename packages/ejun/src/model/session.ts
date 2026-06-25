@@ -104,6 +104,19 @@ export async function validateDevelopEditorStoredLocation(
     const loc = locationUrl.trim().slice(0, 2048);
     if (!loc || !sessionHex || !ObjectId.isValid(sessionHex)) return false;
     if (validateDevelopEditorEntryLocation(domainId, loc, sessionHex)) return true;
+    if (validateDevelopEditorEntryLocation(domainId, loc, sessionHex)) return true;
+    const roadmapM = /^\/d\/([^/]+)\/roadmap\/([^/]+)\/branch\/([^/]+)\/edit(?:\/)?(?:\?|$)/.exec(loc);
+    if (roadmapM) {
+        if (roadmapM[1] !== domainId) return false;
+        const br = roadmapM[3] && String(roadmapM[3]).trim() ? String(roadmapM[3]).trim() : 'main';
+        if (br !== (expectedBranch && String(expectedBranch).trim() ? String(expectedBranch).trim() : 'main')) return false;
+        const docSeg = decodeURIComponent(String(roadmapM[2] || ''));
+        const docId = parseInt(docSeg, 10);
+        if (!Number.isFinite(docId) || docId !== Number(expectedBaseDocId)) return false;
+        const qi = loc.indexOf('?');
+        const sp = new URLSearchParams(qi >= 0 ? loc.slice(qi + 1) : '');
+        return sp.get('session') === sessionHex;
+    }
     const m = /^\/d\/([^/]+)\/base\/([^/]+)\/branch\/([^/]+)\/editor(?:\/)?(?:\?|$)/.exec(loc);
     if (!m) return false;
     if (m[1] !== domainId) return false;

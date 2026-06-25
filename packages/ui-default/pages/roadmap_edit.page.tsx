@@ -234,6 +234,9 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
   );
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const developSessionParamFromUrl = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('session')
+    : null;
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [rightPanelTab, setRightPanelTab] = useState<RoadmapRightPanelTab>('problems');
   const [pendingProblemCardIds, setPendingProblemCardIds] = useState<Set<string>>(new Set());
@@ -856,7 +859,9 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
     setSaving(true);
     try {
       const nextViewport = reactFlow?.getViewport?.() || viewport;
-      const res: any = await request.post(roadmapApiPath('/save', context.domainId), {
+      const cardCreates = collectPendingRoadmapCardCreates(pendingProblemCardIds, practiceNodeIds);
+      const cardUpdates = collectPendingRoadmapCardUpdates(pendingProblemCardIds, practiceNodeIds);
+      const savePayload: Record<string, unknown> = {
         docId: Number(context.docId || doc.docId),
         branch: currentBranch,
         nodes: nodes.map(flowNodeToBaseNode),
@@ -865,9 +870,24 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
         viewport: nextViewport,
         operationDescription: i18n('Roadmap save operation'),
         editorUi: displaySettings,
-        cardCreates: collectPendingRoadmapCardCreates(pendingProblemCardIds, practiceNodeIds),
-        cardUpdates: collectPendingRoadmapCardUpdates(pendingProblemCardIds, practiceNodeIds),
-      });
+        cardCreates,
+        cardUpdates,
+      };
+      if (developSessionParamFromUrl) {
+        savePayload.developSessionId = developSessionParamFromUrl;
+        savePayload.developEditorLocation = `${window.location.pathname}${window.location.search}`;
+        savePayload.developSaveDelta = {
+          nodeCreates: pendingChanges.createdNodes.length,
+          nodeUpdates: pendingChanges.updatedNodes.length,
+          nodeDeletes: pendingChanges.deletedNodes.length,
+          edgeCreates: pendingChanges.createdEdges.length,
+          edgeDeletes: pendingChanges.deletedEdges.length,
+          cardCreates: cardCreates.length,
+          cardUpdates: cardUpdates.length,
+          cardDeletes: 0,
+        };
+      }
+      const res: any = await request.post(roadmapApiPath('/save', context.domainId), savePayload);
       if (res?.cardIdMap) applyRoadmapCardIdMap(res.cardIdMap);
       if (res?.nodeCardsMap && (window as any).UiContext) {
         (window as any).UiContext.nodeCardsMap = res.nodeCardsMap;
@@ -896,6 +916,8 @@ function RoadmapEditor({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: H
     doc.layout,
     edges,
     nodes,
+    pendingChanges,
+    developSessionParamFromUrl,
     pendingProblemCardIds,
     practiceNodeIds,
     reactFlow,

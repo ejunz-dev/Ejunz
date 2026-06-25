@@ -159,7 +159,7 @@ async function applyLearnProblemNotesBatchBlocks(
 /** Machine token in {@link BadRequestError} params for API clients (see `request.ajax` in ui-default). */
 const DEVELOP_SESSION_CLOSED_CODE = 'DEVELOP_SESSION_CLOSED';
 
-async function assertDevelopSessionAllowsEdits(
+export async function assertDevelopSessionAllowsEdits(
     h: Handler,
     domainId: string,
     uid: number,
@@ -4781,7 +4781,7 @@ function buildDevelopSaveChangeLines(data: Record<string, unknown>): DevelopSave
 }
 
 /** After each save, recompute develop run progress from today’s pending queue and the session’s base/branch. */
-async function refreshDevelopSessionRunProgressAfterBatchSave(
+export async function refreshDevelopSessionRunProgressAfterBatchSave(
     db: { collection: (n: string) => any },
     domainId: string,
     uid: number,
@@ -4814,7 +4814,7 @@ async function refreshDevelopSessionRunProgressAfterBatchSave(
     await SessionModel.touchById(domainId, uid, sid, { progress: prev });
 }
 
-async function appendDevelopSaveRecordAfterBatchSave(
+export async function appendDevelopSaveRecordAfterBatchSave(
     domainId: string,
     uid: number,
     docId: number,

@@ -20,10 +20,12 @@ import {
     developBranchKey,
     developRunTerminalTotals,
     loadUserDevelopPool,
+    loadUserDevelopPoolByMode,
 } from '../lib/developPoolShared';
 import { readDevelopSessionDeadlineMs } from '../lib/sessionUtcDaily';
 import { PERM, PRIV } from '../model/builtin';
 import { BaseModel } from '../model/base';
+import RoadmapModel from '../model/roadmap';
 import * as document from '../model/document';
 import { getBranchData } from './base';
 import DomainModel from '../model/domain';
@@ -183,10 +185,28 @@ function mergeSessionProgressWithDevelopRun(
 
 function parseDevelopMapDocType(body: Record<string, unknown>): number {
     const raw = body.developMapDocType ?? body.mapDocType ?? body.mindMapKind;
+    if (raw === document.TYPE_ROADMAP || raw === 74 || raw === 'roadmap') {
+        return document.TYPE_ROADMAP;
+    }
     if (raw !== undefined && raw !== document.TYPE_BASE && raw !== 70 && raw !== 'base') {
         throw new ValidationError('Invalid mapDocType');
     }
     return document.TYPE_BASE;
+}
+
+async function loadDevelopMindMapDoc(
+    domainId: string,
+    docId: number,
+    mapDocType: number,
+): Promise<{ doc: import('../interface').BaseDoc; mapDocType: number }> {
+    if (mapDocType === document.TYPE_ROADMAP) {
+        const rm = await RoadmapModel.get(domainId, docId);
+        if (!rm) throw new NotFoundError('Roadmap not found');
+        return { doc: rm as unknown as import('../interface').BaseDoc, mapDocType: document.TYPE_ROADMAP };
+    }
+    const b = await BaseModel.get(domainId, docId);
+    if (!b) throw new NotFoundError('Base not found');
+    return { doc: b, mapDocType: document.TYPE_BASE };
 }
 
 class DevelopSessionStartHandler extends Handler {
@@ -200,8 +220,7 @@ class DevelopSessionStartHandler extends Handler {
         }
         const mapDocType = parseDevelopMapDocType(body);
         const branch = typeof body.branch === 'string' && body.branch.trim() ? body.branch.trim() : 'main';
-        const mindMap = await BaseModel.get(finalDomainId, baseDocId);
-        if (!mindMap) throw new NotFoundError('Base not found');
+        const { doc: mindMap } = await loadDevelopMindMapDoc(finalDomainId, baseDocId, mapDocType);
         if (!this.user.own(mindMap)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
 
         const fromOutline = body.fromOutline === true;
@@ -217,7 +236,8 @@ class DevelopSessionStartHandler extends Handler {
             }
         }
 
-        const fullPool = await loadUserDevelopPool(finalDomainId, this.user._id, this.user.priv);
+        const poolMode = mapDocType === document.TYPE_ROADMAP ? 'roadmap' as const : 'base' as const;
+        const fullPool = await loadUserDevelopPoolByMode(finalDomainId, this.user._id, this.user.priv, poolMode);
         const poolKey = developBranchKey(baseDocId, branch);
         if (!fromOutline) {
             if (!fullPool.length) {
@@ -248,7 +268,7 @@ class DevelopSessionStartHandler extends Handler {
                 developSessionNotSettledMongoFilter,
             ],
         };
-        (reuseFilter.$and as unknown[]).push({ developMapDocType: document.TYPE_BASE });
+        (reuseFilter.$and as unknown[]).push({ developMapDocType: mapDocType });
         if (fromOutline) {
             reuseFilter.nodeId = nodeId;
             (reuseFilter.$and as unknown[]).push({
@@ -363,7 +383,8 @@ class DevelopSessionSettleHandler extends Handler {
             ? { ...(prevRaw as Record<string, unknown>) }
             : {};
         prev.developSettledAt = new Date();
-        const fullPool = await loadUserDevelopPool(finalDomainId, this.user._id, this.user.priv);
+        const settleMode = sess.developMapDocType === document.TYPE_ROADMAP ? 'roadmap' as const : 'base' as const;
+        const fullPool = await loadUserDevelopPoolByMode(finalDomainId, this.user._id, this.user.priv, settleMode);
         const term = developRunTerminalTotals(sess.progress, fullPool.length);
         if (term) prev.developRun = term;
         await SessionModel.touchById(finalDomainId, this.user._id, sess._id, { progress: prev });
