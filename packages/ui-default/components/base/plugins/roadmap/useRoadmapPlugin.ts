@@ -1,10 +1,20 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import Notification from 'vj/components/notification';
+import { i18n } from 'vj/utils';
 import type { BaseNode, BaseEdge, Card, FileItem, PendingCreate } from 'vj/components/base/types';
-import type { RoadmapPluginApi, RoadmapPluginDeps } from '../types';
+import type { RoadmapPluginApi, RoadmapPluginDeps, RoadmapPanelTab, RoadmapRightPanelTab, RoadmapCanvasEdgeEditorApi } from '../types';
 import { RoadmapCanvas } from './RoadmapCanvas';
 import { mergeRoadmapCanvasIntoBase, roadmapChildIdSet } from './canvas_persist';
-import { getRoadmapNodeKind } from './node_kinds';
+import { getRoadmapNodeKind, supportsRoadmapPracticeProblems } from './node_kinds';
 import { roadmapUntitledCardLabel } from './shared';
+import {
+  defaultRoadmapDetailDisplaySettings,
+  displaySettingsFromRoadmapNode,
+  roadmapDetailDisplaySettingsEqual,
+  type RoadmapDetailDisplaySettings,
+} from './detail_display_settings';
+import { RoadmapEditorSettingsPanel } from './RoadmapEditorSettingsPanel';
+import { ConnectedRoadmapEdgeInspectorPanel } from './RoadmapEdgeInspectorPanel';
 
 function pickDefaultRoadmapChildId(childNodes: BaseNode[]): string | null {
   if (!childNodes.length) return null;
@@ -31,12 +41,19 @@ export function useRoadmapPlugin(deps: RoadmapPluginDeps): RoadmapPluginApi {
     setNodeCardsMapVersion,
     setExpandedNodes, expandedNodesRef, triggerExpandAutoSave,
     setContextMenu, setEmptyAreaContextMenu,
+    setPendingPluginNodeDataIds,
+    setRightPanelOpen,
     isPluginEditor,
   } = deps;
-
-  // ── Internal state ──
   const [roadmapNodeId, setRoadmapNodeId] = useState<string | null>(null);
   const [roadmapSubSelectedNodeId, setRoadmapSubSelectedNodeId] = useState<string | null>(null);
+  const [roadmapSelectedEdgeId, setRoadmapSelectedEdgeId] = useState<string | null>(null);
+  const [roadmapSelectedEdgeSnapshot, setRoadmapSelectedEdgeSnapshot] = useState<BaseEdge | null>(null);
+  const [roadmapPanelTab, setRoadmapPanelTab] = useState<RoadmapPanelTab>('canvas');
+  const [roadmapRightPanelTab, setRoadmapRightPanelTab] = useState<RoadmapRightPanelTab>('problems');
+  const [displaySettings, setDisplaySettings] = useState<RoadmapDetailDisplaySettings>(
+    () => defaultRoadmapDetailDisplaySettings(),
+  );
 
   // ── Refs for stable component (ExplorerContent must never change identity) ──
   const roadmapNodeIdRef = useRef(roadmapNodeId);
@@ -44,6 +61,90 @@ export function useRoadmapPlugin(deps: RoadmapPluginDeps): RoadmapPluginApi {
   const roadmapSubRef = useRef(roadmapSubSelectedNodeId);
   roadmapSubRef.current = roadmapSubSelectedNodeId;
   const autoFileSelectKeyRef = useRef<string | null>(null);
+  const canvasEdgeApiRef = useRef<RoadmapCanvasEdgeEditorApi | null>(null);
+
+  const handleSelectEdge = useCallback((edgeId: string | null, edgeSnapshot?: BaseEdge | null) => {
+    setRoadmapSelectedEdgeId(edgeId);
+    setRoadmapSelectedEdgeSnapshot(edgeSnapshot ?? null);
+    if (edgeId) {
+      setRoadmapRightPanelTab('edge');
+      setRightPanelOpen(true);
+    } else {
+      setRoadmapSelectedEdgeSnapshot(null);
+    }
+  }, [setRightPanelOpen]);
+
+  const resolveCardRoadmapNodeType = useCallback((
+    nodeId: string,
+    childNodes: BaseNode[] = [],
+  ): string | undefined => {
+    const fromCanvas = canvasEdgeApiRef.current?.getCardNodeType(nodeId);
+    if (fromCanvas) return fromCanvas;
+    const fromChild = childNodes.find((n) => n.id === nodeId);
+    const fromChildData = (fromChild?.data as { roadmapNodeType?: string } | undefined)?.roadmapNodeType;
+    if (fromChildData) return fromChildData;
+    const pending = pendingCreatesRef.current.get(nodeId);
+    if (pending?.data && typeof pending.data === 'object') {
+      const fromPending = (pending.data as { roadmapNodeType?: string }).roadmapNodeType;
+      if (fromPending) return fromPending;
+    }
+    const fromBase = (baseRef.current as { nodes: BaseNode[] }).nodes.find((n) => n.id === nodeId);
+    return (fromBase?.data as { roadmapNodeType?: string } | undefined)?.roadmapNodeType;
+  }, [baseRef, pendingCreatesRef]);
+
+  const selectedCardSupportsPractice = useMemo(() => {
+    if (!roadmapSubSelectedNodeId || !roadmapNodeId) return false;
+    const childNodes = roadmapChildNodes(base, roadmapNodeId);
+    return supportsRoadmapPracticeProblems(
+      resolveCardRoadmapNodeType(roadmapSubSelectedNodeId, childNodes),
+    );
+  }, [base.edges, base.nodes, resolveCardRoadmapNodeType, roadmapNodeId, roadmapSubSelectedNodeId]);
+
+  useEffect(() => {
+    if (!roadmapNodeId || selectedCardSupportsPractice) return;
+    if (roadmapRightPanelTab === 'problems') {
+      setRightPanelOpen(false);
+    }
+  }, [roadmapNodeId, roadmapRightPanelTab, selectedCardSupportsPractice, setRightPanelOpen]);
+
+  const syncDisplaySettingsFromRoadmap = useCallback((roadmapId: string | null) => {
+    if (!roadmapId) {
+      setDisplaySettings(defaultRoadmapDetailDisplaySettings());
+      return;
+    }
+    const currentBase = baseRef.current as { nodes: BaseNode[] };
+    const roadmapNode = currentBase.nodes.find((n) => n.id === roadmapId);
+    const next = displaySettingsFromRoadmapNode(roadmapNode);
+    setDisplaySettings((prev) => (roadmapDetailDisplaySettingsEqual(prev, next) ? prev : next));
+  }, [baseRef]);
+
+  const applyDisplaySettings = useCallback((next: RoadmapDetailDisplaySettings) => {
+    const roadmapId = roadmapNodeIdRef.current;
+    if (!roadmapId) return;
+    setDisplaySettings(next);
+    setBase((prev: { nodes: BaseNode[]; edges: BaseEdge[] }) => {
+      const updated = {
+        ...prev,
+        nodes: prev.nodes.map((n) => (
+          n.id === roadmapId
+            ? { ...n, data: { ...(n.data || {}), editorUi: next } }
+            : n
+        )),
+      };
+      baseRef.current = updated;
+      return updated;
+    });
+    if (roadmapId.startsWith('temp-node-')) {
+      const create = pendingCreatesRef.current.get(roadmapId);
+      if (create) {
+        create.data = { ...(create.data || {}), editorUi: next };
+        pendingCreatesRef.current.set(roadmapId, create);
+      }
+    } else {
+      setPendingPluginNodeDataIds((prev) => new Set(prev).add(roadmapId));
+    }
+    Notification.success(i18n('Roadmap editor settings applied pending'));
+  }, [baseRef, pendingCreatesRef, setBase, setPendingPluginNodeDataIds]);
 
   const canvasCardDisplayTitle = useCallback((nodeId: string, fallbackCardTitle?: string): string => {
     const currentBase = baseRef.current as { nodes: BaseNode[] };
@@ -55,14 +156,84 @@ export function useRoadmapPlugin(deps: RoadmapPluginDeps): RoadmapPluginApi {
     return roadmapUntitledCardLabel();
   }, [baseRef]);
 
+  const focusRoadmapCardSelection = useCallback((
+    nodeId: string,
+    onSelectFile: (file: FileItem) => void,
+  ) => {
+    setRoadmapSelectedEdgeId(null);
+    setRoadmapSelectedEdgeSnapshot(null);
+    setRoadmapSubSelectedNodeId(nodeId);
+
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    const cards = nodeCardsMap[nodeId] || [];
+    if (cards.length > 0) {
+      const card = cards[0];
+      onSelectFile({
+        type: 'card',
+        id: 'card-' + card.docId,
+        name: canvasCardDisplayTitle(nodeId, card.title),
+        nodeId,
+        cardId: card.docId,
+        parentId: nodeId,
+        level: 0,
+      });
+    } else {
+      const tempId = 'temp-card-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+      const cardTitle = canvasCardDisplayTitle(nodeId);
+      const newCard: PendingCreate = { type: 'card', nodeId, title: cardTitle, tempId };
+      pendingCreatesRef.current.set(tempId, newCard);
+      setPendingCreatesCount(pendingCreatesRef.current.size);
+      if (!nodeCardsMap[nodeId]) nodeCardsMap[nodeId] = [];
+      const tempCard: Card = {
+        docId: tempId,
+        cid: 0,
+        nodeId,
+        title: cardTitle,
+        content: '',
+        order: 0,
+        updateAt: new Date().toISOString(),
+      } as Card;
+      nodeCardsMap[nodeId].push(tempCard);
+      (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+      setNodeCardsMapVersion((prev: number) => prev + 1);
+      onSelectFile({
+        type: 'card',
+        id: 'card-' + tempId,
+        name: cardTitle,
+        nodeId,
+        cardId: tempId,
+        parentId: nodeId,
+        level: 0,
+      });
+    }
+
+    setRoadmapRightPanelTab('problems');
+    setRightPanelOpen(true);
+  }, [
+    canvasCardDisplayTitle,
+    pendingCreatesRef,
+    setNodeCardsMapVersion,
+    setPendingCreatesCount,
+    setRightPanelOpen,
+  ]);
+
   // ── View transitions ──
-  const enterRoadmapView = useCallback((nodeId: string) => {
+  const enterRoadmapView = useCallback((nodeId: string, options?: { childNodeId?: string | null }) => {
     autoFileSelectKeyRef.current = null;
     setRoadmapNodeId(nodeId);
+    setRoadmapPanelTab('canvas');
+    setRoadmapRightPanelTab('problems');
+    setRoadmapSelectedEdgeId(null);
+    setRoadmapSelectedEdgeSnapshot(null);
+    syncDisplaySettingsFromRoadmap(nodeId);
 
     const currentBase = baseRef.current as { nodes: BaseNode[]; edges: BaseEdge[] };
     const children = roadmapChildNodes(currentBase, nodeId);
-    const selectedId = pickDefaultRoadmapChildId(children);
+    const childIds = new Set(children.map((child) => child.id));
+    const requestedChild = options?.childNodeId && childIds.has(options.childNodeId)
+      ? options.childNodeId
+      : null;
+    const selectedId = requestedChild || pickDefaultRoadmapChildId(children);
     setRoadmapSubSelectedNodeId(selectedId);
 
     // Roadmap canvas cards live in the canvas view only — keep the tree entry collapsed.
@@ -74,11 +245,16 @@ export function useRoadmapPlugin(deps: RoadmapPluginDeps): RoadmapPluginApi {
       triggerExpandAutoSave();
       return next;
     });
-  }, [baseRef, expandedNodesRef, setExpandedNodes, triggerExpandAutoSave]);
+  }, [baseRef, expandedNodesRef, setExpandedNodes, syncDisplaySettingsFromRoadmap, triggerExpandAutoSave]);
 
   const exitRoadmapView = useCallback(() => {
     setRoadmapNodeId(null);
     setRoadmapSubSelectedNodeId(null);
+    setRoadmapSelectedEdgeId(null);
+    setRoadmapSelectedEdgeSnapshot(null);
+    setRoadmapPanelTab('canvas');
+    setRoadmapRightPanelTab('problems');
+    setDisplaySettings(defaultRoadmapDetailDisplaySettings());
     autoFileSelectKeyRef.current = null;
   }, []);
 
@@ -104,6 +280,11 @@ export function useRoadmapPlugin(deps: RoadmapPluginDeps): RoadmapPluginApi {
     setRoadmapNodeId(roadmaps[0].id);
     autoFileSelectKeyRef.current = null;
   }, [base.nodes, base.edges, roadmapNodeId]);
+
+  useEffect(() => {
+    if (!roadmapNodeId) return;
+    syncDisplaySettingsFromRoadmap(roadmapNodeId);
+  }, [roadmapNodeId, base.nodes, syncDisplaySettingsFromRoadmap]);
 
   // ── Detection helpers ──
   const isRoadmapNode = useCallback((node?: BaseNode | null): boolean => {
@@ -230,61 +411,18 @@ export function useRoadmapPlugin(deps: RoadmapPluginDeps): RoadmapPluginApi {
   // Volatile values (roadmapNodeId, roadmapSubSelectedNodeId) are read from refs at render time.
 
   const ExplorerContent = useMemo(() => {
-    function selectRoadmapSubNodeCard(
-      nodeId: string,
-      onSelectFile: (file: FileItem) => void,
-    ) {
-      setRoadmapSubSelectedNodeId(nodeId);
-      const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
-      const cards = nodeCardsMap[nodeId] || [];
-      if (cards.length > 0) {
-        const card = cards[0];
-        onSelectFile({
-          type: 'card',
-          id: 'card-' + card.docId,
-          name: canvasCardDisplayTitle(nodeId, card.title),
-          nodeId,
-          cardId: card.docId,
-          parentId: nodeId,
-          level: 0,
-        });
-        return;
-      }
-
-      const tempId = 'temp-card-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-      const cardTitle = canvasCardDisplayTitle(nodeId);
-      const newCard: PendingCreate = { type: 'card', nodeId, title: cardTitle, tempId };
-      pendingCreatesRef.current.set(tempId, newCard);
-      setPendingCreatesCount(pendingCreatesRef.current.size);
-      if (!nodeCardsMap[nodeId]) nodeCardsMap[nodeId] = [];
-      const tempCard: Card = {
-        docId: tempId,
-        cid: 0,
-        nodeId,
-        title: cardTitle,
-        content: '',
-        order: 0,
-        updateAt: new Date().toISOString(),
-      } as Card;
-      nodeCardsMap[nodeId].push(tempCard);
-      (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
-      setNodeCardsMapVersion((prev: number) => prev + 1);
-      onSelectFile({
-        type: 'card',
-        id: 'card-' + tempId,
-        name: cardTitle,
-        nodeId,
-        cardId: tempId,
-        parentId: nodeId,
-        level: 0,
-      });
-    }
-
     function ExplorerContentInner(props: {
       childNodes: BaseNode[];
       childEdges: BaseEdge[];
       themeStyles: Record<string, string>;
       onSelectFile: (file: FileItem) => void;
+      displaySettings: RoadmapDetailDisplaySettings;
+      nodeCardsMapVersion: number;
+      selectedEdgeId: string | null;
+      onSelectEdge: (edgeId: string | null, edgeSnapshot?: BaseEdge | null) => void;
+      edgeEditorApiRef: React.MutableRefObject<RoadmapCanvasEdgeEditorApi | null>;
+      pendingEdgeIds?: ReadonlySet<string>;
+      onEdgeChanged?: (edgeId: string, kind: 'update' | 'create' | 'delete') => void;
     }) {
       const selectedNodeId = roadmapSubRef.current;
       const childStructureKey = useMemo(
@@ -302,10 +440,10 @@ export function useRoadmapPlugin(deps: RoadmapPluginDeps): RoadmapPluginApi {
         if (autoFileSelectKeyRef.current === selectKey) return;
         autoFileSelectKeyRef.current = selectKey;
         const frame = requestAnimationFrame(() => {
-          selectRoadmapSubNodeCard(subId, props.onSelectFile);
+          focusRoadmapCardSelection(subId, props.onSelectFile);
         });
         return () => cancelAnimationFrame(frame);
-      }, [childStructureKey, props.onSelectFile]);
+      }, [childStructureKey, focusRoadmapCardSelection, props.onSelectFile]);
 
       return (
         <RoadmapCanvas
@@ -314,7 +452,7 @@ export function useRoadmapPlugin(deps: RoadmapPluginDeps): RoadmapPluginApi {
           selectedNodeId={selectedNodeId}
           onSelectNode={(nodeId: string | null) => {
             if (nodeId !== null) {
-              selectRoadmapSubNodeCard(nodeId, props.onSelectFile);
+              focusRoadmapCardSelection(nodeId, props.onSelectFile);
             } else {
               setRoadmapSubSelectedNodeId(null);
             }
@@ -358,6 +496,13 @@ export function useRoadmapPlugin(deps: RoadmapPluginDeps): RoadmapPluginApi {
               return result;
             });
           }}
+          displaySettings={props.displaySettings}
+          nodeCardsMapVersion={props.nodeCardsMapVersion}
+          selectedEdgeId={props.selectedEdgeId}
+          onSelectEdge={props.onSelectEdge}
+          edgeEditorApiRef={props.edgeEditorApiRef}
+          pendingEdgeIds={props.pendingEdgeIds}
+          onEdgeChanged={props.onEdgeChanged}
           themeStyles={props.themeStyles}
         />
       );
@@ -366,9 +511,30 @@ export function useRoadmapPlugin(deps: RoadmapPluginDeps): RoadmapPluginApi {
   }, [
     setBase, baseRef,
     pendingCreatesRef, setPendingCreatesCount, setPendingDeletes,
-    setNodeCardsMapVersion,
-    canvasCardDisplayTitle,
+    focusRoadmapCardSelection,
   ]);
+
+  const SettingsPanel = useMemo(() => {
+    function SettingsPanelInner(props: { themeStyles: Record<string, string> }) {
+      return (
+        <RoadmapEditorSettingsPanel
+          settings={displaySettings}
+          themeStyles={props.themeStyles}
+          onApply={applyDisplaySettings}
+        />
+      );
+    }
+    return SettingsPanelInner;
+  }, [applyDisplaySettings, displaySettings]);
+
+  const EdgeInspectorPanel = useCallback((props: { themeStyles: Record<string, string> }) => (
+    <ConnectedRoadmapEdgeInspectorPanel
+      edgeId={roadmapSelectedEdgeId}
+      edgeSnapshot={roadmapSelectedEdgeSnapshot}
+      edgeEditorApiRef={canvasEdgeApiRef}
+      themeStyles={props.themeStyles}
+    />
+  ), [roadmapSelectedEdgeId, roadmapSelectedEdgeSnapshot]);
 
   // ── Slot: NodeContextMenuExtra ──
   const NodeContextMenuExtra = useCallback(
@@ -425,8 +591,16 @@ export function useRoadmapPlugin(deps: RoadmapPluginDeps): RoadmapPluginApi {
   return {
     roadmapNodeId,
     roadmapSubSelectedNodeId,
+    roadmapPanelTab,
+    roadmapRightPanelTab,
+    roadmapSelectedEdgeId,
+    selectedCardSupportsPractice,
+    displaySettings,
     enterRoadmapView,
     exitRoadmapView,
+    setRoadmapPanelTab,
+    setRoadmapRightPanelTab,
+    selectRoadmapEdge: handleSelectEdge,
     setRoadmapSubSelectedNodeId,
     remapNodeIds,
     handleNewRoadmapChildNode,
@@ -434,6 +608,9 @@ export function useRoadmapPlugin(deps: RoadmapPluginDeps): RoadmapPluginApi {
     isRoadmapNode,
     getFileIcon,
     ExplorerContent,
+    SettingsPanel,
+    EdgeInspectorPanel,
+    roadmapCanvasEdgeApiRef: canvasEdgeApiRef,
     NodeContextMenuExtra,
     EmptyAreaContextMenuExtra,
   };

@@ -26,14 +26,46 @@ import { RoadmapTextNodeLead } from './RoadmapTextNodeLead';
 
 let resizeObserverGuardInstalled = false;
 
+function isResizeObserverLoopError(message: string | undefined): boolean {
+  return Boolean(message?.includes('ResizeObserver loop'));
+}
+
 export function installRoadmapResizeObserverErrorGuard() {
   if (resizeObserverGuardInstalled || typeof window === 'undefined') return;
   resizeObserverGuardInstalled = true;
-  window.addEventListener('error', (event) => {
-    if (event.message?.includes('ResizeObserver loop')) {
-      event.stopImmediatePropagation();
-    }
+
+  const suppressErrorEvent = (event: ErrorEvent) => {
+    if (!isResizeObserverLoopError(event.message)) return;
+    event.stopImmediatePropagation();
+    event.preventDefault();
+  };
+
+  window.addEventListener('error', suppressErrorEvent, true);
+  window.addEventListener('error', suppressErrorEvent, false);
+
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason;
+    const message = reason instanceof Error ? reason.message : String(reason ?? '');
+    if (!isResizeObserverLoopError(message)) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
   });
+
+  const previousOnError = window.onerror;
+  window.onerror = (message, source, lineno, colno, error) => {
+    const msg = typeof message === 'string' ? message : String(message ?? '');
+    if (isResizeObserverLoopError(msg) || isResizeObserverLoopError(error?.message)) {
+      return true;
+    }
+    if (typeof previousOnError === 'function') {
+      return previousOnError.call(window, message, source, lineno, colno, error) ?? false;
+    }
+    return false;
+  };
+}
+
+if (typeof window !== 'undefined') {
+  installRoadmapResizeObserverErrorGuard();
 }
 
 export const RoadmapShNode = ({ data, selected }: NodeProps) => {
@@ -223,11 +255,12 @@ function roadmapFlowEdgeStroke(isSelected: boolean, theme: 'light' | 'dark' = 'l
 export function toRoadmapViewEdges(
   edges: Edge[],
   selectedEdgeId?: string | null,
-  _pending?: unknown,
+  pendingEdgeIds?: ReadonlySet<string>,
   theme: 'light' | 'dark' = 'light',
 ): Edge[] {
   return edges.map((edge) => {
     const isSelected = edge.id === selectedEdgeId;
+    const isPending = Boolean(pendingEdgeIds?.has(edge.id));
     const lineStyle = roadmapEdgeLineStyleFromStyle(edge.style as Record<string, any>);
     const lineDashStyle = lineStyle === 'dashed' ? roadmapEdgeDashStyle('dashed') : {};
     return {
@@ -238,7 +271,7 @@ export function toRoadmapViewEdges(
       sourceHandle: edge.sourceHandle,
       targetHandle: edge.targetHandle,
       style: {
-        stroke: roadmapFlowEdgeStroke(isSelected, theme),
+        stroke: isPending ? '#ff9800' : roadmapFlowEdgeStroke(isSelected, theme),
         strokeWidth: isSelected ? 4 : 3,
         ...lineDashStyle,
       },
@@ -292,32 +325,52 @@ export function computeRoadmapAxisViewport(
   return { x, y, zoom };
 }
 
+function deferViewportUpdate(run: () => void) {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(run);
+  });
+}
+
 function useContainerSize(outerRef: React.RefObject<HTMLDivElement>) {
   const [size, setSize] = useState({ width: 0, height: 0 });
 
   useLayoutEffect(() => {
     installRoadmapResizeObserverErrorGuard();
 
+    let outerRafId = 0;
+    let innerRafId = 0;
     const syncSize = () => {
-      const el = outerRef.current;
-      if (!el) return;
-      const nextWidth = el.clientWidth;
-      const nextHeight = el.clientHeight;
-      setSize((prev) => (
-        prev.width === nextWidth && prev.height === nextHeight
-          ? prev
-          : { width: nextWidth, height: nextHeight }
-      ));
+      if (outerRafId) cancelAnimationFrame(outerRafId);
+      if (innerRafId) cancelAnimationFrame(innerRafId);
+      outerRafId = requestAnimationFrame(() => {
+        innerRafId = requestAnimationFrame(() => {
+          outerRafId = 0;
+          innerRafId = 0;
+          const el = outerRef.current;
+          if (!el) return;
+          const nextWidth = el.clientWidth;
+          const nextHeight = el.clientHeight;
+          setSize((prev) => (
+            prev.width === nextWidth && prev.height === nextHeight
+              ? prev
+              : { width: nextWidth, height: nextHeight }
+          ));
+        });
+      });
     };
 
     syncSize();
     window.addEventListener('resize', syncSize);
     let observer: ResizeObserver | null = null;
     if (typeof ResizeObserver !== 'undefined' && outerRef.current) {
-      observer = new ResizeObserver(syncSize);
+      observer = new ResizeObserver(() => {
+        syncSize();
+      });
       observer.observe(outerRef.current);
     }
     return () => {
+      if (outerRafId) cancelAnimationFrame(outerRafId);
+      if (innerRafId) cancelAnimationFrame(innerRafId);
       window.removeEventListener('resize', syncSize);
       observer?.disconnect();
     };
@@ -350,17 +403,17 @@ export function useRoadmapEditorLayout(nodes: Node[]) {
   useEffect(() => {
     const instance = flowRef.current;
     if (!instance || !containerWidth || !containerHeight) return;
-    const fitKey = `${containerWidth}:${containerHeight}:${nodes.length}`;
+    const fitKey = `${containerWidth}:${containerHeight}`;
     if (fitKey === lastFitKeyRef.current) return;
     lastFitKeyRef.current = fitKey;
-    requestAnimationFrame(() => {
+    deferViewportUpdate(() => {
       applyAxisViewport(instance, 0);
     });
-  }, [applyAxisViewport, containerHeight, containerWidth, nodes.length]);
+  }, [applyAxisViewport, containerHeight, containerWidth]);
 
   const onFlowInit = useCallback((instance: ReactFlowInstance) => {
     flowRef.current = instance;
-    requestAnimationFrame(() => {
+    deferViewportUpdate(() => {
       applyAxisViewport(instance, 0);
     });
   }, [applyAxisViewport]);

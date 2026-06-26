@@ -1,5 +1,6 @@
 import type { Edge, Node } from 'reactflow';
 import { domainApiPath, i18n } from 'vj/utils';
+import { LANE_NODE_WIDTH, nearestLaneFromX, type RoadmapLane } from './lanes';
 
 export type RoadmapStatus = 'planned' | 'in_progress' | 'done' | 'blocked';
 export type RoadmapNodeType = 'main' | 'sub' | 'hook' | 'text' | 'root' | 'milestone' | 'task' | 'decision' | 'release';
@@ -163,17 +164,66 @@ export function roadmapFlowEdgeType(lineStyle?: RoadmapEdgeLineStyle): 'straight
   return lineStyle === 'dashed' ? 'default' : 'straight';
 }
 
-export function baseEdgeToFlowEdge(edge: BaseRoadmapEdge): Edge {
+type RoadmapEdgeNodeRef = {
+  id: string;
+  x?: number;
+  y?: number;
+  data?: Record<string, unknown>;
+};
+
+function nodeLaneFromRef(node: RoadmapEdgeNodeRef): RoadmapLane {
+  const lane = Number(node.data?.lane);
+  if (lane >= 1 && lane <= 3) return lane as RoadmapLane;
+  const x = typeof node.x === 'number' ? node.x : Number(node.data?.posX) || 0;
+  return nearestLaneFromX(x + LANE_NODE_WIDTH / 2);
+}
+
+/** Restore React Flow handles when persisted edges omit sourceHandle/targetHandle. */
+export function inferRoadmapEdgeHandles(
+  edge: BaseRoadmapEdge,
+  nodes?: RoadmapEdgeNodeRef[],
+): { sourceHandle: string; targetHandle: string } {
+  if (edge.sourceHandle && edge.targetHandle) {
+    return { sourceHandle: edge.sourceHandle, targetHandle: edge.targetHandle };
+  }
+
+  const edgeData = edge.data as { sourceHandle?: string; targetHandle?: string } | undefined;
+  if (edgeData?.sourceHandle && edgeData?.targetHandle) {
+    return { sourceHandle: edgeData.sourceHandle, targetHandle: edgeData.targetHandle };
+  }
+
   const lineStyle = edge.lineStyle || roadmapEdgeLineStyleFromStyle(edge.style);
+
+  if (nodes?.length) {
+    const source = nodes.find((node) => node.id === edge.source);
+    const target = nodes.find((node) => node.id === edge.target);
+    if (source && target) {
+      const sourceLane = nodeLaneFromRef(source);
+      const targetLane = nodeLaneFromRef(target);
+      if (sourceLane !== targetLane) {
+        return { sourceHandle: 'right', targetHandle: 'left' };
+      }
+    }
+  }
+
+  if (lineStyle === 'dashed') {
+    return { sourceHandle: 'right', targetHandle: 'left' };
+  }
+  return { sourceHandle: 'bottom', targetHandle: 'top' };
+}
+
+export function baseEdgeToFlowEdge(edge: BaseRoadmapEdge, nodes?: RoadmapEdgeNodeRef[]): Edge {
+  const lineStyle = edge.lineStyle || roadmapEdgeLineStyleFromStyle(edge.style);
+  const { sourceHandle, targetHandle } = inferRoadmapEdgeHandles(edge, nodes);
   return {
     id: edge.id || `edge_${edge.source}_${edge.target}`,
     source: edge.source,
     target: edge.target,
-    sourceHandle: edge.sourceHandle,
-    targetHandle: edge.targetHandle,
+    sourceHandle,
+    targetHandle,
     label: edge.label,
     type: roadmapFlowEdgeType(lineStyle),
-    data: { lineStyle },
+    data: { lineStyle, sourceHandle, targetHandle },
     animated: (edge as any).animated ?? false,
     style: {
       stroke: edge.color || '#2b78e4',
@@ -211,18 +261,27 @@ export function flowNodeToBaseNode(node: Node): BaseRoadmapNode {
 
 export function flowEdgeToBaseEdge(edge: Edge): BaseRoadmapEdge {
   const style = (edge.style || {}) as Record<string, any>;
-  const lineStyle = roadmapEdgeLineStyleFromStyle(style);
+  const lineStyle = (edge.data?.lineStyle as RoadmapEdgeLineStyle | undefined)
+    || roadmapEdgeLineStyleFromStyle(style);
+  const sourceHandle = edge.sourceHandle || undefined;
+  const targetHandle = edge.targetHandle || undefined;
   return {
     id: edge.id,
     source: edge.source,
     target: edge.target,
-    sourceHandle: edge.sourceHandle,
-    targetHandle: edge.targetHandle,
+    sourceHandle,
+    targetHandle,
     label: typeof edge.label === 'string' ? edge.label : undefined,
     type: lineStyle === 'solid' ? 'straight' : 'bezier',
     color: style.stroke || '#2b78e4',
     width: Number(style.strokeWidth) || 3,
     lineStyle,
+    data: {
+      ...(edge.data || {}),
+      lineStyle,
+      ...(sourceHandle ? { sourceHandle } : {}),
+      ...(targetHandle ? { targetHandle } : {}),
+    },
     style: lineStyle === 'dashed' ? { strokeDasharray: style.strokeDasharray || ROADMAP_EDGE_DASH } : undefined,
   };
 }

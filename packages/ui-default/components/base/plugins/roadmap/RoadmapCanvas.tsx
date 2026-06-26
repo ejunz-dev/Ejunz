@@ -25,7 +25,14 @@ import {
   flowNodeToBaseNode,
   flowEdgeToBaseEdge,
   roadmapUntitledCardLabel,
+  roadmapEdgeDashStyle,
+  roadmapEdgeLineStyleFromStyle,
+  roadmapFlowEdgeType,
+  type RoadmapEdgeLineStyle,
 } from './shared';
+import {
+  validateRoadmapConnection,
+} from './node_kinds';
 import {
   snapNodeToLane,
   nearestLaneFromX,
@@ -53,7 +60,14 @@ import {
   shouldAlignSolidConnection,
   getSolidLinkedNodeIds,
 } from './solid_links';
+import {
+  buildRoadmapNodeProblemCountMap,
+  type RoadmapDetailDisplaySettings,
+} from './detail_display_settings';
+import { computeRoadmapNodeNumbers } from './node_numbering';
+import { supportsRoadmapPracticeProblems } from './node_kinds';
 import type { BaseNode, BaseEdge } from 'vj/components/base/types';
+import type { RoadmapCanvasEdgeEditorApi } from '../types';
 import { i18n } from 'vj/utils';
 
 export type RoadmapCanvasKind = 'main' | 'sub' | 'hook' | 'text';
@@ -64,7 +78,14 @@ export interface RoadmapCanvasProps {
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string | null) => void;
   onFlowChange: (nodes: BaseNode[], edges: BaseEdge[]) => void;
+  displaySettings: RoadmapDetailDisplaySettings;
+  nodeCardsMapVersion: number;
+  selectedEdgeId: string | null;
+  onSelectEdge: (edgeId: string | null, edgeSnapshot?: BaseEdge | null) => void;
+  edgeEditorApiRef: React.MutableRefObject<RoadmapCanvasEdgeEditorApi | null>;
   themeStyles: Record<string, string>;
+  pendingEdgeIds?: ReadonlySet<string>;
+  onEdgeChanged?: (edgeId: string, kind: 'update' | 'create' | 'delete') => void;
 }
 
 function newCardId(): string {
@@ -92,7 +113,14 @@ function RoadmapCanvasContent({
   selectedNodeId,
   onSelectNode,
   onFlowChange,
+  displaySettings,
+  nodeCardsMapVersion,
+  selectedEdgeId,
+  onSelectEdge,
+  edgeEditorApiRef,
   themeStyles,
+  pendingEdgeIds,
+  onEdgeChanged,
 }: RoadmapCanvasProps) {
   const initialFlowNodes = useMemo(
     () =>
@@ -118,8 +146,8 @@ function RoadmapCanvasContent({
     [childNodes],
   );
   const initialFlowEdges = useMemo(
-    () => (childEdges || []).map(baseEdgeToFlowEdge),
-    [childEdges],
+    () => (childEdges || []).map((edge) => baseEdgeToFlowEdge(edge, childNodes)),
+    [childEdges, childNodes],
   );
 
   const flowStructureKey = useMemo(
@@ -133,6 +161,10 @@ function RoadmapCanvasContent({
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialFlowNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialFlowEdges);
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+  const edgesRef = useRef(edges);
+  edgesRef.current = edges;
   const { outerRef, flowRef, onFlowInit, fitToContent } = useRoadmapEditorLayout(nodes);
 
   useEffect(() => {
@@ -169,7 +201,6 @@ function RoadmapCanvasContent({
     });
   }, [flowContentKey, childNodes, setNodes]);
 
-  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [ctxMenu, setCtxMenu] = useState<CtxState>(null);
   const [nodeAddMenu, setNodeAddMenu] = useState<NodeAddState>(null);
 
@@ -259,6 +290,102 @@ function RoadmapCanvasContent({
     window.setTimeout(() => flowCardsToBase(flowNodes, flowEdges), 0);
   }, [flowCardsToBase]);
 
+  const updateEdge = useCallback((edgeId: string, patch: { label?: string; lineStyle?: RoadmapEdgeLineStyle }) => {
+    setEdges((current) => {
+      const edge = current.find((item) => item.id === edgeId);
+      if (patch.lineStyle && edge) {
+        const targetNode = nodes.find((node) => node.id === edge.target);
+        const sourceNode = nodes.find((node) => node.id === edge.source);
+        if (!validateRoadmapConnection(
+          targetNode?.data?.roadmapNodeType,
+          patch.lineStyle,
+          true,
+          sourceNode?.data?.roadmapNodeType,
+        )) {
+          return current;
+        }
+      }
+      const nextEdges = current.map((item) => {
+        if (item.id !== edgeId) return item;
+        const nextStyle = { ...(item.style || {}) };
+        const nextLineStyle = patch.lineStyle || roadmapEdgeLineStyleFromStyle(nextStyle);
+        if (patch.lineStyle) {
+          if (patch.lineStyle === 'dashed') {
+            Object.assign(nextStyle, roadmapEdgeDashStyle('dashed'));
+          } else {
+            delete nextStyle.strokeDasharray;
+          }
+        }
+        return {
+          ...item,
+          ...(patch.label !== undefined ? { label: patch.label } : {}),
+          type: roadmapFlowEdgeType(nextLineStyle),
+          data: {
+            ...(item.data || {}),
+            lineStyle: nextLineStyle,
+          },
+          style: nextStyle,
+        };
+      });
+      edgesRef.current = nextEdges;
+      setNodes((currentNodes) => {
+        const nextNodes = patch.lineStyle === 'solid'
+          ? alignNodesInSolidComponents(currentNodes, nextEdges)
+          : currentNodes;
+        scheduleFlowSync(nextNodes, nextEdges);
+        return nextNodes;
+      });
+      onEdgeChanged?.(edgeId, 'update');
+      return nextEdges;
+    });
+  }, [nodes, onEdgeChanged, scheduleFlowSync, setEdges, setNodes]);
+
+  const deleteEdge = useCallback((edgeId: string) => {
+    setEdges((current) => {
+      const nextEdges = current.filter((item) => item.id !== edgeId);
+      edgesRef.current = nextEdges;
+      scheduleFlowSync(nodes, nextEdges);
+      return nextEdges;
+    });
+    onEdgeChanged?.(edgeId, 'delete');
+    onSelectEdge(null);
+  }, [nodes, onEdgeChanged, onSelectEdge, scheduleFlowSync, setEdges]);
+
+  const getEdge = useCallback((edgeId: string) => {
+    const flowEdge = edgesRef.current.find((item) => item.id === edgeId);
+    if (!flowEdge) return null;
+    return flowEdgeToBaseEdge(flowEdge);
+  }, []);
+
+  const updateCardTitle = useCallback((nodeId: string, title: string) => {
+    const label = title.length > 0 ? title : roadmapUntitledCardLabel();
+    setNodes((current) => {
+      let changed = false;
+      const next = current.map((node) => {
+        if (node.id !== nodeId) return node;
+        if (String(node.data?.label || '') === label) return node;
+        changed = true;
+        return { ...node, data: { ...node.data, label } };
+      });
+      if (changed) {
+        window.setTimeout(() => flowCardsToBase(next, edgesRef.current), 0);
+      }
+      return changed ? next : current;
+    });
+  }, [flowCardsToBase, setNodes]);
+
+  const getCardNodeType = useCallback((nodeId: string) => {
+    const node = nodesRef.current.find((item) => item.id === nodeId);
+    return node?.data?.roadmapNodeType as string | undefined;
+  }, []);
+
+  useEffect(() => {
+    edgeEditorApiRef.current = { updateEdge, deleteEdge, getEdge, updateCardTitle, getCardNodeType };
+    return () => {
+      edgeEditorApiRef.current = null;
+    };
+  }, [deleteEdge, edgeEditorApiRef, getCardNodeType, getEdge, updateCardTitle, updateEdge]);
+
   const addRoadmapCardAt = useCallback(
     (flowPosition?: { x: number; y: number }, kind: RoadmapCanvasKind = 'sub') => {
       const id = newCardId();
@@ -282,9 +409,9 @@ function RoadmapCanvasContent({
         return next;
       });
       onSelectNode(id);
-      setSelectedEdgeId(null);
+      onSelectEdge(null);
     },
-    [edges, setNodes, onSelectNode, scheduleFlowSync],
+    [edges, setNodes, onSelectNode, onSelectEdge, scheduleFlowSync],
   );
 
   const addAdjacentCard = useCallback(
@@ -323,11 +450,12 @@ function RoadmapCanvasContent({
         });
         return nextEdges;
       });
+      onEdgeChanged?.(edge.id, 'create');
       onSelectNode(newId);
-      setSelectedEdgeId(null);
+      onSelectEdge(null);
       setNodeAddMenu(null);
     },
-    [nodes, setEdges, setNodes, onSelectNode, scheduleFlowSync],
+    [nodes, onEdgeChanged, setEdges, setNodes, onSelectNode, onSelectEdge, scheduleFlowSync],
   );
 
   const deleteCard = useCallback(
@@ -344,14 +472,11 @@ function RoadmapCanvasContent({
 
   const deleteSelection = useCallback(() => {
     if (selectedEdgeId) {
-      const nextEdges = edges.filter((e) => e.id !== selectedEdgeId);
-      setEdges(nextEdges);
-      scheduleFlowSync(nodes, nextEdges);
-      setSelectedEdgeId(null);
+      deleteEdge(selectedEdgeId);
       return;
     }
     if (selectedNodeId) deleteCard(selectedNodeId);
-  }, [deleteCard, edges, nodes, selectedEdgeId, selectedNodeId, setEdges, scheduleFlowSync]);
+  }, [deleteCard, deleteEdge, selectedEdgeId, selectedNodeId]);
 
   const closeCtx = useCallback(() => {
     setCtxMenu(null);
@@ -376,11 +501,29 @@ function RoadmapCanvasContent({
     };
   }, [closeCtx, ctxMenu, nodeAddMenu]);
 
+  const nodeCardsMap = useMemo(
+    () => (((window as any).UiContext?.nodeCardsMap || {}) as Record<string, { problems?: unknown[] }[]>),
+    [nodeCardsMapVersion],
+  );
+  const problemCountByNodeId = useMemo(
+    () => buildRoadmapNodeProblemCountMap(nodes, nodeCardsMap),
+    [nodeCardsMap, nodes],
+  );
+  const nodeNumberMap = useMemo(
+    () => computeRoadmapNodeNumbers(nodes, edges),
+    [nodes, edges],
+  );
+
   const viewNodes = useMemo(() => {
     return toRoadmapViewNodes(nodes, selectedNodeId).map((node) => ({
       ...node,
       data: {
         ...node.data,
+        showProblemCountBadge: displaySettings.showProblemCount
+          && supportsRoadmapPracticeProblems(node.data?.roadmapNodeType),
+        problemCount: problemCountByNodeId.get(node.id) || 0,
+        showNodeNumber: displaySettings.showNodeNumber,
+        nodeNumber: nodeNumberMap.get(node.id) || '',
         editable: true,
         blockedAddDirections: [...getBlockedAddAdjacentDirections(node.id, edges, nodes)],
         onRequestAddAdjacent: (direction: AddAdjacentDirection, event: React.MouseEvent) => {
@@ -390,9 +533,20 @@ function RoadmapCanvasContent({
         },
       },
     }));
-  }, [nodes, selectedNodeId, edges]);
+  }, [
+    displaySettings.showProblemCount,
+    displaySettings.showNodeNumber,
+    edges,
+    nodes,
+    problemCountByNodeId,
+    selectedNodeId,
+    nodeNumberMap,
+  ]);
 
-  const viewEdges = useMemo(() => toRoadmapViewEdges(edges, selectedEdgeId, undefined, 'light'), [edges, selectedEdgeId]);
+  const viewEdges = useMemo(
+    () => toRoadmapViewEdges(edges, selectedEdgeId, pendingEdgeIds, 'light'),
+    [edges, pendingEdgeIds, selectedEdgeId],
+  );
 
   const shellStyle: React.CSSProperties = {
     position: 'fixed',
@@ -465,12 +619,12 @@ function RoadmapCanvasContent({
         }}
         onEdgeClick={(_, edge) => {
           if (!edge.data?.isPendingGhost) {
-            setSelectedEdgeId(edge.id);
+            onSelectEdge(edge.id, flowEdgeToBaseEdge(edge));
           }
         }}
         onPaneClick={() => {
           onSelectNode(null);
-          setSelectedEdgeId(null);
+          onSelectEdge(null);
           setNodeAddMenu(null);
         }}
         onPaneContextMenu={(e) => {
