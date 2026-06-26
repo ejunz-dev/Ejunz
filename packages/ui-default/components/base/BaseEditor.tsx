@@ -2051,7 +2051,14 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
       const resolved = resolveRoadmapCardLocation(base, nodeCardsMap, String(file.cardId));
       if (resolved) {
-        roadmapPlugin.enterRoadmapView(resolved.roadmapNodeId, { childNodeId: resolved.childNodeId });
+        if (roadmapPlugin.roadmapNodeId !== resolved.roadmapNodeId) {
+          roadmapPlugin.enterRoadmapView(resolved.roadmapNodeId, { childNodeId: resolved.childNodeId });
+        } else if (
+          resolved.childNodeId
+          && resolved.childNodeId !== roadmapPlugin.roadmapSubSelectedNodeId
+        ) {
+          roadmapPlugin.setRoadmapSubSelectedNodeId(resolved.childNodeId);
+        }
       } else if (roadmapPlugin.roadmapNodeId) {
         // Canvas sub-cards are not listed in fileTree; only leave roadmap when picking a tree card.
         const isTreeListedCard = fileTree.some(
@@ -2140,7 +2147,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       if (file.type === 'card') {
         
         const nodeCards = (window as any).UiContext?.nodeCardsMap?.[file.nodeId || ''] || [];
-        const card = nodeCards.find((c: Card) => c.docId === file.cardId);
+        const card = nodeCards.find((c: Card) => String(c.docId) === String(file.cardId));
         content = card?.content || '';
         /** Always sync baseline to the source we display (avoids false "pending" after save when ref was stale). */
         originalContentsRef.current.set(file.id, content);
@@ -2163,9 +2170,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         return newMap;
       });
     }
-    startTransition(() => {
-      setFileContent(content);
-    });
+    setFileContent(content);
   }, [base.nodes, selectedFile, editorInstance, fileContent, pendingChanges, isMultiSelectMode, fileTree, selectedItems, roadmapPlugin]);
 
   const selectRoadmapCardFromUrl = useCallback((cardIdStr: string, skipUrlUpdate = true) => {
