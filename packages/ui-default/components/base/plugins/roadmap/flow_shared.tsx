@@ -86,6 +86,7 @@ export const RoadmapShNode = ({ data, selected }: NodeProps) => {
   const problemCount = typeof data.problemCount === 'number' ? data.problemCount : 0;
   const showNodeNumber = Boolean(data.showNodeNumber);
   const nodeNumber = String(data.nodeNumber || '');
+  const isPendingUpdate = Boolean(data.isPendingUpdate);
 
   const numberBadge = showNodeNumber && nodeNumber ? (
     <span
@@ -125,7 +126,7 @@ export const RoadmapShNode = ({ data, selected }: NodeProps) => {
     );
   };
 
-  const nodeClassName = `roadmap-sh-node roadmap-sh-node--kind-${kind}${isHookLink ? ' roadmap-sh-node--hook-link' : ''} ${selected ? 'is-selected' : ''}`;
+  const nodeClassName = `roadmap-sh-node roadmap-sh-node--kind-${kind}${isPendingUpdate ? ' roadmap-sh-node--pending-update' : ''}${isHookLink ? ' roadmap-sh-node--hook-link' : ''} ${selected ? 'is-selected' : ''}`;
 
   const nodeBody = (
     <>
@@ -239,10 +240,15 @@ export function RoadmapLaneOverlay({ guideHeight }: { guideHeight?: number }) {
 export function toRoadmapViewNodes(
   nodes: Node[],
   selectedNodeId?: string | null,
+  pendingNodeIds?: ReadonlySet<string>,
 ): Node[] {
   return nodes.map((node) => ({
     ...node,
     selected: node.id === selectedNodeId,
+    data: {
+      ...node.data,
+      isPendingUpdate: Boolean(pendingNodeIds?.has(node.id)),
+    },
   }));
 }
 

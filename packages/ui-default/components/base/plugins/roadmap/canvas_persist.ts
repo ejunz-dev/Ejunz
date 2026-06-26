@@ -185,23 +185,8 @@ export function collectRoadmapCanvasBatchSaveExtras(base: {
   const nodeUpdates: Array<{ nodeId: string; text?: string; x?: number; y?: number; data?: Record<string, unknown> }> = [];
   for (const nodeId of childIds) {
     if (nodeId.startsWith('temp-node-')) continue;
-    const node = base.nodes.find((n) => n.id === nodeId);
-    if (!node) continue;
-    const data = (node.data || {}) as Record<string, unknown>;
-    if (!data.roadmapNodeType) continue;
-    const x = typeof node.x === 'number' ? node.x : (data.posX as number | undefined);
-    const y = typeof node.y === 'number' ? node.y : (data.posY as number | undefined);
-    nodeUpdates.push({
-      nodeId,
-      text: node.text,
-      ...(x != null ? { x } : {}),
-      ...(y != null ? { y } : {}),
-      data: {
-        ...data,
-        ...(x != null ? { posX: x } : {}),
-        ...(y != null ? { posY: y } : {}),
-      },
-    });
+    const update = buildRoadmapChildNodeUpdate(base, nodeId);
+    if (update) nodeUpdates.push(update);
   }
 
   const edgeCreates: Array<{
@@ -236,6 +221,42 @@ export function collectRoadmapCanvasBatchSaveExtras(base: {
   }
 
   return { nodeUpdates, edgeCreates, edgeUpdates: [] };
+}
+
+function buildRoadmapChildNodeUpdate(
+  base: { nodes: BaseNode[] },
+  nodeId: string,
+): { nodeId: string; text?: string; x?: number; y?: number; data?: Record<string, unknown> } | null {
+  const node = base.nodes.find((n) => n.id === nodeId);
+  if (!node) return null;
+  const data = (node.data || {}) as Record<string, unknown>;
+  if (!data.roadmapNodeType) return null;
+  const x = typeof node.x === 'number' ? node.x : (data.posX as number | undefined);
+  const y = typeof node.y === 'number' ? node.y : (data.posY as number | undefined);
+  return {
+    nodeId,
+    text: node.text,
+    ...(x != null ? { x } : {}),
+    ...(y != null ? { y } : {}),
+    data: {
+      ...data,
+      ...(x != null ? { posX: x } : {}),
+      ...(y != null ? { posY: y } : {}),
+    },
+  };
+}
+
+export function collectRoadmapNodeUpdates(
+  base: { nodes: BaseNode[]; edges: BaseEdge[] },
+  pendingNodeIds: Iterable<string>,
+): Array<{ nodeId: string; text?: string; x?: number; y?: number; data?: Record<string, unknown> }> {
+  const updates: Array<{ nodeId: string; text?: string; x?: number; y?: number; data?: Record<string, unknown> }> = [];
+  for (const nodeId of pendingNodeIds) {
+    if (!nodeId || nodeId.startsWith('temp-node-')) continue;
+    const update = buildRoadmapChildNodeUpdate(base, nodeId);
+    if (update) updates.push(update);
+  }
+  return updates;
 }
 
 export function collectRoadmapEdgeUpdates(

@@ -79,7 +79,9 @@ export interface ExplorerContentProps {
   onSelectEdge: (edgeId: string | null, edgeSnapshot?: BaseEdge | null) => void;
   edgeEditorApiRef: React.MutableRefObject<RoadmapCanvasEdgeEditorApi | null>;
   pendingEdgeIds?: ReadonlySet<string>;
+  pendingNodeIds?: ReadonlySet<string>;
   onEdgeChanged?: (edgeId: string, kind: 'update' | 'create' | 'delete') => void;
+  onNodeChanged?: (nodeIds: string[], kind: 'update' | 'create' | 'delete') => void;
 }
 
 export interface NodeCtxMenuExtraProps {
