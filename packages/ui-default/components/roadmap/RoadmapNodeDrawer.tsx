@@ -109,7 +109,12 @@ export function RoadmapNodeDrawer({
 
   return ReactDOM.createPortal(
     <>
-      <div className="roadmap-detail-backdrop" aria-hidden />
+      <button
+        type="button"
+        className="roadmap-detail-backdrop roadmap-detail-drawer-backdrop"
+        onClick={onClose}
+        aria-label={i18n('Close')}
+      />
       <aside className="roadmap-detail-drawer" aria-label={nodeLabel}>
         <div className="roadmap-detail-drawer__header">
           <div className="roadmap-detail-drawer__tabs" role="tablist" aria-label={nodeLabel}>

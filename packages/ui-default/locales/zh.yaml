@@ -1899,3 +1899,11 @@ Date: 日期
 'Roadmap drawer start node practice busy': 正在进入刷题…
 'Roadmap drawer start node practice invalid doc': 当前路线图无效，无法开始刷题。
 'Roadmap markdown preview failed': Markdown 渲染失败。
+'Knowledge Base': 知识库
+'Document Structure': 文档结构
+'Content': 内容
+'Roadmap': 路线图
+'Base detail content placeholder': 从文档结构中选择节点以查看内容。
+'Base detail tree empty': 该知识库暂无节点。
+'Base detail node empty': 该节点暂无内容。
+'Base detail card empty': 该卡片暂无内容。

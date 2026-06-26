@@ -1,13 +1,15 @@
 import $ from 'jquery';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import { i18n } from 'vj/utils';
 import type { BaseDoc, Card } from 'vj/components/base/types';
+import { BaseDetailCardDrawer } from 'vj/components/base/BaseDetailCardDrawer';
 import { BaseDetailHeader } from 'vj/components/base/BaseDetailHeader';
 import { BaseDetailEmbeddedRoadmapViewer } from 'vj/components/base/BaseDetailEmbeddedRoadmapViewer';
+import { BaseDetailNodeContent } from 'vj/components/base/BaseDetailNodeContent';
 import { BaseDetailTreeDrawer } from 'vj/components/base/BaseDetailSidebar';
-import { getRoadmapChildGraph, nodeDisplayLabel } from 'vj/components/base/detail_tree';
+import { cardDisplayLabel, getRoadmapChildGraph, nodeDisplayLabel } from 'vj/components/base/detail_tree';
 
 type BaseDetailContext = {
   domainId?: string;
@@ -41,41 +43,65 @@ function BaseDetailViewer() {
     [],
   );
   const [treeDrawerOpen, setTreeDrawerOpen] = useState(false);
-  const [selectedRoadmapNodeId, setSelectedRoadmapNodeId] = useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedCanvasNodeLabel, setSelectedCanvasNodeLabel] = useState<string | null>(null);
+  const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const title = base.title?.trim() || String(i18n('Knowledge Base'));
   const branch = base.currentBranch || 'main';
   const nodes = base.nodes || [];
   const edges = base.edges || [];
 
-  const selectedRoadmapNode = useMemo(
-    () => nodes.find((node) => node.id === selectedRoadmapNodeId) || null,
-    [nodes, selectedRoadmapNodeId],
+  const selectedNode = useMemo(
+    () => nodes.find((node) => node.id === selectedNodeId) || null,
+    [nodes, selectedNodeId],
   );
+  const isRoadmapSelection = selectedNode?.type === 'roadmap';
   const selectedRoadmapGraph = useMemo(() => {
-    if (!selectedRoadmapNodeId) return { childNodes: [], childEdges: [] };
-    return getRoadmapChildGraph(selectedRoadmapNodeId, nodes, edges);
-  }, [edges, nodes, selectedRoadmapNodeId]);
+    if (!selectedNodeId || !isRoadmapSelection) return { childNodes: [], childEdges: [] };
+    return getRoadmapChildGraph(selectedNodeId, nodes, edges);
+  }, [edges, isRoadmapSelection, nodes, selectedNodeId]);
 
-  const handleSelectRoadmapNode = useCallback((nodeId: string) => {
-    setSelectedRoadmapNodeId(nodeId);
+  const handleSelectNode = useCallback((nodeId: string) => {
+    setSelectedNodeId(nodeId);
     setSelectedCanvasNodeLabel(null);
-    setTreeDrawerOpen(false);
+    setSelectedCard(null);
   }, []);
 
+  const handleSelectCard = useCallback((card: Card) => {
+    setSelectedCard(card);
+  }, []);
+
+  const handleCloseCardDrawer = useCallback(() => {
+    setSelectedCard(null);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedCard) return undefined;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (!target) return;
+      if (target.closest('.roadmap-detail-drawer')) return;
+      handleCloseCardDrawer();
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [handleCloseCardDrawer, selectedCard]);
+
   const headerTitle = useMemo(() => {
+    if (selectedCard) return cardDisplayLabel(selectedCard);
     if (selectedCanvasNodeLabel) return selectedCanvasNodeLabel;
-    if (selectedRoadmapNode) return nodeDisplayLabel(selectedRoadmapNode);
+    if (selectedNode) return nodeDisplayLabel(selectedNode);
     return title;
-  }, [selectedCanvasNodeLabel, selectedRoadmapNode, title]);
+  }, [selectedCanvasNodeLabel, selectedCard, selectedNode, title]);
 
   const headerDescription = useMemo(() => {
-    if (selectedRoadmapNode) {
-      if (selectedCanvasNodeLabel) return nodeDisplayLabel(selectedRoadmapNode);
+    if (selectedCard && selectedNode) return nodeDisplayLabel(selectedNode);
+    if (selectedNode) {
+      if (selectedCanvasNodeLabel && isRoadmapSelection) return nodeDisplayLabel(selectedNode);
       return title;
     }
     return base.content;
-  }, [base.content, selectedCanvasNodeLabel, selectedRoadmapNode, title]);
+  }, [base.content, isRoadmapSelection, selectedCanvasNodeLabel, selectedCard, selectedNode, title]);
 
   return (
     <div className="roadmap-detail-layout">
@@ -89,7 +115,7 @@ function BaseDetailViewer() {
         onTreeDrawerOpen={() => setTreeDrawerOpen(true)}
       />
       <div className="roadmap-view">
-        {selectedRoadmapNode ? (
+        {selectedNode && isRoadmapSelection ? (
           <div className="base-detail-roadmap-panel">
             <BaseDetailEmbeddedRoadmapViewer
               childNodes={selectedRoadmapGraph.childNodes}
@@ -98,6 +124,19 @@ function BaseDetailViewer() {
               onSelectedNodeChange={(_nodeId, label) => setSelectedCanvasNodeLabel(label)}
             />
           </div>
+        ) : selectedNode ? (
+          <main className="base-detail-main base-detail-main--node" aria-label={String(i18n('Content'))}>
+            <BaseDetailNodeContent
+              nodeId={selectedNode.id}
+              nodes={nodes}
+              edges={edges}
+              nodeCardsMap={nodeCardsMap}
+              selectedNodeId={selectedNodeId}
+              selectedCardId={selectedCard?.docId || null}
+              onSelectNode={handleSelectNode}
+              onSelectCard={handleSelectCard}
+            />
+          </main>
         ) : (
           <main className="base-detail-main" aria-label={String(i18n('Content'))}>
             <div className="base-detail-main__placeholder">
@@ -111,9 +150,16 @@ function BaseDetailViewer() {
         nodes={nodes}
         edges={edges}
         nodeCardsMap={nodeCardsMap}
-        selectedRoadmapNodeId={selectedRoadmapNodeId}
+        selectedNodeId={selectedNodeId}
+        selectedCardId={selectedCard?.docId || null}
         onClose={() => setTreeDrawerOpen(false)}
-        onSelectRoadmapNode={handleSelectRoadmapNode}
+        onSelectNode={handleSelectNode}
+        onSelectCard={handleSelectCard}
+      />
+      <BaseDetailCardDrawer
+        open={!!selectedCard}
+        card={selectedCard}
+        onClose={handleCloseCardDrawer}
       />
     </div>
   );

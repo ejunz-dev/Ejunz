@@ -76,6 +76,22 @@ export function collectDefaultExpandedNodeIds(
   return expanded;
 }
 
+export function collectSubtreeDefaultExpandedNodeIds(
+  rootNodeId: string,
+  nodes: BaseNode[],
+  edges: BaseEdge[],
+): string[] {
+  const expanded = new Set<string>([rootNodeId]);
+  const visit = (nodeId: string) => {
+    getSortedNodeChildren(nodeId, nodes, edges).forEach((child) => {
+      if (child.expanded !== false) expanded.add(child.id);
+      if (child.type !== 'roadmap') visit(child.id);
+    });
+  };
+  visit(rootNodeId);
+  return [...expanded];
+}
+
 export function getRoadmapChildGraph(
   roadmapNodeId: string,
   nodes: BaseNode[],
