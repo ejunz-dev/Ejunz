@@ -121,6 +121,11 @@ import {
 import { SortWindow } from 'vj/components/base/SortWindow';
 import { DevelopQueueList as BaseEditorDevelopQueueList } from 'vj/components/base/DevelopQueueList';
 import { McpSidebarPanel } from 'vj/components/base/McpSidebarPanel';
+import { useRoadmapPlugin } from './plugins/roadmap/useRoadmapPlugin';
+import {
+  collectRoadmapCanvasBatchSaveExtras,
+  roadmapNodeCreatePayloadFromBase,
+} from './plugins/roadmap/canvas_persist';
 
 export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docId: string | undefined; initialData: BaseDoc; basePath?: string }) {
   const editorMode = String((window as any).UiContext?.editorMode || 'base');
@@ -1337,6 +1342,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   
   
   const expandSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const roadmapTreeClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const developNavPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const expandedNodesRef = useRef<Set<string>>(expandedNodes);
@@ -1719,6 +1725,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       nodeFileItem.clipboardType = checkClipboard(nodeFileItem);
       items.push(nodeFileItem);
 
+      // Roadmap canvas cards are edited inside the roadmap view — never list them in the tree.
+      if (node.type === 'roadmap') return;
+
       
       if (isExpanded) {
         
@@ -1915,7 +1924,16 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     triggerExpandAutoSave();
   }, [triggerExpandAutoSave]);
 
-  
+  const roadmapPlugin = useRoadmapPlugin({
+    base, setBase, baseRef,
+    pendingCreatesRef, setPendingCreatesCount,
+    setPendingDeletes,
+    setNodeCardsMapVersion,
+    setExpandedNodes, expandedNodesRef, triggerExpandAutoSave,
+    setContextMenu, setEmptyAreaContextMenu,
+    isPluginEditor,
+  });
+
   const handleSelectFile = useCallback(async (file: FileItem, skipUrlUpdate = false) => {
     
     if (isMultiSelectMode) {
@@ -1967,6 +1985,21 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     
     
     if (file.type === 'node') {
+      const node = base.nodes.find(n => n.id === file.nodeId);
+      if (roadmapPlugin.isRoadmapNode(node)) {
+        roadmapPlugin.enterRoadmapView(node.id);
+        setSelectedFile(file);
+        selectedFileRef.current = file;
+        if (!skipUrlUpdate && file.nodeId) {
+          const urlParams = new URLSearchParams(window.location.search);
+          urlParams.set('nodeId', file.nodeId);
+          urlParams.delete('cardId');
+          const newUrl = window.location.pathname + '?' + urlParams.toString();
+          window.history.pushState({ nodeId: file.nodeId }, '', newUrl);
+        }
+        return;
+      }
+      roadmapPlugin.exitRoadmapView();
       setSelectedFile(file);
       selectedFileRef.current = file;
       if (!skipUrlUpdate && file.nodeId) {
@@ -2358,17 +2391,22 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           const nodeText = renameRecord ? renameRecord.newName : (create.text || i18n('New node'));
           const existingNode = base.nodes.find(n => n.id === create.tempId);
           const nodeOrder = existingNode?.order;
+          const layoutPayload = roadmapNodeCreatePayloadFromBase(existingNode);
           const nodeCreatePayload: any = {
             tempId: create.tempId,
             text: nodeText,
             parentId: create.nodeId,
-            x: (create as any).x,
-            y: (create as any).y,
+            ...layoutPayload,
             ...(nodeOrder !== undefined && nodeOrder !== null && { order: nodeOrder }),
           };
           if (isPluginEditor) {
             const existingData = (existingNode?.data as PluginNodeData | undefined) || (create as any).data;
             if (existingData) nodeCreatePayload.data = existingData;
+          } else if ((create as any).data && !nodeCreatePayload.data) {
+            nodeCreatePayload.data = (create as any).data;
+          }
+          if ((create as any).nodeType) {
+            nodeCreatePayload.type = (create as any).nodeType;
           }
           batchSaveData.nodeCreates.push(nodeCreatePayload);
         }
@@ -2847,6 +2885,22 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
       mergeLearnProblemNoteDraftsIntoBatch(batchSaveData, learnProblemNotesDraftRef.current);
 
+      const roadmapExtras = collectRoadmapCanvasBatchSaveExtras(base);
+      for (const update of roadmapExtras.nodeUpdates) {
+        const existingUpdate = batchSaveData.nodeUpdates.find((u: any) => u.nodeId === update.nodeId);
+        if (existingUpdate) {
+          Object.assign(existingUpdate, update);
+        } else {
+          batchSaveData.nodeUpdates.push(update);
+        }
+      }
+      for (const edgeCreate of roadmapExtras.edgeCreates) {
+        const exists = batchSaveData.edgeCreates.some(
+          (e: any) => e.source === edgeCreate.source && e.target === edgeCreate.target,
+        );
+        if (!exists) batchSaveData.edgeCreates.push(edgeCreate);
+      }
+
       const hasAnyChanges =
         batchSaveData.nodeCreates.length > 0 ||
         batchSaveData.nodeUpdates.length > 0 ||
@@ -2897,6 +2951,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                   !e.target.startsWith('temp-node-')
                 ),
               }));
+              roadmapPlugin.remapNodeIds(nodeIdMap);
               setExpandedNodes(prev => {
                 const next = new Set(prev);
                 nodeIdMap.forEach((realId, tempId) => {
@@ -3020,6 +3075,29 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                     originalContentsRef.current.delete(key);
                     originalContentsRef.current.set(newId, v);
                   }
+                }
+              }
+              const selNode = selectedFileRef.current;
+              if (
+                selNode &&
+                selNode.type === 'node' &&
+                selNode.nodeId &&
+                nodeIdMap.has(String(selNode.nodeId))
+              ) {
+                const realNodeId = nodeIdMap.get(String(selNode.nodeId))!;
+                const updatedNodeFile: FileItem = {
+                  ...selNode,
+                  id: realNodeId,
+                  nodeId: realNodeId,
+                };
+                selectedFileRef.current = updatedNodeFile;
+                setSelectedFile(updatedNodeFile);
+                if (roadmapPlugin.roadmapNodeId) {
+                  const urlParams = new URLSearchParams(window.location.search);
+                  urlParams.set('nodeId', realNodeId);
+                  urlParams.delete('cardId');
+                  const newUrl = window.location.pathname + '?' + urlParams.toString();
+                  window.history.replaceState({ nodeId: realNodeId }, '', newUrl);
                 }
               }
             }
@@ -3359,6 +3437,61 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     
     setEditingFile(null);
   }, []);
+
+  const handleRoadmapCanvasCardTitleChange = useCallback((newTitle: string) => {
+    const nodeId = roadmapPlugin.roadmapSubSelectedNodeId;
+    if (!nodeId) return;
+
+    const trimmed = newTitle.trim();
+    if (!trimmed) return;
+
+    const node = base.nodes.find((n) => n.id === nodeId);
+    const cardFile = selectedFileRef.current;
+    const renameOriginal = cardFile?.type === 'card' && cardFile.nodeId === nodeId
+      ? (pendingRenames.get(cardFile.id)?.originalName ?? cardFile.name)
+      : (node?.text || i18n('Unnamed Card'));
+
+    setBase((prev) => {
+      const updated = {
+        ...prev,
+        nodes: prev.nodes.map((n) => (n.id === nodeId ? { ...n, text: trimmed } : n)),
+      };
+      baseRef.current = updated;
+      return updated;
+    });
+
+    const pendingNodeCreate = pendingCreatesRef.current.get(nodeId);
+    if (pendingNodeCreate?.type === 'node') {
+      pendingCreatesRef.current.set(nodeId, { ...pendingNodeCreate, text: trimmed });
+      setPendingCreatesCount(pendingCreatesRef.current.size);
+    }
+
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    const cards = nodeCardsMap[nodeId] || [];
+    if (cards.length > 0) {
+      cards[0] = { ...cards[0], title: trimmed };
+      (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+      setNodeCardsMapVersion((prev) => prev + 1);
+    }
+
+    if (cardFile?.type === 'card' && cardFile.nodeId === nodeId) {
+      setSelectedFile((prev) => (prev ? { ...prev, name: trimmed } : prev));
+      selectedFileRef.current = cardFile ? { ...cardFile, name: trimmed } : cardFile;
+      setPendingRenames((prev) => {
+        const next = new Map(prev);
+        const record = { file: { ...cardFile, name: trimmed }, newName: trimmed, originalName: renameOriginal };
+        next.set(cardFile.id, record);
+        if (cardFile.cardId) {
+          const altKey = cardFile.id.startsWith('card-') ? cardFile.cardId : `card-${cardFile.cardId}`;
+          if (altKey !== cardFile.id) next.set(altKey, record);
+        }
+        return next;
+      });
+    }
+  }, [
+    base.nodes, roadmapPlugin.roadmapSubSelectedNodeId, pendingRenames,
+    setBase, baseRef, pendingCreatesRef, setPendingCreatesCount, setNodeCardsMapVersion,
+  ]);
 
   const handleStartRename = useCallback((file: FileItem, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -3827,6 +3960,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     
     setContextMenu(null);
   }, [triggerExpandAutoSave, isPluginEditor, makeDefaultPluginNodeData]);
+
+
+
+
 
   const handleNewRootNode = useCallback((pluginNodeType?: PluginNodeType) => {
     const tempId = `temp-node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -9781,6 +9918,26 @@ Reply with a JSON code block only for executable operations. For same-response f
                 X
               </button>
             )}
+            {roadmapPlugin.roadmapNodeId ? (
+              <button
+                onClick={() => {
+                  roadmapPlugin.exitRoadmapView();
+                }}
+                style={{
+                  width: '34px',
+                  height: '34px',
+                  border: `1px solid ${themeStyles.borderSecondary}`,
+                  borderRadius: '3px',
+                  backgroundColor: themeStyles.bgButton,
+                  color: themeStyles.textSecondary,
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+                title="返回树形视图"
+              >
+                ←
+              </button>
+            ) : null}
             <button
               onClick={() => {
                 if (explorerMode !== 'tree') {
@@ -9949,7 +10106,25 @@ Reply with a JSON code block only for executable operations. For same-response f
             WebkitOverflowScrolling: 'touch',
           }}
         >
-          {explorerMode === 'tree' ? (
+          {roadmapPlugin.roadmapNodeId ? (
+            (() => {
+              const childNodes = base.edges
+                .filter(e => e.source === roadmapPlugin.roadmapNodeId)
+                .map(e => base.nodes.find(n => n.id === e.target))
+                .filter(Boolean) as BaseNode[];
+              const childEdges = base.edges.filter(e =>
+                childNodes.some(n => n.id === e.source) && childNodes.some(n => n.id === e.target)
+              );
+              return (
+                <roadmapPlugin.ExplorerContent
+                  childNodes={childNodes}
+                  childEdges={childEdges}
+                  themeStyles={themeStyles}
+                  onSelectFile={(file) => handleSelectFile(file)}
+                />
+              );
+            })()
+          ) : explorerMode === 'tree' ? (
             fileTree.map((file, index) => {
             const isSelected = isMultiSelectMode
               ? selectedItems.has(file.id)
@@ -9959,7 +10134,13 @@ Reply with a JSON code block only for executable operations. For same-response f
             const isDragOver = dragOverFile?.id === file.id;
             const isDragged = draggedFile?.id === file.id;
             const isEditing = editingFile?.id === file.id;
-            const isExpanded = file.type === 'node' && expandedNodes.has(file.nodeId || '');
+            const treeNode = file.type === 'node'
+              ? base.nodes.find(n => n.id === (file.nodeId || file.id))
+              : null;
+            const isRoadmapTreeNode = treeNode?.type === 'roadmap';
+            const isExpanded = file.type === 'node'
+              && !isRoadmapTreeNode
+              && expandedNodes.has(file.nodeId || '');
             const isFileDropTarget = !!(
               nodeFileListEditMode &&
               draggingFileItem &&
@@ -10034,6 +10215,16 @@ Reply with a JSON code block only for executable operations. For same-response f
                       return;
                     }
                   }
+                  if (isRoadmapTreeNode) {
+                    if (roadmapTreeClickTimerRef.current) {
+                      clearTimeout(roadmapTreeClickTimerRef.current);
+                    }
+                    roadmapTreeClickTimerRef.current = window.setTimeout(() => {
+                      roadmapTreeClickTimerRef.current = null;
+                      handleSelectFile(file);
+                    }, 280);
+                    return;
+                  }
                   handleSelectFile(file);
                   if (isMobile) {
                     if (mobileExplorerCloseTimeoutRef.current) {
@@ -10054,6 +10245,12 @@ Reply with a JSON code block only for executable operations. For same-response f
                     }
                     return;
                   }
+                  if (roadmapTreeClickTimerRef.current) {
+                    clearTimeout(roadmapTreeClickTimerRef.current);
+                    roadmapTreeClickTimerRef.current = null;
+                  }
+                  e.preventDefault();
+                  e.stopPropagation();
                   handleStartRename(file, e);
                 }}
                 onContextMenu={(e) => {
@@ -10222,6 +10419,9 @@ Reply with a JSON code block only for executable operations. For same-response f
               )}
               {file.type === 'node' ? (
                 <>
+                  {isRoadmapTreeNode ? (
+                    <span style={{ width: '16px', flexShrink: 0, marginRight: '2px' }} />
+                  ) : (
                   <span
                     onClick={(e) => {
                       e.stopPropagation();
@@ -10244,8 +10444,9 @@ Reply with a JSON code block only for executable operations. For same-response f
                   >
                     {isExpanded ? '▼' : '▶'}
                   </span>
-                  <span style={{ 
-                    fontSize: '16px', 
+                  )}
+                  <span style={{
+                    fontSize: '16px',
                     flexShrink: 0,
                     width: '16px',
                     height: '16px',
@@ -10253,7 +10454,10 @@ Reply with a JSON code block only for executable operations. For same-response f
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}>
-                    {isPluginEditor ? '◆' : (isExpanded ? '📁' : '📂')}
+                    {isPluginEditor ? '◆' : (() => {
+                      const n = base.nodes.find(nd => nd.id === (file.nodeId || file.id));
+                      return roadmapPlugin.getFileIcon(n) ?? (isRoadmapTreeNode || isExpanded ? '📁' : '📂');
+                    })()}
                   </span>
                   {isPluginEditor && (() => {
                     const node = base.nodes.find(n => n.id === (file.nodeId || file.id));
@@ -11566,6 +11770,13 @@ Reply with a JSON code block only for executable operations. For same-response f
               >
                 新建 Card
               </div>
+              <roadmapPlugin.NodeContextMenuExtra
+                node={base.nodes.find((nd: BaseNode) => nd.id === contextMenu.file.nodeId) as BaseNode}
+                file={contextMenu.file}
+                themeStyles={themeStyles}
+                onClose={() => setContextMenu(null)}
+                handleNewCard={(nodeId) => handleNewCard(nodeId)}
+              />
               </>
               )}
               {(
@@ -12697,6 +12908,10 @@ Reply with a JSON code block only for executable operations. For same-response f
           </div>
           </>
           )}
+          <roadmapPlugin.EmptyAreaContextMenuExtra
+            themeStyles={themeStyles}
+            onClose={() => setEmptyAreaContextMenu(null)}
+          />
           {(
           <>
           <div
@@ -13384,11 +13599,41 @@ Reply with a JSON code block only for executable operations. For same-response f
             >
               ← 返回
             </a>
-            {selectedFile && (
+            {roadmapPlugin.roadmapNodeId && roadmapPlugin.roadmapSubSelectedNodeId ? (
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                <span style={{ fontSize: '12px', color: themeStyles.textSecondary, flexShrink: 0 }}>
+                  {i18n('Base roadmap card title')}
+                </span>
+                <input
+                  type="text"
+                  value={(() => {
+                    const nodeId = roadmapPlugin.roadmapSubSelectedNodeId;
+                    const node = base.nodes.find((n) => n.id === nodeId);
+                    if (selectedFile?.type === 'card' && selectedFile.nodeId === nodeId) {
+                      const rename = pendingRenames.get(selectedFile.id);
+                      if (rename) return rename.newName;
+                    }
+                    return node?.text || '';
+                  })()}
+                  onChange={(e) => handleRoadmapCanvasCardTitleChange(e.target.value)}
+                  placeholder={i18n('Unnamed Card')}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    padding: isMobile ? '8px 10px' : '4px 8px',
+                    fontSize: '13px',
+                    border: `1px solid ${themeStyles.borderSecondary}`,
+                    borderRadius: '4px',
+                    backgroundColor: themeStyles.bgPrimary,
+                    color: themeStyles.textPrimary,
+                  }}
+                />
+              </label>
+            ) : selectedFile ? (
               <div style={{ fontSize: '13px', color: themeStyles.textPrimary }}>
                 {selectedFile.name}
               </div>
-            )}
+            ) : null}
           </div>
           {!isMobile && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>

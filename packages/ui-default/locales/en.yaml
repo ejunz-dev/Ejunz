@@ -1320,6 +1320,12 @@ Date: Date
 'Roadmap node type hook': Hook
 'Roadmap node type text': Text
 'Roadmap node type': Node type
+'Base roadmap new card': New card
+'Base roadmap card type main': Main card
+'Base roadmap card type sub': Sub card
+'Base roadmap card type hook': Hook card
+'Base roadmap card type text': Text card
+'Base roadmap card title': Card title
 'Roadmap node lead text': Lead text
 'Roadmap hook node hint': Select another roadmap for this hook node. Content editing is disabled.
 'Roadmap hook linked': Linked roadmap

@@ -1860,6 +1860,12 @@ Date: 日期
 'Roadmap node type hook': 跳转节点
 'Roadmap node type text': 文本节点
 'Roadmap node type': 节点类型
+'Base roadmap new card': 新建卡片
+'Base roadmap card type main': 主卡片
+'Base roadmap card type sub': 子卡片
+'Base roadmap card type hook': 跳转卡片
+'Base roadmap card type text': 文本卡片
+'Base roadmap card title': 卡片标题
 'Roadmap node lead text': 引导文本
 'Roadmap hook node hint': 为该跳转节点选择目标路线图，不支持编辑正文内容。
 'Roadmap hook linked': 已链接路线图
