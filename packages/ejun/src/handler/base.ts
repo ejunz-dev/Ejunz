@@ -1940,6 +1940,7 @@ export class BaseNodeHandler extends Handler {
                 y,
                 parentId: effectiveParentId,
             };
+            if (body.type != null) (node as any).type = body.type;
 
             
             if (finalSiblingId && !finalParentId) {
@@ -4910,6 +4911,8 @@ export class BaseBatchSaveHandler extends Handler {
             parentId: realParentId,
         };
         if (nodeCreate.order != null) nodePayload.order = nodeCreate.order;
+        if (nodeCreate.type != null) nodePayload.type = nodeCreate.type;
+        if (nodeCreate.data != null) nodePayload.data = nodeCreate.data;
         return nodePayload;
     }
 
@@ -4917,6 +4920,9 @@ export class BaseBatchSaveHandler extends Handler {
         const updates: Partial<BaseNode> = {};
         if (nodeUpdate.text != null) updates.text = nodeUpdate.text;
         if (nodeUpdate.order != null) updates.order = nodeUpdate.order;
+        if (nodeUpdate.x != null) updates.x = nodeUpdate.x;
+        if (nodeUpdate.y != null) updates.y = nodeUpdate.y;
+        if (nodeUpdate.data != null) updates.data = nodeUpdate.data;
         return updates;
     }
 
@@ -5147,6 +5153,7 @@ export class BaseBatchSaveHandler extends Handler {
                         source: sourceId,
                         target: targetId,
                         label: edgeCreate.label,
+                        ...(edgeCreate.lineStyle ? { lineStyle: edgeCreate.lineStyle } : {}),
                     }, branch, mdt);
                 }
             } catch (error: any) {

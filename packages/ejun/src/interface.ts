@@ -295,6 +295,7 @@ export interface BlockDoc {
 export interface BaseNode {
     id: string;
     text: string;
+    type?: 'normal' | 'roadmap';
     x?: number;
     y?: number;
     width?: number;
