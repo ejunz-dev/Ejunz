@@ -130,6 +130,7 @@ import {
   buildRoadmapCardFileItem,
   collectRoadmapCanvasBatchSaveExtras,
   collectRoadmapEdgeUpdates,
+  collectRoadmapNodeUpdates,
   resolveRoadmapCardLocation,
   roadmapNodeCreatePayloadFromBase,
 } from './plugins/roadmap/canvas_persist';
@@ -635,7 +636,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [pendingPluginNodeDataIds, setPendingPluginNodeDataIds] = useState<Set<string>>(new Set());
   const [pendingRoadmapEdgeIds, setPendingRoadmapEdgeIds] = useState<Set<string>>(new Set());
   const [pendingRoadmapEdgeDeleteIds, setPendingRoadmapEdgeDeleteIds] = useState<Set<string>>(new Set());
-  const pendingRoadmapEdgeCount = pendingRoadmapEdgeIds.size + pendingRoadmapEdgeDeleteIds.size;
+  const [pendingRoadmapNodeIds, setPendingRoadmapNodeIds] = useState<Set<string>>(new Set());
+  const pendingRoadmapCanvasCount = pendingRoadmapEdgeIds.size
+    + pendingRoadmapEdgeDeleteIds.size
+    + pendingRoadmapNodeIds.size;
 
   const markRoadmapEdgePending = useCallback((edgeId: string) => {
     if (!edgeId || edgeId.startsWith('temp-edge-tree-')) return;
@@ -665,6 +669,16 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     if (kind === 'delete') markRoadmapEdgeDeleted(edgeId);
     else markRoadmapEdgePending(edgeId);
   }, [markRoadmapEdgeDeleted, markRoadmapEdgePending]);
+
+  const markRoadmapNodePending = useCallback((nodeId: string) => {
+    if (!nodeId || nodeId.startsWith('temp-node-')) return;
+    setPendingRoadmapNodeIds((prev) => new Set(prev).add(nodeId));
+  }, []);
+
+  const handleRoadmapNodeChanged = useCallback((nodeIds: string[], kind: 'update' | 'create' | 'delete') => {
+    if (kind === 'delete') return;
+    nodeIds.forEach((nodeId) => markRoadmapNodePending(nodeId));
+  }, [markRoadmapNodePending]);
 
   const makeDefaultPluginNodeData = useCallback((_type: PluginNodeType = 'folder', title?: string): PluginNodeData => {
     const baseSlug = String(title || 'folder').trim().toLowerCase()
@@ -1229,7 +1243,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     wrapper.style.alignItems = 'center';
     wrapper.style.gap = '8px';
     rightEl.appendChild(wrapper);
-    const pendingCount = pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + pendingFileMoves.size + pendingPluginNodeDataIds.size + pendingRoadmapEdgeCount + Object.keys(pendingCardFaceChanges).length + pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + learnProblemNotesDraftCount;
+    const pendingCount = pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + pendingFileMoves.size + pendingPluginNodeDataIds.size + pendingRoadmapCanvasCount + Object.keys(pendingCardFaceChanges).length + pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + learnProblemNotesDraftCount;
     const hasPending = pendingCount > 0;
     ReactDOM.render(
       <>
@@ -1267,7 +1281,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       ReactDOM.unmountComponentAtNode(wrapper);
       wrapper.remove();
     };
-  }, [isMobile, aiBottomOpen, editorAiHidden, isCommitting, pendingChanges.size, pendingDragChanges.size, pendingRenames.size, pendingCreatesCount, pendingDeletes.size, pendingFileMoves.size, pendingPluginNodeDataIds.size, pendingRoadmapEdgeCount, pendingCardFaceChanges, pendingProblemCardIds.size, pendingNewProblemCardIds.size, pendingEditedProblemIds.size, learnProblemNotesDraftCount]);
+  }, [isMobile, aiBottomOpen, editorAiHidden, isCommitting, pendingChanges.size, pendingDragChanges.size, pendingRenames.size, pendingCreatesCount, pendingDeletes.size, pendingFileMoves.size, pendingPluginNodeDataIds.size, pendingRoadmapCanvasCount, pendingCardFaceChanges, pendingProblemCardIds.size, pendingNewProblemCardIds.size, pendingEditedProblemIds.size, learnProblemNotesDraftCount]);
 
   
   const getSelectedCard = useCallback((): Card | null => {
@@ -2987,7 +3001,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       mergeLearnProblemNoteDraftsIntoBatch(batchSaveData, learnProblemNotesDraftRef.current);
 
       const roadmapExtras = collectRoadmapCanvasBatchSaveExtras(base);
-      for (const update of roadmapExtras.nodeUpdates) {
+      for (const update of collectRoadmapNodeUpdates(base, pendingRoadmapNodeIds)) {
         const existingUpdate = batchSaveData.nodeUpdates.find((u: any) => u.nodeId === update.nodeId);
         if (existingUpdate) {
           Object.assign(existingUpdate, update);
@@ -3289,6 +3303,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       setPendingPluginNodeDataIds(new Set());
       setPendingRoadmapEdgeIds(new Set());
       setPendingRoadmapEdgeDeleteIds(new Set());
+      setPendingRoadmapNodeIds(new Set());
       setPendingCardFaceChanges(prev => {
         const next = { ...prev };
         batchSaveData.cardUpdates.forEach((u: any) => delete next[u.cardId]);
@@ -3321,7 +3336,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         + (hasDeleteChanges ? pendingDeletes.size : 0)
         + (hasFileMoveChanges ? fileMoveCount : 0)
         + pendingPluginNodeDataIds.size
-        + pendingRoadmapEdgeCount
+        + pendingRoadmapCanvasCount
         + problemChangesCount
         + savedLearnerDraftBucketsForMsg;
 
@@ -10293,7 +10308,9 @@ Reply with a JSON code block only for executable operations. For same-response f
                   onSelectEdge={roadmapPlugin.selectRoadmapEdge}
                   edgeEditorApiRef={roadmapPlugin.roadmapCanvasEdgeApiRef}
                   pendingEdgeIds={pendingRoadmapEdgeIds}
+                  pendingNodeIds={pendingRoadmapNodeIds}
                   onEdgeChanged={handleRoadmapEdgeChanged}
+                  onNodeChanged={handleRoadmapNodeChanged}
                 />
               );
             })()
@@ -13828,22 +13845,22 @@ Reply with a JSON code block only for executable operations. For same-response f
                 console.log('[保存按钮] 点击保存，pendingProblemCardIds:', Array.from(pendingProblemCardIds));
                 handleSaveAll();
               }}
-              disabled={isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && pendingPluginNodeDataIds.size === 0 && pendingRoadmapEdgeCount === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)}
+              disabled={isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && pendingPluginNodeDataIds.size === 0 && pendingRoadmapCanvasCount === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)}
               style={{
                 padding: isMobile ? '10px 12px' : '4px 12px',
                 minHeight: isMobile ? '44px' : undefined,
                 border: `1px solid ${themeStyles.borderSecondary}`,
                 borderRadius: '3px',
-                backgroundColor: (pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0 || pendingFileMoves.size > 0 || pendingPluginNodeDataIds.size > 0 || pendingRoadmapEdgeCount > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) ? themeStyles.success : (theme === 'dark' ? '#555' : '#6c757d'),
+                backgroundColor: (pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0 || pendingFileMoves.size > 0 || pendingPluginNodeDataIds.size > 0 || pendingRoadmapCanvasCount > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) ? themeStyles.success : (theme === 'dark' ? '#555' : '#6c757d'),
                 color: themeStyles.textOnPrimary,
-                cursor: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && pendingPluginNodeDataIds.size === 0 && pendingRoadmapEdgeCount === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)) ? 'not-allowed' : 'pointer',
+                cursor: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && pendingPluginNodeDataIds.size === 0 && pendingRoadmapCanvasCount === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)) ? 'not-allowed' : 'pointer',
                 fontSize: '12px',
                 fontWeight: '500',
-                opacity: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && pendingPluginNodeDataIds.size === 0 && pendingRoadmapEdgeCount === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)) ? 0.6 : 1,
+                opacity: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && pendingPluginNodeDataIds.size === 0 && pendingRoadmapCanvasCount === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)) ? 0.6 : 1,
               }}
-              title={(pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && pendingPluginNodeDataIds.size === 0 && pendingRoadmapEdgeCount === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0) ? i18n('No pending changes') : i18n('Save all changes')}
+              title={(pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && pendingPluginNodeDataIds.size === 0 && pendingRoadmapCanvasCount === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0) ? i18n('No pending changes') : i18n('Save all changes')}
             >
-              {isCommitting ? i18n('Saving...') : `${i18n('Save changes')} (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + pendingFileMoves.size + pendingPluginNodeDataIds.size + pendingRoadmapEdgeCount + Object.keys(pendingCardFaceChanges).length + pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + learnProblemNotesDraftCount})`}
+              {isCommitting ? i18n('Saving...') : `${i18n('Save changes')} (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + pendingFileMoves.size + pendingPluginNodeDataIds.size + pendingRoadmapCanvasCount + Object.keys(pendingCardFaceChanges).length + pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + learnProblemNotesDraftCount})`}
             </button>
           </div>
           )}

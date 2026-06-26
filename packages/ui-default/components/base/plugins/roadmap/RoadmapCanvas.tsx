@@ -85,7 +85,9 @@ export interface RoadmapCanvasProps {
   edgeEditorApiRef: React.MutableRefObject<RoadmapCanvasEdgeEditorApi | null>;
   themeStyles: Record<string, string>;
   pendingEdgeIds?: ReadonlySet<string>;
+  pendingNodeIds?: ReadonlySet<string>;
   onEdgeChanged?: (edgeId: string, kind: 'update' | 'create' | 'delete') => void;
+  onNodeChanged?: (nodeIds: string[], kind: 'update' | 'create' | 'delete') => void;
 }
 
 function newCardId(): string {
@@ -120,7 +122,9 @@ function RoadmapCanvasContent({
   edgeEditorApiRef,
   themeStyles,
   pendingEdgeIds,
+  pendingNodeIds,
   onEdgeChanged,
+  onNodeChanged,
 }: RoadmapCanvasProps) {
   const initialFlowNodes = useMemo(
     () =>
@@ -279,11 +283,15 @@ function RoadmapCanvasContent({
           return snapNodeToLane(node, nearestLaneFromX(node.position.x + getRoadmapNodeWidth(node) / 2));
         });
         const aligned = alignNodesInSolidComponents(snapped, edges);
-        window.setTimeout(() => flowCardsToBase(aligned, edges), 0);
+        const movedIds = [...linked];
+        window.setTimeout(() => {
+          flowCardsToBase(aligned, edges);
+          if (movedIds.length) onNodeChanged?.(movedIds, 'update');
+        }, 0);
         return aligned;
       });
     },
-    [edges, setNodes, flowCardsToBase],
+    [edges, setNodes, flowCardsToBase, onNodeChanged],
   );
 
   const scheduleFlowSync = useCallback((flowNodes: Node[], flowEdges: Edge[]) => {
@@ -515,7 +523,7 @@ function RoadmapCanvasContent({
   );
 
   const viewNodes = useMemo(() => {
-    return toRoadmapViewNodes(nodes, selectedNodeId).map((node) => ({
+    return toRoadmapViewNodes(nodes, selectedNodeId, pendingNodeIds).map((node) => ({
       ...node,
       data: {
         ...node.data,
@@ -540,6 +548,7 @@ function RoadmapCanvasContent({
     nodes,
     problemCountByNodeId,
     selectedNodeId,
+    pendingNodeIds,
     nodeNumberMap,
   ]);
 
@@ -575,6 +584,7 @@ function RoadmapCanvasContent({
     s.textContent = [
       '.roadmap-sh-node{position:relative;width:260px;min-width:260px;max-width:260px;box-sizing:border-box;padding:10px 16px;border:2px solid #4135d6;border-radius:8px;background:#ffe599;color:#111;text-align:center;cursor:default}',
       '.roadmap-sh-node.is-selected{border-color:#1a5fb4!important;box-shadow:0 0 0 3px rgba(26,95,180,0.35)!important}',
+      '.roadmap-sh-node--pending-update{border-color:#ff9800!important;box-shadow:0 0 0 2px rgba(255,152,0,0.35)!important}',
       '.roadmap-sh-node--kind-main{background:#ffeb3b;border-color:#e6c200}',
       '.roadmap-sh-node--kind-sub{background:#fff9c4;border-color:#e8d44a;width:100%;min-width:180px;max-width:100%}',
       '.roadmap-sh-node--kind-hook{background:#6eb3ff;border-color:#2b78e4}',
