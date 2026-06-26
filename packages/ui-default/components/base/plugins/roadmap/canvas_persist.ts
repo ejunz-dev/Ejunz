@@ -18,10 +18,12 @@ export function findRoadmapParentForChildNode(
   base: { nodes: BaseNode[]; edges: BaseEdge[] },
   childNodeId: string,
 ): string | null {
-  const edge = base.edges.find((item) => item.target === childNodeId);
-  if (!edge) return null;
-  const parent = base.nodes.find((node) => node.id === edge.source);
-  return parent?.type === 'roadmap' ? parent.id : null;
+  for (const edge of base.edges) {
+    if (edge.target !== childNodeId) continue;
+    const parent = base.nodes.find((node) => node.id === edge.source);
+    if (parent?.type === 'roadmap') return parent.id;
+  }
+  return null;
 }
 
 export function resolveRoadmapCardLocation(
