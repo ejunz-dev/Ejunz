@@ -41,6 +41,7 @@ export type EditorRightPanelTab = 'problems' | 'develop_queue' | 'plugin_node' |
 export interface BaseNode {
   id: string;
   text: string;
+  type?: 'normal' | 'roadmap';
   x?: number;
   y?: number;
   color?: string;
@@ -110,7 +111,7 @@ export interface Card {
 }
 
 export type FileItem = {
-  type: 'node' | 'card';
+  type: 'node' | 'card' | 'roadmap';
   id: string;
   name: string;
   nodeId?: string;
@@ -185,6 +186,7 @@ export interface PendingCreate {
   text?: string;
   tempId: string;
   data?: PluginNodeData;
+  nodeType?: 'normal' | 'roadmap';
 }
 
 export interface PendingDelete {
