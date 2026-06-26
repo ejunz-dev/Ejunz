@@ -1,4 +1,62 @@
-import type { BaseNode, BaseEdge } from 'vj/components/base/types';
+import type { BaseNode, BaseEdge, Card, FileItem } from 'vj/components/base/types';
+import { i18n } from 'vj/utils';
+
+export function findCardOwnerNodeId(
+  nodeCardsMap: Record<string, Card[]>,
+  cardId: string,
+): string | null {
+  const cardIdStr = String(cardId);
+  for (const [nodeId, cards] of Object.entries(nodeCardsMap)) {
+    if ((cards || []).some((card) => String(card.docId) === cardIdStr)) {
+      return nodeId;
+    }
+  }
+  return null;
+}
+
+export function findRoadmapParentForChildNode(
+  base: { nodes: BaseNode[]; edges: BaseEdge[] },
+  childNodeId: string,
+): string | null {
+  const edge = base.edges.find((item) => item.target === childNodeId);
+  if (!edge) return null;
+  const parent = base.nodes.find((node) => node.id === edge.source);
+  return parent?.type === 'roadmap' ? parent.id : null;
+}
+
+export function resolveRoadmapCardLocation(
+  base: { nodes: BaseNode[]; edges: BaseEdge[] },
+  nodeCardsMap: Record<string, Card[]>,
+  cardId: string,
+): { roadmapNodeId: string; childNodeId: string; card: Card } | null {
+  const childNodeId = findCardOwnerNodeId(nodeCardsMap, cardId);
+  if (!childNodeId) return null;
+  const roadmapNodeId = findRoadmapParentForChildNode(base, childNodeId);
+  if (!roadmapNodeId) return null;
+  const card = (nodeCardsMap[childNodeId] || []).find(
+    (item) => String(item.docId) === String(cardId),
+  );
+  if (!card) return null;
+  return { roadmapNodeId, childNodeId, card };
+}
+
+export function buildRoadmapCardFileItem(
+  childNodeId: string,
+  card: Card,
+  base: { nodes: BaseNode[] },
+): FileItem {
+  const node = base.nodes.find((item) => item.id === childNodeId);
+  const name = String(node?.text || card.title || '').trim() || i18n('Unnamed');
+  return {
+    type: 'card',
+    id: `card-${card.docId}`,
+    name,
+    nodeId: childNodeId,
+    cardId: card.docId,
+    parentId: childNodeId,
+    level: 0,
+  };
+}
 
 export function roadmapChildIdSet(
   base: { nodes: BaseNode[]; edges: BaseEdge[] },
@@ -67,7 +125,8 @@ export function mergeRoadmapCanvasIntoBase(
     const edgesSame = prevInternal.length === updatedEdges.length
       && prevInternal.every((e) =>
         updatedEdges.some((u) => u.source === e.source && u.target === e.target
-          && String((e as BaseEdge & { lineStyle?: string }).lineStyle || '') === String((u as BaseEdge & { lineStyle?: string }).lineStyle || '')),
+          && String((e as BaseEdge & { lineStyle?: string }).lineStyle || '') === String((u as BaseEdge & { lineStyle?: string }).lineStyle || '')
+          && String((e as BaseEdge & { label?: string }).label || '') === String((u as BaseEdge & { label?: string }).label || '')),
       );
 
     if (nodesSame && edgesSame) return null;
@@ -95,7 +154,21 @@ export function collectRoadmapCanvasBatchSaveExtras(base: {
   edges: BaseEdge[];
 }): {
   nodeUpdates: Array<{ nodeId: string; text?: string; x?: number; y?: number; data?: Record<string, unknown> }>;
-  edgeCreates: Array<{ source: string; target: string; label?: string; lineStyle?: string }>;
+  edgeCreates: Array<{
+    source: string;
+    target: string;
+    label?: string;
+    lineStyle?: string;
+    sourceHandle?: string;
+    targetHandle?: string;
+  }>;
+  edgeUpdates: Array<{
+    edgeId: string;
+    label?: string;
+    lineStyle?: string;
+    sourceHandle?: string;
+    targetHandle?: string;
+  }>;
 } {
   const roadmapIds = new Set(
     base.nodes.filter((n) => n.type === 'roadmap').map((n) => n.id),
@@ -129,21 +202,86 @@ export function collectRoadmapCanvasBatchSaveExtras(base: {
     });
   }
 
-  const edgeCreates: Array<{ source: string; target: string; label?: string; lineStyle?: string }> = [];
+  const edgeCreates: Array<{
+    source: string;
+    target: string;
+    label?: string;
+    lineStyle?: string;
+    sourceHandle?: string;
+    targetHandle?: string;
+  }> = [];
   for (const edge of base.edges) {
     if (!isRoadmapCanvasInternalEdge(edge, childIds)) continue;
     if (edge.id && !edge.id.startsWith('temp-edge') && !edge.id.startsWith('edge_')) continue;
-    const lineStyle = (edge as BaseEdge & { lineStyle?: string; data?: { lineStyle?: string } }).lineStyle
-      ?? (edge as BaseEdge & { data?: { lineStyle?: string } }).data?.lineStyle;
+    const typedEdge = edge as BaseEdge & {
+      label?: string;
+      lineStyle?: string;
+      sourceHandle?: string;
+      targetHandle?: string;
+      data?: { lineStyle?: string; sourceHandle?: string; targetHandle?: string };
+    };
+    const lineStyle = typedEdge.lineStyle ?? typedEdge.data?.lineStyle;
+    const sourceHandle = typedEdge.sourceHandle ?? typedEdge.data?.sourceHandle;
+    const targetHandle = typedEdge.targetHandle ?? typedEdge.data?.targetHandle;
     edgeCreates.push({
       source: edge.source,
       target: edge.target,
-      label: (edge as BaseEdge & { label?: string }).label,
+      label: typedEdge.label,
       ...(lineStyle ? { lineStyle } : {}),
+      ...(sourceHandle ? { sourceHandle } : {}),
+      ...(targetHandle ? { targetHandle } : {}),
     });
   }
 
-  return { nodeUpdates, edgeCreates };
+  return { nodeUpdates, edgeCreates, edgeUpdates: [] };
+}
+
+export function collectRoadmapEdgeUpdates(
+  base: { edges: BaseEdge[] },
+  pendingEdgeIds: Iterable<string>,
+): Array<{
+  edgeId: string;
+  label?: string;
+  lineStyle?: string;
+  sourceHandle?: string;
+  targetHandle?: string;
+}> {
+  const updates: Array<{
+    edgeId: string;
+    label?: string;
+    lineStyle?: string;
+    sourceHandle?: string;
+    targetHandle?: string;
+  }> = [];
+
+  for (const edgeId of pendingEdgeIds) {
+    if (!edgeId || edgeId.startsWith('temp-edge-tree-') || edgeId.startsWith('edge_')) continue;
+    const edge = base.edges.find((item) => item.id === edgeId);
+    if (!edge) continue;
+    const typedEdge = edge as BaseEdge & {
+      label?: string;
+      lineStyle?: string;
+      sourceHandle?: string;
+      targetHandle?: string;
+      data?: {
+        lineStyle?: string;
+        sourceHandle?: string;
+        targetHandle?: string;
+      };
+    };
+    const lineStyle = typedEdge.lineStyle ?? typedEdge.data?.lineStyle;
+    const sourceHandle = typedEdge.sourceHandle ?? typedEdge.data?.sourceHandle;
+    const targetHandle = typedEdge.targetHandle ?? typedEdge.data?.targetHandle;
+    updates.push({
+      edgeId,
+      label: typedEdge.label,
+      ...(lineStyle ? { lineStyle } : {}),
+      ...(sourceHandle ? { sourceHandle } : {}),
+      ...(targetHandle ? { targetHandle } : {}),
+    });
+  }
+
+  return updates;
 }
 
 export function roadmapNodeCreatePayloadFromBase(node: BaseNode | undefined): {

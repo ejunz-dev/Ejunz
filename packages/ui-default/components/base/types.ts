@@ -36,7 +36,7 @@ export type AvailableMcpServiceForPlugin = {
   tools?: AvailableMcpToolForPlugin[];
 };
 
-export type EditorRightPanelTab = 'problems' | 'develop_queue' | 'plugin_node' | 'plugin_mcp_services';
+export type EditorRightPanelTab = 'problems' | 'develop_queue' | 'plugin_node' | 'plugin_mcp_services' | 'roadmap_edge';
 
 export interface BaseNode {
   id: string;

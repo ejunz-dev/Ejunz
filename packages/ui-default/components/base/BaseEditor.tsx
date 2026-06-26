@@ -123,9 +123,19 @@ import { DevelopQueueList as BaseEditorDevelopQueueList } from 'vj/components/ba
 import { McpSidebarPanel } from 'vj/components/base/McpSidebarPanel';
 import { useRoadmapPlugin } from './plugins/roadmap/useRoadmapPlugin';
 import {
+  RoadmapCanvasRailIcon,
+  RoadmapSettingsRailIcon,
+} from './plugins/roadmap/RoadmapEditorSettingsPanel';
+import {
+  buildRoadmapCardFileItem,
   collectRoadmapCanvasBatchSaveExtras,
+  collectRoadmapEdgeUpdates,
+  resolveRoadmapCardLocation,
   roadmapNodeCreatePayloadFromBase,
 } from './plugins/roadmap/canvas_persist';
+import { installRoadmapResizeObserverErrorGuard } from './plugins/roadmap/flow_shared';
+
+installRoadmapResizeObserverErrorGuard();
 
 export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docId: string | undefined; initialData: BaseDoc; basePath?: string }) {
   const editorMode = String((window as any).UiContext?.editorMode || 'base');
@@ -216,6 +226,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   } | null>(null);
 
   const [developQueueNavBusy, setDevelopQueueNavBusy] = useState<number | null>(null);
+  const [roadmapCardTitleDraft, setRoadmapCardTitleDraft] = useState('');
+  const roadmapTitleSelectionRef = useRef('');
   const [editorRightPanelTab, setEditorRightPanelTab] = useState<EditorRightPanelTab>(isPluginEditor ? 'plugin_mcp_services' : 'problems');
   const availableMcpServices = useMemo<AvailableMcpServiceForPlugin[]>(() => {
     const raw = (window as any).UiContext?.availableMcpServices;
@@ -621,6 +633,38 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [pendingDragChanges, setPendingDragChanges] = useState<Set<string>>(new Set());
   const [nodeCardsMapVersion, setNodeCardsMapVersion] = useState(0);
   const [pendingPluginNodeDataIds, setPendingPluginNodeDataIds] = useState<Set<string>>(new Set());
+  const [pendingRoadmapEdgeIds, setPendingRoadmapEdgeIds] = useState<Set<string>>(new Set());
+  const [pendingRoadmapEdgeDeleteIds, setPendingRoadmapEdgeDeleteIds] = useState<Set<string>>(new Set());
+  const pendingRoadmapEdgeCount = pendingRoadmapEdgeIds.size + pendingRoadmapEdgeDeleteIds.size;
+
+  const markRoadmapEdgePending = useCallback((edgeId: string) => {
+    if (!edgeId || edgeId.startsWith('temp-edge-tree-')) return;
+    setPendingRoadmapEdgeIds((prev) => new Set(prev).add(edgeId));
+    setPendingRoadmapEdgeDeleteIds((prev) => {
+      if (!prev.has(edgeId)) return prev;
+      const next = new Set(prev);
+      next.delete(edgeId);
+      return next;
+    });
+  }, []);
+
+  const markRoadmapEdgeDeleted = useCallback((edgeId: string) => {
+    if (!edgeId || edgeId.startsWith('temp-edge-tree-')) return;
+    setPendingRoadmapEdgeIds((prev) => {
+      if (!prev.has(edgeId)) return prev;
+      const next = new Set(prev);
+      next.delete(edgeId);
+      return next;
+    });
+    if (!edgeId.startsWith('edge_') && !edgeId.startsWith('temp-edge-')) {
+      setPendingRoadmapEdgeDeleteIds((prev) => new Set(prev).add(edgeId));
+    }
+  }, []);
+
+  const handleRoadmapEdgeChanged = useCallback((edgeId: string, kind: 'update' | 'create' | 'delete') => {
+    if (kind === 'delete') markRoadmapEdgeDeleted(edgeId);
+    else markRoadmapEdgePending(edgeId);
+  }, [markRoadmapEdgeDeleted, markRoadmapEdgePending]);
 
   const makeDefaultPluginNodeData = useCallback((_type: PluginNodeType = 'folder', title?: string): PluginNodeData => {
     const baseSlug = String(title || 'folder').trim().toLowerCase()
@@ -1185,7 +1229,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     wrapper.style.alignItems = 'center';
     wrapper.style.gap = '8px';
     rightEl.appendChild(wrapper);
-    const pendingCount = pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + pendingFileMoves.size + pendingPluginNodeDataIds.size + Object.keys(pendingCardFaceChanges).length + pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + learnProblemNotesDraftCount;
+    const pendingCount = pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + pendingFileMoves.size + pendingPluginNodeDataIds.size + pendingRoadmapEdgeCount + Object.keys(pendingCardFaceChanges).length + pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + learnProblemNotesDraftCount;
     const hasPending = pendingCount > 0;
     ReactDOM.render(
       <>
@@ -1223,7 +1267,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       ReactDOM.unmountComponentAtNode(wrapper);
       wrapper.remove();
     };
-  }, [isMobile, aiBottomOpen, editorAiHidden, isCommitting, pendingChanges.size, pendingDragChanges.size, pendingRenames.size, pendingCreatesCount, pendingDeletes.size, pendingFileMoves.size, pendingPluginNodeDataIds.size, pendingCardFaceChanges, pendingProblemCardIds.size, pendingNewProblemCardIds.size, pendingEditedProblemIds.size, learnProblemNotesDraftCount]);
+  }, [isMobile, aiBottomOpen, editorAiHidden, isCommitting, pendingChanges.size, pendingDragChanges.size, pendingRenames.size, pendingCreatesCount, pendingDeletes.size, pendingFileMoves.size, pendingPluginNodeDataIds.size, pendingRoadmapEdgeCount, pendingCardFaceChanges, pendingProblemCardIds.size, pendingNewProblemCardIds.size, pendingEditedProblemIds.size, learnProblemNotesDraftCount]);
 
   
   const getSelectedCard = useCallback((): Card | null => {
@@ -1931,8 +1975,27 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     setNodeCardsMapVersion,
     setExpandedNodes, expandedNodesRef, triggerExpandAutoSave,
     setContextMenu, setEmptyAreaContextMenu,
+    setPendingPluginNodeDataIds,
+    setRightPanelOpen,
     isPluginEditor,
   });
+
+  useEffect(() => {
+    const nodeId = roadmapPlugin.roadmapSubSelectedNodeId;
+    if (roadmapPlugin.roadmapSelectedEdgeId || !nodeId) {
+      roadmapTitleSelectionRef.current = '';
+      setRoadmapCardTitleDraft('');
+      return;
+    }
+    const selectionKey = `${nodeId}:${selectedFile?.id ?? ''}`;
+    if (selectionKey === roadmapTitleSelectionRef.current) return;
+    roadmapTitleSelectionRef.current = selectionKey;
+
+    const node = base.nodes.find((n) => n.id === nodeId);
+    const cardFile = selectedFile?.type === 'card' && selectedFile.nodeId === nodeId ? selectedFile : null;
+    const rename = cardFile ? pendingRenames.get(cardFile.id) : undefined;
+    setRoadmapCardTitleDraft(rename?.newName ?? node?.text ?? cardFile?.name ?? '');
+  }, [roadmapPlugin.roadmapSubSelectedNodeId, roadmapPlugin.roadmapSelectedEdgeId, selectedFile?.id, base.nodes, pendingRenames]);
 
   const handleSelectFile = useCallback(async (file: FileItem, skipUrlUpdate = false) => {
     
@@ -1984,6 +2047,22 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     if (selectedItems.size > 0) setSelectedItems(new Set());
     
     
+    if (file.type === 'card' && file.cardId) {
+      const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+      const resolved = resolveRoadmapCardLocation(base, nodeCardsMap, String(file.cardId));
+      if (resolved) {
+        roadmapPlugin.enterRoadmapView(resolved.roadmapNodeId, { childNodeId: resolved.childNodeId });
+      } else if (roadmapPlugin.roadmapNodeId) {
+        // Canvas sub-cards are not listed in fileTree; only leave roadmap when picking a tree card.
+        const isTreeListedCard = fileTree.some(
+          (item) => item.type === 'card' && String(item.cardId) === String(file.cardId),
+        );
+        if (isTreeListedCard) {
+          roadmapPlugin.exitRoadmapView();
+        }
+      }
+    }
+
     if (file.type === 'node') {
       const node = base.nodes.find(n => n.id === file.nodeId);
       if (roadmapPlugin.isRoadmapNode(node)) {
@@ -2087,24 +2166,37 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     startTransition(() => {
       setFileContent(content);
     });
-  }, [base.nodes, selectedFile, editorInstance, fileContent, pendingChanges, isMultiSelectMode, fileTree, selectedItems]);
+  }, [base.nodes, selectedFile, editorInstance, fileContent, pendingChanges, isMultiSelectMode, fileTree, selectedItems, roadmapPlugin]);
 
-  
+  const selectRoadmapCardFromUrl = useCallback((cardIdStr: string, skipUrlUpdate = true) => {
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    const resolved = resolveRoadmapCardLocation(base, nodeCardsMap, cardIdStr);
+    if (!resolved) return false;
+    const cardFile = buildRoadmapCardFileItem(resolved.childNodeId, resolved.card, base);
+    handleSelectFile(cardFile, skipUrlUpdate);
+    return true;
+  }, [base, handleSelectFile]);
+
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const cardId = urlParams.get('cardId');
     const nodeId = urlParams.get('nodeId');
     const cardIdStr = cardId ? String(cardId) : '';
     const nodeIdStr = nodeId ? String(nodeId) : '';
-    if (cardIdStr && fileTree.length > 0) {
+    if (cardIdStr) {
       const cardFile = fileTree.find(f => f.type === 'card' && String(f.cardId) === cardIdStr);
       if (cardFile) {
         const needSelect = !selectedFile || selectedFile.type !== 'card' || String(selectedFile.cardId) !== cardIdStr;
         if (needSelect) {
           handleSelectFile(cardFile, true);
-          return;
         }
         return;
+      }
+      if (base.nodes.length > 0) {
+        const needSelect = !selectedFile || selectedFile.type !== 'card' || String(selectedFile.cardId) !== cardIdStr;
+        if (needSelect && selectRoadmapCardFromUrl(cardIdStr, true)) {
+          return;
+        }
       }
     }
     if (nodeIdStr && fileTree.length > 0) {
@@ -2113,7 +2205,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         handleSelectFile(nodeFile, true);
       }
     }
-  }, [fileTree, selectedFile, handleSelectFile]);
+  }, [base.nodes.length, fileTree, nodeCardsMapVersion, selectedFile, handleSelectFile, selectRoadmapCardFromUrl]);
 
   
   useEffect(() => {
@@ -2123,12 +2215,15 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       const nodeId = urlParams.get('nodeId');
       const cardIdStr = cardId ? String(cardId) : '';
       const nodeIdStr = nodeId ? String(nodeId) : '';
-      if (cardIdStr && fileTree.length > 0) {
+      if (cardIdStr) {
         const cardFile = fileTree.find(f => f.type === 'card' && String(f.cardId) === cardIdStr);
         if (cardFile && (!selectedFile || selectedFile.type !== 'card' || String(selectedFile.cardId) !== cardIdStr)) {
           handleSelectFile(cardFile, true);
+          return;
         }
-        return;
+        if (!cardFile && selectRoadmapCardFromUrl(cardIdStr, true)) {
+          return;
+        }
       }
       if (nodeIdStr && fileTree.length > 0) {
         const nodeFile = fileTree.find(f => f.type === 'node' && f.nodeId === nodeIdStr);
@@ -2151,7 +2246,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     return () => {
       window.removeEventListener('popstate', handlePopState);
     };
-  }, [fileTree, selectedFile, handleSelectFile]);
+  }, [fileTree, selectedFile, handleSelectFile, selectRoadmapCardFromUrl]);
 
 
   
@@ -2342,6 +2437,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         cardUpdates: [],
         cardDeletes: [],
         edgeCreates: [],
+        edgeUpdates: [],
         edgeDeletes: [],
       };
       const developSid = new URLSearchParams(window.location.search).get('session');
@@ -2900,6 +2996,17 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         );
         if (!exists) batchSaveData.edgeCreates.push(edgeCreate);
       }
+      for (const edgeUpdate of collectRoadmapEdgeUpdates(base, pendingRoadmapEdgeIds)) {
+        const exists = batchSaveData.edgeUpdates.some(
+          (e: any) => e.edgeId === edgeUpdate.edgeId,
+        );
+        if (!exists) batchSaveData.edgeUpdates.push(edgeUpdate);
+      }
+      for (const edgeId of pendingRoadmapEdgeDeleteIds) {
+        if (!batchSaveData.edgeDeletes.includes(edgeId)) {
+          batchSaveData.edgeDeletes.push(edgeId);
+        }
+      }
 
       const hasAnyChanges =
         batchSaveData.nodeCreates.length > 0 ||
@@ -2909,6 +3016,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         batchSaveData.cardUpdates.length > 0 ||
         batchSaveData.cardDeletes.length > 0 ||
         batchSaveData.edgeCreates.length > 0 ||
+        batchSaveData.edgeUpdates.length > 0 ||
         batchSaveData.edgeDeletes.length > 0;
       
       if (hasAnyChanges) {
@@ -3174,6 +3282,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       setPendingDeletes(new Map());
       setPendingFileMoves(new Map());
       setPendingPluginNodeDataIds(new Set());
+      setPendingRoadmapEdgeIds(new Set());
+      setPendingRoadmapEdgeDeleteIds(new Set());
       setPendingCardFaceChanges(prev => {
         const next = { ...prev };
         batchSaveData.cardUpdates.forEach((u: any) => delete next[u.cardId]);
@@ -3206,6 +3316,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         + (hasDeleteChanges ? pendingDeletes.size : 0)
         + (hasFileMoveChanges ? fileMoveCount : 0)
         + pendingPluginNodeDataIds.size
+        + pendingRoadmapEdgeCount
         + problemChangesCount
         + savedLearnerDraftBucketsForMsg;
 
@@ -3442,8 +3553,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const nodeId = roadmapPlugin.roadmapSubSelectedNodeId;
     if (!nodeId) return;
 
-    const trimmed = newTitle.trim();
-    if (!trimmed) return;
+    roadmapPlugin.roadmapCanvasEdgeApiRef.current?.updateCardTitle(nodeId, newTitle);
 
     const node = base.nodes.find((n) => n.id === nodeId);
     const cardFile = selectedFileRef.current;
@@ -3452,9 +3562,12 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       : (node?.text || i18n('Unnamed Card'));
 
     setBase((prev) => {
+      if (!prev.nodes.some((n) => n.id === nodeId)) {
+        return prev;
+      }
       const updated = {
         ...prev,
-        nodes: prev.nodes.map((n) => (n.id === nodeId ? { ...n, text: trimmed } : n)),
+        nodes: prev.nodes.map((n) => (n.id === nodeId ? { ...n, text: newTitle } : n)),
       };
       baseRef.current = updated;
       return updated;
@@ -3462,24 +3575,25 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
     const pendingNodeCreate = pendingCreatesRef.current.get(nodeId);
     if (pendingNodeCreate?.type === 'node') {
-      pendingCreatesRef.current.set(nodeId, { ...pendingNodeCreate, text: trimmed });
+      pendingCreatesRef.current.set(nodeId, { ...pendingNodeCreate, text: newTitle });
       setPendingCreatesCount(pendingCreatesRef.current.size);
     }
 
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     const cards = nodeCardsMap[nodeId] || [];
     if (cards.length > 0) {
-      cards[0] = { ...cards[0], title: trimmed };
+      cards[0] = { ...cards[0], title: newTitle.trim() || i18n('Unnamed Card') };
       (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
       setNodeCardsMapVersion((prev) => prev + 1);
     }
 
     if (cardFile?.type === 'card' && cardFile.nodeId === nodeId) {
-      setSelectedFile((prev) => (prev ? { ...prev, name: trimmed } : prev));
-      selectedFileRef.current = cardFile ? { ...cardFile, name: trimmed } : cardFile;
+      const displayName = newTitle.trim() || i18n('Unnamed Card');
+      setSelectedFile((prev) => (prev ? { ...prev, name: displayName } : prev));
+      selectedFileRef.current = cardFile ? { ...cardFile, name: displayName } : cardFile;
       setPendingRenames((prev) => {
         const next = new Map(prev);
-        const record = { file: { ...cardFile, name: trimmed }, newName: trimmed, originalName: renameOriginal };
+        const record = { file: { ...cardFile, name: displayName }, newName: displayName, originalName: renameOriginal };
         next.set(cardFile.id, record);
         if (cardFile.cardId) {
           const altKey = cardFile.id.startsWith('card-') ? cardFile.cardId : `card-${cardFile.cardId}`;
@@ -3489,8 +3603,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       });
     }
   }, [
-    base.nodes, roadmapPlugin.roadmapSubSelectedNodeId, pendingRenames,
-    setBase, baseRef, pendingCreatesRef, setPendingCreatesCount, setNodeCardsMapVersion,
+    base.nodes, roadmapPlugin.roadmapSubSelectedNodeId, roadmapPlugin.roadmapCanvasEdgeApiRef,
+    pendingRenames, setBase, baseRef, pendingCreatesRef, setPendingCreatesCount, setNodeCardsMapVersion,
   ]);
 
   const handleStartRename = useCallback((file: FileItem, e: React.MouseEvent) => {
@@ -5805,11 +5919,15 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const el = editorContainerRef.current;
     if (!el) return;
     const updateMax = () => {
-      const h = el.getBoundingClientRect().height;
-      const max = Math.max(AI_TERMINAL_MIN_H, Math.floor(h - EDITOR_MAIN_MIN_H));
-      aiPanelMaxHeightRef.current = max;
-      setAiPanelMaxHeight(max);
-      setAiPanelHeight((prev) => (prev > max ? max : prev));
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const h = el.getBoundingClientRect().height;
+          const max = Math.max(AI_TERMINAL_MIN_H, Math.floor(h - EDITOR_MAIN_MIN_H));
+          aiPanelMaxHeightRef.current = max;
+          setAiPanelMaxHeight(max);
+          setAiPanelHeight((prev) => (prev > max ? max : prev));
+        });
+      });
     };
     updateMax();
     const ro = new ResizeObserver(updateMax);
@@ -9919,24 +10037,62 @@ Reply with a JSON code block only for executable operations. For same-response f
               </button>
             )}
             {roadmapPlugin.roadmapNodeId ? (
-              <button
-                onClick={() => {
-                  roadmapPlugin.exitRoadmapView();
-                }}
-                style={{
-                  width: '34px',
-                  height: '34px',
-                  border: `1px solid ${themeStyles.borderSecondary}`,
-                  borderRadius: '3px',
-                  backgroundColor: themeStyles.bgButton,
-                  color: themeStyles.textSecondary,
-                  cursor: 'pointer',
-                  flexShrink: 0,
-                }}
-                title="返回树形视图"
-              >
-                ←
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => roadmapPlugin.setRoadmapPanelTab('canvas')}
+                  style={{
+                    width: '34px',
+                    height: '34px',
+                    border: `1px solid ${themeStyles.borderSecondary}`,
+                    borderRadius: '3px',
+                    backgroundColor: roadmapPlugin.roadmapPanelTab === 'canvas' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                    color: roadmapPlugin.roadmapPanelTab === 'canvas' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                  }}
+                  title={i18n('Roadmap canvas')}
+                  aria-label={i18n('Roadmap canvas')}
+                >
+                  <RoadmapCanvasRailIcon />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => roadmapPlugin.setRoadmapPanelTab('settings')}
+                  style={{
+                    width: '34px',
+                    height: '34px',
+                    border: `1px solid ${themeStyles.borderSecondary}`,
+                    borderRadius: '3px',
+                    backgroundColor: roadmapPlugin.roadmapPanelTab === 'settings' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                    color: roadmapPlugin.roadmapPanelTab === 'settings' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                  }}
+                  title={i18n('Roadmap editor settings title')}
+                  aria-label={i18n('Roadmap editor settings title')}
+                >
+                  <RoadmapSettingsRailIcon />
+                </button>
+                <button
+                  onClick={() => {
+                    roadmapPlugin.exitRoadmapView();
+                  }}
+                  style={{
+                    width: '34px',
+                    height: '34px',
+                    border: `1px solid ${themeStyles.borderSecondary}`,
+                    borderRadius: '3px',
+                    backgroundColor: themeStyles.bgButton,
+                    color: themeStyles.textSecondary,
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                  }}
+                  title="返回树形视图"
+                >
+                  ←
+                </button>
+              </>
             ) : null}
             <button
               onClick={() => {
@@ -10101,7 +10257,7 @@ Reply with a JSON code block only for executable operations. For same-response f
             flex: 1,
             minWidth: 0,
             minHeight: 0,
-            overflow: roadmapPlugin.roadmapNodeId ? 'hidden' : 'auto',
+            overflow: roadmapPlugin.roadmapNodeId && roadmapPlugin.roadmapPanelTab === 'canvas' ? 'hidden' : 'auto',
             overflowX: 'hidden',
             WebkitOverflowScrolling: 'touch',
             display: 'flex',
@@ -10109,6 +10265,9 @@ Reply with a JSON code block only for executable operations. For same-response f
           }}
         >
           {roadmapPlugin.roadmapNodeId ? (
+            roadmapPlugin.roadmapPanelTab === 'settings' ? (
+              <roadmapPlugin.SettingsPanel themeStyles={themeStyles} />
+            ) : (
             (() => {
               const childNodes = base.edges
                 .filter(e => e.source === roadmapPlugin.roadmapNodeId)
@@ -10123,9 +10282,17 @@ Reply with a JSON code block only for executable operations. For same-response f
                   childEdges={childEdges}
                   themeStyles={themeStyles}
                   onSelectFile={(file) => handleSelectFile(file)}
+                  displaySettings={roadmapPlugin.displaySettings}
+                  nodeCardsMapVersion={nodeCardsMapVersion}
+                  selectedEdgeId={roadmapPlugin.roadmapSelectedEdgeId}
+                  onSelectEdge={roadmapPlugin.selectRoadmapEdge}
+                  edgeEditorApiRef={roadmapPlugin.roadmapCanvasEdgeApiRef}
+                  pendingEdgeIds={pendingRoadmapEdgeIds}
+                  onEdgeChanged={handleRoadmapEdgeChanged}
                 />
               );
             })()
+            )
           ) : explorerMode === 'tree' ? (
             fileTree.map((file, index) => {
             const isSelected = isMultiSelectMode
@@ -13601,23 +13768,18 @@ Reply with a JSON code block only for executable operations. For same-response f
             >
               ← 返回
             </a>
-            {roadmapPlugin.roadmapNodeId && roadmapPlugin.roadmapSubSelectedNodeId ? (
+            {roadmapPlugin.roadmapNodeId && roadmapPlugin.roadmapSubSelectedNodeId && !roadmapPlugin.roadmapSelectedEdgeId ? (
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
                 <span style={{ fontSize: '12px', color: themeStyles.textSecondary, flexShrink: 0 }}>
                   {i18n('Base roadmap card title')}
                 </span>
                 <input
                   type="text"
-                  value={(() => {
-                    const nodeId = roadmapPlugin.roadmapSubSelectedNodeId;
-                    const node = base.nodes.find((n) => n.id === nodeId);
-                    if (selectedFile?.type === 'card' && selectedFile.nodeId === nodeId) {
-                      const rename = pendingRenames.get(selectedFile.id);
-                      if (rename) return rename.newName;
-                    }
-                    return node?.text || '';
-                  })()}
-                  onChange={(e) => handleRoadmapCanvasCardTitleChange(e.target.value)}
+                  value={roadmapCardTitleDraft}
+                  onChange={(e) => {
+                    setRoadmapCardTitleDraft(e.target.value);
+                    handleRoadmapCanvasCardTitleChange(e.target.value);
+                  }}
                   placeholder={i18n('Unnamed Card')}
                   style={{
                     flex: 1,
@@ -13661,22 +13823,22 @@ Reply with a JSON code block only for executable operations. For same-response f
                 console.log('[保存按钮] 点击保存，pendingProblemCardIds:', Array.from(pendingProblemCardIds));
                 handleSaveAll();
               }}
-              disabled={isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && pendingPluginNodeDataIds.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)}
+              disabled={isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && pendingPluginNodeDataIds.size === 0 && pendingRoadmapEdgeCount === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)}
               style={{
                 padding: isMobile ? '10px 12px' : '4px 12px',
                 minHeight: isMobile ? '44px' : undefined,
                 border: `1px solid ${themeStyles.borderSecondary}`,
                 borderRadius: '3px',
-                backgroundColor: (pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0 || pendingFileMoves.size > 0 || pendingPluginNodeDataIds.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) ? themeStyles.success : (theme === 'dark' ? '#555' : '#6c757d'),
+                backgroundColor: (pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0 || pendingFileMoves.size > 0 || pendingPluginNodeDataIds.size > 0 || pendingRoadmapEdgeCount > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) ? themeStyles.success : (theme === 'dark' ? '#555' : '#6c757d'),
                 color: themeStyles.textOnPrimary,
-                cursor: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && pendingPluginNodeDataIds.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)) ? 'not-allowed' : 'pointer',
+                cursor: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && pendingPluginNodeDataIds.size === 0 && pendingRoadmapEdgeCount === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)) ? 'not-allowed' : 'pointer',
                 fontSize: '12px',
                 fontWeight: '500',
-                opacity: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && pendingPluginNodeDataIds.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)) ? 0.6 : 1,
+                opacity: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && pendingPluginNodeDataIds.size === 0 && pendingRoadmapEdgeCount === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)) ? 0.6 : 1,
               }}
-              title={(pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && pendingPluginNodeDataIds.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0) ? i18n('No pending changes') : i18n('Save all changes')}
+              title={(pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && pendingPluginNodeDataIds.size === 0 && pendingRoadmapEdgeCount === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0) ? i18n('No pending changes') : i18n('Save all changes')}
             >
-              {isCommitting ? i18n('Saving...') : `${i18n('Save changes')} (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + pendingFileMoves.size + pendingPluginNodeDataIds.size + Object.keys(pendingCardFaceChanges).length + pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + learnProblemNotesDraftCount})`}
+              {isCommitting ? i18n('Saving...') : `${i18n('Save changes')} (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + pendingFileMoves.size + pendingPluginNodeDataIds.size + pendingRoadmapEdgeCount + Object.keys(pendingCardFaceChanges).length + pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + learnProblemNotesDraftCount})`}
             </button>
           </div>
           )}
@@ -15319,6 +15481,10 @@ Reply with a JSON code block only for executable operations. For same-response f
                         ? ` ${developRunQueueState.currentIndex + 1}/${developRunQueueState.items.length}`
                         : ` · ${developRunQueueState.items.length}`}
                     </>
+                ) : roadmapPlugin.roadmapNodeId && roadmapPlugin.roadmapPanelTab === 'canvas' ? (
+                  roadmapPlugin.roadmapRightPanelTab === 'problems'
+                    ? i18n('Card problems')
+                    : i18n('Roadmap edge inspector')
                 ) : isPluginEditor && editorRightPanelTab === 'plugin_node' ? (
                   i18n('Plugin node definition')
                 ) : isPluginEditor ? (
@@ -15368,6 +15534,12 @@ Reply with a JSON code block only for executable operations. For same-response f
                       : ` · ${developRunQueueState.items.length}`}
                   </>
                 </span>
+              ) : roadmapPlugin.roadmapNodeId && roadmapPlugin.roadmapPanelTab === 'canvas' ? (
+                <span style={{ fontWeight: 'bold' }}>
+                  {roadmapPlugin.roadmapRightPanelTab === 'problems'
+                    ? i18n('Card problems')
+                    : i18n('Roadmap edge inspector')}
+                </span>
               ) : isPluginEditor && editorRightPanelTab === 'plugin_node' ? (
                 <span style={{ fontWeight: 'bold' }}>{i18n('Plugin node definition')}</span>
               ) : isPluginEditor ? (
@@ -15393,7 +15565,17 @@ Reply with a JSON code block only for executable operations. For same-response f
             </div>
           )}
           <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            {showDevelopQueueInPanels && developEditorContext && developRunQueueState && editorRightPanelTab === 'develop_queue' ? (
+            {roadmapPlugin.roadmapNodeId && roadmapPlugin.roadmapPanelTab === 'canvas' ? (
+              roadmapPlugin.roadmapRightPanelTab === 'problems'
+                && roadmapPlugin.selectedCardSupportsPractice
+                && selectedFile?.type === 'card' ? (
+                  problemsBody
+                ) : roadmapPlugin.roadmapSelectedEdgeId ? (
+                  <roadmapPlugin.EdgeInspectorPanel themeStyles={themeStyles} />
+                ) : (
+                  <div className="roadmap-inspector roadmap-inspector--workspace" />
+                )
+            ) : showDevelopQueueInPanels && developEditorContext && developRunQueueState && editorRightPanelTab === 'develop_queue' ? (
               <BaseEditorDevelopQueueList
                 items={developRunQueueState.items}
                 currentIndex={developRunQueueState.currentIndex}
@@ -15456,6 +15638,66 @@ Reply with a JSON code block only for executable operations. For same-response f
               overflowX: 'hidden',
               WebkitOverflowScrolling: 'touch',
             }}>
+                {roadmapPlugin.roadmapNodeId && roadmapPlugin.roadmapPanelTab === 'canvas' ? (
+                  <>
+                    {roadmapPlugin.selectedCardSupportsPractice ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (rightPanelOpen && roadmapPlugin.roadmapRightPanelTab === 'problems') {
+                            setRightPanelOpen(false);
+                          } else {
+                            roadmapPlugin.setRoadmapRightPanelTab('problems');
+                            setRightPanelOpen(true);
+                          }
+                        }}
+                        style={{
+                          width: '34px',
+                          height: '34px',
+                          border: `1px solid ${themeStyles.borderSecondary}`,
+                          borderRadius: '3px',
+                          backgroundColor: rightPanelOpen && roadmapPlugin.roadmapRightPanelTab === 'problems' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                          color: rightPanelOpen && roadmapPlugin.roadmapRightPanelTab === 'problems' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                          fontSize: '11px',
+                          fontWeight: 600,
+                        }}
+                        title={i18n('Card problems')}
+                        aria-label={i18n('Card problems')}
+                      >
+                        题
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (rightPanelOpen && roadmapPlugin.roadmapRightPanelTab === 'edge') {
+                          setRightPanelOpen(false);
+                        } else {
+                          roadmapPlugin.setRoadmapRightPanelTab('edge');
+                          setRightPanelOpen(true);
+                        }
+                      }}
+                      style={{
+                        width: '34px',
+                        height: '34px',
+                        border: `1px solid ${themeStyles.borderSecondary}`,
+                        borderRadius: '3px',
+                        backgroundColor: rightPanelOpen && roadmapPlugin.roadmapRightPanelTab === 'edge' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                        color: rightPanelOpen && roadmapPlugin.roadmapRightPanelTab === 'edge' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                        fontSize: '11px',
+                        fontWeight: 600,
+                      }}
+                      title={i18n('Roadmap edge inspector')}
+                      aria-label={i18n('Roadmap edge inspector')}
+                    >
+                      线
+                    </button>
+                  </>
+                ) : (
                 <button
                   type="button"
                   onClick={() => {
@@ -15484,6 +15726,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 >
                   {isPluginEditor ? 'MCP' : '题'}
                 </button>
+                )}
                 {showDevelopQueueInPanels && developEditorContext && developRunQueueState ? (
                   <button
                     type="button"
