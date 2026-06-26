@@ -5015,6 +5015,7 @@ export class BaseBatchSaveHandler extends Handler {
             cardUpdates = [],
             cardDeletes = [],
             edgeCreates = [],
+            edgeUpdates = [],
             edgeDeletes = [],
         } = data;
 
@@ -5154,10 +5155,27 @@ export class BaseBatchSaveHandler extends Handler {
                         target: targetId,
                         label: edgeCreate.label,
                         ...(edgeCreate.lineStyle ? { lineStyle: edgeCreate.lineStyle } : {}),
+                        ...(edgeCreate.sourceHandle ? { sourceHandle: edgeCreate.sourceHandle } : {}),
+                        ...(edgeCreate.targetHandle ? { targetHandle: edgeCreate.targetHandle } : {}),
                     }, branch, mdt);
                 }
             } catch (error: any) {
                 errors.push(`创建边失败: ${error.message || '未知错误'}`);
+            }
+        }
+
+        for (const edgeUpdate of edgeUpdates) {
+            try {
+                const edgeId = String(edgeUpdate.edgeId || '').trim();
+                if (!edgeId || edgeId.startsWith('edge_') || edgeId.startsWith('temp-edge-')) continue;
+                await BaseModel.updateEdge(actualDomainId, docId, edgeId, {
+                    ...(edgeUpdate.label !== undefined ? { label: edgeUpdate.label } : {}),
+                    ...(edgeUpdate.lineStyle ? { lineStyle: edgeUpdate.lineStyle } : {}),
+                    ...(edgeUpdate.sourceHandle ? { sourceHandle: edgeUpdate.sourceHandle } : {}),
+                    ...(edgeUpdate.targetHandle ? { targetHandle: edgeUpdate.targetHandle } : {}),
+                }, branch, mdt);
+            } catch (error: any) {
+                errors.push(`更新边失败: ${error.message || '未知错误'}`);
             }
         }
         

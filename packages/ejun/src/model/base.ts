@@ -264,6 +264,59 @@ export class BaseModel {
         await document.set(domainId, mapDocType, docId, updatePayload);
     }
 
+    static async updateEdge(
+        domainId: string,
+        docId: number,
+        edgeId: string,
+        updates: Partial<BaseEdge> & {
+            lineStyle?: string;
+            sourceHandle?: string;
+            targetHandle?: string;
+        },
+        branch?: string,
+        mapDocType: MindMapDocType = document.TYPE_BASE,
+    ): Promise<void> {
+        const base = await this.get(domainId, docId, mapDocType);
+        if (!base) throw new Error('Base not found');
+
+        const branchName = branch || (base as any).currentBranch || 'main';
+        const branchData: { [b: string]: { nodes: BaseNode[]; edges: BaseEdge[] } } = (base as any).branchData || {};
+
+        let nodes: BaseNode[];
+        let edges: BaseEdge[];
+        if (branchData[branchName] && branchData[branchName].nodes) {
+            nodes = branchData[branchName].nodes;
+            edges = branchData[branchName].edges || [];
+        } else if (branchName === 'main') {
+            nodes = base.nodes || [];
+            edges = base.edges || [];
+        } else {
+            throw new Error(`Branch "${branchName}" has no data`);
+        }
+
+        const edgeIndex = edges.findIndex((edge) => edge.id === edgeId);
+        if (edgeIndex === -1) throw new Error('Edge not found');
+
+        edges[edgeIndex] = { ...edges[edgeIndex], ...updates };
+
+        if (!branchData[branchName]) {
+            branchData[branchName] = { nodes: [], edges: [] };
+        }
+        branchData[branchName] = { nodes, edges };
+
+        const updatePayload: any = {
+            branchData,
+            updateAt: new Date(),
+        };
+
+        if (branchName === 'main') {
+            updatePayload.nodes = nodes;
+            updatePayload.edges = edges;
+        }
+
+        await document.set(domainId, mapDocType, docId, updatePayload);
+    }
+
     static async addNode(
         domainId: string,
         docId: number,
