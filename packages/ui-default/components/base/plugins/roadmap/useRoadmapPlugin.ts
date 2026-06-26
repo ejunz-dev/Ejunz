@@ -162,7 +162,12 @@ export function useRoadmapPlugin(deps: RoadmapPluginDeps): RoadmapPluginApi {
   ) => {
     setRoadmapSelectedEdgeId(null);
     setRoadmapSelectedEdgeSnapshot(null);
+    roadmapSubRef.current = nodeId;
     setRoadmapSubSelectedNodeId(nodeId);
+    const roadmapId = roadmapNodeIdRef.current;
+    if (roadmapId) {
+      autoFileSelectKeyRef.current = `${roadmapId}:${nodeId}`;
+    }
 
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     const cards = nodeCardsMap[nodeId] || [];
@@ -234,7 +239,11 @@ export function useRoadmapPlugin(deps: RoadmapPluginDeps): RoadmapPluginApi {
       ? options.childNodeId
       : null;
     const selectedId = requestedChild || pickDefaultRoadmapChildId(children);
+    roadmapSubRef.current = selectedId;
     setRoadmapSubSelectedNodeId(selectedId);
+    if (selectedId) {
+      autoFileSelectKeyRef.current = `${nodeId}:${selectedId}`;
+    }
 
     // Roadmap canvas cards live in the canvas view only — keep the tree entry collapsed.
     setExpandedNodes((prev) => {
