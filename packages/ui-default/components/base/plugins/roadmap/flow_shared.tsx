@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Edge,
   Handle,
@@ -7,13 +7,17 @@ import {
   NodeResizer,
   NodeTypes,
   Position,
+  ReactFlowInstance,
   useStore,
+  Viewport,
 } from 'reactflow';
 import {
   LANE_GUIDE_HEIGHT,
   LANE_WIDTH,
   laneRegionX,
+  ROADMAP_LANE_AXIS_X,
   ROADMAP_LANES,
+  ROADMAP_LANES_SPAN_WIDTH,
 } from './lanes';
 import { roadmapEdgeDashStyle, roadmapEdgeLineStyleFromStyle, roadmapUntitledCardLabel } from './shared';
 import { getRoadmapNodeKind, isSubNodeType } from './node_kinds';
@@ -246,3 +250,137 @@ export function toRoadmapViewEdges(
     };
   });
 }
+
+export const FLOW_PADDING = 48;
+export const NODE_LAYOUT_HEIGHT = 48;
+
+function computeRoadmapContentBounds(nodes: Node[]) {
+  let minY = Infinity;
+  let maxY = -Infinity;
+
+  nodes.forEach((node) => {
+    const height = node.height || NODE_LAYOUT_HEIGHT;
+    minY = Math.min(minY, node.position.y);
+    maxY = Math.max(maxY, node.position.y + height);
+  });
+
+  return {
+    y: minY,
+    height: Math.max(maxY - minY, NODE_LAYOUT_HEIGHT),
+  };
+}
+
+export function computeRoadmapAxisViewport(
+  nodes: Node[],
+  containerWidth: number,
+  containerHeight: number,
+  options?: { padding?: number; maxZoom?: number },
+): Viewport {
+  const padding = options?.padding ?? 0.15;
+  const maxZoom = options?.maxZoom ?? 2;
+  const width = Math.max(containerWidth, 320);
+  const height = Math.max(containerHeight, 320);
+  const innerWidth = Math.max(width * (1 - padding * 2), 320);
+  const innerHeight = Math.max(height * (1 - padding * 2), 240);
+  const content = nodes.length ? computeRoadmapContentBounds(nodes) : { y: 0, height: NODE_LAYOUT_HEIGHT };
+  const zoomX = innerWidth / ROADMAP_LANES_SPAN_WIDTH;
+  const zoomY = innerHeight / content.height;
+  const zoom = Math.min(maxZoom, zoomX, zoomY);
+  const x = width / 2 - ROADMAP_LANE_AXIS_X * zoom;
+  const y = (height - content.height * zoom) / 2 - content.y * zoom;
+
+  return { x, y, zoom };
+}
+
+function useContainerSize(outerRef: React.RefObject<HTMLDivElement>) {
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  useLayoutEffect(() => {
+    installRoadmapResizeObserverErrorGuard();
+
+    const syncSize = () => {
+      const el = outerRef.current;
+      if (!el) return;
+      const nextWidth = el.clientWidth;
+      const nextHeight = el.clientHeight;
+      setSize((prev) => (
+        prev.width === nextWidth && prev.height === nextHeight
+          ? prev
+          : { width: nextWidth, height: nextHeight }
+      ));
+    };
+
+    syncSize();
+    window.addEventListener('resize', syncSize);
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && outerRef.current) {
+      observer = new ResizeObserver(syncSize);
+      observer.observe(outerRef.current);
+    }
+    return () => {
+      window.removeEventListener('resize', syncSize);
+      observer?.disconnect();
+    };
+  }, [outerRef]);
+
+  return size;
+}
+
+export function useRoadmapEditorLayout(nodes: Node[]) {
+  const outerRef = useRef<HTMLDivElement>(null);
+  const flowRef = useRef<ReactFlowInstance | null>(null);
+  const { width: containerWidth, height: containerHeight } = useContainerSize(outerRef);
+  const lastFitKeyRef = useRef('');
+
+  const applyAxisViewport = useCallback((instance: ReactFlowInstance, duration = 0) => {
+    if (!containerWidth || !containerHeight) return;
+    const viewport = computeRoadmapAxisViewport(nodes, containerWidth, containerHeight, {
+      padding: 0.15,
+      maxZoom: 2,
+    });
+    instance.setViewport(viewport, { duration });
+  }, [containerHeight, containerWidth, nodes]);
+
+  const fitToContent = useCallback(() => {
+    const instance = flowRef.current;
+    if (!instance) return;
+    applyAxisViewport(instance, 200);
+  }, [applyAxisViewport]);
+
+  useEffect(() => {
+    const instance = flowRef.current;
+    if (!instance || !containerWidth || !containerHeight) return;
+    const fitKey = `${containerWidth}:${containerHeight}:${nodes.length}`;
+    if (fitKey === lastFitKeyRef.current) return;
+    lastFitKeyRef.current = fitKey;
+    requestAnimationFrame(() => {
+      applyAxisViewport(instance, 0);
+    });
+  }, [applyAxisViewport, containerHeight, containerWidth, nodes.length]);
+
+  const onFlowInit = useCallback((instance: ReactFlowInstance) => {
+    flowRef.current = instance;
+    requestAnimationFrame(() => {
+      applyAxisViewport(instance, 0);
+    });
+  }, [applyAxisViewport]);
+
+  return {
+    outerRef,
+    flowRef,
+    onFlowInit,
+    fitToContent,
+  };
+}
+
+export const roadmapEditorFlowProps = {
+  panOnDrag: true as const,
+  panOnScroll: false as const,
+  zoomOnScroll: true as const,
+  zoomOnPinch: true as const,
+  zoomOnDoubleClick: true as const,
+  preventScrolling: true as const,
+  minZoom: 0.25,
+  maxZoom: 2,
+  proOptions: { hideAttribution: true as const },
+};

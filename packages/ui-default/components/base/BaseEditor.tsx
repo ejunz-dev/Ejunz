@@ -10097,13 +10097,15 @@ Reply with a JSON code block only for executable operations. For same-response f
         <div
           ref={explorerScrollRef}
           style={{
-            padding: '8px 0',
+            padding: roadmapPlugin.roadmapNodeId ? 0 : '8px 0',
             flex: 1,
             minWidth: 0,
             minHeight: 0,
-            overflowY: 'auto',
+            overflow: roadmapPlugin.roadmapNodeId ? 'hidden' : 'auto',
             overflowX: 'hidden',
             WebkitOverflowScrolling: 'touch',
+            display: 'flex',
+            flexDirection: 'column',
           }}
         >
           {roadmapPlugin.roadmapNodeId ? (
