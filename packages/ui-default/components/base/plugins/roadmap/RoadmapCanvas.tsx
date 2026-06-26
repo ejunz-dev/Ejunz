@@ -4,7 +4,6 @@ import ReactFlow, {
   Edge,
   NodeChange,
   EdgeChange,
-  ReactFlowInstance,
   useNodesState,
   useEdgesState,
   Controls,
@@ -17,6 +16,8 @@ import {
   toRoadmapViewNodes,
   toRoadmapViewEdges,
   installRoadmapResizeObserverErrorGuard,
+  useRoadmapEditorLayout,
+  roadmapEditorFlowProps,
 } from './flow_shared';
 import {
   baseNodeToFlowNode,
@@ -30,6 +31,8 @@ import {
   nearestLaneFromX,
   getNodeLane,
   laneNodeX,
+  getRoadmapNodeWidth,
+  nextLaneNodeY,
 } from './lanes';
 import {
   ROADMAP_NODE_KINDS,
@@ -48,6 +51,7 @@ import {
 import {
   alignNodesInSolidComponents,
   shouldAlignSolidConnection,
+  getSolidLinkedNodeIds,
 } from './solid_links';
 import type { BaseNode, BaseEdge } from 'vj/components/base/types';
 import { i18n } from 'vj/utils';
@@ -63,7 +67,7 @@ export interface RoadmapCanvasProps {
   themeStyles: Record<string, string>;
 }
 
-function newNodeId(): string {
+function newCardId(): string {
   return `temp-node-${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
 function newEdgeId(source: string, target: string): string {
@@ -126,11 +130,10 @@ function RoadmapCanvasContent({
     [childNodes, childEdges],
   );
   const syncedStructureKeyRef = useRef(flowStructureKey);
-  const fitStructureKeyRef = useRef<string | null>(null);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialFlowNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialFlowEdges);
-  const flowRef = useRef<ReactFlowInstance | null>(null);
+  const { outerRef, flowRef, onFlowInit, fitToContent } = useRoadmapEditorLayout(nodes);
 
   useEffect(() => {
     installRoadmapResizeObserverErrorGuard();
@@ -142,13 +145,6 @@ function RoadmapCanvasContent({
     syncedStructureKeyRef.current = flowStructureKey;
     setNodes(initialFlowNodes);
     setEdges(initialFlowEdges);
-    if (initialFlowNodes.length === 0 || fitStructureKeyRef.current === flowStructureKey) return;
-    fitStructureKeyRef.current = flowStructureKey;
-    let frame = 0;
-    frame = requestAnimationFrame(() => {
-      flowRef.current?.fitView({ padding: 0.2, duration: 0 });
-    });
-    return () => cancelAnimationFrame(frame);
   }, [flowStructureKey, initialFlowNodes, initialFlowEdges, setNodes, setEdges]);
 
   const flowContentKey = useMemo(
@@ -177,18 +173,8 @@ function RoadmapCanvasContent({
   const [ctxMenu, setCtxMenu] = useState<CtxState>(null);
   const [nodeAddMenu, setNodeAddMenu] = useState<NodeAddState>(null);
 
-  const outerRef = useRef<HTMLDivElement>(null);
-  const fitToContent = useCallback(() => {
-    requestAnimationFrame(() => {
-      flowRef.current?.fitView({ padding: 0.2, duration: 200 });
-    });
-  }, []);
-  const onFlowInit = useCallback((instance: ReactFlowInstance) => {
-    flowRef.current = instance;
-  }, []);
-
-  const syncToParent = useCallback(() => {
-    const baseOut = nodes.map((node) => {
+  const flowCardsToBase = useCallback((flowNodes: Node[], flowEdges: Edge[]) => {
+    const baseCards = flowNodes.map((node) => {
       const bn = flowNodeToBaseNode(node);
       return {
         id: bn.id,
@@ -200,56 +186,84 @@ function RoadmapCanvasContent({
         data: { ...bn.data, posX: bn.x, posY: bn.y, lane: node.data?.lane },
       } as BaseNode;
     });
-    const edgeOut = edges.map((edge) => flowEdgeToBaseEdge(edge));
-    onFlowChange(baseOut, edgeOut);
-  }, [nodes, edges, onFlowChange]);
+    const baseEdgesOut = flowEdges.map((edge) => flowEdgeToBaseEdge(edge));
+    onFlowChange(baseCards, baseEdgesOut);
+  }, [onFlowChange]);
 
   const handleNodesChange = useCallback((changes: NodeChange[]) => {
     const applied: NodeChange[] = [];
-    let shouldSync = false;
     changes.forEach((change) => {
       if (change.type === 'select') return;
-      if (change.type === 'dimensions') {
-        applied.push(change);
-        return;
-      }
       if (change.type !== 'position' || !change.position || !('id' in change)) {
         applied.push(change);
-        shouldSync = true;
         return;
       }
       const id = String(change.id);
-      applied.push({ ...change, position: { x: laneNodeX(nearestLaneFromX(change.position.x + 130)), y: change.position.y } });
-      if (!change.dragging) shouldSync = true;
+      const draggedCard = nodes.find((node) => node.id === id);
+      const cardWidth = draggedCard ? getRoadmapNodeWidth(draggedCard) : undefined;
+      const lane = nearestLaneFromX(change.position.x + (cardWidth || 260) / 2);
+      const x = laneNodeX(lane, cardWidth);
+      const y = change.position.y;
+      const linked = getSolidLinkedNodeIds(id, edges, nodes);
+      const sharedY = linked.size > 1 ? y : y;
+
+      applied.push({
+        ...change,
+        position: { x, y: sharedY },
+      });
+
+      if (linked.size > 1) {
+        linked.forEach((peerId) => {
+          if (peerId === id) return;
+          const peer = nodes.find((node) => node.id === peerId);
+          if (!peer) return;
+          applied.push({
+            type: 'position',
+            id: peerId,
+            position: {
+              x: laneNodeX(
+                nearestLaneFromX(peer.position.x + getRoadmapNodeWidth(peer) / 2),
+                getRoadmapNodeWidth(peer),
+              ),
+              y: sharedY,
+            },
+            dragging: change.dragging,
+          });
+        });
+      }
     });
-    if (applied.length) onNodesChange(applied);
-    if (shouldSync) window.setTimeout(syncToParent, 0);
-  }, [onNodesChange, syncToParent]);
+    onNodesChange(applied);
+  }, [edges, nodes, onNodesChange]);
 
   const handleEdgesChange = useCallback((changes: EdgeChange[]) => {
-    onEdgesChange(changes.filter((c) => c.type !== 'select'));
-    window.setTimeout(syncToParent, 0);
-  }, [onEdgesChange, syncToParent]);
+    onEdgesChange(changes.filter((change) => change.type !== 'select'));
+  }, [onEdgesChange]);
 
   const onNodeDragStop = useCallback(
     (_: React.MouseEvent, dragged: Node) => {
       setNodes((current) => {
+        const linked = getSolidLinkedNodeIds(dragged.id, edges, current);
         const snapped = current.map((node) => {
-          if (node.id !== dragged.id) return node;
-          return snapNodeToLane(node, nearestLaneFromX(node.position.x + 130));
+          if (node.id !== dragged.id && !linked.has(node.id)) return node;
+          return snapNodeToLane(node, nearestLaneFromX(node.position.x + getRoadmapNodeWidth(node) / 2));
         });
-        return alignNodesInSolidComponents(snapped, edges);
+        const aligned = alignNodesInSolidComponents(snapped, edges);
+        window.setTimeout(() => flowCardsToBase(aligned, edges), 0);
+        return aligned;
       });
-      window.setTimeout(syncToParent, 0);
     },
-    [edges, setNodes, syncToParent],
+    [edges, setNodes, flowCardsToBase],
   );
 
-  const addRoadmapNodeAt = useCallback(
+  const scheduleFlowSync = useCallback((flowNodes: Node[], flowEdges: Edge[]) => {
+    window.setTimeout(() => flowCardsToBase(flowNodes, flowEdges), 0);
+  }, [flowCardsToBase]);
+
+  const addRoadmapCardAt = useCallback(
     (flowPosition?: { x: number; y: number }, kind: RoadmapCanvasKind = 'sub') => {
-      const id = newNodeId();
+      const id = newCardId();
       const lane = flowPosition ? nearestLaneFromX(flowPosition.x) : 1;
-      const node: Node = {
+      const card: Node = {
         id,
         type: 'roadmap',
         position: {
@@ -262,25 +276,28 @@ function RoadmapCanvasContent({
           ...defaultNodeDataForKind(kind),
         },
       };
-      setNodes((current) => [...current, snapNodeToLane(node, lane)]);
+      setNodes((current) => {
+        const next = [...current, snapNodeToLane(card, lane)];
+        scheduleFlowSync(next, edges);
+        return next;
+      });
       onSelectNode(id);
       setSelectedEdgeId(null);
-      window.setTimeout(syncToParent, 0);
     },
-    [setNodes, onSelectNode, syncToParent],
+    [edges, setNodes, onSelectNode, scheduleFlowSync],
   );
 
-  const addAdjacentNode = useCallback(
-    (sourceNodeId: string, direction: AddAdjacentDirection, kind: RoadmapCanvasKind) => {
-      const sourceNode = nodes.find((node) => node.id === sourceNodeId);
-      if (!sourceNode) return;
-      const placement = computeAdjacentNodePlacement(sourceNode, direction, nodes);
+  const addAdjacentCard = useCallback(
+    (sourceCardId: string, direction: AddAdjacentDirection, kind: RoadmapCanvasKind) => {
+      const sourceCard = nodes.find((node) => node.id === sourceCardId);
+      if (!sourceCard) return;
+      const placement = computeAdjacentNodePlacement(sourceCard, direction, nodes);
       if (!placement) return;
-      const newId = newNodeId();
+      const newId = newCardId();
       const pos = { ...placement.position };
       if (direction === 'bottom') pos.y = placementYForBottom(nodes, placement.lane, pos.y);
       else if (direction === 'top') pos.y = placementYForTop(nodes, placement.lane, pos.y);
-      const newNode: Node = {
+      const newCard: Node = {
         id: newId,
         type: 'roadmap',
         position: pos,
@@ -299,39 +316,42 @@ function RoadmapCanvasContent({
       setEdges((cur) => {
         const nextEdges = addEdge(edge, cur);
         setNodes((curNodes) => {
-          const withNew = [...curNodes, snapNodeToLane(newNode, placement.lane)];
-          if (shouldAlignSolidConnection(conn)) return alignNodesInSolidComponents(withNew, nextEdges);
-          return withNew;
+          const withNew = [...curNodes, snapNodeToLane(newCard, placement.lane)];
+          const nextNodes = shouldAlignSolidConnection(conn) ? alignNodesInSolidComponents(withNew, nextEdges) : withNew;
+          scheduleFlowSync(nextNodes, nextEdges);
+          return nextNodes;
         });
         return nextEdges;
       });
       onSelectNode(newId);
       setSelectedEdgeId(null);
       setNodeAddMenu(null);
-      window.setTimeout(syncToParent, 0);
     },
-    [nodes, setEdges, setNodes, onSelectNode, syncToParent],
+    [nodes, setEdges, setNodes, onSelectNode, scheduleFlowSync],
   );
 
-  const deleteNode = useCallback(
-    (nodeId: string) => {
-      setNodes((cur) => cur.filter((n) => n.id !== nodeId));
-      setEdges((cur) => cur.filter((e) => e.source !== nodeId && e.target !== nodeId));
-      if (selectedNodeId === nodeId) onSelectNode(null);
-      window.setTimeout(syncToParent, 0);
+  const deleteCard = useCallback(
+    (cardId: string) => {
+      const nextNodes = nodes.filter((n) => n.id !== cardId);
+      const nextEdges = edges.filter((e) => e.source !== cardId && e.target !== cardId);
+      setNodes(nextNodes);
+      setEdges(nextEdges);
+      scheduleFlowSync(nextNodes, nextEdges);
+      if (selectedNodeId === cardId) onSelectNode(null);
     },
-    [selectedNodeId, setEdges, setNodes, onSelectNode, syncToParent],
+    [edges, nodes, selectedNodeId, setEdges, setNodes, onSelectNode, scheduleFlowSync],
   );
 
   const deleteSelection = useCallback(() => {
     if (selectedEdgeId) {
-      setEdges((cur) => cur.filter((e) => e.id !== selectedEdgeId));
+      const nextEdges = edges.filter((e) => e.id !== selectedEdgeId);
+      setEdges(nextEdges);
+      scheduleFlowSync(nodes, nextEdges);
       setSelectedEdgeId(null);
-      window.setTimeout(syncToParent, 0);
       return;
     }
-    if (selectedNodeId) deleteNode(selectedNodeId);
-  }, [deleteNode, selectedEdgeId, selectedNodeId, setEdges, syncToParent]);
+    if (selectedNodeId) deleteCard(selectedNodeId);
+  }, [deleteCard, edges, nodes, selectedEdgeId, selectedNodeId, setEdges, scheduleFlowSync]);
 
   const closeCtx = useCallback(() => {
     setCtxMenu(null);
@@ -419,12 +439,16 @@ function RoadmapCanvasContent({
       '.roadmap-lane-overlay__world{position:absolute;top:0;left:0;transform-origin:0 0}',
       '.roadmap-lane-guide{position:absolute;top:0;pointer-events:none;border-left:1px dashed rgba(65,53,214,0.22);border-right:1px dashed rgba(65,53,214,0.22);background:linear-gradient(180deg,rgba(65,53,214,0.05) 0%,rgba(65,53,214,0.02) 100%);border-radius:12px;box-sizing:border-box}',
       '.roadmap-lane-guide__label{position:absolute;top:12px;left:50%;transform:translateX(-50%);width:28px;height:28px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#4135d6;background:rgba(255,255,255,0.92);border:1px solid rgba(65,53,214,0.28)}',
+      '.roadmap-flow--workspace{flex:1;min-height:0;height:100%;overflow:hidden;display:flex;flex-direction:column}',
+      '.roadmap-flow__canvas{flex:1;min-height:0;height:100%;width:100%}',
+      '.roadmap-flow__canvas .react-flow{width:100%;height:100%}',
     ].join('');
     document.head.appendChild(s);
   }, []);
 
   return (
-    <div ref={outerRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
+    <div ref={outerRef} className="roadmap-flow roadmap-flow--workspace">
+      <div className="roadmap-flow__canvas">
       <ReactFlow
         nodes={viewNodes}
         edges={viewEdges}
@@ -451,7 +475,8 @@ function RoadmapCanvasContent({
         }}
         onPaneContextMenu={(e) => {
           e.preventDefault();
-          const pos = flowRef.current?.screenToFlowPosition({ x: e.clientX, y: e.clientY }) || { x: 0, y: 0 };
+          const pos = flowRef.current?.screenToFlowPosition({ x: e.clientX, y: e.clientY })
+            || { x: 0, y: nextLaneNodeY(nodes, 1) };
           setNodeAddMenu(null);
           setCtxMenu({ kind: 'pane', x: e.clientX, y: e.clientY, flowX: pos.x, flowY: pos.y });
         }}
@@ -463,25 +488,15 @@ function RoadmapCanvasContent({
           setNodeAddMenu(null);
           setCtxMenu({ kind: 'node', x: e.clientX, y: e.clientY, nodeId: node.id });
         }}
-        onMoveEnd={(_, vp) => {
-          // viewport tracked if needed
-        }}
         elementsSelectable
         edgesFocusable={false}
         nodesConnectable={false}
-        panOnDrag={false}
-        panOnScroll={true}
-        zoomOnScroll={true}
-        zoomOnPinch={true}
-        zoomOnDoubleClick={true}
-        preventScrolling={true}
-        minZoom={0.25}
-        maxZoom={2}
-        proOptions={{ hideAttribution: true }}
+        {...roadmapEditorFlowProps}
       >
         <RoadmapLaneOverlay />
         <Controls showInteractive={false} />
       </ReactFlow>
+      </div>
 
       {ctxMenu && (
         <div data-rm-ctx style={{ ...shellStyle, left: ctxMenu.x, top: ctxMenu.y }} onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.preventDefault()}>
@@ -494,7 +509,7 @@ function RoadmapCanvasContent({
                   style={itemStyle}
                   onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = themeStyles.bgHover; }}
                   onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                  onClick={() => { addRoadmapNodeAt({ x: ctxMenu.flowX || 0, y: ctxMenu.flowY || 0 }, kind); closeCtx(); }}
+                  onClick={() => { addRoadmapCardAt({ x: ctxMenu.flowX || 0, y: ctxMenu.flowY || 0 }, kind); closeCtx(); }}
                 >
                   {roadmapCardKindLabel(kind)}
                 </div>
@@ -531,7 +546,7 @@ function RoadmapCanvasContent({
                   style={itemStyle}
                   onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = themeStyles.bgHover; }}
                   onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                  onClick={() => { addRoadmapNodeAt(undefined, kind); closeCtx(); }}
+                  onClick={() => { addRoadmapCardAt(undefined, kind); closeCtx(); }}
                 >
                   {roadmapCardKindLabel(kind)}
                 </div>
@@ -550,7 +565,7 @@ function RoadmapCanvasContent({
                 style={dangerStyle}
                 onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = themeStyles.bgHover; }}
                 onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                onClick={() => { if (ctxMenu.kind === 'node' && ctxMenu.nodeId) deleteNode(ctxMenu.nodeId); closeCtx(); }}
+                onClick={() => { if (ctxMenu.kind === 'node' && ctxMenu.nodeId) deleteCard(ctxMenu.nodeId); closeCtx(); }}
               >
                 删除
               </div>
@@ -568,7 +583,7 @@ function RoadmapCanvasContent({
               style={itemStyle}
               onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = themeStyles.bgHover; }}
               onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-              onClick={() => { addAdjacentNode(nodeAddMenu.nodeId, nodeAddMenu.direction, kind); }}
+              onClick={() => { addAdjacentCard(nodeAddMenu.nodeId, nodeAddMenu.direction, kind); }}
             >
               {roadmapCardKindLabel(kind)}
             </div>
