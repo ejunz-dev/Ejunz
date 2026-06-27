@@ -36,6 +36,19 @@ function TreeTabIcon() {
   );
 }
 
+function AiTutorTabIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d="M8 2l1 3h3l-2.5 2 1 3L8 8.5 5.5 10l1-3L4 5h3L8 2z"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function BaseDetailHeader({
   title,
   description,
@@ -44,6 +57,8 @@ export function BaseDetailHeader({
   branch,
   treeDrawerOpen,
   onTreeDrawerOpen,
+  aiTutorActive,
+  onAiTutorClick,
   onSettingsClick,
   settingsActive,
 }: {
@@ -54,6 +69,8 @@ export function BaseDetailHeader({
   branch: string;
   treeDrawerOpen?: boolean;
   onTreeDrawerOpen?: () => void;
+  aiTutorActive?: boolean;
+  onAiTutorClick?: () => void;
   onSettingsClick?: () => void;
   settingsActive?: boolean;
 }) {
@@ -129,10 +146,20 @@ export function BaseDetailHeader({
       </div>
 
       <div className="roadmap-detail-header-card__tabs">
-        <span className="roadmap-detail-header-card__tab is-active">
+        <span className={`roadmap-detail-header-card__tab${aiTutorActive ? '' : ' is-active'}`}>
           <BaseTabIcon />
           {i18n('Knowledge Base')}
         </span>
+        {onAiTutorClick ? (
+          <button
+            type="button"
+            className={`roadmap-detail-header-card__tab${aiTutorActive ? ' is-active' : ''}`}
+            onClick={onAiTutorClick}
+          >
+            <AiTutorTabIcon />
+            {i18n('Roadmap AI tutor')}
+          </button>
+        ) : null}
         {onTreeDrawerOpen ? (
           <button
             type="button"
