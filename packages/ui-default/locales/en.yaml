@@ -1366,3 +1366,7 @@ Date: Date
 'Base detail tree empty': No nodes in this knowledge base yet.
 'Base detail node empty': This node has no content yet.
 'Base detail card empty': This card has no content yet.
+'Base detail filter dialog hint': Matching nodes and cards are shown in Document Structure; non-matching branches are hidden.
+'Base detail content filter dialog hint': Filter the current content tree only. Non-matching branches are hidden.
+'Base detail tree search placeholder': Filter current tree…
+'Base detail tree search aria': Filter content tree

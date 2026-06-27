@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { i18n } from 'vj/utils';
 import type { BaseEdge, BaseNode, Card } from './types';
+import type { BaseDetailTreeVisibility } from './detail_tree_filter';
 import {
   cardDisplayLabel,
   collectDefaultExpandedNodeIds,
@@ -68,6 +69,7 @@ function TreeBranch({
   selectedNodeId,
   selectedCardId,
   nodesClickable,
+  treeVisibility,
   onToggleNode,
   onSelectNode,
   onSelectCard,
@@ -81,12 +83,14 @@ function TreeBranch({
   selectedNodeId?: string | null;
   selectedCardId?: string | null;
   nodesClickable?: boolean;
+  treeVisibility?: BaseDetailTreeVisibility | null;
   onToggleNode: (nodeId: string) => void;
   onSelectNode?: (nodeId: string) => void;
   onSelectCard?: (card: Card) => void;
 }) {
   const node = nodes.find((item) => item.id === nodeId);
   if (!node) return null;
+  if (treeVisibility && !treeVisibility.visibleNodeIds.has(nodeId)) return null;
 
   const isRoadmapNode = node.type === 'roadmap';
   const expanded = expandedNodes.has(nodeId);
@@ -154,11 +158,16 @@ function TreeBranch({
                   selectedNodeId={selectedNodeId}
                   selectedCardId={selectedCardId}
                   nodesClickable={nodesClickable}
+                  treeVisibility={treeVisibility}
                   onToggleNode={onToggleNode}
                   onSelectNode={onSelectNode}
                   onSelectCard={onSelectCard}
                 />
               );
+            }
+
+            if (treeVisibility?.visibleCardIds && !treeVisibility.visibleCardIds.has(child.card.docId)) {
+              return null;
             }
 
             const cardSelected = selectedCardId === child.card.docId;
@@ -200,6 +209,7 @@ export function BaseDetailTree({
   initialExpandedNodeIds,
   emptyMessage,
   nodesClickable = true,
+  treeVisibility = null,
   onSelectNode,
   onSelectCard,
 }: {
@@ -212,6 +222,7 @@ export function BaseDetailTree({
   initialExpandedNodeIds?: string[];
   emptyMessage?: string;
   nodesClickable?: boolean;
+  treeVisibility?: BaseDetailTreeVisibility | null;
   onSelectNode?: (nodeId: string) => void;
   onSelectCard?: (card: Card) => void;
 }) {
@@ -224,6 +235,11 @@ export function BaseDetailTree({
       initialExpandedNodeIds || collectDefaultExpandedNodeIds(nodes, edges),
     ));
   }, [edges, initialExpandedNodeIds, nodes]);
+
+  useEffect(() => {
+    if (!treeVisibility?.forceExpandedNodeIds.size) return;
+    setExpandedNodes((prev) => new Set([...prev, ...treeVisibility.forceExpandedNodeIds]));
+  }, [treeVisibility]);
 
   const onToggleNode = useCallback((nodeId: string) => {
     setExpandedNodes((prev) => {
@@ -242,9 +258,21 @@ export function BaseDetailTree({
     );
   }
 
+  const visibleRootIds = treeVisibility
+    ? rootNodeIds.filter((rootId) => treeVisibility.visibleNodeIds.has(rootId))
+    : rootNodeIds;
+
+  if (visibleRootIds.length === 0) {
+    return (
+      <p className="roadmap-detail-drawer__empty">
+        {i18n('Roadmap detail search no results')}
+      </p>
+    );
+  }
+
   return (
     <div className="base-detail-tree">
-      {rootNodeIds.map((rootId) => (
+      {visibleRootIds.map((rootId) => (
         <TreeBranch
           key={rootId}
           nodeId={rootId}
@@ -256,6 +284,7 @@ export function BaseDetailTree({
           selectedNodeId={selectedNodeId}
           selectedCardId={selectedCardId}
           nodesClickable={nodesClickable}
+          treeVisibility={treeVisibility}
           onToggleNode={onToggleNode}
           onSelectNode={onSelectNode}
           onSelectCard={onSelectCard}
