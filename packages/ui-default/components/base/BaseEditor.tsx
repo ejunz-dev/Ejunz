@@ -129,19 +129,24 @@ import {
 import {
   buildRoadmapCardFileItem,
   collectRoadmapCanvasBatchSaveExtras,
+  collectRoadmapCanvasValidationErrors,
   collectRoadmapEdgeUpdates,
   collectRoadmapNodeUpdates,
   isPersistedBaseEdgeId,
   normalizeRoadmapCanvasBaseNode,
   resolveRoadmapCardLocation,
+  roadmapChildIdSet,
   roadmapNodeCreatePayloadFromBase,
 } from './plugins/roadmap/canvas_persist';
 import { installRoadmapResizeObserverErrorGuard } from './plugins/roadmap/flow_shared';
 import { BaseRoadmapHookPicker } from './plugins/roadmap/BaseRoadmapHookPicker';
 import { RoadmapCanvasTextEditor } from './plugins/roadmap/RoadmapCanvasTextEditor';
-import { isHookNodeType, isTextNodeType, ROADMAP_NODE_KINDS, defaultNodeDataForKind, roadmapCardKindLabel, getRoadmapNodeKind, supportsRoadmapPracticeProblems } from './plugins/roadmap/node_kinds';
-
-installRoadmapResizeObserverErrorGuard();
+import { isHookNodeType, isTextNodeType, isMainNodeType, isSubNodeType, ROADMAP_NODE_KINDS, defaultNodeDataForKind, roadmapCardKindLabel, getRoadmapNodeKind, supportsRoadmapPracticeProblems } from './plugins/roadmap/node_kinds';
+import {
+  isValidRoadmapMainNumber,
+  isValidRoadmapSubNumber,
+  withDefaultRoadmapNodeNumber,
+} from './plugins/roadmap/node_numbering';
 
 export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docId: string | undefined; initialData: BaseDoc; basePath?: string }) {
   const editorMode = String((window as any).UiContext?.editorMode || 'base');
@@ -2486,6 +2491,12 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       return;
     }
 
+    const roadmapNumberErrors = collectRoadmapCanvasValidationErrors(base);
+    if (roadmapNumberErrors.length) {
+      Notification.error(roadmapNumberErrors.join('\n'));
+      return;
+    }
+
     setIsCommitting(true);
 
     
@@ -3355,6 +3366,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             if (r.code === 'PLUGIN_MCP_TEST_FAILED') {
               const message = r.errors?.join('\n') || i18n('Plugin MCP test failed; save blocked');
               Notification.error(message);
+              return;
+            }
+            if (r.code === 'ROADMAP_NODE_NUMBER_INVALID') {
+              Notification.error(r.errors?.join('\n') || i18n('Roadmap node number validation failed'));
               return;
             }
             throw new Error(r.errors?.join(', ') || i18n('Batch save failed'));
@@ -13911,8 +13926,27 @@ Reply with a JSON code block only for executable operations. For same-response f
                         onClearFileSelectionRef.current();
                       }
                       const keepLabel = String(roadmapCanvasSelectedData.label || roadmapCanvasSelectedNode?.text || '').trim();
+                      const roadmapId = roadmapPlugin.roadmapNodeId;
+                      let nodeNumber: string | undefined;
+                      if (roadmapId && (kind === 'main' || kind === 'sub') && roadmapCanvasSelectedNodeId) {
+                        const childIds = roadmapChildIdSet(base, roadmapId);
+                        const canvasNodes = base.nodes.filter((node) => childIds.has(node.id));
+                        const canvasEdges = base.edges.filter(
+                          (edge) => childIds.has(edge.source) && childIds.has(edge.target),
+                        );
+                        nodeNumber = withDefaultRoadmapNodeNumber(
+                          canvasNodes.map((node) => ({
+                            id: node.id,
+                            data: (node.data || {}) as Record<string, unknown>,
+                          })),
+                          canvasEdges,
+                          kind,
+                          roadmapCanvasSelectedNodeId,
+                        );
+                      }
                       updateRoadmapCanvasNodeData({
                         ...defaultNodeDataForKind(kind),
+                        ...(nodeNumber ? { nodeNumber } : {}),
                         ...(kind === 'text'
                           ? { label: '' }
                           : (keepLabel ? { label: keepLabel } : {})),
@@ -13933,6 +13967,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                   </select>
                 </label>
                 {!isTextNodeType(roadmapCanvasSelectedKind) ? (
+              <>
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
                 <span style={{ fontSize: '12px', color: themeStyles.textSecondary, flexShrink: 0 }}>
                   {i18n('Base roadmap card title')}
@@ -13957,6 +13992,40 @@ Reply with a JSON code block only for executable operations. For same-response f
                   }}
                 />
               </label>
+              {(isMainNodeType(roadmapCanvasSelectedKind) || isSubNodeType(roadmapCanvasSelectedKind)) ? (
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flexShrink: 0 }}>
+                  <span style={{ fontSize: '12px', color: themeStyles.textSecondary, flexShrink: 0 }}>
+                    {i18n('Roadmap node number')}
+                  </span>
+                  <input
+                    type="text"
+                    value={String(roadmapCanvasSelectedData.nodeNumber || '')}
+                    placeholder={isMainNodeType(roadmapCanvasSelectedKind)
+                      ? i18n('Roadmap main node number format hint')
+                      : i18n('Roadmap sub node number format hint')}
+                    onChange={(e) => {
+                      updateRoadmapCanvasNodeData({ nodeNumber: e.currentTarget.value });
+                    }}
+                    style={{
+                      width: 80,
+                      padding: isMobile ? '8px 10px' : '4px 8px',
+                      fontSize: '13px',
+                      border: `1px solid ${
+                        String(roadmapCanvasSelectedData.nodeNumber || '').trim()
+                          && !(isMainNodeType(roadmapCanvasSelectedKind)
+                            ? isValidRoadmapMainNumber(String(roadmapCanvasSelectedData.nodeNumber || ''))
+                            : isValidRoadmapSubNumber(String(roadmapCanvasSelectedData.nodeNumber || '')))
+                          ? themeStyles.error
+                          : themeStyles.borderSecondary
+                      }`,
+                      borderRadius: '4px',
+                      backgroundColor: themeStyles.bgPrimary,
+                      color: themeStyles.textPrimary,
+                    }}
+                  />
+                </label>
+              ) : null}
+              </>
                 ) : null}
               </>
             ) : selectedFile ? (

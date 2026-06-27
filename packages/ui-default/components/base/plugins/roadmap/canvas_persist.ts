@@ -1,5 +1,6 @@
 import type { BaseNode, BaseEdge, Card, FileItem } from 'vj/components/base/types';
 import { i18n } from 'vj/utils';
+import { validateRoadmapNodeNumbers } from './node_numbering';
 
 function readRoadmapCoord(value: unknown): number | undefined {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -54,7 +55,7 @@ export function normalizeRoadmapCanvasBaseNode(node: BaseNode): BaseNode {
 
 function roadmapCanvasDataSnapshot(data?: Record<string, unknown>): string {
   const keys = [
-    'posX', 'posY', 'lane', 'roadmapNodeType', 'nodeText', 'description',
+    'posX', 'posY', 'lane', 'roadmapNodeType', 'nodeNumber', 'nodeText', 'description',
     'hookRoadmapDocId', 'hookRoadmapBranch', 'hookRoadmapTitle', 'hookRoadmapUrl',
   ];
   const source = data || {};
@@ -387,4 +388,35 @@ export function roadmapNodeCreatePayloadFromBase(node: BaseNode | undefined): {
     y: coords.y,
     data: coords.data,
   };
+}
+
+function roadmapCanvasNumberingNodes(nodes: BaseNode[]): Array<{ id: string; data?: Record<string, unknown> }> {
+  return nodes
+    .filter((node) => {
+      const type = (node.data as Record<string, unknown> | undefined)?.roadmapNodeType;
+      return type === 'main' || type === 'sub';
+    })
+    .map((node) => ({
+      id: node.id,
+      data: {
+        ...(node.data || {}),
+        label: node.text,
+      } as Record<string, unknown>,
+    }));
+}
+
+export function collectRoadmapCanvasValidationErrors(
+  base: { nodes: BaseNode[]; edges: BaseEdge[] },
+): string[] {
+  const errors: string[] = [];
+  const roadmapRoots = base.nodes.filter((node) => node.type === 'roadmap');
+  for (const root of roadmapRoots) {
+    const childIds = roadmapChildIdSet(base, root.id);
+    const canvasNodes = base.nodes.filter((node) => childIds.has(node.id));
+    const canvasEdges = base.edges.filter(
+      (edge) => childIds.has(edge.source) && childIds.has(edge.target),
+    );
+    errors.push(...validateRoadmapNodeNumbers(roadmapCanvasNumberingNodes(canvasNodes), canvasEdges));
+  }
+  return errors;
 }

@@ -1828,9 +1828,14 @@ Date: 日期
 'Roadmap detail settings show node number': 显示节点序号
 'Roadmap detail settings show node number hint': 在 main/sub 节点左上角以绿色字体显示拓扑顺序序号。
 'Roadmap node number': 节点序号
-'Roadmap node number format hint': 格式 x.y（如 1.1）
-'Roadmap sub node number invalid': 子节点序号必须是 x.y 格式。
+'Roadmap main node number format hint': 格式 x（如 1）
+'Roadmap sub node number format hint': 格式 x.y（如 1.1，前一位为主节点序号）
+'Roadmap main node number missing': 主节点 "{0}" 缺少序号。
+'Roadmap main node number invalid': 主节点 "{0}" 序号必须是大于 0 的整数。
+'Roadmap sub node number invalid': 子节点 "{0}" 序号必须是 x.y 格式。
 'Roadmap sub node number missing': 子节点 "{0}" 缺少序号。
+'Roadmap sub node number prefix invalid': 子节点 "{0}" 序号前缀必须与某个主节点序号一致。
+'Roadmap node number validation failed': 路线图节点序号校验失败，请修正后再保存。
 'Roadmap detail settings saved': 显示设置已保存。
 'Roadmap detail settings save failed': 显示设置保存失败。
 'Resize sidebar': 调整侧栏宽度
