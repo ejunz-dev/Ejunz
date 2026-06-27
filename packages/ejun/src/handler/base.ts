@@ -72,7 +72,7 @@ import {
     normalizeProblemTagInput,
     LearnProblemNoteModel,
 } from '../model/problem';
-import { collectRoadmapBatchSaveNumberErrors } from '../model/roadmap';
+import { collectRoadmapBatchSaveNumberErrors } from '../model/base';
 
 type LearnProblemNotesBatchBlock = {
     pid: string;

@@ -1318,6 +1318,238 @@ export function attachBaseListStats<T extends BaseDoc & { docId?: number | strin
     });
 }
 
+/** Base 内嵌 roadmap 画布（`BaseNode.type === 'roadmap'` 及其 canvas 子节点）。 */
+const ROADMAP_NODE_KINDS = new Set(['main', 'sub', 'hook', 'text']);
+const ROADMAP_LEGACY_KIND_MAP: Record<string, string> = {
+    root: 'main',
+    milestone: 'main',
+    task: 'sub',
+    decision: 'sub',
+    release: 'sub',
+};
+
+export function roadmapNodeKindFromType(type?: string): string {
+    const raw = String(type || '').trim();
+    if (ROADMAP_NODE_KINDS.has(raw)) return raw;
+    return ROADMAP_LEGACY_KIND_MAP[raw] || 'sub';
+}
+
+export function supportsRoadmapPracticeProblems(type?: string): boolean {
+    const kind = roadmapNodeKindFromType(type);
+    return kind === 'main' || kind === 'sub';
+}
+
+export function roadmapNodeTypeFromNode(node: BaseNode | undefined): string | undefined {
+    const data = (node as { data?: { roadmapNodeType?: string } } | undefined)?.data;
+    return data?.roadmapNodeType;
+}
+
+const ROADMAP_MAIN_NUMBER_PATTERN = /^\d+$/;
+const ROADMAP_SUB_NUMBER_PATTERN = /^\d+\.\d+$/;
+
+function isMainCanvasKind(type?: string): boolean {
+    return roadmapNodeKindFromType(type) === 'main';
+}
+
+function isSubCanvasKind(type?: string): boolean {
+    return roadmapNodeKindFromType(type) === 'sub';
+}
+
+function isValidRoadmapMainNumber(value: string): boolean {
+    const trimmed = value.trim();
+    if (!ROADMAP_MAIN_NUMBER_PATTERN.test(trimmed)) return false;
+    const num = Number(trimmed);
+    return Number.isInteger(num) && num >= 1;
+}
+
+function isValidRoadmapSubNumber(value: string): boolean {
+    const trimmed = value.trim();
+    if (!ROADMAP_SUB_NUMBER_PATTERN.test(trimmed)) return false;
+    const [prefix, suffix] = trimmed.split('.');
+    return isValidRoadmapMainNumber(prefix) && isValidRoadmapMainNumber(suffix);
+}
+
+export function roadmapNodeNumberSortKey(node: BaseNode | undefined): [number, number] | null {
+    if (!node || !supportsRoadmapPracticeProblems(roadmapNodeTypeFromNode(node))) return null;
+    const raw = String((node.data as { nodeNumber?: string } | undefined)?.nodeNumber || '').trim();
+    if (isValidRoadmapMainNumber(raw)) return [Number(raw), 0];
+    if (isValidRoadmapSubNumber(raw)) {
+        const [prefix, suffix] = raw.split('.');
+        return [Number(prefix), Number(suffix)];
+    }
+    return null;
+}
+
+export function compareRoadmapPracticeNodesByNumber(
+    a: BaseNode | undefined,
+    b: BaseNode | undefined,
+): number {
+    const ka = roadmapNodeNumberSortKey(a);
+    const kb = roadmapNodeNumberSortKey(b);
+    if (ka && kb) {
+        if (ka[0] !== kb[0]) return ka[0] - kb[0];
+        return ka[1] - kb[1];
+    }
+    if (ka && !kb) return -1;
+    if (!ka && kb) return 1;
+    return 0;
+}
+
+export function isRoadmapContainerBaseNode(node: BaseNode | undefined): boolean {
+    return String(node?.type || '') === 'roadmap';
+}
+
+export function isRoadmapSubPracticeNode(node: BaseNode | undefined): boolean {
+    return roadmapNodeKindFromType(roadmapNodeTypeFromNode(node)) === 'sub';
+}
+
+export function roadmapDagOrderFromNode(node: BaseNode | undefined): number | null {
+    const key = roadmapNodeNumberSortKey(node);
+    if (!key) return null;
+    return key[0] * 10000 + key[1];
+}
+
+function roadmapCanvasChildIdSet(nodes: BaseNode[], edges: BaseEdge[], roadmapId: string): Set<string> {
+    const ids = new Set<string>();
+    for (const edge of edges) {
+        if (edge.source === roadmapId) ids.add(edge.target);
+    }
+    return ids;
+}
+
+function validateRoadmapCanvasNumbers(nodes: BaseNode[], edges: BaseEdge[]): string[] {
+    const errors: string[] = [];
+    const roots = nodes.filter((node) => node.type === 'roadmap');
+    for (const root of roots) {
+        const childIds = roadmapCanvasChildIdSet(nodes, edges, root.id);
+        const canvasNodes = nodes.filter((node) => childIds.has(node.id));
+        const mainNumbers = new Set<string>();
+        for (const node of canvasNodes) {
+            const kind = roadmapNodeKindFromType(roadmapNodeTypeFromNode(node));
+            if (kind !== 'main') continue;
+            const raw = String((node.data as { nodeNumber?: string } | undefined)?.nodeNumber || '').trim();
+            if (raw && isValidRoadmapMainNumber(raw)) mainNumbers.add(raw);
+        }
+        for (const node of canvasNodes) {
+            const kind = roadmapNodeKindFromType(roadmapNodeTypeFromNode(node));
+            const label = String(node.text || node.id);
+            const raw = String((node.data as { nodeNumber?: string } | undefined)?.nodeNumber || '').trim();
+            if (isMainCanvasKind(kind)) {
+                if (!raw) {
+                    errors.push(`主节点 "${label}" 缺少序号。`);
+                    continue;
+                }
+                if (!isValidRoadmapMainNumber(raw)) {
+                    errors.push(`主节点 "${label}" 序号必须是大于 0 的整数。`);
+                }
+                continue;
+            }
+            if (!isSubCanvasKind(kind)) continue;
+            if (!raw) {
+                errors.push(`子节点 "${label}" 缺少序号。`);
+                continue;
+            }
+            if (!isValidRoadmapSubNumber(raw)) {
+                errors.push(`子节点 "${label}" 序号必须是 x.y 格式。`);
+                continue;
+            }
+            const prefix = raw.split('.')[0];
+            if (!mainNumbers.has(prefix)) {
+                errors.push(`子节点 "${label}" 序号前缀必须与某个主节点序号一致。`);
+            }
+        }
+    }
+    return errors;
+}
+
+type BatchNodeCreatePreview = {
+    tempId?: string;
+    text?: string;
+    type?: string;
+    x?: number;
+    y?: number;
+    order?: number;
+    data?: Record<string, unknown>;
+};
+
+type BatchNodeUpdatePreview = {
+    nodeId: string;
+    text?: string;
+    x?: number;
+    y?: number;
+    data?: Record<string, unknown>;
+};
+
+function previewBranchNodesAfterBatch(
+    nodes: BaseNode[],
+    batch: {
+        nodeCreates?: BatchNodeCreatePreview[];
+        nodeUpdates?: BatchNodeUpdatePreview[];
+        nodeDeletes?: string[];
+    },
+): BaseNode[] {
+    const deleteIds = new Set((batch.nodeDeletes || []).map(String));
+    const byId = new Map<string, BaseNode>();
+    for (const node of nodes) {
+        if (deleteIds.has(node.id)) continue;
+        byId.set(node.id, {
+            ...node,
+            data: node.data ? { ...node.data } : node.data,
+        });
+    }
+
+    for (const create of batch.nodeCreates || []) {
+        const id = create.tempId ? String(create.tempId) : '';
+        if (!id) continue;
+        const existing = byId.get(id);
+        byId.set(id, {
+            ...(existing || { id, text: '' }),
+            id,
+            text: create.text != null ? create.text : (existing?.text || ''),
+            ...(create.type != null ? { type: create.type as BaseNode['type'] } : {}),
+            ...(create.x != null ? { x: create.x } : {}),
+            ...(create.y != null ? { y: create.y } : {}),
+            ...(create.order != null ? { order: create.order } : {}),
+            data: {
+                ...(existing?.data || {}),
+                ...(create.data || {}),
+            },
+        });
+    }
+
+    for (const update of batch.nodeUpdates || []) {
+        const nodeId = update.nodeId ? String(update.nodeId) : '';
+        if (!nodeId) continue;
+        const existing = byId.get(nodeId) || { id: nodeId, text: '' };
+        byId.set(nodeId, {
+            ...existing,
+            ...(update.text != null ? { text: update.text } : {}),
+            ...(update.x != null ? { x: update.x } : {}),
+            ...(update.y != null ? { y: update.y } : {}),
+            data: {
+                ...(existing.data || {}),
+                ...(update.data || {}),
+            },
+        });
+    }
+
+    return Array.from(byId.values());
+}
+
+export function collectRoadmapBatchSaveNumberErrors(
+    base: BaseDoc,
+    branch: string,
+    batch: {
+        nodeCreates?: BatchNodeCreatePreview[];
+        nodeUpdates?: BatchNodeUpdatePreview[];
+        nodeDeletes?: string[];
+    },
+): string[] {
+    const { nodes, edges } = getBranchData(base, branch);
+    const previewNodes = previewBranchNodesAfterBatch(nodes, batch);
+    return validateRoadmapCanvasNumbers(previewNodes, edges);
+}
+
 // @ts-ignore
 global.Ejunz.model.base = BaseModel;
 // @ts-ignore

@@ -61,6 +61,9 @@ export function BaseDetailHeader({
   onAiTutorClick,
   onSettingsClick,
   settingsActive,
+  onStartLearningClick,
+  learnBusy,
+  learnDisabled,
 }: {
   title: string;
   description?: string;
@@ -73,6 +76,9 @@ export function BaseDetailHeader({
   onAiTutorClick?: () => void;
   onSettingsClick?: () => void;
   settingsActive?: boolean;
+  onStartLearningClick?: () => void;
+  learnBusy?: boolean;
+  learnDisabled?: boolean;
 }) {
   const listUrl = domainScopedPath('/base', domainId);
   const editUrl = domainApiPath(
@@ -104,6 +110,17 @@ export function BaseDetailHeader({
             <span className="icon icon-edit" aria-hidden />
             {i18n('Edit graph')}
           </a>
+          {onStartLearningClick ? (
+            <button
+              type="button"
+              className="roadmap-detail-header-card__btn roadmap-detail-header-card__btn--primary"
+              onClick={onStartLearningClick}
+              disabled={learnBusy || learnDisabled}
+              aria-busy={learnBusy || undefined}
+            >
+              {i18n('Start Learning')}
+            </button>
+          ) : null}
           {onSettingsClick ? (
             <button
               type="button"
