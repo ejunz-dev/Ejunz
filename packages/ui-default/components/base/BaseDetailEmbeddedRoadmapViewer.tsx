@@ -27,7 +27,7 @@ import {
 import { RoadmapNodeDrawer } from 'vj/components/roadmap/RoadmapNodeDrawer';
 import {
   buildRoadmapNodeProblemCountMap,
-  readRoadmapDetailDisplaySettings,
+  type RoadmapDetailDisplaySettings,
 } from 'vj/components/roadmap/detail_display_settings';
 import { computeRoadmapNodeNumbers } from 'vj/components/roadmap/node_numbering';
 import { isHookNodeType, isTextNodeType, supportsRoadmapPracticeProblems } from 'vj/components/roadmap/node_kinds';
@@ -46,11 +46,13 @@ export function BaseDetailEmbeddedRoadmapViewer({
   childNodes,
   childEdges,
   nodeCardsMap,
+  displaySettings,
   onSelectedNodeChange,
 }: {
   childNodes: BaseNode[];
   childEdges: BaseEdge[];
   nodeCardsMap: Record<string, Card[]>;
+  displaySettings: RoadmapDetailDisplaySettings;
   onSelectedNodeChange?: (nodeId: string | null, label: string | null) => void;
 }) {
   const initialFlowNodes = useMemo(
@@ -62,7 +64,6 @@ export function BaseDetailEmbeddedRoadmapViewer({
     (childEdges || []).map((edge) => baseEdgeToFlowEdge(edge as BaseRoadmapEdge)),
   );
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const displaySettings = useMemo(() => readRoadmapDetailDisplaySettings(), []);
   const contentRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const theme = useEditorTheme();

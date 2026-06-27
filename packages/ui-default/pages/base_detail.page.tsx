@@ -2,7 +2,8 @@ import $ from 'jquery';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
-import { i18n } from 'vj/utils';
+import Notification from 'vj/components/notification';
+import { domainApiPath, request, i18n } from 'vj/utils';
 import type { BaseDoc, Card } from 'vj/components/base/types';
 import { BaseDetailCardDrawer } from 'vj/components/base/BaseDetailCardDrawer';
 import { BaseDetailExplorer } from 'vj/components/base/BaseDetailExplorer';
@@ -10,7 +11,12 @@ import { BaseDetailHeader } from 'vj/components/base/BaseDetailHeader';
 import { BaseDetailEmbeddedRoadmapViewer } from 'vj/components/base/BaseDetailEmbeddedRoadmapViewer';
 import { BaseDetailNodeContent } from 'vj/components/base/BaseDetailNodeContent';
 import { BaseDetailTreeDrawer } from 'vj/components/base/BaseDetailSidebar';
+import { RoadmapDetailSettingsPanel } from 'vj/components/roadmap/RoadmapDetailSettingsPanel';
 import { cardDisplayLabel, getRoadmapChildGraph, nodeDisplayLabel } from 'vj/components/base/detail_tree';
+import {
+  readBaseDetailDisplaySettings,
+  type BaseDetailDisplaySettings,
+} from 'vj/components/base/detail_display_settings';
 import {
   computeBaseDetailTreeSearchVisibility,
   computeBaseDetailTreeVisibility,
@@ -57,6 +63,11 @@ function BaseDetailViewer() {
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [detailFilters, setDetailFilters] = useState<BaseDetailFilter>(() => readBaseDetailFilterFromLocation());
   const [treeSearchQuery, setTreeSearchQuery] = useState('');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [displaySettings, setDisplaySettings] = useState<BaseDetailDisplaySettings>(() => (
+    readBaseDetailDisplaySettings()
+  ));
+  const [displaySettingsSaving, setDisplaySettingsSaving] = useState(false);
   const title = base.title?.trim() || String(i18n('Knowledge Base'));
   const branch = base.currentBranch || 'main';
   const nodes = base.nodes || [];
@@ -112,6 +123,25 @@ function BaseDetailViewer() {
     setSelectedCard(null);
   }, []);
 
+  const handleDisplaySettingsSave = useCallback(async (next: BaseDetailDisplaySettings) => {
+    if (!base.docId) return;
+    setDisplaySettingsSaving(true);
+    try {
+      await request.post(domainApiPath('/base/detail-ui-prefs', base.domainId || 'system'), {
+        docId: Number(base.docId),
+        branch,
+        displayPrefs: next,
+      });
+      setDisplaySettings(next);
+      setSettingsOpen(false);
+      Notification.success(i18n('Roadmap detail settings saved'));
+    } catch (err: any) {
+      Notification.error(err?.message || i18n('Roadmap detail settings save failed'));
+    } finally {
+      setDisplaySettingsSaving(false);
+    }
+  }, [base.docId, base.domainId, branch]);
+
   useEffect(() => {
     if (!selectedCard) return undefined;
     const onPointerDown = (event: PointerEvent) => {
@@ -150,6 +180,8 @@ function BaseDetailViewer() {
         branch={branch}
         treeDrawerOpen={treeDrawerOpen}
         onTreeDrawerOpen={() => setTreeDrawerOpen(true)}
+        onSettingsClick={() => setSettingsOpen(true)}
+        settingsActive={settingsOpen}
       />
       {contentTreeRootId ? (
         <BaseDetailExplorer
@@ -168,6 +200,7 @@ function BaseDetailViewer() {
               childNodes={selectedRoadmapGraph.childNodes}
               childEdges={selectedRoadmapGraph.childEdges}
               nodeCardsMap={nodeCardsMap}
+              displaySettings={displaySettings}
               onSelectedNodeChange={(_nodeId, label) => setSelectedCanvasNodeLabel(label)}
             />
           </div>
@@ -180,6 +213,7 @@ function BaseDetailViewer() {
               nodeCardsMap={nodeCardsMap}
               selectedCardId={selectedCard?.docId || null}
               treeVisibility={contentTreeVisibility}
+              displaySettings={displaySettings}
               onSelectCard={handleSelectCard}
             />
           </main>
@@ -198,6 +232,7 @@ function BaseDetailViewer() {
         nodeCardsMap={nodeCardsMap}
         selectedNodeId={selectedNodeId}
         selectedCardId={selectedCard?.docId || null}
+        displaySettings={displaySettings}
         onClose={() => setTreeDrawerOpen(false)}
         onSelectNode={handleSelectNode}
         onSelectCard={handleSelectCard}
@@ -206,6 +241,13 @@ function BaseDetailViewer() {
         open={!!selectedCard}
         card={selectedCard}
         onClose={handleCloseCardDrawer}
+      />
+      <RoadmapDetailSettingsPanel
+        open={settingsOpen}
+        settings={displaySettings}
+        saving={displaySettingsSaving}
+        onClose={() => setSettingsOpen(false)}
+        onSave={handleDisplaySettingsSave}
       />
     </div>
   );
