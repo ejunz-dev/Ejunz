@@ -1,15 +1,60 @@
 import { i18n } from 'vj/utils';
 import type { Edge, Node } from 'reactflow';
 import { isMainNodeType, isSubNodeType } from './node_kinds';
-import { isHorizontalSolidEdge } from './solid_links';
 
+export const ROADMAP_MAIN_NUMBER_PATTERN = /^\d+$/;
 export const ROADMAP_SUB_NUMBER_PATTERN = /^\d+\.\d+$/;
 
-function sortNodesByY(nodes: Node[]): Node[] {
-  return [...nodes].sort((a, b) => a.position.y - b.position.y);
+export interface RoadmapNumberingNode {
+  id: string;
+  data?: Record<string, unknown>;
 }
 
-function buildHorizontalSolidAdjacency(edges: Edge[], nodes: Node[]): Map<string, Set<string>> {
+export interface RoadmapNumberingEdge {
+  source: string;
+  target: string;
+}
+
+function nodeLabel(node: RoadmapNumberingNode): string {
+  return String(node.data?.label || node.id);
+}
+
+export function isValidRoadmapMainNumber(value: string): boolean {
+  const trimmed = value.trim();
+  if (!ROADMAP_MAIN_NUMBER_PATTERN.test(trimmed)) return false;
+  const num = Number(trimmed);
+  return Number.isInteger(num) && num >= 1;
+}
+
+export function isValidRoadmapSubNumber(value: string): boolean {
+  const trimmed = value.trim();
+  if (!ROADMAP_SUB_NUMBER_PATTERN.test(trimmed)) return false;
+  const [prefix, suffix] = trimmed.split('.');
+  return isValidRoadmapMainNumber(prefix) && isValidRoadmapMainNumber(suffix);
+}
+
+function parseMainNumber(value: unknown): number | null {
+  const raw = String(value ?? '').trim();
+  if (!isValidRoadmapMainNumber(raw)) return null;
+  return Number(raw);
+}
+
+function collectMainNodes(nodes: RoadmapNumberingNode[]): RoadmapNumberingNode[] {
+  return nodes.filter((node) => isMainNodeType(node.data?.roadmapNodeType));
+}
+
+function collectSubNodes(nodes: RoadmapNumberingNode[]): RoadmapNumberingNode[] {
+  return nodes.filter((node) => isSubNodeType(node.data?.roadmapNodeType));
+}
+
+function maxMainNumber(nodes: RoadmapNumberingNode[]): number {
+  return collectMainNodes(nodes).reduce((max, node) => {
+    const num = parseMainNumber(node.data?.nodeNumber);
+    return num != null ? Math.max(max, num) : max;
+  }, 0);
+}
+
+function buildAdjacency(edges: RoadmapNumberingEdge[]): Map<string, Set<string>> {
   const adj = new Map<string, Set<string>>();
   const link = (a: string, b: string) => {
     if (!adj.has(a)) adj.set(a, new Set());
@@ -17,88 +62,135 @@ function buildHorizontalSolidAdjacency(edges: Edge[], nodes: Node[]): Map<string
     adj.get(a)!.add(b);
     adj.get(b)!.add(a);
   };
-  edges.forEach((edge) => {
-    if (!isHorizontalSolidEdge(edge, nodes)) return;
-    link(edge.source, edge.target);
-  });
+  edges.forEach((edge) => link(edge.source, edge.target));
   return adj;
 }
 
-function findConnectedComponent(startId: string, adj: Map<string, Set<string>>): Set<string> {
+export function resolveMainNumberPrefix(
+  nodes: RoadmapNumberingNode[],
+  edges: RoadmapNumberingEdge[],
+  anchorNodeId: string,
+): string {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const adj = buildAdjacency(edges);
   const visited = new Set<string>();
-  const stack = [startId];
-  while (stack.length) {
-    const current = stack.pop()!;
-    if (visited.has(current)) continue;
-    visited.add(current);
-    adj.get(current)?.forEach((peerId) => stack.push(peerId));
+  const queue = [anchorNodeId];
+
+  while (queue.length) {
+    const id = queue.shift()!;
+    if (visited.has(id)) continue;
+    visited.add(id);
+    const node = nodeById.get(id);
+    if (!node) continue;
+    if (isMainNodeType(node.data?.roadmapNodeType)) {
+      const num = String(node.data?.nodeNumber || '').trim();
+      if (isValidRoadmapMainNumber(num)) return num;
+    }
+    adj.get(id)?.forEach((peerId) => queue.push(peerId));
   }
-  return visited;
+
+  const fallback = maxMainNumber(nodes) + 1;
+  return String(Math.max(1, fallback));
 }
 
-function findMainNodeComponents(mainNodes: Node[], edges: Edge[], nodes: Node[]): Node[][] {
-  const adj = buildHorizontalSolidAdjacency(edges, nodes);
-  const visited = new Set<string>();
-  const components: Node[][] = [];
-  mainNodes.forEach((node) => {
-    if (visited.has(node.id)) return;
-    const componentIds = findConnectedComponent(node.id, adj);
-    componentIds.forEach((id) => visited.add(id));
-    const componentNodes = mainNodes.filter((n) => componentIds.has(n.id));
-    if (componentNodes.length) components.push(sortNodesByY(componentNodes));
+export function allocateDefaultMainNodeNumber(nodes: RoadmapNumberingNode[]): string {
+  return String(maxMainNumber(nodes) + 1);
+}
+
+export function allocateDefaultSubNodeNumber(
+  nodes: RoadmapNumberingNode[],
+  edges: RoadmapNumberingEdge[],
+  anchorNodeId: string,
+): string {
+  const mainPrefix = resolveMainNumberPrefix(nodes, edges, anchorNodeId);
+  let maxSuffix = 0;
+  collectSubNodes(nodes).forEach((node) => {
+    const raw = String(node.data?.nodeNumber || '').trim();
+    if (!isValidRoadmapSubNumber(raw)) return;
+    const [prefix, suffix] = raw.split('.');
+    if (prefix !== mainPrefix) return;
+    maxSuffix = Math.max(maxSuffix, Number(suffix));
   });
-  return components;
+  return `${mainPrefix}.${maxSuffix + 1}`;
 }
 
-export function isValidRoadmapSubNumber(value: string): boolean {
-  return ROADMAP_SUB_NUMBER_PATTERN.test(value.trim());
-}
-
-export function computeRoadmapNodeNumbers(nodes: Node[], edges: Edge[]): Map<string, string> {
+export function computeRoadmapNodeNumbers(nodes: Node[], _edges: Edge[]): Map<string, string> {
   const result = new Map<string, string>();
-  const roadmapNodes = nodes.filter((node) => {
+
+  nodes.forEach((node) => {
     const type = node.data?.roadmapNodeType;
-    return isMainNodeType(type) || isSubNodeType(type);
-  });
-  if (!roadmapNodes.length) return result;
-
-  const mainNodes = roadmapNodes.filter((node) => isMainNodeType(node.data?.roadmapNodeType));
-  const subNodes = roadmapNodes.filter((node) => isSubNodeType(node.data?.roadmapNodeType));
-
-  const components = findMainNodeComponents(mainNodes, edges, nodes);
-  components.sort((a, b) => a[0].position.y - b[0].position.y);
-
-  let mainCounter = 1;
-  components.forEach((component) => {
-    component.forEach((node) => {
-      result.set(node.id, String(mainCounter));
-      mainCounter += 1;
-    });
-  });
-
-  subNodes.forEach((subNode) => {
-    const raw = String(subNode.data?.nodeNumber || '').trim();
-    if (isValidRoadmapSubNumber(raw)) {
-      result.set(subNode.id, raw);
+    const raw = String(node.data?.nodeNumber || '').trim();
+    if (isMainNodeType(type) && isValidRoadmapMainNumber(raw)) {
+      result.set(node.id, raw);
+      return;
+    }
+    if (isSubNodeType(type) && isValidRoadmapSubNumber(raw)) {
+      result.set(node.id, raw);
     }
   });
 
   return result;
 }
 
-export function validateRoadmapSubNodeNumbers(nodes: Node[]): string[] {
-  const errors: string[] = [];
-  nodes.forEach((node) => {
-    if (!isSubNodeType(node.data?.roadmapNodeType)) return;
+function mainNumberSet(nodes: RoadmapNumberingNode[]): Set<string> {
+  const set = new Set<string>();
+  collectMainNodes(nodes).forEach((node) => {
     const raw = String(node.data?.nodeNumber || '').trim();
-    const label = String(node.data?.label || node.id);
+    if (isValidRoadmapMainNumber(raw)) set.add(raw);
+  });
+  return set;
+}
+
+export function validateRoadmapNodeNumbers(
+  nodes: RoadmapNumberingNode[],
+  _edges: RoadmapNumberingEdge[] = [],
+): string[] {
+  const errors: string[] = [];
+  const mains = mainNumberSet(nodes);
+
+  nodes.forEach((node) => {
+    const raw = String(node.data?.nodeNumber || '').trim();
+    const label = nodeLabel(node);
+
+    if (isMainNodeType(node.data?.roadmapNodeType)) {
+      if (!raw) {
+        errors.push(i18n('Roadmap main node number missing').replace('{0}', label));
+        return;
+      }
+      if (!isValidRoadmapMainNumber(raw)) {
+        errors.push(i18n('Roadmap main node number invalid').replace('{0}', label));
+      }
+      return;
+    }
+
+    if (!isSubNodeType(node.data?.roadmapNodeType)) return;
+
     if (!raw) {
       errors.push(i18n('Roadmap sub node number missing').replace('{0}', label));
       return;
     }
     if (!isValidRoadmapSubNumber(raw)) {
-      errors.push(i18n('Roadmap sub node number invalid'));
+      errors.push(i18n('Roadmap sub node number invalid').replace('{0}', label));
+      return;
+    }
+    const prefix = raw.split('.')[0];
+    if (!mains.has(prefix)) {
+      errors.push(i18n('Roadmap sub node number prefix invalid').replace('{0}', label));
     }
   });
+
   return errors;
+}
+
+export function withDefaultRoadmapNodeNumber(
+  nodes: RoadmapNumberingNode[],
+  edges: RoadmapNumberingEdge[],
+  kind: 'main' | 'sub',
+  anchorNodeId?: string,
+): string | undefined {
+  if (kind === 'main') return allocateDefaultMainNodeNumber(nodes);
+  if (kind === 'sub' && anchorNodeId) {
+    return allocateDefaultSubNodeNumber(nodes, edges, anchorNodeId);
+  }
+  return undefined;
 }

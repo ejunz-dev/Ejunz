@@ -1288,9 +1288,14 @@ Date: Date
 'Roadmap detail settings show node number': Show node numbers
 'Roadmap detail settings show node number hint': Display sequential numbering on main and sub nodes.
 'Roadmap node number': Node number
-'Roadmap node number format hint': Format x.y (e.g. 1.1)
-'Roadmap sub node number invalid': Sub node number must be in x.y format.
+'Roadmap main node number format hint': Format x (e.g. 1)
+'Roadmap sub node number format hint': Format x.y (e.g. 1.1; first part is main node number)
+'Roadmap main node number missing': Main node "{0}" is missing a number.
+'Roadmap main node number invalid': Main node "{0}" number must be a positive integer.
+'Roadmap sub node number invalid': Sub node "{0}" number must be in x.y format.
 'Roadmap sub node number missing': Sub node "{0}" is missing a number.
+'Roadmap sub node number prefix invalid': Sub node "{0}" number prefix must match a main node number.
+'Roadmap node number validation failed': Roadmap node number validation failed. Fix errors before saving.
 'Roadmap detail settings saved': Display settings saved.
 'Roadmap detail settings save failed': Failed to save display settings.
 'Resize sidebar': Resize sidebar

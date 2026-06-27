@@ -8,6 +8,8 @@ export type RoadmapPriority = 'low' | 'medium' | 'high';
 
 export interface RoadmapNodeData {
   roadmapNodeType?: RoadmapNodeType;
+  /** Main card: x (e.g. "1"). Sub card: x.y (e.g. "1.1"). */
+  nodeNumber?: string;
   status?: RoadmapStatus;
   owner?: string;
   dueDate?: string;
@@ -19,6 +21,7 @@ export interface RoadmapNodeData {
   hookRoadmapUrl?: string;
   priority?: RoadmapPriority;
   lane?: 1 | 2 | 3;
+  editorUi?: Record<string, boolean>;
 }
 
 export interface BaseRoadmapNode {
