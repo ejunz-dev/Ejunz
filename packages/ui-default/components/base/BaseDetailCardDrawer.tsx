@@ -1,7 +1,8 @@
 import $ from 'jquery';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { i18n } from 'vj/utils';
+import Notification from 'vj/components/notification';
+import { domainApiPath, domainScopedPath, i18n, request } from 'vj/utils';
 import type { Problem } from 'ejun/src/interface';
 import { RoadmapDrawerProblemList } from '../roadmap/RoadmapDrawerProblemList';
 import type { Card } from './types';
@@ -20,6 +21,7 @@ export function BaseDetailCardDrawer({
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<DrawerTab>('content');
+  const [practiceBusy, setPracticeBusy] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const lastCardRef = useRef<Card | null>(null);
   const { visible, closing } = useDrawerTransition(open);
@@ -31,6 +33,45 @@ export function BaseDetailCardDrawer({
     [displayCard?.docId, displayCard?.problems],
   );
   const hasProblems = problems.length > 0;
+
+  const startCardPractice = useCallback(async () => {
+    const cardId = String(displayCard?.docId || '').trim();
+    if (!cardId || practiceBusy || !hasProblems) return;
+    if (!/^[a-f0-9]{24}$/i.test(cardId)) {
+      Notification.error(i18n('Outline learn invalid card'));
+      return;
+    }
+    const rawDomainId = (window as any).UiContext?.base?.domainId
+      ?? (window as any).UiContext?.domainId;
+    const domainId = typeof rawDomainId === 'object'
+      ? (rawDomainId?._id ? String(rawDomainId._id) : 'system')
+      : (rawDomainId ? String(rawDomainId) : 'system');
+    setPracticeBusy(true);
+    try {
+      const res: any = await request.post(domainApiPath('/learn/lesson/start', domainId), {
+        mode: 'card',
+        cardId,
+      });
+      const redir = res?.redirect ?? res?.body?.redirect ?? res?.data?.redirect;
+      const url = redir || domainScopedPath(`/learn/lesson?cardId=${encodeURIComponent(cardId)}`, domainId);
+      const opened = window.open(url, '_blank', 'noopener,noreferrer');
+      if (opened) {
+        opened.opener = null;
+      } else {
+        Notification.error(i18n('Outline editor popup blocked'));
+      }
+    } catch (e: any) {
+      const raw = typeof e?.message === 'string' ? e.message : String(e ?? '');
+      const cleaned = raw.replace(/^[A-Za-z]+Error:\s*/i, '').trim();
+      const msg = cleaned === 'No cards match session card filter'
+        || cleaned === 'Learn requires cards with problems'
+        ? i18n('Learn requires cards with problems')
+        : (cleaned || i18n('Outline learn start failed'));
+      Notification.error(msg);
+    } finally {
+      setPracticeBusy(false);
+    }
+  }, [displayCard?.docId, hasProblems, practiceBusy]);
 
   useEffect(() => {
     if (!visible || closing || !displayCard) return undefined;
@@ -143,6 +184,18 @@ export function BaseDetailCardDrawer({
               hidden={tab !== 'problems'}
             >
               <h1 className="roadmap-detail-drawer__title">{title}</h1>
+              <div className="roadmap-detail-drawer__practice-action">
+                <button
+                  type="button"
+                  className="roadmap-detail-drawer__practice-btn"
+                  disabled={practiceBusy || !hasProblems}
+                  onClick={() => { void startCardPractice(); }}
+                >
+                  {practiceBusy
+                    ? i18n('Roadmap drawer start node practice busy')
+                    : i18n('Roadmap drawer start card practice')}
+                </button>
+              </div>
               <RoadmapDrawerProblemList
                 problems={problems}
                 resetKey={`${displayCard.docId}:${visible}`}
