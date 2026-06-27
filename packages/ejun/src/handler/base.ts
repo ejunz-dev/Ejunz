@@ -40,6 +40,7 @@ import { sortFiles } from '@ejunz/utils/lib/common';
 import moment from 'moment-timezone';
 import UserModel from '../model/user';
 import { loadBaseEditorUiPrefs, sanitizeBaseEditorUiPrefs } from '../lib/baseEditorUiPrefs';
+import { loadBaseDetailUiPrefs, saveBaseDetailUiPrefs } from '../lib/baseDetailUiPrefs';
 import { getTodayUserDomainContribution } from '../lib/homepageRanking';
 import { incDevelopBranchDaily } from '../lib/developBranchDaily';
 import {
@@ -751,6 +752,14 @@ class BaseDetailHandler extends Handler {
             }
         }
 
+        const baseDetailUiPrefs = await loadBaseDetailUiPrefs(
+            this.ctx.db.db,
+            domainId,
+            this.base!.docId,
+            requestedBranch,
+            this.user._id,
+        );
+
         this.response.body = {
             base: {
                 ...this.base,
@@ -761,13 +770,36 @@ class BaseDetailHandler extends Handler {
             currentBranch: requestedBranch,
             branches,
             nodeCardsMap, 
-            files: this.base.files || [], 
+            files: this.base.files || [],
+            baseDetailUiPrefs,
         };
     }
 
 }
 
-/** Helper functions for branch data management */
+/** Per-user base detail display prefs (POST only; load via UiContext). */
+export class BaseDetailUiPrefsHandler extends Handler {
+    @post('docId', Types.PositiveInt)
+    @post('branch', Types.String, true)
+    @post('displayPrefs', Types.Any, true)
+    async post(domainId: string, docId: number, branch?: string, displayPrefs?: unknown) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const base = await BaseModel.get(domainId, docId);
+        if (!base) throw new NotFoundError('Base not found');
+
+        const branchNorm = branch && String(branch).trim() ? String(branch).trim() : 'main';
+        await saveBaseDetailUiPrefs(
+            this.ctx.db.db,
+            domainId,
+            docId,
+            branchNorm,
+            this.user._id,
+            displayPrefs,
+        );
+
+        this.response.body = { success: true };
+    }
+}
 
 /** Root label for Git file import: not represented as a directory, so pull preserves the existing graph root / base title. */
 function getSyntheticRootTextForFileImport(base: BaseDoc, branch: string): string {
@@ -7416,6 +7448,7 @@ export async function apply(ctx: Context) {
     ctx.Route('base_outline_doc_branch', '/base/:docId/outline/branch/:branch', BaseOutlineDocHandler);
     ctx.Route('base_list', '/base/list', BaseListHandler);
     ctx.Route('base_data', '/base/data', BaseDataHandler);
+    ctx.Route('base_detail_ui_prefs', '/base/detail-ui-prefs', BaseDetailUiPrefsHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_node_update', '/base/node/:nodeId', BaseNodeHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_node', '/base/node', BaseNodeHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_edge', '/base/edge', BaseEdgeHandler, PRIV.PRIV_USER_PROFILE);

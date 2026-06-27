@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { i18n } from 'vj/utils';
 import type { BaseEdge, BaseNode, Card } from './types';
 import type { BaseDetailTreeVisibility } from './detail_tree_filter';
+import type { BaseDetailDisplaySettings } from './detail_display_settings';
+import { getCardProblemCount } from './detail_display_settings';
 import {
   cardDisplayLabel,
   collectDefaultExpandedNodeIds,
@@ -70,6 +72,7 @@ function TreeBranch({
   selectedCardId,
   nodesClickable,
   treeVisibility,
+  displaySettings,
   onToggleNode,
   onSelectNode,
   onSelectCard,
@@ -84,6 +87,7 @@ function TreeBranch({
   selectedCardId?: string | null;
   nodesClickable?: boolean;
   treeVisibility?: BaseDetailTreeVisibility | null;
+  displaySettings?: BaseDetailDisplaySettings | null;
   onToggleNode: (nodeId: string) => void;
   onSelectNode?: (nodeId: string) => void;
   onSelectCard?: (card: Card) => void;
@@ -159,6 +163,7 @@ function TreeBranch({
                   selectedCardId={selectedCardId}
                   nodesClickable={nodesClickable}
                   treeVisibility={treeVisibility}
+                  displaySettings={displaySettings}
                   onToggleNode={onToggleNode}
                   onSelectNode={onSelectNode}
                   onSelectCard={onSelectCard}
@@ -171,6 +176,8 @@ function TreeBranch({
             }
 
             const cardSelected = selectedCardId === child.card.docId;
+            const problemCount = getCardProblemCount(child.card);
+            const showProblemCount = displaySettings?.showProblemCount && problemCount > 0;
             return (
               <div
                 key={`card-${child.card.docId}`}
@@ -189,6 +196,15 @@ function TreeBranch({
                   <span className="base-detail-tree__label" title={cardDisplayLabel(child.card)}>
                     {cardDisplayLabel(child.card)}
                   </span>
+                  {showProblemCount ? (
+                    <span
+                      className="base-detail-tree__problem-badge"
+                      aria-label={String(problemCount)}
+                      title={String(problemCount)}
+                    >
+                      {problemCount}
+                    </span>
+                  ) : null}
                 </button>
               </div>
             );
@@ -210,6 +226,7 @@ export function BaseDetailTree({
   emptyMessage,
   nodesClickable = true,
   treeVisibility = null,
+  displaySettings = null,
   onSelectNode,
   onSelectCard,
 }: {
@@ -223,6 +240,7 @@ export function BaseDetailTree({
   emptyMessage?: string;
   nodesClickable?: boolean;
   treeVisibility?: BaseDetailTreeVisibility | null;
+  displaySettings?: BaseDetailDisplaySettings | null;
   onSelectNode?: (nodeId: string) => void;
   onSelectCard?: (card: Card) => void;
 }) {
@@ -285,6 +303,7 @@ export function BaseDetailTree({
           selectedCardId={selectedCardId}
           nodesClickable={nodesClickable}
           treeVisibility={treeVisibility}
+          displaySettings={displaySettings}
           onToggleNode={onToggleNode}
           onSelectNode={onSelectNode}
           onSelectCard={onSelectCard}

@@ -7,6 +7,7 @@ import { collectDefaultExpandedNodeIds, getRootNodeIds } from './detail_tree';
 import { useDrawerTransition } from './useDrawerTransition';
 
 import type { BaseDetailTreeVisibility } from './detail_tree_filter';
+import type { BaseDetailDisplaySettings } from './detail_display_settings';
 
 export function BaseDetailTreeDrawer({
   open,
@@ -16,6 +17,7 @@ export function BaseDetailTreeDrawer({
   selectedNodeId,
   selectedCardId,
   treeVisibility,
+  displaySettings,
   onClose,
   onSelectNode,
   onSelectCard,
@@ -27,6 +29,7 @@ export function BaseDetailTreeDrawer({
   selectedNodeId?: string | null;
   selectedCardId?: string | null;
   treeVisibility?: BaseDetailTreeVisibility | null;
+  displaySettings?: BaseDetailDisplaySettings | null;
   onClose: () => void;
   onSelectNode?: (nodeId: string) => void;
   onSelectCard?: (card: Card) => void;
@@ -101,6 +104,7 @@ export function BaseDetailTreeDrawer({
             initialExpandedNodeIds={initialExpandedNodeIds}
             emptyMessage={String(i18n('Base detail tree empty'))}
             treeVisibility={treeVisibility}
+            displaySettings={displaySettings}
             onSelectNode={onSelectNode}
             onSelectCard={onSelectCard}
           />

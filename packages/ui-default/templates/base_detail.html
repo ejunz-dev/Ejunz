@@ -14,6 +14,7 @@
     edges: base.edges if base else []
   }) }}
   {{ set(UiContext, 'nodeCardsMap', nodeCardsMap if nodeCardsMap is defined else {}) }}
+  {{ set(UiContext, 'baseDetailUiPrefs', baseDetailUiPrefs if baseDetailUiPrefs is defined else {}) }}
   {{ set(UiContext, 'files', files or []) }}
 </script>
 <div class="roadmap-view-page roadmap-detail-page">
