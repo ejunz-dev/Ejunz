@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import type { BaseEdge, BaseNode, Card } from './types';
 import { BaseDetailTree } from './BaseDetailTree';
 import type { BaseDetailTreeVisibility } from './detail_tree_filter';
+import type { BaseDetailDisplaySettings } from './detail_display_settings';
 import { collectSubtreeDefaultExpandedNodeIds } from './detail_tree';
 
 export function BaseDetailNodeContent({
@@ -11,6 +12,7 @@ export function BaseDetailNodeContent({
   nodeCardsMap,
   selectedCardId,
   treeVisibility,
+  displaySettings,
   onSelectCard,
 }: {
   nodeId: string;
@@ -19,6 +21,7 @@ export function BaseDetailNodeContent({
   nodeCardsMap: Record<string, Card[]>;
   selectedCardId?: string | null;
   treeVisibility?: BaseDetailTreeVisibility | null;
+  displaySettings?: BaseDetailDisplaySettings | null;
   onSelectCard: (card: Card) => void;
 }) {
   const initialExpandedNodeIds = useMemo(
@@ -37,6 +40,7 @@ export function BaseDetailNodeContent({
         initialExpandedNodeIds={initialExpandedNodeIds}
         nodesClickable={false}
         treeVisibility={treeVisibility}
+        displaySettings={displaySettings}
         onSelectCard={onSelectCard}
       />
     </div>
