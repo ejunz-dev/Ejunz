@@ -1,5 +1,6 @@
 import type { Edge, Node } from 'reactflow';
 import { domainApiPath, i18n } from 'vj/utils';
+import { LANE_NODE_WIDTH, nearestLaneFromX, type RoadmapLane } from './lanes';
 
 export type RoadmapStatus = 'planned' | 'in_progress' | 'done' | 'blocked';
 export type RoadmapNodeType = 'main' | 'sub' | 'hook' | 'text' | 'root' | 'milestone' | 'task' | 'decision' | 'release';
@@ -127,15 +128,93 @@ export function statusColor(status?: RoadmapStatus): string {
   }
 }
 
+export function readRoadmapCoord(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+export function resolveRoadmapNodeXY(node: BaseRoadmapNode): { x?: number; y?: number } {
+  const data = node.data || {};
+  // Canvas nodes persist layout under data.posX/posY — match base editor read order.
+  return {
+    x: readRoadmapCoord(data.posX) ?? readRoadmapCoord(node.x),
+    y: readRoadmapCoord(data.posY) ?? readRoadmapCoord(node.y),
+  };
+}
+
+/** Base canvas nodes may only persist coordinates under data.posX/posY. */
+export function normalizeRoadmapCanvasNode<T extends BaseRoadmapNode>(node: T): T {
+  const { x, y } = resolveRoadmapNodeXY(node);
+  if (x == null && y == null) return node;
+  return {
+    ...node,
+    ...(x != null ? { x } : {}),
+    ...(y != null ? { y } : {}),
+  };
+}
+
+type RoadmapEdgeNodeRef = {
+  id: string;
+  x?: number;
+  y?: number;
+  data?: Record<string, unknown>;
+};
+
+function nodeLaneFromRef(node: RoadmapEdgeNodeRef): RoadmapLane {
+  const lane = Number(node.data?.lane);
+  if (lane >= 1 && lane <= 3) return lane as RoadmapLane;
+  const x = readRoadmapCoord(node.x) ?? readRoadmapCoord(node.data?.posX) ?? 0;
+  return nearestLaneFromX(x + LANE_NODE_WIDTH / 2);
+}
+
+/** Restore React Flow handles when persisted edges omit sourceHandle/targetHandle. */
+export function inferRoadmapEdgeHandles(
+  edge: BaseRoadmapEdge,
+  nodes?: RoadmapEdgeNodeRef[],
+): { sourceHandle: string; targetHandle: string } {
+  if (edge.sourceHandle && edge.targetHandle) {
+    return { sourceHandle: edge.sourceHandle, targetHandle: edge.targetHandle };
+  }
+
+  const edgeData = edge.data as { sourceHandle?: string; targetHandle?: string } | undefined;
+  if (edgeData?.sourceHandle && edgeData?.targetHandle) {
+    return { sourceHandle: edgeData.sourceHandle, targetHandle: edgeData.targetHandle };
+  }
+
+  const lineStyle = edge.lineStyle || roadmapEdgeLineStyleFromStyle(edge.style);
+
+  if (nodes?.length) {
+    const source = nodes.find((item) => item.id === edge.source);
+    const target = nodes.find((item) => item.id === edge.target);
+    if (source && target) {
+      const sourceLane = nodeLaneFromRef(source);
+      const targetLane = nodeLaneFromRef(target);
+      if (sourceLane !== targetLane) {
+        return { sourceHandle: 'right', targetHandle: 'left' };
+      }
+    }
+  }
+
+  if (lineStyle === 'dashed') {
+    return { sourceHandle: 'right', targetHandle: 'left' };
+  }
+  return { sourceHandle: 'bottom', targetHandle: 'top' };
+}
+
 export function baseNodeToFlowNode(node: BaseRoadmapNode, index = 0): Node {
   const data = node.data || {};
   const width = typeof node.width === 'number' && node.width > 0 ? node.width : undefined;
+  const { x: posX, y: posY } = resolveRoadmapNodeXY(node);
   return {
     id: node.id,
     type: 'roadmap',
     position: {
-      x: typeof node.x === 'number' && Number.isFinite(node.x) ? node.x : 120 + (index % 4) * 280,
-      y: typeof node.y === 'number' && Number.isFinite(node.y) ? node.y : 100 + Math.floor(index / 4) * 170,
+      x: posX ?? 120 + (index % 4) * 280,
+      y: posY ?? 100 + Math.floor(index / 4) * 170,
     },
     ...(width ? { width, style: { width } } : {}),
     ...(typeof node.height === 'number' && node.height > 0 ? { height: node.height } : {}),
@@ -163,17 +242,18 @@ export function roadmapFlowEdgeType(lineStyle?: RoadmapEdgeLineStyle): 'straight
   return lineStyle === 'dashed' ? 'default' : 'straight';
 }
 
-export function baseEdgeToFlowEdge(edge: BaseRoadmapEdge): Edge {
+export function baseEdgeToFlowEdge(edge: BaseRoadmapEdge, nodes?: RoadmapEdgeNodeRef[]): Edge {
   const lineStyle = edge.lineStyle || roadmapEdgeLineStyleFromStyle(edge.style);
+  const { sourceHandle, targetHandle } = inferRoadmapEdgeHandles(edge, nodes);
   return {
     id: edge.id || `edge_${edge.source}_${edge.target}`,
     source: edge.source,
     target: edge.target,
-    sourceHandle: edge.sourceHandle,
-    targetHandle: edge.targetHandle,
+    sourceHandle,
+    targetHandle,
     label: edge.label,
     type: roadmapFlowEdgeType(lineStyle),
-    data: { lineStyle },
+    data: { lineStyle, sourceHandle, targetHandle },
     animated: (edge as any).animated ?? false,
     style: {
       stroke: edge.color || '#2b78e4',

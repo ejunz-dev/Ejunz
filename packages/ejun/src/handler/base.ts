@@ -4945,6 +4945,18 @@ export class BaseBatchSaveHandler extends Handler {
         if (nodeCreate.order != null) nodePayload.order = nodeCreate.order;
         if (nodeCreate.type != null) nodePayload.type = nodeCreate.type;
         if (nodeCreate.data != null) nodePayload.data = nodeCreate.data;
+        const data = (nodePayload.data || {}) as Record<string, unknown>;
+        const x = typeof nodePayload.x === 'number' && Number.isFinite(nodePayload.x)
+            ? nodePayload.x
+            : (typeof data.posX === 'number' && Number.isFinite(data.posX) ? data.posX : undefined);
+        const y = typeof nodePayload.y === 'number' && Number.isFinite(nodePayload.y)
+            ? nodePayload.y
+            : (typeof data.posY === 'number' && Number.isFinite(data.posY) ? data.posY : undefined);
+        if (x != null) nodePayload.x = x;
+        if (y != null) nodePayload.y = y;
+        if (data.roadmapNodeType && x != null && y != null) {
+            nodePayload.data = { ...data, posX: x, posY: y };
+        }
         return nodePayload;
     }
 
@@ -4952,9 +4964,19 @@ export class BaseBatchSaveHandler extends Handler {
         const updates: Partial<BaseNode> = {};
         if (nodeUpdate.text != null) updates.text = nodeUpdate.text;
         if (nodeUpdate.order != null) updates.order = nodeUpdate.order;
-        if (nodeUpdate.x != null) updates.x = nodeUpdate.x;
-        if (nodeUpdate.y != null) updates.y = nodeUpdate.y;
         if (nodeUpdate.data != null) updates.data = nodeUpdate.data;
+        const data = (updates.data || {}) as Record<string, unknown>;
+        const x = nodeUpdate.x != null
+            ? nodeUpdate.x
+            : (typeof data.posX === 'number' && Number.isFinite(data.posX) ? data.posX : undefined);
+        const y = nodeUpdate.y != null
+            ? nodeUpdate.y
+            : (typeof data.posY === 'number' && Number.isFinite(data.posY) ? data.posY : undefined);
+        if (x != null) updates.x = x;
+        if (y != null) updates.y = y;
+        if (data.roadmapNodeType && x != null && y != null) {
+            updates.data = { ...data, posX: x, posY: y };
+        }
         return updates;
     }
 
@@ -5199,7 +5221,7 @@ export class BaseBatchSaveHandler extends Handler {
         for (const edgeUpdate of edgeUpdates) {
             try {
                 const edgeId = String(edgeUpdate.edgeId || '').trim();
-                if (!edgeId || edgeId.startsWith('edge_') || edgeId.startsWith('temp-edge-')) continue;
+                if (!edgeId || edgeId.startsWith('temp-edge-') || !/^edge_\d{10,}_[a-z0-9]+$/i.test(edgeId)) continue;
                 await BaseModel.updateEdge(actualDomainId, docId, edgeId, {
                     ...(edgeUpdate.label !== undefined ? { label: edgeUpdate.label } : {}),
                     ...(edgeUpdate.lineStyle ? { lineStyle: edgeUpdate.lineStyle } : {}),

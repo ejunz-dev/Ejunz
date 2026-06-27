@@ -131,10 +131,15 @@ import {
   collectRoadmapCanvasBatchSaveExtras,
   collectRoadmapEdgeUpdates,
   collectRoadmapNodeUpdates,
+  isPersistedBaseEdgeId,
+  normalizeRoadmapCanvasBaseNode,
   resolveRoadmapCardLocation,
   roadmapNodeCreatePayloadFromBase,
 } from './plugins/roadmap/canvas_persist';
 import { installRoadmapResizeObserverErrorGuard } from './plugins/roadmap/flow_shared';
+import { BaseRoadmapHookPicker } from './plugins/roadmap/BaseRoadmapHookPicker';
+import { RoadmapCanvasTextEditor } from './plugins/roadmap/RoadmapCanvasTextEditor';
+import { isHookNodeType, isTextNodeType, ROADMAP_NODE_KINDS, defaultNodeDataForKind, roadmapCardKindLabel, getRoadmapNodeKind, supportsRoadmapPracticeProblems } from './plugins/roadmap/node_kinds';
 
 installRoadmapResizeObserverErrorGuard();
 
@@ -660,7 +665,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       next.delete(edgeId);
       return next;
     });
-    if (!edgeId.startsWith('edge_') && !edgeId.startsWith('temp-edge-')) {
+    if (isPersistedBaseEdgeId(edgeId)) {
       setPendingRoadmapEdgeDeleteIds((prev) => new Set(prev).add(edgeId));
     }
   }, []);
@@ -1983,6 +1988,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   }, [triggerExpandAutoSave]);
 
   const handleSelectFileRef = useRef<(file: FileItem, skipUrlUpdate?: boolean) => void>(() => {});
+  const onClearFileSelectionRef = useRef(() => {});
 
   const roadmapPlugin = useRoadmapPlugin({
     base, setBase, baseRef,
@@ -1995,7 +2001,22 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     setRightPanelOpen,
     isPluginEditor,
     onSelectFileRef: handleSelectFileRef,
+    onClearFileSelectionRef,
   });
+
+  const roadmapCanvasSelectedNodeId = roadmapPlugin.roadmapSubSelectedNodeId;
+  const roadmapCanvasSelectedKind = useMemo(() => {
+    if (!roadmapCanvasSelectedNodeId) return undefined;
+    return roadmapPlugin.resolveRoadmapCanvasNodeType(roadmapCanvasSelectedNodeId);
+  }, [roadmapCanvasSelectedNodeId, roadmapPlugin, base.nodes, pendingCreatesCount]);
+  const roadmapCanvasSelectedData = useMemo(() => {
+    if (!roadmapCanvasSelectedNodeId) return {};
+    return roadmapPlugin.getRoadmapCanvasNodeData(roadmapCanvasSelectedNodeId);
+  }, [roadmapCanvasSelectedNodeId, roadmapPlugin, base.nodes, pendingCreatesCount]);
+  const roadmapCanvasSelectedNode = useMemo(() => {
+    if (!roadmapCanvasSelectedNodeId) return null;
+    return base.nodes.find((n) => n.id === roadmapCanvasSelectedNodeId) || null;
+  }, [base.nodes, roadmapCanvasSelectedNodeId]);
 
   useEffect(() => {
     const nodeId = roadmapPlugin.roadmapSubSelectedNodeId;
@@ -2191,6 +2212,64 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   }, [base.nodes, selectedFile, editorInstance, fileContent, pendingChanges, isMultiSelectMode, fileTree, selectedItems, roadmapPlugin]);
 
   handleSelectFileRef.current = handleSelectFile;
+
+  onClearFileSelectionRef.current = () => {
+    setSelectedFile(null);
+    selectedFileRef.current = null;
+    setFileContent('');
+    const urlParams = new URLSearchParams(window.location.search);
+    urlParams.delete('cardId');
+    const query = urlParams.toString();
+    const newUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
+    window.history.pushState({}, '', newUrl);
+  };
+
+  const updateRoadmapCanvasNodeData = useCallback((patch: Record<string, unknown>) => {
+    const nodeId = roadmapPlugin.roadmapSubSelectedNodeId;
+    if (!nodeId) return;
+
+    roadmapPlugin.roadmapCanvasEdgeApiRef.current?.updateNodeData(nodeId, patch);
+
+    setBase((prev) => {
+      const updated = {
+        ...prev,
+        nodes: prev.nodes.map((n) => {
+          if (n.id !== nodeId) return n;
+          const nextData = { ...(n.data || {}), ...patch };
+          const label = typeof patch.label === 'string' ? patch.label : undefined;
+          const nextNode = {
+            ...n,
+            ...(label != null ? { text: label } : {}),
+            data: nextData,
+          };
+          return normalizeRoadmapCanvasBaseNode(nextNode);
+        }),
+      };
+      baseRef.current = updated;
+      return updated;
+    });
+
+    const pendingCreate = pendingCreatesRef.current.get(nodeId);
+    if (pendingCreate?.type === 'node') {
+      const nextData = { ...(pendingCreate.data as Record<string, unknown> || {}), ...patch };
+      pendingCreatesRef.current.set(nodeId, {
+        ...pendingCreate,
+        ...(typeof patch.label === 'string' ? { text: patch.label } : {}),
+        data: nextData,
+      });
+      setPendingCreatesCount(pendingCreatesRef.current.size);
+    } else {
+      markRoadmapNodePending(nodeId);
+    }
+  }, [
+    baseRef,
+    markRoadmapNodePending,
+    pendingCreatesRef,
+    roadmapPlugin.roadmapCanvasEdgeApiRef,
+    roadmapPlugin.roadmapSubSelectedNodeId,
+    setBase,
+    setPendingCreatesCount,
+  ]);
 
   const selectRoadmapCardFromUrl = useCallback((cardIdStr: string, skipUrlUpdate = true) => {
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
@@ -2528,6 +2607,18 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           if ((create as any).nodeType) {
             nodeCreatePayload.type = (create as any).nodeType;
           }
+          if ((nodeCreatePayload.data as Record<string, unknown> | undefined)?.roadmapNodeType) {
+            const normalized = normalizeRoadmapCanvasBaseNode({
+              id: create.tempId,
+              text: nodeText,
+              x: nodeCreatePayload.x,
+              y: nodeCreatePayload.y,
+              data: (nodeCreatePayload.data || {}) as Record<string, unknown>,
+            } as BaseNode);
+            nodeCreatePayload.x = normalized.x;
+            nodeCreatePayload.y = normalized.y;
+            nodeCreatePayload.data = normalized.data;
+          }
           batchSaveData.nodeCreates.push(nodeCreatePayload);
         }
         
@@ -2596,9 +2687,20 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           if (!nodeId || nodeId.startsWith('temp-node-')) continue;
           const node = base.nodes.find(n => n.id === nodeId);
           if (!node?.data) continue;
+          const normalized = normalizeRoadmapCanvasBaseNode(node);
+          const isRoadmapCanvasNode = !!(normalized.data as Record<string, unknown> | undefined)?.roadmapNodeType;
+          const updatePayload = isRoadmapCanvasNode
+            ? {
+              nodeId,
+              text: normalized.text,
+              x: normalized.x,
+              y: normalized.y,
+              data: normalized.data,
+            }
+            : { nodeId, data: node.data };
           const existingUpdate = batchSaveData.nodeUpdates.find((u: any) => u.nodeId === nodeId);
-          if (existingUpdate) existingUpdate.data = node.data;
-          else batchSaveData.nodeUpdates.push({ nodeId, data: node.data });
+          if (existingUpdate) Object.assign(existingUpdate, updatePayload);
+          else batchSaveData.nodeUpdates.push(updatePayload);
         }
       }
 
@@ -10308,6 +10410,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                   selectedCanvasNodeId={roadmapPlugin.roadmapSubSelectedNodeId}
                   themeStyles={themeStyles}
                   onSelectFile={(file) => handleSelectFile(file)}
+                  onClearFileSelection={() => onClearFileSelectionRef.current()}
                   displaySettings={roadmapPlugin.displaySettings}
                   nodeCardsMapVersion={nodeCardsMapVersion}
                   selectedEdgeId={roadmapPlugin.roadmapSelectedEdgeId}
@@ -13796,7 +13899,40 @@ Reply with a JSON code block only for executable operations. For same-response f
             >
               ← 返回
             </a>
-            {roadmapPlugin.roadmapNodeId && roadmapPlugin.roadmapSubSelectedNodeId && !roadmapPlugin.roadmapSelectedEdgeId ? (
+            {roadmapPlugin.roadmapNodeId && roadmapCanvasSelectedNodeId && !roadmapPlugin.roadmapSelectedEdgeId ? (
+              <>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: themeStyles.textSecondary, flexShrink: 0 }}>
+                  <span>{i18n('Roadmap node type')}</span>
+                  <select
+                    value={getRoadmapNodeKind(roadmapCanvasSelectedKind) || 'sub'}
+                    onChange={(e) => {
+                      const kind = e.currentTarget.value as typeof ROADMAP_NODE_KINDS[number];
+                      if (!supportsRoadmapPracticeProblems(kind)) {
+                        onClearFileSelectionRef.current();
+                      }
+                      const keepLabel = String(roadmapCanvasSelectedData.label || roadmapCanvasSelectedNode?.text || '').trim();
+                      updateRoadmapCanvasNodeData({
+                        ...defaultNodeDataForKind(kind),
+                        ...(kind === 'text'
+                          ? { label: '' }
+                          : (keepLabel ? { label: keepLabel } : {})),
+                      });
+                    }}
+                    style={{
+                      borderRadius: '4px',
+                      border: `1px solid ${themeStyles.borderSecondary}`,
+                      background: themeStyles.bgPrimary,
+                      color: themeStyles.textPrimary,
+                      padding: '4px 8px',
+                      fontSize: '12px',
+                    }}
+                  >
+                    {ROADMAP_NODE_KINDS.map((kind) => (
+                      <option key={kind} value={kind}>{roadmapCardKindLabel(kind)}</option>
+                    ))}
+                  </select>
+                </label>
+                {!isTextNodeType(roadmapCanvasSelectedKind) ? (
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
                 <span style={{ fontSize: '12px', color: themeStyles.textSecondary, flexShrink: 0 }}>
                   {i18n('Base roadmap card title')}
@@ -13821,6 +13957,8 @@ Reply with a JSON code block only for executable operations. For same-response f
                   }}
                 />
               </label>
+                ) : null}
+              </>
             ) : selectedFile ? (
               <div style={{ fontSize: '13px', color: themeStyles.textPrimary }}>
                 {selectedFile.name}
@@ -14188,8 +14326,29 @@ Reply with a JSON code block only for executable operations. For same-response f
           style={{ flex: 1, minHeight: 0, padding: '0', overflow: 'hidden', position: 'relative', backgroundColor: themeStyles.bgPrimary, display: 'flex', flexDirection: 'column' }}
         >
           {/* Markdown editor */}
-          <div style={{ flex: 1, minHeight: 0 }}>
-            {selectedFile && selectedFile.type === 'card' ? (
+          <div style={{ flex: 1, minHeight: 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
+            {roadmapPlugin.roadmapNodeId
+              && roadmapCanvasSelectedNodeId
+              && isHookNodeType(roadmapCanvasSelectedKind) ? (
+                <BaseRoadmapHookPicker
+                  baseNodes={base.nodes}
+                  currentRoadmapNodeId={roadmapPlugin.roadmapNodeId}
+                  targetNodeId={roadmapCanvasSelectedData.hookRoadmapDocId as string | number | undefined}
+                  branch={String(roadmapCanvasSelectedData.hookRoadmapBranch || 'main')}
+                  title={String(roadmapCanvasSelectedData.hookRoadmapTitle || '')}
+                  basePath={basePath}
+                  docId={docId}
+                  onChange={(next) => updateRoadmapCanvasNodeData(next)}
+                />
+              ) : roadmapPlugin.roadmapNodeId
+                && roadmapCanvasSelectedNodeId
+                && isTextNodeType(roadmapCanvasSelectedKind) ? (
+                  <RoadmapCanvasTextEditor
+                    nodeId={roadmapCanvasSelectedNodeId}
+                    value={String(roadmapCanvasSelectedData.nodeText || '')}
+                    onChange={(value) => updateRoadmapCanvasNodeData({ nodeText: value })}
+                  />
+                ) : selectedFile && selectedFile.type === 'card' ? (
               <div 
                 id={`editor-wrapper-${selectedFile.id}`}
                 style={{ width: '100%', height: '100%', position: 'relative' }}

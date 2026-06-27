@@ -131,12 +131,18 @@ export function statusColor(status?: RoadmapStatus): string {
 export function baseNodeToFlowNode(node: BaseRoadmapNode, index = 0): Node {
   const data = node.data || {};
   const width = typeof node.width === 'number' && node.width > 0 ? node.width : undefined;
+  const posX = typeof node.x === 'number' && Number.isFinite(node.x)
+    ? node.x
+    : (typeof data.posX === 'number' && Number.isFinite(data.posX) ? data.posX : undefined);
+  const posY = typeof node.y === 'number' && Number.isFinite(node.y)
+    ? node.y
+    : (typeof data.posY === 'number' && Number.isFinite(data.posY) ? data.posY : undefined);
   return {
     id: node.id,
     type: 'roadmap',
     position: {
-      x: typeof node.x === 'number' && Number.isFinite(node.x) ? node.x : 120 + (index % 4) * 280,
-      y: typeof node.y === 'number' && Number.isFinite(node.y) ? node.y : 100 + Math.floor(index / 4) * 170,
+      x: posX ?? 120 + (index % 4) * 280,
+      y: posY ?? 100 + Math.floor(index / 4) * 170,
     },
     ...(width ? { width, style: { width } } : {}),
     ...(typeof node.height === 'number' && node.height > 0 ? { height: node.height } : {}),
