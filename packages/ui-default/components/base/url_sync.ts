@@ -80,6 +80,8 @@ export function useBaseDetailUrlSync(options: {
   nodeCardsMap: Record<string, Card[]>;
   selectedNodeId: string | null;
   setSelectedNodeId: (id: string | null) => void;
+  contentRootNodeId: string | null;
+  setContentRootNodeId: (id: string | null) => void;
   selectedCard: Card | null;
   setSelectedCard: (card: Card | null) => void;
   onRestoreCard?: (cardId: string, hostNodeId: string) => void;
@@ -93,6 +95,8 @@ export function useBaseDetailUrlSync(options: {
     nodeCardsMap,
     selectedNodeId,
     setSelectedNodeId,
+    contentRootNodeId,
+    setContentRootNodeId,
     selectedCard,
     setSelectedCard,
     onRestoreCard,
@@ -104,6 +108,15 @@ export function useBaseDetailUrlSync(options: {
   const appliedInitialUrlRef = useRef(false);
   const nodeIdsRef = useRef(nodeIds);
   nodeIdsRef.current = nodeIds;
+
+  const applyContentRootFromNodeId = (nodeId: string) => {
+    const containerId = findRoadmapContainerAncestor(nodeId, nodes, edges);
+    if (containerId && containerId !== nodeId) {
+      setContentRootNodeId(containerId);
+      return;
+    }
+    setContentRootNodeId(nodeId);
+  };
 
   useEffect(() => {
     if (appliedInitialUrlRef.current) return;
@@ -121,6 +134,7 @@ export function useBaseDetailUrlSync(options: {
     }
     if (contentNodeId && nodeIds.includes(contentNodeId)) {
       setSelectedNodeId(contentNodeId);
+      applyContentRootFromNodeId(contentNodeId);
       const containerId = findRoadmapContainerAncestor(contentNodeId, nodes, edges);
       if (!cardId && containerId && containerId !== contentNodeId) {
         const primaryCard = getPrimaryCardForNode(contentNodeId, nodeCardsMap);
@@ -140,9 +154,6 @@ export function useBaseDetailUrlSync(options: {
     const urlNodeId = contentNodeId || hostNodeId;
     if (!isCardValidForUrlNode(hostNodeId, urlNodeId, edges)) return;
 
-    if (hostNodeId !== urlNodeId && nodeIds.includes(hostNodeId)) {
-      setSelectedNodeId(hostNodeId);
-    }
     setSelectedCard(card);
     onRestoreCard?.(cardId, hostNodeId);
   }, [
@@ -152,6 +163,7 @@ export function useBaseDetailUrlSync(options: {
     nodes,
     onRestoreCanvasNode,
     onRestoreCard,
+    setContentRootNodeId,
     setSelectedCard,
     setSelectedNodeId,
   ]);
@@ -165,18 +177,21 @@ export function useBaseDetailUrlSync(options: {
     const url = getBaseDetailUrlState();
     const nextNodeId = selectedNodeId;
     const nextCardId = selectedCard?.docId || null;
+    const urlNodeIdForCard = nextCardId && contentRootNodeId && !findRoadmapContainerAncestor(selectedNodeId || '', nodes, edges)
+      ? contentRootNodeId
+      : nextNodeId;
 
-    if (nextNodeId === url.nodeId && nextCardId === url.cardId) return;
+    if (urlNodeIdForCard === url.nodeId && nextCardId === url.cardId) return;
 
-    if (!nextNodeId && !nextCardId) {
+    if (!urlNodeIdForCard && !nextCardId) {
       if (url.nodeId || url.cardId) {
         updateBaseDetailUrl({ nodeId: null, cardId: null }, { replace: true });
       }
       return;
     }
 
-    updateBaseDetailUrl({ nodeId: nextNodeId, cardId: nextCardId });
-  }, [selectedCard?.docId, selectedNodeId]);
+    updateBaseDetailUrl({ nodeId: urlNodeIdForCard, cardId: nextCardId });
+  }, [contentRootNodeId, edges, nodes, selectedCard?.docId, selectedNodeId]);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -194,8 +209,10 @@ export function useBaseDetailUrlSync(options: {
         ) {
           if (nodeId && nodeIdsRef.current.includes(nodeId)) {
             setSelectedNodeId(nodeId);
+            applyContentRootFromNodeId(nodeId);
           } else if (hostNodeId && nodeIdsRef.current.includes(hostNodeId)) {
             setSelectedNodeId(hostNodeId);
+            applyContentRootFromNodeId(hostNodeId);
           }
           setSelectedCard(card);
           onRestoreCard?.(cardId, hostNodeId);
@@ -205,6 +222,7 @@ export function useBaseDetailUrlSync(options: {
 
       if (nodeId && nodeIdsRef.current.includes(nodeId)) {
         setSelectedNodeId(nodeId);
+        applyContentRootFromNodeId(nodeId);
         const containerId = findRoadmapContainerAncestor(nodeId, nodes, edges);
         if (containerId && containerId !== nodeId) {
           const primaryCard = getPrimaryCardForNode(nodeId, nodeCardsMap);
@@ -221,13 +239,14 @@ export function useBaseDetailUrlSync(options: {
       }
 
       setSelectedNodeId(null);
+      setContentRootNodeId(null);
       setSelectedCard(null);
       onClearCard?.();
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [edges, nodeCardsMap, nodes, onClearCard, onRestoreCanvasNode, onRestoreCard, setSelectedCard, setSelectedNodeId]);
+  }, [edges, nodeCardsMap, nodes, onClearCard, onRestoreCanvasNode, onRestoreCard, setContentRootNodeId, setSelectedCard, setSelectedNodeId]);
 }
 
 export function useBaseDetailCardScroll(
