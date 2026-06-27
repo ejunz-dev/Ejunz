@@ -5,6 +5,7 @@ import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
 import { domainApiPath, request, i18n } from 'vj/utils';
 import type { BaseDoc, Card } from 'vj/components/base/types';
+import { BaseDetailAiTutor } from 'vj/components/base/BaseDetailAiTutor';
 import { BaseDetailCardDrawer } from 'vj/components/base/BaseDetailCardDrawer';
 import { BaseDetailExplorer } from 'vj/components/base/BaseDetailExplorer';
 import { BaseDetailHeader } from 'vj/components/base/BaseDetailHeader';
@@ -63,6 +64,7 @@ function BaseDetailViewer() {
     [],
   );
   const [treeDrawerOpen, setTreeDrawerOpen] = useState(false);
+  const [aiTutorOpen, setAiTutorOpen] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(() => (
     initialBaseDetailSelectedNodeId(base.nodes || [])
   ));
@@ -250,6 +252,8 @@ function BaseDetailViewer() {
       const target = event.target as Element | null;
       if (!target) return;
       if (target.closest('.roadmap-detail-drawer')) return;
+      if (target.closest('.roadmap-ai-tutor-modal')) return;
+      if (target.closest('.roadmap-ai-tutor-bar')) return;
       handleCloseCardDrawer();
     };
     document.addEventListener('pointerdown', onPointerDown);
@@ -288,6 +292,8 @@ function BaseDetailViewer() {
         branch={branch}
         treeDrawerOpen={treeDrawerOpen}
         onTreeDrawerOpen={() => setTreeDrawerOpen(true)}
+        aiTutorActive={aiTutorOpen}
+        onAiTutorClick={() => setAiTutorOpen(true)}
         onSettingsClick={() => setSettingsOpen(true)}
         settingsActive={settingsOpen}
       />
@@ -355,6 +361,18 @@ function BaseDetailViewer() {
         open={!!selectedCard}
         card={selectedCard}
         onClose={handleCloseCardDrawer}
+      />
+      <BaseDetailAiTutor
+        nodes={nodes}
+        edges={edges}
+        nodeCardsMap={nodeCardsMap}
+        docTitle={title}
+        branch={branch}
+        docDescription={base.content}
+        selectedNode={selectedNode}
+        selectedCard={selectedCard}
+        open={aiTutorOpen}
+        onOpenChange={setAiTutorOpen}
       />
       <RoadmapDetailSettingsPanel
         open={settingsOpen}
