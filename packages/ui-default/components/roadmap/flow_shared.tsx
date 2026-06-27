@@ -13,16 +13,20 @@ import {
 } from 'reactflow';
 import {
   LANE_GUIDE_HEIGHT,
+  LANE_NODE_WIDTH,
   LANE_WIDTH,
   laneRegionX,
   ROADMAP_LANE_AXIS_X,
   ROADMAP_LANES,
   ROADMAP_LANES_SPAN_WIDTH,
+  getSnapLaneNodeWidth,
 } from './lanes';
-import { roadmapEdgeDashStyle, roadmapEdgeLineStyleFromStyle, roadmapUntitledNodeLabel } from './shared';
+import { roadmapEdgeDashStyle, roadmapEdgeLineStyleFromStyle, roadmapUntitledNodeLabel, baseEdgeToFlowEdge, baseNodeToFlowNode, normalizeRoadmapCanvasNode, type BaseRoadmapEdge, type BaseRoadmapNode } from './shared';
 import { getRoadmapNodeKind, isSubNodeType } from './node_kinds';
 import type { AddAdjacentDirection } from './add_adjacent';
 import { RoadmapTextNodeLead } from './RoadmapTextNodeLead';
+import { alignNodesInSolidComponents } from './solid_links';
+import { getNodeLane, snapNodeToLane } from './lanes';
 import {
   ROADMAP_PENDING_COLORS,
   resolveRoadmapEdgePendingStatus,
@@ -37,14 +41,46 @@ export const NODE_LAYOUT_HEIGHT = 48;
 
 let resizeObserverGuardInstalled = false;
 
+function isResizeObserverLoopError(message: string | undefined): boolean {
+  return Boolean(message?.includes('ResizeObserver loop'));
+}
+
 export function installRoadmapResizeObserverErrorGuard() {
   if (resizeObserverGuardInstalled || typeof window === 'undefined') return;
   resizeObserverGuardInstalled = true;
-  window.addEventListener('error', (event) => {
-    if (event.message?.includes('ResizeObserver loop')) {
-      event.stopImmediatePropagation();
-    }
+
+  const suppressErrorEvent = (event: ErrorEvent) => {
+    if (!isResizeObserverLoopError(event.message)) return;
+    event.stopImmediatePropagation();
+    event.preventDefault();
+  };
+
+  window.addEventListener('error', suppressErrorEvent, true);
+  window.addEventListener('error', suppressErrorEvent, false);
+
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason;
+    const message = reason instanceof Error ? reason.message : String(reason ?? '');
+    if (!isResizeObserverLoopError(message)) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
   });
+
+  const previousOnError = window.onerror;
+  window.onerror = (message, source, lineno, colno, error) => {
+    const msg = typeof message === 'string' ? message : String(message ?? '');
+    if (isResizeObserverLoopError(msg) || isResizeObserverLoopError(error?.message)) {
+      return true;
+    }
+    if (typeof previousOnError === 'function') {
+      return previousOnError.call(window, message, source, lineno, colno, error) ?? false;
+    }
+    return false;
+  };
+}
+
+if (typeof window !== 'undefined') {
+  installRoadmapResizeObserverErrorGuard();
 }
 
 export interface RoadmapScrollLayout {
@@ -174,6 +210,28 @@ export const RoadmapShNode = ({ data, selected }: NodeProps) => {
 export const roadmapShNodeTypes: NodeTypes = { roadmap: RoadmapShNode };
 
 export const roadmapFlowNodeTypes: NodeTypes = { roadmap: RoadmapShNode };
+
+export function buildLaneFlowNodesFromCanvas(
+  childNodes: BaseRoadmapNode[],
+  childEdges: BaseRoadmapEdge[],
+): Node[] {
+  const normalizedNodes = (childNodes || []).map((node) => normalizeRoadmapCanvasNode(node));
+  const flowEdges = (childEdges || []).map((edge) => baseEdgeToFlowEdge(edge, normalizedNodes));
+  const flowNodes = normalizedNodes.map((node, index) => {
+    const flowNode = baseNodeToFlowNode(node, index);
+    const snapped = snapNodeToLane(flowNode, getNodeLane(flowNode));
+    const layoutWidth = getSnapLaneNodeWidth(snapped);
+    return {
+      ...snapped,
+      width: layoutWidth,
+      style: {
+        ...(snapped.style || {}),
+        width: layoutWidth,
+      },
+    };
+  });
+  return alignNodesInSolidComponents(flowNodes, flowEdges);
+}
 
 function RoadmapLaneGuidesWorld({
   guideHeight,
@@ -363,26 +421,40 @@ function useContainerSize(outerRef: React.RefObject<HTMLDivElement>) {
   useLayoutEffect(() => {
     installRoadmapResizeObserverErrorGuard();
 
+    let outerRafId = 0;
+    let innerRafId = 0;
     const syncSize = () => {
-      const el = outerRef.current;
-      if (!el) return;
-      const nextWidth = el.clientWidth;
-      const nextHeight = el.clientHeight;
-      setSize((prev) => (
-        prev.width === nextWidth && prev.height === nextHeight
-          ? prev
-          : { width: nextWidth, height: nextHeight }
-      ));
+      if (outerRafId) cancelAnimationFrame(outerRafId);
+      if (innerRafId) cancelAnimationFrame(innerRafId);
+      outerRafId = requestAnimationFrame(() => {
+        innerRafId = requestAnimationFrame(() => {
+          outerRafId = 0;
+          innerRafId = 0;
+          const el = outerRef.current;
+          if (!el) return;
+          const nextWidth = el.clientWidth;
+          const nextHeight = el.clientHeight;
+          setSize((prev) => (
+            prev.width === nextWidth && prev.height === nextHeight
+              ? prev
+              : { width: nextWidth, height: nextHeight }
+          ));
+        });
+      });
     };
 
     syncSize();
     window.addEventListener('resize', syncSize);
     let observer: ResizeObserver | null = null;
     if (typeof ResizeObserver !== 'undefined' && outerRef.current) {
-      observer = new ResizeObserver(syncSize);
+      observer = new ResizeObserver(() => {
+        syncSize();
+      });
       observer.observe(outerRef.current);
     }
     return () => {
+      if (outerRafId) cancelAnimationFrame(outerRafId);
+      if (innerRafId) cancelAnimationFrame(innerRafId);
       window.removeEventListener('resize', syncSize);
       observer?.disconnect();
     };

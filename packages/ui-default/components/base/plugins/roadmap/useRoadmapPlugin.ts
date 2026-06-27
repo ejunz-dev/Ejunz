@@ -46,6 +46,7 @@ export function useRoadmapPlugin(deps: RoadmapPluginDeps): RoadmapPluginApi {
     setRightPanelOpen,
     isPluginEditor,
     onSelectFileRef,
+    onClearFileSelectionRef,
   } = deps;
   const [roadmapNodeId, setRoadmapNodeId] = useState<string | null>(null);
   const [roadmapSubSelectedNodeId, setRoadmapSubSelectedNodeId] = useState<string | null>(null);
@@ -92,6 +93,29 @@ export function useRoadmapPlugin(deps: RoadmapPluginDeps): RoadmapPluginApi {
     }
     const fromBase = (baseRef.current as { nodes: BaseNode[] }).nodes.find((n) => n.id === nodeId);
     return (fromBase?.data as { roadmapNodeType?: string } | undefined)?.roadmapNodeType;
+  }, [baseRef, pendingCreatesRef]);
+
+  const resolveRoadmapCanvasNodeType = useCallback((nodeId: string): string | undefined => {
+    const roadmapId = roadmapNodeIdRef.current;
+    const childNodes = roadmapId ? roadmapChildNodes(baseRef.current as { nodes: BaseNode[]; edges: BaseEdge[] }, roadmapId) : [];
+    return resolveCardRoadmapNodeType(nodeId, childNodes);
+  }, [baseRef, resolveCardRoadmapNodeType]);
+
+  const getRoadmapCanvasNodeData = useCallback((nodeId: string): Record<string, unknown> => {
+    const fromCanvas = canvasEdgeApiRef.current?.getNodeData(nodeId);
+    if (fromCanvas && Object.keys(fromCanvas).length > 0) return fromCanvas;
+    const roadmapId = roadmapNodeIdRef.current;
+    const childNodes = roadmapId
+      ? roadmapChildNodes(baseRef.current as { nodes: BaseNode[]; edges: BaseEdge[] }, roadmapId)
+      : [];
+    const fromChild = childNodes.find((n) => n.id === nodeId);
+    if (fromChild?.data) return fromChild.data as Record<string, unknown>;
+    const pending = pendingCreatesRef.current.get(nodeId);
+    if (pending?.data && typeof pending.data === 'object') {
+      return pending.data as Record<string, unknown>;
+    }
+    const fromBase = (baseRef.current as { nodes: BaseNode[] }).nodes.find((n) => n.id === nodeId);
+    return (fromBase?.data || {}) as Record<string, unknown>;
   }, [baseRef, pendingCreatesRef]);
 
   const selectedCardSupportsPractice = useMemo(() => {
@@ -161,6 +185,7 @@ export function useRoadmapPlugin(deps: RoadmapPluginDeps): RoadmapPluginApi {
   const focusRoadmapCardSelection = useCallback((
     nodeId: string,
     onSelectFile: (file: FileItem) => void,
+    onClearFile?: () => void,
   ) => {
     setRoadmapSelectedEdgeId(null);
     setRoadmapSelectedEdgeSnapshot(null);
@@ -169,6 +194,14 @@ export function useRoadmapPlugin(deps: RoadmapPluginDeps): RoadmapPluginApi {
     const roadmapId = roadmapNodeIdRef.current;
     if (roadmapId) {
       autoFileSelectKeyRef.current = `${roadmapId}:${nodeId}`;
+    }
+
+    const nodeType = resolveCardRoadmapNodeType(nodeId);
+    if (!supportsRoadmapPracticeProblems(nodeType)) {
+      onClearFile?.();
+      setRoadmapRightPanelTab('problems');
+      setRightPanelOpen(false);
+      return;
     }
 
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
@@ -308,10 +341,11 @@ export function useRoadmapPlugin(deps: RoadmapPluginDeps): RoadmapPluginApi {
   const scheduleCanvasCardFocus = useCallback((canvasNodeId: string) => {
     const selectFile = onSelectFileRef.current;
     if (!selectFile) return;
+    const clearFile = onClearFileSelectionRef.current;
     window.requestAnimationFrame(() => {
-      focusRoadmapCardSelection(canvasNodeId, selectFile);
+      focusRoadmapCardSelection(canvasNodeId, selectFile, clearFile);
     });
-  }, [focusRoadmapCardSelection, onSelectFileRef]);
+  }, [focusRoadmapCardSelection, onClearFileSelectionRef, onSelectFileRef]);
 
   // ── Handlers (extracted from BaseEditor lines 3853–3968) ──
 
@@ -448,6 +482,7 @@ export function useRoadmapPlugin(deps: RoadmapPluginDeps): RoadmapPluginApi {
       childNodes: BaseNode[];
       childEdges: BaseEdge[];
       selectedCanvasNodeId: string | null;
+      onClearFileSelection: () => void;
       themeStyles: Record<string, string>;
       onSelectFile: (file: FileItem) => void;
       displaySettings: RoadmapDetailDisplaySettings;
@@ -476,10 +511,10 @@ export function useRoadmapPlugin(deps: RoadmapPluginDeps): RoadmapPluginApi {
         if (autoFileSelectKeyRef.current === selectKey) return;
         autoFileSelectKeyRef.current = selectKey;
         const frame = requestAnimationFrame(() => {
-          focusRoadmapCardSelection(subId, props.onSelectFile);
+          focusRoadmapCardSelection(subId, props.onSelectFile, props.onClearFileSelection);
         });
         return () => cancelAnimationFrame(frame);
-      }, [childStructureKey, props.selectedCanvasNodeId, focusRoadmapCardSelection, props.onSelectFile]);
+      }, [childStructureKey, props.selectedCanvasNodeId, focusRoadmapCardSelection, props.onClearFileSelection, props.onSelectFile]);
 
       return (
         <RoadmapCanvas
@@ -488,7 +523,7 @@ export function useRoadmapPlugin(deps: RoadmapPluginDeps): RoadmapPluginApi {
           selectedNodeId={selectedNodeId}
           onSelectNode={(nodeId: string | null) => {
             if (nodeId !== null) {
-              focusRoadmapCardSelection(nodeId, props.onSelectFile);
+              focusRoadmapCardSelection(nodeId, props.onSelectFile, props.onClearFileSelection);
             } else {
               setRoadmapSubSelectedNodeId(null);
             }
@@ -649,6 +684,8 @@ export function useRoadmapPlugin(deps: RoadmapPluginDeps): RoadmapPluginApi {
     SettingsPanel,
     EdgeInspectorPanel,
     roadmapCanvasEdgeApiRef: canvasEdgeApiRef,
+    resolveRoadmapCanvasNodeType,
+    getRoadmapCanvasNodeData,
     NodeContextMenuExtra,
     EmptyAreaContextMenuExtra,
   };

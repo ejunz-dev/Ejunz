@@ -1,5 +1,6 @@
 import type { BaseEdge, BaseNode, Card } from './types';
 import { i18n } from 'vj/utils';
+import { normalizeRoadmapCanvasNode } from 'vj/components/roadmap/shared';
 
 export type BaseDetailTreeChild =
   | { kind: 'node'; node: BaseNode; order: number }
@@ -100,7 +101,8 @@ export function getRoadmapChildGraph(
   const childNodes = edges
     .filter((edge) => edge.source === roadmapNodeId)
     .map((edge) => nodes.find((node) => node.id === edge.target))
-    .filter((node): node is BaseNode => !!node);
+    .filter((node): node is BaseNode => !!node)
+    .map((node) => normalizeRoadmapCanvasNode(node));
   const childIds = new Set(childNodes.map((node) => node.id));
   const childEdges = edges.filter(
     (edge) => childIds.has(edge.source) && childIds.has(edge.target),

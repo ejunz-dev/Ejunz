@@ -69,6 +69,7 @@ import { supportsRoadmapPracticeProblems } from './node_kinds';
 import type { BaseNode, BaseEdge } from 'vj/components/base/types';
 import type { RoadmapCanvasEdgeEditorApi } from '../types';
 import { i18n } from 'vj/utils';
+import { normalizeRoadmapCanvasBaseNode } from './canvas_persist';
 
 export type RoadmapCanvasKind = 'main' | 'sub' | 'hook' | 'text';
 
@@ -131,17 +132,8 @@ function RoadmapCanvasContent({
       (childNodes || []).map((n, i) => {
         const flowNode = baseNodeToFlowNode(
           {
-            id: n.id,
+            ...n,
             text: n.text || roadmapUntitledCardLabel(),
-            x: (n.data as any)?.posX,
-            y: (n.data as any)?.posY,
-            width: n.width,
-            height: n.height,
-            shape: n.shape,
-            color: n.color,
-            backgroundColor: n.backgroundColor,
-            fontSize: n.fontSize,
-            data: n.data || {},
           },
           i,
         );
@@ -211,7 +203,7 @@ function RoadmapCanvasContent({
   const flowCardsToBase = useCallback((flowNodes: Node[], flowEdges: Edge[]) => {
     const baseCards = flowNodes.map((node) => {
       const bn = flowNodeToBaseNode(node);
-      return {
+      return normalizeRoadmapCanvasBaseNode({
         id: bn.id,
         text: bn.text,
         x: bn.x,
@@ -219,7 +211,7 @@ function RoadmapCanvasContent({
         width: bn.width,
         height: bn.height,
         data: { ...bn.data, posX: bn.x, posY: bn.y, lane: node.data?.lane },
-      } as BaseNode;
+      } as BaseNode);
     });
     const baseEdgesOut = flowEdges.map((edge) => flowEdgeToBaseEdge(edge));
     onFlowChange(baseCards, baseEdgesOut);
@@ -387,12 +379,66 @@ function RoadmapCanvasContent({
     return node?.data?.roadmapNodeType as string | undefined;
   }, []);
 
+  const getNodeData = useCallback((nodeId: string): Record<string, unknown> => {
+    const node = nodesRef.current.find((item) => item.id === nodeId);
+    if (!node?.data) return {};
+    const {
+      label: _label,
+      originalNode: _originalNode,
+      onPatch: _onPatch,
+      onDelete: _onDelete,
+      onRequestAddAdjacent: _onRequestAddAdjacent,
+      blockedAddDirections: _blockedAddDirections,
+      editable: _editable,
+      showProblemCountBadge: _showProblemCountBadge,
+      problemCount: _problemCount,
+      showNodeNumber: _showNodeNumber,
+      nodeNumber: _nodeNumber,
+      isPendingGhost: _isPendingGhost,
+      isPendingUpdate: _isPendingUpdate,
+      ...roadmapData
+    } = node.data;
+    return roadmapData as Record<string, unknown>;
+  }, []);
+
+  const updateNodeData = useCallback((nodeId: string, patch: Record<string, unknown>) => {
+    setNodes((current) => {
+      let changed = false;
+      const next = current.map((node) => {
+        if (node.id !== nodeId) return node;
+        changed = true;
+        const nextData = { ...node.data, ...patch };
+        const nextLabel = typeof patch.label === 'string' ? patch.label : node.data?.label;
+        return {
+          ...node,
+          data: {
+            ...nextData,
+            ...(typeof nextLabel === 'string' ? { label: nextLabel } : {}),
+          },
+        };
+      });
+      if (changed) {
+        window.setTimeout(() => flowCardsToBase(next, edgesRef.current), 0);
+        onNodeChanged?.([nodeId], 'update');
+      }
+      return changed ? next : current;
+    });
+  }, [flowCardsToBase, onNodeChanged, setNodes]);
+
   useEffect(() => {
-    edgeEditorApiRef.current = { updateEdge, deleteEdge, getEdge, updateCardTitle, getCardNodeType };
+    edgeEditorApiRef.current = {
+      updateEdge,
+      deleteEdge,
+      getEdge,
+      updateCardTitle,
+      updateNodeData,
+      getCardNodeType,
+      getNodeData,
+    };
     return () => {
       edgeEditorApiRef.current = null;
     };
-  }, [deleteEdge, edgeEditorApiRef, getCardNodeType, getEdge, updateCardTitle, updateEdge]);
+  }, [deleteEdge, edgeEditorApiRef, getCardNodeType, getEdge, getNodeData, updateCardTitle, updateEdge, updateNodeData]);
 
   const addRoadmapCardAt = useCallback(
     (flowPosition?: { x: number; y: number }, kind: RoadmapCanvasKind = 'sub') => {

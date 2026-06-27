@@ -75,25 +75,62 @@
 .page--base_detail .roadmap-view
   flex: 1
   min-height: 0
+  height: auto
   display: flex
   flex-direction: column
+  overflow: visible
 
 .page--base_detail .roadmap-flow--scroll
-  flex: 1
+  flex: none
   min-height: 0
+  height: auto
+  max-width: none
+  margin: 0
+  overflow: visible
+
+  .roadmap-sh-node--kind-sub
+    width: 260px
+    min-width: 260px
+    max-width: 260px
+
+  .roadmap-sh-node--hook-link
+    display: block
+    text-decoration: none
+    color: #111111
+    cursor: pointer
+    transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease
+
+    &:hover
+      background: #5aa8ff
+      box-shadow: 0 3px 12px rgba(43, 120, 228, 0.35)
+
+    &:active
+      transform: translateY(1px)
+
+  .roadmap-flow__canvas
+    min-height: calc(100dvh - rem($nav-item-height))
+    width: 100%
+
+    +mobile()
+      min-height: 100dvh
+
+  .react-flow__renderer,
+  .react-flow__viewport
+    overflow: visible
+
+  .react-flow__node
+    overflow: visible
 
 .base-detail-roadmap-panel
   flex: 1
   min-height: calc(100dvh - rem($nav-item-height) - 220px)
   display: flex
   flex-direction: column
-  width: calc(100% - 320px)
-  max-width: calc(1100px - 320px)
-  margin: 0 auto
+  width: 100%
+  max-width: none
+  margin: 0
 
   +mobile()
-    width: calc(100% - 32px)
-    max-width: calc(1100px - 32px)
     min-height: 0
 
 .page--base_detail .roadmap-detail-drawer--left
@@ -309,6 +346,31 @@
   width: 100%
   max-width: 100%
   overflow: hidden
+
+.page--base_detail #editor-container
+  .roadmap-node-markdown-editor
+    flex: 1
+    min-height: 0
+    height: 100%
+    overflow: hidden
+    position: relative
+    display: flex
+    flex-direction: column
+
+    .roadmap-node-markdown-editor__textarea
+      width: 100%
+      height: 100%
+      border: 0
+      resize: none
+
+    .textbox,
+    .md-editor
+      flex: 1
+      height: 100% !important
+      min-height: 0 !important
+
+    .md-editor-preview
+      roadmap-text-btn-styles()
 
 .theme--dark.page--base_detail
   --roadmap-bg-page: #1e1e1e
