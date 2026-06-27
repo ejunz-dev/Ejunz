@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
-import { domainApiPath, request, i18n } from 'vj/utils';
+import { domainApiPath, domainScopedPath, request, i18n } from 'vj/utils';
 import type { BaseDoc, Card } from 'vj/components/base/types';
 import { BaseDetailAiTutor } from 'vj/components/base/BaseDetailAiTutor';
 import { BaseDetailCardDrawer } from 'vj/components/base/BaseDetailCardDrawer';
@@ -81,6 +81,7 @@ function BaseDetailViewer() {
     readBaseDetailDisplaySettings()
   ));
   const [displaySettingsSaving, setDisplaySettingsSaving] = useState(false);
+  const [learnBusy, setLearnBusy] = useState(false);
   const title = base.title?.trim() || String(i18n('Knowledge Base'));
   const branch = base.currentBranch || 'main';
   const nodes = base.nodes || [];
@@ -300,6 +301,46 @@ function BaseDetailViewer() {
     return base.content;
   }, [base.content, canvasFocusedNodeId, nodeCardsMap, nodes, roadmapContainerId, selectedCard, selectedNode, title]);
 
+  const learnTargetNodeId = contentRootNodeId;
+
+  const startSingleNodeLearn = useCallback(async () => {
+    const nodeId = String(learnTargetNodeId || '').trim();
+    if (!nodeId || learnBusy) return;
+    const baseDocNum = Number(base.docId);
+    if (!Number.isFinite(baseDocNum) || baseDocNum <= 0) {
+      Notification.error(i18n('Outline editor start invalid base'));
+      return;
+    }
+    const domainId = base.domainId || 'system';
+    setLearnBusy(true);
+    try {
+      const res: any = await request.post(domainApiPath('/learn/lesson/start', domainId), {
+        mode: 'node',
+        nodeId,
+        baseDocId: baseDocNum,
+        branch,
+      });
+      const redir = res?.redirect ?? res?.body?.redirect ?? res?.data?.redirect;
+      const url = redir || domainScopedPath('/learn/lesson', domainId);
+      const opened = window.open(url, '_blank', 'noopener,noreferrer');
+      if (opened) {
+        opened.opener = null;
+      } else {
+        Notification.error(i18n('Outline editor popup blocked'));
+      }
+    } catch (e: any) {
+      const raw = typeof e?.message === 'string' ? e.message : String(e ?? '');
+      const cleaned = raw.replace(/^[A-Za-z]+Error:\s*/i, '').trim();
+      const msg = cleaned === 'No cards match session card filter'
+        || cleaned === 'Learn requires cards with problems'
+        ? i18n('Learn requires cards with problems')
+        : (cleaned || i18n('Outline learn start failed'));
+      Notification.error(msg);
+    } finally {
+      setLearnBusy(false);
+    }
+  }, [base.docId, base.domainId, branch, learnBusy, learnTargetNodeId]);
+
   return (
     <div className="roadmap-detail-layout">
       <BaseDetailHeader
@@ -314,6 +355,9 @@ function BaseDetailViewer() {
         onAiTutorClick={() => setAiTutorOpen(true)}
         onSettingsClick={() => setSettingsOpen(true)}
         settingsActive={settingsOpen}
+        onStartLearningClick={startSingleNodeLearn}
+        learnBusy={learnBusy}
+        learnDisabled={!learnTargetNodeId}
       />
       {explorerScopeRootId ? (
         <BaseDetailExplorer
