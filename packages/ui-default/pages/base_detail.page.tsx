@@ -12,7 +12,12 @@ import { BaseDetailEmbeddedRoadmapViewer } from 'vj/components/base/BaseDetailEm
 import { BaseDetailNodeContent } from 'vj/components/base/BaseDetailNodeContent';
 import { BaseDetailTreeDrawer } from 'vj/components/base/BaseDetailSidebar';
 import { RoadmapDetailSettingsPanel } from 'vj/components/roadmap/RoadmapDetailSettingsPanel';
-import { cardDisplayLabel, getRoadmapChildGraph, nodeDisplayLabel } from 'vj/components/base/detail_tree';
+import { cardDisplayLabel, getRoadmapChildGraph, nodeDisplayLabel, collectNodePathFromRoot, findCardHostNodeId, findRoadmapContainerAncestor, getPrimaryCardForNode, isRoadmapCanvasNodeId } from 'vj/components/base/detail_tree';
+import {
+  initialBaseDetailSelectedNodeId,
+  resolveContentNodeIdForCard,
+  useBaseDetailUrlSync,
+} from 'vj/components/base/url_sync';
 import {
   readBaseDetailDisplaySettings,
   type BaseDetailDisplaySettings,
@@ -58,9 +63,12 @@ function BaseDetailViewer() {
     [],
   );
   const [treeDrawerOpen, setTreeDrawerOpen] = useState(false);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [selectedCanvasNodeLabel, setSelectedCanvasNodeLabel] = useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(() => (
+    initialBaseDetailSelectedNodeId(base.nodes || [])
+  ));
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
+  const [scrollToCardId, setScrollToCardId] = useState<string | null>(null);
+  const [scrollToCanvasNodeId, setScrollToCanvasNodeId] = useState<string | null>(null);
   const [detailFilters, setDetailFilters] = useState<BaseDetailFilter>(() => readBaseDetailFilterFromLocation());
   const [treeSearchQuery, setTreeSearchQuery] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -72,22 +80,71 @@ function BaseDetailViewer() {
   const branch = base.currentBranch || 'main';
   const nodes = base.nodes || [];
   const edges = base.edges || [];
+  const nodeIds = useMemo(() => nodes.map((node) => node.id), [nodes]);
+
+  const cardExpandNodeIds = useMemo(() => {
+    if (!selectedNodeId || !selectedCard || isRoadmapCanvasNodeId(selectedNodeId, nodes, edges)) return [];
+    const hostNodeId = findCardHostNodeId(selectedCard.docId, nodeCardsMap);
+    if (!hostNodeId) return [];
+    const contentRootId = findRoadmapContainerAncestor(selectedNodeId, nodes, edges) || selectedNodeId;
+    return collectNodePathFromRoot(hostNodeId, contentRootId, edges);
+  }, [edges, nodeCardsMap, nodes, selectedCard, selectedNodeId]);
+
+  const handleRestoreCardFromUrl = useCallback((cardId: string, hostNodeId: string) => {
+    if (findRoadmapContainerAncestor(hostNodeId, nodes, edges)) {
+      setScrollToCanvasNodeId(hostNodeId);
+      setScrollToCardId(null);
+      return;
+    }
+    setScrollToCardId(cardId);
+    setScrollToCanvasNodeId(null);
+  }, [edges, nodes]);
+
+  const handleRestoreCanvasNodeFromUrl = useCallback((nodeId: string) => {
+    setScrollToCanvasNodeId(nodeId);
+  }, []);
+
+  useBaseDetailUrlSync({
+    nodes,
+    nodeIds,
+    edges,
+    nodeCardsMap,
+    selectedNodeId,
+    setSelectedNodeId,
+    selectedCard,
+    setSelectedCard,
+    onRestoreCard: handleRestoreCardFromUrl,
+    onRestoreCanvasNode: handleRestoreCanvasNodeFromUrl,
+    onClearCard: () => {
+      setScrollToCardId(null);
+      setScrollToCanvasNodeId(null);
+    },
+  });
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selectedNodeId) || null,
     [nodes, selectedNodeId],
   );
-  const isRoadmapSelection = selectedNode?.type === 'roadmap';
-  const contentTreeRootId = selectedNode && !isRoadmapSelection ? selectedNode.id : null;
+  const roadmapContainerId = useMemo(() => {
+    if (!selectedNodeId) return null;
+    return findRoadmapContainerAncestor(selectedNodeId, nodes, edges);
+  }, [edges, nodes, selectedNodeId]);
+  const isRoadmapView = !!roadmapContainerId;
+  const canvasFocusedNodeId = useMemo(() => {
+    if (!isRoadmapView || !selectedNodeId || selectedNodeId === roadmapContainerId) return null;
+    return selectedNodeId;
+  }, [isRoadmapView, roadmapContainerId, selectedNodeId]);
+  const explorerScopeRootId = roadmapContainerId ?? selectedNodeId;
+  const contentTreeRootId = selectedNodeId && !isRoadmapView ? selectedNodeId : null;
 
   const selectedRoadmapGraph = useMemo(() => {
-    if (!selectedNodeId || !isRoadmapSelection) return { childNodes: [], childEdges: [] };
-    return getRoadmapChildGraph(selectedNodeId, nodes, edges);
-  }, [edges, isRoadmapSelection, nodes, selectedNodeId]);
+    if (!roadmapContainerId) return { childNodes: [], childEdges: [] };
+    return getRoadmapChildGraph(roadmapContainerId, nodes, edges);
+  }, [edges, nodes, roadmapContainerId]);
 
   const contentTreeVisibility = useMemo(() => {
-    if (!contentTreeRootId) return null;
-    const scope = [contentTreeRootId];
+    if (!explorerScopeRootId) return null;
+    const scope = [explorerScopeRootId];
     const filterVisibility = computeBaseDetailTreeVisibility(
       nodes,
       edges,
@@ -103,12 +160,40 @@ function BaseDetailViewer() {
       scope,
     );
     return mergeBaseDetailTreeVisibility(filterVisibility, searchVisibility);
-  }, [contentTreeRootId, detailFilters, edges, nodeCardsMap, nodes, treeSearchQuery]);
+  }, [detailFilters, edges, explorerScopeRootId, nodeCardsMap, nodes, treeSearchQuery]);
+
+  const roadmapMatchedNodeIds = useMemo(() => {
+    if (!isRoadmapView || !contentTreeVisibility) return null;
+    return contentTreeVisibility.visibleNodeIds;
+  }, [contentTreeVisibility, isRoadmapView]);
+
+  const handleCanvasNodeSelect = useCallback((nodeId: string | null, _label: string | null) => {
+    setScrollToCanvasNodeId(null);
+    if (nodeId) {
+      const primaryCard = getPrimaryCardForNode(nodeId, nodeCardsMap);
+      setSelectedNodeId(nodeId);
+      if (primaryCard) {
+        setSelectedCard(primaryCard);
+        setScrollToCanvasNodeId(nodeId);
+        setScrollToCardId(null);
+      } else {
+        setSelectedCard(null);
+        setScrollToCardId(null);
+      }
+      return;
+    }
+    if (roadmapContainerId) {
+      setSelectedNodeId(roadmapContainerId);
+      setSelectedCard(null);
+      setScrollToCardId(null);
+    }
+  }, [nodeCardsMap, roadmapContainerId]);
 
   const handleSelectNode = useCallback((nodeId: string, keepTreeDrawerOpen = false) => {
     setSelectedNodeId(nodeId);
-    setSelectedCanvasNodeLabel(null);
     setSelectedCard(null);
+    setScrollToCardId(null);
+    setScrollToCanvasNodeId(null);
     setTreeSearchQuery('');
     if (!keepTreeDrawerOpen) {
       setTreeDrawerOpen(false);
@@ -116,11 +201,28 @@ function BaseDetailViewer() {
   }, []);
 
   const handleSelectCard = useCallback((card: Card) => {
+    const hostNodeId = resolveContentNodeIdForCard(
+      card.docId,
+      selectedNodeId,
+      edges,
+      nodeCardsMap,
+    );
+    if (hostNodeId) {
+      setSelectedNodeId(hostNodeId);
+    }
     setSelectedCard(card);
-  }, []);
+    if (hostNodeId && findRoadmapContainerAncestor(hostNodeId, nodes, edges)) {
+      setScrollToCanvasNodeId(hostNodeId);
+      setScrollToCardId(null);
+    } else {
+      setScrollToCardId(card.docId);
+      setScrollToCanvasNodeId(null);
+    }
+  }, [edges, nodeCardsMap, nodes, selectedNodeId]);
 
   const handleCloseCardDrawer = useCallback(() => {
     setSelectedCard(null);
+    setScrollToCardId(null);
   }, []);
 
   const handleDisplaySettingsSave = useCallback(async (next: BaseDetailDisplaySettings) => {
@@ -156,19 +258,25 @@ function BaseDetailViewer() {
 
   const headerTitle = useMemo(() => {
     if (selectedCard) return cardDisplayLabel(selectedCard);
-    if (selectedCanvasNodeLabel) return selectedCanvasNodeLabel;
+    if (canvasFocusedNodeId) {
+      const canvasNode = nodes.find((node) => node.id === canvasFocusedNodeId);
+      if (canvasNode) return nodeDisplayLabel(canvasNode);
+    }
     if (selectedNode) return nodeDisplayLabel(selectedNode);
     return title;
-  }, [selectedCanvasNodeLabel, selectedCard, selectedNode, title]);
+  }, [canvasFocusedNodeId, nodes, selectedCard, selectedNode, title]);
 
   const headerDescription = useMemo(() => {
     if (selectedCard && selectedNode) return nodeDisplayLabel(selectedNode);
     if (selectedNode) {
-      if (selectedCanvasNodeLabel && isRoadmapSelection) return nodeDisplayLabel(selectedNode);
+      if (canvasFocusedNodeId && roadmapContainerId) {
+        const container = nodes.find((node) => node.id === roadmapContainerId);
+        if (container) return nodeDisplayLabel(container);
+      }
       return title;
     }
     return base.content;
-  }, [base.content, isRoadmapSelection, selectedCanvasNodeLabel, selectedCard, selectedNode, title]);
+  }, [base.content, canvasFocusedNodeId, nodes, roadmapContainerId, selectedCard, selectedNode, title]);
 
   return (
     <div className="roadmap-detail-layout">
@@ -183,7 +291,7 @@ function BaseDetailViewer() {
         onSettingsClick={() => setSettingsOpen(true)}
         settingsActive={settingsOpen}
       />
-      {contentTreeRootId ? (
+      {explorerScopeRootId ? (
         <BaseDetailExplorer
           searchQuery={treeSearchQuery}
           filters={detailFilters}
@@ -194,14 +302,18 @@ function BaseDetailViewer() {
         />
       ) : null}
       <div className="roadmap-view">
-        {selectedNode && isRoadmapSelection ? (
+        {isRoadmapView ? (
           <div className="base-detail-roadmap-panel">
             <BaseDetailEmbeddedRoadmapViewer
               childNodes={selectedRoadmapGraph.childNodes}
               childEdges={selectedRoadmapGraph.childEdges}
               nodeCardsMap={nodeCardsMap}
               displaySettings={displaySettings}
-              onSelectedNodeChange={(_nodeId, label) => setSelectedCanvasNodeLabel(label)}
+              matchedNodeIds={roadmapMatchedNodeIds}
+              selectedCanvasNodeId={canvasFocusedNodeId}
+              scrollToCanvasNodeId={scrollToCanvasNodeId}
+              suppressNodeDrawer={!!selectedCard}
+              onCanvasNodeSelect={handleCanvasNodeSelect}
             />
           </div>
         ) : selectedNode ? (
@@ -214,6 +326,8 @@ function BaseDetailViewer() {
               selectedCardId={selectedCard?.docId || null}
               treeVisibility={contentTreeVisibility}
               displaySettings={displaySettings}
+              extraExpandedNodeIds={cardExpandNodeIds}
+              scrollToCardId={scrollToCardId}
               onSelectCard={handleSelectCard}
             />
           </main>

@@ -1,5 +1,5 @@
 import $ from 'jquery';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import ReactFlow, { ConnectionMode, useEdgesState, useNodesState } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { i18n } from 'vj/utils';
@@ -25,6 +25,7 @@ import {
   type RoadmapStatus,
 } from 'vj/components/roadmap/shared';
 import { RoadmapNodeDrawer } from 'vj/components/roadmap/RoadmapNodeDrawer';
+import { useRoadmapCanvasNodeScroll } from './url_sync';
 import {
   buildRoadmapNodeProblemCountMap,
   type RoadmapDetailDisplaySettings,
@@ -47,13 +48,21 @@ export function BaseDetailEmbeddedRoadmapViewer({
   childEdges,
   nodeCardsMap,
   displaySettings,
-  onSelectedNodeChange,
+  matchedNodeIds = null,
+  selectedCanvasNodeId = null,
+  scrollToCanvasNodeId = null,
+  suppressNodeDrawer = false,
+  onCanvasNodeSelect,
 }: {
   childNodes: BaseNode[];
   childEdges: BaseEdge[];
   nodeCardsMap: Record<string, Card[]>;
   displaySettings: RoadmapDetailDisplaySettings;
-  onSelectedNodeChange?: (nodeId: string | null, label: string | null) => void;
+  matchedNodeIds?: Set<string> | null;
+  selectedCanvasNodeId?: string | null;
+  scrollToCanvasNodeId?: string | null;
+  suppressNodeDrawer?: boolean;
+  onCanvasNodeSelect?: (nodeId: string | null, label: string | null) => void;
 }) {
   const initialFlowNodes = useMemo(
     () => toLaneFlowNodes(childNodes, childEdges),
@@ -63,16 +72,15 @@ export function BaseDetailEmbeddedRoadmapViewer({
   const [edges, setEdges, onEdgesChange] = useEdgesState(
     (childEdges || []).map((edge) => baseEdgeToFlowEdge(edge as BaseRoadmapEdge)),
   );
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const theme = useEditorTheme();
+  const selectedNodeId = selectedCanvasNodeId;
 
   useEffect(() => {
     const nextFlowNodes = toLaneFlowNodes(childNodes, childEdges);
     setNodes(nextFlowNodes);
     setEdges((childEdges || []).map((edge) => baseEdgeToFlowEdge(edge as BaseRoadmapEdge)));
-    setSelectedNodeId(null);
   }, [childEdges, childNodes, setEdges, setNodes]);
 
   const layoutNodes = useMemo(() => nodes.filter(isRoadmapFlowNode), [nodes]);
@@ -84,8 +92,8 @@ export function BaseDetailEmbeddedRoadmapViewer({
     () => computeRoadmapNodeNumbers(layoutNodes, edges),
     [layoutNodes, edges],
   );
-  const viewNodes = useMemo(() => (
-    toRoadmapViewNodes(layoutNodes, selectedNodeId).map((node) => ({
+  const viewNodes = useMemo(() => {
+    const base = toRoadmapViewNodes(layoutNodes, selectedNodeId).map((node) => ({
       ...node,
       data: {
         ...node.data,
@@ -95,35 +103,56 @@ export function BaseDetailEmbeddedRoadmapViewer({
         showNodeNumber: displaySettings.showNodeNumber,
         nodeNumber: nodeNumberMap.get(node.id) || '',
       },
-    }))
-  ), [
+    }));
+    if (!matchedNodeIds) return base;
+    return base.map((node) => {
+      const matched = matchedNodeIds.has(node.id);
+      const dimmed = !matched;
+      return {
+        ...node,
+        selectable: matched,
+        data: {
+          ...node.data,
+          explorerDimmed: dimmed,
+        },
+        style: {
+          ...(node.style || {}),
+          opacity: dimmed ? 0.2 : 1,
+          pointerEvents: dimmed ? 'none' as const : 'all' as const,
+          transition: 'opacity 0.2s ease',
+        },
+      };
+    });
+  }, [
     displaySettings.showNodeNumber,
     displaySettings.showProblemCount,
     layoutNodes,
+    matchedNodeIds,
     nodeNumberMap,
     problemCountByNodeId,
     selectedNodeId,
   ]);
-  const viewEdges = useMemo(
-    () => toRoadmapViewEdges(edges, null, undefined, theme),
-    [edges, theme],
-  );
+  const viewEdges = useMemo(() => {
+    const base = toRoadmapViewEdges(edges, null, undefined, theme);
+    if (!matchedNodeIds) return base;
+    return base.map((edge) => {
+      const visible = matchedNodeIds.has(edge.source) && matchedNodeIds.has(edge.target);
+      return {
+        ...edge,
+        selectable: visible,
+        style: {
+          ...(edge.style || {}),
+          opacity: visible ? 1 : 0.1,
+          pointerEvents: visible ? 'all' as const : 'none' as const,
+          transition: 'opacity 0.2s ease',
+        },
+      };
+    });
+  }, [edges, matchedNodeIds, theme]);
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selectedNodeId) || null,
     [nodes, selectedNodeId],
   );
-
-  useEffect(() => {
-    if (!onSelectedNodeChange) return;
-    if (!selectedNodeId || !selectedNode) {
-      onSelectedNodeChange(null, null);
-      return;
-    }
-    onSelectedNodeChange(
-      selectedNodeId,
-      String(selectedNode.data?.label || i18n('Unnamed Node')),
-    );
-  }, [onSelectedNodeChange, selectedNode, selectedNodeId]);
 
   const {
     outerRef,
@@ -133,6 +162,15 @@ export function BaseDetailEmbeddedRoadmapViewer({
     layoutReady,
     onFlowInit,
   } = useRoadmapScrollLayout(layoutNodes, { fillContainer: false });
+
+  const scrollTargetNodeId = scrollToCanvasNodeId || selectedNodeId;
+  useRoadmapCanvasNodeScroll({
+    nodeId: scrollTargetNodeId,
+    nodes: layoutNodes,
+    viewport,
+    canvasRef,
+    canvasHeight,
+  });
 
   useEffect(() => {
     const contentDiv = contentRef.current;
@@ -180,11 +218,11 @@ export function BaseDetailEmbeddedRoadmapViewer({
       if (target.closest('.roadmap-detail-drawer--left')) return;
       if (target.closest('.base-detail-tree-backdrop')) return;
       if (target.closest('.react-flow__node')) return;
-      setSelectedNodeId(null);
+      onCanvasNodeSelect?.(null, null);
     };
     document.addEventListener('pointerdown', onPointerDown);
     return () => document.removeEventListener('pointerdown', onPointerDown);
-  }, [selectedNodeId]);
+  }, [onCanvasNodeSelect, selectedNodeId]);
 
   if (!childNodes.length) {
     return (
@@ -210,9 +248,12 @@ export function BaseDetailEmbeddedRoadmapViewer({
               onNodeClick={(_, node) => {
                 if (node.type !== 'roadmap') return;
                 if (isHookNodeType(node.data?.roadmapNodeType)) return;
-                setSelectedNodeId(node.id);
+                onCanvasNodeSelect?.(
+                  node.id,
+                  String(node.data?.label || i18n('Unnamed Node')),
+                );
               }}
-              onPaneClick={() => setSelectedNodeId(null)}
+              onPaneClick={() => onCanvasNodeSelect?.(null, null)}
               connectionMode={ConnectionMode.Loose}
               nodesDraggable={false}
               nodesConnectable={false}
@@ -228,13 +269,13 @@ export function BaseDetailEmbeddedRoadmapViewer({
       </div>
 
       <RoadmapNodeDrawer
-        open={!!selectedNode && !isTextNodeType(selectedNode.data?.roadmapNodeType)}
+        open={!suppressNodeDrawer && !!selectedNode && !isTextNodeType(selectedNode.data?.roadmapNodeType)}
         nodeId={selectedNodeId || ''}
         nodeLabel={String(selectedNode?.data?.label || i18n('Unnamed Node'))}
         nodeStatus={selectedNode?.data?.status as RoadmapStatus | undefined}
         roadmapNodeType={selectedNode?.data?.roadmapNodeType}
         contentRef={contentRef}
-        onClose={() => setSelectedNodeId(null)}
+        onClose={() => onCanvasNodeSelect?.(null, null)}
       />
     </>
   );
