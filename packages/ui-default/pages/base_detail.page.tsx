@@ -65,6 +65,7 @@ function BaseDetailViewer() {
     setSelectedNodeId(nodeId);
     setSelectedCanvasNodeLabel(null);
     setSelectedCard(null);
+    setTreeDrawerOpen(false);
   }, []);
 
   const handleSelectCard = useCallback((card: Card) => {
@@ -131,9 +132,7 @@ function BaseDetailViewer() {
               nodes={nodes}
               edges={edges}
               nodeCardsMap={nodeCardsMap}
-              selectedNodeId={selectedNodeId}
               selectedCardId={selectedCard?.docId || null}
-              onSelectNode={handleSelectNode}
               onSelectCard={handleSelectCard}
             />
           </main>

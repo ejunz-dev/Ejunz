@@ -8,18 +8,14 @@ export function BaseDetailNodeContent({
   nodes,
   edges,
   nodeCardsMap,
-  selectedNodeId,
   selectedCardId,
-  onSelectNode,
   onSelectCard,
 }: {
   nodeId: string;
   nodes: BaseNode[];
   edges: BaseEdge[];
   nodeCardsMap: Record<string, Card[]>;
-  selectedNodeId?: string | null;
   selectedCardId?: string | null;
-  onSelectNode: (nodeId: string) => void;
   onSelectCard: (card: Card) => void;
 }) {
   const initialExpandedNodeIds = useMemo(
@@ -34,10 +30,9 @@ export function BaseDetailNodeContent({
         nodes={nodes}
         edges={edges}
         nodeCardsMap={nodeCardsMap}
-        selectedNodeId={selectedNodeId}
         selectedCardId={selectedCardId}
         initialExpandedNodeIds={initialExpandedNodeIds}
-        onSelectNode={onSelectNode}
+        nodesClickable={false}
         onSelectCard={onSelectCard}
       />
     </div>
