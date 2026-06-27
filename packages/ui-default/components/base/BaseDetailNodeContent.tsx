@@ -13,6 +13,8 @@ export function BaseDetailNodeContent({
   selectedCardId,
   treeVisibility,
   displaySettings,
+  extraExpandedNodeIds,
+  scrollToCardId,
   onSelectCard,
 }: {
   nodeId: string;
@@ -22,6 +24,8 @@ export function BaseDetailNodeContent({
   selectedCardId?: string | null;
   treeVisibility?: BaseDetailTreeVisibility | null;
   displaySettings?: BaseDetailDisplaySettings | null;
+  extraExpandedNodeIds?: string[];
+  scrollToCardId?: string | null;
   onSelectCard: (card: Card) => void;
 }) {
   const initialExpandedNodeIds = useMemo(
@@ -41,6 +45,8 @@ export function BaseDetailNodeContent({
         nodesClickable={false}
         treeVisibility={treeVisibility}
         displaySettings={displaySettings}
+        extraExpandedNodeIds={extraExpandedNodeIds}
+        scrollToCardId={scrollToCardId}
         onSelectCard={onSelectCard}
       />
     </div>

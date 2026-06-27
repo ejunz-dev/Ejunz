@@ -10,6 +10,7 @@ import {
   getMixedNodeChildren,
   nodeDisplayLabel,
 } from './detail_tree';
+import { useBaseDetailCardScroll } from './url_sync';
 
 function ChevronIcon({ expanded }: { expanded: boolean }) {
   return (
@@ -183,6 +184,7 @@ function TreeBranch({
                 key={`card-${child.card.docId}`}
                 className={`base-detail-tree__row base-detail-tree__row--card${cardSelected ? ' is-selected' : ''}`}
                 style={{ paddingLeft: `${(level + 1) * 16}px` }}
+                data-base-detail-card-id={child.card.docId}
               >
                 <span className="base-detail-tree__toggle-spacer" aria-hidden />
                 <button
@@ -223,6 +225,8 @@ export function BaseDetailTree({
   selectedNodeId,
   selectedCardId,
   initialExpandedNodeIds,
+  extraExpandedNodeIds,
+  scrollToCardId,
   emptyMessage,
   nodesClickable = true,
   treeVisibility = null,
@@ -237,6 +241,8 @@ export function BaseDetailTree({
   selectedNodeId?: string | null;
   selectedCardId?: string | null;
   initialExpandedNodeIds?: string[];
+  extraExpandedNodeIds?: string[];
+  scrollToCardId?: string | null;
   emptyMessage?: string;
   nodesClickable?: boolean;
   treeVisibility?: BaseDetailTreeVisibility | null;
@@ -258,6 +264,14 @@ export function BaseDetailTree({
     if (!treeVisibility?.forceExpandedNodeIds.size) return;
     setExpandedNodes((prev) => new Set([...prev, ...treeVisibility.forceExpandedNodeIds]));
   }, [treeVisibility]);
+
+  useEffect(() => {
+    if (!extraExpandedNodeIds?.length) return;
+    setExpandedNodes((prev) => new Set([...prev, ...extraExpandedNodeIds]));
+  }, [extraExpandedNodeIds]);
+
+  const expandRetryKey = extraExpandedNodeIds?.join(':') || '';
+  useBaseDetailCardScroll(scrollToCardId || null, expandRetryKey);
 
   const onToggleNode = useCallback((nodeId: string) => {
     setExpandedNodes((prev) => {

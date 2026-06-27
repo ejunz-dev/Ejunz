@@ -107,3 +107,97 @@ export function getRoadmapChildGraph(
   );
   return { childNodes, childEdges };
 }
+
+export function buildParentMap(edges: BaseEdge[]): Map<string, string> {
+  const parentByNode = new Map<string, string>();
+  edges.forEach((edge) => {
+    parentByNode.set(edge.target, edge.source);
+  });
+  return parentByNode;
+}
+
+export function isNodeDescendantOf(
+  nodeId: string,
+  ancestorId: string,
+  edges: BaseEdge[],
+): boolean {
+  if (nodeId === ancestorId) return true;
+  const parentByNode = buildParentMap(edges);
+  let current: string | undefined = nodeId;
+  while (current) {
+    if (current === ancestorId) return true;
+    current = parentByNode.get(current);
+  }
+  return false;
+}
+
+export function collectNodePathFromRoot(
+  targetNodeId: string,
+  rootNodeId: string,
+  edges: BaseEdge[],
+): string[] {
+  if (targetNodeId === rootNodeId) return [rootNodeId];
+  const parentByNode = buildParentMap(edges);
+  const path: string[] = [];
+  let current: string | undefined = targetNodeId;
+  while (current) {
+    path.unshift(current);
+    if (current === rootNodeId) return path;
+    current = parentByNode.get(current);
+  }
+  return [];
+}
+
+export function findCardHostNodeId(
+  cardId: string,
+  nodeCardsMap: Record<string, Card[]>,
+): string | null {
+  for (const [nodeId, cards] of Object.entries(nodeCardsMap)) {
+    if (cards.some((card) => card.docId === cardId)) return nodeId;
+  }
+  return null;
+}
+
+export function findCardByDocId(
+  cardId: string,
+  nodeCardsMap: Record<string, Card[]>,
+): Card | null {
+  for (const cards of Object.values(nodeCardsMap)) {
+    const card = cards.find((item) => item.docId === cardId);
+    if (card) return card;
+  }
+  return null;
+}
+
+export function findRoadmapContainerAncestor(
+  nodeId: string,
+  nodes: BaseNode[],
+  edges: BaseEdge[],
+): string | null {
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+  const parentByNode = buildParentMap(edges);
+  let current: string | undefined = nodeId;
+  while (current) {
+    const node = nodeMap.get(current);
+    if (node?.type === 'roadmap') return current;
+    current = parentByNode.get(current);
+  }
+  return null;
+}
+
+export function getPrimaryCardForNode(
+  nodeId: string,
+  nodeCardsMap: Record<string, Card[]>,
+): Card | null {
+  const cards = getSortedNodeCards(nodeId, nodeCardsMap);
+  return cards[0] || null;
+}
+
+export function isRoadmapCanvasNodeId(
+  nodeId: string,
+  nodes: BaseNode[],
+  edges: BaseEdge[],
+): boolean {
+  const containerId = findRoadmapContainerAncestor(nodeId, nodes, edges);
+  return !!containerId && containerId !== nodeId;
+}
