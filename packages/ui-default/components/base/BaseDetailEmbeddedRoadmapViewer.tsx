@@ -25,6 +25,7 @@ import {
   type RoadmapStatus,
 } from 'vj/components/roadmap/shared';
 import { RoadmapNodeDrawer } from 'vj/components/roadmap/RoadmapNodeDrawer';
+import { attachTypoImagePreviewHandlers, isTypoImagePreviewOverlay } from './typo_image_preview';
 import { useRoadmapCanvasNodeScroll } from './url_sync';
 import {
   buildRoadmapNodeProblemCountMap,
@@ -198,6 +199,7 @@ export function BaseDetailEmbeddedRoadmapViewer({
         if (cancelled) return;
         contentDiv.innerHTML = html;
         $(contentDiv).trigger('vjContentNew');
+        attachTypoImagePreviewHandlers(contentDiv);
       })
       .catch(() => {
         if (cancelled) return;
@@ -218,6 +220,7 @@ export function BaseDetailEmbeddedRoadmapViewer({
       if (target.closest('.roadmap-detail-drawer--left')) return;
       if (target.closest('.base-detail-tree-backdrop')) return;
       if (target.closest('.react-flow__node')) return;
+      if (isTypoImagePreviewOverlay(target)) return;
       onCanvasNodeSelect?.(null, null);
     };
     document.addEventListener('pointerdown', onPointerDown);
