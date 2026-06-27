@@ -1982,6 +1982,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     triggerExpandAutoSave();
   }, [triggerExpandAutoSave]);
 
+  const handleSelectFileRef = useRef<(file: FileItem, skipUrlUpdate?: boolean) => void>(() => {});
+
   const roadmapPlugin = useRoadmapPlugin({
     base, setBase, baseRef,
     pendingCreatesRef, setPendingCreatesCount,
@@ -1992,6 +1994,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     setPendingPluginNodeDataIds,
     setRightPanelOpen,
     isPluginEditor,
+    onSelectFileRef: handleSelectFileRef,
   });
 
   useEffect(() => {
@@ -2187,6 +2190,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     setFileContent(content);
   }, [base.nodes, selectedFile, editorInstance, fileContent, pendingChanges, isMultiSelectMode, fileTree, selectedItems, roadmapPlugin]);
 
+  handleSelectFileRef.current = handleSelectFile;
+
   const selectRoadmapCardFromUrl = useCallback((cardIdStr: string, skipUrlUpdate = true) => {
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     const resolved = resolveRoadmapCardLocation(base, nodeCardsMap, cardIdStr);
@@ -2218,13 +2223,13 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         }
       }
     }
-    if (nodeIdStr && fileTree.length > 0) {
+    if (nodeIdStr && fileTree.length > 0 && !roadmapPlugin.roadmapNodeId) {
       const nodeFile = fileTree.find(f => f.type === 'node' && f.nodeId === nodeIdStr);
       if (nodeFile && (!selectedFile || selectedFile.type !== 'node' || selectedFile.nodeId !== nodeIdStr)) {
         handleSelectFile(nodeFile, true);
       }
     }
-  }, [base.nodes.length, fileTree, nodeCardsMapVersion, selectedFile, handleSelectFile, selectRoadmapCardFromUrl]);
+  }, [base.nodes.length, fileTree, nodeCardsMapVersion, selectedFile, handleSelectFile, selectRoadmapCardFromUrl, roadmapPlugin.roadmapNodeId]);
 
   
   useEffect(() => {
@@ -10300,6 +10305,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 <roadmapPlugin.ExplorerContent
                   childNodes={childNodes}
                   childEdges={childEdges}
+                  selectedCanvasNodeId={roadmapPlugin.roadmapSubSelectedNodeId}
                   themeStyles={themeStyles}
                   onSelectFile={(file) => handleSelectFile(file)}
                   displaySettings={roadmapPlugin.displaySettings}

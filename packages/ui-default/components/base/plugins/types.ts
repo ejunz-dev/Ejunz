@@ -68,6 +68,7 @@ export interface RoadmapCanvasEdgeEditorApi {
 export interface ExplorerContentProps {
   childNodes: BaseNode[];
   childEdges: BaseEdge[];
+  selectedCanvasNodeId: string | null;
   themeStyles: Record<string, string>;
   onSelectFile: (file: FileItem) => void;
   displaySettings: {
@@ -115,4 +116,5 @@ export interface RoadmapPluginDeps {
   setPendingPluginNodeDataIds: React.Dispatch<React.SetStateAction<Set<string>>>;
   setRightPanelOpen: React.Dispatch<React.SetStateAction<boolean>>;
   isPluginEditor: boolean;
+  onSelectFileRef: React.MutableRefObject<(file: FileItem, skipUrlUpdate?: boolean) => void>;
 }
