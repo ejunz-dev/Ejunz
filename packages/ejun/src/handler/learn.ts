@@ -1,6 +1,15 @@
 import type { Context } from '../context';
 import { Handler, param, post, Types } from '../service/server';
-import { BaseModel, CardModel } from '../model/base';
+import {
+    BaseModel,
+    CardModel,
+    compareRoadmapPracticeNodesByNumber,
+    isRoadmapContainerBaseNode,
+    isRoadmapSubPracticeNode,
+    roadmapDagOrderFromNode,
+    supportsRoadmapPracticeProblems,
+    roadmapNodeTypeFromNode,
+} from '../model/base';
 import type { BaseDoc, BaseNode, BaseEdge, Problem } from '../interface';
 import domain from '../model/domain';
 import learn, { type LearnDAGNode } from '../model/learn';
@@ -40,7 +49,7 @@ import { getBranchData } from './base';
 import SessionModel, { type LessonCardQueueItem, type SessionDoc, type SessionPatch } from '../model/session';
 import * as document from '../model/document';
 import { getProblemTagList, normalizeProblemTagInput, sanitizeProblemTagRegistryList } from '../model/problem';
-import RoadmapModel, { supportsRoadmapPracticeProblems, roadmapNodeTypeFromNode } from '../model/roadmap';
+import RoadmapModel from '../model/roadmap';
 import {
     appendLessonSessionToUrl,
     frozenTodayQueueMatchesLearnSettings,
@@ -495,7 +504,7 @@ function branchesForBaseDoc(base: BaseDoc): string[] {
 }
 
 /** Bump when single-base learn DAG generation rules change (invalidates `learn_dag` rows for that base+branch). */
-const LEARN_BASE_DAG_CACHE_REVISION = 4;
+const LEARN_BASE_DAG_CACHE_REVISION = 6;
 
 function learnSourceHintFromDoc(doc: BaseDoc | null | undefined): 'base' | 'roadmap' | null {
     if (!doc) return null;
@@ -1071,7 +1080,10 @@ function applyUserSectionOrder(sections: LearnDAGNode[], learnSectionOrder: stri
     return result;
 }
 
-/** Outline sibling order: `BaseNode.order` then id (matches base editor / folder tree). */
+/**
+ * Outline sibling order: roadmap canvas main/sub nodes by `nodeNumber` (1, 1.1, 1.2, 2…),
+ * otherwise `BaseNode.order` then id.
+ */
 function sortedOutlineChildIds(
     childrenMap: Map<string, string[]>,
     nodeMap: Map<string, BaseNode>,
@@ -1079,12 +1091,48 @@ function sortedOutlineChildIds(
 ): string[] {
     const raw = childrenMap.get(parentId);
     if (!raw?.length) return [];
-    return [...raw].sort((a, b) => {
-        const oa = nodeMap.get(a)?.order ?? 0;
-        const ob = nodeMap.get(b)?.order ?? 0;
+    const parent = nodeMap.get(parentId);
+    let ids = [...raw];
+    // Canvas subs are also linked from the roadmap container; traverse them only under their main node.
+    if (isRoadmapContainerBaseNode(parent)) {
+        ids = ids.filter((id) => !isRoadmapSubPracticeNode(nodeMap.get(id)));
+    }
+    return ids.sort((a, b) => {
+        const na = nodeMap.get(a);
+        const nb = nodeMap.get(b);
+        const roadmapCmp = compareRoadmapPracticeNodesByNumber(na, nb);
+        if (roadmapCmp !== 0) return roadmapCmp;
+        const oa = na?.order ?? 0;
+        const ob = nb?.order ?? 0;
         if (oa !== ob) return oa - ob;
         return String(a).localeCompare(String(b));
     });
+}
+
+/** Keep first occurrence of each cardId (roadmap subtree collectors may hit the same card twice). */
+function dedupeNodeLessonFlatCardsByCardId<T extends { cardId: string }>(cards: T[]): T[] {
+    const seen = new Set<string>();
+    const out: T[] = [];
+    for (const row of cards) {
+        const id = String(row.cardId || '').trim();
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        out.push(row);
+    }
+    return out;
+}
+
+function sortedLearnDagChildNodes(allDagNodes: LearnDAGNode[], parentId: string): LearnDAGNode[] {
+    const seen = new Set<string>();
+    return allDagNodes
+        .filter((n) => n.requireNids && n.requireNids[n.requireNids.length - 1] === parentId)
+        .filter((n) => {
+            const id = String(n._id);
+            if (seen.has(id)) return false;
+            seen.add(id);
+            return true;
+        })
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 }
 
 /** Tile `arr` cyclically to reach `length` (e.g. daily goal exceeds available cards). */
@@ -1168,6 +1216,33 @@ function dagSubtreeUnderRootFromNodes(allDagNodes: LearnDAGNode[], rootId: strin
     };
     collectChildren(rootId, new Set());
     return dag;
+}
+
+function resolveLearnLessonAnchorNode(
+    nodeMap: Map<string, LearnDAGNode>,
+    branchNodes: BaseNode[],
+    lessonNodeId: string,
+): LearnDAGNode | null {
+    const existing = nodeMap.get(lessonNodeId);
+    if (existing) return existing;
+    const branchNode = branchNodes.find((n) => n.id === lessonNodeId);
+    if (!branchNode) return null;
+    const synthetic: LearnDAGNode = {
+        _id: lessonNodeId,
+        title: branchNode.text || '',
+        requireNids: [],
+        cards: [],
+        order: 0,
+    };
+    nodeMap.set(lessonNodeId, synthetic);
+    return synthetic;
+}
+
+function isBaseOutlineRootNode(node: BaseNode | undefined, edges: BaseEdge[]): boolean {
+    if (!node) return false;
+    if (node.level === 0) return true;
+    if (edges.some((e) => e.target === node.id)) return false;
+    return !(node as { parentId?: string }).parentId;
 }
 
 /** Flat card list for one section root (same DFS order as `buildTodayLessonQueueFromDomain`). */
@@ -2257,6 +2332,7 @@ async function generateDAG(
     let nodeIndex = 1;
     /** 学习「节」顺序：按大纲遍历赋 0..n-1，不用节点画布 `order`（多为 null 或与树序无关）。 */
     let sectionOutlineSeq = 0;
+    const processedNodeIds = new Set<string>();
 
     const toCardItem = (card: any) => {
         const problems = (card as any).problems || [];
@@ -2281,14 +2357,21 @@ async function generateDAG(
         if (!node || !nodeSupportsPractice(node)) {
             return;
         }
+        if (processedNodeIds.has(nodeId)) {
+            return;
+        }
+        processedNodeIds.add(nodeId);
 
         // Each DAG node lists only its own cards (not descendants) to avoid duplicate tree rendering.
         const cards = await CardModel.getByNodeId(domainId, baseDocId, nodeId, br);
         const cardList = cards.map(card => toCardItem(card)).sort((a, b) => (a.order || 0) - (b.order || 0));
 
-        const dagOrder = isFirstLevel
-            ? sectionOutlineSeq++
-            : (typeof node.order === 'number' && Number.isFinite(node.order) ? node.order : nodeIndex++);
+        const roadmapOrder = roadmapDagOrderFromNode(node);
+        const dagOrder = roadmapOrder != null
+            ? roadmapOrder
+            : isFirstLevel
+                ? sectionOutlineSeq++
+                : (typeof node.order === 'number' && Number.isFinite(node.order) ? node.order : nodeIndex++);
         const dagNode: LearnDAGNode = {
             _id: nodeId,
             title: node.text || translate('Unnamed Node'),
@@ -2352,7 +2435,11 @@ async function generateDAG(
             if (orderedOtherIds.length === 0) {
                 orderedOtherIds = nodes
                     .filter((n) => n.id !== rootNode.id && nodeSupportsPractice(n))
-                    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || String(a.id).localeCompare(String(b.id)))
+                    .sort((a, b) => {
+                        const roadmapCmp = compareRoadmapPracticeNodesByNumber(a, b);
+                        if (roadmapCmp !== 0) return roadmapCmp;
+                        return (a.order ?? 0) - (b.order ?? 0) || String(a.id).localeCompare(String(b.id));
+                    })
                     .map((n) => n.id);
             }
             if (orderedOtherIds.length > 0) {
@@ -2361,12 +2448,13 @@ async function generateDAG(
                     if (!otherNode) continue;
                     const cards = await CardModel.getByNodeId(domainId, baseDocId, otherNode.id, br);
                     const cardList = cards.map(card => toCardItem(card)).sort((a, b) => (a.order || 0) - (b.order || 0));
+                    const sectionOrder = roadmapDagOrderFromNode(otherNode) ?? sectionOutlineSeq++;
                     sections.push({
                         _id: otherNode.id,
                         title: otherNode.text || translate('Unnamed Node'),
                         requireNids: [],
                         cards: cardList,
-                        order: sectionOutlineSeq++,
+                        order: sectionOrder,
                     });
                 }
             } else if (nodeSupportsPractice(rootNode)) {
@@ -2444,8 +2532,11 @@ async function collectOutlineSubtreeFlatCardsForNodeLesson(
         baseDocId: number;
         learnSectionOrderIndex: number;
     }> = [];
+    const visited = new Set<string>();
 
     const visit = async (nid: string) => {
+        if (visited.has(nid)) return;
+        visited.add(nid);
         const node = nodeMap.get(nid);
         const nodeTitle = node?.text || '';
         const cards = await CardModel.getByNodeId(domainId, baseDocId, nid, br);
@@ -2460,19 +2551,14 @@ async function collectOutlineSubtreeFlatCardsForNodeLesson(
                 learnSectionOrderIndex,
             });
         }
-        const childIds = childrenMap.get(nid) || [];
-        const sortedChildIds = [...childIds].sort((a, b) => {
-            const oa = nodeMap.get(a)?.order || 0;
-            const ob = nodeMap.get(b)?.order || 0;
-            return oa !== ob ? oa - ob : String(a).localeCompare(String(b));
-        });
+        const sortedChildIds = sortedOutlineChildIds(childrenMap, nodeMap, nid);
         for (const cid of sortedChildIds) {
             await visit(cid);
         }
     };
 
     await visit(rootNodeId);
-    return out;
+    return dedupeNodeLessonFlatCardsByCardId(out);
 }
 
 async function learnCardIdsHaveProblems(domainId: string, cardIds: Iterable<string>): Promise<boolean> {
@@ -3898,11 +3984,15 @@ async function buildSpaLessonSnapshotNode(
     let currentCardIndex = typeof sNode.cardIndex === 'number' ? sNode.cardIndex : 0;
     if (currentCardIndex >= flatCards.length) return null;
     const anchor = (sNode.lessonQueueAnchorNodeId as string) || lessonNodeId;
+    const pageBaseSpa = await BaseModel.get(finalDomainId, learnBidNode);
+    const branchNodesSpa = pageBaseSpa
+        ? (getBranchData(pageBaseSpa, learnBrNode).nodes || [])
+        : [];
     const { sections, allDagNodes } = await ensureLearnDAGCached(finalDomainId, learnBidNode, learnBrNode, translate);
     const nodeMap = new Map<string, LearnDAGNode>();
     sections.forEach(n => nodeMap.set(n._id, n));
     allDagNodes.forEach(n => nodeMap.set(n._id, n));
-    const rootNode = nodeMap.get(anchor);
+    const rootNode = resolveLearnLessonAnchorNode(nodeMap, branchNodesSpa, anchor);
     if (!rootNode) return null;
     const nodeTree = [{
         type: 'node' as const,
@@ -4388,21 +4478,8 @@ class LessonHandler extends Handler {
             trainSecNode.forEach(n => nodeMap.set(n._id, n));
             allDagNodes.forEach(n => nodeMap.set(n._id, n));
             const lessonSourceHint = learnSourceHintFromDoc(pageBaseLesson);
-            let rootNode = nodeMap.get(lessonNodeId);
-            if (!rootNode && lessonSourceHint === 'roadmap') {
-                const branchNodes = getBranchData(pageBaseLesson, learnBrLesson).nodes || [];
-                const branchNode = branchNodes.find((n) => n.id === lessonNodeId);
-                if (branchNode) {
-                    rootNode = {
-                        _id: lessonNodeId,
-                        title: branchNode.text || '',
-                        requireNids: [],
-                        cards: [],
-                        order: 0,
-                    };
-                    nodeMap.set(lessonNodeId, rootNode);
-                }
-            }
+            const branchNodesLesson = getBranchData(pageBaseLesson, learnBrLesson).nodes || [];
+            const rootNode = resolveLearnLessonAnchorNode(nodeMap, branchNodesLesson, lessonNodeId);
             if (!rootNode) throw new NotFoundError('Node not found');
 
             const orderedSectionsNode = applyUserSectionOrder(trainSecNode, (dudoc as any)?.learnSectionOrder);
@@ -4444,11 +4521,8 @@ class LessonHandler extends Handler {
                 sessionAnchorSlot,
             );
 
-            const getChildNodes = (parentId: string): LearnDAGNode[] => {
-                return allDagNodes
-                    .filter(n => n.requireNids && n.requireNids[n.requireNids.length - 1] === parentId)
-                    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-            };
+            const getChildNodes = (parentId: string): LearnDAGNode[] =>
+                sortedLearnDagChildNodes(allDagNodes, parentId);
 
             type NodeFlat = {
                 nodeId: string;
@@ -4459,9 +4533,12 @@ class LessonHandler extends Handler {
                 learnSectionOrderIndex: number;
             };
             const flatCards: NodeFlat[] = [];
+            const collectVisited = new Set<string>();
             const nodeTree: Array<{ type: 'node'; id: string; title: string; children: Array<{ type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }> }> = [];
 
             const collectUnder = (dagNodeId: string): Array<{ type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }> => {
+                if (collectVisited.has(dagNodeId)) return [];
+                collectVisited.add(dagNodeId);
                 const node = nodeMap.get(dagNodeId);
                 if (!node) return [];
                 const rawNodeId = node._id;
@@ -4525,6 +4602,28 @@ class LessonHandler extends Handler {
                         learnSectionOrderIndex: slotQ,
                     });
                 }
+                const dedupedFrozenQueue = dedupeNodeLessonFlatCardsByCardId(flatCards);
+                if (dedupedFrozenQueue.length !== flatCards.length && sNode?._id) {
+                    flatCards.length = 0;
+                    flatCards.push(...dedupedFrozenQueue);
+                    const curIdxFrozen = typeof sNode.cardIndex === 'number' ? sNode.cardIndex : 0;
+                    const clampedIdxFrozen = flatCards.length > 0
+                        ? Math.min(curIdxFrozen, flatCards.length - 1)
+                        : 0;
+                    await SessionModel.touchById(finalDomainId, this.user._id, sNode._id, {
+                        lessonCardQueue: flatCards.map((fc) => ({
+                            domainId: finalDomainId,
+                            nodeId: fc.nodeId,
+                            cardId: fc.cardId,
+                            nodeTitle: fc.nodeTitle,
+                            cardTitle: fc.cardTitle,
+                            baseDocId: fc.baseDocId,
+                            learnSectionOrderIndex: fc.learnSectionOrderIndex,
+                        })),
+                        ...(clampedIdxFrozen !== curIdxFrozen ? { cardIndex: clampedIdxFrozen } : {}),
+                    }, { silent: true });
+                    sNode = await resolveLessonSessionDoc(finalDomainId, this.user._id, qLessonSession || undefined);
+                }
                 /**
                  * Do not re-slice a frozen `lessonCardQueue` using `currentLearnStartCardId`.
                  * After each pass we advance domain learn-start + cardIndex on the persisted queue.
@@ -4570,16 +4669,17 @@ class LessonHandler extends Handler {
                     children: flatCards.map((c) => ({ type: 'card' as const, id: c.cardId, title: c.cardTitle })),
                 });
             } else {
-                const treeChildren = collectUnder(lessonNodeId);
-                const freshSlice = sliceNodeFlatCardsFromLearnStartIfSectionRoot(flatCards, sliceOptsNode);
-                const freshSliced = freshSlice.sliced;
-                if (freshSliced) {
-                    nodeSliceResetIndex = true;
-                    flatCards.length = 0;
-                    flatCards.push(...freshSlice.next);
-                }
+                const branchNodesForQueue = getBranchData(pageBaseLesson, learnBrLesson).nodes || [];
+                const branchEdgesForQueue = getBranchData(pageBaseLesson, learnBrLesson).edges || [];
+                const queueAnchorNode = branchNodesForQueue.find((n) => n.id === lessonNodeId);
+                const preferOutlineQueue =
+                    lessonSourceHint === 'roadmap'
+                    || isRoadmapContainerBaseNode(queueAnchorNode)
+                    || isBaseOutlineRootNode(queueAnchorNode, branchEdgesForQueue);
                 let usedOutlineSubtreeFallback = false;
-                if (flatCards.length === 0) {
+                let treeChildren: ReturnType<typeof collectUnder> = [];
+
+                if (preferOutlineQueue) {
                     const fb = await collectOutlineSubtreeFlatCardsForNodeLesson(
                         finalDomainId,
                         learnBidLesson,
@@ -4594,8 +4694,40 @@ class LessonHandler extends Handler {
                         if (sliceFb.sliced) nodeSliceResetIndex = true;
                         usedOutlineSubtreeFallback = true;
                     }
+                } else {
+                    treeChildren = collectUnder(lessonNodeId);
+                    const freshSlice = sliceNodeFlatCardsFromLearnStartIfSectionRoot(flatCards, sliceOptsNode);
+                    if (freshSlice.sliced) {
+                        nodeSliceResetIndex = true;
+                        flatCards.length = 0;
+                        flatCards.push(...freshSlice.next);
+                    }
+                    if (flatCards.length === 0) {
+                        const fb = await collectOutlineSubtreeFlatCardsForNodeLesson(
+                            finalDomainId,
+                            learnBidLesson,
+                            learnBrLesson,
+                            lessonNodeId,
+                            resolvedSectionSlot,
+                            lessonSourceHint,
+                        );
+                        if (fb.length > 0) {
+                            const sliceFb = sliceNodeFlatCardsFromLearnStartIfSectionRoot(fb, sliceOptsNode);
+                            flatCards.push(...(sliceFb.sliced ? sliceFb.next : fb));
+                            if (sliceFb.sliced) nodeSliceResetIndex = true;
+                            usedOutlineSubtreeFallback = true;
+                        }
+                    }
                 }
-                const showFlatCardChildren = freshSliced || usedOutlineSubtreeFallback;
+
+                const dedupedFresh = dedupeNodeLessonFlatCardsByCardId(flatCards);
+                if (dedupedFresh.length !== flatCards.length) {
+                    flatCards.length = 0;
+                    flatCards.push(...dedupedFresh);
+                    nodeSliceResetIndex = true;
+                }
+
+                const showFlatCardChildren = preferOutlineQueue || usedOutlineSubtreeFallback;
                 nodeTree.push({
                     type: 'node',
                     id: rootNode._id,
@@ -5365,6 +5497,9 @@ class LessonHandler extends Handler {
             const nodeLearnBaseDocId = Number(baseNodeStart.docId);
             const nodeSourceHint = learnSourceHint ?? learnSourceHintFromDoc(baseNodeStart);
             const isRoadmapNodeStart = nodeSourceHint === 'roadmap';
+            const { nodes: branchNodesForStart } = getBranchData(baseNodeStart, brN);
+            const startAnchorNode = branchNodesForStart.find((n) => n.id === nodeIdStart);
+            const useRoadmapNumberedSubtree = isRoadmapNodeStart || isRoadmapContainerBaseNode(startAnchorNode);
             const { sections: nodeSections, allDagNodes: nodeAllDag } = await ensureLearnDAGCached(
                 finalDomainId,
                 nodeLearnBaseDocId,
@@ -5377,7 +5512,7 @@ class LessonHandler extends Handler {
             nodeAllDag.forEach((n) => nodeEntryMap.set(n._id, n));
             const outlineSlot = learnSectionOrderIndexStart ?? 0;
             let outlineFlatCards: Awaited<ReturnType<typeof collectOutlineSubtreeFlatCardsForNodeLesson>> = [];
-            if (isRoadmapNodeStart) {
+            if (useRoadmapNumberedSubtree) {
                 outlineFlatCards = await collectOutlineSubtreeFlatCardsForNodeLesson(
                     finalDomainId,
                     nodeLearnBaseDocId,
@@ -5387,17 +5522,29 @@ class LessonHandler extends Handler {
                     nodeSourceHint,
                 );
             }
-            if (!nodeEntryMap.has(nodeIdStart)) {
-                if (!(isRoadmapNodeStart && outlineFlatCards.length > 0)) {
-                    throw new ValidationError(nodeNotInBranchMsg);
-                }
-            }
             let nodeCardIds = collectTrainingScopeCardIdSet(
                 [{ _id: nodeIdStart } as LearnDAGNode],
                 nodeAllDag,
             );
-            if (nodeCardIds.size === 0 && outlineFlatCards.length > 0) {
-                nodeCardIds = new Set(outlineFlatCards.map((row) => String(row.cardId)));
+            if (nodeCardIds.size === 0) {
+                if (outlineFlatCards.length === 0) {
+                    outlineFlatCards = await collectOutlineSubtreeFlatCardsForNodeLesson(
+                        finalDomainId,
+                        nodeLearnBaseDocId,
+                        brN,
+                        nodeIdStart,
+                        outlineSlot,
+                        nodeSourceHint,
+                    );
+                }
+                if (outlineFlatCards.length > 0) {
+                    nodeCardIds = new Set(outlineFlatCards.map((row) => String(row.cardId)));
+                }
+            }
+            if (!nodeEntryMap.has(nodeIdStart)) {
+                if (outlineFlatCards.length === 0) {
+                    throw new ValidationError(nodeNotInBranchMsg);
+                }
             }
             if (nodeCardIds.size === 0) {
                 throw new ValidationError(
@@ -6802,28 +6949,17 @@ class LessonNodeResultHandler extends Handler {
         const nodeMap = new Map<string, LearnDAGNode>();
         secNr.forEach((n: LearnDAGNode) => nodeMap.set(n._id, n));
         allDagNodes.forEach((n: LearnDAGNode) => nodeMap.set(n._id, n));
-        let rootNode = nodeMap.get(nodeId);
-        if (!rootNode && learnSourceHint === 'roadmap') {
-            const branchNode = (getBranchData(sourceDoc, brNr).nodes || []).find((n) => n.id === nodeId);
-            if (branchNode) {
-                rootNode = {
-                    _id: nodeId,
-                    title: branchNode.text || '',
-                    requireNids: [],
-                    cards: [],
-                    order: 0,
-                };
-                nodeMap.set(nodeId, rootNode);
-            }
-        }
+        const branchNodesNr = getBranchData(sourceDoc, brNr).nodes || [];
+        const rootNode = resolveLearnLessonAnchorNode(nodeMap, branchNodesNr, nodeId);
         if (!rootNode) throw new NotFoundError('Node not found');
 
         const getChildNodes = (parentId: string): LearnDAGNode[] =>
-            allDagNodes
-                .filter((n: LearnDAGNode) => n.requireNids && n.requireNids[n.requireNids.length - 1] === parentId)
-                .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+            sortedLearnDagChildNodes(allDagNodes, parentId);
         const flatCards: Array<{ nodeId: string; cardId: string; nodeTitle: string; cardTitle: string; baseDocId?: number }> = [];
+        const collectVisitedNr = new Set<string>();
         const collectUnder = (nid: string) => {
+            if (collectVisitedNr.has(nid)) return;
+            collectVisitedNr.add(nid);
             const node = nodeMap.get(nid);
             if (!node) return;
             const rawId = node._id;
@@ -6860,6 +6996,11 @@ class LessonNodeResultHandler extends Handler {
                     baseDocId: item.baseDocId,
                 });
             }
+        }
+        const dedupedReportCards = dedupeNodeLessonFlatCardsByCardId(flatCards);
+        if (dedupedReportCards.length !== flatCards.length) {
+            flatCards.length = 0;
+            flatCards.push(...dedupedReportCards);
         }
         const cardIdsSet = new Set(flatCards.map(c => c.cardId));
         const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);

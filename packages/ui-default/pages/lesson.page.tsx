@@ -1112,17 +1112,30 @@ function LessonPage() {
 
   const allProblems = useMemo((): QueuedProblem[] => {
     if (isSingleNodeMode && flatQueueCards.length > 0) {
-      const out: QueuedProblem[] = [];
+      const queueById = new Map<string, Card>();
       for (const c of flatQueueCards) {
-        const cid = String(c.docId ?? '');
+        const cid = String(c.docId ?? '').trim();
+        if (cid && !queueById.has(cid)) queueById.set(cid, c);
+      }
+      const cardOrder = flatCards.length > 0
+        ? flatCards.map((fc) => String(fc.cardId)).filter((cid, idx, arr) => cid && arr.indexOf(cid) === idx)
+        : [...queueById.keys()];
+      const out: QueuedProblem[] = [];
+      const dedupe = new Set<string>();
+      for (const cid of cardOrder) {
+        const c = queueById.get(cid);
+        if (!c) continue;
         for (const p of c.problems || []) {
+          const k = `${cid}::${p.pid}`;
+          if (dedupe.has(k)) continue;
+          dedupe.add(k);
           out.push({ ...p, cardId: cid } as QueuedProblem);
         }
       }
       return out;
     }
     return (card.problems || []).map((p) => ({ ...p, cardId: String(card.docId) } as QueuedProblem));
-  }, [isSingleNodeMode, flatQueueCards, card]);
+  }, [isSingleNodeMode, flatQueueCards, flatCards, card]);
 
   const singleNodeLessonProblemGroups = useMemo((): LessonProblemQueueSidebarGroup[] | null => {
     if (!isSingleNodeMode || flatQueueCards.length === 0 || allProblems.length === 0) return null;
