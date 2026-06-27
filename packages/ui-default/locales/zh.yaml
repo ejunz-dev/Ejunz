@@ -1896,6 +1896,7 @@ Date: 日期
 'Roadmap drawer problem reveal back': 点击显示背面
 'Roadmap drawer practice problems': 练习题
 'Roadmap drawer start node practice': 开始单节点刷题
+'Roadmap drawer start card practice': 开始刷题
 'Roadmap drawer start node practice busy': 正在进入刷题…
 'Roadmap drawer start node practice invalid doc': 当前路线图无效，无法开始刷题。
 'Roadmap markdown preview failed': Markdown 渲染失败。
