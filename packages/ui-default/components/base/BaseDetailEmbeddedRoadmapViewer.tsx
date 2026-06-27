@@ -1,6 +1,6 @@
 import $ from 'jquery';
-import React, { useEffect, useMemo, useRef } from 'react';
-import ReactFlow, { ConnectionMode, useEdgesState, useNodesState } from 'reactflow';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import ReactFlow, { ConnectionMode } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { i18n } from 'vj/utils';
 import {
@@ -9,17 +9,13 @@ import {
   toRoadmapViewEdges,
   toRoadmapViewNodes,
   useRoadmapScrollLayout,
+  buildLaneFlowNodesFromCanvas,
 } from 'vj/components/roadmap/flow_shared';
 import { useEditorTheme } from 'vj/components/editor_workspace';
-import { alignNodesInSolidComponents } from 'vj/components/roadmap/solid_links';
-import {
-  getNodeLane,
-  isRoadmapFlowNode,
-  snapNodeToLane,
-} from 'vj/components/roadmap/lanes';
+import { isRoadmapFlowNode } from 'vj/components/roadmap/lanes';
 import {
   baseEdgeToFlowEdge,
-  baseNodeToFlowNode,
+  normalizeRoadmapCanvasNode,
   type BaseRoadmapEdge,
   type BaseRoadmapNode,
   type RoadmapStatus,
@@ -34,15 +30,6 @@ import {
 import { computeRoadmapNodeNumbers } from 'vj/components/roadmap/node_numbering';
 import { isHookNodeType, isTextNodeType, supportsRoadmapPracticeProblems } from 'vj/components/roadmap/node_kinds';
 import type { BaseEdge, BaseNode, Card } from './types';
-
-function toLaneFlowNodes(childNodes: BaseNode[], childEdges: BaseEdge[]) {
-  const flowEdges = (childEdges || []).map((edge) => baseEdgeToFlowEdge(edge as BaseRoadmapEdge));
-  const flowNodes = (childNodes || []).map((node, index) => {
-    const flowNode = baseNodeToFlowNode(node as BaseRoadmapNode, index);
-    return snapNodeToLane(flowNode, getNodeLane(flowNode));
-  });
-  return alignNodesInSolidComponents(flowNodes, flowEdges);
-}
 
 export function BaseDetailEmbeddedRoadmapViewer({
   childNodes,
@@ -65,26 +52,23 @@ export function BaseDetailEmbeddedRoadmapViewer({
   suppressNodeDrawer?: boolean;
   onCanvasNodeSelect?: (nodeId: string | null, label: string | null) => void;
 }) {
-  const initialFlowNodes = useMemo(
-    () => toLaneFlowNodes(childNodes, childEdges),
-    [childEdges, childNodes],
+  const normalizedChildNodes = useMemo(
+    () => (childNodes || []).map((node) => normalizeRoadmapCanvasNode(node as BaseRoadmapNode)),
+    [childNodes],
   );
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialFlowNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(
-    (childEdges || []).map((edge) => baseEdgeToFlowEdge(edge as BaseRoadmapEdge)),
+  const layoutNodes = useMemo(
+    () => buildLaneFlowNodesFromCanvas(normalizedChildNodes, childEdges as BaseRoadmapEdge[]),
+    [childEdges, normalizedChildNodes],
+  );
+  const edges = useMemo(
+    () => (childEdges || []).map((edge) => baseEdgeToFlowEdge(edge as BaseRoadmapEdge, normalizedChildNodes)),
+    [childEdges, normalizedChildNodes],
   );
   const contentRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const theme = useEditorTheme();
   const selectedNodeId = selectedCanvasNodeId;
 
-  useEffect(() => {
-    const nextFlowNodes = toLaneFlowNodes(childNodes, childEdges);
-    setNodes(nextFlowNodes);
-    setEdges((childEdges || []).map((edge) => baseEdgeToFlowEdge(edge as BaseRoadmapEdge)));
-  }, [childEdges, childNodes, setEdges, setNodes]);
-
-  const layoutNodes = useMemo(() => nodes.filter(isRoadmapFlowNode), [nodes]);
   const problemCountByNodeId = useMemo(
     () => buildRoadmapNodeProblemCountMap(layoutNodes, nodeCardsMap),
     [layoutNodes, nodeCardsMap],
@@ -96,6 +80,7 @@ export function BaseDetailEmbeddedRoadmapViewer({
   const viewNodes = useMemo(() => {
     const base = toRoadmapViewNodes(layoutNodes, selectedNodeId).map((node) => ({
       ...node,
+      draggable: false,
       data: {
         ...node.data,
         showProblemCountBadge: displaySettings.showProblemCount
@@ -151,8 +136,8 @@ export function BaseDetailEmbeddedRoadmapViewer({
     });
   }, [edges, matchedNodeIds, theme]);
   const selectedNode = useMemo(
-    () => nodes.find((node) => node.id === selectedNodeId) || null,
-    [nodes, selectedNodeId],
+    () => layoutNodes.find((node) => node.id === selectedNodeId) || null,
+    [layoutNodes, selectedNodeId],
   );
 
   const {
@@ -172,6 +157,9 @@ export function BaseDetailEmbeddedRoadmapViewer({
     canvasRef,
     canvasHeight,
   });
+
+  const noopNodesChange = useCallback(() => {}, []);
+  const noopEdgesChange = useCallback(() => {}, []);
 
   useEffect(() => {
     const contentDiv = contentRef.current;
@@ -244,8 +232,8 @@ export function BaseDetailEmbeddedRoadmapViewer({
               nodes={viewNodes}
               edges={viewEdges}
               nodeTypes={roadmapFlowNodeTypes}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
+              onNodesChange={noopNodesChange}
+              onEdgesChange={noopEdgesChange}
               onInit={onFlowInit}
               defaultViewport={viewport}
               onNodeClick={(_, node) => {

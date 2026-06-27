@@ -1,6 +1,73 @@
 import type { BaseNode, BaseEdge, Card, FileItem } from 'vj/components/base/types';
 import { i18n } from 'vj/utils';
 
+function readRoadmapCoord(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  return undefined;
+}
+
+/** DB edge ids from BaseModel.addEdge: edge_<msTimestamp>_<random> */
+export function isPersistedBaseEdgeId(edgeId: string): boolean {
+  return /^edge_\d{10,}_[a-z0-9]+$/i.test(edgeId);
+}
+
+/** Canvas-local edge ids not yet written to DB. */
+export function isTemporaryRoadmapCanvasEdgeId(edgeId: string): boolean {
+  if (!edgeId) return true;
+  if (edgeId.startsWith('temp-edge')) return true;
+  if (isPersistedBaseEdgeId(edgeId)) return false;
+  return edgeId.startsWith('edge_');
+}
+
+/** Resolve canvas layout coords like standalone /roadmap — always top-level x/y + data.posX/posY. */
+export function resolveRoadmapCanvasPersistCoords(node: BaseNode): {
+  x: number;
+  y: number;
+  data: Record<string, unknown>;
+} | null {
+  const data = { ...(node.data || {}) } as Record<string, unknown>;
+  if (!data.roadmapNodeType) return null;
+  const x = readRoadmapCoord(data.posX) ?? readRoadmapCoord(node.x);
+  const y = readRoadmapCoord(data.posY) ?? readRoadmapCoord(node.y);
+  if (x == null || y == null) return null;
+  return {
+    x,
+    y,
+    data: {
+      ...data,
+      posX: x,
+      posY: y,
+    },
+  };
+}
+
+export function normalizeRoadmapCanvasBaseNode(node: BaseNode): BaseNode {
+  const coords = resolveRoadmapCanvasPersistCoords(node);
+  if (!coords) return node;
+  return {
+    ...node,
+    x: coords.x,
+    y: coords.y,
+    data: coords.data,
+  };
+}
+
+function roadmapCanvasDataSnapshot(data?: Record<string, unknown>): string {
+  const keys = [
+    'posX', 'posY', 'lane', 'roadmapNodeType', 'nodeText', 'description',
+    'hookRoadmapDocId', 'hookRoadmapBranch', 'hookRoadmapTitle', 'hookRoadmapUrl',
+  ];
+  const source = data || {};
+  return keys.map((key) => `${key}:${String(source[key] ?? '')}`).join('|');
+}
+
+function roadmapCanvasDataEqual(
+  a?: Record<string, unknown>,
+  b?: Record<string, unknown>,
+): boolean {
+  return roadmapCanvasDataSnapshot(a) === roadmapCanvasDataSnapshot(b);
+}
+
 export function findCardOwnerNodeId(
   nodeCardsMap: Record<string, Card[]>,
   cardId: string,
@@ -90,14 +157,14 @@ export function mergeRoadmapCanvasIntoBase(
     .map((n) => {
       if (!childIds.has(n.id) && !updatedNodeIds.has(n.id)) return n;
       const match = updatedNodes.find((u) => u.id === n.id);
-      return match ? { ...n, ...match } : n;
+      return match ? normalizeRoadmapCanvasBaseNode({ ...n, ...match }) : n;
     })
     .filter((n) => {
       if (!childIds.has(n.id)) return true;
       return updatedNodeIds.has(n.id);
     });
 
-  const added = updatedNodes.filter((n) => !childIds.has(n.id));
+  const added = updatedNodes.filter((n) => !childIds.has(n.id)).map(normalizeRoadmapCanvasBaseNode);
   const deadIds = [...childIds].filter((id) => !updatedNodeIds.has(id));
 
   if (!added.length && !deadIds.length) {
@@ -109,14 +176,17 @@ export function mergeRoadmapCanvasIntoBase(
         nodesSame = false;
         break;
       }
-      const beforeData = before.data as { posX?: number; posY?: number; lane?: number; roadmapNodeType?: string } | undefined;
-      const afterData = after.data as { posX?: number; posY?: number; lane?: number; roadmapNodeType?: string } | undefined;
+      const beforeData = before.data as Record<string, unknown> | undefined;
+      const afterData = after.data as Record<string, unknown> | undefined;
       if (
         before.text !== after.text
+        || before.x !== after.x
+        || before.y !== after.y
         || beforeData?.posX !== afterData?.posX
         || beforeData?.posY !== afterData?.posY
         || beforeData?.lane !== afterData?.lane
         || beforeData?.roadmapNodeType !== afterData?.roadmapNodeType
+        || !roadmapCanvasDataEqual(beforeData, afterData)
       ) {
         nodesSame = false;
         break;
@@ -199,7 +269,7 @@ export function collectRoadmapCanvasBatchSaveExtras(base: {
   }> = [];
   for (const edge of base.edges) {
     if (!isRoadmapCanvasInternalEdge(edge, childIds)) continue;
-    if (edge.id && !edge.id.startsWith('temp-edge') && !edge.id.startsWith('edge_')) continue;
+    if (!edge.id || isPersistedBaseEdgeId(edge.id)) continue;
     const typedEdge = edge as BaseEdge & {
       label?: string;
       lineStyle?: string;
@@ -229,20 +299,14 @@ function buildRoadmapChildNodeUpdate(
 ): { nodeId: string; text?: string; x?: number; y?: number; data?: Record<string, unknown> } | null {
   const node = base.nodes.find((n) => n.id === nodeId);
   if (!node) return null;
-  const data = (node.data || {}) as Record<string, unknown>;
-  if (!data.roadmapNodeType) return null;
-  const x = typeof node.x === 'number' ? node.x : (data.posX as number | undefined);
-  const y = typeof node.y === 'number' ? node.y : (data.posY as number | undefined);
+  const coords = resolveRoadmapCanvasPersistCoords(node);
+  if (!coords) return null;
   return {
     nodeId,
     text: node.text,
-    ...(x != null ? { x } : {}),
-    ...(y != null ? { y } : {}),
-    data: {
-      ...data,
-      ...(x != null ? { posX: x } : {}),
-      ...(y != null ? { posY: y } : {}),
-    },
+    x: coords.x,
+    y: coords.y,
+    data: coords.data,
   };
 }
 
@@ -278,7 +342,7 @@ export function collectRoadmapEdgeUpdates(
   }> = [];
 
   for (const edgeId of pendingEdgeIds) {
-    if (!edgeId || edgeId.startsWith('temp-edge-tree-') || edgeId.startsWith('edge_')) continue;
+    if (!edgeId || edgeId.startsWith('temp-edge-tree-') || !isPersistedBaseEdgeId(edgeId)) continue;
     const edge = base.edges.find((item) => item.id === edgeId);
     if (!edge) continue;
     const typedEdge = edge as BaseEdge & {
@@ -313,18 +377,14 @@ export function roadmapNodeCreatePayloadFromBase(node: BaseNode | undefined): {
   data?: Record<string, unknown>;
 } {
   if (!node) return {};
-  const data = (node.data || {}) as Record<string, unknown>;
-  const x = typeof node.x === 'number' ? node.x : (data.posX as number | undefined);
-  const y = typeof node.y === 'number' ? node.y : (data.posY as number | undefined);
-  const payload: { x?: number; y?: number; data?: Record<string, unknown> } = {};
-  if (x != null) payload.x = x;
-  if (y != null) payload.y = y;
-  if (Object.keys(data).length > 0) {
-    payload.data = {
-      ...data,
-      ...(x != null ? { posX: x } : {}),
-      ...(y != null ? { posY: y } : {}),
-    };
+  const coords = resolveRoadmapCanvasPersistCoords(node);
+  if (!coords) {
+    const data = (node.data || {}) as Record<string, unknown>;
+    return Object.keys(data).length > 0 ? { data } : {};
   }
-  return payload;
+  return {
+    x: coords.x,
+    y: coords.y,
+    data: coords.data,
+  };
 }

@@ -12,20 +12,16 @@ import {
   toRoadmapViewEdges,
   toRoadmapViewNodes,
   useRoadmapScrollLayout,
+  buildLaneFlowNodesFromCanvas,
 } from 'vj/components/roadmap/flow_shared';
 import { useEditorTheme } from 'vj/components/editor_workspace';
-import { alignNodesInSolidComponents } from 'vj/components/roadmap/solid_links';
-import {
-  getNodeLane,
-  isRoadmapFlowNode,
-  snapNodeToLane,
-} from 'vj/components/roadmap/lanes';
+import { isRoadmapFlowNode } from 'vj/components/roadmap/lanes';
 import {
   baseEdgeToFlowEdge,
-  baseNodeToFlowNode,
   getRoadmapDocFromContext,
   getRoadmapQueryContext,
   normalizeRoadmapDoc,
+  normalizeRoadmapCanvasNode,
   roadmapApiPath,
   RoadmapDoc,
 } from 'vj/components/roadmap/shared';
@@ -63,22 +59,30 @@ function toLaneFlowNodes(
   baseNodes: ReturnType<typeof normalizeRoadmapDoc>['nodes'],
   baseEdges: ReturnType<typeof normalizeRoadmapDoc>['edges'],
 ) {
-  const flowEdges = (baseEdges || []).map(baseEdgeToFlowEdge);
-  const flowNodes = (baseNodes || []).map((node, index) => {
-    const flowNode = baseNodeToFlowNode(node, index);
-    return snapNodeToLane(flowNode, getNodeLane(flowNode));
-  });
-  return alignNodesInSolidComponents(flowNodes, flowEdges);
+  const normalizedNodes = (baseNodes || []).map((node) => normalizeRoadmapCanvasNode(node));
+  return {
+    flowNodes: buildLaneFlowNodesFromCanvas(normalizedNodes, baseEdges || []),
+    normalizedNodes,
+  };
 }
 
 function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; mount: HTMLElement }) {
   const context = useMemo(() => getRoadmapQueryContext(mount), [mount]);
   const [doc, setDoc] = useState(() => normalizeRoadmapDoc(initialDoc));
-  const initialFlowNodes = useMemo(() => toLaneFlowNodes(doc.nodes, doc.edges), [doc.nodes, doc.edges]);
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialFlowNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState((doc.edges || []).map(baseEdgeToFlowEdge));
+  const normalizedDocNodes = useMemo(
+    () => (doc.nodes || []).map((node) => normalizeRoadmapCanvasNode(node)),
+    [doc.nodes],
+  );
+  const initialLaneLayout = useMemo(
+    () => toLaneFlowNodes(doc.nodes, doc.edges),
+    [doc.edges, doc.nodes],
+  );
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialLaneLayout.flowNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(
+    (doc.edges || []).map((edge) => baseEdgeToFlowEdge(edge, normalizedDocNodes)),
+  );
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(
-    () => initialRoadmapSelectedNodeId(initialFlowNodes.map((node) => node.id)),
+    () => initialRoadmapSelectedNodeId(initialLaneLayout.flowNodes.map((node) => node.id)),
   );
   const [aiTutorOpen, setAiTutorOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -197,11 +201,11 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
           (window as any).UiContext.nodeCardsMap = nextMap;
           setNodeCardsMap(nextMap);
         }
-        const nextFlowNodes = toLaneFlowNodes(next.nodes, next.edges);
-        setNodes(nextFlowNodes);
-        setEdges((next.edges || []).map(baseEdgeToFlowEdge));
+        const nextLayout = toLaneFlowNodes(next.nodes, next.edges);
+        setNodes(nextLayout.flowNodes);
+        setEdges((next.edges || []).map((edge) => baseEdgeToFlowEdge(edge, nextLayout.normalizedNodes)));
         setSelectedNodeId(initialRoadmapSelectedNodeId(
-          nextFlowNodes.filter(isRoadmapFlowNode).map((node) => node.id),
+          nextLayout.flowNodes.filter(isRoadmapFlowNode).map((node) => node.id),
         ));
       })
       .catch((err) => Notification.error(err.message || i18n('Roadmap load failed')));

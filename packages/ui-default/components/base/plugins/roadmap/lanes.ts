@@ -49,6 +49,12 @@ export function getRoadmapNodeWidth(node: Node): number {
   return LANE_NODE_WIDTH;
 }
 
+/** Lane snap uses persisted width only — ignore React Flow measured sizes. */
+export function getSnapLaneNodeWidth(node: Node): number {
+  if (typeof node.width === 'number' && node.width > 0) return node.width;
+  return LANE_NODE_WIDTH;
+}
+
 export function nearestLaneFromX(x: number): RoadmapLane {
   let best: RoadmapLane = 1;
   let min = Infinity;
@@ -74,7 +80,7 @@ export function isRoadmapFlowNode(node: Node): boolean {
 
 export function snapNodeToLane(node: Node, lane?: RoadmapLane): Node {
   const resolvedLane = lane ?? getNodeLane(node);
-  const nodeWidth = getRoadmapNodeWidth(node);
+  const nodeWidth = getSnapLaneNodeWidth(node);
   return {
     ...node,
     position: {

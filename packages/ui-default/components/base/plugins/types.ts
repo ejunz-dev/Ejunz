@@ -48,6 +48,11 @@ export interface RoadmapPluginApi {
   /** Canvas edge mutation API (filled while roadmap canvas is mounted). */
   roadmapCanvasEdgeApiRef: React.MutableRefObject<RoadmapCanvasEdgeEditorApi | null>;
 
+  /** Resolve canvas card kind (canvas state → pending → base). */
+  resolveRoadmapCanvasNodeType: (nodeId: string) => string | undefined;
+  /** Read live canvas node data for hook/text editors. */
+  getRoadmapCanvasNodeData: (nodeId: string) => Record<string, unknown>;
+
   /** Extra context-menu items for roadmap nodes (shown under normal items). */
   NodeContextMenuExtra: React.ComponentType<NodeCtxMenuExtraProps>;
 
@@ -62,7 +67,9 @@ export interface RoadmapCanvasEdgeEditorApi {
   deleteEdge: (edgeId: string) => void;
   getEdge: (edgeId: string) => (BaseEdge & { lineStyle?: string; label?: string; style?: Record<string, unknown> }) | null;
   updateCardTitle: (nodeId: string, title: string) => void;
+  updateNodeData: (nodeId: string, patch: Record<string, unknown>) => void;
   getCardNodeType: (nodeId: string) => string | undefined;
+  getNodeData: (nodeId: string) => Record<string, unknown>;
 }
 
 export interface ExplorerContentProps {
@@ -71,6 +78,7 @@ export interface ExplorerContentProps {
   selectedCanvasNodeId: string | null;
   themeStyles: Record<string, string>;
   onSelectFile: (file: FileItem) => void;
+  onClearFileSelection: () => void;
   displaySettings: {
     showProblemCount: boolean;
     showNodeNumber: boolean;
@@ -117,4 +125,5 @@ export interface RoadmapPluginDeps {
   setRightPanelOpen: React.Dispatch<React.SetStateAction<boolean>>;
   isPluginEditor: boolean;
   onSelectFileRef: React.MutableRefObject<(file: FileItem, skipUrlUpdate?: boolean) => void>;
+  onClearFileSelectionRef: React.MutableRefObject<() => void>;
 }
