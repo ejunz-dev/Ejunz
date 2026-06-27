@@ -5,11 +5,20 @@ import { NamedPage } from 'vj/misc/Page';
 import { i18n } from 'vj/utils';
 import type { BaseDoc, Card } from 'vj/components/base/types';
 import { BaseDetailCardDrawer } from 'vj/components/base/BaseDetailCardDrawer';
+import { BaseDetailExplorer } from 'vj/components/base/BaseDetailExplorer';
 import { BaseDetailHeader } from 'vj/components/base/BaseDetailHeader';
 import { BaseDetailEmbeddedRoadmapViewer } from 'vj/components/base/BaseDetailEmbeddedRoadmapViewer';
 import { BaseDetailNodeContent } from 'vj/components/base/BaseDetailNodeContent';
 import { BaseDetailTreeDrawer } from 'vj/components/base/BaseDetailSidebar';
 import { cardDisplayLabel, getRoadmapChildGraph, nodeDisplayLabel } from 'vj/components/base/detail_tree';
+import {
+  computeBaseDetailTreeSearchVisibility,
+  computeBaseDetailTreeVisibility,
+  emptyBaseDetailFilter,
+  mergeBaseDetailTreeVisibility,
+  readBaseDetailFilterFromLocation,
+  type BaseDetailFilter,
+} from 'vj/components/base/detail_tree_filter';
 
 type BaseDetailContext = {
   domainId?: string;
@@ -46,6 +55,8 @@ function BaseDetailViewer() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedCanvasNodeLabel, setSelectedCanvasNodeLabel] = useState<string | null>(null);
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
+  const [detailFilters, setDetailFilters] = useState<BaseDetailFilter>(() => readBaseDetailFilterFromLocation());
+  const [treeSearchQuery, setTreeSearchQuery] = useState('');
   const title = base.title?.trim() || String(i18n('Knowledge Base'));
   const branch = base.currentBranch || 'main';
   const nodes = base.nodes || [];
@@ -56,16 +67,41 @@ function BaseDetailViewer() {
     [nodes, selectedNodeId],
   );
   const isRoadmapSelection = selectedNode?.type === 'roadmap';
+  const contentTreeRootId = selectedNode && !isRoadmapSelection ? selectedNode.id : null;
+
   const selectedRoadmapGraph = useMemo(() => {
     if (!selectedNodeId || !isRoadmapSelection) return { childNodes: [], childEdges: [] };
     return getRoadmapChildGraph(selectedNodeId, nodes, edges);
   }, [edges, isRoadmapSelection, nodes, selectedNodeId]);
 
-  const handleSelectNode = useCallback((nodeId: string) => {
+  const contentTreeVisibility = useMemo(() => {
+    if (!contentTreeRootId) return null;
+    const scope = [contentTreeRootId];
+    const filterVisibility = computeBaseDetailTreeVisibility(
+      nodes,
+      edges,
+      nodeCardsMap,
+      detailFilters,
+      scope,
+    );
+    const searchVisibility = computeBaseDetailTreeSearchVisibility(
+      nodes,
+      edges,
+      nodeCardsMap,
+      treeSearchQuery,
+      scope,
+    );
+    return mergeBaseDetailTreeVisibility(filterVisibility, searchVisibility);
+  }, [contentTreeRootId, detailFilters, edges, nodeCardsMap, nodes, treeSearchQuery]);
+
+  const handleSelectNode = useCallback((nodeId: string, keepTreeDrawerOpen = false) => {
     setSelectedNodeId(nodeId);
     setSelectedCanvasNodeLabel(null);
     setSelectedCard(null);
-    setTreeDrawerOpen(false);
+    setTreeSearchQuery('');
+    if (!keepTreeDrawerOpen) {
+      setTreeDrawerOpen(false);
+    }
   }, []);
 
   const handleSelectCard = useCallback((card: Card) => {
@@ -115,6 +151,16 @@ function BaseDetailViewer() {
         treeDrawerOpen={treeDrawerOpen}
         onTreeDrawerOpen={() => setTreeDrawerOpen(true)}
       />
+      {contentTreeRootId ? (
+        <BaseDetailExplorer
+          searchQuery={treeSearchQuery}
+          filters={detailFilters}
+          matchedCount={contentTreeVisibility?.matchCount ?? 0}
+          onSearchQueryChange={setTreeSearchQuery}
+          onApplyFilters={setDetailFilters}
+          onClearFilters={() => setDetailFilters(emptyBaseDetailFilter())}
+        />
+      ) : null}
       <div className="roadmap-view">
         {selectedNode && isRoadmapSelection ? (
           <div className="base-detail-roadmap-panel">
@@ -133,6 +179,7 @@ function BaseDetailViewer() {
               edges={edges}
               nodeCardsMap={nodeCardsMap}
               selectedCardId={selectedCard?.docId || null}
+              treeVisibility={contentTreeVisibility}
               onSelectCard={handleSelectCard}
             />
           </main>
