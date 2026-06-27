@@ -67,6 +67,7 @@ function TreeBranch({
   expandedNodes,
   selectedNodeId,
   selectedCardId,
+  nodesClickable,
   onToggleNode,
   onSelectNode,
   onSelectCard,
@@ -79,6 +80,7 @@ function TreeBranch({
   expandedNodes: Set<string>;
   selectedNodeId?: string | null;
   selectedCardId?: string | null;
+  nodesClickable?: boolean;
   onToggleNode: (nodeId: string) => void;
   onSelectNode?: (nodeId: string) => void;
   onSelectCard?: (card: Card) => void;
@@ -90,12 +92,22 @@ function TreeBranch({
   const expanded = expandedNodes.has(nodeId);
   const children = isRoadmapNode ? [] : getMixedNodeChildren(nodeId, nodes, edges, nodeCardsMap);
   const hasChildren = children.length > 0;
-  const isSelected = selectedNodeId === nodeId;
+  const isSelected = nodesClickable !== false && selectedNodeId === nodeId;
+  const nodeLabel = (
+    <>
+      <span className="base-detail-tree__icon">
+        {isRoadmapNode ? <RoadmapIcon /> : <NodeIcon />}
+      </span>
+      <span className="base-detail-tree__label" title={nodeDisplayLabel(node)}>
+        {nodeDisplayLabel(node)}
+      </span>
+    </>
+  );
 
   return (
     <div className="base-detail-tree__branch">
       <div
-        className={`base-detail-tree__row base-detail-tree__row--node${isRoadmapNode ? ' is-roadmap' : ''}${isSelected ? ' is-selected' : ''}`}
+        className={`base-detail-tree__row base-detail-tree__row--node${isRoadmapNode ? ' is-roadmap' : ''}${isSelected ? ' is-selected' : ''}${nodesClickable === false ? ' is-static' : ''}`}
         style={{ paddingLeft: `${level * 16}px` }}
       >
         {hasChildren ? (
@@ -111,18 +123,19 @@ function TreeBranch({
         ) : (
           <span className="base-detail-tree__toggle-spacer" aria-hidden />
         )}
-        <button
-          type="button"
-          className="base-detail-tree__row-main"
-          onClick={() => onSelectNode?.(nodeId)}
-        >
-          <span className="base-detail-tree__icon">
-            {isRoadmapNode ? <RoadmapIcon /> : <NodeIcon />}
+        {nodesClickable !== false ? (
+          <button
+            type="button"
+            className="base-detail-tree__row-main"
+            onClick={() => onSelectNode?.(nodeId)}
+          >
+            {nodeLabel}
+          </button>
+        ) : (
+          <span className="base-detail-tree__row-main base-detail-tree__row-main--static">
+            {nodeLabel}
           </span>
-          <span className="base-detail-tree__label" title={nodeDisplayLabel(node)}>
-            {nodeDisplayLabel(node)}
-          </span>
-        </button>
+        )}
       </div>
 
       {expanded && hasChildren ? (
@@ -140,6 +153,7 @@ function TreeBranch({
                   expandedNodes={expandedNodes}
                   selectedNodeId={selectedNodeId}
                   selectedCardId={selectedCardId}
+                  nodesClickable={nodesClickable}
                   onToggleNode={onToggleNode}
                   onSelectNode={onSelectNode}
                   onSelectCard={onSelectCard}
@@ -185,6 +199,7 @@ export function BaseDetailTree({
   selectedCardId,
   initialExpandedNodeIds,
   emptyMessage,
+  nodesClickable = true,
   onSelectNode,
   onSelectCard,
 }: {
@@ -196,6 +211,7 @@ export function BaseDetailTree({
   selectedCardId?: string | null;
   initialExpandedNodeIds?: string[];
   emptyMessage?: string;
+  nodesClickable?: boolean;
   onSelectNode?: (nodeId: string) => void;
   onSelectCard?: (card: Card) => void;
 }) {
@@ -239,6 +255,7 @@ export function BaseDetailTree({
           expandedNodes={expandedNodes}
           selectedNodeId={selectedNodeId}
           selectedCardId={selectedCardId}
+          nodesClickable={nodesClickable}
           onToggleNode={onToggleNode}
           onSelectNode={onSelectNode}
           onSelectCard={onSelectCard}

@@ -6,6 +6,7 @@ import type { Problem } from 'ejun/src/interface';
 import { RoadmapDrawerProblemList } from '../roadmap/RoadmapDrawerProblemList';
 import type { Card } from './types';
 import { cardDisplayLabel } from './detail_tree';
+import { useDrawerTransition } from './useDrawerTransition';
 
 type DrawerTab = 'content' | 'problems';
 
@@ -20,28 +21,32 @@ export function BaseDetailCardDrawer({
 }) {
   const [tab, setTab] = useState<DrawerTab>('content');
   const contentRef = useRef<HTMLDivElement>(null);
-  const title = card ? cardDisplayLabel(card) : '';
+  const lastCardRef = useRef<Card | null>(null);
+  const { visible, closing } = useDrawerTransition(open);
+  if (card) lastCardRef.current = card;
+  const displayCard = card || lastCardRef.current;
+  const title = displayCard ? cardDisplayLabel(displayCard) : '';
   const problems = useMemo(
-    () => (card?.problems || []) as Problem[],
-    [card?.docId, card?.problems],
+    () => (displayCard?.problems || []) as Problem[],
+    [displayCard?.docId, displayCard?.problems],
   );
   const hasProblems = problems.length > 0;
 
   useEffect(() => {
-    if (!open || !card) return undefined;
+    if (!visible || closing || !displayCard) return undefined;
     setTab('content');
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [card, open, onClose]);
+  }, [closing, displayCard, onClose, visible]);
 
   useEffect(() => {
     const container = contentRef.current;
-    if (!open || !card || !container) return undefined;
+    if (!visible || closing || !displayCard || !container) return undefined;
 
-    const markdown = String(card.content || '').trim();
+    const markdown = String(displayCard.content || '').trim();
     if (!markdown) {
       container.innerHTML = `<p>${i18n('Base detail card empty')}</p>`;
       return undefined;
@@ -72,19 +77,19 @@ export function BaseDetailCardDrawer({
     return () => {
       cancelled = true;
     };
-  }, [card?.content, card?.docId, open]);
+  }, [displayCard?.content, displayCard?.docId, closing, visible]);
 
-  if (!open || !card) return null;
+  if (!visible || !displayCard) return null;
 
   return ReactDOM.createPortal(
     <>
       <button
         type="button"
-        className="roadmap-detail-backdrop"
+        className={`roadmap-detail-backdrop roadmap-detail-drawer-backdrop${closing ? ' is-closing' : ''}`}
         onClick={onClose}
         aria-label={i18n('Close')}
       />
-      <aside className="roadmap-detail-drawer" aria-label={title}>
+      <aside className={`roadmap-detail-drawer${closing ? ' is-closing' : ''}`} aria-label={title}>
         <div className="roadmap-detail-drawer__header">
           <div className="roadmap-detail-drawer__tabs" role="tablist" aria-label={title}>
             <button
@@ -140,7 +145,7 @@ export function BaseDetailCardDrawer({
               <h1 className="roadmap-detail-drawer__title">{title}</h1>
               <RoadmapDrawerProblemList
                 problems={problems}
-                resetKey={`${card.docId}:${open}`}
+                resetKey={`${displayCard.docId}:${visible}`}
               />
             </div>
           ) : null}
