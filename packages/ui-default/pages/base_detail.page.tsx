@@ -14,6 +14,7 @@ import { BaseDetailNodeContent } from 'vj/components/base/BaseDetailNodeContent'
 import { BaseDetailTreeDrawer } from 'vj/components/base/BaseDetailSidebar';
 import { RoadmapDetailSettingsPanel } from 'vj/components/roadmap/RoadmapDetailSettingsPanel';
 import { cardDisplayLabel, getRoadmapChildGraph, nodeDisplayLabel, collectNodePathFromRoot, findCardHostNodeId, findRoadmapContainerAncestor, getPrimaryCardForNode, isRoadmapCanvasNodeId } from 'vj/components/base/detail_tree';
+import { isTypoImagePreviewOverlay } from 'vj/components/base/typo_image_preview';
 import {
   initialBaseDetailSelectedNodeId,
   useBaseDetailUrlSync,
@@ -266,6 +267,7 @@ function BaseDetailViewer() {
       if (target.closest('.roadmap-detail-drawer')) return;
       if (target.closest('.roadmap-ai-tutor-modal')) return;
       if (target.closest('.roadmap-ai-tutor-bar')) return;
+      if (isTypoImagePreviewOverlay(target)) return;
       handleCloseCardDrawer();
     };
     document.addEventListener('pointerdown', onPointerDown);

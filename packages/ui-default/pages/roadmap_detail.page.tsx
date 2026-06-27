@@ -35,6 +35,7 @@ import {
   useRoadmapNodeUrlSync,
 } from 'vj/components/roadmap/url_sync';
 import { RoadmapNodeDrawer } from 'vj/components/roadmap/RoadmapNodeDrawer';
+import { attachTypoImagePreviewHandlers, isTypoImagePreviewOverlay } from 'vj/components/base/typo_image_preview';
 import { RoadmapDetailHeader } from 'vj/components/roadmap/RoadmapDetailHeader';
 import { RoadmapAiTutor } from 'vj/components/roadmap/RoadmapAiTutor';
 import { RoadmapDetailExplorer } from 'vj/components/roadmap/RoadmapDetailExplorer';
@@ -232,6 +233,7 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
         if (cancelled) return;
         contentDiv.innerHTML = html;
         $(contentDiv).trigger('vjContentNew');
+        attachTypoImagePreviewHandlers(contentDiv);
       })
       .catch(() => {
         if (cancelled) return;
@@ -255,6 +257,7 @@ function RoadmapFlowViewer({ initialDoc, mount }: { initialDoc: RoadmapDoc; moun
       if (target.closest('.roadmap-detail-explorer__dialog')) return;
       if (target.closest('.roadmap-detail-settings__dialog')) return;
       if (target.closest('.react-flow__node')) return;
+      if (isTypoImagePreviewOverlay(target)) return;
       setSelectedNodeId(null);
     };
     document.addEventListener('pointerdown', onPointerDown);

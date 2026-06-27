@@ -8,6 +8,7 @@ import { RoadmapDrawerProblemList } from '../roadmap/RoadmapDrawerProblemList';
 import type { Card } from './types';
 import { cardDisplayLabel } from './detail_tree';
 import { useDrawerTransition } from './useDrawerTransition';
+import { attachTypoImagePreviewHandlers } from './typo_image_preview';
 
 type DrawerTab = 'content' | 'problems';
 
@@ -109,6 +110,7 @@ export function BaseDetailCardDrawer({
         if (cancelled || !contentRef.current) return;
         contentRef.current.innerHTML = html;
         $(contentRef.current).trigger('vjContentNew');
+        attachTypoImagePreviewHandlers(contentRef.current);
       })
       .catch(() => {
         if (cancelled || !contentRef.current) return;
