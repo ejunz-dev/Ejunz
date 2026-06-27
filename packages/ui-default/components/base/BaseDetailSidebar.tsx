@@ -4,6 +4,7 @@ import { i18n } from 'vj/utils';
 import type { BaseEdge, BaseNode, Card } from './types';
 import { BaseDetailTree } from './BaseDetailTree';
 import { collectDefaultExpandedNodeIds, getRootNodeIds } from './detail_tree';
+import { useDrawerTransition } from './useDrawerTransition';
 
 export function BaseDetailTreeDrawer({
   open,
@@ -36,28 +37,29 @@ export function BaseDetailTreeDrawer({
     () => Object.values(nodeCardsMap).reduce((sum, cards) => sum + cards.length, 0),
     [nodeCardsMap],
   );
+  const { visible, closing } = useDrawerTransition(open);
 
   React.useEffect(() => {
-    if (!open) return undefined;
+    if (!visible || closing) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open, onClose]);
+  }, [closing, onClose, visible]);
 
-  if (!open) return null;
+  if (!visible) return null;
 
   return ReactDOM.createPortal(
     <>
       <button
         type="button"
-        className="roadmap-detail-backdrop base-detail-tree-backdrop"
+        className={`roadmap-detail-backdrop base-detail-tree-backdrop${closing ? ' is-closing' : ''}`}
         onClick={onClose}
         aria-label={i18n('Close')}
       />
       <aside
-        className="roadmap-detail-drawer roadmap-detail-drawer--left"
+        className={`roadmap-detail-drawer roadmap-detail-drawer--left${closing ? ' is-closing' : ''}`}
         aria-label={String(i18n('Document Structure'))}
         onClick={(e) => e.stopPropagation()}
       >

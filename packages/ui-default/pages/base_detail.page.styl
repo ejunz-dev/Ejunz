@@ -102,15 +102,50 @@
   box-shadow: 12px 0 40px rgba(0, 0, 0, 0.14)
   animation: base-detail-drawer-slide-in-left 0.24s ease
 
+  &.is-closing
+    animation: base-detail-drawer-slide-out-left 0.24s ease forwards
+
 .page--base_detail .base-detail-tree-backdrop
   pointer-events: auto
   cursor: pointer
+  animation: roadmap-detail-fade-in 0.2s ease
+
+  &.is-closing
+    animation: base-detail-drawer-fade-out 0.24s ease forwards
+
+.page--base_detail .roadmap-detail-drawer:not(.roadmap-detail-drawer--left)
+  &.is-closing
+    animation: base-detail-drawer-slide-out-right 0.24s ease forwards
+
+.page--base_detail button.roadmap-detail-backdrop.roadmap-detail-drawer-backdrop
+  animation: roadmap-detail-fade-in 0.2s ease
+
+  &.is-closing
+    animation: base-detail-drawer-fade-out 0.24s ease forwards
 
 @keyframes base-detail-drawer-slide-in-left
   from
     transform: translateX(-100%)
   to
     transform: translateX(0)
+
+@keyframes base-detail-drawer-slide-out-left
+  from
+    transform: translateX(0)
+  to
+    transform: translateX(-100%)
+
+@keyframes base-detail-drawer-slide-out-right
+  from
+    transform: translateX(0)
+  to
+    transform: translateX(100%)
+
+@keyframes base-detail-drawer-fade-out
+  from
+    opacity: 1
+  to
+    opacity: 0
 
 .base-detail-main
   flex: 1
@@ -170,8 +205,11 @@
       .base-detail-tree__label
         color: var(--roadmap-accent)
 
-    &:hover:not(.is-selected)
+    &:hover:not(.is-selected):not(.is-static)
       background: rgba(65, 53, 214, 0.06)
+
+    &.is-static
+      cursor: default
 
   &--card
     font-weight: 400
@@ -205,6 +243,10 @@
   font-size: inherit
   font-weight: inherit
   color: inherit
+
+  &--static
+    cursor: default
+    pointer-events: none
 
 .base-detail-tree__toggle
   display: inline-flex
