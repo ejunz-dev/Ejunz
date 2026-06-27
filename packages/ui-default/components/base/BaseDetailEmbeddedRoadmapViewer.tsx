@@ -27,7 +27,7 @@ import {
   buildRoadmapNodeProblemCountMap,
   type RoadmapDetailDisplaySettings,
 } from 'vj/components/roadmap/detail_display_settings';
-import { computeRoadmapNodeNumbers } from 'vj/components/roadmap/node_numbering';
+import { computeRoadmapNodeNumbers } from './plugins/roadmap/node_numbering';
 import { isHookNodeType, isTextNodeType, supportsRoadmapPracticeProblems } from 'vj/components/roadmap/node_kinds';
 import type { BaseEdge, BaseNode, Card } from './types';
 

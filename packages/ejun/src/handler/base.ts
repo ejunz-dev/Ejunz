@@ -72,6 +72,7 @@ import {
     normalizeProblemTagInput,
     LearnProblemNoteModel,
 } from '../model/problem';
+import { collectRoadmapBatchSaveNumberErrors } from '../model/roadmap';
 
 type LearnProblemNotesBatchBlock = {
     pid: string;
@@ -4984,7 +4985,20 @@ export class BaseBatchSaveHandler extends Handler {
         return true;
     }
 
-    protected async beforeBatchApply(_ctx: { domainId: string; docId: number; branch: string; base: BaseDoc; mapDocType: MindMapDocType; data: any }): Promise<{ success: true } | { success: false; code?: string; errors: string[]; details?: any }> {
+    protected async beforeBatchApply(ctx: { domainId: string; docId: number; branch: string; base: BaseDoc; mapDocType: MindMapDocType; data: any }): Promise<{ success: true } | { success: false; code?: string; errors: string[]; details?: any }> {
+        const data = ctx.data || {};
+        const numberErrors = collectRoadmapBatchSaveNumberErrors(ctx.base, ctx.branch, {
+            nodeCreates: data.nodeCreates,
+            nodeUpdates: data.nodeUpdates,
+            nodeDeletes: data.nodeDeletes,
+        });
+        if (numberErrors.length) {
+            return {
+                success: false,
+                code: 'ROADMAP_NODE_NUMBER_INVALID',
+                errors: numberErrors,
+            };
+        }
         return { success: true };
     }
 

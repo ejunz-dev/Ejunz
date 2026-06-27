@@ -64,7 +64,10 @@ import {
   buildRoadmapNodeProblemCountMap,
   type RoadmapDetailDisplaySettings,
 } from './detail_display_settings';
-import { computeRoadmapNodeNumbers } from './node_numbering';
+import {
+  computeRoadmapNodeNumbers,
+  withDefaultRoadmapNodeNumber,
+} from './node_numbering';
 import { supportsRoadmapPracticeProblems } from './node_kinds';
 import type { BaseNode, BaseEdge } from 'vj/components/base/types';
 import type { RoadmapCanvasEdgeEditorApi } from '../types';
@@ -444,6 +447,9 @@ function RoadmapCanvasContent({
     (flowPosition?: { x: number; y: number }, kind: RoadmapCanvasKind = 'sub') => {
       const id = newCardId();
       const lane = flowPosition ? nearestLaneFromX(flowPosition.x) : 1;
+      const nodeNumber = (kind === 'main' || kind === 'sub')
+        ? withDefaultRoadmapNodeNumber(nodes, edges, kind, id)
+        : undefined;
       const card: Node = {
         id,
         type: 'roadmap',
@@ -455,6 +461,7 @@ function RoadmapCanvasContent({
           label: kind === 'text' ? '' : roadmapUntitledCardLabel(),
           lane,
           ...defaultNodeDataForKind(kind),
+          ...(nodeNumber ? { nodeNumber } : {}),
         },
       };
       setNodes((current) => {
@@ -465,7 +472,7 @@ function RoadmapCanvasContent({
       onSelectNode(id);
       onSelectEdge(null);
     },
-    [edges, setNodes, onSelectNode, onSelectEdge, scheduleFlowSync],
+    [edges, nodes, setNodes, onSelectNode, onSelectEdge, scheduleFlowSync],
   );
 
   const addAdjacentCard = useCallback(
@@ -478,6 +485,9 @@ function RoadmapCanvasContent({
       const pos = { ...placement.position };
       if (direction === 'bottom') pos.y = placementYForBottom(nodes, placement.lane, pos.y);
       else if (direction === 'top') pos.y = placementYForTop(nodes, placement.lane, pos.y);
+      const nodeNumber = (kind === 'main' || kind === 'sub')
+        ? withDefaultRoadmapNodeNumber(nodes, edges, kind, sourceCardId)
+        : undefined;
       const newCard: Node = {
         id: newId,
         type: 'roadmap',
@@ -486,6 +496,7 @@ function RoadmapCanvasContent({
           label: kind === 'text' ? '' : roadmapUntitledCardLabel(),
           lane: placement.lane,
           ...defaultNodeDataForKind(kind),
+          ...(nodeNumber ? { nodeNumber } : {}),
         },
       };
       const sourceId = placement.sourceId || newId;
