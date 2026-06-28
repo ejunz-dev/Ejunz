@@ -2,14 +2,14 @@ import { _, ObjectId, Filter } from '../libs';
 import * as document from './document';
 import { buildProjection } from '../utils';
 import type { Context } from '../context';
-import type { BaseDoc, BaseNode, BaseEdge, CardDoc, BaseHistoryEntry, PluginDoc, RoadmapDoc } from '../interface';
+import type { BaseDoc, BaseNode, BaseEdge, CardDoc, BaseHistoryEntry, PluginDoc } from '../interface';
 import db from '../service/db';
 import { Collection } from 'mongodb';
 
 export const TYPE_CARD: 71 = 71;
 
-export type MindMapDocType = typeof document.TYPE_BASE | typeof document.TYPE_PLUGIN | typeof document.TYPE_ROADMAP;
-export type MindMapDoc = BaseDoc | PluginDoc | RoadmapDoc;
+export type MindMapDocType = typeof document.TYPE_BASE | typeof document.TYPE_PLUGIN;
+export type MindMapDoc = BaseDoc | PluginDoc;
 
 export class BaseModel {
     private static getRootNodeId(nodes: BaseNode[] = [], edges: BaseEdge[] = []): string | null {
@@ -81,7 +81,6 @@ export class BaseModel {
             domainId,
             title: title || (
                 mapDocType === document.TYPE_PLUGIN ? '未命名插件'
-                    : mapDocType === document.TYPE_ROADMAP ? 'Roadmap'
                         : '未命名思维导图'
             ),
             content: content || '',

@@ -40,16 +40,14 @@ import {
     normalizeLearnSessionProblemTagList,
     normalizeLearnSessionProblemTagMode,
     getLearnMode,
-    getLearnRoadmapDocId,
     type LearnSessionMode,
     type LearnSessionCardFilterMode,
     type LearnSessionProblemTagMode,
 } from '../lib/learnModePrefs';
 import { getBranchData } from './base';
-import SessionModel, { type LessonCardQueueItem, type SessionDoc, type SessionPatch } from '../model/session';
 import * as document from '../model/document';
 import { getProblemTagList, normalizeProblemTagInput, sanitizeProblemTagRegistryList } from '../model/problem';
-import RoadmapModel from '../model/roadmap';
+import SessionModel, { type LessonCardQueueItem, type SessionDoc, type SessionPatch } from '../model/session';
 import {
     appendLessonSessionToUrl,
     frozenTodayQueueMatchesLearnSettings,
@@ -506,21 +504,17 @@ function branchesForBaseDoc(base: BaseDoc): string[] {
 /** Bump when single-base learn DAG generation rules change (invalidates `learn_dag` rows for that base+branch). */
 const LEARN_BASE_DAG_CACHE_REVISION = 6;
 
-function learnSourceHintFromDoc(doc: BaseDoc | null | undefined): 'base' | 'roadmap' | null {
+function learnSourceHintFromDoc(doc: BaseDoc | null | undefined): 'base' | null {
     if (!doc) return null;
-    const dt = (doc as { docType?: number }).docType;
-    if (dt === document.TYPE_ROADMAP) return 'roadmap';
-    if (dt === document.TYPE_BASE) return 'base';
-    return null;
+    return 'base';
 }
 
 async function computeLearnBaseDAGVersion(
     domainId: string,
     baseDocId: number,
     _branch: string,
-    learnSourceHint?: 'base' | 'roadmap' | null,
 ): Promise<number> {
-    const b = await getLearnSourceDoc(domainId, baseDocId, learnSourceHint ?? null);
+    const b = await getLearnSourceDoc(domainId, baseDocId);
     const tBase = b?.updateAt instanceof Date ? b.updateAt.getTime() : 0;
     const tCards = await CardModel.maxUpdateAtMsForBase(domainId, baseDocId);
     const t = Math.max(tBase, tCards);
@@ -532,21 +526,19 @@ async function ensureLearnDAGCached(
     docId: number,
     branch: string,
     translate: (key: string) => string,
-    opts: { learnSourceHint?: 'base' | 'roadmap' | null; skipCache?: boolean } = {},
 ): Promise<{ sections: LearnDAGNode[]; allDagNodes: LearnDAGNode[] }> {
     const br = branch?.trim() || 'main';
-    const hint = opts.learnSourceHint ?? null;
-    const version = await computeLearnBaseDAGVersion(domainId, docId, br, hint);
-    const cached = opts.skipCache ? null : await learn.getDAG(domainId, docId, br);
+    const version = await computeLearnBaseDAGVersion(domainId, docId, br);
+    const cached = await learn.getDAG(domainId, docId, br);
     if (cached?.sections?.length && (cached.version || 0) >= version) {
         return { sections: cached.sections, allDagNodes: cached.dag || [] };
     }
-    const doc = await getLearnSourceDoc(domainId, docId, hint);
+    const doc = await getLearnSourceDoc(domainId, docId);
     const { nodes, edges } = getBranchData(doc, br);
     if (!nodes.length) {
         return { sections: [], allDagNodes: [] };
     }
-    const isRoadmap = doc.docType === document.TYPE_ROADMAP;
+    const isRoadmap = false;
     const pr = await generateDAG(domainId, docId, nodes, edges, translate, br, {
         roadmapPracticeOnly: isRoadmap,
     });
@@ -1426,9 +1418,7 @@ async function maybeSyncLearnStartCardAfterPassForSlot(
     const duIdx = normalizeDomainUserLearnIndex(dudoc.currentLearnSectionIndex);
     if (duIdx === null || duIdx < 0 || passedSlot !== duIdx) return;
     const learnMode = getLearnMode(dudoc);
-    const learnDocId = learnMode === 'roadmap'
-        ? getLearnRoadmapDocId(dudoc)
-        : getLearnBaseDocId(dudoc);
+    const learnDocId = getLearnBaseDocId(dudoc);
     if (learnDocId === null) return;
     const br = learnBranchFromDudoc(dudoc);
     const { sections: secB, allDagNodes: dagB } = await ensureLearnDAGCached(domainId, learnDocId, br, translate);
@@ -1702,15 +1692,9 @@ async function buildTodayLessonQueueFromDomain(
     effectiveLearnStartCardId: string | null;
 }> {
     const learnMode = getLearnMode(dudoc);
-    const learnDocId = learnMode === 'roadmap'
-        ? getLearnRoadmapDocId(dudoc)
-        : getLearnBaseDocId(dudoc);
+    const learnDocId = getLearnBaseDocId(dudoc);
     if (learnDocId === null) {
-        throw new ValidationError(
-            learnMode === 'roadmap'
-                ? 'Please select a roadmap for learning first'
-                : 'Please select a knowledge base for learning first',
-        );
+        throw new ValidationError('Please select a knowledge base for learning first');
     }
     const learnBranch = learnBranchFromDudoc(dudoc);
     const { sections: sectionsBuilt, allDagNodes: allDagBuilt } = await ensureLearnDAGCached(
@@ -1958,7 +1942,7 @@ async function getLearnPageActiveSourceSelection(
     uid: number,
     priv: number,
 ): Promise<{
-    learnMode: 'base' | 'roadmap';
+    learnMode: 'base';
     selectedSource: BaseDoc | null;
     sourceDocId: number | null;
     learnBranch: string;
@@ -1966,15 +1950,7 @@ async function getLearnPageActiveSourceSelection(
     const dudoc = await learn.getUserLearnState(domainId, { _id: uid, priv }) as any;
     const learnMode = getLearnMode(dudoc);
     const learnBranch = learnBranchFromDudoc(dudoc);
-    if (learnMode === 'roadmap') {
-        const { selectedRoadmap, selectedRoadmapDocId } = await getLearnPageRoadmapSelection(domainId, uid, priv);
-        return {
-            learnMode,
-            selectedSource: selectedRoadmap,
-            sourceDocId: selectedRoadmapDocId,
-            learnBranch,
-        };
-    }
+
     const { selectedBase, selectedBaseDocId } = await getLearnPageBaseSelection(domainId, uid, priv);
     return {
         learnMode,
@@ -1988,14 +1964,10 @@ async function requireLearnPageActiveSource(
     domainId: string,
     uid: number,
     priv: number,
-): Promise<{ learnMode: 'base' | 'roadmap'; source: BaseDoc; sourceDocId: number; learnBranch: string }> {
+): Promise<{ learnMode: 'base'; source: BaseDoc; sourceDocId: number; learnBranch: string }> {
     const sel = await getLearnPageActiveSourceSelection(domainId, uid, priv);
     if (!sel.selectedSource || sel.sourceDocId === null) {
-        throw new NotFoundError(
-            sel.learnMode === 'roadmap'
-                ? 'Please select a roadmap for learning first'
-                : 'Please select a knowledge base for learning first',
-        );
+        throw new NotFoundError('Please select a knowledge base for learning first');
     }
     return {
         learnMode: sel.learnMode,
@@ -2005,34 +1977,20 @@ async function requireLearnPageActiveSource(
     };
 }
 
-/** Load the learn outline doc (knowledge base or roadmap) by numeric docId. */
+/** Load the learn outline doc by numeric docId. */
 async function getLearnSourceDoc(
     domainId: string,
     docId: number,
-    learnModeHint?: 'base' | 'roadmap' | null,
+    learnModeHint?: 'base' | null,
 ): Promise<BaseDoc> {
-    if (learnModeHint === 'roadmap') {
-        const rm = await RoadmapModel.get(domainId, docId);
-        if (rm) return rm as unknown as BaseDoc;
-        throw new NotFoundError('Roadmap not found');
-    }
-    if (learnModeHint === 'base') {
-        const b = await BaseModel.get(domainId, docId);
-        if (b) return b;
-        throw new NotFoundError('Base not found');
-    }
     const b = await BaseModel.get(domainId, docId);
     if (b) return b;
-    const rm = await RoadmapModel.get(domainId, docId);
-    if (rm) return rm as unknown as BaseDoc;
     throw new NotFoundError('Base not found');
 }
 
 async function tryGetLearnSourceDoc(domainId: string, docId: number): Promise<BaseDoc | null> {
     if (!Number.isFinite(docId) || docId <= 0) return null;
-    const b = await BaseModel.get(domainId, docId);
-    if (b) return b;
-    return (await RoadmapModel.get(domainId, docId)) as unknown as BaseDoc | null;
+    return await BaseModel.get(domainId, docId);
 }
 
 async function saveLearnPageBaseForUser(
@@ -2078,70 +2036,9 @@ async function saveLearnPageBaseForUser(
     await clearLearnDailySessionPointer(domainId, uid);
 }
 
-async function saveLearnPageRoadmapForUser(
-    domainId: string,
-    uid: number,
-    roadmapDocId: number,
-    branch: string,
-    translate: (key: string) => string,
-) {
-    const roadmap = await RoadmapModel.get(domainId, roadmapDocId);
-    if (!roadmap) throw new NotFoundError('Roadmap not found');
-    const br = typeof branch === 'string' && branch.trim() ? branch.trim() : 'main';
-    const { nodes } = getBranchData(roadmap as any, br);
-    const practiceNodes = (nodes || []).filter((n) => supportsRoadmapPracticeProblems(roadmapNodeTypeFromNode(n)));
-    if (!practiceNodes.length) {
-        throw new ValidationError(translate('This roadmap branch has no practice nodes'));
-    }
-    await ensureLearnDAGCached(domainId, roadmapDocId, br, translate);
-    await learn.setUserLearnState(domainId, uid, {
-        learnMode: 'roadmap',
-        learnBaseDocId: null,
-        learnRoadmapDocId: roadmapDocId,
-        learnBranch: br,
-        learnSectionOrder: null,
-        learnProgressPosition: 0,
-        learnProgressTotal: 0,
-        currentLearnSectionId: null,
-        currentLearnSectionIndex: 0,
-        currentLearnStartCardId: null,
-        lessonUpdatedAt: new Date(),
-    });
-    await touchLessonSession(domainId, uid, {
-        appRoute: 'learn',
-        route: 'learn',
-        lessonMode: null,
-        nodeId: null,
-        cardIndex: null,
-        currentLearnSectionIndex: 0,
-        currentLearnSectionId: null,
-        currentLearnStartCardId: null,
-        lessonReviewCardIds: [],
-        lessonCardTimesMs: [],
-        lessonQueueBaseDocId: null,
-        lessonQueueLearnBranch: null,
-    }, { silent: true });
-    await clearLearnDailySessionPointer(domainId, uid);
-}
 
-async function getLearnPageRoadmapSelection(domainId: string, uid: number, priv: number) {
-    const roadmaps = await RoadmapModel.getAll(domainId);
-    if (!roadmaps.length) {
-        return {
-            roadmaps,
-            selectedRoadmap: null as any,
-            selectedRoadmapDocId: null as number | null,
-            learnBranch: 'main',
-        };
-    }
-    const dudoc = await learn.getUserLearnState(domainId, { _id: uid, priv }) as any;
-    const selectedRoadmapDocId = getLearnRoadmapDocId(dudoc);
-    const learnBranch = learnBranchFromDudoc(dudoc);
-    const selectedRoadmap = selectedRoadmapDocId !== null
-        ? (roadmaps.find((r) => Number(r.docId) === selectedRoadmapDocId) || null)
-        : null;
-    return { roadmaps, selectedRoadmap, selectedRoadmapDocId, learnBranch };
-}
+
+
 
 interface SectionProgressItem {
     _id: string;
@@ -2489,7 +2386,7 @@ async function collectOutlineSubtreeFlatCardsForNodeLesson(
     branch: string,
     rootNodeId: string,
     learnSectionOrderIndex: number,
-    learnSourceHint?: 'base' | 'roadmap' | null,
+    learnSourceHint?: 'base' | null,
 ): Promise<
     Array<{
         nodeId: string;
@@ -2591,9 +2488,7 @@ class LearnHandler extends Handler {
         if (this.request.path.includes('/base')) {
             return this.postSetBase(domainId);
         }
-        if (this.request.path.includes('/roadmap')) {
-            return this.postSetRoadmap(domainId);
-        }
+
         if (this.request.path.includes('/daily-goal')) {
             return this.postSetDailyGoal(domainId);
         }
@@ -2624,24 +2519,7 @@ class LearnHandler extends Handler {
         this.response.body = { success: true, baseDocId, branch };
     }
 
-    async postSetRoadmap(domainId: string) {
-        const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
-        const body: any = this.request?.body || {};
-        const rawRoadmap = body.roadmapDocId ?? body.docId;
-        const roadmapDocId = parseInt(String(rawRoadmap ?? ''), 10);
-        if (!Number.isFinite(roadmapDocId) || roadmapDocId <= 0) {
-            throw new ValidationError('Invalid roadmapDocId');
-        }
-        const branch = typeof body.branch === 'string' && body.branch.trim() ? body.branch.trim() : 'main';
-        await saveLearnPageRoadmapForUser(
-            finalDomainId,
-            this.user._id,
-            roadmapDocId,
-            branch,
-            (key: string) => this.translate(key),
-        );
-        this.response.body = { success: true, roadmapDocId, branch };
-    }
+
 
     async postSetDailyGoal(domainId: string) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
@@ -2818,24 +2696,10 @@ class LearnHandler extends Handler {
             this.user._id,
             this.user.priv,
         );
-        const {
-            roadmaps,
-            selectedRoadmap,
-            selectedRoadmapDocId: selectedLearnRoadmapDocId,
-        } = await getLearnPageRoadmapSelection(
-            finalDomainId,
-            this.user._id,
-            this.user.priv,
-        );
         const learnBases = bases.map((b) => ({
             docId: Number(b.docId),
             title: ((b.title || '').trim() || String(b.docId)),
             branches: branchesForBaseDoc(b),
-        }));
-        const learnRoadmaps = roadmaps.map((r) => ({
-            docId: Number(r.docId),
-            title: ((r.title || '').trim() || String(r.docId)),
-            branches: branchesForBaseDoc(r as any),
         }));
         if (selectedLearnBaseDocId !== null && !selectedBase) {
             await learn.setUserLearnState(finalDomainId, this.user._id, {
@@ -2848,19 +2712,9 @@ class LearnHandler extends Handler {
                 currentLearnSectionIndex: 0,
             });
         }
-        if (selectedLearnRoadmapDocId !== null && !selectedRoadmap) {
-            await learn.setUserLearnState(finalDomainId, this.user._id, {
-                learnRoadmapDocId: null,
-                learnBranch: 'main',
-                learnSectionOrder: null,
-                learnProgressPosition: 0,
-                learnProgressTotal: 0,
-                currentLearnSectionId: null,
-                currentLearnSectionIndex: 0,
-            });
-        }
-        const activeBaseForTags = learnModeUi === 'roadmap' ? selectedRoadmap : selectedBase;
-        const learnProblemTagOptionsUi = learnModeUi === 'roadmap' || !activeBaseForTags
+
+        const activeBaseForTags = selectedBase;
+        const learnProblemTagOptionsUi = !activeBaseForTags
             ? []
             : await loadLearnProblemTagRegistryForBase(finalDomainId, Number(activeBaseForTags.docId));
         const emptyLearnShell = {
@@ -2879,420 +2733,7 @@ class LearnHandler extends Handler {
             learnSubModeStrings,
             learnPathCardPractiseCounts: learnPathCardPractiseCountsPayload,
         };
-        if (learnModeUi === 'roadmap') {
-            if (!roadmaps.length) {
-                this.response.template = 'learn.html';
-                this.response.body = {
-                    dag: [],
-                    fullDag: [],
-                    sections: [],
-                    domainId: finalDomainId,
-                    baseDocId: null,
-                    learnBases,
-                    selectedLearnBaseDocId,
-                    learnRoadmaps: [],
-                    selectedLearnRoadmapDocId: null,
-                    learnBranch: 'main',
-                    requireRoadmapSelection: false,
-                    ...emptyLearnShell,
-                    ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
-                };
-                return;
-            }
-            if (!selectedRoadmap) {
-                this.response.template = 'learn.html';
-                this.response.body = {
-                    dag: [],
-                    fullDag: [],
-                    sections: [],
-                    currentSectionId: null,
-                    currentSectionIndex: 0,
-                    domainId: finalDomainId,
-                    baseDocId: null,
-                    learnBases,
-                    selectedLearnBaseDocId,
-                    learnRoadmaps,
-                    selectedLearnRoadmapDocId: null,
-                    learnBranch: learnBranchPage,
-                    requireRoadmapSelection: true,
-                    pendingNodeList: [],
-                    completedSections: [],
-                    completedCardsToday: [],
-                    ...emptyLearnShell,
-                    ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
-                };
-                return;
-            }
 
-            const learnRoadmapDocIdNum = Number(selectedRoadmap.docId);
-            let sections: LearnDAGNode[] = [];
-            let allDagNodes: LearnDAGNode[] = [];
-            try {
-                const built = await ensureLearnDAGCached(
-                    finalDomainId,
-                    learnRoadmapDocIdNum,
-                    learnBranchPage,
-                    (k: string) => this.translate(k),
-                );
-                sections = built.sections;
-                allDagNodes = built.allDagNodes;
-            } catch {
-                sections = [];
-                allDagNodes = [];
-            }
-
-            if (sections.length === 0) {
-                this.response.template = 'learn.html';
-                this.response.body = {
-                    dag: [],
-                    fullDag: [],
-                    sections: [],
-                    currentSectionId: null,
-                    currentSectionIndex: 0,
-                    domainId: finalDomainId,
-                    baseDocId: String(learnRoadmapDocIdNum),
-                    learnBases,
-                    selectedLearnBaseDocId,
-                    learnRoadmaps,
-                    selectedLearnRoadmapDocId,
-                    learnBranch: learnBranchPage,
-                    pendingNodeList: [],
-                    completedSections: [],
-                    completedCardsToday: [],
-                    requireRoadmapSelection: false,
-                    ...emptyLearnShell,
-                    ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
-                };
-                return;
-            }
-
-            const dudoc = dudocForLearnUi;
-            const sdocMain = await SessionModel.get(finalDomainId, this.user._id);
-            const Lsec = mergeDomainLessonState(dudoc, sdocMain);
-            const savedSectionIndex = normalizeDomainUserLearnIndex(Lsec.currentLearnSectionIndex);
-            const savedSectionId = Lsec.currentLearnSectionId;
-            const dailyGoal = getLearnDailyGoal(dudoc as any);
-            const learnSectionOrder = (dudoc as any)?.learnSectionOrder;
-            sections = applyUserSectionOrder(sections, learnSectionOrder);
-
-            let finalSectionId: string | null = null;
-            let currentSectionIndex: number = 0;
-            const totalSectionsForProgress = sections.length;
-            const sectionIndexParam = this.request.query?.sectionIndex;
-            const sectionIndexFromQuery = typeof sectionIndexParam === 'string' ? parseInt(sectionIndexParam, 10) : typeof sectionIndexParam === 'number' ? sectionIndexParam : NaN;
-            if (!Number.isNaN(sectionIndexFromQuery) && sectionIndexFromQuery >= 0 && sectionIndexFromQuery < sections.length) {
-                currentSectionIndex = sectionIndexFromQuery;
-                finalSectionId = sections[sectionIndexFromQuery]._id;
-                await learn.setUserLearnState(finalDomainId, this.user._id, {
-                    currentLearnSectionId: finalSectionId,
-                    currentLearnSectionIndex: currentSectionIndex,
-                    currentLearnStartCardId: firstLearnStartCardIdForSection(sections[currentSectionIndex], sections, allDagNodes, learnRoadmapDocIdNum),
-                    learnProgressPosition: Math.max(0, currentSectionIndex),
-                    learnProgressTotal: totalSectionsForProgress,
-                });
-                await clearPassedProgressFromLearnStartOnward(
-                    finalDomainId,
-                    this.user._id,
-                    sections,
-                    allDagNodes,
-                    currentSectionIndex,
-                );
-            } else if (sectionId) {
-                const idx = sections.findIndex(s => s._id === sectionId);
-                finalSectionId = sectionId;
-                currentSectionIndex = idx >= 0 ? idx : 0;
-                await learn.setUserLearnState(finalDomainId, this.user._id, {
-                    currentLearnSectionId: sectionId,
-                    currentLearnSectionIndex: currentSectionIndex,
-                    currentLearnStartCardId: firstLearnStartCardIdForSection(sections[currentSectionIndex], sections, allDagNodes, learnRoadmapDocIdNum),
-                    learnProgressPosition: Math.max(0, currentSectionIndex),
-                    learnProgressTotal: totalSectionsForProgress,
-                });
-                await clearPassedProgressFromLearnStartOnward(
-                    finalDomainId,
-                    this.user._id,
-                    sections,
-                    allDagNodes,
-                    currentSectionIndex,
-                );
-            } else {
-                const duIdx = normalizeDomainUserLearnIndex((dudoc as any).currentLearnSectionIndex);
-                const duIdRaw = (dudoc as any).currentLearnSectionId;
-                const duId = typeof duIdRaw === 'string' && duIdRaw.trim() ? duIdRaw.trim() : null;
-                if (duIdx !== null && duIdx >= 0 && duIdx < sections.length) {
-                    finalSectionId = sections[duIdx]._id;
-                    currentSectionIndex = duIdx;
-                } else if (duId && sections.some(s => s._id === duId)) {
-                    const idx = sections.findIndex(s => s._id === duId);
-                    finalSectionId = duId;
-                    currentSectionIndex = idx >= 0 ? idx : 0;
-                } else if (savedSectionIndex !== null && savedSectionIndex >= 0 && savedSectionIndex < sections.length) {
-                    finalSectionId = sections[savedSectionIndex]._id;
-                    currentSectionIndex = savedSectionIndex;
-                } else if (savedSectionId && sections.find(s => s._id === savedSectionId)) {
-                    const idx = sections.findIndex(s => s._id === savedSectionId);
-                    finalSectionId = savedSectionId;
-                    currentSectionIndex = idx >= 0 ? idx : 0;
-                } else if (sections.length > 0) {
-                    finalSectionId = sections[0]._id;
-                    currentSectionIndex = 0;
-                    await learn.setUserLearnState(finalDomainId, this.user._id, {
-                        currentLearnSectionId: finalSectionId,
-                        currentLearnSectionIndex: 0,
-                        currentLearnStartCardId: firstLearnStartCardIdForSection(sections[0], sections, allDagNodes, learnRoadmapDocIdNum),
-                        learnProgressPosition: 0,
-                        learnProgressTotal: totalSectionsForProgress,
-                    });
-                }
-            }
-
-            let pathCurrentLearnStartCardId: string | null = null;
-            if (currentSectionIndex >= 0 && currentSectionIndex < sections.length) {
-                pathCurrentLearnStartCardId = await syncCurrentLearnStartCardToFirstUnpassedInSection(
-                    finalDomainId,
-                    this.user._id,
-                    this.user.priv,
-                    currentSectionIndex,
-                    sections,
-                    allDagNodes,
-                    learnRoadmapDocIdNum,
-                );
-            }
-
-            let dag: LearnDAGNode[] = [];
-            if (finalSectionId) {
-                const collectChildren = (parentId: string, collected: Set<string>) => {
-                    if (collected.has(parentId)) return;
-                    collected.add(parentId);
-                    const children = allDagNodes.filter(node => {
-                        if (collected.has(node._id)) return false;
-                        return node.requireNids.length > 0 &&
-                            node.requireNids[node.requireNids.length - 1] === parentId;
-                    });
-                    for (const child of children) {
-                        if (!collected.has(child._id)) {
-                            dag.push(child);
-                            collectChildren(child._id, collected);
-                        }
-                    }
-                };
-                const collected = new Set<string>();
-                collectChildren(finalSectionId, collected);
-            } else if (sections.length > 0) {
-                const firstSection = sections[0];
-                const collectChildren = (parentId: string, collected: Set<string>) => {
-                    if (collected.has(parentId)) return;
-                    collected.add(parentId);
-                    const children = allDagNodes.filter(node => {
-                        if (collected.has(node._id)) return false;
-                        return node.requireNids.length > 0 &&
-                            node.requireNids[node.requireNids.length - 1] === parentId;
-                    });
-                    for (const child of children) {
-                        if (!collected.has(child._id)) {
-                            dag.push(child);
-                            collectChildren(child._id, collected);
-                        }
-                    }
-                };
-                const collected = new Set<string>();
-                collectChildren(firstSection._id, collected);
-            }
-
-            const passedPlacementLookup = await buildLearnPassedPlacementLookup(finalDomainId, this.user._id);
-
-            const flatCards: Array<{ nodeId: string; cardId: string; order: number; nodeIndex: number; cardIndex: number }> = [];
-            dag.forEach((node, nodeIndex) => {
-                (node.cards || []).forEach((card, cardIndex) => {
-                    flatCards.push({
-                        nodeId: node._id,
-                        cardId: card.cardId,
-                        order: card.order || 0,
-                        nodeIndex: nodeIndex,
-                        cardIndex: cardIndex,
-                    });
-                });
-            });
-
-            const learnPlacementKeys = collectLearnTrainingPlacementKeys(sections, allDagNodes);
-            const totalProgress = learnPlacementKeys.size;
-            let currentProgress = 0;
-            for (const k of learnPlacementKeys) {
-                const colon = k.indexOf(':');
-                if (colon < 0) continue;
-                const slot = parseInt(k.slice(0, colon), 10);
-                if (!Number.isFinite(slot) || slot < 0) continue;
-                const cid = k.slice(colon + 1);
-                if (learnIsPassedAtSlot(passedPlacementLookup, slot, cid)) currentProgress += 1;
-            }
-
-            const allResults = await learn.getResults(finalDomainId, this.user._id);
-
-            const learnActivityDates: string[] = Array.isArray((dudoc as any)?.learnActivityDates)
-                ? (dudoc as any).learnActivityDates.map((x: unknown) => String(x))
-                : [];
-
-            const todayStart = moment.utc().startOf('day').toDate();
-            const todayEnd = moment.utc().add(1, 'day').startOf('day').toDate();
-            const newSegmentCardIdsForDailyGoal = collectCardIdsFromLearnSlotsOnward(
-                sections,
-                allDagNodes,
-                currentSectionIndex,
-            );
-            let todayCompletedCount = 0;
-            const todayResultCardIds = new Set<string>();
-            for (const result of allResults) {
-                if (result.createdAt) {
-                    if (result.createdAt >= todayStart && result.createdAt < todayEnd) {
-                        if (result.cardId && newSegmentCardIdsForDailyGoal.has(String(result.cardId))) {
-                            todayCompletedCount++;
-                        }
-                        if (result.cardId) todayResultCardIds.add(String(result.cardId));
-                    }
-                }
-            }
-
-            const pendingNodeList = getPendingNodeList(sections.slice(currentSectionIndex), allDagNodes);
-            const completedSections = getCompletedSectionsToday(sections, allDagNodes, todayResultCardIds);
-
-            const todayResults = allResults.filter(
-                (r: any) => r.createdAt && r.createdAt >= todayStart && r.createdAt < todayEnd && r.cardId
-            );
-            const latestByCardId = new Map<string, { createdAt: Date; resultId: string }>();
-            for (const r of todayResults) {
-                const cid = String(r.cardId);
-                const rid = r._id ? String(r._id) : '';
-                const existing = latestByCardId.get(cid);
-                if (!existing || (r.createdAt && r.createdAt > existing.createdAt)) {
-                    latestByCardId.set(cid, { createdAt: r.createdAt, resultId: rid });
-                }
-            }
-            const completedCardsToday: Array<{ cardId: string; resultId: string; cardTitle: string; nodeTitle: string; completedAt: Date }> = [];
-            for (const [cardIdStr, { createdAt, resultId }] of latestByCardId) {
-                if (!resultId) continue;
-                const cardDoc = await CardModel.get(finalDomainId, new ObjectId(cardIdStr));
-                if (!cardDoc) continue;
-                const nodeTitle = await nodeTitleForLearnCard(finalDomainId, cardDoc as any);
-                completedCardsToday.push({
-                    cardId: cardIdStr,
-                    resultId,
-                    cardTitle: cardDoc.title || '',
-                    nodeTitle,
-                    completedAt: createdAt,
-                });
-            }
-            completedCardsToday.sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime());
-
-            const totalCheckinDays = learnActivityDates.length;
-            const consecutiveDays = countConsecutiveCheckinDays(learnActivityDates);
-
-            const sinceLearnWallYmd = moment.utc().subtract(364, 'days').format('YYYY-MM-DD');
-            const untilLearnWallYmd = moment.utc().format('YYYY-MM-DD');
-            const domainNameLearnWall = (this as any).domain?.name || finalDomainId;
-            const learnWall = await buildLearnDomainWallPayload(
-                this.ctx.db.db,
-                finalDomainId,
-                domainNameLearnWall,
-                this.user._id,
-                learnActivityDates,
-                sinceLearnWallYmd,
-                untilLearnWallYmd,
-                (name, kwargs) => this.url(name, kwargs as any),
-                (key) => this.translate(key),
-            );
-
-            const slotForCurrentSection = currentSectionIndex;
-            const dagWithProgress = dag.map((node, nodeIndex) => ({
-                ...node,
-                cards: (node.cards || []).map((card, cardIndex) => {
-                    const cardPassed = learnIsPassedAtSlot(
-                        passedPlacementLookup,
-                        slotForCurrentSection,
-                        String(card.cardId),
-                    );
-                    const currentCardGlobalIndex = flatCards.findIndex(c =>
-                        c.nodeIndex === nodeIndex && c.cardIndex === cardIndex,
-                    );
-
-                    let isUnlocked = false;
-                    if (currentCardGlobalIndex === 0) {
-                        isUnlocked = true;
-                    } else if (currentCardGlobalIndex > 0) {
-                        const prevCard = flatCards[currentCardGlobalIndex - 1];
-                        isUnlocked = learnIsPassedAtSlot(
-                            passedPlacementLookup,
-                            slotForCurrentSection,
-                            String(prevCard.cardId),
-                        );
-                    }
-
-                    return {
-                        ...card,
-                        passed: cardPassed,
-                        unlocked: isUnlocked,
-                    };
-                }),
-            }));
-
-            let nextCard: { nodeId: string; cardId: string } | null = null;
-            for (let i = 0; i < flatCards.length; i++) {
-                if (!learnIsPassedAtSlot(passedPlacementLookup, slotForCurrentSection, String(flatCards[i].cardId))) {
-                    nextCard = { nodeId: flatCards[i].nodeId, cardId: flatCards[i].cardId };
-                    break;
-                }
-            }
-
-            this.response.template = 'learn.html';
-            this.response.body = {
-                dag: dagWithProgress,
-                fullDag: allDagNodes,
-                sections: sections,
-                currentSectionId: finalSectionId,
-                currentSectionIndex,
-                domainId: finalDomainId,
-                baseDocId: String(learnRoadmapDocIdNum),
-                learnBases,
-                selectedLearnBaseDocId,
-                learnRoadmaps,
-                selectedLearnRoadmapDocId,
-                learnBranch: learnBranchPage,
-                currentProgress,
-                totalProgress,
-                totalCards: totalProgress,
-                totalCheckinDays,
-                consecutiveDays,
-                dailyGoal,
-                todayCompletedCount,
-                pendingNodeList,
-                completedSections,
-                completedCardsToday,
-                nextCard,
-                passedCardIds: [],
-                passedCardKeys: Array.from(passedPlacementLookup.slotKeys),
-                passedLegacyCardIds: Array.from(passedPlacementLookup.legacyCardIds),
-                pathSections: sections,
-                pathFullDag: allDagNodes,
-                pathCurrentSectionId: finalSectionId,
-                pathCurrentLearnStartCardId: pathCurrentLearnStartCardId || '',
-                requireBaseSelection: false,
-                requireRoadmapSelection: false,
-                lessonSessionId: '',
-                learnMode: learnModeUi,
-                learnSessionMode: learnSessionModeUi,
-                learnNewReviewRatio: learnNewReviewRatioUi,
-                learnNewReviewOrder: learnNewReviewOrderUi,
-                learnSessionCardFilter: learnSessionCardFilterUi,
-                learnSessionProblemTagMode: learnSessionProblemTagModeUi,
-                learnSessionProblemTags: learnSessionProblemTagsUi,
-                learnProblemTagOptions: learnProblemTagOptionsUi,
-                learnSubModeStrings,
-                learnPathCardPractiseCounts: learnPathCardPractiseCountsPayload,
-                ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
-                learnWallContributions: learnWall.learnWallContributions,
-                learnWallContributionDetails: learnWall.learnWallContributionDetails,
-            };
-            return;
-        }
 
         if (!bases.length) {
             this.response.template = 'learn.html';
@@ -3304,11 +2745,8 @@ class LearnHandler extends Handler {
                 baseDocId: null,
                 learnBases: [],
                 selectedLearnBaseDocId: null,
-                learnRoadmaps,
-                selectedLearnRoadmapDocId,
                 learnBranch: 'main',
                 requireBaseSelection: false,
-                requireRoadmapSelection: false,
                 ...emptyLearnShell,
                 ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
             };
@@ -3326,11 +2764,8 @@ class LearnHandler extends Handler {
                 baseDocId: null,
                 learnBases,
                 selectedLearnBaseDocId: null,
-                learnRoadmaps,
-                selectedLearnRoadmapDocId,
                 learnBranch: learnBranchPage,
                 requireBaseSelection: true,
-                requireRoadmapSelection: false,
                 pendingNodeList: [],
                 completedSections: [],
                 completedCardsToday: [],
@@ -3370,14 +2805,11 @@ class LearnHandler extends Handler {
                 baseDocId: String(learnBaseDocIdNum),
                 learnBases,
                 selectedLearnBaseDocId,
-                learnRoadmaps,
-                selectedLearnRoadmapDocId,
                 learnBranch: learnBranchPage,
                 pendingNodeList: [],
                 completedSections: [],
                 completedCardsToday: [],
                 requireBaseSelection: false,
-                requireRoadmapSelection: false,
                 ...emptyLearnShell,
                 ...(await buildTodayDailyLessonResumeFields(finalDomainId, this.user._id, this.user.priv)),
             };
@@ -3687,8 +3119,6 @@ class LearnHandler extends Handler {
             baseDocId: String(learnBaseDocIdNum),
             learnBases,
             selectedLearnBaseDocId,
-            learnRoadmaps,
-            selectedLearnRoadmapDocId,
             learnBranch: learnBranchPage,
             currentProgress,
             totalProgress,
@@ -3709,7 +3139,6 @@ class LearnHandler extends Handler {
             pathCurrentSectionId: finalSectionId,
             pathCurrentLearnStartCardId: pathCurrentLearnStartCardId || '',
             requireBaseSelection: false,
-            requireRoadmapSelection: false,
             lessonSessionId: '',
             learnMode: learnModeUi,
             learnSessionMode: learnSessionModeUi,
@@ -3824,10 +3253,7 @@ async function buildSpaLessonSnapshotToday(
     qSession: string | undefined,
 ): Promise<Record<string, unknown> | null> {
     const dudocSpaToday = await learn.getUserLearnState(finalDomainId, { _id: uid, priv }) as any;
-    const learnModeSpa = getLearnMode(dudocSpaToday);
-    const learnBid = learnModeSpa === 'roadmap'
-        ? getLearnRoadmapDocId(dudocSpaToday)
-        : getLearnBaseDocId(dudocSpaToday);
+    const learnBid = getLearnBaseDocId(dudocSpaToday);
     if (learnBid === null) return null;
     const learnBr = learnBranchFromDudoc(dudocSpaToday);
     const sDaily = await resolveLearnDailySessionDoc(finalDomainId, uid, dudocSpaToday);
@@ -3962,10 +3388,7 @@ async function buildSpaLessonSnapshotNode(
     qSession: string | undefined,
 ): Promise<Record<string, unknown> | null> {
     const dudocSpaNodePre = await learn.getUserLearnState(finalDomainId, { _id: uid, priv }) as any;
-    const learnModeNode = getLearnMode(dudocSpaNodePre);
-    const learnBidNode = learnModeNode === 'roadmap'
-        ? getLearnRoadmapDocId(dudocSpaNodePre)
-        : getLearnBaseDocId(dudocSpaNodePre);
+    const learnBidNode = getLearnBaseDocId(dudocSpaNodePre);
     const learnBrNode = learnBranchFromDudoc(dudocSpaNodePre);
     if (learnBidNode === null) return null;
     const sNode = await resolveLessonSessionDoc(finalDomainId, uid, qSession || undefined);
@@ -4248,7 +3671,6 @@ class LessonHandler extends Handler {
         }
 
         const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
-        const learnModeLesson = getLearnMode(dudoc);
 
         let pageBaseLesson: BaseDoc;
         let learnBrLesson: string;
@@ -4273,28 +3695,10 @@ class LessonHandler extends Handler {
                 if (!this.user.own(pageBaseLesson)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
                 const sb = sForBase.branch && String(sForBase.branch).trim() ? String(sForBase.branch).trim() : '';
                 learnBrLesson = sb || learnBranchFromDudoc(dudoc) || ((pageBaseLesson as any).currentBranch || 'main');
-            } else if (learnModeLesson === 'roadmap') {
-                const roadmapDocId = getLearnRoadmapDocId(dudoc);
-                if (roadmapDocId === null) {
-                    throw new ValidationError(this.translate('Please select a roadmap for learning first'));
-                }
-                const rm = await RoadmapModel.get(finalDomainId, roadmapDocId);
-                if (!rm) throw new NotFoundError('Roadmap not found');
-                pageBaseLesson = rm as unknown as BaseDoc;
-                learnBrLesson = learnBranchFromDudoc(dudoc);
             } else {
                 pageBaseLesson = await requireLearnPageBase(finalDomainId, this.user._id, this.user.priv);
                 learnBrLesson = learnBranchFromDudoc(dudoc);
             }
-        } else if (learnModeLesson === 'roadmap') {
-            const roadmapDocId = getLearnRoadmapDocId(dudoc);
-            if (roadmapDocId === null) {
-                throw new ValidationError(this.translate('Please select a roadmap for learning first'));
-            }
-            const rm = await RoadmapModel.get(finalDomainId, roadmapDocId);
-            if (!rm) throw new NotFoundError('Roadmap not found');
-            pageBaseLesson = rm as unknown as BaseDoc;
-            learnBrLesson = learnBranchFromDudoc(dudoc);
         } else {
             pageBaseLesson = await requireLearnPageBase(finalDomainId, this.user._id, this.user.priv);
             learnBrLesson = learnBranchFromDudoc(dudoc);
@@ -4469,10 +3873,6 @@ class LessonHandler extends Handler {
                 learnBidLesson,
                 learnBrLesson,
                 (k: string) => this.translate(k),
-                {
-                    learnSourceHint: learnSourceHintFromDoc(pageBaseLesson),
-                    skipCache: learnSourceHintFromDoc(pageBaseLesson) === 'roadmap',
-                },
             );
             const nodeMap = new Map<string, LearnDAGNode>();
             trainSecNode.forEach(n => nodeMap.set(n._id, n));
@@ -4673,8 +4073,7 @@ class LessonHandler extends Handler {
                 const branchEdgesForQueue = getBranchData(pageBaseLesson, learnBrLesson).edges || [];
                 const queueAnchorNode = branchNodesForQueue.find((n) => n.id === lessonNodeId);
                 const preferOutlineQueue =
-                    lessonSourceHint === 'roadmap'
-                    || isRoadmapContainerBaseNode(queueAnchorNode)
+                    isRoadmapContainerBaseNode(queueAnchorNode)
                     || isBaseOutlineRootNode(queueAnchorNode, branchEdgesForQueue);
                 let usedOutlineSubtreeFallback = false;
                 let treeChildren: ReturnType<typeof collectUnder> = [];
@@ -5305,7 +4704,7 @@ class LessonHandler extends Handler {
                 : (baseNumericId(currentCard.baseDocId) > 0 ? baseNumericId(currentCard.baseDocId) : learnBaseIdToday);
             if (!todayResolvedBase) throw new NotFoundError('Base not found for this domain');
             const todayLessonBranch = learnBranchToday;
-            const baseDocToday = await getLearnSourceDoc(finalDomainId, todayResolvedBase, learnModeLesson);
+            const baseDocToday = await getLearnSourceDoc(finalDomainId, todayResolvedBase);
             const currentNode = (getBranchData(baseDocToday, todayLessonBranch).nodes || []).find((n: any) => n.id === currentItem.nodeId)
                 || ({ id: currentItem.nodeId, title: currentItem.nodeTitle, text: '' } as any);
             const currentCardListRawToday = await CardModel.getByNodeId(finalDomainId, todayResolvedBase, currentItem.nodeId, todayLessonBranch);
@@ -5468,11 +4867,9 @@ class LessonHandler extends Handler {
                 const n = Number(raw);
                 return Number.isFinite(n) && n > 0 ? n : NaN;
             })();
-            const learnSourceHint = body.learnSource === 'roadmap'
-                ? 'roadmap' as const
-                : body.learnSource === 'base'
-                    ? 'base' as const
-                    : null;
+            const learnSourceHint = body.learnSource === 'base'
+                ? 'base' as const
+                : null;
             const nodeNotInBranchMsg = this.translate('Outline editor start invalid node')
                 || 'That node is not part of this branch.';
             let baseNodeStart: BaseDoc;
@@ -5496,16 +4893,14 @@ class LessonHandler extends Handler {
             }
             const nodeLearnBaseDocId = Number(baseNodeStart.docId);
             const nodeSourceHint = learnSourceHint ?? learnSourceHintFromDoc(baseNodeStart);
-            const isRoadmapNodeStart = nodeSourceHint === 'roadmap';
             const { nodes: branchNodesForStart } = getBranchData(baseNodeStart, brN);
             const startAnchorNode = branchNodesForStart.find((n) => n.id === nodeIdStart);
-            const useRoadmapNumberedSubtree = isRoadmapNodeStart || isRoadmapContainerBaseNode(startAnchorNode);
+            const useRoadmapNumberedSubtree = isRoadmapContainerBaseNode(startAnchorNode);
             const { sections: nodeSections, allDagNodes: nodeAllDag } = await ensureLearnDAGCached(
                 finalDomainId,
                 nodeLearnBaseDocId,
                 brN,
                 (k: string) => this.translate(k),
-                { learnSourceHint: nodeSourceHint, skipCache: isRoadmapNodeStart },
             );
             const nodeEntryMap = new Map<string, LearnDAGNode>();
             nodeSections.forEach((n) => nodeEntryMap.set(n._id, n));
@@ -5605,10 +5000,7 @@ class LessonHandler extends Handler {
             } as SessionPatch);
             redirectPath = `/d/${finalDomainId}/learn/lesson?cardId=${encodeURIComponent(cardIdStartRaw)}`;
         } else {
-            const learnModeStart = getLearnMode(dudocSt);
-            if (learnModeStart !== 'roadmap') {
-                await requireLearnPageBase(finalDomainId, this.user._id, this.user.priv);
-            }
+            await requireLearnPageBase(finalDomainId, this.user._id, this.user.priv);
             const resumableToday = await findResumableTodayLearnSessionDoc(finalDomainId, this.user._id, dudocSt);
             let usedResumableToday = false;
             if (resumableToday && frozenTodayQueueMatchesLearnSettings(dudocSt, resumableToday)) {
@@ -5941,10 +5333,7 @@ class LessonHandler extends Handler {
         const spaNext = body.spaNext === true || body.spaNext === 'true';
 
         const dudocPassMain = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
-        const learnModePassMain = getLearnMode(dudocPassMain);
-        const firstBasePass = (learnModePassMain === 'roadmap'
-            ? getLearnRoadmapDocId(dudocPassMain)
-            : getLearnBaseDocId(dudocPassMain)) ?? 0;
+        const firstBasePass = getLearnBaseDocId(dudocPassMain) ?? 0;
         const branchLearnPass = learnBranchFromDudoc(dudocPassMain);
 
         const isTodayMode = body.todayMode === true;
@@ -6557,14 +5946,10 @@ class LessonHandler extends Handler {
             return;
         }
 
-        const bidPm = learnModePassMain === 'roadmap'
-            ? getLearnRoadmapDocId(dudocPassMain)
-            : getLearnBaseDocId(dudocPassMain);
+        const bidPm = getLearnBaseDocId(dudocPassMain);
         if (bidPm === null) {
             throw new ValidationError(
-                learnModePassMain === 'roadmap'
-                    ? (this.translate('Please select a roadmap for learning first') || 'Please select a roadmap for learning first')
-                    : (this.translate('Please select a knowledge base for learning first') || 'Please select a knowledge base for learning first'),
+(this.translate('Please select a knowledge base for learning first') || 'Please select a knowledge base for learning first'),
             );
         }
         const brPm = learnBranchFromDudoc(dudocPassMain);
@@ -6840,10 +6225,7 @@ class LessonHandler extends Handler {
         }
 
         const dudocRes = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
-        const learnModeRes = getLearnMode(dudocRes);
-        const learnDocResNum = learnModeRes === 'roadmap'
-            ? getLearnRoadmapDocId(dudocRes)
-            : getLearnBaseDocId(dudocRes);
+        const learnDocResNum = getLearnBaseDocId(dudocRes);
         const baseDocRes = baseNumericId(card.baseDocId) > 0
             ? baseNumericId(card.baseDocId)
             : (learnDocResNum ?? 0);
@@ -6913,37 +6295,31 @@ class LessonNodeResultHandler extends Handler {
             : (typeof sNr?.baseDocId === 'number' && sNr.baseDocId > 0 ? sNr.baseDocId : null);
 
         let learnDocNr: number | null = sessionDocId;
-        let learnSourceHint: 'base' | 'roadmap' | null = null;
+        let learnSourceHint: 'base' | null = null;
         if (learnDocNr !== null) {
             const hintedDoc = await tryGetLearnSourceDoc(finalDomainId, learnDocNr);
             learnSourceHint = learnSourceHintFromDoc(hintedDoc);
         } else {
-            const learnModeNr = getLearnMode(dudocNr);
-            learnDocNr = learnModeNr === 'roadmap'
-                ? getLearnRoadmapDocId(dudocNr)
-                : getLearnBaseDocId(dudocNr);
-            learnSourceHint = learnModeNr === 'roadmap' ? 'roadmap' : 'base';
+            learnDocNr = getLearnBaseDocId(dudocNr);
+            learnSourceHint = 'base';
         }
 
         if (learnDocNr === null) {
             throw new ValidationError(
-                learnSourceHint === 'roadmap'
-                    ? (this.translate('Please select a roadmap for learning first') || 'Please select a roadmap for learning first')
-                    : (this.translate('Please select a knowledge base for learning first') || 'Please select a knowledge base for learning first'),
+(this.translate('Please select a knowledge base for learning first') || 'Please select a knowledge base for learning first'),
             );
         }
 
         const brNr = (typeof sNr?.branch === 'string' && sNr.branch.trim())
             || (typeof sNr?.lessonQueueLearnBranch === 'string' && sNr.lessonQueueLearnBranch.trim())
             || learnBranchFromDudoc(dudocNr);
-        const sourceDoc = await getLearnSourceDoc(finalDomainId, learnDocNr, learnSourceHint);
+        const sourceDoc = await getLearnSourceDoc(finalDomainId, learnDocNr);
 
         const { sections: secNr, allDagNodes: dagNr } = await ensureLearnDAGCached(
             finalDomainId,
             learnDocNr,
             brNr,
             (k: string) => this.translate(k),
-            { learnSourceHint, skipCache: learnSourceHint === 'roadmap' },
         );
         const allDagNodes = dagNr;
         const nodeMap = new Map<string, LearnDAGNode>();
@@ -7640,55 +7016,6 @@ class LearnBaseSelectHandler extends Handler {
     }
 }
 
-class LearnRoadmapSelectHandler extends Handler {
-    async get(domainId: string) {
-        const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
-        const { roadmaps, selectedRoadmapDocId, learnBranch } = await getLearnPageRoadmapSelection(
-            finalDomainId,
-            this.user._id,
-            this.user.priv,
-        );
-        const redirect = typeof this.request.query?.redirect === 'string' && this.request.query.redirect
-            ? this.request.query.redirect
-            : `/d/${finalDomainId}/learn`;
-        this.response.template = 'learn_roadmap_select.html';
-        this.response.body = {
-            domainId: finalDomainId,
-            learnRoadmaps: roadmaps.map((r) => ({
-                docId: Number(r.docId),
-                title: ((r.title || '').trim() || String(r.docId)),
-                branches: branchesForBaseDoc(r as any),
-            })),
-            selectedLearnRoadmapDocId: selectedRoadmapDocId,
-            learnBranch,
-            redirect,
-        };
-    }
-
-    async post(domainId: string) {
-        const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
-        const body: any = this.request?.body || {};
-        const rawRoadmap = body.roadmapDocId ?? body.docId;
-        const roadmapDocId = parseInt(String(rawRoadmap ?? ''), 10);
-        if (!Number.isFinite(roadmapDocId) || roadmapDocId <= 0) {
-            throw new ValidationError('Invalid roadmapDocId');
-        }
-        const branch = typeof body.branch === 'string' && body.branch.trim() ? body.branch.trim() : 'main';
-        const redirect = typeof body.redirect === 'string' && body.redirect
-            ? body.redirect
-            : `/d/${finalDomainId}/learn`;
-
-        await saveLearnPageRoadmapForUser(
-            finalDomainId,
-            this.user._id,
-            roadmapDocId,
-            branch,
-            (key: string) => this.translate(key),
-        );
-        this.response.redirect = redirect;
-    }
-}
-
 /** GET: list notes for a problem. POST: create, update own (noteId+content), or delete own (noteDelete+noteId). Maintainer bulk edits use base batch-save. */
 class LearnProblemNotesHandler extends Handler {
     private notesFinalDomainId(domainId: string): string {
@@ -7793,9 +7120,7 @@ class LearnProblemNotesHandler extends Handler {
 export async function apply(ctx: Context) {
     ctx.Route('learn', '/learn', LearnHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_set_base', '/learn/base', LearnHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('learn_set_roadmap', '/learn/roadmap', LearnHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_base_select', '/learn/base/select', LearnBaseSelectHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('learn_roadmap_select', '/learn/roadmap/select', LearnRoadmapSelectHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_set_daily_goal', '/learn/daily-goal', LearnHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_set_session_mode', '/learn/session-mode', LearnHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_set_sub_mode', '/learn/sub-mode', LearnHandler, PRIV.PRIV_USER_PROFILE);

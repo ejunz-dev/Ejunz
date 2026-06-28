@@ -1,17 +1,15 @@
-/** Develop: knowledge base vs roadmap pool mode (domain user document). */
+/** Develop: knowledge base pool mode (domain user document). Always 'base'. */
 
-export type DevelopSourceMode = 'base' | 'roadmap';
+export type DevelopSourceMode = 'base';
 
-export function normalizeDevelopMode(raw: unknown): DevelopSourceMode {
-    const s = String(raw ?? '').trim().toLowerCase();
-    if (s === 'roadmap') return 'roadmap';
+export function normalizeDevelopMode(_raw: unknown): DevelopSourceMode {
     return 'base';
 }
 
-export function getDevelopMode(dudoc: Record<string, unknown> | null | undefined): DevelopSourceMode {
-    return normalizeDevelopMode(dudoc?.developMode);
+export function getDevelopMode(_dudoc: Record<string, unknown> | null | undefined): DevelopSourceMode {
+    return 'base';
 }
 
-export function developPoolFieldForMode(mode: DevelopSourceMode): 'developPool' | 'developRoadmapPool' {
-    return mode === 'roadmap' ? 'developRoadmapPool' : 'developPool';
+export function developPoolFieldForMode(_mode: DevelopSourceMode): 'developPool' {
+    return 'developPool';
 }

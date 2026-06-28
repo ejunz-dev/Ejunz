@@ -7,7 +7,7 @@ import { Context } from '../context';
 import {
     Content, ContestClarificationDoc, DiscussionDoc,
     DiscussionReplyDoc, AgentDoc, BaseDoc, RepoDoc, DocDoc, BlockDoc, NodeDoc, ClientDoc, ClientChatDoc, EdgeDoc, ToolDoc,
-    DomainMarketToolDoc, WorkflowDoc, WorkflowNodeDoc, TrainingDoc, CardDoc, PluginDoc, RoadmapDoc, SceneDoc, SceneEventDoc,
+    DomainMarketToolDoc, WorkflowDoc, WorkflowNodeDoc, TrainingDoc, CardDoc, PluginDoc, SceneDoc, SceneEventDoc,
     McpDoc,
 } from '../interface';
 import bus from '../service/bus';
@@ -35,7 +35,6 @@ export const TYPE_BASE: 70 = 70;
 export const TYPE_CARD: 71 = 71;
 export const TYPE_TRAINING: 72 = 72;
 export const TYPE_PLUGIN: 73 = 73;
-export const TYPE_ROADMAP: 74 = 74;
 export const TYPE_SCENE: 80 = 80;
 export const TYPE_EVENT: 81 = 81;
 export const TYPE_DISCUSSION_NODE: 90 = 90;
@@ -59,7 +58,6 @@ export interface DocType {
     [TYPE_CARD]: CardDoc;
     [TYPE_TRAINING]: TrainingDoc;
     [TYPE_PLUGIN]: PluginDoc;
-    [TYPE_ROADMAP]: RoadmapDoc;
     [TYPE_SCENE]: SceneDoc;
     [TYPE_EVENT]: SceneEventDoc;
 }
@@ -563,7 +561,6 @@ global.Ejunz.model.document = {
     TYPE_CARD,
     TYPE_TRAINING,
     TYPE_PLUGIN,
-    TYPE_ROADMAP,
     TYPE_SCENE,
     TYPE_EVENT,
 };

@@ -1,141 +1,45 @@
-.page--roadmap_detail,
-.page--roadmap_edit
-  --roadmap-bg-page: #ffffff
-  --roadmap-bg-canvas: #ffffff
-  --roadmap-bg-surface: #fafafa
-  --roadmap-bg-elevated: #ffffff
-  --roadmap-text-primary: #111111
-  --roadmap-text-secondary: #666666
-  --roadmap-text-muted: #444444
-  --roadmap-text-body: #333333
-  --roadmap-border: #ececec
-  --roadmap-border-input: #d8d8d8
-  --roadmap-border-card: #e8e8e8
-  --roadmap-accent: #4135d6
-  --roadmap-accent-blue: #1a5fb4
-  --roadmap-edge: #2b78e4
-  --roadmap-edge-hover: #1a5fb4
-  --roadmap-node-border: #4135d6
-  --roadmap-node-text: #111111
-  --roadmap-node-bg-planned: #ffe599
-  --roadmap-node-bg-done: #cbcbcb
-  --roadmap-node-bg-in_progress: #dad1fd
-  --roadmap-node-bg-blocked: #ffcfcf
-  --roadmap-handle-border: #ffffff
-  --roadmap-handle-bg: #2b78e4
-  --roadmap-drawer-shadow: -12px 0 40px rgba(0, 0, 0, 0.14)
-  --roadmap-backdrop: rgba(0, 0, 0, 0.42)
-  --roadmap-tab-bg: #ffffff
-  --roadmap-tab-fg: #444444
-  --roadmap-tab-active-bg: #111111
-  --roadmap-tab-active-fg: #ffffff
-  --roadmap-badge-bg: #fff3cd
-  --roadmap-badge-fg: #7a5b00
-  --roadmap-problem-badge-bg: #4135d6
-  --roadmap-problem-badge-shadow: rgba(65, 53, 214, 0.35)
-  --roadmap-lane-border: rgba(65, 53, 214, 0.22)
-  --roadmap-lane-fill: rgba(65, 53, 214, 0.05)
-  --roadmap-lane-fill-end: rgba(65, 53, 214, 0.02)
-  --roadmap-lane-label-bg: rgba(255, 255, 255, 0.92)
-  --roadmap-lane-label-border: rgba(65, 53, 214, 0.28)
-  background: var(--roadmap-bg-page)
-  color: var(--roadmap-text-primary)
-
-.page--roadmap_detail
-  --roadmap-bg-page: $page-bg-color
-  --roadmap-bg-canvas: $page-bg-color
-  background: var(--roadmap-bg-page)
-
-  &.hasjs .nav
-    position: relative !important
-    top: auto
-    left: auto
-
-  .nav--shadow
-    display: none
-
-  .roadmap-view-page
-    position: relative
-    top: auto
-    left: auto
-    right: auto
-    bottom: auto
-    z-index: auto
-    flex: none
-    min-height: calc(100dvh - rem($nav-item-height))
-    display: flex
-    flex-direction: column
-    max-width: none
-    margin: 0
-    padding: 0
-    background: var(--roadmap-bg-page)
-
-    +mobile()
-      min-height: 100dvh
-
-  #roadmap-viewer
-    flex: 1
-    min-height: 0
-    display: flex
-    flex-direction: column
-    width: 100%
-    background: var(--roadmap-bg-canvas)
-
-  .roadmap-view__empty
-    min-height: 320px
-    display: flex
-    flex-direction: column
-    align-items: center
-    justify-content: center
+roadmap-text-btn-styles()
+  .roadmap-text-btn
+    display: block
+    box-sizing: border-box
+    width: calc(100% - 12px)
+    max-width: 100%
+    margin: 4px auto
+    background: #f3f3f3
+    border: 1px solid #d8d8d8
+    border-radius: 6px
+    padding: 8px 12px
     text-align: center
-    gap: 12px
-    color: var(--roadmap-text-muted)
+    transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease
 
-.page--roadmap_edit
-  .roadmap-shell
-    background: #ffffff
-    border: 1px solid #e8e8e8
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06)
-    overflow: hidden
+    a
+      display: block
+      color: #111111
+      text-decoration: none
+      font-weight: 500
+      text-align: inherit
+      word-break: break-word
 
-  .roadmap-shell__header
-    color: #111111
-    border-bottom: 1px solid #ececec
-    background: #fafafa
+    &:hover
+      background: #e8e8e8
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08)
 
-  .roadmap-title
-    color: #111111
-    letter-spacing: -0.04em
+    &:active
+      transform: translateY(1px)
 
-  .roadmap-kicker
-    text-transform: uppercase
-    letter-spacing: 0.18em
-    font-size: 11px
-    color: #666666
-    margin-bottom: 6px
+  .roadmap-text-btn--auto
+    display: block
+    width: fit-content
+    max-width: calc(100% - 12px)
+    margin: 4px auto
 
-  .roadmap-actions
-    display: flex
-    gap: 8px
-    align-items: center
+    a
+      display: inline
+      white-space: normal
 
-  .roadmap-shell__body
-    background: #ffffff
-    flex: 1
-    min-height: 0
-    display: flex
-    flex-direction: column
-
-  .roadmap-shell--editor
-    display: flex
-    flex-direction: column
-    min-height: calc(100vh - 180px)
-
-  #roadmap-editor
-    flex: 1
-    min-height: 0
-    display: flex
-    flex-direction: column
+  .roadmap-text-btn--auto.roadmap-text-btn--align-left,
+  .roadmap-text-btn--auto.roadmap-text-btn--align-right
+    text-align: center
 
 .roadmap-view
   width: 100%
@@ -162,87 +66,12 @@
   .react-flow__edge
     cursor: pointer
 
-.page--roadmap_detail .roadmap-flow--scroll
-  flex: none
-  min-height: 0
-  height: auto
-  max-width: none
-  margin: 0
-  overflow: visible
-
-  .roadmap-flow__canvas
-    min-height: calc(100dvh - rem($nav-item-height))
-    width: 100%
-
-    +mobile()
-      min-height: 100dvh
-
-  .react-flow__renderer,
-  .react-flow__viewport
-    overflow: visible
-
-  .react-flow__node
-    overflow: visible
-
 .roadmap-flow__canvas
   width: 100%
 
   .react-flow
     width: 100%
     height: 100%
-
-.roadmap-flow--editor,
-.roadmap-flow--workspace
-  flex: 1
-  min-height: 0
-  height: 100%
-  border: 0
-  border-radius: 0
-  overflow: hidden
-
-  .roadmap-flow__canvas
-    height: 100%
-
-  .react-flow__edge.selected .react-flow__edge-path,
-  .react-flow__edge:hover .react-flow__edge-path
-    stroke: var(--roadmap-edge-hover) !important
-    stroke-width: 4 !important
-
-  .react-flow__edge
-    cursor: pointer
-
-  .react-flow__node.selected .roadmap-sh-node,
-  .roadmap-sh-node.is-selected
-    border-color: #1a5fb4
-    box-shadow: 0 0 0 3px rgba(26, 95, 180, 0.35)
-
-.editor-workspace-shell
-  .roadmap-node-markdown-editor
-    flex: 1
-    min-height: 0
-    height: 100%
-    overflow: hidden
-    position: relative
-
-    .roadmap-node-markdown-editor__textarea
-      width: 100%
-      height: 100%
-      border: 0
-      resize: none
-
-    .textbox,
-    .md-editor
-      height: 100% !important
-      min-height: 0 !important
-
-    .md-editor-preview
-      roadmap-text-btn-styles()
-
-.roadmap-inspector--workspace
-  flex: 1
-  min-height: 0
-  overflow-y: auto
-  padding: 16px 18px
 
 .roadmap-lane-overlay
   position: absolute
@@ -558,199 +387,6 @@ roadmap-text-btn-styles()
   line-height: 1
   pointer-events: none
   user-select: none
-
-.theme--dark.page--roadmap_detail,
-.theme--dark.page--roadmap_edit
-  .roadmap-sh-node__number
-    color: #66bb6f
-
-.roadmap-sh-node__handle
-  width: 10px
-  height: 10px
-  border: 2px solid var(--roadmap-handle-border)
-  background: var(--roadmap-handle-bg)
-
-.roadmap-sh-node__add
-  position: absolute
-  width: 22px
-  height: 22px
-  border-radius: 50%
-  border: 2px solid var(--roadmap-accent-blue)
-  background: #ffffff
-  color: var(--roadmap-accent-blue)
-  font-size: 16px
-  line-height: 1
-  padding: 0
-  cursor: pointer
-  display: flex
-  align-items: center
-  justify-content: center
-  z-index: 2
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15)
-
-  &:hover
-    background: var(--roadmap-accent-blue)
-    color: #ffffff
-
-.roadmap-sh-node__add--top
-  top: -11px
-  left: 50%
-  transform: translateX(-50%)
-
-.roadmap-sh-node__add--bottom
-  bottom: -11px
-  left: 50%
-  transform: translateX(-50%)
-
-.roadmap-sh-node__add--left
-  left: -11px
-  top: 50%
-  transform: translateY(-50%)
-
-.roadmap-sh-node__add--right
-  right: -11px
-  top: 50%
-  transform: translateY(-50%)
-
-.page--roadmap_edit .roadmap-sh-node__add
-  cursor: pointer
-
-.page--roadmap_edit .roadmap-sh-node
-  cursor: grab
-
-.page--roadmap_edit .roadmap-sh-node__handle,
-.page--roadmap_detail .roadmap-sh-node__handle
-  visibility: hidden
-  width: 1px
-  height: 1px
-  min-width: 0
-  min-height: 0
-  border: 0
-  opacity: 0
-  pointer-events: none
-
-.roadmap-empty
-  color: #444444
-  min-height: 420px
-  display: flex
-  flex-direction: column
-  align-items: center
-  justify-content: center
-  text-align: center
-  gap: 12px
-
-.roadmap-empty__mark
-  width: 76px
-  height: 76px
-  border: 1px solid #d8d8d8
-  border-radius: 50%
-  display: flex
-  align-items: center
-  justify-content: center
-  color: #4135d6
-  font-size: 42px
-
-.roadmap-editor-layout
-  color: #111111
-  position: relative
-  display: flex
-  flex-direction: column
-  flex: 1
-  min-height: 0
-  height: 100%
-
-.roadmap-editor-body
-  display: flex
-  flex: 1
-  min-height: 0
-  overflow: hidden
-  align-items: stretch
-
-.roadmap-canvas-panel
-  width: 360px
-  flex-shrink: 0
-  border-right: 1px solid #ececec
-  background: #fafafa
-  display: flex
-  flex-direction: column
-  min-height: 0
-  min-width: 0
-
-.roadmap-editor-main
-  flex: 1
-  min-width: 0
-  min-height: 0
-  display: flex
-  flex-direction: column
-  overflow: hidden
-  background: #ffffff
-
-.roadmap-editor-main__header
-  flex-shrink: 0
-  padding: 8px 16px
-  border-bottom: 1px solid #ececec
-  background: #ffffff
-
-.roadmap-editor-main__title-field
-  display: block
-  margin: 0
-  color: #555555
-  font-size: 12px
-  letter-spacing: 0.04em
-
-  input
-    display: block
-    width: 100%
-    margin-top: 6px
-    border-radius: 8px
-    border: 1px solid #d8d8d8
-    background: #ffffff
-    color: #111111
-    padding: 8px 10px
-    font-size: 14px
-
-.roadmap-side-panel
-  display: flex
-  flex-direction: column
-  min-height: 0
-
-.roadmap-side-panel--edge
-  width: 320px
-  flex-shrink: 0
-  border-left: 1px solid #ececec
-  background: #fafafa
-  overflow-y: auto
-  min-height: 0
-
-.roadmap-toolbar
-  min-height: 96px
-  display: flex
-  align-items: center
-  justify-content: space-between
-  gap: 18px
-  padding: 20px 24px
-  border-bottom: 1px solid #ececec
-  background: #fafafa
-
-.roadmap-hero__eyebrow
-  text-transform: uppercase
-  letter-spacing: 0.2em
-  font-size: 11px
-  color: #666666
-  margin-bottom: 6px
-
-.roadmap-toolbar__title
-  font-size: 28px
-  line-height: 1.1
-  letter-spacing: -0.04em
-  color: #111111
-
-.roadmap-toolbar__actions
-  display: flex
-  flex-wrap: wrap
-  align-items: center
-  justify-content: flex-end
-  gap: 8px
 
 .roadmap-node-markdown-editor
   flex: 1
