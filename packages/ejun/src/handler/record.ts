@@ -63,14 +63,14 @@ type RecordRowDisplay = {
     cardUrl: string;
 };
 
-function recordCardOutlineUrl(
+function recordCardUrl(
     buildUrl: (name: string, kwargs: Record<string, unknown>) => string,
     domainId: string,
     baseDocId: number,
     branch: string,
     cardIdHex: string,
 ): string {
-    const pathUrl = buildUrl('base_outline_doc_branch', {
+    const pathUrl = buildUrl('base_detail_branch', {
         domainId,
         docId: String(baseDocId),
         branch,
@@ -201,7 +201,7 @@ async function enrichRecordRowDisplay(
             if (card && typeof card.title === 'string' && card.title.length > 0) {
                 cardTitle = card.title;
             }
-            cardUrl = recordCardOutlineUrl(buildUrl, domainId, baseDocId, branch, rd.cardId);
+            cardUrl = recordCardUrl(buildUrl, domainId, baseDocId, branch, rd.cardId);
         } catch {
         }
     }

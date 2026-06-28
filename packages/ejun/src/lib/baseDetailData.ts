@@ -6,14 +6,14 @@ import {
     BaseModel,
     getBranchData,
     TYPE_CARD,
-    hasActiveOutlineExplorerFilters,
-    applyOutlineExplorerUrlFilters,
-    trimOutlineExplorerFiltersForClient,
-    type OutlineExplorerFilters,
+    hasActiveDetailExplorerFilters,
+    applyDetailExplorerUrlFilters,
+    trimDetailExplorerFiltersForClient,
+    type DetailExplorerFilters,
 } from '../model/base';
 import type { BaseDoc, BaseNode, BaseEdge, CardDoc } from '../interface';
 
-export function outlineExplorerFiltersFromToolArgs(args: Record<string, unknown> | undefined | null): OutlineExplorerFilters {
+export function detailExplorerFiltersFromToolArgs(args: Record<string, unknown> | undefined | null): DetailExplorerFilters {
     const g = (k: string) => {
         const v = args?.[k];
         return typeof v === 'string' ? v : '';
@@ -28,14 +28,14 @@ export function outlineExplorerFiltersFromToolArgs(args: Record<string, unknown>
 export type FetchBaseOutlineOptions = {
     baseDocId?: number;
     branch?: string;
-    filters: OutlineExplorerFilters;
+    filters: DetailExplorerFilters;
 };
 
 /**
  * Load nodes, edges, and per-node cards for a base doc + branch, then apply outline URL-style filters.
  * Card query uses baseDocId + branch (aligned with base outline page).
  */
-export async function fetchFilteredBaseOutline(
+export async function fetchFilteredBaseDetail(
     domainId: string,
     options: FetchBaseOutlineOptions,
 ): Promise<{
@@ -44,7 +44,7 @@ export async function fetchFilteredBaseOutline(
     edges: BaseEdge[];
     nodeCardsMap: Record<string, CardDoc[]>;
     currentBranch: string;
-    outlineExplorerFilters: OutlineExplorerFilters;
+    outlineExplorerFilters: DetailExplorerFilters;
 } | null> {
     let base: BaseDoc | null = null;
     if (options.baseDocId != null && Number.isFinite(options.baseDocId) && options.baseDocId > 0) {
@@ -89,8 +89,8 @@ export async function fetchFilteredBaseOutline(
     }
 
     const outlineExplorerFilters = options.filters;
-    if (hasActiveOutlineExplorerFilters(outlineExplorerFilters)) {
-        const applied = applyOutlineExplorerUrlFilters(nodes, edges, nodeCardsMap, outlineExplorerFilters);
+    if (hasActiveDetailExplorerFilters(outlineExplorerFilters)) {
+        const applied = applyDetailExplorerUrlFilters(nodes, edges, nodeCardsMap, outlineExplorerFilters);
         nodes = applied.nodes;
         edges = applied.edges;
         nodeCardsMap = applied.nodeCardsMap;
@@ -102,6 +102,6 @@ export async function fetchFilteredBaseOutline(
         edges,
         nodeCardsMap,
         currentBranch,
-        outlineExplorerFilters: trimOutlineExplorerFiltersForClient(outlineExplorerFilters),
+        outlineExplorerFilters: trimDetailExplorerFiltersForClient(outlineExplorerFilters),
     };
 }

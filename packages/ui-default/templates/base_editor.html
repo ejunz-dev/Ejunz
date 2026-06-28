@@ -27,9 +27,6 @@
   {% if developSessionStartedAtIso is defined and developSessionStartedAtIso %}
   {{ set(UiContext, 'developSessionStartedAtIso', developSessionStartedAtIso) }}
   {% endif %}
-  {% if editorDevelopSessionKind is defined and editorDevelopSessionKind %}
-  {{ set(UiContext, 'editorDevelopSessionKind', editorDevelopSessionKind) }}
-  {% endif %}
   {{ set(UiContext, 'baseExpandState', baseExpandState or []) }}
   {{ set(UiContext, 'baseEditorUiPrefs', baseEditorUiPrefs or {}) }}
   {{ set(UiContext, 'editorRootNodeId', editorRootNodeId or '') }}

@@ -357,10 +357,9 @@ function BaseDetailViewer() {
       const payload: Record<string, unknown> = {
         baseDocId: baseDocNum,
         branch: branchName,
-        fromOutline: true,
         nodeId,
+        developMapDocType: 70,
       };
-      payload.developMapDocType = 70;
       const res: any = await request.post(domainApiPath('/session/develop/start', domainId), payload);
       const sessionId = res?.sessionId ?? res?.body?.sessionId;
       if (typeof sessionId !== 'string' || !sessionId.trim()) {

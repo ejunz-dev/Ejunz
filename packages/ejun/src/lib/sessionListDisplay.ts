@@ -44,23 +44,17 @@ export function isDevelopSessionRow(doc: SessionDoc): boolean {
     return doc.appRoute === 'develop' || doc.route === 'develop';
 }
 
-/** Develop editor: daily run-queue session vs outline「单节点」编辑会话。 */
-export type DevelopSessionKind = 'daily' | 'outline_node';
+/** Develop editor: daily run-queue session. */
+export type DevelopSessionKind = 'daily';
 
 export function inferDevelopSessionKind(doc: SessionDoc): DevelopSessionKind {
-    if (!isDevelopSessionRow(doc)) return 'daily';
-    const k = (doc as { developSessionKind?: string }).developSessionKind;
-    if (k === 'outline_node' || k === 'daily') return k;
-    const nid = typeof doc.nodeId === 'string' ? doc.nodeId.trim() : '';
-    return nid ? 'outline_node' : 'daily';
+    return 'daily';
 }
 
 /** i18n key for session list / history label (not `session_record_type_daily` / learn wording). */
 export function developSessionRecordTypeLabelKey(doc: SessionDoc): string | null {
     if (!isDevelopSessionRow(doc)) return null;
-    return inferDevelopSessionKind(doc) === 'outline_node'
-        ? 'session_record_type_develop_outline'
-        : 'session_record_type_develop_daily';
+    return 'session_record_type_develop_daily';
 }
 
 export function isAgentSessionRow(doc: SessionDoc): boolean {
@@ -97,7 +91,7 @@ export function isDevelopSessionSettled(doc: SessionDoc | null | undefined): boo
 
 export function deriveSessionRecordType(doc: SessionDoc): SessionListRecordType {
     if (isDevelopSessionRow(doc)) {
-        return inferDevelopSessionKind(doc) === 'outline_node' ? 'single_node' : 'daily';
+        return 'daily';
     }
     if (isScheduleAgentSessionRow(doc)) return 'schedule';
     if (isAgentSessionRow(doc)) return 'agent';
@@ -123,7 +117,7 @@ export function formatSessionCardProgress(doc: SessionDoc): string | null {
 /** Session list progress column: develop run queue (completed/total); learn = card queue progress. */
 export function formatSessionProgressDisplay(doc: SessionDoc): string | null {
     if (isDevelopSessionRow(doc)) {
-        if (inferDevelopSessionKind(doc) === 'outline_node') return null;
+        // only show progress for daily sessions
         const dr = doc.progress?.developRun as { completed?: unknown; total?: unknown } | undefined;
         const total = Number(dr?.total);
         const completed = Number(dr?.completed);
