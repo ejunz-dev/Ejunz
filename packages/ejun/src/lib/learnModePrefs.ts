@@ -150,19 +150,17 @@ export function getLearnBaseDocId(dudoc: Record<string, unknown> | null | undefi
     return Number.isFinite(Number(legacyRaw)) && Number(legacyRaw) > 0 ? Number(legacyRaw) : null;
 }
 
-export function normalizeLearnMode(raw: unknown): 'base' | 'roadmap' {
-    const s = String(raw ?? '').trim().toLowerCase();
-    if (s === 'roadmap') return 'roadmap';
+export function normalizeLearnMode(_raw: unknown): 'base' {
     return 'base';
 }
 
-export function getLearnMode(dudoc: Record<string, unknown> | null | undefined): 'base' | 'roadmap' {
-    return normalizeLearnMode(dudoc?.learnMode);
+export function getLearnMode(_dudoc: Record<string, unknown> | null | undefined): 'base' {
+    return 'base';
 }
 
-export function getLearnRoadmapDocId(dudoc: Record<string, unknown> | null | undefined): number | null {
-    const raw = dudoc?.learnRoadmapDocId;
-    return Number.isFinite(Number(raw)) && Number(raw) > 0 ? Number(raw) : null;
+/** @deprecated Roadmap mode removed. Always returns null. */
+export function getLearnRoadmapDocId(_dudoc: Record<string, unknown> | null | undefined): number | null {
+    return null;
 }
 
 /** Fall back to dailyGoal when learnDailyGoal was never written. For learn: **new** cards per day when > 0. */

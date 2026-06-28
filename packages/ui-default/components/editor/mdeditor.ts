@@ -13,7 +13,7 @@ import { RoadmapButton } from '../roadmap/markdown-it-roadmap-button';
 
 const pagename = document.documentElement.getAttribute('data-page');
 const isProblemPage = ['problem_create', 'problem_edit'].includes(pagename);
-const isRoadmapEditorPage = pagename === 'roadmap_edit' || pagename === 'base_detail';
+const isRoadmapEditorPage = pagename === 'base_detail';
 
 config({
   markdownItConfig(mdit) {

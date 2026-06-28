@@ -5,8 +5,7 @@ import { Handler, query, Types } from '../service/server';
 import { PRIV, PERM } from '../model/builtin';
 import { MethodNotAllowedError } from '@ejunz/framework';
 import DomainModel from '../model/domain';
-import { BaseModel, type MindMapDocType } from '../model/base';
-import RoadmapModel from '../model/roadmap';
+import { BaseModel } from '../model/base';
 import * as document from '../model/document';
 import { NotFoundError, ValidationError } from '../error';
 import SessionModel, {
@@ -17,8 +16,6 @@ import SessionModel, {
 } from '../model/session';
 import { readDevelopSessionDeadlineMs } from '../lib/sessionUtcDaily';
 import { buildBaseEditorPageBody } from './base';
-import { renderRoadmapPage } from './roadmap';
-import { buildDevelopRoadmapEditorExtras } from '../lib/developRoadmapEditorExtras';
 import type { BaseDoc } from '../interface';
 import { developBranchKey, developTodayUtcYmd, getDevelopBranchDailyMany } from '../lib/developBranchDaily';
 import { appendUserCheckinDay, countConsecutiveCheckinDays } from '../lib/checkin';
@@ -29,12 +26,6 @@ import {
     normalizeDevelopPool,
     type DevelopPoolEntryWire,
 } from '../lib/developPoolShared';
-import {
-    developPoolFieldForMode,
-    getDevelopMode,
-    normalizeDevelopMode,
-    type DevelopSourceMode,
-} from '../lib/developModePrefs';
 import { buildDevelopDomainWallPayload } from '../lib/developDomainWall';
 import {
     buildTodayDevelopResumeFields,
@@ -110,18 +101,9 @@ class DevelopSessionEditorHandler extends Handler {
         if (!Number.isFinite(baseDocId) || baseDocId <= 0) {
             throw new NotFoundError(this.translate('Session not found'));
         }
-        const mRaw = sess.developMapDocType;
-        const isRoadmapSession = mRaw === document.TYPE_ROADMAP;
-        if (mRaw !== undefined && mRaw !== document.TYPE_BASE && !isRoadmapSession) {
-            throw new NotFoundError(this.translate('Session not found'));
-        }
-        const mapDt: MindMapDocType = isRoadmapSession ? document.TYPE_ROADMAP : document.TYPE_BASE;
-        const sourceDoc = isRoadmapSession
-            ? await RoadmapModel.get(domainId, baseDocId)
-            : await BaseModel.get(domainId, baseDocId);
-        if (!sourceDoc) throw new NotFoundError(isRoadmapSession ? 'Roadmap not found' : 'Base not found');
-        if (!this.user.own(sourceDoc)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
-        const base = sourceDoc as unknown as BaseDoc;
+        const base = await BaseModel.get(domainId, baseDocId);
+        if (!base) throw new NotFoundError('Base not found');
+        if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
 
         const requestedBranch = sess.branch && String(sess.branch).trim() ? String(sess.branch).trim() : 'main';
         const q = this.request.query || {};
@@ -143,14 +125,6 @@ class DevelopSessionEditorHandler extends Handler {
                     return;
                 }
             }
-            if (isRoadmapSession) {
-                const sp = new URLSearchParams();
-                sp.set('session', sid);
-                if (hasCardInUrl) sp.set('cardId', String(q.cardId).trim());
-                if (hasNodeInUrl) sp.set('nodeId', String(q.nodeId).trim());
-                this.response.redirect = `/d/${encodeURIComponent(domainId)}/roadmap/${encodeURIComponent(String(baseDocId))}/branch/${encodeURIComponent(requestedBranch)}/edit?${sp.toString()}`;
-                return;
-            }
             const docSeg = (base as { bid?: string }).bid && String((base as { bid?: string }).bid).trim()
                 ? String((base as { bid?: string }).bid).trim()
                 : String(base.docId);
@@ -159,40 +133,6 @@ class DevelopSessionEditorHandler extends Handler {
             if (hasCardInUrl) sp.set('cardId', String(q.cardId).trim());
             if (hasNodeInUrl) sp.set('nodeId', String(q.nodeId).trim());
             this.response.redirect = `/d/${encodeURIComponent(domainId)}/base/${encodeURIComponent(docSeg)}/branch/${encodeURIComponent(requestedBranch)}/editor?${sp.toString()}`;
-            return;
-        }
-
-        if (isRoadmapSession) {
-            const savedRoadmapDailyUrl = readDevelopEditorUrl(sess);
-            if (!hasCardInUrl && !hasNodeInUrl && savedRoadmapDailyUrl) {
-                const locOk = await validateDevelopEditorStoredLocation(
-                    domainId,
-                    savedRoadmapDailyUrl,
-                    sid,
-                    baseDocId,
-                    requestedBranch,
-                );
-                if (locOk) {
-                    this.response.redirect = savedRoadmapDailyUrl;
-                    return;
-                }
-            }
-            await renderRoadmapPage(this, domainId, baseDocId, true, requestedBranch);
-            const developExtras = await buildDevelopRoadmapEditorExtras({
-                db: this.ctx.db.db,
-                domainId,
-                uid: this.user._id,
-                priv: this.user.priv,
-                sess,
-                makeEditorUrl: (poolDocId, poolBranch) => this.url('roadmap_edit_branch', {
-                    docId: String(poolDocId),
-                    branch: poolBranch,
-                }),
-            });
-            this.response.body = {
-                ...(this.response.body as Record<string, unknown>),
-                ...developExtras,
-            };
             return;
         }
 
@@ -229,7 +169,7 @@ class DevelopSessionEditorHandler extends Handler {
             makeEditorUrl: (docId, br) => this.url('base_outline_doc_branch', { docId: String(docId), branch: br }),
             rootNodeIdFromQuery,
             developPoolUiMode: inferDevelopSessionKind(sess) === 'outline_node' ? 'none' : 'full',
-            mapDocType: mapDt,
+            mapDocType: document.TYPE_BASE,
         });
         const deadlineMs = readDevelopSessionDeadlineMs(sess);
         const createdAt = sess.createdAt instanceof Date
@@ -330,8 +270,7 @@ class DevelopHandler extends Handler {
         }
 
         const dudoc = await DomainModel.getDomainUser(finalDomainId, { _id: this.user._id, priv: this.user.priv });
-        const developMode = getDevelopMode(dudoc as Record<string, unknown> | null);
-        const developPool = normalizeDevelopPool((dudoc as any)?.[developPoolFieldForMode(developMode)]);
+        const developPool = normalizeDevelopPool((dudoc as any)?.developPool);
 
         const bases = await BaseModel.getAll(finalDomainId);
         bases.sort((a, b) => {
@@ -346,19 +285,6 @@ class DevelopHandler extends Handler {
             branches: branchesForDevelopBase(b),
         }));
 
-        const roadmaps = await RoadmapModel.getAll(finalDomainId);
-        roadmaps.sort((a, b) => {
-            const ta = a.updateAt instanceof Date ? a.updateAt.getTime() : 0;
-            const tb = b.updateAt instanceof Date ? b.updateAt.getTime() : 0;
-            return tb - ta;
-        });
-        const roadmapById = new Map(roadmaps.map((r) => [Number(r.docId), r]));
-        const developRoadmaps = roadmaps.map((r) => ({
-            docId: Number(r.docId),
-            title: ((r.title || '').trim() || String(r.docId)),
-            branches: branchesForDevelopBase(r as unknown as BaseDoc),
-        }));
-
         const date = developTodayUtcYmd();
         const stats = await getDevelopBranchDailyMany(
             this.ctx.db.db,
@@ -369,11 +295,10 @@ class DevelopHandler extends Handler {
         );
 
         const rows = developPool.map((e) => {
-            const isRoadmap = developMode === 'roadmap';
-            const src = isRoadmap ? roadmapById.get(e.baseDocId) : baseById.get(e.baseDocId);
+            const src = baseById.get(e.baseDocId);
             const title = src
                 ? ((src.title || '').trim() || String(e.baseDocId))
-                : (isRoadmap ? `Roadmap ${e.baseDocId}` : `Base ${e.baseDocId}`);
+                : `Base ${e.baseDocId}`;
             const st = stats.get(developBranchKey(e.baseDocId, e.branch)) || { nodes: 0, cards: 0, problems: 0 };
             const rowStats = {
                 ...e,
@@ -383,9 +308,7 @@ class DevelopHandler extends Handler {
             };
             const hasGoal = developRowHasDailyGoal(e);
             const todayGoalsMet = hasGoal && developRowGoalsMet(rowStats);
-            const editorUrl = isRoadmap
-                ? this.url('roadmap_edit_branch', { docId: String(e.baseDocId), branch: e.branch })
-                : this.url('base_outline_doc_branch', { docId: String(e.baseDocId), branch: e.branch });
+            const editorUrl = this.url('base_outline_doc_branch', { docId: String(e.baseDocId), branch: e.branch });
             return {
                 ...e,
                 baseTitle: title,
@@ -440,11 +363,8 @@ class DevelopHandler extends Handler {
         this.response.template = 'develop.html';
         this.response.body = {
             domainId: finalDomainId,
-            developMode,
             developPool: rows,
             learnBases,
-            developRoadmaps,
-            developMapDocTypeRoadmap: document.TYPE_ROADMAP,
             developDateUtc: date,
             developTotalCheckinDays,
             developConsecutiveDays,
@@ -472,7 +392,7 @@ class DevelopHandler extends Handler {
             return;
         }
 
-        const developPool = normalizeDevelopPool((dudoc as any)?.[developPoolFieldForMode(getDevelopMode(dudoc as Record<string, unknown> | null))]);
+        const developPool = normalizeDevelopPool((dudoc as any)?.developPool);
         if (!developPool.length || !developPoolHasAnyGoal(developPool)) {
             throw new ValidationError(this.translate('Develop check-in need goals set'));
         }
@@ -506,51 +426,26 @@ class DevelopHandler extends Handler {
         if (String(this.request.path || '').includes('/develop/checkin')) {
             return this.postCheckin(domainId);
         }
-        if (String(this.request.path || '').includes('/develop/mode')) {
-            return this.postDevelopMode(domainId);
-        }
         if (!this.request.path.includes('/pool')) {
             throw new MethodNotAllowedError('POST');
         }
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         const body: any = this.request.body || {};
-        const poolKind: DevelopSourceMode = body.poolKind === 'roadmap' ? 'roadmap' : 'base';
         const pool = normalizeDevelopPool(body.pool);
         for (const e of pool) {
-            if (poolKind === 'roadmap') {
-                const rm = await RoadmapModel.get(finalDomainId, e.baseDocId);
-                if (!rm) {
-                    throw new ValidationError(this.translate('Develop unknown roadmap'));
-                }
-                const allowed = new Set(branchesForDevelopBase(rm as unknown as BaseDoc));
-                if (!allowed.has(e.branch)) {
-                    throw new ValidationError(this.translate('Develop invalid branch'));
-                }
-            } else {
-                const b = await BaseModel.get(finalDomainId, e.baseDocId);
-                if (!b) {
-                    throw new ValidationError(this.translate('Develop unknown base'));
-                }
-                const allowed = new Set(branchesForDevelopBase(b));
-                if (!allowed.has(e.branch)) {
-                    throw new ValidationError(this.translate('Develop invalid branch'));
-                }
+            const b = await BaseModel.get(finalDomainId, e.baseDocId);
+            if (!b) {
+                throw new ValidationError(this.translate('Develop unknown base'));
+            }
+            const allowed = new Set(branchesForDevelopBase(b));
+            if (!allowed.has(e.branch)) {
+                throw new ValidationError(this.translate('Develop invalid branch'));
             }
         }
         await clearDevelopSessionsAfterPoolChange(finalDomainId, this.user._id);
-        const field = developPoolFieldForMode(poolKind);
-        await DomainModel.setUserInDomain(finalDomainId, this.user._id, { [field]: pool });
-        this.response.body = { success: true, pool, poolKind };
-    }
-
-    async postDevelopMode(domainId: string) {
-        const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        const body: any = this.request.body || {};
-        const developMode = normalizeDevelopMode(body.developMode);
-        await DomainModel.setUserInDomain(finalDomainId, this.user._id, { developMode });
-        this.response.body = { success: true, developMode };
+        await DomainModel.setUserInDomain(finalDomainId, this.user._id, { developPool: pool });
+        this.response.body = { success: true, pool };
     }
 }
 
@@ -560,5 +455,4 @@ export async function apply(ctx: Context) {
     ctx.Route('develop', '/develop', DevelopHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('develop_pool', '/develop/pool', DevelopHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('develop_checkin', '/develop/checkin', DevelopHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('develop_mode', '/develop/mode', DevelopHandler, PRIV.PRIV_USER_PROFILE);
 }
