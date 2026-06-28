@@ -7,10 +7,10 @@ import {
     BaseModel,
     CardModel,
     TYPE_CARD,
-    applyOutlineExplorerUrlFilters,
-    hasActiveOutlineExplorerFilters,
+    applyDetailExplorerUrlFilters,
+    hasActiveDetailExplorerFilters,
     outlineExplorerFiltersFromQuery,
-    trimOutlineExplorerFiltersForClient,
+    trimDetailExplorerFiltersForClient,
     type MindMapDocType,
     readOptionalRequestBaseDocId,
     getBranchData,
@@ -959,195 +959,6 @@ export interface BaseOutlineOptions {
 }
 
 
-export class BaseOutlineHandler extends Handler {
-    protected getOutlineOptions(domainId: string, branch?: string): BaseOutlineOptions {
-        return {
-            template: 'base_outline.html',
-            editorMode: 'base',
-            redirectRouteName: 'base_outline_branch',
-            getRequestedBranch: (b) => (b && String(b).trim() ? b : 'main'),
-            getBase: async (d) => BaseModel.getByDomain(d),
-            createBase: async (d, requestedBranch) => {
-                const { docId } = await BaseModel.create(
-                    d,
-                    this.user._id,
-                    this.domain.name || '知识库',
-                    '',
-                    undefined,
-                    requestedBranch,
-                    this.request.ip,
-                    undefined,
-                    this.domain.name
-                );
-                const base = await BaseModel.get(d, docId);
-                if (!base) throw new Error('Failed to create base');
-                return base;
-            },
-            defaultRootText: this.domain.name || '根节点',
-        };
-    }
-
-    @param('branch', Types.String, true)
-    async get(domainId: string, branch?: string) {
-        const opts = this.getOutlineOptions(domainId, branch);
-        const requestedBranch = opts.getRequestedBranch(branch);
-
-        if (!branch || !String(branch).trim()) {
-            const target = this.url(opts.redirectRouteName as any, { domainId, branch: 'main' });
-            this.response.redirect = target;
-            return;
-        }
-
-        this.response.template = opts.template;
-
-        let base = await opts.getBase(domainId, requestedBranch);
-        if (!base) base = await opts.createBase(domainId, requestedBranch);
-
-        let nodes: BaseNode[] = [];
-        let edges: BaseEdge[] = [];
-        const branchData = getBranchData(base, requestedBranch);
-        nodes = branchData.nodes || [];
-        edges = branchData.edges || [];
-
-        if (opts.cleanupBranchData) {
-            const cleaned = await opts.cleanupBranchData(domainId, base, requestedBranch, nodes, edges);
-            nodes = cleaned.nodes;
-            edges = cleaned.edges;
-        }
-
-        if (nodes.length === 0) {
-            const rootNode: Omit<BaseNode, 'id'> = { text: opts.defaultRootText, level: 0 };
-            await BaseModel.addNode(domainId, base.docId, rootNode, undefined, requestedBranch);
-            const updated = await BaseModel.get(domainId, base.docId);
-            if (updated) {
-                const updatedBranchData = getBranchData(updated, requestedBranch);
-                nodes = updatedBranchData.nodes || [];
-                edges = updatedBranchData.edges || [];
-            }
-        }
-
-        const cardFilter: any = { baseDocId: base.docId };
-        if (requestedBranch === 'main') {
-            cardFilter.$or = [{ branch: 'main' }, { branch: { $exists: false } }];
-        } else {
-            cardFilter.branch = requestedBranch;
-        }
-        const allCards = await document.getMulti(domainId, document.TYPE_CARD, cardFilter)
-            .sort({ order: 1, cid: 1 })
-            .toArray() as CardDoc[];
-        
-        let nodeCardsMap: Record<string, CardDoc[]> = {};
-        for (const card of allCards) {
-            if (card.nodeId) {
-                if (!nodeCardsMap[card.nodeId]) {
-                    nodeCardsMap[card.nodeId] = [];
-                }
-                nodeCardsMap[card.nodeId].push(card);
-            }
-        }
-        for (const nodeId of Object.keys(nodeCardsMap)) {
-            nodeCardsMap[nodeId].sort((a, b) =>
-                (a.order ?? 999999) - (b.order ?? 999999) || (a.cid - b.cid));
-        }
-
-        const outlineExplorerFilters = outlineExplorerFiltersFromQuery(this.request.query as any);
-        if (hasActiveOutlineExplorerFilters(outlineExplorerFilters)) {
-            const applied = applyOutlineExplorerUrlFilters(nodes, edges, nodeCardsMap, outlineExplorerFilters);
-            nodes = applied.nodes;
-            edges = applied.edges;
-            nodeCardsMap = applied.nodeCardsMap;
-        }
-
-        const cardId = this.request.query.cardId as string | undefined;
-        if (cardId && nodes.length > 0 && edges.length > 0) {
-            let targetNodeId: string | null = null;
-            for (const [nodeId, cards] of Object.entries(nodeCardsMap)) {
-                if (cards.some(card => String(card.docId) === String(cardId))) {
-                    targetNodeId = nodeId;
-                    break;
-                }
-            }
-            
-            if (targetNodeId) {
-                const parentMap = new Map<string, string>();
-                edges.forEach(edge => {
-                    parentMap.set(edge.target, edge.source);
-                });
-                
-                const nodesToExpand = new Set<string>();
-                let currentNodeId: string | null = targetNodeId;
-                while (currentNodeId) {
-                    nodesToExpand.add(currentNodeId);
-                    currentNodeId = parentMap.get(currentNodeId) || null;
-                }
-                
-                nodes = nodes.map(node => {
-                    if (nodesToExpand.has(node.id)) {
-                        return {
-                            ...node,
-                            expandedOutline: true,
-                        };
-                    }
-                    return node;
-                });
-            }
-        }
-        
-        
-        const branches = base && Array.isArray((base as any)?.branches) 
-            ? (base as any).branches 
-            : ['main'];
-        if (!branches.includes('main')) {
-            branches.unshift('main');
-        }
-        
-        
-        let gitStatus: any = null;
-        if (base) {
-            const githubRepo = (base.githubRepo || '') as string;
-            
-            if (githubRepo && githubRepo.trim()) {
-                try {
-                    const REPO_URL = await resolveGithubRemoteUrlForRepo(
-                        this.ctx,
-                        domainId,
-                        this.user._id,
-                        githubRepo,
-                        this.request.body?.githubToken,
-                    );
-                    gitStatus = await getBaseGitStatus(domainId, base.docId, requestedBranch, REPO_URL);
-                } catch (err) {
-                    console.error('Failed to get git status:', err);
-                    gitStatus = null;
-                }
-            } else {
-                try {
-                    gitStatus = await getBaseGitStatus(domainId, base.docId, requestedBranch);
-                } catch (err) {
-                    console.error('Failed to get local git status:', err);
-                    gitStatus = null;
-                }
-            }
-        }
-        
-        this.response.body = {
-            base: base ? { ...base, nodes, edges } : {
-                domainId,
-                nodes: [],
-                edges: [],
-                currentBranch: requestedBranch,
-            },
-            gitStatus,
-            currentBranch: requestedBranch,
-            branches,
-            nodeCardsMap,
-            files: base?.files || [],
-            domainId,
-            editorMode: opts.editorMode,
-            outlineExplorerFilters: trimOutlineExplorerFiltersForClient(outlineExplorerFilters),
-        };
-    }
-}
 
 
 export interface BaseEditorOptions {
@@ -1486,11 +1297,11 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
 export class BaseEditorDocHandler extends Handler {
     base?: BaseDoc;
 
-    protected getEditorOutlineBranchUrl(_domainId: string, docId: string, branch: string): string {
-        return this.url('base_outline_doc_branch', { docId, branch });
+    protected getEditorBranchUrl(_domainId: string, docId: string, branch: string): string {
+        return this.url('base_editor_branch', { docId, branch });
     }
 
-    /** Nunjucks template for develop outline-node session. */
+    /** Nunjucks template for develop session. */
     protected editorDocDevelopPageTemplate(): string {
         return 'base_editor.html';
     }
@@ -1516,84 +1327,18 @@ export class BaseEditorDocHandler extends Handler {
             ? this.request.query.session.trim()
             : '';
         if (sessionHexForOutline && ObjectId.isValid(sessionHexForOutline)) {
-            const outlineSess = await SessionModel.coll.findOne({
-                _id: new ObjectId(sessionHexForOutline),
-                domainId,
-                uid: this.user._id,
-                appRoute: 'develop',
-            }) as SessionDoc | null;
-            if (outlineSess && inferDevelopSessionKind(outlineSess) === 'outline_node') {
-                const brSess = outlineSess.branch && String(outlineSess.branch).trim()
-                    ? String(outlineSess.branch).trim()
-                    : 'main';
-                const sessMdt = outlineSess.developMapDocType;
-                const baseMdt: MindMapDocType = document.TYPE_BASE;
-                if (
-                    Number(outlineSess.baseDocId) === Number(base.docId)
-                    && brSess === requestedBranch
-                    && sessMdt === baseMdt
-                ) {
-                    if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
-                    const histSt = deriveSessionLearnStatus(outlineSess);
-                    if (histSt === 'timed_out' || histSt === 'finished' || histSt === 'abandoned') {
-                        const histBase = this.url('develop_session_history', { domainId });
-                        const sep = histBase.includes('?') ? '&' : '?';
-                        this.response.redirect = `${histBase}${sep}session=${encodeURIComponent(sessionHexForOutline)}`;
-                        return;
-                    }
-                    const domainNameEarly = (this as any).domain?.name || domainId;
-                    const qCardEarly = typeof this.request.query?.cardId === 'string' ? this.request.query.cardId.trim() : '';
-                    const qNodeEarly = typeof this.request.query?.nodeId === 'string' ? this.request.query.nodeId.trim() : '';
-                    const savedEditorUrl = readDevelopEditorUrl(outlineSess);
-                    if (!qCardEarly && !qNodeEarly && savedEditorUrl) {
-                        const locOk = await validateDevelopEditorStoredLocation(
-                            domainId,
-                            savedEditorUrl,
-                            sessionHexForOutline,
-                            Number(base.docId),
-                            brSess,
-                        );
-                        if (locOk) {
-                            this.response.redirect = savedEditorUrl;
-                            return;
-                        }
-                    }
-                    const sessNidEarly = typeof outlineSess.nodeId === 'string' ? String(outlineSess.nodeId).trim() : '';
-                    const rootPick = qNodeEarly || sessNidEarly;
-                    this.response.template = this.editorDocDevelopPageTemplate();
-                    const editorBodyOutline = await buildBaseEditorPageBody({
-                        domainId,
-                        base,
-                        requestedBranch,
-                        uid: this.user._id,
-                        priv: this.user.priv,
-                        domainName: domainNameEarly,
-                        db: this.ctx.db.db,
-                        makeEditorUrl: (docId, br) => this.getEditorOutlineBranchUrl(domainId, String(docId), br),
-                        rootNodeIdFromQuery: rootPick,
-                        developPoolUiMode: 'none',
-                        mapDocType: baseMdt,
-                    });
-                    const deadlineMsO = readDevelopSessionDeadlineMs(outlineSess);
-                    const createdO = outlineSess.createdAt instanceof Date
-                        ? outlineSess.createdAt
-                        : new Date(outlineSess.createdAt as any);
-                    this.response.body = {
-                        ...editorBodyOutline,
-                        page_name: this.editorDocDevelopPageName(),
-                        editorDevelopSessionKind: 'outline_node' as const,
-                        developSessionEditTotals: readDevelopSessionEditTotals(outlineSess),
-                        developSessionDeadlineIso: deadlineMsO != null ? new Date(deadlineMsO).toISOString() : null,
-                        developSessionStartedAtIso: Number.isNaN(createdO.getTime()) ? null : createdO.toISOString(),
-                        developEditorSessionHex: sessionHexForOutline,
-                    };
-                    return;
-                }
-            }
+            const sp = new URLSearchParams();
+            sp.set('session', sessionHexForOutline);
+            const qCard = typeof this.request.query?.cardId === 'string' ? this.request.query.cardId.trim() : '';
+            const qNode = typeof this.request.query?.nodeId === 'string' ? this.request.query.nodeId.trim() : '';
+            if (qCard) sp.set('cardId', qCard);
+            if (qNode) sp.set('nodeId', qNode);
+            this.response.redirect = `/d/${encodeURIComponent(domainId)}/develop/editor?${sp.toString()}`;
+            return;
         }
 
         const docSeg = (base.bid && String(base.bid).trim()) || String(base.docId);
-        this.response.redirect = this.getEditorOutlineBranchUrl(domainId, docSeg, requestedBranch);
+        this.response.redirect = this.getEditorBranchUrl(domainId, docSeg, requestedBranch);
     }
 }
 
@@ -1671,7 +1416,7 @@ class BaseCreateHandler extends Handler {
         }
 
         this.response.body = { docId, bid: finalBid || undefined };
-        this.response.redirect = this.url('base_outline_doc_branch', { docId: finalBid || docId.toString(), branch: 'main' });
+        this.response.redirect = this.url('base_detail_branch', { docId: finalBid || docId.toString(), branch: 'main' });
     }
 }
 
@@ -1765,7 +1510,7 @@ class BaseEditHandler extends Handler {
             return;
         }
         const outlineDocId = baseDoc.bid || baseDoc.docId;
-        this.response.redirect = this.url('base_outline_doc_branch', {
+        this.response.redirect = this.url('base_detail_branch', {
             docId: String(outlineDocId),
             branch: baseDoc.currentBranch || 'main',
         });
@@ -2622,190 +2367,8 @@ class BaseCreateNewHandler extends Handler {
             this.domain.name,
             true
         );
-        const target = this.url('base_outline_doc_branch', { docId, branch: 'main' });
+        const target = this.url('base_detail_branch', { docId, branch: 'main' });
         this.response.redirect = target;
-    }
-}
-
-
-export class BaseOutlineDocHandler extends Handler {
-    protected outlineDocBranchRouteName(): 'base_outline_doc_branch' {
-        return 'base_outline_doc_branch';
-    }
-
-    /** Nunjucks template for the outline page. */
-    protected outlineDocPageTemplate(): string {
-        return 'base_outline.html';
-    }
-
-    protected assertOutlineDocBase(_base: BaseDoc): void {}
-
-    protected getOutlineDocRootLabel(_base: BaseDoc): string {
-        return this.domain.name || '根节点';
-    }
-
-    protected getOutlineDocEditorMode(): 'base' {
-        return 'base';
-    }
-
-    protected async resolveOutlineDocForGet(domainId: string, docId: string): Promise<BaseDoc | null> {
-        return resolveBaseByDocIdOrBid(domainId, docId);
-    }
-
-    protected async maybeCleanupOutlineBranch(
-        _domainId: string,
-        _base: BaseDoc,
-        _requestedBranch: string,
-        nodes: BaseNode[],
-        edges: BaseEdge[],
-    ): Promise<{ nodes: BaseNode[]; edges: BaseEdge[] }> {
-        return { nodes, edges };
-    }
-
-    @param('docId', Types.String)
-    @param('branch', Types.String, true)
-    async get(domainId: string, docId: string, branch?: string) {
-        const requestedBranch = branch && String(branch).trim() ? branch : 'main';
-        if (!branch || !String(branch).trim()) {
-            const target = this.url(this.outlineDocBranchRouteName() as any, { domainId, docId, branch: 'main' });
-            this.response.redirect = target;
-            return;
-        }
-
-        const base = await this.resolveOutlineDocForGet(domainId, docId);
-        if (!base) throw new NotFoundError('Base not found');
-        this.assertOutlineDocBase(base);
-
-        this.response.template = this.outlineDocPageTemplate();
-
-        let nodes: BaseNode[] = [];
-        let edges: BaseEdge[] = [];
-        const branchData = getBranchData(base, requestedBranch);
-        nodes = branchData.nodes || [];
-        edges = branchData.edges || [];
-
-        const cleaned = await this.maybeCleanupOutlineBranch(domainId, base, requestedBranch, nodes, edges);
-        nodes = cleaned.nodes;
-        edges = cleaned.edges;
-
-        const mapDt: MindMapDocType = document.TYPE_BASE;
-
-        if (nodes.length === 0) {
-            const rootNode: Omit<BaseNode, 'id'> = { text: this.getOutlineDocRootLabel(base), level: 0 };
-            await BaseModel.addNode(domainId, base.docId, rootNode, undefined, requestedBranch, undefined, mapDt);
-            const updated = await BaseModel.get(domainId, base.docId, mapDt);
-            if (updated) {
-                const updatedBranchData = getBranchData(updated, requestedBranch);
-                nodes = updatedBranchData.nodes || [];
-                edges = updatedBranchData.edges || [];
-            }
-        }
-
-        const outlineDocCardFilter: any = { baseDocId: base.docId };
-        if (requestedBranch === 'main') {
-            outlineDocCardFilter.$or = [{ branch: 'main' }, { branch: { $exists: false } }];
-        } else {
-            outlineDocCardFilter.branch = requestedBranch;
-        }
-        const allCards = await document.getMulti(domainId, document.TYPE_CARD, outlineDocCardFilter)
-            .sort({ order: 1, cid: 1 })
-            .toArray() as CardDoc[];
-        let nodeCardsMap: Record<string, CardDoc[]> = {};
-        for (const card of allCards) {
-            if (card.nodeId) {
-                if (!nodeCardsMap[card.nodeId]) nodeCardsMap[card.nodeId] = [];
-                nodeCardsMap[card.nodeId].push(card);
-            }
-        }
-        for (const nodeId of Object.keys(nodeCardsMap)) {
-            nodeCardsMap[nodeId].sort((a, b) =>
-                (a.order ?? 999999) - (b.order ?? 999999) || (a.cid - b.cid));
-        }
-
-        const outlineExplorerFilters = outlineExplorerFiltersFromQuery(this.request.query as any);
-        if (hasActiveOutlineExplorerFilters(outlineExplorerFilters)) {
-            const applied = applyOutlineExplorerUrlFilters(nodes, edges, nodeCardsMap, outlineExplorerFilters);
-            nodes = applied.nodes;
-            edges = applied.edges;
-            nodeCardsMap = applied.nodeCardsMap;
-        }
-
-        const cardId = this.request.query.cardId as string | undefined;
-        if (cardId && nodes.length > 0 && edges.length > 0) {
-            let targetNodeId: string | null = null;
-            for (const [nodeId, cards] of Object.entries(nodeCardsMap)) {
-                if (cards.some(c => String(c.docId) === String(cardId))) {
-                    targetNodeId = nodeId;
-                    break;
-                }
-            }
-            if (targetNodeId) {
-                const parentMap = new Map<string, string>();
-                edges.forEach(edge => parentMap.set(edge.target, edge.source));
-                const nodesToExpand = new Set<string>();
-                let current: string | null = targetNodeId;
-                while (current) {
-                    nodesToExpand.add(current);
-                    current = parentMap.get(current) || null;
-                }
-                nodes = nodes.map(node => ({
-                    ...node,
-                    expandedOutline: nodesToExpand.has(node.id),
-                }));
-            }
-        }
-
-        const branches = base && Array.isArray((base as any)?.branches) ? (base as any).branches : ['main'];
-        if (!branches.includes('main')) branches.unshift('main');
-
-        let gitStatus: any = null;
-        if (base) {
-            const githubRepo = (base.githubRepo || '') as string;
-            try {
-                if (githubRepo && githubRepo.trim()) {
-                    const REPO_URL = await resolveGithubRemoteUrlForRepo(
-                        this.ctx,
-                        domainId,
-                        this.user._id,
-                        githubRepo,
-                        this.request.body?.githubToken,
-                    );
-                    gitStatus = await getBaseGitStatus(domainId, base.docId, requestedBranch, REPO_URL);
-                } else {
-                    gitStatus = await getBaseGitStatus(domainId, base.docId, requestedBranch);
-                }
-            } catch (err) {
-                logger.error('Failed to get git status:', err);
-            }
-        }
-
-        this.response.body = {
-            base: { ...base, nodes, edges },
-            gitStatus,
-            currentBranch: requestedBranch,
-            branches,
-            nodeCardsMap,
-            files: base?.files || [],
-            domainId,
-            editorMode: this.getOutlineDocEditorMode(),
-            outlineExplorerFilters: trimOutlineExplorerFiltersForClient(outlineExplorerFilters),
-        };
-    }
-}
-
-
-class BaseOutlineRedirectHandler extends Handler {
-    @param('branch', Types.String, true)
-    async get(domainId: string, branch?: string) {
-        const base = await BaseModel.getByDomain(domainId);
-        const b = branch && String(branch).trim() ? branch : 'main';
-        if (base) {
-            const target = this.url('base_outline_doc_branch', { docId: base.docId, branch: b });
-            this.response.redirect = target;
-        } else {
-            const target = this.url('base_domain', { domainId });
-            this.response.redirect = target;
-        }
     }
 }
 
@@ -3021,8 +2584,8 @@ export class BaseDataHandler extends Handler {
         }
 
         const outlineExplorerFilters = outlineExplorerFiltersFromQuery(this.request.query as any);
-        if (hasActiveOutlineExplorerFilters(outlineExplorerFilters)) {
-            const applied = applyOutlineExplorerUrlFilters(nodes, edges, nodeCardsMap, outlineExplorerFilters);
+        if (hasActiveDetailExplorerFilters(outlineExplorerFilters)) {
+            const applied = applyDetailExplorerUrlFilters(nodes, edges, nodeCardsMap, outlineExplorerFilters);
             nodes = applied.nodes;
             edges = applied.edges;
             nodeCardsMap = applied.nodeCardsMap;
@@ -3034,14 +2597,14 @@ export class BaseDataHandler extends Handler {
             edges,
             currentBranch,
             nodeCardsMap,
-            outlineExplorerFilters: trimOutlineExplorerFiltersForClient(outlineExplorerFilters),
+            outlineExplorerFilters: trimDetailExplorerFiltersForClient(outlineExplorerFilters),
         } : {
             domainId: domainId,
             nodes: [],
             edges: [],
             currentBranch,
             nodeCardsMap: {},
-            outlineExplorerFilters: trimOutlineExplorerFiltersForClient(outlineExplorerFilters),
+            outlineExplorerFilters: trimDetailExplorerFiltersForClient(outlineExplorerFilters),
         };
     }
 }
@@ -4832,7 +4395,7 @@ export async function refreshDevelopSessionRunProgressAfterBatchSave(
     }) as SessionDoc | null;
     if (!cur) return;
     if (isDevelopSessionSettled(cur)) return;
-    if (inferDevelopSessionKind(cur) === 'outline_node') return;
+
     const baseDocId = Number(cur.baseDocId);
     if (!Number.isFinite(baseDocId) || baseDocId <= 0) return;
     const branch = cur.branch && String(cur.branch).trim() ? String(cur.branch).trim() : 'main';
@@ -6655,9 +6218,7 @@ export class BaseConnectionHandler extends ConnectionHandler {
                 uid: this.user._id,
                 appRoute: 'develop',
             }) as SessionDoc | null;
-            if (sdoc
-                && inferDevelopSessionKind(sdoc) === 'outline_node'
-                && Number(sdoc.baseDocId) === this.docId) {
+            if (sdoc && Number(sdoc.baseDocId) === this.docId) {
                 this.suppressDevelopPoolContext = true;
             }
         }
@@ -6830,7 +6391,7 @@ export class BaseConnectionHandler extends ConnectionHandler {
                     const b = await BaseModel.get(domainId, docId);
                     return b ? ((b.title || '').trim() || String(docId)) : `Base ${docId}`;
                 },
-                makeEditorUrl: (docId, br) => this.url('base_outline_doc_branch', { docId: String(docId), branch: br }),
+                makeEditorUrl: (docId, br) => this.url('base_editor_branch', { docId: String(docId), branch: br }),
             });
         } catch (e) {
             logger.error('Failed to build develop editor context:', e);
@@ -7478,10 +7039,8 @@ export async function mcpBaseGitConfigSet(
 
 export async function apply(ctx: Context) {
     ctx.Route('base_domain', '/base', BaseDomainListHandler);
-    ctx.Route('base_outline_branch', '/base/branch/:branch', BaseOutlineRedirectHandler);
-    ctx.Route('base_create', '/base/create', BaseCreateHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_outline_doc', '/base/:docId/outline', BaseOutlineDocHandler);
-    ctx.Route('base_outline_doc_branch', '/base/:docId/outline/branch/:branch', BaseOutlineDocHandler);
+    ctx.Route('base_outline_redirect_to_detail', '/base/:docId/outline', BaseDetailHandler);
+    ctx.Route('base_outline_branch_redirect_to_detail', '/base/:docId/outline/branch/:branch', BaseDetailHandler);
     ctx.Route('base_list', '/base/list', BaseListHandler);
     ctx.Route('base_data', '/base/data', BaseDataHandler);
     ctx.Route('base_detail_ui_prefs', '/base/detail-ui-prefs', BaseDetailUiPrefsHandler, PRIV.PRIV_USER_PROFILE);

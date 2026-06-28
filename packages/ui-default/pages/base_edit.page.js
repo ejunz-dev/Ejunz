@@ -118,7 +118,7 @@ function setupBaseCreateMigrateSubmit(prefill) {
       }
       Notification.success(i18n('Separate as new base success'));
       const openSeg = res.bid ? String(res.bid) : String(res.newDocId);
-      window.location.href = domainScopedPath(`/base/${encodeURIComponent(openSeg)}/outline/branch/${encodeURIComponent(branch || 'main')}`, domainId);
+      window.location.href = domainScopedPath(`/base/${encodeURIComponent(openSeg)}/branch/${encodeURIComponent(branch || 'main')}`, domainId);
     } catch (err) {
       Notification.error(err?.message || i18n('Separate as new base failed'));
     } finally {

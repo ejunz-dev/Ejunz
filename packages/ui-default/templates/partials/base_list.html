@@ -35,7 +35,7 @@
           </label>
         </td>
         <td class="col--base-name">
-          <a href="{{ url('base_outline_doc_branch', docId=(base.bid or base.docId), branch='main') }}">
+          <a href="{{ url('base_detail_branch', docId=(base.bid or base.docId), branch='main') }}">
             <span class="base-list__bid">{{ base.bid if base.bid else ('#' ~ base.docId) }}</span>
             <span class="base-list__title">{{ base.title or _('Untitled') }}</span>
           </a>

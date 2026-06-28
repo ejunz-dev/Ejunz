@@ -37,7 +37,6 @@ import {
     deriveSessionRecordType,
     developSessionRecordTypeLabelKey,
     formatSessionProgressDisplay,
-    inferDevelopSessionKind,
     isDevelopSessionSettled,
 } from '../lib/sessionListDisplay';
 import { buildSessionRecordHistoryRows, summarizeRecordDoc } from './record';
@@ -110,32 +109,6 @@ class DevelopSessionEditorHandler extends Handler {
         const hasCardInUrl = typeof q.cardId === 'string' && q.cardId.trim().length > 0;
         const hasNodeInUrl = typeof q.nodeId === 'string' && q.nodeId.trim().length > 0;
 
-        if (inferDevelopSessionKind(sess) === 'outline_node') {
-            const savedEditorUrl = readDevelopEditorUrl(sess);
-            if (!hasCardInUrl && !hasNodeInUrl && savedEditorUrl) {
-                const locOk = await validateDevelopEditorStoredLocation(
-                    domainId,
-                    savedEditorUrl,
-                    sid,
-                    baseDocId,
-                    requestedBranch,
-                );
-                if (locOk) {
-                    this.response.redirect = savedEditorUrl;
-                    return;
-                }
-            }
-            const docSeg = (base as { bid?: string }).bid && String((base as { bid?: string }).bid).trim()
-                ? String((base as { bid?: string }).bid).trim()
-                : String(base.docId);
-            const sp = new URLSearchParams();
-            sp.set('session', sid);
-            if (hasCardInUrl) sp.set('cardId', String(q.cardId).trim());
-            if (hasNodeInUrl) sp.set('nodeId', String(q.nodeId).trim());
-            this.response.redirect = `/d/${encodeURIComponent(domainId)}/base/${encodeURIComponent(docSeg)}/branch/${encodeURIComponent(requestedBranch)}/editor?${sp.toString()}`;
-            return;
-        }
-
         const savedDailyUrl = readDevelopEditorUrl(sess);
         if (!hasCardInUrl && !hasNodeInUrl && savedDailyUrl) {
             const locOk = await validateDevelopEditorStoredLocation(
@@ -166,9 +139,9 @@ class DevelopSessionEditorHandler extends Handler {
             priv: this.user.priv,
             domainName,
             db: this.ctx.db.db,
-            makeEditorUrl: (docId, br) => this.url('base_outline_doc_branch', { docId: String(docId), branch: br }),
+            makeEditorUrl: (docId, br) => this.url('base_editor_branch', { docId: String(docId), branch: br }),
             rootNodeIdFromQuery,
-            developPoolUiMode: inferDevelopSessionKind(sess) === 'outline_node' ? 'none' : 'full',
+            developPoolUiMode: 'full',
             mapDocType: document.TYPE_BASE,
         });
         const deadlineMs = readDevelopSessionDeadlineMs(sess);
@@ -308,7 +281,7 @@ class DevelopHandler extends Handler {
             };
             const hasGoal = developRowHasDailyGoal(e);
             const todayGoalsMet = hasGoal && developRowGoalsMet(rowStats);
-            const editorUrl = this.url('base_outline_doc_branch', { docId: String(e.baseDocId), branch: e.branch });
+            const editorUrl = this.url('base_editor_branch', { docId: String(e.baseDocId), branch: e.branch });
             return {
                 ...e,
                 baseTitle: title,

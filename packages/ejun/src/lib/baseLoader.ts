@@ -1,9 +1,9 @@
 import { ObjectId } from 'mongodb';
 import { Logger } from '../logger';
 import { CardModel } from '../model/base';
-import { hasActiveOutlineExplorerFilters } from '../model/base';
+import { hasActiveDetailExplorerFilters } from '../model/base';
 import type { BaseNode, BaseEdge, CardDoc } from '../interface';
-import { fetchFilteredBaseOutline, outlineExplorerFiltersFromToolArgs } from './baseOutlineData';
+import { fetchFilteredBaseDetail, detailExplorerFiltersFromToolArgs } from './baseDetailData';
 
 const logger = new Logger('baseLoader');
 
@@ -41,14 +41,16 @@ export interface ParsedCardNodeUrl {
 }
 
 /**
- * Canonical outline page path (matches route `base_outline_doc_branch`).
+ * Canonical detail branch page path.
  */
-function outlineDocBranchPath(domainId: string, baseDocId: number, branch: string): string {
-    return `/d/${encodeURIComponent(domainId)}/base/${baseDocId}/outline/branch/${encodeURIComponent(branch)}`;
+function baseDetailBranchPath(domainId: string, baseDocId: number, branch: string): string {
+    return `/d/${encodeURIComponent(domainId)}/base/${baseDocId}/branch/${encodeURIComponent(branch)}`;
 }
 
 /**
- * Parse a single outline card/node URL: only .../base/:baseDocId/outline/branch/:branch?nodeId= / ?cardId= .
+ * Parse a single card/node URL: supports both
+ *   /d/:domainId/base/:baseDocId/outline/branch/:branch (old) and
+ *   /d/:domainId/base/:baseDocId/branch/:branch (new).
  */
 function parseCardNodeUrl(url: string): ParsedCardNodeUrl {
     const result: ParsedCardNodeUrl = { url: url.trim() };
@@ -81,13 +83,13 @@ function parseCardNodeUrl(url: string): ParsedCardNodeUrl {
         }
 
         const rest = segments.slice(baseIdx + 1);
-        if (rest.length < 4 || rest[1] !== 'outline' || rest[2] !== 'branch' || !rest[3]) {
-            result.parseError = 'path must be /d/:domainId/base/:baseDocId/outline/branch/:branch';
+        if (rest.length < 3 || (rest[1] === 'outline' ? rest.length < 4 : false)) {
+            result.parseError = 'path must be /d/:domainId/base/:baseDocId[/outline]/branch/:branch';
             return result;
         }
 
         result.docId = rest[0];
-        result.branch = rest[3];
+        result.branch = rest[1] === 'outline' ? rest[3] : rest[2];
 
         return result;
     } catch (e) {
@@ -124,13 +126,13 @@ function buildNodeTree(nodes: BaseNode[], edges: BaseEdge[]): Map<string, BaseNo
 function cardUrl(origin: string, domainId: string, baseDocId: number, branch: string, _nodeId: string, cardId: ObjectId): string {
     return withOrigin(
         origin,
-        `${outlineDocBranchPath(domainId, baseDocId, branch)}?cardId=${encodeURIComponent(String(cardId))}`,
+        `${baseDetailBranchPath(domainId, baseDocId, branch)}?cardId=${encodeURIComponent(String(cardId))}`,
     );
 }
 
 function nodeUrl(origin: string, domainId: string, baseDocId: number, branch: string, nodeId: string): string {
     const q = new URLSearchParams({ nodeId });
-    return withOrigin(origin, `${outlineDocBranchPath(domainId, baseDocId, branch)}?${q.toString()}`);
+    return withOrigin(origin, `${baseDetailBranchPath(domainId, baseDocId, branch)}?${q.toString()}`);
 }
 
 function lessonCardUrl(origin: string, domainId: string, cardId: ObjectId): string {
@@ -231,8 +233,8 @@ export async function loadBaseInstructions(
     toolArgs?: Record<string, unknown>,
 ): Promise<string | null> {
     try {
-        const filters = outlineExplorerFiltersFromToolArgs(toolArgs);
-        const payload = await fetchFilteredBaseOutline(domainId, {
+        const filters = detailExplorerFiltersFromToolArgs(toolArgs);
+        const payload = await fetchFilteredBaseDetail(domainId, {
             baseDocId,
             branch,
             filters,
@@ -241,7 +243,7 @@ export async function loadBaseInstructions(
 
         const { nodes, edges, base, currentBranch, outlineExplorerFilters } = payload;
         if (nodes.length === 0) {
-            if (hasActiveOutlineExplorerFilters(filters)) {
+            if (hasActiveDetailExplorerFilters(filters)) {
                 return 'No nodes matched the outline filters (filterNode / filterCard / filterProblem). Try different keywords or omit filters.';
             }
             return null;
@@ -266,7 +268,7 @@ export async function loadBaseInstructions(
             maxLevel
         );
 
-        const filterLine = hasActiveOutlineExplorerFilters(outlineExplorerFilters)
+        const filterLine = hasActiveDetailExplorerFilters(outlineExplorerFilters)
             ? `Applied outline filters (same as base UI): filterNode="${outlineExplorerFilters.filterNode}" filterCard="${outlineExplorerFilters.filterCard}" filterProblem="${outlineExplorerFilters.filterProblem}".\n\n`
             : '';
 
@@ -293,8 +295,8 @@ export async function loadBaseInstructionsByUrls(
 ): Promise<string | null> {
     if (!urls || urls.length === 0) return null;
     try {
-        const filters = outlineExplorerFiltersFromToolArgs(toolArgs);
-        const payload = await fetchFilteredBaseOutline(domainId, {
+        const filters = detailExplorerFiltersFromToolArgs(toolArgs);
+        const payload = await fetchFilteredBaseDetail(domainId, {
             baseDocId: baseDocIdArg,
             branch,
             filters,
@@ -330,7 +332,7 @@ export async function loadBaseInstructionsByUrls(
                 try {
                     const id = new ObjectId(parsed.cardId);
                     if (seenCardIds.has(id.toString())) continue;
-                    if (hasActiveOutlineExplorerFilters(outlineExplorerFilters) && !visibleCardIds.has(id.toString())) {
+                    if (hasActiveDetailExplorerFilters(outlineExplorerFilters) && !visibleCardIds.has(id.toString())) {
                         parts.push(`\n\n(Card not in filtered outline; widen or clear filterCard/filterProblem/filterNode.)\n\n`);
                         continue;
                     }
@@ -357,7 +359,7 @@ export async function loadBaseInstructionsByUrls(
 
             if (parsed.nodeId) {
                 const node = nodes.find((n) => n.id === parsed.nodeId);
-                if (!node && hasActiveOutlineExplorerFilters(outlineExplorerFilters)) {
+                if (!node && hasActiveDetailExplorerFilters(outlineExplorerFilters)) {
                     parts.push('\n\n(Node not in filtered outline; widen or clear filters.)\n\n');
                     continue;
                 }
@@ -379,7 +381,7 @@ export async function loadBaseInstructionsByUrls(
         }
 
         if (parts.length === 0) return null;
-        const filterLine = hasActiveOutlineExplorerFilters(outlineExplorerFilters)
+        const filterLine = hasActiveDetailExplorerFilters(outlineExplorerFilters)
             ? `Outline filtering matches base/data API (filterNode / filterCard / filterProblem).\n\n`
             : '';
         let out = `Below is content for the given link (after filters). Use only URLs returned here. cardId must be the 24-char hex ID.\n\n${filterLine}${multiUrlNote}` + parts.join('');
