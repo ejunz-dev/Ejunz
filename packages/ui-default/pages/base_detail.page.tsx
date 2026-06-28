@@ -82,6 +82,7 @@ function BaseDetailViewer() {
   ));
   const [displaySettingsSaving, setDisplaySettingsSaving] = useState(false);
   const [learnBusy, setLearnBusy] = useState(false);
+  const [editorBusy, setEditorBusy] = useState(false);
   const title = base.title?.trim() || String(i18n('Knowledge Base'));
   const branch = base.currentBranch || 'main';
   const nodes = base.nodes || [];
@@ -341,6 +342,55 @@ function BaseDetailViewer() {
     }
   }, [base.docId, base.domainId, branch, learnBusy, learnTargetNodeId]);
 
+  const startEditorSession = useCallback(async () => {
+    const nodeId = String(contentRootNodeId || '').trim();
+    if (!nodeId || editorBusy) return;
+    const baseDocNum = Number(base.docId);
+    if (!Number.isFinite(baseDocNum) || baseDocNum <= 0) {
+      Notification.error(i18n('Outline editor start invalid base'));
+      return;
+    }
+    const domainId = base.domainId || 'system';
+    const branchName = base.currentBranch || 'main';
+    setEditorBusy(true);
+    try {
+      const payload: Record<string, unknown> = {
+        baseDocId: baseDocNum,
+        branch: branchName,
+        fromOutline: true,
+        nodeId,
+      };
+      payload.developMapDocType = 70;
+      const res: any = await request.post(domainApiPath('/session/develop/start', domainId), payload);
+      const sessionId = res?.sessionId ?? res?.body?.sessionId;
+      if (typeof sessionId !== 'string' || !sessionId.trim()) {
+        Notification.error(i18n('Outline editor start failed'));
+        return;
+      }
+      const sp = new URLSearchParams({
+        session: sessionId.trim(),
+        nodeId,
+      });
+      const bid = base.bid;
+      const docSeg = bid && String(bid).trim() ? String(bid).trim() : String(baseDocNum);
+      const editorUrl = domainScopedPath(
+        `/base/${encodeURIComponent(docSeg)}/branch/${encodeURIComponent(branchName)}/editor?${sp.toString()}`,
+        domainId,
+      );
+      const opened = window.open(editorUrl, '_blank');
+      if (opened) {
+        opened.opener = null;
+      } else {
+        Notification.error(i18n('Outline editor popup blocked'));
+      }
+    } catch (e: any) {
+      const msg = e?.message ?? i18n('Outline editor start failed');
+      Notification.error(typeof msg === 'string' ? msg : String(msg));
+    } finally {
+      setEditorBusy(false);
+    }
+  }, [base.docId, base.bid, base.currentBranch, base.domainId, contentRootNodeId, editorBusy]);
+
   return (
     <div className="roadmap-detail-layout">
       <BaseDetailHeader
@@ -358,6 +408,9 @@ function BaseDetailViewer() {
         onStartLearningClick={startSingleNodeLearn}
         learnBusy={learnBusy}
         learnDisabled={!learnTargetNodeId}
+        onStartEditorSession={startEditorSession}
+        editorBusy={editorBusy}
+        editorDisabled={!contentRootNodeId}
       />
       {explorerScopeRootId ? (
         <BaseDetailExplorer
