@@ -61,8 +61,6 @@ interface LearnBaseLearnOption {
   branches?: string[];
 }
 
-type LearnSourceModeUi = 'base' | 'roadmap';
-
 type LearnSessionModeUi = 'deep' | 'breadth' | 'random';
 
 type LearnNewReviewOrderUi = 'new_first' | 'old_first' | 'shuffle';
@@ -226,25 +224,13 @@ function LearnPage() {
   const passedCardKeysSet = new Set<string>((window as any).UiContext?.passedCardKeys || []);
   const passedLegacyCardIdsSet = new Set<string>((window as any).UiContext?.passedLegacyCardIds || []);
   const learnBases = ((window as any).UiContext?.learnBases || []) as LearnBaseLearnOption[];
-  const learnRoadmaps = ((window as any).UiContext?.learnRoadmaps || []) as LearnBaseLearnOption[];
-  const learnModeUi = String((window as any).UiContext?.learnMode || 'base').trim().toLowerCase() === 'roadmap'
-    ? 'roadmap'
-    : 'base' as LearnSourceModeUi;
   const selectedLearnBaseDocId =
     (window as any).UiContext?.selectedLearnBaseDocId != null && (window as any).UiContext?.selectedLearnBaseDocId !== ''
       ? Number((window as any).UiContext.selectedLearnBaseDocId)
       : null;
-  const selectedLearnRoadmapDocId =
-    (window as any).UiContext?.selectedLearnRoadmapDocId != null && (window as any).UiContext?.selectedLearnRoadmapDocId !== ''
-      ? Number((window as any).UiContext.selectedLearnRoadmapDocId)
-      : null;
   const learnBranchUi = String((window as any).UiContext?.learnBranch || 'main').trim() || 'main';
   const requireBaseSelection = !!(window as any).UiContext?.requireBaseSelection;
-  const requireRoadmapSelection = !!(window as any).UiContext?.requireRoadmapSelection;
-  const requireSourceSelection = learnModeUi === 'roadmap' ? requireRoadmapSelection : requireBaseSelection;
-  const learnRedirect = `/d/${domainId}/learn`;
-  const learnBaseSelectUrl = `/d/${domainId}/learn/base/select?redirect=${encodeURIComponent(learnRedirect)}`;
-  const learnRoadmapSelectUrl = `/d/${domainId}/learn/roadmap/select?redirect=${encodeURIComponent(learnRedirect)}`;
+  const learnSourceSelectUrl = `/d/${domainId}/learn/base/select?redirect=${encodeURIComponent(`/d/${domainId}/learn`)}`;
   const initialLearnSessionMode = useMemo(
     () => normalizeLearnSessionModeFromUi((window as any).UiContext?.learnSessionMode),
     [],
@@ -298,12 +284,7 @@ function LearnPage() {
     selectedLearnBaseDocId != null && Number.isFinite(selectedLearnBaseDocId) && selectedLearnBaseDocId > 0
       ? (learnBases.find((b) => Number(b.docId) === Number(selectedLearnBaseDocId)) || null)
       : null;
-  const selectedLearnRoadmap =
-    selectedLearnRoadmapDocId != null && Number.isFinite(selectedLearnRoadmapDocId) && selectedLearnRoadmapDocId > 0
-      ? (learnRoadmaps.find((r) => Number(r.docId) === Number(selectedLearnRoadmapDocId)) || null)
-      : null;
-  const selectedLearnSource = learnModeUi === 'roadmap' ? selectedLearnRoadmap : selectedLearnBase;
-  const learnSourceSelectUrl = learnModeUi === 'roadmap' ? learnRoadmapSelectUrl : learnBaseSelectUrl;
+  const selectedLearnSource = selectedLearnBase;
 
   const [goal, setGoal] = useState(dailyGoal);
   const [learnSessionMode, setLearnSessionMode] = useState<LearnSessionModeUi>(initialLearnSessionMode);
@@ -933,59 +914,6 @@ function LearnPage() {
         {(
           <>
           <div style={{
-            display: 'flex',
-            gap: '4px',
-            padding: '4px',
-            background: themeStyles.bgSecondary,
-            borderRadius: '12px',
-            border: `1px solid ${themeStyles.border}`,
-          }}>
-            <button
-              type="button"
-              onClick={() => {
-                if (learnModeUi !== 'base') window.location.href = learnBaseSelectUrl;
-              }}
-              style={{
-                flex: 1,
-                padding: isMobile ? '10px 8px' : '10px 12px',
-                minHeight: isMobile ? '44px' : undefined,
-                fontSize: isMobile ? '12px' : '14px',
-                fontWeight: 600,
-                border: 'none',
-                borderRadius: '8px',
-                cursor: learnModeUi === 'base' ? 'default' : 'pointer',
-                background: learnModeUi === 'base' ? themeStyles.bgCard : 'transparent',
-                color: learnModeUi === 'base' ? themeStyles.textPrimary : themeStyles.textSecondary,
-                boxShadow: learnModeUi === 'base' ? (theme === 'dark' ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 6px rgba(0,0,0,0.08)') : 'none',
-                transition: 'all 0.2s',
-              }}
-            >
-              {i18n('Learn mode knowledge base')}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (learnModeUi !== 'roadmap') window.location.href = learnRoadmapSelectUrl;
-              }}
-              style={{
-                flex: 1,
-                padding: isMobile ? '10px 8px' : '10px 12px',
-                minHeight: isMobile ? '44px' : undefined,
-                fontSize: isMobile ? '12px' : '14px',
-                fontWeight: 600,
-                border: 'none',
-                borderRadius: '8px',
-                cursor: learnModeUi === 'roadmap' ? 'default' : 'pointer',
-                background: learnModeUi === 'roadmap' ? themeStyles.bgCard : 'transparent',
-                color: learnModeUi === 'roadmap' ? themeStyles.textPrimary : themeStyles.textSecondary,
-                boxShadow: learnModeUi === 'roadmap' ? (theme === 'dark' ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 6px rgba(0,0,0,0.08)') : 'none',
-                transition: 'all 0.2s',
-              }}
-            >
-              {i18n('Learn mode roadmap')}
-            </button>
-          </div>
-          <div style={{
             padding: '12px 14px',
             borderRadius: '12px',
             border: `1px solid ${themeStyles.border}`,
@@ -998,9 +926,7 @@ function LearnPage() {
           }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: '12px', color: themeStyles.textSecondary, marginBottom: '2px' }}>
-                {learnModeUi === 'roadmap'
-                  ? i18n('Current roadmap (Learn)')
-                  : i18n('Current knowledge base (Learn)')}
+                {i18n('Current knowledge base (Learn)')}
               </div>
               <div style={{ fontSize: '14px', color: themeStyles.textPrimary, fontWeight: 600, wordBreak: 'break-word' }}>
                 {selectedLearnSource
@@ -1097,7 +1023,7 @@ function LearnPage() {
           </button>
         </div>
 
-        {requireSourceSelection && viewMode !== 'contributions' ? (
+        {requireBaseSelection && viewMode !== 'contributions' ? (
           <div style={{
             padding: isMobile ? '20px 16px' : '24px',
             background: themeStyles.bgCard,
@@ -1106,14 +1032,10 @@ function LearnPage() {
             boxShadow: theme === 'dark' ? '0 4px 24px rgba(0,0,0,0.4)' : '0 2px 12px rgba(0,0,0,0.06)',
           }}>
             <div style={{ fontSize: '16px', fontWeight: 600, color: themeStyles.textPrimary, marginBottom: '8px' }}>
-              {learnModeUi === 'roadmap'
-                ? i18n('Select a roadmap before learning')
-                : i18n('Select a knowledge base before learning')}
+              {i18n('Select a knowledge base before learning')}
             </div>
             <div style={{ fontSize: '13px', color: themeStyles.textSecondary, marginBottom: '16px' }}>
-              {learnModeUi === 'roadmap'
-                ? i18n('Choose a roadmap and branch, then save to continue learning.')
-                : i18n('Choose a base and branch, then save to continue learning.')}
+              {i18n('Choose a base and branch, then save to continue learning.')}
             </div>
             <a
               href={learnSourceSelectUrl}
@@ -1127,10 +1049,10 @@ function LearnPage() {
                 textDecoration: 'none',
               }}
             >
-              {learnModeUi === 'roadmap' ? i18n('Select learn roadmap') : i18n('Select learn base')}
+              {i18n('Select learn base')}
             </a>
           </div>
-        ) : !requireSourceSelection && viewMode === 'progress' ? (
+        ) : !requireBaseSelection && viewMode === 'progress' ? (
         <>
         <div style={{
           padding: isMobile ? '20px 16px' : '28px',

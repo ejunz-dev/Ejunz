@@ -1,5 +1,4 @@
-@import './roadmap.page.styl'
-
+@import './roadmap_detail_shared.styl'
 .page--base_detail
   --roadmap-bg-page: $page-bg-color
   --roadmap-bg-canvas: $page-bg-color
@@ -38,17 +37,14 @@
     right: auto
     bottom: auto
     z-index: auto
-    flex: none
-    min-height: calc(100dvh - rem($nav-item-height))
+    flex: 1
+    min-height: 0
     display: flex
     flex-direction: column
     max-width: none
     margin: 0
     padding: 0
     background: var(--roadmap-bg-page)
-
-    +mobile()
-      min-height: 100dvh
 
   #base-detail-viewer
     flex: 1
@@ -69,16 +65,18 @@
     color: var(--roadmap-text-muted)
 
 .page--base_detail .roadmap-detail-layout
+  flex: 1
+  min-height: 0
   padding: 24px 16px 0
   box-sizing: border-box
 
 .page--base_detail .roadmap-view
   flex: 1
   min-height: 0
-  height: auto
   display: flex
   flex-direction: column
   overflow: visible
+  background: var(--roadmap-bg-canvas)
 
 .page--base_detail .roadmap-flow--scroll
   flex: none
@@ -123,7 +121,7 @@
 
 .base-detail-roadmap-panel
   flex: 1
-  min-height: calc(100dvh - rem($nav-item-height) - 220px)
+  min-height: 0
   display: flex
   flex-direction: column
   width: 100%
@@ -187,7 +185,7 @@
 .base-detail-main
   flex: 1
   min-width: 0
-  min-height: calc(100dvh - rem($nav-item-height) - 220px)
+  min-height: 0
   display: flex
   flex-direction: column
   width: calc(100% - 320px)
@@ -199,7 +197,6 @@
   +mobile()
     width: calc(100% - 32px)
     max-width: calc(1100px - 32px)
-    min-height: 0
 
 .base-detail-main__placeholder
   flex: 1
@@ -384,7 +381,30 @@
   --roadmap-border: #3c3c3c
   --roadmap-border-card: #404040
   --roadmap-border-input: #4a4a4a
-  --roadmap-tab-bg: #2d2d2d
-  --roadmap-tab-fg: #bdbdbd
-  --roadmap-tab-active-bg: #e8e8e8
-  --roadmap-tab-active-fg: #111111
+  --roadmap-accent: #9d93f0
+  --roadmap-accent-blue: #8ec5ff
+  --roadmap-edge: #6eb3ff
+  --roadmap-edge-hover: #8ec5ff
+  --roadmap-node-border: #9d93f0
+  --roadmap-node-text: #eeeeee
+  --roadmap-node-bg-planned: #5c4a1a
+  --roadmap-node-bg-done: #4a4a4a
+  --roadmap-node-bg-in_progress: #4a3d6b
+  --roadmap-node-bg-blocked: #6b2f2f
+  --roadmap-handle-border: #252526
+  --roadmap-handle-bg: #6eb3ff
+  --roadmap-drawer-shadow: -12px 0 40px rgba(0, 0, 0, 0.45)
+  --roadmap-backdrop: rgba(0, 0, 0, 0.58)
+  --roadmap-tab-bg: #323334
+  --roadmap-tab-fg: #cccccc
+  --roadmap-tab-active-bg: #eeeeee
+  --roadmap-tab-active-fg: #121212
+  --roadmap-badge-bg: #4a3f1a
+  --roadmap-badge-fg: #f0d878
+  --roadmap-problem-badge-bg: #9d93f0
+  --roadmap-problem-badge-shadow: rgba(157, 147, 240, 0.42)
+  --roadmap-lane-border: rgba(157, 147, 240, 0.5)
+  --roadmap-lane-fill: rgba(157, 147, 240, 0.14)
+  --roadmap-lane-fill-end: rgba(157, 147, 240, 0.06)
+  --roadmap-lane-label-bg: rgba(37, 37, 38, 0.94)
+  --roadmap-lane-label-border: rgba(157, 147, 240, 0.35)

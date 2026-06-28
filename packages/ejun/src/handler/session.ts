@@ -19,13 +19,11 @@ import {
     computeDevelopRunQueueProgress,
     developBranchKey,
     developRunTerminalTotals,
-    loadUserDevelopPool,
     loadUserDevelopPoolByMode,
 } from '../lib/developPoolShared';
 import { readDevelopSessionDeadlineMs } from '../lib/sessionUtcDaily';
 import { PERM, PRIV } from '../model/builtin';
 import { BaseModel } from '../model/base';
-import RoadmapModel from '../model/roadmap';
 import * as document from '../model/document';
 import { getBranchData } from './base';
 import DomainModel from '../model/domain';
@@ -184,26 +182,14 @@ function mergeSessionProgressWithDevelopRun(
 }
 
 function parseDevelopMapDocType(body: Record<string, unknown>): number {
-    const raw = body.developMapDocType ?? body.mapDocType ?? body.mindMapKind;
-    if (raw === document.TYPE_ROADMAP || raw === 74 || raw === 'roadmap') {
-        return document.TYPE_ROADMAP;
-    }
-    if (raw !== undefined && raw !== document.TYPE_BASE && raw !== 70 && raw !== 'base') {
-        throw new ValidationError('Invalid mapDocType');
-    }
     return document.TYPE_BASE;
 }
 
 async function loadDevelopMindMapDoc(
     domainId: string,
     docId: number,
-    mapDocType: number,
+    _mapDocType: number,
 ): Promise<{ doc: import('../interface').BaseDoc; mapDocType: number }> {
-    if (mapDocType === document.TYPE_ROADMAP) {
-        const rm = await RoadmapModel.get(domainId, docId);
-        if (!rm) throw new NotFoundError('Roadmap not found');
-        return { doc: rm as unknown as import('../interface').BaseDoc, mapDocType: document.TYPE_ROADMAP };
-    }
     const b = await BaseModel.get(domainId, docId);
     if (!b) throw new NotFoundError('Base not found');
     return { doc: b, mapDocType: document.TYPE_BASE };
@@ -236,7 +222,7 @@ class DevelopSessionStartHandler extends Handler {
             }
         }
 
-        const poolMode = mapDocType === document.TYPE_ROADMAP ? 'roadmap' as const : 'base' as const;
+        const poolMode = 'base' as const;
         const fullPool = await loadUserDevelopPoolByMode(finalDomainId, this.user._id, this.user.priv, poolMode);
         const poolKey = developBranchKey(baseDocId, branch);
         if (!fromOutline) {
@@ -383,7 +369,7 @@ class DevelopSessionSettleHandler extends Handler {
             ? { ...(prevRaw as Record<string, unknown>) }
             : {};
         prev.developSettledAt = new Date();
-        const settleMode = sess.developMapDocType === document.TYPE_ROADMAP ? 'roadmap' as const : 'base' as const;
+        const settleMode = 'base' as const;
         const fullPool = await loadUserDevelopPoolByMode(finalDomainId, this.user._id, this.user.priv, settleMode);
         const term = developRunTerminalTotals(sess.progress, fullPool.length);
         if (term) prev.developRun = term;
