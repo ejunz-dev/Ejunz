@@ -64,6 +64,9 @@ export function BaseDetailHeader({
   onStartLearningClick,
   learnBusy,
   learnDisabled,
+  onStartEditorSession,
+  editorBusy,
+  editorDisabled,
 }: {
   title: string;
   description?: string;
@@ -79,6 +82,9 @@ export function BaseDetailHeader({
   onStartLearningClick?: () => void;
   learnBusy?: boolean;
   learnDisabled?: boolean;
+  onStartEditorSession?: () => void;
+  editorBusy?: boolean;
+  editorDisabled?: boolean;
 }) {
   const listUrl = domainScopedPath('/base', domainId);
   const editUrl = domainApiPath(
@@ -119,6 +125,17 @@ export function BaseDetailHeader({
               aria-busy={learnBusy || undefined}
             >
               {i18n('Start Learning')}
+            </button>
+          ) : null}
+          {onStartEditorSession ? (
+            <button
+              type="button"
+              className="roadmap-detail-header-card__btn roadmap-detail-header-card__btn--primary"
+              onClick={onStartEditorSession}
+              disabled={editorBusy || editorDisabled}
+              aria-busy={editorBusy || undefined}
+            >
+              {i18n('Edit')}
             </button>
           ) : null}
           {onSettingsClick ? (
