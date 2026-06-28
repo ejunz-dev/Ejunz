@@ -955,13 +955,13 @@ export class CardModel {
 }
 
 /** URL query–driven narrowing for outline file-tree (used by outline / base data handlers). */
-export type OutlineExplorerFilters = {
+export type DetailExplorerFilters = {
     filterNode: string;
     filterCard: string;
     filterProblem: string;
 };
 
-function cardMatchesOutlineExplorerFilters(
+function cardMatchesDetailExplorerFilters(
     card: CardDoc,
     filterCardLc: string,
     filterProblemLc: string,
@@ -988,7 +988,7 @@ function cardMatchesOutlineExplorerFilters(
     return okCard && okProb;
 }
 
-function nodeDirectHitForOutlineExplorer(
+function nodeDirectHitForDetailExplorer(
     nodeId: string,
     nodeById: Map<string, BaseNode>,
     nodeCardsMap: Record<string, CardDoc[]>,
@@ -1006,18 +1006,18 @@ function nodeDirectHitForOutlineExplorer(
     }
     if (needCardDim) {
         const cards = nodeCardsMap[nodeId] || [];
-        parts.push(cards.some((c) => cardMatchesOutlineExplorerFilters(c, fc, fp)));
+        parts.push(cards.some((c) => cardMatchesDetailExplorerFilters(c, fc, fp)));
     }
     return parts.every(Boolean);
 }
 
-export function hasActiveOutlineExplorerFilters(f: OutlineExplorerFilters): boolean {
+export function hasActiveDetailExplorerFilters(f: DetailExplorerFilters): boolean {
     return !!(f.filterNode?.trim() || f.filterCard?.trim() || f.filterProblem?.trim());
 }
 
 export function outlineExplorerFiltersFromQuery(
     query: Record<string, unknown> | undefined | null,
-): OutlineExplorerFilters {
+): DetailExplorerFilters {
     const g = (k: string) => {
         const v = query?.[k];
         return typeof v === 'string' ? v : '';
@@ -1029,9 +1029,9 @@ export function outlineExplorerFiltersFromQuery(
     };
 }
 
-export function trimOutlineExplorerFiltersForClient(
-    f: OutlineExplorerFilters,
-): OutlineExplorerFilters {
+export function trimDetailExplorerFiltersForClient(
+    f: DetailExplorerFilters,
+): DetailExplorerFilters {
     return {
         filterNode: f.filterNode.trim(),
         filterCard: f.filterCard.trim(),
@@ -1044,11 +1044,11 @@ export function trimOutlineExplorerFiltersForClient(
  * When multiple dimensions are set (node / card / problem), a node matches only if
  * every active dimension is satisfied (node title, card title only, problems).
  */
-export function applyOutlineExplorerUrlFilters(
+export function applyDetailExplorerUrlFilters(
     nodes: BaseNode[],
     edges: BaseEdge[],
     nodeCardsMap: Record<string, CardDoc[]>,
-    filters: OutlineExplorerFilters,
+    filters: DetailExplorerFilters,
 ): { nodes: BaseNode[]; edges: BaseEdge[]; nodeCardsMap: Record<string, CardDoc[]> } {
     const fn = filters.filterNode.trim().toLowerCase();
     const fc = filters.filterCard.trim().toLowerCase();
@@ -1075,7 +1075,7 @@ export function applyOutlineExplorerUrlFilters(
         for (const c of children) {
             if (dfs(c)) childRel = true;
         }
-        const direct = nodeDirectHitForOutlineExplorer(nodeId, nodeById, nodeCardsMap, fn, fc, fp);
+        const direct = nodeDirectHitForDetailExplorer(nodeId, nodeById, nodeCardsMap, fn, fc, fp);
         if (direct || childRel) {
             relevant.add(nodeId);
             return true;
@@ -1105,7 +1105,7 @@ export function applyOutlineExplorerUrlFilters(
         if (!visible.has(nodeId)) continue;
         let list = [...(nodeCardsMap[nodeId] || [])];
         if (fc || fp) {
-            list = list.filter((c) => cardMatchesOutlineExplorerFilters(c, fc, fp));
+            list = list.filter((c) => cardMatchesDetailExplorerFilters(c, fc, fp));
         }
         filteredMap[nodeId] = list;
     }

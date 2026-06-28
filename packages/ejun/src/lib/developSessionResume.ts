@@ -11,7 +11,6 @@ import {
 import { getDevelopMode } from './developModePrefs';
 import {
     deriveSessionLearnStatus,
-    inferDevelopSessionKind,
     isDevelopSessionRow,
     isDevelopSessionSettled,
 } from './sessionListDisplay';
@@ -82,7 +81,6 @@ function isDevelopSessionResumable(
     now = Date.now(),
 ): doc is SessionDoc {
     if (!doc || !isDevelopSessionRow(doc)) return false;
-    if (inferDevelopSessionKind(doc) === 'outline_node') return false;
     if (isDevelopSessionPastDeadline(doc, now)) return false;
     if (isDevelopSessionSettled(doc)) return false;
     if ((doc as { lessonAbandonedAt?: Date | null }).lessonAbandonedAt) return false;
@@ -281,7 +279,6 @@ export async function hasDevelopSessionInProgressOrPaused(
 
     for (const doc of docs) {
         if (!isDevelopSessionRow(doc)) continue;
-        if (inferDevelopSessionKind(doc) === 'outline_node') continue;
         const st = deriveSessionLearnStatus(doc, now);
         if (st === 'in_progress' || st === 'paused') return true;
     }

@@ -2,7 +2,7 @@ import { ObjectId } from 'mongodb';
 import * as document from '../model/document';
 import {
     BaseModel, CardModel, getBranchData,
-    applyOutlineExplorerUrlFilters, type OutlineExplorerFilters,
+    applyDetailExplorerUrlFilters, type DetailExplorerFilters,
 } from '../model/base';
 import type { CardDoc, BaseNode, BaseEdge, Problem, ProblemKind } from '../interface';
 import { migrateRawProblem } from '../model/problem';
@@ -32,33 +32,33 @@ export interface McpToolDef {
 
 export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
     {
-        name: 'outline_list_nodes',
-        description: 'Outline node = a section/topic in this base\'s outline tree (hierarchical). '
+        name: 'detail_list_nodes',
+        description: 'Node = a section/topic in this base\'s node tree (hierarchical). '
             + 'Returns every node of the bound base: id, text (title), parentId (null at root), level (depth), order. '
             + 'Call this first to understand the structure before reading or editing cards.',
         inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     },
     {
-        name: 'outline_create_node',
-        description: 'Create a new outline node (section/topic). '
+        name: 'detail_create_node',
+        description: 'Create a new node (section/topic). '
             + 'Pass parentId to nest it under an existing node; omit parentId to create it under the bound base root node.',
         inputSchema: {
             type: 'object',
             properties: {
                 text: { type: 'string', description: 'Node title/text.' },
-                parentId: { type: 'string', description: 'Parent node id from outline_list_nodes (optional; omit to place under the base root node).' },
+                parentId: { type: 'string', description: 'Parent node id from detail_list_nodes (optional; omit to place under the base root node).' },
             },
             required: ['text'],
             additionalProperties: false,
         },
     },
     {
-        name: 'outline_update_node',
-        description: 'Rename an outline node (change its title/text). Use nodeId from outline_list_nodes.',
+        name: 'detail_update_node',
+        description: 'Rename a node (change its title/text). Use nodeId from detail_list_nodes.',
         inputSchema: {
             type: 'object',
             properties: {
-                nodeId: { type: 'string', description: 'Node id from outline_list_nodes.' },
+                nodeId: { type: 'string', description: 'Node id from detail_list_nodes.' },
                 text: { type: 'string', description: 'New node title/text.' },
             },
             required: ['nodeId', 'text'],
@@ -66,22 +66,22 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
         },
     },
     {
-        name: 'outline_delete_node',
-        description: 'Delete an outline node by id (and its cards). Use nodeId from outline_list_nodes.',
+        name: 'detail_delete_node',
+        description: 'Delete a node by id (and its cards). Use nodeId from detail_list_nodes.',
         inputSchema: {
             type: 'object',
-            properties: { nodeId: { type: 'string', description: 'Node id from outline_list_nodes.' } },
+            properties: { nodeId: { type: 'string', description: 'Node id from detail_list_nodes.' } },
             required: ['nodeId'],
             additionalProperties: false,
         },
     },
     {
         name: 'card_list',
-        description: 'Card = a content block (title + markdown body) attached to an outline node; a node can hold several ordered cards. '
-            + 'Lists the cards under one node: cardId, title, order. Use nodeId from outline_list_nodes.',
+        description: 'Card = a content block (title + markdown body) attached to a node; a node can hold several ordered cards. '
+            + 'Lists the cards under one node: cardId, title, order. Use nodeId from detail_list_nodes.',
         inputSchema: {
             type: 'object',
-            properties: { nodeId: { type: 'string', description: 'Node id from outline_list_nodes.' } },
+            properties: { nodeId: { type: 'string', description: 'Node id from detail_list_nodes.' } },
             required: ['nodeId'],
             additionalProperties: false,
         },
@@ -98,11 +98,11 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
     },
     {
         name: 'card_create',
-        description: 'Create a new card (content block) under an outline node. Use nodeId from outline_list_nodes.',
+        description: 'Create a new card (content block) under a node. Use nodeId from detail_list_nodes.',
         inputSchema: {
             type: 'object',
             properties: {
-                nodeId: { type: 'string', description: 'Owning node id from outline_list_nodes.' },
+                nodeId: { type: 'string', description: 'Owning node id from detail_list_nodes.' },
                 title: { type: 'string', description: 'Card title.' },
                 content: { type: 'string', description: 'Markdown body (optional).' },
             },
@@ -135,8 +135,8 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
         },
     },
     {
-        name: 'outline_tree',
-        description: 'Return the whole outline as a nested tree (overview/table of contents). '
+        name: 'detail_tree',
+        description: 'Return the whole node tree as a nested tree (overview/table of contents). '
             + 'Each node carries only its id and text (title) and its cards (cardId + title); card content is NOT included. '
             + 'Use this to grasp the full structure at a glance, then call card_get to read specific cards.',
         inputSchema: {
@@ -144,15 +144,15 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
             properties: {
                 includeCards: {
                     type: 'boolean',
-                    description: 'Include each node\'s cards (id + title) in the tree. Default true; set false for a nodes-only outline.',
+                    description: 'Include each node\'s cards (id + title) in the tree. Default true; set false for nodes only.',
                 },
             },
             additionalProperties: false,
         },
     },
     {
-        name: 'outline_search',
-        description: 'Search and/or filter the outline (same semantics as the base outline page). '
+        name: 'detail_search',
+        description: 'Search and/or filter the node tree (same semantics as the base detail page). '
             + 'Provide `query` to match a keyword or an exact id against node titles/ids and card titles/ids. '
             + 'Provide any of `filterNode` / `filterCard` / `filterProblem` to narrow by node title, card title, or problem content. '
             + 'You may combine `query` with the filters; all supplied conditions are applied together (intersection). '
@@ -161,7 +161,7 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
             type: 'object',
             properties: {
                 query: { type: 'string', description: 'Keyword or exact id to match against node text/id and card title/id (case-insensitive).' },
-                filterNode: { type: 'string', description: 'Keep only nodes whose title contains this text (like the outline page filterNode).' },
+                filterNode: { type: 'string', description: 'Keep only nodes whose title contains this text (like the detail page filterNode).' },
                 filterCard: { type: 'string', description: 'Keep only nodes that have a card whose title contains this text (filterCard).' },
                 filterProblem: { type: 'string', description: 'Keep only nodes that have a card with a problem matching this text (filterProblem).' },
                 limit: { type: 'number', description: 'Max results to return per kind (nodes/cards). Default 50.' },
@@ -286,7 +286,7 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
     {
         name: 'git_pull',
         description: 'Pull from GitHub and import the remote branch into this base (overwrites local branch data from remote). '
-            + 'Destructive: replaces outline/cards from the git tree. Requires githubRepo and token.',
+            + 'Destructive: replaces nodes/cards from the git tree. Requires githubRepo and token.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -322,14 +322,14 @@ export async function buildMcpInstructions(
     ctx: { domainId: string; baseDocId?: number; branch?: string },
 ): Promise<string> {
     const lines: string[] = [
-        'This MCP server is bound to a single Ejunz "base" — a knowledge base organized as an outline tree.',
+        'This MCP server is bound to a single Ejunz "base" — a knowledge base organized as an node tree.',
         '',
         'Concepts:',
-        '- Outline node: a section/topic in the base\'s outline tree. Nodes form a hierarchy via parentId/level. Each node has an id and text (title).',
-        '- Card: a content block (title + markdown body) attached to an outline node. One node can hold multiple ordered cards.',
+        '- Node: a section/topic in the base\'s node tree. Nodes form a hierarchy via parentId/level. Each node has an id and text (title).',
+        '- Card: a content block (title + markdown body) attached to a node. One node can hold multiple ordered cards.',
         '- Problem: a practice exercise (quiz, flip card, matching, etc.) attached to a card. Types: single, multi, true_false, flip, fill_blank, matching, super_flip, ai_eval.',
         '',
-        'Relationship: base → outline nodes (tree) → cards (content) → problems (exercises on each card).',
+        'Relationship: base → nodes (tree) → cards (content) → problems (exercises on each card).',
     ];
     if (ctx.baseDocId) {
         let title = '';
@@ -346,9 +346,9 @@ export async function buildMcpInstructions(
     lines.push(
         '',
         'Typical workflow:',
-        '1. outline_tree — get the whole outline (nodes + cards, titles only) at a glance.',
-        '2. outline_search(query/filterNode/filterCard/filterProblem) — find nodes/cards by keyword, id or filters.',
-        '3. outline_list_nodes — flat list of nodes; card_list(nodeId) — cards under a node.',
+        '1. detail_tree — get the whole node tree (nodes + cards, titles only) at a glance.',
+        '2. detail_search(query/filterNode/filterCard/filterProblem) — find nodes/cards by keyword, id or filters.',
+        '3. detail_list_nodes — flat list of nodes; card_list(nodeId) — cards under a node.',
         '4. card_get(cardId) — read a card\'s full content.',
         '5. problem_list(cardId) / problem_get(cardId, pid) — list or read practice problems on a card.',
         '6. git_status — check local/remote sync; git_commit / git_push / git_pull — sync with GitHub (configure repo via git_config_set).',
@@ -358,7 +358,7 @@ export async function buildMcpInstructions(
 }
 
 const MCP_BUILTIN_MUTATING_TOOLS = new Set([
-    'outline_create_node', 'outline_update_node', 'outline_delete_node',
+    'detail_create_node', 'detail_update_node', 'detail_delete_node',
     'card_create', 'card_update', 'card_delete',
     'problem_create', 'problem_update', 'problem_delete',
     'git_pull', 'git_config_set',
@@ -540,20 +540,20 @@ function pathLabelFor(nodeId: string, parentMap: Map<string, string>, nodeById: 
     return chain.reverse().join(' › ');
 }
 
-interface OutlineTreeNode {
+interface DetailTreeNode {
     id: string;
     text: string;
     cards?: { cardId: string; title: string; order: number }[];
-    children: OutlineTreeNode[];
+    children: DetailTreeNode[];
 }
 
-/** Builds nested outline tree (id + text only; cards as id + title when requested). */
-function buildOutlineTree(
+/** Builds nested node tree (id + text only; cards as id + title when requested). */
+function buildDetailTree(
     nodes: BaseNode[],
     edges: BaseEdge[],
     nodeCardsMap: Record<string, CardDoc[]>,
     includeCards: boolean,
-): OutlineTreeNode[] {
+): DetailTreeNode[] {
     const parentMap = buildParentMap(edges);
     const childrenMap = new Map<string, string[]>();
     for (const e of edges || []) {
@@ -563,16 +563,16 @@ function buildOutlineTree(
     const nodeById = new Map((nodes || []).map((n) => [n.id, n]));
     const orderOf = (id: string) => nodeById.get(id)?.order ?? 0;
 
-    const build = (id: string, seen: Set<string>): OutlineTreeNode | null => {
+    const build = (id: string, seen: Set<string>): DetailTreeNode | null => {
         if (seen.has(id)) return null;
         seen.add(id);
         const n = nodeById.get(id);
         if (!n) return null;
         const childIds = (childrenMap.get(id) || []).slice().sort((a, b) => orderOf(a) - orderOf(b));
-        const out: OutlineTreeNode = {
+        const out: DetailTreeNode = {
             id,
             text: n.text || '',
-            children: childIds.map((c) => build(c, seen)).filter(Boolean) as OutlineTreeNode[],
+            children: childIds.map((c) => build(c, seen)).filter(Boolean) as DetailTreeNode[],
         };
         if (includeCards) {
             out.cards = (nodeCardsMap[id] || [])
@@ -587,7 +587,7 @@ function buildOutlineTree(
         .filter((n) => !parentMap.has(n.id))
         .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     const seen = new Set<string>();
-    return roots.map((r) => build(r.id, seen)).filter(Boolean) as OutlineTreeNode[];
+    return roots.map((r) => build(r.id, seen)).filter(Boolean) as DetailTreeNode[];
 }
 
 export async function executeMcpBuiltinTool(
@@ -601,7 +601,7 @@ export async function executeMcpBuiltinTool(
     if (!base) throw new Error(`Base not found: ${baseDocId}`);
 
     switch (name) {
-    case 'outline_list_nodes': {
+    case 'detail_list_nodes': {
         const { nodes, edges } = getBranchData(base, branch);
         const parentMap = buildParentMap(edges);
         return (nodes || []).map((n) => ({
@@ -609,7 +609,7 @@ export async function executeMcpBuiltinTool(
             parentId: parentMap.get(n.id) || n.parentId || null,
         }));
     }
-    case 'outline_create_node': {
+    case 'detail_create_node': {
         const text = String(args.text || '').trim();
         if (!text) throw new Error('text is required');
         const { nodes, edges } = getBranchData(base, branch);
@@ -624,14 +624,14 @@ export async function executeMcpBuiltinTool(
         );
         return { ok: true, nodeId: res.nodeId, edgeId: res.edgeId, parentId: parentId ?? null };
     }
-    case 'outline_update_node': {
+    case 'detail_update_node': {
         const nodeId = String(args.nodeId || '');
         const text = String(args.text || '');
         if (!nodeId) throw new Error('nodeId is required');
         await BaseModel.updateNode(domainId, baseDocId, nodeId, { text } as any, branch);
         return { ok: true, nodeId };
     }
-    case 'outline_delete_node': {
+    case 'detail_delete_node': {
         const nodeId = String(args.nodeId || '');
         if (!nodeId) throw new Error('nodeId is required');
         await BaseModel.deleteNode(domainId, baseDocId, nodeId, branch);
@@ -671,18 +671,18 @@ export async function executeMcpBuiltinTool(
         await CardModel.delete(domainId, toObjectId(args.cardId));
         return { ok: true, cardId: String(args.cardId) };
     }
-    case 'outline_tree': {
+    case 'detail_tree': {
         const includeCards = args.includeCards === undefined ? true : !!args.includeCards;
         const { nodes, edges } = getBranchData(base, branch);
         const nodeCardsMap = includeCards
             ? await loadNodeCardsMap(domainId, baseDocId, branch, nodes || [])
             : {};
-        const tree = buildOutlineTree(nodes || [], edges || [], nodeCardsMap, includeCards);
+        const tree = buildDetailTree(nodes || [], edges || [], nodeCardsMap, includeCards);
         return { nodeCount: (nodes || []).length, tree };
     }
-    case 'outline_search': {
+    case 'detail_search': {
         const limit = Math.max(1, Math.min(500, Number(args.limit) || 50));
-        const filters: OutlineExplorerFilters = {
+        const filters: DetailExplorerFilters = {
             filterNode: String(args.filterNode || ''),
             filterCard: String(args.filterCard || ''),
             filterProblem: String(args.filterProblem || ''),
@@ -692,7 +692,7 @@ export async function executeMcpBuiltinTool(
         const allEdges = raw.edges || [];
         const nodeCardsMap = await loadNodeCardsMap(domainId, baseDocId, branch, allNodes);
 
-        const filtered = applyOutlineExplorerUrlFilters(allNodes, allEdges, nodeCardsMap, filters);
+        const filtered = applyDetailExplorerUrlFilters(allNodes, allEdges, nodeCardsMap, filters);
         const scopeNodes = filtered.nodes;
         const scopeEdges = filtered.edges;
         const scopeCardsMap = filtered.nodeCardsMap;

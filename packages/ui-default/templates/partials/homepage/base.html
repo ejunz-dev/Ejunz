@@ -8,7 +8,7 @@
       {%- for b in bases -%}
         {% if b and b.docId %}
           <p>
-            <a href="{{ url('base_outline_doc_branch', docId=b.docId, branch='main') }}" data-emoji-enabled>
+            <a href="{{ url('base_detail_branch', docId=b.docId, branch='main') }}" data-emoji-enabled>
               {{ b.title|default('Untitled') }}
             </a>
             <span style="float: right">

@@ -209,23 +209,12 @@ class DevelopSessionStartHandler extends Handler {
         const { doc: mindMap } = await loadDevelopMindMapDoc(finalDomainId, baseDocId, mapDocType);
         if (!this.user.own(mindMap)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
 
-        const fromOutline = body.fromOutline === true;
         const nodeId = typeof body.nodeId === 'string' ? body.nodeId.trim() : '';
-
-        if (fromOutline) {
-            if (!nodeId) {
-                throw new ValidationError(this.translate('Outline editor start needs node'));
-            }
-            const { nodes } = getBranchData(mindMap as any, branch);
-            if (!nodes.some((n) => n.id === nodeId)) {
-                throw new ValidationError(this.translate('Outline editor start invalid node'));
-            }
-        }
 
         const poolMode = 'base' as const;
         const fullPool = await loadUserDevelopPoolByMode(finalDomainId, this.user._id, this.user.priv, poolMode);
         const poolKey = developBranchKey(baseDocId, branch);
-        if (!fromOutline) {
+        if (!nodeId) {
             if (!fullPool.length) {
                 throw new ValidationError(this.translate('Develop run queue empty today'));
             }
@@ -255,28 +244,22 @@ class DevelopSessionStartHandler extends Handler {
             ],
         };
         (reuseFilter.$and as unknown[]).push({ developMapDocType: mapDocType });
-        if (fromOutline) {
+        if (nodeId) {
             reuseFilter.nodeId = nodeId;
-            (reuseFilter.$and as unknown[]).push({
-                $or: [
-                    { developSessionKind: 'outline_node' },
-                    { developSessionKind: { $exists: false } },
-                ],
-            });
         } else {
             (reuseFilter.$and as unknown[]).push(emptyNodeId);
-            (reuseFilter.$and as unknown[]).push({
-                $or: [
-                    { developSessionKind: 'daily' },
-                    {
-                        $and: [
-                            { developSessionKind: { $exists: false } },
-                            emptyNodeId,
-                        ],
-                    },
-                ],
-            });
         }
+        (reuseFilter.$and as unknown[]).push({
+            $or: [
+                { developSessionKind: 'daily' },
+                {
+                    $and: [
+                        { developSessionKind: { $exists: false } },
+                        emptyNodeId,
+                    ],
+                },
+            ],
+        });
         const recent = await SessionModel.coll
             .find(reuseFilter)
             .sort({ lastActivityAt: -1 })
@@ -285,7 +268,7 @@ class DevelopSessionStartHandler extends Handler {
         const existing = recent[0] as SessionDoc | undefined;
 
         const inPool = fullPool.some((e) => developBranchKey(e.baseDocId, e.branch) === poolKey);
-        const run = !fromOutline && inPool ? computeDevelopRunQueueProgress(fullPool, baseDocId, branch) : null;
+        const run = inPool ? computeDevelopRunQueueProgress(fullPool, baseDocId, branch) : null;
 
         const ttlSecRaw = Number(system.get('session.saved_expire_seconds'));
         const ttlSec = Number.isFinite(ttlSecRaw) && ttlSecRaw > 0 ? ttlSecRaw : 3600 * 24 * 30;
@@ -321,9 +304,9 @@ class DevelopSessionStartHandler extends Handler {
             route: 'develop',
             baseDocId,
             branch,
-            developSessionKind: fromOutline ? 'outline_node' : 'daily',
+            developSessionKind: 'daily',
             developMapDocType: mapDocType,
-            ...(fromOutline && nodeId ? { nodeId } : {}),
+            ...(nodeId ? { nodeId } : {}),
         });
         const deadline = new Date(doc.createdAt.getTime() + ttlSec * 1000);
         let progress: Record<string, unknown> = doc.progress && typeof doc.progress === 'object'
