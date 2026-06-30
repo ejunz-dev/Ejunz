@@ -1554,12 +1554,20 @@ $roadmap-tutor-gold = #e8a317
 $roadmap-tutor-gold-soft = #fff8e6
 $roadmap-tutor-bar-bg = #1a1a1a
 
-.roadmap-ai-tutor-bar
-  position: fixed
-  left: 50%
+.roadmap-ai-tutor-bar-wrap
+  position: sticky
   bottom: 28px
-  transform: translateX(-50%)
   z-index: 120
+  display: flex
+  justify-content: center
+  pointer-events: none
+  margin-top: 16px
+
+  +mobile()
+    bottom: 16px
+
+.roadmap-ai-tutor-bar
+  pointer-events: auto
   display: inline-flex
   align-items: center
   gap: 16px
@@ -1577,11 +1585,10 @@ $roadmap-tutor-bar-bg = #1a1a1a
   transition: transform 0.15s ease, box-shadow 0.15s ease
 
   &:hover
-    transform: translateX(-50%) translateY(-1px)
+    transform: translateY(-1px)
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32)
 
   +mobile()
-    bottom: 16px
     gap: 10px
     padding: 9px 14px
 
