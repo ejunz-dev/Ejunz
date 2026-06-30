@@ -220,6 +220,19 @@ function BaseDetailViewer() {
     setScrollToCanvasNodeId(null);
   }, []);
 
+  const handleSelectNodeInContent = useCallback(async (targetNodeId: string) => {
+    if (targetNodeId === contentRootNodeId) return;
+    const targetNode = nodes.find((n) => n.id === targetNodeId);
+    if (!targetNode) return;
+    const nodeLabel = nodeDisplayLabel(targetNode);
+    const dialogMsg = `${i18n('Switch to node:')}\n${nodeLabel}`;
+    const dialogBody = tpl.typoMsg(dialogMsg);
+    const dialog = new ActionDialog({ $body: dialogBody, width: '420px' });
+    const action = await dialog.open();
+    if (action !== 'ok') return;
+    handleSelectNode(targetNodeId);
+  }, [contentRootNodeId, nodes, handleSelectNode]);
+
   const handleSelectCardInStructure = useCallback((card: Card) => {
     const hostNodeId = findCardHostNodeId(card.docId, nodeCardsMap);
     if (hostNodeId) {
@@ -528,6 +541,7 @@ function BaseDetailViewer() {
               extraExpandedNodeIds={cardExpandNodeIds}
               scrollToCardId={scrollToCardId}
               onSelectCard={handleSelectCardInContent}
+              onSelectNode={handleSelectNodeInContent}
             />
           </main>
         ) : (
