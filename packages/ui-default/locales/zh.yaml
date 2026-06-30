@@ -1915,3 +1915,8 @@ Date: 日期
 'Base detail content filter dialog hint': 仅过滤当前内容区的树，不匹配的树枝会被隐藏。
 'Base detail tree search placeholder': 过滤当前树…
 'Base detail tree search aria': 过滤内容树
+'Start develop session for node:': 是否进入节点开发会话？
+'Node has no content': 该节点暂无内容
+'Child nodes: {0}': 子节点：{0} 个
+'Cards: {0}': 卡片：{0} 张
+'Problems: {0}': 题目：{0} 道
