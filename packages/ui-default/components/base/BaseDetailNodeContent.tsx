@@ -16,6 +16,7 @@ export function BaseDetailNodeContent({
   extraExpandedNodeIds,
   scrollToCardId,
   onSelectCard,
+  onSelectNode,
 }: {
   nodeId: string;
   nodes: BaseNode[];
@@ -27,6 +28,7 @@ export function BaseDetailNodeContent({
   extraExpandedNodeIds?: string[];
   scrollToCardId?: string | null;
   onSelectCard: (card: Card) => void;
+  onSelectNode?: (nodeId: string) => void;
 }) {
   const initialExpandedNodeIds = useMemo(
     () => collectSubtreeDefaultExpandedNodeIds(nodeId, nodes, edges),
@@ -42,12 +44,13 @@ export function BaseDetailNodeContent({
         nodeCardsMap={nodeCardsMap}
         selectedCardId={selectedCardId}
         initialExpandedNodeIds={initialExpandedNodeIds}
-        nodesClickable={false}
+        nodesClickable={true}
         treeVisibility={treeVisibility}
         displaySettings={displaySettings}
         extraExpandedNodeIds={extraExpandedNodeIds}
         scrollToCardId={scrollToCardId}
         onSelectCard={onSelectCard}
+        onSelectNode={onSelectNode}
       />
     </div>
   );
