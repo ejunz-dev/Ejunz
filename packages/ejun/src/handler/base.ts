@@ -740,16 +740,17 @@ class BaseDetailHandler extends Handler {
         
         let nodeCardsMap: Record<string, CardDoc[]> = {};
         if (branchData.nodes && branchData.nodes.length > 0) {
-            for (const node of branchData.nodes) {
-                try {
-                    const cards = await CardModel.getByNodeId(domainId, this.base!.docId, node.id);
+            const nodeIds = branchData.nodes.map(n => n.id);
+            try {
+                const cardsByNodeId = await CardModel.getByNodeIds(domainId, this.base!.docId, nodeIds, requestedBranch);
+                for (const [nodeId, cards] of cardsByNodeId) {
                     if (cards && cards.length > 0) {
-                        nodeCardsMap[node.id] = cards.sort((a, b) =>
+                        nodeCardsMap[nodeId] = cards.sort((a, b) =>
                             (a.order ?? 999999) - (b.order ?? 999999) || (a.cid - b.cid));
                     }
-                } catch (err) {
-                    console.error(`Failed to get cards for node ${node.id}:`, err);
                 }
+            } catch (err) {
+                console.error('Failed to batch get cards for nodes:', err);
             }
         }
 
@@ -5143,13 +5144,6 @@ async function getBaseGitStatus(
             }
         } catch (err) {
             console.error('Failed to checkout branch:', err);
-        }
-        
-        try {
-            await syncBaseToGit(domainId, docId, branch);
-        } catch (err) {
-            console.error('Failed to sync base to git:', err);
-            // Continue even if sync fails
         }
         
         const status: any = {
