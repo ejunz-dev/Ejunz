@@ -499,6 +499,8 @@ export async function apply(ctx: Context) {
         { key: { domainId: 1, docType: 1, 'dag.pids': 1 }, name: 'training', sparse: true },
         // Training plan by domain tid
         { key: { domainId: 1, docType: 1, tid: 1 }, name: 'trainingPlanTid', sparse: true },
+        // For card queries by baseDocId + nodeId (avoids collection scan on detail page)
+        { key: { domainId: 1, docType: 1, baseDocId: 1, nodeId: 1 }, name: 'cardNode', sparse: true },
     );
     await db.ensureIndexes(
         collStatus,

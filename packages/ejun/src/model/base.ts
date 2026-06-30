@@ -891,6 +891,31 @@ export class CardModel {
         return list as CardDoc[];
     }
 
+    static async getByNodeIds(domainId: string, baseDocId: number | ObjectId, nodeIds: string[], branch?: string): Promise<Map<string, CardDoc[]>> {
+        if (!nodeIds.length) return new Map();
+        const filter: any = { baseDocId, nodeId: { $in: nodeIds } };
+        if (branch) {
+            if (branch === 'main') {
+                filter.$or = [{ branch: 'main' }, { branch: { $exists: false } }];
+            } else {
+                filter.branch = branch;
+            }
+        }
+        const cards = await document.getMulti(domainId, TYPE_CARD, filter)
+            .sort({ order: 1, cid: 1 })
+            .toArray() as CardDoc[];
+        const map = new Map<string, CardDoc[]>();
+        for (const card of cards) {
+            const list = map.get(card.nodeId);
+            if (list) {
+                list.push(card);
+            } else {
+                map.set(card.nodeId, [card]);
+            }
+        }
+        return map;
+    }
+
     static async getByNodeId(domainId: string, baseDocId: number | ObjectId, nodeId: string, branch?: string): Promise<CardDoc[]> {
         const filter: any = { baseDocId, nodeId };
         if (branch) {
