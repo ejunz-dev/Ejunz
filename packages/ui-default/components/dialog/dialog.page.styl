@@ -20,9 +20,10 @@
   background: $dialog-bg-color
   border: 1px solid $dialog-border-color
   box-shadow: $dialog-shadow
+  border-radius: 12px
   min-width: rem(500px)
   max-width: rem(900px)
-  padding: rem(40px) rem(30px)
+  padding: rem(24px) rem(24px)
 
 .dialog__body
   margin-bottom: rem(20px)
@@ -33,6 +34,20 @@
     color: $dialog-title-color
     margin-bottom: 1rem
 
-.dialog__action button
-  margin-left: rem(10px)
-  margin-bottom: 0
+.dialog__action
+  button
+    margin-left: rem(10px)
+    margin-bottom: 0
+    min-height: 36px
+    border-radius: 8px
+    font-size: 13px
+    font-weight: 500
+    padding: 0 14px
+    border: 1px solid $border-1-color
+    background: #fafafa
+
+    &.primary.rounded.button
+      background: #ffd24a
+      border-color: #e8bc2e
+      color: #111111
+      font-weight: 600
