@@ -303,6 +303,20 @@ function BaseDetailViewer() {
     return base.content;
   }, [base.content, canvasFocusedNodeId, nodeCardsMap, nodes, roadmapContainerId, selectedCard, selectedNode, title]);
 
+  // Collect all descendant node ids recursively
+  const collectDescendantNodeIds = useCallback((rootId: string): string[] => {
+    const ids: string[] = [];
+    const visit = (nodeId: string) => {
+      const children = getSortedNodeChildren(nodeId, nodes, edges);
+      children.forEach((child) => {
+        ids.push(child.id);
+        visit(child.id);
+      });
+    };
+    visit(rootId);
+    return ids;
+  }, [nodes, edges]);
+
   const learnTargetNodeId = contentRootNodeId;
 
   const startSingleNodeLearn = useCallback(async () => {
@@ -313,6 +327,38 @@ function BaseDetailViewer() {
       Notification.error(i18n('Outline editor start invalid base'));
       return;
     }
+
+    // Build node stats for the confirmation dialog
+    const descendantIds = collectDescendantNodeIds(nodeId);
+    const childNodeCount = descendantIds.length;
+    let cardCount = 0;
+    let problemCount = 0;
+    descendantIds.forEach((id) => {
+      const cards = nodeCardsMap[id] || [];
+      cardCount += cards.length;
+      problemCount += cards.reduce((sum, card) => sum + (card.problems?.length || 0), 0);
+    });
+    // Also count current node's own cards
+    const selfCards = nodeCardsMap[nodeId] || [];
+    cardCount += selfCards.length;
+    problemCount += selfCards.reduce((sum, card) => sum + (card.problems?.length || 0), 0);
+    const nodeLabel = nodeDisplayLabel(
+      nodes.find((n) => n.id === nodeId) || { id: nodeId, text: '' },
+    );
+
+    // Show confirmation dialog
+    const statsParts: string[] = [];
+    if (childNodeCount > 0) statsParts.push(i18n('Child nodes: {0}', childNodeCount));
+    if (cardCount > 0) statsParts.push(i18n('Cards: {0}', cardCount));
+    if (problemCount > 0) statsParts.push(i18n('Problems: {0}', problemCount));
+    const dialogMsg = statsParts.length > 0
+      ? `${i18n('Start learning session for node:')}\n${nodeLabel}\n${statsParts.join('，')}`
+      : `${i18n('Start learning session for node:')}\n${nodeLabel}`;
+    const dialogBody = tpl.typoMsg(dialogMsg);
+    const dialog = new ActionDialog({ $body: dialogBody, width: '420px' });
+    const action = await dialog.open();
+    if (action !== 'ok') return;
+
     const domainId = base.domainId || 'system';
     setLearnBusy(true);
     try {
@@ -341,7 +387,7 @@ function BaseDetailViewer() {
     } finally {
       setLearnBusy(false);
     }
-  }, [base.docId, base.domainId, branch, learnBusy, learnTargetNodeId]);
+  }, [base.docId, base.domainId, branch, learnBusy, learnTargetNodeId, nodes, edges, nodeCardsMap]);
 
   const startEditorSession = useCallback(async () => {
     const nodeId = String(contentRootNodeId || '').trim();
@@ -352,12 +398,20 @@ function BaseDetailViewer() {
       return;
     }
 
-    // Build node stats for the confirmation dialog
-    const childNodes = getSortedNodeChildren(nodeId, nodes, edges);
-    const nodeCards = nodeCardsMap[nodeId] || [];
-    const childNodeCount = childNodes.length;
-    const cardCount = nodeCards.length;
-    const problemCount = nodeCards.reduce((sum, card) => sum + (card.problems?.length || 0), 0);
+    // Build subtree stats for the confirmation dialog
+    const descendantIds = collectDescendantNodeIds(nodeId);
+    const childNodeCount = descendantIds.length;
+    let cardCount = 0;
+    let problemCount = 0;
+    descendantIds.forEach((id) => {
+      const cards = nodeCardsMap[id] || [];
+      cardCount += cards.length;
+      problemCount += cards.reduce((sum, card) => sum + (card.problems?.length || 0), 0);
+    });
+    // Also count current node's own cards
+    const selfCards = nodeCardsMap[nodeId] || [];
+    cardCount += selfCards.length;
+    problemCount += selfCards.reduce((sum, card) => sum + (card.problems?.length || 0), 0);
     const nodeLabel = nodeDisplayLabel(
       nodes.find((n) => n.id === nodeId) || { id: nodeId, text: '' },
     );
