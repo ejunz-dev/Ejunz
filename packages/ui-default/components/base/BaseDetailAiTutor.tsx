@@ -137,18 +137,20 @@ export function BaseDetailAiTutor({
   return (
     <>
       {!open ? (
-        <button
-          type="button"
-          className="roadmap-ai-tutor-bar"
-          onClick={handleOpen}
-          aria-label={i18n('Roadmap AI tutor open')}
-        >
-          <span className="roadmap-ai-tutor-bar__brand">
-            <WandIcon />
-            {i18n('Roadmap AI tutor')}
-          </span>
-          <span className="roadmap-ai-tutor-bar__hint">{i18n('Roadmap AI tutor bar hint')}</span>
-        </button>
+        <div className="roadmap-ai-tutor-bar-wrap">
+          <button
+            type="button"
+            className="roadmap-ai-tutor-bar"
+            onClick={handleOpen}
+            aria-label={i18n('Roadmap AI tutor open')}
+          >
+            <span className="roadmap-ai-tutor-bar__brand">
+              <WandIcon />
+              {i18n('Roadmap AI tutor')}
+            </span>
+            <span className="roadmap-ai-tutor-bar__hint">{i18n('Roadmap AI tutor bar hint')}</span>
+          </button>
+        </div>
       ) : null}
 
       {open ? (
