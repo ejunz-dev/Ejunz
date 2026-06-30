@@ -3,7 +3,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
-import { domainApiPath, domainScopedPath, request, i18n } from 'vj/utils';
+import { ActionDialog } from 'vj/components/dialog';
+import { domainApiPath, domainScopedPath, request, i18n, tpl } from 'vj/utils';
 import type { BaseDoc, Card } from 'vj/components/base/types';
 import { BaseDetailAiTutor } from 'vj/components/base/BaseDetailAiTutor';
 import { BaseDetailCardDrawer } from 'vj/components/base/BaseDetailCardDrawer';
@@ -13,7 +14,7 @@ import { BaseDetailEmbeddedRoadmapViewer } from 'vj/components/base/BaseDetailEm
 import { BaseDetailNodeContent } from 'vj/components/base/BaseDetailNodeContent';
 import { BaseDetailTreeDrawer } from 'vj/components/base/BaseDetailSidebar';
 import { RoadmapDetailSettingsPanel } from 'vj/components/roadmap/RoadmapDetailSettingsPanel';
-import { cardDisplayLabel, getRoadmapChildGraph, nodeDisplayLabel, collectNodePathFromRoot, findCardHostNodeId, findRoadmapContainerAncestor, getPrimaryCardForNode, isRoadmapCanvasNodeId } from 'vj/components/base/detail_tree';
+import { cardDisplayLabel, getRoadmapChildGraph, getSortedNodeChildren, nodeDisplayLabel, collectNodePathFromRoot, findCardHostNodeId, findRoadmapContainerAncestor, getPrimaryCardForNode, isRoadmapCanvasNodeId } from 'vj/components/base/detail_tree';
 import { isTypoImagePreviewOverlay } from 'vj/components/base/typo_image_preview';
 import {
   initialBaseDetailSelectedNodeId,
@@ -350,6 +351,30 @@ function BaseDetailViewer() {
       Notification.error(i18n('Outline editor start invalid base'));
       return;
     }
+
+    // Build node stats for the confirmation dialog
+    const childNodes = getSortedNodeChildren(nodeId, nodes, edges);
+    const nodeCards = nodeCardsMap[nodeId] || [];
+    const childNodeCount = childNodes.length;
+    const cardCount = nodeCards.length;
+    const problemCount = nodeCards.reduce((sum, card) => sum + (card.problems?.length || 0), 0);
+    const nodeLabel = nodeDisplayLabel(
+      nodes.find((n) => n.id === nodeId) || { id: nodeId, text: '' },
+    );
+
+    // Show confirmation dialog
+    const statsParts: string[] = [];
+    if (childNodeCount > 0) statsParts.push(i18n('Child nodes: {0}', childNodeCount));
+    if (cardCount > 0) statsParts.push(i18n('Cards: {0}', cardCount));
+    if (problemCount > 0) statsParts.push(i18n('Problems: {0}', problemCount));
+    const dialogMsg = statsParts.length > 0
+      ? `${i18n('Start develop session for node:')}\n${nodeLabel}\n${statsParts.join('，')}`
+      : `${i18n('Start develop session for node:')}\n${nodeLabel}`;
+    const dialogBody = tpl.typoMsg(dialogMsg);
+    const dialog = new ActionDialog({ $body: dialogBody, width: '420px' });
+    const action = await dialog.open();
+    if (action !== 'ok') return;
+
     const domainId = base.domainId || 'system';
     const branchName = base.currentBranch || 'main';
     setEditorBusy(true);
@@ -388,7 +413,7 @@ function BaseDetailViewer() {
     } finally {
       setEditorBusy(false);
     }
-  }, [base.docId, base.bid, base.currentBranch, base.domainId, contentRootNodeId, editorBusy]);
+  }, [base.docId, base.bid, base.currentBranch, base.domainId, contentRootNodeId, editorBusy, nodes, edges, nodeCardsMap]);
 
   return (
     <div className="roadmap-detail-layout">
