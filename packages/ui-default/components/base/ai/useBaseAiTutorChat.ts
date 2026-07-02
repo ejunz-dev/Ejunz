@@ -6,8 +6,13 @@ import { splitAiAssistantStream } from '../../roadmap/ai/chat_utils';
 import { buildBaseAiTutorSystemPrompt, buildBaseTutorContext } from './prompt_tutor';
 
 export type BaseAiTutorMessage = {
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'tool_call';
   content: string;
+  toolCalls?: Array<{
+    id: string;
+    function: { name: string; arguments: string };
+    result?: { content: string };
+  }>;
 };
 
 export interface UseBaseAiTutorChatOptions {
@@ -19,6 +24,7 @@ export interface UseBaseAiTutorChatOptions {
   docTitle: string;
   branch: string;
   docDescription?: string;
+  docId?: string;
 }
 
 function resolveUiDomainId(): string {
@@ -40,6 +46,7 @@ export function useBaseAiTutorChat(options: UseBaseAiTutorChatOptions) {
     docTitle,
     branch,
     docDescription,
+    docId,
   } = options;
 
   const [messages, setMessages] = useState<BaseAiTutorMessage[]>([]);
@@ -79,7 +86,7 @@ export function useBaseAiTutorChat(options: UseBaseAiTutorChatOptions) {
     setIsLoading(true);
 
     const historyBeforeNewMessage = messages
-      .filter((msg) => msg.role === 'user' || msg.role === 'assistant')
+      .filter((msg): msg is BaseAiTutorMessage => msg.role === 'user' || msg.role === 'assistant')
       .map((msg) => ({
         role: msg.role,
         content: msg.content || (msg.role === 'assistant' ? 'Done' : ''),
@@ -103,6 +110,7 @@ export function useBaseAiTutorChat(options: UseBaseAiTutorChatOptions) {
         selectedNodeRef.current,
         selectedCardRef.current,
       );
+
       const systemPrompt = buildBaseAiTutorSystemPrompt({
         baseText,
         selectedNodeContext,
@@ -142,6 +150,23 @@ export function useBaseAiTutorChat(options: UseBaseAiTutorChatOptions) {
                   content: displayContent || (split.inFence ? '' : i18n('Roadmap AI thinking')),
                 };
               }
+              return next;
+            });
+            scrollToBottom();
+          } else if (msg.type === 'tool_call') {
+            setMessages((prev) => {
+              const next = [...prev];
+              const toolMsg: BaseAiTutorMessage = {
+                role: 'tool_call',
+                content: '',
+                toolCalls: (msg.toolCalls || []).map((tc: any) => ({
+                  id: tc.id || '',
+                  function: { name: tc.function?.name || 'unknown', arguments: tc.function?.arguments || '{}' },
+                  result: tc.result || undefined,
+                })),
+              };
+              next.splice(assistantMessageIndex, 0, toolMsg);
+              assistantMessageIndex++; // shift index past the tool call message
               return next;
             });
             scrollToBottom();
@@ -192,8 +217,11 @@ export function useBaseAiTutorChat(options: UseBaseAiTutorChatOptions) {
 
       sock.onopen = () => {
         sock.send(JSON.stringify({
-          message: `${systemPrompt}\n\nUser question:\n${userMessage}`,
+          message: userMessage,
+          systemPrompt,
           history: historyBeforeNewMessage,
+          docId: docId || (window as any).UiContext?.base?.docId || '',
+          branch,
         }));
       };
       return true;

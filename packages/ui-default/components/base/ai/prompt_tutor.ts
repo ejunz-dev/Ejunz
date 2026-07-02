@@ -106,10 +106,27 @@ export function buildBaseAiTutorSystemPrompt(options: {
   docTitle: string;
   branch: string;
   docDescription?: string;
+  semanticResults?: Array<{
+    nodeId: string;
+    kind: 'node' | 'card';
+    cardDocId?: string;
+    cardTitle?: string;
+    text: string;
+    score: number;
+  }>;
 }): string {
-  const { baseText, selectedNodeContext, docTitle, branch, docDescription } = options;
+  const { baseText, selectedNodeContext, docTitle, branch, docDescription, semanticResults } = options;
   const descBlock = docDescription?.trim()
     ? `\n[Document description]\n${docDescription.trim()}\n`
+    : '';
+  const semanticBlock = semanticResults?.length
+    ? `\n[Semantically relevant content — matched by similarity to the user's question]\n${
+        semanticResults.map((r) =>
+          r.kind === 'node'
+            ? `  - [node] "${r.text}" (score: ${r.score.toFixed(2)})`
+            : `  - [card]${r.cardTitle ? ` "${r.cardTitle}":` : ''} "${r.text}" (score: ${r.score.toFixed(2)})`,
+        ).join('\n')
+      }\n`
     : '';
   return `You are an AI tutor helping a learner understand a knowledge base document. Answer in plain, helpful language.
 
@@ -120,7 +137,7 @@ ${descBlock}
 [Document structure and summaries]
 ${baseText}
 ${selectedNodeContext}
-
+${semanticBlock}
 [Your role]
 - Explain sections, cards, learning paths, and how topics connect in the document tree.
 - Answer questions about practice problems at a high level (do not reveal exact quiz answers unless the user asks for explanations after attempting).

@@ -15,6 +15,7 @@ import {
     mcpBaseGitStatus,
     type McpBaseGitInput,
 } from '../handler/base';
+import type { EmbeddingService } from '../service/embedding';
 
 export interface McpToolContext {
     domainId: string;
@@ -22,6 +23,7 @@ export interface McpToolContext {
     branch: string;
     owner: number;
     setting?: { get: (k: string) => unknown };
+    embedding?: EmbeddingService;
 }
 
 export interface McpToolDef {
@@ -166,6 +168,23 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
                 filterProblem: { type: 'string', description: 'Keep only nodes that have a card with a problem matching this text (filterProblem).' },
                 limit: { type: 'number', description: 'Max results to return per kind (nodes/cards). Default 50.' },
             },
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'semantic_search',
+        description: 'Semantic (vector) search across node titles and card content. '
+            + 'Searches by meaning rather than keyword — use this to find content conceptually related to your query. '
+            + 'Results include a similarity `score` (0–1) and the matched text snippet. '
+            + 'Use `kind` to restrict to "node" (headings only) or "card" (content only); omit for both.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                query: { type: 'string', description: 'Natural language query — describe what you are looking for (required).' },
+                limit: { type: 'number', description: 'Max results to return. Default 15, max 50.' },
+                kind: { type: 'string', description: 'Restrict to "node" (headings) or "card" (content). Omit to search both.' },
+            },
+            required: ['query'],
             additionalProperties: false,
         },
     },
@@ -347,12 +366,13 @@ export async function buildMcpInstructions(
         '',
         'Typical workflow:',
         '1. detail_tree — get the whole node tree (nodes + cards, titles only) at a glance.',
-        '2. detail_search(query/filterNode/filterCard/filterProblem) — find nodes/cards by keyword, id or filters.',
-        '3. detail_list_nodes — flat list of nodes; card_list(nodeId) — cards under a node.',
-        '4. card_get(cardId) — read a card\'s full content.',
-        '5. problem_list(cardId) / problem_get(cardId, pid) — list or read practice problems on a card.',
-        '6. git_status — check local/remote sync; git_commit / git_push / git_pull — sync with GitHub (configure repo via git_config_set).',
-        '7. Use the create/update/delete tools to modify nodes, cards, and problems.',
+        '2. semantic_search(query) — find content by meaning (vector/embedding search across node titles and card content).',
+        '3. detail_search(query/filterNode/filterCard/filterProblem) — find nodes/cards by keyword, id or filters.',
+        '4. detail_list_nodes — flat list of nodes; card_list(nodeId) — cards under a node.',
+        '5. card_get(cardId) — read a card\'s full content.',
+        '6. problem_list(cardId) / problem_get(cardId, pid) — list or read practice problems on a card.',
+        '7. git_status — check local/remote sync; git_commit / git_push / git_pull — sync with GitHub (configure repo via git_config_set).',
+        '8. Use the create/update/delete tools to modify nodes, cards, and problems.',
     );
     return lines.join('\n');
 }
@@ -739,6 +759,30 @@ export async function executeMcpBuiltinTool(
             matchedCardCount: cardMatches.length,
             nodes: nodeMatches,
             cards: cardMatches,
+        };
+    }
+    case 'semantic_search': {
+        const q = String(args.query || '').trim();
+        if (!q) throw new Error('query is required');
+        if (!ctx.embedding) throw new Error('Semantic search is not available (embedding service not loaded)');
+        const limit = Math.max(1, Math.min(50, Number(args.limit) || 15));
+        const raw = await ctx.embedding.searchSimilar(domainId, baseDocId, branch, q, limit);
+        const kind = String(args.kind || '').trim().toLowerCase();
+        const results = kind && (kind === 'node' || kind === 'card')
+            ? raw.filter((r) => r.kind === kind)
+            : raw;
+        return {
+            query: q,
+            kind: kind || null,
+            matchedCount: results.length,
+            results: results.map((r) => ({
+                nodeId: r.nodeId,
+                kind: r.kind,
+                cardDocId: r.cardDocId || null,
+                cardTitle: r.cardTitle || null,
+                text: r.text,
+                score: Math.round(r.score * 10000) / 10000,
+            })),
         };
     }
     case 'problem_list': {

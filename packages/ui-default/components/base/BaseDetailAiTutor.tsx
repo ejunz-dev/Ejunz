@@ -2,7 +2,9 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { i18n } from 'vj/utils';
 import type { BaseEdge, BaseNode, Card } from './types';
 import { buildBaseTutorSuggestedQuestions } from './ai/suggested_questions';
-import { useBaseAiTutorChat } from './ai/useBaseAiTutorChat';
+import { useBaseAiTutorChat, type BaseAiTutorMessage } from './ai/useBaseAiTutorChat';
+import AiTutorToolCallDisplay from './AiTutorToolCallDisplay';
+import AiTutorMarkdown from './AiTutorMarkdown';
 
 function WandIcon() {
   return (
@@ -75,6 +77,7 @@ export type BaseDetailAiTutorProps = {
   selectedCard: Card | null;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  docId?: string;
 };
 
 export function BaseDetailAiTutor({
@@ -88,6 +91,7 @@ export function BaseDetailAiTutor({
   selectedCard,
   open: openProp,
   onOpenChange,
+  docId,
 }: BaseDetailAiTutorProps) {
   const [openInternal, setOpenInternal] = useState(false);
   const open = openProp ?? openInternal;
@@ -109,6 +113,7 @@ export function BaseDetailAiTutor({
     docTitle,
     branch,
     docDescription,
+    docId,
   });
 
   const suggestedQuestions = useMemo(
@@ -190,14 +195,29 @@ export function BaseDetailAiTutor({
               </div>
 
               {messages.map((msg, index) => (
-                <div
-                  key={`${index}-${msg.role}`}
-                  className={`roadmap-ai-tutor-msg roadmap-ai-tutor-msg--${msg.role}`}
-                >
-                  {msg.content || (msg.role === 'assistant' && isLoading ? i18n('Roadmap AI thinking') : '')}
-                </div>
+                msg.role === 'tool_call' ? (
+                  <AiTutorToolCallDisplay
+                    key={`${index}-${msg.role}`}
+                    toolCalls={msg.toolCalls || []}
+                  />
+                ) : msg.role === 'assistant' ? (
+                  <div
+                    key={`${index}-${msg.role}`}
+                    className="roadmap-ai-tutor-msg roadmap-ai-tutor-msg--assistant"
+                  >
+                    {msg.content
+                      ? <AiTutorMarkdown content={msg.content} />
+                      : isLoading ? i18n('Roadmap AI thinking') : ''}
+                  </div>
+                ) : (
+                  <div
+                    key={`${index}-${msg.role}`}
+                    className={`roadmap-ai-tutor-msg roadmap-ai-tutor-msg--${msg.role}`}
+                  >
+                    {msg.content}
+                  </div>
+                )
               ))}
-
               {showSuggestions ? (
                 <div className="roadmap-ai-tutor-suggestions">
                   <p className="roadmap-ai-tutor-suggestions__lead">

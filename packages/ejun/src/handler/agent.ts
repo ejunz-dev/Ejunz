@@ -4353,12 +4353,17 @@ export class DirectAiChatConnectionHandler extends ConnectionHandler {
     async message(msg: any) {
         let messageText: string;
         let historyData: any;
-        
+        let systemPrompt: string | undefined;
+        let docId: string | undefined;
+        let branch: string | undefined;
         if (typeof msg === 'string') {
             try {
                 const parsed = JSON.parse(msg);
                 messageText = parsed.message;
                 historyData = parsed.history;
+                systemPrompt = parsed.systemPrompt;
+                docId = parsed.docId;
+                branch = parsed.branch;
             } catch (e) {
                 this.send({ type: 'error', error: 'Invalid message format' });
                 return;
@@ -4366,6 +4371,9 @@ export class DirectAiChatConnectionHandler extends ConnectionHandler {
         } else if (typeof msg === 'object' && msg !== null) {
             messageText = msg.message;
             historyData = msg.history;
+            systemPrompt = msg.systemPrompt;
+            docId = msg.docId;
+            branch = msg.branch;
         } else {
             this.send({ type: 'error', error: 'Invalid message format' });
             return;
@@ -4401,22 +4409,129 @@ export class DirectAiChatConnectionHandler extends ConnectionHandler {
             chatHistory = [];
         }
 
+        // Build final user message: system prompt + semantic results + user question
+        let finalMessage = message;
+        let semanticCount = 0;
+        if (systemPrompt) {
+            // Try to enrich with semantic search results (server-side)
+            let semanticBlock = '';
+            if (docId) {
+                const branchNorm = (branch && String(branch).trim()) || 'main';
+                const docIdNum = Number(docId);
+                if (docIdNum > 0 && (this.ctx as any).embedding) {
+                    try {
+                        const results = await (this.ctx as any).embedding.searchSimilar(
+                            domainId, docIdNum, branchNorm, message, 8,
+                        );
+                        console.log('\n========== [Base AI tutor tool call — semantic_search] ==========\n'
+                            + JSON.stringify({
+                                input: {
+                                    domainId,
+                                    docId: docIdNum,
+                                    branch: branchNorm,
+                                    query: message,
+                                    limit: 8,
+                                },
+                                output: results,
+                            }, null, 2)
+                            + '\n========== [End Base AI tutor tool call] ==========\n');
+                        if (Array.isArray(results) && results.length > 0) {
+                            semanticCount = results.length;
+                            semanticBlock = '\n[Semantically relevant content — matched by similarity to the user\'s question]\n'
+                                + results.map((r: any) =>
+                                    r.kind === 'node'
+                                        ? '  - [node] \"' + r.text + '\" (score: ' + r.score.toFixed(2) + ')'
+                                        : '  - [card]' + (r.cardTitle ? ' \"' + r.cardTitle + '\":' : '') + ' \"' + r.text + '\" (score: ' + r.score.toFixed(2) + ')',
+                                ).join('\n');
+
+                            // Notify client about the semantic search tool call for UI display
+                            const toolCallId = 'semantic_search_' + Date.now();
+                            this.send({
+                                type: 'tool_call',
+                                toolCalls: [{
+                                    id: toolCallId,
+                                    function: {
+                                        name: 'semantic_search',
+                                        arguments: JSON.stringify({ query: message, limit: 8 }),
+                                    },
+                                    result: {
+                                        content: JSON.stringify({
+                                            message: 'Found ' + results.length + ' semantically relevant results',
+                                            instructions: results.map((r: any) =>
+                                                '**[' + (r.kind === 'node' ? 'Node' : 'Card') + ']** (score: ' + (r.score * 100).toFixed(0) + '%):\n'
+                                                + r.text
+                                            ).join('\n\n'),
+                                        }),
+                                    },
+                                }],
+                            });
+                        }
+                    } catch (e) {
+                        console.log('\n========== [Base AI tutor tool call — semantic_search error] ==========\n'
+                            + JSON.stringify({
+                                input: {
+                                    domainId,
+                                    docId: docIdNum,
+                                    branch: branchNorm,
+                                    query: message,
+                                    limit: 8,
+                                },
+                                error: (e as Error).message || String(e),
+                            }, null, 2)
+                            + '\n========== [End Base AI tutor tool call] ==========\n');
+                        // semantic search is optional — continue without it
+                    }
+                }
+            }
+            finalMessage = systemPrompt + '\n' + semanticBlock + '\n\nUser question:\n' + message;
+        }
+
+        const modelMessages = prepareAgentMessages([
+            ...chatHistory,
+            {
+                role: 'user',
+                content: finalMessage,
+            },
+        ]);
+        console.log('\n========== [Base AI tutor input to model — full context] ==========\n'
+            + JSON.stringify({
+                userId: this.user._id,
+                domainId,
+                docId: docId || null,
+                branch: branch || 'main',
+                apiUrl,
+                model,
+                semanticResultsCount: semanticCount,
+                historyLength: chatHistory.length,
+                systemPromptLength: systemPrompt ? systemPrompt.length : 0,
+                finalMessageLength: finalMessage.length,
+                messages: modelMessages,
+            }, null, 2)
+            + '\n========== [End Base AI tutor input] ==========\n');
+        AgentLogger.info('Direct AI chat input', JSON.stringify({
+            userId: this.user._id,
+            domainId,
+            docId: docId || null,
+            branch: branch || 'main',
+            apiUrl,
+            model,
+            userMessageLength: message.length,
+            semanticResultsCount: semanticCount,
+            historyLength: chatHistory.length,
+            systemPromptLength: systemPrompt ? systemPrompt.length : 0,
+            finalMessageLength: finalMessage.length,
+        }));
+
         let accumulatedContent = '';
         let streamFinished = false;
 
         try {
-            AgentLogger.info('Starting direct AI chat stream via WebSocket', { apiUrl, model, messageLength: message.length });
+            AgentLogger.info('Starting direct AI chat stream via WebSocket', { apiUrl, model, messageLength: finalMessage.length });
             await new Promise<void>((resolve, reject) => {
                 const req = request.post(apiUrl)
                     .send({
                         model,
-                        messages: prepareAgentMessages([
-                            ...chatHistory,
-                            {
-                                role: 'user',
-                                content: message,
-                            },
-                        ]),
+                        messages: modelMessages,
                         stream: true,
                     })
                     .set('Authorization', `Bearer ${apiKey}`)
@@ -4500,6 +4615,22 @@ export class DirectAiChatConnectionHandler extends ConnectionHandler {
                 
                 req.end();
             });
+
+            console.log('\n========== [Base AI tutor output from model — full text] ==========\n'
+                + JSON.stringify({
+                    userId: this.user._id,
+                    domainId,
+                    model,
+                    outputLength: accumulatedContent.length,
+                    output: accumulatedContent,
+                }, null, 2)
+                + '\n========== [End Base AI tutor output] ==========\n');
+            AgentLogger.info('Direct AI chat output', JSON.stringify({
+                userId: this.user._id,
+                domainId,
+                model,
+                outputLength: accumulatedContent.length,
+            }));
         } catch (error: any) {
             AgentLogger.error('Direct AI chat stream error:', error);
             this.send({ type: 'error', error: error.message || 'Request failed' });
