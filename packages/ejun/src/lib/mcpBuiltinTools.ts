@@ -766,22 +766,32 @@ export async function executeMcpBuiltinTool(
         if (!q) throw new Error('query is required');
         if (!ctx.embedding) throw new Error('Semantic search is not available (embedding service not loaded)');
         const limit = Math.max(1, Math.min(50, Number(args.limit) || 15));
-        const raw = await ctx.embedding.searchSimilar(domainId, baseDocId, branch, q, limit);
         const kind = String(args.kind || '').trim().toLowerCase();
-        const results = kind && (kind === 'node' || kind === 'card')
+        const requested = kind && (kind === 'node' || kind === 'card') ? Math.min(50, limit * 3) : limit;
+        const raw = await ctx.embedding.searchSimilar(domainId, baseDocId, branch, q, requested);
+        const results = (kind && (kind === 'node' || kind === 'card')
             ? raw.filter((r) => r.kind === kind)
-            : raw;
+            : raw).slice(0, limit);
+        const rawBranch = getBranchData(base, branch);
+        const parentMap = buildParentMap(rawBranch.edges || []);
+        const nodeById = new Map((rawBranch.nodes || []).map((n) => [n.id, n]));
         return {
             query: q,
             kind: kind || null,
             matchedCount: results.length,
-            results: results.map((r) => ({
+            results: results.map((r, index) => ({
+                rank: r.rank || index + 1,
                 nodeId: r.nodeId,
                 kind: r.kind,
                 cardDocId: r.cardDocId || null,
                 cardTitle: r.cardTitle || null,
+                chunkIndex: r.chunkIndex ?? 0,
+                path: pathLabelFor(r.nodeId, parentMap, nodeById) || null,
                 text: r.text,
                 score: Math.round(r.score * 10000) / 10000,
+                semanticScore: Math.round((r.semanticScore ?? r.score) * 10000) / 10000,
+                keywordScore: Math.round((r.keywordScore || 0) * 10000) / 10000,
+                matchedTerms: Array.isArray(r.matchedTerms) ? r.matchedTerms : [],
             })),
         };
     }

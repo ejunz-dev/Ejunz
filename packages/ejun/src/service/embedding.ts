@@ -64,7 +64,98 @@ export interface SearchResult {
     /** 0-based chunk index when kind=card is split into chunks */
     chunkIndex: number;
     text: string;
+    /** Final score after semantic similarity plus bounded keyword boost. */
     score: number;
+    /** Raw cosine similarity from the embedding model. */
+    semanticScore: number;
+    /** Bounded exact-keyword boost used for technical terms in the query. */
+    keywordScore: number;
+    matchedTerms?: string[];
+    rank: number;
+}
+
+type KeywordMatch = { keywordScore: number; matchedTerms: string[] };
+
+function normalizeKeywordText(value: string): string {
+    return (value || '').normalize('NFKC').toLowerCase();
+}
+
+function extractKeywordTerms(query: string): string[] {
+    const normalized = normalizeKeywordText(query);
+    const raw = normalized.match(/[a-z0-9][a-z0-9._/-]*/g) || [];
+    const ignored = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'with']);
+    const terms: string[] = [];
+    for (const term of raw) {
+        const clean = term.replace(/^[/._-]+|[/._-]+$/g, '');
+        if (!clean || ignored.has(clean)) continue;
+        if (clean.length === 1) continue;
+        if (clean.length === 2 && /^[a-z]+$/.test(clean) && !['ai', 'go', 'js'].includes(clean)) continue;
+        if (!terms.includes(clean)) terms.push(clean);
+    }
+    return terms;
+}
+
+function termRegex(term: string): RegExp {
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i');
+}
+
+function scoreKeywordMatch(terms: string[], doc: Pick<EmbeddingDoc, 'kind' | 'text' | 'cardTitle'>): KeywordMatch {
+    if (!terms.length) return { keywordScore: 0, matchedTerms: [] };
+    const title = normalizeKeywordText(doc.cardTitle || '');
+    const text = normalizeKeywordText(doc.text || '');
+    const matchedTerms: string[] = [];
+    let score = 0;
+
+    for (const term of terms) {
+        const re = termRegex(term);
+        let termScore = 0;
+        if (title && re.test(title)) termScore += 0.24;
+        if (text && re.test(text)) termScore += doc.kind === 'node' ? 0.28 : 0.18;
+        if (termScore > 0) {
+            matchedTerms.push(term);
+            score += termScore;
+        }
+    }
+
+    for (let i = 0; i < terms.length - 1; i++) {
+        const phrase = `${terms[i]} ${terms[i + 1]}`;
+        if (text.includes(phrase) || title.includes(phrase)) score += 0.08;
+    }
+
+    return { keywordScore: Math.min(0.35, score), matchedTerms };
+}
+
+function collectProblemText(value: unknown, out: string[], depth = 0) {
+    if (value === undefined || value === null || depth > 4 || out.length > 120) return;
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        const s = String(value).trim();
+        if (s) out.push(s);
+        return;
+    }
+    if (Array.isArray(value)) {
+        for (const item of value) collectProblemText(item, out, depth + 1);
+        return;
+    }
+    if (typeof value === 'object') {
+        const preferred = ['title', 'stem', 'faceA', 'faceB', 'hint', 'analysis', 'tags', 'options', 'columns', 'left', 'right', 'points'];
+        const obj = value as Record<string, unknown>;
+        for (const key of preferred) {
+            if (key in obj) collectProblemText(obj[key], out, depth + 1);
+        }
+    }
+}
+
+function buildCardSearchText(card: CardDoc): string {
+    const parts: string[] = [];
+    const title = (card.title || '').trim();
+    const content = (card.content || '').trim();
+    if (title) parts.push(`# ${title}`);
+    if (content) parts.push(content);
+    const problemText: string[] = [];
+    for (const problem of card.problems || []) collectProblemText(problem, problemText);
+    if (problemText.length) parts.push(problemText.join('\n'));
+    return parts.join('\n\n').trim();
 }
 
 export class EmbeddingService extends Service {
@@ -244,10 +335,10 @@ export class EmbeddingService extends Service {
 
             for (const [nodeId, cardList] of cards) {
                 for (const card of cardList) {
-                    const content = (card.content || '').trim();
-                    if (!content) continue;
+                    const searchText = buildCardSearchText(card);
+                    if (!searchText) continue;
 
-                    const chunks = this.chunkText(content);
+                    const chunks = this.chunkText(searchText);
                     const title = (card.title || '').trim();
                     for (let ci = 0; ci < chunks.length; ci++) {
                         cardChunks.push({
@@ -317,13 +408,16 @@ export class EmbeddingService extends Service {
 
         if (!docs.length) return [];
 
-        // Cosine similarity (no index needed for small datasets)
+        // Cosine similarity + bounded keyword rerank (no index needed for small datasets)
+        const queryTerms = extractKeywordTerms(query);
         const scored: SearchResult[] = [];
-        for (const doc of docs) {
+        docs.forEach((doc, order) => {
             const dot = doc.embedding.reduce((sum, v, i) => sum + v * queryVec[i], 0);
             const magA = Math.sqrt(doc.embedding.reduce((sum, v) => sum + v * v, 0));
             const magB = Math.sqrt(queryVec.reduce((sum, v) => sum + v * v, 0));
-            const score = magA && magB ? dot / (magA * magB) : 0;
+            const semanticScore = magA && magB ? dot / (magA * magB) : 0;
+            const { keywordScore, matchedTerms } = scoreKeywordMatch(queryTerms, doc);
+            const score = Math.min(1, semanticScore + keywordScore);
 
             scored.push({
                 nodeId: doc.nodeId,
@@ -333,10 +427,18 @@ export class EmbeddingService extends Service {
                 chunkIndex: doc.chunkIndex,
                 text: doc.text,
                 score,
+                semanticScore,
+                keywordScore,
+                matchedTerms,
+                rank: order + 1,
             });
-        }
+        });
 
-        scored.sort((a, b) => b.score - a.score);
+        scored.sort((a, b) => b.score - a.score
+            || b.keywordScore - a.keywordScore
+            || b.semanticScore - a.semanticScore
+            || a.rank - b.rank);
+        scored.forEach((r, i) => { r.rank = i + 1; });
         return scored.slice(0, limit);
     }
 
