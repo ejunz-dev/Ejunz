@@ -10,11 +10,12 @@ import { BaseDetailAiTutor } from 'vj/components/base/BaseDetailAiTutor';
 import { BaseDetailCardDrawer } from 'vj/components/base/BaseDetailCardDrawer';
 import { BaseDetailExplorer } from 'vj/components/base/BaseDetailExplorer';
 import { BaseDetailHeader } from 'vj/components/base/BaseDetailHeader';
+import { BaseDetailSemanticSearch, type SemanticSearchItem } from 'vj/components/base/BaseDetailSemanticSearch';
 import { BaseDetailEmbeddedRoadmapViewer } from 'vj/components/base/BaseDetailEmbeddedRoadmapViewer';
 import { BaseDetailNodeContent } from 'vj/components/base/BaseDetailNodeContent';
 import { BaseDetailTreeDrawer } from 'vj/components/base/BaseDetailSidebar';
 import { RoadmapDetailSettingsPanel } from 'vj/components/roadmap/RoadmapDetailSettingsPanel';
-import { cardDisplayLabel, getRoadmapChildGraph, getSortedNodeChildren, nodeDisplayLabel, collectNodePathFromRoot, findCardHostNodeId, findRoadmapContainerAncestor, getPrimaryCardForNode, isRoadmapCanvasNodeId } from 'vj/components/base/detail_tree';
+import { cardDisplayLabel, getRoadmapChildGraph, getSortedNodeChildren, nodeDisplayLabel, collectNodePathFromRoot, findCardByDocId, findCardHostNodeId, findRoadmapContainerAncestor, getPrimaryCardForNode, isRoadmapCanvasNodeId } from 'vj/components/base/detail_tree';
 import { isTypoImagePreviewOverlay } from 'vj/components/base/typo_image_preview';
 import {
   initialBaseDetailSelectedNodeId,
@@ -78,6 +79,9 @@ function BaseDetailViewer() {
   const [detailFilters, setDetailFilters] = useState<BaseDetailFilter>(() => readBaseDetailFilterFromLocation());
   const [treeSearchQuery, setTreeSearchQuery] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [semanticSearchOpen, setSemanticSearchOpen] = useState(false);
+  const [highlightNodeId, setHighlightNodeId] = useState<string | null>(null);
+  const [highlightText, setHighlightText] = useState<string | null>(null);
   const [displaySettings, setDisplaySettings] = useState<BaseDetailDisplaySettings>(() => (
     readBaseDetailDisplaySettings()
   ));
@@ -254,6 +258,7 @@ function BaseDetailViewer() {
   const handleCloseCardDrawer = useCallback(() => {
     setSelectedCard(null);
     setScrollToCardId(null);
+    setHighlightText(null);
   }, []);
 
   const handleDisplaySettingsSave = useCallback(async (next: BaseDetailDisplaySettings) => {
@@ -274,6 +279,20 @@ function BaseDetailViewer() {
       setDisplaySettingsSaving(false);
     }
   }, [base.docId, base.domainId, branch]);
+
+  // Clear search highlights on any click outside
+  useEffect(() => {
+    if (!highlightNodeId && !highlightText) return undefined;
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Element | null;
+      if (!target) return;
+      if (target.closest('.roadmap-semantic-search-modal')) return;
+      setHighlightNodeId(null);
+      setHighlightText(null);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [highlightNodeId, highlightText]);
 
   useEffect(() => {
     if (!selectedCard) return undefined;
@@ -498,6 +517,8 @@ function BaseDetailViewer() {
         onStartEditorSession={startEditorSession}
         editorBusy={editorBusy}
         editorDisabled={!contentRootNodeId}
+        onSearchClick={() => setSemanticSearchOpen(true)}
+        searchActive={semanticSearchOpen}
       />
       {explorerScopeRootId ? (
         <BaseDetailExplorer
@@ -564,6 +585,7 @@ function BaseDetailViewer() {
         open={!!selectedCard}
         card={selectedCard}
         onClose={handleCloseCardDrawer}
+        highlightText={highlightText}
       />
       <BaseDetailAiTutor
         nodes={nodes}
@@ -583,6 +605,32 @@ function BaseDetailViewer() {
         saving={displaySettingsSaving}
         onClose={() => setSettingsOpen(false)}
         onSave={handleDisplaySettingsSave}
+      />
+      <BaseDetailSemanticSearch
+        domainId={base.domainId || 'system'}
+        docId={base.docId || ''}
+        branch={branch}
+        open={semanticSearchOpen}
+        onOpenChange={setSemanticSearchOpen}
+        onSelectResult={(result) => {
+          if (result.kind === 'node') {
+            const node = nodes.find((n) => n.id === result.nodeId);
+            if (node) {
+              setHighlightText(null);
+              setHighlightNodeId(result.nodeId);
+              handleSelectNode(result.nodeId);
+            }
+          } else if (result.kind === 'card') {
+            const card = findCardByDocId(result.cardDocId || '', nodeCardsMap);
+            const hostNodeId = findCardHostNodeId(result.cardDocId || '', nodeCardsMap);
+            setHighlightNodeId(null);
+            setHighlightText(result.text || null);
+            if (hostNodeId) {
+              handleSelectNode(hostNodeId);
+              if (card) handleSelectCardInStructure(card);
+            }
+          }
+        }}
       />
     </div>
   );

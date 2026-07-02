@@ -67,6 +67,8 @@ export function BaseDetailHeader({
   onStartEditorSession,
   editorBusy,
   editorDisabled,
+  onSearchClick,
+  searchActive,
 }: {
   title: string;
   description?: string;
@@ -85,6 +87,8 @@ export function BaseDetailHeader({
   onStartEditorSession?: () => void;
   editorBusy?: boolean;
   editorDisabled?: boolean;
+  onSearchClick?: () => void;
+  searchActive?: boolean;
 }) {
   const listUrl = domainScopedPath('/base', domainId);
   const trimmedDescription = String(description || '').trim();
@@ -128,6 +132,20 @@ export function BaseDetailHeader({
               aria-busy={editorBusy || undefined}
             >
               {i18n('Edit')}
+            </button>
+          ) : null}
+          {onSearchClick ? (
+            <button
+              type="button"
+              className={`roadmap-detail-header-card__btn roadmap-detail-header-card__btn--icon${searchActive ? ' is-active' : ''}`}
+              onClick={onSearchClick}
+              aria-label={i18n('Semantic Search')}
+              title={String(i18n('Semantic Search'))}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
+                <path d="M16 16l4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
             </button>
           ) : null}
           {onSettingsClick ? (
