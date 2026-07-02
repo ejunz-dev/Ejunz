@@ -462,13 +462,9 @@ function BaseDetailViewer() {
         session: sessionId.trim(),
         nodeId,
       });
-      const bid = base.bid;
-      const docSeg = bid && String(bid).trim() ? String(bid).trim() : String(baseDocNum);
-      const editorUrl = domainScopedPath(
-        `/base/${encodeURIComponent(docSeg)}/branch/${encodeURIComponent(branchName)}/editor?${sp.toString()}`,
-        domainId,
-      );
-      const opened = window.open(editorUrl, '_blank');
+      const editorUrl = domainApiPath('/develop/editor', domainId);
+      const sep = editorUrl.includes('?') ? '&' : '?';
+      const opened = window.open(`${editorUrl}${sep}${sp.toString()}`, '_blank');
       if (opened) {
         opened.opener = null;
       } else {
@@ -480,7 +476,7 @@ function BaseDetailViewer() {
     } finally {
       setEditorBusy(false);
     }
-  }, [base.docId, base.bid, base.currentBranch, base.domainId, contentRootNodeId, editorBusy, nodes, edges, nodeCardsMap]);
+  }, [base.docId, base.currentBranch, base.domainId, contentRootNodeId, editorBusy, nodes, nodeCardsMap]);
 
   return (
     <div className="roadmap-detail-layout">
