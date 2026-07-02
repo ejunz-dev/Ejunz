@@ -598,6 +598,7 @@ function BaseDetailViewer() {
         selectedCard={selectedCard}
         open={aiTutorOpen}
         onOpenChange={setAiTutorOpen}
+        docId={base.docId}
       />
       <RoadmapDetailSettingsPanel
         open={settingsOpen}
