@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import Notification from 'vj/components/notification';
-import { domainApiPath, domainScopedPath, i18n } from 'vj/utils';
+import { domainScopedPath, i18n } from 'vj/utils';
 
 function ShareIcon() {
   return (
@@ -87,10 +87,6 @@ export function BaseDetailHeader({
   editorDisabled?: boolean;
 }) {
   const listUrl = domainScopedPath('/base', domainId);
-  const editUrl = domainApiPath(
-    `/base/${docId}/branch/${encodeURIComponent(branch)}/editor`,
-    domainId,
-  );
   const trimmedDescription = String(description || '').trim();
 
   const onShare = useCallback(() => {
@@ -112,10 +108,6 @@ export function BaseDetailHeader({
           {i18n('All Bases')}
         </a>
         <div className="roadmap-detail-header-card__actions">
-          <a className="roadmap-detail-header-card__btn" href={editUrl}>
-            <span className="icon icon-edit" aria-hidden />
-            {i18n('Edit graph')}
-          </a>
           {onStartLearningClick ? (
             <button
               type="button"
