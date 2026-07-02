@@ -1295,54 +1295,6 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
     };
 }
 
-export class BaseEditorDocHandler extends Handler {
-    base?: BaseDoc;
-
-    protected getEditorBranchUrl(_domainId: string, docId: string, branch: string): string {
-        return this.url('base_editor_branch', { docId, branch });
-    }
-
-    /** Nunjucks template for develop session. */
-    protected editorDocDevelopPageTemplate(): string {
-        return 'base_editor.html';
-    }
-
-    protected editorDocDevelopPageName(): string {
-        return 'base_editor_branch';
-    }
-
-    @param('docId', Types.String)
-    async _prepare(domainId: string, docId: string) {
-        this.base = await resolveBaseByDocIdOrBid(domainId, docId);
-        if (!this.base) throw new NotFoundError('Base not found');
-    }
-
-    @param('branch', Types.String, true)
-    async get(domainId: string, branch?: string) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
-
-        const base = this.base!;
-        const requestedBranch = branch && String(branch).trim() ? branch.trim() : 'main';
-
-        const sessionHexForOutline = typeof this.request.query?.session === 'string'
-            ? this.request.query.session.trim()
-            : '';
-        if (sessionHexForOutline && ObjectId.isValid(sessionHexForOutline)) {
-            const sp = new URLSearchParams();
-            sp.set('session', sessionHexForOutline);
-            const qCard = typeof this.request.query?.cardId === 'string' ? this.request.query.cardId.trim() : '';
-            const qNode = typeof this.request.query?.nodeId === 'string' ? this.request.query.nodeId.trim() : '';
-            if (qCard) sp.set('cardId', qCard);
-            if (qNode) sp.set('nodeId', qNode);
-            this.response.redirect = `/d/${encodeURIComponent(domainId)}/develop/editor?${sp.toString()}`;
-            return;
-        }
-
-        const docSeg = (base.bid && String(base.bid).trim()) || String(base.docId);
-        this.response.redirect = this.getEditorBranchUrl(domainId, docSeg, requestedBranch);
-    }
-}
-
 /**
  * Base Create Handler
  */
@@ -7079,8 +7031,6 @@ export async function apply(ctx: Context) {
     ctx.Route('base_node_files', '/base/:docId/node/:nodeId/files', BaseNodeFilesHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_node_file_download', '/base/:docId/node/:nodeId/file/:filename', BaseNodeFileDownloadHandler);
     ctx.Route('base_file_move', '/base/:docId/file/move', BaseFileMoveHandler, PRIV.PRIV_USER_PROFILE);
-    
-    ctx.Route('base_editor', '/base/:docId/editor', BaseEditorDocHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_editor_branch', '/base/:docId/branch/:branch/editor', BaseEditorDocHandler, PRIV.PRIV_USER_PROFILE);
+
     ctx.Connection('base_connection', '/base/ws', BaseConnectionHandler);
 }
