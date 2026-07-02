@@ -21,7 +21,7 @@ import { randomstring } from '@ejunz/utils';
 import { McpClient, ChatMessage } from '../model/agent';
 import { Logger } from '../logger';
 import { PassThrough } from 'stream';
-import { BaseModel } from '../model/base';
+import { BaseModel, getBranchData } from '../model/base';
 import PluginModel from '../model/plugin';
 import {
     SYSTEM_TOOL_ID_PREFIX,
@@ -1535,6 +1535,107 @@ type LogAgentContextExtras = Pick<
     Parameters<typeof logAgentContextToModel>[0],
     'messages'
 >;
+
+type BaseTutorSemanticResult = {
+    rank?: number;
+    nodeId: string;
+    kind: 'node' | 'card';
+    cardDocId?: string | null;
+    cardTitle?: string | null;
+    chunkIndex?: number;
+    text: string;
+    score: number;
+    semanticScore?: number;
+    keywordScore?: number;
+    matchedTerms?: string[];
+    path?: string | null;
+};
+
+function roundRetrievalScore(value: unknown): number {
+    const n = Number(value) || 0;
+    return Math.round(n * 10000) / 10000;
+}
+
+function buildBaseTutorParentMap(edges: any[] = []): Map<string, string> {
+    const m = new Map<string, string>();
+    for (const e of edges || []) {
+        if (e?.source && e?.target) m.set(String(e.target), String(e.source));
+    }
+    return m;
+}
+
+function baseTutorPathLabelFor(nodeId: string, parentMap: Map<string, string>, nodeById: Map<string, any>): string | null {
+    const chain: string[] = [];
+    const seen = new Set<string>();
+    let cur: string | undefined = nodeId;
+    while (cur && !seen.has(cur)) {
+        seen.add(cur);
+        const node = nodeById.get(cur);
+        if (!node) break;
+        chain.push((node.text || '').trim() || 'Untitled');
+        cur = parentMap.get(cur);
+    }
+    return chain.length ? chain.reverse().join(' › ') : null;
+}
+
+async function enrichBaseTutorSemanticResults(
+    domainId: string,
+    docId: number,
+    branch: string,
+    results: BaseTutorSemanticResult[],
+): Promise<BaseTutorSemanticResult[]> {
+    let parentMap = new Map<string, string>();
+    let nodeById = new Map<string, any>();
+    try {
+        const base = await BaseModel.get(domainId, docId);
+        if (base) {
+            const { nodes, edges } = getBranchData(base, branch || 'main');
+            parentMap = buildBaseTutorParentMap(edges || []);
+            nodeById = new Map((nodes || []).map((node: any) => [String(node.id), node]));
+        }
+    } catch (e) {
+        AgentLogger.warn('Failed to enrich Base AI tutor semantic paths: %s', (e as Error).message);
+    }
+
+    return (results || []).map((r, index) => ({
+        rank: r.rank || index + 1,
+        nodeId: r.nodeId,
+        kind: r.kind,
+        cardDocId: r.cardDocId || null,
+        cardTitle: r.cardTitle || null,
+        chunkIndex: r.chunkIndex ?? 0,
+        path: r.path || baseTutorPathLabelFor(r.nodeId, parentMap, nodeById),
+        score: roundRetrievalScore(r.score),
+        semanticScore: roundRetrievalScore(r.semanticScore ?? r.score),
+        keywordScore: roundRetrievalScore(r.keywordScore),
+        matchedTerms: Array.isArray(r.matchedTerms) ? r.matchedTerms : [],
+        text: r.text,
+    }));
+}
+
+function formatBaseTutorSemanticBlock(results: BaseTutorSemanticResult[]): string {
+    if (!results.length) return '';
+    return '\n[Semantic retrieval results for the user question]\n'
+        + 'Use these as potentially relevant project context. Prefer higher rank and exact technical-term matches.\n\n'
+        + results.map((r, index) => {
+            const title = r.cardTitle ? `\n   title: ${r.cardTitle}` : '';
+            const card = r.cardDocId ? ` cardDocId: ${r.cardDocId}` : '';
+            const path = r.path ? `\n   path: ${r.path}` : '';
+            const matched = r.matchedTerms?.length ? `\n   matchedTerms: ${r.matchedTerms.join(', ')}` : '';
+            return `${r.rank || index + 1}. [${r.kind}] score=${r.score} semantic=${r.semanticScore ?? r.score} keyword=${r.keywordScore ?? 0}`
+                + `${path}\n   nodeId: ${r.nodeId}${card} chunkIndex: ${r.chunkIndex ?? 0}${title}${matched}\n   snippet:\n   ${r.text}`;
+        }).join('\n\n');
+}
+
+function buildBaseTutorSemanticInstructions(results: BaseTutorSemanticResult[]): string {
+    return results.map((r) => '**[' + (r.kind === 'node' ? 'Node' : 'Card') + ']** '
+        + `#${r.rank || ''} score=${Math.round((r.score || 0) * 100)}%`
+        + (r.keywordScore ? ` keyword=${Math.round(r.keywordScore * 100)}%` : '')
+        + (r.path ? `\nPath: ${r.path}` : '')
+        + (r.cardTitle ? `\nTitle: ${r.cardTitle}` : '')
+        + (r.matchedTerms?.length ? `\nMatched terms: ${r.matchedTerms.join(', ')}` : '')
+        + `\n${r.text}`).join('\n\n');
+}
 
 // Helper: log API request (delegates to logAgentContextToModel)
 function logApiRequest(
@@ -4409,124 +4510,119 @@ export class DirectAiChatConnectionHandler extends ConnectionHandler {
             chatHistory = [];
         }
 
-        // Build final user message: system prompt + semantic results + user question
-        let finalMessage = message;
+        // Build semantic retrieval context separately from the tutor system prompt.
+        const branchNorm = (branch && String(branch).trim()) || 'main';
+        const docIdNum = Number(docId);
+        let semanticBlock = '';
         let semanticCount = 0;
-        if (systemPrompt) {
-            // Try to enrich with semantic search results (server-side)
-            let semanticBlock = '';
-            if (docId) {
-                const branchNorm = (branch && String(branch).trim()) || 'main';
-                const docIdNum = Number(docId);
-                if (docIdNum > 0 && (this.ctx as any).embedding) {
-                    try {
-                        const results = await (this.ctx as any).embedding.searchSimilar(
-                            domainId, docIdNum, branchNorm, message, 8,
-                        );
-                        console.log('\n========== [Base AI tutor tool call — semantic_search] ==========\n'
-                            + JSON.stringify({
-                                input: {
-                                    domainId,
-                                    docId: docIdNum,
-                                    branch: branchNorm,
-                                    query: message,
-                                    limit: 8,
-                                },
-                                output: results,
-                            }, null, 2)
-                            + '\n========== [End Base AI tutor tool call] ==========\n');
-                        if (Array.isArray(results) && results.length > 0) {
-                            semanticCount = results.length;
-                            semanticBlock = '\n[Semantically relevant content — matched by similarity to the user\'s question]\n'
-                                + results.map((r: any) =>
-                                    r.kind === 'node'
-                                        ? '  - [node] \"' + r.text + '\" (score: ' + r.score.toFixed(2) + ')'
-                                        : '  - [card]' + (r.cardTitle ? ' \"' + r.cardTitle + '\":' : '') + ' \"' + r.text + '\" (score: ' + r.score.toFixed(2) + ')',
-                                ).join('\n');
+        let semanticResults: BaseTutorSemanticResult[] = [];
+        if (systemPrompt && docIdNum > 0 && (this.ctx as any).embedding) {
+            try {
+                const rawResults = await (this.ctx as any).embedding.searchSimilar(
+                    domainId, docIdNum, branchNorm, message, 8,
+                );
+                semanticResults = await enrichBaseTutorSemanticResults(domainId, docIdNum, branchNorm, rawResults || []);
+                semanticCount = semanticResults.length;
+                semanticBlock = formatBaseTutorSemanticBlock(semanticResults);
+                const toolInput = {
+                    domainId,
+                    docId: docIdNum,
+                    branch: branchNorm,
+                    query: message,
+                    limit: 8,
+                    retrieval: 'embedding+keyword_rerank',
+                };
+                console.log('\n========== [Base AI tutor tool call — semantic_search] ==========\n'
+                    + JSON.stringify({ input: toolInput, output: semanticResults }, null, 2)
+                    + '\n========== [End Base AI tutor tool call] ==========\n');
 
-                            // Notify client about the semantic search tool call for UI display
-                            const toolCallId = 'semantic_search_' + Date.now();
-                            this.send({
-                                type: 'tool_call',
-                                toolCalls: [{
-                                    id: toolCallId,
-                                    function: {
-                                        name: 'semantic_search',
-                                        arguments: JSON.stringify({ query: message, limit: 8 }),
-                                    },
-                                    result: {
-                                        content: JSON.stringify({
-                                            message: 'Found ' + results.length + ' semantically relevant results',
-                                            instructions: results.map((r: any) =>
-                                                '**[' + (r.kind === 'node' ? 'Node' : 'Card') + ']** (score: ' + (r.score * 100).toFixed(0) + '%):\n'
-                                                + r.text
-                                            ).join('\n\n'),
-                                        }),
-                                    },
-                                }],
-                            });
-                        }
-                    } catch (e) {
-                        console.log('\n========== [Base AI tutor tool call — semantic_search error] ==========\n'
-                            + JSON.stringify({
-                                input: {
-                                    domainId,
-                                    docId: docIdNum,
-                                    branch: branchNorm,
+                if (semanticResults.length > 0) {
+                    const toolCallId = 'semantic_search_' + Date.now();
+                    this.send({
+                        type: 'tool_call',
+                        toolCalls: [{
+                            id: toolCallId,
+                            function: {
+                                name: 'semantic_search',
+                                arguments: JSON.stringify(toolInput),
+                            },
+                            result: {
+                                content: JSON.stringify({
+                                    message: 'Found ' + semanticResults.length + ' semantically relevant results',
                                     query: message,
                                     limit: 8,
-                                },
-                                error: (e as Error).message || String(e),
-                            }, null, 2)
-                            + '\n========== [End Base AI tutor tool call] ==========\n');
-                        // semantic search is optional — continue without it
-                    }
+                                    matchedCount: semanticResults.length,
+                                    retrieval: 'embedding+keyword_rerank',
+                                    results: semanticResults,
+                                    instructions: buildBaseTutorSemanticInstructions(semanticResults),
+                                }),
+                            },
+                        }],
+                    });
                 }
+            } catch (e) {
+                console.log('\n========== [Base AI tutor tool call — semantic_search error] ==========\n'
+                    + JSON.stringify({
+                        input: {
+                            domainId,
+                            docId: docIdNum || null,
+                            branch: branchNorm,
+                            query: message,
+                            limit: 8,
+                            retrieval: 'embedding+keyword_rerank',
+                        },
+                        error: (e as Error).message || String(e),
+                        stack: (e as Error).stack,
+                    }, null, 2)
+                    + '\n========== [End Base AI tutor tool call] ==========\n');
+                // semantic search is optional — continue without it
             }
-            finalMessage = systemPrompt + '\n' + semanticBlock + '\n\nUser question:\n' + message;
         }
 
-        const modelMessages = prepareAgentMessages([
+        const userContent = semanticBlock
+            ? `${semanticBlock}\n\nUser question:\n${message}`
+            : message;
+        const rawModelMessages = [
+            ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
             ...chatHistory,
-            {
-                role: 'user',
-                content: finalMessage,
-            },
-        ]);
-        console.log('\n========== [Base AI tutor input to model — full context] ==========\n'
+            { role: 'user', content: userContent },
+        ];
+        console.log('\n========== [Base AI tutor input to model — raw unprepared full context] ==========\n'
             + JSON.stringify({
                 userId: this.user._id,
                 domainId,
                 docId: docId || null,
-                branch: branch || 'main',
+                branch: branchNorm,
                 apiUrl,
                 model,
                 semanticResultsCount: semanticCount,
                 historyLength: chatHistory.length,
                 systemPromptLength: systemPrompt ? systemPrompt.length : 0,
-                finalMessageLength: finalMessage.length,
-                messages: modelMessages,
+                userContentLength: userContent.length,
+                messages: rawModelMessages,
             }, null, 2)
             + '\n========== [End Base AI tutor input] ==========\n');
+        const modelMessages = prepareAgentMessages(rawModelMessages);
         AgentLogger.info('Direct AI chat input', JSON.stringify({
             userId: this.user._id,
             domainId,
             docId: docId || null,
-            branch: branch || 'main',
+            branch: branchNorm,
             apiUrl,
             model,
             userMessageLength: message.length,
             semanticResultsCount: semanticCount,
             historyLength: chatHistory.length,
             systemPromptLength: systemPrompt ? systemPrompt.length : 0,
-            finalMessageLength: finalMessage.length,
+            userContentLength: userContent.length,
+            preparedMessagesCount: modelMessages.length,
         }));
 
         let accumulatedContent = '';
         let streamFinished = false;
 
         try {
-            AgentLogger.info('Starting direct AI chat stream via WebSocket', { apiUrl, model, messageLength: finalMessage.length });
+            AgentLogger.info('Starting direct AI chat stream via WebSocket', { apiUrl, model, messageLength: userContent.length });
             await new Promise<void>((resolve, reject) => {
                 const req = request.post(apiUrl)
                     .send({
