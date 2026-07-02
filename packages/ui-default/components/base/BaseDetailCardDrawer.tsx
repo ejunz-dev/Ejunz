@@ -16,10 +16,12 @@ export function BaseDetailCardDrawer({
   open,
   card,
   onClose,
+  highlightText,
 }: {
   open: boolean;
   card: Card | null;
   onClose: () => void;
+  highlightText?: string | null;
 }) {
   const [tab, setTab] = useState<DrawerTab>('content');
   const [practiceBusy, setPracticeBusy] = useState(false);
@@ -84,6 +86,7 @@ export function BaseDetailCardDrawer({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [closing, displayCard, onClose, visible]);
 
+  // Markdown rendering + apply search highlight synchronously after render
   useEffect(() => {
     const container = contentRef.current;
     if (!visible || closing || !displayCard || !container) return undefined;
@@ -96,6 +99,8 @@ export function BaseDetailCardDrawer({
 
     let cancelled = false;
     container.innerHTML = `<p>${i18n('Loading...')}</p>`;
+
+    const pendingHighlight = highlightText; // capture for this render cycle
 
     fetch('/markdown', {
       method: 'POST',
@@ -111,6 +116,11 @@ export function BaseDetailCardDrawer({
         contentRef.current.innerHTML = html;
         $(contentRef.current).trigger('vjContentNew');
         attachTypoImagePreviewHandlers(contentRef.current);
+
+        // Apply search highlight right after DOM is ready
+        if (pendingHighlight) {
+          applyHighlight(contentRef.current, pendingHighlight);
+        }
       })
       .catch(() => {
         if (cancelled || !contentRef.current) return;
@@ -121,6 +131,40 @@ export function BaseDetailCardDrawer({
       cancelled = true;
     };
   }, [displayCard?.content, displayCard?.docId, closing, visible]);
+
+  // Helper: walk the rendered DOM and highlight the first content match.
+  // Since markdown→HTML rendering removes syntax markers (e.g. '# ' → heading),
+  // we strip the same markers from the chunk text before matching.
+  function applyHighlight(container: HTMLElement, markdownText: string) {
+    const plain = markdownText
+      .replace(/^#+\s*/gm, '')
+      .replace(/\*\*(.+?)\*\*/g, '$1')
+      .replace(/\*(.+?)\*/g, '$1')
+      .replace(/`(.+?)`/g, '$1')
+      .replace(/^[-*+]\s+/gm, '')
+      .replace(/^>\s+/gm, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .trim();
+    if (!plain || plain.length < 10) return;
+
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      const idx = node.textContent?.indexOf(plain) ?? -1;
+      if (idx === -1) continue;
+      const mark = document.createElement('mark');
+      mark.className = 'search-highlight';
+      const tail = node.textContent!.slice(idx + plain.length);
+      node.textContent = node.textContent!.slice(0, idx);
+      mark.textContent = plain;
+      node.parentNode!.insertBefore(mark, node.nextSibling);
+      if (tail) {
+        node.parentNode!.insertBefore(document.createTextNode(tail), mark.nextSibling);
+      }
+      mark.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return;
+    }
+  }
 
   if (!visible || !displayCard) return null;
 

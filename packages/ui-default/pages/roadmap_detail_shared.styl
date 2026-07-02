@@ -1843,6 +1843,209 @@ $roadmap-tutor-bar-bg = #1a1a1a
   box-shadow: 0 20px 48px rgba(0, 0, 0, 0.16)
   animation: roadmap-ai-tutor-modal-in 0.24s ease
 
+/* ─── Semantic Search Modal ───────────────────────────── */
+
+.roadmap-semantic-search-backdrop
+  position: fixed
+  inset: 0
+  z-index: 150
+  background: rgba(0, 0, 0, 0.35)
+  animation: roadmap-detail-fade-in 0.2s ease
+
+.roadmap-semantic-search-modal
+  position: fixed
+  left: 50%
+  top: 50%
+  transform: translate(-50%, -50%)
+  z-index: 160
+  width: calc(100vw - 32px)
+  max-width: 520px
+  box-sizing: border-box
+  background: var(--roadmap-bg-elevated)
+  border: 1px solid var(--roadmap-border-card)
+  border-radius: 12px
+  box-shadow: 0 24px 56px rgba(0, 0, 0, 0.18)
+  animation: roadmap-semantic-search-in 0.24s ease
+  display: flex
+  flex-direction: column
+  max-height: 80vh
+
+.roadmap-semantic-search-modal__header
+  display: flex
+  align-items: center
+  justify-content: space-between
+  padding: 16px 18px 12px
+  border-bottom: 1px solid var(--roadmap-border-card)
+
+.roadmap-semantic-search-modal__title
+  display: flex
+  align-items: center
+  gap: 8px
+  font-size: 15px
+  font-weight: 600
+  color: var(--roadmap-text-primary)
+
+  svg
+    color: var(--roadmap-text-secondary)
+
+.roadmap-semantic-search-modal__close
+  display: flex
+  align-items: center
+  justify-content: center
+  width: 28px
+  height: 28px
+  border: none
+  border-radius: 6px
+  background: transparent
+  color: var(--roadmap-text-secondary)
+  cursor: pointer
+  transition: background 0.15s, color 0.15s
+
+  &:hover
+    background: var(--roadmap-bg-raised)
+    color: var(--roadmap-text-primary)
+
+.roadmap-semantic-search-modal__body
+  padding: 14px 18px 18px
+  overflow-y: auto
+  flex: 1
+
+.roadmap-semantic-search-input-wrap
+  display: flex
+  gap: 8px
+  margin-bottom: 16px
+
+.roadmap-semantic-search-input
+  flex: 1
+  border: 1px solid var(--roadmap-border-input)
+  border-radius: 8px
+  padding: 10px 14px
+  font-size: 14px
+  background: var(--roadmap-bg-canvas)
+  color: var(--roadmap-text-primary)
+  outline: none
+  transition: border-color 0.15s
+
+  &:focus
+    border-color: var(--roadmap-accent)
+
+  &::placeholder
+    color: var(--roadmap-text-secondary)
+
+.roadmap-semantic-search-submit
+  flex-shrink: 0
+  border: none
+  border-radius: 8px
+  padding: 8px 16px
+  font-size: 14px
+  font-weight: 500
+  background: var(--roadmap-accent)
+  color: #ffffff
+  cursor: pointer
+  transition: opacity 0.15s
+
+  &:hover:not(:disabled)
+    opacity: 0.85
+
+  &:disabled
+    opacity: 0.45
+    cursor: not-allowed
+
+.roadmap-semantic-search-status
+  text-align: center
+  padding: 32px 0
+  color: var(--roadmap-text-secondary)
+  font-size: 14px
+
+.roadmap-semantic-search-status--empty
+  color: var(--roadmap-text-secondary)
+  font-style: italic
+
+.roadmap-semantic-search-results
+  list-style: none
+  margin: 0
+  padding: 0
+  display: flex
+  flex-direction: column
+  gap: 6px
+
+.roadmap-semantic-search-result-item
+  display: flex
+  align-items: flex-start
+  gap: 10px
+  width: 100%
+  box-sizing: border-box
+  padding: 10px 14px
+  border: 1px solid var(--roadmap-border-card)
+  border-radius: 8px
+  background: var(--roadmap-bg-canvas)
+  color: var(--roadmap-text-primary)
+  font-size: 14px
+  text-align: left
+  cursor: pointer
+  transition: background 0.12s, border-color 0.12s
+
+  &:hover
+    background: var(--roadmap-bg-raised)
+    border-color: var(--roadmap-accent)
+
+.roadmap-semantic-search-result-item__icon
+  flex-shrink: 0
+  margin-top: 2px
+  color: var(--roadmap-text-secondary)
+
+.roadmap-semantic-search-result-item__body
+  flex: 1
+  min-width: 0
+
+.roadmap-semantic-search-result-item__text
+  line-height: 1.4
+  word-break: break-word
+  display: -webkit-box
+  -webkit-line-clamp: 3
+  -webkit-box-orient: vertical
+  overflow: hidden
+  margin-bottom: 4px
+
+.roadmap-semantic-search-result-item__meta-row
+  display: flex
+  align-items: center
+  gap: 8px
+  font-size: 12px
+
+.roadmap-semantic-search-result-item__kind
+  color: var(--roadmap-text-secondary)
+
+.roadmap-semantic-search-result-item__score
+  font-weight: 600
+  color: var(--roadmap-accent)
+
+.roadmap-semantic-search-result-item__arrow
+  flex-shrink: 0
+  margin-top: 2px
+  color: var(--roadmap-text-secondary)
+  opacity: 0.5
+  transition: opacity 0.12s
+
+  .roadmap-semantic-search-result-item:hover &
+    opacity: 1
+
+@keyframes roadmap-semantic-search-in
+  from
+    opacity: 0
+    transform: translate(-50%, calc(-50% + 12px))
+  to
+    opacity: 1
+    transform: translate(-50%, -50%)
+
+/* Highlight for semantic search matches in card drawer */
+mark.search-highlight
+  background: #fde68a
+  color: #111
+  padding: 0 2px
+  border-radius: 2px
+  box-shadow: 0 0 0 1px rgba(253, 230, 138, 0.5)
+
 .roadmap-detail-settings__header
   display: flex
   align-items: center

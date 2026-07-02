@@ -2118,6 +2118,13 @@ export class BaseSaveHandler extends Handler {
         (this.ctx.emit as any)('base/update', docId, null, currentBranch);
         (this.ctx.emit as any)('base/git/status/update', docId);
 
+        // Fire-and-forget vectorize base content for semantic search
+        if (hasNonPositionChanges && this.ctx.embedding) {
+            this.ctx.embedding.vectorizeBaseContent(domainId, docId, currentBranch).catch((err: any) => {
+                console.error('Embedding error after base save:', err);
+            });
+        }
+
         this.response.body = { success: true, hasNonPositionChanges };
     }
 
@@ -4911,6 +4918,13 @@ export class BaseBatchSaveHandler extends Handler {
 
         await persistBaseEditorSaveSidecars(this, actualDomainId, docId, branch, data as Record<string, unknown>, mdt);
 
+        // Fire-and-forget vectorize base content for semantic search after successful batch save
+        if (batchSuccess && this.ctx.embedding) {
+            this.ctx.embedding.vectorizeBaseContent(actualDomainId, docId, branch).catch((err: any) => {
+                console.error('Embedding error after batch save:', err);
+            });
+        }
+
         let developSessionEditTotalsResponse: ReturnType<typeof readDevelopSessionEditTotals> | undefined;
         if (batchSuccess && developSessionRaw && ObjectId.isValid(developSessionRaw)) {
             const sdoc = await SessionModel.coll.findOne({
@@ -6983,6 +6997,54 @@ export async function mcpBaseGitConfigSet(
     return { ok: true, githubRepo: repoUrlForStorage || null };
 }
 
+/**
+ * Base Semantic Search Handler
+ *
+ * Accepts a plain-text query, embeds it, and returns semantically similar
+ * node texts from the base's current branch.
+ */
+export class BaseSemanticSearchHandler extends Handler {
+    @post('docId', Types.PositiveInt)
+    @post('branch', Types.String, true)
+    @post('query', Types.String)
+    @post('limit', Types.PositiveInt, true)
+    async post(domainId: string, docId: number, branch?: string, query?: string, limit?: number) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        if (!query || !query.trim()) throw new BadRequestError('Query is required');
+
+        const base = await BaseModel.get(domainId, docId);
+        if (!base) throw new NotFoundError('Base not found');
+
+        const branchNorm = (branch && String(branch).trim()) || 'main';
+        const maxResults = Math.min(limit || 10, 50);
+
+        let results: Array<{
+            nodeId: string;
+            kind: 'node' | 'card';
+            cardDocId?: string;
+            cardTitle?: string;
+            text: string;
+            score: number;
+        }> = [];
+        if (this.ctx.embedding) {
+            try {
+                results = await this.ctx.embedding.searchSimilar(
+                    domainId,
+                    docId,
+                    branchNorm,
+                    query.trim(),
+                    maxResults,
+                );
+            } catch (err) {
+                this.ctx.logger.error('Semantic search error: %o', err);
+                // Return zero results rather than crashing
+            }
+        }
+
+        this.response.body = { results };
+    }
+}
+
 export async function apply(ctx: Context) {
     ctx.Route('base_domain', '/base', BaseDomainListHandler);
     ctx.Route('base_create', '/base/create', BaseCreateHandler, PRIV.PRIV_USER_PROFILE);
@@ -7013,6 +7075,7 @@ export async function apply(ctx: Context) {
     ctx.Route('base_github_pull', '/base/github/pull', BaseGithubPullHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_github_pull_branch', '/base/branch/:branch/github/pull', BaseGithubPullHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_branches', '/base/:docId/branches', BaseBranchesHandler);
+    ctx.Route('base_semantic_search', '/base/semantic-search', BaseSemanticSearchHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_detail', '/base/:docId', BaseDetailHandler);
     ctx.Route('base_detail_branch', '/base/:docId/branch/:branch', BaseDetailHandler);
     ctx.Route('base_study', '/base/:docId/study', BaseStudyHandler);
@@ -7031,6 +7094,7 @@ export async function apply(ctx: Context) {
     ctx.Route('base_node_files', '/base/:docId/node/:nodeId/files', BaseNodeFilesHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_node_file_download', '/base/:docId/node/:nodeId/file/:filename', BaseNodeFileDownloadHandler);
     ctx.Route('base_file_move', '/base/:docId/file/move', BaseFileMoveHandler, PRIV.PRIV_USER_PROFILE);
+
 
     ctx.Connection('base_connection', '/base/ws', BaseConnectionHandler);
 }
