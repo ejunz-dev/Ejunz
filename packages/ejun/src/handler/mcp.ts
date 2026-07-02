@@ -22,15 +22,13 @@ import { McpMarketAddHandler, McpMarketHandler, McpMarketRemoveHandler } from '.
 
 const logger = new Logger('handler/mcp');
 
-function clipForLog(value: unknown, max = 800): string {
-    let s: string;
+function clipForLog(value: unknown, _max = 800): string {
     try {
-        s = typeof value === 'string' ? value : JSON.stringify(value);
+        if (typeof value === 'string') return value;
+        return JSON.stringify(value) || '';
     } catch {
-        s = String(value);
+        return String(value ?? '');
     }
-    if (s === undefined || s === null) s = '';
-    return s.length > max ? `${s.slice(0, max)}…(+${s.length - max} chars)` : s;
 }
 
 const MCP_PROTOCOL_VERSION = '2024-11-05';
@@ -167,8 +165,6 @@ function notifyToolsListChanged(ctx: Context, token: string) {
     logger.info('MCP tools/list_changed pushed: localSessions=%d (+broadcast to other processes)', delivered);
 }
 
-const MCP_RECORD_RESULT_MAX = 8000;
-
 async function recordMcpToolCall(input: {
     domainId: string;
     uid: number;
@@ -187,9 +183,6 @@ async function recordMcpToolCall(input: {
         const baseDocId = input.baseDocId || 0;
         const branch = input.branch || 'main';
         const session = await SessionModel.getOrCreateMcpSession(input.domainId, input.uid, input.mcpId, baseDocId, branch);
-        const result = typeof input.result === 'string' && input.result.length > MCP_RECORD_RESULT_MAX
-            ? `${input.result.slice(0, MCP_RECORD_RESULT_MAX)}…(+${input.result.length - MCP_RECORD_RESULT_MAX} chars)`
-            : input.result;
         await RecordModel.insertMcpToolRecord(input.domainId, input.uid, session._id, {
             mcpId: input.mcpId,
             baseDocId,
@@ -197,7 +190,7 @@ async function recordMcpToolCall(input: {
             meta: {
                 tool: input.tool,
                 args: input.args || {},
-                result,
+                result: input.result,
                 isError: input.isError,
                 error: input.error,
                 durationMs: input.durationMs,
@@ -514,6 +507,7 @@ export class McpMessageHandler extends Handler<Context> {
             branch: tokenDoc.branch || 'main',
             owner: tokenDoc.owner,
             setting: (this.ctx as any).setting,
+            embedding: (this.ctx as any).embedding,
         };
 
         const mcpDoc = await McpModel.getByToken(domainId, tokenDoc.token);
@@ -592,6 +586,7 @@ export class McpStreamableHandler extends Handler<Context> {
             branch: tokenDoc.branch || 'main',
             owner: tokenDoc.owner,
             setting: (this.ctx as any).setting,
+            embedding: (this.ctx as any).embedding,
         };
 
         const mcpDoc = await McpModel.getByToken(domainId, tokenDoc.token);
