@@ -7033,6 +7033,7 @@ export async function mcpBaseGitConfigSet(
 
 export async function apply(ctx: Context) {
     ctx.Route('base_domain', '/base', BaseDomainListHandler);
+    ctx.Route('base_create', '/base/create', BaseCreateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_outline_redirect_to_detail', '/base/:docId/outline', BaseDetailHandler);
     ctx.Route('base_outline_branch_redirect_to_detail', '/base/:docId/outline/branch/:branch', BaseDetailHandler);
     ctx.Route('base_list', '/base/list', BaseListHandler);
