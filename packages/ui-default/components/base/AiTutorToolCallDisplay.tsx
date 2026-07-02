@@ -100,6 +100,7 @@ function ToolCallDisplay({ toolCalls }: AiTutorToolCallDisplayProps) {
             let resultText = resultRaw;
             let resultMessage = '';
             let resultInstructions: string[] = [];
+            let semanticResults: any[] = [];
             try {
               argsText = JSON.stringify(JSON.parse(argsRaw), null, 2);
             } catch {}
@@ -113,6 +114,7 @@ function ToolCallDisplay({ toolCalls }: AiTutorToolCallDisplayProps) {
                   : typeof parsed.instructions === 'string'
                     ? [parsed.instructions]
                     : [];
+                semanticResults = Array.isArray(parsed.results) ? parsed.results : [];
               } catch {
                 resultText = resultRaw;
               }
@@ -158,6 +160,41 @@ function ToolCallDisplay({ toolCalls }: AiTutorToolCallDisplayProps) {
                 }}>
                   {argsText}
                 </pre>
+
+                {semanticResults.length > 0 ? (
+                  <div style={{ marginBottom: '8px' }}>
+                    <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px' }}>
+                      Retrieved results:
+                    </div>
+                    {semanticResults.map((r, idx) => (
+                      <div
+                        key={`${r.rank || idx}-${r.cardDocId || r.nodeId || idx}`}
+                        style={{
+                          border: '1px solid #eee',
+                          borderRadius: '6px',
+                          padding: '6px 8px',
+                          marginBottom: '6px',
+                          background: '#fff',
+                          fontSize: '12px',
+                          color: '#444',
+                        }}
+                      >
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '3px' }}>
+                          <strong>#{r.rank || idx + 1}</strong>
+                          <span>{r.kind || 'result'}</span>
+                          <span>score {Math.round(Number(r.score || 0) * 100)}%</span>
+                          {r.keywordScore ? <span>keyword {Math.round(Number(r.keywordScore) * 100)}%</span> : null}
+                          {r.semanticScore ? <span>semantic {Math.round(Number(r.semanticScore) * 100)}%</span> : null}
+                        </div>
+                        {r.cardTitle ? <div>Title: {r.cardTitle}</div> : null}
+                        {r.path ? <div>Path: {r.path}</div> : null}
+                        {Array.isArray(r.matchedTerms) && r.matchedTerms.length ? (
+                          <div>Matched: {r.matchedTerms.join(', ')}</div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
 
                 {resultRaw ? (
                   <>
