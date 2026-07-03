@@ -6,7 +6,7 @@ import * as document from './document';
 import type { ToolDoc, CardDoc, BaseNode, BaseEdge, Problem, ProblemKind } from '../interface';
 import EdgeModel from './edge';
 import DomainMarketToolModel from './domain_market_tool';
-import { BaseModel, CardModel, getBranchData, applyDetailExplorerUrlFilters, type DetailExplorerFilters } from './base';
+import { BaseModel, CardModel, getBranchData } from './base';
 import { migrateRawProblem } from './problem';
 import type { AgentScheduleDoc, AgentScheduleRunDoc } from './agent_schedule';
 import type { McpBaseGitInput } from '../handler/base';
@@ -343,13 +343,6 @@ export interface McpToolDef {
 
 export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
     {
-        name: 'detail_list_nodes',
-        description: 'Node = a section/topic in this base\'s node tree (hierarchical). '
-            + 'Returns every node of the bound base: id, text (title), parentId (null at root), level (depth), order. '
-            + 'Call this first to understand the structure before reading or editing cards.',
-        inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-    },
-    {
         name: 'detail_create_node',
         description: 'Create a new node (section/topic). '
             + 'Pass parentId to nest it under an existing node; omit parentId to create it under the bound base root node.',
@@ -357,7 +350,7 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
             type: 'object',
             properties: {
                 text: { type: 'string', description: 'Node title/text.' },
-                parentId: { type: 'string', description: 'Parent node id from detail_list_nodes (optional; omit to place under the base root node).' },
+                parentId: { type: 'string', description: 'Existing parent node id (optional; omit to place under the base root node).' },
             },
             required: ['text'],
             additionalProperties: false,
@@ -365,11 +358,11 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
     },
     {
         name: 'detail_update_node',
-        description: 'Rename a node (change its title/text). Use nodeId from detail_list_nodes.',
+        description: 'Rename a node (change its title/text). Use an existing nodeId.',
         inputSchema: {
             type: 'object',
             properties: {
-                nodeId: { type: 'string', description: 'Node id from detail_list_nodes.' },
+                nodeId: { type: 'string', description: 'Existing node id.' },
                 text: { type: 'string', description: 'New node title/text.' },
             },
             required: ['nodeId', 'text'],
@@ -378,42 +371,21 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
     },
     {
         name: 'detail_delete_node',
-        description: 'Delete a node by id (and its cards). Use nodeId from detail_list_nodes.',
+        description: 'Delete a node by id (and its cards). Use an existing nodeId.',
         inputSchema: {
             type: 'object',
-            properties: { nodeId: { type: 'string', description: 'Node id from detail_list_nodes.' } },
+            properties: { nodeId: { type: 'string', description: 'Existing node id.' } },
             required: ['nodeId'],
-            additionalProperties: false,
-        },
-    },
-    {
-        name: 'card_list',
-        description: 'Card = a content block (title + markdown body) attached to a node; a node can hold several ordered cards. '
-            + 'Lists the cards under one node: cardId, title, order. Use nodeId from detail_list_nodes.',
-        inputSchema: {
-            type: 'object',
-            properties: { nodeId: { type: 'string', description: 'Node id from detail_list_nodes.' } },
-            required: ['nodeId'],
-            additionalProperties: false,
-        },
-    },
-    {
-        name: 'card_get',
-        description: 'Read a single card\'s full content (title + markdown body) by cardId. Use cardId from card_list.',
-        inputSchema: {
-            type: 'object',
-            properties: { cardId: { type: 'string', description: 'Card docId (hex) from card_list.' } },
-            required: ['cardId'],
             additionalProperties: false,
         },
     },
     {
         name: 'card_create',
-        description: 'Create a new card (content block) under a node. Use nodeId from detail_list_nodes.',
+        description: 'Create a new card (content block) under a node. Use an existing nodeId.',
         inputSchema: {
             type: 'object',
             properties: {
-                nodeId: { type: 'string', description: 'Owning node id from detail_list_nodes.' },
+                nodeId: { type: 'string', description: 'Owning existing node id.' },
                 title: { type: 'string', description: 'Card title.' },
                 content: { type: 'string', description: 'Markdown body (optional).' },
             },
@@ -423,11 +395,11 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
     },
     {
         name: 'card_update',
-        description: 'Update a card\'s title and/or markdown content by cardId. Use cardId from card_list.',
+        description: 'Update a card\'s title and/or markdown content by cardId. Use cardId.',
         inputSchema: {
             type: 'object',
             properties: {
-                cardId: { type: 'string', description: 'Card docId (hex) from card_list.' },
+                cardId: { type: 'string', description: 'Card docId (hex).' },
                 title: { type: 'string', description: 'New title (optional).' },
                 content: { type: 'string', description: 'New markdown body (optional).' },
             },
@@ -437,46 +409,11 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
     },
     {
         name: 'card_delete',
-        description: 'Delete a card by cardId. Use cardId from card_list.',
+        description: 'Delete a card by cardId. Use cardId.',
         inputSchema: {
             type: 'object',
-            properties: { cardId: { type: 'string', description: 'Card docId (hex) from card_list.' } },
+            properties: { cardId: { type: 'string', description: 'Card docId (hex).' } },
             required: ['cardId'],
-            additionalProperties: false,
-        },
-    },
-    {
-        name: 'detail_tree',
-        description: 'Return the whole node tree as a nested tree (overview/table of contents). '
-            + 'Each node carries only its id and text (title) and its cards (cardId + title); card content is NOT included. '
-            + 'Use this to grasp the full structure at a glance, then call card_get to read specific cards.',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                includeCards: {
-                    type: 'boolean',
-                    description: 'Include each node\'s cards (id + title) in the tree. Default true; set false for nodes only.',
-                },
-            },
-            additionalProperties: false,
-        },
-    },
-    {
-        name: 'detail_search',
-        description: 'Search and/or filter the node tree (same semantics as the base detail page). '
-            + 'Provide `query` to match a keyword or an exact id against node titles/ids and card titles/ids. '
-            + 'Provide any of `filterNode` / `filterCard` / `filterProblem` to narrow by node title, card title, or problem content. '
-            + 'You may combine `query` with the filters; all supplied conditions are applied together (intersection). '
-            + 'Returns matching nodes and cards with id, title and the node path; card content is NOT included.',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                query: { type: 'string', description: 'Keyword or exact id to match against node text/id and card title/id (case-insensitive).' },
-                filterNode: { type: 'string', description: 'Keep only nodes whose title contains this text (like the detail page filterNode).' },
-                filterCard: { type: 'string', description: 'Keep only nodes that have a card whose title contains this text (filterCard).' },
-                filterProblem: { type: 'string', description: 'Keep only nodes that have a card with a problem matching this text (filterProblem).' },
-                limit: { type: 'number', description: 'Max results to return per kind (nodes/cards). Default 50.' },
-            },
             additionalProperties: false,
         },
     },
@@ -500,10 +437,10 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
     {
         name: 'problem_list',
         description: 'Problem = a practice exercise attached to a card (quiz, flip card, matching table, etc.). '
-            + 'Lists every problem on one card: pid, type, title, and a short content preview. Use cardId from card_list.',
+            + 'Lists every problem on one card: pid, type, title, and a short content preview. Use cardId.',
         inputSchema: {
             type: 'object',
-            properties: { cardId: { type: 'string', description: 'Card docId (hex) from card_list.' } },
+            properties: { cardId: { type: 'string', description: 'Card docId (hex).' } },
             required: ['cardId'],
             additionalProperties: false,
         },
@@ -514,7 +451,7 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
         inputSchema: {
             type: 'object',
             properties: {
-                cardId: { type: 'string', description: 'Card docId (hex) from card_list.' },
+                cardId: { type: 'string', description: 'Card docId (hex).' },
                 pid: { type: 'string', description: 'Problem id from problem_list.' },
             },
             required: ['cardId', 'pid'],
@@ -533,7 +470,7 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
         inputSchema: {
             type: 'object',
             properties: {
-                cardId: { type: 'string', description: 'Card docId (hex) from card_list.' },
+                cardId: { type: 'string', description: 'Card docId (hex).' },
                 problem: {
                     type: 'object',
                     description: 'Problem payload. `type` defaults to single choice when omitted.',
@@ -550,7 +487,7 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
         inputSchema: {
             type: 'object',
             properties: {
-                cardId: { type: 'string', description: 'Card docId (hex) from card_list.' },
+                cardId: { type: 'string', description: 'Card docId (hex).' },
                 pid: { type: 'string', description: 'Problem id from problem_list.' },
                 problem: { type: 'object', description: 'Fields to update.' },
             },
@@ -564,7 +501,7 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
         inputSchema: {
             type: 'object',
             properties: {
-                cardId: { type: 'string', description: 'Card docId (hex) from card_list.' },
+                cardId: { type: 'string', description: 'Card docId (hex).' },
                 pid: { type: 'string', description: 'Problem id from problem_list.' },
             },
             required: ['cardId', 'pid'],
@@ -674,14 +611,10 @@ export async function buildMcpInstructions(
     lines.push(
         '',
         'Typical workflow:',
-        '1. detail_tree — get the whole node tree (nodes + cards, titles only) at a glance.',
-        '2. semantic_search(query) — find content by meaning (vector/embedding search across node titles and card content).',
-        '3. detail_search(query/filterNode/filterCard/filterProblem) — find nodes/cards by keyword, id or filters.',
-        '4. detail_list_nodes — flat list of nodes; card_list(nodeId) — cards under a node.',
-        '5. card_get(cardId) — read a card\'s full content.',
-        '6. problem_list(cardId) / problem_get(cardId, pid) — list or read practice problems on a card.',
-        '7. git_status — check local/remote sync; git_commit / git_push / git_pull — sync with GitHub (configure repo via git_config_set).',
-        '8. Use the create/update/delete tools to modify nodes, cards, and problems.',
+        '1. semantic_search(query) — find content by meaning (vector/embedding search across node titles and card content).',
+        '2. Use create/update/delete tools to modify nodes, cards, and problems when you already know their ids.',
+        '3. problem_list(cardId) / problem_get(cardId, pid) — list or read practice problems on a known card.',
+        '4. git_status — check local/remote sync; git_commit / git_push / git_pull — sync with GitHub (configure repo via git_config_set).',
     );
     return lines.join('\n');
 }
@@ -818,28 +751,6 @@ function toMcpGitInput(ctx: McpToolContext, args: Record<string, any>): McpBaseG
     };
 }
 
-function summarizeNode(n: any) {
-    return { id: n.id, text: n.text, parentId: n.parentId || null, level: n.level ?? 0, order: n.order ?? 0 };
-}
-
-function summarizeCard(c: CardDoc) {
-    return { cardId: String(c.docId), title: c.title, order: c.order ?? 0, nodeId: c.nodeId };
-}
-
-/** Loads all cards of the base/branch grouped by their owning node id. */
-async function loadNodeCardsMap(
-    domainId: string,
-    baseDocId: number,
-    branch: string,
-    nodes: BaseNode[],
-): Promise<Record<string, CardDoc[]>> {
-    const map: Record<string, CardDoc[]> = {};
-    await Promise.all((nodes || []).map(async (n) => {
-        map[n.id] = await CardModel.getByNodeId(domainId, baseDocId, n.id, branch);
-    }));
-    return map;
-}
-
 /** target -> source (child -> parent) map derived from edges. */
 function buildParentMap(edges: BaseEdge[]): Map<string, string> {
     const m = new Map<string, string>();
@@ -869,56 +780,6 @@ function pathLabelFor(nodeId: string, parentMap: Map<string, string>, nodeById: 
     return chain.reverse().join(' › ');
 }
 
-interface DetailTreeNode {
-    id: string;
-    text: string;
-    cards?: { cardId: string; title: string; order: number }[];
-    children: DetailTreeNode[];
-}
-
-/** Builds nested node tree (id + text only; cards as id + title when requested). */
-function buildDetailTree(
-    nodes: BaseNode[],
-    edges: BaseEdge[],
-    nodeCardsMap: Record<string, CardDoc[]>,
-    includeCards: boolean,
-): DetailTreeNode[] {
-    const parentMap = buildParentMap(edges);
-    const childrenMap = new Map<string, string[]>();
-    for (const e of edges || []) {
-        if (!childrenMap.has(e.source)) childrenMap.set(e.source, []);
-        childrenMap.get(e.source)!.push(e.target);
-    }
-    const nodeById = new Map((nodes || []).map((n) => [n.id, n]));
-    const orderOf = (id: string) => nodeById.get(id)?.order ?? 0;
-
-    const build = (id: string, seen: Set<string>): DetailTreeNode | null => {
-        if (seen.has(id)) return null;
-        seen.add(id);
-        const n = nodeById.get(id);
-        if (!n) return null;
-        const childIds = (childrenMap.get(id) || []).slice().sort((a, b) => orderOf(a) - orderOf(b));
-        const out: DetailTreeNode = {
-            id,
-            text: n.text || '',
-            children: childIds.map((c) => build(c, seen)).filter(Boolean) as DetailTreeNode[],
-        };
-        if (includeCards) {
-            out.cards = (nodeCardsMap[id] || [])
-                .slice()
-                .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-                .map((c) => ({ cardId: String(c.docId), title: c.title || '', order: c.order ?? 0 }));
-        }
-        return out;
-    };
-
-    const roots = (nodes || [])
-        .filter((n) => !parentMap.has(n.id))
-        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    const seen = new Set<string>();
-    return roots.map((r) => build(r.id, seen)).filter(Boolean) as DetailTreeNode[];
-}
-
 export async function executeMcpBuiltinTool(
     ctx: McpToolContext,
     name: string,
@@ -930,14 +791,6 @@ export async function executeMcpBuiltinTool(
     if (!base) throw new Error(`Base not found: ${baseDocId}`);
 
     switch (name) {
-    case 'detail_list_nodes': {
-        const { nodes, edges } = getBranchData(base, branch);
-        const parentMap = buildParentMap(edges);
-        return (nodes || []).map((n) => ({
-            ...summarizeNode(n),
-            parentId: parentMap.get(n.id) || n.parentId || null,
-        }));
-    }
     case 'detail_create_node': {
         const text = String(args.text || '').trim();
         if (!text) throw new Error('text is required');
@@ -966,17 +819,6 @@ export async function executeMcpBuiltinTool(
         await BaseModel.deleteNode(domainId, baseDocId, nodeId, branch);
         return { ok: true, nodeId };
     }
-    case 'card_list': {
-        const nodeId = String(args.nodeId || '');
-        if (!nodeId) throw new Error('nodeId is required');
-        const cards = await CardModel.getByNodeId(domainId, baseDocId, nodeId, branch);
-        return cards.map(summarizeCard);
-    }
-    case 'card_get': {
-        const card = await CardModel.get(domainId, toObjectId(args.cardId));
-        if (!card) throw new Error('Card not found');
-        return { cardId: String(card.docId), title: card.title, content: card.content, nodeId: card.nodeId };
-    }
     case 'card_create': {
         const nodeId = String(args.nodeId || '');
         const title = String(args.title || '').trim();
@@ -1000,79 +842,19 @@ export async function executeMcpBuiltinTool(
         await CardModel.delete(domainId, toObjectId(args.cardId));
         return { ok: true, cardId: String(args.cardId) };
     }
-    case 'detail_tree': {
-        const includeCards = args.includeCards === undefined ? true : !!args.includeCards;
-        const { nodes, edges } = getBranchData(base, branch);
-        const nodeCardsMap = includeCards
-            ? await loadNodeCardsMap(domainId, baseDocId, branch, nodes || [])
-            : {};
-        const tree = buildDetailTree(nodes || [], edges || [], nodeCardsMap, includeCards);
-        return { nodeCount: (nodes || []).length, tree };
-    }
-    case 'detail_search': {
-        const limit = Math.max(1, Math.min(500, Number(args.limit) || 50));
-        const filters: DetailExplorerFilters = {
-            filterNode: String(args.filterNode || ''),
-            filterCard: String(args.filterCard || ''),
-            filterProblem: String(args.filterProblem || ''),
-        };
-        const raw = getBranchData(base, branch);
-        const allNodes = raw.nodes || [];
-        const allEdges = raw.edges || [];
-        const nodeCardsMap = await loadNodeCardsMap(domainId, baseDocId, branch, allNodes);
-
-        const filtered = applyDetailExplorerUrlFilters(allNodes, allEdges, nodeCardsMap, filters);
-        const scopeNodes = filtered.nodes;
-        const scopeEdges = filtered.edges;
-        const scopeCardsMap = filtered.nodeCardsMap;
-
-        const parentMap = buildParentMap(scopeEdges);
-        const nodeById = new Map(scopeNodes.map((n) => [n.id, n]));
-        const q = String(args.query || '').trim().toLowerCase();
-        const matchText = (s: string | undefined) => !q || (s || '').toLowerCase().includes(q);
-
-        const nodeMatches: any[] = [];
-        for (const n of scopeNodes) {
-            if (matchText(n.text) || matchText(n.id)) {
-                nodeMatches.push({
-                    type: 'node',
-                    id: n.id,
-                    text: n.text || '',
-                    path: pathLabelFor(n.id, parentMap, nodeById),
-                });
-                if (nodeMatches.length >= limit) break;
-            }
-        }
-
-        const cardMatches: any[] = [];
-        outer: for (const nodeId of Object.keys(scopeCardsMap)) {
-            for (const c of scopeCardsMap[nodeId] || []) {
-                const cid = String(c.docId);
-                if (matchText(c.title) || matchText(cid)) {
-                    cardMatches.push({
-                        type: 'card',
-                        cardId: cid,
-                        title: c.title || '',
-                        nodeId: c.nodeId || nodeId,
-                        path: pathLabelFor(c.nodeId || nodeId, parentMap, nodeById),
-                    });
-                    if (cardMatches.length >= limit) break outer;
-                }
-            }
-        }
-
-        return {
-            query: q || null,
-            filters,
-            matchedNodeCount: nodeMatches.length,
-            matchedCardCount: cardMatches.length,
-            nodes: nodeMatches,
-            cards: cardMatches,
-        };
-    }
     case 'semantic_search': {
         const q = String(args.query || '').trim();
         if (!q) throw new Error('query is required');
+        logger.info('[diag] semantic_search entry: domainId=%s baseDocId=%s branch=%s owner=%s hasEmbedding=%s queryLength=%d pid=%d NODE_APP_INSTANCE=%s',
+            domainId,
+            baseDocId,
+            branch,
+            owner,
+            !!ctx.embedding,
+            q.length,
+            process.pid,
+            process.env.NODE_APP_INSTANCE || '',
+        );
         if (!ctx.embedding) throw new Error('Semantic search is not available (embedding service not loaded)');
         const limit = Math.max(1, Math.min(50, Number(args.limit) || 15));
         const kind = String(args.kind || '').trim().toLowerCase();
@@ -1206,6 +988,7 @@ export interface SystemToolExecutionContext {
     branch?: string;
     owner?: number;
     setting?: { get: (k: string) => unknown };
+    embedding?: EmbeddingService;
 }
 export type SystemToolExecutor = (name: string, args: Record<string, unknown>, context?: SystemToolExecutionContext) => Promise<unknown>;
 
@@ -1236,6 +1019,17 @@ export function getSystemToolCatalog(): SystemToolCatalogEntry[] {
 /** Run a system tool via plugin executor; throws if not registered. */
 export async function executeSystemTool(name: string, args: Record<string, unknown>, context?: SystemToolExecutionContext): Promise<unknown> {
     systemToolsLogger.info('[tool] systemTools: executeSystemTool name=%s hasExecutor=%s', name, !!registeredExecutor);
+    systemToolsLogger.info('[diag] executeSystemTool context: name=%s hasContext=%s domainId=%s baseDocId=%s branch=%s owner=%s hasEmbedding=%s pid=%d NODE_APP_INSTANCE=%s',
+        name,
+        !!context,
+        context?.domainId || '',
+        context?.baseDocId || '',
+        context?.branch || '',
+        context?.owner || '',
+        !!context?.embedding,
+        process.pid,
+        process.env.NODE_APP_INSTANCE || '',
+    );
     if (!registeredExecutor) {
         throw new Error('System tool executor not registered (plugin not loaded)');
     }
@@ -1251,6 +1045,17 @@ export async function executeSystemTool(name: string, args: Record<string, unkno
 export async function tryExecuteSystemTool(name: string, args: Record<string, unknown>, context?: SystemToolExecutionContext): Promise<unknown | null> {
     const inCatalog = registeredCatalog.some(t => t.name === name);
     systemToolsLogger.info('[tool] systemTools: tryExecuteSystemTool name=%s inCatalog=%s hasExecutor=%s', name, inCatalog, !!registeredExecutor);
+    systemToolsLogger.info('[diag] tryExecuteSystemTool context: name=%s hasContext=%s domainId=%s baseDocId=%s branch=%s owner=%s hasEmbedding=%s pid=%d NODE_APP_INSTANCE=%s',
+        name,
+        !!context,
+        context?.domainId || '',
+        context?.baseDocId || '',
+        context?.branch || '',
+        context?.owner || '',
+        !!context?.embedding,
+        process.pid,
+        process.env.NODE_APP_INSTANCE || '',
+    );
     if (!registeredExecutor || !inCatalog) return null;
     try {
         const result = await registeredExecutor(name, args || {}, context);
@@ -1681,12 +1486,27 @@ function requireMcpToolContext(entry: LocalMcpToolEntry, context?: SystemToolExe
     if (!context?.owner) {
         throw new Error(`Editor MCP tool requires a positive caller/owner context: ${entry.name}`);
     }
+    const fallbackEmbedding = require('../service/embedding').getEmbeddingService?.();
+    const embedding = context.embedding || fallbackEmbedding;
+    systemToolsLogger.info('[diag] requireMcpToolContext: tool=%s hasContextEmbedding=%s hasFallbackEmbedding=%s finalHasEmbedding=%s domainId=%s baseDocId=%s branch=%s owner=%s pid=%d NODE_APP_INSTANCE=%s',
+        entry.name,
+        !!context.embedding,
+        !!fallbackEmbedding,
+        !!embedding,
+        context.domainId,
+        context.baseDocId,
+        context.branch || 'main',
+        context.owner,
+        process.pid,
+        process.env.NODE_APP_INSTANCE || '',
+    );
     return {
         domainId: context.domainId,
         baseDocId: context.baseDocId,
         branch: context.branch || 'main',
         owner: context.owner,
         setting: context.setting,
+        embedding,
     };
 }
 
