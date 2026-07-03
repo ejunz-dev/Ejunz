@@ -2,7 +2,7 @@
  * System-tool adapter: core delegates to plugins (e.g. @ejunz/ejunztools) for catalog + executor.
  * Core does not hard-code packages; getSystemToolCatalog / executeSystemTool / tryExecuteSystemTool use registration.
  */
-import { Logger } from '../logger';
+import { Logger } from '../../logger';
 
 const logger = new Logger('systemTools');
 

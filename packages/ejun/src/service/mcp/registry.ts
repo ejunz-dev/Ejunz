@@ -1,22 +1,21 @@
 import { ObjectId } from 'mongodb';
-import type { User } from '../interface';
-import { Logger } from '../logger';
-import type { McpDoc } from '../model/mcp';
-import type { EdgeDoc } from '../model/edge';
-import type { ToolDoc } from '../model/tool';
-import EdgeModel from '../model/edge';
-import McpModel from '../model/mcp';
-import ToolModel from '../model/tool';
-import DomainMarketToolModel from '../model/domain_market_tool';
-import { EdgeServerConnectionHandler } from '../handler/edge';
+import type { User } from '../../interface';
+import { Logger } from '../../logger';
+import type { McpDoc } from '../../model/mcp';
+import type { EdgeDoc } from '../../model/edge';
+import type { ToolDoc } from '../../model/tool';
+import EdgeModel from '../../model/edge';
+import McpModel from '../../model/mcp';
+import ToolModel from '../../model/tool';
+import DomainMarketToolModel from '../../model/domain_market_tool';
 import { getLocalMcpToolCatalog } from './localSystemTools';
-import { resolveMcpTools } from './mcpBuiltinTools';
+import { resolveMcpTools } from './builtinTools';
 import {
     getBuiltinEjunzToolsLabel,
     getBuiltinEjunzToolsRuntime,
     getBuiltinEjunzToolsVersion,
     getEjunzToolsCatalog,
-} from './ejunzToolsMcp';
+} from './ejunzTools';
 
 export type McpKind = 'outbound' | 'system' | 'inbound' | 'plugin' | 'ejunztools';
 export type McpRuntimeMode = 'builtin' | 'ws';
@@ -29,6 +28,16 @@ const SYSTEM_TOOLS_MCP_SOURCE_TYPE = 'system_tools';
 const SYSTEM_TOOLS_MCP_LOCAL_KEY = 'system_tools';
 
 const logger = new Logger('mcpRegistry');
+
+let edgeTokenConnectedChecker: ((token: string) => boolean) | undefined;
+
+export function setEdgeTokenConnectedChecker(checker: (token: string) => boolean) {
+    edgeTokenConnectedChecker = checker;
+}
+
+function isEdgeTokenConnected(token?: string): boolean {
+    return !!token && !!edgeTokenConnectedChecker?.(token);
+}
 
 const EJUNZ_TOOLS_MCP_NAME = 'Ejunz Tools';
 const EJUNZ_TOOLS_MCP_DESCRIPTION = 'Ejunz Tools MCP provider，支持 builtin / ws 启动方式。';
@@ -349,7 +358,7 @@ export async function getNormalizedMcp(domainId: string, mid: number): Promise<N
             ? true
             : kind === EJUNZ_TOOLS_MCP_KIND && runtimeMode === 'builtin'
                 ? !!getBuiltinEjunzToolsRuntime()
-                : !!edge && EdgeServerConnectionHandler.active.has(edge.token);
+                : !!edge && isEdgeTokenConnected(edge.token);
     const assignable = kind !== 'outbound' && tools.length > 0 && mcp.assignable !== false;
     const sourceLabel = kind === SYSTEM_TOOLS_MCP_KIND
         ? SYSTEM_TOOLS_MCP_SOURCE_LABEL
@@ -395,7 +404,7 @@ export async function listDomainMcps(domainId: string, user?: User): Promise<Nor
             const mcp = await ensureInboundMcpForEdge(domainId, edge);
             const isEjunzTools = edgeIsEjunzTools(edge) || mcp.kind === EJUNZ_TOOLS_MCP_KIND;
             const assignable = tools.length > 0;
-            const status = EdgeServerConnectionHandler.active.has(edge.token) ? 'online' : 'offline';
+            const status = isEdgeTokenConnected(edge.token) ? 'online' : 'offline';
             await McpModel.update(domainId, mcp.mid, {
                 kind: isEjunzTools ? EJUNZ_TOOLS_MCP_KIND : mcp.kind,
                 name: isEjunzTools ? (edge.name || EJUNZ_TOOLS_MCP_NAME) : (mcp.name || edgeDisplayName(edge)),

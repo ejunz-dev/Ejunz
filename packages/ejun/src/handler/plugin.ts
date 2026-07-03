@@ -2,7 +2,7 @@ import { Filter } from 'mongodb';
 import type { Context } from '../context';
 import { BadRequestError, ForbiddenError, NotFoundError, ValidationError } from '../error';
 import type { BaseDoc, BaseNode, CardDoc, DomainDoc, PluginDoc } from '../interface';
-import { loadPluginCardDefinitions, sanitizePluginNodeData, summarizePluginDefinitions } from '../lib/pluginRuntime';
+import { loadPluginCardDefinitions, sanitizePluginNodeData, summarizePluginDefinitions } from '../service/mcp/pluginRuntime';
 import {
     parseDraftPluginMcpDefinitions,
     refreshPluginMcpStatus,
@@ -11,8 +11,8 @@ import {
     testPluginMcpDefinitions,
     checkAllEnabledPluginMcpStatus,
     cleanupPluginMcpArtifacts,
-} from '../lib/pluginMcp';
-import { listDomainMcps } from '../lib/mcpRegistry';
+} from '../service/mcp';
+import { listDomainMcps } from '../service/mcp';
 import { BaseModel, CardModel, getBranchData, TYPE_CARD, type MindMapDocType } from '../model/base';
 import { PERM, PRIV } from '../model/builtin';
 import * as document from '../model/document';
@@ -210,7 +210,7 @@ export class PluginEditorHandler extends Handler {
         }
         const body = await buildBaseEditorPageBody({
             domainId,
-            base: this.plugin as BaseDoc,
+            base: this.plugin as unknown as BaseDoc,
             requestedBranch: branch,
             uid: this.user._id,
             priv: this.user.priv,
@@ -243,7 +243,7 @@ export class PluginDataHandler extends Handler {
         if (!plugin) throw new NotFoundError('Plugin not found');
         if (!PluginModel.canRead(this.user, plugin) && !PluginModel.canEdit(this.user, plugin)) throw new ForbiddenError('Plugin not accessible');
         const currentBranch = branch || plugin.currentBranch || 'main';
-        const branchData = getBranchData(plugin as BaseDoc, currentBranch);
+        const branchData = getBranchData(plugin as unknown as BaseDoc, currentBranch);
         const nodeCardsMap: Record<string, CardDoc[]> = {};
         for (const node of branchData.nodes || []) {
             const cards = await CardModel.getByNodeId(domainId, plugin.docId, node.id, currentBranch);
@@ -291,7 +291,7 @@ export class PluginBatchSaveHandler extends BaseBatchSaveHandler {
     }
 
     protected async beforeBatchApply(ctx: { domainId: string; docId: number; branch: string; base: BaseDoc; mapDocType: MindMapDocType; data: any }) {
-        const plugin = ctx.base as PluginDoc;
+        const plugin = ctx.base as unknown as PluginDoc;
         const definitions = await parseDraftPluginMcpDefinitions({
             domainId: ctx.domainId,
             plugin,

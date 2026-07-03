@@ -57,8 +57,9 @@ export async function apply(ctx: Context) {
     await model(pending, fail, ctx);
     await ctx.plugin(require('../service/monitor'));
     await ctx.plugin(require('../service/embedding').default);
+    await ctx.plugin(require('../service/mcp').default);
     ctx = await new Promise((resolve) => {
-        ctx.inject(['worker', 'setting', 'embedding'], (c) => {
+        ctx.inject(['worker', 'setting', 'embedding', 'mcp'], (c) => {
             resolve(c);
         });
     });

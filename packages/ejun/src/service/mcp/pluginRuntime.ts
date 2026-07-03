@@ -1,9 +1,9 @@
 import { ObjectId } from 'mongodb';
 import yaml from 'js-yaml';
-import type { AgentDoc, BaseNode, CardDoc, PluginDoc, PluginNodeData, ToolDoc } from '../interface';
-import { getBranchData } from '../model/base';
-import * as document from '../model/document';
-import PluginModel from '../model/plugin';
+import type { AgentDoc, BaseNode, CardDoc, PluginDoc, PluginNodeData, ToolDoc } from '../../interface';
+import { getBranchData } from '../../model/base';
+import * as document from '../../model/document';
+import PluginModel from '../../model/plugin';
 import {
     findLocalMcpToolByIdOrName,
     isLocalMcpToolAvailableInDomain,

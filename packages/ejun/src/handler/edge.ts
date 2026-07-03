@@ -11,7 +11,6 @@ import { PRIV } from '../model/builtin';
 import { ValidationError, PermissionError, NotFoundError } from '../error';
 import type { EdgeDoc } from '../interface';
 import type { EdgeBridgeEnvelope } from '../service/bus';
-import { isMcpTokenConnected } from './mcp';
 
 const logger = new Logger('edge');
 
@@ -29,7 +28,7 @@ type Subscription = {
 export function isEdgeTokenConnected(token: string): boolean {
     return EdgeServerConnectionHandler.active.has(token)
         || EdgeConnectionHandler.activeByToken.has(token)
-        || isMcpTokenConnected(token);
+        || !!(global as any).app?.mcp?.isTokenConnected?.(token);
 }
 
 function getEdgeTypeInjectNodes(): Array<{ args: Record<string, any> }> {
@@ -1366,6 +1365,7 @@ export class EdgeStatusConnectionHandler extends ConnectionHandler<Context> {
 }
 
 export async function apply(ctx: Context) {
+    ctx.mcp?.setEdgeTokenConnectedChecker((token) => EdgeServerConnectionHandler.active.has(token));
     ctx.Route('edge_alive', '/edge', EdgeAliveHandler);
     ctx.Connection('edge_conn', '/edge/conn', EdgeConnectionHandler);
     ctx.Route('edge_rpc', '/edge/rpc', EdgeRpcHandler as any);

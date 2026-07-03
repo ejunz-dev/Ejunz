@@ -1,11 +1,11 @@
 import { ObjectId } from 'mongodb';
-import type { AgentScheduleDoc, AgentScheduleRunDoc } from '../model/agent_schedule';
+import type { AgentScheduleDoc, AgentScheduleRunDoc } from '../../model/agent_schedule';
 import type { SystemToolCatalogEntry, SystemToolExecutionContext } from './systemTools';
 
-type AgentScheduleModelStatic = typeof import('../model/agent_schedule').default;
+type AgentScheduleModelStatic = typeof import('../../model/agent_schedule').default;
 
 function AgentScheduleModel(): AgentScheduleModelStatic {
-    return require('../model/agent_schedule').default;
+    return require('../../model/agent_schedule').default;
 }
 
 export const SCHEDULE_SYSTEM_TOOL_NAMES = new Set([
