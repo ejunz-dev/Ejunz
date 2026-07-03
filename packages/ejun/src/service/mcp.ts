@@ -18,7 +18,7 @@ import {
     isMcpBuiltinTool,
     resolveMcpTools,
     type McpToolContext,
-} from './mcp/builtinTools';
+} from '../model/tool';
 import {
     getNormalizedMcp,
     listDomainMcps,
@@ -27,7 +27,7 @@ import {
     ensureBuiltinEjunzToolsMcp,
     removeBuiltinEjunzToolsMcp,
     setEdgeTokenConnectedChecker,
-} from './mcp/registry';
+} from '../model/mcp';
 import {
     executeLocalMcpTool,
     executeLocalSystemTool,
@@ -35,16 +35,17 @@ import {
     getLocalMcpToolCatalog,
     getLocalSystemToolCatalog,
     getMarketMcpTools,
+    applyEjunzToolsMcpRuntime,
     isLocalMcpToolAvailableInDomain,
     isLocalSystemToolAvailableInDomain,
-} from './mcp/localSystemTools';
+} from '../model/tool';
 import {
     executeSystemTool,
     getSystemToolCatalog,
     registerSystemToolCatalog,
     registerSystemToolExecutor,
     tryExecuteSystemTool,
-} from './mcp/systemTools';
+} from '../model/tool';
 import {
     callPluginMcpTool,
     checkAllEnabledPluginMcpStatus,
@@ -56,22 +57,17 @@ import {
     summarizePluginMcpAvailability,
     syncPluginManagedMcps,
     testPluginMcpDefinitions,
-} from './mcp/pluginMcp';
+} from '../model/mcp';
 import {
     executeBuiltinEjunzToolsTool,
     getBuiltinEjunzToolsRuntime,
     getBuiltinEjunzToolsVersion,
     getEjunzToolsCatalog,
     registerBuiltinEjunzToolsRuntime,
-} from './mcp/ejunzTools';
+} from '../model/tool';
 
-export * from './mcp/builtinTools';
-export * from './mcp/registry';
-export * from './mcp/localSystemTools';
-export * from './mcp/systemTools';
-export * from './mcp/scheduleSystemTools';
-export * from './mcp/pluginMcp';
-export * from './mcp/ejunzTools';
+export * from '../model/tool';
+export * from '../model/mcp';
 
 const logger = new Logger('service/mcp');
 const MCP_PROTOCOL_VERSION = '2024-11-05';
@@ -139,6 +135,7 @@ export default class McpService extends Service {
         currentMcpService = this;
         registerSystemToolCatalog(getLocalSystemToolCatalog());
         registerSystemToolExecutor(executeLocalSystemTool);
+        applyEjunzToolsMcpRuntime(ctx);
         setEdgeTokenConnectedChecker((token) => this.isEdgeTransportTokenConnected(token));
         (ctx as any).on('mcp/deliver', ({ sessionId, data }: { sessionId: string; data: string }) => {
             this.deliverToSession(sessionId, data);

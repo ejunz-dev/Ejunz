@@ -32,7 +32,7 @@ import {
     resolveAgentPluginTools,
     resolveAgentSlashCatalog,
     visiblePluginsForUser,
-} from '../service/mcp/pluginRuntime';
+} from '../model/mcp';
 import * as document from '../model/document';
 import NodeModel from '../model/node';
 import { callToolViaWorker } from './worker';
