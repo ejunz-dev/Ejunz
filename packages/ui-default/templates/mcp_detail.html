@@ -100,7 +100,7 @@
           <label class="material textbox">Claude Code 命令 · Streamable HTTP（推荐，重启自动恢复）
             <textarea readonly rows="3" onfocus="this.select()">{{ info.httpCommand }}</textarea>
           </label>
-          <label class="material textbox">连接 URL · HTTP（token 在 query）
+          <label class="material textbox">连接 URL · HTTP（无 token，Claude 回调验证）
             <input type="text" readonly value="{{ info.httpUrl }}" onfocus="this.select()">
           </label>
           <label class="material textbox">Claude Code 命令 · SSE（备用）
