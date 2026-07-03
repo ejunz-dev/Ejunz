@@ -1,5 +1,6 @@
 import { NamedPage } from 'vj/misc/Page';
 import { getTheme } from 'vj/utils';
+import { renderRoadmapMarkdown } from '../components/roadmap/markdown_render';
 
 let agentChatSocket: any = null;
 let agentChatSocketConnected = false;
@@ -439,10 +440,23 @@ const page = new NamedPage('agent_chat', async () => {
   
   // Handle bubble complete event (from backend)
   function handleBubbleComplete(msg: any) {
-    const { recordId, bubbleId } = msg;
+    const { recordId, bubbleId, content } = msg;
     if (bubbleId) {
+      if (typeof content === 'string' && content.trim()) {
+        const chatMessages = document.getElementById('chatMessages');
+        const messageElement = chatMessages
+          ? Array.from(chatMessages.children).find(
+              (el: any) => getbubbleIdFromElement(el) === bubbleId && el.classList.contains('chat-message')
+            ) as HTMLElement | undefined
+          : undefined;
+        const contentDiv = messageElement?.querySelector('.message-content') as HTMLElement | null;
+        if (contentDiv) {
+          setAssistantMarkdownContent(bubbleId, content, contentDiv);
+        }
+      }
+
       updateBackendState(bubbleId, BackendBubbleState.COMPLETED, 'backend_bubble_complete', { recordId });
-      
+
       // CRITICAL: When backend completes, check if we can immediately mark as completed
       // This prevents subsequent record_update events from triggering unnecessary processing
       const stateInfo = bubbleStates.get(bubbleId);
@@ -475,7 +489,8 @@ const page = new NamedPage('agent_chat', async () => {
   const activebubbleIds = new Set<string>(); // Messages currently being streamed
   const completedbubbleIds = new Set<string>(); // Messages that have completed
   const renderedMarkdownIds = new Map<string, string>(); // bubbleId -> last rendered content hash (to prevent duplicate rendering)
-  
+  const assistantRawContentByBubbleId = new Map<string, string>(); // bubbleId -> raw assistant markdown content used for streaming render
+
   // Get frontend bubble state
   function getFrontendBubbleState(bubbleId: string): FrontendBubbleState {
     const stateInfo = bubbleStates.get(bubbleId);
@@ -1015,26 +1030,66 @@ const page = new NamedPage('agent_chat', async () => {
   // Check if markdown should be rendered (avoid duplicate rendering)
   function shouldRenderMarkdown(bubbleId: string, content: string, contentDiv: HTMLElement | null): boolean {
     if (!content || !content.trim()) return false;
-    
-    // If content div already has HTML (rendered), check if content changed
-    if (contentDiv && contentDiv.innerHTML && contentDiv.innerHTML.includes('<')) {
-      const lastRenderedHash = renderedMarkdownIds.get(bubbleId);
-      const currentHash = contentHash(content);
-      
-      // If content hasn't changed, don't re-render
-      if (lastRenderedHash === currentHash) {
-        return false;
-      }
+
+    const lastRenderedHash = renderedMarkdownIds.get(bubbleId);
+    const currentHash = contentHash(content);
+
+    // If content hasn't changed, don't re-render
+    if (lastRenderedHash === currentHash) {
+      return false;
     }
-    
+
     // If content div is empty or only has plain text, should render
     if (!contentDiv || !contentDiv.innerHTML || !contentDiv.innerHTML.includes('<')) {
       return true;
     }
-    
-    return false;
+
+    // If content div already has HTML (rendered), render when content changed
+    return true;
   }
-  
+
+  function renderAgentAssistantMarkdown(content: string): string {
+    return renderRoadmapMarkdown(content || '');
+  }
+
+  function setAssistantMarkdownContent(bubbleId: string, content: string, contentDiv: HTMLElement | null): boolean {
+    if (!contentDiv) return false;
+
+    const rawContent = content || '';
+    const existingText = contentDiv.textContent?.trim() || (contentDiv.innerHTML ? contentDiv.innerHTML.replace(/<[^>]*>/g, '').trim() : '');
+    if (!rawContent.trim() && existingText) {
+      return false;
+    }
+
+    const contentHashValue = contentHash(rawContent);
+    const lastHash = renderedMarkdownIds.get(bubbleId);
+    if (lastHash === contentHashValue && contentDiv.innerHTML && contentDiv.innerHTML.includes('<')) {
+      assistantRawContentByBubbleId.set(bubbleId, rawContent);
+      return false;
+    }
+
+    try {
+      const renderedHtml = renderAgentAssistantMarkdown(rawContent);
+      const newHtmlTrimmed = (renderedHtml || '').replace(/<[^>]*>/g, '').trim();
+      if (!newHtmlTrimmed && existingText) {
+        return false;
+      }
+      contentDiv.classList.add('typo');
+      contentDiv.innerHTML = renderedHtml;
+      renderedMarkdownIds.set(bubbleId, contentHashValue);
+      assistantRawContentByBubbleId.set(bubbleId, rawContent);
+      return true;
+    } catch (error: any) {
+      console.error('[AgentChat] Error rendering assistant markdown:', error);
+      contentDiv.classList.remove('typo');
+      if (rawContent.trim() || !existingText) {
+        contentDiv.textContent = rawContent;
+        assistantRawContentByBubbleId.set(bubbleId, rawContent);
+      }
+      return false;
+    }
+  }
+
   // Render markdown content to HTML
   async function renderMarkdown(text: string, inline: boolean = false): Promise<string> {
     try {
@@ -1168,21 +1223,17 @@ const page = new NamedPage('agent_chat', async () => {
     if (!shouldRenderMarkdown(bubbleId, content, contentDiv)) {
       return; // Skip if already rendered or shouldn't render
     }
-    
+
+    const rendered = setAssistantMarkdownContent(bubbleId, content, contentDiv);
+    if (rendered) return;
+
     // CRITICAL: Never overwrite non-empty bubble with empty - prevents 最后一句话时上面气泡被清空
     const existingText = contentDiv?.textContent?.trim() || (contentDiv?.innerHTML ? contentDiv.innerHTML.replace(/<[^>]*>/g, '').trim() : '');
     if ((!content || !content.trim()) && existingText) {
       return;
     }
-    
-    const contentHashValue = contentHash(content);
-    const lastHash = renderedMarkdownIds.get(bubbleId);
-    
-    // If content hasn't changed, don't re-render
-    if (lastHash === contentHashValue && contentDiv && contentDiv.innerHTML && contentDiv.innerHTML.includes('<')) {
-      return;
-    }
-    
+
+    // setAssistantMarkdownContent handles normal client-side rendering. Keep server markdown as a fallback.
     try {
       const renderedHtml = await renderMarkdown(content, false);
       if (contentDiv) {
@@ -1190,14 +1241,17 @@ const page = new NamedPage('agent_chat', async () => {
         if (!newHtmlTrimmed && existingText) {
           return; // Don't overwrite non-empty with empty rendered result
         }
+        contentDiv.classList.add('typo');
         contentDiv.innerHTML = renderedHtml;
-        // Track that we rendered this content
-        renderedMarkdownIds.set(bubbleId, contentHashValue);
+        renderedMarkdownIds.set(bubbleId, contentHash(content));
+        assistantRawContentByBubbleId.set(bubbleId, content || '');
       }
     } catch (error: any) {
       console.error('[AgentChat] Error rendering markdown with tracking:', error);
       if (contentDiv && (content.trim() || !existingText)) {
+        contentDiv.classList.remove('typo');
         contentDiv.textContent = content;
+        assistantRawContentByBubbleId.set(bubbleId, content || '');
       }
     }
   }
@@ -1489,25 +1543,43 @@ const page = new NamedPage('agent_chat', async () => {
       ) as HTMLElement | null;
       
       if (!messageElement) {
-        // Message not found - this shouldn't happen if backend uses the frontend-provided bubbleId
-        // But handle it gracefully: check if already tracked to prevent duplicate creation
-        if (displayedbubbleIdsGlobal.has(bubbleId)) {
-          console.warn('[AgentChat] BubbleId tracked but message not found in DOM:', { bubbleId });
-          return;
+        // Message not found - this can happen when record_update tracks the bubble before bubble_stream arrives.
+        // First try to bind the latest empty assistant bubble created optimistically by sendMessage().
+        const emptyAssistant = Array.from(chatMessages.children).reverse().find((el: any) => {
+          if (!el.classList.contains('chat-message') || !el.classList.contains('assistant')) return false;
+          const existingId = getbubbleId(el);
+          const contentDiv = el.querySelector('.message-content') as HTMLElement | null;
+          const raw = existingId ? assistantRawContentByBubbleId.get(existingId) : '';
+          const visible = raw || contentDiv?.textContent || '';
+          return (!existingId || existingId === bubbleId || displayedbubbleIdsGlobal.has(existingId)) && !visible.trim();
+        }) as HTMLElement | undefined;
+
+        if (emptyAssistant) {
+          setbubbleId(emptyAssistant, bubbleId);
+          messageElement = emptyAssistant;
+          displayedbubbleIdsGlobal.add(bubbleId);
+          console.warn('[AgentChat] Bound streaming bubble to existing empty assistant:', { bubbleId });
+        } else {
+          // Do not return just because the id is tracked; create/recreate the visible assistant bubble so streaming can render.
+          if (displayedbubbleIdsGlobal.has(bubbleId)) {
+            console.warn('[AgentChat] BubbleId tracked but message not found in DOM, recreating stream bubble:', { bubbleId });
+          } else {
+            displayedbubbleIdsGlobal.add(bubbleId);
+          }
+
+          await addMessage('assistant', '', undefined, undefined, bubbleId, false);
+          messageElement = Array.from(chatMessages.children).find(
+            (el: any) => getbubbleId(el) === bubbleId && el.classList.contains('chat-message')
+          ) as HTMLElement | null;
+          console.warn('[AgentChat] Created fallback message element for streaming:', { bubbleId });
         }
-        
-        // Create message as fallback (shouldn't happen in normal flow)
-        displayedbubbleIdsGlobal.add(bubbleId);
-        await addMessage('assistant', '', undefined, undefined, bubbleId, false);
+
         updateFrontendState(bubbleId, FrontendBubbleState.STREAMING);
         updateBackendState(bubbleId, BackendBubbleState.STREAMING);
-        messageElement = Array.from(chatMessages.children).find(
-          (el: any) => getbubbleId(el) === bubbleId && el.classList.contains('chat-message')
-        ) as HTMLElement | null;
-        console.warn('[AgentChat] Created fallback message element (should not happen):', { bubbleId });
       }
       
-      // Update content (plain text, no markdown rendering during streaming)
+      // Update content with real-time markdown rendering during streaming.
+      // Agent chat stream content is accumulated full text, not delta, so replace the rendered content.
       const messageBubble = messageElement.querySelector('.message-bubble');
       if (messageBubble) {
         let contentDiv = messageBubble.querySelector('.message-content') as HTMLElement | null;
@@ -1518,24 +1590,23 @@ const page = new NamedPage('agent_chat', async () => {
           messageBubble.appendChild(contentDiv);
           console.log('[AgentChat] handleBubbleStream: created contentDiv', { bubbleId });
         }
-        
-        // Get current content before update
-        const currentContent = contentDiv.textContent || '';
+
+        // Use the raw markdown cache for comparisons because rendered DOM text is not the original markdown.
+        const currentContent = assistantRawContentByBubbleId.get(bubbleId) || '';
         const currentLength = currentContent.length;
-        
-        // Update text content directly (no markdown rendering during streaming)
+
         if (contentDiv) {
-          contentDiv.textContent = content;
+          setAssistantMarkdownContent(bubbleId, content || '', contentDiv);
           // Mark as streaming (add class for styling)
           messageElement.classList.add('streaming');
           messageElement.classList.remove('completed');
-          
+
           // Log content update details
           const newLength = content ? content.length : 0;
           const contentIncreased = newLength > currentLength;
           const contentDecreased = newLength < currentLength;
           const contentSame = newLength === currentLength;
-          
+
           console.log('[AgentChat] handleBubbleStream: content updated', {
             bubbleId,
             currentLength,
@@ -1547,7 +1618,7 @@ const page = new NamedPage('agent_chat', async () => {
             currentPreview: currentContent.substring(Math.max(0, currentLength - 20)),
             newPreview: content ? content.substring(Math.max(0, newLength - 20)) : '',
           });
-          
+
           if (contentDecreased) {
             console.warn('[AgentChat] handleBubbleStream: WARNING - content decreased!', {
               bubbleId,
@@ -1766,7 +1837,8 @@ const page = new NamedPage('agent_chat', async () => {
               if (messageBubble) {
                 const contentDiv = messageBubble.querySelector('.message-content');
                 if (contentDiv) {
-                  const currentContent = contentDiv.textContent?.trim() || '';
+                  const rawRenderedContent = assistantRawContentByBubbleId.get(bubbleId);
+                  const currentContent = (rawRenderedContent || contentDiv.textContent || '').trim();
                   const newContent = messageContent.trim();
                   const currentHash = currentContent ? contentHash(currentContent) : '';
                   
@@ -1938,10 +2010,10 @@ const page = new NamedPage('agent_chat', async () => {
                 const contentDiv = precedingAssistant.querySelector('.message-content') as HTMLElement | null;
                 if (contentDiv && msgData.content != null) {
                   const newVal = typeof msgData.content === 'string' ? msgData.content : JSON.stringify(msgData.content || '');
-                  const currentVal = contentDiv.textContent?.trim() || (contentDiv.innerHTML ? contentDiv.innerHTML.replace(/<[^>]*>/g, '').trim() : '');
+                  const currentVal = (assistantRawContentByBubbleId.get(precedingAssistantBubbleId) || contentDiv.textContent || '').trim();
                   // CRITICAL: tool_call_result has content:'' in groupMessages - never overwrite non-empty 上方气泡 with empty (fixes 最后一句话时上面气泡被清空)
                   if (newVal.trim() || !currentVal) {
-                    contentDiv.textContent = newVal;
+                    setAssistantMarkdownContent(precedingAssistantBubbleId, newVal, contentDiv);
                   }
                 }
                 precedingAssistant.classList.remove('streaming');
@@ -2051,7 +2123,7 @@ const page = new NamedPage('agent_chat', async () => {
                 if (messageBubble) {
                   const contentDiv = messageBubble.querySelector('.message-content');
                   if (contentDiv) {
-                    const currentContent = contentDiv.textContent?.trim() || '';
+                    const currentContent = (assistantRawContentByBubbleId.get(bubbleId) || contentDiv.textContent || '').trim();
                     const newContent = content?.trim() || '';
                     // If content hasn't changed, skip this update completely
                     if (currentContent === newContent) {
@@ -2122,7 +2194,7 @@ const page = new NamedPage('agent_chat', async () => {
                 if (messageBubble) {
                   const contentDiv = messageBubble.querySelector('.message-content');
                   if (contentDiv) {
-                    const currentContent = contentDiv.textContent?.trim() || '';
+                    const currentContent = (assistantRawContentByBubbleId.get(bubbleId) || contentDiv.textContent || '').trim();
                     const newContent = content.trim();
                     contentChanged = currentContent !== newContent;
                   }
@@ -2183,10 +2255,8 @@ const page = new NamedPage('agent_chat', async () => {
                         displayedbubbleIdsGlobal.add(bubbleId);
                       }
                       // Update content if needed (for markdown rendering)
-                      if (!isStreaming && contentDiv.textContent && !contentDiv.innerHTML.includes('<')) {
-                        renderMarkdown(content, false).then(renderedHtml => {
-                          contentDiv.innerHTML = renderedHtml;
-                        });
+                      if (!isStreaming && contentDiv instanceof HTMLElement) {
+                        void renderMarkdownWithTracking(bubbleId, content, contentDiv);
                       }
                       continue; // Skip to next message in outer loop (don't create new)
                     }
@@ -2211,20 +2281,20 @@ const page = new NamedPage('agent_chat', async () => {
                   if (messageBubble) {
                     const contentDiv = messageBubble.querySelector('.message-content');
                     if (contentDiv) {
-                      const currentContent = contentDiv.textContent?.trim() || '';
+                      const currentContent = (assistantRawContentByBubbleId.get(bubbleId) || contentDiv.textContent || '').trim();
                       const newContent = content.trim();
-                      
+
                       // If content has changed, update it and reset state
                       if (currentContent !== newContent) {
                         // Mark content update (this will handle state synchronization)
                         markBubbleContentUpdate(bubbleId);
-                        
+
                         // Update content
-                        if (isStreaming || pendingState === FrontendBubbleState.PENDING_COMPLETE) {
-                          contentDiv.textContent = newContent;
+                        if (contentDiv instanceof HTMLElement) {
+                          if (isStreaming || pendingState === FrontendBubbleState.PENDING_COMPLETE) {
+                            setAssistantMarkdownContent(bubbleId, newContent, contentDiv);
                           } else {
-                          // Render markdown for truly completed bubbles (with tracking to prevent duplicates)
-                          if (contentDiv && contentDiv instanceof HTMLElement) {
+                            // Render markdown for truly completed bubbles (with tracking to prevent duplicates)
                             renderMarkdownWithTracking(bubbleId, content, contentDiv);
                           }
                         }
@@ -2372,7 +2442,7 @@ const page = new NamedPage('agent_chat', async () => {
                 if (messageBubble) {
                   const contentDiv = messageBubble.querySelector('.message-content');
                   if (contentDiv) {
-                    const currentContent = contentDiv.textContent?.trim() || '';
+                    const currentContent = (assistantRawContentByBubbleId.get(bubbleId) || contentDiv.textContent || '').trim();
                     const newContent = content?.trim() || '';
                     // If content hasn't changed, skip completely to prevent duplicate markdown rendering
                     if (currentContent === newContent) {
@@ -2393,8 +2463,8 @@ const page = new NamedPage('agent_chat', async () => {
                   messageBubble.appendChild(contentDiv);
                 }
                 
-                // Get current content to check if it changed
-                const currentContent = contentDiv.textContent?.trim() || '';
+                // Get current raw markdown content to check if it changed
+                const currentContent = (assistantRawContentByBubbleId.get(bubbleId) || contentDiv.textContent || '').trim();
                 const newContent = content?.trim() || '';
                 const contentChanged = currentContent !== newContent;
                 
@@ -2406,12 +2476,17 @@ const page = new NamedPage('agent_chat', async () => {
                 // For pending_complete or completed, update content if changed
                 // CRITICAL: Never overwrite non-empty bubble content with empty - prevents "清空全部气泡" from malformed record_update
                 if (isStreaming) {
+                  if (content && contentDiv instanceof HTMLElement) {
+                    setAssistantMarkdownContent(bubbleId, content, contentDiv);
+                  }
                   markBubbleContentUpdate(bubbleId);
                 } else if (isPendingComplete) {
                   if (contentChanged) {
                     const newVal = content || '';
                     if (newVal.trim() || !currentContent.trim()) {
-                      contentDiv.textContent = newVal;
+                      if (contentDiv instanceof HTMLElement) {
+                        setAssistantMarkdownContent(bubbleId, newVal, contentDiv);
+                      }
                     }
                     markBubbleContentUpdate(bubbleId);
                   }
@@ -2544,32 +2619,11 @@ const page = new NamedPage('agent_chat', async () => {
                   if (contentDiv && content) {
                     if (!isStreaming) {
                       // Render markdown for completed message
-                      try {
-                        const response = await fetch('/system/markdown', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ content }),
-                        });
-                        if (response.ok) {
-                          const data = await response.json();
-                          contentDiv.innerHTML = data.html || content;
-                        } else {
-                          const currentVal = contentDiv.textContent?.trim() || '';
-                          if (content.trim() || !currentVal) {
-                            contentDiv.textContent = content;
-                          }
-                        }
-                      } catch (e) {
-                        const currentVal = contentDiv.textContent?.trim() || '';
-                        if (content.trim() || !currentVal) {
-                          contentDiv.textContent = content;
-                        }
+                      if (contentDiv instanceof HTMLElement) {
+                        await renderMarkdownWithTracking(bubbleId, content, contentDiv);
                       }
-                    } else {
-                      const currentVal = contentDiv.textContent?.trim() || '';
-                      if (content.trim() || !currentVal) {
-                        contentDiv.textContent = content;
-                      }
+                    } else if (contentDiv instanceof HTMLElement) {
+                      setAssistantMarkdownContent(bubbleId, content, contentDiv);
                     }
                   }
                 }
@@ -2631,9 +2685,8 @@ const page = new NamedPage('agent_chat', async () => {
                         } else {
                           activebubbleIds.add(bubbleId);
                         }
-                        if (!isStreaming) {
-                          const renderedHtml = await renderMarkdown(content, false);
-                          contentDiv.innerHTML = renderedHtml;
+                        if (!isStreaming && contentDiv instanceof HTMLElement) {
+                          await renderMarkdownWithTracking(bubbleId, content, contentDiv);
                         }
                         continue; // Skip to next message in outer loop
                       }
@@ -2748,19 +2801,14 @@ const page = new NamedPage('agent_chat', async () => {
           if (messageBubble) {
             const contentDiv = messageBubble.querySelector('.message-content');
             if (contentDiv) {
-              // Check if content is still raw text (not yet rendered as markdown)
-              const rawContent = contentDiv.textContent || '';
-              // Only re-render if content exists and looks like it might be markdown
-              // Use tracking to prevent duplicate rendering
-              if (rawContent && (rawContent.includes('**') || rawContent.includes('#') || rawContent.includes('`') || rawContent.includes('\n'))) {
-                // Find bubbleId from the message element
-                const messageEl = contentDiv.closest('.chat-message');
-                const bubbleId = messageEl ? getbubbleIdFromElement(messageEl) : null;
-                if (bubbleId && contentDiv && contentDiv instanceof HTMLElement) {
-                  renderMarkdownWithTracking(bubbleId, rawContent, contentDiv).then(() => {
+              // If streaming already rendered markdown, use the cached raw markdown for final render.
+              const messageEl = contentDiv.closest('.chat-message');
+              const bubbleId = messageEl ? getbubbleIdFromElement(messageEl) : null;
+              const rawContent = (bubbleId && assistantRawContentByBubbleId.get(bubbleId)) || contentDiv.textContent || '';
+              if (bubbleId && rawContent && contentDiv instanceof HTMLElement) {
+                renderMarkdownWithTracking(bubbleId, rawContent, contentDiv).then(() => {
                   chatMessages.scrollTop = chatMessages.scrollHeight;
                 });
-                }
               }
             }
           }
@@ -3196,8 +3244,8 @@ const page = new NamedPage('agent_chat', async () => {
         if (bubbleId && contentDiv instanceof HTMLElement) {
           await renderMarkdownWithTracking(bubbleId, content, contentDiv);
         } else {
-        const renderedHtml = await renderMarkdown(content, false);
-        contentDiv.innerHTML = renderedHtml;
+          contentDiv.classList.add('typo');
+          contentDiv.innerHTML = renderAgentAssistantMarkdown(content);
         }
     }
     
@@ -3259,8 +3307,14 @@ const page = new NamedPage('agent_chat', async () => {
     setLoading(true);
 
     try {
+      // Open the session socket before creating the task so streaming events are not missed while POST is returning.
+      await connectSessionChatSocket();
+      if (!agentChatSocketConnected || !agentChatSocket) {
+        throw new Error('Chat session connection failed');
+      }
+
       const postUrl = `/d/${domainId}/agent/${urlAid}/chat`;
-      
+
       const response = await fetch(postUrl, {
         method: 'POST',
         headers: {
@@ -3311,22 +3365,15 @@ const page = new NamedPage('agent_chat', async () => {
       }
 
 
-      // Ensure session is connected
+      // Subscribe to new record via the already-open session socket.
       try {
-        await connectSessionChatSocket();
-        
-        if (!agentChatSocketConnected || !agentChatSocket) {
-          throw new Error('Chat session connection failed');
-        }
-        
-        // Subscribe to new record via session
         agentChatSocket.send(JSON.stringify({
           type: 'subscribe_record',
           recordId: taskRecordId,
         }));
       } catch (error: any) {
-        console.error('[AgentChat] Failed to connect to chat session or subscribe:', error);
-        addMessage('error', 'Failed to connect to chat session: ' + (error.message || String(error)));
+        console.error('[AgentChat] Failed to subscribe to chat session:', error);
+        addMessage('error', 'Failed to subscribe to chat session: ' + (error.message || String(error)));
         setLoading(false);
       }
 
