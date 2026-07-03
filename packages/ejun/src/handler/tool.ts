@@ -5,36 +5,28 @@ import { PRIV } from '../model/builtin';
 import DomainMarketToolModel from '../model/domain_market_tool';
 import { ValidationError } from '../error';
 import type { ToolDoc } from '../interface';
-import { registerSystemToolCatalog, registerSystemToolExecutor } from '../lib/systemTools';
 import {
     executeLocalMcpTool,
-    executeLocalSystemTool,
     getLocalMcpToolCatalog,
-    getLocalSystemToolCatalog,
     getMarketMcpTools,
     isLocalMcpToolAvailableInDomain,
-    isLocalSystemToolAvailableInDomain,
-} from '../lib/localSystemTools';
-import { isMcpBuiltinMutatingTool } from '../lib/mcpBuiltinTools';
+} from '../service/mcp';
+import { isMcpBuiltinMutatingTool } from '../service/mcp';
 import {
     EJUNZ_TOOLS_MCP_LOCAL_KEY,
     ensureBuiltinEjunzToolsMcp,
     removeBuiltinEjunzToolsMcp,
-} from '../lib/mcpRegistry';
+} from '../service/mcp';
 import {
     getBuiltinEjunzToolsRuntime,
     getBuiltinEjunzToolsVersion,
     getEjunzToolsCatalog,
-} from '../lib/ejunzToolsMcp';
+} from '../service/mcp';
 import {
     cleanupPluginMcpArtifacts,
     getBuiltinPluginMcpRuntime,
     listBuiltinPluginMcpRuntimes,
-} from '../lib/pluginMcp';
-
-// Register default editor/base MCP tools as system tools in core.
-registerSystemToolCatalog(getLocalSystemToolCatalog());
-registerSystemToolExecutor(executeLocalSystemTool);
+} from '../service/mcp';
 
 const logger = new Logger('handler/tool');
 

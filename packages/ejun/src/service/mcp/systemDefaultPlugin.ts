@@ -1,7 +1,7 @@
-import type { BaseEdge, BaseNode, CardDoc, McpDoc, PluginDoc } from '../interface';
-import { CardModel, getBranchData } from '../model/base';
-import * as document from '../model/document';
-import PluginModel from '../model/plugin';
+import type { BaseEdge, BaseNode, CardDoc, McpDoc, PluginDoc } from '../../interface';
+import { CardModel, getBranchData } from '../../model/base';
+import * as document from '../../model/document';
+import PluginModel from '../../model/plugin';
 
 export const SYSTEM_DEFAULT_PLUGIN_SLUG = 'system-default';
 
@@ -356,7 +356,7 @@ export async function ensureSystemDefaultPlugin(domainId: string, owner: number)
 }
 
 export async function ensureDomainSystemDefaults(domainId: string, owner: number): Promise<{ mcp: McpDoc; plugin: PluginDoc }> {
-    const { ensureSystemToolsMcp } = await import('./mcpRegistry');
+    const { ensureSystemToolsMcp } = await import('./registry');
     const mcp = await ensureSystemToolsMcp(domainId, owner);
     const plugin = await ensureSystemDefaultPlugin(domainId, owner);
     return { mcp, plugin };

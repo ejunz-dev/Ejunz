@@ -23,8 +23,8 @@ export interface WorkerTaskReporter {
 
 function registerSystemToolsIfAvailable() {
     try {
-        const { getLocalSystemToolCatalog, executeLocalSystemTool } = require('ejun/src/lib/localSystemTools');
-        const { registerSystemToolCatalog, registerSystemToolExecutor } = require('ejun/src/lib/systemTools');
+        const { getLocalSystemToolCatalog, executeLocalSystemTool } = require('ejun/src/service/mcp');
+        const { registerSystemToolCatalog, registerSystemToolExecutor } = require('ejun/src/service/mcp');
         const catalog = getLocalSystemToolCatalog();
         registerSystemToolCatalog(catalog);
         registerSystemToolExecutor(executeLocalSystemTool);
@@ -617,7 +617,7 @@ async function executeMcpToolCallTask(task: any, reporter: WorkerTaskReporter) {
     let response: any;
     try {
         registerSystemToolsIfAvailable();
-        const { executeSystemTool } = require('ejun/src/lib/systemTools');
+        const { executeSystemTool } = require('ejun/src/service/mcp');
         const result = await executeSystemTool(task.name, task.args || {});
         const text = typeof result === 'string' ? result : JSON.stringify(result);
         response = {
