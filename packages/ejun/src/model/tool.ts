@@ -9,15 +9,7 @@ import DomainMarketToolModel from './domain_market_tool';
 import { BaseModel, CardModel, getBranchData, applyDetailExplorerUrlFilters, type DetailExplorerFilters } from './base';
 import { migrateRawProblem } from './problem';
 import type { AgentScheduleDoc, AgentScheduleRunDoc } from './agent_schedule';
-import {
-    mcpBaseGitCommit,
-    mcpBaseGitConfigGet,
-    mcpBaseGitConfigSet,
-    mcpBaseGitPull,
-    mcpBaseGitPush,
-    mcpBaseGitStatus,
-    type McpBaseGitInput,
-} from '../handler/base';
+import type { McpBaseGitInput } from '../handler/base';
 import type { EmbeddingService } from '../service/embedding';
 
 const logger = new Logger('model/tool');
@@ -1164,17 +1156,28 @@ export async function executeMcpBuiltinTool(
         await saveCardProblems(domainId, card, next);
         return { ok: true, cardId: String(card.docId), pid };
     }
-    case 'git_status':
+    case 'git_status': {
+        const { mcpBaseGitStatus } = await import('../handler/base');
         return mcpBaseGitStatus(toMcpGitInput(ctx, args));
-    case 'git_commit':
+    }
+    case 'git_commit': {
+        const { mcpBaseGitCommit } = await import('../handler/base');
         return mcpBaseGitCommit(toMcpGitInput(ctx, args));
-    case 'git_push':
+    }
+    case 'git_push': {
+        const { mcpBaseGitPush } = await import('../handler/base');
         return mcpBaseGitPush(toMcpGitInput(ctx, args));
-    case 'git_pull':
+    }
+    case 'git_pull': {
+        const { mcpBaseGitPull } = await import('../handler/base');
         return mcpBaseGitPull(toMcpGitInput(ctx, args));
-    case 'git_config_get':
+    }
+    case 'git_config_get': {
+        const { mcpBaseGitConfigGet } = await import('../handler/base');
         return mcpBaseGitConfigGet({ domainId: ctx.domainId, baseDocId: ctx.baseDocId });
+    }
     case 'git_config_set': {
+        const { mcpBaseGitConfigSet } = await import('../handler/base');
         const raw = args.githubRepo;
         const githubRepo = raw == null ? null : String(raw).trim();
         return mcpBaseGitConfigSet({
