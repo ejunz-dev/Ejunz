@@ -3,7 +3,7 @@ import { LRUCache } from 'lru-cache';
 import { Filter } from 'mongodb';
 import { Context } from '../context';
 import { DomainDoc } from '../interface';
-import { ensureDomainSystemDefaults } from '../service/mcp/systemDefaultPlugin';
+import { ensureDomainSystemDefaults } from './mcp';
 import bus from '../service/bus';
 import db from '../service/db';
 import { MaybeArray, NumberKeys } from '../typeutils';
