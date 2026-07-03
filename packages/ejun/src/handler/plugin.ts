@@ -2,7 +2,7 @@ import { Filter } from 'mongodb';
 import type { Context } from '../context';
 import { BadRequestError, ForbiddenError, NotFoundError, ValidationError } from '../error';
 import type { BaseDoc, BaseNode, CardDoc, DomainDoc, PluginDoc } from '../interface';
-import { loadPluginCardDefinitions, sanitizePluginNodeData, summarizePluginDefinitions } from '../service/mcp/pluginRuntime';
+import { loadPluginCardDefinitions, sanitizePluginNodeData, summarizePluginDefinitions } from '../model/mcp';
 import {
     parseDraftPluginMcpDefinitions,
     refreshPluginMcpStatus,

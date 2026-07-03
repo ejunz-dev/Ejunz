@@ -30,7 +30,7 @@ import db from '../service/db';
 import EdgeModel from './edge';
 import ToolModel from './tool';
 import { EdgeServerConnectionHandler } from '../handler/edge';
-import { findLocalSystemToolByIdOrName, isLocalMcpToolAvailableInDomain } from '../service/mcp/localSystemTools';
+import { findLocalSystemToolByIdOrName, isLocalMcpToolAvailableInDomain } from './tool';
 import _ from 'lodash';
 
 export type Field = keyof AgentDoc;
