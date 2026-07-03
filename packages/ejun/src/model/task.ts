@@ -157,6 +157,19 @@ class TaskModel {
             _id: new ObjectId(),
         };
         const res = await coll.insertOne(t);
+        logger.info('[diag] TaskModel.add: taskId=%s type=%s subType=%s recordId=%s taskRecordId=%s agentId=%s domainId=%s toolName=%s priority=%s pid=%d NODE_APP_INSTANCE=%s',
+            res.insertedId?.toString?.() || '',
+            (t as any).type || '',
+            (t as any).subType || '',
+            (t as any).recordId?.toString?.() || '',
+            (t as any).taskRecordId?.toString?.() || '',
+            (t as any).agentId || '',
+            (t as any).domainId || '',
+            (t as any).toolName || (t as any).name || '',
+            (t as any).priority ?? '',
+            process.pid,
+            process.env.NODE_APP_INSTANCE || '',
+        );
         return res.insertedId;
     }
 

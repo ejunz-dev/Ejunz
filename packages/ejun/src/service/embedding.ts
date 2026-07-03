@@ -158,13 +158,31 @@ function buildCardSearchText(card: CardDoc): string {
     return parts.join('\n\n').trim();
 }
 
+let currentEmbeddingService: EmbeddingService | undefined;
+
+export function getEmbeddingService(): EmbeddingService | undefined {
+    logger.info('[diag] getEmbeddingService called: hasCurrent=%s pid=%d NODE_APP_INSTANCE=%s',
+        !!currentEmbeddingService,
+        process.pid,
+        process.env.NODE_APP_INSTANCE || '',
+    );
+    return currentEmbeddingService;
+}
+
 export class EmbeddingService extends Service {
     private pipe: any = null;
     private loadPromise: Promise<void> | null = null;
 
     constructor(ctx: Context) {
         super(ctx, 'embedding');
+        currentEmbeddingService = this;
         logger.info('Embedding service created (model loads on first use)');
+        logger.info('[diag] EmbeddingService constructor: pid=%d NODE_APP_INSTANCE=%s ctxHasEmbedding=%s globalAppExists=%s',
+            process.pid,
+            process.env.NODE_APP_INSTANCE || '',
+            (() => { try { return !!(ctx as any).embedding; } catch { return false; } })(),
+            !!(global as any).app,
+        );
     }
 
     /**

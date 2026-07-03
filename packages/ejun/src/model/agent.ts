@@ -427,6 +427,7 @@ export class McpClient {
         baseDocId?: number,
         baseBranch?: string,
         toolCallerUid?: number,
+        embeddingOverride?: any,
     ): Promise<any> {
         try {
             ClientLogger.info('[tool] callTool: name=%s toolType=%s', name, toolType ?? 'undefined');
@@ -435,11 +436,36 @@ export class McpClient {
                 throw new Error('Context not available');
             }
 
+            let embedding = embeddingOverride;
+            let ctxEmbedding = false;
+            let ctxEmbeddingError = '';
+            if (!embedding) {
+                try {
+                    embedding = (ctx as any).embedding;
+                    ctxEmbedding = !!embedding;
+                } catch (err: any) {
+                    ctxEmbeddingError = err?.message || String(err);
+                }
+            }
+            ClientLogger.info('[diag] callTool context: name=%s toolType=%s domainId=%s baseDocId=%s branch=%s owner=%s hasEmbeddingOverride=%s hasCtxEmbedding=%s ctxEmbeddingError=%s pid=%d NODE_APP_INSTANCE=%s',
+                name,
+                toolType ?? '',
+                domainId || '',
+                baseDocId || '',
+                baseBranch || '',
+                toolCallerUid || '',
+                !!embeddingOverride,
+                ctxEmbedding,
+                ctxEmbeddingError,
+                process.pid,
+                process.env.NODE_APP_INSTANCE || '',
+            );
             const systemToolContext = {
                 domainId,
                 baseDocId,
                 branch: baseBranch || 'main',
                 owner: toolCallerUid,
+                embedding,
             };
 
             // Local MCP tools: default system tools or domain-market enabled MCP tools.
