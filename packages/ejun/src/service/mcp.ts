@@ -72,6 +72,18 @@ export * from '../model/mcp';
 const logger = new Logger('service/mcp');
 const MCP_PROTOCOL_VERSION = '2024-11-05';
 
+function defaultMcpServerName(domainId: string, pathId?: string) {
+    return `ejunz-${domainId}${pathId ? `-${pathId}` : ''}`;
+}
+
+function normalizeMcpServerName(name: string | undefined, fallback: string) {
+    const sanitize = (value: string) => value.trim()
+        .replace(/[^A-Za-z0-9_.-]+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    return sanitize(name || '') || sanitize(fallback) || 'ejunz';
+}
+
 export type JsonRpcMessage = {
     jsonrpc?: string;
     id?: string | number | null;
@@ -396,15 +408,18 @@ export default class McpService extends Service {
     }
 
     async getOrCreateMcpToken(domainId: string, owner: number, baseDocId?: number, branch?: string): Promise<string> {
+        const normalizedBranch = branch && branch !== 'main' ? branch : undefined;
         const query: any = { domainId, type: 'mcp_sse', owner };
         if (baseDocId !== undefined && baseDocId !== null) query.baseDocId = baseDocId;
+        if (normalizedBranch) query.branch = normalizedBranch;
+        else query.$or = [{ branch: { $exists: false } }, { branch: null }, { branch: 'main' }];
         const existing = await EdgeTokenModel.coll.findOne(query);
         if (existing) {
             const fresh = await EdgeTokenModel.getByToken(existing.token);
             if (fresh) return fresh.token;
         }
         const token = await EdgeTokenModel.generateToken();
-        await EdgeTokenModel.add(domainId, 'mcp_sse', token, owner, { baseDocId, branch });
+        await EdgeTokenModel.add(domainId, 'mcp_sse', token, owner, { baseDocId, branch: normalizedBranch });
         return token;
     }
 
@@ -439,25 +454,29 @@ export default class McpService extends Service {
         return String(baseDocId);
     }
 
-    buildConnectionInfo(input: { protocol: string; host: string; domainId: string; token: string; pathId?: string }) {
-        const { protocol, host, domainId, token, pathId } = input;
+    buildConnectionInfo(input: { protocol: string; host: string; domainId: string; token: string; pathId?: string; branch?: string; serverName?: string }) {
+        const { protocol, host, domainId, token, pathId, branch } = input;
+        const normalizedBranch = branch && branch !== 'main' ? branch : undefined;
         const seg = pathId ? `/${encodeURIComponent(pathId)}` : '';
+        const branchQuery = normalizedBranch ? `?branch=${encodeURIComponent(normalizedBranch)}` : '';
+        const serverName = normalizeMcpServerName(input.serverName, defaultMcpServerName(domainId, pathId));
         const baseUrl = `${protocol}://${host}/d/${domainId}/mcp/sse${seg}`;
         const url = `${baseUrl}?token=${token}`;
-        const command = `claude mcp add --transport sse ejunz-${domainId} ${baseUrl} --header "Authorization: Bearer ${token}"`;
-        const httpBaseUrl = `${protocol}://${host}/d/${domainId}/mcp/http${seg}`;
-        const httpUrl = `${httpBaseUrl}?token=${token}`;
-        const httpCommand = `claude mcp add --transport http ejunz-${domainId} ${httpBaseUrl} --header "Authorization: Bearer ${token}"`;
+        const command = `claude mcp add --transport sse ${serverName} ${baseUrl} --header "Authorization: Bearer ${token}"`;
+        const httpBaseUrl = `${protocol}://${host}/d/${domainId}/mcp/http${seg}${branchQuery}`;
+        const httpUrl = httpBaseUrl;
+        const httpCommand = `claude mcp add --transport http ${serverName} ${httpBaseUrl}`;
         return {
             token,
+            serverName,
             url,
             baseUrl,
             command,
             httpUrl,
             httpBaseUrl,
             httpCommand,
-            config: { mcpServers: { ejunz: { type: 'sse', url: baseUrl, headers: { Authorization: `Bearer ${token}` } } } },
-            httpConfig: { mcpServers: { ejunz: { type: 'http', url: httpBaseUrl, headers: { Authorization: `Bearer ${token}` } } } },
+            config: { mcpServers: { [serverName]: { type: 'sse', url: baseUrl, headers: { Authorization: `Bearer ${token}` } } } },
+            httpConfig: { mcpServers: { [serverName]: { type: 'http', url: httpBaseUrl } } },
         };
     }
 

@@ -1,10 +1,15 @@
+import { createHash } from 'crypto';
 import { Handler } from '@ejunz/framework';
 import { Context } from '../context';
 import { Logger } from '../logger';
 import { PRIV } from '../model/builtin';
+import { BaseModel } from '../model/base';
 import EdgeTokenModel from '../model/edge_token';
 import McpModel from '../model/mcp';
+import TokenModel from '../model/token';
+import UserModel from '../model/user';
 import { NotFoundError, ValidationError } from '../error';
+import { randomstring } from '../utils';
 import {
     MCP_BUILTIN_TOOLS_CATALOG, buildMcpInstructions,
     defaultMcpToolDescriptions, resolveMcpTools,
@@ -35,9 +40,115 @@ function extractToken(h: Handler<Context>): { token: string; source: string } | 
     return null;
 }
 
-function buildMcpConnectionInfo(h: Handler<Context>, domainId: string, token: string, pathId?: string) {
+function buildMcpConnectionInfo(h: Handler<Context>, domainId: string, token: string, pathId?: string, branch?: string, serverName?: string) {
     const { protocol, host } = detectOrigin(h);
-    return h.ctx.mcp.buildConnectionInfo({ protocol, host, domainId, token, pathId });
+    return h.ctx.mcp.buildConnectionInfo({ protocol, host, domainId, token, pathId, branch, serverName });
+}
+
+function userCanAuthorizeMcp(user: any, target: { domainId: string; baseDocId?: number }) {
+    if (!user?._id || !user.hasPriv(PRIV.PRIV_USER_PROFILE)) return false;
+    if (user._dudoc?.join || user.hasPriv(PRIV.PRIV_VIEW_ALL_DOMAIN)) return true;
+    return target.domainId === 'system' && !target.baseDocId;
+}
+
+function detectKoaOrigin(c: any): { protocol: string; host: string } {
+    const host = c.request.host || c.request.headers.host || 'localhost';
+    const isLocal = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(host);
+    const forwarded = c.request.headers['x-forwarded-proto']
+        || (c.request.headers['x-forwarded-ssl'] === 'on' ? 'https' : '');
+    const protocol = forwarded || (isLocal ? 'http' : 'https');
+    return { protocol, host };
+}
+
+function sendJson(c: any, body: any, status = 200) {
+    c.status = status;
+    c.type = 'application/json';
+    c.body = JSON.stringify(body);
+}
+
+function appendQuery(url: string, params: Record<string, string | undefined>) {
+    const qs = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) if (value) qs.set(key, value);
+    const suffix = qs.toString();
+    if (!suffix) return url;
+    return `${url}${url.includes('?') ? '&' : '?'}${suffix}`;
+}
+
+function currentRequestUrl(h: Handler<Context>) {
+    const { protocol, host } = detectOrigin(h);
+    const path = (h.context as any).originalPath || h.request.originalPath || h.request.path;
+    const query = h.request.querystring ? `?${h.request.querystring}` : '';
+    return `${protocol}://${host}${path}${query}`;
+}
+
+function sendMcpAuthChallenge(h: Handler<Context>, error = 'Invalid or missing token') {
+    const { protocol, host } = detectOrigin(h);
+    const resource = currentRequestUrl(h);
+    const metadata = appendQuery(`${protocol}://${host}/.well-known/oauth-protected-resource`, { resource });
+    h.response.addHeader('WWW-Authenticate', `Bearer resource_metadata="${metadata}"`);
+    h.response.status = 401;
+    h.response.type = 'application/json';
+    h.response.body = JSON.stringify({ error });
+}
+
+function parseMcpResource(resource: string): { domainId: string; basePathId?: string; branch?: string } {
+    let parsed: URL;
+    try {
+        parsed = new URL(resource);
+    } catch {
+        throw new ValidationError('resource');
+    }
+    const parts = parsed.pathname.split('/').filter(Boolean);
+    const offset = parts[0] === 'd' ? 2 : 0;
+    const domainId = parts[0] === 'd' ? parts[1] : 'system';
+    if (!domainId || parts[offset] !== 'mcp' || parts[offset + 1] !== 'http') throw new ValidationError('resource');
+    return {
+        domainId: decodeURIComponent(domainId),
+        basePathId: parts[offset + 2] ? decodeURIComponent(parts[offset + 2]) : undefined,
+        branch: parsed.searchParams.get('branch') || undefined,
+    };
+}
+
+async function resolveMcpAuthResource(resource: string) {
+    const parsed = parseMcpResource(resource);
+    let baseDocId: number | undefined;
+    if (parsed.basePathId) {
+        const base = await BaseModel.getBybid(parsed.domainId, parsed.basePathId)
+            || (/^\d+$/.test(parsed.basePathId) ? await BaseModel.get(parsed.domainId, Number(parsed.basePathId)) : null);
+        if (!base) throw new NotFoundError('Base not found');
+        baseDocId = base.docId;
+    }
+    return { domainId: parsed.domainId, baseDocId, branch: parsed.branch };
+}
+
+function isAllowedLoopbackRedirect(redirectUri: string) {
+    try {
+        const url = new URL(redirectUri);
+        if (url.protocol !== 'http:') return false;
+        return ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    } catch {
+        return false;
+    }
+}
+
+function verifyPkce(codeChallenge: string | undefined, method: string | undefined, verifier: string | undefined) {
+    if (!codeChallenge) return true;
+    if (!verifier) return false;
+    if (!method || method === 'plain') return verifier === codeChallenge;
+    if (method !== 'S256') return false;
+    const digest = createHash('sha256').update(verifier).digest().toString('base64url');
+    return digest === codeChallenge;
+}
+
+async function getRegisteredMcpClient(clientId: string) {
+    const client = clientId ? await TokenModel.get(clientId, TokenModel.TYPE_OAUTH) : null;
+    if (!client || client.kind !== 'mcp_client') return null;
+    return client;
+}
+
+function clientAllowsRedirectUri(client: any, redirectUri: string) {
+    const redirectUris = Array.isArray(client?.redirectUris) ? client.redirectUris : [];
+    return redirectUris.includes(redirectUri) || (redirectUris.length === 0 && isAllowedLoopbackRedirect(redirectUri));
 }
 
 export class McpConnectionHandler extends Handler<Context> {
@@ -222,8 +333,14 @@ export class McpStreamableHandler extends Handler<Context> {
     allowCors = true;
 
     async get() {
-        // We do not offer a server-initiated SSE stream on this endpoint; the spec allows 405.
         this.response.addHeader('Access-Control-Allow-Origin', '*');
+        const token = extractToken(this)?.token;
+        const tokenDoc = token ? await EdgeTokenModel.getByToken(token) : null;
+        if (!tokenDoc) {
+            sendMcpAuthChallenge(this);
+            return;
+        }
+        // We do not offer a server-initiated SSE stream on this endpoint; the spec allows 405.
         this.response.status = 405;
         this.response.type = 'application/json';
         this.response.body = JSON.stringify({
@@ -243,9 +360,7 @@ export class McpStreamableHandler extends Handler<Context> {
                 'MCP(http) connect rejected: hasToken=%s, source=%s, ua=%s',
                 !!token, cred?.source || 'none', this.request.headers['user-agent'] || '-',
             );
-            this.response.status = 401;
-            this.response.type = 'application/json';
-            this.response.body = JSON.stringify({ error: 'Invalid or missing token' });
+            sendMcpAuthChallenge(this);
             return;
         }
         await EdgeTokenModel.markPermanent(token);
@@ -307,6 +422,7 @@ export class McpTokenHandler extends Handler<Context> {
         const baseDocId = rawBaseId !== undefined && rawBaseId !== null && `${rawBaseId}` !== ''
             ? Number(rawBaseId) : undefined;
         const branch = this.request.body?.branch ? String(this.request.body.branch) : undefined;
+        const serverName = this.request.body?.serverName ? String(this.request.body.serverName) : undefined;
 
         const token = await this.ctx.mcp.getOrCreateMcpToken(domainId, this.user._id, baseDocId, branch);
         const mcp = await this.ctx.mcp.getOrCreateMcp(domainId, this.user._id, token, baseDocId, branch);
@@ -316,7 +432,7 @@ export class McpTokenHandler extends Handler<Context> {
             baseDocId,
             branch: branch || mcp.branch || 'main',
             ...this.ctx.mcp.buildStatus(domainId, mcp),
-            ...buildMcpConnectionInfo(this, domainId, token, pathId),
+            ...buildMcpConnectionInfo(this, domainId, token, pathId, branch || mcp.branch, serverName),
         };
     }
 
@@ -328,8 +444,12 @@ export class McpTokenHandler extends Handler<Context> {
         const baseDocId = rawBaseId !== undefined && rawBaseId !== null && `${rawBaseId}` !== ''
             ? Number(rawBaseId) : undefined;
 
+        const branch = this.request.query.branch ? String(this.request.query.branch) : undefined;
+        const normalizedBranch = branch && branch !== 'main' ? branch : undefined;
         const query: any = { domainId, type: 'mcp_sse', owner: this.user._id };
         if (baseDocId !== undefined && !Number.isNaN(baseDocId)) query.baseDocId = baseDocId;
+        if (normalizedBranch) query.branch = normalizedBranch;
+        else query.$or = [{ branch: { $exists: false } }, { branch: null }, { branch: 'main' }];
         const tokenDoc = await EdgeTokenModel.coll.findOne(query);
         if (!tokenDoc) {
             this.response.body = { success: true, exists: false };
@@ -341,6 +461,124 @@ export class McpTokenHandler extends Handler<Context> {
             return;
         }
         this.response.body = { success: true, exists: true, ...this.ctx.mcp.buildStatus(domainId, mcp) };
+    }
+}
+
+export class McpOAuthRegisterHandler extends Handler<Context> {
+    noCheckPermView = true;
+    notUsage = true;
+
+    async post() {
+        this.response.template = null;
+        const clientId = `mcp_${randomstring(24)}`;
+        const redirectUris = Array.isArray(this.request.body?.redirect_uris)
+            ? this.request.body.redirect_uris.filter((uri: any) => typeof uri === 'string' && isAllowedLoopbackRedirect(uri))
+            : [];
+        await TokenModel.add(TokenModel.TYPE_OAUTH, 30 * 24 * 60 * 60, {
+            kind: 'mcp_client',
+            clientId,
+            redirectUris,
+            clientName: this.request.body?.client_name || 'MCP client',
+        }, clientId);
+        this.response.body = {
+            client_id: clientId,
+            client_id_issued_at: Math.floor(Date.now() / 1000),
+            redirect_uris: redirectUris,
+            token_endpoint_auth_method: 'none',
+            grant_types: ['authorization_code'],
+            response_types: ['code'],
+        };
+    }
+}
+
+export class McpOAuthAuthorizeHandler extends Handler<Context> {
+    noCheckPermView = true;
+    notUsage = true;
+
+    async get() {
+        if (!this.user?._id) {
+            this.response.redirect = this.url('user_login', {
+                query: { redirect: `${this.context.originalPath || this.request.path}${this.context.search || ''}` },
+            });
+            return;
+        }
+
+        const q = this.request.query;
+        const responseType = String(q.response_type || '');
+        const redirectUri = String(q.redirect_uri || '');
+        const resource = String(q.resource || '');
+        const client = await getRegisteredMcpClient(q.client_id ? String(q.client_id) : '');
+        if (responseType !== 'code') throw new ValidationError('response_type');
+        if (!client) throw new ValidationError('client_id');
+        if (!redirectUri || !isAllowedLoopbackRedirect(redirectUri) || !clientAllowsRedirectUri(client, redirectUri)) {
+            throw new ValidationError('redirect_uri');
+        }
+        if (!resource) throw new ValidationError('resource');
+
+        const target = await resolveMcpAuthResource(resource);
+        const owner = await UserModel.getById(target.domainId, this.user._id);
+        if (!userCanAuthorizeMcp(owner, target)) throw new ValidationError('resource');
+        const [code] = await TokenModel.add(TokenModel.TYPE_OAUTH, 10 * 60, {
+            kind: 'mcp_auth_code',
+            uid: this.user._id,
+            clientId: q.client_id ? String(q.client_id) : '',
+            redirectUri,
+            resource,
+            domainId: target.domainId,
+            baseDocId: target.baseDocId,
+            branch: target.branch,
+            codeChallenge: q.code_challenge ? String(q.code_challenge) : undefined,
+            codeChallengeMethod: q.code_challenge_method ? String(q.code_challenge_method) : undefined,
+        });
+        this.response.redirect = appendQuery(redirectUri, {
+            code,
+            state: q.state ? String(q.state) : undefined,
+        });
+    }
+}
+
+export class McpOAuthTokenHandler extends Handler<Context> {
+    noCheckPermView = true;
+    notUsage = true;
+
+    async post() {
+        this.response.template = null;
+        const body = this.request.body || {};
+        if (body.grant_type !== 'authorization_code') throw new ValidationError('grant_type');
+        const code = String(body.code || '');
+        const data = code ? await TokenModel.get(code, TokenModel.TYPE_OAUTH) : null;
+        const client = await getRegisteredMcpClient(body.client_id ? String(body.client_id) : '');
+        if (!data || data.kind !== 'mcp_auth_code' || !client || data.clientId !== client.clientId) {
+            this.response.status = 400;
+            this.response.body = { error: 'invalid_grant' };
+            return;
+        }
+        if (String(body.redirect_uri || '') !== data.redirectUri) {
+            this.response.status = 400;
+            this.response.body = { error: 'invalid_grant' };
+            return;
+        }
+        if (!verifyPkce(data.codeChallenge, data.codeChallengeMethod, body.code_verifier ? String(body.code_verifier) : undefined)) {
+            this.response.status = 400;
+            this.response.body = { error: 'invalid_grant' };
+            return;
+        }
+
+        const owner = await UserModel.getById(data.domainId, data.uid);
+        if (!userCanAuthorizeMcp(owner, data)) {
+            this.response.status = 400;
+            this.response.body = { error: 'invalid_grant' };
+            return;
+        }
+
+        const token = await this.ctx.mcp.getOrCreateMcpToken(data.domainId, data.uid, data.baseDocId, data.branch);
+        await this.ctx.mcp.getOrCreateMcp(data.domainId, data.uid, token, data.baseDocId, data.branch);
+        await TokenModel.del(code, TokenModel.TYPE_OAUTH);
+        this.response.body = {
+            access_token: token,
+            token_type: 'Bearer',
+            expires_in: 30 * 60,
+        };
     }
 }
 
@@ -375,7 +613,7 @@ export class McpDetailHandler extends Handler<Context> {
         let info: ReturnType<typeof buildMcpConnectionInfo> | null = null;
         if (kind === 'outbound' && isOwner && mcp.token) {
             const pathId = await this.ctx.mcp.resolveBasePathId(domainId, mcp.baseDocId);
-            info = buildMcpConnectionInfo(this, domainId, mcp.token, pathId);
+            info = buildMcpConnectionInfo(this, domainId, mcp.token, pathId, mcp.branch);
         }
 
         this.response.template = 'mcp_detail.html';
@@ -473,23 +711,51 @@ export class McpEditHandler extends Handler<Context> {
     }
 }
 
-function captureWellKnownNotFound(c: any) {
-    c.status = 404;
-    c.type = 'application/json';
-    c.body = JSON.stringify({
-        error: 'not_found',
-        error_description: 'OAuth is not supported; authenticate via the token in the connection URL.',
+async function captureOAuthProtectedResource(c: any) {
+    const { protocol, host } = detectKoaOrigin(c);
+    const resource = String(c.query.resource || `${protocol}://${host}/d/${c.domainId || 'system'}/mcp/http`);
+    sendJson(c, {
+        resource,
+        authorization_servers: [`${protocol}://${host}`],
+        bearer_methods_supported: ['header'],
+        resource_documentation: `${protocol}://${host}/mcp`,
     });
 }
 
+async function captureOAuthAuthorizationServer(c: any) {
+    const { protocol, host } = detectKoaOrigin(c);
+    const issuer = `${protocol}://${host}`;
+    sendJson(c, {
+        issuer,
+        authorization_endpoint: `${issuer}/mcp/oauth/authorize`,
+        token_endpoint: `${issuer}/mcp/oauth/token`,
+        registration_endpoint: `${issuer}/mcp/oauth/register`,
+        response_types_supported: ['code'],
+        grant_types_supported: ['authorization_code'],
+        code_challenge_methods_supported: ['S256', 'plain'],
+        token_endpoint_auth_methods_supported: ['none'],
+    });
+}
+
+function captureWellKnownNotFound(c: any) {
+    sendJson(c, {
+        error: 'not_found',
+        error_description: 'OAuth metadata is only available on the MCP protected-resource and authorization-server endpoints.',
+    }, 404);
+}
+
 export async function apply(ctx: Context) {
-    (ctx as any).server.addCaptureRoute('/.well-known/oauth-', captureWellKnownNotFound);
+    (ctx as any).server.addCaptureRoute('/.well-known/oauth-protected-resource', captureOAuthProtectedResource);
+    (ctx as any).server.addCaptureRoute('/.well-known/oauth-authorization-server', captureOAuthAuthorizationServer);
     (ctx as any).server.addCaptureRoute('/.well-known/openid-configuration', captureWellKnownNotFound);
 
     ctx.Route('mcp_main', '/mcp', McpListHandler);
     ctx.Route('mcp_market', '/mcp/market', McpMarketHandler);
     ctx.Route('mcp_market_add', '/mcp/market/add', McpMarketAddHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mcp_market_remove', '/mcp/market/remove', McpMarketRemoveHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mcp_oauth_register', '/mcp/oauth/register', McpOAuthRegisterHandler);
+    ctx.Route('mcp_oauth_authorize', '/mcp/oauth/authorize', McpOAuthAuthorizeHandler);
+    ctx.Route('mcp_oauth_token', '/mcp/oauth/token', McpOAuthTokenHandler);
     ctx.Route('mcp_message', '/mcp/sse/message', McpMessageHandler);
     ctx.Route('mcp_token', '/mcp/sse/token', McpTokenHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mcp', '/mcp/sse/:bid', McpConnectionHandler);
