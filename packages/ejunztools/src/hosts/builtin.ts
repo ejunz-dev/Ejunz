@@ -33,7 +33,7 @@ export function apply(ctx: any, config: any = {}) {
     (globalThis as any).__ejunzToolsRuntime = runtime;
     if ((global as any).Ejunz) (global as any).Ejunz.ejunzToolsRuntime = runtime;
     try {
-        require('ejun/src/lib/ejunzToolsMcp').registerBuiltinEjunzToolsRuntime(runtime);
+        require('ejun/src/service/mcp').registerBuiltinEjunzToolsRuntime(runtime);
     } catch {
         // ejun is not available when ejunztools is used as a standalone package.
     }

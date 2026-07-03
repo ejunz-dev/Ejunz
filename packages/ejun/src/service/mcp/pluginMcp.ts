@@ -1,13 +1,13 @@
 import { createHash } from 'crypto';
 import { ObjectId } from 'mongodb';
 import request from 'superagent';
-import type { BaseNode, CardDoc, McpDoc, PluginDoc, PluginMcpStatus, ToolDoc } from '../interface';
-import { getBranchData } from '../model/base';
-import * as document from '../model/document';
-import McpModel from '../model/mcp';
-import PluginModel from '../model/plugin';
-import ToolModel from '../model/tool';
-import { Logger } from '../logger';
+import type { BaseNode, CardDoc, McpDoc, PluginDoc, PluginMcpStatus, ToolDoc } from '../../interface';
+import { getBranchData } from '../../model/base';
+import * as document from '../../model/document';
+import McpModel from '../../model/mcp';
+import PluginModel from '../../model/plugin';
+import ToolModel from '../../model/tool';
+import { Logger } from '../../logger';
 import {
     loadPluginCardDefinitions,
     parsePluginDefinitionsFromSnapshot,
@@ -261,7 +261,7 @@ export async function buildPluginDraftSnapshot(input: {
     batch: any;
 }): Promise<{ nodes: BaseNode[]; nodeCardsMap: Record<string, CardDoc[]> }> {
     const data = getBranchData(input.plugin as any, input.branch);
-    const nodes = (data.nodes || []).map((n: BaseNode) => ({ ...n, data: n.data ? { ...n.data } : n.data }));
+    const nodes: BaseNode[] = (data.nodes || []).map((n: BaseNode) => ({ ...n, data: n.data ? { ...n.data } : n.data }));
     const nodeById = new Map(nodes.map((n) => [n.id, n]));
     const deletedNodes = new Set<string>((input.batch.nodeDeletes || []).map((x: any) => String(x)));
     for (const nodeUpdate of input.batch.nodeUpdates || []) {

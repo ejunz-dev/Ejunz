@@ -1,11 +1,11 @@
 import { ObjectId } from 'mongodb';
-import * as document from '../model/document';
+import * as document from '../../model/document';
 import {
     BaseModel, CardModel, getBranchData,
     applyDetailExplorerUrlFilters, type DetailExplorerFilters,
-} from '../model/base';
-import type { CardDoc, BaseNode, BaseEdge, Problem, ProblemKind } from '../interface';
-import { migrateRawProblem } from '../model/problem';
+} from '../../model/base';
+import type { CardDoc, BaseNode, BaseEdge, Problem, ProblemKind } from '../../interface';
+import { migrateRawProblem } from '../../model/problem';
 import {
     mcpBaseGitCommit,
     mcpBaseGitConfigGet,
@@ -14,8 +14,8 @@ import {
     mcpBaseGitPush,
     mcpBaseGitStatus,
     type McpBaseGitInput,
-} from '../handler/base';
-import type { EmbeddingService } from '../service/embedding';
+} from '../../handler/base';
+import type { EmbeddingService } from '../embedding';
 
 export interface McpToolContext {
     domainId: string;

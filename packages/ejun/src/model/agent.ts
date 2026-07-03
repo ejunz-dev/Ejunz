@@ -30,8 +30,7 @@ import db from '../service/db';
 import EdgeModel from './edge';
 import ToolModel from './tool';
 import { EdgeServerConnectionHandler } from '../handler/edge';
-import { domainMarketHasInstalledToolName } from '../handler/tool';
-import { findLocalSystemToolByIdOrName } from '../lib/localSystemTools';
+import { findLocalSystemToolByIdOrName, isLocalMcpToolAvailableInDomain } from '../service/mcp/localSystemTools';
 import _ from 'lodash';
 
 export type Field = keyof AgentDoc;
@@ -444,8 +443,8 @@ export class McpClient {
             };
 
             // Local MCP tools: default system tools or domain-market enabled MCP tools.
-            if (domainId && await domainMarketHasInstalledToolName(domainId, name)) {
-                const { tryExecuteSystemTool } = require('../lib/systemTools');
+            if (domainId && await isLocalMcpToolAvailableInDomain(domainId, name)) {
+                const { tryExecuteSystemTool } = require('../service/mcp');
                 const sysEarly = await tryExecuteSystemTool(name, args || {}, systemToolContext);
                 if (sysEarly !== null) {
                     return sysEarly;
@@ -456,7 +455,7 @@ export class McpClient {
             // Also protect known local system tools from stale/missing type metadata, without shadowing explicit edge/plugin tools.
             const isLocalSystemTool = !!findLocalSystemToolByIdOrName(name);
             if (toolType === 'system' || (!toolType && isLocalSystemTool)) {
-                const { executeSystemTool } = require('../lib/systemTools');
+                const { executeSystemTool } = require('../service/mcp');
                 ClientLogger.info('[tool] callTool: name=%s -> branch=system (executeSystemTool, type=%s, hasToken=%s)', name, toolType || '', !!token);
                 return executeSystemTool(name, args || {}, systemToolContext);
             }
@@ -491,7 +490,7 @@ export class McpClient {
             }
 
             if (toolType === 'ejunztools') {
-                const { executeBuiltinEjunzToolsTool } = require('../lib/ejunzToolsMcp');
+                const { executeBuiltinEjunzToolsTool } = require('../service/mcp');
                 ClientLogger.info('[tool] callTool: name=%s -> branch=ejunztools', name);
                 return await executeBuiltinEjunzToolsTool(name, args || {});
             }
@@ -501,7 +500,7 @@ export class McpClient {
                 const cleanArgs = { ...(args || {}) };
                 delete (cleanArgs as any).__mcpId;
                 if (!Number.isFinite(mcpId) || mcpId <= 0) throw new Error(`Plugin MCP metadata missing for tool: ${name}`);
-                const { callPluginMcpTool } = require('../lib/pluginMcp');
+                const { callPluginMcpTool } = require('../service/mcp');
                 return await callPluginMcpTool({ domainId, mcpId, name, args: cleanArgs });
             }
 

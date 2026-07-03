@@ -32,15 +32,15 @@ import {
     resolveAgentPluginTools,
     resolveAgentSlashCatalog,
     visiblePluginsForUser,
-} from '../lib/pluginRuntime';
+} from '../service/mcp/pluginRuntime';
 import * as document from '../model/document';
 import NodeModel from '../model/node';
 import { callToolViaWorker } from './worker';
 import RecordModel from '../model/record';
 import SessionModel from '../model/session';
 import { parseCategory } from '../lib/category';
-import { summarizePluginMcpAvailability } from '../lib/pluginMcp';
-import { listDomainMcps } from '../lib/mcpRegistry';
+import { summarizePluginMcpAvailability } from '../service/mcp';
+import { listDomainMcps } from '../service/mcp';
 const AgentLogger = new Logger('agent');
 
 export type BaseLibraryBinding = { docId: number; branch: string };

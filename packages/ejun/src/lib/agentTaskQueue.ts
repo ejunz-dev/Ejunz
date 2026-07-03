@@ -11,7 +11,7 @@ import {
     renderSlashSystemBlock,
     resolveAgentPluginTools,
     resolveAgentSlashCatalog,
-} from './pluginRuntime';
+} from '../service/mcp/pluginRuntime';
 
 const logger = new Logger('lib/agentTaskQueue');
 

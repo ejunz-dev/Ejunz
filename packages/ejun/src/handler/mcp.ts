@@ -2,349 +2,19 @@ import { Handler } from '@ejunz/framework';
 import { Context } from '../context';
 import { Logger } from '../logger';
 import { PRIV } from '../model/builtin';
-import EdgeModel from '../model/edge';
 import EdgeTokenModel from '../model/edge_token';
 import McpModel from '../model/mcp';
-import SessionModel from '../model/session';
-import RecordModel from '../model/record';
-import { BaseModel } from '../model/base';
 import { NotFoundError, ValidationError } from '../error';
 import {
-    MCP_BUILTIN_TOOLS_CATALOG, isMcpBuiltinTool, executeMcpBuiltinTool,
-    buildMcpInstructions, defaultMcpToolDescriptions, resolveMcpTools,
-    isMcpBuiltinMutatingTool,
-    type McpToolContext,
-} from '../lib/mcpBuiltinTools';
-import { randomstring } from '../utils';
-import type { EdgeTokenDoc } from '../model/edge_token';
-import { getNormalizedMcp, listDomainMcps, mcpKind } from '../lib/mcpRegistry';
+    MCP_BUILTIN_TOOLS_CATALOG, buildMcpInstructions,
+    defaultMcpToolDescriptions, resolveMcpTools,
+    type JsonRpcMessage, type McpServerMeta, type McpToolContext,
+} from '../service/mcp';
 import { McpMarketAddHandler, McpMarketHandler, McpMarketRemoveHandler } from './tool';
 
 const logger = new Logger('handler/mcp');
 
-function clipForLog(value: unknown, _max = 800): string {
-    try {
-        if (typeof value === 'string') return value;
-        return JSON.stringify(value) || '';
-    } catch {
-        return String(value ?? '');
-    }
-}
-
-const MCP_PROTOCOL_VERSION = '2024-11-05';
 const SSE_KEEPALIVE_MS = 25 * 1000;
-
-const mcpTokenRefs: Map<string, number> = ((globalThis as any).__ejunzMcpTokenRefs ??= new Map<string, number>());
-
-export function isMcpTokenConnected(token: string): boolean {
-    return (mcpTokenRefs.get(token) || 0) > 0;
-}
-
-export function mcpActiveSessionCount(token: string): number {
-    return mcpTokenRefs.get(token) || 0;
-}
-
-async function registerOutboundEdge(ctx: Context, tokenDoc: EdgeTokenDoc) {
-    const { domainId, token, owner, baseDocId, branch } = tokenDoc;
-    try {
-        let edge = await EdgeModel.getByToken(domainId, token);
-        if (!edge) {
-            edge = await EdgeModel.add({ domainId, type: 'mcp', owner, token });
-        }
-        const mcp = await getOrCreateMcp(domainId, owner, token, baseDocId, branch);
-        if (edge.mcpId !== mcp.mid) {
-            await EdgeModel.update(domainId, edge.eid, { mcpId: mcp.mid });
-        }
-        const wasFirstConnection = !edge.tokenUsedAt;
-        await EdgeModel.update(domainId, edge.eid, {
-            status: 'online',
-            tokenUsedAt: edge.tokenUsedAt || new Date(),
-        });
-        await McpModel.update(domainId, mcp.mid, {
-            status: 'online',
-            edgeId: edge.eid,
-            lastConnectedAt: new Date(),
-        });
-        mcpTokenRefs.set(token, (mcpTokenRefs.get(token) || 0) + 1);
-        if (wasFirstConnection) {
-            const updated = await EdgeModel.getByToken(domainId, token);
-            if (updated) (ctx.emit as any)('edge/connected', updated);
-        }
-        (ctx.emit as any)('edge/status/update', token, 'online');
-        (ctx.emit as any)('mcp/status/update', domainId, mcp.mid, 'online');
-    } catch (e) {
-        logger.warn('Failed to register outbound MCP edge: domainId=%s, error=%s', domainId, (e as Error).message);
-    }
-}
-
-async function unregisterOutboundEdge(ctx: Context, domainId: string, token: string) {
-    const next = (mcpTokenRefs.get(token) || 1) - 1;
-    if (next > 0) {
-        mcpTokenRefs.set(token, next);
-        return;
-    }
-    mcpTokenRefs.delete(token);
-    try {
-        const edge = await EdgeModel.getByToken(domainId, token);
-        if (edge) {
-            await EdgeModel.update(domainId, edge.eid, { status: 'offline' });
-            (ctx.emit as any)('edge/status/update', token, 'offline');
-        }
-        const mcp = await McpModel.getByToken(domainId, token);
-        if (mcp) {
-            await McpModel.update(domainId, mcp.mid, { status: 'offline', lastDisconnectedAt: new Date() });
-            (ctx.emit as any)('mcp/status/update', domainId, mcp.mid, 'offline');
-        }
-    } catch (e) {
-        logger.warn('Failed to mark outbound MCP edge offline: domainId=%s, error=%s', domainId, (e as Error).message);
-    }
-}
-
-interface McpSession {
-    sessionId: string;
-    domainId: string;
-    token: string;
-    write: (event: string, data: string) => void;
-}
-
-const mcpSessions: Map<string, McpSession> = ((globalThis as any).__ejunzMcpSessions ??= new Map<string, McpSession>());
-
-function deliverToSession(sessionId: string, data: string): boolean {
-    const session = mcpSessions.get(sessionId);
-    if (!session) return false;
-    try {
-        session.write('message', data);
-        return true;
-    } catch (e) {
-        logger.warn('Failed to deliver MCP message: sessionId=%s, error=%s', sessionId, (e as Error).message);
-        return false;
-    }
-}
-
-function deliverOrBroadcast(ctx: Context, sessionId: string, data: string) {
-    if (deliverToSession(sessionId, data)) {
-        logger.info('MCP deliver -> SSE session (local): sessionId=%s, bytes=%d', sessionId, data.length);
-        return;
-    }
-    if (process.env.exec_mode === 'cluster_mode') {
-        logger.warn(
-            'MCP deliver: session not on this worker, broadcasting across cluster: sessionId=%s, bytes=%d',
-            sessionId, data.length,
-        );
-    } else {
-        // Not in cluster mode: broadcast only re-emits in this same process, where the session is
-        // already absent — so the response is effectively dropped and the client will hang until it
-        // reconnects. This usually means the SSE stream was closed by a server reload mid-request.
-        logger.warn(
-            'MCP deliver FAILED: SSE session no longer exists in this process and broadcast cannot cross '
-            + 'processes outside cluster mode; response dropped. sessionId=%s, bytes=%d',
-            sessionId, data.length,
-        );
-    }
-    (ctx as any).broadcast('mcp/deliver', { sessionId, data });
-}
-
-function deliverToToken(token: string, data: string): number {
-    let delivered = 0;
-    for (const session of mcpSessions.values()) {
-        if (session.token !== token) continue;
-        try {
-            session.write('message', data);
-            delivered++;
-        } catch (e) {
-            logger.warn('Failed to push MCP notification: sessionId=%s, error=%s', session.sessionId, (e as Error).message);
-        }
-    }
-    return delivered;
-}
-
-function notifyToolsListChanged(ctx: Context, token: string) {
-    const data = JSON.stringify({ jsonrpc: '2.0', method: 'notifications/tools/list_changed' });
-    const delivered = deliverToToken(token, data);
-    (ctx as any).broadcast('mcp/notify', { token, data });
-    logger.info('MCP tools/list_changed pushed: localSessions=%d (+broadcast to other processes)', delivered);
-}
-
-async function recordMcpToolCall(input: {
-    domainId: string;
-    uid: number;
-    mcpId?: number;
-    baseDocId: number;
-    branch: string;
-    tool: string;
-    args: Record<string, any>;
-    result?: string;
-    isError?: boolean;
-    error?: string;
-    durationMs: number;
-}): Promise<void> {
-    try {
-        if (!input.uid || !input.mcpId) return;
-        const baseDocId = input.baseDocId || 0;
-        const branch = input.branch || 'main';
-        const session = await SessionModel.getOrCreateMcpSession(input.domainId, input.uid, input.mcpId, baseDocId, branch);
-        await RecordModel.insertMcpToolRecord(input.domainId, input.uid, session._id, {
-            mcpId: input.mcpId,
-            baseDocId,
-            branch,
-            meta: {
-                tool: input.tool,
-                args: input.args || {},
-                result: input.result,
-                isError: input.isError,
-                error: input.error,
-                durationMs: input.durationMs,
-                sessionRef: session._id.toHexString(),
-            },
-        });
-    } catch (e) {
-        logger.warn('Failed to record MCP tool call: tool=%s, error=%s', input.tool, (e as Error).message);
-    }
-}
-
-type JsonRpcMessage = {
-    jsonrpc?: string;
-    id?: string | number | null;
-    method?: string;
-    params?: any;
-};
-
-interface McpServerMeta {
-    domainId: string;
-    baseDocId?: number;
-    branch?: string;
-    instructions?: string;
-    toolOverrides?: { name: string; description: string }[];
-}
-
-async function handleJsonRpc(
-    ctx: Context,
-    domainId: string,
-    msg: JsonRpcMessage,
-    meta?: McpServerMeta,
-): Promise<any | null> {
-    if (!msg || typeof msg !== 'object' || !msg.method) return null;
-    const { id, method } = msg;
-    const hasId = id !== undefined && id !== null;
-
-    switch (method) {
-    case 'initialize': {
-        const baseDocId = meta?.baseDocId;
-        const instructions = meta?.instructions || await buildMcpInstructions({
-            domainId,
-            baseDocId,
-            branch: meta?.branch,
-        });
-        return {
-            jsonrpc: '2.0',
-            id,
-            result: {
-                protocolVersion: MCP_PROTOCOL_VERSION,
-                capabilities: { tools: { listChanged: true } },
-                serverInfo: {
-                    name: baseDocId ? `ejunz-base-${baseDocId}` : 'ejunz-mcp',
-                    version: '1.0.0',
-                },
-                instructions,
-            },
-        };
-    }
-    case 'notifications/initialized':
-    case 'notifications/cancelled':
-        return null;
-    case 'ping':
-        return { jsonrpc: '2.0', id, result: {} };
-    case 'tools/list':
-        return { jsonrpc: '2.0', id, result: { tools: resolveMcpTools(meta?.toolOverrides) } };
-    default:
-        if (hasId) {
-            return { jsonrpc: '2.0', id, error: { code: -32601, message: `Method not found: ${method}` } };
-        }
-        return null;
-    }
-}
-
-/**
- * Process a single inbound JSON-RPC message and return the JSON-RPC response object
- * (or null for notifications that need no response). Shared by both the SSE and the
- * Streamable HTTP transports — the caller decides how to deliver the returned response
- * (write to an SSE stream vs. return inline on the POST response).
- */
-async function processMcpMessage(
-    ctx: Context,
-    msg: JsonRpcMessage,
-    toolCtx: McpToolContext,
-    meta: McpServerMeta,
-    mcpDoc: { mid: number } | null,
-    logCtx: string,
-): Promise<any | null> {
-    logger.info('MCP recv: %s, method=%s, id=%s', logCtx, msg?.method || '-', `${msg?.id ?? '-'}`);
-
-    if (msg && msg.method === 'tools/call' && msg.id !== undefined && msg.id !== null) {
-        const name = msg.params?.name;
-        const args = msg.params?.arguments || {};
-        if (!name || typeof name !== 'string') {
-            logger.warn('MCP tools/call rejected (missing name): %s, id=%s', logCtx, `${msg.id}`);
-            return { jsonrpc: '2.0', id: msg.id, error: { code: -32602, message: 'Invalid params: name is required' } };
-        }
-        if (!isMcpBuiltinTool(name)) {
-            logger.warn('MCP tools/call unknown tool: %s, tool=%s, id=%s', logCtx, name, `${msg.id}`);
-            return { jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true } };
-        }
-        logger.info('MCP tools/call -> %s, tool=%s, id=%s, args=%s', logCtx, name, `${msg.id}`, clipForLog(args));
-        const startedAt = Date.now();
-        let response: any;
-        let resultText: string | undefined;
-        let isError = false;
-        let errorMsg: string | undefined;
-        try {
-            const result = await executeMcpBuiltinTool(toolCtx, name, args);
-            resultText = typeof result === 'string' ? result : JSON.stringify(result);
-            response = { jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: resultText }] } };
-            logger.info(
-                'MCP tools/call OK: %s, tool=%s, id=%s, %dms, result=%s',
-                logCtx, name, `${msg.id}`, Date.now() - startedAt, clipForLog(resultText),
-            );
-            if (isMcpBuiltinMutatingTool(name)) {
-                (ctx.emit as any)('base/update', toolCtx.baseDocId, null, toolCtx.branch);
-            }
-        } catch (e) {
-            isError = true;
-            errorMsg = (e as Error).message;
-            response = { jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: errorMsg }], isError: true } };
-            logger.warn(
-                'MCP tools/call ERROR: %s, tool=%s, id=%s, %dms, error=%s',
-                logCtx, name, `${msg.id}`, Date.now() - startedAt, errorMsg,
-            );
-        }
-        await recordMcpToolCall({
-            domainId: toolCtx.domainId,
-            uid: toolCtx.owner,
-            mcpId: mcpDoc?.mid,
-            baseDocId: toolCtx.baseDocId,
-            branch: toolCtx.branch,
-            tool: name,
-            args,
-            result: isError ? undefined : resultText,
-            isError,
-            error: errorMsg,
-            durationMs: Date.now() - startedAt,
-        });
-        return response;
-    }
-
-    const response = await handleJsonRpc(ctx, toolCtx.domainId, msg, meta);
-    if (!response) {
-        logger.info('MCP handled (no response): %s, method=%s', logCtx, msg?.method || '-');
-        return null;
-    }
-    if (response.error) {
-        logger.warn('MCP %s ERROR: %s, code=%s, msg=%s', msg?.method || '-', logCtx, response.error.code, response.error.message);
-    } else {
-        logger.info('MCP %s OK: %s', msg?.method || '-', logCtx);
-    }
-    return response;
-}
 
 function detectOrigin(h: Handler<Context>): { protocol: string; host: string } {
     const host = h.request.host || (h.request.headers.host as string) || 'localhost';
@@ -363,6 +33,11 @@ function extractToken(h: Handler<Context>): { token: string; source: string } | 
     const x = h.request.headers['x-mcp-token'] as string;
     if (x) return { token: x, source: 'x-mcp-token' };
     return null;
+}
+
+function buildMcpConnectionInfo(h: Handler<Context>, domainId: string, token: string, pathId?: string) {
+    const { protocol, host } = detectOrigin(h);
+    return h.ctx.mcp.buildConnectionInfo({ protocol, host, domainId, token, pathId });
 }
 
 export class McpConnectionHandler extends Handler<Context> {
@@ -385,7 +60,7 @@ export class McpConnectionHandler extends Handler<Context> {
         }
         await EdgeTokenModel.markPermanent(token);
         const domainId = tokenDoc.domainId;
-        await registerOutboundEdge(this.ctx, tokenDoc);
+        await this.ctx.mcp.registerOutboundEdge(tokenDoc);
 
         const res = this.context.res;
         this.context.respond = false;
@@ -405,13 +80,13 @@ export class McpConnectionHandler extends Handler<Context> {
         }
         res.flushHeaders();
 
-        const sessionId = randomstring(24);
         const write = (event: string, data: string) => {
             if (res.writableEnded) return;
             res.write(`event: ${event}\ndata: ${data}\n\n`);
             if (typeof (res as any).flush === 'function') (res as any).flush();
         };
-        mcpSessions.set(sessionId, { sessionId, domainId, token, write });
+        const session = this.ctx.mcp.openSseSession({ domainId, token, write });
+        const { sessionId } = session;
         logger.info(
             'MCP session opened: sessionId=%s, domainId=%s, base=%s/%s, owner=%s, tokenSource=%s, ua=%s',
             sessionId, domainId, tokenDoc.baseDocId ?? '-', tokenDoc.branch || 'main',
@@ -436,9 +111,9 @@ export class McpConnectionHandler extends Handler<Context> {
                 if (settled) return;
                 settled = true;
                 clearInterval(keepAlive);
-                mcpSessions.delete(sessionId);
+                session.dispose();
                 try { if (!res.writableEnded) res.end(); } catch { /* ignore */ }
-                void unregisterOutboundEdge(this.ctx, domainId, token);
+                void this.ctx.mcp.unregisterOutboundEdge(domainId, token);
                 logger.info('MCP session closed: sessionId=%s', sessionId);
                 resolve();
             };
@@ -481,7 +156,7 @@ export class McpMessageHandler extends Handler<Context> {
         // Outside pm2 cluster mode the broadcast fallback is a local no-op, so fail fast with 404 to
         // make the client tear down the dead session and reconnect (GET /mcp/sse) instead of hanging.
         const clusterMode = process.env.exec_mode === 'cluster_mode';
-        if (!mcpSessions.has(sessionId) && !clusterMode) {
+        if (!this.ctx.mcp.hasSession(sessionId) && !clusterMode) {
             logger.warn(
                 'MCP message rejected: SSE session not found in this process '
                 + '(likely closed by a server reload, or never established here); client must reconnect. '
@@ -523,8 +198,8 @@ export class McpMessageHandler extends Handler<Context> {
             + `owner=${toolCtx.owner}, session=${sessionId}`;
 
         for (const msg of messages) {
-            const response = await processMcpMessage(this.ctx, msg, toolCtx, meta, mcpDoc, logCtx);
-            if (response) deliverOrBroadcast(this.ctx, sessionId, JSON.stringify(response));
+            const response = await this.ctx.mcp.processMessage(msg, toolCtx, meta, mcpDoc, logCtx);
+            if (response) this.ctx.mcp.deliverOrBroadcast(sessionId, JSON.stringify(response));
         }
 
         this.response.status = 202;
@@ -603,7 +278,7 @@ export class McpStreamableHandler extends Handler<Context> {
 
         const responses: any[] = [];
         for (const msg of messages) {
-            const response = await processMcpMessage(this.ctx, msg, toolCtx, meta, mcpDoc, logCtx);
+            const response = await this.ctx.mcp.processMessage(msg, toolCtx, meta, mcpDoc, logCtx);
             if (response) responses.push(response);
         }
 
@@ -621,114 +296,6 @@ export class McpStreamableHandler extends Handler<Context> {
     }
 }
 
-async function getOrCreateMcpToken(
-    domainId: string,
-    owner: number,
-    baseDocId?: number,
-    branch?: string,
-): Promise<string> {
-    const query: any = { domainId, type: 'mcp_sse', owner };
-    if (baseDocId !== undefined && baseDocId !== null) query.baseDocId = baseDocId;
-    const existing = await EdgeTokenModel.coll.findOne(query);
-    if (existing) {
-        const fresh = await EdgeTokenModel.getByToken(existing.token);
-        if (fresh) return fresh.token;
-    }
-    const token = await EdgeTokenModel.generateToken();
-    await EdgeTokenModel.add(domainId, 'mcp_sse', token, owner, { baseDocId, branch });
-    return token;
-}
-
-async function getOrCreateMcp(
-    domainId: string,
-    owner: number,
-    token: string,
-    baseDocId?: number,
-    branch?: string,
-) {
-    let mcp = await McpModel.getByToken(domainId, token);
-    if (!mcp) {
-        const instructions = await buildMcpInstructions({ domainId, baseDocId, branch });
-        mcp = await McpModel.add({
-            domainId,
-            owner,
-            token,
-            baseDocId,
-            branch,
-            name: baseDocId ? `MCP · base ${baseDocId}` : 'MCP',
-            kind: 'outbound',
-            source: { type: 'ejunz_base' },
-            assignable: false,
-            instructions,
-            tools: defaultMcpToolDescriptions(),
-        });
-    }
-    return mcp;
-}
-
-async function resolveBasePathId(domainId: string, baseDocId?: number): Promise<string | undefined> {
-    if (!baseDocId) return undefined;
-    try {
-        const base = await BaseModel.get(domainId, baseDocId);
-        const bid = (base as any)?.bid;
-        if (bid && String(bid).trim()) return String(bid).trim();
-    } catch { /* fall back to docId */ }
-    return String(baseDocId);
-}
-
-function buildMcpConnectionInfo(h: Handler<Context>, domainId: string, token: string, pathId?: string) {
-    const { protocol, host } = detectOrigin(h);
-    const seg = pathId ? `/${encodeURIComponent(pathId)}` : '';
-    const baseUrl = `${protocol}://${host}/d/${domainId}/mcp/sse${seg}`;
-    const url = `${baseUrl}?token=${token}`;
-    const command = `claude mcp add --transport sse ejunz-${domainId} ${baseUrl} --header "Authorization: Bearer ${token}"`;
-
-    // Streamable HTTP transport (recommended): same token, different endpoint/transport.
-    const httpBaseUrl = `${protocol}://${host}/d/${domainId}/mcp/http${seg}`;
-    const httpUrl = `${httpBaseUrl}?token=${token}`;
-    const httpCommand = `claude mcp add --transport http ejunz-${domainId} ${httpBaseUrl} --header "Authorization: Bearer ${token}"`;
-
-    return {
-        token,
-        url,
-        baseUrl,
-        command,
-        httpUrl,
-        httpBaseUrl,
-        httpCommand,
-        config: {
-            mcpServers: {
-                ejunz: {
-                    type: 'sse',
-                    url: baseUrl,
-                    headers: { Authorization: `Bearer ${token}` },
-                },
-            },
-        },
-        httpConfig: {
-            mcpServers: {
-                ejunz: {
-                    type: 'http',
-                    url: httpBaseUrl,
-                    headers: { Authorization: `Bearer ${token}` },
-                },
-            },
-        },
-    };
-}
-
-function buildMcpStatus(domainId: string, mcp: { mid: number; token?: string; edgeId?: number }) {
-    const online = mcpActiveSessionCount(mcp.token || '') > 0;
-    const edgeId = mcp.edgeId || null;
-    return {
-        mid: mcp.mid,
-        edgeId,
-        used: !!edgeId,
-        status: online ? 'online' : (edgeId ? 'offline' : 'pending'),
-        edgeUrl: edgeId ? `/d/${domainId}/edge/${edgeId}` : null,
-    };
-}
-
 export class McpTokenHandler extends Handler<Context> {
     notUsage = true;
 
@@ -741,14 +308,14 @@ export class McpTokenHandler extends Handler<Context> {
             ? Number(rawBaseId) : undefined;
         const branch = this.request.body?.branch ? String(this.request.body.branch) : undefined;
 
-        const token = await getOrCreateMcpToken(domainId, this.user._id, baseDocId, branch);
-        const mcp = await getOrCreateMcp(domainId, this.user._id, token, baseDocId, branch);
-        const pathId = await resolveBasePathId(domainId, baseDocId ?? mcp.baseDocId);
+        const token = await this.ctx.mcp.getOrCreateMcpToken(domainId, this.user._id, baseDocId, branch);
+        const mcp = await this.ctx.mcp.getOrCreateMcp(domainId, this.user._id, token, baseDocId, branch);
+        const pathId = await this.ctx.mcp.resolveBasePathId(domainId, baseDocId ?? mcp.baseDocId);
         this.response.body = {
             success: true,
             baseDocId,
             branch: branch || mcp.branch || 'main',
-            ...buildMcpStatus(domainId, mcp),
+            ...this.ctx.mcp.buildStatus(domainId, mcp),
             ...buildMcpConnectionInfo(this, domainId, token, pathId),
         };
     }
@@ -773,14 +340,14 @@ export class McpTokenHandler extends Handler<Context> {
             this.response.body = { success: true, exists: false };
             return;
         }
-        this.response.body = { success: true, exists: true, ...buildMcpStatus(domainId, mcp) };
+        this.response.body = { success: true, exists: true, ...this.ctx.mcp.buildStatus(domainId, mcp) };
     }
 }
 
 export class McpListHandler extends Handler<Context> {
     async get() {
         const domainId = this.domain._id;
-        const mcps = await listDomainMcps(domainId, this.user);
+        const mcps = await this.ctx.mcp.listDomainMcps(domainId, this.user);
         this.response.template = 'mcp_main.html';
         this.response.body = { domainId, mcps };
     }
@@ -797,17 +364,17 @@ export class McpDetailHandler extends Handler<Context> {
         const mcp = await McpModel.getByMcpId(domainId, mid);
         if (!mcp) throw new NotFoundError('Mcp not found');
 
-        const normalized = await getNormalizedMcp(domainId, mid);
+        const normalized = await this.ctx.mcp.getNormalizedMcp(domainId, mid);
         if (!normalized) throw new NotFoundError('Mcp not found');
 
         const isOwner = this.user._id === mcp.owner || this.user.hasPriv(PRIV.PRIV_USER_PROFILE);
-        const kind = mcpKind(mcp);
+        const kind = this.ctx.mcp.mcpKind(mcp);
         const online = normalized.online;
         const edge = normalized.edge || null;
 
         let info: ReturnType<typeof buildMcpConnectionInfo> | null = null;
         if (kind === 'outbound' && isOwner && mcp.token) {
-            const pathId = await resolveBasePathId(domainId, mcp.baseDocId);
+            const pathId = await this.ctx.mcp.resolveBasePathId(domainId, mcp.baseDocId);
             info = buildMcpConnectionInfo(this, domainId, mcp.token, pathId);
         }
 
@@ -843,7 +410,7 @@ export class McpEditHandler extends Handler<Context> {
         if (this.user._id !== mcp.owner && !this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) {
             throw new ValidationError('You are not allowed to edit this MCP.');
         }
-        if (mcpKind(mcp) !== 'outbound') {
+        if (this.ctx.mcp.mcpKind(mcp) !== 'outbound') {
             throw new ValidationError('Only outbound MCP endpoints can be edited here.');
         }
 
@@ -871,7 +438,7 @@ export class McpEditHandler extends Handler<Context> {
         if (this.user._id !== mcp.owner && !this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) {
             throw new ValidationError('You are not allowed to edit this MCP.');
         }
-        if (mcpKind(mcp) !== 'outbound') {
+        if (this.ctx.mcp.mcpKind(mcp) !== 'outbound') {
             throw new ValidationError('Only outbound MCP endpoints can be edited here.');
         }
 
@@ -885,7 +452,7 @@ export class McpEditHandler extends Handler<Context> {
                 instructions,
                 tools: defaultMcpToolDescriptions(),
             });
-            if (mcp.token) notifyToolsListChanged(this.ctx, mcp.token);
+            if (mcp.token) this.ctx.mcp.notifyToolsListChanged(mcp.token);
             this.response.redirect = this.url('mcp_edit', { mid });
             return;
         }
@@ -901,7 +468,7 @@ export class McpEditHandler extends Handler<Context> {
         if (typeof body.instructions === 'string') update.instructions = body.instructions.trim();
 
         await McpModel.update(domainId, mid, update);
-        if (mcp.token) notifyToolsListChanged(this.ctx, mcp.token);
+        if (mcp.token) this.ctx.mcp.notifyToolsListChanged(mcp.token);
         this.response.redirect = this.url('mcp_detail', { mid });
     }
 }
@@ -932,10 +499,4 @@ export async function apply(ctx: Context) {
     ctx.Route('mcp_edit', '/mcp/:mid/edit', McpEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mcp_detail', '/mcp/:mid', McpDetailHandler);
 
-    (ctx as any).on('mcp/deliver', ({ sessionId, data }: { sessionId: string; data: string }) => {
-        deliverToSession(sessionId, data);
-    });
-    (ctx as any).on('mcp/notify', ({ token, data }: { token: string; data: string }) => {
-        deliverToToken(token, data);
-    });
 }
