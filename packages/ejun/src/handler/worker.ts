@@ -21,6 +21,28 @@ import {
 
 const logger = new Logger('worker');
 
+type AgentStreamSnapshot = {
+    recordId: string;
+    domainId: string;
+    bubbleId?: string;
+    content?: string;
+    isNew?: boolean;
+    updatedAt: number;
+};
+
+const agentStreamSnapshots = new Map<string, AgentStreamSnapshot>();
+
+export function getAgentStreamSnapshot(domainId: string, recordId: string): AgentStreamSnapshot | undefined {
+    const snapshot = agentStreamSnapshots.get(`${domainId}:${recordId}`);
+    if (!snapshot) return undefined;
+    // Streaming snapshots are only a live-subscription catch-up aid; avoid replaying stale completed content forever.
+    if (Date.now() - snapshot.updatedAt > 5 * 60 * 1000) {
+        agentStreamSnapshots.delete(`${domainId}:${recordId}`);
+        return undefined;
+    }
+    return snapshot;
+}
+
 const WORKER_PROTOCOL = 'ejunz-worker-v1';
 const DEFAULT_TASK_TYPES = ['agent_task', 'tool_call', 'mcp_tool_call'];
 
@@ -223,11 +245,17 @@ class AgentTaskCallbackContext extends EjunzTaskCallbackContext {
     stream(body: any) {
         const rid = this.recordId;
         if (!rid) return;
-        bus.broadcast('bubble/stream' as any, {
-            recordId: rid.toString(),
+        const recordId = rid.toString();
+        const streamData = {
+            recordId,
             domainId: this.domainId,
             ...body,
+        };
+        agentStreamSnapshots.set(`${this.domainId}:${recordId}`, {
+            ...streamData,
+            updatedAt: Date.now(),
         });
+        bus.broadcast('bubble/stream' as any, streamData);
     }
 
     status(body: any) {
@@ -279,6 +307,7 @@ class AgentTaskCallbackContext extends EjunzTaskCallbackContext {
                 score: Number.isFinite(body?.score) ? Number(body.score) : 100,
                 ...this.workerMeta(),
             });
+            agentStreamSnapshots.delete(`${this.domainId}:${rid.toString()}`);
             (bus.broadcast as any)('task/agent-completed', {
                 recordId: rid.toString(),
                 domainId: this.domainId,
@@ -293,6 +322,7 @@ class AgentTaskCallbackContext extends EjunzTaskCallbackContext {
             const rid = this.recordId;
             if (!rid) return;
             const err = body?.error || body;
+            agentStreamSnapshots.delete(`${this.domainId}:${rid.toString()}`);
             await RecordModel.updateAgentTask(this.domainId, rid, {
                 status: Number.isFinite(body?.status) ? Number(body.status) : STATUS.STATUS_TASK_ERROR_SYSTEM,
                 score: Number.isFinite(body?.score) ? Number(body.score) : 0,

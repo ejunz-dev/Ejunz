@@ -35,7 +35,7 @@ import {
 } from '../model/mcp';
 import * as document from '../model/document';
 import NodeModel from '../model/node';
-import { callToolViaWorker } from './worker';
+import { callToolViaWorker, getAgentStreamSnapshot } from './worker';
 import RecordModel from '../model/record';
 import SessionModel from '../model/session';
 import { parseCategory } from '../lib/category';
@@ -2387,6 +2387,7 @@ export class AgentChatSessionConnectionHandler extends ConnectionHandler {
                             bubbleId: data.bubbleId,
                             content: data.content,
                             isNew: data.isNew || false,
+                            streamMode: 'replace',
                         });
                     } catch (error: any) {
                         AgentLogger.error('Error sending bubble stream:', error);
@@ -2458,7 +2459,20 @@ export class AgentChatSessionConnectionHandler extends ConnectionHandler {
                 adoc,
                 udoc,
             });
-            
+
+            const streamSnapshot = getAgentStreamSnapshot(this.domainId, recordId);
+            if (streamSnapshot?.bubbleId && streamSnapshot.content !== undefined) {
+                this.send({
+                    type: 'bubble_stream',
+                    recordId,
+                    bubbleId: streamSnapshot.bubbleId,
+                    content: streamSnapshot.content,
+                    isNew: streamSnapshot.isNew || false,
+                    streamMode: 'replace',
+                    replay: true,
+                });
+            }
+
             // Track previous status to detect state changes
             let previousStatus: number | undefined = undefined;
             const STATUS = require('../model/builtin').STATUS;
@@ -2528,6 +2542,7 @@ export class AgentChatSessionConnectionHandler extends ConnectionHandler {
                                 recordId,
                                 bubbleId: lastMessage?.bubbleId,
                                 status: currentStatus,
+                                content: lastMessage?.role === 'assistant' && typeof lastMessage?.content === 'string' ? lastMessage.content : '',
                             });
                         }
                         
