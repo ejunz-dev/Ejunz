@@ -167,6 +167,15 @@ __langname: English
 'Drop here to delete': Drop here to delete
 'Edge Connection Status': Edge Connection Status
 'Edge page': Edge page
+'Edge Type': Edge Type
+'Edge authorization succeeded': Edge authorization succeeded
+'Authorize Edge registration': Authorize Edge registration
+'The Edge client has received its connection token and will reconnect automatically to complete registration.': The Edge client has received its connection token and will reconnect automatically to complete registration.
+'You can close this page.': You can close this page.
+'An Edge client is requesting to register to the current domain.': An Edge client is requesting to register to the current domain.
+'Expires At': Expires At
+'Authorize and register': Authorize and register
+edge_authorize: Edge Authorization
 'Edit Client': Edit Client
 'Edited': Edited
 'Enable Server VAD': Enable Server VAD
