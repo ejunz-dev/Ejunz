@@ -265,6 +265,15 @@ Duration (hours): 지속시간 (h)
 Duration: 지속시간
 Edge Connection Status: Edge 연결 상태
 Edge page: Edge 페이지
+Edge Type: Edge 유형
+Edge authorization succeeded: Edge 인증 성공
+Authorize Edge registration: Edge 등록 인증
+The Edge client has received its connection token and will reconnect automatically to complete registration.: Edge 클라이언트가 연결 Token을 받았으며 등록을 완료하기 위해 자동으로 다시 연결합니다.
+You can close this page.: 이 페이지를 닫아도 됩니다.
+An Edge client is requesting to register to the current domain.: Edge 클라이언트가 현재 그룹에 등록을 요청하고 있습니다.
+Expires At: 만료 시간
+Authorize and register: 인증하고 등록
+edge_authorize: Edge 인증
 Edit Client: 클라이언트 편집
 Edit description of this domain: 그룹 설명 수정
 Edit discussion replies of own discussion: 본인의 토론에 대한 댓글 수정

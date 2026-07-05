@@ -26,9 +26,12 @@ type Subscription = {
 };
 
 export function isEdgeTokenConnected(token: string): boolean {
-    return EdgeServerConnectionHandler.active.has(token)
-        || EdgeConnectionHandler.activeByToken.has(token)
-        || !!(global as any).app?.mcp?.isTokenConnected?.(token);
+    if (EdgeServerConnectionHandler.active.has(token) || EdgeConnectionHandler.activeByToken.has(token)) return true;
+    try {
+        return !!(global as any).app?.mcp?.isTokenConnected?.(token);
+    } catch {
+        return false;
+    }
 }
 
 function getEdgeTypeInjectNodes(): Array<{ args: Record<string, any> }> {
@@ -53,6 +56,63 @@ function withEdgeTypeLabel<T extends { type: string; category?: string }>(edge: 
     };
 }
 
+const EDGE_AUTH_TTL_MS = 10 * 60 * 1000;
+
+type PendingEdgeAuth = {
+    code: string;
+    domainId: string;
+    type: string;
+    endpoint: string;
+    authUrl: string;
+    expiresAt: number;
+    connection: EdgeConnectionHandler;
+    timer: NodeJS.Timeout;
+};
+
+const pendingEdgeAuth = new Map<string, PendingEdgeAuth>();
+
+function resolveAllowedEdgeType(type: any) {
+    const builtinTypes = new Set(['provider', 'client', 'node', 'repo']);
+    const injectedTypes = getEdgeTypeInjectNodes().map((i) => i.args?.value).filter(Boolean);
+    const allowedTypes = new Set([...builtinTypes, ...injectedTypes]);
+    return typeof type === 'string' && allowedTypes.has(type) ? type : 'provider';
+}
+
+function getRequestOrigin(h: Handler<Context> | ConnectionHandler<Context>) {
+    const forwardedProto = h.request.headers['x-forwarded-proto'];
+    const protocol = Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto
+        || (h.request.headers['x-forwarded-ssl'] === 'on' ? 'https' : 'http');
+    const host = h.request.host || h.request.headers.host || 'localhost';
+    return { protocol: String(protocol), host: String(host) };
+}
+
+function getDomainScopedEdgeConnDomainId(h: ConnectionHandler<Context>): string | null {
+    const path = h.request.originalPath || h.request.path;
+    const match = /^\/d\/([^/]+)\/edge\/conn$/.exec(path);
+    return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
+
+function buildCurrentWsEndpoint(h: ConnectionHandler<Context>) {
+    const { protocol, host } = getRequestOrigin(h);
+    const wsProtocol = protocol === 'https' ? 'wss' : 'ws';
+    const path = h.request.originalPath || h.request.path;
+    const query = h.request.querystring ? `?${h.request.querystring}` : '';
+    return `${wsProtocol}://${host}${path}${query}`;
+}
+
+function buildTokenizedEndpoint(endpoint: string, token: string) {
+    const url = new URL(endpoint);
+    url.searchParams.set('token', token);
+    return url.toString();
+}
+
+function deletePendingEdgeAuth(code: string) {
+    const session = pendingEdgeAuth.get(code);
+    if (!session) return;
+    clearTimeout(session.timer);
+    pendingEdgeAuth.delete(code);
+}
+
 export class EdgeConnectionHandler extends ConnectionHandler<Context> {
     static active = new Set<EdgeConnectionHandler>();
     static activeByToken = new Map<string, EdgeConnectionHandler>();
@@ -61,12 +121,19 @@ export class EdgeConnectionHandler extends ConnectionHandler<Context> {
     private pending: Map<string, { resolve: Function, reject: Function, timer: NodeJS.Timeout } > = new Map();
     private subscriptions: Subscription[] = [];
     private accepted = false;
+    private edgeAuthCode: string | null = null;
 
     async prepare() {
         const rawToken = this.request.query?.token;
         const token = typeof rawToken === 'string' && rawToken ? rawToken : null;
+        const domainId = getDomainScopedEdgeConnDomainId(this);
 
         if (token) {
+            if (!domainId) {
+                logger.warn('Edge client connection rejected: domain-scoped endpoint is required');
+                this.close(4000, 'Domain-scoped endpoint is required');
+                return;
+            }
             const existing = EdgeConnectionHandler.activeByToken.get(token);
             if (existing && existing !== this) {
                 logger.warn('Replacing stale edge connection for token=%s (old ip=%s)', token, existing.request?.ip);
@@ -78,6 +145,11 @@ export class EdgeConnectionHandler extends ConnectionHandler<Context> {
             if (!tokenDoc) {
                 logger.warn('Edge client connection rejected: invalid token');
                 this.close(4000, 'Invalid token');
+                return;
+            }
+            if (tokenDoc.domainId !== domainId) {
+                logger.warn('Edge client connection rejected: token domain mismatch (path=%s, token=%s)', domainId, tokenDoc.domainId);
+                this.close(4000, 'Token domain mismatch');
                 return;
             }
             this.token = token;
@@ -106,9 +178,45 @@ export class EdgeConnectionHandler extends ConnectionHandler<Context> {
             (this.ctx.emit as any)('edge/status/update', token, 'online');
             await EdgeTokenModel.updateLastUsed(token);
             await EdgeTokenModel.markPermanent(token);
-        } else if (EdgeConnectionHandler.active.size > 0) {
-            // 无 token 时保持全局单例（兼容旧客户端）
-            try { this.close(1000, 'edge singleton: connection already active'); } catch { /* ignore */ }
+        } else {
+            if (domainId) {
+                const type = resolveAllowedEdgeType(this.request.query?.type);
+                const code = await EdgeTokenModel.generateToken();
+                const { protocol, host } = getRequestOrigin(this);
+                const authUrl = `${protocol}://${host}/d/${encodeURIComponent(domainId)}/edge/authorize?code=${encodeURIComponent(code)}`;
+                const expiresAt = Date.now() + EDGE_AUTH_TTL_MS;
+                const timer = setTimeout(() => {
+                    const session = pendingEdgeAuth.get(code);
+                    if (!session) return;
+                    pendingEdgeAuth.delete(code);
+                    try { session.connection.send({ type: 'edge/auth_expired', code }); } catch { /* ignore */ }
+                    try { session.connection.close(4000, 'edge auth expired'); } catch { /* ignore */ }
+                }, EDGE_AUTH_TTL_MS);
+                this.edgeAuthCode = code;
+                pendingEdgeAuth.set(code, {
+                    code,
+                    domainId,
+                    type,
+                    endpoint: buildCurrentWsEndpoint(this),
+                    authUrl,
+                    expiresAt,
+                    connection: this,
+                    timer,
+                });
+                this.accepted = true;
+                logger.info('Edge auth required from %s (domain=%s, type=%s)', this.request.ip, domainId, type);
+                this.send({
+                    type: 'edge/auth_required',
+                    code,
+                    edgeType: type,
+                    edgeTypeLabel: resolveEdgeTypeLabel(type),
+                    authUrl,
+                    expiresAt,
+                });
+                return;
+            }
+            logger.warn('Edge client connection rejected: domain-scoped endpoint is required');
+            this.close(4000, 'Domain-scoped endpoint is required');
             return;
         }
 
@@ -197,6 +305,11 @@ export class EdgeConnectionHandler extends ConnectionHandler<Context> {
 
     async cleanup() {
         this.unsubscribeAll();
+        if (this.edgeAuthCode) {
+            const session = pendingEdgeAuth.get(this.edgeAuthCode);
+            if (session?.connection === this) deletePendingEdgeAuth(this.edgeAuthCode);
+            this.edgeAuthCode = null;
+        }
         if (this.accepted) logger.info('Edge client disconnected from %s%s', this.request.ip, this.token ? ` (token=${this.token})` : '');
         for (const [, p] of this.pending) { try { p.reject(new Error('connection closed')); } catch { /* ignore */ } }
         this.pending.clear();
@@ -1091,6 +1204,65 @@ export class EdgeDetailHandler extends Handler<Context> {
     }
 }
 
+export class EdgeAuthorizeHandler extends Handler<Context> {
+    private getSession(): PendingEdgeAuth {
+        const code = this.request.query?.code;
+        if (typeof code !== 'string' || !code) throw new ValidationError('code');
+        const session = pendingEdgeAuth.get(code);
+        if (!session || session.expiresAt < Date.now()) {
+            if (session) deletePendingEdgeAuth(code);
+            throw new NotFoundError('Edge authorization request');
+        }
+        if (session.domainId !== this.domain._id) throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        return session;
+    }
+
+    async get() {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const session = this.getSession();
+        this.response.template = 'edge_authorize.html';
+        this.response.body = {
+            authorized: false,
+            domainId: session.domainId,
+            edgeType: session.type,
+            edgeTypeLabel: resolveEdgeTypeLabel(session.type),
+            endpoint: session.endpoint,
+            expiresAt: new Date(session.expiresAt),
+        };
+    }
+
+    async post() {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const session = this.getSession();
+        const token = await EdgeTokenModel.generateToken();
+        await EdgeTokenModel.add(session.domainId, session.type, token, this.user._id);
+        const wsEndpoint = buildTokenizedEndpoint(session.endpoint, token);
+        deletePendingEdgeAuth(session.code);
+        try {
+            session.connection.send({
+                type: 'edge/auth_success',
+                code: session.code,
+                edgeType: session.type,
+                wsEndpoint,
+            });
+            setTimeout(() => {
+                try { session.connection.close(1000, 'edge auth complete'); } catch { /* ignore */ }
+            }, 100);
+        } catch (e) {
+            logger.warn('Failed to notify edge auth success: %s', (e as Error).message);
+        }
+        this.response.template = 'edge_authorize.html';
+        this.response.body = {
+            authorized: true,
+            domainId: session.domainId,
+            edgeType: session.type,
+            edgeTypeLabel: resolveEdgeTypeLabel(session.type),
+            endpoint: session.endpoint,
+            expiresAt: new Date(session.expiresAt),
+        };
+    }
+}
+
 export class EdgeGenerateTokenHandler extends Handler<Context> {
     @param('type', Types.String, true)
     async post(domainId: string, type?: string) {
@@ -1371,6 +1543,7 @@ export async function apply(ctx: Context) {
     ctx.Route('edge_rpc', '/edge/rpc', EdgeRpcHandler as any);
     ctx.Route('edge_domain', '/edge/list', EdgeDomainHandler);
     ctx.Route('edge_generate_token', '/edge/generate-token', EdgeGenerateTokenHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('edge_authorize', '/edge/authorize', EdgeAuthorizeHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('edge_detail', '/edge/:eid', EdgeDetailHandler);
     ctx.Connection('edge_status_conn', '/edge/status/ws', EdgeStatusConnectionHandler);
     ctx.Connection('edge_server_conn', '/mcp/ws', EdgeServerConnectionHandler);
