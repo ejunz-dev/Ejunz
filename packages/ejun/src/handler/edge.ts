@@ -113,6 +113,13 @@ function deletePendingEdgeAuth(code: string) {
     pendingEdgeAuth.delete(code);
 }
 
+function findPendingEdgeAuthByDomainAndType(domainId: string, type: string): PendingEdgeAuth | undefined {
+    for (const session of pendingEdgeAuth.values()) {
+        if (session.domainId === domainId && session.type === type) return session;
+    }
+    return undefined;
+}
+
 export class EdgeConnectionHandler extends ConnectionHandler<Context> {
     static active = new Set<EdgeConnectionHandler>();
     static activeByToken = new Map<string, EdgeConnectionHandler>();
@@ -181,6 +188,32 @@ export class EdgeConnectionHandler extends ConnectionHandler<Context> {
         } else {
             if (domainId) {
                 const type = resolveAllowedEdgeType(this.request.query?.type);
+                const existing = findPendingEdgeAuthByDomainAndType(domainId, type);
+                if (existing) {
+                    clearTimeout(existing.timer);
+                    existing.timer = setTimeout(() => {
+                        const session = pendingEdgeAuth.get(existing.code);
+                        if (!session) return;
+                        pendingEdgeAuth.delete(existing.code);
+                        try { session.connection.send({ type: 'edge/auth_expired', code: existing.code }); } catch { /* ignore */ }
+                        try { session.connection.close(4000, 'edge auth expired'); } catch { /* ignore */ }
+                    }, EDGE_AUTH_TTL_MS);
+                    existing.expiresAt = Date.now() + EDGE_AUTH_TTL_MS;
+                    existing.endpoint = buildCurrentWsEndpoint(this);
+                    existing.connection = this;
+                    this.edgeAuthCode = existing.code;
+                    this.accepted = true;
+                    logger.info('Edge auth required from %s (domain=%s, type=%s, reused)', this.request.ip, domainId, type);
+                    this.send({
+                        type: 'edge/auth_required',
+                        code: existing.code,
+                        edgeType: type,
+                        edgeTypeLabel: resolveEdgeTypeLabel(type),
+                        authUrl: existing.authUrl,
+                        expiresAt: existing.expiresAt,
+                    });
+                    return;
+                }
                 const code = await EdgeTokenModel.generateToken();
                 const { protocol, host } = getRequestOrigin(this);
                 const authUrl = `${protocol}://${host}/d/${encodeURIComponent(domainId)}/edge/authorize?code=${encodeURIComponent(code)}`;
@@ -306,8 +339,7 @@ export class EdgeConnectionHandler extends ConnectionHandler<Context> {
     async cleanup() {
         this.unsubscribeAll();
         if (this.edgeAuthCode) {
-            const session = pendingEdgeAuth.get(this.edgeAuthCode);
-            if (session?.connection === this) deletePendingEdgeAuth(this.edgeAuthCode);
+            // 连接关闭时保留 pending auth，让授权页面在重连后仍可复用
             this.edgeAuthCode = null;
         }
         if (this.accepted) logger.info('Edge client disconnected from %s%s', this.request.ip, this.token ? ` (token=${this.token})` : '');
