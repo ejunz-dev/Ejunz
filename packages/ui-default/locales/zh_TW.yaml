@@ -210,6 +210,15 @@ Duration (hours): 持續時間 (小時)
 Duration: 持續時間
 Edge Connection Status: Edge 連接狀態
 Edge page: Edge 頁面
+Edge Type: Edge 類型
+Edge authorization succeeded: Edge 授權成功
+Authorize Edge registration: 授權 Edge 註冊
+The Edge client has received its connection token and will reconnect automatically to complete registration.: Edge 客戶端已收到連接 Token，並會自動重新連接完成註冊。
+You can close this page.: 你可以關閉此頁面。
+An Edge client is requesting to register to the current domain.: 有一個 Edge 客戶端正在請求註冊到當前域。
+Expires At: 過期時間
+Authorize and register: 授權並註冊
+edge_authorize: Edge 授權
 Edit Client: 編輯客戶端
 Edit description of this domain: 修改此域描述
 Edit discussion replies of own discussion: 修改自己討論中的回覆

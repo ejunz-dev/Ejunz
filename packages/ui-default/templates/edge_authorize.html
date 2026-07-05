@@ -1,0 +1,50 @@
+{% set page_name = "edge_authorize" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-8 medium-centered columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">
+          {% if authorized %}
+            {{ _('Edge authorization succeeded') }}
+          {% else %}
+            {{ _('Authorize Edge registration') }}
+          {% endif %}
+        </h1>
+      </div>
+      <div class="section__body typo">
+        {% if authorized %}
+          <p>{{ _('The Edge client has received its connection token and will reconnect automatically to complete registration.') }}</p>
+          <p>{{ _('You can close this page.') }}</p>
+        {% else %}
+          <p>{{ _('An Edge client is requesting to register to the current domain.') }}</p>
+          <table class="data-table">
+            <tbody>
+              <tr>
+                <td class="col--key">{{ _('Domain') }}</td>
+                <td><code>{{ domainId }}</code></td>
+              </tr>
+              <tr>
+                <td class="col--key">{{ _('Edge Type') }}</td>
+                <td>{{ edgeTypeLabel }} <span class="supplementary">({{ edgeType }})</span></td>
+              </tr>
+              <tr>
+                <td class="col--key">{{ _('Endpoint') }}</td>
+                <td><code style="word-break: break-all;">{{ endpoint }}</code></td>
+              </tr>
+              <tr>
+                <td class="col--key">{{ _('Expires At') }}</td>
+                <td>{{ datetimeSpan(expiresAt)|safe }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <form method="post">
+            <button type="submit" class="primary rounded button">{{ _('Authorize and register') }}</button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

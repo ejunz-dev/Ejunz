@@ -194,6 +194,15 @@ __langname: 简体中文
 'Drop here to delete': 拖到这里删除
 'Edge Connection Status': Edge 连接状态
 'Edge page': Edge 页面
+'Edge Type': Edge 类型
+'Edge authorization succeeded': Edge 授权成功
+'Authorize Edge registration': 授权 Edge 注册
+'The Edge client has received its connection token and will reconnect automatically to complete registration.': Edge 客户端已收到连接 Token，并会自动重连完成注册。
+'You can close this page.': 你可以关闭此页面。
+'An Edge client is requesting to register to the current domain.': 有一个 Edge 客户端正在请求注册到当前域。
+'Expires At': 过期时间
+'Authorize and register': 授权并注册
+edge_authorize: Edge 授权
 'Edit Client': 编辑客户端
 'Edited': 已编辑
 'Enable Server VAD': 启用服务器 VAD
