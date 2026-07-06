@@ -71,7 +71,8 @@ export async function apply(ctx: Context) {
             await ctx.parallel('task/daily');
         });
         c.worker.addHandler('task.session.utc0', async () => {
-            const { settleStaleSessionsAtUtc0 } = await import('../lib/sessionDailySettle');
+            const { settleStaleSessionsAtUtc0 } =
+                require('../lib/sessionDailySettle') as typeof import('../lib/sessionDailySettle');
             const r = await settleStaleSessionsAtUtc0();
             new Logger('task/session').info(
                 'settleStaleSessionsAtUtc0: learn=%d develop=%d developDailyTimedOut=%d',
