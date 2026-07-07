@@ -1,70 +1,59 @@
 {% set page_name = "mcp_main" %}
 {% extends "layout/basic.html" %}
+{{ set(UiContext, 'socketUrl', 'mcp-conn?' + mcpConnQuery) }}
+{{ set(UiContext, 'mcpMids', mcpMids) }}
+{{ set(UiContext, 'mcpPageSize', mcpPageSize) }}
 {% block content %}
 <div class="row">
-  <div class="medium-12 columns">
-    <div class="section">
-      <div class="section__header">
-        <h1 class="section__title">MCP Dashboard</h1>
-        <div class="section__tools">
-          <a href="{{ url('mcp_market', {}) }}" class="button">管理 System Tools</a>
-        </div>
-      </div>
-      <div class="section__body">
-        <div class="typo">
-          <p>MCP 现在是工具的顶层对象：这里同时显示出站 MCP、System Tools MCP，以及外部接入的入站 MCP。点击任意 MCP 可查看其下工具与唯一工具 ID。</p>
-        </div>
+  <div class="medium-9 columns">
+    <div class="section display-mode">
+      <div class="section__body no-padding">
+        <form method="get" id="searchForm">
+          <div class="search">
+            <input name="q" type="text" value="{{ qs }}" placeholder="{{ _('Search MCP') }}">
+            <button type="submit">
+              <span class="icon icon-search"></span>
+            </button>
+          </div>
+        </form>
       </div>
       <div class="section__body no-padding">
-        {% if not mcps or not mcps.length %}
-          <div class="typo"><p>暂无 MCP。</p></div>
-        {% else %}
-          <table class="data-table">
-            <colgroup>
-              <col class="col--id"><col class="col--status"><col class="col--name">
-              <col class="col--type"><col class="col--count"><col class="col--action">
-            </colgroup>
-            <thead>
-              <tr>
-                <th class="col--id">MID</th>
-                <th class="col--status">状态</th>
-                <th class="col--name">名称</th>
-                <th class="col--type">类型 / 来源</th>
-                <th class="col--count">工具</th>
-                <th class="col--action">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {%- for mcp in mcps -%}
-              <tr>
-                <td class="col--id">
-                  <a href="{{ url('mcp_detail', { mid: mcp.mid }) }}"><code>{{ mcp.mid }}</code></a>
-                </td>
-                <td class="col--status">
-                  <span class="edge-status edge-status-{{ mcp.status }}">
-                    {% if mcp.status == 'online' %}在线{% elif mcp.status == 'pending' %}待连接{% else %}离线{% endif %}
-                  </span>
-                </td>
-                <td class="col--name">
-                  <a href="{{ url('mcp_detail', { mid: mcp.mid }) }}">{{ mcp.name }}</a>
-                  {% if mcp.description %}<div class="supplementary">{{ mcp.description }}</div>{% endif %}
-                </td>
-                <td class="col--type">
-                  <span class="problem__tag">{{ mcp.kindLabel or mcp.kind }}</span>
-                  <span class="supplementary">{{ mcp.sourceLabel }}</span>
-                  {% if mcp.runtimeMode %}<span class="problem__tag">{{ mcp.runtimeMode }}</span>{% endif %}
-                  {% if mcp.runtimeVersion %}<span class="problem__tag">v{{ mcp.runtimeVersion }}</span>{% endif %}
-                  <span class="problem__tag">{{ mcp.assignableLabel }}</span>
-                </td>
-                <td class="col--count">{{ mcp.toolCount }}</td>
-                <td class="col--action">
-                  <a href="{{ url('mcp_detail', { mid: mcp.mid }) }}" class="button small">查看工具</a>
-                </td>
-              </tr>
-              {%- endfor -%}
-            </tbody>
-          </table>
-        {% endif %}
+        {% include "partials/mcp_list.html" %}
+      </div>
+    </div>
+  </div>
+  <div class="medium-3 columns">
+    <div class="section side nojs--hide">
+      <ol class="menu">
+        <a href="javascript:;" class="menu__link edit-mode-hide" name="enter-edit-mode">
+          <span class="icon icon-edit"></span>
+          {{ _('Enter Edit Mode') }}
+        </a>
+        <a href="javascript:;" class="menu__link display-mode-hide" name="leave-edit-mode">
+          <span class="icon icon-edit"></span>
+          {{ _('Leave Edit Mode') }}
+        </a>
+        <a href="javascript:;" class="menu__link display-mode-hide" name="delete_selected_mcps">
+          <span class="icon icon-delete"></span>
+          {{ _('Remove Selected') }}
+        </a>
+      </ol>
+    </div>
+    <div class="section side">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('MCP Dashboard') }}</h1>
+      </div>
+      <ol class="menu">
+        <a href="{{ url('mcp_market', {}) }}" class="menu__link">
+          <span class="icon icon-setting"></span>
+          {{ _('Manage System Tools') }}
+        </a>
+      </ol>
+      <div class="section__body">
+        <div class="typo supplementary">
+          <p>{{ _('MCP dashboard description') }}</p>
+          <p>{{ _('Deleting an outbound MCP invalidates its token immediately.') }}</p>
+        </div>
       </div>
     </div>
   </div>

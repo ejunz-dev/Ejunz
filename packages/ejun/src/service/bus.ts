@@ -99,6 +99,9 @@ export interface EventMap {
     'learn_result/add': (domainId: string) => VoidReturn;
     'session/change': (doc: SessionDoc) => VoidReturn;
     'record/change': (doc: SessionRecordDoc) => VoidReturn;
+    'mcp/change': (domainId: string, mid: number) => VoidReturn;
+    'mcp/status/update': (domainId: string, mid: number, status: string) => VoidReturn;
+    'mcp/work/update': (domainId: string, mid: number, delta: 1 | -1) => VoidReturn;
     'agent_schedule/change': (doc: any) => VoidReturn;
     'agent_schedule_run/change': (doc: any) => VoidReturn;
 }

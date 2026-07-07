@@ -894,6 +894,7 @@ declare module './model/mcp' {
         status: 'online' | 'offline';
         lastConnectedAt?: Date;
         lastDisconnectedAt?: Date;
+        lastUsedAt?: Date;
         lastCheckedAt?: Date;
         lastCheckError?: string;
         toolCount?: number;

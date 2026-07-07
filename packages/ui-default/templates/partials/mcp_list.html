@@ -1,0 +1,39 @@
+{% import "components/paginator.html" as paginator with context %}
+{% import "components/nothing.html" as nothing with context %}
+<div data-fragment-id="mcp_list">
+{% if not mcps or mcps.length == 0 %}
+  {{ nothing.render('No MCP.') }}
+{% else %}
+  {{ paginator.render(page, ppcount, position='top', add_qs=('q=' + qs if qs else '')) }}
+  <table class="data-table mcp-list-table">
+    <colgroup>
+      <col class="col--checkbox display-mode-hide">
+      <col class="col--id"><col class="col--status"><col class="col--name">
+      <col class="col--type"><col class="col--count">
+      <col class="col--time"><col class="col--time">
+    </colgroup>
+    <thead>
+      <tr>
+        <th class="col--checkbox display-mode-hide">
+          <label class="compact checkbox">
+            <input type="checkbox" name="select_all" data-checkbox-toggle="mcp">
+          </label>
+        </th>
+        <th class="col--id">MID</th>
+        <th class="col--status">{{ _('Last used') }}</th>
+        <th class="col--name">{{ _('Name') }}</th>
+        <th class="col--type">{{ _('Type / Source') }}</th>
+        <th class="col--count">{{ _('Tools') }}</th>
+        <th class="col--time">{{ _('Authentication Time') }}</th>
+        <th class="col--time">{{ _('Expiration Time') }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for mcp in mcps -%}
+        {% include "partials/mcp_list_tr.html" %}
+      {%- endfor -%}
+    </tbody>
+  </table>
+  {{ paginator.render(page, ppcount, add_qs=('q=' + qs if qs else '')) }}
+{% endif %}
+</div>
