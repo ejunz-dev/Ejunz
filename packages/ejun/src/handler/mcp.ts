@@ -1,11 +1,13 @@
 import { createHash } from 'crypto';
+import { throttle } from 'lodash';
 import { Handler } from '@ejunz/framework';
 import { Context } from '../context';
+import { ConnectionHandler, subscribe } from '../service/server';
 import { Logger } from '../logger';
 import { PRIV } from '../model/builtin';
 import { BaseModel } from '../model/base';
 import EdgeTokenModel from '../model/edge_token';
-import McpModel from '../model/mcp';
+import McpModel, { type NormalizedMcpRow, type McpKind } from '../model/mcp';
 import TokenModel from '../model/token';
 import UserModel from '../model/user';
 import { NotFoundError, ValidationError } from '../error';
@@ -169,7 +171,7 @@ export class McpConnectionHandler extends Handler<Context> {
             this.response.body = { error: 'Invalid or missing token' };
             return;
         }
-        await EdgeTokenModel.markPermanent(token);
+        await EdgeTokenModel.touchLastUsed(token);
         const domainId = tokenDoc.domainId;
         await this.ctx.mcp.registerOutboundEdge(tokenDoc);
 
@@ -363,7 +365,7 @@ export class McpStreamableHandler extends Handler<Context> {
             sendMcpAuthChallenge(this);
             return;
         }
-        await EdgeTokenModel.markPermanent(token);
+        await EdgeTokenModel.touchLastUsed(token);
         const domainId = tokenDoc.domainId;
 
         const body = this.request.body;
@@ -573,21 +575,173 @@ export class McpOAuthTokenHandler extends Handler<Context> {
 
         const token = await this.ctx.mcp.getOrCreateMcpToken(data.domainId, data.uid, data.baseDocId, data.branch);
         await this.ctx.mcp.getOrCreateMcp(data.domainId, data.uid, token, data.baseDocId, data.branch);
+        await EdgeTokenModel.markAuthenticated(token);
+        const tokenDoc = await EdgeTokenModel.getByToken(token);
         await TokenModel.del(code, TokenModel.TYPE_OAUTH);
-        this.response.body = {
+        const response: any = {
             access_token: token,
             token_type: 'Bearer',
-            expires_in: 30 * 60,
         };
+        if (tokenDoc?.expireAt) {
+            response.expires_in = Math.max(0, Math.floor((tokenDoc.expireAt.getTime() - Date.now()) / 1000));
+        }
+        this.response.body = response;
+    }
+}
+
+function filterMcpsBySearchQuery(mcps: any[], q: string) {
+    const keyword = String(q || '').trim().toLowerCase();
+    if (!keyword) return mcps;
+    return mcps.filter((mcp) => [
+        mcp.mid,
+        mcp.name,
+        mcp.description,
+        mcp.kind,
+        mcp.kindLabel,
+        mcp.sourceLabel,
+        mcp.runtimeMode,
+        mcp.runtimeVersion,
+    ].filter(Boolean).join(' ').toLowerCase().includes(keyword));
+}
+
+type McpActivityRow = NormalizedMcpRow & { working: boolean; lastUsedAt?: Date };
+
+function withMcpActivity(ctx: Context, domainId: string, row: NormalizedMcpRow): McpActivityRow {
+    return {
+        ...row,
+        working: ctx.mcp.isMcpWorking(domainId, row.mid),
+        lastUsedAt: row.lastUsedAt || row.tokenInfo?.lastUsedAt,
+    };
+}
+
+function sortMcpsByActivity(rows: McpActivityRow[]) {
+    const order = { outbound: 0, system: 1, ejunztools: 2, inbound: 3, plugin: 4 } as Record<McpKind, number>;
+    rows.sort((a, b) => {
+        if (a.working !== b.working) return a.working ? -1 : 1;
+        const aLastUsed = a.lastUsedAt ? new Date(a.lastUsedAt).getTime() : 0;
+        const bLastUsed = b.lastUsedAt ? new Date(b.lastUsedAt).getTime() : 0;
+        if (aLastUsed !== bLastUsed) return bLastUsed - aLastUsed;
+        if (order[a.kind] !== order[b.kind]) return order[a.kind] - order[b.kind];
+        return (a.mid || 0) - (b.mid || 0);
+    });
+    return rows;
+}
+
+class McpListConnectionHandler extends ConnectionHandler {
+    queue: Map<number, () => Promise<any>> = new Map();
+    throttleQueueClear: () => void;
+
+    async prepare() {
+        try {
+            const domainId = String(this.request.query.domainId || this.args.domainId || '');
+            if (!domainId) {
+                this.close(4000, 'Domain ID is required');
+                return;
+            }
+            this.args.domainId = domainId;
+            this.args.q = String(this.request.query.q || '').trim();
+            this.checkPriv(PRIV.PRIV_USER_PROFILE);
+            this.throttleQueueClear = throttle(this.queueClear, 100, { trailing: true });
+        } catch (e: any) {
+            try {
+                this.close(4000, e.message || String(e));
+            } catch {
+                /* ignore */
+            }
+        }
+    }
+
+    async message(msg: { mids: number[] }) {
+        if (!(msg.mids instanceof Array)) return;
+        for (const rawMid of msg.mids) {
+            const mid = Number(rawMid);
+            if (!Number.isFinite(mid) || mid < 1) continue;
+            await this.sendMcpRow(mid, true);
+        }
+    }
+
+    @subscribe('mcp/change')
+    async onMcpChange(domainId: string, mid: number) {
+        if (domainId !== this.args.domainId) return;
+        await this.sendMcpRow(mid);
+    }
+
+    @subscribe('mcp/status/update')
+    async onMcpStatusUpdate(domainId: string, mid: number) {
+        if (domainId !== this.args.domainId) return;
+        await this.sendMcpRow(mid);
+    }
+
+    async sendMcpRow(mid: number, initial = false) {
+        const normalized = await this.ctx.mcp.getNormalizedMcp(this.args.domainId, mid);
+        const mcp = normalized ? withMcpActivity(this.ctx, this.args.domainId, normalized) : null;
+        if (!mcp || !filterMcpsBySearchQuery([mcp], this.args.q)[0]) {
+            this.queue.set(mid, async () => ({ mid, remove: true, initial }));
+        } else {
+            this.queue.set(mid, async () => ({
+                initial,
+                html: await this.renderHTML('partials/mcp_list_tr.html', { mcp }),
+            }));
+        }
+        this.throttleQueueClear();
+    }
+
+    async queueClear() {
+        await Promise.all([...this.queue.values()].map(async (fn) => this.send(await fn())));
+        this.queue.clear();
+    }
+
+    async cleanup() {
+        this.queue.clear();
     }
 }
 
 export class McpListHandler extends Handler<Context> {
     async get() {
         const domainId = this.domain._id;
-        const mcps = await this.ctx.mcp.listDomainMcps(domainId, this.user);
+        const rawPage = Number(this.request.query.page || 1);
+        const page = Number.isFinite(rawPage) && rawPage > 0 ? Math.floor(rawPage) : 1;
+        const q = String(this.request.query.q || '').trim();
+        const pjax = this.request.query.pjax === 'true' || this.request.query.pjax === '1';
+        const limit = this.ctx.setting.get('pagination.problem') || 20;
+        const rows = (await this.ctx.mcp.listDomainMcps(domainId, this.user)).map((row) => withMcpActivity(this.ctx, domainId, row));
+        const allMcps = sortMcpsByActivity(filterMcpsBySearchQuery(rows, q));
+        const total = allMcps.length;
+        const ppcount = Math.max(1, Math.ceil(total / limit));
+        const page1 = Math.max(1, Math.min(page, ppcount));
+        const mcps = allMcps.slice((page1 - 1) * limit, page1 * limit);
+        const mcpConnQuery = `domainId=${encodeURIComponent(domainId)}${q ? `&q=${encodeURIComponent(q)}` : ''}`;
+        const body = { domainId, mcps, page: page1, ppcount, totalPages: ppcount, qs: q, mcpMids: mcps.map((mcp) => mcp.mid), mcpConnQuery, mcpPageSize: limit };
         this.response.template = 'mcp_main.html';
-        this.response.body = { domainId, mcps };
+        if (pjax) {
+            const html = await this.renderHTML('partials/mcp_list.html', body);
+            this.response.body = {
+                title: this.renderTitle(this.translate('MCP Dashboard')),
+                fragments: [{ html: html || '' }],
+            };
+            return;
+        }
+        this.response.body = body;
+    }
+
+    async postDeleteSelected() {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const domainId = this.domain._id;
+        const mids: string[] = Array.isArray(this.request.body?.mids) ? this.request.body.mids : [];
+        for (const raw of mids) {
+            const mid = Number(raw);
+            if (!Number.isFinite(mid) || mid < 1) continue;
+            const mcp = await McpModel.getByMcpId(domainId, mid);
+            if (!mcp) continue;
+            if (this.ctx.mcp.mcpKind(mcp) !== 'outbound') {
+                throw new ValidationError('Only outbound MCP endpoints can be deleted from this page.');
+            }
+            if (this.user._id !== mcp.owner && !this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) {
+                throw new ValidationError('You are not allowed to delete this MCP.');
+            }
+            await McpModel.deleteOutboundAndInvalidateToken(domainId, mid);
+        }
+        this.response.body = { success: true };
     }
 }
 
@@ -750,6 +904,7 @@ export async function apply(ctx: Context) {
     (ctx as any).server.addCaptureRoute('/.well-known/openid-configuration', captureWellKnownNotFound);
 
     ctx.Route('mcp_main', '/mcp', McpListHandler);
+    ctx.Connection('mcp_conn', '/mcp-conn', McpListConnectionHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mcp_market', '/mcp/market', McpMarketHandler);
     ctx.Route('mcp_market_add', '/mcp/market/add', McpMarketAddHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mcp_market_remove', '/mcp/market/remove', McpMarketRemoveHandler, PRIV.PRIV_USER_PROFILE);
