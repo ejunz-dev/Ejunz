@@ -155,9 +155,46 @@ export default class McpService extends Service {
         (ctx as any).on('mcp/notify', ({ token, data }: { token: string; data: string }) => {
             this.deliverToToken(token, data);
         });
+        (ctx as any).on('mcp/work/update', (domainId: string, mid: number, delta: 1 | -1) => {
+            this.applyMcpWorkDelta(domainId, mid, delta);
+        });
     }
 
     edgeTokenConnectedChecker?: (token: string) => boolean;
+    private mcpWorkingRefs = new Map<string, number>();
+
+    private mcpWorkKey(domainId: string, mid: number) {
+        return `${domainId}:${mid}`;
+    }
+
+    isMcpWorking(domainId: string, mid: number): boolean {
+        return (this.mcpWorkingRefs.get(this.mcpWorkKey(domainId, mid)) || 0) > 0;
+    }
+
+    emitMcpChange(domainId: string, mid: number) {
+        (this.ctx as any).broadcast('mcp/change', domainId, mid);
+    }
+
+    async emitMcpChangeForToken(domainId: string, token: string) {
+        const mcp = await McpModel.getByToken(domainId, token);
+        if (mcp) this.emitMcpChange(domainId, mcp.mid);
+    }
+
+    private applyMcpWorkDelta(domainId: string, mid: number, delta: 1 | -1) {
+        const key = this.mcpWorkKey(domainId, mid);
+        const next = (this.mcpWorkingRefs.get(key) || 0) + delta;
+        if (next > 0) this.mcpWorkingRefs.set(key, next);
+        else this.mcpWorkingRefs.delete(key);
+        (this.ctx.emit as any)('mcp/change', domainId, mid);
+    }
+
+    beginMcpWork(domainId: string, mid: number) {
+        (this.ctx as any).broadcast('mcp/work/update', domainId, mid, 1);
+    }
+
+    endMcpWork(domainId: string, mid: number) {
+        (this.ctx as any).broadcast('mcp/work/update', domainId, mid, -1);
+    }
 
     isEdgeTransportTokenConnected(token: string): boolean {
         return !!this.edgeTokenConnectedChecker?.(token);
@@ -366,35 +403,48 @@ export default class McpService extends Service {
             }
             logger.info('MCP tools/call -> %s, tool=%s, id=%s, args=%s', logCtx, name, `${msg.id}`, clipForLog(args));
             const startedAt = Date.now();
+            const mcpMid = mcpDoc?.mid;
+            if (mcpMid) {
+                try {
+                    await McpModel.update(toolCtx.domainId, mcpMid, { lastUsedAt: new Date() });
+                } catch (e) {
+                    logger.warn('Failed to update MCP last-used time: domainId=%s, mid=%d, error=%s', toolCtx.domainId, mcpMid, (e as Error).message);
+                }
+                this.beginMcpWork(toolCtx.domainId, mcpMid);
+            }
             let response: any;
             let resultText: string | undefined;
             let isError = false;
             let errorMsg: string | undefined;
             try {
-                const result = await executeMcpBuiltinTool(toolCtx, name, args);
-                resultText = typeof result === 'string' ? result : JSON.stringify(result);
-                response = { jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: resultText }] } };
-                logger.info('MCP tools/call OK: %s, tool=%s, id=%s, %dms, result=%s', logCtx, name, `${msg.id}`, Date.now() - startedAt, clipForLog(resultText));
-                if (isMcpBuiltinMutatingTool(name)) (this.ctx.emit as any)('base/update', toolCtx.baseDocId, null, toolCtx.branch);
-            } catch (e) {
-                isError = true;
-                errorMsg = (e as Error).message;
-                response = { jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: errorMsg }], isError: true } };
-                logger.warn('MCP tools/call ERROR: %s, tool=%s, id=%s, %dms, error=%s', logCtx, name, `${msg.id}`, Date.now() - startedAt, errorMsg);
+                try {
+                    const result = await executeMcpBuiltinTool(toolCtx, name, args);
+                    resultText = typeof result === 'string' ? result : JSON.stringify(result);
+                    response = { jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: resultText }] } };
+                    logger.info('MCP tools/call OK: %s, tool=%s, id=%s, %dms, result=%s', logCtx, name, `${msg.id}`, Date.now() - startedAt, clipForLog(resultText));
+                    if (isMcpBuiltinMutatingTool(name)) (this.ctx.emit as any)('base/update', toolCtx.baseDocId, null, toolCtx.branch);
+                } catch (e) {
+                    isError = true;
+                    errorMsg = (e as Error).message;
+                    response = { jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: errorMsg }], isError: true } };
+                    logger.warn('MCP tools/call ERROR: %s, tool=%s, id=%s, %dms, error=%s', logCtx, name, `${msg.id}`, Date.now() - startedAt, errorMsg);
+                }
+                await this.recordToolCall({
+                    domainId: toolCtx.domainId,
+                    uid: toolCtx.owner,
+                    mcpId: mcpMid,
+                    baseDocId: toolCtx.baseDocId,
+                    branch: toolCtx.branch,
+                    tool: name,
+                    args,
+                    result: isError ? undefined : resultText,
+                    isError,
+                    error: errorMsg,
+                    durationMs: Date.now() - startedAt,
+                });
+            } finally {
+                if (mcpMid) this.endMcpWork(toolCtx.domainId, mcpMid);
             }
-            await this.recordToolCall({
-                domainId: toolCtx.domainId,
-                uid: toolCtx.owner,
-                mcpId: mcpDoc?.mid,
-                baseDocId: toolCtx.baseDocId,
-                branch: toolCtx.branch,
-                tool: name,
-                args,
-                result: isError ? undefined : resultText,
-                isError,
-                error: errorMsg,
-                durationMs: Date.now() - startedAt,
-            });
             return response;
         }
         const response = await this.handleJsonRpc(toolCtx.domainId, msg, meta);
@@ -419,7 +469,12 @@ export default class McpService extends Service {
             if (fresh) return fresh.token;
         }
         const token = await EdgeTokenModel.generateToken();
-        await EdgeTokenModel.add(domainId, 'mcp_sse', token, owner, { baseDocId, branch: normalizedBranch });
+        await EdgeTokenModel.add(domainId, 'mcp_sse', token, owner, {
+            baseDocId,
+            branch: normalizedBranch,
+            expireAt: null,
+            authenticatedAt: new Date(),
+        });
         return token;
     }
 

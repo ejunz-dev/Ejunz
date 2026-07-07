@@ -9,6 +9,7 @@ import type { AgentDoc, BaseEdge, BaseNode, CardDoc, McpDoc, PluginDoc, PluginMc
 import type { User } from '../interface';
 import type { EdgeDoc } from './edge';
 import EdgeModel from './edge';
+import EdgeTokenModel from './edge_token';
 import ToolModel, {
     getLocalMcpToolCatalog,
     getLocalSystemToolCatalog,
@@ -55,6 +56,7 @@ class McpModel {
             source: mcp.source,
             assignable: mcp.assignable,
             status: mcp.status || 'offline',
+            lastUsedAt: mcp.lastUsedAt,
             lastCheckedAt: mcp.lastCheckedAt,
             lastCheckError: mcp.lastCheckError,
             toolCount: mcp.toolCount,
@@ -159,6 +161,14 @@ class McpModel {
     static async del(domainId: string, mid: number) {
         const mcp = await this.getByMcpId(domainId, mid);
         if (!mcp) return;
+        return await document.deleteOne(domainId, document.TYPE_MCP, mcp.docId);
+    }
+
+    static async deleteOutboundAndInvalidateToken(domainId: string, mid: number) {
+        const mcp = await this.getByMcpId(domainId, mid);
+        if (!mcp) return;
+        if (mcpKind(mcp) !== 'outbound') throw new Error('Only outbound MCP endpoints can be deleted this way.');
+        if (mcp.token) await EdgeTokenModel.delete(mcp.token);
         return await document.deleteOne(domainId, document.TYPE_MCP, mcp.docId);
     }
 }
@@ -1685,8 +1695,19 @@ export interface NormalizedMcpRow {
     online: boolean;
     assignable: boolean;
     toolCount: number;
+    working?: boolean;
+    lastUsedAt?: Date;
     tools?: NormalizedMcpTool[];
     edge?: EdgeDoc | null;
+    tokenInfo?: {
+        tokenPreview: string;
+        createdAt?: Date;
+        authenticatedAt?: Date;
+        lastUsedAt?: Date;
+        expireAt?: Date | null;
+        noExpiration: boolean;
+        expired: boolean;
+    };
     runtimeMode?: McpRuntimeMode;
     runtimeVersion?: string;
     runtimeLabel?: string;
@@ -1734,6 +1755,11 @@ function edgeRuntimeMode(edge?: EdgeDoc | null): McpRuntimeMode | undefined {
 
 function edgeRuntimeVersion(edge?: EdgeDoc | null): string | undefined {
     return edge?.provider?.runtimeVersion;
+}
+
+function tokenPreview(token: string): string {
+    if (token.length <= 12) return token;
+    return `${token.slice(0, 8)}…${token.slice(-4)}`;
 }
 
 async function systemTools(domainId: string): Promise<NormalizedMcpTool[]> {
@@ -1960,6 +1986,10 @@ export async function getNormalizedMcp(domainId: string, mid: number): Promise<N
     } else if (kind === 'outbound' && mcp.edgeId) {
         edge = await EdgeModel.getByEdgeId(domainId, mcp.edgeId);
     }
+    const tokenDoc = kind === 'outbound' && mcp.token
+        ? await EdgeTokenModel.coll.findOne({ domainId, type: 'mcp_sse', token: mcp.token })
+        : null;
+    const tokenExpireAt = tokenDoc?.expireAt || null;
     const runtimeMode = (mcp.source?.runtimeMode || edgeRuntimeMode(edge)) as McpRuntimeMode | undefined;
     const runtimeVersion = mcp.source?.runtimeVersion || edgeRuntimeVersion(edge);
     const online = kind === 'outbound' || kind === 'plugin'
@@ -1985,15 +2015,25 @@ export async function getNormalizedMcp(domainId: string, mid: number): Promise<N
         kind,
         sourceLabel,
         kindLabel: kind,
-        assignableLabel: assignable ? '可分配' : '不可分配',
+        assignableLabel: assignable ? 'assignable' : 'not assignable',
         name: mcp.name || (kind === SYSTEM_TOOLS_MCP_KIND ? SYSTEM_TOOLS_MCP_NAME : kind === EJUNZ_TOOLS_MCP_KIND ? EJUNZ_TOOLS_MCP_NAME : kind === 'inbound' ? 'Inbound MCP' : kind === 'plugin' ? 'Plugin MCP' : `MCP-${mcp.mid}`),
         description: mcp.description || '',
         status: online ? 'online' : (kind === 'outbound' && !mcp.edgeId ? 'pending' : 'offline'),
         online,
         assignable,
         toolCount: tools.length,
+        lastUsedAt: mcp.lastUsedAt || tokenDoc?.lastUsedAt,
         tools,
         edge,
+        tokenInfo: tokenDoc ? {
+            tokenPreview: tokenPreview(tokenDoc.token),
+            createdAt: tokenDoc.createdAt,
+            authenticatedAt: tokenDoc.authenticatedAt || tokenDoc.createdAt || tokenDoc.lastUsedAt,
+            lastUsedAt: tokenDoc.lastUsedAt,
+            expireAt: tokenExpireAt,
+            noExpiration: !tokenExpireAt,
+            expired: !!tokenExpireAt && tokenExpireAt.getTime() <= Date.now(),
+        } : undefined,
         runtimeMode,
         runtimeVersion,
         runtimeLabel: runtimeMode ? `${runtimeMode}${runtimeVersion ? ` v${runtimeVersion}` : ''}` : undefined,

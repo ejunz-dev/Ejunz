@@ -1,0 +1,48 @@
+{% set canManage = mcp.kind == 'outbound' and mcp.tokenInfo and (handler.user._id == mcp.mcp.owner or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) %}
+<tr data-mid="{{ mcp.mid }}" data-kind="{{ mcp.kind }}">
+  <td class="col--checkbox display-mode-hide">
+    {% if canManage %}
+      <label class="compact checkbox">
+        <input type="checkbox" data-checkbox-group="mcp" data-checkbox-range>
+      </label>
+    {% else %}-{% endif %}
+  </td>
+  <td class="col--id">
+    <a href="{{ url('mcp_detail', { mid: mcp.mid }) }}"><code>{{ mcp.mid }}</code></a>
+  </td>
+  <td class="col--status">
+    {% if mcp.working %}
+      <span class="edge-status edge-status--working">{{ _('Working') }}</span>
+    {% elif mcp.lastUsedAt %}
+      {{ datetimeSpan(mcp.lastUsedAt)|safe }}
+    {% else %}
+      <span class="supplementary">{{ _('Never used') }}</span>
+    {% endif %}
+  </td>
+  <td class="col--name">
+    <a href="{{ url('mcp_detail', { mid: mcp.mid }) }}">{{ mcp.name }}</a>
+    {% if mcp.description %}<div class="supplementary">{{ mcp.description }}</div>{% endif %}
+  </td>
+  <td class="col--type">
+    <span class="problem__tag">{{ _(mcp.kindLabel or mcp.kind) }}</span>
+    <span class="supplementary">{{ _(mcp.sourceLabel) }}</span>
+    {% if mcp.runtimeMode %}<span class="problem__tag">{{ mcp.runtimeMode }}</span>{% endif %}
+    {% if mcp.runtimeVersion %}<span class="problem__tag">v{{ mcp.runtimeVersion }}</span>{% endif %}
+  </td>
+  <td class="col--count">{{ mcp.toolCount }}</td>
+  <td class="col--time">
+    {% if mcp.kind == 'outbound' and mcp.tokenInfo and mcp.tokenInfo.authenticatedAt %}
+      {{ datetimeSpan(mcp.tokenInfo.authenticatedAt, false)|safe }}
+    {% else %}-{% endif %}
+  </td>
+  <td class="col--time">
+    {% if mcp.kind == 'outbound' and mcp.tokenInfo %}
+      {% if mcp.tokenInfo.expireAt %}
+        {{ datetimeSpan(mcp.tokenInfo.expireAt, false)|safe }}
+        {% if mcp.tokenInfo.expired %}<span class="problem__tag">{{ _('Expired') }}</span>{% endif %}
+      {% else %}
+        {{ _('Never expire') }}
+      {% endif %}
+    {% else %}-{% endif %}
+  </td>
+</tr>

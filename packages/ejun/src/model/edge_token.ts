@@ -12,8 +12,9 @@ export interface EdgeTokenDoc {
     baseDocId?: number; // MCP 出站 token 绑定的 base（其工具作用于该 base）
     branch?: string; // MCP 出站 token 绑定的分支
     lastUsedAt: Date;
+    authenticatedAt?: Date | null;
     createdAt: Date;
-    expireAt?: Date | null; // 30分钟后过期（如果未使用），连接后置空以永久有效
+    expireAt?: Date | null; // 可选过期时间；为空表示不过期
 }
 
 class EdgeTokenModel {
@@ -28,11 +29,12 @@ class EdgeTokenModel {
         type: string,
         token: string,
         owner: number,
-        extra?: { baseDocId?: number; branch?: string },
+        extra?: { baseDocId?: number; branch?: string; expireAt?: Date | null; authenticatedAt?: Date | null },
     ): Promise<EdgeTokenDoc> {
         const now = new Date();
-        const expireAt = new Date(now.getTime() + 30 * 60 * 1000); // 30分钟后过期
-        
+        const hasExpireOverride = extra && Object.prototype.hasOwnProperty.call(extra, 'expireAt');
+        const expireAt = hasExpireOverride ? extra?.expireAt : new Date(now.getTime() + 30 * 60 * 1000); // 30分钟后过期
+
         const payload: EdgeTokenDoc = {
             _id: new ObjectId(),
             domainId,
@@ -42,10 +44,11 @@ class EdgeTokenModel {
             baseDocId: extra?.baseDocId,
             branch: extra?.branch,
             lastUsedAt: now,
+            authenticatedAt: extra?.authenticatedAt,
             createdAt: now,
-            expireAt,
         };
-        
+        if (expireAt) payload.expireAt = expireAt;
+
         await EdgeTokenModel.coll.insertOne(payload);
         return payload;
     }
@@ -68,7 +71,7 @@ class EdgeTokenModel {
     static async updateLastUsed(token: string): Promise<void> {
         const now = new Date();
         const expireAt = new Date(now.getTime() + 30 * 60 * 1000); // 重置过期时间为30分钟后
-        
+
         await EdgeTokenModel.coll.updateOne(
             { token, expireAt: { $exists: true } },
             {
@@ -77,6 +80,28 @@ class EdgeTokenModel {
                     expireAt,
                 },
             },
+        );
+    }
+
+    static async touchLastUsed(token: string): Promise<void> {
+        await EdgeTokenModel.coll.updateOne(
+            { token },
+            { $set: { lastUsedAt: new Date() } },
+        );
+    }
+
+    static async markAuthenticated(token: string): Promise<void> {
+        const now = new Date();
+        await EdgeTokenModel.coll.updateOne(
+            { token },
+            { $set: { lastUsedAt: now, authenticatedAt: now } },
+        );
+    }
+
+    static async setExpiration(token: string, expireAt: Date | null): Promise<void> {
+        await EdgeTokenModel.coll.updateOne(
+            { token },
+            expireAt ? { $set: { expireAt } } : { $unset: { expireAt: '' } },
         );
     }
 
