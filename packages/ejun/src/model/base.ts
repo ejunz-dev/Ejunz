@@ -890,6 +890,10 @@ export class CardModel {
         problems?: CardDoc['problems'],
         order?: number,
         branch?: string,
+        cardType?: string,
+        fileType?: string,
+        fileName?: string,
+        fileSize?: number,
     ): Promise<ObjectId> {
         const newCid = await this.generateNextCid(domainId, baseDocId, nodeId);
 
@@ -926,6 +930,10 @@ export class CardModel {
         if (problems && problems.length > 0) {
             (payload as any).problems = problems;
         }
+        if (cardType) (payload as any).cardType = cardType;
+        if (fileType) (payload as any).fileType = fileType;
+        if (fileName) (payload as any).fileName = fileName;
+        if (fileSize != null) (payload as any).fileSize = fileSize;
 
         const docId = await document.add(
             domainId,
@@ -1013,7 +1021,7 @@ export class CardModel {
     static async update(
         domainId: string,
         docId: ObjectId,
-        updates: Partial<Pick<CardDoc, 'title' | 'content' | 'cardFace' | 'order' | 'nodeId' | 'problems' | 'files' | 'baseDocId'>>
+        updates: Partial<Pick<CardDoc, 'title' | 'content' | 'cardFace' | 'order' | 'nodeId' | 'problems' | 'files' | 'baseDocId' | 'cardType' | 'fileType' | 'fileName' | 'fileSize'>>
     ): Promise<void> {
         await document.set(domainId, TYPE_CARD, docId, {
             ...updates,

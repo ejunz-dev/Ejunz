@@ -603,6 +603,14 @@ export interface CardDoc {
     problems?: Problem[];
     /** Mounted files (uploaded to this card) */
     files?: FileInfo[];
+    /** Card type: 'normal' | 'file'. Normal cards have markdown content; file-cards render a file preview. */
+    cardType?: string;
+    /** For file-cards: MIME type or extension category (pdf, image, video, audio, code, other) */
+    fileType?: string;
+    /** For file-cards: original filename */
+    fileName?: string;
+    /** For file-cards: file size in bytes */
+    fileSize?: number;
 }
 
 // Node document
