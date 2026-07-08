@@ -2,6 +2,7 @@ import { _, ObjectId, Filter } from '../libs';
 import * as document from './document';
 import { buildProjection } from '../utils';
 import type { Context } from '../context';
+import storage from './storage';
 import type { BaseDoc, BaseNode, BaseEdge, CardDoc, BaseHistoryEntry, PluginDoc } from '../interface';
 import db from '../service/db';
 import { Collection, type Db } from 'mongodb';
@@ -557,8 +558,29 @@ export class BaseModel {
 
         for (const nodeIdToDelete of nodesToDelete) {
             try {
+                // Delete physical files stored directly on this node
+                const nodeToDel = nodes.find(n => n.id === nodeIdToDelete);
+                if (nodeToDel?.files?.length) {
+                    const nodeStoragePaths = nodeToDel.files.map(
+                        (f) => `base/${actualDomainId}/${docId.toString()}/node/${nodeIdToDelete}/${f.name}`
+                    );
+                    await storage.del(nodeStoragePaths, 0);
+                }
+                // Delete all cards under this node
                 const cards = await CardModel.getByNodeId(actualDomainId, docId, nodeIdToDelete, branchName);
                 for (const card of cards) {
+                    // Delete physical files for file-cards (stored under node path)
+                    if ((card as CardDoc).cardType === 'file' && (card as CardDoc).fileName) {
+                        const filePath = `base/${actualDomainId}/${docId.toString()}/node/${nodeIdToDelete}/${(card as CardDoc).fileName}`;
+                        try { await storage.del([filePath], 0); } catch { /* ignore */ }
+                    }
+                    // Also delete any files attached to the card document
+                    if ((card as any).files?.length) {
+                        const cardStoragePaths = (card as any).files.map(
+                            (f: any) => `base/${actualDomainId}/${docId.toString()}/card/${card.docId.toString()}/${f.name}`
+                        );
+                        await storage.del(cardStoragePaths, 0);
+                    }
                     await CardModel.delete(actualDomainId, card.docId);
                 }
             } catch (err) {
