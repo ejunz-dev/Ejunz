@@ -1094,10 +1094,12 @@ export class BaseEditorHandler extends Handler {
         const todayContribution = { ...t, nodeChars: 0, cardChars: 0, problemChars: 0 };
 
         let baseExpandState: string[] = [];
+        let baseExpandStateLoaded = false;
         try {
             const coll = this.ctx.db.db.collection('base.userExpand');
             const doc = await coll.findOne({ domainId, baseDocId: base.docId, uid });
-            baseExpandState = Array.isArray(doc?.expandedNodeIds) ? doc.expandedNodeIds : [];
+            baseExpandStateLoaded = Array.isArray(doc?.expandedNodeIds);
+            baseExpandState = baseExpandStateLoaded ? doc.expandedNodeIds : [];
         } catch {
             // ignore
         }
@@ -1128,6 +1130,7 @@ export class BaseEditorHandler extends Handler {
             contributions,
             contributionDetails,
             baseExpandState,
+            baseExpandStateLoaded,
             baseEditorUiPrefs,
             editorRootNodeId,
             editorFocusNodeId,
@@ -1231,10 +1234,12 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
     const { todayContribution, contributions, contributionDetails } = contrib;
 
     let baseExpandState: string[] = [];
+    let baseExpandStateLoaded = false;
     try {
         const coll = db.collection('base.userExpand');
         const doc = await coll.findOne({ domainId, baseDocId: base.docId, uid });
-        baseExpandState = Array.isArray(doc?.expandedNodeIds) ? doc.expandedNodeIds : [];
+        baseExpandStateLoaded = Array.isArray(doc?.expandedNodeIds);
+        baseExpandState = baseExpandStateLoaded ? doc.expandedNodeIds : [];
     } catch {
         // ignore
     }
@@ -1286,6 +1291,7 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
         contributions,
         contributionDetails,
         baseExpandState,
+        baseExpandStateLoaded,
         baseEditorUiPrefs,
         editorRootNodeId,
         editorFocusNodeId,
@@ -4916,7 +4922,7 @@ export class BaseBatchSaveHandler extends Handler {
             }
         }
 
-        await persistBaseEditorSaveSidecars(this, actualDomainId, docId, branch, data as Record<string, unknown>, mdt);
+        await persistBaseEditorSaveSidecars(this, actualDomainId, docId, branch, data as Record<string, unknown>, mdt, nodeIdMap);
 
         // Fire-and-forget vectorize base content for semantic search after successful batch save
         if (batchSuccess && this.ctx.embedding) {
@@ -6764,7 +6770,7 @@ export class BaseExpandStateHandler extends Handler {
     }
 }
 
-/** Optional payloads on POST /base/save or /base/batch-save: UI prefs + develop session editor location. */
+/** Optional payloads on POST /base/save or /base/batch-save: UI prefs + expand state + develop session editor location. */
 async function persistBaseEditorSaveSidecars(
     h: Handler,
     domainId: string,
@@ -6772,6 +6778,7 @@ async function persistBaseEditorSaveSidecars(
     branchInput: string,
     data: Record<string, unknown>,
     mapDocType: MindMapDocType,
+    nodeIdMap?: Map<string, string>,
 ): Promise<void> {
     const branchNorm = branchInput && String(branchInput).trim() ? String(branchInput).trim() : 'main';
     if (Object.prototype.hasOwnProperty.call(data, 'editorUiPrefs')) {
@@ -6789,6 +6796,19 @@ async function persistBaseEditorSaveSidecars(
                     updateAt: new Date(),
                 },
             },
+            { upsert: true },
+        );
+    }
+    if (Object.prototype.hasOwnProperty.call(data, 'expandedNodeIds')) {
+        const expandedRaw = Array.isArray(data.expandedNodeIds) ? data.expandedNodeIds : [];
+        const expandedNodeIds = Array.from(new Set(expandedRaw
+            .map((id) => String(id || '').trim())
+            .filter(Boolean)
+            .map((id) => nodeIdMap?.get(id) || id)));
+        const coll = h.ctx.db.db.collection('base.userExpand');
+        await coll.updateOne(
+            { domainId, baseDocId, uid: h.user._id },
+            { $set: { domainId, baseDocId, uid: h.user._id, expandedNodeIds, updateAt: new Date() } },
             { upsert: true },
         );
     }
