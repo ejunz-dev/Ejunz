@@ -3,7 +3,8 @@ import { SYSTEM_TOOLS_CATALOG, executeSystemTool as executeEjunzMarketMcpTool, e
 import { Context } from '../context';
 import { Logger } from '../logger';
 import * as document from './document';
-import type { ToolDoc, CardDoc, BaseNode, BaseEdge, Problem, ProblemKind } from '../interface';
+import storage from './storage';
+import type { ToolDoc, CardDoc, BaseNode, BaseEdge, FileInfo, Problem, ProblemKind } from '../interface';
 import EdgeModel from './edge';
 import DomainMarketToolModel from './domain_market_tool';
 import { BaseModel, CardModel, getBranchData } from './base';
@@ -343,7 +344,7 @@ export interface McpToolDef {
 
 export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
     {
-        name: 'detail_create_node',
+        name: 'node_create',
         description: 'Create a new node (section/topic). '
             + 'Pass parentId to nest it under an existing node; omit parentId to create it under the bound base root node.',
         inputSchema: {
@@ -357,7 +358,7 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
         },
     },
     {
-        name: 'detail_update_node',
+        name: 'node_update',
         description: 'Rename a node (change its title/text). Use an existing nodeId.',
         inputSchema: {
             type: 'object',
@@ -370,7 +371,7 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
         },
     },
     {
-        name: 'detail_delete_node',
+        name: 'node_delete',
         description: 'Delete a node by id (and its cards). Use an existing nodeId.',
         inputSchema: {
             type: 'object',
@@ -581,6 +582,42 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
             additionalProperties: false,
         },
     },
+    {
+        name: 'card_file_list',
+        description: 'List file-cards under a node. File-cards are cards with cardType="file" that represent uploaded files. Returns card id, title, fileName, fileType, fileSize for each.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                nodeId: { type: 'string', description: 'Node id to list file-cards from.' },
+            },
+            required: ['nodeId'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'card_file_get',
+        description: 'Get file-card metadata by cardId. Returns title, fileName, fileType, fileSize, nodeId, and download URL.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                cardId: { type: 'string', description: 'File-card docId (hex).' },
+            },
+            required: ['cardId'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'card_file_delete',
+        description: 'Delete a file-card and its underlying file. Both the card record and the physical file in storage are removed.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                cardId: { type: 'string', description: 'File-card docId (hex).' },
+            },
+            required: ['cardId'],
+            additionalProperties: false,
+        },
+    },
 ];
 
 export async function buildMcpInstructions(
@@ -620,8 +657,9 @@ export async function buildMcpInstructions(
 }
 
 const MCP_BUILTIN_MUTATING_TOOLS = new Set([
-    'detail_create_node', 'detail_update_node', 'detail_delete_node',
+    'node_create', 'node_update', 'node_delete',
     'card_create', 'card_update', 'card_delete',
+    'card_file_delete',
     'problem_create', 'problem_update', 'problem_delete',
     'git_pull', 'git_config_set',
 ]);
@@ -791,7 +829,7 @@ export async function executeMcpBuiltinTool(
     if (!base) throw new Error(`Base not found: ${baseDocId}`);
 
     switch (name) {
-    case 'detail_create_node': {
+    case 'node_create': {
         const text = String(args.text || '').trim();
         if (!text) throw new Error('text is required');
         const { nodes, edges } = getBranchData(base, branch);
@@ -806,14 +844,14 @@ export async function executeMcpBuiltinTool(
         );
         return { ok: true, nodeId: res.nodeId, edgeId: res.edgeId, parentId: parentId ?? null };
     }
-    case 'detail_update_node': {
+    case 'node_update': {
         const nodeId = String(args.nodeId || '');
         const text = String(args.text || '');
         if (!nodeId) throw new Error('nodeId is required');
         await BaseModel.updateNode(domainId, baseDocId, nodeId, { text } as any, branch);
         return { ok: true, nodeId };
     }
-    case 'detail_delete_node': {
+    case 'node_delete': {
         const nodeId = String(args.nodeId || '');
         if (!nodeId) throw new Error('nodeId is required');
         await BaseModel.deleteNode(domainId, baseDocId, nodeId, branch);
@@ -966,6 +1004,50 @@ export async function executeMcpBuiltinTool(
             ...toMcpGitInput(ctx, args),
             githubRepo: githubRepo || null,
         });
+    }
+    case 'card_file_list': {
+        const nodeId = String(args.nodeId || '');
+        if (!nodeId) throw new Error('nodeId is required');
+        const { nodes } = getBranchData(base, branch);
+        if (!nodes.some((n) => n.id === nodeId)) throw new Error('Node not found: ' + nodeId);
+        const cards = await CardModel.getByNodeId(domainId, baseDocId, nodeId, branch);
+        const fileCards = cards.filter((c) => (c as CardDoc).cardType === 'file');
+        return fileCards.map((c) => ({
+            cardId: String(c.docId),
+            title: c.title,
+            fileName: (c as CardDoc).fileName || '',
+            fileType: (c as CardDoc).fileType || '',
+            fileSize: (c as CardDoc).fileSize || 0,
+            nodeId: c.nodeId,
+        }));
+    }
+    case 'card_file_get': {
+        const card = await requireCard(ctx, args.cardId);
+        if ((card as CardDoc).cardType !== 'file') throw new Error('Not a file-card: ' + args.cardId);
+        const downloadUrl = `/base/${baseDocId}/node/${card.nodeId}/file/${encodeURIComponent((card as CardDoc).fileName || '')}`;
+        return {
+            cardId: String(card.docId),
+            title: card.title,
+            fileName: (card as CardDoc).fileName || '',
+            fileType: (card as CardDoc).fileType || '',
+            fileSize: (card as CardDoc).fileSize || 0,
+            nodeId: card.nodeId,
+            content: card.content,
+            downloadUrl,
+        };
+    }
+    case 'card_file_delete': {
+        const card = await requireCard(ctx, args.cardId);
+        if ((card as CardDoc).cardType !== 'file') throw new Error('Not a file-card: ' + args.cardId);
+        // Delete the physical file from storage (node-level path)
+        const fileName = (card as CardDoc).fileName;
+        if (fileName) {
+            const storagePath = `base/${domainId}/${baseDocId.toString()}/node/${card.nodeId}/${fileName}`;
+            try { await storage.del([storagePath], owner); } catch { /* file may not exist */ }
+        }
+        // Remove the card document
+        await CardModel.delete(domainId, card.docId);
+        return { ok: true, cardId: String(args.cardId), deletedFile: !!fileName };
     }
     default:
         throw new Error(`Unknown tool: ${name}`);
