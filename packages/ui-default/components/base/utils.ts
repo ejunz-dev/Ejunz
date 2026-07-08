@@ -13,6 +13,7 @@ import type {
   Card,
   CardFileInfo,
   DevelopEditorContextWire,
+  EditorRightPanelTab,
   EditorSubtreeExportPayload,
   FileItem,
   PendingChange,
@@ -976,15 +977,66 @@ export function setBaseEditorFileDragImage(
 /* ------------------------------------------------------------------ */
 /*  readSavedBaseEditorUiPrefs                                         */
 /* ------------------------------------------------------------------ */
+function baseEditorUiPrefsLocalStorageKey(): string | null {
+  if (typeof window === 'undefined') return null;
+  const ctx = (window as any).UiContext || {};
+  const domainId = String(ctx.domainId || 'system');
+  const docId = String(ctx.base?.docId || ctx.baseDocId || '').trim();
+  const branch = String(ctx.currentBranch || 'main').trim() || 'main';
+  if (!docId) return null;
+  return `baseEditorUiPrefs:${domainId}:${docId}:${branch}`;
+}
+
+function readLocalBaseEditorUiPrefs(): Record<string, unknown> | null {
+  const key = baseEditorUiPrefsLocalStorageKey();
+  if (!key) return null;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeSavedBaseEditorUiPrefsLocal(prefs: Record<string, unknown> | null | undefined): void {
+  if (!prefs || typeof prefs !== 'object' || Array.isArray(prefs)) return;
+  const key = baseEditorUiPrefsLocalStorageKey();
+  if (!key) return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(prefs));
+  } catch {
+    /* ignore */
+  }
+}
+
 export function readSavedBaseEditorUiPrefs(editorAiHidden: boolean): SavedEditorLayout {
-  const raw =
+  const serverRaw =
     (typeof window !== 'undefined' && (window as any).UiContext?.baseEditorUiPrefs) || null;
-  const modes = new Set(['tree', 'pending', 'branches', 'git']);
+  const localRaw = readLocalBaseEditorUiPrefs();
+  const raw = {
+    ...((serverRaw && typeof serverRaw === 'object' && !Array.isArray(serverRaw)) ? serverRaw : {}),
+    ...((localRaw && typeof localRaw === 'object' && !Array.isArray(localRaw)) ? localRaw : {}),
+  };
+  const modes = new Set(['tree', 'pending', 'branches', 'git', 'mcp']);
+  const nodeTabs = new Set(['intent', 'files', 'develop_queue']);
+  const rightTabs = new Set(['problems', 'develop_queue', 'plugin_node', 'plugin_mcp_services', 'roadmap_edge']);
 
   let explorerMode: SavedEditorLayout['explorerMode'] = 'tree';
   if (raw && typeof raw.explorerMode === 'string') {
     const rawMode = raw.explorerMode === 'training' ? 'tree' : raw.explorerMode;
     if (modes.has(rawMode)) explorerMode = rawMode as SavedEditorLayout['explorerMode'];
+  }
+
+  let nodeSidePanelTab: SavedEditorLayout['nodeSidePanelTab'] = 'intent';
+  if (raw && typeof raw.nodeSidePanelTab === 'string' && nodeTabs.has(raw.nodeSidePanelTab)) {
+    nodeSidePanelTab = raw.nodeSidePanelTab as SavedEditorLayout['nodeSidePanelTab'];
+  }
+
+  let editorRightPanelTab: EditorRightPanelTab = 'problems';
+  if (raw && typeof raw.editorRightPanelTab === 'string' && rightTabs.has(raw.editorRightPanelTab)) {
+    editorRightPanelTab = raw.editorRightPanelTab as EditorRightPanelTab;
   }
 
   let rightPanelOpen = true;
@@ -1014,6 +1066,8 @@ export function readSavedBaseEditorUiPrefs(editorAiHidden: boolean): SavedEditor
 
   return {
     explorerMode,
+    nodeSidePanelTab,
+    editorRightPanelTab,
     rightPanelOpen,
     aiBottomOpen,
     explorerPanelWidth,

@@ -1,7 +1,8 @@
 import type { Db } from 'mongodb';
 
-const EXPLORER_MODES = new Set(['tree', 'pending', 'branches', 'git']);
-const NODE_SIDE_TABS = new Set(['files']);
+const EXPLORER_MODES = new Set(['tree', 'pending', 'branches', 'git', 'mcp']);
+const NODE_SIDE_TABS = new Set(['intent', 'files', 'develop_queue']);
+const RIGHT_PANEL_TABS = new Set(['problems', 'develop_queue', 'plugin_node', 'plugin_mcp_services', 'roadmap_edge']);
 
 const EXPLORER_W_MIN = 180;
 const EXPLORER_W_MAX = 640;
@@ -21,6 +22,9 @@ export function sanitizeBaseEditorUiPrefs(raw: unknown): Record<string, string |
     }
     if (typeof o.nodeSidePanelTab === 'string' && NODE_SIDE_TABS.has(o.nodeSidePanelTab)) {
         out.nodeSidePanelTab = o.nodeSidePanelTab;
+    }
+    if (typeof o.editorRightPanelTab === 'string' && RIGHT_PANEL_TABS.has(o.editorRightPanelTab)) {
+        out.editorRightPanelTab = o.editorRightPanelTab;
     }
     if (typeof o.rightPanelOpen === 'boolean') out.rightPanelOpen = o.rightPanelOpen;
     if (typeof o.aiBottomOpen === 'boolean') out.aiBottomOpen = o.aiBottomOpen;

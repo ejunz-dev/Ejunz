@@ -228,7 +228,9 @@ export interface AiEditorRevertSnapshot {
 }
 
 export type SavedEditorLayout = {
-  explorerMode: 'tree' | 'pending' | 'branches' | 'git';
+  explorerMode: 'tree' | 'pending' | 'branches' | 'git' | 'mcp';
+  nodeSidePanelTab: 'intent' | 'files' | 'develop_queue';
+  editorRightPanelTab: EditorRightPanelTab;
   rightPanelOpen: boolean;
   aiBottomOpen: boolean;
   explorerPanelWidth: number;

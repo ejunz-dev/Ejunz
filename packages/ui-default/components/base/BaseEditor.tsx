@@ -102,6 +102,7 @@ import {
   parseSubtreeExportPayload,
   problemKindToI18nKey,
   readSavedBaseEditorUiPrefs,
+  writeSavedBaseEditorUiPrefsLocal,
   resolveCardExportBody,
   resolveDevelopQueueRowStats,
   resolveEditorRootNodeId,
@@ -239,7 +240,14 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [developQueueNavBusy, setDevelopQueueNavBusy] = useState<number | null>(null);
   const [roadmapCardTitleDraft, setRoadmapCardTitleDraft] = useState('');
   const roadmapTitleSelectionRef = useRef('');
-  const [editorRightPanelTab, setEditorRightPanelTab] = useState<EditorRightPanelTab>(isPluginEditor ? 'plugin_mcp_services' : 'problems');
+  const editorAiHidden = false;
+  const savedEditorLayout = readSavedBaseEditorUiPrefs(editorAiHidden);
+  const [editorRightPanelTab, setEditorRightPanelTab] = useState<EditorRightPanelTab>(() => {
+    const savedTab = savedEditorLayout.editorRightPanelTab;
+    if (isPluginEditor && (savedTab === 'plugin_node' || savedTab === 'plugin_mcp_services')) return savedTab;
+    if (!isPluginEditor && savedTab !== 'plugin_node' && savedTab !== 'plugin_mcp_services') return savedTab;
+    return isPluginEditor ? 'plugin_mcp_services' : 'problems';
+  });
   const availableMcpServices = useMemo<AvailableMcpServiceForPlugin[]>(() => {
     const raw = (window as any).UiContext?.availableMcpServices;
     return Array.isArray(raw) ? raw.filter((x) => x && typeof x === 'object') : [];
@@ -294,8 +302,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   /** Synced from problem-pending state; used when merging server /base/data into nodeCardsMap. */
   const pendingProblemsMergeCardIdsRef = useRef<Set<string>>(new Set());
   const saveHandlerRef = useRef<() => void>(() => {});
-  const editorAiHidden = false;
-  const savedEditorLayout = readSavedBaseEditorUiPrefs(editorAiHidden);
 
   const [explorerMode, setExplorerMode] = useState<'tree' | 'pending' | 'branches' | 'git' | 'mcp'>(
     () => savedEditorLayout.explorerMode,
@@ -1388,7 +1394,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
     const initialExpanded = new Set<string>();
     const fromContext = (window as any).UiContext?.baseExpandState;
-    if (Array.isArray(fromContext) && fromContext.length > 0 && initialData?.nodes?.length) {
+    if (Array.isArray(fromContext) && (window as any).UiContext?.baseExpandStateLoaded && initialData?.nodes?.length) {
       fromContext.forEach((id: string) => {
         if (initialData!.nodes!.some((n: BaseNode) => n.id === id)) initialExpanded.add(id);
       });
@@ -1399,9 +1405,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         }
       });
     }
+    const hasSavedExpandState = !!(window as any).UiContext?.baseExpandStateLoaded;
     const focusNode = String((window as any).UiContext?.editorFocusNodeId || '').trim();
     const edges0 = initialData?.edges || [];
-    if (focusNode && initialData?.nodes?.some((n: BaseNode) => n.id === focusNode)) {
+    if (!hasSavedExpandState && focusNode && initialData?.nodes?.some((n: BaseNode) => n.id === focusNode)) {
       initialExpanded.add(focusNode);
       collectOutlineAncestors(focusNode, initialData!.nodes!, edges0).forEach((id) => initialExpanded.add(id));
     }
@@ -2393,6 +2400,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     if (urlParams.get('cardId')) return;
     const fromUrl = urlParams.get('nodeId')?.trim() || '';
     if (!fromUrl) return;
+    if ((window as any).UiContext?.baseExpandStateLoaded) return;
     if (!base.nodes.some((n) => n.id === fromUrl)) return;
     if (hasExpandedForUrlNodeIdRef.current === fromUrl) return;
     const anc = collectOutlineAncestors(fromUrl, base.nodes, base.edges || []);
@@ -2566,6 +2574,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         Number.isFinite(baseDocIdNumForSave) && baseDocIdNumForSave > 0
           ? {
               explorerMode,
+              editorRightPanelTab,
               rightPanelOpen,
               aiBottomOpen: editorAiHidden ? false : aiBottomOpen,
               explorerPanelWidth,
@@ -2574,7 +2583,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             }
           : null;
 
-      if (editorUiPrefsPayload) batchSaveData.editorUiPrefs = editorUiPrefsPayload;
+      if (editorUiPrefsPayload) {
+        batchSaveData.editorUiPrefs = editorUiPrefsPayload;
+        writeSavedBaseEditorUiPrefsLocal(editorUiPrefsPayload);
+      }
+      batchSaveData.expandedNodeIds = Array.from(expandedNodesRef.current);
 
       const nodeIdMap = new Map<string, string>();
       const cardIdMap = new Map<string, string>();
@@ -3467,7 +3480,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       try {
         if (
           !hasAnyChanges &&
-          !hasFileMoveChanges &&
           Number.isFinite(baseDocIdNumForSave) &&
           baseDocIdNumForSave > 0 &&
           (editorUiPrefsPayload || developSid)
@@ -3476,6 +3488,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             docId: baseDocIdNumForSave,
             branch: saveBranch,
             sidecarOnly: true,
+            expandedNodeIds: Array.from(expandedNodesRef.current),
             ...(developSid
               ? {
                   developSessionId: developSid,
@@ -3613,7 +3626,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     } finally {
       setIsCommitting(false);
     }
-  }, [pendingChanges, pendingDragChanges, pendingRenames, pendingDeletes, pendingFileMoves, pendingPluginNodeDataIds, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, learnProblemNotesDraftCount, onLearnerNotesDraftChange, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.nodes, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion, explorerMode, rightPanelOpen, aiBottomOpen, explorerPanelWidth, problemsPanelWidth, aiPanelHeight, editorAiHidden, developEditorContext, basePath]);
+  }, [pendingChanges, pendingDragChanges, pendingRenames, pendingDeletes, pendingFileMoves, pendingPluginNodeDataIds, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, learnProblemNotesDraftCount, onLearnerNotesDraftChange, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.nodes, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion, explorerMode, editorRightPanelTab, rightPanelOpen, aiBottomOpen, explorerPanelWidth, problemsPanelWidth, aiPanelHeight, editorAiHidden, developEditorContext, basePath]);
 
   useEffect(() => {
     saveHandlerRef.current = handleSaveAll;
