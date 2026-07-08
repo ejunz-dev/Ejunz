@@ -28,6 +28,7 @@
   {{ set(UiContext, 'developSessionStartedAtIso', developSessionStartedAtIso) }}
   {% endif %}
   {{ set(UiContext, 'baseExpandState', baseExpandState or []) }}
+  {{ set(UiContext, 'baseExpandStateLoaded', baseExpandStateLoaded or false) }}
   {{ set(UiContext, 'baseEditorUiPrefs', baseEditorUiPrefs or {}) }}
   {{ set(UiContext, 'editorRootNodeId', editorRootNodeId or '') }}
   {{ set(UiContext, 'editorFocusNodeId', editorFocusNodeId or '') }}
