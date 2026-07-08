@@ -44,7 +44,7 @@
   {% if developEditorSessionHex is defined and developEditorSessionHex %}
   {% set _sessws = '&developEditorSession=' + developEditorSessionHex %}
   {% endif %}
-  {% if socketUrl is defined %}
+  {% if socketUrl is defined and socketUrl %}
   {{ set(UiContext, 'socketUrl', socketUrl) }}
   {% else %}
   {{ set(UiContext, 'socketUrl', 'base/ws?domainId=' + (domainId or (base and base.domainId) or '') + '&docId=' + _base_doc_id + _sessws) }}
