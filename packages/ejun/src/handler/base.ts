@@ -3761,6 +3761,9 @@ class BaseNodeFilesHandler extends Handler {
     base?: BaseDoc;
     node?: BaseNode;
     branch?: string;
+    resolvedNodeId?: string;
+    /** True if the node ID looks like a temp (unsaved) node */
+    isTempNode: boolean = false;
 
     @param('docId', Types.PositiveInt, true)
     @param('nodeId', Types.String, true)
@@ -3774,13 +3777,19 @@ class BaseNodeFilesHandler extends Handler {
         this.branch = branch || (this.base as any).currentBranch || 'main';
         const { nodes } = getBranchData(this.base, this.branch);
         this.node = nodes.find((n) => n.id === nodeId) || null;
-        if (!this.node) throw new NotFoundError('Node not found');
+        this.resolvedNodeId = nodeId;
+        // Allow uploads/downloads for temp node IDs even if the node doesn't exist yet
+        this.isTempNode = !this.node && (nodeId.startsWith('temp-node-') || nodeId.startsWith('node_'));
     }
 
     @param('docId', Types.PositiveInt, true)
     @param('nodeId', Types.String, true)
     @param('branch', Types.String, true)
     async get(domainId: string, docId: number, nodeId: string, branch?: string) {
+        if (this.isTempNode) {
+            this.response.body = { files: [] };
+            return;
+        }
         const files = sortFiles(this.node!.files || []).map((file) => {
             let lastModified: Date | null = null;
             if (file.lastModified) {
@@ -3795,6 +3804,15 @@ class BaseNodeFilesHandler extends Handler {
     @param('nodeId', Types.String, true)
     @param('branch', Types.String, true)
     async post(domainId: string, docId: number, nodeId: string, branch?: string) {
+        // Temp nodes: only accept uploads
+        if (this.isTempNode) {
+            const body = (this.request.body as any) || {};
+            if (this.request.files?.file) {
+                const filename = body.filename || this.request.files.file.originalFilename || 'untitled';
+                return this.postUploadFile(domainId, docId, nodeId, branch, filename);
+            }
+            throw new ValidationError('file');
+        }
         const body = (this.request.body as any) || {};
         if (this.request.files?.file) {
             const filename = body.filename || this.request.files.file.originalFilename || 'untitled';
@@ -3814,23 +3832,30 @@ class BaseNodeFilesHandler extends Handler {
     @param('branch', Types.String, true)
     @post('filename', Types.Filename, true)
     async postUploadFile(domainId: string, docId: number, nodeId: string, branch?: string, filename?: string) {
-        if ((this.node!.files?.length || 0) >= system.get('limit.user_files')) {
-            if (!this.user.hasPriv(PRIV.PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('count');
+        if (!this.isTempNode) {
+            if ((this.node!.files?.length || 0) >= system.get('limit.user_files')) {
+                if (!this.user.hasPriv(PRIV.PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('count');
+            }
         }
         const file = this.request.files?.file;
         if (!file) throw new ValidationError('file');
-        const size = Math.sum((this.node!.files || []).map((i) => i.size)) + file.size;
+        const size = Math.sum((this.node?.files || []).map((i) => i.size)) + file.size;
         if (size >= system.get('limit.user_files_size')) {
             if (!this.user.hasPriv(PRIV.PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('size');
         }
         const finalFilename = filename || file.originalFilename || 'untitled';
-        if ((this.node!.files || []).find((i) => i.name === finalFilename)) throw new FileExistsError(finalFilename);
         const storagePath = `base/${domainId}/${docId.toString()}/node/${nodeId}/${finalFilename}`;
         await storage.put(storagePath, file.filepath, this.user._id);
         const meta = await storage.getMeta(storagePath);
         const payload = { _id: finalFilename, name: finalFilename, ...pick(meta, ['size', 'lastModified', 'etag']) };
         if (!meta) throw new FileUploadError();
-        const updatedFiles = [...(this.node!.files || []), payload];
+        let updatedFiles;
+        if (this.isTempNode) {
+            // Temp node: just acknowledge the upload without updating DB node
+            this.response.body = { ok: true, tempNodeId: nodeId, file: payload };
+            return;
+        }
+        updatedFiles = [...(this.node!.files || []), payload];
         await this.updateNodeFiles(domainId, docId, updatedFiles);
         this.response.body = { ok: true, files: updatedFiles };
     }
@@ -4010,7 +4035,9 @@ class BaseNodeFileDownloadHandler extends Handler {
         const branchName = branch || (base as any).currentBranch || 'main';
         const { nodes } = getBranchData(base, branchName);
         const node = nodes.find((n) => n.id === nodeId);
-        if (!node) throw new NotFoundError('Node not found');
+        // Allow download for temp nodes even if node doesn't exist --- files were uploaded before save
+        const isTempNode = !node && (nodeId.startsWith('temp-node-') || nodeId.startsWith('node_'));
+        if (!node && !isTempNode) throw new NotFoundError('Node not found');
         const target = `base/${domainId}/${docId.toString()}/node/${nodeId}/${filename}`;
         const file = await storage.getMeta(target);
         if (!file) throw new NotFoundError(filename);
@@ -4717,13 +4744,35 @@ export class BaseBatchSaveHandler extends Handler {
                     );
                     if (nodeCreate.tempId) {
                         nodeIdMap.set(nodeCreate.tempId, result.nodeId);
+                        // Adopt files stored under the temp node ID
+                        const tempPrefix = `base/${actualDomainId}/${docId.toString()}/node/${nodeCreate.tempId}/`;
+                        const realPrefix = `base/${actualDomainId}/${docId.toString()}/node/${result.nodeId}/`;
+                        try {
+                            const stagedFiles = await storage.list(tempPrefix);
+                            if (stagedFiles.length > 0) {
+                                const fileInfos: FileInfo[] = [];
+                                for (const sf of stagedFiles) {
+                                    await storage.rename(
+                                        `base/${actualDomainId}/${docId.toString()}/node/${nodeCreate.tempId}/${sf.name}`,
+                                        `base/${actualDomainId}/${docId.toString()}/node/${result.nodeId}/${sf.name}`,
+                                    );
+                                    const meta = await storage.getMeta(`base/${actualDomainId}/${docId.toString()}/node/${result.nodeId}/${sf.name}`);
+                                    fileInfos.push({ _id: sf.name, name: sf.name, ...pick(meta, ['size', 'lastModified', 'etag']) });
+                                }
+                                if (fileInfos.length > 0) {
+                                    await BaseModel.updateNode(actualDomainId, docId, result.nodeId, { files: fileInfos }, branch, mdt);
+                                }
+                            }
+                        } catch (_e) {
+                            // If the temp storage listing fails, skip adoption (no files to adopt)
+                        }
                     }
                 } catch (error: any) {
                     errors.push(`创建节点失败: ${error.message || '未知错误'}`);
                 }
             }
-            
-            remainingNodeCreates.splice(0, remainingNodeCreates.length, 
+
+            remainingNodeCreates.splice(0, remainingNodeCreates.length,
                 ...remainingNodeCreates.filter(nc => !processedNodeCreates.has(nc.tempId))
             );
             
@@ -4825,6 +4874,10 @@ export class BaseBatchSaveHandler extends Handler {
                         cardCreate.problems,
                         cardCreate.order,
                         branch,
+                        cardCreate.cardType,
+                        cardCreate.fileType,
+                        cardCreate.fileName,
+                        cardCreate.fileSize,
                     );
                     
                     if (cardCreate.tempId) {
@@ -4839,12 +4892,16 @@ export class BaseBatchSaveHandler extends Handler {
         
         for (const cardUpdate of cardUpdates) {
             try {
-                const updates: Partial<Pick<CardDoc, 'title' | 'content' | 'cardFace' | 'order' | 'nodeId' | 'problems'>> = {};
+                const updates: Partial<Pick<CardDoc, 'title' | 'content' | 'cardFace' | 'order' | 'nodeId' | 'problems' | 'cardType' | 'fileType' | 'fileName' | 'fileSize'>> = {};
                 if (cardUpdate.title !== undefined) updates.title = cardUpdate.title;
                 if (cardUpdate.content !== undefined) updates.content = cardUpdate.content;
                 if (cardUpdate.cardFace !== undefined) updates.cardFace = cardUpdate.cardFace;
                 if (cardUpdate.nodeId !== undefined) updates.nodeId = cardUpdate.nodeId;
                 if (cardUpdate.order !== undefined) updates.order = cardUpdate.order;
+                if (cardUpdate.cardType !== undefined) updates.cardType = cardUpdate.cardType;
+                if (cardUpdate.fileType !== undefined) updates.fileType = cardUpdate.fileType;
+                if (cardUpdate.fileName !== undefined) updates.fileName = cardUpdate.fileName;
+                if (cardUpdate.fileSize !== undefined) updates.fileSize = cardUpdate.fileSize;
                 if (cardUpdate.problems !== undefined) {
                     let problemsOut = cardUpdate.problems as Problem[];
                     try {

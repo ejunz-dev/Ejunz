@@ -93,6 +93,8 @@ import {
   findNodeIdForCardMap,
   flattenNodeFileFolderTree,
   getAggregatedFilesForNode,
+  getCardColor,
+  getCardIcon,
   getPendingDraftCardBody,
   mergeLearnProblemNoteDraftsIntoBatch,
   mergeServerNodeCardsMapWithLocalDrafts,
@@ -119,6 +121,17 @@ import {
   aiBarRefChipBg,
   aiBarRefChipLetter,
 } from 'vj/components/base/utils';
+import {
+  CardTextIcon,
+  CardPdfIcon,
+  CardImageIcon,
+  CardVideoIcon,
+  CardAudioIcon,
+  CardCodeIcon,
+  CardFileOtherIcon,
+  FolderClosedIcon,
+  FolderOpenedIcon,
+} from 'vj/components/base/BaseEditorCardIcons';
 import { SortWindow } from 'vj/components/base/SortWindow';
 import { DevelopQueueList as BaseEditorDevelopQueueList } from 'vj/components/base/DevelopQueueList';
 import { McpSidebarPanel } from 'vj/components/base/McpSidebarPanel';
@@ -914,6 +927,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
     if (pendingNodeUploadRef.current) {
       const { nodeId } = pendingNodeUploadRef.current;
+      // Always upload files regardless of temp/saved node
       let url: string;
       url = domainScopedPath(`/base/${docId}/node/${nodeId}/files?branch=${encodeURIComponent(branch)}`, domainId);
       try {
@@ -922,6 +936,29 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       } catch (_err) {
         // Notification already shown by uploadFiles
       }
+      // Create a file-card for each uploaded file under this node
+      for (const file of files) {
+        const tempId = `temp-card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const { inferCardFileType } = await import('./utils');
+        const fileType = inferCardFileType(file.name);
+        const newCard: PendingCreate = { type: 'card', nodeId, title: file.name, tempId };
+        pendingCreatesRef.current.set(tempId, newCard);
+        setPendingCreatesCount(pendingCreatesRef.current.size);
+        const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+        if (!nodeCardsMap[nodeId]) nodeCardsMap[nodeId] = [];
+        const existingCards = nodeCardsMap[nodeId] || [];
+        const maxOrder = existingCards.length > 0 ? Math.max(...existingCards.map((c: Card) => c.order ?? 0)) : 0;
+        const tempCard: Card = {
+          docId: tempId, cid: 0, nodeId,
+          title: file.name, content: '',
+          cardType: 'file', fileType, fileName: file.name, fileSize: file.size,
+          order: maxOrder + 1, updateAt: new Date().toISOString(),
+        } as Card;
+        nodeCardsMap[nodeId].push(tempCard);
+        nodeCardsMap[nodeId].sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
+        (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+      }
+      setNodeCardsMapVersion((v) => v + 1);
       pendingNodeUploadRef.current = null;
     } else if (pendingCardUploadRef.current) {
       const pending = pendingCardUploadRef.current;
@@ -2796,14 +2833,20 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           const maxNodeOrder = childNodesForOrder.length > 0 ? Math.max(...childNodesForOrder.map((n: BaseNode) => n.order || 0)) : 0;
           const finalOrder = tempCard?.order ?? Math.max(maxCardOrder, maxNodeOrder) + 1;
 
-          batchSaveData.cardCreates.push({
+          const cardCreatePayload: any = {
             tempId: create.tempId,
             nodeId: createNodeId,
             title: finalTitle,
             content: finalContent,
             problems: finalProblems,
             order: finalOrder,
-          });
+          };
+          // Pass file-card metadata so the backend persists it
+          if (tempCard?.cardType) cardCreatePayload.cardType = tempCard.cardType;
+          if (tempCard?.fileType) cardCreatePayload.fileType = tempCard.fileType;
+          if (tempCard?.fileName) cardCreatePayload.fileName = tempCard.fileName;
+          if (tempCard?.fileSize != null) cardCreatePayload.fileSize = tempCard.fileSize;
+          batchSaveData.cardCreates.push(cardCreatePayload);
         }
       }
       
@@ -10886,7 +10929,10 @@ Reply with a JSON code block only for executable operations. For same-response f
                   }}>
                     {isPluginEditor ? '◆' : (() => {
                       const n = base.nodes.find(nd => nd.id === (file.nodeId || file.id));
-                      return roadmapPlugin.getFileIcon(n) ?? (isRoadmapTreeNode || isExpanded ? '📁' : '📂');
+                      const icon = roadmapPlugin.getFileIcon(n);
+                      if (icon) return icon;
+                      if (isRoadmapTreeNode) return '';
+                      return isExpanded ? <FolderOpenedIcon size={16} /> : <FolderClosedIcon size={16} />;
                     })()}
                   </span>
                   {isPluginEditor && (() => {
@@ -10896,8 +10942,8 @@ Reply with a JSON code block only for executable operations. For same-response f
                   })()}
                 </>
               ) : (
-                <span style={{ 
-                  fontSize: '14px', 
+                <span style={{
+                  fontSize: '14px',
                   flexShrink: 0,
                   width: '16px',
                   height: '16px',
@@ -10906,7 +10952,23 @@ Reply with a JSON code block only for executable operations. For same-response f
                   justifyContent: 'center',
                   marginLeft: '18px',
                 }}>
-                  📄
+                  {(() => {
+                    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+                    const cards = nodeCardsMap[file.nodeId || ''] || [];
+                    const card = cards.find((c: Card) => String(c.docId) === String(file.cardId));
+                    const iconKey = getCardIcon(card?.cardType, card?.fileType);
+                    const cardColor = getCardColor(iconKey, theme);
+                    const size = 14;
+                    switch (iconKey) {
+                      case 'pdf': return <CardPdfIcon size={size} color={cardColor} />;
+                      case 'image': return <CardImageIcon size={size} color={cardColor} />;
+                      case 'video': return <CardVideoIcon size={size} color={cardColor} />;
+                      case 'audio': return <CardAudioIcon size={size} color={cardColor} />;
+                      case 'code': return <CardCodeIcon size={size} color={cardColor} />;
+                      case 'other': return <CardFileOtherIcon size={size} color={cardColor} />;
+                      default: return <CardTextIcon size={size} color={cardColor} />;
+                    }
+                  })()}
                 </span>
               )}
               {isEditing ? (
@@ -11850,7 +11912,7 @@ Reply with a JSON code block only for executable operations. For same-response f
               onClick={() => toggleNodeFileFolder(folder.nodeId)}
             >
               <span style={{ marginRight: 4, color: themeStyles.textTertiary, fontSize: 10 }}>{isExpanded ? '▼' : '▶'}</span>
-              <span style={{ marginRight: 4 }}>{isExpanded ? '📁' : '📂'}</span>
+              <span style={{ marginRight: 4, display: 'inline-flex', alignItems: 'center' }}>{isExpanded ? <FolderOpenedIcon size={14} /> : <FolderClosedIcon size={14} />}</span>
               {folder.nodeText}
             </li>,
           ];
@@ -12565,7 +12627,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                   cardFileInputRef.current?.click();
                 }}
               >
-                {i18n('Upload file')}
+                上传文件(创建卡片)
               </div>
               <div
                 style={{
@@ -14533,472 +14595,119 @@ Reply with a JSON code block only for executable operations. For same-response f
                     onChange={(value) => updateRoadmapCanvasNodeData({ nodeText: value })}
                   />
                 ) : selectedFile && selectedFile.type === 'card' ? (
-              <div 
-                id={`editor-wrapper-${selectedFile.id}`}
-                style={{ width: '100%', height: '100%', position: 'relative' }}
-              >
-                <textarea
-                  key={selectedFile.id}
-                  ref={editorRef}
-                  defaultValue={fileContent}
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    border: 'none',
-                    outline: 'none',
-                    fontFamily: 'Monaco, Menlo, "Ubuntu Mono", Consolas, "source-code-pro", monospace',
-                    fontSize: '14px',
-                    lineHeight: '1.6',
-                    resize: 'none',
-                    padding: '16px',
-                    boxSizing: 'border-box',
-                    backgroundColor: themeStyles.bgPrimary,
-                    color: themeStyles.textPrimary,
-                  }}
-                />
-              </div>
-            ) : selectedFile?.type === 'node' && selectedFile.nodeId && docId ? (
               (() => {
-                const branch = (window as any).UiContext?.currentBranch || 'main';
-                const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
-                const node = base.nodes.find((n: BaseNode) => n.id === selectedFile!.nodeId);
-                const nodeId = selectedFile!.nodeId!;
-                const rootNodeId = resolveEditorRootNodeId(base, editorRootNodeId);
-                const rootNode = base.nodes.find((n: BaseNode) => n.id === rootNodeId);
-                const isRootView = !!rootNodeId && nodeId === rootNodeId;
-                const { selfFiles, subfolders } = buildNodeFileFolderTree(nodeId, base, nodeCardsMap);
-                const allFiles = flattenNodeFileFolderTree(selfFiles, subfolders);
-                const sortedSelfFiles = sortAggregatedFiles(selfFiles, nodeFileListSortBy, nodeFileListSortOrder);
-                const showNodeFileTree = allFiles.length > 0 || subfolders.length > 0 || (isRootView && nodeFileListEditMode);
-                const nodeFileDownloadUrl = (nid: string, filename: string) => getBaseUrl(`/${docId}/node/${nid}/file/${encodeURIComponent(filename)}?branch=${encodeURIComponent(branch)}`, docId);
-                const cardFileDownloadUrl = (cardId: string, filename: string) => getBaseUrl(`/${docId}/card/${cardId}/file/${encodeURIComponent(filename)}`, docId);
-                const downloadUrlFor = (row: AggregatedFileItem) => row.sourceType === 'card' && row.sourceCardId ? cardFileDownloadUrl(row.sourceCardId, row.name) : nodeFileDownloadUrl(row.sourceNodeId, row.name);
-                const previewUrlFor = (row: AggregatedFileItem) => {
-                  const u = downloadUrlFor(row);
-                  return u + (u.includes('?') ? '&noDisposition=1' : '?noDisposition=1');
-                };
-                const filesListUrl = getBaseUrl(`/${docId}/node/${nodeId}/files?branch=${encodeURIComponent(branch)}`, docId);
-                const formatSize = (bytes: number) => {
-                  if (bytes < 1024) return `${bytes} B`;
-                  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-                  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-                };
-                const formatTime = (v?: Date | string) => {
-                  if (!v) return '—';
-                  const d = typeof v === 'string' ? new Date(v) : v;
-                  return d.toLocaleString();
-                };
-                const toggleSort = (col: 'name' | 'size' | 'time') => {
-                  if (nodeFileListSortBy === col) setNodeFileListSortOrder(o => o === 'asc' ? 'desc' : 'asc');
-                  else { setNodeFileListSortBy(col); setNodeFileListSortOrder('asc'); }
-                };
-                const thStyle = () => ({
-                  textAlign: 'left' as const,
-                  padding: '8px 12px',
-                  color: themeStyles.textSecondary,
-                  fontWeight: 600,
-                  cursor: 'pointer' as const,
-                  userSelect: 'none' as const,
-                  whiteSpace: 'nowrap' as const,
-                });
-                const sortIndicator = (col: 'name' | 'size' | 'time') =>
-                  nodeFileListSortBy === col ? (nodeFileListSortOrder === 'asc' ? ' ↑' : ' ↓') : '';
-                const rowKey = (row: AggregatedFileItem) => `${row.sourceType}-${row.sourceNodeId}-${row.sourceCardId || ''}-${row.name}`;
-                const selectedRows = allFiles.filter((row) => selectedFileListRowKeys.has(rowKey(row)));
-                const toggleEditMode = () => {
-                  setNodeFileListEditMode((v) => !v);
-                  setSelectedFileListRowKeys(new Set());
-                };
-                const toggleRow = (key: string) => {
-                  setSelectedFileListRowKeys((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(key)) next.delete(key);
-                    else next.add(key);
-                    return next;
-                  });
-                };
-                const toggleSelectAll = () => {
-                  if (selectedFileListRowKeys.size >= allFiles.length) setSelectedFileListRowKeys(new Set());
-                  else setSelectedFileListRowKeys(new Set(allFiles.map((row) => rowKey(row))));
-                };
-                const handleBatchDelete = async () => {
-                  try {
-                    for (const row of selectedRows) {
-                      const deleteUrl = row.sourceType === 'self' ? filesListUrl : row.sourceType === 'card' && row.sourceCardId ? getBaseUrl(`/${docId}/card/${row.sourceCardId}/files`, docId) : getBaseUrl(`/${docId}/node/${row.sourceNodeId}/files?branch=${encodeURIComponent(branch)}`, docId);
-                      await request.post(deleteUrl, { files: [row.name] });
+                // Check if this is a file-card
+                const nodeCards = (window as any).UiContext?.nodeCardsMap || {};
+                const cards = nodeCards[selectedFile.nodeId || ''] || [];
+                const card = cards.find((c: Card) => String(c.docId) === String(selectedFile.cardId));
+                const isFileCard = card?.cardType === 'file';
+                const filePreviewType = card?.fileType || '';
+                const cardFileName = card?.fileName || '';
+                if (isFileCard) {
+                  const branch = (window as any).UiContext?.currentBranch || 'main';
+                  const fileUrl = getBaseUrl(`/${docId}/node/${selectedFile.nodeId}/file/${encodeURIComponent(cardFileName)}?branch=${encodeURIComponent(branch)}&noDisposition=1`, docId);
+                  const containerStyle: React.CSSProperties = {
+                    width: '100%', height: '100%', overflow: 'auto',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center',
+                    backgroundColor: themeStyles.bgPrimary, color: themeStyles.textPrimary,
+                  };
+                  const renderPreview = () => {
+                    if (filePreviewType === 'pdf') {
+                      return (
+                        <object data={fileUrl} type="application/pdf" style={{ width: '100%', flex: 1, border: 'none' }}>
+                          <embed src={fileUrl} type="application/pdf" style={{ width: '100%', height: '100%', border: 'none' }} />
+                        </object>
+                      );
                     }
-                    Notification.success(i18n('Deleted.'));
-                    await refetchEditorData();
-                    setSelectedFileListRowKeys(new Set());
-                  } catch (err: any) {
-                    Notification.error(err?.message || i18n('Delete failed.'));
-                  }
-                };
-                const handleBatchDownload = () => {
-                  selectedRows.forEach((row) => window.open(downloadUrlFor(row), '_blank'));
-                  setSelectedFileListRowKeys(new Set());
-                };
-                const handleBatchCopyMdLinks = async () => {
-                  const text = selectedRows.map((row) => `[](${previewUrlFor(row)})`).join('\n');
-                  try {
-                    await navigator.clipboard.writeText(text);
-                    Notification.success(i18n('Link copied.'));
-                  } catch (e: any) {
-                    Notification.error(e?.message || i18n('Copy failed.'));
-                  }
-                };
-                const toFullUrl = (url: string) => (url.startsWith('http') ? url : `${window.location.origin}${url}`);
-                const handleBatchCopyDownloadLinks = async () => {
-                  const text = selectedRows.map((row) => toFullUrl(downloadUrlFor(row))).join('\n');
-                  try {
-                    await navigator.clipboard.writeText(text);
-                    Notification.success(i18n('Link copied.'));
-                  } catch (e: any) {
-                    Notification.error(e?.message || i18n('Copy failed.'));
-                  }
-                };
-                const tableColSpan = (nodeFileListEditMode ? 2 : 0) + 3 + (isMobile ? 1 : 0);
-                const fileDragHandleProps = (row: AggregatedFileItem, key: string) => ({
-                  draggable: true as const,
-                  onDragStart: (e: React.DragEvent) => {
-                    draggingFileItemRef.current = row;
-                    e.dataTransfer.setData('text/plain', key);
-                    e.dataTransfer.effectAllowed = 'move';
-                    try {
-                      e.dataTransfer.setData('application/x-base-file-move', key);
-                    } catch {
-                      /* ignore */
-                    }
-                    setBaseEditorFileDragImage(e, row.name, {
-                      bg: themeStyles.bgPrimary,
-                      color: themeStyles.textPrimary,
-                      border: themeStyles.borderSecondary,
-                    });
-                    setDraggingFileItem(row);
-                  },
-                  onDragEnd: () => {
-                    draggingFileItemRef.current = null;
-                    setDraggingFileItem(null);
-                    setFileDropTargetNodeId(null);
-                  },
-                });
-                const fileDragHandleCellStyle: React.CSSProperties = {
-                  padding: '8px 4px',
-                  textAlign: 'center',
-                  cursor: 'grab',
-                  color: themeStyles.textTertiary,
-                  fontSize: '16px',
-                  lineHeight: 1,
-                  userSelect: 'none',
-                  touchAction: 'none',
-                };
-                const fileDropTargetStyle = (targetId: string) =>
-                  fileDropTargetNodeId === targetId ? { backgroundColor: themeStyles.bgHover, outline: `2px dashed ${themeStyles.accent}` } : {};
-                const bindFileDropTarget = (targetId: string) => ({
-                  onDragEnter: (e: React.DragEvent) => {
-                    if (!nodeFileListEditMode || !draggingFileItemRef.current) return;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setFileDropTargetNodeId(targetId);
-                  },
-                  onDragOver: (e: React.DragEvent) => {
-                    if (!nodeFileListEditMode || !draggingFileItemRef.current) return;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    e.dataTransfer.dropEffect = 'move';
-                    setFileDropTargetNodeId(targetId);
-                  },
-                  onDragLeave: (e: React.DragEvent) => {
-                    const related = e.relatedTarget as Node | null;
-                    if (related && e.currentTarget.contains(related)) return;
-                    setFileDropTargetNodeId((prev) => (prev === targetId ? null : prev));
-                  },
-                  onDrop: (e: React.DragEvent) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const dragged = draggingFileItemRef.current;
-                    if (dragged && nodeFileListEditMode) {
-                      queueFileMove(dragged, targetId);
-                    }
-                    draggingFileItemRef.current = null;
-                    setDraggingFileItem(null);
-                    setFileDropTargetNodeId(null);
-                  },
-                });
-                const renderFileRow = (row: AggregatedFileItem, depth: number) => {
-                  const deleteUrl = row.sourceType === 'self'
-                    ? filesListUrl
-                    : row.sourceType === 'card' && row.sourceCardId
-                      ? getBaseUrl(`/${docId}/card/${row.sourceCardId}/files`, docId)
-                      : getBaseUrl(`/${docId}/node/${row.sourceNodeId}/files?branch=${encodeURIComponent(branch)}`, docId);
-                  const key = rowKey(row);
-                  const isDragging = draggingFileItem && rowKey(draggingFileItem) === key;
-                  return (
-                    <tr
-                      key={key}
-                      style={{
-                        borderBottom: `1px solid ${themeStyles.borderSecondary}`,
-                        opacity: isDragging ? 0.45 : 1,
-                      }}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        setFileListRowMenu({
-                          x: e.clientX,
-                          y: e.clientY,
-                          downloadUrl: downloadUrlFor(row),
-                          deleteUrl,
-                          filename: row.name,
-                        });
-                      }}
-                    >
-                      {nodeFileListEditMode && (
-                        <td style={{ width: 36, minWidth: 36, padding: '8px 4px', textAlign: 'center', verticalAlign: 'middle' }} onClick={(e) => e.stopPropagation()}>
-                          <input type="checkbox" checked={selectedFileListRowKeys.has(key)} onChange={() => toggleRow(key)} />
-                        </td>
-                      )}
-                      {nodeFileListEditMode && (
-                        <td style={{ width: 44, minWidth: 44, padding: 0, verticalAlign: 'middle' }}>
-                          <div
-                            {...fileDragHandleProps(row, key)}
-                            style={{
-                              ...fileDragHandleCellStyle,
-                              width: '100%',
-                              minHeight: 40,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              boxSizing: 'border-box',
-                            }}
-                            title={i18n('Drag to move')}
-                            aria-label={i18n('Drag to move')}
-                            onMouseDown={(e) => e.stopPropagation()}
-                          >
-                            ⋮⋮
-                          </div>
-                        </td>
-                      )}
-                      <td style={{ padding: '8px 12px', paddingLeft: `${12 + depth * 16}px`, overflow: 'hidden', minWidth: 0 }}>
-                        <a
-                          href={`${previewUrlFor(row)}&view=1`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          draggable={false}
-                          title={row.name}
-                          style={{ color: themeStyles.accent, textDecoration: 'none', cursor: 'pointer', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                          onClick={(ev) => handleFilePreviewClick(ev, previewUrlFor(row), row.name, row.size)}
-                          onAuxClick={(ev) => handleFilePreviewAuxClick(ev, previewUrlFor(row), row.name)}
-                        >
-                          {row.name}
-                        </a>
-                      </td>
-                      {isMobile && (
-                        <td style={{ width: 44, minWidth: 44, padding: '8px 4px', verticalAlign: 'middle', textAlign: 'center' }}>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                              setFileListRowMenu({
-                                x: Math.min(rect.left, window.innerWidth - 160),
-                                y: rect.bottom + 4,
-                                downloadUrl: downloadUrlFor(row),
-                                deleteUrl,
-                                filename: row.name,
-                              });
-                            }}
-                            style={{
-                              width: 36,
-                              height: 36,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              border: 'none',
-                              background: 'transparent',
-                              color: themeStyles.textSecondary,
-                              cursor: 'pointer',
-                              fontSize: '18px',
-                              borderRadius: '4px',
-                            }}
-                            aria-label={i18n('Actions')}
-                          >
-                            ⋯
-                          </button>
-                        </td>
-                      )}
-                      <td style={{ padding: '8px 12px', color: themeStyles.textSecondary, overflow: 'hidden', minWidth: 0 }}>{formatSize(row.size)}</td>
-                      <td style={{ padding: '8px 12px', color: themeStyles.textSecondary, overflow: 'hidden', minWidth: 0 }}>{formatTime(row.lastModified)}</td>
-                    </tr>
-                  );
-                };
-                const renderFolderRows = (folder: NodeFileFolder, depth: number): React.ReactNode[] => {
-                  const isExpanded = expandedNodeFileFolders.has(folder.nodeId);
-                  const sortedFolderFiles = sortAggregatedFiles(folder.files, nodeFileListSortBy, nodeFileListSortOrder);
-                  const rows: React.ReactNode[] = [
-                    <tr
-                      key={`folder-${folder.nodeId}`}
-                      style={{
-                        borderBottom: `1px solid ${themeStyles.borderSecondary}`,
-                        userSelect: 'none',
-                        ...fileDropTargetStyle(folder.nodeId),
-                      }}
-                      {...bindFileDropTarget(folder.nodeId)}
-                    >
-                      <td
-                        colSpan={tableColSpan}
-                        style={{
-                          padding: '8px 12px',
-                          paddingLeft: `${12 + depth * 16}px`,
-                          color: themeStyles.textPrimary,
-                          fontWeight: 500,
-                          cursor: 'pointer',
-                        }}
-                        onClick={() => toggleNodeFileFolder(folder.nodeId)}
-                      >
-                        <span style={{ marginRight: 4, color: themeStyles.textTertiary, fontSize: 10 }}>{isExpanded ? '▼' : '▶'}</span>
-                        <span style={{ marginRight: 6 }}>{isExpanded ? '📁' : '📂'}</span>
-                        {folder.nodeText}
-                      </td>
-                    </tr>,
-                  ];
-                  if (isExpanded) {
-                    sortedFolderFiles.forEach((row) => rows.push(renderFileRow(row, depth + 1)));
-                    folder.subfolders.forEach((sub) => rows.push(...renderFolderRows(sub, depth + 1)));
-                  }
-                  return rows;
-                };
-                return (
-                  <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-                    <div style={{
-                      padding: '12px 16px',
-                      borderBottom: `1px solid ${themeStyles.borderPrimary}`,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      flexShrink: 0,
-                      backgroundColor: themeStyles.bgSecondary,
-                      flexWrap: 'wrap',
-                      gap: 8,
-                    }}>
-                      <span style={{ fontWeight: 600, color: themeStyles.textPrimary, fontSize: '14px' }}>
-                        {node?.text || selectedFile.nodeId} — {i18n('Files')}
-                      </span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        {nodeFileListEditMode && selectedRows.length > 0 && (
-                          <>
-                            <button type="button" style={{ padding: '6px 10px', fontSize: '12px', border: `1px solid ${themeStyles.borderPrimary}`, borderRadius: '4px', background: themeStyles.bgButton, color: themeStyles.textPrimary, cursor: 'pointer' }} onClick={handleBatchDelete}>{i18n('Delete selected')}</button>
-                            <button type="button" style={{ padding: '6px 10px', fontSize: '12px', border: `1px solid ${themeStyles.borderPrimary}`, borderRadius: '4px', background: themeStyles.bgButton, color: themeStyles.textPrimary, cursor: 'pointer' }} onClick={handleBatchDownload}>{i18n('Download selected')}</button>
-                            <button type="button" style={{ padding: '6px 10px', fontSize: '12px', border: `1px solid ${themeStyles.borderPrimary}`, borderRadius: '4px', background: themeStyles.bgButton, color: themeStyles.textPrimary, cursor: 'pointer' }} onClick={handleBatchCopyMdLinks}>{i18n('Copy md links')}</button>
-                            <button type="button" style={{ padding: '6px 10px', fontSize: '12px', border: `1px solid ${themeStyles.borderPrimary}`, borderRadius: '4px', background: themeStyles.bgButton, color: themeStyles.textPrimary, cursor: 'pointer' }} onClick={handleBatchCopyDownloadLinks}>{i18n('Copy download links')}</button>
-                          </>
-                        )}
-                        <button
-                          type="button"
-                          style={{
-                            padding: '6px 12px',
-                            fontSize: '13px',
-                            border: `1px solid ${themeStyles.borderPrimary}`,
-                            borderRadius: '4px',
-                            background: themeStyles.bgButton,
-                            color: themeStyles.textPrimary,
-                            cursor: 'pointer',
-                          }}
-                          onClick={() => {
-                            pendingNodeUploadRef.current = { nodeId };
-                            cardFileInputRef.current?.click();
-                          }}
-                        >
-                          {i18n('Upload')}
-                        </button>
-                        <button
-                          type="button"
-                          style={{
-                            padding: '6px 12px',
-                            fontSize: '13px',
-                            border: `1px solid ${themeStyles.borderPrimary}`,
-                            borderRadius: '4px',
-                            background: nodeFileListEditMode ? themeStyles.bgButtonActive : themeStyles.bgButton,
-                            color: themeStyles.textPrimary,
-                            cursor: 'pointer',
-                          }}
-                          onClick={toggleEditMode}
-                        >
-                          {nodeFileListEditMode ? i18n('Done') : i18n('Edit')}
-                        </button>
-                      </div>
-                    </div>
-                    <div style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
-                      {showNodeFileTree ? (
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', tableLayout: 'fixed' }}>
-                          <thead>
-                            <tr style={{ borderBottom: `2px solid ${themeStyles.borderPrimary}` }}>
-                              {nodeFileListEditMode && (
-                                <th style={{ width: 36, minWidth: 36, padding: '8px 4px', textAlign: 'center', color: themeStyles.textSecondary }}>
-                                  <input type="checkbox" checked={allFiles.length > 0 && selectedFileListRowKeys.size >= allFiles.length} onChange={toggleSelectAll} title={i18n('Select all')} />
-                                </th>
-                              )}
-                              {nodeFileListEditMode && (
-                                <th style={{ width: 44, minWidth: 44, padding: '8px 4px', color: themeStyles.textSecondary }} aria-label={i18n('Drag to move')} />
-                              )}
-                              <th style={{ ...thStyle(), width: nodeFileListEditMode ? '52%' : '58%', minWidth: 0 }} onClick={() => toggleSort('name')} title={i18n('Sort')}>{i18n('Filename')}{sortIndicator('name')}</th>
-                              <th style={{ ...thStyle(), width: '14%', minWidth: 0 }} onClick={() => toggleSort('size')} title={i18n('Sort')}>{i18n('Size')}{sortIndicator('size')}</th>
-                              <th style={{ ...thStyle(), width: '28%', minWidth: 0 }} onClick={() => toggleSort('time')} title={i18n('Sort')}>{i18n('Time')}{sortIndicator('time')}</th>
-                              {isMobile && <th style={{ width: 44, minWidth: 44, padding: '8px 4px', color: themeStyles.textSecondary }} aria-label={i18n('Actions')} />}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {nodeFileListEditMode && draggingFileItem && rootNodeId && !isRootView && canDropFileOnNode(draggingFileItem, rootNodeId) && (
-                              <tr
-                                key="drop-target-root-node"
-                                style={{ ...fileDropTargetStyle(rootNodeId) }}
-                                {...bindFileDropTarget(rootNodeId)}
-                              >
-                                <td
-                                  colSpan={tableColSpan}
-                                  style={{ padding: '6px 12px', color: themeStyles.textSecondary, fontSize: 12 }}
-                                >
-                                  {i18n('Drop here to move to root')}: {rootNode?.text || rootNodeId}
-                                </td>
-                              </tr>
-                            )}
-                            {nodeFileListEditMode && draggingFileItem && !isRootView && canDropFileOnNode(draggingFileItem, nodeId) && (
-                              <tr
-                                key="drop-target-current-node"
-                                style={{ ...fileDropTargetStyle(nodeId) }}
-                                {...bindFileDropTarget(nodeId)}
-                              >
-                                <td
-                                  colSpan={tableColSpan}
-                                  style={{ padding: '6px 12px', color: themeStyles.textSecondary, fontSize: 12 }}
-                                >
-                                  {i18n('Drop here to move to this node')}
-                                </td>
-                              </tr>
-                            )}
-                            {isRootView && nodeFileListEditMode ? (
-                              renderFolderRows({
-                                nodeId: rootNodeId,
-                                nodeText: node?.text || rootNodeId,
-                                order: 0,
-                                files: sortedSelfFiles,
-                                subfolders,
-                              }, 0)
-                            ) : (
-                              <>
-                                {sortedSelfFiles.map((row) => renderFileRow(row, 0))}
-                                {subfolders.flatMap((folder) => renderFolderRows(folder, 0))}
-                              </>
-                            )}
-                          </tbody>
-                        </table>
-                      ) : (
-                        <div style={{ color: themeStyles.textSecondary, fontSize: '14px', textAlign: 'center', padding: '24px' }}>
-                          {i18n('There are no files currently.')}
+                    if (filePreviewType === 'image') {
+                      return (
+                        <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '16px', overflow: 'auto', width: '100%' }}>
+                          <img src={fileUrl} alt={cardFileName} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
                         </div>
-                      )}
+                      );
+                    }
+                    if (filePreviewType === 'video') {
+                      return (
+                        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', width: '100%' }}>
+                          <video controls style={{ maxWidth: '100%', maxHeight: '100%' }}>
+                            <source src={fileUrl} />
+                          </video>
+                        </div>
+                      );
+                    }
+                    if (filePreviewType === 'audio') {
+                      return (
+                        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', width: '100%' }}>
+                          <audio controls src={fileUrl} style={{ width: '100%', maxWidth: '480px' }} />
+                        </div>
+                      );
+                    }
+                    if (filePreviewType === 'code') {
+                      return (
+                        <iframe
+                          src={fileUrl}
+                          style={{ width: '100%', flex: 1, border: 'none' }}
+                          title={cardFileName}
+                        />
+                      );
+                    }
+                    // Fallback: show download link
+                    const fallbackDownloadUrl = fileUrl.replace('&noDisposition=1', '');
+                    return (
+                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', width: '100%' }}>
+                        <div style={{ textAlign: 'center' }}>
+                          <div style={{ fontSize: '48px', marginBottom: '16px', opacity: 0.5, display: 'flex', justifyContent: 'center' }}><CardFileOtherIcon size={48} /></div>
+                          <p style={{ margin: '0 0 8px', color: themeStyles.textPrimary }}>{cardFileName}</p>
+                          <a
+                            href={fallbackDownloadUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: themeStyles.accent, textDecoration: 'underline' }}
+                          >
+                            下载文件
+                          </a>
+                        </div>
+                      </div>
+                    );
+                  };
+                  return (
+                    <div id={`editor-wrapper-${selectedFile.id}`} style={containerStyle}>
+                      {renderPreview()}
                     </div>
+                  );
+                }
+                return (
+                  <div
+                    id={`editor-wrapper-${selectedFile.id}`}
+                    style={{ width: '100%', height: '100%', position: 'relative' }}
+                  >
+                    <textarea
+                      key={selectedFile.id}
+                      ref={editorRef}
+                      defaultValue={fileContent}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        border: 'none',
+                        outline: 'none',
+                        fontFamily: 'Monaco, Menlo, "Ubuntu Mono", Consolas, "source-code-pro", monospace',
+                        fontSize: '14px',
+                        lineHeight: '1.6',
+                        resize: 'none',
+                        padding: '16px',
+                        boxSizing: 'border-box',
+                        backgroundColor: themeStyles.bgPrimary,
+                        color: themeStyles.textPrimary,
+                      }}
+                    />
                   </div>
                 );
               })()
+            ) : selectedFile?.type === 'node' && selectedFile.nodeId && docId ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: themeStyles.textSecondary, fontSize: '14px', flexDirection: 'column', gap: '8px', padding: '32px', textAlign: 'center' }}>
+                <div style={{ display: 'flex', opacity: 0.4 }}><FolderOpenedIcon size={32} /></div>
+                <div>请从左侧选择卡片进行编辑，或右键创建新卡片。</div>
+              </div>
             ) : (
               <div style={{
                 display: 'flex',

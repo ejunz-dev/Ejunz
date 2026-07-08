@@ -932,6 +932,52 @@ export function resolveEditorRootNodeId(base: BaseDoc, editorRootNodeId?: string
   return base.nodes.find((n) => !base.edges.some((e) => e.target === n.id))?.id || '';
 }
 
+/**
+ * Infer a file-type category from a filename, used for file-card rendering.
+ */
+export function inferCardFileType(filename: string): string {
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  const imageExt = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico']);
+  const videoExt = new Set(['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'wmv']);
+  const audioExt = new Set(['mp3', 'wav', 'flac', 'aac', 'ogg', 'wma', 'm4a']);
+  const codeExt = new Set(['js', 'ts', 'tsx', 'jsx', 'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp', 'css', 'scss', 'less', 'html', 'json', 'yaml', 'yml', 'xml', 'md', 'sh', 'bash', 'sql', 'vue', 'svelte']);
+  if (ext === 'pdf') return 'pdf';
+  if (imageExt.has(ext)) return 'image';
+  if (videoExt.has(ext)) return 'video';
+  if (audioExt.has(ext)) return 'audio';
+  if (codeExt.has(ext)) return 'code';
+  return 'other';
+}
+
+/** Return an emoji icon for a card based on its cardType and fileType. */
+export function getCardIcon(cardType?: string, fileType?: string): 'text' | 'pdf' | 'image' | 'video' | 'audio' | 'code' | 'other' {
+  if (cardType === 'file') {
+    switch (fileType) {
+      case 'pdf': return 'pdf';
+      case 'image': return 'image';
+      case 'video': return 'video';
+      case 'audio': return 'audio';
+      case 'code': return 'code';
+      default: return 'other';
+    }
+  }
+  return 'text';
+}
+
+/** Semantic colors for each card icon type, supporting both light and dark themes. */
+export function getCardColor(iconKey: ReturnType<typeof getCardIcon>, theme: 'light' | 'dark'): string {
+  const palette: Record<string, { light: string; dark: string }> = {
+    text:  { light: '#5f6b7a', dark: '#9aa0a6' },
+    pdf:   { light: '#d93025', dark: '#f28b82' },
+    image: { light: '#1a73e8', dark: '#8ab4f8' },
+    video: { light: '#e8710a', dark: '#fdd663' },
+    audio: { light: '#7c33d3', dark: '#d7aefb' },
+    code:  { light: '#0d652d', dark: '#81c995' },
+    other: { light: '#5f6368', dark: '#9aa0a6' },
+  };
+  return palette[iconKey]?.[theme] ?? palette.other[theme];
+}
+
 export function canDropFileOnNode(row: AggregatedFileItem, targetNodeId: string): boolean {
   return row.sourceType === 'card' || row.sourceNodeId !== targetNodeId;
 }
