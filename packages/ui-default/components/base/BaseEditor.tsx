@@ -407,6 +407,57 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                     pendingProblemsMergeCardIds: pendingProblemsMergeCardIdsRef.current,
                   });
                   (window as any).UiContext.nodeCardsMap = merged;
+
+                  const selected = selectedFileRef.current;
+                  if (selected?.type === 'card') {
+                    const cid = String(selected.cardId || '');
+                    const hasLocalDraft = pendingChangesRef.current.has(selected.id)
+                      || pendingChangesRef.current.has(`card-${cid}`)
+                      || pendingChangesRef.current.has(cid);
+                    if (!hasLocalDraft) {
+                      const card = (merged[selected.nodeId || ''] || []).find((c: Card) => sameCardDocId(c.docId, selected.cardId));
+                      if (card) {
+                        const nextContent = typeof card.content === 'string' ? card.content : '';
+                        originalContentsRef.current.set(selected.id, nextContent);
+                        if (cid) {
+                          originalContentsRef.current.set(`card-${cid}`, nextContent);
+                          originalContentsRef.current.set(cid, nextContent);
+                        }
+                        setFileContent(nextContent);
+                      }
+                    }
+                  }
+                }
+                if ((window as any).UiContext && newData?.baseEditorUiPrefs && typeof newData.baseEditorUiPrefs === 'object' && !Array.isArray(newData.baseEditorUiPrefs)) {
+                  (window as any).UiContext.baseEditorUiPrefs = newData.baseEditorUiPrefs;
+                  const prefs = newData.baseEditorUiPrefs as Record<string, unknown>;
+                  const modes = new Set(['tree', 'pending', 'branches', 'git', 'mcp']);
+                  const rightTabs = new Set(['problems', 'develop_queue', 'plugin_node', 'plugin_mcp_services', 'roadmap_edge']);
+                  const rawExplorerMode = prefs.explorerMode === 'training' ? 'tree' : prefs.explorerMode;
+                  if (typeof rawExplorerMode === 'string' && modes.has(rawExplorerMode)) {
+                    setExplorerMode(rawExplorerMode as 'tree' | 'pending' | 'branches' | 'git' | 'mcp');
+                  }
+                  if (typeof prefs.editorRightPanelTab === 'string' && rightTabs.has(prefs.editorRightPanelTab)) {
+                    const tab = prefs.editorRightPanelTab as EditorRightPanelTab;
+                    if (isPluginEditor || (tab !== 'plugin_node' && tab !== 'plugin_mcp_services')) setEditorRightPanelTab(tab);
+                  }
+                  if (typeof prefs.rightPanelOpen === 'boolean') setRightPanelOpen(prefs.rightPanelOpen);
+                  if (!editorAiHidden && typeof prefs.aiBottomOpen === 'boolean') setAiBottomOpen(prefs.aiBottomOpen);
+                  if (typeof prefs.explorerPanelWidth === 'number' && Number.isFinite(prefs.explorerPanelWidth)) {
+                    setExplorerPanelWidth(Math.round(Math.max(180, Math.min(640, prefs.explorerPanelWidth))));
+                  }
+                  if (typeof prefs.problemsPanelWidth === 'number' && Number.isFinite(prefs.problemsPanelWidth)) {
+                    setProblemsPanelWidth(Math.round(Math.max(200, Math.min(800, prefs.problemsPanelWidth))));
+                  }
+                  if (typeof prefs.aiPanelHeight === 'number' && Number.isFinite(prefs.aiPanelHeight)) {
+                    setAiPanelHeight(Math.round(Math.max(120, Math.min(640, prefs.aiPanelHeight))));
+                  }
+                }
+                if (Array.isArray(newData?.baseExpandState) && newData.baseExpandStateLoaded && Array.isArray(newData?.nodes)) {
+                  const nodeIds = new Set(newData.nodes.map((n: BaseNode) => n.id));
+                  const nextExpanded = new Set<string>(newData.baseExpandState.filter((id: string) => nodeIds.has(id)));
+                  expandedNodesRef.current = nextExpanded;
+                  setExpandedNodes(nextExpanded);
                 }
                 setNodeCardsMapVersion(v => v + 1);
               }).catch(() => {});
@@ -790,6 +841,57 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           pendingProblemsMergeCardIds: pendingProblemsMergeCardIdsRef.current,
         });
         (window as any).UiContext.nodeCardsMap = merged;
+
+        const selected = selectedFileRef.current;
+        if (selected?.type === 'card') {
+          const cid = String(selected.cardId || '');
+          const hasLocalDraft = pendingChangesRef.current.has(selected.id)
+            || pendingChangesRef.current.has(`card-${cid}`)
+            || pendingChangesRef.current.has(cid);
+          if (!hasLocalDraft) {
+            const card = (merged[selected.nodeId || ''] || []).find((c: Card) => sameCardDocId(c.docId, selected.cardId));
+            if (card) {
+              const nextContent = typeof card.content === 'string' ? card.content : '';
+              originalContentsRef.current.set(selected.id, nextContent);
+              if (cid) {
+                originalContentsRef.current.set(`card-${cid}`, nextContent);
+                originalContentsRef.current.set(cid, nextContent);
+              }
+              setFileContent(nextContent);
+            }
+          }
+        }
+      }
+      if ((window as any).UiContext && newData?.baseEditorUiPrefs && typeof newData.baseEditorUiPrefs === 'object' && !Array.isArray(newData.baseEditorUiPrefs)) {
+        (window as any).UiContext.baseEditorUiPrefs = newData.baseEditorUiPrefs;
+        const prefs = newData.baseEditorUiPrefs as Record<string, unknown>;
+        const modes = new Set(['tree', 'pending', 'branches', 'git', 'mcp']);
+        const rightTabs = new Set(['problems', 'develop_queue', 'plugin_node', 'plugin_mcp_services', 'roadmap_edge']);
+        const rawExplorerMode = prefs.explorerMode === 'training' ? 'tree' : prefs.explorerMode;
+        if (typeof rawExplorerMode === 'string' && modes.has(rawExplorerMode)) {
+          setExplorerMode(rawExplorerMode as 'tree' | 'pending' | 'branches' | 'git' | 'mcp');
+        }
+        if (typeof prefs.editorRightPanelTab === 'string' && rightTabs.has(prefs.editorRightPanelTab)) {
+          const tab = prefs.editorRightPanelTab as EditorRightPanelTab;
+          if (isPluginEditor || (tab !== 'plugin_node' && tab !== 'plugin_mcp_services')) setEditorRightPanelTab(tab);
+        }
+        if (typeof prefs.rightPanelOpen === 'boolean') setRightPanelOpen(prefs.rightPanelOpen);
+        if (!editorAiHidden && typeof prefs.aiBottomOpen === 'boolean') setAiBottomOpen(prefs.aiBottomOpen);
+        if (typeof prefs.explorerPanelWidth === 'number' && Number.isFinite(prefs.explorerPanelWidth)) {
+          setExplorerPanelWidth(Math.round(Math.max(180, Math.min(640, prefs.explorerPanelWidth))));
+        }
+        if (typeof prefs.problemsPanelWidth === 'number' && Number.isFinite(prefs.problemsPanelWidth)) {
+          setProblemsPanelWidth(Math.round(Math.max(200, Math.min(800, prefs.problemsPanelWidth))));
+        }
+        if (typeof prefs.aiPanelHeight === 'number' && Number.isFinite(prefs.aiPanelHeight)) {
+          setAiPanelHeight(Math.round(Math.max(120, Math.min(640, prefs.aiPanelHeight))));
+        }
+      }
+      if (Array.isArray(newData?.baseExpandState) && newData.baseExpandStateLoaded && Array.isArray(newData?.nodes)) {
+        const nodeIds = new Set(newData.nodes.map((n: BaseNode) => n.id));
+        const nextExpanded = new Set<string>(newData.baseExpandState.filter((id: string) => nodeIds.has(id)));
+        expandedNodesRef.current = nextExpanded;
+        setExpandedNodes(nextExpanded);
       }
       setNodeCardsMapVersion(v => v + 1);
     } catch (e) {

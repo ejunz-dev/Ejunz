@@ -1982,6 +1982,7 @@ export class BaseSaveHandler extends Handler {
             const docIdOnly = baseOnly.docId;
             const branchOnly = data.branch?.trim() || (baseOnly as any).currentBranch || 'main';
             await persistBaseEditorSaveSidecars(this, domainId, docIdOnly, branchOnly, data as Record<string, unknown>, mdt);
+            (this.ctx.emit as any)('base/update', docIdOnly, null, branchOnly);
             this.response.body = { success: true, hasNonPositionChanges: false };
             return;
         }
@@ -2558,12 +2559,36 @@ export class BaseDataHandler extends Handler {
             nodeCardsMap = applied.nodeCardsMap;
         }
 
+        let baseExpandState: string[] = [];
+        let baseExpandStateLoaded = false;
+        let baseEditorUiPrefs: Record<string, unknown> = {};
+        if (base) {
+            try {
+                const coll = this.ctx.db.db.collection('base.userExpand');
+                const doc = await coll.findOne({ domainId, baseDocId: base.docId, uid: this.user._id });
+                baseExpandStateLoaded = Array.isArray(doc?.expandedNodeIds);
+                baseExpandState = baseExpandStateLoaded ? doc.expandedNodeIds : [];
+            } catch {
+                // ignore
+            }
+            baseEditorUiPrefs = await loadBaseEditorUiPrefs(
+                this.ctx.db.db,
+                domainId,
+                base.docId,
+                currentBranch,
+                this.user._id,
+            );
+        }
+
         this.response.body = base ? {
             ...base,
             nodes,
             edges,
             currentBranch,
             nodeCardsMap,
+            baseExpandState,
+            baseExpandStateLoaded,
+            baseEditorUiPrefs,
             outlineExplorerFilters: trimDetailExplorerFiltersForClient(outlineExplorerFilters),
         } : {
             domainId: domainId,
@@ -2571,6 +2596,9 @@ export class BaseDataHandler extends Handler {
             edges: [],
             currentBranch,
             nodeCardsMap: {},
+            baseExpandState,
+            baseExpandStateLoaded,
+            baseEditorUiPrefs,
             outlineExplorerFilters: trimDetailExplorerFiltersForClient(outlineExplorerFilters),
         };
     }
@@ -4855,8 +4883,6 @@ export class BaseBatchSaveHandler extends Handler {
             }
         }
         
-        (this.ctx.emit as any)('base/update', docId, null, branch);
-
         let batchSuccess = errors.length === 0;
         if (batchSuccess) {
             try {
@@ -4924,6 +4950,7 @@ export class BaseBatchSaveHandler extends Handler {
         }
 
         await persistBaseEditorSaveSidecars(this, actualDomainId, docId, branch, data as Record<string, unknown>, mdt, nodeIdMap);
+        (this.ctx.emit as any)('base/update', docId, null, branch);
 
         // Fire-and-forget vectorize base content for semantic search after successful batch save
         if (batchSuccess && this.ctx.embedding) {
@@ -6218,6 +6245,7 @@ export class BaseConnectionHandler extends ConnectionHandler {
         this.subscriptions.push({ dispose: dispose2 });
 
     }
+
 
     /** When develop-pool session rows change status, refresh contribution payload (incl. developEditorContext). */
     @subscribe('session/change')
