@@ -4,9 +4,71 @@ import { buildProjection } from '../utils';
 import type { Context } from '../context';
 import type { BaseDoc, BaseNode, BaseEdge, CardDoc, BaseHistoryEntry, PluginDoc } from '../interface';
 import db from '../service/db';
-import { Collection } from 'mongodb';
+import { Collection, type Db } from 'mongodb';
 
 export const TYPE_CARD: 71 = 71;
+
+const BASE_EDITOR_EXPLORER_MODES = new Set(['tree', 'pending', 'branches', 'git', 'mcp']);
+const BASE_EDITOR_NODE_SIDE_TABS = new Set(['intent', 'files', 'develop_queue']);
+const BASE_EDITOR_RIGHT_PANEL_TABS = new Set(['problems', 'develop_queue', 'plugin_node', 'plugin_mcp_services', 'roadmap_edge']);
+
+const BASE_EDITOR_EXPLORER_W_MIN = 180;
+const BASE_EDITOR_EXPLORER_W_MAX = 640;
+const BASE_EDITOR_PROBLEMS_W_MIN = 200;
+const BASE_EDITOR_PROBLEMS_W_MAX = 800;
+const BASE_EDITOR_AI_H_MIN = 120;
+const BASE_EDITOR_AI_H_MAX = 640;
+
+/** Whitelist + clamp per-user base editor UI prefs from DB or client body. */
+export function sanitizeBaseEditorUiPrefs(raw: unknown): Record<string, string | number | boolean> {
+    const out: Record<string, string | number | boolean> = {};
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+    const o = raw as Record<string, unknown>;
+
+    if (typeof o.explorerMode === 'string' && BASE_EDITOR_EXPLORER_MODES.has(o.explorerMode)) {
+        out.explorerMode = o.explorerMode;
+    }
+    if (typeof o.nodeSidePanelTab === 'string' && BASE_EDITOR_NODE_SIDE_TABS.has(o.nodeSidePanelTab)) {
+        out.nodeSidePanelTab = o.nodeSidePanelTab;
+    }
+    if (typeof o.editorRightPanelTab === 'string' && BASE_EDITOR_RIGHT_PANEL_TABS.has(o.editorRightPanelTab)) {
+        out.editorRightPanelTab = o.editorRightPanelTab;
+    }
+    if (typeof o.rightPanelOpen === 'boolean') out.rightPanelOpen = o.rightPanelOpen;
+    if (typeof o.aiBottomOpen === 'boolean') out.aiBottomOpen = o.aiBottomOpen;
+
+    if (typeof o.explorerPanelWidth === 'number' && Number.isFinite(o.explorerPanelWidth)) {
+        out.explorerPanelWidth = Math.round(
+            Math.max(BASE_EDITOR_EXPLORER_W_MIN, Math.min(BASE_EDITOR_EXPLORER_W_MAX, o.explorerPanelWidth)),
+        );
+    }
+    if (typeof o.problemsPanelWidth === 'number' && Number.isFinite(o.problemsPanelWidth)) {
+        out.problemsPanelWidth = Math.round(
+            Math.max(BASE_EDITOR_PROBLEMS_W_MIN, Math.min(BASE_EDITOR_PROBLEMS_W_MAX, o.problemsPanelWidth)),
+        );
+    }
+    if (typeof o.aiPanelHeight === 'number' && Number.isFinite(o.aiPanelHeight)) {
+        out.aiPanelHeight = Math.round(Math.max(BASE_EDITOR_AI_H_MIN, Math.min(BASE_EDITOR_AI_H_MAX, o.aiPanelHeight)));
+    }
+    return out;
+}
+
+export async function loadBaseEditorUiPrefs(
+    mongoDb: Db,
+    domainId: string,
+    baseDocId: number,
+    branch: string,
+    uid: unknown,
+): Promise<Record<string, string | number | boolean>> {
+    try {
+        const coll = mongoDb.collection('base.userEditorUi');
+        const b = branch && String(branch).trim() ? String(branch).trim() : 'main';
+        const doc = await coll.findOne({ domainId, baseDocId, branch: b, uid });
+        return sanitizeBaseEditorUiPrefs(doc?.prefs);
+    } catch {
+        return {};
+    }
+}
 
 export type MindMapDocType = typeof document.TYPE_BASE | typeof document.TYPE_PLUGIN;
 export type MindMapDoc = BaseDoc | PluginDoc;

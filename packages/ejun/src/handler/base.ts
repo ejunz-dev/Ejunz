@@ -19,6 +19,8 @@ import {
     DEDUP_WINDOW_MS,
     loadCardStatsByBaseDocId,
     attachBaseListStats,
+    loadBaseEditorUiPrefs,
+    sanitizeBaseEditorUiPrefs,
 } from '../model/base';
 
 export { readOptionalRequestBaseDocId, getBranchData, setBranchData };
@@ -39,7 +41,6 @@ import storage from '../model/storage';
 import { sortFiles } from '@ejunz/utils/lib/common';
 import moment from 'moment-timezone';
 import UserModel from '../model/user';
-import { loadBaseEditorUiPrefs, sanitizeBaseEditorUiPrefs } from '../lib/baseEditorUiPrefs';
 import { loadBaseDetailUiPrefs, saveBaseDetailUiPrefs } from '../lib/baseDetailUiPrefs';
 import { getTodayUserDomainContribution } from '../lib/homepageRanking';
 import { incDevelopBranchDaily } from '../lib/developBranchDaily';
