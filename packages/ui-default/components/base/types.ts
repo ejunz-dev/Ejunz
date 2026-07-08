@@ -108,6 +108,14 @@ export interface Card {
   nodeId?: string;
   problems?: Problem[];
   files?: CardFileInfo[];
+  /** Card type: 'normal' for text cards, 'file' for uploaded-file cards */
+  cardType?: string;
+  /** MIME type or extension-based category for file-cards */
+  fileType?: string;
+  /** Original filename for file-cards */
+  fileName?: string;
+  /** File size in bytes for file-cards */
+  fileSize?: number;
 }
 
 export type FileItem = {
