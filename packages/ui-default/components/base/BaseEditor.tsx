@@ -3437,6 +3437,19 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             (window as any).UiContext.nodeCardsMap = { ...(window as any).UiContext?.nodeCardsMap };
             setNodeCardsMapVersion(prev => prev + 1);
 
+            // Refresh selectedFile.name from nodeCardsMap after card updates (including renames)
+            const selRef = selectedFileRef.current;
+            if (selRef?.type === 'card' && selRef.cardId && selRef.nodeId) {
+              const maps = (window as any).UiContext?.nodeCardsMap || {};
+              const cards = maps[selRef.nodeId] || [];
+              const cardRow = cards.find((c: Card) => String(c.docId) === String(selRef.cardId));
+              if (cardRow?.title && cardRow.title !== selRef.name) {
+                const updated: FileItem = { ...selRef, name: cardRow.title };
+                selectedFileRef.current = updated;
+                setSelectedFile(updated);
+              }
+            }
+
             if (cardIdMap.size > 0) {
               const q = new URLSearchParams(window.location.search);
               const qCard = q.get('cardId');
@@ -3839,10 +3852,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       const next = new Map(prev);
       const record = { file, newName: trimmedName, originalName: file.name };
       next.set(file.id, record);
-      if (file.type === 'card' && file.cardId) {
-        const altKey = file.id.startsWith('card-') ? file.cardId : `card-${file.cardId}`;
-        if (altKey !== file.id) next.set(altKey, record);
-      }
       return next;
     });
     
@@ -14620,9 +14629,45 @@ Reply with a JSON code block only for executable operations. For same-response f
                       );
                     }
                     if (filePreviewType === 'image') {
+                      const openViewer = () => {
+                        const img = document.createElement('img');
+                        img.src = fileUrl;
+                        img.style.cssText = 'display: none;';
+                        document.body.appendChild(img);
+                        img.onload = async () => {
+                          try {
+                            const { default: Viewer } = await import('viewerjs/dist/viewer.esm.js');
+                            const viewer = new Viewer(img, {
+                              inline: false,
+                              viewed() { document.body.style.overflow = 'hidden'; },
+                              hidden() {
+                                document.body.style.overflow = '';
+                                if (img.parentNode) img.parentNode.removeChild(img);
+                                viewer.destroy();
+                              },
+                              toolbar: {
+                                zoomIn: true, zoomOut: true, oneToOne: true, reset: true,
+                                prev: false, play: false, next: false,
+                                rotateLeft: true, rotateRight: true,
+                                flipHorizontal: true, flipVertical: true,
+                              },
+                              zoomRatio: 0.1, minZoomRatio: 0.01, maxZoomRatio: 100,
+                              movable: true, rotatable: true, scalable: true,
+                              transition: true, fullscreen: true, keyboard: true,
+                            });
+                            viewer.show();
+                          } catch { /* fallback */ }
+                        };
+                      };
                       return (
-                        <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '16px', overflow: 'auto', width: '100%' }}>
-                          <img src={fileUrl} alt={cardFileName} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', overflow: 'auto', width: '100%' }}>
+                          <img
+                            src={fileUrl}
+                            alt={cardFileName}
+                            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', cursor: 'zoom-in', borderRadius: '4px' }}
+                            onClick={openViewer}
+                            onKeyDown={(e) => { if (e.key === 'Enter') openViewer(); }}
+                          />
                         </div>
                       );
                     }
