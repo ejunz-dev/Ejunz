@@ -358,15 +358,14 @@ export function BaseDetailCardDrawer({
           </div>
         </div>
 
-        <div className="roadmap-detail-drawer__body">
+        <div className="roadmap-detail-drawer__body" style={displayCard?.cardType === 'file' ? { display: 'flex', flexDirection: 'column' } : undefined}>
           {displayCard?.cardType === 'file' ? (
             <div
               className={`roadmap-detail-drawer__panel is-active`}
               role="tabpanel"
-              style={{ display: 'flex', flexDirection: 'column' }}
+              style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
             >
-              <h1 className="roadmap-detail-drawer__title">{title}</h1>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+              <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
                 {renderFilePreview(displayCard, domainId, baseDocId)}
               </div>
             </div>
@@ -377,7 +376,6 @@ export function BaseDetailCardDrawer({
             role="tabpanel"
             hidden={tab !== 'content'}
           >
-            <h1 className="roadmap-detail-drawer__title">{title}</h1>
             <div ref={contentRef} className="roadmap-detail-drawer__markdown typo" />
           </div>
 
@@ -387,7 +385,6 @@ export function BaseDetailCardDrawer({
               role="tabpanel"
               hidden={tab !== 'problems'}
             >
-              <h1 className="roadmap-detail-drawer__title">{title}</h1>
               <div className="roadmap-detail-drawer__practice-action">
                 <button
                   type="button"
