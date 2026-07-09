@@ -1367,8 +1367,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     leftEl.appendChild(wrapper);
     ReactDOM.render(
       <>
-        <button type="button" onClick={() => setMobileExplorerOpen(true)} aria-label="Explorer">
-          ☰ Explorer
+        <button type="button" onClick={() => setMobileExplorerOpen(true)} aria-label={i18n('Explorer')}>
+          ☰ {i18n(\'Explorer\')}
         </button>
         <button
           type="button"
@@ -1424,7 +1424,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             onClick={() => {
               setAiBottomOpen((prev) => !prev);
             }}
-            aria-label="AI"
+            aria-label={i18n('AI')}
           >
             AI
           </button>
@@ -3633,7 +3633,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         + problemChangesCount
         + savedLearnerDraftBucketsForMsg;
 
-      Notification.success(`保存成功，共 ${totalChanges} 项更改`);
+      Notification.success(i18n('Saved successfully, {0} changes total', totalChanges));
 
       try {
         if (
@@ -4102,7 +4102,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     }
     const parentId = base.edges.find((e) => e.target === referenceNodeId)?.source;
     if (!parentId) {
-      Notification.warn('Root node does not support sibling card');
+      Notification.warn(i18n('Root node does not support sibling card'));
       setContextMenu(null);
       setNewSiblingCardForNodeSubmenuOpen(false);
       return;
@@ -4183,7 +4183,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     }
     const nodeExists = base.nodes.some(n => n.id === nodeId);
     if (!nodeExists && !nodeId.startsWith('temp-node-')) {
-      Notification.error('无法导入：节点不存在');
+      Notification.error(i18n('Cannot import: node does not exist'));
       return;
     }
     const trimmed = text.trim();
@@ -4252,7 +4252,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       newChanges.forEach((v, k) => next.set(k, v));
       return next;
     });
-    Notification.success(`已导入 ${blocks.length} 个卡片，请保存以生效`);
+    Notification.success(i18n('Imported {0} cards, please save to persist', blocks.length));
   }, [pendingDeletes, base.nodes]);
 
   
@@ -4264,7 +4264,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     }
     const nodeExists = base.nodes.some(n => n.id === nodeId);
     if (!nodeExists && !nodeId.startsWith('temp-node-')) {
-      Notification.error('无法导入：节点不存在');
+      Notification.error(i18n('Cannot import: node does not exist'));
       setContextMenu(null);
       return;
     }
@@ -4985,7 +4985,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     } else if (text === '') {
       Notification.info(i18n('No content to copy'));
     } else {
-      Notification.error('剪贴板不可用');
+      Notification.error(i18n('Clipboard not available'));
     }
     setContextMenu(null);
   }, [pendingChanges, pendingRenames, base, pendingDeletes, editorInstance]);
@@ -5786,7 +5786,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       const struct = getNodeChildrenStructure(sourceNodeId);
       setStructureClipboard(struct);
       setContextMenu(null);
-      Notification.success(struct.length === 0 ? '已复制结构（无子项）' : `已复制结构（顶层 ${struct.length} 项）`);
+      Notification.success(struct.length === 0 ? i18n('Structure copied (no children)') : i18n('Structure copied (top {0} items)', struct.length));
     },
     [getNodeChildrenStructure],
   );
@@ -5939,15 +5939,15 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       const json = JSON.stringify(payload);
       try {
         if (!navigator.clipboard?.writeText) {
-          Notification.error('当前环境不支持剪贴板 API');
+          Notification.error(i18n('Clipboard API not supported'));
         } else {
           await navigator.clipboard.writeText(json);
           Notification.success(
-            entries.length === 0 ? '已复制到剪贴板（无子项）' : `已复制到剪贴板（顶层 ${entries.length} 项，含正文与题目等）`,
+            entries.length === 0 ? i18n('Copied to clipboard (no children)') : i18n('Copied to clipboard (top {0} items)', entries.length),
           );
         }
       } catch {
-        Notification.error('无法写入剪贴板，请检查浏览器权限或 HTTPS');
+        Notification.error(i18n('Cannot write to clipboard, check browser permissions or HTTPS'));
       }
       setContextMenu(null);
     },
@@ -5985,7 +5985,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     (targetNodeId: string, textRaw: string) => {
       const payload = parseSubtreeExportPayload(textRaw);
       if (!payload || !payload.entries.length) {
-        Notification.error('无法解析：请粘贴由「导出结构与内容」生成的完整 JSON');
+        Notification.error(i18n('Cannot parse: paste complete JSON from export'));
         return;
       }
       if (pendingDeletes.has(targetNodeId)) {
@@ -6179,7 +6179,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         return next;
       });
 
-      Notification.success(`已导入 ${payload.entries.length} 项顶层结构（含内容与题目），请保存以持久化`);
+      Notification.success(i18n('Imported {0} top-level structures, please save', payload.entries.length));
       setNodeSubtreePasteWindow(null);
       setNodeSubtreePasteText('');
     },
@@ -6829,7 +6829,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         let content = msg.content;
         
         if (!content && msg.role === 'assistant') {
-          content = 'Done';
+          content = i18n('Done');
         }
         return {
           role: msg.role,
@@ -7487,7 +7487,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                             return;
                           }
                           if (allOps.length) {
-                            Notification.success('AI operations applied');
+                            Notification.success(i18n('AI operations applied'));
                           }
                         })
                         .catch((err) => {
@@ -7515,7 +7515,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                         if (executeAIOperationsRef.current) {
                           const result = await executeAIOperationsRef.current(allOps);
                           if (result.success) {
-                            Notification.success('AI operations applied');
+                            Notification.success(i18n('AI operations applied'));
                           } else {
                             const errorText = result.errors.join('\n');
                             setChatMessages(prev => {
@@ -7557,7 +7557,7 @@ Reply with a JSON code block only for executable operations. For same-response f
               }
               return newMessages;
             });
-            Notification.error('AI chat failed: ' + (msg.error || 'unknown error'));
+            Notification.error(i18n('AI chat failed: ') + (msg.error || i18n('unknown error')));
             setIsChatLoading(false);
             
             
@@ -7596,7 +7596,7 @@ Reply with a JSON code block only for executable operations. For same-response f
         }
         return newMessages;
       });
-      Notification.error('AI chat failed: ' + (error.message || 'unknown error'));
+      Notification.error(i18n('AI chat failed: ') + (error.message || i18n('unknown error')));
     } finally {
       setIsChatLoading(false);
     }
@@ -7758,7 +7758,7 @@ Reply with a JSON code block only for executable operations. For same-response f
             const nodeByName = base.nodes.find(n => n.text === nodeId);
             if (nodeByName) {
               console.warn(`警告：nodeId "${nodeId}" 是节点名称，不是节点ID。应该使用节点ID "${nodeByName.id}"`);
-              const errorMsg = `错误：nodeId "${nodeId}" 是节点名称，不是节点ID。请使用节点ID "${nodeByName.id}"`;
+              const errorMsg = i18n('Error: nodeId "{0}" is a node name, not a node ID. Use node ID "{1}".', nodeId, nodeByName.id);
               Notification.error(errorMsg);
               errors.push(errorMsg);
               continue;
@@ -7774,7 +7774,7 @@ Reply with a JSON code block only for executable operations. For same-response f
               const card = cards.find((c: Card) => c.docId === nodeId);
               if (card) {
                 console.log('找到卡片，但使用了 move_node 操作，应该使用 move_card');
-                const errorMsg = `检测到 ${nodeId} 是卡片ID，不是节点ID。移动卡片请使用 move_card 操作，而不是 move_node。`;
+                const errorMsg = i18n('{0} is a card ID, use move_card instead of move_node.', nodeId);
                 Notification.error(errorMsg);
                 errors.push(errorMsg);
                 continue;
@@ -7782,7 +7782,7 @@ Reply with a JSON code block only for executable operations. For same-response f
             }
             console.error('节点不存在:', nodeId);
             console.log('所有节点ID:', base.nodes.map(n => ({ id: n.id, text: n.text })));
-            const errorMsg = `节点 ${nodeId} 不存在。请检查节点ID是否正确。`;
+            const errorMsg = i18n('Node {0} does not exist. Check node ID.', nodeId);
             Notification.error(errorMsg);
             errors.push(errorMsg);
             continue;
@@ -7797,7 +7797,7 @@ Reply with a JSON code block only for executable operations. For same-response f
               const targetNodeByName = base.nodes.find(n => n.text === targetParentId);
               if (targetNodeByName) {
                 console.warn(`警告：targetParentId "${targetParentId}" 是节点名称，不是节点ID。应该使用节点ID "${targetNodeByName.id}"`);
-                const errorMsg = `错误：targetParentId "${targetParentId}" 是节点名称，不是节点ID。请使用节点ID "${targetNodeByName.id}"`;
+                const errorMsg = i18n('Error: targetParentId "{0}" is a node name, not a node ID. Use node ID "{1}".', targetParentId, targetNodeByName.id);
                 Notification.error(errorMsg);
                 errors.push(errorMsg);
                 continue;
@@ -7805,7 +7805,7 @@ Reply with a JSON code block only for executable operations. For same-response f
               
               console.error('目标节点不存在:', targetParentId);
               console.log('所有节点ID:', base.nodes.map(n => ({ id: n.id, text: n.text })));
-              const errorMsg = `目标节点 ${targetParentId} 不存在。请检查节点ID是否正确。`;
+              const errorMsg = i18n('Target node {0} does not exist. Check node ID.', targetParentId);
               Notification.error(errorMsg);
               errors.push(errorMsg);
               continue;
@@ -7885,7 +7885,7 @@ Reply with a JSON code block only for executable operations. For same-response f
           }
           
           if (!quiet) {
-            Notification.success(`节点已移动到 ${targetParentId ? '目标节点下' : '根节点'}`);
+            Notification.success(i18n('Node moved to ') + (targetParentId ? i18n('under target node') : i18n('root node')));
           }
         } else if (op.type === 'move_card') {
           const cardId = op.cardId;
@@ -7898,7 +7898,7 @@ Reply with a JSON code block only for executable operations. For same-response f
           if (!targetNode) {
             console.error('目标节点不存在:', targetNodeId);
             console.log('所有节点ID:', base.nodes.map(n => ({ id: n.id, text: n.text })));
-            Notification.error(`目标节点 ${targetNodeId} 不存在。请检查节点ID是否正确。`);
+            Notification.error(i18n('Target node {0} does not exist. Check the node ID.', targetNodeId));
             continue;
           }
           
@@ -7917,13 +7917,13 @@ Reply with a JSON code block only for executable operations. For same-response f
           }
           
           if (!foundCard || !sourceNodeId) {
-            Notification.error(`卡片 ${cardId} 不存在`);
+            Notification.error(i18n('Card {0} does not exist', cardId));
             continue;
           }
           
           
           if (sourceNodeId === targetNodeId) {
-            Notification.error('卡片已经在目标节点下');
+            Notification.error(i18n('Card already under target node'));
             continue;
           }
           
@@ -7989,7 +7989,7 @@ Reply with a JSON code block only for executable operations. For same-response f
           });
           
           if (!quiet) {
-            Notification.success(`卡片已移动到节点 ${targetNode.text} 下`);
+            Notification.success(i18n('Card moved under node {0}', targetNode.text));
           }
         } else if (op.type === 'rename_node') {
           const nodeId = op.nodeId;
@@ -7997,7 +7997,7 @@ Reply with a JSON code block only for executable operations. For same-response f
           
           const node = base.nodes.find(n => n.id === nodeId);
           if (!node) {
-            Notification.error(`节点 ${nodeId} 不存在`);
+            Notification.error(i18n('Node {0} does not exist', nodeId));
             continue;
           }
           
@@ -8046,7 +8046,7 @@ Reply with a JSON code block only for executable operations. For same-response f
           }
           
           if (!foundCard || !foundNodeId) {
-            Notification.error(`卡片 ${cardId} 不存在`);
+            Notification.error(i18n('Card {0} does not exist', cardId));
             continue;
           }
           
@@ -8097,7 +8097,7 @@ Reply with a JSON code block only for executable operations. For same-response f
           }
           
           if (!foundCard || !foundNodeId) {
-            Notification.error(`卡片 ${cardId} 不存在`);
+            Notification.error(i18n('Card {0} does not exist', cardId));
             continue;
           }
           
@@ -8172,7 +8172,7 @@ Reply with a JSON code block only for executable operations. For same-response f
           const nodeId = op.nodeId;
           const node = base.nodes.find(n => n.id === nodeId);
           if (!node) {
-            Notification.error(`节点 ${nodeId} 不存在`);
+            Notification.error(i18n('Node {0} does not exist', nodeId));
             continue;
           }
           
@@ -8214,7 +8214,7 @@ Reply with a JSON code block only for executable operations. For same-response f
           }
           
           if (!foundNodeId) {
-            Notification.error(`卡片 ${cardId} 不存在`);
+            Notification.error(i18n('Card {0} does not exist', cardId));
             continue;
           }
           
@@ -8265,8 +8265,8 @@ Reply with a JSON code block only for executable operations. For same-response f
           }
 
           if (!foundCard || !foundNodeId) {
-            Notification.error(`卡片 ${cardId} 不存在`);
-            errors.push(`卡片 ${cardId} 不存在`);
+            Notification.error(i18n('Card {0} does not exist', cardId));
+            errors.push(i18n('Card {0} does not exist', cardId));
             continue;
           }
 
@@ -8314,7 +8314,7 @@ Reply with a JSON code block only for executable operations. For same-response f
             const faceA = String(op.faceA ?? op.stem ?? '').trim();
             const faceB = String(op.faceB ?? '').trim();
             if (!faceA || !faceB) {
-              Notification.error('翻转题需要 faceA 与 faceB');
+              Notification.error(i18n('Flip problem requires faceA and faceB'));
               errors.push('create_problem flip：缺少 faceA 或 faceB');
               continue;
             }
@@ -8331,8 +8331,8 @@ Reply with a JSON code block only for executable operations. For same-response f
           } else if (kind === 'true_false') {
             const stem = String(op.stem ?? '').trim();
             if (!stem) {
-              Notification.error('题干是必需的');
-              errors.push('create_problem true_false：缺少 stem');
+              Notification.error(i18n('Stem is required'));
+              errors.push(i18n('create_problem true_false: missing stem'));
               continue;
             }
             const a = op.answer;
@@ -8358,7 +8358,7 @@ Reply with a JSON code block only for executable operations. For same-response f
             const stem = String(op.stem ?? '').trim();
             if (!stem) {
               Notification.error(i18n('Stem is required'));
-              errors.push('create_problem fill_blank：缺少 stem');
+              errors.push(i18n('create_problem fill_blank: missing stem'));
               continue;
             }
             let answersArr: string[] = [];
@@ -8400,7 +8400,7 @@ Reply with a JSON code block only for executable operations. For same-response f
               }
             } else {
               Notification.error(i18n('Problem super flip columns invalid'));
-              errors.push(`create_problem super_flip：columns 须为二维数组且列数≥${SUPER_FLIP_COL_MIN}`);
+              errors.push(i18n('create_problem super_flip: columns must be 2D array with {0}+ cols', SUPER_FLIP_COL_MIN));
               continue;
             }
             newProblem = migrateRawProblem(rawProbSf);
@@ -8408,12 +8408,12 @@ Reply with a JSON code block only for executable operations. For same-response f
             const nrowSf = colsSf[0]?.length ?? 0;
             if (colsSf.length < SUPER_FLIP_COL_MIN) {
               Notification.error(i18n('Problem super flip columns too few'));
-              errors.push(`create_problem super_flip：列数不足 ${SUPER_FLIP_COL_MIN}`);
+              errors.push(i18n('create_problem super_flip: not enough columns ({0}+)', SUPER_FLIP_COL_MIN));
               continue;
             }
             if (nrowSf < SUPER_FLIP_ROW_MIN) {
               Notification.error(i18n('Problem super flip rows too few'));
-              errors.push(`create_problem super_flip：行数不足 ${SUPER_FLIP_ROW_MIN}`);
+              errors.push(i18n('create_problem super_flip: not enough rows ({0}+)', SUPER_FLIP_ROW_MIN));
               continue;
             }
           } else if (kind === 'matching') {
@@ -8449,7 +8449,7 @@ Reply with a JSON code block only for executable operations. For same-response f
             const nrow = ncol[0]?.length ?? 0;
             if (ncol.length < MATCHING_COL_MIN) {
               Notification.error(i18n('Problem matching columns too few'));
-              errors.push(`create_problem matching：列数不足 ${MATCHING_COL_MIN}`);
+              errors.push(i18n('create_problem matching: not enough columns ({0}+)', MATCHING_COL_MIN));
               continue;
             }
             if (nrow < MATCHING_PAIR_MIN) {
@@ -8533,12 +8533,12 @@ Reply with a JSON code block only for executable operations. For same-response f
             const stem = String(op.stem ?? '').trim();
             const options = Array.isArray(op.options) ? op.options.map((x: unknown) => String(x ?? '')) : [];
             if (!stem) {
-              Notification.error('题干是必需的');
+              Notification.error(i18n('Stem is required'));
               errors.push('create_problem multi：缺少 stem');
               continue;
             }
             if (options.length < 2) {
-              Notification.error('至少需要两个选项');
+              Notification.error(i18n('At least two options are required'));
               errors.push('create_problem multi：选项数量不足');
               continue;
             }
@@ -8566,7 +8566,7 @@ Reply with a JSON code block only for executable operations. For same-response f
               const n = newProblem.options.length;
               const ans = normalizeMultiAnswers(newProblem.answer).filter((i) => i >= 0 && i < n);
               if (!ans.length) {
-                Notification.error('多选题至少指定一个有效答案下标');
+                Notification.error(i18n('Multi-select needs a valid answer index'));
                 errors.push('create_problem multi：answer 无效');
                 continue;
               }
@@ -8583,12 +8583,12 @@ Reply with a JSON code block only for executable operations. For same-response f
               answerNum = parseInt(answerRaw.trim(), 10);
             }
             if (!stem) {
-              Notification.error('题干是必需的');
+              Notification.error(i18n('Stem is required'));
               errors.push('create_problem 操作缺少 stem');
               continue;
             }
             if (options.length < 2) {
-              Notification.error('至少需要两个选项');
+              Notification.error(i18n('At least two options are required'));
               errors.push('create_problem 操作的选项数量不足');
               continue;
             }
@@ -8659,12 +8659,12 @@ Reply with a JSON code block only for executable operations. For same-response f
           }
 
           if (!quiet) {
-            Notification.success('题目已通过Agent生成并保存');
+            Notification.success(i18n('Problem generated by AI and saved'));
           }
         }
       } catch (error: any) {
         console.error(`Failed to execute operation ${op.type}:`, error);
-        const errorMsg = `执行操作失败: ${op.type} - ${error.message || '未知错误'}`;
+        const errorMsg = i18n('Operation failed: {0} - {1}', op.type, error.message || i18n('Unknown error'));
         Notification.error(errorMsg);
         errors.push(errorMsg);
       }
@@ -8727,7 +8727,7 @@ Reply with a JSON code block only for executable operations. For same-response f
             正在导出PDF
           </div>
           <div id="pdf-export-status" style="text-align: center; margin-bottom: 10px; color: #666; font-size: 13px;">
-            准备中...
+            i18n('Preparing...')..
           </div>
           <div class="bp5-progress-bar bp5-intent-primary bp5-no-stripes" style="margin-bottom: 10px;">
             <div id="pdf-export-progress" class="bp5-progress-meter" style="width: 0%; transition: width 0.3s ease;"></div>
@@ -8843,7 +8843,7 @@ Reply with a JSON code block only for executable operations. For same-response f
       const allItems = collectItems(nodeId, 0, '');
       const totalItems = allItems.length;
       
-      $status.text(`共找到 ${totalItems} 个项目，开始生成PDF...`);
+      $status.text(i18n('Found {0} items, generating PDF...', totalItems));
       $progress.css('width', '30%');
       
       
@@ -8883,7 +8883,7 @@ Reply with a JSON code block only for executable operations. For same-response f
         processedCount++;
         const progressPercent = 30 + Math.round((processedCount / totalItems) * 50); // 30-80%
         $progress.css('width', `${progressPercent}%`);
-        $status.text(`正在处理: ${item.parentOrder} ${item.title}`);
+        $status.text(i18n('Processing: {0} {1}', item.parentOrder, item.title));
         $current.text(`${processedCount} / ${totalItems}`);
         
         const currentPageNumber = (pdf.internal as any).getNumberOfPages();
@@ -8902,7 +8902,7 @@ Reply with a JSON code block only for executable operations. For same-response f
         
         pdf.setFontSize(12 + (3 - item.level) * 2);
         pdf.setFont('helvetica', 'bold');
-        const titleText = `${item.parentOrder || ''} ${item.title || '未命名'}`.trim();
+        const titleText = `${item.parentOrder || ''} ${item.title || i18n('Unnamed')}`.trim();
         if (titleText) {
           const titleLines = pdf.splitTextToSize(titleText, contentWidth);
           
@@ -8934,7 +8934,7 @@ Reply with a JSON code block only for executable operations. For same-response f
         
         if (item.type === 'card' && item.content) {
           try {
-            $status.text(`正在渲染: ${item.title}`);
+            $status.text(i18n('Rendering: {0}', item.title));
             
             const htmlContent = await fetch('/markdown', {
               method: 'POST',
@@ -9093,7 +9093,7 @@ Reply with a JSON code block only for executable operations. For same-response f
         contentYPos += sectionSpacing;
       }
 
-      $status.text('正在生成目录...');
+      $status.text(i18n('Generating table of contents...'));
       $progress.css('width', '85%');
       
       
@@ -9126,7 +9126,7 @@ Reply with a JSON code block only for executable operations. For same-response f
           tocYPos = margin;
         }
         
-        const tocText = `${tocItem.order || ''} ${tocItem.title || '未命名'} ................ ${tocItem.page || 1}`;
+        const tocText = `${tocItem.order || ''} ${tocItem.title || i18n('Unnamed')} ................ ${tocItem.page || 1}`;
         const tocTextStr = String(tocText).trim();
         if (tocTextStr && !isNaN(margin) && !isNaN(tocYPos)) {
           pdf.text(tocTextStr, margin, tocYPos);
@@ -9156,7 +9156,7 @@ Reply with a JSON code block only for executable operations. For same-response f
       $status.text(`${i18n('Export failed')}: ${error?.message || i18n('Unknown error')}`);
       $progress.css('width', '100%');
       $progress.css('background-color', '#dc3545');
-      Notification.error(`导出PDF失败: ${error?.message || '未知错误'}`);
+      Notification.error(i18n('Export PDF failed: {0}', error?.message || i18n('Unknown error')));
       
       
       setTimeout(() => {
@@ -9349,7 +9349,7 @@ Reply with a JSON code block only for executable operations. For same-response f
     
     setSelectedItems(new Set());
     const totalItemsToDelete = allNodeIdsToDelete.size + allCardIdsToDelete.size;
-    Notification.success(`已标记 ${totalItemsToDelete} 个项目待删除（包括 ${allNodeIdsToDelete.size} 个节点和 ${allCardIdsToDelete.size} 个卡片），请保存以确认删除`);
+    Notification.success(i18n('Marked {0} items for deletion ({1} nodes, {2} cards), save to confirm', totalItemsToDelete, allNodeIdsToDelete.size, allCardIdsToDelete.size));
   }, [selectedItems, fileTree, cleanupPendingForTempItem]);
 
   
@@ -10166,7 +10166,7 @@ Reply with a JSON code block only for executable operations. For same-response f
             <input
               value={selectedPluginNodeData.slug || ''}
               onChange={(e) => updateSelectedPluginNodeData({ slug: e.target.value, pluginNodeType: 'folder' })}
-              placeholder="folder-name"
+              placeholder={i18n('folder-name')}
               style={{ padding: '7px 8px', border: `1px solid ${themeStyles.borderSecondary}`, background: themeStyles.bgSecondary, color: themeStyles.textPrimary }}
             />
           </label>
@@ -10397,7 +10397,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                     cursor: 'pointer',
                     flexShrink: 0,
                   }}
-                  title="返回树形视图"
+                  title={i18n('Return to tree view')}
                 >
                   ←
                 </button>
@@ -10441,7 +10441,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 cursor: 'pointer',
                 flexShrink: 0,
               }}
-              title="树形视图"
+              title={i18n('Tree view')}
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path d="M2.5 4.5h4l1 1h6v6h-11z" />
@@ -10460,7 +10460,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 cursor: 'pointer',
                 flexShrink: 0,
               }}
-              title="查看待提交的更改"
+              title={i18n('View pending changes')}
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path d="M4 2.5h8v11H4z" />
@@ -10506,7 +10506,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 cursor: 'pointer',
                 flexShrink: 0,
               }}
-              title="查看分支并跳转"
+              title={i18n('View branches')}
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <circle cx="4" cy="3.5" r="1.5" />
@@ -10529,7 +10529,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                   cursor: 'pointer',
                   flexShrink: 0,
                 }}
-                title="GitHub 同步"
+                title={i18n('GitHub sync')}
               >
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
                   <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
@@ -10549,7 +10549,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 cursor: 'pointer',
                 flexShrink: 0,
               }}
-              title="MCP 服务（SSE）"
+              title={i18n('MCP services (SSE)')}
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <rect x="2" y="6" width="5" height="4" rx="1" />
@@ -11029,7 +11029,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                       fontSize: '10px', 
                       color: '#f44336',
                       fontWeight: 'bold',
-                    }} title="已剪切">
+                    }} title={i18n('Cut')}>
                       ✂
                     </span>
                   )}
@@ -11067,7 +11067,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                     fontSize: '18px',
                     marginLeft: '4px',
                   }}
-                  aria-label="操作"
+                  aria-label={i18n('Actions')}
                 >
                   ⋯
                 </button>
@@ -11116,7 +11116,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                         {branchName}
                       </span>
                       <span style={{ fontSize: '11px', opacity: 0.85 }}>
-                        {isCurrent ? '当前' : '前往'}
+                        {isCurrent ? i18n('Current') : i18n('Go')}
                       </span>
                     </a>
                   );
@@ -11132,11 +11132,11 @@ Reply with a JSON code block only for executable operations. For same-response f
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '0 8px' }}>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <span style={{ color: themeStyles.textSecondary, fontSize: '11px' }}>仓库 URL（HTTPS 或 git@…）</span>
+                  <span style={{ color: themeStyles.textSecondary, fontSize: '11px' }}>{i18n('Repository URL (HTTPS or git@...)')}</span>
                   <input
                     value={gitRepoDraft}
                     onChange={(e) => setGitRepoDraft(e.target.value)}
-                    placeholder="https://github.com/org/repo"
+                    placeholder={i18n('https://github.com/org/repo')}
                     style={{
                       width: '100%',
                       boxSizing: 'border-box',
@@ -11154,10 +11154,10 @@ Reply with a JSON code block only for executable operations. For same-response f
                     try {
                       await request.post(getBaseUrl('/github/config'), { docId, githubRepo: gitRepoDraft.trim() });
                       if ((window as any).UiContext) (window as any).UiContext.githubRepo = gitRepoDraft.trim();
-                      Notification.success('已保存仓库配置');
+                      Notification.success(i18n('Repository config saved'));
                       fetchGitRemoteStatus();
                     } catch (err: any) {
-                      Notification.error(err?.message || '保存失败');
+                      Notification.error(err?.message || i18n('Save failed'));
                     }
                   }}
                   style={{
@@ -11169,17 +11169,17 @@ Reply with a JSON code block only for executable operations. For same-response f
                     cursor: 'pointer',
                   }}
                 >
-                  保存仓库地址
+                  {i18n('Save repository URL')}
                 </button>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   <span style={{ color: themeStyles.textSecondary, fontSize: '11px' }}>
-                    个人访问令牌（PAT）{githubPATConfigured ? ' · 已配置' : ' · 未配置'}
+                    {i18n('Personal access token (PAT)')}{githubPATConfigured ? ' · {i18n('Configured')}' : ' · {i18n('Not configured')}'}
                   </span>
                   <input
                     type="password"
                     value={gitTokenDraft}
                     onChange={(e) => setGitTokenDraft(e.target.value)}
-                    placeholder="ghp_…"
+                    placeholder={i18n('ghp_...')}
                     autoComplete="off"
                     style={{
                       width: '100%',
@@ -11201,10 +11201,10 @@ Reply with a JSON code block only for executable operations. For same-response f
                         await request.post(`/d/${domainId}/user/github-token`, { githubToken: gitTokenDraft.trim() });
                         setGithubPATConfigured(!!gitTokenDraft.trim());
                         setGitTokenDraft('');
-                        Notification.success('已保存令牌');
+                        Notification.success(i18n('Token saved'));
                         fetchGitRemoteStatus();
                       } catch (err: any) {
-                        Notification.error(err?.message || '保存失败');
+                        Notification.error(err?.message || i18n('Save failed'));
                       }
                     }}
                     style={{
@@ -11216,7 +11216,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                       cursor: 'pointer',
                     }}
                   >
-                    保存令牌
+                    {i18n('Save token')}
                   </button>
                   <button
                     type="button"
@@ -11226,10 +11226,10 @@ Reply with a JSON code block only for executable operations. For same-response f
                         await request.post(`/d/${domainId}/user/github-token`, { githubToken: '' });
                         setGithubPATConfigured(false);
                         setGitTokenDraft('');
-                        Notification.success('已清除令牌');
+                        Notification.success(i18n('Token cleared'));
                         fetchGitRemoteStatus();
                       } catch (err: any) {
-                        Notification.error(err?.message || '清除失败');
+                        Notification.error(err?.message || i18n('Clear failed'));
                       }
                     }}
                     style={{
@@ -11255,34 +11255,34 @@ Reply with a JSON code block only for executable operations. For same-response f
                   }}
                 >
                   {gitStatusLoading && !gitRemoteStatus ? (
-                    <span style={{ color: themeStyles.textSecondary }}>正在获取远程状态…</span>
+                    <span style={{ color: themeStyles.textSecondary }}>{i18n('Fetching remote status...')}</span>
                   ) : gitRemoteStatus ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                       {(gitRemoteStatus.lastCommitShort || gitRemoteStatus.lastCommit) ? (
                         <span style={{ wordBreak: 'break-all' }}>
-                          当前分支最新提交：
+                          {i18n('Latest commit: ')}
                           {gitRemoteStatus.lastCommitShort || String(gitRemoteStatus.lastCommit).slice(0, 8)}
                           {gitRemoteStatus.lastCommitMessageShort || gitRemoteStatus.lastCommitMessage
                             ? ` — ${gitRemoteStatus.lastCommitMessageShort || gitRemoteStatus.lastCommitMessage}`
                             : ''}
                         </span>
                       ) : null}
-                      <span>相对 origin：领先 {gitRemoteStatus.ahead ?? 0} · 落后 {gitRemoteStatus.behind ?? 0}</span>
+                      <span>{i18n('Ahead')} {gitRemoteStatus.ahead ?? 0}  · {i18n('Behind')} {gitRemoteStatus.behind ?? 0}</span>
                       <span>
-                        工作区相对最新提交：{gitRemoteStatus.uncommittedChanges ? '有未提交变更' : '干净'}
-                        {gitRemoteStatus.hasRemoteBranch === false ? ' · 远程无此分支' : ''}
+                        工作区相对最新提交：{gitRemoteStatus.uncommittedChanges ? '{i18n('Has uncommitted changes')}' : '{i18n('Clean')}'}
+                        {gitRemoteStatus.hasRemoteBranch === false ? '  · {i18n('Remote has no branch')}' : ''}
                       </span>
                     </div>
                   ) : (
-                    <span style={{ color: themeStyles.textSecondary }}>配置仓库与令牌后可查看与远程的差异</span>
+                    <span style={{ color: themeStyles.textSecondary }}>{i18n('Configure repo and token to see remote differences')}</span>
                   )}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <span style={{ color: themeStyles.textSecondary, fontSize: '11px' }}>本地 Git（先保存知识库内容再提交）</span>
+                  <span style={{ color: themeStyles.textSecondary, fontSize: '11px' }}>{i18n('Local Git (save first)')}</span>
                   <input
                     value={gitCommitNote}
                     onChange={(e) => setGitCommitNote(e.target.value)}
-                    placeholder="提交说明（可选）"
+                    placeholder={i18n('Commit message (optional)')}
                     style={{
                       width: '100%',
                       boxSizing: 'border-box',
@@ -11304,11 +11304,11 @@ Reply with a JSON code block only for executable operations. For same-response f
                           getBaseUrl(`/branch/${encodeURIComponent(currentBranch || 'main')}/commit`),
                           { docId, note: gitCommitNote.trim() },
                         );
-                        Notification.success('已提交到本地 Git 仓库');
+                        Notification.success(i18n('Committed to local Git repo'));
                         setGitCommitNote('');
                         fetchGitRemoteStatus();
                       } catch (err: any) {
-                        Notification.error(err?.message || '本地提交失败');
+                        Notification.error(err?.message || i18n('Local commit failed'));
                       } finally {
                         setGitActionBusy(null);
                       }
@@ -11324,7 +11324,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                       alignSelf: 'flex-start',
                     }}
                   >
-                    {gitActionBusy === 'commit' ? '提交中…' : '提交到本地仓库'}
+                    {gitActionBusy === 'commit' ? '{i18n('Committing...')}' : '{i18n('Commit to local repo')}'}
                   </button>
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
@@ -11338,11 +11338,11 @@ Reply with a JSON code block only for executable operations. For same-response f
                           getBaseUrl(`/branch/${encodeURIComponent(currentBranch || 'main')}/github/pull`),
                           { docId },
                         );
-                        Notification.success('Pull 完成');
+                        Notification.success(i18n('Pull completed'));
                         await refetchEditorData();
                         fetchGitRemoteStatus();
                       } catch (err: any) {
-                        Notification.error(err?.message || 'Pull 失败');
+                        Notification.error(err?.message || i18n('Pull failed'));
                       } finally {
                         setGitActionBusy(null);
                       }
@@ -11369,10 +11369,10 @@ Reply with a JSON code block only for executable operations. For same-response f
                           getBaseUrl(`/branch/${encodeURIComponent(currentBranch || 'main')}/github/push`),
                           { docId },
                         );
-                        Notification.success('Push 完成');
+                        Notification.success(i18n('Push completed'));
                         fetchGitRemoteStatus();
                       } catch (err: any) {
-                        Notification.error(err?.message || 'Push 失败');
+                        Notification.error(err?.message || i18n('Push failed'));
                       } finally {
                         setGitActionBusy(null);
                       }
@@ -11415,7 +11415,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 marginBottom: '12px',
                 padding: '0 8px',
               }}>
-                待提交的更改
+                {i18n('Pending changes')}
               </div>
               <div style={{
                 fontSize: '11px',
@@ -11428,7 +11428,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 {/* Content changes */}
                 {pendingChanges.size > 0 && (
                   <div>
-                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>内容更改 ({pendingChanges.size})</div>
+                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>{i18n('Content changes')} ({pendingChanges.size})</div>
                     <div style={{ paddingLeft: '12px', fontSize: '10px', color: '#6a737d' }}>
                       {Array.from(pendingChanges.values()).slice(0, 5).map((change, idx) => (
                         <div key={idx} style={{ marginBottom: '2px' }}>
@@ -11445,7 +11445,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 {/* Drag changes */}
                 {pendingDragChanges.size > 0 && (
                   <div>
-                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>拖动更改 ({pendingDragChanges.size})</div>
+                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>{i18n('Drag changes')} ({pendingDragChanges.size})</div>
                     <div style={{ paddingLeft: '12px', fontSize: '10px', color: '#6a737d' }}>
                       {Array.from(pendingDragChanges).slice(0, 5).map((item, idx) => {
                         const file = fileTree.find(f => 
@@ -11468,7 +11468,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 {/* */}
                 {pendingRenames.size > 0 && (
                   <div>
-                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>重命名 ({pendingRenames.size})</div>
+                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>{i18n('Renames')} ({pendingRenames.size})</div>
                     <div style={{ paddingLeft: '12px', fontSize: '10px', color: '#6a737d' }}>
                       {Array.from(pendingRenames.values()).slice(0, 5).map((rename, idx) => (
                         <div key={idx} style={{ marginBottom: '2px' }}>
@@ -11485,7 +11485,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 {/* Card face changes */}
                 {Object.keys(pendingCardFaceChanges).length > 0 && (
                   <div>
-                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>卡面更改 ({Object.keys(pendingCardFaceChanges).length})</div>
+                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>{i18n('Card face changes')} ({Object.keys(pendingCardFaceChanges).length})</div>
                     <div style={{ paddingLeft: '12px', fontSize: '10px', color: '#6a737d' }}>
                       {Object.keys(pendingCardFaceChanges).slice(0, 5).map((cardId) => {
                         const file = fileTree.find(f => f.type === 'card' && f.cardId === cardId);
@@ -11505,7 +11505,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 {/* New items */}
                 {pendingCreatesCount > 0 && (
                   <div>
-                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>新建 ({pendingCreatesCount})</div>
+                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>{i18n('New items')} ({pendingCreatesCount})</div>
                     <div style={{ paddingLeft: '12px', fontSize: '10px', color: '#6a737d' }}>
                       {Array.from(pendingCreatesRef.current.values()).slice(0, 5).map((create, idx) => (
                         <div key={idx} style={{ marginBottom: '2px' }}>
@@ -11522,7 +11522,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 {/* Deletions */}
                 {pendingDeletes.size > 0 && (
                   <div>
-                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>删除 ({pendingDeletes.size})</div>
+                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>{i18n('Deletions')} ({pendingDeletes.size})</div>
                     <div style={{ paddingLeft: '12px', fontSize: '10px', color: '#6a737d' }}>
                       {Array.from(pendingDeletes.values()).slice(0, 5).map((del, idx) => {
                         const file = fileTree.find(f => 
@@ -11545,7 +11545,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 {/* Problem creates */}
                 {pendingNewProblemCardIds.size > 0 && (
                   <div>
-                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>题目新建 ({pendingNewProblemCardIds.size})</div>
+                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>{i18n('New problems')} ({pendingNewProblemCardIds.size})</div>
                     <div style={{ paddingLeft: '12px', fontSize: '10px', color: '#6a737d' }}>
                       {Array.from(pendingNewProblemCardIds).slice(0, 5).map((cardId, idx) => {
                         
@@ -11567,7 +11567,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                         }
                         return (
                           <div key={idx} style={{ marginBottom: '2px' }}>
-                            • {cardName || `卡片 (${cardId.substring(0, 8)}...)`}
+                            • {cardName || i18n('Card') + ' (' + cardId.substring(0, 8) + '...)'}
                           </div>
                         );
                       })}
@@ -11581,7 +11581,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 {/* Problem edits */}
                 {pendingEditedProblemIds.size > 0 && (
                   <div>
-                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>题目更改 ({pendingEditedProblemIds.size})</div>
+                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>{i18n('Problem changes')} ({pendingEditedProblemIds.size})</div>
                     <div style={{ paddingLeft: '12px', fontSize: '10px', color: '#6a737d' }}>
                       {Array.from(pendingEditedProblemIds.entries()).slice(0, 5).map(([cardId, problemIds], idx) => {
                         
@@ -11604,7 +11604,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                         const problemCount = problemIds.size;
                         return (
                           <div key={idx} style={{ marginBottom: '2px' }}>
-                            • {cardName || `卡片 (${cardId.substring(0, 8)}...)`} ({problemCount} 个题目)
+                            • {cardName || i18n('Card') + ' (' + cardId.substring(0, 8) + '...)'} ({problemCount} 个题目)
                           </div>
                         );
                       })}
@@ -11618,7 +11618,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 {problemPendingOtherCardIds.length > 0 && (
                   <div>
                     <div style={{ fontWeight: '500', marginBottom: '4px' }}>
-                      题目删除或其它待保存 ({problemPendingOtherCardIds.length})
+                      {i18n('Problem deletions and others')} ({problemPendingOtherCardIds.length})
                     </div>
                     <div style={{ paddingLeft: '12px', fontSize: '10px', color: '#6a737d' }}>
                       {problemPendingOtherCardIds.slice(0, 5).map((cardId, idx) => {
@@ -11675,7 +11675,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                     textAlign: 'center',
                     padding: '8px 0',
                   }}>
-                    暂无待提交的更改
+                    {i18n('No pending changes')}
                   </div>
                 )}
               </div>
@@ -11693,7 +11693,7 @@ Reply with a JSON code block only for executable operations. For same-response f
           }}
           role="separator"
           aria-orientation="vertical"
-          aria-label="调整侧边栏宽度"
+          aria-label={i18n('Resize sidebar width')}
           title="拖拽调整侧边栏宽度"
           style={{
             width: '4px',
@@ -12036,7 +12036,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                     }}
                     onClick={() => handlePaste(contextMenu.file.nodeId || '')}
                   >
-                    粘贴{clipboard.items.length > 1 ? ` (${clipboard.items.length})` : ''}
+                    {i18n('Paste')}{clipboard.items.length > 1 ? ` (${clipboard.items.length})` : ''}
                   </div>
                   <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
                 </>
@@ -12058,7 +12058,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                     }}
                     onClick={() => handlePasteStructure(contextMenu.file.nodeId || '')}
                   >
-                    粘贴结构（顶层 {structureClipboard.length} 项）
+                    {i18n('Paste structure')}（{i18n('Top')} {structureClipboard.length} 项）
                   </div>
                   <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
                 </>
@@ -12097,7 +12097,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                   void handleExportNodeSubtreeClipboard(contextMenu.file.nodeId || '');
                 }}
               >
-                导出结构与内容（剪贴板）
+                {i18n('Export structure and content')}
               </div>
               <div
                 style={{
@@ -12116,7 +12116,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                   void handleOpenSubtreeImportModal(contextMenu.file.nodeId || '');
                 }}
               >
-                导入结构与内容…
+                {i18n('Import structure and content...')}
               </div>
               <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
               <div
@@ -12138,7 +12138,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                   setContextMenu(null);
                 }}
               >
-                {isMultiSelectMode ? '退出多选' : '多选模式'}
+                {isMultiSelectMode ? '{i18n('Exit multi-select')}' : '{i18n('Multi-select mode')}'}
               </div>
               {/* Multi-select: copy, cut, delete (batch delete hidden in collect: may remove nodes) */}
               {isMultiSelectMode && selectedItems.size > 0 && (
@@ -12158,7 +12158,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                     }}
                     onClick={() => handleCopy()}
                   >
-                    复制选中项 ({selectedItems.size})
+                    {i18n('Copy selected')} ({selectedItems.size})
                   </div>
                   <div
                     style={{
@@ -12175,7 +12175,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                     }}
                     onClick={() => handleCut()}
                   >
-                    剪切选中项 ({selectedItems.size})
+                    {i18n('Cut selected')} ({selectedItems.size})
                   </div>
                   {!editorAiHidden && (
                     <div
@@ -12219,7 +12219,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                       setContextMenu(null);
                     }}
                   >
-                    删除选中项 ({selectedItems.size})
+                    {i18n('Delete selected')} ({selectedItems.size})
                   </div>
                   <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
                   </>
@@ -12321,7 +12321,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                     e.currentTarget.style.backgroundColor = 'transparent';
                   }}
                 >
-                  <span>新建兄弟 Node</span>
+                  <span>{i18n('New sibling Node')}</span>
                   <span style={{ opacity: 0.65, fontSize: '12px', flexShrink: 0 }}>›</span>
                 </div>
                 {newSiblingNodeSubmenuOpen && contextMenu.file.nodeId && (
@@ -12348,7 +12348,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                         handleNewSiblingNodePlacement(contextMenu.file.nodeId || '', 'above');
                       }}
                     >
-                      向上插入
+                      {i18n('Insert above')}
                     </div>
                     <div
                       style={{
@@ -12368,7 +12368,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                         handleNewSiblingNodePlacement(contextMenu.file.nodeId || '', 'below');
                       }}
                     >
-                      向下插入
+                      {i18n('Insert below')}
                     </div>
                     <div
                       style={{
@@ -12388,7 +12388,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                         handleNewSiblingNodePlacement(contextMenu.file.nodeId || '', 'bottom');
                       }}
                     >
-                      底部插入
+                      {i18n('Insert at bottom')}
                     </div>
                     </div>
                   </div>
@@ -12420,7 +12420,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                     e.currentTarget.style.backgroundColor = 'transparent';
                   }}
                 >
-                  <span>新建兄弟 Card</span>
+                  <span>{i18n('New sibling Card')}</span>
                   <span style={{ opacity: 0.65, fontSize: '12px', flexShrink: 0 }}>›</span>
                 </div>
                 {newSiblingCardForNodeSubmenuOpen && contextMenu.file.nodeId && (
@@ -12447,7 +12447,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                         handleNewSiblingCardForNodePlacement(contextMenu.file.nodeId || '', 'above');
                       }}
                     >
-                      向上插入
+                      {i18n('Insert above')}
                     </div>
                     <div
                       style={{
@@ -12467,7 +12467,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                         handleNewSiblingCardForNodePlacement(contextMenu.file.nodeId || '', 'below');
                       }}
                     >
-                      向下插入
+                      {i18n('Insert below')}
                     </div>
                     <div
                       style={{
@@ -12487,7 +12487,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                         handleNewSiblingCardForNodePlacement(contextMenu.file.nodeId || '', 'bottom');
                       }}
                     >
-                      底部插入
+                      {i18n('Insert at bottom')}
                     </div>
                     </div>
                   </div>
@@ -12508,7 +12508,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 }}
                 onClick={() => handleNewMultipleCards(contextMenu.file.nodeId || '')}
               >
-                新建多个 Card
+                {i18n('New multiple Cards')}
               </div>
               </>
               )}
@@ -12528,7 +12528,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 }}
                 onClick={() => handleNewMultipleChildNodes(contextMenu.file.nodeId || '')}
               >
-                新建多个子 Node
+                {i18n('New multiple child Nodes')}
               </div>
               )}
               {(
@@ -12548,7 +12548,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 }}
                 onClick={() => handleOpenImportWindow(contextMenu.file.nodeId || '')}
               >
-                导入 Markdown 卡片
+                {i18n('Import Markdown cards')}
               </div>
               {docId && contextMenu.file.nodeId && !String(contextMenu.file.nodeId).startsWith('temp-node-') && (
                 <div
@@ -12593,7 +12593,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                   setContextMenu(null);
                 }}
               >
-                排序
+                {i18n('Sort')}
               </div>
               {(
               <>
@@ -12614,7 +12614,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                   handleExportToPDF(contextMenu.file.nodeId || '');
                 }}
               >
-                导出为PDF
+                {i18n('Export to PDF')}
               </div>
               <div
                 style={{
@@ -12636,7 +12636,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                   cardFileInputRef.current?.click();
                 }}
               >
-                上传文件(创建卡片)
+                {i18n('Upload file (create card)')}
               </div>
               <div
                 style={{
@@ -12691,7 +12691,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 重命名
               </div>
               {(
-              <div style={{ padding: '6px 16px', cursor: 'pointer', fontSize: '13px', color: themeStyles.textPrimary }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = themeStyles.bgHover; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }} onClick={() => handleConvertCardToNode(contextMenu.file)}>转换为 node</div>
+              <div style={{ padding: '6px 16px', cursor: 'pointer', fontSize: '13px', color: themeStyles.textPrimary }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = themeStyles.bgHover; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }} onClick={() => handleConvertCardToNode(contextMenu.file)}>{i18n('Convert to node')}</div>
               )}
               <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
               <div
@@ -12745,7 +12745,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 }}
                 onClick={() => handleCopyContent(contextMenu.file)}
               >
-                复制内容
+                {i18n('Copy content')}
               </div>
               <div
                 style={{
@@ -12782,7 +12782,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 }}
                 onClick={() => handleDelete(contextMenu.file)}
               >
-                删除 Node
+                {i18n('Delete Node')}
               </div>
               </>
               )}
@@ -12809,7 +12809,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                   setContextMenu(null);
                 }}
               >
-                {isMultiSelectMode ? '退出多选' : '多选模式'}
+                {isMultiSelectMode ? '{i18n('Exit multi-select')}' : '{i18n('Multi-select mode')}'}
               </div>
               {/* Multi-select: copy, cut, delete (batch delete hidden in collect: may remove nodes) */}
               {isMultiSelectMode && selectedItems.size > 0 && (
@@ -12829,7 +12829,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                     }}
                     onClick={() => handleCopy()}
                   >
-                    复制选中项 ({selectedItems.size})
+                    {i18n('Copy selected')} ({selectedItems.size})
                   </div>
                   <div
                     style={{
@@ -12846,7 +12846,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                     }}
                     onClick={() => handleCut()}
                   >
-                    剪切选中项 ({selectedItems.size})
+                    {i18n('Cut selected')} ({selectedItems.size})
                   </div>
                   {!editorAiHidden && (
                     <div
@@ -12890,7 +12890,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                       setContextMenu(null);
                     }}
                   >
-                    删除选中项 ({selectedItems.size})
+                    {i18n('Delete selected')} ({selectedItems.size})
                   </div>
                   <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
                   </>
@@ -12945,7 +12945,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                     e.currentTarget.style.backgroundColor = 'transparent';
                   }}
                 >
-                  <span>新建兄弟 Card</span>
+                  <span>{i18n('New sibling Card')}</span>
                   <span style={{ opacity: 0.65, fontSize: '12px', flexShrink: 0 }}>›</span>
                 </div>
                 {newSiblingCardSubmenuOpen && contextMenu.file.cardId && (
@@ -12976,7 +12976,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                         );
                       }}
                     >
-                      向上插入
+                      {i18n('Insert above')}
                     </div>
                     <div
                       style={{
@@ -13000,7 +13000,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                         );
                       }}
                     >
-                      向下插入
+                      {i18n('Insert below')}
                     </div>
                     <div
                       style={{
@@ -13024,7 +13024,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                         );
                       }}
                     >
-                      底部插入
+                      {i18n('Insert at bottom')}
                     </div>
                     </div>
                   </div>
@@ -13054,7 +13054,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                     e.currentTarget.style.backgroundColor = 'transparent';
                   }}
                 >
-                  <span>新建兄弟 Node</span>
+                  <span>{i18n('New sibling Node')}</span>
                   <span style={{ opacity: 0.65, fontSize: '12px', flexShrink: 0 }}>›</span>
                 </div>
                 {newSiblingNodeForCardSubmenuOpen && contextMenu.file.nodeId && contextMenu.file.cardId && (
@@ -13085,7 +13085,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                         );
                       }}
                     >
-                      向上插入
+                      {i18n('Insert above')}
                     </div>
                     <div
                       style={{
@@ -13109,7 +13109,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                         );
                       }}
                     >
-                      向下插入
+                      {i18n('Insert below')}
                     </div>
                     <div
                       style={{
@@ -13133,7 +13133,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                         );
                       }}
                     >
-                      底部插入
+                      {i18n('Insert at bottom')}
                     </div>
                     </div>
                   </div>
@@ -13154,7 +13154,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 }}
                 onClick={() => handleConvertCardToNode(contextMenu.file)}
               >
-                转换为 node
+                {i18n('Convert to node')}
               </div>
               </>
               )}
@@ -13230,7 +13230,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 }}
                 onClick={() => handleCopyContent(contextMenu.file)}
               >
-                复制内容
+                {i18n('Copy content')}
               </div>
               <div
                 style={{
@@ -13451,7 +13451,7 @@ Reply with a JSON code block only for executable operations. For same-response f
             }}
             onClick={() => handleNewMultipleRootCards()}
           >
-            新建多个 Card
+            {i18n('New multiple Cards')}
           </div>
           </>
           )}
@@ -13685,7 +13685,7 @@ Reply with a JSON code block only for executable operations. For same-response f
               setSortWindow(null);
             } catch (error: any) {
               console.error('Failed to save sort order:', error);
-              Notification.error(`保存排序失败: ${error?.message || '未知错误'}`);
+              Notification.error(i18n('Save sort order failed: {0}', error?.message || i18n('Unknown error')));
             }
           }}
         />
@@ -13733,7 +13733,7 @@ Reply with a JSON code block only for executable operations. For same-response f
               fontWeight: 500,
               color: themeStyles.textPrimary,
             }}>
-              导入 Markdown 卡片
+              {i18n('Import Markdown cards')}
             </div>
             <div style={{ padding: '16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
               <p style={{ margin: '0 0 10px', fontSize: '13px', color: themeStyles.textSecondary }}>
@@ -14224,17 +14224,17 @@ Reply with a JSON code block only for executable operations. For same-response f
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
             {(pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) && (
               <span style={{ fontSize: '12px', color: themeStyles.textSecondary }}>
-                {pendingChanges.size > 0 && `${pendingChanges.size} 个文件已修改`}
+                {pendingChanges.size > 0 && i18n('{0} files modified', pendingChanges.size)`}
                 {pendingChanges.size > 0 && (pendingDragChanges.size > 0 || pendingRenames.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) && '，'}
-                {Object.keys(pendingCardFaceChanges).length > 0 && `${Object.keys(pendingCardFaceChanges).length} 个卡面已修改`}
+                {Object.keys(pendingCardFaceChanges).length > 0 && i18n('{0} card faces modified', Object.keys(pendingCardFaceChanges).length)`}
                 {Object.keys(pendingCardFaceChanges).length > 0 && (pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) && '，'}
-                {pendingDragChanges.size > 0 && `${pendingDragChanges.size} 个拖动操作`}
+                {pendingDragChanges.size > 0 && i18n('{0} drag operations', pendingDragChanges.size)`}
                 {pendingDragChanges.size > 0 && (pendingRenames.size > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) && '，'}
-                {pendingRenames.size > 0 && `${pendingRenames.size} 个重命名`}
+                {pendingRenames.size > 0 && i18n('{0} renames', pendingRenames.size)`}
                 {(pendingRenames.size > 0 || pendingChanges.size > 0 || pendingDragChanges.size > 0) && (pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) && '，'}
-                {pendingNewProblemCardIds.size > 0 && `${pendingNewProblemCardIds.size} 个题目新建`}
+                {pendingNewProblemCardIds.size > 0 && i18n('{0} new problems', pendingNewProblemCardIds.size)`}
                 {pendingNewProblemCardIds.size > 0 && (pendingEditedProblemIds.size > 0 || pendingProblemCardIds.size > 0 || learnProblemNotesDraftCount > 0) && '，'}
-                {pendingEditedProblemIds.size > 0 && `${pendingEditedProblemIds.size} 个题目更改`}
+                {pendingEditedProblemIds.size > 0 && i18n('{0} problem changes', pendingEditedProblemIds.size)`}
                 {(pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0) && learnProblemNotesDraftCount > 0 && '，'}
                 {learnProblemNotesDraftCount > 0 && `${learnProblemNotesDraftCount} ${i18n('Problem editor notes pending short')}`}
               </span>
@@ -14709,7 +14709,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                             rel="noopener noreferrer"
                             style={{ color: themeStyles.accent, textDecoration: 'underline' }}
                           >
-                            下载文件
+                            {i18n('Download file')}
                           </a>
                         </div>
                       </div>
@@ -14751,7 +14751,7 @@ Reply with a JSON code block only for executable operations. For same-response f
             ) : selectedFile?.type === 'node' && selectedFile.nodeId && docId ? (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: themeStyles.textSecondary, fontSize: '14px', flexDirection: 'column', gap: '8px', padding: '32px', textAlign: 'center' }}>
                 <div style={{ display: 'flex', opacity: 0.4 }}><FolderOpenedIcon size={32} /></div>
-                <div>请从左侧选择卡片进行编辑，或右键创建新卡片。</div>
+                <div>{i18n('Select a card to edit or right-click to create a new card.')}</div>
               </div>
             ) : (
               <div style={{
@@ -14792,7 +14792,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                   }}
                   role="separator"
                   aria-orientation="horizontal"
-                  aria-label="拖拽调整终端与编辑器高度比例"
+                  aria-label={i18n('Resize terminal/editor ratio')}
                 >
                   <div
                     style={{
@@ -14865,8 +14865,8 @@ Reply with a JSON code block only for executable operations. For same-response f
                         padding: '0 10px',
                         fontFamily: 'inherit',
                       }}
-                      aria-label="收起面板"
-                      title="收起"
+                      aria-label={i18n('Collapse panel')}
+                      title={i18n('Collapse')}
                     >
                       ▼
                     </button>
@@ -15161,7 +15161,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                                 fontSize: '11px',
                                 lineHeight: 1,
                               }}
-                              title="移除引用"
+                              title={i18n('Remove reference')}
                             >
                               ×
                             </button>
@@ -15288,7 +15288,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                           autoComplete="off"
                           spellCheck={false}
                           disabled={isChatLoading}
-                          aria-label="终端输入"
+                          aria-label={i18n('Terminal input')}
                           style={{
                             flex: 1,
                             minWidth: 0,
@@ -15330,7 +15330,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                     fontFamily: aiTerminalStyles.mono,
                   }}
                 >
-                  ▲ AI
+                  ▲ {i18n(\'AI\')}
                 </button>
               )}
             </>
@@ -15347,7 +15347,7 @@ Reply with a JSON code block only for executable operations. For same-response f
               <button
                 type="button"
                 onClick={() => handleAddBlankProblem()}
-                title="添加练习题"
+                title={i18n('Add practice problem')}
                 aria-label="添加练习题"
                 style={{
                   width: '28px',
@@ -15632,7 +15632,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                   padding: '0 4px',
                   flexShrink: 0,
                 }}
-                aria-label="关闭"
+                aria-label={i18n('Close')}
               >
                 &times;
               </button>
@@ -15683,7 +15683,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                   color: themeStyles.textTertiary,
                   flexShrink: 0,
                 }}
-                aria-label="关闭"
+                aria-label={i18n('Close')}
               >
                 &times;
               </button>
