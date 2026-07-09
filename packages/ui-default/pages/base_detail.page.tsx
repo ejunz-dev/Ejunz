@@ -586,6 +586,8 @@ function BaseDetailViewer() {
         card={selectedCard}
         onClose={handleCloseCardDrawer}
         highlightText={highlightText}
+        baseDocId={base.docId}
+        domainId={base.domainId}
       />
       <BaseDetailAiTutor
         nodes={nodes}
