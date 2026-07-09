@@ -583,7 +583,7 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
         },
     },
     {
-        name: 'card_file_list',
+        name: 'node_file_list',
         description: 'List file-cards under a node. File-cards are cards with cardType="file" that represent uploaded files. Returns card id, title, fileName, fileType, fileSize for each.',
         inputSchema: {
             type: 'object',
@@ -595,7 +595,7 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
         },
     },
     {
-        name: 'card_file_get',
+        name: 'node_file_get',
         description: 'Get file-card metadata by cardId. Returns title, fileName, fileType, fileSize, nodeId, and download URL.',
         inputSchema: {
             type: 'object',
@@ -607,7 +607,7 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
         },
     },
     {
-        name: 'card_file_delete',
+        name: 'node_file_delete',
         description: 'Delete a file-card and its underlying file. Both the card record and the physical file in storage are removed.',
         inputSchema: {
             type: 'object',
@@ -615,6 +615,21 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
                 cardId: { type: 'string', description: 'File-card docId (hex).' },
             },
             required: ['cardId'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'node_file_create',
+        description: 'Upload a file from a URL and create a file-card under a node. Downloads the file from the given URL, stores it on the node, and creates a file-card (cardType="file") referencing it.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                nodeId: { type: 'string', description: 'Existing node id to attach the file-card to.' },
+                fileName: { type: 'string', description: 'Filename (e.g. report.pdf, photo.png). Used to infer file type from extension.' },
+                fileUrl: { type: 'string', description: 'Public URL to download the file from.' },
+                title: { type: 'string', description: 'Optional card title (defaults to fileName).' },
+            },
+            required: ['nodeId', 'fileName', 'fileUrl'],
             additionalProperties: false,
         },
     },
@@ -659,7 +674,7 @@ export async function buildMcpInstructions(
 const MCP_BUILTIN_MUTATING_TOOLS = new Set([
     'node_create', 'node_update', 'node_delete',
     'card_create', 'card_update', 'card_delete',
-    'card_file_delete',
+    'node_file_create', 'node_file_delete',
     'problem_create', 'problem_update', 'problem_delete',
     'git_pull', 'git_config_set',
 ]);
@@ -1005,7 +1020,7 @@ export async function executeMcpBuiltinTool(
             githubRepo: githubRepo || null,
         });
     }
-    case 'card_file_list': {
+    case 'node_file_list': {
         const nodeId = String(args.nodeId || '');
         if (!nodeId) throw new Error('nodeId is required');
         const { nodes } = getBranchData(base, branch);
@@ -1021,7 +1036,7 @@ export async function executeMcpBuiltinTool(
             nodeId: c.nodeId,
         }));
     }
-    case 'card_file_get': {
+    case 'node_file_get': {
         const card = await requireCard(ctx, args.cardId);
         if ((card as CardDoc).cardType !== 'file') throw new Error('Not a file-card: ' + args.cardId);
         const downloadUrl = `/base/${baseDocId}/node/${card.nodeId}/file/${encodeURIComponent((card as CardDoc).fileName || '')}`;
@@ -1036,7 +1051,7 @@ export async function executeMcpBuiltinTool(
             downloadUrl,
         };
     }
-    case 'card_file_delete': {
+    case 'node_file_delete': {
         const card = await requireCard(ctx, args.cardId);
         if ((card as CardDoc).cardType !== 'file') throw new Error('Not a file-card: ' + args.cardId);
         // Delete the physical file from storage (node-level path)
@@ -1048,6 +1063,42 @@ export async function executeMcpBuiltinTool(
         // Remove the card document
         await CardModel.delete(domainId, card.docId);
         return { ok: true, cardId: String(args.cardId), deletedFile: !!fileName };
+    }
+    case 'node_file_create': {
+        const nodeId = String(args.nodeId || '');
+        const fileName = String(args.fileName || '').trim();
+        const fileUrl = String(args.fileUrl || '').trim();
+        if (!nodeId) throw new Error('nodeId is required');
+        if (!fileName) throw new Error('fileName is required');
+        if (!fileUrl) throw new Error('fileUrl is required');
+        // Download file from URL
+        const response = await fetch(fileUrl);
+        if (!response.ok) throw new Error(`Failed to download file: ${response.status} ${response.statusText}`);
+        const buffer = Buffer.from(await response.arrayBuffer());
+        // Store on node
+        const storagePath = `base/${domainId}/${baseDocId.toString()}/node/${nodeId}/${fileName}`;
+        await storage.put(storagePath, buffer, owner);
+        const meta = await storage.getMeta(storagePath);
+        if (!meta) throw new Error('Failed to store file');
+        // Create file-card
+        const ext = fileName.split('.').pop()?.toLowerCase() || '';
+        const imageExt = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico']);
+        const videoExt = new Set(['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'wmv']);
+        const audioExt = new Set(['mp3', 'wav', 'flac', 'aac', 'ogg', 'wma', 'm4a']);
+        const codeExt = new Set(['js', 'ts', 'tsx', 'jsx', 'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp', 'css', 'scss', 'less', 'html', 'json', 'yaml', 'yml', 'xml', 'md', 'sh', 'bash', 'sql', 'vue', 'svelte']);
+        let fileType = 'other';
+        if (ext === 'pdf') fileType = 'pdf';
+        else if (imageExt.has(ext)) fileType = 'image';
+        else if (videoExt.has(ext)) fileType = 'video';
+        else if (audioExt.has(ext)) fileType = 'audio';
+        else if (codeExt.has(ext)) fileType = 'code';
+        const title = String(args.title || '').trim() || fileName;
+        const cardDocId = await CardModel.create(
+            domainId, baseDocId, nodeId, owner, title, '',
+            undefined, undefined, undefined, branch,
+            'file', fileType, fileName, meta.size || 0,
+        );
+        return { ok: true, cardId: String(cardDocId), nodeId, fileName, fileType, fileSize: meta.size };
     }
     default:
         throw new Error(`Unknown tool: ${name}`);
