@@ -1368,7 +1368,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     ReactDOM.render(
       <>
         <button type="button" onClick={() => setMobileExplorerOpen(true)} aria-label={i18n('Explorer')}>
-          ☰ {i18n(\'Explorer\')}
+          ☰ {i18n('Explorer')}
         </button>
         <button
           type="button"
@@ -11173,7 +11173,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 </button>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   <span style={{ color: themeStyles.textSecondary, fontSize: '11px' }}>
-                    {i18n('Personal access token (PAT)')}{githubPATConfigured ? ' · {i18n('Configured')}' : ' · {i18n('Not configured')}'}
+                    {i18n('Personal access token (PAT)')}{githubPATConfigured ? (' · ' + i18n('Configured')) : (' · ' + i18n('Not configured'))}
                   </span>
                   <input
                     type="password"
@@ -11269,8 +11269,8 @@ Reply with a JSON code block only for executable operations. For same-response f
                       ) : null}
                       <span>{i18n('Ahead')} {gitRemoteStatus.ahead ?? 0}  · {i18n('Behind')} {gitRemoteStatus.behind ?? 0}</span>
                       <span>
-                        工作区相对最新提交：{gitRemoteStatus.uncommittedChanges ? '{i18n('Has uncommitted changes')}' : '{i18n('Clean')}'}
-                        {gitRemoteStatus.hasRemoteBranch === false ? '  · {i18n('Remote has no branch')}' : ''}
+                        工作区相对最新提交：{gitRemoteStatus.uncommittedChanges ? (' · ' + i18n('Has uncommitted changes')) : (' · ' + i18n('Clean'))}
+                        {gitRemoteStatus.hasRemoteBranch === false ? ('  · ' + i18n('Remote has no branch')) : ''}
                       </span>
                     </div>
                   ) : (
@@ -11324,7 +11324,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                       alignSelf: 'flex-start',
                     }}
                   >
-                    {gitActionBusy === 'commit' ? '{i18n('Committing...')}' : '{i18n('Commit to local repo')}'}
+                    {gitActionBusy === 'commit' ? i18n('Committing...') : i18n('Commit to local repo')}
                   </button>
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
@@ -12138,7 +12138,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                   setContextMenu(null);
                 }}
               >
-                {isMultiSelectMode ? '{i18n('Exit multi-select')}' : '{i18n('Multi-select mode')}'}
+                {isMultiSelectMode ? i18n('Exit multi-select') : i18n('Multi-select mode')}
               </div>
               {/* Multi-select: copy, cut, delete (batch delete hidden in collect: may remove nodes) */}
               {isMultiSelectMode && selectedItems.size > 0 && (
@@ -12809,7 +12809,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                   setContextMenu(null);
                 }}
               >
-                {isMultiSelectMode ? '{i18n('Exit multi-select')}' : '{i18n('Multi-select mode')}'}
+                {isMultiSelectMode ? i18n('Exit multi-select') : i18n('Multi-select mode')}
               </div>
               {/* Multi-select: copy, cut, delete (batch delete hidden in collect: may remove nodes) */}
               {isMultiSelectMode && selectedItems.size > 0 && (
@@ -15330,7 +15330,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                     fontFamily: aiTerminalStyles.mono,
                   }}
                 >
-                  ▲ {i18n(\'AI\')}
+                  ▲ {i18n('AI')}
                 </button>
               )}
             </>

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { i18n } from 'vj/utils';
 import type { BaseEdge, BaseNode, Card } from './types';
 import type { BaseDetailTreeVisibility } from './detail_tree_filter';
@@ -10,7 +10,27 @@ import {
   getMixedNodeChildren,
   nodeDisplayLabel,
 } from './detail_tree';
+import { getCardIcon, getCardColor } from './utils';
+import {
+  CardPdfIcon,
+  CardImageIcon,
+  CardVideoIcon,
+  CardAudioIcon,
+  CardCodeIcon,
+  CardFileOtherIcon,
+} from './BaseEditorCardIcons';
 import { useBaseDetailCardScroll } from './url_sync';
+
+function getTheme(): 'light' | 'dark' {
+  try {
+    if ((window as any).Ejunz?.utils?.getTheme) {
+      return (window as any).Ejunz.utils.getTheme();
+    }
+    return (window as any).UserContext?.theme === 'dark' ? 'dark' : 'light';
+  } catch {
+    return 'light';
+  }
+}
 
 function ChevronIcon({ expanded }: { expanded: boolean }) {
   return (
@@ -193,7 +213,21 @@ function TreeBranch({
                   onClick={() => onSelectCard?.(child.card)}
                 >
                   <span className="base-detail-tree__icon">
-                    <CardIcon />
+                    {(() => {
+                      const iconKey = getCardIcon(child.card?.cardType, child.card?.fileType);
+                      if (iconKey === 'text') return <CardIcon />;
+                      const size = 14;
+                      const theme = getTheme();
+                      const cardColor = getCardColor(iconKey, theme);
+                      switch (iconKey) {
+                        case 'pdf': return <CardPdfIcon size={size} color={cardColor} />;
+                        case 'image': return <CardImageIcon size={size} color={cardColor} />;
+                        case 'video': return <CardVideoIcon size={size} color={cardColor} />;
+                        case 'audio': return <CardAudioIcon size={size} color={cardColor} />;
+                        case 'code': return <CardCodeIcon size={size} color={cardColor} />;
+                        default: return <CardFileOtherIcon size={size} color={cardColor} />;
+                      }
+                    })()}
                   </span>
                   <span className="base-detail-tree__label" title={cardDisplayLabel(child.card)}>
                     {cardDisplayLabel(child.card)}
