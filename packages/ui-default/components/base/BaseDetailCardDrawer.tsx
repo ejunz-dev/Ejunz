@@ -6,9 +6,150 @@ import { domainApiPath, domainScopedPath, i18n, request } from 'vj/utils';
 import type { Problem } from 'ejun/src/interface';
 import { RoadmapDrawerProblemList } from '../roadmap/RoadmapDrawerProblemList';
 import type { Card } from './types';
-import { cardDisplayLabel } from './detail_tree';
+import { cardDisplayLabel, findCardHostNodeId } from './detail_tree';
+import { getCardIcon, getCardColor } from './utils';
+import {
+  CardFileOtherIcon,
+} from './BaseEditorCardIcons';
 import { useDrawerTransition } from './useDrawerTransition';
 import { attachTypoImagePreviewHandlers } from './typo_image_preview';
+
+/**
+ * Render an inline preview for a file-card inside the detail card drawer.
+ */
+function renderFilePreview(card: Card, domainId?: string, baseDocId?: string) {
+  const fileType = card?.fileType || '';
+  const fileName = card?.fileName || '';
+  const cardId = card?.docId || '';
+  let nodeId = card?.nodeId || '';
+
+  // Fallback: look up host node from the global nodeCardsMap
+  if (!nodeId) {
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    const found = findCardHostNodeId(cardId, nodeCardsMap);
+    if (found) nodeId = found;
+  }
+
+  if (!fileName || (!cardId && !nodeId)) {
+    return <p className="roadmap-detail-drawer__empty">{i18n('Base detail card empty')}</p>;
+  }
+  const resolvedDomainId = domainId || (window as any).UiContext?.domainId || 'system';
+  const resolvedDocId = baseDocId || String((window as any).UiContext?.base?.docId || '');
+  const branch = (window as any).UiContext?.currentBranch || 'main';
+
+  // File-cards store files on the node, not on the card itself.
+  // Use node-based download URL matching how BaseEditor previews them.
+  const fileUrl = domainScopedPath(
+    `/base/${resolvedDocId}/node/${nodeId}/file/${encodeURIComponent(fileName)}?branch=${encodeURIComponent(branch)}&noDisposition=1`,
+    resolvedDomainId,
+  );
+  const downloadUrl = domainScopedPath(
+    `/base/${resolvedDocId}/node/${nodeId}/file/${encodeURIComponent(fileName)}?branch=${encodeURIComponent(branch)}`,
+    resolvedDomainId,
+  );
+
+  switch (fileType) {
+    case 'pdf':
+      return (
+        <object data={fileUrl} type="application/pdf" style={{ width: '100%', flex: 1, border: 'none', minHeight: '400px' }}>
+          <embed src={fileUrl} type="application/pdf" style={{ width: '100%', height: '100%', border: 'none' }} />
+        </object>
+      );
+    case 'image': {
+      const openViewer = () => {
+        const img = document.createElement('img');
+        img.src = fileUrl;
+        img.style.cssText = 'display: none;';
+        document.body.appendChild(img);
+        img.onload = async () => {
+          try {
+            const { default: Viewer } = await import('viewerjs/dist/viewer.esm.js');
+            const viewer = new Viewer(img, {
+              inline: false,
+              viewed() { document.body.style.overflow = 'hidden'; },
+              hidden() {
+                document.body.style.overflow = '';
+                if (img.parentNode) img.parentNode.removeChild(img);
+                viewer.destroy();
+              },
+              toolbar: {
+                zoomIn: true, zoomOut: true, oneToOne: true, reset: true,
+                prev: false, play: false, next: false,
+                rotateLeft: true, rotateRight: true,
+                flipHorizontal: true, flipVertical: true,
+              },
+              zoomRatio: 0.1, minZoomRatio: 0.01, maxZoomRatio: 100,
+              movable: true, rotatable: true, scalable: true,
+              transition: true, fullscreen: true, keyboard: true,
+            });
+            viewer.show();
+          } catch { /* fallback */ }
+        };
+      };
+      return (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', overflow: 'auto', width: '100%' }}>
+          <img
+            src={fileUrl}
+            alt={fileName}
+            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', cursor: 'zoom-in', borderRadius: '4px' }}
+            onClick={openViewer}
+            onKeyDown={(e) => { if (e.key === 'Enter') openViewer(); }}
+          />
+        </div>
+      );
+    }
+    case 'video':
+      return (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', width: '100%' }}>
+          <video controls style={{ maxWidth: '100%', maxHeight: '100%' }}>
+            <source src={fileUrl} />
+          </video>
+        </div>
+      );
+    case 'audio':
+      return (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', width: '100%' }}>
+          <audio controls src={fileUrl} style={{ width: '100%', maxWidth: '480px' }} />
+        </div>
+      );
+    case 'code':
+      return (
+        <iframe
+          src={fileUrl}
+          style={{ width: '100%', flex: 1, border: 'none', minHeight: '400px' }}
+          title={fileName}
+        />
+      );
+    default: {
+      const theme = (() => {
+        try {
+          if ((window as any).Ejunz?.utils?.getTheme) return (window as any).Ejunz.utils.getTheme();
+          return (window as any).UserContext?.theme === 'dark' ? 'dark' : 'light';
+        } catch { return 'light'; }
+      })();
+      const iconKey = getCardIcon('file', fileType);
+      const cardColor = getCardColor(iconKey, theme);
+      return (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px', width: '100%' }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '48px', marginBottom: '16px', opacity: 0.5, display: 'flex', justifyContent: 'center' }}>
+              <CardFileOtherIcon size={48} color={cardColor} />
+            </div>
+            <p style={{ margin: '0 0 8px', fontSize: '14px' }}>{fileName}</p>
+            <a
+              href={downloadUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: 'var(--link-color, #1a73e8)', textDecoration: 'underline', fontSize: '13px' }}
+            >
+              {i18n('Download file')}
+            </a>
+          </div>
+        </div>
+      );
+    }
+  }
+}
 
 type DrawerTab = 'content' | 'problems';
 
@@ -17,11 +158,15 @@ export function BaseDetailCardDrawer({
   card,
   onClose,
   highlightText,
+  baseDocId,
+  domainId,
 }: {
   open: boolean;
   card: Card | null;
   onClose: () => void;
   highlightText?: string | null;
+  baseDocId?: string;
+  domainId?: string;
 }) {
   const [tab, setTab] = useState<DrawerTab>('content');
   const [practiceBusy, setPracticeBusy] = useState(false);
@@ -214,6 +359,19 @@ export function BaseDetailCardDrawer({
         </div>
 
         <div className="roadmap-detail-drawer__body">
+          {displayCard?.cardType === 'file' ? (
+            <div
+              className={`roadmap-detail-drawer__panel is-active`}
+              role="tabpanel"
+              style={{ display: 'flex', flexDirection: 'column' }}
+            >
+              <h1 className="roadmap-detail-drawer__title">{title}</h1>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                {renderFilePreview(displayCard, domainId, baseDocId)}
+              </div>
+            </div>
+          ) : (
+            <>
           <div
             className={`roadmap-detail-drawer__panel${tab === 'content' ? ' is-active' : ''}`}
             role="tabpanel"
@@ -248,6 +406,8 @@ export function BaseDetailCardDrawer({
               />
             </div>
           ) : null}
+          </>
+        )}
         </div>
       </aside>
     </>,
