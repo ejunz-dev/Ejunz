@@ -19,7 +19,7 @@ export const HostSettings = Schema.object({
     minPriority: Schema.number().description('Only consume tasks above this priority'),
     concurrency: Schema.number().default(4).min(1).step(1).description('Worker task concurrency'),
     toolcallConcurrency: Schema.number().min(1).step(1).description('Tool call concurrency alias'),
-    taskTypes: Schema.array(Schema.string()).default(['agent_task', 'tool_call', 'mcp_tool_call']).description('Task types this worker can execute'),
+    taskTypes: Schema.array(Schema.string()).default(['agent_task', 'tool_call', 'mcp_tool_call', 'embedding_vectorize']).description('Task types this worker can execute'),
 });
 
 export const WorkerSettings = Schema.object({
@@ -44,7 +44,7 @@ function withGlobalDefaults(base: any) {
         host.workerLabel ||= out.workerLabel || name;
         host.workerVersion ||= out.workerVersion;
         host.concurrency ||= host.toolcallConcurrency || out.toolcallConcurrency || 4;
-        host.taskTypes ||= ['agent_task', 'tool_call', 'mcp_tool_call'];
+        host.taskTypes ||= ['agent_task', 'tool_call', 'mcp_tool_call', 'embedding_vectorize'];
     }
     return out;
 }

@@ -9,6 +9,7 @@ import superagent from 'superagent';
 import logger from '../log';
 import { getConfig } from '../config';
 import { ToolCallTaskHandler } from '../toolcall';
+import { EMBEDDING_TASK_TYPE, EMBEDDING_VECTORIZE_SUBTYPE, EMBEDDING_VECTORIZE_WORKER_TASK, SEMANTIC_SEARCH_TOOL } from 'ejun/src/service/embeddingWorker';
 
 export interface WorkerTaskReporter {
     accepted(data?: any): Promise<void>;
@@ -246,6 +247,41 @@ function getTaskModel() {
 
 function getWorkerStatusModel() {
     return require('ejun/src/model/workerStatus');
+}
+
+function workerSystemToolContext(config: any, task: any) {
+    return {
+        domainId: task.domainId,
+        baseDocId: task.baseDocId || task.context?.baseDocId,
+        branch: task.baseBranch || task.context?.baseBranch || task.args?.branch || 'main',
+        owner: task.owner || task.context?.owner || task.uid,
+        embedding: (config.ctx as any)?.embedding,
+    };
+}
+
+async function executeSemanticSearchTool(task: any, reporter: WorkerTaskReporter, config: any) {
+    const { executeLocalSystemTool } = require('ejun/src/service/mcp');
+    await reporter.status({ status: 'running', toolName: SEMANTIC_SEARCH_TOOL });
+    const result = await executeLocalSystemTool(SEMANTIC_SEARCH_TOOL, task.args || {}, workerSystemToolContext(config, task));
+    await reporter.complete({ result });
+}
+
+async function executeEmbeddingVectorizeTask(task: any, reporter: WorkerTaskReporter, config: any) {
+    await reporter.accepted();
+    try {
+        const embedding = (config.ctx as any)?.embedding;
+        if (!embedding) throw new Error('Embedding service is not available in this worker');
+        const domainId = task.domainId;
+        const baseDocId = Number(task.baseDocId);
+        const branch = task.baseBranch || 'main';
+        if (!domainId) throw new Error('domainId is required');
+        if (!Number.isFinite(baseDocId) || baseDocId <= 0) throw new Error('baseDocId is required');
+        await reporter.status({ status: 'running', baseDocId, branch });
+        await embedding.vectorizeBaseContent(domainId, baseDocId, branch);
+        await reporter.complete({ result: { ok: true, domainId, baseDocId, branch, reason: task.reason || null } });
+    } catch (e: any) {
+        await reporter.error({ message: e?.message || String(e), code: e?.code || 'WORKER_EMBEDDING_VECTORIZE_ERROR', stack: e?.stack });
+    }
 }
 
 async function executeToolViaServer(config: any, task: any, executionTool: any, modelToolName: string, args: any) {
@@ -603,8 +639,9 @@ async function executeAgentTask(task: any, reporter: WorkerTaskReporter, config:
 
 async function executeToolCallTask(task: any, reporter: WorkerTaskReporter, config: any) {
     await reporter.accepted();
+    const toolName = task.toolName || task.name || '';
     logger.info('[diag] executeToolCallTask enter: tool=%s hasServerUrl=%s hasConfigCtx=%s hasConfigCtxEmbedding=%s domainId=%s baseDocId=%s branch=%s owner=%s toolType=%s pid=%d NODE_APP_INSTANCE=%s',
-        task.toolName || task.name || '',
+        toolName,
         !!config.server_url,
         !!config.ctx,
         !!(config.ctx as any)?.embedding,
@@ -616,6 +653,14 @@ async function executeToolCallTask(task: any, reporter: WorkerTaskReporter, conf
         process.pid,
         process.env.NODE_APP_INSTANCE || '',
     );
+    if (toolName === SEMANTIC_SEARCH_TOOL) {
+        try {
+            await executeSemanticSearchTool(task, reporter, config);
+        } catch (e: any) {
+            await reporter.error({ message: e?.message || String(e), code: e?.code || 'WORKER_SEMANTIC_SEARCH_ERROR', stack: e?.stack });
+        }
+        return;
+    }
     if (!config.server_url) {
         const McpClient = getMcpClient();
         const mcpClient = new McpClient();
@@ -677,6 +722,7 @@ export async function executeWorkerTask(taskType: string, task: any, reporter: W
     if (taskType === 'agent_task') return executeAgentTask(task, reporter, config);
     if (taskType === 'tool_call') return executeToolCallTask(task, reporter, config);
     if (taskType === 'mcp_tool_call') return executeMcpToolCallTask(task, reporter);
+    if (taskType === EMBEDDING_VECTORIZE_WORKER_TASK) return executeEmbeddingVectorizeTask(task, reporter, config);
     throw new Error(`Unsupported worker task type: ${taskType}`);
 }
 
@@ -692,6 +738,7 @@ function taskTypeFromDbTask(t: any) {
     if (t.type === 'task') return 'agent_task';
     if (t.type === 'tool_call') return 'tool_call';
     if (t.type === 'mcp' && t.subType === 'tool_call') return 'mcp_tool_call';
+    if (t.type === EMBEDDING_TASK_TYPE && t.subType === EMBEDDING_VECTORIZE_SUBTYPE) return EMBEDDING_VECTORIZE_WORKER_TASK;
     return null;
 }
 
@@ -933,6 +980,7 @@ export async function apply(ctx: EjunzContext) {
         workerLabel: process.env.EJUNZ_WORKER_LABEL || getConfig('workerLabel') || 'Builtin',
         workerKind: 'builtin',
         workerVersion: process.env.EJUNZ_WORKER_VERSION || getConfig('workerVersion') || builtinWorkerVersion(),
+        taskTypes: ['agent_task', 'tool_call', 'mcp_tool_call', EMBEDDING_VECTORIZE_WORKER_TASK],
         host: workerHost,
         pid: process.pid,
         nodeAppInstance: process.env.NODE_APP_INSTANCE,
@@ -997,7 +1045,7 @@ export async function apply(ctx: EjunzContext) {
     });
 
     consumer = TaskModel.consume(
-        { $or: [{ type: 'task' }, { type: 'tool_call' }, { type: 'mcp', subType: 'tool_call' }] },
+        { $or: [{ type: 'task' }, { type: 'tool_call' }, { type: 'mcp', subType: 'tool_call' }, { type: EMBEDDING_TASK_TYPE, subType: EMBEDDING_VECTORIZE_SUBTYPE }] },
         handleTask,
         false,
         concurrency,

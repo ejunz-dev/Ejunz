@@ -74,6 +74,8 @@ import {
     LearnProblemNoteModel,
 } from '../model/problem';
 import { collectRoadmapBatchSaveNumberErrors } from '../model/base';
+import { enqueueEmbeddingVectorizeBase, SEMANTIC_SEARCH_TOOL } from '../service/embeddingWorker';
+import { callToolViaWorker } from './worker';
 
 type LearnProblemNotesBatchBlock = {
     pid: string;
@@ -2126,10 +2128,16 @@ export class BaseSaveHandler extends Handler {
         (this.ctx.emit as any)('base/update', docId, null, currentBranch);
         (this.ctx.emit as any)('base/git/status/update', docId);
 
-        // Fire-and-forget vectorize base content for semantic search
-        if (hasNonPositionChanges && this.ctx.embedding) {
-            this.ctx.embedding.vectorizeBaseContent(domainId, docId, currentBranch).catch((err: any) => {
-                console.error('Embedding error after base save:', err);
+        // Fire-and-forget vectorize base content for semantic search on worker runtime
+        if (hasNonPositionChanges) {
+            enqueueEmbeddingVectorizeBase({
+                domainId,
+                baseDocId: docId,
+                branch: currentBranch,
+                owner: this.user._id,
+                reason: 'base_save',
+            }).catch((err: any) => {
+                console.error('Embedding queue error after base save:', err);
             });
         }
 
@@ -5009,10 +5017,16 @@ export class BaseBatchSaveHandler extends Handler {
         await persistBaseEditorSaveSidecars(this, actualDomainId, docId, branch, data as Record<string, unknown>, mdt, nodeIdMap);
         (this.ctx.emit as any)('base/update', docId, null, branch);
 
-        // Fire-and-forget vectorize base content for semantic search after successful batch save
-        if (batchSuccess && this.ctx.embedding) {
-            this.ctx.embedding.vectorizeBaseContent(actualDomainId, docId, branch).catch((err: any) => {
-                console.error('Embedding error after batch save:', err);
+        // Fire-and-forget vectorize base content for semantic search on worker runtime after successful batch save
+        if (batchSuccess) {
+            enqueueEmbeddingVectorizeBase({
+                domainId: actualDomainId,
+                baseDocId: docId,
+                branch,
+                owner: this.user._id,
+                reason: 'batch_save',
+            }).catch((err: any) => {
+                console.error('Embedding queue error after batch save:', err);
             });
         }
 
@@ -7124,30 +7138,21 @@ export class BaseSemanticSearchHandler extends Handler {
         const branchNorm = (branch && String(branch).trim()) || 'main';
         const maxResults = Math.min(limit || 10, 50);
 
-        let results: Array<{
-            nodeId: string;
-            kind: 'node' | 'card';
-            cardDocId?: string;
-            cardTitle?: string;
-            text: string;
-            score: number;
-        }> = [];
-        if (this.ctx.embedding) {
-            try {
-                results = await this.ctx.embedding.searchSimilar(
-                    domainId,
-                    docId,
-                    branchNorm,
-                    query.trim(),
-                    maxResults,
-                );
-            } catch (err) {
-                this.ctx.logger.error('Semantic search error: %o', err);
-                // Return zero results rather than crashing
-            }
+        try {
+            const result = await callToolViaWorker(this.ctx, SEMANTIC_SEARCH_TOOL, {
+                query: query.trim(),
+                limit: maxResults,
+            }, domainId, undefined, this.user._id, undefined, 0, {
+                baseDocId: docId,
+                baseBranch: branchNorm,
+                owner: this.user._id,
+                toolType: 'system',
+            });
+            this.response.body = { results: result?.results || [] };
+        } catch (err) {
+            this.ctx.logger.error('Semantic search worker error: %o', err);
+            throw err;
         }
-
-        this.response.body = { results };
     }
 }
 

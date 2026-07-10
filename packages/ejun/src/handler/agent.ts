@@ -41,6 +41,7 @@ import SessionModel from '../model/session';
 import { parseCategory } from '../lib/category';
 import { summarizePluginMcpAvailability } from '../service/mcp';
 import { listDomainMcps } from '../service/mcp';
+import { SEMANTIC_SEARCH_TOOL } from '../service/embeddingWorker';
 const AgentLogger = new Logger('agent');
 
 export type BaseLibraryBinding = { docId: number; branch: string };
@@ -185,18 +186,19 @@ async function callToolWithFallback(
     const executionTool = findExecutionTool(mcpOpts?.executionTools, toolName);
     if (!executionTool) throw makeToolUnavailableError(toolName, 'TOOL_NOT_FOUND');
     if (executionTool.type === 'plugin_mcp' && !executionTool.mcpId) throw makeToolUnavailableError(toolName, 'MCP_NOT_FOUND');
+    const workerOnlyTool = toolName === SEMANTIC_SEARCH_TOOL;
     const preferDirectMcp = executionTool?.token
         || executionTool?.type === 'system'
         || executionTool?.type === 'edge'
         || executionTool?.type === 'ejunztools'
         || executionTool?.type === 'plugin_mcp';
-    if (useWorker && !preferDirectMcp) {
-        try {
-            const ctx = (global as any).app || (global as any).Ejunz;
-            if (ctx) {
-                const callArgs = toolName === 'schedule_create' && agentId && !(args || {}).agentId
-                    ? { ...(args || {}), __agentId: agentId }
-                    : args;
+    if (useWorker && (workerOnlyTool || !preferDirectMcp)) {
+        const ctx = (global as any).app || (global as any).Ejunz;
+        if (ctx) {
+            const callArgs = toolName === 'schedule_create' && agentId && !(args || {}).agentId
+                ? { ...(args || {}), __agentId: agentId }
+                : args;
+            try {
                 return await callToolViaWorker(ctx, toolName, callArgs, domainId, agentId, uid, taskRecordId, 0, {
                     baseDocId: mcpOpts?.baseDocId,
                     baseBranch: mcpOpts?.baseBranch,
@@ -205,10 +207,12 @@ async function callToolWithFallback(
                     token: executionTool?.token,
                     mcpId: executionTool?.mcpId,
                 });
+            } catch (e: any) {
+                if (workerOnlyTool || isFatalToolResolutionCode(e?.code) || e?.code === 'MCP_OFFLINE') throw e;
+                AgentLogger.warn(`Worker tool call failed, falling back to direct call: ${toolName}`, e);
             }
-        } catch (e: any) {
-            if (isFatalToolResolutionCode(e?.code) || e?.code === 'MCP_OFFLINE') throw e;
-            AgentLogger.warn(`Worker tool call failed, falling back to direct call: ${toolName}`, e);
+        } else if (workerOnlyTool) {
+            throw makeToolUnavailableError(toolName, 'WORKER_NOT_AVAILABLE');
         }
     }
     // Fallback: direct MCP call
@@ -245,6 +249,18 @@ async function callAssignedTool(
     const executionTool = findExecutionTool(executionTools, toolName);
     if (!executionTool) throw makeToolUnavailableError(toolName, 'TOOL_NOT_FOUND');
     if (executionTool.type === 'plugin_mcp' && !executionTool.mcpId) throw makeToolUnavailableError(toolName, 'MCP_NOT_FOUND');
+    if (toolName === SEMANTIC_SEARCH_TOOL) {
+        const ctx = (global as any).app || (global as any).Ejunz;
+        if (!ctx) throw makeToolUnavailableError(toolName, 'WORKER_NOT_AVAILABLE');
+        return await callToolViaWorker(ctx, toolName, args, domainId, currentAgentId, uid, undefined, 0, {
+            baseDocId,
+            baseBranch,
+            owner: uid,
+            toolType: executionTool?.type,
+            token: executionTool?.token,
+            mcpId: executionTool?.mcpId,
+        });
+    }
     const callArgs = executionTool?.type === 'plugin_mcp'
         ? { ...(args || {}), __mcpId: executionTool?.mcpId }
         : (toolName === 'schedule_create' && currentAgentId && !(args || {}).agentId
@@ -4531,12 +4547,18 @@ export class DirectAiChatConnectionHandler extends ConnectionHandler {
         let semanticBlock = '';
         let semanticCount = 0;
         let semanticResults: BaseTutorSemanticResult[] = [];
-        if (systemPrompt && docIdNum > 0 && (this.ctx as any).embedding) {
+        if (systemPrompt && docIdNum > 0) {
             try {
-                const rawResults = await (this.ctx as any).embedding.searchSimilar(
-                    domainId, docIdNum, branchNorm, message, 8,
-                );
-                semanticResults = await enrichBaseTutorSemanticResults(domainId, docIdNum, branchNorm, rawResults || []);
+                const searchResult = await callToolViaWorker(this.ctx, SEMANTIC_SEARCH_TOOL, {
+                    query: message,
+                    limit: 8,
+                }, domainId, undefined, this.user._id, undefined, 0, {
+                    baseDocId: docIdNum,
+                    baseBranch: branchNorm,
+                    owner: this.user._id,
+                    toolType: 'system',
+                });
+                semanticResults = await enrichBaseTutorSemanticResults(domainId, docIdNum, branchNorm, searchResult?.results || []);
                 semanticCount = semanticResults.length;
                 semanticBlock = formatBaseTutorSemanticBlock(semanticResults);
                 const toolInput = {
