@@ -92,6 +92,7 @@ __langname: 简体中文
 'Cannot move node into its own descendant': 不能将节点移动到自己的子节点下
 'Card already in target node': 卡片已经在目标节点下
 'Card data not found, cannot generate problem': 未找到对应的卡片数据，无法生成题目
+'Card face is displayed in lessons alongside Know it / No impression. Supports Markdown.': 卡面会在课时中与 Know it / No impression 一起展示，支持 Markdown
 'Card Results': 各卡片结果
 'Card': 卡片
 'cardId is required': cardId 是必需的
@@ -150,10 +151,14 @@ __langname: 简体中文
 'Contributions on {0}': '{0} 的详细贡献'
 'Conversation Details': 对话详情
 'Copied to clipboard': 已复制到剪贴板
+'Convert to node': 转换为节点
 'Copied': 已复制
 'Copy "{data}" failed :(': '复制“{data}”失败 :('
+'Copy content': 复制内容
 'Copy failed :(': '复制失败 :('
 'Copy link': 复制链接
+'Copy selected': 复制选中项
+'Copy structure': 复制结构
 'Correct answer (mark)': 正确答案
 'Correct answer': 正确答案
 'Correct Answer': 正确答案
@@ -172,13 +177,17 @@ __langname: 简体中文
 'Current': 当前
 'Currently Selected Agent': 当前选择的 Agent
 'Cut': 已剪切
+'Cut selected': 剪切选中项
 'Daily Goal': 每日目标
 'days': 天
 'Deep learning mode': 深度学习模式
 'Default message': 默认消息
+'Delete Card': 删除卡片
 'Delete Client': 删除客户端
 'Delete problem': 删除题目
+'Delete selected': 删除选中项
 'Delete Server': 删除服务器
+'Delete Node': 删除节点
 'Delete Token': 删除 Token
 'Description (Optional)': 描述（可选）
 'Device': 设备
@@ -203,6 +212,7 @@ __langname: 简体中文
 'Expires At': 过期时间
 'Authorize and register': 授权并注册
 edge_authorize: Edge 授权
+'Edit card face': 编辑卡面
 'Edit Client': 编辑客户端
 'Edited': 已编辑
 'Enable Server VAD': 启用服务器 VAD
@@ -260,9 +270,13 @@ edge_authorize: Edge 授权
 'Image preview failed': 预览图片失败
 'Image upload failed': 图片上传失败
 'Import hint': 粘贴内容到下方，使用 ## 标题 与 --- 分隔多个卡片
+'Import structure and content': 导入结构与内容
 'Incorrect': 错误
 'Input Parameters': 输入参数
 'Input Schema': 输入模式
+'Insert above': 向上插入
+'Insert at bottom': 底部插入
+'Insert below': 向下插入
 'Insert here': 插入此处
 'Insert into AI terminal': 插入到 AI 终端
 'Insert problem into AI terminal': 将题目插入到 AI 终端
@@ -425,11 +439,19 @@ edge_authorize: Edge 授权
 'MCP Tools': MCP 工具
 'Model': 模型
 'Multi-select': 多选模式
-'Name cannot be empty': 名称不能为空
+'Multi-select mode': 多选模式
 'New card': 新卡片
+'New Card': 新建卡片
 'New Content Block': 新建内容块
 'New Folder': 新建文件夹
+'New multiple Cards': 新建多个卡片
+'New multiple child Nodes': 新建多个子节点
+'New multiple Nodes': 新建多个节点
 'New node': 新节点
+'New Node': 新建节点
+'New sibling Card': 新建同级卡片
+'New sibling Node': 新建同级节点
+'New child Node': 新建子节点
 'New': 新建
 'Next Card': 下一张卡片
 'Next': 下一题
@@ -472,12 +494,15 @@ edge_authorize: Edge 授权
 'Node moved successfully': 节点已移动
 'Node': 节点
 'Not enabled': 不启用
+'OK': 确定
+'Open file list': 查看文件列表
 'Open practice for card: {0}': 将为卡片「{0}」打开练习
 'Open practice for node: {0}': 将为节点「{0}」打开练习
 'Operation failed': 执行操作失败
 'Operations': 操作
 'Option': 选项
 'Original score: {0}': '原得分: {0}'
+'Paste exported structure JSON below. It will be attached under the current node. Card faces and file metadata will be restored. Save to persist.': 将导出的结构JSON粘贴到下方，将挂到当前节点下。卡面与文件元数据会一并恢复，保存后生效。
 'Path': 路径
 'PDF export failed': 导出PDF失败
 'PDF export successful': PDF导出成功
@@ -615,6 +640,7 @@ edge_authorize: Edge 授权
 'Question': 题目
 'Random learning mode': 随机学习模式
 'Recent Bases': 最近更新的知识库
+'Rename': 重命名
 'Recent Cards': 最近更新的卡片
 'Recent Nodes': 最近更新的节点
 'Redirecting': 跳转中
@@ -724,6 +750,8 @@ edge_authorize: Edge 授权
 'Unnamed': 未命名
 'Unsupported file type. Please upload an image (png, jpg, jpeg, gif).': 不支持的文件类型，请上传图片文件（png、jpg、jpeg、gif）
 'Up to date with remote': 与远程同步
+'Upload file': 上传文件
+'Upload file (create card)': 上传文件（创建卡片）
 'Update Time': 更新时间
 'Upload image': 上传图片
 'Uploading...': 上传中...
