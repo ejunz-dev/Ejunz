@@ -14224,17 +14224,17 @@ Reply with a JSON code block only for executable operations. For same-response f
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
             {(pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) && (
               <span style={{ fontSize: '12px', color: themeStyles.textSecondary }}>
-                {pendingChanges.size > 0 && i18n('{0} files modified', pendingChanges.size)`}
+                {pendingChanges.size > 0 && i18n('{0} files modified', pendingChanges.size)}
                 {pendingChanges.size > 0 && (pendingDragChanges.size > 0 || pendingRenames.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) && '，'}
-                {Object.keys(pendingCardFaceChanges).length > 0 && i18n('{0} card faces modified', Object.keys(pendingCardFaceChanges).length)`}
+                {Object.keys(pendingCardFaceChanges).length > 0 && i18n('{0} card faces modified', Object.keys(pendingCardFaceChanges).length)}
                 {Object.keys(pendingCardFaceChanges).length > 0 && (pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) && '，'}
-                {pendingDragChanges.size > 0 && i18n('{0} drag operations', pendingDragChanges.size)`}
+                {pendingDragChanges.size > 0 && i18n('{0} drag operations', pendingDragChanges.size)}
                 {pendingDragChanges.size > 0 && (pendingRenames.size > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) && '，'}
-                {pendingRenames.size > 0 && i18n('{0} renames', pendingRenames.size)`}
+                {pendingRenames.size > 0 && i18n('{0} renames', pendingRenames.size)}
                 {(pendingRenames.size > 0 || pendingChanges.size > 0 || pendingDragChanges.size > 0) && (pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) && '，'}
-                {pendingNewProblemCardIds.size > 0 && i18n('{0} new problems', pendingNewProblemCardIds.size)`}
+                {pendingNewProblemCardIds.size > 0 && i18n('{0} new problems', pendingNewProblemCardIds.size)}
                 {pendingNewProblemCardIds.size > 0 && (pendingEditedProblemIds.size > 0 || pendingProblemCardIds.size > 0 || learnProblemNotesDraftCount > 0) && '，'}
-                {pendingEditedProblemIds.size > 0 && i18n('{0} problem changes', pendingEditedProblemIds.size)`}
+                {pendingEditedProblemIds.size > 0 && i18n('{0} problem changes', pendingEditedProblemIds.size)}
                 {(pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0) && learnProblemNotesDraftCount > 0 && '，'}
                 {learnProblemNotesDraftCount > 0 && `${learnProblemNotesDraftCount} ${i18n('Problem editor notes pending short')}`}
               </span>
