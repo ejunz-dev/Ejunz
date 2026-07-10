@@ -12078,7 +12078,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 }}
                 onClick={() => handleCopyStructure(contextMenu.file.nodeId || '')}
               >
-                复制结构
+                {i18n('Copy structure')}
               </div>
               <div
                 style={{
@@ -12269,7 +12269,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 }}
                 onClick={() => handleNewCard(contextMenu.file.nodeId || '')}
               >
-                新建 Card
+                {i18n('New Card')}
               </div>
               <roadmapPlugin.NodeContextMenuExtra
                 node={base.nodes.find((nd: BaseNode) => nd.id === contextMenu.file.nodeId) as BaseNode}
@@ -12297,7 +12297,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 }}
                 onClick={() => handleNewChildNode(contextMenu.file.nodeId || '')}
               >
-                新建子 Node
+                {i18n('New child Node')}
               </div>
               <div
                 style={{ position: 'relative' }}
@@ -12688,7 +12688,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                   setContextMenu(null);
                 }}
               >
-                重命名
+                {i18n('Rename')}
               </div>
               {(
               <div style={{ padding: '6px 16px', cursor: 'pointer', fontSize: '13px', color: themeStyles.textPrimary }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = themeStyles.bgHover; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }} onClick={() => handleConvertCardToNode(contextMenu.file)}>{i18n('Convert to node')}</div>
@@ -12709,7 +12709,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 }}
                 onClick={() => handleCopy(contextMenu.file)}
               >
-                复制
+                {i18n('Copy')}
               </div>
               {!editorAiHidden && (
                 <div
@@ -12762,7 +12762,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 }}
                 onClick={() => handleCut(contextMenu.file)}
               >
-                剪切
+                {i18n('Cut')}
               </div>
               {(
               <>
@@ -13176,7 +13176,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                   setContextMenu(null);
                 }}
               >
-                重命名
+                {i18n('Rename')}
               </div>
               <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
               <div
@@ -13194,7 +13194,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 }}
                 onClick={() => handleCopy(contextMenu.file)}
               >
-                复制
+                {i18n('Copy')}
               </div>
               {!editorAiHidden && (
                 <div
@@ -13307,7 +13307,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                   setContextMenu(null);
                 }}
               >
-                编辑卡面
+                {i18n('Edit card face')}
               </div>
               <div
                 style={{
@@ -13324,7 +13324,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 }}
                 onClick={() => handleCut(contextMenu.file)}
               >
-                剪切
+                {i18n('Cut')}
               </div>
               <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
               <div
@@ -13342,7 +13342,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 }}
                 onClick={() => handleDelete(contextMenu.file)}
               >
-                删除 Card
+                {i18n('Delete Card')}
               </div>
             </>
           )}
@@ -13384,7 +13384,7 @@ Reply with a JSON code block only for executable operations. For same-response f
             }}
             onClick={() => handleNewRootNode()}
           >
-            新建 Node
+            {i18n('New Node')}
           </div>
           </>
           )}
@@ -13405,7 +13405,7 @@ Reply with a JSON code block only for executable operations. For same-response f
             }}
             onClick={() => handleNewRootCard()}
           >
-            新建 Card
+            {i18n('New Card')}
           </div>
           </>
           )}
@@ -13430,7 +13430,7 @@ Reply with a JSON code block only for executable operations. For same-response f
             }}
             onClick={() => handleNewMultipleRootNodes()}
           >
-            新建多个 Node
+            {i18n('New multiple Nodes')}
           </div>
           </>
           )}
@@ -13797,7 +13797,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                   cursor: 'pointer',
                 }}
               >
-                确定
+                {i18n('OK')}
               </button>
             </div>
           </div>
@@ -13851,11 +13851,11 @@ Reply with a JSON code block only for executable operations. For same-response f
                 color: themeStyles.textPrimary,
               }}
             >
-              导入结构与内容
+              {i18n('Import structure and content')}
             </div>
             <div style={{ padding: '16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <p style={{ margin: '0 0 10px', fontSize: '13px', color: themeStyles.textSecondary }}>
-                将「导出结构与内容」复制的 JSON 粘贴到下方，将挂到当前右键节点之下。卡面与附件元数据会一并恢复；保存后写入服务器。
+                {i18n('Paste exported structure JSON below. It will be attached under the current node. Card faces and file metadata will be restored. Save to persist.')}
               </p>
               <textarea
                 value={nodeSubtreePasteText}
@@ -13919,7 +13919,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                   cursor: 'pointer',
                 }}
               >
-                确定导入
+                {i18n('Import')}
               </button>
             </div>
           </div>
@@ -13968,11 +13968,11 @@ Reply with a JSON code block only for executable operations. For same-response f
               fontWeight: 500,
               color: themeStyles.textPrimary,
             }}>
-              编辑卡面
+              {i18n('Edit card face')}
             </div>
             <div style={{ padding: '16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
               <p style={{ margin: '0 0 10px', fontSize: '13px', color: themeStyles.textSecondary }}>
-                卡面会在 lesson 中与 Know it / No impression 一起展示，支持 Markdown
+                {i18n('Card face is displayed in lessons alongside Know it / No impression. Supports Markdown.')}
               </p>
               <textarea
                 ref={cardFaceEditorRef}
@@ -14053,7 +14053,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                   cursor: 'pointer',
                 }}
               >
-                确定
+                {i18n('OK')}
               </button>
             </div>
           </div>
