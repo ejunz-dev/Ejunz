@@ -457,10 +457,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                   if (typeof prefs.rightPanelOpen === 'boolean') setRightPanelOpen(prefs.rightPanelOpen);
                   if (!editorAiHidden && typeof prefs.aiBottomOpen === 'boolean') setAiBottomOpen(prefs.aiBottomOpen);
                   if (typeof prefs.explorerPanelWidth === 'number' && Number.isFinite(prefs.explorerPanelWidth)) {
-                    setExplorerPanelWidth(Math.round(Math.max(180, Math.min(640, prefs.explorerPanelWidth))));
+                    setExplorerPanelWidth(Math.round(Math.max(EXPLORER_PANEL_MIN, Math.min(EXPLORER_PANEL_MAX, prefs.explorerPanelWidth))));
                   }
                   if (typeof prefs.problemsPanelWidth === 'number' && Number.isFinite(prefs.problemsPanelWidth)) {
-                    setProblemsPanelWidth(Math.round(Math.max(200, Math.min(800, prefs.problemsPanelWidth))));
+                    setProblemsPanelWidth(Math.round(Math.max(PROBLEMS_PANEL_MIN, Math.min(PROBLEMS_PANEL_MAX, prefs.problemsPanelWidth))));
                   }
                   if (typeof prefs.aiPanelHeight === 'number' && Number.isFinite(prefs.aiPanelHeight)) {
                     setAiPanelHeight(Math.round(Math.max(120, Math.min(640, prefs.aiPanelHeight))));
@@ -891,10 +891,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         if (typeof prefs.rightPanelOpen === 'boolean') setRightPanelOpen(prefs.rightPanelOpen);
         if (!editorAiHidden && typeof prefs.aiBottomOpen === 'boolean') setAiBottomOpen(prefs.aiBottomOpen);
         if (typeof prefs.explorerPanelWidth === 'number' && Number.isFinite(prefs.explorerPanelWidth)) {
-          setExplorerPanelWidth(Math.round(Math.max(180, Math.min(640, prefs.explorerPanelWidth))));
+          setExplorerPanelWidth(Math.round(Math.max(EXPLORER_PANEL_MIN, Math.min(EXPLORER_PANEL_MAX, prefs.explorerPanelWidth))));
         }
         if (typeof prefs.problemsPanelWidth === 'number' && Number.isFinite(prefs.problemsPanelWidth)) {
-          setProblemsPanelWidth(Math.round(Math.max(200, Math.min(800, prefs.problemsPanelWidth))));
+          setProblemsPanelWidth(Math.round(Math.max(PROBLEMS_PANEL_MIN, Math.min(PROBLEMS_PANEL_MAX, prefs.problemsPanelWidth))));
         }
         if (typeof prefs.aiPanelHeight === 'number' && Number.isFinite(prefs.aiPanelHeight)) {
           setAiPanelHeight(Math.round(Math.max(120, Math.min(640, prefs.aiPanelHeight))));
@@ -1258,8 +1258,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [problemsPanelWidth, setProblemsPanelWidth] = useState<number>(
     () => savedEditorLayout.problemsPanelWidth,
   );
-  const EXPLORER_PANEL_MIN = 180;
-  const EXPLORER_PANEL_MAX = 640;
+  const EXPLORER_PANEL_MIN = 160;
+  const EXPLORER_PANEL_MAX = 1000;
+  const PROBLEMS_PANEL_MIN = 160;
+  const PROBLEMS_PANEL_MAX = 1000;
   const [explorerPanelWidth, setExplorerPanelWidth] = useState<number>(
     () => savedEditorLayout.explorerPanelWidth,
   );
@@ -6201,7 +6203,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const handleResizeMove = (e: MouseEvent) => {
       if (!isResizingProblemsPanel) return;
       const deltaX = problemsResizeStartXRef.current - e.clientX;
-      const newWidth = Math.max(200, Math.min(800, problemsResizeStartWidthRef.current + deltaX));
+      const newWidth = Math.max(PROBLEMS_PANEL_MIN, Math.min(PROBLEMS_PANEL_MAX, problemsResizeStartWidthRef.current + deltaX));
       setProblemsPanelWidth(newWidth);
     };
 
