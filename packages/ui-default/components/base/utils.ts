@@ -1095,14 +1095,19 @@ export function readSavedBaseEditorUiPrefs(editorAiHidden: boolean): SavedEditor
     aiBottomOpen = raw.aiBottomOpen;
   }
 
+  const EXPLORER_PANEL_MIN = 160;
+  const EXPLORER_PANEL_MAX = 1000;
+  const PROBLEMS_PANEL_MIN = 160;
+  const PROBLEMS_PANEL_MAX = 1000;
+
   let explorerPanelWidth = 250;
   if (raw && typeof raw.explorerPanelWidth === 'number' && Number.isFinite(raw.explorerPanelWidth)) {
-    explorerPanelWidth = Math.round(Math.max(180, Math.min(640, raw.explorerPanelWidth)));
+    explorerPanelWidth = Math.round(Math.max(EXPLORER_PANEL_MIN, Math.min(EXPLORER_PANEL_MAX, raw.explorerPanelWidth)));
   }
 
   let problemsPanelWidth = 320;
   if (raw && typeof raw.problemsPanelWidth === 'number' && Number.isFinite(raw.problemsPanelWidth)) {
-    problemsPanelWidth = Math.round(Math.max(200, Math.min(800, raw.problemsPanelWidth)));
+    problemsPanelWidth = Math.round(Math.max(PROBLEMS_PANEL_MIN, Math.min(PROBLEMS_PANEL_MAX, raw.problemsPanelWidth)));
   }
 
   let aiPanelHeight = 280;
