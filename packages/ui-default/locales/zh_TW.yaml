@@ -648,6 +648,10 @@ Date: 日期
 'Roadmap detail settings show problem count hint': 在節點右上角以氣泡數字顯示該節點的練習題數量。
 'Roadmap detail settings show node number': 顯示節點序號
 'Roadmap detail settings show node number hint': 在 main/sub 節點左上角以綠色字體顯示拓撲順序序號。
+'Roadmap detail settings show node card timestamps': 顯示節點和卡片時間
+'Roadmap detail settings show node card timestamps hint': 在目錄樹中顯示節點和卡片的建立時間、上次修改時間。
+'Created at: {0}': '建立：{0}'
+'Updated at: {0}': '修改：{0}'
 'Roadmap node number': 節點序號
 'Roadmap node number format hint': 格式 x.y（如 1.1）
 'Roadmap sub node number invalid': 子節點序號必須是 x.y 格式。

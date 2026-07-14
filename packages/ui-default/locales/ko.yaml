@@ -798,6 +798,10 @@ Date: 날짜
 'Roadmap detail settings show problem count hint': '각 노드 우측 상단에 연습 문제 수를 말풍선 숫자로 표시합니다.'
 'Roadmap detail settings show node number': 노드 번호 표시
 'Roadmap detail settings show node number hint': 'main/sub 노드 좌측 상단에 녹색 번호를 표시합니다.'
+'Roadmap detail settings show node card timestamps': '노드 및 카드 시간 표시'
+'Roadmap detail settings show node card timestamps hint': '트리에서 노드와 카드의 생성 시간, 최종 수정 시간을 표시합니다.'
+'Created at: {0}': '생성: {0}'
+'Updated at: {0}': '수정: {0}'
 'Roadmap node number': 노드 번호
 'Roadmap node number format hint': '형식 x.y (예: 1.1)'
 'Roadmap sub node number invalid': '하위 노드 번호는 x.y 형식이어야 합니다.'

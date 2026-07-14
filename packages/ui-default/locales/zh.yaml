@@ -939,6 +939,8 @@ Create new branch: 创建新分支
 Create Role: 创建角色
 Create: 创建
 Created at: 创建时间
+'Created at: {0}': '创建：{0}'
+'Updated at: {0}': '修改：{0}'
 Created By: 创建人
 current domain: 当前域
 Current Email: 当前电子邮件
@@ -1864,6 +1866,8 @@ Date: 日期
 'Roadmap detail settings show problem count hint': 在 main/sub 节点右上角以气泡数字显示该节点的练习题数量。
 'Roadmap detail settings show node number': 显示节点序号
 'Roadmap detail settings show node number hint': 在 main/sub 节点左上角以绿色字体显示拓扑顺序序号。
+'Roadmap detail settings show node card timestamps': 显示节点和卡片时间
+'Roadmap detail settings show node card timestamps hint': 在目录树中显示节点和卡片的创建时间、上次修改时间。
 'Roadmap node number': 节点序号
 'Roadmap main node number format hint': 格式 x（如 1）
 'Roadmap sub node number format hint': 格式 x.y（如 1.1，前一位为主节点序号）

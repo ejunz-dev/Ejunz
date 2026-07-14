@@ -18,6 +18,7 @@ export function readBaseDetailDisplaySettings(): BaseDetailDisplaySettings {
   return {
     showProblemCount: Boolean((raw as Record<string, unknown>).showProblemCount),
     showNodeNumber: Boolean((raw as Record<string, unknown>).showNodeNumber),
+    showNodeCardTimestamps: Boolean((raw as Record<string, unknown>).showNodeCardTimestamps),
   };
 }
 

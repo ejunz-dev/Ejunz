@@ -7,6 +7,7 @@ export function sanitizeBaseDetailUiPrefs(raw: unknown): Record<string, boolean>
     const o = raw as Record<string, unknown>;
     if (typeof o.showProblemCount === 'boolean') out.showProblemCount = o.showProblemCount;
     if (typeof o.showNodeNumber === 'boolean') out.showNodeNumber = o.showNodeNumber;
+    if (typeof o.showNodeCardTimestamps === 'boolean') out.showNodeCardTimestamps = o.showNodeCardTimestamps;
     return out;
 }
 

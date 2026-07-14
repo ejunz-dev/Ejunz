@@ -130,6 +130,27 @@ export function RoadmapDetailSettingsPanel({
               })}
             />
           </label>
+          <label className="roadmap-detail-settings__row">
+            <div className="roadmap-detail-settings__row-text">
+              <span className="roadmap-detail-settings__row-label">
+                {i18n('Roadmap detail settings show node card timestamps')}
+              </span>
+              <span className="roadmap-detail-settings__row-desc">
+                {i18n('Roadmap detail settings show node card timestamps hint')}
+              </span>
+            </div>
+            <input
+              type="checkbox"
+              className="roadmap-detail-settings__toggle"
+              checked={draft.showNodeCardTimestamps}
+              disabled={saving}
+              onChange={(e) => setDraft({
+                ...defaultRoadmapDetailDisplaySettings(),
+                ...draft,
+                showNodeCardTimestamps: e.currentTarget.checked,
+              })}
+            />
+          </label>
         </div>
         <div className="roadmap-detail-settings__actions">
           <button
