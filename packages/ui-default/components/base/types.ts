@@ -56,6 +56,10 @@ export interface BaseNode {
   style?: Record<string, any>;
   data?: PluginNodeData | Record<string, any>;
   files?: CardFileInfo[];
+  /** ISO 8601 creation timestamp (UTC). */
+  createdAt?: string;
+  /** ISO 8601 last modification timestamp (UTC). */
+  updateAt?: string;
 }
 
 export interface BaseEdge {

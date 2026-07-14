@@ -313,6 +313,10 @@ export interface BaseNode {
     data?: Record<string, any>;
     /** Mounted files (uploaded to this node) */
     files?: FileInfo[];
+    /** Node creation time (UTC). */
+    createdAt?: Date;
+    /** Node last modification time (UTC). */
+    updateAt?: Date;
 }
 
 export interface BaseEdge {

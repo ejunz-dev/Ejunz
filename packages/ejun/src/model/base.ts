@@ -300,7 +300,7 @@ export class BaseModel {
         const nodeIndex = nodes.findIndex(n => n.id === nodeId);
         if (nodeIndex === -1) throw new Error('Node not found');
 
-        nodes[nodeIndex] = { ...nodes[nodeIndex], ...updates };
+        nodes[nodeIndex] = { ...nodes[nodeIndex], ...updates, updateAt: new Date() };
 
         if (!branchData[branchName]) {
             branchData[branchName] = { nodes: [], edges: [] };
@@ -410,10 +410,13 @@ export class BaseModel {
             edges = [];
         }
 
+        const now = new Date();
         const newNodeId = `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const newNode: BaseNode = {
             ...node,
             id: newNodeId,
+            createdAt: node.createdAt || now,
+            updateAt: now,
         };
 
         if (parentId) {
@@ -823,8 +826,17 @@ export class BaseModel {
             }
         }
 
+        const now = new Date();
         const nodeMap = new Map(nodes.map(n => [n.id, n]));
-        base.nodes = base.nodes.map(n => nodeMap.get(n.id) || n);
+        base.nodes = base.nodes.map(n => {
+            const updated = nodeMap.get(n.id);
+            if (!updated) return n;
+            return {
+                ...updated,
+                createdAt: n.createdAt || updated.createdAt || now,
+                updateAt: now,
+            };
+        });
 
         await document.set(domainId, mapDocType, docId, {
             nodes: base.nodes,
