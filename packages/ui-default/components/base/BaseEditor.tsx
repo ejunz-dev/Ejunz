@@ -1,4 +1,5 @@
 import $ from 'jquery';
+import moment from 'moment';
 import React, { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, startTransition } from 'react';
 import ReactDOM from 'react-dom';
 import { request, i18n, tpl, domainApiPath, domainScopedPath } from 'vj/utils';
@@ -62,6 +63,7 @@ import type {
   AvailableMcpToolForPlugin,
   BaseDoc,
   BaseEdge,
+  BaseEditorDisplaySettings,
   BaseNode,
   Card,
   CardFileInfo,
@@ -135,6 +137,11 @@ import {
 import { SortWindow } from 'vj/components/base/SortWindow';
 import { DevelopQueueList as BaseEditorDevelopQueueList } from 'vj/components/base/DevelopQueueList';
 import { McpSidebarPanel } from 'vj/components/base/McpSidebarPanel';
+import {
+  defaultBaseDetailDisplaySettings,
+  getCardProblemCount,
+  type BaseDetailDisplaySettings,
+} from 'vj/components/base/detail_display_settings';
 import { useRoadmapPlugin } from './plugins/roadmap/useRoadmapPlugin';
 import {
   RoadmapCanvasRailIcon,
@@ -161,6 +168,73 @@ import {
   isValidRoadmapSubNumber,
   withDefaultRoadmapNodeNumber,
 } from './plugins/roadmap/node_numbering';
+
+function formatAbsoluteDate(raw?: string | Date | null): string {
+  if (!raw) return '';
+  const m = moment(raw);
+  return m.isValid() ? m.format('YYYY-MM-DD HH:mm:ss') : '';
+}
+
+function formatRelativeDate(raw?: string | Date | null): string {
+  if (!raw) return '';
+  const m = moment(raw);
+  return m.isValid() ? m.fromNow() : '';
+}
+
+/** Update updateAt on a node and all its ancestors (parent chain). */
+function touchNodeAncestors(
+  nodeId: string,
+  nodes: BaseNode[],
+  edges: BaseEdge[],
+  now?: string,
+): BaseNode[] {
+  const ts = now || new Date().toISOString();
+  const touched = new Set<string>();
+  const walk = (id: string) => {
+    if (!id || touched.has(id)) return;
+    touched.add(id);
+    const parentEdge = edges.find((e) => e.target === id);
+    if (parentEdge) walk(parentEdge.source);
+  };
+  walk(nodeId);
+  if (!touched.size) return nodes;
+  return nodes.map((n) => (touched.has(n.id) ? { ...n, updateAt: ts } : n));
+}
+
+function FileItemTimestampMeta({
+  createdAt,
+  updateAt,
+  color,
+}: {
+  createdAt?: string | Date | null;
+  updateAt?: string | Date | null;
+  color?: string;
+}) {
+  const created = formatAbsoluteDate(createdAt);
+  const updated = formatRelativeDate(updateAt);
+  if (!created && !updated) return null;
+  const parts: string[] = [];
+  if (created) parts.push(i18n('Created at: {0}', created));
+  if (updated) parts.push(i18n('Updated at: {0}', updated));
+  return (
+    <span
+      style={{
+        flexShrink: 0,
+        maxWidth: '45%',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+        fontSize: '11px',
+        fontWeight: 400,
+        color: color || 'var(--roadmap-text-muted)',
+        opacity: 0.85,
+        textAlign: 'right',
+      }}
+    >
+      {parts.join(' · ')}
+    </span>
+  );
+}
 
 export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docId: string | undefined; initialData: BaseDoc; basePath?: string }) {
   const editorMode = String((window as any).UiContext?.editorMode || 'base');
@@ -316,9 +390,13 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const pendingProblemsMergeCardIdsRef = useRef<Set<string>>(new Set());
   const saveHandlerRef = useRef<() => void>(() => {});
 
-  const [explorerMode, setExplorerMode] = useState<'tree' | 'pending' | 'branches' | 'git' | 'mcp'>(
+  const [explorerMode, setExplorerMode] = useState<'tree' | 'pending' | 'branches' | 'git' | 'mcp' | 'display'>(
     () => savedEditorLayout.explorerMode,
   );
+  const [editorDisplaySettings, setEditorDisplaySettings] = useState<BaseEditorDisplaySettings>(
+    () => savedEditorLayout.displaySettings,
+  );
+  const [pendingEditorDisplaySettings, setPendingEditorDisplaySettings] = useState<Partial<BaseEditorDisplaySettings> | null>(null);
   const [gitRemoteStatus, setGitRemoteStatus] = useState<any>(null);
   const [gitStatusLoading, setGitStatusLoading] = useState(false);
   const [gitRepoDraft, setGitRepoDraft] = useState(() => String((window as any).UiContext?.githubRepo || ''));
@@ -328,6 +406,28 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   );
   const [gitActionBusy, setGitActionBusy] = useState<'pull' | 'push' | 'commit' | null>(null);
   const [gitCommitNote, setGitCommitNote] = useState('');
+
+  const effectiveDisplaySettings = useMemo<BaseEditorDisplaySettings>(
+    () => ({
+      ...editorDisplaySettings,
+      ...(pendingEditorDisplaySettings || {}),
+    }),
+    [editorDisplaySettings, pendingEditorDisplaySettings],
+  );
+
+  const isDisplaySettingsDirty = useMemo(() => {
+    if (!pendingEditorDisplaySettings) return false;
+    return (
+      pendingEditorDisplaySettings.showProblemCount !== undefined
+      && pendingEditorDisplaySettings.showProblemCount !== editorDisplaySettings.showProblemCount
+    ) || (
+      pendingEditorDisplaySettings.showNodeNumber !== undefined
+      && pendingEditorDisplaySettings.showNodeNumber !== editorDisplaySettings.showNodeNumber
+    ) || (
+      pendingEditorDisplaySettings.showNodeCardTimestamps !== undefined
+      && pendingEditorDisplaySettings.showNodeCardTimestamps !== editorDisplaySettings.showNodeCardTimestamps
+    );
+  }, [editorDisplaySettings, pendingEditorDisplaySettings]);
 
   useEffect(() => {
     const checkTheme = () => {
@@ -444,11 +544,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                 if ((window as any).UiContext && newData?.baseEditorUiPrefs && typeof newData.baseEditorUiPrefs === 'object' && !Array.isArray(newData.baseEditorUiPrefs)) {
                   (window as any).UiContext.baseEditorUiPrefs = newData.baseEditorUiPrefs;
                   const prefs = newData.baseEditorUiPrefs as Record<string, unknown>;
-                  const modes = new Set(['tree', 'pending', 'branches', 'git', 'mcp']);
+                  const modes = new Set(['tree', 'pending', 'branches', 'git', 'mcp', 'display']);
                   const rightTabs = new Set(['problems', 'develop_queue', 'plugin_node', 'plugin_mcp_services', 'roadmap_edge']);
                   const rawExplorerMode = prefs.explorerMode === 'training' ? 'tree' : prefs.explorerMode;
                   if (typeof rawExplorerMode === 'string' && modes.has(rawExplorerMode)) {
-                    setExplorerMode(rawExplorerMode as 'tree' | 'pending' | 'branches' | 'git' | 'mcp');
+                    setExplorerMode(rawExplorerMode as 'tree' | 'pending' | 'branches' | 'git' | 'mcp' | 'display');
                   }
                   if (typeof prefs.editorRightPanelTab === 'string' && rightTabs.has(prefs.editorRightPanelTab)) {
                     const tab = prefs.editorRightPanelTab as EditorRightPanelTab;
@@ -1391,6 +1491,47 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     };
   }, [isMobile, rightPanelOpen]);
 
+
+  const basePendingCount = useMemo(() =>
+    pendingChanges.size +
+    pendingDragChanges.size +
+    pendingRenames.size +
+    pendingCreatesCount +
+    pendingDeletes.size +
+    pendingFileMoves.size +
+    pendingPluginNodeDataIds.size +
+    pendingRoadmapCanvasCount +
+    Object.keys(pendingCardFaceChanges).length +
+    pendingProblemCardIds.size +
+    pendingNewProblemCardIds.size +
+    pendingEditedProblemIds.size +
+    learnProblemNotesDraftCount,
+  [
+    pendingChanges.size,
+    pendingDragChanges.size,
+    pendingRenames.size,
+    pendingCreatesCount,
+    pendingDeletes.size,
+    pendingFileMoves.size,
+    pendingPluginNodeDataIds.size,
+    pendingRoadmapCanvasCount,
+    pendingCardFaceChanges,
+    pendingProblemCardIds.size,
+    pendingNewProblemCardIds.size,
+    pendingEditedProblemIds.size,
+    learnProblemNotesDraftCount,
+  ]);
+
+  const pendingCount = useMemo(
+    () => basePendingCount + (isDisplaySettingsDirty ? 1 : 0),
+    [basePendingCount, isDisplaySettingsDirty],
+  );
+
+  const hasPendingChanges = useMemo(
+    () => basePendingCount > 0 || isDisplaySettingsDirty,
+    [basePendingCount, isDisplaySettingsDirty],
+  );
+
   useEffect(() => {
     if (!isMobile) return;
     const rightEl = document.getElementById('header-mobile-extra');
@@ -1400,7 +1541,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     wrapper.style.alignItems = 'center';
     wrapper.style.gap = '8px';
     rightEl.appendChild(wrapper);
-    const pendingCount = pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + pendingFileMoves.size + pendingPluginNodeDataIds.size + pendingRoadmapCanvasCount + Object.keys(pendingCardFaceChanges).length + pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + learnProblemNotesDraftCount;
+    const pendingCount = basePendingCount + (isDisplaySettingsDirty ? 1 : 0);
     const hasPending = pendingCount > 0;
     ReactDOM.render(
       <>
@@ -1438,7 +1579,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       ReactDOM.unmountComponentAtNode(wrapper);
       wrapper.remove();
     };
-  }, [isMobile, aiBottomOpen, editorAiHidden, isCommitting, pendingChanges.size, pendingDragChanges.size, pendingRenames.size, pendingCreatesCount, pendingDeletes.size, pendingFileMoves.size, pendingPluginNodeDataIds.size, pendingRoadmapCanvasCount, pendingCardFaceChanges, pendingProblemCardIds.size, pendingNewProblemCardIds.size, pendingEditedProblemIds.size, learnProblemNotesDraftCount]);
+  }, [isMobile, aiBottomOpen, editorAiHidden, isCommitting, basePendingCount, isDisplaySettingsDirty]);
 
   
   const getSelectedCard = useCallback((): Card | null => {
@@ -1530,6 +1671,73 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       });
     }
   }, [nodeFileListEditMode, selectedFile?.type, selectedFile?.nodeId, resolvedRootNodeId]);
+
+  /** Touch updateAt on nodes when their descendants are modified. */
+  useEffect(() => {
+    const ids = new Set<string>();
+    for (const [, change] of pendingChanges) {
+      const nId = change.file.nodeId || change.file.id;
+      if (nId && !nId.startsWith('temp-')) {
+        if (change.file.type === 'node') ids.add(nId);
+        else if (change.file.type === 'card' && change.file.nodeId && !change.file.nodeId.startsWith('temp-')) ids.add(change.file.nodeId);
+      }
+    }
+    for (const [, rename] of pendingRenames) {
+      const nId = rename.file.nodeId || rename.file.id;
+      if (nId && !nId.startsWith('temp-')) {
+        if (rename.file.type === 'node') ids.add(nId);
+        else if (rename.file.type === 'card' && rename.file.nodeId && !rename.file.nodeId.startsWith('temp-')) ids.add(rename.file.nodeId);
+      }
+    }
+    for (const [, del] of pendingDeletes) {
+      if (del.nodeId && !del.nodeId.startsWith('temp-') && !del.id.startsWith('temp-')) ids.add(del.nodeId);
+    }
+    for (const dragKey of pendingDragChanges) {
+      const nodeMatch = typeof dragKey === 'string' ? dragKey.match(/^node-(.+)$/) : null;
+      if (nodeMatch) { ids.add(nodeMatch[1]); continue; }
+      /* card drag — look up parent */
+      const map = (window as any).UiContext?.nodeCardsMap || {};
+      for (const nId of Object.keys(map)) {
+        if (map[nId]?.some((c: Card) => String(c.docId) === String(dragKey))) { ids.add(nId); break; }
+      }
+    }
+    const lookupCardParent = (cid: string) => {
+      const map = (window as any).UiContext?.nodeCardsMap || {};
+      for (const nId of Object.keys(map)) {
+        if (map[nId]?.some((c: Card) => String(c.docId) === String(cid))) return nId;
+      }
+      return null;
+    };
+    for (const cid of pendingProblemCardIds) {
+      if (String(cid).startsWith('temp-')) continue;
+      const nId = lookupCardParent(cid);
+      if (nId) ids.add(nId);
+    }
+    for (const cid of pendingNewProblemCardIds) {
+      if (String(cid).startsWith('temp-')) continue;
+      const nId = lookupCardParent(cid);
+      if (nId) ids.add(nId);
+    }
+    if (!ids.size) return;
+    const ts = new Date().toISOString();
+    setBase((prev) => {
+      let nodes = prev.nodes;
+      for (const id of ids) {
+        const updated = touchNodeAncestors(id, nodes, prev.edges, ts);
+        if (updated !== nodes) nodes = updated;
+      }
+      return nodes === prev.nodes ? prev : { ...prev, nodes };
+    });
+  }, [
+    pendingChanges,
+    pendingRenames,
+    pendingDeletes,
+    pendingProblemCardIds,
+    pendingNewProblemCardIds,
+    pendingEditedProblemIds,
+    pendingPluginNodeDataIds,
+    pendingDragChanges,
+  ]);
   
 
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
@@ -2721,6 +2929,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               explorerPanelWidth,
               problemsPanelWidth,
               aiPanelHeight,
+              displaySettings: effectiveDisplaySettings,
             }
           : null;
 
@@ -3609,6 +3818,16 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       setPendingProblemCardIds(new Set());
       setPendingNewProblemCardIds(new Set());
       setPendingEditedProblemIds(new Map());
+
+
+      if (pendingEditorDisplaySettings) {
+        setEditorDisplaySettings(prev => ({
+          ...prev,
+          ...pendingEditorDisplaySettings,
+        }));
+        setPendingEditorDisplaySettings(null);
+      }
+
       const savedCardIds = new Set<string>();
       if (hasProblemChanges) {
         setNewProblemIds(new Set());
@@ -3624,8 +3843,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       
       const problemChangesCount = pendingNewProblemCardIds.size + pendingEditedProblemIds.size;
       
-      const totalChanges = (hasContentChanges ? allChanges.size : 0) 
-        + (hasDragChanges ? pendingDragChanges.size : 0) 
+      const totalChanges = (hasContentChanges ? allChanges.size : 0)
+        + (hasDragChanges ? pendingDragChanges.size : 0)
         + actualRenameCount
         + createCountBeforeSave
         + (hasDeleteChanges ? pendingDeletes.size : 0)
@@ -3633,7 +3852,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         + pendingPluginNodeDataIds.size
         + pendingRoadmapCanvasCount
         + problemChangesCount
-        + savedLearnerDraftBucketsForMsg;
+        + savedLearnerDraftBucketsForMsg
+        + (isDisplaySettingsDirty ? 1 : 0);
 
       Notification.success(i18n('Saved successfully, {0} changes total', totalChanges));
 
@@ -3786,7 +4006,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     } finally {
       setIsCommitting(false);
     }
-  }, [pendingChanges, pendingDragChanges, pendingRenames, pendingDeletes, pendingFileMoves, pendingPluginNodeDataIds, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, learnProblemNotesDraftCount, onLearnerNotesDraftChange, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.nodes, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion, explorerMode, editorRightPanelTab, rightPanelOpen, aiBottomOpen, explorerPanelWidth, problemsPanelWidth, aiPanelHeight, editorAiHidden, developEditorContext, basePath]);
+  }, [pendingChanges, pendingDragChanges, pendingRenames, pendingDeletes, pendingFileMoves, pendingPluginNodeDataIds, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, learnProblemNotesDraftCount, onLearnerNotesDraftChange, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.nodes, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion, explorerMode, editorRightPanelTab, rightPanelOpen, aiBottomOpen, explorerPanelWidth, problemsPanelWidth, aiPanelHeight, editorAiHidden, developEditorContext, basePath, effectiveDisplaySettings, pendingEditorDisplaySettings, isDisplaySettingsDirty]);
 
   useEffect(() => {
     saveHandlerRef.current = handleSaveAll;
@@ -10559,6 +10779,24 @@ Reply with a JSON code block only for executable operations. For same-response f
                 <circle cx="12" cy="8" r="2" />
               </svg>
             </button>
+            <button
+              type="button"
+              onClick={() => setExplorerMode(prev => prev === 'display' ? 'tree' : 'display')}
+              style={{
+                width: '34px',
+                height: '34px',
+                border: `1px solid ${themeStyles.borderSecondary}`,
+                borderRadius: '3px',
+                backgroundColor: explorerMode === 'display' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                color: explorerMode === 'display' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+              title={i18n('Base editor display settings title')}
+              aria-label={i18n('Base editor display settings title')}
+            >
+              <RoadmapSettingsRailIcon />
+            </button>
           </div>
         </div>
         <div
@@ -11016,7 +11254,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                   }}
                 />
               ) : (
-                <span style={{ 
+                <span style={{
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
@@ -11024,26 +11262,72 @@ Reply with a JSON code block only for executable operations. For same-response f
                   display: 'flex',
                   alignItems: 'center',
                   gap: '4px',
+                  minWidth: 0,
                 }}>
-                  {file.name}
+                  {file.type === 'node' && effectiveDisplaySettings.showNodeNumber && (() => {
+                    const n = base.nodes.find(nd => nd.id === (file.nodeId || file.id));
+                    if (!n || n.order == null) return null;
+                    return <span style={{ fontSize: '10px', color: themeStyles.textTertiary, flexShrink: 0, fontVariantNumeric: 'tabular-nums', marginRight: '2px' }}>{n.order}.</span>;
+                  })()}
+                  <span style={{
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {file.name}
+                  </span>
                   {file.clipboardType === 'cut' && (
-                    <span style={{ 
-                      fontSize: '10px', 
+                    <span style={{
+                      fontSize: '10px',
                       color: '#f44336',
                       fontWeight: 'bold',
+                      flexShrink: 0,
                     }} title={i18n('Cut')}>
                       ✂
                     </span>
                   )}
                   {file.clipboardType === 'copy' && (
-                    <span style={{ 
-                      fontSize: '10px', 
+                    <span style={{
+                      fontSize: '10px',
                       color: '#4caf50',
                       fontWeight: 'bold',
+                      flexShrink: 0,
                     }} title={i18n('Copied')}>
                       📋
                     </span>
                   )}
+                  {file.type === 'card' && effectiveDisplaySettings.showProblemCount && (() => {
+                    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+                    const cards = nodeCardsMap[file.nodeId || ''] || [];
+                    const card = cards.find((c: Card) => String(c.docId) === String(file.cardId));
+                    const count = (card?.problems || []).length;
+                    if (!count) return null;
+                    return <span style={{
+                      fontSize: '10px',
+                      fontWeight: 600,
+                      flexShrink: 0,
+                      padding: '0 5px',
+                      borderRadius: 999,
+                      backgroundColor: themeStyles.bgSecondary,
+                      color: themeStyles.textTertiary,
+                      lineHeight: '16px',
+                    }}>{count}</span>;
+                  })()}
+                  {effectiveDisplaySettings.showNodeCardTimestamps && (() => {
+                    if (file.type === 'node') {
+                      const n = base.nodes.find(nd => nd.id === (file.nodeId || file.id));
+                      if (!n) return null;
+                      return <FileItemTimestampMeta createdAt={n.createdAt} updateAt={n.updateAt} color={themeStyles.textTertiary} />;
+                    }
+                    if (file.type === 'card') {
+                      const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+                      const cards = nodeCardsMap[file.nodeId || ''] || [];
+                      const card = cards.find((c: Card) => String(c.docId) === String(file.cardId));
+                      if (!card) return null;
+                      return <FileItemTimestampMeta createdAt={card.createdAt} updateAt={card.updateAt} color={themeStyles.textTertiary} />;
+                    }
+                    return null;
+                  })()}
                 </span>
               )}
               {isMobile && !isEditing && (
@@ -11127,6 +11411,115 @@ Reply with a JSON code block only for executable operations. For same-response f
             </div>
           ) : explorerMode === 'mcp' ? (
             <McpSidebarPanel themeStyles={themeStyles} baseId={docId} branch={currentBranch || 'main'} />
+          ) : explorerMode === 'display' ? (
+            <div style={{ padding: '8px', fontSize: '12px', color: themeStyles.textPrimary }}>
+              <div style={{
+                fontSize: '13px',
+                fontWeight: '600',
+                color: themeStyles.textSecondary,
+                marginBottom: '12px',
+                padding: '4px 8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}>
+                <RoadmapSettingsRailIcon /> {i18n('Base editor display settings title')}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '0 8px' }}>
+                <label style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '8px 6px', borderRadius: '4px', cursor: 'pointer',
+                  border: `1px solid ${themeStyles.borderSecondary}`,
+                  backgroundColor: themeStyles.bgButton,
+                }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 500 }}>{i18n('Roadmap detail settings show problem count')}</span>
+                    <span style={{ fontSize: '11px', opacity: 0.7 }}>{i18n('Roadmap detail settings show problem count hint')}</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={effectiveDisplaySettings.showProblemCount}
+                    onChange={(e) => {
+                      const key: keyof BaseEditorDisplaySettings = 'showProblemCount';
+                      const checked = e.currentTarget.checked;
+                      if (checked !== editorDisplaySettings[key]) {
+                        setPendingEditorDisplaySettings(prev => ({ ...prev, [key]: checked }));
+                      } else {
+                        setPendingEditorDisplaySettings(prev => {
+                          if (!prev) return null;
+                          const next = { ...prev };
+                          delete next[key];
+                          return Object.keys(next).length > 0 ? next : null;
+                        });
+                      }
+                    }}
+                  />
+                </label>
+                <label style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '8px 6px', borderRadius: '4px', cursor: 'pointer',
+                  border: `1px solid ${themeStyles.borderSecondary}`,
+                  backgroundColor: themeStyles.bgButton,
+                }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 500 }}>{i18n('Roadmap detail settings show node number')}</span>
+                    <span style={{ fontSize: '11px', opacity: 0.7 }}>{i18n('Roadmap detail settings show node number hint')}</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={effectiveDisplaySettings.showNodeNumber}
+                    onChange={(e) => {
+                      const key: keyof BaseEditorDisplaySettings = 'showNodeNumber';
+                      const checked = e.currentTarget.checked;
+                      if (checked !== editorDisplaySettings[key]) {
+                        setPendingEditorDisplaySettings(prev => ({ ...prev, [key]: checked }));
+                      } else {
+                        setPendingEditorDisplaySettings(prev => {
+                          if (!prev) return null;
+                          const next = { ...prev };
+                          delete next[key];
+                          return Object.keys(next).length > 0 ? next : null;
+                        });
+                      }
+                    }}
+                  />
+                </label>
+                <label style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '8px 6px', borderRadius: '4px', cursor: 'pointer',
+                  border: `1px solid ${themeStyles.borderSecondary}`,
+                  backgroundColor: themeStyles.bgButton,
+                }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 500 }}>{i18n('Roadmap detail settings show node card timestamps')}</span>
+                    <span style={{ fontSize: '11px', opacity: 0.7 }}>{i18n('Roadmap detail settings show node card timestamps hint')}</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={effectiveDisplaySettings.showNodeCardTimestamps}
+                    onChange={(e) => {
+                      const key: keyof BaseEditorDisplaySettings = 'showNodeCardTimestamps';
+                      const checked = e.currentTarget.checked;
+                      if (checked !== editorDisplaySettings[key]) {
+                        setPendingEditorDisplaySettings(prev => ({ ...prev, [key]: checked }));
+                      } else {
+                        setPendingEditorDisplaySettings(prev => {
+                          if (!prev) return null;
+                          const next = { ...prev };
+                          delete next[key];
+                          return Object.keys(next).length > 0 ? next : null;
+                        });
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+              {isDisplaySettingsDirty && (
+                <div style={{ fontSize: '11px', color: themeStyles.textSecondary, padding: '8px 8px 0', marginTop: '12px', borderTop: `1px solid ${themeStyles.borderPrimary}` }}>
+                  {i18n('Settings pending save')}
+                </div>
+              )}
+            </div>
           ) : explorerMode === 'git' && basePath === 'base' && docId ? (
             <div style={{ padding: '8px', fontSize: '12px', color: themeStyles.textPrimary }}>
               <div style={{ fontWeight: 600, color: themeStyles.textSecondary, marginBottom: '8px', padding: '0 8px' }}>
@@ -14224,7 +14617,7 @@ Reply with a JSON code block only for executable operations. For same-response f
           </div>
           {!isMobile && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
-            {(pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) && (
+            {(pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0 || isDisplaySettingsDirty) && (
               <span style={{ fontSize: '12px', color: themeStyles.textSecondary }}>
                 {pendingChanges.size > 0 && i18n('{0} files modified', pendingChanges.size)}
                 {pendingChanges.size > 0 && (pendingDragChanges.size > 0 || pendingRenames.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) && '，'}
@@ -14246,22 +14639,22 @@ Reply with a JSON code block only for executable operations. For same-response f
                 console.log('[保存按钮] 点击保存，pendingProblemCardIds:', Array.from(pendingProblemCardIds));
                 handleSaveAll();
               }}
-              disabled={isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && pendingPluginNodeDataIds.size === 0 && pendingRoadmapCanvasCount === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)}
+              disabled={isCommitting || !hasPendingChanges}
               style={{
                 padding: isMobile ? '10px 12px' : '4px 12px',
                 minHeight: isMobile ? '44px' : undefined,
                 border: `1px solid ${themeStyles.borderSecondary}`,
                 borderRadius: '3px',
-                backgroundColor: (pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0 || pendingFileMoves.size > 0 || pendingPluginNodeDataIds.size > 0 || pendingRoadmapCanvasCount > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || learnProblemNotesDraftCount > 0) ? themeStyles.success : (theme === 'dark' ? '#555' : '#6c757d'),
+                backgroundColor: hasPendingChanges ? themeStyles.success : (theme === 'dark' ? '#555' : '#6c757d'),
                 color: themeStyles.textOnPrimary,
-                cursor: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && pendingPluginNodeDataIds.size === 0 && pendingRoadmapCanvasCount === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)) ? 'not-allowed' : 'pointer',
+                cursor: (isCommitting || !hasPendingChanges) ? 'not-allowed' : 'pointer',
                 fontSize: '12px',
                 fontWeight: '500',
-                opacity: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && pendingPluginNodeDataIds.size === 0 && pendingRoadmapCanvasCount === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0)) ? 0.6 : 1,
+                opacity: (isCommitting || !hasPendingChanges) ? 0.6 : 1,
               }}
-              title={(pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingFileMoves.size === 0 && pendingPluginNodeDataIds.size === 0 && pendingRoadmapCanvasCount === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingProblemCardIds.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && learnProblemNotesDraftCount === 0) ? i18n('No pending changes') : i18n('Save all changes')}
+              title={hasPendingChanges ? i18n('Save all changes') : i18n('No pending changes')}
             >
-              {isCommitting ? i18n('Saving...') : `${i18n('Save changes')} (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + pendingFileMoves.size + pendingPluginNodeDataIds.size + pendingRoadmapCanvasCount + Object.keys(pendingCardFaceChanges).length + pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + learnProblemNotesDraftCount})`}
+              {isCommitting ? i18n('Saving...') : `${i18n('Save changes')} (${pendingCount})`}
             </button>
           </div>
           )}
