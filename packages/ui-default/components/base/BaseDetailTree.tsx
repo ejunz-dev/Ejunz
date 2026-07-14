@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import moment from 'moment';
 import { i18n } from 'vj/utils';
 import type { BaseEdge, BaseNode, Card } from './types';
 import type { BaseDetailTreeVisibility } from './detail_tree_filter';
@@ -82,6 +83,38 @@ function RoadmapIcon() {
   );
 }
 
+function formatAbsoluteDate(raw?: string | Date | null): string {
+  if (!raw) return '';
+  const m = moment(raw);
+  return m.isValid() ? m.format('YYYY-MM-DD HH:mm:ss') : '';
+}
+
+function formatRelativeDate(raw?: string | Date | null): string {
+  if (!raw) return '';
+  const m = moment(raw);
+  return m.isValid() ? m.fromNow() : '';
+}
+
+function TimestampMeta({
+  createdAt,
+  updateAt,
+}: {
+  createdAt?: string | Date | null;
+  updateAt?: string | Date | null;
+}) {
+  const created = formatAbsoluteDate(createdAt);
+  const updated = formatRelativeDate(updateAt);
+  if (!created && !updated) return null;
+  const parts: string[] = [];
+  if (created) parts.push(i18n('Created at: {0}', created));
+  if (updated) parts.push(i18n('Updated at: {0}', updated));
+  return (
+    <span className="base-detail-tree__meta">
+      {parts.join(' · ')}
+    </span>
+  );
+}
+
 function TreeBranch({
   nodeId,
   level,
@@ -122,13 +155,19 @@ function TreeBranch({
   const children = isRoadmapNode ? [] : getMixedNodeChildren(nodeId, nodes, edges, nodeCardsMap);
   const hasChildren = children.length > 0;
   const isSelected = nodesClickable !== false && selectedNodeId === nodeId;
+  const showTimestamps = displaySettings?.showNodeCardTimestamps;
   const nodeLabel = (
     <>
       <span className="base-detail-tree__icon">
         {isRoadmapNode ? <RoadmapIcon /> : <NodeIcon />}
       </span>
-      <span className="base-detail-tree__label" title={nodeDisplayLabel(node)}>
-        {nodeDisplayLabel(node)}
+      <span className="base-detail-tree__label-wrap">
+        <span className="base-detail-tree__label" title={nodeDisplayLabel(node)}>
+          {nodeDisplayLabel(node)}
+        </span>
+        {showTimestamps ? (
+          <TimestampMeta createdAt={node.createdAt} updateAt={node.updateAt} />
+        ) : null}
       </span>
     </>
   );
@@ -199,6 +238,7 @@ function TreeBranch({
             const cardSelected = selectedCardId === child.card.docId;
             const problemCount = getCardProblemCount(child.card);
             const showProblemCount = displaySettings?.showProblemCount && problemCount > 0;
+            const showCardTimestamps = displaySettings?.showNodeCardTimestamps;
             return (
               <div
                 key={`card-${child.card.docId}`}
@@ -229,8 +269,13 @@ function TreeBranch({
                       }
                     })()}
                   </span>
-                  <span className="base-detail-tree__label" title={cardDisplayLabel(child.card)}>
-                    {cardDisplayLabel(child.card)}
+                  <span className="base-detail-tree__label-wrap">
+                    <span className="base-detail-tree__label" title={cardDisplayLabel(child.card)}>
+                      {cardDisplayLabel(child.card)}
+                    </span>
+                    {showCardTimestamps ? (
+                      <TimestampMeta createdAt={child.card.createdAt} updateAt={child.card.updateAt} />
+                    ) : null}
                   </span>
                   {showProblemCount ? (
                     <span

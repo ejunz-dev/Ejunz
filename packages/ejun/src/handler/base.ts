@@ -1921,11 +1921,16 @@ export class BaseSaveHandler extends Handler {
         const data = this.request.body || {};
         const { nodes = [], edges = [] } = data;
         const rootNodeText = this.getDefaultRootText();
-        const finalNodes = nodes.length > 0 ? nodes : [{
+        const now = new Date();
+        const finalNodes = (nodes.length > 0 ? nodes : [{
             id: `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             text: rootNodeText,
             level: 0,
-        }];
+        }]).map((n: BaseNode) => ({
+            ...n,
+            createdAt: n.createdAt || now,
+            updateAt: n.updateAt || now,
+        }));
         const payload: Partial<BaseDoc> = {
             docType: document.TYPE_BASE,
             domainId,
@@ -2090,15 +2095,27 @@ export class BaseSaveHandler extends Handler {
         
         const currentBranchData = getBranchData(base, currentBranch);
 
+        const oldNodesById = new Map(currentBranchData.nodes.map((n) => [n.id, n]));
+        const now = new Date();
+        const stampedNodes = (nodes || []).map((node: BaseNode) => {
+            const oldNode = oldNodesById.get(node.id);
+            const hasContentChange = !oldNode || this.detectNodeNonPositionChange(oldNode, node);
+            return {
+                ...node,
+                createdAt: oldNode?.createdAt || node.createdAt || now,
+                updateAt: hasContentChange ? now : (oldNode?.updateAt || node.updateAt || undefined),
+            };
+        });
+
         const hasNonPositionChanges = this.detectNonPositionChanges(
             { ...base, nodes: currentBranchData.nodes, edges: currentBranchData.edges },
-            nodes,
+            stampedNodes,
             edges
         );
 
 
-        
-        setBranchData(base, currentBranch, nodes || [], edges || []);
+
+        setBranchData(base, currentBranch, stampedNodes, edges || []);
 
         await BaseModel.updateFull(domainId, docId, {
             branchData: base.branchData,
@@ -2186,6 +2203,18 @@ export class BaseSaveHandler extends Handler {
         }
 
         return false;
+    }
+
+    private detectNodeNonPositionChange(oldNode: BaseNode, newNode: BaseNode): boolean {
+        return (
+            oldNode.text !== newNode.text ||
+            oldNode.color !== newNode.color ||
+            oldNode.backgroundColor !== newNode.backgroundColor ||
+            oldNode.fontSize !== newNode.fontSize ||
+            oldNode.expanded !== newNode.expanded ||
+            oldNode.shape !== newNode.shape ||
+            oldNode.order !== newNode.order
+        );
     }
 }
 

@@ -782,6 +782,8 @@ Contribution Wall: Contribution Wall
 Contributions in the past year: Contributions in the past year
 Contributions: Contributions
 Created at: Created at
+'Created at: {0}': 'Created at: {0}'
+'Updated at: {0}': 'Updated at: {0}'
 discussion_create: Create Discussion
 discussion_detail: Discussion Detail
 discussion_edit: Discussion Edit
@@ -1296,6 +1298,8 @@ Date: Date
 'Roadmap detail settings show problem count hint': Show a bubble with the number of practice problems on main and sub nodes.
 'Roadmap detail settings show node number': Show node numbers
 'Roadmap detail settings show node number hint': Display sequential numbering on main and sub nodes.
+'Roadmap detail settings show node card timestamps': Show node and card timestamps
+'Roadmap detail settings show node card timestamps hint': Display creation and last modification times for nodes and cards in the tree.
 'Roadmap node number': Node number
 'Roadmap main node number format hint': Format x (e.g. 1)
 'Roadmap sub node number format hint': Format x.y (e.g. 1.1; first part is main node number)
