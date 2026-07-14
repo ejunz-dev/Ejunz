@@ -21,8 +21,8 @@ const BASE_EDITOR_AI_H_MIN = 120;
 const BASE_EDITOR_AI_H_MAX = 640;
 
 /** Whitelist + clamp per-user base editor UI prefs from DB or client body. */
-export function sanitizeBaseEditorUiPrefs(raw: unknown): Record<string, string | number | boolean> {
-    const out: Record<string, string | number | boolean> = {};
+export function sanitizeBaseEditorUiPrefs(raw: unknown): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
     const o = raw as Record<string, unknown>;
 
@@ -51,6 +51,18 @@ export function sanitizeBaseEditorUiPrefs(raw: unknown): Record<string, string |
     if (typeof o.aiPanelHeight === 'number' && Number.isFinite(o.aiPanelHeight)) {
         out.aiPanelHeight = Math.round(Math.max(BASE_EDITOR_AI_H_MIN, Math.min(BASE_EDITOR_AI_H_MAX, o.aiPanelHeight)));
     }
+
+    const rawDisplay = o.displaySettings && typeof o.displaySettings === 'object' && !Array.isArray(o.displaySettings)
+        ? o.displaySettings as Record<string, unknown>
+        : null;
+    const displaySettings: Record<string, boolean> = {};
+    if (rawDisplay) {
+        if (typeof rawDisplay.showProblemCount === 'boolean') displaySettings.showProblemCount = rawDisplay.showProblemCount;
+        if (typeof rawDisplay.showNodeNumber === 'boolean') displaySettings.showNodeNumber = rawDisplay.showNodeNumber;
+        if (typeof rawDisplay.showNodeCardTimestamps === 'boolean') displaySettings.showNodeCardTimestamps = rawDisplay.showNodeCardTimestamps;
+    }
+    out.displaySettings = displaySettings;
+
     return out;
 }
 

@@ -239,8 +239,14 @@ export interface AiEditorRevertSnapshot {
   pendingCardFaceChanges: Record<string, string>;
 }
 
+export type BaseEditorDisplaySettings = {
+  showProblemCount: boolean;
+  showNodeNumber: boolean;
+  showNodeCardTimestamps: boolean;
+};
+
 export type SavedEditorLayout = {
-  explorerMode: 'tree' | 'pending' | 'branches' | 'git' | 'mcp';
+  explorerMode: 'tree' | 'pending' | 'branches' | 'git' | 'mcp' | 'display';
   nodeSidePanelTab: 'intent' | 'files' | 'develop_queue';
   editorRightPanelTab: EditorRightPanelTab;
   rightPanelOpen: boolean;
@@ -248,6 +254,7 @@ export type SavedEditorLayout = {
   explorerPanelWidth: number;
   problemsPanelWidth: number;
   aiPanelHeight: number;
+  displaySettings: BaseEditorDisplaySettings;
 };
 
 export type DevelopEditorContextWire = {

@@ -9,6 +9,7 @@ import type {
   AiEditorRevertSnapshot,
   BaseDoc,
   BaseEdge,
+  BaseEditorDisplaySettings,
   BaseNode,
   Card,
   CardFileInfo,
@@ -1065,7 +1066,7 @@ export function readSavedBaseEditorUiPrefs(editorAiHidden: boolean): SavedEditor
     ...((serverRaw && typeof serverRaw === 'object' && !Array.isArray(serverRaw)) ? serverRaw : {}),
     ...((localRaw && typeof localRaw === 'object' && !Array.isArray(localRaw)) ? localRaw : {}),
   };
-  const modes = new Set(['tree', 'pending', 'branches', 'git', 'mcp']);
+  const modes = new Set(['tree', 'pending', 'branches', 'git', 'mcp', 'display']);
   const nodeTabs = new Set(['intent', 'files', 'develop_queue']);
   const rightTabs = new Set(['problems', 'develop_queue', 'plugin_node', 'plugin_mcp_services', 'roadmap_edge']);
 
@@ -1115,6 +1116,20 @@ export function readSavedBaseEditorUiPrefs(editorAiHidden: boolean): SavedEditor
     aiPanelHeight = Math.round(Math.max(120, Math.min(640, raw.aiPanelHeight)));
   }
 
+  const displaySettings: BaseEditorDisplaySettings = {
+    showProblemCount: false,
+    showNodeNumber: false,
+    showNodeCardTimestamps: false,
+  };
+  const rawDisplay = raw && typeof raw.displaySettings === 'object' && !Array.isArray(raw.displaySettings)
+    ? raw.displaySettings as Record<string, unknown>
+    : null;
+  if (rawDisplay) {
+    if (typeof rawDisplay.showProblemCount === 'boolean') displaySettings.showProblemCount = rawDisplay.showProblemCount;
+    if (typeof rawDisplay.showNodeNumber === 'boolean') displaySettings.showNodeNumber = rawDisplay.showNodeNumber;
+    if (typeof rawDisplay.showNodeCardTimestamps === 'boolean') displaySettings.showNodeCardTimestamps = rawDisplay.showNodeCardTimestamps;
+  }
+
   return {
     explorerMode,
     nodeSidePanelTab,
@@ -1124,6 +1139,7 @@ export function readSavedBaseEditorUiPrefs(editorAiHidden: boolean): SavedEditor
     explorerPanelWidth,
     problemsPanelWidth,
     aiPanelHeight,
+    displaySettings,
   };
 }
 
