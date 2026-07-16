@@ -1090,30 +1090,9 @@ const page = new NamedPage('agent_chat', async () => {
     }
   }
 
-  // Render markdown content to HTML
-  async function renderMarkdown(text: string, inline: boolean = false): Promise<string> {
-    try {
-      const response = await fetch('/markdown', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: text || '',
-          inline: inline,
-        }),
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to render markdown');
-      }
-      
-      return await response.text();
-    } catch (error: any) {
-      console.error('[AgentChat] Error rendering markdown:', error);
-      // Fallback to plain text with escaped HTML
-      return text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    }
+  // Render markdown content to HTML (synchronous, client-side)
+  function renderMarkdown(text: string, inline: boolean = false): string {
+    return renderRoadmapMarkdown(text || '', inline);
   }
 
   /** Parse tool message JSON and prefer markdown bodies when available. */
@@ -1187,7 +1166,7 @@ const page = new NamedPage('agent_chat', async () => {
     return inner;
   }
 
-  async function mountToolCallResultDisplay(host: HTMLElement, rawContent: string | object): Promise<void> {
+  function mountToolCallResultDisplay(host: HTMLElement, rawContent: string | object): void {
     const payload = extractToolResultDisplayPayload(rawContent);
     host.classList.remove('typo');
     host.style.cssText = toolCallResultPreStyle();
@@ -1195,12 +1174,7 @@ const page = new NamedPage('agent_chat', async () => {
 
     if (payload.mode === 'markdown') {
       host.classList.add('typo');
-      try {
-        host.innerHTML = await renderMarkdown(payload.text, false);
-      } catch (e: any) {
-        console.error('[AgentChat] tool result markdown failed:', e);
-        host.textContent = payload.text;
-      }
+      host.innerHTML = renderMarkdown(payload.text, false);
     } else {
       const pre = document.createElement('pre');
       pre.style.cssText = 'margin:0;white-space:pre-wrap;word-wrap:break-word;font-family:inherit;font-size:inherit;';
@@ -1213,13 +1187,12 @@ const page = new NamedPage('agent_chat', async () => {
     const statusBadge = toolCallItem.querySelector('.tool-status-badge') as HTMLElement | null;
     applyToolCallStatus(toolCallItem, rawContent, statusBadge);
     const resultInner = ensureToolCallResultPane(toolCallDetails);
-    void mountToolCallResultDisplay(resultInner, rawContent).then(() => {
-      applyToolCallStatus(toolCallItem, rawContent, toolCallItem.querySelector('.tool-status-badge') as HTMLElement | null);
-    });
+    mountToolCallResultDisplay(resultInner, rawContent);
+    applyToolCallStatus(toolCallItem, rawContent, toolCallItem.querySelector('.tool-status-badge') as HTMLElement | null);
   }
   
   // Render markdown and track it to prevent duplicates
-  async function renderMarkdownWithTracking(bubbleId: string, content: string, contentDiv: HTMLElement | null): Promise<void> {
+  function renderMarkdownWithTracking(bubbleId: string, content: string, contentDiv: HTMLElement | null): void {
     if (!shouldRenderMarkdown(bubbleId, content, contentDiv)) {
       return; // Skip if already rendered or shouldn't render
     }
@@ -1233,26 +1206,17 @@ const page = new NamedPage('agent_chat', async () => {
       return;
     }
 
-    // setAssistantMarkdownContent handles normal client-side rendering. Keep server markdown as a fallback.
-    try {
-      const renderedHtml = await renderMarkdown(content, false);
-      if (contentDiv) {
-        const newHtmlTrimmed = (renderedHtml || '').replace(/<[^>]*>/g, '').trim();
-        if (!newHtmlTrimmed && existingText) {
-          return; // Don't overwrite non-empty with empty rendered result
-        }
-        contentDiv.classList.add('typo');
-        contentDiv.innerHTML = renderedHtml;
-        renderedMarkdownIds.set(bubbleId, contentHash(content));
-        assistantRawContentByBubbleId.set(bubbleId, content || '');
+    // renderRoadmapMarkdown is synchronous — no need for fallback fetch
+    const renderedHtml = renderMarkdown(content, false);
+    if (contentDiv) {
+      const newHtmlTrimmed = (renderedHtml || '').replace(/<[^>]*>/g, '').trim();
+      if (!newHtmlTrimmed && existingText) {
+        return; // Don't overwrite non-empty with empty rendered result
       }
-    } catch (error: any) {
-      console.error('[AgentChat] Error rendering markdown with tracking:', error);
-      if (contentDiv && (content.trim() || !existingText)) {
-        contentDiv.classList.remove('typo');
-        contentDiv.textContent = content;
-        assistantRawContentByBubbleId.set(bubbleId, content || '');
-      }
+      contentDiv.classList.add('typo');
+      contentDiv.innerHTML = renderedHtml;
+      renderedMarkdownIds.set(bubbleId, contentHash(content));
+      assistantRawContentByBubbleId.set(bubbleId, content || '');
     }
   }
   
@@ -2256,7 +2220,7 @@ const page = new NamedPage('agent_chat', async () => {
                       }
                       // Update content if needed (for markdown rendering)
                       if (!isStreaming && contentDiv instanceof HTMLElement) {
-                        void renderMarkdownWithTracking(bubbleId, content, contentDiv);
+                        renderMarkdownWithTracking(bubbleId, content, contentDiv);
                       }
                       continue; // Skip to next message in outer loop (don't create new)
                     }
@@ -2495,7 +2459,7 @@ const page = new NamedPage('agent_chat', async () => {
                   // CRITICAL: This prevents duplicate markdown rendering from repeated record_update events
                   if (contentChanged) {
                     if (contentDiv && contentDiv instanceof HTMLElement) {
-                      await renderMarkdownWithTracking(bubbleId, content, contentDiv);
+                      renderMarkdownWithTracking(bubbleId, content, contentDiv);
                     }
                     // Mark as receiving update only if content changed
                     markBubbleContentUpdate(bubbleId);
@@ -2507,7 +2471,7 @@ const page = new NamedPage('agent_chat', async () => {
                 } else if (content) {
                   // Fallback: if we have content but state is unclear, update if changed
                   if (contentChanged && contentDiv && contentDiv instanceof HTMLElement) {
-                    await renderMarkdownWithTracking(bubbleId, content, contentDiv);
+                    renderMarkdownWithTracking(bubbleId, content, contentDiv);
                     markBubbleContentUpdate(bubbleId);
                   }
                 }
@@ -2620,7 +2584,7 @@ const page = new NamedPage('agent_chat', async () => {
                     if (!isStreaming) {
                       // Render markdown for completed message
                       if (contentDiv instanceof HTMLElement) {
-                        await renderMarkdownWithTracking(bubbleId, content, contentDiv);
+                        renderMarkdownWithTracking(bubbleId, content, contentDiv);
                       }
                     } else if (contentDiv instanceof HTMLElement) {
                       setAssistantMarkdownContent(bubbleId, content, contentDiv);
@@ -2667,7 +2631,7 @@ const page = new NamedPage('agent_chat', async () => {
                           activebubbleIds.add(bubbleId);
                         }
                         if (!isStreaming && contentDiv && contentDiv instanceof HTMLElement) {
-                          await renderMarkdownWithTracking(bubbleId, content, contentDiv);
+                          renderMarkdownWithTracking(bubbleId, content, contentDiv);
                         }
                         continue; // Skip to next message in outer loop
                       }
@@ -2686,7 +2650,7 @@ const page = new NamedPage('agent_chat', async () => {
                           activebubbleIds.add(bubbleId);
                         }
                         if (!isStreaming && contentDiv instanceof HTMLElement) {
-                          await renderMarkdownWithTracking(bubbleId, content, contentDiv);
+                          renderMarkdownWithTracking(bubbleId, content, contentDiv);
                         }
                         continue; // Skip to next message in outer loop
                       }
@@ -2806,9 +2770,8 @@ const page = new NamedPage('agent_chat', async () => {
               const bubbleId = messageEl ? getbubbleIdFromElement(messageEl) : null;
               const rawContent = (bubbleId && assistantRawContentByBubbleId.get(bubbleId)) || contentDiv.textContent || '';
               if (bubbleId && rawContent && contentDiv instanceof HTMLElement) {
-                renderMarkdownWithTracking(bubbleId, rawContent, contentDiv).then(() => {
-                  chatMessages.scrollTop = chatMessages.scrollHeight;
-                });
+                renderMarkdownWithTracking(bubbleId, rawContent, contentDiv);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
               }
             }
           }
@@ -3085,7 +3048,7 @@ const page = new NamedPage('agent_chat', async () => {
       // For assistant messages, always create content div (even if empty, for streaming)
       if (role === 'assistant') {
         if (content && bubbleId) {
-          await renderMarkdownWithTracking(bubbleId, content, contentDiv);
+          renderMarkdownWithTracking(bubbleId, content, contentDiv);
         }
         // If no content, leave empty (will be filled during streaming)
       } else if (content) {
@@ -3242,7 +3205,7 @@ const page = new NamedPage('agent_chat', async () => {
       const messageEl = contentDiv.closest('.chat-message');
         const bubbleId = messageEl ? getbubbleIdFromElement(messageEl) : null;
         if (bubbleId && contentDiv instanceof HTMLElement) {
-          await renderMarkdownWithTracking(bubbleId, content, contentDiv);
+          renderMarkdownWithTracking(bubbleId, content, contentDiv);
         } else {
           contentDiv.classList.add('typo');
           contentDiv.innerHTML = renderAgentAssistantMarkdown(content);

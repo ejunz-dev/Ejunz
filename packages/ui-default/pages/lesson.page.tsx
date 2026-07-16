@@ -2,6 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallba
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import { i18n, request } from 'vj/utils';
+import { renderRoadmapMarkdown } from 'vj/components/roadmap/markdown_render';
 import Notification from 'vj/components/notification';
 import { LearnProblemNotesPanelBody } from '../components/learn_problem_notes_panel';
 import type { Problem, ProblemSingle, ProblemMulti, ProblemTrueFalse, ProblemFlip, ProblemFillBlank, ProblemMatching, ProblemSuperFlip, ProblemAiEval } from 'ejun/src/interface';
@@ -744,28 +745,15 @@ function LessonProblemMarkdown({
   const As = as ?? (inline ? 'span' : 'div');
   const cls = `lesson-markdown-body${className ? ` ${className}` : ''}`;
 
+  const rawHtml = useMemo(() => {
+    if (!plain) return '';
+    return renderRoadmapMarkdown(raw, inline);
+  }, [raw, plain, inline]);
+
   useEffect(() => {
-    if (!plain) {
-      setHtml('');
-      return;
-    }
-    let cancelled = false;
-    fetch('/markdown', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: raw, inline }),
-    })
-      .then((res) => (res.ok ? res.text() : Promise.reject(new Error('markdown'))))
-      .then((h) => replaceImagesWithCache(h).then((x) => {
-        if (!cancelled) setHtml(x);
-      }).catch(() => {
-        if (!cancelled) setHtml(h);
-      }))
-      .catch(() => {
-        if (!cancelled) setHtml('');
-      });
-    return () => { cancelled = true; };
-  }, [raw, plain, inline, replaceImagesWithCache]);
+    if (!rawHtml) { setHtml(''); return; }
+    replaceImagesWithCache(rawHtml).then((x) => setHtml(x)).catch(() => setHtml(rawHtml));
+  }, [rawHtml, replaceImagesWithCache]);
 
   if (!plain) {
     if (emptyFallback === undefined) return null;
@@ -1068,30 +1056,16 @@ function LessonPage() {
       }
     }
 
-    // Cold path: POST /markdown then store (same as base).
-    fetch('/markdown', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: card.content, inline: false }),
-    })
-      .then((response) => {
-        if (!response.ok) throw new Error('Failed to render markdown');
-        return response.text();
-      })
-      .then(async (html) => {
-        setRenderedContent(html);
-        try {
-          const cacheData = {
-            html,
-            updateAt: (card as Card).updateAt ?? '',
-          };
-          localStorage.setItem(cacheKey, JSON.stringify(cacheData));
-        } catch (e) {
-          console.error('Failed to save to localStorage:', e);
-        }
-        preloadAndCacheImages(html).catch((e) => console.error('Failed to preload images:', e));
-      })
-      .catch(() => setRenderedContent(card.content));
+    // Cold path: render client-side, then cache the result.
+    const html = renderRoadmapMarkdown(card.content);
+    setRenderedContent(html);
+    try {
+      const cacheData = { html, updateAt: (card as Card).updateAt ?? '' };
+      localStorage.setItem(cacheKey, JSON.stringify(cacheData));
+    } catch (e) {
+      console.error('Failed to save to localStorage:', e);
+    }
+    preloadAndCacheImages(html).catch((e) => console.error('Failed to preload images:', e));
   }, [card?.docId, card?.content, (card as Card).updateAt, replaceImagesWithCache, preloadAndCacheImages]);
 
   // Card-face markdown (with Know it / No impression).
@@ -1100,14 +1074,8 @@ function LessonPage() {
       setRenderedCardFace('');
       return;
     }
-    fetch('/markdown', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: card.cardFace, inline: false }),
-    })
-      .then((res) => (res.ok ? res.text() : Promise.reject(new Error('Failed to render'))))
-      .then((html) => replaceImagesWithCache(html).then(setRenderedCardFace).catch(() => setRenderedCardFace(html)))
-      .catch(() => setRenderedCardFace(card.cardFace || ''));
+    const html = renderRoadmapMarkdown(card.cardFace);
+    replaceImagesWithCache(html).then(setRenderedCardFace).catch(() => setRenderedCardFace(html));
   }, [card?.docId, card?.cardFace, replaceImagesWithCache]);
 
   const allProblems = useMemo((): QueuedProblem[] => {

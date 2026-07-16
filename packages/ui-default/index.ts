@@ -62,18 +62,6 @@ class LegacyModeHandler extends Handler {
   }
 }
 
-class MarkdownHandler extends Handler {
-  noCheckPermView = true;
-
-  async post({ text, inline = false }) {
-    this.response.body = inline
-      ? markdown.renderInline(text)
-      : markdown.render(text);
-    this.response.type = 'text/html';
-    this.response.status = 200;
-  }
-}
-
 class SystemConfigSchemaHandler extends Handler {
   async get() {
     const schema = convert(Schema.intersect(this.ctx.setting.settings) as any, true);
@@ -192,7 +180,6 @@ export function apply(ctx: Context) {
   ctx.Route('wiki_about', '/wiki/about', WikiAboutHandler);
   ctx.Route('set_theme', '/set_theme/:theme', SetThemeHandler);
   ctx.Route('set_legacy', '/legacy', LegacyModeHandler);
-  ctx.Route('markdown', '/markdown', MarkdownHandler);
   ctx.Route('media', '/media', RichMediaHandler);
   ctx.on('handler/after/DiscussionRaw', async (that) => {
     if (that.args.render && that.response.type === 'text/markdown') {

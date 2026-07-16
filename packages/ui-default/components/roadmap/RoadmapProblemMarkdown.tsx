@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useMemo } from 'react';
+import { renderRoadmapMarkdown } from './markdown_render';
 
 export function RoadmapProblemMarkdown({
   markdown,
@@ -13,41 +14,20 @@ export function RoadmapProblemMarkdown({
 }) {
   const raw = markdown ?? '';
   const plain = raw.trim();
-  const [html, setHtml] = useState('');
-  const containerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!plain) {
-      setHtml('');
-      return undefined;
-    }
-    let cancelled = false;
-    fetch('/markdown', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: raw, inline }),
-    })
-      .then((res) => (res.ok ? res.text() : Promise.reject(new Error('markdown'))))
-      .then((h) => {
-        if (!cancelled) setHtml(h);
-      })
-      .catch(() => {
-        if (!cancelled) setHtml('');
-      });
-    return () => {
-      cancelled = true;
-    };
+  const html = useMemo(() => {
+    if (!plain) return '';
+    return renderRoadmapMarkdown(raw, inline);
   }, [raw, plain, inline]);
 
   if (!plain) {
-    return <div ref={containerRef} className={className}>{emptyLabel}</div>;
+    return <div className={className}>{emptyLabel}</div>;
   }
   if (!html) {
-    return <div ref={containerRef} className={className}>{raw}</div>;
+    return <div className={className}>{raw}</div>;
   }
   return (
     <div
-      ref={containerRef}
       className={className}
       dangerouslySetInnerHTML={{ __html: html }}
     />
