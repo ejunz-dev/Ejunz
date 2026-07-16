@@ -310,8 +310,10 @@ export function BaseDetailTree({
   nodesClickable = true,
   treeVisibility = null,
   displaySettings = null,
+  expandedNodes: controlledExpandedNodes,
   onSelectNode,
   onSelectCard,
+  onExpandedNodesChange,
 }: {
   rootNodeIds: string[];
   nodes: BaseNode[];
@@ -326,12 +328,19 @@ export function BaseDetailTree({
   nodesClickable?: boolean;
   treeVisibility?: BaseDetailTreeVisibility | null;
   displaySettings?: BaseDetailDisplaySettings | null;
+  expandedNodes?: Set<string>;
   onSelectNode?: (nodeId: string) => void;
   onSelectCard?: (card: Card) => void;
+  onExpandedNodesChange?: (nodeIds: Set<string>) => void;
 }) {
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => (
+  const isControlled = controlledExpandedNodes !== undefined;
+  const [internalExpandedNodes, setInternalExpandedNodes] = useState<Set<string>>(() => (
     new Set(initialExpandedNodeIds || collectDefaultExpandedNodeIds(nodes, edges))
   ));
+
+  const expandedNodes = isControlled ? controlledExpandedNodes : internalExpandedNodes;
+  const setExpandedNodes: React.Dispatch<React.SetStateAction<Set<string>>>
+    = isControlled ? ((v: any) => v) as any : setInternalExpandedNodes;
 
   useEffect(() => {
     setExpandedNodes(new Set(
@@ -341,25 +350,52 @@ export function BaseDetailTree({
 
   useEffect(() => {
     if (!treeVisibility?.forceExpandedNodeIds.size) return;
-    setExpandedNodes((prev) => new Set([...prev, ...treeVisibility.forceExpandedNodeIds]));
+    const next = new Set(expandedNodes);
+    let changed = false;
+    for (const id of treeVisibility.forceExpandedNodeIds) {
+      if (!next.has(id)) { next.add(id); changed = true; }
+    }
+    if (!changed) return;
+    if (isControlled) {
+      onExpandedNodesChange?.(next);
+    } else {
+      setExpandedNodes(next);
+    }
   }, [treeVisibility]);
 
   useEffect(() => {
     if (!extraExpandedNodeIds?.length) return;
-    setExpandedNodes((prev) => new Set([...prev, ...extraExpandedNodeIds]));
+    const next = new Set(expandedNodes);
+    let changed = false;
+    for (const id of extraExpandedNodeIds) {
+      if (!next.has(id)) { next.add(id); changed = true; }
+    }
+    if (!changed) return;
+    if (isControlled) {
+      onExpandedNodesChange?.(next);
+    } else {
+      setExpandedNodes(next);
+    }
   }, [extraExpandedNodeIds]);
 
   const expandRetryKey = extraExpandedNodeIds?.join(':') || '';
   useBaseDetailCardScroll(scrollToCardId || null, expandRetryKey);
 
   const onToggleNode = useCallback((nodeId: string) => {
-    setExpandedNodes((prev) => {
-      const next = new Set(prev);
-      if (next.has(nodeId)) next.delete(nodeId);
-      else next.add(nodeId);
-      return next;
-    });
-  }, []);
+    const next = new Set(expandedNodes);
+    if (next.has(nodeId)) next.delete(nodeId);
+    else next.add(nodeId);
+    if (isControlled) {
+      onExpandedNodesChange?.(next);
+    } else {
+      setExpandedNodes(next);
+    }
+  }, [expandedNodes, isControlled, onExpandedNodesChange]);
+
+  // Notify parent when expanded nodes change (non-toggle sources: init, zoom, scroll)
+  useEffect(() => {
+    if (onExpandedNodesChange && !isControlled) onExpandedNodesChange(expandedNodes);
+  }, [expandedNodes, isControlled, onExpandedNodesChange]);
 
   if (rootNodeIds.length === 0) {
     return (
