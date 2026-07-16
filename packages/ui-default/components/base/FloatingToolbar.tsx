@@ -9,6 +9,14 @@ function ArrowUpIcon() {
   );
 }
 
+function ArrowDownIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M12 19V5M5 12l7 7 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function FloatingToolbar({
   open,
   posX,
@@ -72,13 +80,35 @@ export function FloatingToolbar({
         onPosChange(Math.max(10, x), Math.max(5, y));
       }
     } else {
-      // Click without drag → toggle
       onOpenChange(!open);
     }
   }, [onPosChange, onOpenChange, open, posX, posY]);
 
+  const scrollTop = () => {
+    document.documentElement.scrollTo({ top: 0, behavior: 'smooth' });
+    document.body.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const scrollBottom = () => {
+    const h = document.documentElement.scrollHeight;
+    document.documentElement.scrollTo({ top: h, behavior: 'smooth' });
+    document.body.scrollTo({ top: h, behavior: 'smooth' });
+  };
+
   return (
     <div className="base-detail-toolbar-wrap" ref={wrapRef}>
+      <div className={`base-detail-toolbar-menu${open ? ' is-visible' : ''}`}>
+        <button
+          type="button"
+          className="base-detail-toolbar-item"
+          onClick={scrollTop}
+          title={i18n('Scroll to top')}
+        >
+          <span className="base-detail-toolbar-item__icon">
+            <ArrowUpIcon />
+          </span>
+        </button>
+      </div>
       <div
         className={`base-detail-toolbar-trigger${open ? ' is-open' : ''}`}
         style={{ cursor: 'grab' }}
@@ -92,14 +122,11 @@ export function FloatingToolbar({
         <button
           type="button"
           className="base-detail-toolbar-item"
-          onClick={() => {
-            document.documentElement.scrollTo({ top: 0, behavior: 'smooth' });
-            document.body.scrollTo({ top: 0, behavior: 'smooth' });
-          }}
-          title={i18n('Scroll to top')}
+          onClick={scrollBottom}
+          title={i18n('Scroll to bottom')}
         >
           <span className="base-detail-toolbar-item__icon">
-            <ArrowUpIcon />
+            <ArrowDownIcon />
           </span>
         </button>
       </div>
