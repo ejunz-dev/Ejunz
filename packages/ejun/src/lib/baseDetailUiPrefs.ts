@@ -1,8 +1,8 @@
 import type { Db } from 'mongodb';
 
 /** Whitelist detail display prefs from DB or client body. */
-export function sanitizeBaseDetailUiPrefs(raw: unknown): Record<string, boolean> {
-    const out: Record<string, boolean> = {};
+export function sanitizeBaseDetailUiPrefs(raw: unknown): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
     const o = raw as Record<string, unknown>;
     if (typeof o.showProblemCount === 'boolean') out.showProblemCount = o.showProblemCount;
@@ -10,6 +10,8 @@ export function sanitizeBaseDetailUiPrefs(raw: unknown): Record<string, boolean>
     if (typeof o.showNodeCardTimestamps === 'boolean') out.showNodeCardTimestamps = o.showNodeCardTimestamps;
     if (typeof o.showAiTutor === 'boolean') out.showAiTutor = o.showAiTutor;
     if (typeof o.showExpandSaveIndicator === 'boolean') out.showExpandSaveIndicator = o.showExpandSaveIndicator;
+    if (typeof o.indicatorX === 'number' && Number.isFinite(o.indicatorX)) out.indicatorX = o.indicatorX;
+    if (typeof o.indicatorY === 'number' && Number.isFinite(o.indicatorY)) out.indicatorY = o.indicatorY;
     return out;
 }
 
@@ -19,7 +21,7 @@ export async function loadBaseDetailUiPrefs(
     baseDocId: number,
     branch: string,
     uid: unknown,
-): Promise<Record<string, boolean>> {
+): Promise<Record<string, unknown>> {
     try {
         const coll = db.collection('base.userDetailUi');
         const b = branch && String(branch).trim() ? String(branch).trim() : 'main';

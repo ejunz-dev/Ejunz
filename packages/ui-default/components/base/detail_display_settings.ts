@@ -15,12 +15,15 @@ export function readBaseDetailDisplaySettings(): BaseDetailDisplaySettings {
   if (!raw || typeof raw !== 'object') {
     return defaultBaseDetailDisplaySettings();
   }
+  const r = raw as Record<string, unknown>;
   return {
-    showProblemCount: Boolean((raw as Record<string, unknown>).showProblemCount),
-    showNodeNumber: Boolean((raw as Record<string, unknown>).showNodeNumber),
-    showNodeCardTimestamps: Boolean((raw as Record<string, unknown>).showNodeCardTimestamps),
-    showAiTutor: (raw as Record<string, unknown>).showAiTutor !== false,
-    showExpandSaveIndicator: (raw as Record<string, unknown>).showExpandSaveIndicator !== false,
+    showProblemCount: Boolean(r.showProblemCount),
+    showNodeNumber: Boolean(r.showNodeNumber),
+    showNodeCardTimestamps: Boolean(r.showNodeCardTimestamps),
+    showAiTutor: r.showAiTutor !== false,
+    showExpandSaveIndicator: r.showExpandSaveIndicator !== false,
+    indicatorX: typeof r.indicatorX === 'number' ? r.indicatorX : 320,
+    indicatorY: typeof r.indicatorY === 'number' ? r.indicatorY : 72,
   };
 }
 
