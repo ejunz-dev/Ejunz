@@ -24,6 +24,9 @@ export function readBaseDetailDisplaySettings(): BaseDetailDisplaySettings {
     showExpandSaveIndicator: r.showExpandSaveIndicator !== false,
     indicatorX: typeof r.indicatorX === 'number' ? r.indicatorX : 320,
     indicatorY: typeof r.indicatorY === 'number' ? r.indicatorY : 72,
+    toolbarOpen: r.toolbarOpen === true,
+    toolbarX: typeof r.toolbarX === 'number' ? r.toolbarX : 320,
+    toolbarY: typeof r.toolbarY === 'number' ? r.toolbarY : 108,
   };
 }
 
