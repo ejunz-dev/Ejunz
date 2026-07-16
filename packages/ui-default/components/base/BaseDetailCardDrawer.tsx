@@ -5,6 +5,7 @@ import Notification from 'vj/components/notification';
 import { domainApiPath, domainScopedPath, i18n, request } from 'vj/utils';
 import type { Problem } from 'ejun/src/interface';
 import { RoadmapDrawerProblemList } from '../roadmap/RoadmapDrawerProblemList';
+import { renderRoadmapMarkdown } from '../roadmap/markdown_render';
 import type { Card } from './types';
 import { cardDisplayLabel, findCardHostNodeId } from './detail_tree';
 import { getCardIcon, getCardColor } from './utils';
@@ -242,39 +243,18 @@ export function BaseDetailCardDrawer({
       return undefined;
     }
 
-    let cancelled = false;
-    container.innerHTML = `<p>${i18n('Loading...')}</p>`;
-
     const pendingHighlight = highlightText; // capture for this render cycle
+    const html = renderRoadmapMarkdown(markdown);
+    container.innerHTML = html;
+    $(container).trigger('vjContentNew');
+    attachTypoImagePreviewHandlers(container);
 
-    fetch('/markdown', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: markdown, inline: false }),
-    })
-      .then((response) => {
-        if (!response.ok) throw new Error('Failed to render markdown');
-        return response.text();
-      })
-      .then((html) => {
-        if (cancelled || !contentRef.current) return;
-        contentRef.current.innerHTML = html;
-        $(contentRef.current).trigger('vjContentNew');
-        attachTypoImagePreviewHandlers(contentRef.current);
+    // Apply search highlight right after DOM is ready
+    if (pendingHighlight) {
+      applyHighlight(container, pendingHighlight);
+    }
 
-        // Apply search highlight right after DOM is ready
-        if (pendingHighlight) {
-          applyHighlight(contentRef.current, pendingHighlight);
-        }
-      })
-      .catch(() => {
-        if (cancelled || !contentRef.current) return;
-        contentRef.current.innerHTML = `<p>${i18n('Roadmap markdown preview failed')}</p>`;
-      });
-
-    return () => {
-      cancelled = true;
-    };
+    return undefined;
   }, [displayCard?.content, displayCard?.docId, closing, visible]);
 
   // Helper: walk the rendered DOM and highlight the first content match.
