@@ -17,18 +17,40 @@ function ArrowDownIcon() {
   );
 }
 
+function TreeIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <rect x="2.5" y="3" width="11" height="10" rx="2" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M5 6.5h6M5 9h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
+      <path d="M16 16l4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function FloatingToolbar({
   open,
   posX,
   posY,
   onOpenChange,
   onPosChange,
+  onTreeOpen,
+  onSearchOpen,
 }: {
   open: boolean;
   posX: number;
   posY: number;
   onOpenChange: (v: boolean) => void;
   onPosChange: (x: number, y: number) => void;
+  onTreeOpen?: () => void;
+  onSearchOpen?: () => void;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; startPosX: number; startPosY: number } | null>(null);
@@ -109,14 +131,40 @@ export function FloatingToolbar({
           </span>
         </button>
       </div>
-      <div
-        className={`base-detail-toolbar-trigger${open ? ' is-open' : ''}`}
-        style={{ cursor: 'grab' }}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-      >
-        <span className="base-detail-toolbar-trigger__dot" />
+      <div className="base-detail-toolbar-row">
+        <div className={`base-detail-toolbar-side base-detail-toolbar-side--left${open ? ' is-visible' : ''}`}>
+          <button
+            type="button"
+            className="base-detail-toolbar-item"
+            onClick={onTreeOpen}
+            title={i18n('Document Structure')}
+          >
+            <span className="base-detail-toolbar-item__icon">
+              <TreeIcon />
+            </span>
+          </button>
+        </div>
+        <div
+          className={`base-detail-toolbar-trigger${open ? ' is-open' : ''}`}
+          style={{ cursor: 'grab' }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+        >
+          <span className="base-detail-toolbar-trigger__dot" />
+        </div>
+        <div className={`base-detail-toolbar-side base-detail-toolbar-side--right${open ? ' is-visible' : ''}`}>
+          <button
+            type="button"
+            className="base-detail-toolbar-item"
+            onClick={onSearchOpen}
+            title={i18n('Semantic Search')}
+          >
+            <span className="base-detail-toolbar-item__icon">
+              <SearchIcon />
+            </span>
+          </button>
+        </div>
       </div>
       <div className={`base-detail-toolbar-menu base-detail-toolbar-menu--bottom${open ? ' is-visible' : ''}`}>
         <button

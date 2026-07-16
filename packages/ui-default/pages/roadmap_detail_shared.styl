@@ -2326,6 +2326,33 @@ mark.search-highlight
   justify-content: center
   color: var(--roadmap-accent)
 
+// Row containing side buttons and trigger
+.base-detail-toolbar-row
+  position: relative
+  display: flex
+  align-items: center
+  justify-content: center
+  width: 28px
+  height: 28px
+  z-index: 2
+
+.base-detail-toolbar-side
+  pointer-events: none
+  opacity: 0
+  transition: opacity 0.2s ease
+  position: absolute
+  top: 0
+
+  &.is-visible
+    pointer-events: auto
+    opacity: 1
+
+.base-detail-toolbar-side--left
+  right: calc(50% + 17px)
+
+.base-detail-toolbar-side--right
+  left: calc(50% + 17px)
+
 .base-detail-toolbar-item__label
   font-size: 10px
   font-weight: 500
