@@ -8,6 +8,8 @@ export type RoadmapDetailDisplaySettings = {
   showAiTutor: boolean;
   /** Show the floating expand-state save indicator in detail view. */
   showExpandSaveIndicator: boolean;
+  /** Show the floating toolbar in detail view. */
+  showToolbar: boolean;
   /** X position of the status indicator (px from right). */
   indicatorX: number;
   /** Y position of the status indicator (px from top). */
@@ -26,6 +28,7 @@ export const defaultRoadmapDetailDisplaySettings = (): RoadmapDetailDisplaySetti
   showNodeCardTimestamps: false,
   showAiTutor: true,
   showExpandSaveIndicator: true,
+  showToolbar: true,
   indicatorX: 320,
   indicatorY: 72,
   toolbarOpen: false,
@@ -40,6 +43,7 @@ function readCommonDisplaySettings(raw: Record<string, unknown>): RoadmapDetailD
     showNodeCardTimestamps: Boolean(raw.showNodeCardTimestamps),
     showAiTutor: raw.showAiTutor !== false,
     showExpandSaveIndicator: raw.showExpandSaveIndicator !== false,
+    showToolbar: raw.showToolbar !== false,
     indicatorX: typeof raw.indicatorX === 'number' ? raw.indicatorX : 320,
     indicatorY: typeof raw.indicatorY === 'number' ? raw.indicatorY : 72,
     toolbarOpen: raw.toolbarOpen === true,
@@ -80,6 +84,7 @@ export function roadmapDetailDisplaySettingsEqual(
     && a.showNodeCardTimestamps === b.showNodeCardTimestamps
     && a.showAiTutor === b.showAiTutor
     && a.showExpandSaveIndicator === b.showExpandSaveIndicator
+    && a.showToolbar === b.showToolbar
     && a.indicatorX === b.indicatorX
     && a.indicatorY === b.indicatorY
     && a.toolbarOpen === b.toolbarOpen

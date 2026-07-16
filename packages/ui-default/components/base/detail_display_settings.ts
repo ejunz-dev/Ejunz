@@ -22,6 +22,7 @@ export function readBaseDetailDisplaySettings(): BaseDetailDisplaySettings {
     showNodeCardTimestamps: Boolean(r.showNodeCardTimestamps),
     showAiTutor: r.showAiTutor !== false,
     showExpandSaveIndicator: r.showExpandSaveIndicator !== false,
+    showToolbar: r.showToolbar !== false,
     indicatorX: typeof r.indicatorX === 'number' ? r.indicatorX : 320,
     indicatorY: typeof r.indicatorY === 'number' ? r.indicatorY : 72,
     toolbarOpen: r.toolbarOpen === true,

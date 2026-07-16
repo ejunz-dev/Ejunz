@@ -323,6 +323,7 @@ function BaseDetailViewer() {
           docId: Number(base.docId),
           branch,
           displayPrefs: {
+            showToolbar: displaySettings.showToolbar,
             indicatorX: displaySettings.indicatorX,
             indicatorY: displaySettings.indicatorY,
             toolbarOpen: displaySettings.toolbarOpen,
@@ -595,21 +596,23 @@ function BaseDetailViewer() {
           }}
         />
       ) : null}
-      <FloatingToolbar
-        open={displaySettings.toolbarOpen}
-        posX={displaySettings.toolbarX}
-        posY={displaySettings.toolbarY}
-        onOpenChange={(v) => {
-          setDisplaySettings((prev) => ({ ...prev, toolbarOpen: v }));
-          setExpandDirty(true);
-        }}
-        onPosChange={(x, y) => {
-          setDisplaySettings((prev) => ({ ...prev, toolbarX: x, toolbarY: y }));
-          setExpandDirty(true);
-        }}
-        onTreeOpen={() => setTreeDrawerOpen(true)}
-        onSearchOpen={() => setSemanticSearchOpen(true)}
-      />
+      {displaySettings.showToolbar ? (
+        <FloatingToolbar
+          open={displaySettings.toolbarOpen}
+          posX={displaySettings.toolbarX}
+          posY={displaySettings.toolbarY}
+          onOpenChange={(v) => {
+            setDisplaySettings((prev) => ({ ...prev, toolbarOpen: v }));
+            setExpandDirty(true);
+          }}
+          onPosChange={(x, y) => {
+            setDisplaySettings((prev) => ({ ...prev, toolbarX: x, toolbarY: y }));
+            setExpandDirty(true);
+          }}
+          onTreeOpen={() => setTreeDrawerOpen(true)}
+          onSearchOpen={() => setSemanticSearchOpen(true)}
+        />
+      ) : null}
       {explorerScopeRootId ? (
         <BaseDetailExplorer
           searchQuery={treeSearchQuery}

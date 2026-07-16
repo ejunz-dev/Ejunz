@@ -193,6 +193,27 @@ export function RoadmapDetailSettingsPanel({
               })}
             />
           </label>
+          <label className="roadmap-detail-settings__row">
+            <div className="roadmap-detail-settings__row-text">
+              <span className="roadmap-detail-settings__row-label">
+                {i18n('Show toolbar')}
+              </span>
+              <span className="roadmap-detail-settings__row-desc">
+                {i18n('Show floating toolbar with scroll, structure and search')}
+              </span>
+            </div>
+            <input
+              type="checkbox"
+              className="roadmap-detail-settings__toggle"
+              checked={draft.showToolbar}
+              disabled={saving}
+              onChange={(e) => setDraft({
+                ...defaultRoadmapDetailDisplaySettings(),
+                ...draft,
+                showToolbar: e.currentTarget.checked,
+              })}
+            />
+          </label>
         </div>
         <div className="roadmap-detail-settings__actions">
           <button

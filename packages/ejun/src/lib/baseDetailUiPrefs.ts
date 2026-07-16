@@ -10,6 +10,7 @@ export function sanitizeBaseDetailUiPrefs(raw: unknown): Record<string, unknown>
     if (typeof o.showNodeCardTimestamps === 'boolean') out.showNodeCardTimestamps = o.showNodeCardTimestamps;
     if (typeof o.showAiTutor === 'boolean') out.showAiTutor = o.showAiTutor;
     if (typeof o.showExpandSaveIndicator === 'boolean') out.showExpandSaveIndicator = o.showExpandSaveIndicator;
+    if (typeof o.showToolbar === 'boolean') out.showToolbar = o.showToolbar;
     if (typeof o.indicatorX === 'number' && Number.isFinite(o.indicatorX)) out.indicatorX = o.indicatorX;
     if (typeof o.indicatorY === 'number' && Number.isFinite(o.indicatorY)) out.indicatorY = o.indicatorY;
     if (typeof o.toolbarOpen === 'boolean') out.toolbarOpen = o.toolbarOpen;
