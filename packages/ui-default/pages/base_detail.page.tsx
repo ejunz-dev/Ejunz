@@ -15,6 +15,7 @@ import { BaseDetailEmbeddedRoadmapViewer } from 'vj/components/base/BaseDetailEm
 import { BaseDetailNodeContent } from 'vj/components/base/BaseDetailNodeContent';
 import { BaseDetailTreeDrawer } from 'vj/components/base/BaseDetailSidebar';
 import { StatusIndicator } from 'vj/components/base/StatusIndicator';
+import { FloatingToolbar } from 'vj/components/base/FloatingToolbar';
 import { RoadmapDetailSettingsPanel } from 'vj/components/roadmap/RoadmapDetailSettingsPanel';
 import { getRoadmapChildGraph, getSortedNodeChildren, nodeDisplayLabel, collectNodePathFromRoot, findCardByDocId, findCardHostNodeId, findRoadmapContainerAncestor, getPrimaryCardForNode, isRoadmapCanvasNodeId } from 'vj/components/base/detail_tree';
 import { isTypoImagePreviewOverlay } from 'vj/components/base/typo_image_preview';
@@ -324,6 +325,9 @@ function BaseDetailViewer() {
           displayPrefs: {
             indicatorX: displaySettings.indicatorX,
             indicatorY: displaySettings.indicatorY,
+            toolbarOpen: displaySettings.toolbarOpen,
+            toolbarX: displaySettings.toolbarX,
+            toolbarY: displaySettings.toolbarY,
           },
         }),
       );
@@ -332,7 +336,7 @@ function BaseDetailViewer() {
       Notification.success(i18n('Saved'));
     } catch { /* silent */ }
     expandSaveBusyRef.current = false;
-  }, [base.docId, base.domainId, branch, displaySettings.indicatorX, displaySettings.indicatorY, expandDirty]);
+  }, [base.docId, base.domainId, branch, displaySettings.indicatorX, displaySettings.indicatorY, displaySettings.toolbarOpen, displaySettings.toolbarX, displaySettings.toolbarY, expandDirty]);
 
   // Ctrl+S / Cmd+S saves expand state
   useEffect(() => {
@@ -591,6 +595,19 @@ function BaseDetailViewer() {
           }}
         />
       ) : null}
+      <FloatingToolbar
+        open={displaySettings.toolbarOpen}
+        posX={displaySettings.toolbarX}
+        posY={displaySettings.toolbarY}
+        onOpenChange={(v) => {
+          setDisplaySettings((prev) => ({ ...prev, toolbarOpen: v }));
+          setExpandDirty(true);
+        }}
+        onPosChange={(x, y) => {
+          setDisplaySettings((prev) => ({ ...prev, toolbarX: x, toolbarY: y }));
+          setExpandDirty(true);
+        }}
+      />
       {explorerScopeRootId ? (
         <BaseDetailExplorer
           searchQuery={treeSearchQuery}

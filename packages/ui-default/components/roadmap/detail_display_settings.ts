@@ -12,6 +12,12 @@ export type RoadmapDetailDisplaySettings = {
   indicatorX: number;
   /** Y position of the status indicator (px from top). */
   indicatorY: number;
+  /** Whether the floating toolbar is open. */
+  toolbarOpen: boolean;
+  /** X position of the floating toolbar (px from right). */
+  toolbarX: number;
+  /** Y position of the floating toolbar (px from top). */
+  toolbarY: number;
 };
 
 export const defaultRoadmapDetailDisplaySettings = (): RoadmapDetailDisplaySettings => ({
@@ -22,6 +28,9 @@ export const defaultRoadmapDetailDisplaySettings = (): RoadmapDetailDisplaySetti
   showExpandSaveIndicator: true,
   indicatorX: 320,
   indicatorY: 72,
+  toolbarOpen: false,
+  toolbarX: 320,
+  toolbarY: 108,
 });
 
 function readCommonDisplaySettings(raw: Record<string, unknown>): RoadmapDetailDisplaySettings {
@@ -33,6 +42,9 @@ function readCommonDisplaySettings(raw: Record<string, unknown>): RoadmapDetailD
     showExpandSaveIndicator: raw.showExpandSaveIndicator !== false,
     indicatorX: typeof raw.indicatorX === 'number' ? raw.indicatorX : 320,
     indicatorY: typeof raw.indicatorY === 'number' ? raw.indicatorY : 72,
+    toolbarOpen: raw.toolbarOpen === true,
+    toolbarX: typeof raw.toolbarX === 'number' ? raw.toolbarX : 320,
+    toolbarY: typeof raw.toolbarY === 'number' ? raw.toolbarY : 108,
   };
 }
 
@@ -69,7 +81,10 @@ export function roadmapDetailDisplaySettingsEqual(
     && a.showAiTutor === b.showAiTutor
     && a.showExpandSaveIndicator === b.showExpandSaveIndicator
     && a.indicatorX === b.indicatorX
-    && a.indicatorY === b.indicatorY;
+    && a.indicatorY === b.indicatorY
+    && a.toolbarOpen === b.toolbarOpen
+    && a.toolbarX === b.toolbarX
+    && a.toolbarY === b.toolbarY;
 }
 
 export function buildRoadmapNodeProblemCountMap(
