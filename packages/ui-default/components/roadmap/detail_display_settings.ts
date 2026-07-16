@@ -8,6 +8,10 @@ export type RoadmapDetailDisplaySettings = {
   showAiTutor: boolean;
   /** Show the floating expand-state save indicator in detail view. */
   showExpandSaveIndicator: boolean;
+  /** X position of the status indicator (px from right). */
+  indicatorX: number;
+  /** Y position of the status indicator (px from top). */
+  indicatorY: number;
 };
 
 export const defaultRoadmapDetailDisplaySettings = (): RoadmapDetailDisplaySettings => ({
@@ -16,19 +20,27 @@ export const defaultRoadmapDetailDisplaySettings = (): RoadmapDetailDisplaySetti
   showNodeCardTimestamps: false,
   showAiTutor: true,
   showExpandSaveIndicator: true,
+  indicatorX: 320,
+  indicatorY: 72,
 });
+
+function readCommonDisplaySettings(raw: Record<string, unknown>): RoadmapDetailDisplaySettings {
+  return {
+    showProblemCount: Boolean(raw.showProblemCount),
+    showNodeNumber: Boolean(raw.showNodeNumber),
+    showNodeCardTimestamps: Boolean(raw.showNodeCardTimestamps),
+    showAiTutor: raw.showAiTutor !== false,
+    showExpandSaveIndicator: raw.showExpandSaveIndicator !== false,
+    indicatorX: typeof raw.indicatorX === 'number' ? raw.indicatorX : 320,
+    indicatorY: typeof raw.indicatorY === 'number' ? raw.indicatorY : 72,
+  };
+}
 
 export function readRoadmapDetailDisplaySettings(): RoadmapDetailDisplaySettings {
   const raw =
     (typeof window !== 'undefined' && (window as any).UiContext?.roadmapDetailUiPrefs) || null;
   if (!raw || typeof raw !== 'object') return defaultRoadmapDetailDisplaySettings();
-  return {
-    showProblemCount: Boolean((raw as Record<string, unknown>).showProblemCount),
-    showNodeNumber: Boolean((raw as Record<string, unknown>).showNodeNumber),
-    showNodeCardTimestamps: Boolean((raw as Record<string, unknown>).showNodeCardTimestamps),
-    showAiTutor: (raw as Record<string, unknown>).showAiTutor !== false,
-    showExpandSaveIndicator: (raw as Record<string, unknown>).showExpandSaveIndicator !== false,
-  };
+  return readCommonDisplaySettings(raw as Record<string, unknown>);
 }
 
 /** Editor canvas display prefs persisted on the roadmap document (per branch). */
@@ -36,13 +48,7 @@ export function readRoadmapEditorDisplaySettings(): RoadmapDetailDisplaySettings
   const raw =
     (typeof window !== 'undefined' && (window as any).UiContext?.roadmapEditorUiPrefs) || null;
   if (!raw || typeof raw !== 'object') return defaultRoadmapDetailDisplaySettings();
-  return {
-    showProblemCount: Boolean((raw as Record<string, unknown>).showProblemCount),
-    showNodeNumber: Boolean((raw as Record<string, unknown>).showNodeNumber),
-    showNodeCardTimestamps: Boolean((raw as Record<string, unknown>).showNodeCardTimestamps),
-    showAiTutor: (raw as Record<string, unknown>).showAiTutor !== false,
-    showExpandSaveIndicator: (raw as Record<string, unknown>).showExpandSaveIndicator !== false,
-  };
+  return readCommonDisplaySettings(raw as Record<string, unknown>);
 }
 
 export function editorDisplaySettingsFromDoc(
@@ -50,13 +56,7 @@ export function editorDisplaySettingsFromDoc(
 ): RoadmapDetailDisplaySettings {
   const raw = doc?.editorUi;
   if (!raw || typeof raw !== 'object') return defaultRoadmapDetailDisplaySettings();
-  return {
-    showProblemCount: Boolean(raw.showProblemCount),
-    showNodeNumber: Boolean(raw.showNodeNumber),
-    showNodeCardTimestamps: Boolean(raw.showNodeCardTimestamps),
-    showAiTutor: raw.showAiTutor !== false,
-    showExpandSaveIndicator: raw.showExpandSaveIndicator !== false,
-  };
+  return readCommonDisplaySettings(raw as Record<string, unknown>);
 }
 
 export function roadmapDetailDisplaySettingsEqual(
@@ -67,7 +67,9 @@ export function roadmapDetailDisplaySettingsEqual(
     && a.showNodeNumber === b.showNodeNumber
     && a.showNodeCardTimestamps === b.showNodeCardTimestamps
     && a.showAiTutor === b.showAiTutor
-    && a.showExpandSaveIndicator === b.showExpandSaveIndicator;
+    && a.showExpandSaveIndicator === b.showExpandSaveIndicator
+    && a.indicatorX === b.indicatorX
+    && a.indicatorY === b.indicatorY;
 }
 
 export function buildRoadmapNodeProblemCountMap(
