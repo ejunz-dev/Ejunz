@@ -8,6 +8,8 @@ export function sanitizeBaseDetailUiPrefs(raw: unknown): Record<string, boolean>
     if (typeof o.showProblemCount === 'boolean') out.showProblemCount = o.showProblemCount;
     if (typeof o.showNodeNumber === 'boolean') out.showNodeNumber = o.showNodeNumber;
     if (typeof o.showNodeCardTimestamps === 'boolean') out.showNodeCardTimestamps = o.showNodeCardTimestamps;
+    if (typeof o.showAiTutor === 'boolean') out.showAiTutor = o.showAiTutor;
+    if (typeof o.showExpandSaveIndicator === 'boolean') out.showExpandSaveIndicator = o.showExpandSaveIndicator;
     return out;
 }
 

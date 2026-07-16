@@ -151,6 +151,48 @@ export function RoadmapDetailSettingsPanel({
               })}
             />
           </label>
+          <label className="roadmap-detail-settings__row">
+            <div className="roadmap-detail-settings__row-text">
+              <span className="roadmap-detail-settings__row-label">
+                {i18n('显示 AI 导师')}
+              </span>
+              <span className="roadmap-detail-settings__row-desc">
+                {i18n('在页面右下角显示浮动 AI 导师入口')}
+              </span>
+            </div>
+            <input
+              type="checkbox"
+              className="roadmap-detail-settings__toggle"
+              checked={draft.showAiTutor}
+              disabled={saving}
+              onChange={(e) => setDraft({
+                ...defaultRoadmapDetailDisplaySettings(),
+                ...draft,
+                showAiTutor: e.currentTarget.checked,
+              })}
+            />
+          </label>
+          <label className="roadmap-detail-settings__row">
+            <div className="roadmap-detail-settings__row-text">
+              <span className="roadmap-detail-settings__row-label">
+                {i18n('显示保存状态指示')}
+              </span>
+              <span className="roadmap-detail-settings__row-desc">
+                {i18n('在页面右上角显示树展开状态的保存指示器')}
+              </span>
+            </div>
+            <input
+              type="checkbox"
+              className="roadmap-detail-settings__toggle"
+              checked={draft.showExpandSaveIndicator}
+              disabled={saving}
+              onChange={(e) => setDraft({
+                ...defaultRoadmapDetailDisplaySettings(),
+                ...draft,
+                showExpandSaveIndicator: e.currentTarget.checked,
+              })}
+            />
+          </label>
         </div>
         <div className="roadmap-detail-settings__actions">
           <button

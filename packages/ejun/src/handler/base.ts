@@ -763,6 +763,16 @@ class BaseDetailHandler extends Handler {
             this.user._id,
         );
 
+        // Load per-user expand state (same collection as base editor)
+        let baseExpandState: string[] = [];
+        let baseExpandStateLoaded = false;
+        try {
+            const coll = this.ctx.db.db.collection('base.userExpand');
+            const doc = await coll.findOne({ domainId, baseDocId: this.base!.docId, uid: this.user._id });
+            baseExpandStateLoaded = Array.isArray(doc?.expandedNodeIds);
+            baseExpandState = baseExpandStateLoaded ? doc.expandedNodeIds : [];
+        } catch { /* ignore */ }
+
         this.response.body = {
             base: {
                 ...this.base,
@@ -772,9 +782,11 @@ class BaseDetailHandler extends Handler {
             gitStatus,
             currentBranch: requestedBranch,
             branches,
-            nodeCardsMap, 
+            nodeCardsMap,
             files: this.base.files || [],
             baseDetailUiPrefs,
+            baseExpandState,
+            baseExpandStateLoaded,
         };
     }
 

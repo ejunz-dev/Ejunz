@@ -1,5 +1,5 @@
 import $ from 'jquery';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
@@ -88,10 +88,20 @@ function BaseDetailViewer() {
   const [displaySettingsSaving, setDisplaySettingsSaving] = useState(false);
   const [learnBusy, setLearnBusy] = useState(false);
   const [editorBusy, setEditorBusy] = useState(false);
+  const [expandDirty, setExpandDirty] = useState(false);
+  const expandSaveBusyRef = useRef(false);
+  const expandedSnapshotRef = useRef<Set<string> | null>(null);
   const title = base.title?.trim() || String(i18n('Knowledge Base'));
   const branch = base.currentBranch || 'main';
   const nodes = base.nodes || [];
   const edges = base.edges || [];
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
+    const fromContext = (window as any).UiContext?.baseExpandState;
+    const loaded = (window as any).UiContext?.baseExpandStateLoaded;
+    if (Array.isArray(fromContext) && loaded && fromContext.length > 0) return new Set(fromContext);
+    // Default: expand all nodes that haven't been explicitly collapsed
+    return new Set((base.nodes || []).filter((n: BaseNode) => n.expanded !== false).map((n: BaseNode) => n.id));
+  });
   const nodeIds = useMemo(() => nodes.map((node) => node.id), [nodes]);
 
   const cardExpandNodeIds = useMemo(() => {
@@ -279,6 +289,40 @@ function BaseDetailViewer() {
       setDisplaySettingsSaving(false);
     }
   }, [base.docId, base.domainId, branch]);
+
+  const handleExpandedNodesChange = useCallback((nodeIds: Set<string>) => {
+    // Mark dirty — user must save manually (Ctrl+S / Cmd+S)
+    setExpandedNodes(nodeIds);
+    expandedSnapshotRef.current = nodeIds;
+    setExpandDirty(true);
+  }, []);
+
+  const handleSaveExpandState = useCallback(async () => {
+    const nodeIds = expandedSnapshotRef.current;
+    if (!nodeIds || expandSaveBusyRef.current) return;
+    expandSaveBusyRef.current = true;
+    try {
+      await request.post(domainApiPath('/base/expand-state', base.domainId || 'system'), {
+        docId: Number(base.docId),
+        expandedNodeIds: Array.from(nodeIds),
+      });
+      setExpandDirty(false);
+      Notification.success(i18n('展开状态已保存'));
+    } catch { /* silent */ }
+    expandSaveBusyRef.current = false;
+  }, [base.docId, base.domainId]);
+
+  // Ctrl+S / Cmd+S saves expand state
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        void handleSaveExpandState();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [handleSaveExpandState]);
 
   // Clear search highlights on any click outside
   useEffect(() => {
@@ -520,6 +564,19 @@ function BaseDetailViewer() {
         onSearchClick={() => setSemanticSearchOpen(true)}
         searchActive={semanticSearchOpen}
       />
+      {displaySettings.showExpandSaveIndicator ? (
+        <div className="base-detail-save-indicator-wrap">
+          <div
+            className={`base-detail-save-indicator${expandDirty ? ' is-dirty' : ' is-clean'}`}
+            title={expandDirty ? i18n('树展开状态有未保存的更改，按 Ctrl+S 保存') : i18n('树展开状态已保存')}
+          >
+            <span className="base-detail-save-indicator__dot" />
+            <span className="base-detail-save-indicator__label">
+              {expandDirty ? i18n('未保存') : i18n('已保存')}
+            </span>
+          </div>
+        </div>
+      ) : null}
       {explorerScopeRootId ? (
         <BaseDetailExplorer
           searchQuery={treeSearchQuery}
@@ -559,6 +616,8 @@ function BaseDetailViewer() {
               scrollToCardId={scrollToCardId}
               onSelectCard={handleSelectCardInContent}
               onSelectNode={handleSelectNodeInContent}
+              expandedNodes={expandedNodes}
+              onExpandedNodesChange={handleExpandedNodesChange}
             />
           </main>
         ) : (
@@ -577,9 +636,11 @@ function BaseDetailViewer() {
         selectedNodeId={selectedNodeId}
         selectedCardId={selectedCard?.docId || null}
         displaySettings={displaySettings}
+        expandedNodes={expandedNodes}
         onClose={() => setTreeDrawerOpen(false)}
         onSelectNode={handleSelectNode}
         onSelectCard={handleSelectCardInStructure}
+        onExpandedNodesChange={handleExpandedNodesChange}
       />
       <BaseDetailCardDrawer
         open={!!selectedCard}
@@ -589,19 +650,21 @@ function BaseDetailViewer() {
         baseDocId={base.docId}
         domainId={base.domainId}
       />
-      <BaseDetailAiTutor
-        nodes={nodes}
-        edges={edges}
-        nodeCardsMap={nodeCardsMap}
-        docTitle={title}
-        branch={branch}
-        docDescription={base.content}
-        selectedNode={selectedNode}
-        selectedCard={selectedCard}
-        open={aiTutorOpen}
-        onOpenChange={setAiTutorOpen}
-        docId={base.docId}
-      />
+      {displaySettings.showAiTutor ? (
+        <BaseDetailAiTutor
+          nodes={nodes}
+          edges={edges}
+          nodeCardsMap={nodeCardsMap}
+          docTitle={title}
+          branch={branch}
+          docDescription={base.content}
+          selectedNode={selectedNode}
+          selectedCard={selectedCard}
+          open={aiTutorOpen}
+          onOpenChange={setAiTutorOpen}
+          docId={base.docId}
+        />
+      ) : null}
       <RoadmapDetailSettingsPanel
         open={settingsOpen}
         settings={displaySettings}

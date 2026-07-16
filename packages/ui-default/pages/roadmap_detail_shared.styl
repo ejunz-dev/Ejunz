@@ -2169,3 +2169,82 @@ mark.search-highlight
   gap: 8px
   margin-top: auto
   padding-top: 16px
+
+// Floating save status indicator (right top, fixed like notification)
+.base-detail-save-indicator-wrap
+  position: fixed
+  right: 285px
+  top: 72px
+  z-index: 130
+  display: flex
+  pointer-events: none
+
+  +mobile()
+    right: 100px
+    top: 64px
+
+.base-detail-save-indicator
+  pointer-events: auto
+  display: inline-flex
+  align-items: center
+  gap: 6px
+  padding: 4px 10px
+  border: none
+  border-radius: 999px
+  background: $roadmap-tutor-bar-bg
+  color: #ffffff
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18)
+  font-family: inherit
+  font-size: 12px
+  white-space: nowrap
+  transition: color 0.2s ease
+
+.base-detail-save-indicator__dot
+  width: 8px
+  height: 8px
+  border-radius: 50%
+  flex-shrink: 0
+  transition: background 0.3s ease
+
+  .base-detail-save-indicator.is-clean &
+    background: #4caf50
+
+  .base-detail-save-indicator.is-dirty &
+    background: #ffc107
+
+.base-detail-save-indicator__label
+  font-size: 12px
+  font-weight: 500
+
+.base-detail-save-indicator
+  pointer-events: auto
+  display: inline-flex
+  align-items: center
+  gap: 8px
+  padding: 8px 14px
+  border: none
+  border-radius: 999px
+  background: $roadmap-tutor-bar-bg
+  color: #ffffff
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28)
+  font-family: inherit
+  font-size: 13px
+  white-space: nowrap
+  transition: color 0.2s ease
+
+.base-detail-save-indicator__dot
+  width: 10px
+  height: 10px
+  border-radius: 50%
+  flex-shrink: 0
+  transition: background 0.3s ease
+
+  .base-detail-save-indicator.is-clean &
+    background: #4caf50  // green
+
+  .base-detail-save-indicator.is-dirty &
+    background: #ffc107  // yellow/amber
+
+.base-detail-save-indicator__label
+  font-size: 13px
+  font-weight: 500
