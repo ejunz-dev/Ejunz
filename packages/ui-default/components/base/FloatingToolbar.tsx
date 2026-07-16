@@ -97,7 +97,7 @@ export function FloatingToolbar({
 
   return (
     <div className="base-detail-toolbar-wrap" ref={wrapRef}>
-      <div className={`base-detail-toolbar-menu${open ? ' is-visible' : ''}`}>
+      <div className={`base-detail-toolbar-menu base-detail-toolbar-menu--top${open ? ' is-visible' : ''}`}>
         <button
           type="button"
           className="base-detail-toolbar-item"
@@ -118,7 +118,7 @@ export function FloatingToolbar({
       >
         <span className="base-detail-toolbar-trigger__dot" />
       </div>
-      <div className={`base-detail-toolbar-menu${open ? ' is-visible' : ''}`}>
+      <div className={`base-detail-toolbar-menu base-detail-toolbar-menu--bottom${open ? ' is-visible' : ''}`}>
         <button
           type="button"
           className="base-detail-toolbar-item"
