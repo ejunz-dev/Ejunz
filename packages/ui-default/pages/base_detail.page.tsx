@@ -14,6 +14,7 @@ import { BaseDetailSemanticSearch, type SemanticSearchItem } from 'vj/components
 import { BaseDetailEmbeddedRoadmapViewer } from 'vj/components/base/BaseDetailEmbeddedRoadmapViewer';
 import { BaseDetailNodeContent } from 'vj/components/base/BaseDetailNodeContent';
 import { BaseDetailTreeDrawer } from 'vj/components/base/BaseDetailSidebar';
+import { StatusIndicator } from 'vj/components/base/StatusIndicator';
 import { RoadmapDetailSettingsPanel } from 'vj/components/roadmap/RoadmapDetailSettingsPanel';
 import { getRoadmapChildGraph, getSortedNodeChildren, nodeDisplayLabel, collectNodePathFromRoot, findCardByDocId, findCardHostNodeId, findRoadmapContainerAncestor, getPrimaryCardForNode, isRoadmapCanvasNodeId } from 'vj/components/base/detail_tree';
 import { isTypoImagePreviewOverlay } from 'vj/components/base/typo_image_preview';
@@ -559,17 +560,7 @@ function BaseDetailViewer() {
         searchActive={semanticSearchOpen}
       />
       {displaySettings.showExpandSaveIndicator ? (
-        <div className="base-detail-save-indicator-wrap">
-          <div
-            className={`base-detail-save-indicator${expandDirty ? ' is-dirty' : ' is-clean'}`}
-            title={expandDirty ? i18n('树展开状态有未保存的更改，按 Ctrl+S 保存') : i18n('树展开状态已保存')}
-          >
-            <span className="base-detail-save-indicator__dot" />
-            <span className="base-detail-save-indicator__label">
-              {expandDirty ? i18n('未保存') : i18n('已保存')}
-            </span>
-          </div>
-        </div>
+        <StatusIndicator dirty={expandDirty} />
       ) : null}
       {explorerScopeRootId ? (
         <BaseDetailExplorer
