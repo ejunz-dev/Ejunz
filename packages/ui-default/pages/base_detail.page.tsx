@@ -15,7 +15,7 @@ import { BaseDetailEmbeddedRoadmapViewer } from 'vj/components/base/BaseDetailEm
 import { BaseDetailNodeContent } from 'vj/components/base/BaseDetailNodeContent';
 import { BaseDetailTreeDrawer } from 'vj/components/base/BaseDetailSidebar';
 import { RoadmapDetailSettingsPanel } from 'vj/components/roadmap/RoadmapDetailSettingsPanel';
-import { cardDisplayLabel, getRoadmapChildGraph, getSortedNodeChildren, nodeDisplayLabel, collectNodePathFromRoot, findCardByDocId, findCardHostNodeId, findRoadmapContainerAncestor, getPrimaryCardForNode, isRoadmapCanvasNodeId } from 'vj/components/base/detail_tree';
+import { getRoadmapChildGraph, getSortedNodeChildren, nodeDisplayLabel, collectNodePathFromRoot, findCardByDocId, findCardHostNodeId, findRoadmapContainerAncestor, getPrimaryCardForNode, isRoadmapCanvasNodeId } from 'vj/components/base/detail_tree';
 import { isTypoImagePreviewOverlay } from 'vj/components/base/typo_image_preview';
 import {
   initialBaseDetailSelectedNodeId,
@@ -354,21 +354,15 @@ function BaseDetailViewer() {
   }, [handleCloseCardDrawer, selectedCard]);
 
   const headerTitle = useMemo(() => {
-    if (selectedCard) return cardDisplayLabel(selectedCard);
     if (canvasFocusedNodeId) {
       const canvasNode = nodes.find((node) => node.id === canvasFocusedNodeId);
       if (canvasNode) return nodeDisplayLabel(canvasNode);
     }
     if (selectedNode) return nodeDisplayLabel(selectedNode);
     return title;
-  }, [canvasFocusedNodeId, nodes, selectedCard, selectedNode, title]);
+  }, [canvasFocusedNodeId, nodes, selectedNode, title]);
 
   const headerDescription = useMemo(() => {
-    if (selectedCard) {
-      const hostId = findCardHostNodeId(selectedCard.docId, nodeCardsMap);
-      const hostNode = hostId ? nodes.find((node) => node.id === hostId) : null;
-      if (hostNode) return nodeDisplayLabel(hostNode);
-    }
     if (selectedNode) {
       if (canvasFocusedNodeId && roadmapContainerId) {
         const container = nodes.find((node) => node.id === roadmapContainerId);
@@ -377,7 +371,7 @@ function BaseDetailViewer() {
       return title;
     }
     return base.content;
-  }, [base.content, canvasFocusedNodeId, nodeCardsMap, nodes, roadmapContainerId, selectedCard, selectedNode, title]);
+  }, [base.content, canvasFocusedNodeId, nodeCardsMap, nodes, roadmapContainerId, selectedNode, title]);
 
   // Collect all descendant node ids recursively
   const collectDescendantNodeIds = useCallback((rootId: string): string[] => {
