@@ -49,19 +49,20 @@ export function BaseDetailTreeDrawer({
     [nodeCardsMap],
   );
   const { visible, closing } = useDrawerTransition(open);
+  const drawWRef = useRef(drawerWidth);
+  drawWRef.current = drawerWidth;
   const dragRef = useRef<{ startX: number; startW: number } | null>(null);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     if (e.button !== 0) return;
-    dragRef.current = { startX: e.clientX, startW: drawerWidth };
+    dragRef.current = { startX: e.clientX, startW: drawWRef.current };
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }, [drawerWidth]);
+  }, []);
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     const drag = dragRef.current;
     if (!drag) return;
-    const newW = Math.max(200, Math.min(800, drag.startW + (e.clientX - drag.startX)));
-    onDrawerWidthChange(newW);
+    onDrawerWidthChange(Math.max(200, Math.min(window.innerWidth - 40, drag.startW + (e.clientX - drag.startX))));
   }, [onDrawerWidthChange]);
 
   const onPointerUp = useCallback(() => {

@@ -179,6 +179,9 @@ export function BaseDetailCardDrawer({
   const contentRef = useRef<HTMLDivElement>(null);
   const lastCardRef = useRef<Card | null>(null);
   const { visible, closing } = useDrawerTransition(open);
+  const drawWRef = useRef(drawerWidth);
+  drawWRef.current = drawerWidth;
+  const dragRef = useRef<{ startX: number; startW: number } | null>(null);
   if (card) lastCardRef.current = card;
   const displayCard = card || lastCardRef.current;
   const title = displayCard ? cardDisplayLabel(displayCard) : '';
@@ -308,18 +311,16 @@ export function BaseDetailCardDrawer({
       />
       <aside className={`roadmap-detail-drawer${closing ? ' is-closing' : ''}`} style={{ width: drawerWidth }} aria-label={title}>
         <div className="roadmap-detail-drawer__resize-handle--left" onPointerDown={(e) => {
-          const dragSide = { startX: e.clientX, startW: drawerWidth };
-          const el = e.target as HTMLElement;
-          el.setPointerCapture(e.pointerId);
-          const onMove = (ev: PointerEvent) => {
-            if (!dragSide) return;
-            const w = Math.max(200, Math.min(800, dragSide.startW + (dragSide.startX - ev.clientX)));
-            onDrawerWidthChange(w);
-          };
-          const onUp = () => { dragSide.startX = 0; };
-          el.addEventListener('pointermove', onMove);
-          el.addEventListener('pointerup', onUp, { once: true });
-        }} />
+          dragRef.current = { startX: e.clientX, startW: drawWRef.current };
+          (e.target as HTMLElement).setPointerCapture(e.pointerId);
+        }}
+          onPointerMove={(e) => {
+            const drag = dragRef.current;
+            if (!drag) return;
+            onDrawerWidthChange(Math.max(200, Math.min(window.innerWidth - 40, drag.startW + (drag.startX - e.clientX))));
+          }}
+          onPointerUp={() => { dragRef.current = null; }}
+        />
         <div className="roadmap-detail-drawer__header">
           <div className="roadmap-detail-drawer__tabs" role="tablist" aria-label={title}>
             <button
