@@ -1,6 +1,7 @@
 import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
 import { request } from 'vj/utils';
+import { renderRoadmapMarkdown } from 'vj/components/roadmap/markdown_render';
 
 const page = new NamedPage('base_card_list', () => {
   // 从 UiContext 获取数据
@@ -188,34 +189,19 @@ const page = new NamedPage('base_card_list', () => {
       cardContentCache[String(card.docId)] = '<p style="color: #888;">暂无内容</p>';
       return;
     }
-    
+
     try {
-      // 渲染 markdown
-      const response = await fetch('/markdown', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: card.content || '',
-          inline: false,
-        }),
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to render markdown');
-      }
-      
-      let html = await response.text();
-      
+      // 渲染 markdown (客户端同步渲染)
+      let html = renderRoadmapMarkdown(card.content || '');
+
       // 预加载并缓存图片到本地
       html = await preloadAndCacheImages(html);
-      
+
       // 如果内容中有图片，等待所有图片加载完成
       const tempDiv = document.createElement('div');
       tempDiv.innerHTML = html;
       const images = tempDiv.querySelectorAll('img');
-      
+
       if (images.length > 0) {
         // 等待所有图片加载完成
         const imagePromises = Array.from(images).map(img => {
@@ -230,10 +216,10 @@ const page = new NamedPage('base_card_list', () => {
             }
           });
         });
-        
+
         await Promise.all(imagePromises);
       }
-      
+
       // 缓存渲染后的 HTML（包含本地 blob URL）
       cardContentCache[String(card.docId)] = html;
     } catch (error) {
@@ -497,38 +483,16 @@ const page = new NamedPage('base_card_list', () => {
       contentDiv.innerHTML = cardContentCache[cardIdStr];
       attachImagePreviewHandlers(contentDiv);
     } else if (card.content) {
-      // 缓存中没有，显示加载状态并渲染
-      contentDiv.innerHTML = '<p style="color: #999; text-align: center;">加载中...</p>';
-      
-      fetch('/markdown', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: card.content || '',
-          inline: false,
-        }),
-      })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error('Failed to render markdown');
-        }
-        return response.text();
-      })
-      .then(async html => {
-        // 预加载并缓存图片到本地
-        html = await preloadAndCacheImages(html);
-        // 缓存渲染结果
+      // 缓存中没有，直接渲染
+      const html = renderRoadmapMarkdown(card.content || '');
+      preloadAndCacheImages(html).then(cachedHtml => {
+        cardContentCache[cardIdStr] = cachedHtml;
+        contentDiv.innerHTML = cachedHtml;
+        attachImagePreviewHandlers(contentDiv);
+      }).catch(() => {
         cardContentCache[cardIdStr] = html;
         contentDiv.innerHTML = html;
         attachImagePreviewHandlers(contentDiv);
-      })
-      .catch(error => {
-        console.error('Failed to render markdown:', error);
-        const errorHtml = '<p style="color: #f44336;">加载内容失败</p>';
-        cardContentCache[cardIdStr] = errorHtml;
-        contentDiv.innerHTML = errorHtml;
       });
     } else {
       const emptyHtml = '<p style="color: #888;">暂无内容</p>';

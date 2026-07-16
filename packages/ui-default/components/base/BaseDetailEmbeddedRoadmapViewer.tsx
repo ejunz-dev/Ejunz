@@ -22,6 +22,7 @@ import {
 } from 'vj/components/roadmap/shared';
 import { RoadmapNodeDrawer } from 'vj/components/roadmap/RoadmapNodeDrawer';
 import { attachTypoImagePreviewHandlers, isTypoImagePreviewOverlay } from './typo_image_preview';
+import { renderRoadmapMarkdown } from '../roadmap/markdown_render';
 import { useRoadmapCanvasNodeScroll } from './url_sync';
 import {
   buildRoadmapNodeProblemCountMap,
@@ -171,32 +172,12 @@ export function BaseDetailEmbeddedRoadmapViewer({
       return undefined;
     }
 
-    let cancelled = false;
-    contentDiv.innerHTML = `<p>${i18n('Loading...')}</p>`;
+    const html = renderRoadmapMarkdown(markdown);
+    contentDiv.innerHTML = html;
+    $(contentDiv).trigger('vjContentNew');
+    attachTypoImagePreviewHandlers(contentDiv);
 
-    fetch('/markdown', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: markdown, inline: false }),
-    })
-      .then((response) => {
-        if (!response.ok) throw new Error('Failed to render markdown');
-        return response.text();
-      })
-      .then((html) => {
-        if (cancelled) return;
-        contentDiv.innerHTML = html;
-        $(contentDiv).trigger('vjContentNew');
-        attachTypoImagePreviewHandlers(contentDiv);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        contentDiv.innerHTML = `<p>${i18n('Roadmap markdown preview failed')}</p>`;
-      });
-
-    return () => {
-      cancelled = true;
-    };
+    return undefined;
   }, [selectedNode, selectedNodeId]);
 
   useEffect(() => {

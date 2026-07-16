@@ -143,6 +143,7 @@ import {
   type BaseDetailDisplaySettings,
 } from 'vj/components/base/detail_display_settings';
 import { useRoadmapPlugin } from './plugins/roadmap/useRoadmapPlugin';
+import { renderRoadmapMarkdown } from '../roadmap/markdown_render';
 import {
   RoadmapCanvasRailIcon,
   RoadmapSettingsRailIcon,
@@ -9157,17 +9158,8 @@ Reply with a JSON code block only for executable operations. For same-response f
         if (item.type === 'card' && item.content) {
           try {
             $status.text(i18n('Rendering: {0}', item.title));
-            
-            const htmlContent = await fetch('/markdown', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                text: item.content,
-                inline: false,
-              }),
-            }).then(res => res.text());
+
+            const htmlContent = renderRoadmapMarkdown(item.content);
             
             if (htmlContent) {
               

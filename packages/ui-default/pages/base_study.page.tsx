@@ -5,6 +5,7 @@ import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
 import { request } from 'vj/utils';
 import type { ProblemSingle } from 'ejun/src/interface';
+import { renderRoadmapMarkdown } from 'vj/components/roadmap/markdown_render';
 import ReactFlow, {
   Node,
   Edge,
@@ -432,7 +433,12 @@ function BaseStudy() {
     [units, selectedUnitNodeId],
   );
   const practiceCurrentProblem = selectedUnitForPractice?.problems[currentProblemIndex];
-  const [practiceStemHtml, setPracticeStemHtml] = useState('');
+  const practiceStemHtml = useMemo(
+    () => practiceCurrentProblem?.stem?.trim()
+      ? renderRoadmapMarkdown(practiceCurrentProblem.stem)
+      : '',
+    [practiceCurrentProblem?.stem, currentProblemIndex, selectedUnitNodeId],
+  );
 
   // 从 URL 获取 docId
   const docId = useMemo(() => {
@@ -510,30 +516,6 @@ function BaseStudy() {
     setSelectedAnswer(null);
     setShowAnswer(false);
   }, [currentProblemIndex]);
-
-  useEffect(() => {
-    const stem = practiceCurrentProblem?.stem;
-    if (!stem?.trim()) {
-      setPracticeStemHtml('');
-      return;
-    }
-    let cancelled = false;
-    fetch('/markdown', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: stem, inline: false }),
-    })
-      .then((r) => (r.ok ? r.text() : Promise.reject(new Error('markdown'))))
-      .then((h) => {
-        if (!cancelled) setPracticeStemHtml(h);
-      })
-      .catch(() => {
-        if (!cancelled) setPracticeStemHtml('');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [practiceCurrentProblem?.stem, currentProblemIndex, selectedUnitNodeId]);
 
   if (loading) {
     return (
