@@ -87,6 +87,40 @@ export function RoadmapDetailSettingsPanel({
         <p className="roadmap-detail-settings__hint">
           {i18n('Roadmap detail settings hint')}
         </p>
+        <div className="roadmap-detail-settings__actions">
+          <button
+            type="button"
+            className="roadmap-detail-settings__btn"
+            disabled={saving}
+            onClick={() => setDraft({
+              ...draft,
+              showProblemCount: true,
+              showNodeNumber: true,
+              showNodeCardTimestamps: true,
+              showAiTutor: true,
+              showExpandSaveIndicator: true,
+              showToolbar: true,
+            })}
+          >
+            {i18n('Select all')}
+          </button>
+          <button
+            type="button"
+            className="roadmap-detail-settings__btn"
+            disabled={saving}
+            onClick={() => setDraft({
+              ...draft,
+              showProblemCount: false,
+              showNodeNumber: false,
+              showNodeCardTimestamps: false,
+              showAiTutor: false,
+              showExpandSaveIndicator: false,
+              showToolbar: false,
+            })}
+          >
+            {i18n('Deselect all')}
+          </button>
+        </div>
         <div className="roadmap-detail-settings__list">
           <label className="roadmap-detail-settings__row">
             <div className="roadmap-detail-settings__row-text">
