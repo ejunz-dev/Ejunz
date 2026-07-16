@@ -842,6 +842,22 @@ button.roadmap-detail-backdrop.roadmap-detail-drawer-backdrop
   +mobile()
     width: min(100%, 420px)
 
+// Resize handle (right edge for left drawer, left edge for right drawer)
+.roadmap-detail-drawer__resize-handle,
+.roadmap-detail-drawer__resize-handle--left
+  position: absolute
+  top: 0
+  bottom: 0
+  width: 6px
+  cursor: col-resize
+  z-index: 5
+
+.roadmap-detail-drawer__resize-handle
+  right: 0
+
+.roadmap-detail-drawer__resize-handle--left
+  left: 0
+
 .roadmap-detail-drawer__header
   display: flex
   align-items: center

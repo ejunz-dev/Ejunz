@@ -16,6 +16,8 @@ export function sanitizeBaseDetailUiPrefs(raw: unknown): Record<string, unknown>
     if (typeof o.toolbarOpen === 'boolean') out.toolbarOpen = o.toolbarOpen;
     if (typeof o.toolbarX === 'number' && Number.isFinite(o.toolbarX)) out.toolbarX = o.toolbarX;
     if (typeof o.toolbarY === 'number' && Number.isFinite(o.toolbarY)) out.toolbarY = o.toolbarY;
+    if (typeof o.cardDrawerWidth === 'number' && Number.isFinite(o.cardDrawerWidth)) out.cardDrawerWidth = o.cardDrawerWidth;
+    if (typeof o.treeDrawerWidth === 'number' && Number.isFinite(o.treeDrawerWidth)) out.treeDrawerWidth = o.treeDrawerWidth;
     return out;
 }
 

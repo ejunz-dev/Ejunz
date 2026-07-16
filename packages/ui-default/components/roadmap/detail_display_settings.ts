@@ -20,6 +20,10 @@ export type RoadmapDetailDisplaySettings = {
   toolbarX: number;
   /** Y position of the floating toolbar (px from top). */
   toolbarY: number;
+  /** Width of the card detail drawer (px). */
+  cardDrawerWidth: number;
+  /** Width of the tree sidebar drawer (px). */
+  treeDrawerWidth: number;
 };
 
 export const defaultRoadmapDetailDisplaySettings = (): RoadmapDetailDisplaySettings => ({
@@ -34,6 +38,8 @@ export const defaultRoadmapDetailDisplaySettings = (): RoadmapDetailDisplaySetti
   toolbarOpen: false,
   toolbarX: 320,
   toolbarY: 108,
+  cardDrawerWidth: 420,
+  treeDrawerWidth: 320,
 });
 
 function readCommonDisplaySettings(raw: Record<string, unknown>): RoadmapDetailDisplaySettings {
@@ -49,65 +55,6 @@ function readCommonDisplaySettings(raw: Record<string, unknown>): RoadmapDetailD
     toolbarOpen: raw.toolbarOpen === true,
     toolbarX: typeof raw.toolbarX === 'number' ? raw.toolbarX : 320,
     toolbarY: typeof raw.toolbarY === 'number' ? raw.toolbarY : 108,
+    cardDrawerWidth: typeof raw.cardDrawerWidth === 'number' ? raw.cardDrawerWidth : 420,
+    treeDrawerWidth: typeof raw.treeDrawerWidth === 'number' ? raw.treeDrawerWidth : 320,
   };
-}
-
-export function readRoadmapDetailDisplaySettings(): RoadmapDetailDisplaySettings {
-  const raw =
-    (typeof window !== 'undefined' && (window as any).UiContext?.roadmapDetailUiPrefs) || null;
-  if (!raw || typeof raw !== 'object') return defaultRoadmapDetailDisplaySettings();
-  return readCommonDisplaySettings(raw as Record<string, unknown>);
-}
-
-/** Editor canvas display prefs persisted on the roadmap document (per branch). */
-export function readRoadmapEditorDisplaySettings(): RoadmapDetailDisplaySettings {
-  const raw =
-    (typeof window !== 'undefined' && (window as any).UiContext?.roadmapEditorUiPrefs) || null;
-  if (!raw || typeof raw !== 'object') return defaultRoadmapDetailDisplaySettings();
-  return readCommonDisplaySettings(raw as Record<string, unknown>);
-}
-
-export function editorDisplaySettingsFromDoc(
-  doc?: { editorUi?: Record<string, unknown> } | null,
-): RoadmapDetailDisplaySettings {
-  const raw = doc?.editorUi;
-  if (!raw || typeof raw !== 'object') return defaultRoadmapDetailDisplaySettings();
-  return readCommonDisplaySettings(raw as Record<string, unknown>);
-}
-
-export function roadmapDetailDisplaySettingsEqual(
-  a: RoadmapDetailDisplaySettings,
-  b: RoadmapDetailDisplaySettings,
-): boolean {
-  return a.showProblemCount === b.showProblemCount
-    && a.showNodeNumber === b.showNodeNumber
-    && a.showNodeCardTimestamps === b.showNodeCardTimestamps
-    && a.showAiTutor === b.showAiTutor
-    && a.showExpandSaveIndicator === b.showExpandSaveIndicator
-    && a.showToolbar === b.showToolbar
-    && a.indicatorX === b.indicatorX
-    && a.indicatorY === b.indicatorY
-    && a.toolbarOpen === b.toolbarOpen
-    && a.toolbarX === b.toolbarX
-    && a.toolbarY === b.toolbarY;
-}
-
-export function buildRoadmapNodeProblemCountMap(
-  nodes: Array<{ id: string; data?: { roadmapNodeType?: string } }>,
-  nodeCardsMap: Record<string, { problems?: unknown[] }[]>,
-): Map<string, number> {
-  const map = new Map<string, number>();
-  nodes.forEach((node) => {
-    if (!supportsRoadmapPracticeProblems(node.data?.roadmapNodeType)) {
-      map.set(node.id, 0);
-      return;
-    }
-    const cards = nodeCardsMap[node.id] || [];
-    const count = cards.reduce(
-      (sum, card) => sum + (card.problems || []).length,
-      0,
-    );
-    map.set(node.id, count);
-  });
-  return map;
-}

@@ -673,6 +673,11 @@ function BaseDetailViewer() {
         selectedCardId={selectedCard?.docId || null}
         displaySettings={displaySettings}
         expandedNodes={expandedNodes}
+        drawerWidth={displaySettings.treeDrawerWidth}
+        onDrawerWidthChange={(w) => {
+          setDisplaySettings((prev) => ({ ...prev, treeDrawerWidth: w }));
+          setExpandDirty(true);
+        }}
         onClose={() => setTreeDrawerOpen(false)}
         onSelectNode={handleSelectNode}
         onSelectCard={handleSelectCardInStructure}
@@ -685,6 +690,11 @@ function BaseDetailViewer() {
         highlightText={highlightText}
         baseDocId={base.docId}
         domainId={base.domainId}
+        drawerWidth={displaySettings.cardDrawerWidth}
+        onDrawerWidthChange={(w) => {
+          setDisplaySettings((prev) => ({ ...prev, cardDrawerWidth: w }));
+          setExpandDirty(true);
+        }}
       />
       {displaySettings.showAiTutor ? (
         <BaseDetailAiTutor

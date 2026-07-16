@@ -14,6 +14,7 @@ import {
 } from './BaseEditorCardIcons';
 import { useDrawerTransition } from './useDrawerTransition';
 import { attachTypoImagePreviewHandlers } from './typo_image_preview';
+import type { BaseDetailDisplaySettings } from './detail_display_settings';
 
 /**
  * Render an inline preview for a file-card inside the detail card drawer.
@@ -161,6 +162,8 @@ export function BaseDetailCardDrawer({
   highlightText,
   baseDocId,
   domainId,
+  drawerWidth,
+  onDrawerWidthChange,
 }: {
   open: boolean;
   card: Card | null;
@@ -168,6 +171,8 @@ export function BaseDetailCardDrawer({
   highlightText?: string | null;
   baseDocId?: string;
   domainId?: string;
+  drawerWidth: number;
+  onDrawerWidthChange: (w: number) => void;
 }) {
   const [tab, setTab] = useState<DrawerTab>('content');
   const [practiceBusy, setPracticeBusy] = useState(false);
@@ -301,7 +306,20 @@ export function BaseDetailCardDrawer({
         onClick={onClose}
         aria-label={i18n('Close')}
       />
-      <aside className={`roadmap-detail-drawer${closing ? ' is-closing' : ''}`} aria-label={title}>
+      <aside className={`roadmap-detail-drawer${closing ? ' is-closing' : ''}`} style={{ width: drawerWidth }} aria-label={title}>
+        <div className="roadmap-detail-drawer__resize-handle--left" onPointerDown={(e) => {
+          const dragSide = { startX: e.clientX, startW: drawerWidth };
+          const el = e.target as HTMLElement;
+          el.setPointerCapture(e.pointerId);
+          const onMove = (ev: PointerEvent) => {
+            if (!dragSide) return;
+            const w = Math.max(200, Math.min(800, dragSide.startW + (dragSide.startX - ev.clientX)));
+            onDrawerWidthChange(w);
+          };
+          const onUp = () => { dragSide.startX = 0; };
+          el.addEventListener('pointermove', onMove);
+          el.addEventListener('pointerup', onUp, { once: true });
+        }} />
         <div className="roadmap-detail-drawer__header">
           <div className="roadmap-detail-drawer__tabs" role="tablist" aria-label={title}>
             <button
