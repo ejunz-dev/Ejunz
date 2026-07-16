@@ -99,9 +99,14 @@ function BaseDetailViewer() {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
     const fromContext = (window as any).UiContext?.baseExpandState;
     const loaded = (window as any).UiContext?.baseExpandStateLoaded;
-    if (Array.isArray(fromContext) && loaded && fromContext.length > 0) return new Set(fromContext);
-    // Default: expand all nodes that haven't been explicitly collapsed
-    return new Set((base.nodes || []).filter((n: BaseNode) => n.expanded !== false).map((n: BaseNode) => n.id));
+    let s: Set<string>;
+    if (Array.isArray(fromContext) && loaded && fromContext.length > 0) {
+      s = new Set(fromContext);
+    } else {
+      s = new Set((base.nodes || []).filter((n: BaseNode) => n.expanded !== false).map((n: BaseNode) => n.id));
+    }
+    expandedSnapshotRef.current = s;
+    return s;
   });
   const nodeIds = useMemo(() => nodes.map((node) => node.id), [nodes]);
 
@@ -300,18 +305,34 @@ function BaseDetailViewer() {
 
   const handleSaveExpandState = useCallback(async () => {
     const nodeIds = expandedSnapshotRef.current;
-    if (!nodeIds || expandSaveBusyRef.current) return;
+    if (!expandDirty || expandSaveBusyRef.current) return;
     expandSaveBusyRef.current = true;
     try {
-      await request.post(domainApiPath('/base/expand-state', base.domainId || 'system'), {
-        docId: Number(base.docId),
-        expandedNodeIds: Array.from(nodeIds),
-      });
+      const promises: Promise<unknown>[] = [];
+      if (nodeIds) {
+        promises.push(
+          request.post(domainApiPath('/base/expand-state', base.domainId || 'system'), {
+            docId: Number(base.docId),
+            expandedNodeIds: Array.from(nodeIds),
+          }),
+        );
+      }
+      promises.push(
+        request.post(domainApiPath('/base/detail-ui-prefs', base.domainId || 'system'), {
+          docId: Number(base.docId),
+          branch,
+          displayPrefs: {
+            indicatorX: displaySettings.indicatorX,
+            indicatorY: displaySettings.indicatorY,
+          },
+        }),
+      );
+      await Promise.all(promises);
       setExpandDirty(false);
-      Notification.success(i18n('展开状态已保存'));
+      Notification.success(i18n('Saved'));
     } catch { /* silent */ }
     expandSaveBusyRef.current = false;
-  }, [base.docId, base.domainId]);
+  }, [base.docId, base.domainId, branch, displaySettings.indicatorX, displaySettings.indicatorY, expandDirty]);
 
   // Ctrl+S / Cmd+S saves expand state
   useEffect(() => {
@@ -560,7 +581,15 @@ function BaseDetailViewer() {
         searchActive={semanticSearchOpen}
       />
       {displaySettings.showExpandSaveIndicator ? (
-        <StatusIndicator dirty={expandDirty} />
+        <StatusIndicator
+          dirty={expandDirty}
+          posX={displaySettings.indicatorX}
+          posY={displaySettings.indicatorY}
+          onPosChange={(x, y) => {
+            setDisplaySettings((prev) => ({ ...prev, indicatorX: x, indicatorY: y }));
+            setExpandDirty(true);
+          }}
+        />
       ) : null}
       {explorerScopeRootId ? (
         <BaseDetailExplorer
