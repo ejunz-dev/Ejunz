@@ -19,6 +19,8 @@ export function readBaseDetailDisplaySettings(): BaseDetailDisplaySettings {
     showProblemCount: Boolean((raw as Record<string, unknown>).showProblemCount),
     showNodeNumber: Boolean((raw as Record<string, unknown>).showNodeNumber),
     showNodeCardTimestamps: Boolean((raw as Record<string, unknown>).showNodeCardTimestamps),
+    showAiTutor: (raw as Record<string, unknown>).showAiTutor !== false,
+    showExpandSaveIndicator: (raw as Record<string, unknown>).showExpandSaveIndicator !== false,
   };
 }
 

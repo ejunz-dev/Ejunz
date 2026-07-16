@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { i18n } from 'vj/utils';
 import type { BaseEdge, BaseNode, Card } from './types';
 import { BaseDetailTree } from './BaseDetailTree';
-import { collectDefaultExpandedNodeIds, getRootNodeIds } from './detail_tree';
+import { getRootNodeIds } from './detail_tree';
 import { useDrawerTransition } from './useDrawerTransition';
 
 import type { BaseDetailTreeVisibility } from './detail_tree_filter';
@@ -18,9 +18,11 @@ export function BaseDetailTreeDrawer({
   selectedCardId,
   treeVisibility,
   displaySettings,
+  expandedNodes,
   onClose,
   onSelectNode,
   onSelectCard,
+  onExpandedNodesChange,
 }: {
   open: boolean;
   nodes: BaseNode[];
@@ -30,15 +32,13 @@ export function BaseDetailTreeDrawer({
   selectedCardId?: string | null;
   treeVisibility?: BaseDetailTreeVisibility | null;
   displaySettings?: BaseDetailDisplaySettings | null;
+  expandedNodes: Set<string>;
   onClose: () => void;
   onSelectNode?: (nodeId: string) => void;
   onSelectCard?: (card: Card) => void;
+  onExpandedNodesChange?: (nodeIds: Set<string>) => void;
 }) {
   const rootNodeIds = useMemo(() => getRootNodeIds(nodes, edges), [nodes, edges]);
-  const initialExpandedNodeIds = useMemo(
-    () => collectDefaultExpandedNodeIds(nodes, edges),
-    [nodes, edges],
-  );
   const nodeCount = nodes.length;
   const cardCount = useMemo(
     () => Object.values(nodeCardsMap).reduce((sum, cards) => sum + cards.length, 0),
@@ -101,12 +101,13 @@ export function BaseDetailTreeDrawer({
             nodeCardsMap={nodeCardsMap}
             selectedNodeId={selectedNodeId}
             selectedCardId={selectedCardId}
-            initialExpandedNodeIds={initialExpandedNodeIds}
+            expandedNodes={expandedNodes}
             emptyMessage={String(i18n('Base detail tree empty'))}
             treeVisibility={treeVisibility}
             displaySettings={displaySettings}
             onSelectNode={onSelectNode}
             onSelectCard={onSelectCard}
+            onExpandedNodesChange={onExpandedNodesChange}
           />
         </div>
       </aside>
