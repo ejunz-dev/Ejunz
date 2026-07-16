@@ -5,6 +5,7 @@ import Mark from 'markdown-it-mark';
 import MergeCells from 'markdown-it-merge-cells';
 import TOC from 'markdown-it-table-of-contents';
 import Imsize from '../../../../backendlib/markdown-it-imsize';
+import Katex from '../../../../backendlib/markdown-it-katex';
 import { Media } from '../../../../backendlib/markdown-it-media';
 import { xssProtector } from '../../../../backendlib/markdown-it-xss';
 import { RoadmapButton } from './markdown-it-roadmap-button';
@@ -26,6 +27,7 @@ function getRoadmapMarkdownRenderer(): MarkdownIt {
   mdit.use(Imsize);
   mdit.use(Anchor);
   mdit.use(TOC);
+  mdit.use(Katex);
   mdit.use(MergeCells);
   mdit.use(RoadmapButton);
   mdit.use(xssProtector);
@@ -33,9 +35,10 @@ function getRoadmapMarkdownRenderer(): MarkdownIt {
   return mdit;
 }
 
-/** Client-side markdown render — same plugin stack as md-editor (mdeditor.ts), including @button on roadmap pages. */
-export function renderRoadmapMarkdown(text: string): string {
+/** Client-side markdown render — full plugin stack matching server renderer + @button support. */
+export function renderRoadmapMarkdown(text: string, inline = false): string {
   const trimmed = String(text || '').trim();
   if (!trimmed) return '';
-  return getRoadmapMarkdownRenderer().render(trimmed);
+  const md = getRoadmapMarkdownRenderer();
+  return inline ? md.renderInline(trimmed) : md.render(trimmed);
 }
