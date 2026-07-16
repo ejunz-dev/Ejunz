@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { i18n } from 'vj/utils';
 import type { BaseEdge, BaseNode, Card } from './types';
@@ -19,6 +19,8 @@ export function BaseDetailTreeDrawer({
   treeVisibility,
   displaySettings,
   expandedNodes,
+  drawerWidth,
+  onDrawerWidthChange,
   onClose,
   onSelectNode,
   onSelectCard,
@@ -33,6 +35,8 @@ export function BaseDetailTreeDrawer({
   treeVisibility?: BaseDetailTreeVisibility | null;
   displaySettings?: BaseDetailDisplaySettings | null;
   expandedNodes: Set<string>;
+  drawerWidth: number;
+  onDrawerWidthChange: (w: number) => void;
   onClose: () => void;
   onSelectNode?: (nodeId: string) => void;
   onSelectCard?: (card: Card) => void;
@@ -45,6 +49,24 @@ export function BaseDetailTreeDrawer({
     [nodeCardsMap],
   );
   const { visible, closing } = useDrawerTransition(open);
+  const dragRef = useRef<{ startX: number; startW: number } | null>(null);
+
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    dragRef.current = { startX: e.clientX, startW: drawerWidth };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }, [drawerWidth]);
+
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const newW = Math.max(200, Math.min(800, drag.startW + (e.clientX - drag.startX)));
+    onDrawerWidthChange(newW);
+  }, [onDrawerWidthChange]);
+
+  const onPointerUp = useCallback(() => {
+    dragRef.current = null;
+  }, []);
 
   React.useEffect(() => {
     if (!visible || closing) return undefined;
@@ -67,9 +89,11 @@ export function BaseDetailTreeDrawer({
       />
       <aside
         className={`roadmap-detail-drawer roadmap-detail-drawer--left${closing ? ' is-closing' : ''}`}
+        style={{ width: drawerWidth }}
         aria-label={String(i18n('Document Structure'))}
         onClick={(e) => e.stopPropagation()}
       >
+        <div className="roadmap-detail-drawer__resize-handle" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} />
         <div className="roadmap-detail-drawer__header">
           <div className="roadmap-detail-drawer__tabs" role="tablist">
             <span

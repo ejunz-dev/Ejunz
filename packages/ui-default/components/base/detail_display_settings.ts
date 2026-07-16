@@ -28,6 +28,12 @@ export function readBaseDetailDisplaySettings(): BaseDetailDisplaySettings {
     toolbarOpen: r.toolbarOpen === true,
     toolbarX: typeof r.toolbarX === 'number' ? r.toolbarX : 320,
     toolbarY: typeof r.toolbarY === 'number' ? r.toolbarY : 108,
+    cardDrawerWidth: typeof r.cardDrawerWidth === 'number' ? r.cardDrawerWidth : 420,
+    treeDrawerWidth: typeof r.treeDrawerWidth === 'number' ? r.treeDrawerWidth : 320,
+    indicatorY: typeof r.indicatorY === 'number' ? r.indicatorY : 72,
+    toolbarOpen: r.toolbarOpen === true,
+    toolbarX: typeof r.toolbarX === 'number' ? r.toolbarX : 320,
+    toolbarY: typeof r.toolbarY === 'number' ? r.toolbarY : 108,
   };
 }
 
