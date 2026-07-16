@@ -12,6 +12,9 @@ export function sanitizeBaseDetailUiPrefs(raw: unknown): Record<string, unknown>
     if (typeof o.showExpandSaveIndicator === 'boolean') out.showExpandSaveIndicator = o.showExpandSaveIndicator;
     if (typeof o.indicatorX === 'number' && Number.isFinite(o.indicatorX)) out.indicatorX = o.indicatorX;
     if (typeof o.indicatorY === 'number' && Number.isFinite(o.indicatorY)) out.indicatorY = o.indicatorY;
+    if (typeof o.toolbarOpen === 'boolean') out.toolbarOpen = o.toolbarOpen;
+    if (typeof o.toolbarX === 'number' && Number.isFinite(o.toolbarX)) out.toolbarX = o.toolbarX;
+    if (typeof o.toolbarY === 'number' && Number.isFinite(o.toolbarY)) out.toolbarY = o.toolbarY;
     return out;
 }
 
