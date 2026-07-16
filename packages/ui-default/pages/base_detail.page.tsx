@@ -607,6 +607,8 @@ function BaseDetailViewer() {
           setDisplaySettings((prev) => ({ ...prev, toolbarX: x, toolbarY: y }));
           setExpandDirty(true);
         }}
+        onTreeOpen={() => setTreeDrawerOpen(true)}
+        onSearchOpen={() => setSemanticSearchOpen(true)}
       />
       {explorerScopeRootId ? (
         <BaseDetailExplorer
