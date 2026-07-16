@@ -71,8 +71,11 @@ export function FloatingToolbar({
         const y = parseInt(wrap.style.top, 10) || posY;
         onPosChange(Math.max(10, x), Math.max(5, y));
       }
+    } else {
+      // Click without drag → toggle
+      onOpenChange(!open);
     }
-  }, [onPosChange, posX, posY]);
+  }, [onPosChange, onOpenChange, open, posX, posY]);
 
   return (
     <div className="base-detail-toolbar-wrap" ref={wrapRef}>
@@ -82,7 +85,6 @@ export function FloatingToolbar({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        onClick={() => { if (!movedRef.current) onOpenChange(!open); }}
       >
         <span className="base-detail-toolbar-trigger__dot" />
       </div>
@@ -99,7 +101,6 @@ export function FloatingToolbar({
           <span className="base-detail-toolbar-item__icon">
             <ArrowUpIcon />
           </span>
-          <span className="base-detail-toolbar-item__label">{i18n('Top')}</span>
         </button>
       </div>
     </div>

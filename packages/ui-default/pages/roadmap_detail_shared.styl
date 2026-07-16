@@ -2259,10 +2259,15 @@ mark.search-highlight
     transform: rotate(45deg) scale(1.1)
 
 .base-detail-toolbar-trigger__dot
-  width: 4px
-  height: 4px
+  width: 10px
+  height: 10px
   border-radius: 50%
   background: currentColor
+  transition: width 0.2s ease, height 0.2s ease, transform 0.2s ease
+
+  .base-detail-toolbar-trigger.is-open &
+    width: 4px
+    height: 4px
 
 .base-detail-toolbar-menu
   pointer-events: none
