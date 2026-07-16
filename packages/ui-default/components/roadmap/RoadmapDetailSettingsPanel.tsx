@@ -154,10 +154,10 @@ export function RoadmapDetailSettingsPanel({
           <label className="roadmap-detail-settings__row">
             <div className="roadmap-detail-settings__row-text">
               <span className="roadmap-detail-settings__row-label">
-                {i18n('显示 AI 导师')}
+                {i18n('Show AI tutor')}
               </span>
               <span className="roadmap-detail-settings__row-desc">
-                {i18n('在页面右下角显示浮动 AI 导师入口')}
+                {i18n('Show floating AI tutor entry at bottom right')}
               </span>
             </div>
             <input
@@ -175,10 +175,10 @@ export function RoadmapDetailSettingsPanel({
           <label className="roadmap-detail-settings__row">
             <div className="roadmap-detail-settings__row-text">
               <span className="roadmap-detail-settings__row-label">
-                {i18n('显示保存状态指示')}
+                {i18n('Show save status indicator')}
               </span>
               <span className="roadmap-detail-settings__row-desc">
-                {i18n('在页面右上角显示树展开状态的保存指示器')}
+                {i18n('Show tree expand state save indicator at top right')}
               </span>
             </div>
             <input
