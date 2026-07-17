@@ -21,6 +21,8 @@ interface NotificationOptions {
   type?: string;
   duration?: number;
   action?: any;
+  closable?: boolean;
+  position?: 'bottom-left' | 'top-right';
 }
 
 export default class Notification {
@@ -32,17 +34,25 @@ export default class Notification {
   autoHideTimer?: NodeJS.Timeout;
 
   constructor({
-    avatar, title, message, type = '', duration = 3000, action,
+    avatar, title, message, type = '', duration = 3000, action, closable = false, position = 'bottom-left',
   }: NotificationOptions) {
     this.type = type;
     if (avatar) this.type += ' avatar';
     if (title) this.type += ' title';
+    if (closable) this.type += ' closable';
+    if (position === 'top-right') this.type += ' top-right';
     this.action = action || (() => { });
-    this.$dom = $(tpl`<div class="notification ${type} hide"></div>`);
+    this.$dom = $(tpl`<div class="notification ${this.type} hide"></div>`);
     if (avatar) $(tpl`<img width="64" height="64" class="avatar" src="${avatar}"></img>`).appendTo(this.$dom);
     if (title) {
       $(tpl`<div class="notification-content"><h2>${title}</h2><p>${message}</p></div>`).appendTo(this.$dom);
     } else $(tpl`<p>${message}</p>`).appendTo(this.$dom);
+    if (closable) {
+      $(tpl`<button class="notification-close">×</button>`).appendTo(this.$dom).on('click', (e: any) => {
+        e.stopPropagation();
+        this.hide();
+      });
+    }
     this.$dom.on('click', this.handleClick.bind(this));
     this.$n = this.$dom
       .css('z-index', zIndexManager.getNext())

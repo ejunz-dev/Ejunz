@@ -469,6 +469,48 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             const msg = JSON.parse(data);
             if (msg.type === 'init' || msg.type === 'update') {
               if (msg.type === 'update' && msg.sourceBranch && editorBranch && msg.sourceBranch !== editorBranch) return;
+              if (msg.type === 'update' && msg.actionKey) {
+                const buildSummary = (ak: string, det: any): string => {
+                  switch (ak) {
+                    case 'batch_update': {
+                      const parts: string[] = [];
+                      if (det?.nodeCreates) parts.push(i18n('{0} new nodes', det.nodeCreates));
+                      if (det?.nodeUpdates) parts.push(i18n('{0} nodes updated', det.nodeUpdates));
+                      if (det?.nodeDeletes) parts.push(i18n('{0} nodes deleted', det.nodeDeletes));
+                      if (det?.cardCreates) parts.push(i18n('{0} new cards', det.cardCreates));
+                      if (det?.cardUpdates) parts.push(i18n('{0} cards updated', det.cardUpdates) + (det?.problemUpdates ? ` (${i18n('{0} problems', det.problemUpdates)})` : ''));
+                      if (det?.cardDeletes) parts.push(i18n('{0} cards deleted', det.cardDeletes));
+                      if (det?.edgeCreates) parts.push(i18n('{0} new edges', det.edgeCreates));
+                      if (det?.edgeDeletes) parts.push(i18n('{0} edges deleted', det.edgeDeletes));
+                      return parts.join('，') || i18n('Saved');
+                    }
+                    case 'full_save': return i18n('Saved');
+                    case 'sidecar_save': return i18n('Settings saved');
+                    case 'expand_save': return i18n('Tree state saved');
+                    case 'update_card': {
+                      const changed = (det?.changed || []).map((k: string) => {
+                        const map: Record<string, string> = { title: i18n('Title'), content: i18n('Content'), problems: i18n('Problems'), nodeId: i18n('Node'), order: i18n('Order') };
+                        return map[k] || k;
+                      });
+                      return i18n('Card updated: ') + changed.join('，');
+                    }
+                    case 'delete_card': return i18n('Card deleted');
+                    case 'git_commit': return det?.message ? i18n('Committed: {0}', det.message) : i18n('Committed');
+                    case 'migrate_node': return i18n('Node migrated to new base');
+                    case 'add_tag': return det?.tag ? i18n('Tag added: {0}', det.tag) : i18n('Tag added');
+                    default: return i18n('Content has been updated');
+                  }
+                };
+                // Skip notification for changes triggered by THIS window
+                if ((window as any).__baseJustSaved && Date.now() - (window as any).__baseJustSaved < 3000) return;
+                new Notification({
+                  title: msg.sourceUname || '',
+                  message: buildSummary(msg.actionKey, msg.actionDetail),
+                  closable: true,
+                  position: 'top-right',
+                  duration: 0,
+                }).show();
+              }
               if (msg.gitStatus != null) {
                 setGitRemoteStatus(msg.gitStatus);
               }
@@ -3530,6 +3572,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         
         try {
           if (isPluginEditor) Notification.info(i18n('Testing plugin MCP connections before saving'));
+          window.__baseJustSaved = Date.now();
           const response = await request.post(getBaseUrl('/batch-save'), batchSaveData);
 
           if (response.success) {
