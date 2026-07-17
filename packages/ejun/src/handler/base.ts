@@ -1374,7 +1374,8 @@ class BaseCreateHandler extends Handler {
 
         
         try {
-            await ensureBaseGitRepo(actualDomainId, docId);
+            // await ensureBaseGitRepo(actualDomainId, docId);
+            ''
             
             try {
                 await createAndPushToGitHubOrgForBase(this, actualDomainId, docId, title, this.user);
@@ -2144,7 +2145,8 @@ export class BaseSaveHandler extends Handler {
                 const updatedBase = await BaseModel.get(domainId, docId, mdt);
                 if (updatedBase) {
                     const branch = updatedBase.currentBranch || 'main';
-                    await syncBaseToGit(domainId, updatedBase.docId, branch);
+                    // await syncBaseToGit(domainId, updatedBase.docId, branch);
+                    ''
                 }
             } catch (err) {
                 console.error('Failed to sync to git after save:', err);
@@ -2155,12 +2157,13 @@ export class BaseSaveHandler extends Handler {
         (this.ctx.emit as any)('base/update', docId, null, currentBranch);
         (this.ctx.emit as any)('base/git/status/update', docId);
 
-        // Fire-and-forget vectorize base content for semantic search
-        if (hasNonPositionChanges && this.ctx.embedding) {
-            this.ctx.embedding.vectorizeBaseContent(domainId, docId, currentBranch).catch((err: any) => {
-                console.error('Embedding error after base save:', err);
-            });
-        }
+        // Fire-and-forget vectorize base content for semantic search — disabled
+        // because full re-index on every save is too expensive for large bases.
+        // if (hasNonPositionChanges && this.ctx.embedding) {
+        //     this.ctx.embedding.vectorizeBaseContent(domainId, docId, currentBranch).catch((err: any) => {
+        //         console.error('Embedding error after base save:', err);
+        //     });
+        // }
 
         this.response.body = { success: true, hasNonPositionChanges };
     }
@@ -2679,6 +2682,8 @@ async function ensureGitSafeDirectory(repoPath: string): Promise<string> {
  */
 async function ensureBaseGitRepo(domainId: string, docId: number, remoteUrl?: string): Promise<string> {
     const repoPath = getBaseGitPath(domainId, docId);
+    return repoPath;
+    /*
     await ensureGitSafeDirectory(repoPath);
     let isNewRepo = false;
     try {
@@ -2708,7 +2713,7 @@ async function ensureBaseGitRepo(domainId: string, docId: number, remoteUrl?: st
         }
     }
     
-    return repoPath;
+    return repoPath; */
 }
 
 /** Aggregated problem rows for Git export (problems.md / keys.md / problems_all.md). */
@@ -5050,12 +5055,14 @@ export class BaseBatchSaveHandler extends Handler {
         await persistBaseEditorSaveSidecars(this, actualDomainId, docId, branch, data as Record<string, unknown>, mdt, nodeIdMap);
         (this.ctx.emit as any)('base/update', docId, null, branch);
 
-        // Fire-and-forget vectorize base content for semantic search after successful batch save
-        if (batchSuccess && this.ctx.embedding) {
-            this.ctx.embedding.vectorizeBaseContent(actualDomainId, docId, branch).catch((err: any) => {
-                console.error('Embedding error after batch save:', err);
-            });
-        }
+        // Fire-and-forget vectorize base content for semantic search after successful batch save — disabled
+        // because full re-index on every save is too expensive for large bases.
+        // Uncomment if you need automatic embedding updates after each save.
+        // if (batchSuccess && this.ctx.embedding) {
+        //     this.ctx.embedding.vectorizeBaseContent(actualDomainId, docId, branch).catch((err: any) => {
+        //         console.error('Embedding error after batch save:', err);
+        //     });
+        // }
 
         let developSessionEditTotalsResponse: ReturnType<typeof readDevelopSessionEditTotals> | undefined;
         if (batchSuccess && developSessionRaw && ObjectId.isValid(developSessionRaw)) {
@@ -5195,6 +5202,7 @@ async function getBaseGitStatus(
         deleted: string[];
     };
 } | null> {
+    return null; // git disabled
     const repoGitPath = getBaseGitPath(domainId, docId);
     await ensureGitSafeDirectory(repoGitPath);
     
