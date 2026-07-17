@@ -3558,11 +3558,14 @@ export class BaseCardHandler extends Handler {
         if (title !== undefined) updates.title = title;
         if (content !== undefined) updates.content = content;
         if (order !== undefined) updates.order = order;
-        if (nodeId !== undefined) updates.nodeId = nodeId; 
-        
+        if (nodeId !== undefined) updates.nodeId = nodeId;
+
         const body: any = (this as any).request?.body || {};
         if (body && body.problems !== undefined) {
             updates.problems = body.problems;
+        }
+        if (body && body.cardFace !== undefined) {
+            updates.cardFace = body.cardFace;
         }
 
         await CardModel.update(domainId, targetCard.docId, updates);
