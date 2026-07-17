@@ -53,8 +53,27 @@ class CardEditorHandler extends Handler {
 
         // Load the single card
         const cardDocId = new ObjectId(rawCardId);
-        const card = await document.get(domainId, document.TYPE_CARD, cardDocId) as any;
-        if (!card) throw new NotFoundError('Card not found');
+        const rawCard = await document.get(domainId, document.TYPE_CARD, cardDocId) as any;
+        if (!rawCard) throw new NotFoundError('Card not found');
+
+        // Serialize card to plain JSON-safe object (Nunjucks cannot call .toString() / ternary)
+        const card = {
+            docId: String(rawCard.docId || ''),
+            cid: rawCard.cid || 0,
+            title: rawCard.title || '',
+            content: rawCard.content || '',
+            cardFace: rawCard.cardFace || '',
+            updateAt: rawCard.updateAt instanceof Date ? rawCard.updateAt.toISOString() : (rawCard.updateAt || ''),
+            createdAt: rawCard.createdAt instanceof Date ? rawCard.createdAt.toISOString() : (rawCard.createdAt || ''),
+            order: rawCard.order ?? 0,
+            nodeId: rawCard.nodeId || '',
+            problems: rawCard.problems || [],
+            files: rawCard.files || [],
+            cardType: rawCard.cardType || 'normal',
+            fileType: rawCard.fileType || '',
+            fileName: rawCard.fileName || '',
+            fileSize: rawCard.fileSize ?? 0,
+        };
 
         const branch = sess.branch && String(sess.branch).trim() ? String(sess.branch).trim() : 'main';
         const nodeId = typeof (sess as any).nodeId === 'string' ? String((sess as any).nodeId).trim() : '';
