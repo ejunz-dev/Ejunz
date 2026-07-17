@@ -14,7 +14,6 @@ import {
 } from './BaseEditorCardIcons';
 import { useDrawerTransition } from './useDrawerTransition';
 import { attachTypoImagePreviewHandlers } from './typo_image_preview';
-import type { BaseDetailDisplaySettings } from './detail_display_settings';
 
 /**
  * Render an inline preview for a file-card inside the detail card drawer.
@@ -202,19 +201,19 @@ export function BaseDetailCardDrawer({
       Notification.error(i18n('Outline learn invalid card'));
       return;
     }
-    const rawDomainId = (window as any).UiContext?.base?.domainId
+    const rawDomainId2 = (window as any).UiContext?.base?.domainId
       ?? (window as any).UiContext?.domainId;
-    const domainId = typeof rawDomainId === 'object'
-      ? (rawDomainId?._id ? String(rawDomainId._id) : 'system')
-      : (rawDomainId ? String(rawDomainId) : 'system');
+    const domainId2 = typeof rawDomainId2 === 'object'
+      ? (rawDomainId2?._id ? String(rawDomainId2._id) : 'system')
+      : (rawDomainId2 ? String(rawDomainId2) : 'system');
     setPracticeBusy(true);
     try {
-      const res: any = await request.post(domainApiPath('/learn/lesson/start', domainId), {
+      const res: any = await request.post(domainApiPath('/learn/lesson/start', domainId2), {
         mode: 'card',
         cardId,
       });
       const redir = res?.redirect ?? res?.body?.redirect ?? res?.data?.redirect;
-      const url = redir || domainScopedPath(`/learn/lesson?cardId=${encodeURIComponent(cardId)}`, domainId);
+      const url = redir || domainScopedPath(`/learn/lesson?cardId=${encodeURIComponent(cardId)}`, domainId2);
       const opened = window.open(url, '_blank', 'noopener,noreferrer');
       if (opened) {
         opened.opener = null;
