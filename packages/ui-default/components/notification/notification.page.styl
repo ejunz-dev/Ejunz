@@ -3,6 +3,7 @@
   left: rem(20px)
   bottom: rem(20px)
   padding: rem(10px)
+  padding-right: rem(32px)
   border-radius: rem(2px)
   background: rgba(#222, 0.9)
   color: #FFF
@@ -14,12 +15,18 @@
   box-shadow: 0 4px 10px rgba(#000, 0.4)
   min-width: rem(150px)
 
-  img
-    border-radius: 50%
+  &.top-right
+    left: auto
+    right: rem(20px)
+    top: rem(60px)
+    bottom: auto
 
   &.hide
     opacity: 0
     transform: translateY(20px) scale(0.9)
+
+  &.top-right.hide
+    transform: translateY(-10px) scale(0.9)
 
   &:before
     display: inline-block
@@ -60,6 +67,28 @@
   p
     margin-top: rem(7px);
     font-size: larger
+
+.notification-close
+  position: absolute
+  top: rem(4px)
+  right: rem(6px)
+  background: transparent
+  border: none
+  color: rgba(#FFF, 0.6)
+  font-size: rem(18px)
+  line-height: 1
+  cursor: pointer
+  padding: 0
+  width: rem(20px)
+  height: rem(20px)
+  display: flex
+  align-items: center
+  justify-content: center
+  border-radius: rem(3px)
+
+  &:hover
+    background: rgba(#FFF, 0.15)
+    color: #FFF
 
 @media print {
   .notification {

@@ -49,6 +49,7 @@ export function ProblemEditModal({
     if (saving) return;
     setSaving(true);
     try {
+      (window as any).__baseJustSaved = Date.now();
       // Build updated problems array
       const newProblems = [...(card.problems || [])];
       newProblems[problemIndex] = updatedProblem;
