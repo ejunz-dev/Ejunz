@@ -3564,9 +3564,6 @@ export class BaseCardHandler extends Handler {
         if (body && body.problems !== undefined) {
             updates.problems = body.problems;
         }
-        if (body && body.cardFace !== undefined) {
-            updates.cardFace = body.cardFace;
-        }
 
         await CardModel.update(domainId, targetCard.docId, updates);
         this.response.body = { success: true };
