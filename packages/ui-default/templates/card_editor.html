@@ -10,21 +10,21 @@
     currentBranch: branch
   }) }}
   {{ set(UiContext, 'card', {
-    docId: card.docId.toString(),
+    docId: card.docId,
     cid: card.cid,
-    title: card.title or '',
-    content: card.content or '',
-    cardFace: card.cardFace or '',
-    updateAt: card.updateAt ? card.updateAt.toISOString() : '',
-    createdAt: card.createdAt ? card.createdAt.toISOString() : '',
-    order: card.order or 0,
-    nodeId: card.nodeId or '',
-    problems: card.problems or [],
-    files: card.files or [],
-    cardType: card.cardType or 'normal',
-    fileType: card.fileType or '',
-    fileName: card.fileName or '',
-    fileSize: card.fileSize or 0
+    title: card.title,
+    content: card.content,
+    cardFace: card.cardFace,
+    updateAt: card.updateAt,
+    createdAt: card.createdAt,
+    order: card.order,
+    nodeId: card.nodeId,
+    problems: card.problems,
+    files: card.files,
+    cardType: card.cardType,
+    fileType: card.fileType,
+    fileName: card.fileName,
+    fileSize: card.fileSize
   }) }}
   {{ set(UiContext, 'sessionId', sessionId) }}
   {{ set(UiContext, 'nodeId', nodeId) }}
