@@ -1,0 +1,42 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<script>
+  {{ set(UiContext, 'currentBranch', branch) }}
+  {{ set(UiContext, 'base', {
+    domainId: base.domainId,
+    docId: base.docId,
+    bid: base.bid,
+    title: base.title,
+    currentBranch: branch
+  }) }}
+  {{ set(UiContext, 'card', {
+    docId: card.docId.toString(),
+    cid: card.cid,
+    title: card.title or '',
+    content: card.content or '',
+    cardFace: card.cardFace or '',
+    updateAt: card.updateAt ? card.updateAt.toISOString() : '',
+    createdAt: card.createdAt ? card.createdAt.toISOString() : '',
+    order: card.order or 0,
+    nodeId: card.nodeId or '',
+    problems: card.problems or [],
+    files: card.files or [],
+    cardType: card.cardType or 'normal',
+    fileType: card.fileType or '',
+    fileName: card.fileName or '',
+    fileSize: card.fileSize or 0
+  }) }}
+  {{ set(UiContext, 'sessionId', sessionId) }}
+  {{ set(UiContext, 'nodeId', nodeId) }}
+  {{ set(UiContext, 'domainId', domainId) }}
+</script>
+<div class="row">
+  <div class="large-12 columns">
+    <div class="section" style="background: transparent; border: none; box-shadow: none; margin: 0;">
+      <div class="section__body no-padding" style="background: transparent; padding: 0;">
+        <div id="card-editor-mode" class="card-editor-mount"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
