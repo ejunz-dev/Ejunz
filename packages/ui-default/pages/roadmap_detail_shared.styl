@@ -933,6 +933,27 @@ button.roadmap-detail-backdrop.roadmap-detail-drawer-backdrop
   background: var(--roadmap-status-color, #78c7d2)
   flex-shrink: 0
 
+.roadmap-detail-drawer__edit-btn
+  display: inline-flex
+  align-items: center
+  justify-content: center
+  min-height: 28px
+  padding: 0 10px
+  border-radius: 6px
+  border: 1px solid var(--roadmap-border)
+  background: var(--roadmap-bg-surface)
+  font-size: 12px
+  font-weight: 500
+  line-height: 1
+  color: var(--roadmap-text-primary)
+  cursor: pointer
+  white-space: nowrap
+  transition: background 0.15s ease, border-color 0.15s ease
+
+  &:hover
+    background: var(--roadmap-bg-page)
+    border-color: var(--roadmap-border-input)
+
 .roadmap-detail-drawer__close
   border: 0
   background: transparent
