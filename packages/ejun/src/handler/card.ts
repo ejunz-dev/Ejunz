@@ -62,7 +62,6 @@ class CardEditorHandler extends Handler {
             cid: rawCard.cid || 0,
             title: rawCard.title || '',
             content: rawCard.content || '',
-            cardFace: rawCard.cardFace || '',
             updateAt: rawCard.updateAt instanceof Date ? rawCard.updateAt.toISOString() : (rawCard.updateAt || ''),
             createdAt: rawCard.createdAt instanceof Date ? rawCard.createdAt.toISOString() : (rawCard.createdAt || ''),
             order: rawCard.order ?? 0,

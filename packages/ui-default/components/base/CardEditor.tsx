@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Notification from 'vj/components/notification';
 import { domainApiPath, domainScopedPath, i18n, request } from 'vj/utils';
 import type { Card } from './types';
-import 'md-editor-rt/lib/style.css';
 
 /**
  * Lightweight single-card editor — SSR-ready, loads card data from UiContext.
@@ -23,36 +22,33 @@ export function CardEditorMode({
 }) {
   const [title, setTitle] = useState(initialCard.title || '');
   const [content, setContent] = useState(initialCard.content || '');
-  const [cardFace, setCardFace] = useState(initialCard.cardFace || '');
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
-  const [mdEditorLoaded, setMdEditorLoaded] = useState(false);
   const contentInitialRef = useRef(initialCard.content || '');
   const titleInitialRef = useRef(initialCard.title || '');
-  const cardFaceInitialRef = useRef(initialCard.cardFace || '');
 
   const resolvedDomainId = domainId || base.domainId || 'system';
-  const detailUrl = domainScopedPath(`/base/${base.docId || ''}`, resolvedDomainId);
+  const navUrl = domainScopedPath(`/base/${base.docId || ''}`, resolvedDomainId);
 
   // Check dirty state
   useEffect(() => {
     const tDirty = title !== titleInitialRef.current;
     const cDirty = content !== contentInitialRef.current;
-    const fDirty = cardFace !== cardFaceInitialRef.current;
-    setDirty(tDirty || cDirty || fDirty);
-  }, [title, content, cardFace]);
+    setDirty(tDirty || cDirty);
+  }, [title, content]);
 
-  // Dynamically import MdEditor
+  // Dynamically import MdEditor (same pattern as editor/index.tsx)
   const MdEditorRef = useRef<any>(null);
+  const [mdReady, setMdReady] = useState(false);
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const mod = await import('../editor/mdeditor');
         if (!cancelled) MdEditorRef.current = mod.MdEditor;
-        if (!cancelled) setMdEditorLoaded(true);
+        if (!cancelled) setMdReady(true);
       } catch {
-        if (!cancelled) setMdEditorLoaded(false);
+        if (!cancelled) setMdReady(false);
       }
     })();
     return () => { cancelled = true; };
@@ -65,12 +61,11 @@ export function CardEditorMode({
       const cardId = initialCard.docId;
       const res: any = await request.post(
         domainApiPath(`/base/card/${encodeURIComponent(cardId)}`, resolvedDomainId),
-        { title, content, cardFace },
+        { title, content, operation: 'update' },
       );
       if (res?.success) {
         contentInitialRef.current = content;
         titleInitialRef.current = title;
-        cardFaceInitialRef.current = cardFace;
         setDirty(false);
         Notification.success(i18n('Saved'));
       } else {
@@ -82,7 +77,7 @@ export function CardEditorMode({
     } finally {
       setSaving(false);
     }
-  }, [saving, title, content, cardFace, initialCard.docId, resolvedDomainId]);
+  }, [saving, title, content, initialCard.docId, resolvedDomainId]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -95,9 +90,6 @@ export function CardEditorMode({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
-
-  const navUrl = detailUrl;
-  const showFaceField = !!initialCard.cardFace || cardFace.trim().length > 0;
 
   function getTheme(): 'light' | 'dark' {
     try {
@@ -198,52 +190,6 @@ export function CardEditorMode({
             }}
           />
         </div>
-
-        {/* Card Face (optional) */}
-        {showFaceField ? (
-          <div>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--roadmap-text-secondary, #888)', marginBottom: 6 }}>
-              {i18n('Card Face')}
-            </label>
-            <textarea
-              value={cardFace}
-              onChange={(e) => setCardFace(e.target.value)}
-              placeholder={String(i18n('Short card face text for lesson mode'))}
-              rows={2}
-              style={{
-                width: '100%',
-                boxSizing: 'border-box',
-                padding: '8px 12px',
-                borderRadius: 8,
-                border: '1px solid var(--roadmap-border, #ddd)',
-                background: 'var(--roadmap-bg-surface, #fff)',
-                fontSize: 13,
-                color: 'var(--roadmap-text-primary, #222)',
-                outline: 'none',
-                resize: 'vertical',
-                fontFamily: 'inherit',
-              }}
-            />
-          </div>
-        ) : (
-          <div>
-            <button
-              type="button"
-              onClick={() => setCardFace(' ')}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--roadmap-accent, #888)',
-                fontSize: 12,
-                cursor: 'pointer',
-                padding: 0,
-                textDecoration: 'underline',
-              }}
-            >
-              + {i18n('Add card face')}
-            </button>
-          </div>
-        )}
 
         {/* Content (Markdown) */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 200 }}>
