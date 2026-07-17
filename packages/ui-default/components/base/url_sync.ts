@@ -13,6 +13,7 @@ import {
 export type BaseDetailUrlState = {
   nodeId: string | null;
   cardId: string | null;
+  problemId: string | null;
 };
 
 function isCardValidForUrlNode(
@@ -29,7 +30,8 @@ export function getBaseDetailUrlState(): BaseDetailUrlState {
   const params = new URLSearchParams(window.location.search);
   const nodeId = params.get('nodeId')?.trim() || null;
   const cardId = params.get('cardId')?.trim() || null;
-  return { nodeId, cardId };
+  const problemId = params.get('problemId')?.trim() || null;
+  return { nodeId, cardId, problemId };
 }
 
 export function initialBaseDetailSelectedNodeId(nodeIds: readonly string[]): string | null {
@@ -47,6 +49,8 @@ export function updateBaseDetailUrl(
   else params.delete('nodeId');
   if (state.cardId) params.set('cardId', state.cardId);
   else params.delete('cardId');
+  if (state.problemId) params.set('problemId', state.problemId);
+  else params.delete('problemId');
 
   const qs = params.toString();
   const newUrl = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
@@ -56,6 +60,7 @@ export function updateBaseDetailUrl(
   const historyState = {
     nodeId: state.nodeId,
     cardId: state.cardId,
+    problemId: state.problemId,
   };
   if (options?.replace) {
     window.history.replaceState(historyState, '', newUrl);
@@ -84,6 +89,8 @@ export function useBaseDetailUrlSync(options: {
   setContentRootNodeId: (id: string | null) => void;
   selectedCard: Card | null;
   setSelectedCard: (card: Card | null) => void;
+  selectedProblemId?: string | null;
+  setSelectedProblemId?: (pid: string | null) => void;
   onRestoreCard?: (cardId: string, hostNodeId: string) => void;
   onRestoreCanvasNode?: (nodeId: string) => void;
   onClearCard?: () => void;
@@ -99,6 +106,8 @@ export function useBaseDetailUrlSync(options: {
     setContentRootNodeId,
     selectedCard,
     setSelectedCard,
+    selectedProblemId,
+    setSelectedProblemId,
     onRestoreCard,
     onRestoreCanvasNode,
     onClearCard,
@@ -123,7 +132,7 @@ export function useBaseDetailUrlSync(options: {
     if (nodeIds.length === 0) return;
     appliedInitialUrlRef.current = true;
 
-    const { nodeId, cardId } = getBaseDetailUrlState();
+    const { nodeId, cardId, problemId } = getBaseDetailUrlState();
     if (!nodeId && !cardId) return;
 
     skipNextUrlWriteRef.current = true;
@@ -156,6 +165,11 @@ export function useBaseDetailUrlSync(options: {
 
     setSelectedCard(card);
     onRestoreCard?.(cardId, hostNodeId);
+
+    // Restore problemId after card is selected
+    if (problemId && setSelectedProblemId) {
+      setSelectedProblemId(problemId);
+    }
   }, [
     edges,
     nodeCardsMap,
@@ -166,6 +180,7 @@ export function useBaseDetailUrlSync(options: {
     setContentRootNodeId,
     setSelectedCard,
     setSelectedNodeId,
+    setSelectedProblemId,
   ]);
 
   useEffect(() => {
@@ -177,25 +192,26 @@ export function useBaseDetailUrlSync(options: {
     const url = getBaseDetailUrlState();
     const nextNodeId = selectedNodeId;
     const nextCardId = selectedCard?.docId || null;
+    const nextProblemId = selectedProblemId || null;
     const urlNodeIdForCard = nextCardId && contentRootNodeId && !findRoadmapContainerAncestor(selectedNodeId || '', nodes, edges)
       ? contentRootNodeId
       : nextNodeId;
 
-    if (urlNodeIdForCard === url.nodeId && nextCardId === url.cardId) return;
+    if (urlNodeIdForCard === url.nodeId && nextCardId === url.cardId && nextProblemId === url.problemId) return;
 
     if (!urlNodeIdForCard && !nextCardId) {
       if (url.nodeId || url.cardId) {
-        updateBaseDetailUrl({ nodeId: null, cardId: null }, { replace: true });
+        updateBaseDetailUrl({ nodeId: null, cardId: null, problemId: null }, { replace: true });
       }
       return;
     }
 
-    updateBaseDetailUrl({ nodeId: urlNodeIdForCard, cardId: nextCardId });
-  }, [contentRootNodeId, edges, nodes, selectedCard?.docId, selectedNodeId]);
+    updateBaseDetailUrl({ nodeId: urlNodeIdForCard, cardId: nextCardId, problemId: nextProblemId });
+  }, [contentRootNodeId, edges, nodes, selectedCard?.docId, selectedNodeId, selectedProblemId]);
 
   useEffect(() => {
     const handlePopState = () => {
-      const { nodeId, cardId } = getBaseDetailUrlState();
+      const { nodeId, cardId, problemId } = getBaseDetailUrlState();
       skipNextUrlWriteRef.current = true;
 
       if (cardId) {
@@ -215,6 +231,7 @@ export function useBaseDetailUrlSync(options: {
             applyContentRootFromNodeId(hostNodeId);
           }
           setSelectedCard(card);
+          if (problemId && setSelectedProblemId) setSelectedProblemId(problemId);
           onRestoreCard?.(cardId, hostNodeId);
           return;
         }
@@ -241,12 +258,13 @@ export function useBaseDetailUrlSync(options: {
       setSelectedNodeId(null);
       setContentRootNodeId(null);
       setSelectedCard(null);
+      if (setSelectedProblemId) setSelectedProblemId(null);
       onClearCard?.();
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [edges, nodeCardsMap, nodes, onClearCard, onRestoreCanvasNode, onRestoreCard, setContentRootNodeId, setSelectedCard, setSelectedNodeId]);
+  }, [edges, nodeCardsMap, nodes, onClearCard, onRestoreCanvasNode, onRestoreCard, setContentRootNodeId, setSelectedCard, setSelectedNodeId, setSelectedProblemId]);
 }
 
 export function useBaseDetailCardScroll(

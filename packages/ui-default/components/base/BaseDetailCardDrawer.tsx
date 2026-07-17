@@ -165,6 +165,8 @@ export function BaseDetailCardDrawer({
   onDrawerWidthChange,
   onEditCard,
   editorBusy,
+  selectedProblemId,
+  onSelectProblem,
 }: {
   open: boolean;
   card: Card | null;
@@ -176,6 +178,8 @@ export function BaseDetailCardDrawer({
   onDrawerWidthChange: (w: number) => void;
   onEditCard?: () => void;
   editorBusy?: boolean;
+  selectedProblemId?: string | null;
+  onSelectProblem?: (pid: string) => void;
 }) {
   const [tab, setTab] = useState<DrawerTab>('content');
   const [practiceBusy, setPracticeBusy] = useState(false);
@@ -235,13 +239,18 @@ export function BaseDetailCardDrawer({
 
   useEffect(() => {
     if (!visible || closing || !displayCard) return undefined;
-    setTab('content');
+    setTab(selectedProblemId && hasProblems ? 'problems' : 'content');
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [closing, displayCard, onClose, visible]);
+  }, [closing, displayCard, onClose, visible, selectedProblemId, hasProblems]);
+
+  // Switch to problems tab when problemId changes
+  useEffect(() => {
+    if (selectedProblemId && hasProblems) setTab('problems');
+  }, [selectedProblemId, hasProblems]);
 
   // Markdown rendering + apply search highlight synchronously after render
   useEffect(() => {
@@ -415,6 +424,8 @@ export function BaseDetailCardDrawer({
               <RoadmapDrawerProblemList
                 problems={problems}
                 resetKey={`${displayCard.docId}:${visible}`}
+                selectedProblemId={selectedProblemId}
+                onSelectProblem={onSelectProblem}
               />
             </div>
           ) : null}
