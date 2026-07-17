@@ -85,6 +85,7 @@ function RoadmapDrawerProblemItem({
   selected,
   onToggle,
   onSelect,
+  onEdit,
   onRevealChange,
 }: {
   problem: Problem;
@@ -94,6 +95,7 @@ function RoadmapDrawerProblemItem({
   selected?: boolean;
   onToggle: () => void;
   onSelect?: () => void;
+  onEdit?: () => void;
   onRevealChange: (next: RevealState) => void;
 }) {
   const kind = problemKind(problem);
@@ -560,6 +562,20 @@ function RoadmapDrawerProblemItem({
         <span className="roadmap-detail-drawer__problem-head-title">{title}</span>
         <span className="roadmap-detail-drawer__problem-chevron" aria-hidden>{expanded ? '▾' : '▸'}</span>
       </button>
+      {onEdit ? (
+        <div style={{ padding: '0 14px 8px' }}>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onEdit(); }}
+            style={{
+              fontSize: 11, padding: '2px 8px', borderRadius: 4, border: '1px solid var(--roadmap-border, #ddd)',
+              background: 'transparent', color: 'var(--roadmap-text-secondary, #999)', cursor: 'pointer',
+            }}
+          >
+            {i18n('Edit')}
+          </button>
+        </div>
+      ) : null}
       {expanded ? (
         <div className="roadmap-detail-drawer__problem-body">
           {renderStem()}
@@ -576,11 +592,13 @@ export function RoadmapDrawerProblemList({
   resetKey,
   selectedProblemId,
   onSelectProblem,
+  onEditProblem,
 }: {
   problems: Problem[];
   resetKey: string;
   selectedProblemId?: string | null;
   onSelectProblem?: (pid: string) => void;
+  onEditProblem?: (pid: string, index: number) => void;
 }) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
   const [revealById, setRevealById] = useState<Record<string, RevealState>>({});
@@ -629,6 +647,7 @@ export function RoadmapDrawerProblemList({
             reveal={revealById[pid] || emptyRevealState()}
             onToggle={() => toggleExpanded(pid)}
             onSelect={() => onSelectProblem?.(pid)}
+            onEdit={() => onEditProblem?.(pid, idx)}
             onRevealChange={(next) => setReveal(pid, next)}
           />
         );

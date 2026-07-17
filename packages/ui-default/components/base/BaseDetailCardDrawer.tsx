@@ -167,6 +167,7 @@ export function BaseDetailCardDrawer({
   editorBusy,
   selectedProblemId,
   onSelectProblem,
+  onEditProblem,
 }: {
   open: boolean;
   card: Card | null;
@@ -180,6 +181,7 @@ export function BaseDetailCardDrawer({
   editorBusy?: boolean;
   selectedProblemId?: string | null;
   onSelectProblem?: (pid: string) => void;
+  onEditProblem?: (pid: string, index: number) => void;
 }) {
   const [tab, setTab] = useState<DrawerTab>('content');
   const [practiceBusy, setPracticeBusy] = useState(false);
@@ -426,6 +428,7 @@ export function BaseDetailCardDrawer({
                 resetKey={`${displayCard.docId}:${visible}`}
                 selectedProblemId={selectedProblemId}
                 onSelectProblem={onSelectProblem}
+                onEditProblem={onEditProblem}
               />
             </div>
           ) : null}
