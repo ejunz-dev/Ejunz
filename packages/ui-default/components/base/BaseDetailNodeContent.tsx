@@ -11,6 +11,8 @@ export function BaseDetailNodeContent({
   edges,
   nodeCardsMap,
   selectedCardId,
+  selectedProblemId,
+  onSelectProblem,
   treeVisibility,
   displaySettings,
   extraExpandedNodeIds,
@@ -25,6 +27,8 @@ export function BaseDetailNodeContent({
   edges: BaseEdge[];
   nodeCardsMap: Record<string, Card[]>;
   selectedCardId?: string | null;
+  selectedProblemId?: string | null;
+  onSelectProblem?: (pid: string) => void;
   treeVisibility?: BaseDetailTreeVisibility | null;
   displaySettings?: BaseDetailDisplaySettings | null;
   extraExpandedNodeIds?: string[];
@@ -47,6 +51,8 @@ export function BaseDetailNodeContent({
         edges={edges}
         nodeCardsMap={nodeCardsMap}
         selectedCardId={selectedCardId}
+        selectedProblemId={selectedProblemId}
+        onSelectProblem={onSelectProblem}
         initialExpandedNodeIds={initialExpandedNodeIds}
         expandedNodes={controlledExpandedNodes}
         nodesClickable={true}

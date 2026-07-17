@@ -124,6 +124,8 @@ function TreeBranch({
   expandedNodes,
   selectedNodeId,
   selectedCardId,
+  selectedProblemId,
+  onSelectProblem,
   nodesClickable,
   treeVisibility,
   displaySettings,
@@ -139,6 +141,8 @@ function TreeBranch({
   expandedNodes: Set<string>;
   selectedNodeId?: string | null;
   selectedCardId?: string | null;
+  selectedProblemId?: string | null;
+  onSelectProblem?: (pid: string) => void;
   nodesClickable?: boolean;
   treeVisibility?: BaseDetailTreeVisibility | null;
   displaySettings?: BaseDetailDisplaySettings | null;
@@ -221,6 +225,8 @@ function TreeBranch({
                   expandedNodes={expandedNodes}
                   selectedNodeId={selectedNodeId}
                   selectedCardId={selectedCardId}
+                  selectedProblemId={selectedProblemId}
+                  onSelectProblem={onSelectProblem}
                   nodesClickable={nodesClickable}
                   treeVisibility={treeVisibility}
                   displaySettings={displaySettings}
@@ -239,55 +245,86 @@ function TreeBranch({
             const problemCount = getCardProblemCount(child.card);
             const showProblemCount = displaySettings?.showProblemCount && problemCount > 0;
             const showCardTimestamps = displaySettings?.showNodeCardTimestamps;
+            const showProblems = displaySettings?.showProblemTree && problemCount > 0;
+            const problems = child.card.problems || [];
             return (
-              <div
-                key={`card-${child.card.docId}`}
-                className={`base-detail-tree__row base-detail-tree__row--card${cardSelected ? ' is-selected' : ''}`}
-                style={{ paddingLeft: `${(level + 1) * 16}px` }}
-                data-base-detail-card-id={child.card.docId}
-              >
-                <span className="base-detail-tree__toggle-spacer" aria-hidden />
-                <button
-                  type="button"
-                  className="base-detail-tree__row-main"
-                  onClick={() => onSelectCard?.(child.card)}
+              <React.Fragment key={`card-${child.card.docId}`}>
+                <div
+                  className={`base-detail-tree__row base-detail-tree__row--card${cardSelected ? ' is-selected' : ''}`}
+                  style={{ paddingLeft: `${(level + 1) * 16}px` }}
+                  data-base-detail-card-id={child.card.docId}
                 >
-                  <span className="base-detail-tree__icon">
-                    {(() => {
-                      const iconKey = getCardIcon(child.card?.cardType, child.card?.fileType);
-                      if (iconKey === 'text') return <CardIcon />;
-                      const size = 14;
-                      const theme = getTheme();
-                      const cardColor = getCardColor(iconKey, theme);
-                      switch (iconKey) {
-                        case 'pdf': return <CardPdfIcon size={size} color={cardColor} />;
-                        case 'image': return <CardImageIcon size={size} color={cardColor} />;
-                        case 'video': return <CardVideoIcon size={size} color={cardColor} />;
-                        case 'audio': return <CardAudioIcon size={size} color={cardColor} />;
-                        case 'code': return <CardCodeIcon size={size} color={cardColor} />;
-                        default: return <CardFileOtherIcon size={size} color={cardColor} />;
-                      }
-                    })()}
-                  </span>
-                  <span className="base-detail-tree__label-wrap">
-                    <span className="base-detail-tree__label" title={cardDisplayLabel(child.card)}>
-                      {cardDisplayLabel(child.card)}
+                  <span className="base-detail-tree__toggle-spacer" aria-hidden />
+                  <button
+                    type="button"
+                    className="base-detail-tree__row-main"
+                    onClick={() => onSelectCard?.(child.card)}
+                  >
+                    <span className="base-detail-tree__icon">
+                      {(() => {
+                        const iconKey = getCardIcon(child.card?.cardType, child.card?.fileType);
+                        if (iconKey === 'text') return <CardIcon />;
+                        const size = 14;
+                        const theme = getTheme();
+                        const cardColor = getCardColor(iconKey, theme);
+                        switch (iconKey) {
+                          case 'pdf': return <CardPdfIcon size={size} color={cardColor} />;
+                          case 'image': return <CardImageIcon size={size} color={cardColor} />;
+                          case 'video': return <CardVideoIcon size={size} color={cardColor} />;
+                          case 'audio': return <CardAudioIcon size={size} color={cardColor} />;
+                          case 'code': return <CardCodeIcon size={size} color={cardColor} />;
+                          default: return <CardFileOtherIcon size={size} color={cardColor} />;
+                        }
+                      })()}
                     </span>
-                    {showCardTimestamps ? (
-                      <TimestampMeta createdAt={child.card.createdAt} updateAt={child.card.updateAt} />
+                    <span className="base-detail-tree__label-wrap">
+                      <span className="base-detail-tree__label" title={cardDisplayLabel(child.card)}>
+                        {cardDisplayLabel(child.card)}
+                      </span>
+                      {showCardTimestamps ? (
+                        <TimestampMeta createdAt={child.card.createdAt} updateAt={child.card.updateAt} />
+                      ) : null}
+                    </span>
+                    {showProblemCount ? (
+                      <span
+                        className="base-detail-tree__problem-badge"
+                        aria-label={String(problemCount)}
+                        title={String(problemCount)}
+                      >
+                        {problemCount}
+                      </span>
                     ) : null}
-                  </span>
-                  {showProblemCount ? (
-                    <span
-                      className="base-detail-tree__problem-badge"
-                      aria-label={String(problemCount)}
-                      title={String(problemCount)}
-                    >
-                      {problemCount}
-                    </span>
-                  ) : null}
-                </button>
-              </div>
+                  </button>
+                </div>
+                {showProblems ? (
+                  <div className="base-detail-tree__problem-children">
+                    {problems.map((problem, idx) => {
+                      const pid = problem.pid || `p-${idx}`;
+                      const problemSelected = selectedProblemId === pid;
+                      const problemTitle = String(problem.title || problem.stem || '').replace(/<[^>]+>/g, '').slice(0, 60) || `#${idx + 1}`;
+                      return (
+                        <div
+                          key={`problem-${pid}`}
+                          className={`base-detail-tree__row base-detail-tree__row--problem${problemSelected ? ' is-selected' : ''}`}
+                          style={{ paddingLeft: `${(level + 2) * 16}px` }}
+                        >
+                          <span className="base-detail-tree__toggle-spacer" aria-hidden />
+                          <button
+                            type="button"
+                            className="base-detail-tree__row-main"
+                            onClick={() => { onSelectCard?.(child.card); onSelectProblem?.(pid); }}
+                            title={String(problemTitle)}
+                          >
+                            <span className="base-detail-tree__label" style={{ fontSize: 12, opacity: 0.75 }}>
+                              {problemTitle}
+                            </span>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </React.Fragment>
             );
           })}
         </div>
@@ -303,6 +340,8 @@ export function BaseDetailTree({
   nodeCardsMap,
   selectedNodeId,
   selectedCardId,
+  selectedProblemId,
+  onSelectProblem,
   initialExpandedNodeIds,
   extraExpandedNodeIds,
   scrollToCardId,
@@ -321,6 +360,8 @@ export function BaseDetailTree({
   nodeCardsMap: Record<string, Card[]>;
   selectedNodeId?: string | null;
   selectedCardId?: string | null;
+  selectedProblemId?: string | null;
+  onSelectProblem?: (pid: string) => void;
   initialExpandedNodeIds?: string[];
   extraExpandedNodeIds?: string[];
   scrollToCardId?: string | null;
@@ -430,6 +471,8 @@ export function BaseDetailTree({
           expandedNodes={expandedNodes}
           selectedNodeId={selectedNodeId}
           selectedCardId={selectedCardId}
+          selectedProblemId={selectedProblemId}
+          onSelectProblem={onSelectProblem}
           nodesClickable={nodesClickable}
           treeVisibility={treeVisibility}
           displaySettings={displaySettings}

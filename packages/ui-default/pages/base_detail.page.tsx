@@ -18,7 +18,7 @@ import { BaseDetailNodeContent } from 'vj/components/base/BaseDetailNodeContent'
 import { BaseDetailTreeDrawer } from 'vj/components/base/BaseDetailSidebar';
 import { StatusIndicator } from 'vj/components/base/StatusIndicator';
 import { FloatingToolbar } from 'vj/components/base/FloatingToolbar';
-import { RoadmapDetailSettingsPanel } from 'vj/components/roadmap/RoadmapDetailSettingsPanel';
+import { BaseDetailSettingsPanel } from 'vj/components/base/BaseDetailSettingsPanel';
 import { getRoadmapChildGraph, getSortedNodeChildren, nodeDisplayLabel, collectNodePathFromRoot, findCardByDocId, findCardHostNodeId, findRoadmapContainerAncestor, getPrimaryCardForNode, isRoadmapCanvasNodeId } from 'vj/components/base/detail_tree';
 import { isTypoImagePreviewOverlay } from 'vj/components/base/typo_image_preview';
 import {
@@ -702,6 +702,8 @@ function BaseDetailViewer() {
               edges={edges}
               nodeCardsMap={nodeCardsMap}
               selectedCardId={selectedCard?.docId || null}
+              selectedProblemId={selectedProblemId}
+              onSelectProblem={handleSelectProblem}
               treeVisibility={contentTreeVisibility}
               displaySettings={displaySettings}
               extraExpandedNodeIds={cardExpandNodeIds}
@@ -772,7 +774,7 @@ function BaseDetailViewer() {
           docId={base.docId}
         />
       ) : null}
-      <RoadmapDetailSettingsPanel
+      <BaseDetailSettingsPanel
         open={settingsOpen}
         settings={displaySettings}
         saving={displaySettingsSaving}
