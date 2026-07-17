@@ -54,6 +54,7 @@ export function CardEditModal({
     const resolvedDomainId = domainId || (window as any).UiContext?.domainId || 'system';
     setSaving(true);
     try {
+      (window as any).__baseJustSaved = Date.now();
       const res: any = await request.post(
         domainApiPath(`/base/card/${encodeURIComponent(cardRef.current.docId)}`, resolvedDomainId),
         { title: titleRef.current, content: contentRef.current, operation: 'update' },

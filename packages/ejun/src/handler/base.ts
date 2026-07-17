@@ -787,6 +787,7 @@ class BaseDetailHandler extends Handler {
             baseDetailUiPrefs,
             baseExpandState,
             baseExpandStateLoaded,
+            socketUrl: `base/ws?domainId=${encodeURIComponent(domainId)}&docId=${this.base!.docId}`,
         };
     }
 
@@ -2000,7 +2001,7 @@ export class BaseSaveHandler extends Handler {
             const docIdOnly = baseOnly.docId;
             const branchOnly = data.branch?.trim() || (baseOnly as any).currentBranch || 'main';
             await persistBaseEditorSaveSidecars(this, domainId, docIdOnly, branchOnly, data as Record<string, unknown>, mdt);
-            (this.ctx.emit as any)('base/update', docIdOnly, null, branchOnly);
+            (this.ctx.emit as any)('base/update', docIdOnly, null, branchOnly, this.user._id, this.user.uname, 'sidecar_save');
             this.response.body = { success: true, hasNonPositionChanges: false };
             return;
         }
@@ -2064,14 +2065,14 @@ export class BaseSaveHandler extends Handler {
                 edges: base.edges, 
             }, mdt);
             
-            (this.ctx.emit as any)('base/update', docId, null, currentBranch);
-            
+            (this.ctx.emit as any)('base/update', docId, null, currentBranch, this.user._id, this.user.uname, 'expand_save');
+
             this.response.body = { success: true, hasNonPositionChanges: false };
             return;
         }
-        
-        
-        
+
+
+
         if (nodes && Array.isArray(nodes)) {
             nodes = nodes.filter((node: BaseNode) => {
                 if (!node.id) return false;
@@ -2154,7 +2155,7 @@ export class BaseSaveHandler extends Handler {
             }
         }
         
-        (this.ctx.emit as any)('base/update', docId, null, currentBranch);
+        (this.ctx.emit as any)('base/update', docId, null, currentBranch, this.user._id, this.user.uname, 'full_save');
         (this.ctx.emit as any)('base/git/status/update', docId);
 
         // Fire-and-forget vectorize base content for semantic search — disabled
@@ -3555,6 +3556,8 @@ export class BaseCardHandler extends Handler {
 
         if (action === 'delete') {
             await CardModel.delete(domainId, targetCard.docId);
+            const branch = (base as any).currentBranch || 'main';
+            (this.ctx.emit as any)('base/update', base.docId, null, branch, this.user._id, this.user.uname, 'delete_card');
             this.response.body = { success: true };
             return;
         }
@@ -3571,6 +3574,14 @@ export class BaseCardHandler extends Handler {
         }
 
         await CardModel.update(domainId, targetCard.docId, updates);
+        const branch = (base as any).currentBranch || 'main';
+        const changed: string[] = [];
+        if (updates.title !== undefined) changed.push('title');
+        if (updates.content !== undefined) changed.push('content');
+        if (updates.problems !== undefined) changed.push('problems');
+        if (updates.nodeId !== undefined) changed.push('nodeId');
+        if (updates.order !== undefined) changed.push('order');
+        (this.ctx.emit as any)('base/update', base.docId, null, branch, this.user._id, this.user.uname, 'update_card', { changed });
         this.response.body = { success: true };
     }
 }
@@ -5053,7 +5064,20 @@ export class BaseBatchSaveHandler extends Handler {
         }
 
         await persistBaseEditorSaveSidecars(this, actualDomainId, docId, branch, data as Record<string, unknown>, mdt, nodeIdMap);
-        (this.ctx.emit as any)('base/update', docId, null, branch);
+        const summary: Record<string, number> = {};
+        if (data.nodeCreates?.length) summary.nodeCreates = data.nodeCreates.length;
+        if (data.nodeUpdates?.length) summary.nodeUpdates = data.nodeUpdates.length;
+        if (data.nodeDeletes?.length) summary.nodeDeletes = data.nodeDeletes.length;
+        if (data.cardCreates?.length) summary.cardCreates = data.cardCreates.length;
+        if (data.cardUpdates?.length) {
+            const probCount = (data.cardUpdates as any[])?.reduce((a: number, c: any) => a + (c.problems?.length || 0), 0) || 0;
+            summary.cardUpdates = data.cardUpdates.length;
+            if (probCount) summary.problemUpdates = probCount;
+        }
+        if (data.cardDeletes?.length) summary.cardDeletes = data.cardDeletes.length;
+        if (data.edgeCreates?.length) summary.edgeCreates = data.edgeCreates.length;
+        if (data.edgeDeletes?.length) summary.edgeDeletes = data.edgeDeletes.length;
+        (this.ctx.emit as any)('base/update', docId, null, branch, this.user._id, this.user.uname, 'batch_update', summary);
 
         // Fire-and-forget vectorize base content for semantic search after successful batch save — disabled
         // because full re-index on every save is too expensive for large bases.
@@ -5789,7 +5813,7 @@ class BaseCommitHandler extends Handler {
             );
 
             
-            (this.ctx.emit as any)('base/update', base.docId, base.bid);
+            (this.ctx.emit as any)('base/update', base.docId, base.bid, undefined, this.user._id, this.user.uname, 'git_commit', { message: customMessage?.trim() || '' });
             (this.ctx.emit as any)('base/git/status/update', base.docId, base.bid);
 
             this.response.body = { ok: true, message: 'Changes committed successfully' };
@@ -6334,9 +6358,9 @@ export class BaseConnectionHandler extends ConnectionHandler {
 
         
         const dispose1 = (this.ctx.on as any)('base/update', async (...args: any[]) => {
-            const [updateDocId, updatebid, updateBranch] = args;
+            const [updateDocId, updatebid, updateBranch, sourceUid, sourceUname, actionKey, actionDetail] = args;
             if (updateDocId && updateDocId.toString() === this.docId!.toString()) {
-                await this.sendUpdate(finalDomainId, updateBranch);
+                await this.sendUpdate(finalDomainId, updateBranch, sourceUid, sourceUname, actionKey, actionDetail);
             }
         });
         this.subscriptions.push({ dispose: dispose1 });
@@ -6528,7 +6552,7 @@ export class BaseConnectionHandler extends ConnectionHandler {
         }
     }
 
-    private async sendUpdate(domainId: string, sourceBranch?: string) {
+    private async sendUpdate(domainId: string, sourceBranch?: string, sourceUid?: number, sourceUname?: string, actionKey?: string, actionDetail?: any) {
         try {
             const base = await BaseModel.get(domainId, this.docId!);
             if (!base) return;
@@ -6549,6 +6573,10 @@ export class BaseConnectionHandler extends ConnectionHandler {
                 gitStatus,
                 branch,
                 sourceBranch: sourceBranch || branch,
+                sourceUid: sourceUid ?? this.user._id,
+                sourceUname: sourceUname ?? this.user.uname,
+                actionKey: actionKey || 'unknown',
+                actionDetail,
                 todayContribution: contrib.todayContribution,
                 todayContributionAllDomains: todayAllDomains,
                 contributions: contrib.contributions,
@@ -6836,7 +6864,7 @@ class BaseMigrateNodeToNewHandler extends Handler {
             logger.error('copy-node-to-new: ensureBaseGitRepo failed', err);
         }
 
-        (this.ctx.emit as any)('base/update', newDocId);
+        (this.ctx.emit as any)('base/update', newDocId, undefined, undefined, this.user._id, this.user.uname, 'migrate_node');
 
         this.response.body = {
             success: true,
@@ -6869,7 +6897,7 @@ export class BaseProblemTagRegistryHandler extends Handler {
         }
         const next = sanitizeProblemTagRegistryList([...prev, tag]);
         await BaseModel.updateFull(domainId, docId, { problemTags: next });
-        (this.ctx.emit as any)('base/update', docId);
+        (this.ctx.emit as any)('base/update', docId, undefined, undefined, this.user._id, this.user.uname, 'add_tag', { tag });
         this.response.body = { success: true, problemTags: next };
     }
 }
@@ -6899,7 +6927,7 @@ export class BaseExpandStateHandler extends Handler {
             { upsert: true }
         );
 
-        (this.ctx.emit as any)('base/update', baseDocId);
+        (this.ctx.emit as any)('base/update', baseDocId, undefined, undefined, this.user._id, this.user.uname, 'expand_save');
 
         this.response.body = { success: true };
     }

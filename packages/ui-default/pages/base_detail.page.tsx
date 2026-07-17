@@ -99,8 +99,10 @@ function BaseDetailViewer() {
   const expandedSnapshotRef = useRef<Set<string> | null>(null);
   const title = base.title?.trim() || String(i18n('Knowledge Base'));
   const branch = base.currentBranch || 'main';
-  const nodes = base.nodes || [];
-  const edges = base.edges || [];
+  const [liveNodes, setLiveNodes] = useState(base.nodes || []);
+  const [liveEdges, setLiveEdges] = useState(base.edges || []);
+  const nodes = liveNodes;
+  const edges = liveEdges;
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
     const fromContext = (window as any).UiContext?.baseExpandState;
     const loaded = (window as any).UiContext?.baseExpandStateLoaded;
@@ -390,6 +392,107 @@ function BaseDetailViewer() {
     document.addEventListener('pointerdown', onPointerDown);
     return () => document.removeEventListener('pointerdown', onPointerDown);
   }, [handleCloseCardDrawer, selectedCard]);
+
+  // WebSocket: receive live base updates
+  useEffect(() => {
+    const socketUrl = (window as any).UiContext?.socketUrl;
+    const wsPrefix = (window as any).UiContext?.ws_prefix || '';
+    const domainId = base.domainId || 'system';
+    const docId = base.docId || '';
+    if (!socketUrl || !domainId || !docId) return;
+    let closed = false;
+    let lastNotifyKey = '';
+    const apiQs: Record<string, string> = { docId, branch };
+    const dataUrl = domainApiPath('/base/data', domainId);
+
+    const connect = async () => {
+      try {
+        const { default: WebSocket } = await import('../components/socket');
+        const wsUrl = wsPrefix + socketUrl;
+        const sock = new WebSocket(wsUrl, false, true);
+        sock.onmessage = (_: any, data: string) => {
+          if (closed) return;
+          try {
+            const msg = JSON.parse(data);
+            if (msg.type === 'init') {
+              // initial SSR data already loaded; nothing to do
+              return;
+            }
+            if (msg.type !== 'update') return;
+            // Ignore updates for a different branch
+            if (msg.sourceBranch && branch && msg.sourceBranch !== branch) return;
+            // Re-fetch latest data
+            request.get(dataUrl, apiQs).then((newData: any) => {
+              if (closed || !newData) return;
+              if (newData.nodes) setLiveNodes(newData.nodes);
+              if (newData.edges) setLiveEdges(newData.edges);
+              if (newData.nodeCardsMap) {
+                setNodeCardsMap(newData.nodeCardsMap);
+                // If a card is selected, refresh it from the new map
+                setSelectedCard((prev) => {
+                  if (!prev) return null;
+                  for (const cards of Object.values(newData.nodeCardsMap) as Card[][]) {
+                    const found = cards.find((c: Card) => c.docId === prev.docId);
+                    if (found) return found;
+                  }
+                  return prev;
+                });
+              }
+            }).catch(() => {});
+            // Skip notification for changes triggered by THIS window's save
+            const ownSaveTs = (window as any).__baseJustSaved;
+            if (ownSaveTs && Date.now() - ownSaveTs < 3000) return;
+            // Skip notification for session/sidecar side-effects (no real actionKey)
+            if (!msg.actionKey || msg.actionKey === 'unknown') return;
+            const notifyKey = String(msg.sourceUid ?? '');
+            if (notifyKey === lastNotifyKey) return;
+            lastNotifyKey = notifyKey;
+            setTimeout(() => { lastNotifyKey = ''; }, 3000);
+            const buildSummary = (ak: string, det: any): string => {
+              switch (ak) {
+                case 'batch_update': {
+                  const parts: string[] = [];
+                  if (det?.nodeCreates) parts.push(i18n('{0} new nodes', det.nodeCreates));
+                  if (det?.nodeUpdates) parts.push(i18n('{0} nodes updated', det.nodeUpdates));
+                  if (det?.nodeDeletes) parts.push(i18n('{0} nodes deleted', det.nodeDeletes));
+                  if (det?.cardCreates) parts.push(i18n('{0} new cards', det.cardCreates));
+                  if (det?.cardUpdates) parts.push(i18n('{0} cards updated', det.cardUpdates) + (det?.problemUpdates ? ` (${i18n('{0} problems', det.problemUpdates)})` : ''));
+                  if (det?.cardDeletes) parts.push(i18n('{0} cards deleted', det.cardDeletes));
+                  if (det?.edgeCreates) parts.push(i18n('{0} new edges', det.edgeCreates));
+                  if (det?.edgeDeletes) parts.push(i18n('{0} edges deleted', det.edgeDeletes));
+                  return parts.join('，') || i18n('Saved');
+                }
+                case 'full_save': return i18n('Saved');
+                case 'sidecar_save': return i18n('Settings saved');
+                case 'expand_save': return i18n('Tree state saved');
+                case 'update_card': {
+                  const changed = (det?.changed || []).map((k: string) => {
+                    const map: Record<string, string> = { title: i18n('Title'), content: i18n('Content'), problems: i18n('Problems'), nodeId: i18n('Node'), order: i18n('Order') };
+                    return map[k] || k;
+                  });
+                  return i18n('Card updated: ') + changed.join('，');
+                }
+                case 'delete_card': return i18n('Card deleted');
+                case 'git_commit': return det?.message ? i18n('Committed: {0}', det.message) : i18n('Committed');
+                case 'migrate_node': return i18n('Node migrated to new base');
+                case 'add_tag': return det?.tag ? i18n('Tag added: {0}', det.tag) : i18n('Tag added');
+                default: return i18n('Content has been updated');
+              }
+            };
+            new Notification({
+              title: msg.sourceUname || '',
+              message: buildSummary(msg.actionKey, msg.actionDetail),
+              closable: true,
+              position: 'top-right',
+              duration: 0,
+            }).show();
+          } catch { /* ignore parse errors */ }
+        };
+      } catch { /* WS init failed — no-op */ }
+    };
+    connect();
+    return () => { closed = true; };
+  }, []);
 
   const headerTitle = useMemo(() => {
     if (canvasFocusedNodeId) {
