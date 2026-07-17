@@ -210,6 +210,7 @@ class DevelopSessionStartHandler extends Handler {
         if (!this.user.own(mindMap)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
 
         const nodeId = typeof body.nodeId === 'string' ? body.nodeId.trim() : '';
+        const cardId = typeof body.cardId === 'string' ? body.cardId.trim() : '';
 
         const poolMode = 'base' as const;
         const fullPool = await loadUserDevelopPoolByMode(finalDomainId, this.user._id, this.user.priv, poolMode);
@@ -248,6 +249,9 @@ class DevelopSessionStartHandler extends Handler {
             reuseFilter.nodeId = nodeId;
         } else {
             (reuseFilter.$and as unknown[]).push(emptyNodeId);
+        }
+        if (cardId) {
+            reuseFilter.cardId = cardId;
         }
         (reuseFilter.$and as unknown[]).push({
             $or: [
@@ -307,6 +311,7 @@ class DevelopSessionStartHandler extends Handler {
             developSessionKind: 'daily',
             developMapDocType: mapDocType,
             ...(nodeId ? { nodeId } : {}),
+            ...(cardId ? { cardId } : {}),
         });
         const deadline = new Date(doc.createdAt.getTime() + ttlSec * 1000);
         let progress: Record<string, unknown> = doc.progress && typeof doc.progress === 'object'

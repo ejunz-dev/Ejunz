@@ -610,7 +610,7 @@ function BaseDetailViewer() {
         nodeId,
         cardId: String(card.docId || ''),
       });
-      const editorUrl = domainApiPath('/develop/editor', domainId);
+      const editorUrl = domainApiPath('/edit/card', domainId);
       const sep = editorUrl.includes('?') ? '&' : '?';
       const opened = window.open(`${editorUrl}${sep}${sp.toString()}`, '_blank');
       if (opened) {
