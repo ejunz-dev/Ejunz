@@ -82,14 +82,18 @@ function RoadmapDrawerProblemItem({
   indexOneBased,
   expanded,
   reveal,
+  selected,
   onToggle,
+  onSelect,
   onRevealChange,
 }: {
   problem: Problem;
   indexOneBased: number;
   expanded: boolean;
   reveal: RevealState;
+  selected?: boolean;
   onToggle: () => void;
+  onSelect?: () => void;
   onRevealChange: (next: RevealState) => void;
 }) {
   const kind = problemKind(problem);
@@ -545,12 +549,12 @@ function RoadmapDrawerProblemItem({
   const hideSeparateAnswers = kind === 'fill_blank' || kind === 'matching' || kind === 'super_flip' || kind === 'ai_eval';
 
   return (
-    <div className={`roadmap-detail-drawer__problem${expanded ? ' is-expanded' : ''}`}>
+    <div className={`roadmap-detail-drawer__problem${expanded ? ' is-expanded' : ''}${selected ? ' is-selected' : ''}`}>
       <button
         type="button"
         className="roadmap-detail-drawer__problem-head"
         aria-expanded={expanded}
-        onClick={onToggle}
+        onClick={() => { onSelect?.(); onToggle(); }}
       >
         <span className="roadmap-detail-drawer__resource-badge">{problemKindBadge(problem)}</span>
         <span className="roadmap-detail-drawer__problem-head-title">{title}</span>
@@ -570,9 +574,13 @@ function RoadmapDrawerProblemItem({
 export function RoadmapDrawerProblemList({
   problems,
   resetKey,
+  selectedProblemId,
+  onSelectProblem,
 }: {
   problems: Problem[];
   resetKey: string;
+  selectedProblemId?: string | null;
+  onSelectProblem?: (pid: string) => void;
 }) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
   const [revealById, setRevealById] = useState<Record<string, RevealState>>({});
@@ -617,8 +625,10 @@ export function RoadmapDrawerProblemList({
             problem={problem}
             indexOneBased={idx + 1}
             expanded={expandedIds.has(pid)}
+            selected={selectedProblemId === pid}
             reveal={revealById[pid] || emptyRevealState()}
             onToggle={() => toggleExpanded(pid)}
+            onSelect={() => onSelectProblem?.(pid)}
             onRevealChange={(next) => setReveal(pid, next)}
           />
         );

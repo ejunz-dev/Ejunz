@@ -91,6 +91,7 @@ function BaseDetailViewer() {
   const [learnBusy, setLearnBusy] = useState(false);
   const [editorBusy, setEditorBusy] = useState(false);
   const [editCard, setEditCard] = useState<Card | null>(null);
+  const [selectedProblemId, setSelectedProblemId] = useState<string | null>(null);
   const [expandDirty, setExpandDirty] = useState(false);
   const expandSaveBusyRef = useRef(false);
   const expandedSnapshotRef = useRef<Set<string> | null>(null);
@@ -145,6 +146,8 @@ function BaseDetailViewer() {
     setContentRootNodeId,
     selectedCard,
     setSelectedCard,
+    selectedProblemId,
+    setSelectedProblemId,
     onRestoreCard: handleRestoreCardFromUrl,
     onRestoreCanvasNode: handleRestoreCanvasNodeFromUrl,
     onClearCard: () => {
@@ -240,6 +243,7 @@ function BaseDetailViewer() {
     setSelectedCard(card);
     setScrollToCardId(card.docId);
     setScrollToCanvasNodeId(null);
+    setSelectedProblemId(null);
   }, []);
 
   const handleSelectNodeInContent = useCallback(async (targetNodeId: string) => {
@@ -262,6 +266,7 @@ function BaseDetailViewer() {
       setContentRootNodeId(hostNodeId);
     }
     setSelectedCard(card);
+    setSelectedProblemId(null);
     if (hostNodeId && findRoadmapContainerAncestor(hostNodeId, nodes, edges)) {
       setScrollToCanvasNodeId(hostNodeId);
       setScrollToCardId(null);
@@ -277,6 +282,7 @@ function BaseDetailViewer() {
     setSelectedCard(null);
     setScrollToCardId(null);
     setHighlightText(null);
+    setSelectedProblemId(null);
   }, []);
 
   const handleDisplaySettingsSave = useCallback(async (next: BaseDetailDisplaySettings) => {
@@ -585,6 +591,10 @@ function BaseDetailViewer() {
     setEditCard(null);
   }, []);
 
+  const handleSelectProblem = useCallback((pid: string) => {
+    setSelectedProblemId((prev) => (prev === pid ? null : pid));
+  }, []);
+
   return (
     <div className="roadmap-detail-layout">
       <BaseDetailHeader
@@ -720,6 +730,8 @@ function BaseDetailViewer() {
         }}
         onEditCard={handleStartEditCard}
         editorBusy={editCard !== null}
+        selectedProblemId={selectedProblemId}
+        onSelectProblem={handleSelectProblem}
       />
       {displaySettings.showAiTutor ? (
         <BaseDetailAiTutor
