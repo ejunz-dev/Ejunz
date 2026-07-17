@@ -9,6 +9,7 @@ import type { BaseDoc, Card } from 'vj/components/base/types';
 import { BaseDetailAiTutor } from 'vj/components/base/BaseDetailAiTutor';
 import { BaseDetailCardDrawer } from 'vj/components/base/BaseDetailCardDrawer';
 import { CardEditModal } from 'vj/components/base/CardEditModal';
+import { ProblemEditModal } from 'vj/components/base/ProblemEditModal';
 import { BaseDetailExplorer } from 'vj/components/base/BaseDetailExplorer';
 import { BaseDetailHeader } from 'vj/components/base/BaseDetailHeader';
 import { BaseDetailSemanticSearch, type SemanticSearchItem } from 'vj/components/base/BaseDetailSemanticSearch';
@@ -92,6 +93,7 @@ function BaseDetailViewer() {
   const [editorBusy, setEditorBusy] = useState(false);
   const [editCard, setEditCard] = useState<Card | null>(null);
   const [selectedProblemId, setSelectedProblemId] = useState<string | null>(null);
+  const [editProblem, setEditProblem] = useState<{ pid: string; index: number } | null>(null);
   const [expandDirty, setExpandDirty] = useState(false);
   const expandSaveBusyRef = useRef(false);
   const expandedSnapshotRef = useRef<Set<string> | null>(null);
@@ -244,6 +246,7 @@ function BaseDetailViewer() {
     setScrollToCardId(card.docId);
     setScrollToCanvasNodeId(null);
     setSelectedProblemId(null);
+    setEditProblem(null);
   }, []);
 
   const handleSelectNodeInContent = useCallback(async (targetNodeId: string) => {
@@ -595,6 +598,26 @@ function BaseDetailViewer() {
     setSelectedProblemId((prev) => (prev === pid ? null : pid));
   }, []);
 
+  const handleEditProblem = useCallback((_pid: string, index: number) => {
+    setEditProblem({ pid: _pid, index });
+  }, []);
+
+  const handleProblemEditSave = useCallback((updatedCard: Card) => {
+    setSelectedCard(updatedCard);
+    setNodeCardsMap((prev) => {
+      const next: Record<string, Card[]> = {};
+      for (const [nodeId, cards] of Object.entries(prev)) {
+        next[nodeId] = cards.map((c) => (c.docId === updatedCard.docId ? updatedCard : c));
+      }
+      return next;
+    });
+    setEditProblem(null);
+  }, []);
+
+  const handleCloseEditProblem = useCallback(() => {
+    setEditProblem(null);
+  }, []);
+
   return (
     <div className="roadmap-detail-layout">
       <BaseDetailHeader
@@ -732,6 +755,7 @@ function BaseDetailViewer() {
         editorBusy={editCard !== null}
         selectedProblemId={selectedProblemId}
         onSelectProblem={handleSelectProblem}
+        onEditProblem={handleEditProblem}
       />
       {displaySettings.showAiTutor ? (
         <BaseDetailAiTutor
@@ -787,6 +811,17 @@ function BaseDetailViewer() {
           domainId={base.domainId}
           onSave={handleEditCardSave}
           onClose={handleCloseEditCard}
+        />
+      ) : null}
+      {editProblem && selectedCard ? (
+        <ProblemEditModal
+          card={selectedCard}
+          problem={(selectedCard.problems || [])[editProblem.index]}
+          problemIndex={editProblem.index}
+          domainId={base.domainId}
+          baseDocId={base.docId}
+          onSave={handleProblemEditSave}
+          onClose={handleCloseEditProblem}
         />
       ) : null}
     </div>
