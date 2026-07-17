@@ -17,7 +17,7 @@ import { BaseDetailTreeDrawer } from 'vj/components/base/BaseDetailSidebar';
 import { StatusIndicator } from 'vj/components/base/StatusIndicator';
 import { FloatingToolbar } from 'vj/components/base/FloatingToolbar';
 import { RoadmapDetailSettingsPanel } from 'vj/components/roadmap/RoadmapDetailSettingsPanel';
-import { getRoadmapChildGraph, getSortedNodeChildren, nodeDisplayLabel, collectNodePathFromRoot, findCardByDocId, findCardHostNodeId, findRoadmapContainerAncestor, getPrimaryCardForNode, isRoadmapCanvasNodeId } from 'vj/components/base/detail_tree';
+import { getRoadmapChildGraph, getSortedNodeChildren, nodeDisplayLabel, cardDisplayLabel, collectNodePathFromRoot, findCardByDocId, findCardHostNodeId, findRoadmapContainerAncestor, getPrimaryCardForNode, isRoadmapCanvasNodeId } from 'vj/components/base/detail_tree';
 import { isTypoImagePreviewOverlay } from 'vj/components/base/typo_image_preview';
 import {
   initialBaseDetailSelectedNodeId,
@@ -562,6 +562,70 @@ function BaseDetailViewer() {
     }
   }, [base.docId, base.currentBranch, base.domainId, contentRootNodeId, editorBusy, nodes, nodeCardsMap]);
 
+  const handleStartCardEditorSession = useCallback(async () => {
+    const card = selectedCard;
+    if (!card || editorBusy) return;
+    const baseDocNum = Number(base.docId);
+    if (!Number.isFinite(baseDocNum) || baseDocNum <= 0) {
+      Notification.error(i18n('Outline editor start invalid base'));
+      return;
+    }
+
+    const hostNodeId = findCardHostNodeId(card.docId || '', nodeCardsMap);
+    const nodeId = hostNodeId || contentRootNodeId || '';
+    if (!nodeId) {
+      Notification.error(i18n('Outline editor start failed'));
+      return;
+    }
+
+    // Show confirmation dialog with card info
+    const nodeLabel = nodeDisplayLabel(
+      nodes.find((n) => n.id === nodeId) || { id: nodeId, text: '' },
+    );
+    const cardLabel = cardDisplayLabel(card);
+    const dialogMsg = `${i18n('Start develop session for card:')}\n${cardLabel}\n${i18n('Node:')} ${nodeLabel}`;
+    const dialogBody = tpl.typoMsg(dialogMsg);
+    const dialog = new ActionDialog({ $body: dialogBody, width: '420px' });
+    const action = await dialog.open();
+    if (action !== 'ok') return;
+
+    const domainId = base.domainId || 'system';
+    const branchName = base.currentBranch || 'main';
+    setEditorBusy(true);
+    try {
+      const payload: Record<string, unknown> = {
+        baseDocId: baseDocNum,
+        branch: branchName,
+        nodeId,
+        developMapDocType: 70,
+      };
+      const res: any = await request.post(domainApiPath('/session/develop/start', domainId), payload);
+      const sessionId = res?.sessionId ?? res?.body?.sessionId;
+      if (typeof sessionId !== 'string' || !sessionId.trim()) {
+        Notification.error(i18n('Outline editor start failed'));
+        return;
+      }
+      const sp = new URLSearchParams({
+        session: sessionId.trim(),
+        nodeId,
+        cardId: String(card.docId || ''),
+      });
+      const editorUrl = domainApiPath('/develop/editor', domainId);
+      const sep = editorUrl.includes('?') ? '&' : '?';
+      const opened = window.open(`${editorUrl}${sep}${sp.toString()}`, '_blank');
+      if (opened) {
+        opened.opener = null;
+      } else {
+        Notification.error(i18n('Outline editor popup blocked'));
+      }
+    } catch (e: any) {
+      const msg = e?.message ?? i18n('Outline editor start failed');
+      Notification.error(typeof msg === 'string' ? msg : String(msg));
+    } finally {
+      setEditorBusy(false);
+    }
+  }, [base.docId, base.currentBranch, base.domainId, contentRootNodeId, editorBusy, nodeCardsMap, nodes, selectedCard]);
+
   return (
     <div className="roadmap-detail-layout">
       <BaseDetailHeader
@@ -695,6 +759,8 @@ function BaseDetailViewer() {
           setDisplaySettings((prev) => ({ ...prev, cardDrawerWidth: w }));
           setExpandDirty(true);
         }}
+        onEditCard={handleStartCardEditorSession}
+        editorBusy={editorBusy}
       />
       {displaySettings.showAiTutor ? (
         <BaseDetailAiTutor

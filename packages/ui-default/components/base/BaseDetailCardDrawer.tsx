@@ -164,6 +164,8 @@ export function BaseDetailCardDrawer({
   domainId,
   drawerWidth,
   onDrawerWidthChange,
+  onEditCard,
+  editorBusy,
 }: {
   open: boolean;
   card: Card | null;
@@ -173,6 +175,8 @@ export function BaseDetailCardDrawer({
   domainId?: string;
   drawerWidth: number;
   onDrawerWidthChange: (w: number) => void;
+  onEditCard?: () => void;
+  editorBusy?: boolean;
 }) {
   const [tab, setTab] = useState<DrawerTab>('content');
   const [practiceBusy, setPracticeBusy] = useState(false);
@@ -346,6 +350,19 @@ export function BaseDetailCardDrawer({
             ) : null}
           </div>
           <div className="roadmap-detail-drawer__header-actions">
+            {onEditCard ? (
+              <button
+                type="button"
+                className="roadmap-detail-drawer__edit-btn"
+                onClick={onEditCard}
+                disabled={editorBusy}
+                aria-busy={editorBusy || undefined}
+                aria-label={i18n('Edit')}
+                title={String(i18n('Edit'))}
+              >
+                {i18n('Edit')}
+              </button>
+            ) : null}
             <button
               type="button"
               className="roadmap-detail-drawer__close"
