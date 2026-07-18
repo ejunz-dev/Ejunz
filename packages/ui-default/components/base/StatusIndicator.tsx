@@ -18,6 +18,7 @@ export function StatusIndicator({
   const wrapRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const fullWRef = useRef(0);
+  const wasDraggedRef = useRef(false);
   const dragRef = useRef<{
     startX: number; startY: number;
     startPosX: number; startPosY: number;
@@ -52,6 +53,7 @@ export function StatusIndicator({
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     if (e.button !== 0 || !onPosChange) return;
     const el = e.currentTarget as HTMLDivElement;
+    wasDraggedRef.current = false;
     dragRef.current = {
       startX: e.clientX,
       startY: e.clientY,
@@ -66,6 +68,7 @@ export function StatusIndicator({
     if (!drag) return;
     const dx = e.clientX - drag.startX;
     const dy = e.clientY - drag.startY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) wasDraggedRef.current = true;
     const newX = Math.max(10, drag.startPosX - dx);
     const newY = Math.max(5, drag.startPosY + dy);
     const wrap = wrapRef.current;
@@ -75,10 +78,9 @@ export function StatusIndicator({
     }
   }, []);
 
-  const handlePointerUp = useCallback(() => {
+  const handlePointerUp = useCallback((e: React.PointerEvent) => {
     const wrap = wrapRef.current;
     if (!wrap || !onPosChange) return;
-    // Parse current position from style
     const leftStr = wrap.style.left;
     const topStr = wrap.style.top;
     const x = leftStr ? parseInt(leftStr.replace('calc(100% - ', '').replace('px)', ''), 10) : posX;
@@ -87,10 +89,9 @@ export function StatusIndicator({
     dragRef.current = null;
   }, [onPosChange, posX, posY]);
 
-  // Click on the dot itself triggers save (only when dirty)
-  const handleDotClick = useCallback((e: React.MouseEvent) => {
-    if (!dirty || !onClickSave) return;
-    e.stopPropagation();
+  // Click on the indicator itself triggers save (only when dirty, not after drag)
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    if (!dirty || !onClickSave || wasDraggedRef.current) return;
     onClickSave();
   }, [dirty, onClickSave]);
 
@@ -103,17 +104,12 @@ export function StatusIndicator({
         title={dirty
           ? i18n('Unsaved changes — click to save')
           : i18n('Saved')}
+        onClick={handleClick}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
       >
-        <span
-          className="base-detail-status-indicator__dot"
-          onClick={handleDotClick}
-          role={dirty ? 'button' : undefined}
-          tabIndex={dirty ? 0 : undefined}
-          onKeyDown={dirty && onClickSave ? (e) => { if (e.key === 'Enter') onClickSave(); } : undefined}
-        />
+        <span className="base-detail-status-indicator__dot" />
         <span className="base-detail-status-indicator__label">{i18n('Unsaved')}</span>
       </div>
     </div>
