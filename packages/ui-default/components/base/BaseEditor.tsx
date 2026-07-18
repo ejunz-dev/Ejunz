@@ -9,6 +9,7 @@ import { Dialog, ActionDialog } from 'vj/components/dialog/index';
 import uploadFiles from 'vj/components/upload';
 import { nanoid } from 'nanoid';
 import { jsonrepair } from 'jsonrepair';
+import { WSStatusIndicator, type WSConnectionStatus } from './WSStatusIndicator';
 import type {
   Problem,
   ProblemSingle,
@@ -256,6 +257,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   }, []);
 
   const [theme, setTheme] = useState<'light' | 'dark'>(() => getTheme());
+  const [wsStatus, setWsStatus] = useState<WSConnectionStatus>('disconnected');
+  const [viewerCount, setViewerCount] = useState(0);
+  const wsPositionRef = useRef({ x: savedEditorLayout.wsIndicatorX ?? 40, y: savedEditorLayout.wsIndicatorY ?? 40 });
   const [contributionData, setContributionData] = useState<{
     todayContribution: { nodes: number; cards: number; problems: number; nodeChars?: number; cardChars?: number; problemChars?: number };
     todayContributionAllDomains: { nodes: number; cards: number; problems: number; nodeChars?: number; cardChars?: number; problemChars?: number };
@@ -462,11 +466,21 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         const wsUrl = wsPrefix + socketUrl;
         const sock = new WebSocket(wsUrl, false, true);
         contributionWsRef.current = sock;
+        setWsStatus('connecting');
+        sock.onopen = () => setWsStatus('connected');
+        sock.onclose = () => setWsStatus('disconnected');
 
         sock.onmessage = (_: any, data: string) => {
           if (closed) return;
           try {
             const msg = JSON.parse(data);
+            if (msg.type === 'init') {
+              if (typeof msg.viewerCount === 'number') setViewerCount(msg.viewerCount);
+            }
+            if (msg.type === 'viewer_count') {
+              setViewerCount(msg.count ?? 0);
+              return;
+            }
             if (msg.type === 'init' || msg.type === 'update') {
               if (msg.type === 'update' && msg.sourceBranch && editorBranch && msg.sourceBranch !== editorBranch) return;
               if (msg.type === 'update' && msg.actionKey) {
@@ -2973,6 +2987,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               problemsPanelWidth,
               aiPanelHeight,
               displaySettings: effectiveDisplaySettings,
+              wsIndicatorX: wsPositionRef.current.x,
+              wsIndicatorY: wsPositionRef.current.y,
             }
           : null;
 
@@ -16411,6 +16427,13 @@ Reply with a JSON code block only for executable operations. For same-response f
           </>
         );
       })()}
+      <WSStatusIndicator
+        status={wsStatus}
+        viewerCount={viewerCount}
+        posX={wsPositionRef.current.x}
+        posY={wsPositionRef.current.y}
+        onPosChange={(x, y) => { wsPositionRef.current = { x, y }; }}
+      />
     </div>
   );
 }

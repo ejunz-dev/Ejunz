@@ -13,6 +13,8 @@ export type BaseDetailDisplaySettings = {
   toolbarY: number;
   cardDrawerWidth: number;
   treeDrawerWidth: number;
+  wsIndicatorX: number;
+  wsIndicatorY: number;
 };
 
 export const defaultBaseDetailDisplaySettings = (): BaseDetailDisplaySettings => ({
@@ -30,6 +32,8 @@ export const defaultBaseDetailDisplaySettings = (): BaseDetailDisplaySettings =>
   toolbarY: 108,
   cardDrawerWidth: 420,
   treeDrawerWidth: 320,
+  wsIndicatorX: 40,
+  wsIndicatorY: 40,
 });
 
 export function baseDetailDisplaySettingsEqual(
@@ -48,6 +52,8 @@ export function baseDetailDisplaySettingsEqual(
     && a.toolbarOpen === b.toolbarOpen
     && a.toolbarX === b.toolbarX
     && a.toolbarY === b.toolbarY
+    && a.wsIndicatorX === b.wsIndicatorX
+    && a.wsIndicatorY === b.wsIndicatorY
     && a.cardDrawerWidth === b.cardDrawerWidth
     && a.treeDrawerWidth === b.treeDrawerWidth;
 }
@@ -70,6 +76,8 @@ export function readBaseDetailDisplaySettings(): BaseDetailDisplaySettings {
     toolbarOpen: r.toolbarOpen === true,
     toolbarX: typeof r.toolbarX === 'number' ? r.toolbarX : 320,
     toolbarY: typeof r.toolbarY === 'number' ? r.toolbarY : 108,
+    wsIndicatorX: typeof r.wsIndicatorX === 'number' ? r.wsIndicatorX : 40,
+    wsIndicatorY: typeof r.wsIndicatorY === 'number' ? r.wsIndicatorY : 40,
     cardDrawerWidth: typeof r.cardDrawerWidth === 'number' ? r.cardDrawerWidth : 420,
     treeDrawerWidth: typeof r.treeDrawerWidth === 'number' ? r.treeDrawerWidth : 320,
   };
