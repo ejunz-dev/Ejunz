@@ -2228,6 +2228,63 @@ mark.search-highlight
   pointer-events: auto
   position: relative
   width: 28px
+  height: 20px
+  border: none
+  border-radius: 4px
+  background: var(--roadmap-bg-elevated)
+  color: var(--roadmap-text-primary)
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18)
+  cursor: default
+  overflow: hidden
+  display: flex
+  align-items: center
+
+.base-detail-status-indicator__dot
+  flex-shrink: 0
+  width: 12px
+  height: 12px
+  border-radius: 2px
+  margin-left: 8px
+  z-index: 1
+  transition: background 0.2s
+
+  .base-detail-status-indicator.is-clean &
+    background: #66bb6a
+
+  .base-detail-status-indicator.is-dirty &
+    background: #ffa726
+    cursor: pointer
+    animation: status-indicator-pulse 1.5s ease-in-out infinite
+
+  .base-detail-status-indicator.is-dirty &:hover
+    background: #ff8f00
+    transform: scale(1.2)
+    transition: all 0.15s
+
+.base-detail-status-indicator__label
+  font-size: 12px
+  font-weight: 500
+  white-space: nowrap
+  padding-right: 10px
+  padding-left: 6px
+
+  .base-detail-status-indicator.is-clean &
+    visibility: hidden
+
+// WebSocket connection status indicator (reuses same position/drag pattern)
+.base-detail-ws-indicator-wrap
+  position: fixed
+  left: calc(100% - 40px)
+  top: 40px
+  z-index: 130
+  display: flex
+  align-items: center
+  pointer-events: none
+
+.base-detail-ws-indicator
+  pointer-events: auto
+  position: relative
+  width: 28px
   height: 28px
   border: none
   border-radius: 999px
@@ -2239,7 +2296,7 @@ mark.search-highlight
   display: flex
   align-items: center
 
-.base-detail-status-indicator__dot
+.base-detail-ws-indicator__dot
   flex-shrink: 0
   width: 14px
   height: 14px
@@ -2247,21 +2304,37 @@ mark.search-highlight
   margin-left: 7px
   z-index: 1
 
-  .base-detail-status-indicator.is-clean &
+  .base-detail-ws-indicator.is-connected &
     background: #4caf50
 
-  .base-detail-status-indicator.is-dirty &
+  .base-detail-ws-indicator.is-connecting &
     background: #ffc107
+    animation: ws-indicator-pulse 1.2s ease-in-out infinite
 
-.base-detail-status-indicator__label
+  .base-detail-ws-indicator.is-disconnected &
+    background: #f44336
+
+.base-detail-ws-indicator__label
   font-size: 12px
   font-weight: 500
   white-space: nowrap
   padding-right: 10px
   padding-left: 6px
 
-  .base-detail-status-indicator.is-clean &
-    visibility: hidden
+  .base-detail-ws-indicator.is-connected &
+    visibility: visible
+
+@keyframes ws-indicator-pulse
+  0%, 100%
+    opacity: 1
+  50%
+    opacity: 0.4
+
+@keyframes status-indicator-pulse
+  0%, 100%
+    opacity: 1
+  50%
+    opacity: 0.6
 
 // Floating toolbar
 .base-detail-toolbar-wrap

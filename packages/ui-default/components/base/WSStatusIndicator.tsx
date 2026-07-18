@@ -1,27 +1,36 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import { i18n } from 'vj/utils';
 
-/** Floating status dot that stays fixed; label slides out to the right. */
-export function StatusIndicator({
-  dirty,
+export type WSConnectionStatus = 'connecting' | 'connected' | 'disconnected';
+
+/** Floating status dot for WebSocket connection state. */
+export function WSStatusIndicator({
+  status,
+  viewerCount,
   posX,
   posY,
   onPosChange,
-  onClickSave,
 }: {
-  dirty: boolean;
+  status: WSConnectionStatus;
+  viewerCount?: number;
   posX: number;
   posY: number;
   onPosChange?: (x: number, y: number) => void;
-  onClickSave?: () => void;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
-  const fullWRef = useRef(0);
   const dragRef = useRef<{
     startX: number; startY: number;
     startPosX: number; startPosY: number;
   } | null>(null);
+
+  const dotClass = status === 'connected' ? 'is-connected'
+    : status === 'connecting' ? 'is-connecting'
+    : 'is-disconnected';
+
+  const label = status === 'connected'
+    ? i18n('Online: {0}', viewerCount ?? 1)
+    : status === 'connecting' ? i18n('Connecting…') : i18n('Disconnected');
 
   // Sync wrap position
   useEffect(() => {
@@ -31,24 +40,18 @@ export function StatusIndicator({
     wrap.style.top = `${posY}px`;
   }, [posX, posY]);
 
-  // Measure and animate width
+  // Re-measure on every label change to keep width in sync
   useEffect(() => {
     const el = innerRef.current;
     if (!el) return;
-
-    if (fullWRef.current === 0) {
-      el.style.transition = 'none';
-      el.style.width = 'auto';
-      fullWRef.current = Math.max(el.offsetWidth, 60);
-      el.style.transition = '';
-      el.style.width = dirty ? `${fullWRef.current}px` : '28px';
-    }
-
+    el.style.transition = 'none';
+    el.style.width = 'auto';
+    const w = Math.max(el.offsetWidth, 60);
     el.style.transition = 'width 0.3s ease-out';
-    el.style.width = dirty ? `${fullWRef.current}px` : '28px';
-  }, [dirty]);
+    el.style.width = `${w}px`;
+  }, [label]);
 
-  // Drag via pointer capture (no re-render during drag)
+  // Drag via pointer capture
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     if (e.button !== 0 || !onPosChange) return;
     const el = e.currentTarget as HTMLDivElement;
@@ -78,7 +81,6 @@ export function StatusIndicator({
   const handlePointerUp = useCallback(() => {
     const wrap = wrapRef.current;
     if (!wrap || !onPosChange) return;
-    // Parse current position from style
     const leftStr = wrap.style.left;
     const topStr = wrap.style.top;
     const x = leftStr ? parseInt(leftStr.replace('calc(100% - ', '').replace('px)', ''), 10) : posX;
@@ -87,34 +89,19 @@ export function StatusIndicator({
     dragRef.current = null;
   }, [onPosChange, posX, posY]);
 
-  // Click on the dot itself triggers save (only when dirty)
-  const handleDotClick = useCallback((e: React.MouseEvent) => {
-    if (!dirty || !onClickSave) return;
-    e.stopPropagation();
-    onClickSave();
-  }, [dirty, onClickSave]);
-
   return (
-    <div className="base-detail-status-indicator-wrap" ref={wrapRef}>
+    <div className="base-detail-ws-indicator-wrap" ref={wrapRef}>
       <div
         ref={innerRef}
-        className={`base-detail-status-indicator${dirty ? ' is-dirty' : ' is-clean'}`}
+        className={`base-detail-ws-indicator ${dotClass}`}
         style={{ cursor: onPosChange ? 'grab' : undefined }}
-        title={dirty
-          ? i18n('Unsaved changes — click to save')
-          : i18n('Saved')}
+        title={label}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
       >
-        <span
-          className="base-detail-status-indicator__dot"
-          onClick={handleDotClick}
-          role={dirty ? 'button' : undefined}
-          tabIndex={dirty ? 0 : undefined}
-          onKeyDown={dirty && onClickSave ? (e) => { if (e.key === 'Enter') onClickSave(); } : undefined}
-        />
-        <span className="base-detail-status-indicator__label">{i18n('Unsaved')}</span>
+        <span className="base-detail-ws-indicator__dot" />
+        <span className="base-detail-ws-indicator__label">{label}</span>
       </div>
     </div>
   );

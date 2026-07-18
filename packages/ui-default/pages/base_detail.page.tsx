@@ -20,6 +20,7 @@ import { StatusIndicator } from 'vj/components/base/StatusIndicator';
 import { FloatingToolbar } from 'vj/components/base/FloatingToolbar';
 import { BaseDetailSettingsPanel } from 'vj/components/base/BaseDetailSettingsPanel';
 import { getRoadmapChildGraph, getSortedNodeChildren, nodeDisplayLabel, collectNodePathFromRoot, findCardByDocId, findCardHostNodeId, findRoadmapContainerAncestor, getPrimaryCardForNode, isRoadmapCanvasNodeId } from 'vj/components/base/detail_tree';
+import { WSStatusIndicator, type WSConnectionStatus } from 'vj/components/base/WSStatusIndicator';
 import { isTypoImagePreviewOverlay } from 'vj/components/base/typo_image_preview';
 import {
   initialBaseDetailSelectedNodeId,
@@ -97,6 +98,8 @@ function BaseDetailViewer() {
   const [expandDirty, setExpandDirty] = useState(false);
   const expandSaveBusyRef = useRef(false);
   const expandedSnapshotRef = useRef<Set<string> | null>(null);
+  const [wsStatus, setWsStatus] = useState<WSConnectionStatus>('disconnected');
+  const [viewerCount, setViewerCount] = useState(0);
   const title = base.title?.trim() || String(i18n('Knowledge Base'));
   const branch = base.currentBranch || 'main';
   const [liveNodes, setLiveNodes] = useState(base.nodes || []);
@@ -341,6 +344,8 @@ function BaseDetailViewer() {
             toolbarOpen: displaySettings.toolbarOpen,
             toolbarX: displaySettings.toolbarX,
             toolbarY: displaySettings.toolbarY,
+            wsIndicatorX: displaySettings.wsIndicatorX,
+            wsIndicatorY: displaySettings.wsIndicatorY,
           },
         }),
       );
@@ -410,12 +415,19 @@ function BaseDetailViewer() {
         const { default: WebSocket } = await import('../components/socket');
         const wsUrl = wsPrefix + socketUrl;
         const sock = new WebSocket(wsUrl, false, true);
+        setWsStatus('connecting');
+        sock.onopen = () => setWsStatus('connected');
+        sock.onclose = () => setWsStatus('disconnected');
         sock.onmessage = (_: any, data: string) => {
           if (closed) return;
           try {
             const msg = JSON.parse(data);
             if (msg.type === 'init') {
-              // initial SSR data already loaded; nothing to do
+              if (typeof msg.viewerCount === 'number') setViewerCount(msg.viewerCount);
+              return;
+            }
+            if (msg.type === 'viewer_count') {
+              setViewerCount(msg.count ?? 0);
               return;
             }
             if (msg.type !== 'update') return;
@@ -753,8 +765,19 @@ function BaseDetailViewer() {
             setDisplaySettings((prev) => ({ ...prev, indicatorX: x, indicatorY: y }));
             setExpandDirty(true);
           }}
+          onClickSave={handleSaveExpandState}
         />
       ) : null}
+      <WSStatusIndicator
+        status={wsStatus}
+        viewerCount={viewerCount}
+        posX={displaySettings.wsIndicatorX}
+        posY={displaySettings.wsIndicatorY}
+        onPosChange={(x, y) => {
+          setDisplaySettings((prev) => ({ ...prev, wsIndicatorX: x, wsIndicatorY: y }));
+          setExpandDirty(true);
+        }}
+      />
       {displaySettings.showToolbar ? (
         <FloatingToolbar
           open={displaySettings.toolbarOpen}
