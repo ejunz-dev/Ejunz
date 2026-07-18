@@ -38,6 +38,9 @@ export function sanitizeBaseEditorUiPrefs(raw: unknown): Record<string, unknown>
     if (typeof o.rightPanelOpen === 'boolean') out.rightPanelOpen = o.rightPanelOpen;
     if (typeof o.aiBottomOpen === 'boolean') out.aiBottomOpen = o.aiBottomOpen;
 
+    if (typeof o.wsIndicatorX === 'number' && Number.isFinite(o.wsIndicatorX)) out.wsIndicatorX = o.wsIndicatorX;
+    if (typeof o.wsIndicatorY === 'number' && Number.isFinite(o.wsIndicatorY)) out.wsIndicatorY = o.wsIndicatorY;
+
     if (typeof o.explorerPanelWidth === 'number' && Number.isFinite(o.explorerPanelWidth)) {
         out.explorerPanelWidth = Math.round(
             Math.max(BASE_EDITOR_EXPLORER_W_MIN, Math.min(BASE_EDITOR_EXPLORER_W_MAX, o.explorerPanelWidth)),

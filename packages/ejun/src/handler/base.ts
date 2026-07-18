@@ -6240,6 +6240,23 @@ class BaseGithubPullHandler extends Handler {
 }
 
 /**
+ * Per-base connection counter for live viewer count display.
+ */
+/**
+ * Per-base connection counter for live viewer count display.
+ */
+const baseViewerCounts = new Map<number, Set<any>>();
+
+function broadcastViewerCount(docId: number) {
+    const viewers = baseViewerCounts.get(docId);
+    const count = viewers ? viewers.size : 0;
+    if (!viewers) return;
+    for (const h of viewers) {
+        try { (h as any).send?.({ type: 'viewer_count', count }); } catch { /* ignore */ }
+    }
+}
+
+/**
  * Base GitHub Config Handler
  */
 class BaseGithubConfigHandler extends Handler {
@@ -6353,7 +6370,13 @@ export class BaseConnectionHandler extends ConnectionHandler {
 
         logger.info('Base WebSocket connected: docId=%s', this.docId);
 
-        
+        // Register into live viewer counter
+        if (!baseViewerCounts.has(this.docId)) {
+            baseViewerCounts.set(this.docId, new Set());
+        }
+        baseViewerCounts.get(this.docId)!.add(this);
+        broadcastViewerCount(this.docId);
+
         await this.sendInitialData(finalDomainId, base);
 
         
@@ -6499,6 +6522,11 @@ export class BaseConnectionHandler extends ConnectionHandler {
             }
         }
         this.subscriptions = [];
+        // Remove from viewer counter and broadcast
+        if (this.docId != null && baseViewerCounts.has(this.docId)) {
+            baseViewerCounts.get(this.docId)!.delete(this);
+            broadcastViewerCount(this.docId);
+        }
     }
 
     private async buildDevelopEditorContextPayload(domainId: string, base: BaseDoc) {
@@ -6537,10 +6565,12 @@ export class BaseConnectionHandler extends ConnectionHandler {
                 this.buildDevelopEditorContextPayload(domainId, base),
             ]);
 
+            const viewerCount = baseViewerCounts.get(base.docId)?.size ?? 0;
             this.send({
                 type: 'init',
                 gitStatus,
                 branch,
+                viewerCount,
                 todayContribution: contrib.todayContribution,
                 todayContributionAllDomains: todayAllDomains,
                 contributions: contrib.contributions,

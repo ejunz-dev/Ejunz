@@ -255,6 +255,8 @@ export type SavedEditorLayout = {
   problemsPanelWidth: number;
   aiPanelHeight: number;
   displaySettings: BaseEditorDisplaySettings;
+  wsIndicatorX?: number;
+  wsIndicatorY?: number;
 };
 
 export type DevelopEditorContextWire = {

@@ -1140,6 +1140,8 @@ export function readSavedBaseEditorUiPrefs(editorAiHidden: boolean): SavedEditor
     problemsPanelWidth,
     aiPanelHeight,
     displaySettings,
+    wsIndicatorX: raw && typeof raw.wsIndicatorX === 'number' ? raw.wsIndicatorX : undefined,
+    wsIndicatorY: raw && typeof raw.wsIndicatorY === 'number' ? raw.wsIndicatorY : undefined,
   };
 }
 
