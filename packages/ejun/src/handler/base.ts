@@ -814,6 +814,7 @@ export class BaseDetailUiPrefsHandler extends Handler {
         );
 
         this.response.body = { success: true };
+        (this.ctx.emit as any)('base/update', docId, undefined, branchNorm, this.user._id, this.user.uname, 'detail_ui_prefs');
     }
 }
 
@@ -6607,6 +6608,9 @@ export class BaseConnectionHandler extends ConnectionHandler {
                 sourceUname: sourceUname ?? this.user.uname,
                 actionKey: actionKey || 'unknown',
                 actionDetail,
+                baseDetailUiPrefs: await loadBaseDetailUiPrefs(
+                    this.ctx.db.db, domainId, base.docId, branch, this.user._id,
+                ).catch(() => undefined),
                 todayContribution: contrib.todayContribution,
                 todayContributionAllDomains: todayAllDomains,
                 contributions: contrib.contributions,

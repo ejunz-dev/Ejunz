@@ -323,6 +323,7 @@ function BaseDetailViewer() {
     const nodeIds = expandedSnapshotRef.current;
     if (!expandDirty || expandSaveBusyRef.current) return;
     expandSaveBusyRef.current = true;
+    (window as any).__baseJustSaved = Date.now();
     try {
       const promises: Promise<unknown>[] = [];
       if (nodeIds) {
@@ -450,8 +451,39 @@ function BaseDetailViewer() {
                   return prev;
                 });
               }
+              if (Array.isArray(newData.baseExpandState)) {
+                setExpandedNodes(new Set(newData.baseExpandState));
+              }
             }).catch(() => {});
-            // Skip notification for changes triggered by THIS window's save
+            // Sync personal UI prefs (per-user, delivered via WS payload)
+            if (msg.baseDetailUiPrefs && typeof msg.baseDetailUiPrefs === 'object' && !Array.isArray(msg.baseDetailUiPrefs)) {
+              const prefs = msg.baseDetailUiPrefs as Record<string, unknown>;
+              setDisplaySettings((prev) => {
+                let changed = false;
+                const next: BaseDetailDisplaySettings = { ...prev };
+                const apply = <K extends keyof BaseDetailDisplaySettings>(key: K, val: unknown) => {
+                  if (typeof val === typeof prev[key]) { (next as any)[key] = val; changed = true; }
+                };
+                apply('showProblemCount', prefs.showProblemCount);
+                apply('showNodeNumber', prefs.showNodeNumber);
+                apply('showNodeCardTimestamps', prefs.showNodeCardTimestamps);
+                apply('showProblemTree', prefs.showProblemTree);
+                apply('showAiTutor', prefs.showAiTutor);
+                apply('showExpandSaveIndicator', prefs.showExpandSaveIndicator);
+                apply('showToolbar', prefs.showToolbar);
+                apply('indicatorX', prefs.indicatorX);
+                apply('indicatorY', prefs.indicatorY);
+                apply('wsIndicatorX', prefs.wsIndicatorX);
+                apply('wsIndicatorY', prefs.wsIndicatorY);
+                apply('toolbarOpen', prefs.toolbarOpen);
+                apply('toolbarX', prefs.toolbarX);
+                apply('toolbarY', prefs.toolbarY);
+                apply('cardDrawerWidth', prefs.cardDrawerWidth);
+                apply('treeDrawerWidth', prefs.treeDrawerWidth);
+                return changed ? next : prev;
+              });
+            }
+            // Skip notification for changes triggered by THIS window's own save
             const ownSaveTs = (window as any).__baseJustSaved;
             if (ownSaveTs && Date.now() - ownSaveTs < 3000) return;
             // Skip notification for session/sidecar side-effects (no real actionKey)
@@ -496,7 +528,7 @@ function BaseDetailViewer() {
               message: buildSummary(msg.actionKey, msg.actionDetail),
               closable: true,
               position: 'top-right',
-              duration: 0,
+              duration: 5000,
             }).show();
           } catch { /* ignore parse errors */ }
         };
