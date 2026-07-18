@@ -259,7 +259,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [theme, setTheme] = useState<'light' | 'dark'>(() => getTheme());
   const [wsStatus, setWsStatus] = useState<WSConnectionStatus>('disconnected');
   const [viewerCount, setViewerCount] = useState(0);
-  const wsPositionRef = useRef({ x: savedEditorLayout.wsIndicatorX ?? 40, y: savedEditorLayout.wsIndicatorY ?? 40 });
   const [contributionData, setContributionData] = useState<{
     todayContribution: { nodes: number; cards: number; problems: number; nodeChars?: number; cardChars?: number; problemChars?: number };
     todayContributionAllDomains: { nodes: number; cards: number; problems: number; nodeChars?: number; cardChars?: number; problemChars?: number };
@@ -334,6 +333,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const roadmapTitleSelectionRef = useRef('');
   const editorAiHidden = false;
   const savedEditorLayout = readSavedBaseEditorUiPrefs(editorAiHidden);
+  const wsPositionRef = useRef({ x: savedEditorLayout.wsIndicatorX ?? 40, y: savedEditorLayout.wsIndicatorY ?? 40 });
   const [editorRightPanelTab, setEditorRightPanelTab] = useState<EditorRightPanelTab>(() => {
     const savedTab = savedEditorLayout.editorRightPanelTab;
     if (isPluginEditor && (savedTab === 'plugin_node' || savedTab === 'plugin_mcp_services')) return savedTab;
