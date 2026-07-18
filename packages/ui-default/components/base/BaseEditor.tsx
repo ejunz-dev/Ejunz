@@ -522,7 +522,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                   message: buildSummary(msg.actionKey, msg.actionDetail),
                   closable: true,
                   position: 'top-right',
-                  duration: 0,
+                  duration: 5000,
                 }).show();
               }
               if (msg.gitStatus != null) {
@@ -808,6 +808,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             !String((e as any).id ?? (e as any)._id ?? '').startsWith('temp-edge-')
           );
           
+          (window as any).__baseJustSaved = Date.now();
           await request.post(getBaseUrl('/save'), {
             ...(docId ? { docId } : {}),
             branch: (window as any).UiContext?.currentBranch || 'main',
@@ -1926,6 +1927,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     developNavPersistTimerRef.current = setTimeout(async () => {
       developNavPersistTimerRef.current = null;
       try {
+        (window as any).__baseJustSaved = Date.now();
         await request.post(getBaseUrl('/save'), {
           docId: baseDocIdNum,
           branch,
@@ -2353,6 +2355,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           expandSaveTimerRef.current = null;
           return;
         }
+        (window as any).__baseJustSaved = Date.now();
         await request.post(getBaseUrl('/expand-state'), {
           docId: baseDocId,
           expandedNodeIds: Array.from(currentExpandedNodes),
@@ -2912,8 +2915,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     }
 
     setIsCommitting(true);
+    (window as any).__baseJustSaved = Date.now();
 
-    
+
     let allChanges = new Map(pendingChanges);
     if (selectedFile && selectedFile.type === 'card' && editorInstance) {
       try {
@@ -3588,7 +3592,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         
         try {
           if (isPluginEditor) Notification.info(i18n('Testing plugin MCP connections before saving'));
-          window.__baseJustSaved = Date.now();
           const response = await request.post(getBaseUrl('/batch-save'), batchSaveData);
 
           if (response.success) {
@@ -3924,6 +3927,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           baseDocIdNumForSave > 0 &&
           (editorUiPrefsPayload || developSid)
         ) {
+          (window as any).__baseJustSaved = Date.now();
           await request.post(getBaseUrl('/save'), {
             docId: baseDocIdNumForSave,
             branch: saveBranch,
