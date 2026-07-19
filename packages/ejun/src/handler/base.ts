@@ -4150,6 +4150,11 @@ class BaseCardEditHandler extends Handler {
     
     @post('title', Types.String)
     @post('content', Types.String, true)
+    @post('tags', Types.Content, true, null, (v: unknown) => {
+        if (v === undefined || v === null) return undefined;
+        if (Array.isArray(v)) return v.map((t: string) => String(t).trim()).filter(Boolean);
+        return String(v).split(',').map((t: string) => t.trim()).filter(Boolean);
+    })
     @post('operation', Types.String, true)
     @post('cardId', Types.ObjectId, true)
     async post(
@@ -4160,27 +4165,29 @@ class BaseCardEditHandler extends Handler {
         branch?: string,
         title?: string,
         content?: string,
+        tags?: string[],
         operation?: string,
         cardId?: ObjectId
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        
-        const base = docId 
+
+        const base = docId
             ? await BaseModel.get(domainId, docId)
             : await BaseModel.getBybid(domainId, bid);
         if (!base) throw new NotFoundError('Base not found');
-        
+
         if (!this.user.own(base)) {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         }
-        
+
         const effectiveBranch = branch || 'main';
-        
-        
+
+
         if (operation === 'update' && cardId) {
             const updates: any = {};
             if (title !== undefined) updates.title = title;
             if (content !== undefined) updates.content = content;
+            if (tags !== undefined) updates.tags = tags;
             await CardModel.update(domainId, cardId, updates);
             
             if (docId) {
@@ -4936,6 +4943,7 @@ export class BaseBatchSaveHandler extends Handler {
                         cardCreate.fileType,
                         cardCreate.fileName,
                         cardCreate.fileSize,
+                        cardCreate.tags,
                     );
                     
                     if (cardCreate.tempId) {
@@ -4950,7 +4958,7 @@ export class BaseBatchSaveHandler extends Handler {
         
         for (const cardUpdate of cardUpdates) {
             try {
-                const updates: Partial<Pick<CardDoc, 'title' | 'content' | 'cardFace' | 'order' | 'nodeId' | 'problems' | 'cardType' | 'fileType' | 'fileName' | 'fileSize'>> = {};
+                const updates: Partial<Pick<CardDoc, 'title' | 'content' | 'cardFace' | 'order' | 'nodeId' | 'problems' | 'cardType' | 'fileType' | 'fileName' | 'fileSize' | 'tags'>> = {};
                 if (cardUpdate.title !== undefined) updates.title = cardUpdate.title;
                 if (cardUpdate.content !== undefined) updates.content = cardUpdate.content;
                 if (cardUpdate.cardFace !== undefined) updates.cardFace = cardUpdate.cardFace;
@@ -4960,6 +4968,7 @@ export class BaseBatchSaveHandler extends Handler {
                 if (cardUpdate.fileType !== undefined) updates.fileType = cardUpdate.fileType;
                 if (cardUpdate.fileName !== undefined) updates.fileName = cardUpdate.fileName;
                 if (cardUpdate.fileSize !== undefined) updates.fileSize = cardUpdate.fileSize;
+                if (cardUpdate.tags !== undefined) updates.tags = cardUpdate.tags;
                 if (cardUpdate.problems !== undefined) {
                     let problemsOut = cardUpdate.problems as Problem[];
                     try {
@@ -5029,6 +5038,30 @@ export class BaseBatchSaveHandler extends Handler {
             if (Object.prototype.hasOwnProperty.call(data as object, 'problemTags')) {
                 const list = sanitizeProblemTagRegistryList((data as { problemTags?: unknown }).problemTags);
                 await BaseModel.updateFull(actualDomainId, docId, { problemTags: list }, mdt);
+            }
+
+            // Auto-maintain cardTags registry from the batch save payload
+            const allCardTags = new Set<string>();
+            for (const cc of cardCreates) {
+                if (Array.isArray(cc.tags)) cc.tags.forEach((t: string) => allCardTags.add(t));
+            }
+            for (const cu of cardUpdates) {
+                if (Array.isArray(cu.tags)) cu.tags.forEach((t: string) => allCardTags.add(t));
+            }
+            // Also include tags from existing cards that weren't updated
+            try {
+                const branchData = getBranchData(base, branch);
+                const nodeIds = branchData.nodes.map((n: { id: string }) => n.id);
+                const existing = await CardModel.getByNodeIds(actualDomainId, docId, nodeIds, branch);
+                for (const cards of existing.values()) {
+                    for (const c of cards) {
+                        if (Array.isArray(c.tags)) c.tags.forEach((t: string) => allCardTags.add(t));
+                    }
+                }
+            } catch { /* non-fatal; tags from existing cards may be incomplete */ }
+            const cardTagsList = [...allCardTags].sort();
+            if (cardTagsList.length > 0 || Object.prototype.hasOwnProperty.call(data as object, 'cardTags')) {
+                await BaseModel.updateFull(actualDomainId, docId, { cardTags: cardTagsList }, mdt);
             }
         }
 
@@ -6962,6 +6995,73 @@ export class BaseProblemTagRegistryHandler extends Handler {
 }
 
 /**
+ * Card tag registry CRUD (add / delete / list).
+ * Card tags are stored in `BaseDoc.cardTags` and managed from the editor's left sidebar.
+ */
+export class BaseCardTagRegistryHandler extends Handler {
+    @param('docId', Types.PositiveInt, true)
+    async post(domainId: string, docId: number) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const body: Record<string, unknown> = (this.request.body && typeof this.request.body === 'object')
+            ? this.request.body as Record<string, unknown>
+            : {};
+        const action = String(body.action || '').trim();
+        const base = await BaseModel.get(domainId, docId);
+        if (!base) throw new NotFoundError('Base not found');
+        if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+
+        const current = sanitizeProblemTagRegistryList((base as BaseDoc & { cardTags?: unknown }).cardTags || []);
+
+        if (action === 'add') {
+            const tag = normalizeProblemTagInput(body.tag);
+            if (!tag) throw new ValidationError('tag required');
+            if (current.includes(tag)) {
+                this.response.body = { success: true, cardTags: current };
+                return;
+            }
+            const next = sanitizeProblemTagRegistryList([...current, tag]);
+            await BaseModel.updateFull(domainId, docId, { cardTags: next });
+            (this.ctx.emit as any)('base/update', docId, undefined, undefined, this.user._id, this.user.uname, 'add_card_tag', { tag });
+            this.response.body = { success: true, cardTags: next };
+        } else if (action === 'delete') {
+            const tag = normalizeProblemTagInput(body.tag);
+            if (!tag) throw new ValidationError('tag required');
+            const next = current.filter((t: string) => t !== tag);
+            await BaseModel.updateFull(domainId, docId, { cardTags: next });
+            (this.ctx.emit as any)('base/update', docId, undefined, undefined, this.user._id, this.user.uname, 'delete_card_tag', { tag });
+            this.response.body = { success: true, cardTags: next };
+        } else if (action === 'rename') {
+            const oldTag = normalizeProblemTagInput(body.oldTag);
+            const newTag = normalizeProblemTagInput(body.newTag);
+            if (!oldTag || !newTag) throw new ValidationError('oldTag and newTag required');
+            // Rename in registry
+            const next = current.map((t: string) => t === oldTag ? newTag : t);
+            const deduped = sanitizeProblemTagRegistryList(next);
+            await BaseModel.updateFull(domainId, docId, { cardTags: deduped });
+            // Also rename on all cards that have this tag
+            try {
+                const branchData = getBranchData(base, 'main');
+                const nodeIds = branchData.nodes.map((n: { id: string }) => n.id);
+                const allCards = await CardModel.getByNodeIds(domainId, docId, nodeIds, 'main');
+                for (const cards of allCards.values()) {
+                    for (const c of cards) {
+                        if (Array.isArray(c.tags) && c.tags.includes(oldTag)) {
+                            const updatedTags = c.tags.map((t: string) => t === oldTag ? newTag : t);
+                            await CardModel.update(domainId, c.docId, { tags: updatedTags } as any);
+                        }
+                    }
+                }
+            } catch { /* non-fatal; card-level tags may be incomplete */ }
+            (this.ctx.emit as any)('base/update', docId, undefined, undefined, this.user._id, this.user.uname, 'rename_card_tag', { oldTag, newTag });
+            this.response.body = { success: true, cardTags: deduped };
+        } else {
+            // list
+            this.response.body = { success: true, cardTags: current };
+        }
+    }
+}
+
+/**
  * Base Expand State Handler — per-user node expand/collapse state for base editor (POST only, load via UiContext)
  */
 export class BaseExpandStateHandler extends Handler {
@@ -7303,6 +7403,7 @@ export async function apply(ctx: Context) {
     ctx.Route('base_migrate_node_to_new', '/base/migrate-node-to-new', BaseMigrateNodeToNewHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_expand_state', '/base/expand-state', BaseExpandStateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_problem_tag_register', '/base/:docId/problem-tag-register', BaseProblemTagRegistryHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_card_tag_manage', '/base/card-tag', BaseCardTagRegistryHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_card', '/base/card', BaseCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_card_update', '/base/card/:cardId', BaseCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_branch_create', '/base/branch', BaseBranchCreateHandler, PRIV.PRIV_USER_PROFILE);

@@ -373,6 +373,8 @@ export interface BaseDoc {
     files?: FileInfo[];
     /** Custom problem tag names offered in the base editor (+ any tag inferred from cards on load). */
     problemTags?: string[];
+    /** Custom card tag names across this base (auto-maintained from card tags). */
+    cardTags?: string[];
     /** Category labels (same convention as Agent `tag`). */
     tag?: string[];
 }
@@ -604,6 +606,8 @@ export interface CardDoc {
     createdAt?: Date;
     order?: number;
 
+    /** Card-level tags (distinct from Problem.tags). */
+    tags?: string[];
     problems?: Problem[];
     /** Mounted files (uploaded to this card) */
     files?: FileInfo[];
