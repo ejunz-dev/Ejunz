@@ -31,6 +31,7 @@ export function BaseDetailExplorer({
   onSearchQueryChange,
   onApplyFilters,
   onClearFilters,
+  availableCardTags,
 }: {
   searchQuery: string;
   filters: BaseDetailFilter;
@@ -38,6 +39,7 @@ export function BaseDetailExplorer({
   onSearchQueryChange: (query: string) => void;
   onApplyFilters: (filters: BaseDetailFilter) => void;
   onClearFilters: () => void;
+  availableCardTags?: string[];
 }) {
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [filterDraft, setFilterDraft] = useState<BaseDetailFilter>(filters);
@@ -166,7 +168,36 @@ export function BaseDetailExplorer({
                   onChange={(e) => setFilterDraft((draft) => ({ ...draft, filterCardTag: e.target.value }))}
                   placeholder={i18n('Card tags filter placeholder')}
                   autoComplete="off"
+                  style={{ marginBottom: 6 }}
                 />
+                {availableCardTags && availableCardTags.length > 0 ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+                    {availableCardTags.map((tag) => {
+                      const activeTags = filterDraft.filterCardTag.split(',').map((t) => t.trim()).filter(Boolean);
+                      const selected = activeTags.includes(tag);
+                      return (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => {
+                            const current = new Set(activeTags);
+                            if (selected) current.delete(tag);
+                            else current.add(tag);
+                            setFilterDraft((draft) => ({ ...draft, filterCardTag: [...current].join(', ') }));
+                          }}
+                          style={{
+                            padding: '2px 8px', borderRadius: 4, border: 'none', cursor: 'pointer',
+                            background: selected ? 'var(--roadmap-tag-bg, rgba(65, 53, 214, 0.1))' : 'var(--roadmap-bg-input, #f0f0f0)',
+                            color: selected ? 'var(--roadmap-tag-color, var(--roadmap-accent, #4135d6))' : 'var(--roadmap-text-secondary, #888)',
+                            fontSize: 11, fontWeight: selected ? 600 : 400, outline: 'none',
+                          }}
+                        >
+                          {tag}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
               </label>
             </div>
             <div className="roadmap-detail-explorer__dialog-actions">
