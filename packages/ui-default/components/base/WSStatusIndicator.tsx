@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { i18n } from 'vj/utils';
 
 export type WSConnectionStatus = 'connecting' | 'connected' | 'disconnected';
@@ -9,7 +9,7 @@ export interface ViewerInfo {
   pageType: string;
 }
 
-/** Floating status dot for WebSocket connection state with inline viewer dropdown. */
+/** Floating status dot with always-visible viewer dropdown. */
 export function WSStatusIndicator({
   status,
   viewerCount,
@@ -27,7 +27,6 @@ export function WSStatusIndicator({
   onPosChange?: (x: number, y: number) => void;
   onRequestViewers?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{
@@ -43,6 +42,16 @@ export function WSStatusIndicator({
   const label = status === 'connected'
     ? i18n('Online: {0}', viewerCount ?? 1)
     : status === 'connecting' ? i18n('Connecting…') : i18n('Disconnected');
+
+  // Auto-request viewers once connected
+  const wasConnected = useRef(false);
+  useEffect(() => {
+    if (status === 'connected' && !wasConnected.current) {
+      wasConnected.current = true;
+      onRequestViewers?.();
+    }
+    if (status === 'disconnected') wasConnected.current = false;
+  }, [status, onRequestViewers]);
 
   // Sync wrap position
   useEffect(() => {
@@ -62,17 +71,6 @@ export function WSStatusIndicator({
     el.style.transition = 'width 0.3s ease-out';
     el.style.width = `${w}px`;
   }, [label]);
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (e: PointerEvent) => {
-      const target = e.target as Element | null;
-      if (!target || !wrapRef.current?.contains(target)) setOpen(false);
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    return () => document.removeEventListener('pointerdown', onPointerDown);
-  }, [open]);
 
   // Drag via pointer capture
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
@@ -114,22 +112,13 @@ export function WSStatusIndicator({
     dragRef.current = null;
   }, [onPosChange, posX, posY]);
 
-  // Click toggles viewer dropdown (only if not dragged)
-  const handleClick = useCallback((e: React.MouseEvent) => {
-    if (wasDraggedRef.current) return;
-    e.stopPropagation();
-    if (!open) onRequestViewers?.();
-    setOpen((prev) => !prev);
-  }, [onRequestViewers, open]);
-
   return (
     <div className="base-detail-ws-indicator-wrap" ref={wrapRef}>
       <div
         ref={innerRef}
         className={`base-detail-ws-indicator ${dotClass}`}
-        style={{ cursor: onPosChange ? 'grab' : onRequestViewers ? 'pointer' : undefined }}
+        style={{ cursor: onPosChange ? 'grab' : undefined }}
         title={label}
-        onClick={handleClick}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -137,23 +126,25 @@ export function WSStatusIndicator({
         <span className="base-detail-ws-indicator__dot" />
         <span className="base-detail-ws-indicator__label">{label}</span>
       </div>
-      {open && viewers && viewers.length > 0 ? (
-        <div className="base-detail-ws-indicator__dropdown">
-          {viewers.map((v) => (
+      <div className="base-detail-ws-indicator__dropdown">
+        {status === 'connected' ? (
+          viewers && viewers.length > 0 ? viewers.map((v) => (
             <div key={v.uid} className="base-detail-ws-indicator__dropdown-item">
               <span>{v.pageType === 'detail' ? '📖' : '✏️'}</span>
               <span>{v.uname}</span>
               <span className="base-detail-ws-indicator__dropdown-tag">{v.pageType === 'detail' ? 'Detail' : 'Editor'}</span>
             </div>
-          ))}
-        </div>
-      ) : open ? (
-        <div className="base-detail-ws-indicator__dropdown">
-          <div className="base-detail-ws-indicator__dropdown-item" style={{ justifyContent: 'center', color: '#999' }}>
-            {i18n('No other viewers')}
+          )) : (
+            <div className="base-detail-ws-indicator__dropdown-item" style={{ justifyContent: 'center', color: '#999' }}>
+              {i18n('No other viewers')}
+            </div>
+          )
+        ) : (
+          <div className="base-detail-ws-indicator__dropdown-item" style={{ justifyContent: 'center', color: status === 'connecting' ? '#ffc107' : '#f44336' }}>
+            {status === 'connecting' ? i18n('Connecting…') : i18n('Disconnected')}
           </div>
-        </div>
-      ) : null}
+        )}
+      </div>
     </div>
   );
 }

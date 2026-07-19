@@ -6258,8 +6258,12 @@ function broadcastViewerCount(docId: number) {
     const viewers = baseViewerCounts.get(docId);
     const count = viewers ? viewers.size : 0;
     if (!viewers) return;
+    const list = Array.from(viewers).map((v) => ({ uid: v.uid, uname: v.uname, pageType: v.pageType }));
     for (const v of viewers) {
-        try { v.handler.send?.({ type: 'viewer_count', count }); } catch { /* ignore */ }
+        try {
+            v.handler.send?.({ type: 'viewer_count', count });
+            v.handler.send?.({ type: 'viewers_list', list });
+        } catch { /* ignore */ }
     }
 }
 
