@@ -261,9 +261,10 @@ export function CardEditModal({
               )}
             </div>
           </div>
+        </div>
 
-          {/* Card Tags — select from available cardTags only */}
-          <div style={{ flexShrink: 0 }}>
+        {/* Bottom: Card Tags — select from available cardTags only */}
+        <div style={{ flexShrink: 0, padding: '12px 20px', borderTop: '1px solid var(--roadmap-border, #e0e0e0)' }}>
             <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--roadmap-text-secondary, #888)', marginBottom: 4 }}>
               {i18n('Card tags')}
             </label>
@@ -355,7 +356,6 @@ export function CardEditModal({
             )}
           </div>
         </div>
-      </div>
     </div>,
     document.body,
   );
