@@ -9,7 +9,7 @@ import { Dialog, ActionDialog } from 'vj/components/dialog/index';
 import uploadFiles from 'vj/components/upload';
 import { nanoid } from 'nanoid';
 import { jsonrepair } from 'jsonrepair';
-import { WSStatusIndicator, type WSConnectionStatus } from './WSStatusIndicator';
+import { WSStatusIndicator, type WSConnectionStatus, type ViewerInfo } from './WSStatusIndicator';
 import type {
   Problem,
   ProblemSingle,
@@ -259,6 +259,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [theme, setTheme] = useState<'light' | 'dark'>(() => getTheme());
   const [wsStatus, setWsStatus] = useState<WSConnectionStatus>('disconnected');
   const [viewerCount, setViewerCount] = useState(0);
+  const [liveViewers, setLiveViewers] = useState<ViewerInfo[]>([]);
   const [contributionData, setContributionData] = useState<{
     todayContribution: { nodes: number; cards: number; problems: number; nodeChars?: number; cardChars?: number; problemChars?: number };
     todayContributionAllDomains: { nodes: number; cards: number; problems: number; nodeChars?: number; cardChars?: number; problemChars?: number };
@@ -466,6 +467,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         const wsUrl = wsPrefix + socketUrl;
         const sock = new WebSocket(wsUrl, false, true);
         contributionWsRef.current = sock;
+        (window as any).__baseWsSock = sock;
         setWsStatus('connecting');
         sock.onopen = () => setWsStatus('connected');
         sock.onclose = () => setWsStatus('disconnected');
@@ -479,6 +481,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             }
             if (msg.type === 'viewer_count') {
               setViewerCount(msg.count ?? 0);
+              return;
+            }
+            if (msg.type === 'viewers_list' && Array.isArray(msg.list)) {
+              setLiveViewers(msg.list);
               return;
             }
             if (msg.type === 'init' || msg.type === 'update') {
@@ -16434,9 +16440,14 @@ Reply with a JSON code block only for executable operations. For same-response f
       <WSStatusIndicator
         status={wsStatus}
         viewerCount={viewerCount}
+        viewers={liveViewers}
         posX={wsPositionRef.current.x}
         posY={wsPositionRef.current.y}
         onPosChange={(x, y) => { wsPositionRef.current = { x, y }; }}
+        onRequestViewers={() => {
+          const s = (window as any).__baseWsSock;
+          if (s) s.send(JSON.stringify({ type: 'request_viewers' }));
+        }}
       />
     </div>
   );

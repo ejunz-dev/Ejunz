@@ -20,7 +20,7 @@ import { StatusIndicator } from 'vj/components/base/StatusIndicator';
 import { FloatingToolbar } from 'vj/components/base/FloatingToolbar';
 import { BaseDetailSettingsPanel } from 'vj/components/base/BaseDetailSettingsPanel';
 import { getRoadmapChildGraph, getSortedNodeChildren, nodeDisplayLabel, collectNodePathFromRoot, findCardByDocId, findCardHostNodeId, findRoadmapContainerAncestor, getPrimaryCardForNode, isRoadmapCanvasNodeId } from 'vj/components/base/detail_tree';
-import { WSStatusIndicator, type WSConnectionStatus } from 'vj/components/base/WSStatusIndicator';
+import { WSStatusIndicator, type WSConnectionStatus, type ViewerInfo } from 'vj/components/base/WSStatusIndicator';
 import { isTypoImagePreviewOverlay } from 'vj/components/base/typo_image_preview';
 import {
   initialBaseDetailSelectedNodeId,
@@ -100,6 +100,7 @@ function BaseDetailViewer() {
   const expandedSnapshotRef = useRef<Set<string> | null>(null);
   const [wsStatus, setWsStatus] = useState<WSConnectionStatus>('disconnected');
   const [viewerCount, setViewerCount] = useState(0);
+  const [liveViewers, setLiveViewers] = useState<ViewerInfo[]>([]);
   const title = base.title?.trim() || String(i18n('Knowledge Base'));
   const branch = base.currentBranch || 'main';
   const [liveNodes, setLiveNodes] = useState(base.nodes || []);
@@ -416,6 +417,7 @@ function BaseDetailViewer() {
         const { default: WebSocket } = await import('../components/socket');
         const wsUrl = wsPrefix + socketUrl;
         const sock = new WebSocket(wsUrl, false, true);
+        (window as any).__baseWsSock = sock;
         setWsStatus('connecting');
         sock.onopen = () => setWsStatus('connected');
         sock.onclose = () => setWsStatus('disconnected');
@@ -429,6 +431,10 @@ function BaseDetailViewer() {
             }
             if (msg.type === 'viewer_count') {
               setViewerCount(msg.count ?? 0);
+              return;
+            }
+            if (msg.type === 'viewers_list' && Array.isArray(msg.list)) {
+              setLiveViewers(msg.list);
               return;
             }
             if (msg.type !== 'update') return;
@@ -803,11 +809,16 @@ function BaseDetailViewer() {
       <WSStatusIndicator
         status={wsStatus}
         viewerCount={viewerCount}
+        viewers={liveViewers}
         posX={displaySettings.wsIndicatorX}
         posY={displaySettings.wsIndicatorY}
         onPosChange={(x, y) => {
           setDisplaySettings((prev) => ({ ...prev, wsIndicatorX: x, wsIndicatorY: y }));
           setExpandDirty(true);
+        }}
+        onRequestViewers={() => {
+          const s = (window as any).__baseWsSock;
+          if (s) s.send(JSON.stringify({ type: 'request_viewers' }));
         }}
       />
       {displaySettings.showToolbar ? (
