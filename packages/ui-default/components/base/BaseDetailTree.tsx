@@ -246,6 +246,7 @@ function TreeBranch({
             const showProblemCount = displaySettings?.showProblemCount && problemCount > 0;
             const showCardTimestamps = displaySettings?.showNodeCardTimestamps;
             const showCardTags = displaySettings?.showCardTags;
+            const showProblemTags = displaySettings?.showProblemTags;
             const showProblems = displaySettings?.showProblemTree && problemCount > 0;
             const problems = child.card.problems || [];
             return (
@@ -326,6 +327,13 @@ function TreeBranch({
                             <span className="base-detail-tree__label" style={{ fontSize: 12, opacity: 0.75 }}>
                               {problemTitle}
                             </span>
+                            {showProblemTags && problem.tags && problem.tags.length > 0 ? (
+                              <span className="base-detail-tree__problem-tags">
+                                {problem.tags.map((ptag: string) => (
+                                  <span key={ptag} className="base-detail-tree__tag--problem">{ptag}</span>
+                                ))}
+                              </span>
+                            ) : null}
                           </button>
                         </div>
                       );

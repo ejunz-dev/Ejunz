@@ -1437,6 +1437,8 @@ Date: Date
 'Expiry': 'Expiry'
 'Show card tags': 'Show card tags'
 'Show card tags hint': 'Show card tag chips in the tree view'
+'Show problem tags': 'Show problem tags'
+'Show problem tags hint': 'Show problem tag chips under problems in the tree'
 'Card tags': 'Card tags'
 'Card tags filter': 'Filter by card tag'
 'Card tags filter placeholder': 'Comma-separated tag names'
