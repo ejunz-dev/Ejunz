@@ -13,12 +13,15 @@ import {
 } from './detail_tree';
 import { getCardIcon, getCardColor } from './utils';
 import {
+  CardTextIcon,
   CardPdfIcon,
   CardImageIcon,
   CardVideoIcon,
   CardAudioIcon,
   CardCodeIcon,
   CardFileOtherIcon,
+  FolderClosedIcon,
+  FolderOpenedIcon,
 } from './BaseEditorCardIcons';
 import { useBaseDetailCardScroll } from './url_sync';
 
@@ -55,21 +58,11 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
 }
 
 function NodeIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
-      <rect x="2.5" y="3" width="11" height="10" rx="2" stroke="currentColor" strokeWidth="1.4" />
-      <path d="M5 6.5h6M5 9h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-    </svg>
-  );
+  return <FolderClosedIcon size={14} />;
 }
 
 function CardIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
-      <rect x="3" y="2.5" width="10" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
-      <path d="M5.5 6h5M5.5 8.5h5M5.5 11h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-    </svg>
-  );
+  return <CardTextIcon size={14} />;
 }
 
 function RoadmapIcon() {
