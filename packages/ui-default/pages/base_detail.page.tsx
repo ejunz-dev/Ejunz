@@ -465,6 +465,9 @@ function BaseDetailViewer() {
               if (Array.isArray(newData.cardTags) && (window as any).UiContext?.base) {
                 (window as any).UiContext.base.cardTags = newData.cardTags;
               }
+              if (Array.isArray(newData.problemTags) && (window as any).UiContext?.base) {
+                (window as any).UiContext.base.problemTags = newData.problemTags;
+              }
               if (Array.isArray(newData.baseExpandState)) {
                 setExpandedNodes(new Set(newData.baseExpandState));
               }
@@ -504,7 +507,8 @@ function BaseDetailViewer() {
             // Skip notification for session/sidecar side-effects (no real actionKey)
             if (!msg.actionKey || msg.actionKey === 'unknown') return;
             // Tag registry changes: silent (no toast)
-            if (msg.actionKey === 'add_card_tag' || msg.actionKey === 'delete_card_tag' || msg.actionKey === 'rename_card_tag') return;
+            if (msg.actionKey === 'add_card_tag' || msg.actionKey === 'delete_card_tag' || msg.actionKey === 'rename_card_tag'
+              || msg.actionKey === 'add_problem_tag' || msg.actionKey === 'delete_problem_tag' || msg.actionKey === 'rename_problem_tag') return;
             const notifyKey = String(msg.sourceUid ?? '');
             if (notifyKey === lastNotifyKey) return;
             lastNotifyKey = notifyKey;
