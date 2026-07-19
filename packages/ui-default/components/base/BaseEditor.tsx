@@ -138,6 +138,7 @@ import {
 import { SortWindow } from 'vj/components/base/SortWindow';
 import { DevelopQueueList as BaseEditorDevelopQueueList } from 'vj/components/base/DevelopQueueList';
 import { McpSidebarPanel } from 'vj/components/base/McpSidebarPanel';
+import { ProblemTagsEditModal } from 'vj/components/base/ProblemTagsEditModal';
 import { BaseEditorCardTagsPanel } from 'vj/components/base/BaseEditorCardTagsPanel';
 import { BaseEditorProblemTagsPanel } from 'vj/components/base/BaseEditorProblemTagsPanel';
 import {
@@ -1460,6 +1461,28 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [problemContextMenu, setProblemContextMenu] = useState<
     null | { x: number; y: number; refIndex: number }
   >(null);
+  const [problemTagsEditProblem, setProblemTagsEditProblem] = useState<Problem | null>(null);
+  const handleProblemTagsSave = useCallback((updatedProblem: Problem) => {
+    const selected = selectedFileRef.current;
+    if (!selected || selected.type !== 'card') return;
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    const nodeId = selected.nodeId || '';
+    const nodeCards: Card[] = nodeCardsMap[nodeId] || [];
+    const cardIndex = nodeCards.findIndex((c: Card) => sameCardDocId(c.docId, selected.cardId));
+    if (cardIndex >= 0) {
+      const existingProblems = nodeCards[cardIndex].problems || [];
+      const problemIndex = existingProblems.findIndex((p) => p.pid === updatedProblem.pid);
+      if (problemIndex >= 0) {
+        existingProblems[problemIndex] = updatedProblem;
+        nodeCards[cardIndex] = { ...nodeCards[cardIndex], problems: existingProblems };
+        (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+        setNodeCardsMapVersion((prev) => prev + 1);
+        const cardIdStr = String(selected.cardId || '');
+        setPendingProblemCardIds((prev) => { const next = new Set(prev); next.add(cardIdStr); return next; });
+        setEditedProblemIds((prev) => new Set(prev).add(updatedProblem.pid));
+      }
+    }
+  }, []);
   const originalProblemsRef = useRef<Map<string, Map<string, Problem>>>(new Map());
   const originalProblemsOrderRef = useRef<Map<string, string[]>>(new Map());
   const [originalProblemsVersion, setOriginalProblemsVersion] = useState(0);
@@ -16023,6 +16046,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                             y: ev.clientY,
                             refIndex: index,
                           })}
+                        onEditTags={setProblemTagsEditProblem}
                         onReorderUp={problems.length > 1 ? () => reorderSelectedCardProblems(index, index - 1) : undefined}
                         onReorderDown={problems.length > 1 ? () => reorderSelectedCardProblems(index, index + 1) : undefined}
                         reorderDisableUp={index <= 0}
@@ -16739,6 +16763,13 @@ Reply with a JSON code block only for executable operations. For same-response f
           if (s) s.send(JSON.stringify({ type: 'request_viewers' }));
         }}
       />
+      {problemTagsEditProblem ? (
+        <ProblemTagsEditModal
+          problem={problemTagsEditProblem}
+          onSave={handleProblemTagsSave}
+          onClose={() => setProblemTagsEditProblem(null)}
+        />
+      ) : null}
     </div>
   );
 }
