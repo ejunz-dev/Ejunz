@@ -139,6 +139,7 @@ import { SortWindow } from 'vj/components/base/SortWindow';
 import { DevelopQueueList as BaseEditorDevelopQueueList } from 'vj/components/base/DevelopQueueList';
 import { McpSidebarPanel } from 'vj/components/base/McpSidebarPanel';
 import { BaseEditorCardTagsPanel } from 'vj/components/base/BaseEditorCardTagsPanel';
+import { BaseEditorProblemTagsPanel } from 'vj/components/base/BaseEditorProblemTagsPanel';
 import {
   defaultBaseDetailDisplaySettings,
   getCardProblemCount,
@@ -398,7 +399,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const pendingProblemsMergeCardIdsRef = useRef<Set<string>>(new Set());
   const saveHandlerRef = useRef<() => void>(() => {});
 
-  const [explorerMode, setExplorerMode] = useState<'tree' | 'pending' | 'branches' | 'git' | 'mcp' | 'display' | 'tags'>(
+  const [explorerMode, setExplorerMode] = useState<'tree' | 'pending' | 'branches' | 'git' | 'mcp' | 'display' | 'tags' | 'problemTags'>(
     () => savedEditorLayout.explorerMode,
   );
   const [editorDisplaySettings, setEditorDisplaySettings] = useState<BaseEditorDisplaySettings>(
@@ -526,7 +527,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                 // Skip notification for changes triggered by THIS window
                 if ((window as any).__baseJustSaved && Date.now() - (window as any).__baseJustSaved < 3000) return;
                 // Tag registry changes: silent (no toast, even in other windows)
-                if (ak === 'add_card_tag' || ak === 'delete_card_tag' || ak === 'rename_card_tag') return;
+                if (ak === 'add_card_tag' || ak === 'delete_card_tag' || ak === 'rename_card_tag'
+                  || ak === 'add_problem_tag' || ak === 'delete_problem_tag' || ak === 'rename_problem_tag') return;
                 new Notification({
                   title: msg.sourceUname || '',
                   message: buildSummary(msg.actionKey, msg.actionDetail),
@@ -591,6 +593,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                   // Sync cardTags from server data so the tags panel sees updates from other editors
                   if (Array.isArray(newData.cardTags) && (window as any).UiContext?.base) {
                     (window as any).UiContext.base.cardTags = newData.cardTags;
+                  }
+                  if (Array.isArray(newData.problemTags) && (window as any).UiContext?.base) {
+                    (window as any).UiContext.base.problemTags = newData.problemTags;
                   }
 
                   const selected = selectedFileRef.current;
@@ -1041,11 +1046,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       if ((window as any).UiContext && newData?.baseEditorUiPrefs && typeof newData.baseEditorUiPrefs === 'object' && !Array.isArray(newData.baseEditorUiPrefs)) {
         (window as any).UiContext.baseEditorUiPrefs = newData.baseEditorUiPrefs;
         const prefs = newData.baseEditorUiPrefs as Record<string, unknown>;
-        const modes = new Set(['tree', 'pending', 'branches', 'git', 'mcp', 'tags']);
+        const modes = new Set(['tree', 'pending', 'branches', 'git', 'mcp', 'tags', 'problemTags']);
         const rightTabs = new Set(['problems', 'develop_queue', 'plugin_node', 'plugin_mcp_services', 'roadmap_edge', 'card_tags']);
         const rawExplorerMode = prefs.explorerMode === 'training' ? 'tree' : prefs.explorerMode;
         if (typeof rawExplorerMode === 'string' && modes.has(rawExplorerMode)) {
-          setExplorerMode(rawExplorerMode as 'tree' | 'pending' | 'branches' | 'git' | 'mcp' | 'tags');
+          setExplorerMode(rawExplorerMode as 'tree' | 'pending' | 'branches' | 'git' | 'mcp' | 'tags' | 'problemTags');
         }
         if (typeof prefs.editorRightPanelTab === 'string' && rightTabs.has(prefs.editorRightPanelTab)) {
           const tab = prefs.editorRightPanelTab as EditorRightPanelTab;
@@ -10922,6 +10927,26 @@ Reply with a JSON code block only for executable operations. For same-response f
             >
               签
             </button>
+            <button
+              type="button"
+              onClick={() => setExplorerMode(prev => prev === 'problemTags' ? 'tree' : 'problemTags')}
+              style={{
+                width: '34px',
+                height: '34px',
+                border: `1px solid ${themeStyles.borderSecondary}`,
+                borderRadius: '3px',
+                backgroundColor: explorerMode === 'problemTags' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                color: explorerMode === 'problemTags' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                cursor: 'pointer',
+                flexShrink: 0,
+                fontWeight: 700,
+                fontSize: '11px',
+              }}
+              title={i18n('Problem tags')}
+              aria-label={i18n('Problem tags')}
+            >
+              标
+            </button>
           </div>
         </div>
         <div
@@ -11649,6 +11674,12 @@ Reply with a JSON code block only for executable operations. For same-response f
             <BaseEditorCardTagsPanel
               docId={docId}
               getBaseUrl={getBaseUrl}
+              themeStyles={themeStyles}
+              onTagsChanged={() => setNodeCardsMapVersion(v => v + 1)}
+            />
+          ) : explorerMode === 'problemTags' ? (
+            <BaseEditorProblemTagsPanel
+              docId={docId}
               themeStyles={themeStyles}
               onTagsChanged={() => setNodeCardsMapVersion(v => v + 1)}
             />
