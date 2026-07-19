@@ -257,6 +257,7 @@ export type SavedEditorLayout = {
   displaySettings: BaseEditorDisplaySettings;
   wsIndicatorX?: number;
   wsIndicatorY?: number;
+  wsIndicatorOpen?: boolean;
 };
 
 export type DevelopEditorContextWire = {

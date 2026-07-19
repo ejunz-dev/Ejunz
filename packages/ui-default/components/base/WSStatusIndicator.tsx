@@ -9,22 +9,26 @@ export interface ViewerInfo {
   pageType: string;
 }
 
-/** Floating status dot with always-visible viewer dropdown. */
+/** Floating status dot with toggleable viewer dropdown. */
 export function WSStatusIndicator({
   status,
   viewerCount,
   viewers,
+  open,
   posX,
   posY,
   onPosChange,
+  onToggle,
   onRequestViewers,
 }: {
   status: WSConnectionStatus;
   viewerCount?: number;
   viewers?: ViewerInfo[];
+  open: boolean;
   posX: number;
   posY: number;
   onPosChange?: (x: number, y: number) => void;
+  onToggle?: () => void;
   onRequestViewers?: () => void;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -112,13 +116,20 @@ export function WSStatusIndicator({
     dragRef.current = null;
   }, [onPosChange, posX, posY]);
 
+  // Click toggles dropdown (only if not dragged)
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    if (wasDraggedRef.current) return;
+    onToggle?.();
+  }, [onToggle]);
+
   return (
     <div className="base-detail-ws-indicator-wrap" ref={wrapRef}>
       <div
         ref={innerRef}
         className={`base-detail-ws-indicator ${dotClass}`}
-        style={{ cursor: onPosChange ? 'grab' : undefined }}
+        style={{ cursor: onPosChange ? 'grab' : onToggle ? 'pointer' : undefined }}
         title={label}
+        onClick={handleClick}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -126,25 +137,27 @@ export function WSStatusIndicator({
         <span className="base-detail-ws-indicator__dot" />
         <span className="base-detail-ws-indicator__label">{label}</span>
       </div>
-      <div className="base-detail-ws-indicator__dropdown">
-        {status === 'connected' ? (
-          viewers && viewers.length > 0 ? viewers.map((v) => (
-            <div key={v.uid} className="base-detail-ws-indicator__dropdown-item">
-              <span>{v.pageType === 'detail' ? '📖' : '✏️'}</span>
-              <span>{v.uname}</span>
-              <span className="base-detail-ws-indicator__dropdown-tag">{v.pageType === 'detail' ? 'Detail' : 'Editor'}</span>
+      {open ? (
+        <div className="base-detail-ws-indicator__dropdown">
+          {status === 'connected' ? (
+            viewers && viewers.length > 0 ? viewers.map((v) => (
+              <div key={v.uid} className="base-detail-ws-indicator__dropdown-item">
+                <span>{v.pageType === 'detail' ? '📖' : '✏️'}</span>
+                <span>{v.uname}</span>
+                <span className="base-detail-ws-indicator__dropdown-tag">{v.pageType === 'detail' ? 'Detail' : 'Editor'}</span>
+              </div>
+            )) : (
+              <div className="base-detail-ws-indicator__dropdown-item" style={{ justifyContent: 'center', color: '#999' }}>
+                {i18n('No other viewers')}
+              </div>
+            )
+          ) : (
+            <div className="base-detail-ws-indicator__dropdown-item" style={{ justifyContent: 'center', color: status === 'connecting' ? '#ffc107' : '#f44336' }}>
+              {status === 'connecting' ? i18n('Connecting…') : i18n('Disconnected')}
             </div>
-          )) : (
-            <div className="base-detail-ws-indicator__dropdown-item" style={{ justifyContent: 'center', color: '#999' }}>
-              {i18n('No other viewers')}
-            </div>
-          )
-        ) : (
-          <div className="base-detail-ws-indicator__dropdown-item" style={{ justifyContent: 'center', color: status === 'connecting' ? '#ffc107' : '#f44336' }}>
-            {status === 'connecting' ? i18n('Connecting…') : i18n('Disconnected')}
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
