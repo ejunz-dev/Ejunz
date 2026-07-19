@@ -143,17 +143,33 @@ export function ProblemEditModal({
           </div>
         </div>
 
-        {/* Body — problem tags + EditableProblem */}
+        {/* Body — EditableProblem */}
         <div style={{
           flex: 1, overflow: 'auto', padding: '16px 20px', minHeight: 0,
         }}>
-          {/* Problem tags — select from available */}
-          <div style={{ marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid var(--roadmap-border, #e0e0e0)' }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--roadmap-text-secondary, #888)', marginBottom: 6 }}>
-              {i18n('Problem tags')}
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {(() => {
+          <EditableProblem
+            problem={updatedProblem}
+            index={problemIndex}
+            cardId={card.docId}
+            borderColor="#e1e4e8"
+            borderStyle="solid"
+            isNew={false}
+            isEdited={false}
+            onUpdate={(p) => setUpdatedProblem(p)}
+            onDelete={() => {}}
+            docId={resolvedDocId}
+            getBaseUrl={getBaseUrl}
+            themeStyles={themeStyles}
+          />
+        </div>
+
+        {/* Bottom: Problem tags — select from available */}
+        <div style={{ flexShrink: 0, padding: '12px 20px', borderTop: '1px solid var(--roadmap-border, #e0e0e0)' }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--roadmap-text-secondary, #888)', marginBottom: 6 }}>
+            {i18n('Problem tags')}
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {(() => {
                 const tagsForRender: string[] = (Array.isArray(availableTags) && availableTags.length > 0)
                   ? availableTags
                   : (Array.isArray((window as any).UiContext?.base?.problemTags) ? (window as any).UiContext.base.problemTags : []);
@@ -195,20 +211,6 @@ export function ProblemEditModal({
               })()}
             </div>
           </div>
-          <EditableProblem
-            problem={updatedProblem}
-            index={problemIndex}
-            cardId={card.docId}
-            borderColor="#e1e4e8"
-            borderStyle="solid"
-            isNew={false}
-            isEdited={false}
-            onUpdate={(p) => setUpdatedProblem(p)}
-            onDelete={() => {}}
-            docId={resolvedDocId}
-            getBaseUrl={getBaseUrl}
-            themeStyles={themeStyles}
-          />
         </div>
       </div>
     </div>,
