@@ -1462,26 +1462,31 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     null | { x: number; y: number; refIndex: number }
   >(null);
   const [problemTagsEditProblem, setProblemTagsEditProblem] = useState<Problem | null>(null);
-  const handleProblemTagsSave = useCallback((updatedProblem: Problem) => {
+  const handleProblemTagsSave = useCallback(async (updatedProblem: Problem) => {
     const selected = selectedFileRef.current;
     if (!selected || selected.type !== 'card') return;
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     const nodeId = selected.nodeId || '';
     const nodeCards: Card[] = nodeCardsMap[nodeId] || [];
     const cardIndex = nodeCards.findIndex((c: Card) => sameCardDocId(c.docId, selected.cardId));
-    if (cardIndex >= 0) {
-      const existingProblems = nodeCards[cardIndex].problems || [];
-      const problemIndex = existingProblems.findIndex((p) => p.pid === updatedProblem.pid);
-      if (problemIndex >= 0) {
-        existingProblems[problemIndex] = updatedProblem;
-        nodeCards[cardIndex] = { ...nodeCards[cardIndex], problems: existingProblems };
-        (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
-        setNodeCardsMapVersion((prev) => prev + 1);
-        const cardIdStr = String(selected.cardId || '');
-        setPendingProblemCardIds((prev) => { const next = new Set(prev); next.add(cardIdStr); return next; });
-        setEditedProblemIds((prev) => new Set(prev).add(updatedProblem.pid));
-      }
-    }
+    if (cardIndex < 0) return;
+    const existingProblems = nodeCards[cardIndex].problems || [];
+    const problemIndex = existingProblems.findIndex((p) => p.pid === updatedProblem.pid);
+    if (problemIndex < 0) return;
+    // Update local state immediately
+    existingProblems[problemIndex] = updatedProblem;
+    nodeCards[cardIndex] = { ...nodeCards[cardIndex], problems: existingProblems };
+    (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+    setNodeCardsMapVersion((prev) => prev + 1);
+    // Save directly via API (not pending) to avoid blocking WS sync
+    try {
+      const domainId = (window as any).UiContext?.domainId || 'system';
+      (window as any).__baseJustSaved = Date.now();
+      await request.post(
+        domainApiPath(`/base/card/${encodeURIComponent(selected.cardId)}`, domainId),
+        { problems: existingProblems, operation: 'update' },
+      );
+    } catch { /* ignore */ }
   }, []);
   const originalProblemsRef = useRef<Map<string, Map<string, Problem>>>(new Map());
   const originalProblemsOrderRef = useRef<Map<string, string[]>>(new Map());
