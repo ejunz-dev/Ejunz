@@ -137,23 +137,17 @@ export function WSStatusIndicator({
         <span className="base-detail-ws-indicator__dot" />
         <span className="base-detail-ws-indicator__label">{label}</span>
       </div>
-      {open ? (
+      {open && status === 'connected' ? (
         <div className="base-detail-ws-indicator__dropdown">
-          {status === 'connected' ? (
-            viewers && viewers.length > 0 ? viewers.map((v) => (
-              <div key={v.uid} className="base-detail-ws-indicator__dropdown-item">
-                <span>{v.pageType === 'detail' ? '📖' : '✏️'}</span>
-                <span>{v.uname}</span>
-                <span className="base-detail-ws-indicator__dropdown-tag">{v.pageType === 'detail' ? 'Detail' : 'Editor'}</span>
-              </div>
-            )) : (
-              <div className="base-detail-ws-indicator__dropdown-item" style={{ justifyContent: 'center', color: '#999' }}>
-                {i18n('No other viewers')}
-              </div>
-            )
-          ) : (
-            <div className="base-detail-ws-indicator__dropdown-item" style={{ justifyContent: 'center', color: status === 'connecting' ? '#ffc107' : '#f44336' }}>
-              {status === 'connecting' ? i18n('Connecting…') : i18n('Disconnected')}
+          {viewers && viewers.length > 0 ? viewers.map((v) => (
+            <div key={v.uid} className="base-detail-ws-indicator__dropdown-item">
+              <span>{v.pageType === 'detail' ? '📖' : '✏️'}</span>
+              <span>{v.uname}</span>
+              <span className="base-detail-ws-indicator__dropdown-tag">{v.pageType === 'detail' ? 'Detail' : 'Editor'}</span>
+            </div>
+          )) : (
+            <div className="base-detail-ws-indicator__dropdown-item" style={{ justifyContent: 'center', color: '#999' }}>
+              {i18n('No other viewers')}
             </div>
           )}
         </div>
