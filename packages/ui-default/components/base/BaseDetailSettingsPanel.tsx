@@ -212,27 +212,29 @@ export function BaseDetailSettingsPanel({
               })}
             />
           </label>
-          <label className="roadmap-detail-settings__row" style={{ paddingLeft: 24 }}>
-            <div className="roadmap-detail-settings__row-text">
-              <span className="roadmap-detail-settings__row-label">
-                {i18n('Show problem tags')}
-              </span>
-              <span className="roadmap-detail-settings__row-desc">
-                {i18n('Show problem tags hint')}
-              </span>
-            </div>
-            <input
-              type="checkbox"
-              className="roadmap-detail-settings__toggle"
-              checked={draft.showProblemTags}
-              disabled={saving}
-              onChange={(e) => setDraft({
-                ...defaultBaseDetailDisplaySettings(),
-                ...draft,
-                showProblemTags: e.currentTarget.checked,
-              })}
-            />
-          </label>
+          {draft.showProblemTree ? (
+            <label className="roadmap-detail-settings__row" style={{ paddingLeft: 24, opacity: 0.85 }}>
+              <div className="roadmap-detail-settings__row-text">
+                <span className="roadmap-detail-settings__row-label">
+                  {i18n('Show problem tags')}
+                </span>
+                <span className="roadmap-detail-settings__row-desc">
+                  {i18n('Show problem tags hint')}
+                </span>
+              </div>
+              <input
+                type="checkbox"
+                className="roadmap-detail-settings__toggle"
+                checked={draft.showProblemTags}
+                disabled={saving}
+                onChange={(e) => setDraft({
+                  ...defaultBaseDetailDisplaySettings(),
+                  ...draft,
+                  showProblemTags: e.currentTarget.checked,
+                })}
+              />
+            </label>
+          ) : null}
           <label className="roadmap-detail-settings__row">
             <div className="roadmap-detail-settings__row-text">
               <span className="roadmap-detail-settings__row-label">
