@@ -3573,6 +3573,9 @@ export class BaseCardHandler extends Handler {
         if (body && body.problems !== undefined) {
             updates.problems = body.problems;
         }
+        if (body && body.tags !== undefined) {
+            updates.tags = Array.isArray(body.tags) ? body.tags : [];
+        }
 
         await CardModel.update(domainId, targetCard.docId, updates);
         const branch = (base as any).currentBranch || 'main';
@@ -3582,6 +3585,7 @@ export class BaseCardHandler extends Handler {
         if (updates.problems !== undefined) changed.push('problems');
         if (updates.nodeId !== undefined) changed.push('nodeId');
         if (updates.order !== undefined) changed.push('order');
+        if (updates.tags !== undefined) changed.push('tags');
         (this.ctx.emit as any)('base/update', base.docId, null, branch, this.user._id, this.user.uname, 'update_card', { changed });
         this.response.body = { success: true };
     }

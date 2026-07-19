@@ -24,6 +24,18 @@ export function CardEditModal({
   const [title, setTitle] = useState(card.title || '');
   const [content, setContent] = useState(card.content || '');
   const [tags, setTags] = useState<string[]>(card.tags || []);
+  // Collect available tags: from registry + from all cards in nodeCardsMap
+  const baseCardTags: string[] = Array.isArray(availableTags) ? availableTags
+    : Array.isArray((window as any).UiContext?.base?.cardTags) ? (window as any).UiContext.base.cardTags : [];
+  const allNodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+  const allTags = new Set<string>();
+  baseCardTags.forEach((t: string) => allTags.add(t));
+  Object.values(allNodeCardsMap as Record<string, any[]>).forEach((cards) => {
+    cards.forEach((cardItem) => {
+      if (Array.isArray(cardItem.tags)) cardItem.tags.forEach((t: string) => allTags.add(t));
+    });
+  });
+  const tagsForRender = [...allTags].sort();
   const [saving, setSaving] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
   const savingRef = useRef(false);
@@ -255,9 +267,9 @@ export function CardEditModal({
             <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--roadmap-text-secondary, #888)', marginBottom: 4 }}>
               {i18n('Card tags')}
             </label>
-            {availableTags && availableTags.length > 0 ? (
+            {tagsForRender.length > 0 ? (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {availableTags.map((tag) => {
+                {tagsForRender.map((tag) => {
                   const selected = tags.includes(tag);
                   return (
                     <button
@@ -285,8 +297,8 @@ export function CardEditModal({
                     </button>
                   );
                 })}
-                {/* Also show tags already on the card that aren't in availableTags */}
-                {tags.filter((t) => !availableTags.includes(t)).map((tag) => (
+                {/* Also show tags already on the card that aren't in tagsForRender */}
+                {tags.filter((t) => !tagsForRender.includes(t)).map((tag) => (
                   <span
                     key={tag}
                     style={{
