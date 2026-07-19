@@ -225,14 +225,18 @@ function mergeIncomingProblemsPreserveStoredTags(incoming: Problem[], stored?: P
         if (!pid || !byPid.has(pid)) return inc;
         const st = byPid.get(pid)!;
         const merged: Problem = { ...inc };
-        if (Object.prototype.hasOwnProperty.call(st, 'tags')) {
-            if (Array.isArray(st.tags) && st.tags.length >= 0) {
-                merged.tags = [...st.tags];
+        // Only restore stored tags when the incoming problem has NO tags
+        // (editor didn't touch them). If the incoming has tags, respect the editor.
+        if (!Object.prototype.hasOwnProperty.call(inc, 'tags') || inc.tags === undefined || inc.tags === null) {
+            if (Object.prototype.hasOwnProperty.call(st, 'tags')) {
+                if (Array.isArray(st.tags) && st.tags.length >= 0) {
+                    merged.tags = [...st.tags];
+                } else {
+                    delete (merged as { tags?: string[] }).tags;
+                }
             } else {
                 delete (merged as { tags?: string[] }).tags;
             }
-        } else {
-            delete (merged as { tags?: string[] }).tags;
         }
         return merged;
     });
