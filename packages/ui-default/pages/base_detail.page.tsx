@@ -48,6 +48,7 @@ type BaseDetailContext = {
   content?: string;
   nodes?: BaseDoc['nodes'];
   edges?: BaseDoc['edges'];
+  cardTags?: string[];
 };
 
 function getBaseDetailFromContext(): BaseDetailContext {
@@ -61,6 +62,7 @@ function getBaseDetailFromContext(): BaseDetailContext {
     content: ctx.content || '',
     nodes: ctx.nodes || [],
     edges: ctx.edges || [],
+    cardTags: Array.isArray(ctx.cardTags) ? ctx.cardTags : [],
   };
 }
 
@@ -458,6 +460,9 @@ function BaseDetailViewer() {
                   return prev;
                 });
               }
+              if (Array.isArray(newData.cardTags) && (window as any).UiContext?.base) {
+                (window as any).UiContext.base.cardTags = newData.cardTags;
+              }
               if (Array.isArray(newData.baseExpandState)) {
                 setExpandedNodes(new Set(newData.baseExpandState));
               }
@@ -496,6 +501,8 @@ function BaseDetailViewer() {
             if (ownSaveTs && Date.now() - ownSaveTs < 3000) return;
             // Skip notification for session/sidecar side-effects (no real actionKey)
             if (!msg.actionKey || msg.actionKey === 'unknown') return;
+            // Tag registry changes: silent (no toast)
+            if (msg.actionKey === 'add_card_tag' || msg.actionKey === 'delete_card_tag' || msg.actionKey === 'rename_card_tag') return;
             const notifyKey = String(msg.sourceUid ?? '');
             if (notifyKey === lastNotifyKey) return;
             lastNotifyKey = notifyKey;
@@ -528,6 +535,10 @@ function BaseDetailViewer() {
                 case 'git_commit': return det?.message ? i18n('Committed: {0}', det.message) : i18n('Committed');
                 case 'migrate_node': return i18n('Node migrated to new base');
                 case 'add_tag': return det?.tag ? i18n('Tag added: {0}', det.tag) : i18n('Tag added');
+                case 'add_card_tag':
+                case 'delete_card_tag':
+                case 'rename_card_tag':
+                  return '';
                 default: return i18n('Content has been updated');
               }
             };
@@ -987,6 +998,7 @@ function BaseDetailViewer() {
         <CardEditModal
           card={editCard}
           domainId={base.domainId}
+          availableTags={base.cardTags}
           onSave={handleEditCardSave}
           onClose={handleCloseEditCard}
         />

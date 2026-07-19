@@ -98,6 +98,7 @@ export function BaseDetailSettingsPanel({
               showNodeNumber: true,
               showNodeCardTimestamps: true,
               showProblemTree: true,
+              showCardTags: true,
               showAiTutor: true,
               showExpandSaveIndicator: true,
               showToolbar: true,
@@ -115,6 +116,7 @@ export function BaseDetailSettingsPanel({
               showNodeNumber: false,
               showNodeCardTimestamps: false,
               showProblemTree: false,
+              showCardTags: false,
               showAiTutor: false,
               showExpandSaveIndicator: false,
               showToolbar: false,
@@ -123,7 +125,7 @@ export function BaseDetailSettingsPanel({
             {i18n('Deselect all')}
           </button>
         </div>
-        <div className="roadmap-detail-settings__list">
+        <div className="roadmap-detail-settings__list" style={{ overflowY: 'auto', maxHeight: '60vh' }}>
           <label className="roadmap-detail-settings__row">
             <div className="roadmap-detail-settings__row-text">
               <span className="roadmap-detail-settings__row-label">
@@ -205,6 +207,27 @@ export function BaseDetailSettingsPanel({
                 ...defaultBaseDetailDisplaySettings(),
                 ...draft,
                 showProblemTree: e.currentTarget.checked,
+              })}
+            />
+          </label>
+          <label className="roadmap-detail-settings__row">
+            <div className="roadmap-detail-settings__row-text">
+              <span className="roadmap-detail-settings__row-label">
+                {i18n('Show card tags')}
+              </span>
+              <span className="roadmap-detail-settings__row-desc">
+                {i18n('Show card tags hint')}
+              </span>
+            </div>
+            <input
+              type="checkbox"
+              className="roadmap-detail-settings__toggle"
+              checked={draft.showCardTags}
+              disabled={saving}
+              onChange={(e) => setDraft({
+                ...defaultBaseDetailDisplaySettings(),
+                ...draft,
+                showCardTags: e.currentTarget.checked,
               })}
             />
           </label>

@@ -10,6 +10,7 @@ export type BaseDetailFilter = {
   filterNode: string;
   filterCard: string;
   filterProblem: string;
+  filterCardTag: string;
 };
 
 export type BaseDetailTreeVisibility = {
@@ -19,10 +20,10 @@ export type BaseDetailTreeVisibility = {
   matchCount: number;
 };
 
-const FILTER_KEYS = ['filterNode', 'filterCard', 'filterProblem'] as const;
+const FILTER_KEYS = ['filterNode', 'filterCard', 'filterProblem', 'filterCardTag'] as const;
 
 export function emptyBaseDetailFilter(): BaseDetailFilter {
-  return { filterNode: '', filterCard: '', filterProblem: '' };
+  return { filterNode: '', filterCard: '', filterProblem: '', filterCardTag: '' };
 }
 
 export function readBaseDetailFilterFromLocation(): BaseDetailFilter {
@@ -32,6 +33,7 @@ export function readBaseDetailFilterFromLocation(): BaseDetailFilter {
       filterNode: sp.get('filterNode') || '',
       filterCard: sp.get('filterCard') || '',
       filterProblem: sp.get('filterProblem') || '',
+      filterCardTag: sp.get('filterCardTag') || '',
     };
   } catch {
     return emptyBaseDetailFilter();
@@ -50,7 +52,7 @@ export function writeBaseDetailFilterToLocation(filters: BaseDetailFilter): void
 }
 
 export function isBaseDetailFilterActive(filters: BaseDetailFilter): boolean {
-  return !!(filters.filterNode.trim() || filters.filterCard.trim() || filters.filterProblem.trim());
+  return !!(filters.filterNode.trim() || filters.filterCard.trim() || filters.filterProblem.trim() || filters.filterCardTag.trim());
 }
 
 function problemSearchText(problem: Record<string, unknown>): string {
@@ -80,9 +82,18 @@ function nodeMatchesNodeFilter(node: BaseNode, filters: BaseDetailFilter): boole
 function cardMatchesCardFilter(card: Card, filters: BaseDetailFilter): boolean {
   const cardQ = filters.filterCard.trim().toLowerCase();
   const problemQ = filters.filterProblem.trim().toLowerCase();
+  const tagQ = filters.filterCardTag.trim().toLowerCase();
   if (cardQ) {
     const text = `${cardDisplayLabel(card)} ${String(card.content || '')}`.toLowerCase();
     if (!text.includes(cardQ)) return false;
+  }
+  if (tagQ) {
+    const tags = tagQ.split(',').map((t) => t.trim()).filter(Boolean);
+    if (tags.length > 0) {
+      const cardTags = (card.tags || []).map((t) => t.toLowerCase());
+      const matchesTag = tags.some((tag) => cardTags.includes(tag));
+      if (!matchesTag) return false;
+    }
   }
   if (problemQ) {
     const hasProblem = (card.problems || []).some((problem) => (

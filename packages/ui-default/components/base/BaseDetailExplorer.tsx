@@ -158,6 +158,16 @@ export function BaseDetailExplorer({
                   autoComplete="off"
                 />
               </label>
+              <label className="roadmap-detail-explorer__field">
+                <span>{i18n('Card tags filter')}</span>
+                <input
+                  type="text"
+                  value={filterDraft.filterCardTag}
+                  onChange={(e) => setFilterDraft((draft) => ({ ...draft, filterCardTag: e.target.value }))}
+                  placeholder={i18n('Card tags filter placeholder')}
+                  autoComplete="off"
+                />
+              </label>
             </div>
             <div className="roadmap-detail-explorer__dialog-actions">
               <button type="button" className="roadmap-detail-explorer__dialog-btn" onClick={clearFilters}>
