@@ -108,7 +108,8 @@ function nodePassesAllFilters(node: BaseNode, cards: Card[], filters: BaseDetail
   if (!nodeMatchesNodeFilter(node, filters)) return false;
   const cardQ = filters.filterCard.trim();
   const problemQ = filters.filterProblem.trim();
-  if (cardQ || problemQ) {
+  const tagQ = filters.filterCardTag.trim();
+  if (cardQ || problemQ || tagQ) {
     return cards.some((card) => cardMatchesCardFilter(card, filters));
   }
   return true;
@@ -181,7 +182,7 @@ export function computeBaseDetailTreeVisibility(
     });
   });
 
-  const hasCardFilter = !!(filters.filterCard.trim() || filters.filterProblem.trim());
+  const hasCardFilter = !!(filters.filterCard.trim() || filters.filterProblem.trim() || filters.filterCardTag.trim());
   const visibleCardIds = hasCardFilter ? matchingCardIds : null;
 
   return {

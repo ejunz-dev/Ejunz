@@ -864,6 +864,15 @@ function BaseDetailViewer() {
           onSearchQueryChange={setTreeSearchQuery}
           onApplyFilters={setDetailFilters}
           onClearFilters={() => setDetailFilters(emptyBaseDetailFilter())}
+          availableCardTags={(() => {
+            const tags = new Set<string>();
+            const registry: string[] = Array.isArray(base.cardTags) ? base.cardTags : [];
+            registry.forEach((t) => tags.add(t));
+            Object.values(nodeCardsMap).forEach((cards) =>
+              cards.forEach((c) => (c.tags || []).forEach((t) => tags.add(t)))
+            );
+            return [...tags].sort();
+          })()}
         />
       ) : null}
       <div className="roadmap-view">
