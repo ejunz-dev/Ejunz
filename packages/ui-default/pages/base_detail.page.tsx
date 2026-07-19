@@ -357,7 +357,7 @@ function BaseDetailViewer() {
       Notification.success(i18n('Saved'));
     } catch { /* silent */ }
     expandSaveBusyRef.current = false;
-  }, [base.docId, base.domainId, branch, displaySettings.indicatorX, displaySettings.indicatorY, displaySettings.toolbarOpen, displaySettings.toolbarX, displaySettings.toolbarY, expandDirty]);
+  }, [base.docId, base.domainId, branch, displaySettings.indicatorX, displaySettings.indicatorY, displaySettings.toolbarOpen, displaySettings.toolbarX, displaySettings.toolbarY, displaySettings.wsIndicatorOpen, expandDirty]);
 
   // Ctrl+S / Cmd+S saves expand state
   useEffect(() => {
@@ -820,16 +820,8 @@ function BaseDetailViewer() {
           setExpandDirty(true);
         }}
         onToggle={() => {
-          const next = !displaySettings.wsIndicatorOpen;
-          setDisplaySettings((prev) => ({ ...prev, wsIndicatorOpen: next }));
+          setDisplaySettings((prev) => ({ ...prev, wsIndicatorOpen: !prev.wsIndicatorOpen }));
           setExpandDirty(true);
-          // Persist immediately so WS updates from other windows use the latest value
-          if (base.docId) {
-            request.post(domainApiPath('/base/detail-ui-prefs', base.domainId || 'system'), {
-              docId: Number(base.docId), branch,
-              displayPrefs: { ...displaySettings, wsIndicatorOpen: next },
-            }).catch(() => {});
-          }
         }}
         onRequestViewers={() => {
           const s = (window as any).__baseWsSock;
