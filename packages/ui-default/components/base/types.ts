@@ -250,7 +250,7 @@ export type BaseEditorDisplaySettings = {
 };
 
 export type SavedEditorLayout = {
-  explorerMode: 'tree' | 'pending' | 'branches' | 'git' | 'mcp' | 'display' | 'tags';
+  explorerMode: 'tree' | 'pending' | 'branches' | 'git' | 'mcp' | 'display' | 'tags' | 'problemTags';
   nodeSidePanelTab: 'intent' | 'files' | 'develop_queue';
   editorRightPanelTab: EditorRightPanelTab;
   rightPanelOpen: boolean;

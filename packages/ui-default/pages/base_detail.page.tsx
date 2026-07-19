@@ -49,6 +49,7 @@ type BaseDetailContext = {
   nodes?: BaseDoc['nodes'];
   edges?: BaseDoc['edges'];
   cardTags?: string[];
+  problemTags?: string[];
 };
 
 function getBaseDetailFromContext(): BaseDetailContext {
@@ -63,6 +64,7 @@ function getBaseDetailFromContext(): BaseDetailContext {
     nodes: ctx.nodes || [],
     edges: ctx.edges || [],
     cardTags: Array.isArray(ctx.cardTags) ? ctx.cardTags : [],
+    problemTags: Array.isArray(ctx.problemTags) ? ctx.problemTags : [],
   };
 }
 
@@ -1019,6 +1021,7 @@ function BaseDetailViewer() {
           problemIndex={editProblem.index}
           domainId={base.domainId}
           baseDocId={base.docId}
+          availableTags={base.problemTags}
           onSave={handleProblemEditSave}
           onClose={handleCloseEditProblem}
         />

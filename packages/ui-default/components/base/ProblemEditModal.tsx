@@ -16,6 +16,7 @@ export function ProblemEditModal({
   problemIndex,
   domainId,
   baseDocId,
+  availableTags,
   onSave,
   onClose,
 }: {
@@ -24,10 +25,12 @@ export function ProblemEditModal({
   problemIndex: number;
   domainId?: string;
   baseDocId?: string;
+  availableTags?: string[];
   onSave: (updatedCard: Card) => void;
   onClose: () => void;
 }) {
   const [updatedProblem, setUpdatedProblem] = useState<Problem>(problem);
+  const [problemTags, setProblemTags] = useState<string[]>(problem.tags || []);
   const [saving, setSaving] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
 
@@ -52,7 +55,7 @@ export function ProblemEditModal({
       (window as any).__baseJustSaved = Date.now();
       // Build updated problems array
       const newProblems = [...(card.problems || [])];
-      newProblems[problemIndex] = updatedProblem;
+      newProblems[problemIndex] = { ...updatedProblem, tags: problemTags };
 
       const res: any = await request.post(
         domainApiPath(`/base/card/${encodeURIComponent(card.docId)}`, resolvedDomainId),
@@ -140,10 +143,58 @@ export function ProblemEditModal({
           </div>
         </div>
 
-        {/* Body — EditableProblem */}
+        {/* Body — problem tags + EditableProblem */}
         <div style={{
           flex: 1, overflow: 'auto', padding: '16px 20px', minHeight: 0,
         }}>
+          {/* Problem tags — select from available */}
+          <div style={{ marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid var(--roadmap-border, #e0e0e0)' }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--roadmap-text-secondary, #888)', marginBottom: 6 }}>
+              {i18n('Problem tags')}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {(() => {
+                const tagsForRender: string[] = (Array.isArray(availableTags) && availableTags.length > 0)
+                  ? availableTags
+                  : (Array.isArray((window as any).UiContext?.base?.problemTags) ? (window as any).UiContext.base.problemTags : []);
+                const allNodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+                const allTags = new Set(tagsForRender);
+                Object.values(allNodeCardsMap as Record<string, any[]>).forEach((cards) => {
+                  cards.forEach((c: any) => {
+                    if (Array.isArray(c.problems)) c.problems.forEach((p: any) => {
+                      if (Array.isArray(p.tags)) p.tags.forEach((t: string) => allTags.add(t));
+                    });
+                  });
+                });
+                const renderTags = [...allTags].sort();
+                return renderTags.length > 0 ? renderTags.map((tag) => {
+                  const selected = problemTags.includes(tag);
+                  return (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => {
+                        if (selected) setProblemTags((prev) => prev.filter((t) => t !== tag));
+                        else setProblemTags((prev) => [...prev, tag]);
+                      }}
+                      style={{
+                        padding: '3px 8px', borderRadius: 4, border: 'none', cursor: 'pointer',
+                        background: selected ? 'rgba(255, 152, 0, 0.15)' : 'var(--roadmap-bg-input, #f0f0f0)',
+                        color: selected ? '#e65100' : 'var(--roadmap-text-secondary, #888)',
+                        fontSize: 11, fontWeight: selected ? 600 : 400, outline: 'none',
+                      }}
+                    >
+                      {tag}
+                    </button>
+                  );
+                }) : (
+                  <span style={{ fontSize: 11, color: 'var(--roadmap-text-muted, #aaa)', fontStyle: 'italic' }}>
+                    {i18n('No tags available')}
+                  </span>
+                );
+              })()}
+            </div>
+          </div>
           <EditableProblem
             problem={updatedProblem}
             index={problemIndex}
