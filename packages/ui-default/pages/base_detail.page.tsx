@@ -348,6 +348,7 @@ function BaseDetailViewer() {
             toolbarY: displaySettings.toolbarY,
             wsIndicatorX: displaySettings.wsIndicatorX,
             wsIndicatorY: displaySettings.wsIndicatorY,
+            wsIndicatorOpen: displaySettings.wsIndicatorOpen,
           },
         }),
       );
@@ -481,6 +482,7 @@ function BaseDetailViewer() {
                 apply('indicatorY', prefs.indicatorY);
                 apply('wsIndicatorX', prefs.wsIndicatorX);
                 apply('wsIndicatorY', prefs.wsIndicatorY);
+                apply('wsIndicatorOpen', prefs.wsIndicatorOpen);
                 apply('toolbarOpen', prefs.toolbarOpen);
                 apply('toolbarX', prefs.toolbarX);
                 apply('toolbarY', prefs.toolbarY);
@@ -810,11 +812,24 @@ function BaseDetailViewer() {
         status={wsStatus}
         viewerCount={viewerCount}
         viewers={liveViewers}
+        open={displaySettings.wsIndicatorOpen}
         posX={displaySettings.wsIndicatorX}
         posY={displaySettings.wsIndicatorY}
         onPosChange={(x, y) => {
           setDisplaySettings((prev) => ({ ...prev, wsIndicatorX: x, wsIndicatorY: y }));
           setExpandDirty(true);
+        }}
+        onToggle={() => {
+          const next = !displaySettings.wsIndicatorOpen;
+          setDisplaySettings((prev) => ({ ...prev, wsIndicatorOpen: next }));
+          setExpandDirty(true);
+          // Persist immediately so WS updates from other windows use the latest value
+          if (base.docId) {
+            request.post(domainApiPath('/base/detail-ui-prefs', base.domainId || 'system'), {
+              docId: Number(base.docId), branch,
+              displayPrefs: { ...displaySettings, wsIndicatorOpen: next },
+            }).catch(() => {});
+          }
         }}
         onRequestViewers={() => {
           const s = (window as any).__baseWsSock;

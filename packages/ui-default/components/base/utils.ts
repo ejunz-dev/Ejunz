@@ -1142,6 +1142,7 @@ export function readSavedBaseEditorUiPrefs(editorAiHidden: boolean): SavedEditor
     displaySettings,
     wsIndicatorX: raw && typeof raw.wsIndicatorX === 'number' ? raw.wsIndicatorX : undefined,
     wsIndicatorY: raw && typeof raw.wsIndicatorY === 'number' ? raw.wsIndicatorY : undefined,
+    wsIndicatorOpen: raw && typeof raw.wsIndicatorOpen === 'boolean' ? raw.wsIndicatorOpen : true,
   };
 }
 
