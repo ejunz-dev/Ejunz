@@ -7066,6 +7066,81 @@ export class BaseCardTagRegistryHandler extends Handler {
 }
 
 /**
+ * Problem tag registry CRUD (add / delete / rename / list).
+ * Problem tags are stored in `BaseDoc.problemTags` and managed from the editor's left sidebar.
+ */
+export class BaseProblemTagManageHandler extends Handler {
+    @param('docId', Types.PositiveInt, true)
+    async post(domainId: string, docId: number) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const body: Record<string, unknown> = (this.request.body && typeof this.request.body === 'object')
+            ? this.request.body as Record<string, unknown>
+            : {};
+        const action = String(body.action || '').trim();
+        const base = await BaseModel.get(domainId, docId);
+        if (!base) throw new NotFoundError('Base not found');
+        if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+
+        const current = sanitizeProblemTagRegistryList((base as BaseDoc & { problemTags?: unknown }).problemTags || []);
+
+        if (action === 'add') {
+            const tag = normalizeProblemTagInput(body.tag);
+            if (!tag) throw new ValidationError('tag required');
+            if (current.includes(tag)) {
+                this.response.body = { success: true, problemTags: current };
+                return;
+            }
+            const next = sanitizeProblemTagRegistryList([...current, tag]);
+            await BaseModel.updateFull(domainId, docId, { problemTags: next });
+            (this.ctx.emit as any)('base/update', docId, undefined, undefined, this.user._id, this.user.uname, 'add_problem_tag', { tag });
+            this.response.body = { success: true, problemTags: next };
+        } else if (action === 'delete') {
+            const tag = normalizeProblemTagInput(body.tag);
+            if (!tag) throw new ValidationError('tag required');
+            const next = current.filter((t: string) => t !== tag);
+            await BaseModel.updateFull(domainId, docId, { problemTags: next });
+            (this.ctx.emit as any)('base/update', docId, undefined, undefined, this.user._id, this.user.uname, 'delete_problem_tag', { tag });
+            this.response.body = { success: true, problemTags: next };
+        } else if (action === 'rename') {
+            const oldTag = normalizeProblemTagInput(body.oldTag);
+            const newTag = normalizeProblemTagInput(body.newTag);
+            if (!oldTag || !newTag) throw new ValidationError('oldTag and newTag required');
+            const next = current.map((t: string) => t === oldTag ? newTag : t);
+            const deduped = sanitizeProblemTagRegistryList(next);
+            await BaseModel.updateFull(domainId, docId, { problemTags: deduped });
+            // Also rename on all problems that have this tag
+            try {
+                const branchData = getBranchData(base, 'main');
+                const nodeIds = branchData.nodes.map((n: { id: string }) => n.id);
+                const allCards = await CardModel.getByNodeIds(domainId, docId, nodeIds, 'main');
+                for (const cards of allCards.values()) {
+                    for (const c of cards) {
+                        if (Array.isArray(c.problems)) {
+                            let changed = false;
+                            const updatedProblems = c.problems.map((p) => {
+                                if (Array.isArray(p.tags) && p.tags.includes(oldTag)) {
+                                    changed = true;
+                                    return { ...p, tags: p.tags.map((t: string) => t === oldTag ? newTag : t) };
+                                }
+                                return p;
+                            });
+                            if (changed) {
+                                await CardModel.update(domainId, c.docId, { problems: updatedProblems } as any);
+                            }
+                        }
+                    }
+                }
+            } catch { /* non-fatal */ }
+            (this.ctx.emit as any)('base/update', docId, undefined, undefined, this.user._id, this.user.uname, 'rename_problem_tag', { oldTag, newTag });
+            this.response.body = { success: true, problemTags: deduped };
+        } else {
+            // list
+            this.response.body = { success: true, problemTags: current };
+        }
+    }
+}
+
+/**
  * Base Expand State Handler — per-user node expand/collapse state for base editor (POST only, load via UiContext)
  */
 export class BaseExpandStateHandler extends Handler {
@@ -7407,6 +7482,7 @@ export async function apply(ctx: Context) {
     ctx.Route('base_migrate_node_to_new', '/base/migrate-node-to-new', BaseMigrateNodeToNewHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_expand_state', '/base/expand-state', BaseExpandStateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_problem_tag_register', '/base/:docId/problem-tag-register', BaseProblemTagRegistryHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_problem_tag_manage', '/base/problem-tag', BaseProblemTagManageHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_card_tag_manage', '/base/card-tag', BaseCardTagRegistryHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_card', '/base/card', BaseCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_card_update', '/base/card/:cardId', BaseCardHandler, PRIV.PRIV_USER_PROFILE);
