@@ -2005,6 +2005,8 @@ Date: 日期
 'Expiry': '过期设置'
 'Show card tags': '显示卡片标签'
 'Show card tags hint': '在树状显示中展示卡片的标签'
+'Show problem tags': '显示题目标签'
+'Show problem tags hint': '在树状显示中的题目旁展示题目标签'
 'Card tags': '卡片标签'
 'Card tags filter': '按卡片标签过滤'
 'Card tags filter placeholder': '用逗号分隔的标签名'

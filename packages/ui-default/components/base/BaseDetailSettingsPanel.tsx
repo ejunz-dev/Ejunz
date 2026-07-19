@@ -98,6 +98,7 @@ export function BaseDetailSettingsPanel({
               showNodeNumber: true,
               showNodeCardTimestamps: true,
               showProblemTree: true,
+              showProblemTags: true,
               showCardTags: true,
               showAiTutor: true,
               showExpandSaveIndicator: true,
@@ -116,6 +117,7 @@ export function BaseDetailSettingsPanel({
               showNodeNumber: false,
               showNodeCardTimestamps: false,
               showProblemTree: false,
+              showProblemTags: false,
               showCardTags: false,
               showAiTutor: false,
               showExpandSaveIndicator: false,
@@ -207,6 +209,27 @@ export function BaseDetailSettingsPanel({
                 ...defaultBaseDetailDisplaySettings(),
                 ...draft,
                 showProblemTree: e.currentTarget.checked,
+              })}
+            />
+          </label>
+          <label className="roadmap-detail-settings__row" style={{ paddingLeft: 24 }}>
+            <div className="roadmap-detail-settings__row-text">
+              <span className="roadmap-detail-settings__row-label">
+                {i18n('Show problem tags')}
+              </span>
+              <span className="roadmap-detail-settings__row-desc">
+                {i18n('Show problem tags hint')}
+              </span>
+            </div>
+            <input
+              type="checkbox"
+              className="roadmap-detail-settings__toggle"
+              checked={draft.showProblemTags}
+              disabled={saving}
+              onChange={(e) => setDraft({
+                ...defaultBaseDetailDisplaySettings(),
+                ...draft,
+                showProblemTags: e.currentTarget.checked,
               })}
             />
           </label>
