@@ -3,6 +3,7 @@ export type BaseDetailDisplaySettings = {
   showNodeNumber: boolean;
   showNodeCardTimestamps: boolean;
   showProblemTree: boolean;
+  showProblemTags: boolean;
   showCardTags: boolean;
   showAiTutor: boolean;
   showExpandSaveIndicator: boolean;
@@ -24,6 +25,7 @@ export const defaultBaseDetailDisplaySettings = (): BaseDetailDisplaySettings =>
   showNodeNumber: false,
   showNodeCardTimestamps: false,
   showProblemTree: false,
+  showProblemTags: false,
   showCardTags: false,
   showAiTutor: true,
   showExpandSaveIndicator: true,
@@ -48,6 +50,7 @@ export function baseDetailDisplaySettingsEqual(
     && a.showNodeNumber === b.showNodeNumber
     && a.showNodeCardTimestamps === b.showNodeCardTimestamps
     && a.showProblemTree === b.showProblemTree
+    && a.showProblemTags === b.showProblemTags
     && a.showCardTags === b.showCardTags
     && a.showAiTutor === b.showAiTutor
     && a.showExpandSaveIndicator === b.showExpandSaveIndicator
@@ -74,6 +77,7 @@ export function readBaseDetailDisplaySettings(): BaseDetailDisplaySettings {
     showNodeNumber: Boolean(r.showNodeNumber),
     showNodeCardTimestamps: Boolean(r.showNodeCardTimestamps),
     showProblemTree: Boolean(r.showProblemTree),
+    showProblemTags: Boolean(r.showProblemTags),
     showCardTags: Boolean(r.showCardTags),
     showAiTutor: r.showAiTutor !== false,
     showExpandSaveIndicator: r.showExpandSaveIndicator !== false,
