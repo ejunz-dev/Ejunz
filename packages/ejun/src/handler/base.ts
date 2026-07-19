@@ -787,7 +787,7 @@ class BaseDetailHandler extends Handler {
             baseDetailUiPrefs,
             baseExpandState,
             baseExpandStateLoaded,
-            socketUrl: `base/ws?domainId=${encodeURIComponent(domainId)}&docId=${this.base!.docId}`,
+            socketUrl: `base/ws?domainId=${encodeURIComponent(domainId)}&docId=${this.base!.docId}&page=detail`,
         };
     }
 
@@ -6246,15 +6246,27 @@ class BaseGithubPullHandler extends Handler {
 /**
  * Per-base connection counter for live viewer count display.
  */
-const baseViewerCounts = new Map<number, Set<any>>();
+interface ViewerEntry {
+    handler: any;
+    uid: number;
+    uname: string;
+    pageType: string; // 'editor' | 'detail'
+}
+const baseViewerCounts = new Map<number, Set<ViewerEntry>>();
 
 function broadcastViewerCount(docId: number) {
     const viewers = baseViewerCounts.get(docId);
     const count = viewers ? viewers.size : 0;
     if (!viewers) return;
-    for (const h of viewers) {
-        try { (h as any).send?.({ type: 'viewer_count', count }); } catch { /* ignore */ }
+    for (const v of viewers) {
+        try { v.handler.send?.({ type: 'viewer_count', count }); } catch { /* ignore */ }
     }
+}
+
+/** Look up the page type from the WS query string. */
+function viewerPageTypeFromQuery(query: Record<string, string | undefined>): string {
+    if (query?.page === 'detail') return 'detail';
+    return 'editor'; // default
 }
 
 /**
@@ -6375,7 +6387,9 @@ export class BaseConnectionHandler extends ConnectionHandler {
         if (!baseViewerCounts.has(this.docId)) {
             baseViewerCounts.set(this.docId, new Set());
         }
-        baseViewerCounts.get(this.docId)!.add(this);
+        const pageType = viewerPageTypeFromQuery(this.request.query as Record<string, string | undefined>);
+        const entry: ViewerEntry = { handler: this, uid: this.user._id, uname: this.user.uname || 'User', pageType };
+        baseViewerCounts.get(this.docId)!.add(entry);
         broadcastViewerCount(this.docId);
 
         await this.sendInitialData(finalDomainId, base);
@@ -6423,6 +6437,10 @@ export class BaseConnectionHandler extends ConnectionHandler {
                 await this.handleMarkdownRequest(msg);
             } else if (msg.type === 'request_image') {
                 await this.handleImageRequest(msg);
+            } else if (msg.type === 'request_viewers' && this.docId != null) {
+                const viewers = baseViewerCounts.get(this.docId);
+                const list = viewers ? Array.from(viewers).map((v) => ({ uid: v.uid, uname: v.uname, pageType: v.pageType })) : [];
+                this.send({ type: 'viewers_list', list });
             }
         } catch (err) {
             logger.error('Failed to handle WebSocket message:', err);
@@ -6525,7 +6543,10 @@ export class BaseConnectionHandler extends ConnectionHandler {
         this.subscriptions = [];
         // Remove from viewer counter and broadcast
         if (this.docId != null && baseViewerCounts.has(this.docId)) {
-            baseViewerCounts.get(this.docId)!.delete(this);
+            const viewers = baseViewerCounts.get(this.docId)!;
+            for (const v of viewers) {
+                if (v.handler === this) { viewers.delete(v); break; }
+            }
             broadcastViewerCount(this.docId);
         }
     }

@@ -2336,6 +2336,40 @@ mark.search-highlight
   50%
     opacity: 0.6
 
+// WS indicator dropdown viewer list
+.base-detail-ws-indicator__dropdown
+  position: absolute
+  top: calc(100% + 6px)
+  left: 0
+  min-width: 180px
+  background: var(--roadmap-bg-elevated)
+  border: 1px solid var(--roadmap-border, #e0e0e0)
+  border-radius: 8px
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15)
+  padding: 6px 0
+  z-index: 200
+  pointer-events: auto
+
+.base-detail-ws-indicator__dropdown-item
+  display: flex
+  align-items: center
+  gap: 8px
+  padding: 7px 14px
+  font-size: 13px
+  color: var(--roadmap-text-primary)
+  white-space: nowrap
+
+  &:hover
+    background: var(--roadmap-bg-hover, rgba(0, 0, 0, 0.04))
+
+.base-detail-ws-indicator__dropdown-tag
+  margin-left: auto
+  font-size: 11px
+  padding: 1px 6px
+  border-radius: 4px
+  background: var(--roadmap-bg-inset, rgba(0, 0, 0, 0.06))
+  color: var(--roadmap-text-secondary)
+
 // Floating toolbar
 .base-detail-toolbar-wrap
   position: fixed
