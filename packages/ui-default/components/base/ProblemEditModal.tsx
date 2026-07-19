@@ -73,7 +73,7 @@ export function ProblemEditModal({
     } finally {
       setSaving(false);
     }
-  }, [saving, card, problemIndex, updatedProblem, resolvedDomainId, onSave]);
+  }, [saving, card, problemIndex, updatedProblem, problemTags, resolvedDomainId, onSave]);
 
   const handleOverlayClick = useCallback((e: React.MouseEvent) => {
     if (e.target === overlayRef.current) onClose();
@@ -209,7 +209,6 @@ export function ProblemEditModal({
                   </span>
                 );
               })()}
-            </div>
           </div>
         </div>
       </div>
