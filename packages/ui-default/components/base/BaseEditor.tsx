@@ -335,8 +335,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const editorAiHidden = false;
   const savedEditorLayout = readSavedBaseEditorUiPrefs(editorAiHidden);
   const wsPositionRef = useRef({ x: savedEditorLayout.wsIndicatorX ?? 40, y: savedEditorLayout.wsIndicatorY ?? 40 });
-  const [editorRightPanelTab, setEditorRightPanelTab] = useState<EditorRightPanelTab>(() => {
   const [wsIndicatorOpen, setWsIndicatorOpen] = useState(() => savedEditorLayout.wsIndicatorOpen ?? true);
+  const [editorRightPanelTab, setEditorRightPanelTab] = useState<EditorRightPanelTab>(() => {
     const savedTab = savedEditorLayout.editorRightPanelTab;
     if (isPluginEditor && (savedTab === 'plugin_node' || savedTab === 'plugin_mcp_services')) return savedTab;
     if (!isPluginEditor && savedTab !== 'plugin_node' && savedTab !== 'plugin_mcp_services') return savedTab;
