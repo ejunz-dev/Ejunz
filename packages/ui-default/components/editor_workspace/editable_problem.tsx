@@ -147,6 +147,7 @@ export const EditableProblem = React.memo(({
   onProblemContextMenu,
   learnerNotesReloadEpoch = 0,
   onLearnerNotesDraftChange,
+  onEditTags,
 }: {
   problem: Problem;
   index: number;
@@ -170,6 +171,7 @@ export const EditableProblem = React.memo(({
   /** Bumped after batch save so learner notes reload from server. */
   learnerNotesReloadEpoch?: number;
   onLearnerNotesDraftChange?: (draftKey: string, batch: LearnProblemNotesDraftBatch | null) => void;
+  onEditTags?: (problem: Problem) => void;
 }) => {
   const [model, setModel] = useState<Problem>(problem);
   /** Parent `problem` snapshot by JSON; resync local `model` when AI / agent replaces the same `pid` in-place. */
@@ -502,9 +504,24 @@ export const EditableProblem = React.memo(({
         >
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 8 }}>
             <span style={{ flexShrink: 0 }}>{i18n('Problem tag')}</span>
-            <span style={{ fontSize: '10px', color: themeStyles.textTertiary, flex: '1 1 120px', minWidth: 0 }}>
-              {i18n('Problem tag editor read only hint')}
-            </span>
+            {onEditTags ? (
+              <button
+                type="button"
+                onClick={() => onEditTags(model)}
+                style={{
+                  padding: '1px 8px', borderRadius: 4, border: '1px solid var(--roadmap-border, #ddd)',
+                  background: 'transparent', cursor: 'pointer',
+                  fontSize: '10px', color: 'var(--roadmap-text-secondary, #888)',
+                  fontWeight: 500,
+                }}
+              >
+                {i18n('Edit')}
+              </button>
+            ) : (
+              <span style={{ fontSize: '10px', color: themeStyles.textTertiary, flex: '1 1 120px', minWidth: 0 }}>
+                {i18n('Problem tag editor read only hint')}
+              </span>
+            )}
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, maxWidth: '100%' }}>
             {currentProblemTags.length > 0
