@@ -336,6 +336,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const savedEditorLayout = readSavedBaseEditorUiPrefs(editorAiHidden);
   const wsPositionRef = useRef({ x: savedEditorLayout.wsIndicatorX ?? 40, y: savedEditorLayout.wsIndicatorY ?? 40 });
   const [editorRightPanelTab, setEditorRightPanelTab] = useState<EditorRightPanelTab>(() => {
+  const [wsIndicatorOpen, setWsIndicatorOpen] = useState(() => savedEditorLayout.wsIndicatorOpen ?? true);
     const savedTab = savedEditorLayout.editorRightPanelTab;
     if (isPluginEditor && (savedTab === 'plugin_node' || savedTab === 'plugin_mcp_services')) return savedTab;
     if (!isPluginEditor && savedTab !== 'plugin_node' && savedTab !== 'plugin_mcp_services') return savedTab;
@@ -2997,6 +2998,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               problemsPanelWidth,
               aiPanelHeight,
               displaySettings: effectiveDisplaySettings,
+              wsIndicatorOpen,
               wsIndicatorX: wsPositionRef.current.x,
               wsIndicatorY: wsPositionRef.current.y,
             }
@@ -16441,9 +16443,11 @@ Reply with a JSON code block only for executable operations. For same-response f
         status={wsStatus}
         viewerCount={viewerCount}
         viewers={liveViewers}
+        open={wsIndicatorOpen}
         posX={wsPositionRef.current.x}
         posY={wsPositionRef.current.y}
         onPosChange={(x, y) => { wsPositionRef.current = { x, y }; }}
+        onToggle={() => setWsIndicatorOpen((v) => !v)}
         onRequestViewers={() => {
           const s = (window as any).__baseWsSock;
           if (s) s.send(JSON.stringify({ type: 'request_viewers' }));

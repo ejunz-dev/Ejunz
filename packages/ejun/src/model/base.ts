@@ -40,6 +40,7 @@ export function sanitizeBaseEditorUiPrefs(raw: unknown): Record<string, unknown>
 
     if (typeof o.wsIndicatorX === 'number' && Number.isFinite(o.wsIndicatorX)) out.wsIndicatorX = o.wsIndicatorX;
     if (typeof o.wsIndicatorY === 'number' && Number.isFinite(o.wsIndicatorY)) out.wsIndicatorY = o.wsIndicatorY;
+    if (typeof o.wsIndicatorOpen === 'boolean') out.wsIndicatorOpen = o.wsIndicatorOpen;
 
     if (typeof o.explorerPanelWidth === 'number' && Number.isFinite(o.explorerPanelWidth)) {
         out.explorerPanelWidth = Math.round(
