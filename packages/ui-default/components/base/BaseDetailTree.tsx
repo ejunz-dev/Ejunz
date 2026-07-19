@@ -57,8 +57,8 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
   );
 }
 
-function NodeIcon() {
-  return <FolderClosedIcon size={14} />;
+function NodeIcon({ expanded }: { expanded?: boolean }) {
+  return expanded ? <FolderOpenedIcon size={14} /> : <FolderClosedIcon size={14} />;
 }
 
 function CardIcon() {
@@ -156,7 +156,7 @@ function TreeBranch({
   const nodeLabel = (
     <>
       <span className="base-detail-tree__icon">
-        {isRoadmapNode ? <RoadmapIcon /> : <NodeIcon />}
+        {isRoadmapNode ? <RoadmapIcon /> : <NodeIcon expanded={expanded} />}
       </span>
       <span className="base-detail-tree__label-wrap">
         <span className="base-detail-tree__label" title={nodeDisplayLabel(node)}>
