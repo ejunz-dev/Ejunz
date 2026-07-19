@@ -138,6 +138,7 @@ import {
 import { SortWindow } from 'vj/components/base/SortWindow';
 import { DevelopQueueList as BaseEditorDevelopQueueList } from 'vj/components/base/DevelopQueueList';
 import { McpSidebarPanel } from 'vj/components/base/McpSidebarPanel';
+import { BaseEditorCardTagsPanel } from 'vj/components/base/BaseEditorCardTagsPanel';
 import {
   defaultBaseDetailDisplaySettings,
   getCardProblemCount,
@@ -397,7 +398,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const pendingProblemsMergeCardIdsRef = useRef<Set<string>>(new Set());
   const saveHandlerRef = useRef<() => void>(() => {});
 
-  const [explorerMode, setExplorerMode] = useState<'tree' | 'pending' | 'branches' | 'git' | 'mcp' | 'display'>(
+  const [explorerMode, setExplorerMode] = useState<'tree' | 'pending' | 'branches' | 'git' | 'mcp' | 'display' | 'tags'>(
     () => savedEditorLayout.explorerMode,
   );
   const [editorDisplaySettings, setEditorDisplaySettings] = useState<BaseEditorDisplaySettings>(
@@ -524,6 +525,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                 };
                 // Skip notification for changes triggered by THIS window
                 if ((window as any).__baseJustSaved && Date.now() - (window as any).__baseJustSaved < 3000) return;
+                // Tag registry changes: silent (no toast, even in other windows)
+                if (ak === 'add_card_tag' || ak === 'delete_card_tag' || ak === 'rename_card_tag') return;
                 new Notification({
                   title: msg.sourceUname || '',
                   message: buildSummary(msg.actionKey, msg.actionDetail),
@@ -585,6 +588,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                   });
                   (window as any).UiContext.nodeCardsMap = merged;
 
+                  // Sync cardTags from server data so the tags panel sees updates from other editors
+                  if (Array.isArray(newData.cardTags) && (window as any).UiContext?.base) {
+                    (window as any).UiContext.base.cardTags = newData.cardTags;
+                  }
+
                   const selected = selectedFileRef.current;
                   if (selected?.type === 'card') {
                     const cid = String(selected.cardId || '');
@@ -608,18 +616,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                 if ((window as any).UiContext && newData?.baseEditorUiPrefs && typeof newData.baseEditorUiPrefs === 'object' && !Array.isArray(newData.baseEditorUiPrefs)) {
                   (window as any).UiContext.baseEditorUiPrefs = newData.baseEditorUiPrefs;
                   const prefs = newData.baseEditorUiPrefs as Record<string, unknown>;
-                  const modes = new Set(['tree', 'pending', 'branches', 'git', 'mcp', 'display']);
-                  const rightTabs = new Set(['problems', 'develop_queue', 'plugin_node', 'plugin_mcp_services', 'roadmap_edge']);
-                  const rawExplorerMode = prefs.explorerMode === 'training' ? 'tree' : prefs.explorerMode;
-                  if (typeof rawExplorerMode === 'string' && modes.has(rawExplorerMode)) {
-                    setExplorerMode(rawExplorerMode as 'tree' | 'pending' | 'branches' | 'git' | 'mcp' | 'display');
-                  }
-                  if (typeof prefs.editorRightPanelTab === 'string' && rightTabs.has(prefs.editorRightPanelTab)) {
-                    const tab = prefs.editorRightPanelTab as EditorRightPanelTab;
-                    if (isPluginEditor || (tab !== 'plugin_node' && tab !== 'plugin_mcp_services')) setEditorRightPanelTab(tab);
-                  }
-                  if (typeof prefs.rightPanelOpen === 'boolean') setRightPanelOpen(prefs.rightPanelOpen);
-                  if (!editorAiHidden && typeof prefs.aiBottomOpen === 'boolean') setAiBottomOpen(prefs.aiBottomOpen);
+                  // Only restore panel widths on WS refresh (UI state like explorerMode/rightPanelTab should not be overridden)
                   if (typeof prefs.explorerPanelWidth === 'number' && Number.isFinite(prefs.explorerPanelWidth)) {
                     setExplorerPanelWidth(Math.round(Math.max(EXPLORER_PANEL_MIN, Math.min(EXPLORER_PANEL_MAX, prefs.explorerPanelWidth))));
                   }
@@ -963,6 +960,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const pendingDeletesRef = useRef(pendingDeletes);
   const pendingDragChangesRef = useRef(pendingDragChanges);
   const pendingCardFaceChangesRef = useRef<Record<string, string>>({});
+  const pendingCardTagsChangesRef = useRef<Record<string, string[]>>({});
   useEffect(() => {
     pendingChangesRef.current = pendingChanges;
   }, [pendingChanges]);
@@ -1043,11 +1041,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       if ((window as any).UiContext && newData?.baseEditorUiPrefs && typeof newData.baseEditorUiPrefs === 'object' && !Array.isArray(newData.baseEditorUiPrefs)) {
         (window as any).UiContext.baseEditorUiPrefs = newData.baseEditorUiPrefs;
         const prefs = newData.baseEditorUiPrefs as Record<string, unknown>;
-        const modes = new Set(['tree', 'pending', 'branches', 'git', 'mcp']);
-        const rightTabs = new Set(['problems', 'develop_queue', 'plugin_node', 'plugin_mcp_services', 'roadmap_edge']);
+        const modes = new Set(['tree', 'pending', 'branches', 'git', 'mcp', 'tags']);
+        const rightTabs = new Set(['problems', 'develop_queue', 'plugin_node', 'plugin_mcp_services', 'roadmap_edge', 'card_tags']);
         const rawExplorerMode = prefs.explorerMode === 'training' ? 'tree' : prefs.explorerMode;
         if (typeof rawExplorerMode === 'string' && modes.has(rawExplorerMode)) {
-          setExplorerMode(rawExplorerMode as 'tree' | 'pending' | 'branches' | 'git' | 'mcp');
+          setExplorerMode(rawExplorerMode as 'tree' | 'pending' | 'branches' | 'git' | 'mcp' | 'tags');
         }
         if (typeof prefs.editorRightPanelTab === 'string' && rightTabs.has(prefs.editorRightPanelTab)) {
           const tab = prefs.editorRightPanelTab as EditorRightPanelTab;
@@ -1570,7 +1568,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     pendingProblemCardIds.size +
     pendingNewProblemCardIds.size +
     pendingEditedProblemIds.size +
-    learnProblemNotesDraftCount,
+    learnProblemNotesDraftCount +
+    Object.keys(pendingCardTagsChangesRef.current).length,
   [
     pendingChanges.size,
     pendingDragChanges.size,
@@ -1585,6 +1584,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     pendingNewProblemCardIds.size,
     pendingEditedProblemIds.size,
     learnProblemNotesDraftCount,
+    nodeCardsMapVersion,
   ]);
 
   const pendingCount = useMemo(
@@ -3123,6 +3123,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             problems: finalProblems,
             order: finalOrder,
           };
+          // Card tags from pendingCardTagsChangesRef
+          const createCardTags = pendingCardTagsChangesRef.current[create.tempId];
+          if (createCardTags) cardCreatePayload.tags = createCardTags;
           // Pass file-card metadata so the backend persists it
           if (tempCard?.cardType) cardCreatePayload.cardType = tempCard.cardType;
           if (tempCard?.fileType) cardCreatePayload.fileType = tempCard.fileType;
@@ -3212,6 +3215,12 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               title: card?.title,
               problems,
             });
+            // Include tags from pendingCardTagsChangesRef if set
+            const contentCardTags = pendingCardTagsChangesRef.current[String(change.file.cardId)];
+            if (contentCardTags) {
+              const existing = batchSaveData.cardUpdates.find((u: any) => sameCardDocId(u.cardId, change.file.cardId));
+              if (existing) existing.tags = contentCardTags;
+            }
           }
         }
       }
@@ -3556,6 +3565,32 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         }
       }
 
+      // Card tags that changed without content / problem changes
+      const tagOnlyCardIds = new Set(Object.keys(pendingCardTagsChangesRef.current));
+      const contentChangedCardIds = new Set<string>();
+      for (const change of allChanges.values()) {
+        if (change.file.type === 'card' && change.file.cardId) {
+          contentChangedCardIds.add(String(change.file.cardId));
+        }
+      }
+      for (const tagOnlyCardId of tagOnlyCardIds) {
+        if (tagOnlyCardId.startsWith('temp-card-')) continue;
+        if (contentChangedCardIds.has(tagOnlyCardId)) continue;
+        const tags = pendingCardTagsChangesRef.current[tagOnlyCardId];
+        const existing = batchSaveData.cardUpdates.find((u: any) => sameCardDocId(u.cardId, tagOnlyCardId));
+        if (existing) {
+          existing.tags = tags;
+        } else {
+          const nodeCardsMapForTag = (window as any).UiContext?.nodeCardsMap || {};
+          let nodeId = '';
+          for (const nid of Object.keys(nodeCardsMapForTag)) {
+            const card = (nodeCardsMapForTag[nid] || []).find((c: Card) => c.docId === tagOnlyCardId);
+            if (card) { nodeId = nid; break; }
+          }
+          if (nodeId) batchSaveData.cardUpdates.push({ cardId: tagOnlyCardId, nodeId, tags });
+        }
+      }
+
       mergeLearnProblemNoteDraftsIntoBatch(batchSaveData, learnProblemNotesDraftRef.current);
 
       const roadmapExtras = collectRoadmapCanvasBatchSaveExtras(base);
@@ -3681,6 +3716,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                 if (cardUpdate.title !== undefined) next.title = cardUpdate.title;
                 if (cardUpdate.problems !== undefined) next.problems = cardUpdate.problems;
                 if (cardUpdate.order !== undefined) next.order = cardUpdate.order;
+                if (cardUpdate.tags !== undefined) next.tags = cardUpdate.tags;
                 cards[cardIndex] = next;
               }
             }
@@ -3884,6 +3920,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         batchSaveData.cardUpdates.forEach((u: any) => delete next[u.cardId]);
         return next;
       });
+      // Clear handled card tags after save
+      const nextCardTags = { ...pendingCardTagsChangesRef.current };
+      batchSaveData.cardUpdates.forEach((u: any) => delete nextCardTags[u.cardId]);
+      pendingCardTagsChangesRef.current = nextCardTags;
       const savedProblemCardIds = new Set<string>(pendingProblemCardIds);
       
       setPendingProblemCardIds(new Set());
@@ -3913,7 +3953,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       
       
       const problemChangesCount = pendingNewProblemCardIds.size + pendingEditedProblemIds.size;
-      
+
       const totalChanges = (hasContentChanges ? allChanges.size : 0)
         + (hasDragChanges ? pendingDragChanges.size : 0)
         + actualRenameCount
@@ -3924,7 +3964,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         + pendingRoadmapCanvasCount
         + problemChangesCount
         + savedLearnerDraftBucketsForMsg
-        + (isDisplaySettingsDirty ? 1 : 0);
+        + (isDisplaySettingsDirty ? 1 : 0)
+        + Object.keys(nextCardTags).length;
 
       Notification.success(i18n('Saved successfully, {0} changes total', totalChanges));
 
@@ -5115,6 +5156,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       pendingDeletes.size +
       pendingFileMoves.size +
       Object.keys(pendingCardFaceChanges).length +
+      Object.keys(pendingCardTagsChangesRef.current).length +
       pendingProblemCardIds.size +
       pendingNewProblemCardIds.size +
       pendingEditedProblemIds.size +
@@ -10860,6 +10902,26 @@ Reply with a JSON code block only for executable operations. For same-response f
             >
               <RoadmapSettingsRailIcon />
             </button>
+            <button
+              type="button"
+              onClick={() => setExplorerMode(prev => prev === 'tags' ? 'tree' : 'tags')}
+              style={{
+                width: '34px',
+                height: '34px',
+                border: `1px solid ${themeStyles.borderSecondary}`,
+                borderRadius: '3px',
+                backgroundColor: explorerMode === 'tags' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                color: explorerMode === 'tags' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                cursor: 'pointer',
+                flexShrink: 0,
+                fontWeight: 700,
+                fontSize: '11px',
+              }}
+              title={i18n('Card tags')}
+              aria-label={i18n('Card tags')}
+            >
+              签
+            </button>
           </div>
         </div>
         <div
@@ -11583,6 +11645,13 @@ Reply with a JSON code block only for executable operations. For same-response f
                 </div>
               )}
             </div>
+          ) : explorerMode === 'tags' ? (
+            <BaseEditorCardTagsPanel
+              docId={docId}
+              getBaseUrl={getBaseUrl}
+              themeStyles={themeStyles}
+              onTagsChanged={() => setNodeCardsMapVersion(v => v + 1)}
+            />
           ) : explorerMode === 'git' && basePath === 'base' && docId ? (
             <div style={{ padding: '8px', fontSize: '12px', color: themeStyles.textPrimary }}>
               <div style={{ fontWeight: 600, color: themeStyles.textSecondary, marginBottom: '8px', padding: '0 8px' }}>
@@ -11960,6 +12029,36 @@ Reply with a JSON code block only for executable operations. For same-response f
                   </div>
                 )}
                 
+                {/* Card tag changes */}
+                {Object.keys(pendingCardTagsChangesRef.current).length > 0 && (
+                  <div>
+                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>
+                      {i18n('Card tags')} ({Object.keys(pendingCardTagsChangesRef.current).length})
+                    </div>
+                    <div style={{ paddingLeft: '12px', fontSize: '10px', color: '#6a737d' }}>
+                      {Object.keys(pendingCardTagsChangesRef.current).slice(0, 5).map((cardId) => {
+                        const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+                        let cardName = '';
+                        for (const nid in nodeCardsMap) {
+                          const card = (nodeCardsMap[nid] || []).find((c: Card) => c.docId === cardId);
+                          if (card) { cardName = card.title || ''; break; }
+                        }
+                        const tags = pendingCardTagsChangesRef.current[cardId];
+                        return (
+                          <div key={cardId} style={{ marginBottom: '2px' }}>
+                            • {cardName || cardId.substring(0, 8)}: {tags.join(', ')}
+                          </div>
+                        );
+                      })}
+                      {Object.keys(pendingCardTagsChangesRef.current).length > 5 && (
+                        <div style={{ color: '#999', fontStyle: 'italic' }}>
+                          ... 还有 {Object.keys(pendingCardTagsChangesRef.current).length - 5} 个
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* New items */}
                 {pendingCreatesCount > 0 && (
                   <div>
@@ -12117,11 +12216,12 @@ Reply with a JSON code block only for executable operations. For same-response f
                 )}
                 
                 {/* No pending changes */}
-                {pendingChanges.size === 0 && 
-                 pendingDragChanges.size === 0 && 
-                 pendingRenames.size === 0 && 
+                {pendingChanges.size === 0 &&
+                 pendingDragChanges.size === 0 &&
+                 pendingRenames.size === 0 &&
                  Object.keys(pendingCardFaceChanges).length === 0 &&
-                 pendingCreatesCount === 0 && 
+                 Object.keys(pendingCardTagsChangesRef.current).length === 0 &&
+                 pendingCreatesCount === 0 &&
                  pendingDeletes.size === 0 &&
                  pendingProblemCardIds.size === 0 &&
                  pendingNewProblemCardIds.size === 0 &&
@@ -15968,6 +16068,119 @@ Reply with a JSON code block only for executable operations. For same-response f
           </div>
         );
 
+        const cardTagsBody = (
+          <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px', minHeight: 0 }}>
+            {(() => {
+              const c = getSelectedCard();
+              if (!c) {
+                return (
+                  <div style={{ padding: 16, textAlign: 'center', color: themeStyles.textSecondary, fontSize: 13 }}>
+                    {i18n('Please select a card first')}
+                  </div>
+                );
+              }
+              const cardId = String(c.docId);
+              const currentTags = pendingCardTagsChangesRef.current[cardId] || c.tags || [];
+              // Available tags come ONLY from the base registry (what left panel manages)
+              const baseCardTags: string[] = (window as any).UiContext?.base?.cardTags || [];
+              // Include pending tags too so newly-typed tags show up before save
+              const allKnown = new Set(baseCardTags);
+              Object.values(pendingCardTagsChangesRef.current).forEach((tags) => {
+                if (Array.isArray(tags)) tags.forEach((t) => allKnown.add(t));
+              });
+              const availableTags = [...allKnown].sort();
+
+              return (
+                <div>
+                  {/* Current tags on this card */}
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: themeStyles.textSecondary, marginBottom: 4 }}>
+                      {i18n('Card tags')}
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {currentTags.length > 0 ? currentTags.map((tag: string) => (
+                        <span
+                          key={tag}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            padding: '3px 8px', borderRadius: 4,
+                            background: 'var(--roadmap-tag-bg, rgba(65, 53, 214, 0.1))',
+                            color: 'var(--roadmap-tag-color, var(--roadmap-accent, #4135d6))',
+                            fontSize: 12, fontWeight: 500,
+                          }}
+                        >
+                          {tag}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const cid = cardId;
+                              const prev = pendingCardTagsChangesRef.current[cid] || [...(c.tags || [])];
+                              pendingCardTagsChangesRef.current = { ...pendingCardTagsChangesRef.current, [cid]: prev.filter((t: string) => t !== tag) };
+                              setNodeCardsMapVersion((v) => v + 1);
+                            }}
+                            style={{
+                              border: 'none', background: 'transparent', cursor: 'pointer',
+                              padding: 0, fontSize: 14, lineHeight: 1, color: 'inherit', opacity: 0.6,
+                            }}
+                            aria-label={String(i18n('Remove tag'))}
+                          >×</button>
+                        </span>
+                      )) : (
+                        <span style={{ fontSize: 12, color: themeStyles.textSecondary, fontStyle: 'italic' }}>
+                          {i18n('No tags')}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Available tags — click to toggle onto card */}
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: themeStyles.textSecondary, marginBottom: 4 }}>
+                      {i18n('Available tags')}
+                    </div>
+                    {availableTags.length > 0 ? (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                        {availableTags.map((tag) => {
+                          const selected = currentTags.includes(tag);
+                          return (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => {
+                                const cid = cardId;
+                                const prev = pendingCardTagsChangesRef.current[cid] || [...(c.tags || [])];
+                                if (selected) {
+                                  pendingCardTagsChangesRef.current = { ...pendingCardTagsChangesRef.current, [cid]: prev.filter((t: string) => t !== tag) };
+                                } else {
+                                  pendingCardTagsChangesRef.current = { ...pendingCardTagsChangesRef.current, [cid]: [...prev, tag] };
+                                }
+                                setNodeCardsMapVersion((v) => v + 1);
+                              }}
+                              style={{
+                                padding: '3px 8px', borderRadius: 4, border: 'none', cursor: 'pointer',
+                                background: selected ? 'var(--roadmap-tag-bg, rgba(65, 53, 214, 0.1))' : themeStyles.bgSecondary,
+                                color: selected ? 'var(--roadmap-tag-color, var(--roadmap-accent, #4135d6))' : themeStyles.textSecondary,
+                                fontSize: 11, fontWeight: selected ? 600 : 400,
+                                outline: 'none',
+                              }}
+                            >
+                              {tag}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: 12, color: themeStyles.textSecondary, fontStyle: 'italic' }}>
+                        {i18n('No tags available')}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        );
+
         return (
           <>
             {rightPanelOpen && isMobile && (
@@ -16072,6 +16285,8 @@ Reply with a JSON code block only for executable operations. For same-response f
                   i18n('Plugin node definition')
                 ) : isPluginEditor ? (
                   i18n('Available MCP services')
+                ) : editorRightPanelTab === 'card_tags' ? (
+                  i18n('Card tags')
                 ) : (
                   i18n('Card problems')
                 )}
@@ -16127,6 +16342,8 @@ Reply with a JSON code block only for executable operations. For same-response f
                 <span style={{ fontWeight: 'bold' }}>{i18n('Plugin node definition')}</span>
               ) : isPluginEditor ? (
                 <span style={{ fontWeight: 'bold' }}>{i18n('Available MCP services')}</span>
+              ) : editorRightPanelTab === 'card_tags' ? (
+                <span style={{ fontWeight: 'bold' }}>{i18n('Card tags')}</span>
               ) : (
                 <span style={{ fontWeight: 'bold' }}>{i18n('Card problems')}</span>
               )}
@@ -16148,7 +16365,7 @@ Reply with a JSON code block only for executable operations. For same-response f
             </div>
           )}
           <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            {roadmapPlugin.roadmapNodeId && roadmapPlugin.roadmapPanelTab === 'canvas' ? (
+            {roadmapPlugin.roadmapNodeId && roadmapPlugin.roadmapPanelTab === 'canvas' && editorRightPanelTab !== 'card_tags' ? (
               roadmapPlugin.roadmapRightPanelTab === 'problems'
                 && roadmapPlugin.selectedCardSupportsPractice
                 && selectedFile?.type === 'card' ? (
@@ -16172,6 +16389,15 @@ Reply with a JSON code block only for executable operations. For same-response f
                 pluginNodePropertiesBody
               ) : isPluginEditor ? (
                 pluginMcpServicesBody
+              ) : editorRightPanelTab === 'card_tags' ? (
+                selectedFile?.type === 'card' ? cardTagsBody : (
+                  <div style={{
+                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '16px', color: themeStyles.textSecondary, fontSize: '14px', textAlign: 'center',
+                  }}>
+                    {i18n('Please select a card first')}
+                  </div>
+                )
               ) : selectedFile?.type === 'card' ? (
                 problemsBody
               ) : (
@@ -16310,6 +16536,35 @@ Reply with a JSON code block only for executable operations. For same-response f
                   {isPluginEditor ? 'MCP' : '题'}
                 </button>
                 )}
+                {!isPluginEditor ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (rightPanelOpen && editorRightPanelTab === 'card_tags') {
+                        setRightPanelOpen(false);
+                      } else {
+                        setEditorRightPanelTab('card_tags');
+                        setRightPanelOpen(true);
+                      }
+                    }}
+                    style={{
+                      width: '34px',
+                      height: '34px',
+                      border: `1px solid ${themeStyles.borderSecondary}`,
+                      borderRadius: '3px',
+                      backgroundColor: rightPanelOpen && editorRightPanelTab === 'card_tags' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                      color: rightPanelOpen && editorRightPanelTab === 'card_tags' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                      fontSize: '11px',
+                      fontWeight: 600,
+                    }}
+                    title={i18n('Card tags')}
+                    aria-label={i18n('Card tags')}
+                  >
+                    签
+                  </button>
+                ) : null}
                 {showDevelopQueueInPanels && developEditorContext && developRunQueueState ? (
                   <button
                     type="button"

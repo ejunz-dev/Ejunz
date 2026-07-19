@@ -36,7 +36,7 @@ export type AvailableMcpServiceForPlugin = {
   tools?: AvailableMcpToolForPlugin[];
 };
 
-export type EditorRightPanelTab = 'problems' | 'develop_queue' | 'plugin_node' | 'plugin_mcp_services' | 'roadmap_edge';
+export type EditorRightPanelTab = 'problems' | 'develop_queue' | 'plugin_node' | 'plugin_mcp_services' | 'roadmap_edge' | 'card_tags';
 
 export interface BaseNode {
   id: string;
@@ -88,6 +88,8 @@ export interface BaseDoc {
   branches?: string[];
   /** Problem tag registry at base level; edit in lesson, not in the base editor UI. */
   problemTags?: unknown;
+  /** Card tag registry (auto-maintained from card tags). */
+  cardTags?: string[];
   nodeCardsMap?: Record<string, Card[]>;
   files?: Array<{ _id: string; name: string; size: number; etag?: string; lastModified?: Date | string }>;
 }
@@ -110,6 +112,8 @@ export interface Card {
   createdAt?: string;
   order?: number;
   nodeId?: string;
+  /** Card-level tags. */
+  tags?: string[];
   problems?: Problem[];
   files?: CardFileInfo[];
   /** Card type: 'normal' for text cards, 'file' for uploaded-file cards */
@@ -246,7 +250,7 @@ export type BaseEditorDisplaySettings = {
 };
 
 export type SavedEditorLayout = {
-  explorerMode: 'tree' | 'pending' | 'branches' | 'git' | 'mcp' | 'display';
+  explorerMode: 'tree' | 'pending' | 'branches' | 'git' | 'mcp' | 'display' | 'tags';
   nodeSidePanelTab: 'intent' | 'files' | 'develop_queue';
   editorRightPanelTab: EditorRightPanelTab;
   rightPanelOpen: boolean;

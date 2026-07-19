@@ -11,16 +11,19 @@ import type { Card } from './types';
 export function CardEditModal({
   card,
   domainId,
+  availableTags,
   onSave,
   onClose,
 }: {
   card: Card;
   domainId?: string;
+  availableTags?: string[];
   onSave: (updated: Card) => void;
   onClose: () => void;
 }) {
   const [title, setTitle] = useState(card.title || '');
   const [content, setContent] = useState(card.content || '');
+  const [tags, setTags] = useState<string[]>(card.tags || []);
   const [saving, setSaving] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
   const savingRef = useRef(false);
@@ -29,6 +32,8 @@ export function CardEditModal({
   titleRef.current = title;
   const contentRef = useRef(content);
   contentRef.current = content;
+  const tagsRef = useRef(tags);
+  tagsRef.current = tags;
   const cardRef = useRef(card);
   cardRef.current = card;
   const onSaveRef = useRef(onSave);
@@ -57,7 +62,7 @@ export function CardEditModal({
       (window as any).__baseJustSaved = Date.now();
       const res: any = await request.post(
         domainApiPath(`/base/card/${encodeURIComponent(cardRef.current.docId)}`, resolvedDomainId),
-        { title: titleRef.current, content: contentRef.current, operation: 'update' },
+        { title: titleRef.current, content: contentRef.current, tags: tagsRef.current, operation: 'update' },
       );
       if (res?.success) {
         Notification.success(i18n('Saved'));
@@ -65,6 +70,7 @@ export function CardEditModal({
           ...cardRef.current,
           title: titleRef.current,
           content: contentRef.current,
+          tags: tagsRef.current,
           updateAt: new Date().toISOString(),
         });
       } else {
@@ -242,6 +248,99 @@ export function CardEditModal({
                 />
               )}
             </div>
+          </div>
+
+          {/* Card Tags — select from available cardTags only */}
+          <div style={{ flexShrink: 0 }}>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--roadmap-text-secondary, #888)', marginBottom: 4 }}>
+              {i18n('Card tags')}
+            </label>
+            {availableTags && availableTags.length > 0 ? (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {availableTags.map((tag) => {
+                  const selected = tags.includes(tag);
+                  return (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => {
+                        if (selected) setTags((prev) => prev.filter((t) => t !== tag));
+                        else setTags((prev) => [...prev, tag]);
+                      }}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                        padding: '4px 10px', borderRadius: 4, border: 'none',
+                        background: selected
+                          ? 'var(--roadmap-tag-bg, rgba(65, 53, 214, 0.1))'
+                          : 'var(--roadmap-bg-input, #f0f0f0)',
+                        color: selected
+                          ? 'var(--roadmap-tag-color, var(--roadmap-accent, #4135d6))'
+                          : 'var(--roadmap-text-secondary, #888)',
+                        fontSize: 12, fontWeight: selected ? 600 : 400,
+                        cursor: 'pointer', outline: 'none',
+                        transition: 'all 0.1s ease',
+                      }}
+                    >
+                      {tag}
+                    </button>
+                  );
+                })}
+                {/* Also show tags already on the card that aren't in availableTags */}
+                {tags.filter((t) => !availableTags.includes(t)).map((tag) => (
+                  <span
+                    key={tag}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      padding: '4px 10px', borderRadius: 4,
+                      background: 'var(--roadmap-tag-bg, rgba(65, 53, 214, 0.1))',
+                      color: 'var(--roadmap-tag-color, var(--roadmap-accent, #4135d6))',
+                      fontSize: 12, fontWeight: 600,
+                    }}
+                  >
+                    {tag}
+                    <button
+                      type="button"
+                      onClick={() => setTags((prev) => prev.filter((t) => t !== tag))}
+                      style={{
+                        border: 'none', background: 'transparent', cursor: 'pointer',
+                        padding: 0, fontSize: 14, lineHeight: 1, color: 'inherit', opacity: 0.6,
+                      }}
+                      aria-label={String(i18n('Remove tag'))}
+                    >×</button>
+                  </span>
+                ))}
+              </div>
+            ) : tags.length > 0 ? (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {tags.map((tag) => (
+                  <span
+                    key={tag}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      padding: '4px 10px', borderRadius: 4,
+                      background: 'var(--roadmap-tag-bg, rgba(65, 53, 214, 0.1))',
+                      color: 'var(--roadmap-tag-color, var(--roadmap-accent, #4135d6))',
+                      fontSize: 12, fontWeight: 600,
+                    }}
+                  >
+                    {tag}
+                    <button
+                      type="button"
+                      onClick={() => setTags((prev) => prev.filter((t) => t !== tag))}
+                      style={{
+                        border: 'none', background: 'transparent', cursor: 'pointer',
+                        padding: 0, fontSize: 14, lineHeight: 1, color: 'inherit', opacity: 0.6,
+                      }}
+                      aria-label={String(i18n('Remove tag'))}
+                    >×</button>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <span style={{ fontSize: 12, color: 'var(--roadmap-text-muted, #aaa)', fontStyle: 'italic' }}>
+                {i18n('No tags available')}
+              </span>
+            )}
           </div>
         </div>
       </div>
