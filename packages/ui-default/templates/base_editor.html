@@ -45,9 +45,9 @@
   {% set _sessws = '&developEditorSession=' + developEditorSessionHex %}
   {% endif %}
   {% if socketUrl is defined and socketUrl %}
-  {{ set(UiContext, 'socketUrl', socketUrl) }}
+  {{ set(UiContext, 'socketUrl', socketUrl + '&page=editor') }}
   {% else %}
-  {{ set(UiContext, 'socketUrl', 'base/ws?domainId=' + (domainId or (base and base.domainId) or '') + '&docId=' + _base_doc_id + _sessws) }}
+  {{ set(UiContext, 'socketUrl', 'base/ws?domainId=' + (domainId or (base and base.domainId) or '') + '&docId=' + _base_doc_id + _sessws + '&page=editor') }}
   {% endif %}
 </script>
 <div class="row base-editor-page">
