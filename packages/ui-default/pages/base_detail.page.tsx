@@ -112,11 +112,12 @@ function BaseDetailViewer() {
   const nodes = liveNodes;
   const edges = liveEdges;
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
-    const fromContext = (window as any).UiContext?.baseExpandState;
-    const loaded = (window as any).UiContext?.baseExpandStateLoaded;
+    // Expanded state is stored per-user in base.userDetailUi prefs (separate from editor)
+    const prefs = (window as any).UiContext?.baseDetailUiPrefs;
+    const savedIds: string[] = prefs?.expandedNodeIds;
     let s: Set<string>;
-    if (Array.isArray(fromContext) && loaded && fromContext.length > 0) {
-      s = new Set(fromContext);
+    if (Array.isArray(savedIds) && savedIds.length > 0) {
+      s = new Set(savedIds);
     } else {
       s = new Set((base.nodes || []).filter((n: BaseNode) => n.expanded !== false).map((n: BaseNode) => n.id));
     }
@@ -330,33 +331,23 @@ function BaseDetailViewer() {
     expandSaveBusyRef.current = true;
     (window as any).__baseJustSaved = Date.now();
     try {
-      const promises: Promise<unknown>[] = [];
-      if (nodeIds) {
-        promises.push(
-          request.post(domainApiPath('/base/expand-state', base.domainId || 'system'), {
-            docId: Number(base.docId),
-            expandedNodeIds: Array.from(nodeIds),
-          }),
-        );
-      }
-      promises.push(
-        request.post(domainApiPath('/base/detail-ui-prefs', base.domainId || 'system'), {
-          docId: Number(base.docId),
-          branch,
-          displayPrefs: {
-            showToolbar: displaySettings.showToolbar,
-            indicatorX: displaySettings.indicatorX,
-            indicatorY: displaySettings.indicatorY,
-            toolbarOpen: displaySettings.toolbarOpen,
-            toolbarX: displaySettings.toolbarX,
-            toolbarY: displaySettings.toolbarY,
-            wsIndicatorX: displaySettings.wsIndicatorX,
-            wsIndicatorY: displaySettings.wsIndicatorY,
-            wsIndicatorOpen: displaySettings.wsIndicatorOpen,
-          },
-        }),
-      );
-      await Promise.all(promises);
+      const reqBody = {
+        docId: Number(base.docId),
+        branch,
+        displayPrefs: {
+          showToolbar: displaySettings.showToolbar,
+          indicatorX: displaySettings.indicatorX,
+          indicatorY: displaySettings.indicatorY,
+          toolbarOpen: displaySettings.toolbarOpen,
+          toolbarX: displaySettings.toolbarX,
+          toolbarY: displaySettings.toolbarY,
+          wsIndicatorX: displaySettings.wsIndicatorX,
+          wsIndicatorY: displaySettings.wsIndicatorY,
+          wsIndicatorOpen: displaySettings.wsIndicatorOpen,
+          expandedNodeIds: nodeIds ? Array.from(nodeIds) : [],
+        },
+      };
+      await request.post(domainApiPath('/base/detail-ui-prefs', base.domainId || 'system'), reqBody);
       setExpandDirty(false);
       Notification.success(i18n('Saved'));
     } catch { /* silent */ }
@@ -518,8 +509,8 @@ function BaseDetailViewer() {
               if (Array.isArray(newData.problemTags) && (window as any).UiContext?.base) {
                 (window as any).UiContext.base.problemTags = newData.problemTags;
               }
-              if (Array.isArray(newData.baseExpandState)) {
-                setExpandedNodes(new Set(newData.baseExpandState));
+              if (newData.baseDetailUiPrefs?.expandedNodeIds) {
+                setExpandedNodes(new Set(newData.baseDetailUiPrefs.expandedNodeIds));
               }
               // Show notification AFTER data has been refreshed
               if (toastPayload) {
