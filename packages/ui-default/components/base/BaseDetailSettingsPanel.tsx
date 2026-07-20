@@ -132,19 +132,21 @@ export function BaseDetailSettingsPanel({
             type="button"
             className="roadmap-detail-settings__btn"
             disabled={saving}
-            onClick={() => setDraft({
-              ...draft,
-              indicatorX: 320,
-              indicatorY: 72,
-              toolbarOpen: false,
-              toolbarX: 320,
-              toolbarY: 108,
-              wsIndicatorX: 40,
-              wsIndicatorY: 40,
-              wsIndicatorOpen: true,
-              cardDrawerWidth: 420,
-              treeDrawerWidth: 320,
-            })}
+            onClick={async () => {
+              await onSave({
+                ...draft,
+                indicatorX: 320,
+                indicatorY: 72,
+                toolbarOpen: false,
+                toolbarX: 320,
+                toolbarY: 108,
+                wsIndicatorX: 40,
+                wsIndicatorY: 40,
+                wsIndicatorOpen: true,
+                cardDrawerWidth: 420,
+                treeDrawerWidth: 320,
+              });
+            }}
           >
             {i18n('Reset positions to defaults')}
           </button>
