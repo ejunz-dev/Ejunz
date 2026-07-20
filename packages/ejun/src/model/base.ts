@@ -67,6 +67,10 @@ export function sanitizeBaseEditorUiPrefs(raw: unknown): Record<string, unknown>
     }
     out.displaySettings = displaySettings;
 
+    if (Array.isArray(o.expandedNodeIds)) {
+        out.expandedNodeIds = o.expandedNodeIds.filter((id: unknown) => typeof id === 'string');
+    }
+
     return out;
 }
 
@@ -81,7 +85,12 @@ export async function loadBaseEditorUiPrefs(
         const coll = mongoDb.collection('base.userEditorUi');
         const b = branch && String(branch).trim() ? String(branch).trim() : 'main';
         const doc = await coll.findOne({ domainId, baseDocId, branch: b, uid });
-        return sanitizeBaseEditorUiPrefs(doc?.prefs);
+        const prefs = sanitizeBaseEditorUiPrefs(doc?.prefs);
+        // Re-append expandedNodeIds that sanitize might have stripped
+        if (doc?.prefs && Array.isArray(doc.prefs.expandedNodeIds)) {
+            prefs.expandedNodeIds = doc.prefs.expandedNodeIds.filter((id: unknown) => typeof id === 'string');
+        }
+        return prefs;
     } catch {
         return {};
     }

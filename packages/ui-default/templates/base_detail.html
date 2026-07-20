@@ -15,8 +15,6 @@
   }) }}
   {{ set(UiContext, 'nodeCardsMap', nodeCardsMap if nodeCardsMap is defined else {}) }}
   {{ set(UiContext, 'baseDetailUiPrefs', baseDetailUiPrefs if baseDetailUiPrefs is defined else {}) }}
-  {{ set(UiContext, 'baseExpandState', baseExpandState or []) }}
-  {{ set(UiContext, 'baseExpandStateLoaded', baseExpandStateLoaded or false) }}
   {{ set(UiContext, 'files', files or []) }}
   {{ set(UiContext, 'socketUrl', socketUrl) }}
 </script>
