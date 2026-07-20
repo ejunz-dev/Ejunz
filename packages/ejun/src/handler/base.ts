@@ -767,16 +767,6 @@ class BaseDetailHandler extends Handler {
             this.user._id,
         );
 
-        // Load per-user expand state (same collection as base editor)
-        let baseExpandState: string[] = [];
-        let baseExpandStateLoaded = false;
-        try {
-            const coll = this.ctx.db.db.collection('base.userExpand');
-            const doc = await coll.findOne({ domainId, baseDocId: this.base!.docId, uid: this.user._id });
-            baseExpandStateLoaded = Array.isArray(doc?.expandedNodeIds);
-            baseExpandState = baseExpandStateLoaded ? doc.expandedNodeIds : [];
-        } catch { /* ignore */ }
-
         this.response.body = {
             base: {
                 ...this.base,
@@ -789,12 +779,41 @@ class BaseDetailHandler extends Handler {
             nodeCardsMap,
             files: this.base.files || [],
             baseDetailUiPrefs,
-            baseExpandState,
-            baseExpandStateLoaded,
             socketUrl: `base/ws?domainId=${encodeURIComponent(domainId)}&docId=${this.base!.docId}&page=detail`,
         };
     }
 
+}
+
+/** Per-user base editor UI prefs (POST only; load via UiContext). */
+export class BaseEditorUiPrefsHandler extends Handler {
+    @post('docId', Types.PositiveInt)
+    @post('branch', Types.String, true)
+    @post('editorUiPrefs', Types.Any, true)
+    async post(domainId: string, docId: number, branch?: string, editorUiPrefs?: unknown) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const base = await BaseModel.get(domainId, docId);
+        if (!base) throw new NotFoundError('Base not found');
+
+        const branchNorm = branch && String(branch).trim() ? String(branch).trim() : 'main';
+        const sanitized = sanitizeBaseEditorUiPrefs(editorUiPrefs);
+        // Re-append expandedNodeIds that sanitize may strip
+        if (editorUiPrefs && typeof editorUiPrefs === 'object' && !Array.isArray(editorUiPrefs)) {
+            const raw = editorUiPrefs as Record<string, unknown>;
+            if (Array.isArray(raw.expandedNodeIds)) {
+                sanitized.expandedNodeIds = raw.expandedNodeIds.filter((id: unknown) => typeof id === 'string');
+            }
+        }
+        const coll = this.ctx.db.db.collection('base.userEditorUi');
+        await coll.updateOne(
+            { domainId, baseDocId: docId, branch: branchNorm, uid: this.user._id },
+            { $set: { domainId, baseDocId: docId, branch: branchNorm, uid: this.user._id, prefs: sanitized, updateAt: new Date() } },
+            { upsert: true },
+        );
+
+        this.response.body = { success: true };
+        // Don't emit 'base/update' — editor prefs are per-user, no need to broadcast.
+    }
 }
 
 /** Per-user base detail display prefs (POST only; load via UiContext). */
@@ -1112,17 +1131,6 @@ export class BaseEditorHandler extends Handler {
         const t = await getTodayUserDomainContribution(domainId, uid, todayKey);
         const todayContribution = { ...t, nodeChars: 0, cardChars: 0, problemChars: 0 };
 
-        let baseExpandState: string[] = [];
-        let baseExpandStateLoaded = false;
-        try {
-            const coll = this.ctx.db.db.collection('base.userExpand');
-            const doc = await coll.findOne({ domainId, baseDocId: base.docId, uid });
-            baseExpandStateLoaded = Array.isArray(doc?.expandedNodeIds);
-            baseExpandState = baseExpandStateLoaded ? doc.expandedNodeIds : [];
-        } catch {
-            // ignore
-        }
-
         const baseEditorUiPrefs = await loadBaseEditorUiPrefs(
             this.ctx.db.db,
             domainId,
@@ -1148,8 +1156,6 @@ export class BaseEditorHandler extends Handler {
             todayContributionAllDomains: todayAllDomains,
             contributions,
             contributionDetails,
-            baseExpandState,
-            baseExpandStateLoaded,
             baseEditorUiPrefs,
             editorRootNodeId,
             editorFocusNodeId,
@@ -1252,17 +1258,6 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
     ]) : [emptyContribution, { nodes: 0, cards: 0, problems: 0, nodeChars: 0, cardChars: 0, problemChars: 0 }];
     const { todayContribution, contributions, contributionDetails } = contrib;
 
-    let baseExpandState: string[] = [];
-    let baseExpandStateLoaded = false;
-    try {
-        const coll = db.collection('base.userExpand');
-        const doc = await coll.findOne({ domainId, baseDocId: base.docId, uid });
-        baseExpandStateLoaded = Array.isArray(doc?.expandedNodeIds);
-        baseExpandState = baseExpandStateLoaded ? doc.expandedNodeIds : [];
-    } catch {
-        // ignore
-    }
-
     const baseEditorUiPrefs = await loadBaseEditorUiPrefs(
         db,
         domainId,
@@ -1309,8 +1304,6 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
         todayContributionAllDomains: todayAllDomains,
         contributions,
         contributionDetails,
-        baseExpandState,
-        baseExpandStateLoaded,
         baseEditorUiPrefs,
         editorRootNodeId,
         editorFocusNodeId,
@@ -2609,19 +2602,17 @@ export class BaseDataHandler extends Handler {
             nodeCardsMap = applied.nodeCardsMap;
         }
 
-        let baseExpandState: string[] = [];
-        let baseExpandStateLoaded = false;
         let baseEditorUiPrefs: Record<string, unknown> = {};
+        let baseDetailUiPrefs: Record<string, unknown> = {};
         if (base) {
-            try {
-                const coll = this.ctx.db.db.collection('base.userExpand');
-                const doc = await coll.findOne({ domainId, baseDocId: base.docId, uid: this.user._id });
-                baseExpandStateLoaded = Array.isArray(doc?.expandedNodeIds);
-                baseExpandState = baseExpandStateLoaded ? doc.expandedNodeIds : [];
-            } catch {
-                // ignore
-            }
             baseEditorUiPrefs = await loadBaseEditorUiPrefs(
+                this.ctx.db.db,
+                domainId,
+                base.docId,
+                currentBranch,
+                this.user._id,
+            );
+            baseDetailUiPrefs = await loadBaseDetailUiPrefs(
                 this.ctx.db.db,
                 domainId,
                 base.docId,
@@ -2636,8 +2627,7 @@ export class BaseDataHandler extends Handler {
             edges,
             currentBranch,
             nodeCardsMap,
-            baseExpandState,
-            baseExpandStateLoaded,
+            baseDetailUiPrefs,
             baseEditorUiPrefs,
             outlineExplorerFilters: trimDetailExplorerFiltersForClient(outlineExplorerFilters),
         } : {
@@ -2646,8 +2636,7 @@ export class BaseDataHandler extends Handler {
             edges: [],
             currentBranch,
             nodeCardsMap: {},
-            baseExpandState,
-            baseExpandStateLoaded,
+            baseDetailUiPrefs,
             baseEditorUiPrefs,
             outlineExplorerFilters: trimDetailExplorerFiltersForClient(outlineExplorerFilters),
         };
@@ -7147,34 +7136,6 @@ export class BaseProblemTagManageHandler extends Handler {
 /**
  * Base Expand State Handler — per-user node expand/collapse state for base editor (POST only, load via UiContext)
  */
-export class BaseExpandStateHandler extends Handler {
-    protected async getBase(domainId: string, docId: number): Promise<BaseDoc | null> {
-        return BaseModel.get(domainId, docId);
-    }
-
-    @post('docId', Types.PositiveInt)
-    @post('expandedNodeIds', Types.ArrayOf(Types.String), true)
-    async post(domainId: string, docId: number, expandedNodeIds?: string[]) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        const baseDocId = Number(docId);
-        const base = await this.getBase(domainId, baseDocId);
-        if (!base) throw new NotFoundError('Base not found');
-        if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
-
-        const coll = this.ctx.db.db.collection('base.userExpand');
-        const list = Array.isArray(expandedNodeIds) ? expandedNodeIds : [];
-        await coll.updateOne(
-            { domainId, baseDocId, uid: this.user._id },
-            { $set: { domainId, baseDocId, uid: this.user._id, expandedNodeIds: list, updateAt: new Date() } },
-            { upsert: true }
-        );
-
-        (this.ctx.emit as any)('base/update', baseDocId, undefined, undefined, this.user._id, this.user.uname, 'expand_save');
-
-        this.response.body = { success: true };
-    }
-}
-
 /** Optional payloads on POST /base/save or /base/batch-save: UI prefs + expand state + develop session editor location. */
 async function persistBaseEditorSaveSidecars(
     h: Handler,
@@ -7186,34 +7147,33 @@ async function persistBaseEditorSaveSidecars(
     nodeIdMap?: Map<string, string>,
 ): Promise<void> {
     const branchNorm = branchInput && String(branchInput).trim() ? String(branchInput).trim() : 'main';
-    if (Object.prototype.hasOwnProperty.call(data, 'editorUiPrefs')) {
-        const sanitized = sanitizeBaseEditorUiPrefs(data.editorUiPrefs);
+
+    if (Object.prototype.hasOwnProperty.call(data, 'editorUiPrefs') || Object.prototype.hasOwnProperty.call(data, 'expandedNodeIds')) {
         const coll = h.ctx.db.db.collection('base.userEditorUi');
+        const $set: Record<string, unknown> = { updateAt: new Date() };
+        const $setOnInsert: Record<string, unknown> = { domainId, baseDocId, branch: branchNorm, uid: h.user._id };
+
+        // Sanitize UI prefs (may drop expandedNodeIds if the server hasn't picked up the new field)
+        if (Object.prototype.hasOwnProperty.call(data, 'editorUiPrefs')) {
+            const sanitized = sanitizeBaseEditorUiPrefs(data.editorUiPrefs);
+            if (sanitized && typeof sanitized === 'object') {
+                for (const [k, v] of Object.entries(sanitized)) {
+                    $set[`prefs.${k}`] = v;
+                }
+            }
+        }
+        // Always persist expandedNodeIds directly via dot-notation
+        if (Object.prototype.hasOwnProperty.call(data, 'expandedNodeIds')) {
+            const expandedRaw = Array.isArray(data.expandedNodeIds) ? data.expandedNodeIds : [];
+            $set['prefs.expandedNodeIds'] = Array.from(new Set(expandedRaw
+                .map((id) => String(id || '').trim())
+                .filter(Boolean)
+                .map((id) => nodeIdMap?.get(id) || id)));
+        }
+
         await coll.updateOne(
             { domainId, baseDocId, branch: branchNorm, uid: h.user._id },
-            {
-                $set: {
-                    domainId,
-                    baseDocId,
-                    branch: branchNorm,
-                    uid: h.user._id,
-                    prefs: sanitized,
-                    updateAt: new Date(),
-                },
-            },
-            { upsert: true },
-        );
-    }
-    if (Object.prototype.hasOwnProperty.call(data, 'expandedNodeIds')) {
-        const expandedRaw = Array.isArray(data.expandedNodeIds) ? data.expandedNodeIds : [];
-        const expandedNodeIds = Array.from(new Set(expandedRaw
-            .map((id) => String(id || '').trim())
-            .filter(Boolean)
-            .map((id) => nodeIdMap?.get(id) || id)));
-        const coll = h.ctx.db.db.collection('base.userExpand');
-        await coll.updateOne(
-            { domainId, baseDocId, uid: h.user._id },
-            { $set: { domainId, baseDocId, uid: h.user._id, expandedNodeIds, updateAt: new Date() } },
+            { $set, $setOnInsert },
             { upsert: true },
         );
     }
@@ -7477,6 +7437,7 @@ export async function apply(ctx: Context) {
     ctx.Route('base_outline_branch_redirect_to_detail', '/base/:docId/outline/branch/:branch', BaseDetailHandler);
     ctx.Route('base_list', '/base/list', BaseListHandler);
     ctx.Route('base_data', '/base/data', BaseDataHandler);
+    ctx.Route('base_editor_ui_prefs', '/base/editor-ui-prefs', BaseEditorUiPrefsHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_detail_ui_prefs', '/base/detail-ui-prefs', BaseDetailUiPrefsHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_node_update', '/base/node/:nodeId', BaseNodeHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_node', '/base/node', BaseNodeHandler, PRIV.PRIV_USER_PROFILE);
@@ -7484,7 +7445,6 @@ export async function apply(ctx: Context) {
     ctx.Route('base_save', '/base/save', BaseSaveHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_batch_save', '/base/batch-save', BaseBatchSaveHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_migrate_node_to_new', '/base/migrate-node-to-new', BaseMigrateNodeToNewHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_expand_state', '/base/expand-state', BaseExpandStateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_problem_tag_register', '/base/:docId/problem-tag-register', BaseProblemTagRegistryHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_problem_tag_manage', '/base/problem-tag', BaseProblemTagManageHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_card_tag_manage', '/base/card-tag', BaseCardTagRegistryHandler, PRIV.PRIV_USER_PROFILE);

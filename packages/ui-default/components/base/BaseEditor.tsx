@@ -10,6 +10,7 @@ import uploadFiles from 'vj/components/upload';
 import { nanoid } from 'nanoid';
 import { jsonrepair } from 'jsonrepair';
 import { WSStatusIndicator, type WSConnectionStatus, type ViewerInfo } from './WSStatusIndicator';
+import { StatusIndicator } from './StatusIndicator';
 import type {
   Problem,
   ProblemSingle,
@@ -141,6 +142,7 @@ import { McpSidebarPanel } from 'vj/components/base/McpSidebarPanel';
 import { ProblemTagsEditModal } from 'vj/components/base/ProblemTagsEditModal';
 import { BaseEditorCardTagsPanel } from 'vj/components/base/BaseEditorCardTagsPanel';
 import { BaseEditorProblemTagsPanel } from 'vj/components/base/BaseEditorProblemTagsPanel';
+import { BaseEditorSettingsPanel } from 'vj/components/base/BaseEditorSettingsPanel';
 import {
   defaultBaseDetailDisplaySettings,
   getCardProblemCount,
@@ -400,13 +402,15 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const pendingProblemsMergeCardIdsRef = useRef<Set<string>>(new Set());
   const saveHandlerRef = useRef<() => void>(() => {});
 
-  const [explorerMode, setExplorerMode] = useState<'tree' | 'pending' | 'branches' | 'git' | 'mcp' | 'display' | 'tags' | 'problemTags'>(
+  const [explorerMode, setExplorerMode] = useState<'tree' | 'pending' | 'branches' | 'git' | 'mcp' | 'display' | 'tags' | 'problemTags' | 'settings'>(
     () => savedEditorLayout.explorerMode,
   );
   const [editorDisplaySettings, setEditorDisplaySettings] = useState<BaseEditorDisplaySettings>(
     () => savedEditorLayout.displaySettings,
   );
   const [pendingEditorDisplaySettings, setPendingEditorDisplaySettings] = useState<Partial<BaseEditorDisplaySettings> | null>(null);
+  const [uiPrefsDirty, setUiPrefsDirty] = useState(false);
+  const uiPrefsPosRef = useRef({ x: savedEditorLayout.wsIndicatorX ?? 40, y: savedEditorLayout.wsIndicatorY ?? 70 });
   const [gitRemoteStatus, setGitRemoteStatus] = useState<any>(null);
   const [gitStatusLoading, setGitStatusLoading] = useState(false);
   const [gitRepoDraft, setGitRepoDraft] = useState(() => String((window as any).UiContext?.githubRepo || ''));
@@ -640,25 +644,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                     }
                   }
                 }
+                // Update UiContext so subsequent page loads get fresh data, but do NOT
+                // overwrite local React state (panel widths, modes, toggles) — those
+                // come from local storage and are user-local preferences.
                 if ((window as any).UiContext && newData?.baseEditorUiPrefs && typeof newData.baseEditorUiPrefs === 'object' && !Array.isArray(newData.baseEditorUiPrefs)) {
                   (window as any).UiContext.baseEditorUiPrefs = newData.baseEditorUiPrefs;
-                  const prefs = newData.baseEditorUiPrefs as Record<string, unknown>;
-                  // Only restore panel widths on WS refresh (UI state like explorerMode/rightPanelTab should not be overridden)
-                  if (typeof prefs.explorerPanelWidth === 'number' && Number.isFinite(prefs.explorerPanelWidth)) {
-                    setExplorerPanelWidth(Math.round(Math.max(EXPLORER_PANEL_MIN, Math.min(EXPLORER_PANEL_MAX, prefs.explorerPanelWidth))));
-                  }
-                  if (typeof prefs.problemsPanelWidth === 'number' && Number.isFinite(prefs.problemsPanelWidth)) {
-                    setProblemsPanelWidth(Math.round(Math.max(PROBLEMS_PANEL_MIN, Math.min(PROBLEMS_PANEL_MAX, prefs.problemsPanelWidth))));
-                  }
-                  if (typeof prefs.aiPanelHeight === 'number' && Number.isFinite(prefs.aiPanelHeight)) {
-                    setAiPanelHeight(Math.round(Math.max(120, Math.min(640, prefs.aiPanelHeight))));
-                  }
-                }
-                if (Array.isArray(newData?.baseExpandState) && newData.baseExpandStateLoaded && Array.isArray(newData?.nodes)) {
-                  const nodeIds = new Set(newData.nodes.map((n: BaseNode) => n.id));
-                  const nextExpanded = new Set<string>(newData.baseExpandState.filter((id: string) => nodeIds.has(id)));
-                  expandedNodesRef.current = nextExpanded;
-                  setExpandedNodes(nextExpanded);
                 }
                 setNodeCardsMapVersion(v => v + 1);
                 // Show notification AFTER data has been refreshed
@@ -1088,34 +1078,14 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           }
         }
       }
+      // Update UiContext, but do NOT overwrite local React state (panel widths,
+      // modes, toggles) — those come from local storage.
       if ((window as any).UiContext && newData?.baseEditorUiPrefs && typeof newData.baseEditorUiPrefs === 'object' && !Array.isArray(newData.baseEditorUiPrefs)) {
         (window as any).UiContext.baseEditorUiPrefs = newData.baseEditorUiPrefs;
-        const prefs = newData.baseEditorUiPrefs as Record<string, unknown>;
-        const modes = new Set(['tree', 'pending', 'branches', 'git', 'mcp', 'tags', 'problemTags']);
-        const rightTabs = new Set(['problems', 'develop_queue', 'plugin_node', 'plugin_mcp_services', 'roadmap_edge', 'card_tags']);
-        const rawExplorerMode = prefs.explorerMode === 'training' ? 'tree' : prefs.explorerMode;
-        if (typeof rawExplorerMode === 'string' && modes.has(rawExplorerMode)) {
-          setExplorerMode(rawExplorerMode as 'tree' | 'pending' | 'branches' | 'git' | 'mcp' | 'tags' | 'problemTags');
-        }
-        if (typeof prefs.editorRightPanelTab === 'string' && rightTabs.has(prefs.editorRightPanelTab)) {
-          const tab = prefs.editorRightPanelTab as EditorRightPanelTab;
-          if (isPluginEditor || (tab !== 'plugin_node' && tab !== 'plugin_mcp_services')) setEditorRightPanelTab(tab);
-        }
-        if (typeof prefs.rightPanelOpen === 'boolean') setRightPanelOpen(prefs.rightPanelOpen);
-        if (!editorAiHidden && typeof prefs.aiBottomOpen === 'boolean') setAiBottomOpen(prefs.aiBottomOpen);
-        if (typeof prefs.explorerPanelWidth === 'number' && Number.isFinite(prefs.explorerPanelWidth)) {
-          setExplorerPanelWidth(Math.round(Math.max(EXPLORER_PANEL_MIN, Math.min(EXPLORER_PANEL_MAX, prefs.explorerPanelWidth))));
-        }
-        if (typeof prefs.problemsPanelWidth === 'number' && Number.isFinite(prefs.problemsPanelWidth)) {
-          setProblemsPanelWidth(Math.round(Math.max(PROBLEMS_PANEL_MIN, Math.min(PROBLEMS_PANEL_MAX, prefs.problemsPanelWidth))));
-        }
-        if (typeof prefs.aiPanelHeight === 'number' && Number.isFinite(prefs.aiPanelHeight)) {
-          setAiPanelHeight(Math.round(Math.max(120, Math.min(640, prefs.aiPanelHeight))));
-        }
       }
-      if (Array.isArray(newData?.baseExpandState) && newData.baseExpandStateLoaded && Array.isArray(newData?.nodes)) {
+      if (Array.isArray(newData?.baseEditorUiPrefs?.expandedNodeIds) && Array.isArray(newData?.nodes)) {
         const nodeIds = new Set(newData.nodes.map((n: BaseNode) => n.id));
-        const nextExpanded = new Set<string>(newData.baseExpandState.filter((id: string) => nodeIds.has(id)));
+        const nextExpanded = new Set<string>(newData.baseEditorUiPrefs.expandedNodeIds.filter((id: string) => nodeIds.has(id)));
         expandedNodesRef.current = nextExpanded;
         setExpandedNodes(nextExpanded);
       }
@@ -1894,9 +1864,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
     const initialExpanded = new Set<string>();
-    const fromContext = (window as any).UiContext?.baseExpandState;
-    if (Array.isArray(fromContext) && (window as any).UiContext?.baseExpandStateLoaded && initialData?.nodes?.length) {
-      fromContext.forEach((id: string) => {
+    const savedIds: string[] = (window as any).UiContext?.baseEditorUiPrefs?.expandedNodeIds;
+    const hasSavedState = Array.isArray(savedIds) && savedIds.length > 0;
+    if (hasSavedState && initialData?.nodes?.length) {
+      savedIds.forEach((id: string) => {
         if (initialData!.nodes!.some((n: BaseNode) => n.id === id)) initialExpanded.add(id);
       });
     } else if (initialData?.nodes) {
@@ -1906,10 +1877,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         }
       });
     }
-    const hasSavedExpandState = !!(window as any).UiContext?.baseExpandStateLoaded;
     const focusNode = String((window as any).UiContext?.editorFocusNodeId || '').trim();
     const edges0 = initialData?.edges || [];
-    if (!hasSavedExpandState && focusNode && initialData?.nodes?.some((n: BaseNode) => n.id === focusNode)) {
+    if (!hasSavedState && focusNode && initialData?.nodes?.some((n: BaseNode) => n.id === focusNode)) {
       initialExpanded.add(focusNode);
       collectOutlineAncestors(focusNode, initialData!.nodes!, edges0).forEach((id) => initialExpanded.add(id));
     }
@@ -1999,6 +1969,55 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       }
     };
   }, []);
+
+  // --- Editor UI prefs dirty tracking + floating save indicator ---
+  const uiPrefsSnapshotRef = useRef("");
+  useEffect(() => {
+    const current = JSON.stringify({
+      explorerMode, editorRightPanelTab, rightPanelOpen, aiBottomOpen,
+      explorerPanelWidth, problemsPanelWidth, aiPanelHeight, wsIndicatorOpen,
+      wsIndicatorX: wsPositionRef.current.x, wsIndicatorY: wsPositionRef.current.y,
+      uiPrefsPosX: uiPrefsPosRef.current.x, uiPrefsPosY: uiPrefsPosRef.current.y,
+      displaySettings: effectiveDisplaySettings,
+      expandedNodes: Array.from(expandedNodesRef.current).sort(),
+    });
+    if (!uiPrefsSnapshotRef.current) uiPrefsSnapshotRef.current = current;
+    setUiPrefsDirty(current !== uiPrefsSnapshotRef.current);
+  });
+  const handleSaveUiPrefs = useCallback(async () => {
+    const domainId = (window as any).UiContext?.domainId || "system";
+    const branch = (window as any).UiContext?.currentBranch || "main";
+    const docIdNum = docId ? Number(docId) : NaN;
+    if (!Number.isFinite(docIdNum)) return;
+    (window as any).__baseJustSaved = Date.now();
+    try {
+      const payload = {
+        docId: docIdNum, branch,
+        editorUiPrefs: {
+          explorerMode, editorRightPanelTab, rightPanelOpen,
+          aiBottomOpen: editorAiHidden ? false : aiBottomOpen,
+          explorerPanelWidth, problemsPanelWidth, aiPanelHeight,
+          displaySettings: effectiveDisplaySettings, wsIndicatorOpen,
+          wsIndicatorX: wsPositionRef.current.x, wsIndicatorY: wsPositionRef.current.y,
+          expandedNodeIds: Array.from(expandedNodesRef.current),
+        },
+      };
+      await request.post(domainApiPath("/base/editor-ui-prefs", domainId), payload);
+      writeSavedBaseEditorUiPrefsLocal(payload.editorUiPrefs);
+      uiPrefsSnapshotRef.current = JSON.stringify({
+        explorerMode, editorRightPanelTab, rightPanelOpen, aiBottomOpen,
+        explorerPanelWidth, problemsPanelWidth, aiPanelHeight, wsIndicatorOpen,
+        wsIndicatorX: wsPositionRef.current.x, wsIndicatorY: wsPositionRef.current.y,
+        uiPrefsPosX: uiPrefsPosRef.current.x, uiPrefsPosY: uiPrefsPosRef.current.y,
+        displaySettings: effectiveDisplaySettings,
+        expandedNodes: Array.from(expandedNodesRef.current).sort(),
+      });
+      setUiPrefsDirty(false);
+      Notification.success(i18n("Editor prefs saved"));
+    } catch { Notification.error(i18n("Failed to save editor prefs")); }
+  }, [docId, explorerMode, editorRightPanelTab, rightPanelOpen, aiBottomOpen,
+      explorerPanelWidth, problemsPanelWidth, aiPanelHeight,
+      wsIndicatorOpen, effectiveDisplaySettings, editorAiHidden]);
 
   
   const getBaseUrl = useCallback((path: string, docId?: string): string => {
@@ -2499,7 +2518,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     });
     
     
-    triggerExpandAutoSave();
+    // triggerExpandAutoSave();
   }, [triggerExpandAutoSave]);
 
   const handleSelectFileRef = useRef<(file: FileItem, skipUrlUpdate?: boolean) => void>(() => {});
@@ -2903,7 +2922,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     if (urlParams.get('cardId')) return;
     const fromUrl = urlParams.get('nodeId')?.trim() || '';
     if (!fromUrl) return;
-    if ((window as any).UiContext?.baseExpandStateLoaded) return;
+    if (Array.isArray((window as any).UiContext?.baseEditorUiPrefs?.expandedNodeIds)) return;
     if (!base.nodes.some((n) => n.id === fromUrl)) return;
     if (hasExpandedForUrlNodeIdRef.current === fromUrl) return;
     const anc = collectOutlineAncestors(fromUrl, base.nodes, base.edges || []);
@@ -3074,28 +3093,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
       const baseDocIdNumForSave = docId ? Number(docId) : NaN;
       const saveBranch = batchSaveData.branch;
-      const editorUiPrefsPayload =
-        Number.isFinite(baseDocIdNumForSave) && baseDocIdNumForSave > 0
-          ? {
-              explorerMode,
-              editorRightPanelTab,
-              rightPanelOpen,
-              aiBottomOpen: editorAiHidden ? false : aiBottomOpen,
-              explorerPanelWidth,
-              problemsPanelWidth,
-              aiPanelHeight,
-              displaySettings: effectiveDisplaySettings,
-              wsIndicatorOpen,
-              wsIndicatorX: wsPositionRef.current.x,
-              wsIndicatorY: wsPositionRef.current.y,
-            }
-          : null;
-
-      if (editorUiPrefsPayload) {
-        batchSaveData.editorUiPrefs = editorUiPrefsPayload;
-        writeSavedBaseEditorUiPrefsLocal(editorUiPrefsPayload);
-      }
-      batchSaveData.expandedNodeIds = Array.from(expandedNodesRef.current);
+      // editorUiPrefs and expandedNodeIds are saved separately via /base/editor-ui-prefs
+      // (floating StatusIndicator + Ctrl+S when only prefs are dirty)
 
       const nodeIdMap = new Map<string, string>();
       const cardIdMap = new Map<string, string>();
@@ -4076,36 +4075,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
       Notification.success(i18n('Saved successfully, {0} changes total', totalChanges));
 
-      try {
-        if (
-          !hasAnyChanges &&
-          Number.isFinite(baseDocIdNumForSave) &&
-          baseDocIdNumForSave > 0 &&
-          (editorUiPrefsPayload || developSid)
-        ) {
-          (window as any).__baseJustSaved = Date.now();
-          await request.post(getBaseUrl('/save'), {
-            docId: baseDocIdNumForSave,
-            branch: saveBranch,
-            sidecarOnly: true,
-            expandedNodeIds: Array.from(expandedNodesRef.current),
-            ...(developSid
-              ? {
-                  developSessionId: developSid,
-                  developEditorLocation: `${window.location.pathname}${window.location.search || ''}`,
-                }
-              : {}),
-            ...(editorUiPrefsPayload ? { editorUiPrefs: editorUiPrefsPayload } : {}),
-          });
-        }
-      } catch (_persistUi: any) {
-        if (_persistUi?.params?.[0] === 'DEVELOP_SESSION_CLOSED') {
-          Notification.warn(i18n('Develop session closed reload hint'));
-          window.location.reload();
-          return;
-        }
-        /* layout / develop nav persistence is best-effort */
-      }
       
       if (hasCreateChanges || hasAnyChanges || hasFileMoveChanges) {
         try {
@@ -4232,17 +4201,22 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     saveHandlerRef.current = handleSaveAll;
   }, [handleSaveAll]);
 
-  
+  // Ctrl+S: if only UI prefs are dirty, save prefs directly; otherwise do full save
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
         e.preventDefault();
-        saveHandlerRef.current?.();
+        const hasContentChanges = basePendingCount > 0;
+        if (!hasContentChanges && uiPrefsDirty) {
+          handleSaveUiPrefs();
+        } else {
+          saveHandlerRef.current?.();
+        }
       }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [uiPrefsDirty, handleSaveUiPrefs, basePendingCount]);
 
   
   const handleRename = useCallback((file: FileItem, newName: string) => {
@@ -11049,6 +11023,30 @@ Reply with a JSON code block only for executable operations. For same-response f
             >
               标
             </button>
+            <button
+              type="button"
+              onClick={() => setExplorerMode(prev => prev === 'settings' ? 'tree' : 'settings')}
+              style={{
+                width: '34px',
+                height: '34px',
+                border: `1px solid ${themeStyles.borderSecondary}`,
+                borderRadius: '3px',
+                backgroundColor: explorerMode === 'settings' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                color: explorerMode === 'settings' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                cursor: 'pointer',
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              title="Settings"
+              aria-label="Settings"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg>
+            </button>
           </div>
         </div>
         <div
@@ -11784,6 +11782,34 @@ Reply with a JSON code block only for executable operations. For same-response f
               docId={docId}
               themeStyles={themeStyles}
               onTagsChanged={() => setNodeCardsMapVersion(v => v + 1)}
+            />
+          ) : explorerMode === 'settings' ? (
+            <BaseEditorSettingsPanel
+              themeStyles={themeStyles}
+              docId={docId}
+              base={base}
+              basePath={basePath}
+              getBaseUrl={getBaseUrl}
+              saveHandlerRef={saveHandlerRef}
+              explorerMode={explorerMode}
+              setExplorerMode={setExplorerMode}
+              editorRightPanelTab={editorRightPanelTab}
+              setEditorRightPanelTab={setEditorRightPanelTab}
+              rightPanelOpen={rightPanelOpen}
+              setRightPanelOpen={setRightPanelOpen}
+              aiBottomOpen={aiBottomOpen}
+              setAiBottomOpen={setAiBottomOpen}
+              aiPanelHeight={aiPanelHeight}
+              setAiPanelHeight={setAiPanelHeight}
+              explorerPanelWidth={explorerPanelWidth}
+              setExplorerPanelWidth={setExplorerPanelWidth}
+              problemsPanelWidth={problemsPanelWidth}
+              setProblemsPanelWidth={setProblemsPanelWidth}
+              wsIndicatorOpen={wsIndicatorOpen}
+              setWsIndicatorOpen={setWsIndicatorOpen}
+              effectiveDisplaySettings={effectiveDisplaySettings}
+              editorDisplaySettings={editorDisplaySettings}
+              setPendingEditorDisplaySettings={setPendingEditorDisplaySettings}
             />
           ) : explorerMode === 'git' && basePath === 'base' && docId ? (
             <div style={{ padding: '8px', fontSize: '12px', color: themeStyles.textPrimary }}>
@@ -16828,6 +16854,13 @@ Reply with a JSON code block only for executable operations. For same-response f
           </>
         );
       })()}
+      <StatusIndicator
+        dirty={uiPrefsDirty}
+        posX={uiPrefsPosRef.current.x}
+        posY={uiPrefsPosRef.current.y}
+        onPosChange={(x, y) => { uiPrefsPosRef.current = { x, y }; setUiPrefsDirty(true); }}
+        onClickSave={handleSaveUiPrefs}
+      />
       <WSStatusIndicator
         status={wsStatus}
         viewerCount={viewerCount}
@@ -16835,7 +16868,7 @@ Reply with a JSON code block only for executable operations. For same-response f
         open={wsIndicatorOpen}
         posX={wsPositionRef.current.x}
         posY={wsPositionRef.current.y}
-        onPosChange={(x, y) => { wsPositionRef.current = { x, y }; }}
+        onPosChange={(x, y) => { wsPositionRef.current = { x, y }; setUiPrefsDirty(true); }}
         onToggle={() => setWsIndicatorOpen((v) => !v)}
         onRequestViewers={() => {
           const s = (window as any).__baseWsSock;
