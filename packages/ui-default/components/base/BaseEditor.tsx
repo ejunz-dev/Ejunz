@@ -471,6 +471,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         const wsUrl = wsPrefix + socketUrl;
         const sock = new WebSocket(wsUrl, false, true);
         contributionWsRef.current = sock;
+        let lastNotifyKey = '';
         (window as any).__baseWsSock = sock;
         setWsStatus('connecting');
         sock.onopen = () => setWsStatus('connected');
@@ -522,14 +523,26 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                     case 'git_commit': return det?.message ? i18n('Committed: {0}', det.message) : i18n('Committed');
                     case 'migrate_node': return i18n('Node migrated to new base');
                     case 'add_tag': return det?.tag ? i18n('Tag added: {0}', det.tag) : i18n('Tag added');
+                    case 'add_card_tag':
+                    case 'delete_card_tag':
+                    case 'rename_card_tag':
+                      return '';
                     default: return i18n('Content has been updated');
                   }
                 };
+                const ak = msg.actionKey || '';
                 // Skip notification for changes triggered by THIS window
                 if ((window as any).__baseJustSaved && Date.now() - (window as any).__baseJustSaved < 3000) return;
+                // Skip notification for session/sidecar side-effects (no real actionKey)
+                if (!ak || ak === 'unknown') return;
                 // Tag registry changes: silent (no toast, even in other windows)
                 if (ak === 'add_card_tag' || ak === 'delete_card_tag' || ak === 'rename_card_tag'
                   || ak === 'add_problem_tag' || ak === 'delete_problem_tag' || ak === 'rename_problem_tag') return;
+                // Deduplicate notifications from the same source user within 3 seconds
+                const notifyKey = String(msg.sourceUid ?? '');
+                if (notifyKey === lastNotifyKey) return;
+                lastNotifyKey = notifyKey;
+                setTimeout(() => { lastNotifyKey = ''; }, 3000);
                 new Notification({
                   title: msg.sourceUname || '',
                   message: buildSummary(msg.actionKey, msg.actionDetail),
@@ -615,6 +628,15 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                           originalContentsRef.current.set(cid, nextContent);
                         }
                         setFileContent(nextContent);
+                        // Refresh originalProblemsRef so saved problems don't show as "edited"
+                        if (Array.isArray(card.problems)) {
+                          const orig = new Map<string, Problem>();
+                          for (const p of card.problems) {
+                            if (p.pid) orig.set(p.pid, { ...p });
+                          }
+                          originalProblemsRef.current.set(cid, orig);
+                          setOriginalProblemsVersion((v) => v + 1);
+                        }
                       }
                     }
                   }
@@ -1462,7 +1484,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     null | { x: number; y: number; refIndex: number }
   >(null);
   const [problemTagsEditProblem, setProblemTagsEditProblem] = useState<Problem | null>(null);
-  const handleProblemTagsSave = useCallback(async (updatedProblem: Problem) => {
+  const handleProblemTagsSave = useCallback((updatedProblem: Problem) => {
     const selected = selectedFileRef.current;
     if (!selected || selected.type !== 'card') return;
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
@@ -1478,15 +1500,25 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     nodeCards[cardIndex] = { ...nodeCards[cardIndex], problems: existingProblems };
     (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
     setNodeCardsMapVersion((prev) => prev + 1);
-    // Save directly via API (not pending) to avoid blocking WS sync
-    try {
-      const domainId = (window as any).UiContext?.domainId || 'system';
-      (window as any).__baseJustSaved = Date.now();
-      await request.post(
-        domainApiPath(`/base/card/${encodeURIComponent(selected.cardId)}`, domainId),
-        { problems: existingProblems, operation: 'update' },
-      );
-    } catch { /* ignore */ }
+    // Mark pending — goes through batch-save like all other editor changes
+    const cardIdStr = String(selected.cardId || '');
+    const origMap = originalProblemsRef.current.get(cardIdStr);
+    const hadSavedBaseline = Boolean(origMap?.has(updatedProblem.pid));
+    setPendingProblemCardIds((prev) => { const next = new Set(prev); next.add(cardIdStr); return next; });
+    if (hadSavedBaseline) {
+      setEditedProblemIds((prev) => new Set(prev).add(updatedProblem.pid));
+      setNewProblemIds((prev) => { const next = new Set(prev); next.delete(updatedProblem.pid); return next; });
+      setPendingEditedProblemIds((prev) => {
+        const next = new Map(prev);
+        if (!next.has(cardIdStr)) next.set(cardIdStr, new Set());
+        next.get(cardIdStr)!.add(updatedProblem.pid);
+        return next;
+      });
+      setPendingNewProblemCardIds((prev) => { const next = new Set(prev); next.delete(cardIdStr); return next; });
+    } else {
+      setNewProblemIds((prev) => new Set(prev).add(updatedProblem.pid));
+      setPendingNewProblemCardIds((prev) => new Set(prev).add(cardIdStr));
+    }
   }, []);
   const originalProblemsRef = useRef<Map<string, Map<string, Problem>>>(new Map());
   const originalProblemsOrderRef = useRef<Map<string, string[]>>(new Map());
@@ -3976,12 +4008,32 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       if (hasProblemChanges) {
         setNewProblemIds(new Set());
         setEditedProblemIds(new Set());
-        
+
         for (const change of allChanges.values()) {
           if (change.file.type === 'card' && change.file.cardId) {
             savedCardIds.add(String(change.file.cardId));
           }
         }
+      }
+
+      // Refresh originalProblemsRef so saved problems no longer show as "edited"
+      if (savedProblemCardIds.size > 0) {
+        const freshMap = (window as any).UiContext?.nodeCardsMap || {};
+        for (const cid of savedProblemCardIds) {
+          let freshCard: Card | undefined;
+          for (const cards of Object.values(freshMap) as Card[][]) {
+            freshCard = cards.find((c: Card) => sameCardDocId(c.docId, cid));
+            if (freshCard) break;
+          }
+          if (freshCard && Array.isArray(freshCard.problems)) {
+            const orig = new Map<string, Problem>();
+            for (const p of freshCard.problems) {
+              if (p.pid) orig.set(p.pid, { ...p });
+            }
+            originalProblemsRef.current.set(cid, orig);
+          }
+        }
+        setOriginalProblemsVersion((v) => v + 1);
       }
       
       
