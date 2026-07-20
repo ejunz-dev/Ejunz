@@ -445,6 +445,56 @@ function BaseDetailViewer() {
             if (msg.type !== 'update') return;
             // Ignore updates for a different branch
             if (msg.sourceBranch && branch && msg.sourceBranch !== branch) return;
+            // Compute toast info now — show AFTER data re-fetch completes
+            let toastPayload: { title: string; message: string } | null = null;
+            if (msg.actionKey && msg.actionKey !== 'unknown') {
+              const ownSaveTs = (window as any).__baseJustSaved;
+              const isOwnSave = ownSaveTs && Date.now() - ownSaveTs < 3000;
+              const isTagAction = msg.actionKey === 'add_card_tag' || msg.actionKey === 'delete_card_tag' || msg.actionKey === 'rename_card_tag'
+                || msg.actionKey === 'add_problem_tag' || msg.actionKey === 'delete_problem_tag' || msg.actionKey === 'rename_problem_tag';
+              if (!isOwnSave && !isTagAction) {
+                const notifyKey = String(msg.sourceUid ?? '');
+                if (notifyKey !== lastNotifyKey) {
+                  lastNotifyKey = notifyKey;
+                  setTimeout(() => { lastNotifyKey = ''; }, 3000);
+                  const buildSummary = (ak: string, det: any): string => {
+                    switch (ak) {
+                      case 'batch_update': {
+                        const parts: string[] = [];
+                        if (det?.nodeCreates) parts.push(i18n('{0} new nodes', det.nodeCreates));
+                        if (det?.nodeUpdates) parts.push(i18n('{0} nodes updated', det.nodeUpdates));
+                        if (det?.nodeDeletes) parts.push(i18n('{0} nodes deleted', det.nodeDeletes));
+                        if (det?.cardCreates) parts.push(i18n('{0} new cards', det.cardCreates));
+                        if (det?.cardUpdates) parts.push(i18n('{0} cards updated', det.cardUpdates) + (det?.problemUpdates ? ` (${i18n('{0} problems', det.problemUpdates)})` : ''));
+                        if (det?.cardDeletes) parts.push(i18n('{0} cards deleted', det.cardDeletes));
+                        if (det?.edgeCreates) parts.push(i18n('{0} new edges', det.edgeCreates));
+                        if (det?.edgeDeletes) parts.push(i18n('{0} edges deleted', det.edgeDeletes));
+                        return parts.join('，') || i18n('Saved');
+                      }
+                      case 'full_save': return i18n('Saved');
+                      case 'sidecar_save': return i18n('Settings saved');
+                      case 'expand_save': return i18n('Tree state saved');
+                      case 'update_card': {
+                        const changed = (det?.changed || []).map((k: string) => {
+                          const map: Record<string, string> = { title: i18n('Title'), content: i18n('Content'), problems: i18n('Problems'), nodeId: i18n('Node'), order: i18n('Order') };
+                          return map[k] || k;
+                        });
+                        return i18n('Card updated: ') + changed.join('，');
+                      }
+                      case 'delete_card': return i18n('Card deleted');
+                      case 'git_commit': return det?.message ? i18n('Committed: {0}', det.message) : i18n('Committed');
+                      case 'migrate_node': return i18n('Node migrated to new base');
+                      case 'add_tag': return det?.tag ? i18n('Tag added: {0}', det.tag) : i18n('Tag added');
+                      default: return i18n('Content has been updated');
+                    }
+                  };
+                  toastPayload = {
+                    title: msg.sourceUname || '',
+                    message: buildSummary(msg.actionKey, msg.actionDetail),
+                  };
+                }
+              }
+            }
             // Re-fetch latest data
             request.get(dataUrl, apiQs).then((newData: any) => {
               if (closed || !newData) return;
@@ -471,7 +521,30 @@ function BaseDetailViewer() {
               if (Array.isArray(newData.baseExpandState)) {
                 setExpandedNodes(new Set(newData.baseExpandState));
               }
-            }).catch(() => {});
+              // Show notification AFTER data has been refreshed
+              if (toastPayload) {
+                new Notification({
+                  title: toastPayload.title,
+                  message: toastPayload.message,
+                  closable: true,
+                  position: 'top-right',
+                  duration: 5000,
+                }).show();
+                toastPayload = null;
+              }
+            }).catch(() => {
+              // Re-fetch failed — still show the toast so user knows something happened
+              if (toastPayload) {
+                new Notification({
+                  title: toastPayload.title,
+                  message: toastPayload.message,
+                  closable: true,
+                  position: 'top-right',
+                  duration: 5000,
+                }).show();
+                toastPayload = null;
+              }
+            });
             // Sync personal UI prefs (per-user, delivered via WS payload)
             if (msg.baseDetailUiPrefs && typeof msg.baseDetailUiPrefs === 'object' && !Array.isArray(msg.baseDetailUiPrefs)) {
               const prefs = msg.baseDetailUiPrefs as Record<string, unknown>;
@@ -501,60 +574,6 @@ function BaseDetailViewer() {
                 return changed ? next : prev;
               });
             }
-            // Skip notification for changes triggered by THIS window's own save
-            const ownSaveTs = (window as any).__baseJustSaved;
-            if (ownSaveTs && Date.now() - ownSaveTs < 3000) return;
-            // Skip notification for session/sidecar side-effects (no real actionKey)
-            if (!msg.actionKey || msg.actionKey === 'unknown') return;
-            // Tag registry changes: silent (no toast)
-            if (msg.actionKey === 'add_card_tag' || msg.actionKey === 'delete_card_tag' || msg.actionKey === 'rename_card_tag'
-              || msg.actionKey === 'add_problem_tag' || msg.actionKey === 'delete_problem_tag' || msg.actionKey === 'rename_problem_tag') return;
-            const notifyKey = String(msg.sourceUid ?? '');
-            if (notifyKey === lastNotifyKey) return;
-            lastNotifyKey = notifyKey;
-            setTimeout(() => { lastNotifyKey = ''; }, 3000);
-            const buildSummary = (ak: string, det: any): string => {
-              switch (ak) {
-                case 'batch_update': {
-                  const parts: string[] = [];
-                  if (det?.nodeCreates) parts.push(i18n('{0} new nodes', det.nodeCreates));
-                  if (det?.nodeUpdates) parts.push(i18n('{0} nodes updated', det.nodeUpdates));
-                  if (det?.nodeDeletes) parts.push(i18n('{0} nodes deleted', det.nodeDeletes));
-                  if (det?.cardCreates) parts.push(i18n('{0} new cards', det.cardCreates));
-                  if (det?.cardUpdates) parts.push(i18n('{0} cards updated', det.cardUpdates) + (det?.problemUpdates ? ` (${i18n('{0} problems', det.problemUpdates)})` : ''));
-                  if (det?.cardDeletes) parts.push(i18n('{0} cards deleted', det.cardDeletes));
-                  if (det?.edgeCreates) parts.push(i18n('{0} new edges', det.edgeCreates));
-                  if (det?.edgeDeletes) parts.push(i18n('{0} edges deleted', det.edgeDeletes));
-                  return parts.join('，') || i18n('Saved');
-                }
-                case 'full_save': return i18n('Saved');
-                case 'sidecar_save': return i18n('Settings saved');
-                case 'expand_save': return i18n('Tree state saved');
-                case 'update_card': {
-                  const changed = (det?.changed || []).map((k: string) => {
-                    const map: Record<string, string> = { title: i18n('Title'), content: i18n('Content'), problems: i18n('Problems'), nodeId: i18n('Node'), order: i18n('Order') };
-                    return map[k] || k;
-                  });
-                  return i18n('Card updated: ') + changed.join('，');
-                }
-                case 'delete_card': return i18n('Card deleted');
-                case 'git_commit': return det?.message ? i18n('Committed: {0}', det.message) : i18n('Committed');
-                case 'migrate_node': return i18n('Node migrated to new base');
-                case 'add_tag': return det?.tag ? i18n('Tag added: {0}', det.tag) : i18n('Tag added');
-                case 'add_card_tag':
-                case 'delete_card_tag':
-                case 'rename_card_tag':
-                  return '';
-                default: return i18n('Content has been updated');
-              }
-            };
-            new Notification({
-              title: msg.sourceUname || '',
-              message: buildSummary(msg.actionKey, msg.actionDetail),
-              closable: true,
-              position: 'top-right',
-              duration: 5000,
-            }).show();
           } catch { /* ignore parse errors */ }
         };
       } catch { /* WS init failed — no-op */ }
