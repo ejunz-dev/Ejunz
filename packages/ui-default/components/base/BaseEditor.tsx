@@ -494,62 +494,61 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             }
             if (msg.type === 'init' || msg.type === 'update') {
               if (msg.type === 'update' && msg.sourceBranch && editorBranch && msg.sourceBranch !== editorBranch) return;
-              if (msg.type === 'update' && msg.actionKey) {
-                const buildSummary = (ak: string, det: any): string => {
-                  switch (ak) {
-                    case 'batch_update': {
-                      const parts: string[] = [];
-                      if (det?.nodeCreates) parts.push(i18n('{0} new nodes', det.nodeCreates));
-                      if (det?.nodeUpdates) parts.push(i18n('{0} nodes updated', det.nodeUpdates));
-                      if (det?.nodeDeletes) parts.push(i18n('{0} nodes deleted', det.nodeDeletes));
-                      if (det?.cardCreates) parts.push(i18n('{0} new cards', det.cardCreates));
-                      if (det?.cardUpdates) parts.push(i18n('{0} cards updated', det.cardUpdates) + (det?.problemUpdates ? ` (${i18n('{0} problems', det.problemUpdates)})` : ''));
-                      if (det?.cardDeletes) parts.push(i18n('{0} cards deleted', det.cardDeletes));
-                      if (det?.edgeCreates) parts.push(i18n('{0} new edges', det.edgeCreates));
-                      if (det?.edgeDeletes) parts.push(i18n('{0} edges deleted', det.edgeDeletes));
-                      return parts.join('，') || i18n('Saved');
-                    }
-                    case 'full_save': return i18n('Saved');
-                    case 'sidecar_save': return i18n('Settings saved');
-                    case 'expand_save': return i18n('Tree state saved');
-                    case 'update_card': {
-                      const changed = (det?.changed || []).map((k: string) => {
-                        const map: Record<string, string> = { title: i18n('Title'), content: i18n('Content'), problems: i18n('Problems'), nodeId: i18n('Node'), order: i18n('Order') };
-                        return map[k] || k;
-                      });
-                      return i18n('Card updated: ') + changed.join('，');
-                    }
-                    case 'delete_card': return i18n('Card deleted');
-                    case 'git_commit': return det?.message ? i18n('Committed: {0}', det.message) : i18n('Committed');
-                    case 'migrate_node': return i18n('Node migrated to new base');
-                    case 'add_tag': return det?.tag ? i18n('Tag added: {0}', det.tag) : i18n('Tag added');
-                    case 'add_card_tag':
-                    case 'delete_card_tag':
-                    case 'rename_card_tag':
-                      return '';
-                    default: return i18n('Content has been updated');
+              // Compute toast info now, but show it AFTER data re-fetch completes
+              let toastPayload: { title: string; message: string } | null = null;
+              const buildSummary = (ak: string, det: any): string => {
+                switch (ak) {
+                  case 'batch_update': {
+                    const parts: string[] = [];
+                    if (det?.nodeCreates) parts.push(i18n('{0} new nodes', det.nodeCreates));
+                    if (det?.nodeUpdates) parts.push(i18n('{0} nodes updated', det.nodeUpdates));
+                    if (det?.nodeDeletes) parts.push(i18n('{0} nodes deleted', det.nodeDeletes));
+                    if (det?.cardCreates) parts.push(i18n('{0} new cards', det.cardCreates));
+                    if (det?.cardUpdates) parts.push(i18n('{0} cards updated', det.cardUpdates) + (det?.problemUpdates ? ` (${i18n('{0} problems', det.problemUpdates)})` : ''));
+                    if (det?.cardDeletes) parts.push(i18n('{0} cards deleted', det.cardDeletes));
+                    if (det?.edgeCreates) parts.push(i18n('{0} new edges', det.edgeCreates));
+                    if (det?.edgeDeletes) parts.push(i18n('{0} edges deleted', det.edgeDeletes));
+                    return parts.join('，') || i18n('Saved');
                   }
-                };
+                  case 'full_save': return i18n('Saved');
+                  case 'sidecar_save': return i18n('Settings saved');
+                  case 'expand_save': return i18n('Tree state saved');
+                  case 'update_card': {
+                    const changed = (det?.changed || []).map((k: string) => {
+                      const map: Record<string, string> = { title: i18n('Title'), content: i18n('Content'), problems: i18n('Problems'), nodeId: i18n('Node'), order: i18n('Order') };
+                      return map[k] || k;
+                    });
+                    return i18n('Card updated: ') + changed.join('，');
+                  }
+                  case 'delete_card': return i18n('Card deleted');
+                  case 'git_commit': return det?.message ? i18n('Committed: {0}', det.message) : i18n('Committed');
+                  case 'migrate_node': return i18n('Node migrated to new base');
+                  case 'add_tag': return det?.tag ? i18n('Tag added: {0}', det.tag) : i18n('Tag added');
+                  case 'add_card_tag':
+                  case 'delete_card_tag':
+                  case 'rename_card_tag':
+                    return '';
+                  default: return i18n('Content has been updated');
+                }
+              };
+              if (msg.type === 'update' && msg.actionKey) {
                 const ak = msg.actionKey || '';
                 // Skip notification for changes triggered by THIS window
-                if ((window as any).__baseJustSaved && Date.now() - (window as any).__baseJustSaved < 3000) return;
-                // Skip notification for session/sidecar side-effects (no real actionKey)
-                if (!ak || ak === 'unknown') return;
-                // Tag registry changes: silent (no toast, even in other windows)
-                if (ak === 'add_card_tag' || ak === 'delete_card_tag' || ak === 'rename_card_tag'
-                  || ak === 'add_problem_tag' || ak === 'delete_problem_tag' || ak === 'rename_problem_tag') return;
-                // Deduplicate notifications from the same source user within 3 seconds
-                const notifyKey = String(msg.sourceUid ?? '');
-                if (notifyKey === lastNotifyKey) return;
-                lastNotifyKey = notifyKey;
-                setTimeout(() => { lastNotifyKey = ''; }, 3000);
-                new Notification({
-                  title: msg.sourceUname || '',
-                  message: buildSummary(msg.actionKey, msg.actionDetail),
-                  closable: true,
-                  position: 'top-right',
-                  duration: 5000,
-                }).show();
+                if (!((window as any).__baseJustSaved && Date.now() - (window as any).__baseJustSaved < 3000)
+                  && ak && ak !== 'unknown'
+                  && ak !== 'add_card_tag' && ak !== 'delete_card_tag' && ak !== 'rename_card_tag'
+                  && ak !== 'add_problem_tag' && ak !== 'delete_problem_tag' && ak !== 'rename_problem_tag'
+                ) {
+                  const notifyKey = String(msg.sourceUid ?? '');
+                  if (notifyKey !== lastNotifyKey) {
+                    lastNotifyKey = notifyKey;
+                    setTimeout(() => { lastNotifyKey = ''; }, 3000);
+                    toastPayload = {
+                      title: msg.sourceUname || '',
+                      message: buildSummary(msg.actionKey, msg.actionDetail),
+                    };
+                  }
+                }
               }
               if (msg.gitStatus != null) {
                 setGitRemoteStatus(msg.gitStatus);
@@ -662,7 +661,30 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                   setExpandedNodes(nextExpanded);
                 }
                 setNodeCardsMapVersion(v => v + 1);
-              }).catch(() => {});
+                // Show notification AFTER data has been refreshed
+                if (toastPayload) {
+                  new Notification({
+                    title: toastPayload.title,
+                    message: toastPayload.message,
+                    closable: true,
+                    position: 'top-right',
+                    duration: 5000,
+                  }).show();
+                  toastPayload = null;
+                }
+              }).catch(() => {
+                // Re-fetch failed — still show the toast so user knows something happened
+                if (toastPayload) {
+                  new Notification({
+                    title: toastPayload.title,
+                    message: toastPayload.message,
+                    closable: true,
+                    position: 'top-right',
+                    duration: 5000,
+                  }).show();
+                  toastPayload = null;
+                }
+              });
             }
             if (msg.type === 'git_status' && msg.gitStatus != null) {
               const b = (window as any).UiContext?.currentBranch || 'main';
