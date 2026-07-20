@@ -127,6 +127,28 @@ export function BaseDetailSettingsPanel({
             {i18n('Deselect all')}
           </button>
         </div>
+        <div className="roadmap-detail-settings__actions" style={{ marginTop: 4 }}>
+          <button
+            type="button"
+            className="roadmap-detail-settings__btn"
+            disabled={saving}
+            onClick={() => setDraft({
+              ...draft,
+              indicatorX: 320,
+              indicatorY: 72,
+              toolbarOpen: false,
+              toolbarX: 320,
+              toolbarY: 108,
+              wsIndicatorX: 40,
+              wsIndicatorY: 40,
+              wsIndicatorOpen: true,
+              cardDrawerWidth: 420,
+              treeDrawerWidth: 320,
+            })}
+          >
+            {i18n('Reset positions to defaults')}
+          </button>
+        </div>
         <div className="roadmap-detail-settings__list" style={{ overflowY: 'auto', maxHeight: '60vh' }}>
           <label className="roadmap-detail-settings__row">
             <div className="roadmap-detail-settings__row-text">
