@@ -5042,11 +5042,17 @@ export class BaseBatchSaveHandler extends Handler {
             // Preserve existing registry tags (even if no card currently uses them)
             const existingRegistry = (base as BaseDoc & { cardTags?: unknown }).cardTags;
             if (Array.isArray(existingRegistry)) existingRegistry.forEach((t: string) => allCardTags.add(t));
+            const addTagWithParents = (t: string) => {
+                allCardTags.add(t);
+                // For hierarchical tags "parent/child", also ensure parent exists
+                const slashIdx = t.indexOf('/');
+                if (slashIdx > 0) allCardTags.add(t.slice(0, slashIdx));
+            };
             for (const cc of cardCreates) {
-                if (Array.isArray(cc.tags)) cc.tags.forEach((t: string) => allCardTags.add(t));
+                if (Array.isArray(cc.tags)) cc.tags.forEach(addTagWithParents);
             }
             for (const cu of cardUpdates) {
-                if (Array.isArray(cu.tags)) cu.tags.forEach((t: string) => allCardTags.add(t));
+                if (Array.isArray(cu.tags)) cu.tags.forEach(addTagWithParents);
             }
             // Also include tags from existing cards that weren't updated
             try {
@@ -5055,7 +5061,7 @@ export class BaseBatchSaveHandler extends Handler {
                 const existing = await CardModel.getByNodeIds(actualDomainId, docId, nodeIds, branch);
                 for (const cards of existing.values()) {
                     for (const c of cards) {
-                        if (Array.isArray(c.tags)) c.tags.forEach((t: string) => allCardTags.add(t));
+                        if (Array.isArray(c.tags)) c.tags.forEach(addTagWithParents);
                     }
                 }
             } catch { /* non-fatal; tags from existing cards may be incomplete */ }
@@ -6995,8 +7001,10 @@ export class BaseProblemTagRegistryHandler extends Handler {
 }
 
 /**
- * Card tag registry CRUD (add / delete / list).
+ * Card tag registry CRUD (add / delete / rename / add_child).
  * Card tags are stored in `BaseDoc.cardTags` and managed from the editor's left sidebar.
+ * Hierarchical: tags with a `/` are children (e.g. "数学/微积分" is child of "数学").
+ * Selecting a child tag on a card auto-adds the parent tag too.
  */
 export class BaseCardTagRegistryHandler extends Handler {
     @param('docId', Types.PositiveInt, true)
@@ -7013,6 +7021,7 @@ export class BaseCardTagRegistryHandler extends Handler {
         const current = sanitizeProblemTagRegistryList((base as BaseDoc & { cardTags?: unknown }).cardTags || []);
 
         if (action === 'add') {
+            // Add a flat / parent tag
             const tag = normalizeProblemTagInput(body.tag);
             if (!tag) throw new ValidationError('tag required');
             if (current.includes(tag)) {
@@ -7023,10 +7032,25 @@ export class BaseCardTagRegistryHandler extends Handler {
             await BaseModel.updateFull(domainId, docId, { cardTags: next });
             (this.ctx.emit as any)('base/update', docId, undefined, undefined, this.user._id, this.user.uname, 'add_card_tag', { tag });
             this.response.body = { success: true, cardTags: next };
+        } else if (action === 'add_child') {
+            // Add a child tag under a parent: parentTag/childTag
+            const parentTag = normalizeProblemTagInput(body.parentTag);
+            const childTag = normalizeProblemTagInput(body.childTag);
+            if (!parentTag || !childTag) throw new ValidationError('parentTag and childTag required');
+            const fullTag = parentTag + '/' + childTag;
+            if (current.includes(fullTag)) {
+                this.response.body = { success: true, cardTags: current };
+                return;
+            }
+            const next = sanitizeProblemTagRegistryList([...current, fullTag]);
+            await BaseModel.updateFull(domainId, docId, { cardTags: next });
+            (this.ctx.emit as any)('base/update', docId, undefined, undefined, this.user._id, this.user.uname, 'add_card_tag', { tag: fullTag });
+            this.response.body = { success: true, cardTags: next };
         } else if (action === 'delete') {
             const tag = normalizeProblemTagInput(body.tag);
             if (!tag) throw new ValidationError('tag required');
-            const next = current.filter((t: string) => t !== tag);
+            // Also remove children: "数学" → removes "数学", "数学/微积分", "数学/线性代数"
+            const next = current.filter((t: string) => t !== tag && !t.startsWith(tag + '/'));
             await BaseModel.updateFull(domainId, docId, { cardTags: next });
             (this.ctx.emit as any)('base/update', docId, undefined, undefined, this.user._id, this.user.uname, 'delete_card_tag', { tag });
             this.response.body = { success: true, cardTags: next };
@@ -7034,20 +7058,30 @@ export class BaseCardTagRegistryHandler extends Handler {
             const oldTag = normalizeProblemTagInput(body.oldTag);
             const newTag = normalizeProblemTagInput(body.newTag);
             if (!oldTag || !newTag) throw new ValidationError('oldTag and newTag required');
-            // Rename in registry
-            const next = current.map((t: string) => t === oldTag ? newTag : t);
+            // Rename in registry, also rename children prefixed with oldTag
+            const next = current.map((t: string) => {
+                if (t === oldTag) return newTag;
+                if (t.startsWith(oldTag + '/')) return newTag + '/' + t.slice(oldTag.length + 1);
+                return t;
+            });
             const deduped = sanitizeProblemTagRegistryList(next);
             await BaseModel.updateFull(domainId, docId, { cardTags: deduped });
-            // Also rename on all cards that have this tag
+            // Also rename on all cards that have this tag or any child
             try {
                 const branchData = getBranchData(base, 'main');
                 const nodeIds = branchData.nodes.map((n: { id: string }) => n.id);
                 const allCards = await CardModel.getByNodeIds(domainId, docId, nodeIds, 'main');
                 for (const cards of allCards.values()) {
                     for (const c of cards) {
-                        if (Array.isArray(c.tags) && c.tags.includes(oldTag)) {
-                            const updatedTags = c.tags.map((t: string) => t === oldTag ? newTag : t);
-                            await CardModel.update(domainId, c.docId, { tags: updatedTags } as any);
+                        if (Array.isArray(c.tags)) {
+                            const updatedTags = c.tags.map((t: string) => {
+                                if (t === oldTag) return newTag;
+                                if (t.startsWith(oldTag + '/')) return newTag + '/' + t.slice(oldTag.length + 1);
+                                return t;
+                            });
+                            if (updatedTags.some((t, i) => t !== c.tags[i])) {
+                                await CardModel.update(domainId, c.docId, { tags: updatedTags } as any);
+                            }
                         }
                     }
                 }
