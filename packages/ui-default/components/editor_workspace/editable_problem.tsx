@@ -536,13 +536,9 @@ export const EditableProblem = React.memo(({
                   return plist.map((p) => {
                     const chs = cmap[p] || [];
                     return (
-                      <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 1, border: '1px solid ' + themeStyles.borderPrimary, borderRadius: 4, overflow: 'hidden', fontSize: '11px', lineHeight: '1.4' }}>
+                      <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 0, border: '1px solid ' + themeStyles.borderPrimary, borderRadius: 4, overflow: 'hidden', fontSize: '11px', lineHeight: '1.5' }}>
                         <span style={{ padding: '2px 7px', background: themeStyles.bgSecondary ?? themeStyles.bgPrimary, color: themeStyles.textPrimary, fontWeight: 600 }}>{p}</span>
-                        {chs.length > 0 && (
-                          <span style={{ display: 'inline-flex', gap: 1, padding: '2px 6px' }}>
-                            {chs.map((c) => <span key={p + '/' + c} style={{ padding: '0 3px', color: themeStyles.textSecondary }}>{c}</span>)}
-                          </span>
-                        )}
+                        {chs.map((c) => <span key={p + '/' + c} style={{ padding: '2px 6px', borderLeft: '1px solid ' + themeStyles.borderPrimary, color: themeStyles.textSecondary }}>{c}</span>)}
                       </span>
                     );
                   });
