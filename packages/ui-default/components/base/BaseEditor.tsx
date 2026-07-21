@@ -16252,44 +16252,88 @@ Reply with a JSON code block only for executable operations. For same-response f
 
               return (
                 <div>
-                  {/* Current tags on this card */}
+                  {/* Current tags on this card — hierarchical */}
                   <div style={{ marginBottom: 12 }}>
                     <div style={{ fontSize: 11, fontWeight: 600, color: themeStyles.textSecondary, marginBottom: 4 }}>
                       {i18n('Card tags')}
                     </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {currentTags.length > 0 ? currentTags.map((tag: string) => (
-                        <span
-                          key={tag}
-                          style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                            padding: '3px 8px', borderRadius: 4,
-                            background: 'var(--roadmap-tag-bg, rgba(65, 53, 214, 0.1))',
-                            color: 'var(--roadmap-tag-color, var(--roadmap-accent, #4135d6))',
-                            fontSize: 12, fontWeight: 500,
-                          }}
-                        >
-                          {tag}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const cid = cardId;
-                              const prev = pendingCardTagsChangesRef.current[cid] || [...(c.tags || [])];
-                              pendingCardTagsChangesRef.current = { ...pendingCardTagsChangesRef.current, [cid]: prev.filter((t: string) => t !== tag) };
-                              setNodeCardsMapVersion((v) => v + 1);
-                            }}
-                            style={{
-                              border: 'none', background: 'transparent', cursor: 'pointer',
-                              padding: 0, fontSize: 14, lineHeight: 1, color: 'inherit', opacity: 0.6,
-                            }}
-                            aria-label={String(i18n('Remove tag'))}
-                          >×</button>
-                        </span>
-                      )) : (
-                        <span style={{ fontSize: 12, color: themeStyles.textSecondary, fontStyle: 'italic' }}>
-                          {i18n('No tags')}
-                        </span>
-                      )}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {(() => {
+                        if (currentTags.length === 0) return <span style={{ fontSize: 12, color: themeStyles.textSecondary, fontStyle: 'italic' }}>{i18n('No tags')}</span>;
+                        const parents: string[] = [];
+                        const childMap: Record<string, string[]> = {};
+                        for (const t of currentTags) {
+                          const sl = t.indexOf('/');
+                          if (sl > 0) {
+                            const p = t.slice(0, sl);
+                            const c2 = t.slice(sl + 1);
+                            if (!childMap[p]) childMap[p] = [];
+                            childMap[p].push(c2);
+                          } else {
+                            parents.push(t);
+                          }
+                        }
+                        const removeTag = (tag: string) => {
+                          const cid = cardId;
+                          const prev = pendingCardTagsChangesRef.current[cid] || [...(c.tags || [])];
+                          pendingCardTagsChangesRef.current = { ...pendingCardTagsChangesRef.current, [cid]: prev.filter((t: string) => t !== tag) };
+                          setNodeCardsMapVersion((v) => v + 1);
+                        };
+                        return parents.map((p) => {
+                          const pChilds = childMap[p] || [];
+                          return (
+                            <div key={p} style={{
+                              border: `1px solid ${themeStyles.borderSecondary}`,
+                              borderRadius: 6, overflow: 'hidden',
+                            }}>
+                              {/* Parent — header bar */}
+                              <div style={{
+                                display: 'flex', alignItems: 'center', gap: 4,
+                                padding: '4px 8px',
+                                background: 'var(--roadmap-tag-bg, rgba(65, 53, 214, 0.08))',
+                                borderBottom: pChilds.length > 0 ? `1px solid ${themeStyles.borderSecondary}` : 'none',
+                              }}>
+                                <span style={{
+                                  flex: 1, fontWeight: 600, fontSize: 12,
+                                  color: 'var(--roadmap-tag-color, var(--roadmap-accent, #4135d6))',
+                                }}>
+                                  {p}
+                                </span>
+                                <button type="button" onClick={() => {
+                                  const cid = cardId;
+                                  const prev = pendingCardTagsChangesRef.current[cid] || [...(c.tags || [])];
+                                  pendingCardTagsChangesRef.current = { ...pendingCardTagsChangesRef.current, [cid]: prev.filter((t: string) => t !== p && !t.startsWith(p + '/')) };
+                                  setNodeCardsMapVersion((v) => v + 1);
+                                }}
+                                  style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '0 2px', fontSize: 14, lineHeight: 1, color: 'var(--roadmap-tag-color, var(--roadmap-accent, #4135d6))', opacity: 0.7 }}
+                                  aria-label={String(i18n('Remove tag group'))}>×</button>
+                              </div>
+                              {/* Children */}
+                              {pChilds.length > 0 && (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, padding: '4px 8px' }}>
+                                  {pChilds.map((child) => {
+                                    const fullTag = p + '/' + child;
+                                    return (
+                                      <span key={fullTag} style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: 3,
+                                        padding: '2px 7px', borderRadius: 3,
+                                        background: 'var(--roadmap-tag-bg, rgba(65, 53, 214, 0.1))',
+                                        color: 'var(--roadmap-tag-color, var(--roadmap-accent, #4135d6))',
+                                        fontSize: 11, fontWeight: 400,
+                                      }}>
+                                        {child}
+                                        <button type="button" onClick={() => removeTag(fullTag)}
+                                          style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, fontSize: 12, lineHeight: 1, color: 'inherit', opacity: 0.5 }}
+                                          aria-label={String(i18n('Remove tag'))}>×</button>
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        });
+                      })()}
                     </div>
                   </div>
 
@@ -16299,35 +16343,79 @@ Reply with a JSON code block only for executable operations. For same-response f
                       {i18n('Available tags')}
                     </div>
                     {availableTags.length > 0 ? (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                        {availableTags.map((tag) => {
-                          const selected = currentTags.includes(tag);
-                          return (
-                            <button
-                              key={tag}
-                              type="button"
-                              onClick={() => {
-                                const cid = cardId;
-                                const prev = pendingCardTagsChangesRef.current[cid] || [...(c.tags || [])];
-                                if (selected) {
-                                  pendingCardTagsChangesRef.current = { ...pendingCardTagsChangesRef.current, [cid]: prev.filter((t: string) => t !== tag) };
-                                } else {
-                                  pendingCardTagsChangesRef.current = { ...pendingCardTagsChangesRef.current, [cid]: [...prev, tag] };
-                                }
-                                setNodeCardsMapVersion((v) => v + 1);
-                              }}
-                              style={{
-                                padding: '3px 8px', borderRadius: 4, border: 'none', cursor: 'pointer',
-                                background: selected ? 'var(--roadmap-tag-bg, rgba(65, 53, 214, 0.1))' : themeStyles.bgSecondary,
-                                color: selected ? 'var(--roadmap-tag-color, var(--roadmap-accent, #4135d6))' : themeStyles.textSecondary,
-                                fontSize: 11, fontWeight: selected ? 600 : 400,
-                                outline: 'none',
-                              }}
-                            >
-                              {tag}
-                            </button>
-                          );
-                        })}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        {(() => {
+                          // Build hierarchy: parents first, children indented under them
+                          const parents: string[] = [];
+                          const children: Record<string, string[]> = {};
+                          for (const t of availableTags) {
+                            const slashIdx = t.indexOf('/');
+                            if (slashIdx > 0) {
+                              const p = t.slice(0, slashIdx);
+                              const c = t.slice(slashIdx + 1);
+                              if (!children[p]) children[p] = [];
+                              children[p].push(c);
+                            } else {
+                              parents.push(t);
+                            }
+                          }
+                          // Collect all child flags
+                          const isChild = new Set(Object.values(children).flatMap((cc) => cc));
+                          const topLevel = parents.filter((p) => !children[p]?.length || true);
+                          const buttons: React.ReactNode[] = [];
+                          for (const p of topLevel) {
+                            const pSel = currentTags.includes(p);
+                            buttons.push(
+                              <button key={p} type="button"
+                                onClick={() => {
+                                  const cid = cardId;
+                                  const prev = pendingCardTagsChangesRef.current[cid] || [...(c.tags || [])];
+                                  pendingCardTagsChangesRef.current = { ...pendingCardTagsChangesRef.current, [cid]: pSel ? prev.filter((t: string) => t !== p) : [...prev, p] };
+                                  setNodeCardsMapVersion((v) => v + 1);
+                                }}
+                                style={{ padding: '3px 8px', borderRadius: 4, border: 'none', cursor: 'pointer', alignSelf: 'flex-start',
+                                  background: pSel ? 'var(--roadmap-tag-bg, rgba(65, 53, 214, 0.1))' : themeStyles.bgSecondary,
+                                  color: pSel ? 'var(--roadmap-tag-color, var(--roadmap-accent, #4135d6))' : themeStyles.textSecondary,
+                                  fontSize: 11, fontWeight: 600, outline: 'none' }}>
+                                {p}
+                              </button>
+                            );
+                            // Children indented
+                            const cs = children[p] || [];
+                            if (cs.length > 0) {
+                              buttons.push(
+                                <div key={p + '_children'} style={{ display: 'flex', flexWrap: 'wrap', gap: 4, paddingLeft: 16 }}>
+                                  {cs.map((c) => {
+                                    const fullTag = p + '/' + c;
+                                    const cSel = currentTags.includes(fullTag);
+                                    return (
+                                      <button key={fullTag} type="button"
+                                        onClick={() => {
+                                          const cid = cardId;
+                                          const prev = pendingCardTagsChangesRef.current[cid] || [...(c.tags || [])];
+                                          if (cSel) {
+                                            pendingCardTagsChangesRef.current = { ...pendingCardTagsChangesRef.current, [cid]: prev.filter((t: string) => t !== fullTag) };
+                                          } else {
+                                            // Auto-add parent too
+                                            const next = prev.includes(p) ? [...prev, fullTag] : [...prev, p, fullTag];
+                                            pendingCardTagsChangesRef.current = { ...pendingCardTagsChangesRef.current, [cid]: next };
+                                          }
+                                          setNodeCardsMapVersion((v) => v + 1);
+                                        }}
+                                        style={{ padding: '2px 7px', borderRadius: 4, border: 'none', cursor: 'pointer',
+                                          background: cSel ? 'var(--roadmap-tag-bg, rgba(65, 53, 214, 0.1))' : themeStyles.bgSecondary,
+                                          color: cSel ? 'var(--roadmap-tag-color, var(--roadmap-accent, #4135d6))' : themeStyles.textTertiary,
+                                          fontSize: 10, fontWeight: cSel ? 600 : 400, outline: 'none' }}>
+                                        {c}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            }
+                          }
+                          return buttons;
+                        })()}
                       </div>
                     ) : (
                       <span style={{ fontSize: 12, color: themeStyles.textSecondary, fontStyle: 'italic' }}>
