@@ -7124,10 +7124,24 @@ export class BaseProblemTagManageHandler extends Handler {
             await BaseModel.updateFull(domainId, docId, { problemTags: next });
             (this.ctx.emit as any)('base/update', docId, undefined, undefined, this.user._id, this.user.uname, 'add_problem_tag', { tag });
             this.response.body = { success: true, problemTags: next };
+        } else if (action === 'add_child') {
+            const parentTag = normalizeProblemTagInput(body.parentTag);
+            const childTag = normalizeProblemTagInput(body.childTag);
+            if (!parentTag || !childTag) throw new ValidationError('parentTag and childTag required');
+            const fullTag = parentTag + '/' + childTag;
+            if (current.includes(fullTag)) {
+                this.response.body = { success: true, problemTags: current };
+                return;
+            }
+            const next = sanitizeProblemTagRegistryList([...current, fullTag]);
+            await BaseModel.updateFull(domainId, docId, { problemTags: next });
+            (this.ctx.emit as any)('base/update', docId, undefined, undefined, this.user._id, this.user.uname, 'add_problem_tag', { tag: fullTag });
+            this.response.body = { success: true, problemTags: next };
         } else if (action === 'delete') {
             const tag = normalizeProblemTagInput(body.tag);
             if (!tag) throw new ValidationError('tag required');
-            const next = current.filter((t: string) => t !== tag);
+            // Cascade: "数学" removes "数学", "数学/微积分"
+            const next = current.filter((t: string) => t !== tag && !t.startsWith(tag + '/'));
             await BaseModel.updateFull(domainId, docId, { problemTags: next });
             (this.ctx.emit as any)('base/update', docId, undefined, undefined, this.user._id, this.user.uname, 'delete_problem_tag', { tag });
             this.response.body = { success: true, problemTags: next };
@@ -7135,10 +7149,15 @@ export class BaseProblemTagManageHandler extends Handler {
             const oldTag = normalizeProblemTagInput(body.oldTag);
             const newTag = normalizeProblemTagInput(body.newTag);
             if (!oldTag || !newTag) throw new ValidationError('oldTag and newTag required');
-            const next = current.map((t: string) => t === oldTag ? newTag : t);
+            // Rename registry + children
+            const next = current.map((t: string) => {
+                if (t === oldTag) return newTag;
+                if (t.startsWith(oldTag + '/')) return newTag + '/' + t.slice(oldTag.length + 1);
+                return t;
+            });
             const deduped = sanitizeProblemTagRegistryList(next);
             await BaseModel.updateFull(domainId, docId, { problemTags: deduped });
-            // Also rename on all problems that have this tag
+            // Also rename on all problems
             try {
                 const branchData = getBranchData(base, 'main');
                 const nodeIds = branchData.nodes.map((n: { id: string }) => n.id);
@@ -7147,16 +7166,18 @@ export class BaseProblemTagManageHandler extends Handler {
                     for (const c of cards) {
                         if (Array.isArray(c.problems)) {
                             let changed = false;
-                            const updatedProblems = c.problems.map((p) => {
-                                if (Array.isArray(p.tags) && p.tags.includes(oldTag)) {
-                                    changed = true;
-                                    return { ...p, tags: p.tags.map((t: string) => t === oldTag ? newTag : t) };
+                            const updatedProblems = c.problems.map((p: any) => {
+                                if (Array.isArray(p.tags)) {
+                                    const newTags = p.tags.map((t: string) => {
+                                        if (t === oldTag) { changed = true; return newTag; }
+                                        if (t.startsWith(oldTag + '/')) { changed = true; return newTag + '/' + t.slice(oldTag.length + 1); }
+                                        return t;
+                                    });
+                                    return { ...p, tags: newTags };
                                 }
                                 return p;
                             });
-                            if (changed) {
-                                await CardModel.update(domainId, c.docId, { problems: updatedProblems } as any);
-                            }
+                            if (changed) await CardModel.update(domainId, c.docId, { problems: updatedProblems } as any);
                         }
                     }
                 }

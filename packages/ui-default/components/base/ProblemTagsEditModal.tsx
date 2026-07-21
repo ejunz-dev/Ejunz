@@ -80,38 +80,57 @@ export function ProblemTagsEditModal({
           </button>
         </div>
 
-        {/* Tag chips */}
+        {/* Tag chips — hierarchical */}
         <div style={{ flex: 1, overflow: 'auto', padding: '12px 16px' }}>
-          {tagsForRender.length > 0 ? (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {tagsForRender.map((tag) => {
-                const selected = tags.includes(tag);
-                return (
-                  <button
-                    key={tag}
-                    type="button"
-                    onClick={() => {
-                      if (selected) setTags((prev) => prev.filter((t) => t !== tag));
-                      else setTags((prev) => [...prev, tag]);
-                    }}
-                    style={{
-                      padding: '4px 10px', borderRadius: 4, border: 'none', cursor: 'pointer',
-                      background: selected ? 'rgba(255, 152, 0, 0.15)' : 'var(--roadmap-bg-input, #f0f0f0)',
-                      color: selected ? '#e65100' : 'var(--roadmap-text-secondary, #888)',
-                      fontSize: 12, fontWeight: selected ? 600 : 400,
-                      outline: 'none', transition: 'all 0.1s ease',
-                    }}
-                  >
-                    {tag}
+          {(() => {
+            if (tagsForRender.length === 0) return <span style={{ fontSize: 12, color: 'var(--roadmap-text-muted, #aaa)', fontStyle: 'italic' }}>{i18n('No tags available')}</span>;
+            const plist: string[] = [];
+            const cmap: Record<string, string[]> = {};
+            for (const t of tagsForRender) {
+              const sl = t.indexOf('/');
+              if (sl > 0) { const p2 = t.slice(0, sl); const c2 = t.slice(sl + 1); if (!cmap[p2]) cmap[p2] = []; cmap[p2].push(c2); }
+              else { plist.push(t); }
+            }
+            const toggleTag = (tag: string) => {
+              if (tags.includes(tag)) setTags((prev) => prev.filter((t) => t !== tag));
+              else setTags((prev) => [...prev, tag]);
+            };
+            return plist.map((p) => {
+              const pSel = tags.includes(p);
+              const chs = cmap[p] || [];
+              return (
+                <div key={p} style={{ border: `1px solid ${pSel ? '#e65100' : 'var(--roadmap-border, #ddd)'}`, borderRadius: 4, overflow: 'hidden', marginBottom: 4 }}>
+                  <button type="button" onClick={() => toggleTag(p)}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '4px 10px', border: 'none', cursor: 'pointer',
+                      background: pSel ? 'rgba(255, 152, 0, 0.15)' : 'var(--roadmap-bg-input, #f0f0f0)',
+                      color: pSel ? '#e65100' : 'var(--roadmap-text-secondary, #888)',
+                      fontSize: 12, fontWeight: 600, outline: 'none' }}>
+                    {p}
                   </button>
-                );
-              })}
-            </div>
-          ) : (
-            <span style={{ fontSize: 12, color: 'var(--roadmap-text-muted, #aaa)', fontStyle: 'italic' }}>
-              {i18n('No tags available')}
-            </span>
-          )}
+                  {chs.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, padding: '4px 10px' }}>
+                      {chs.map((c) => {
+                        const fullTag = p + '/' + c;
+                        const cSel = tags.includes(fullTag);
+                        return (
+                          <button key={fullTag} type="button" onClick={() => {
+                            if (cSel) setTags((prev) => prev.filter((t) => t !== fullTag));
+                            else setTags((prev) => prev.includes(p) ? [...prev, fullTag] : [...prev, p, fullTag]);
+                          }}
+                            style={{ padding: '3px 8px', borderRadius: 3, border: 'none', cursor: 'pointer',
+                              background: cSel ? 'rgba(255, 152, 0, 0.15)' : 'var(--roadmap-bg-input, #f0f0f0)',
+                              color: cSel ? '#e65100' : 'var(--roadmap-text-secondary, #888)',
+                              fontSize: 11, fontWeight: cSel ? 600 : 400, outline: 'none' }}>
+                            {c}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            });
+          })()}
         </div>
 
         {/* Actions */}
