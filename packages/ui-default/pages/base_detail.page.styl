@@ -1,4 +1,34 @@
 @import './roadmap_detail_shared.styl'
+
+/* CSS variables at :root so portal components (CardEditModal, ProblemTagsEditModal, etc.) can inherit them */
+html
+  --roadmap-bg-surface: #fafafa
+  --roadmap-bg-elevated: #ffffff
+  --roadmap-bg-input: #f0f0f0
+  --roadmap-text-primary: #111111
+  --roadmap-text-secondary: #666666
+  --roadmap-text-muted: #444444
+  --roadmap-text-body: #333333
+  --roadmap-border: #ececec
+  --roadmap-border-input: #d8d8d8
+  --roadmap-border-card: #e8e8e8
+  --roadmap-accent: #4135d6
+  --roadmap-backdrop: rgba(0, 0, 0, 0.42)
+
+html.theme--dark
+  --roadmap-bg-surface: #252526
+  --roadmap-bg-elevated: #2d2d2d
+  --roadmap-bg-input: #323334
+  --roadmap-text-primary: #e8e8e8
+  --roadmap-text-secondary: #bdbdbd
+  --roadmap-text-muted: #888888
+  --roadmap-text-body: #cccccc
+  --roadmap-border: #3c3c3c
+  --roadmap-border-input: #4a4a4a
+  --roadmap-border-card: #404040
+  --roadmap-accent: #9d93f0
+  --roadmap-backdrop: rgba(0, 0, 0, 0.58)
+
 .page--base_detail
   --roadmap-bg-page: $page-bg-color
   --roadmap-bg-canvas: $page-bg-color
