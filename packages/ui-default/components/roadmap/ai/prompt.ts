@@ -177,7 +177,7 @@ When performing mutations, include a JSON code block:
 - For create_roadmap_node: set kind (main|sub|hook|text). Prefer relativeToNodeId + direction (top|bottom|left|right). Optional clientId lets later ops in the same batch reference the new node before it gets a real id.
 - For text nodes use nodeText (markdown) instead of description when adding body content.
 - create_roadmap_edge: sourceHandle bottom→targetHandle top for vertical; right→left for horizontal dashed links.
-- create_problem: only on main or sub nodes. problemKind single|multi|true_false|flip|fill_blank|matching|super_flip|ai_eval. Include title (short sidebar label). Use pid only to update an existing problem on that card.
+- create_problem: only on main or sub nodes. problemKind single|multi|true_false|flip|fill_blank|matching|super_flip|chain|ai_eval. Include title (short sidebar label). Use pid only to update an existing problem on that card.
 - Emit one complete JSON object per operation inside the array. Stream-friendly: finish each { ... } before starting the next.
 - Reply briefly in natural language outside the JSON block; put executable ops only in JSON.`;
 }

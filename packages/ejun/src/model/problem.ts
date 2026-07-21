@@ -9,6 +9,8 @@ import type {
     ProblemAiEvalSubPoint,
     Problem,
     ProblemAuthorNote,
+    ProblemChain,
+    ProblemChainRow,
     ProblemCommon,
     ProblemFillBlank,
     ProblemFlip,
@@ -151,6 +153,27 @@ function clampSuperFlipColCount(n: unknown): number {
     return Math.min(SUPER_FLIP_COL_MAX, Math.max(SUPER_FLIP_COL_MIN, v));
 }
 
+export const CHAIN_ROW_MIN = 1;
+export const CHAIN_ROW_MAX = 16;
+
+function clampChainRowCount(n: unknown): number {
+    const v = typeof n === 'number' && Number.isFinite(n) ? Math.round(n as number) : CHAIN_ROW_MIN;
+    return Math.min(CHAIN_ROW_MAX, Math.max(CHAIN_ROW_MIN, v));
+}
+
+/** Normalize chain rows from raw data. Rows with no rowType are kept as-is (undeclared). */
+export function normalizeChainRows(raw: unknown): ProblemChainRow[] {
+    if (!Array.isArray(raw)) return [{ rowType: 'flip', content: '' }];
+    const count = clampChainRowCount(raw.length);
+    return (raw as unknown[]).slice(0, count).map((x) => {
+        if (!x || typeof x !== 'object') return {};
+        const o = x as Record<string, unknown>;
+        const content = typeof o.content === 'string' ? o.content : '';
+        const rowType = o.rowType === 'text' ? 'text' : o.rowType === 'flip' ? 'flip' : undefined;
+        return rowType ? { rowType, content } : { content: content || '' };
+    });
+}
+
 /** Column-major body for `super_flip`; allows single row/column (1×1). */
 export function normalizeSuperFlipColumns(rawCols: unknown): string[][] {
     if (Array.isArray(rawCols) && rawCols.length >= SUPER_FLIP_COL_MIN) {
@@ -278,6 +301,7 @@ export function problemKind(p: Partial<Problem> | null | undefined): ProblemKind
         || t === 'fill_blank'
         || t === 'matching'
         || t === 'super_flip'
+        || t === 'chain'
         || t === 'ai_eval'
     ) {
         return t;
@@ -335,6 +359,10 @@ export function isMatchingProblem(p: Partial<Problem> | null | undefined): p is 
 
 export function isSuperFlipProblem(p: Partial<Problem> | null | undefined): p is ProblemSuperFlip {
     return problemKind(p) === 'super_flip';
+}
+
+export function isChainProblem(p: Partial<Problem> | null | undefined): p is ProblemChain {
+    return problemKind(p) === 'chain';
 }
 
 export function isFlipProblem(p: Partial<Problem> | null | undefined): p is ProblemFlip {
@@ -442,7 +470,9 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
                           : (matchingColumnsNormalized(prev)[0] || []).join(' / '))
                       : isSuperFlipProblem(prev)
                         ? superFlipStemFallback(prev)
-                        : '';
+                        : isChainProblem(prev)
+                          ? (((prev as ProblemChain).stem || '') || (prev as ProblemChain).rows.map((r) => r.content).join(' / '))
+                          : '';
         const n = fillBlankSlotCount(stem);
         let answers = Array.from({ length: n }, () => '');
         if (isFillBlankProblem(prev)) {
@@ -476,7 +506,9 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
                           : (matchingColumnsNormalized(prev)[0] || []).join(' / '))
                       : isSuperFlipProblem(prev)
                         ? superFlipStemFallback(prev)
-                        : '';
+                        : isChainProblem(prev)
+                          ? (((prev as ProblemChain).stem || '') || (prev as ProblemChain).rows.map((r) => r.content).join(' / '))
+                          : '';
         const points = normalizeAiEvalPoints((prev as { points?: unknown }).points);
         const passScoreRaw = (prev as { passScore?: unknown }).passScore;
         const maxAttemptsRaw = (prev as { maxAttempts?: unknown }).maxAttempts;
@@ -509,6 +541,10 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
             const colsM = superFlipNormalized(prev).columns;
             faceA = (colsM[0] || []).join(' / ');
             faceB = (colsM[colsM.length - 1] || []).join(' / ');
+        } else if (isChainProblem(prev)) {
+            const ch = prev as ProblemChain;
+            faceA = ch.rows[0]?.content ?? '';
+            faceB = ch.rows.length > 1 ? ch.rows.slice(1).map((r) => r.content).join(' / ') : ch.analysis || '';
         } else if (isFillBlankProblem(prev)) {
             faceA = prev.stem || '';
             faceB = (prev.answers || []).join(' / ');
@@ -537,7 +573,9 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
                       )
                       : isSuperFlipProblem(prev)
                         ? superFlipStemFallback(prev)
-                        : '';
+                        : isChainProblem(prev)
+                          ? (((prev as ProblemChain).stem || '') || (prev as ProblemChain).rows.map((r) => String(r.content ?? '').trim()).filter(Boolean).join(' · '))
+                          : '';
         let ans: 0 | 1 = 1;
         if (isTrueFalseProblem(prev)) ans = prev.answer;
         else if (problemKind(prev) === 'single') {
@@ -561,7 +599,9 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
                       )
                       : isSuperFlipProblem(prev)
                         ? superFlipStemFallback(prev)
-                        : '';
+                        : isChainProblem(prev)
+                          ? (((prev as ProblemChain).stem || '') || (prev as ProblemChain).rows.map((r) => String(r.content ?? '').trim()).filter(Boolean).join(' · '))
+                          : '';
         let options: string[] = ['', '', '', ''];
         if ('options' in prev && Array.isArray(prev.options)) options = [...prev.options];
         options = ensureOptionArrayLength(options, slots);
@@ -598,12 +638,60 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
                 ...st,
             };
         }
+        if (isChainProblem(prev)) {
+            const ch = prev as ProblemChain;
+            const headers = ch.rows.map(() => '');
+            const columns = ch.rows.map((r) => [r.content]);
+            const headersPad = headers.length ? headers : [''];
+            const colsPad = columns.length ? columns : [['']];
+            const st = typeof ch.stem === 'string' && ch.stem.trim() !== '' ? { stem: ch.stem.trim() } : {};
+            return { ...common, type: 'super_flip', headers: headersPad, columns: colsPad, ...st };
+        }
         let stemS: string | undefined;
         if ('stem' in prev && typeof prev.stem === 'string' && prev.stem.trim()) stemS = prev.stem.trim();
         else if (isFlipProblem(prev)) stemS = prev.faceA || undefined;
         const colsEmpty = normalizeSuperFlipColumns([['']]);
         const stStem = stemS !== undefined ? { stem: stemS } : {};
         return { ...common, type: 'super_flip', headers: [''], columns: colsEmpty, ...stStem };
+    }
+    if (newKind === 'chain') {
+        if (isChainProblem(prev)) {
+            const ch = prev as ProblemChain;
+            return { ...common, type: 'chain', rows: ch.rows.map((r) => ({ ...r })), ...(typeof ch.stem === 'string' && ch.stem.trim() !== '' ? { stem: ch.stem.trim() } : {}) };
+        }
+        const stemCh = 'stem' in prev && typeof prev.stem === 'string' && prev.stem.trim()
+            ? prev.stem.trim()
+            : isFlipProblem(prev)
+              ? prev.faceA
+              : isSuperFlipProblem(prev)
+                ? (((prev as ProblemSuperFlip).stem || '').trim() || '')
+                : '';
+        const rows: ProblemChainRow[] = [];
+        if (isSuperFlipProblem(prev)) {
+            const { columns } = superFlipNormalized(prev as ProblemSuperFlip);
+            const nrow = columns[0]?.length ?? 0;
+            for (let r = 0; r < nrow; r++) {
+                rows.push({ rowType: 'flip', content: columns.map((col) => String(col[r] ?? '')).join(' · ') });
+            }
+        } else if (isMatchingProblem(prev)) {
+            const cols = matchingColumnsNormalized(prev);
+            const nrow = cols[0]?.length ?? 0;
+            for (let r = 0; r < nrow; r++) {
+                rows.push({ rowType: 'flip', content: cols.map((col) => String(col[r] ?? '')).join(' · ') });
+            }
+        } else if (isFlipProblem(prev)) {
+            rows.push({ rowType: 'text', content: prev.faceA });
+            rows.push({ rowType: 'flip', content: prev.faceB });
+        } else if (isFillBlankProblem(prev)) {
+            rows.push({ rowType: 'flip', content: prev.stem });
+            if (prev.answers?.length) {
+                prev.answers.forEach((a) => rows.push({ rowType: 'flip', content: a }));
+            }
+        } else if ('stem' in prev && prev.stem) {
+            rows.push({ rowType: 'flip', content: prev.stem });
+        }
+        if (!rows.length) rows.push({ rowType: 'flip', content: '' });
+        return { ...common, type: 'chain', ...(stemCh ? { stem: stemCh } : {}), rows };
     }
     if (newKind === 'matching') {
         if (isSuperFlipProblem(prev)) {
@@ -621,6 +709,15 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
             const left = cols[0];
             const right = cols[cols.length - 1];
             return { ...common, type: 'matching', columns: cols, ...st, left, right };
+        }
+        if (isChainProblem(prev)) {
+            const ch = prev as ProblemChain;
+            const n = Math.max(2, ch.rows.length);
+            const left = ch.rows.map((r) => r.content);
+            const right = Array.from({ length: n }, () => '');
+            const stemM = typeof ch.stem === 'string' && ch.stem.trim() !== '' ? ch.stem.trim() : undefined;
+            const cols = normalizeMatchingColumns(undefined, left, right);
+            return { ...common, type: 'matching', columns: cols, ...(stemM ? { stem: stemM } : {}), left: cols[0], right: cols[cols.length - 1] };
         }
         let stemM: string | undefined;
         if ('stem' in prev && typeof prev.stem === 'string' && prev.stem.trim()) stemM = prev.stem.trim();
@@ -662,11 +759,14 @@ export function problemChangeKind(prev: Problem, newKind: ProblemKind): Problem 
                   )
                   : isSuperFlipProblem(prev)
                     ? superFlipStemFallback(prev)
-                    : '';
+                    : isChainProblem(prev)
+                      ? (((prev as ProblemChain).stem || '') || (prev as ProblemChain).rows.map((r) => String(r.content ?? '').trim()).filter(Boolean).join(' · '))
+                      : '';
     let options = ['', '', '', ''];
     if ('options' in prev && Array.isArray(prev.options)) options = [...prev.options];
     else if (isMatchingProblem(prev)) options = [...matchingColumnsNormalized(prev).flat()];
     else if (isSuperFlipProblem(prev)) options = [...superFlipNormalized(prev).columns.flat()];
+    else if (isChainProblem(prev)) options = (prev as ProblemChain).rows.map((r) => r.content);
     options = ensureOptionArrayLength(options, slots);
     let answer = 0;
     if (problemKind(prev) === 'single') {
@@ -772,6 +872,11 @@ export function migrateRawProblem(raw: Record<string, unknown>): Problem {
             columns,
             ...(stemS ? { stem: stemS } : {}),
         };
+    }
+    if (t === 'chain') {
+        const rows = normalizeChainRows(raw.rows);
+        const stemS = typeof raw.stem === 'string' ? raw.stem.trim() : '';
+        return { ...common, type: 'chain', rows, ...(stemS ? { stem: stemS } : {}) };
     }
     const stem = typeof raw.stem === 'string' ? raw.stem : '';
     const options = Array.isArray(raw.options) ? (raw.options as unknown[]).map((x) => String(x ?? '')) : ['', '', '', ''];

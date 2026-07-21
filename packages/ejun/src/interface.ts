@@ -448,7 +448,8 @@ export type ProblemKind =
     | 'fill_blank'
     | 'matching'
     | 'super_flip'
-    | 'ai_eval';
+    | 'ai_eval'
+    | 'chain';
 
 export interface ProblemCommon {
     pid: string;
@@ -541,6 +542,22 @@ export interface ProblemSuperFlip extends ProblemCommon {
     columns: string[][];
 }
 
+/** Chain row: one cell with a type — 'flip' rows are masked in lesson (tap to reveal), 'text' rows are always visible. When unset, the row type is not yet chosen. */
+export interface ProblemChainRow {
+    rowType?: 'flip' | 'text';
+    content?: string;
+}
+
+/**
+ * Chain: a single-column list of rows, each either flip (masked until tapped) or text (always visible).
+ * Think of it as a simplified super_flip with only one column where each cell has an independent type.
+ */
+export interface ProblemChain extends ProblemCommon {
+    type: 'chain';
+    stem?: string;
+    rows: ProblemChainRow[];
+}
+
 /** Sub-rubric under one AI eval point (scored leaf for AI prompt / gating). */
 export interface ProblemAiEvalSubPoint {
     id: string;
@@ -587,7 +604,8 @@ export type Problem =
     | ProblemFillBlank
     | ProblemMatching
     | ProblemSuperFlip
-    | ProblemAiEval;
+    | ProblemAiEval
+    | ProblemChain;
 
 export interface CardDoc {
     docType: document['TYPE_CARD'];

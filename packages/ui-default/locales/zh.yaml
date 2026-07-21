@@ -550,6 +550,22 @@ edge_authorize: Edge 授权
 'Problem kind matching': 配对题
 'Problem kind super flip': 超级翻转题
 'Problem kind ai eval': AI评测题
+'Problem kind chain': 链条题
+'Problem chain stem optional': 说明（可为空）
+'Problem chain row count': 行数
+'Problem chain editor hint': 每行可设置为翻转（做题时遮蔽，点击揭示）或文字（始终可见）。
+'Problem chain cell': 该行内容
+'Problem chain row type flip': 翻转
+'Problem chain row type text': 文字
+'Problem chain row type unset': 请选择类型
+'Problem chain row type before content': 请先选择上方类型再填写内容
+'Insert row before': 在上面插入行
+'Insert row after': 在下面插入行
+'Delete row': 删除此行
+'Problem chain masked': 点击揭示
+'Problem chain not familiar': 不熟悉
+'Problem chain reveal all': 全部揭示
+'Problem chain cover all': 全部遮蔽
 'Problem ai eval stem placeholder': 请输入需要 AI 评测的题干
 'Problem ai eval points': 评测点
 'Problem ai eval point title placeholder': 评测点标题（学习中展示）

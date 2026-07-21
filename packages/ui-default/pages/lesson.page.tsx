@@ -5,7 +5,7 @@ import { i18n, request } from 'vj/utils';
 import { renderRoadmapMarkdown } from 'vj/components/roadmap/markdown_render';
 import Notification from 'vj/components/notification';
 import { LearnProblemNotesPanelBody } from '../components/learn_problem_notes_panel';
-import type { Problem, ProblemSingle, ProblemMulti, ProblemTrueFalse, ProblemFlip, ProblemFillBlank, ProblemMatching, ProblemSuperFlip, ProblemAiEval } from 'ejun/src/interface';
+import type { Problem, ProblemSingle, ProblemMulti, ProblemTrueFalse, ProblemFlip, ProblemFillBlank, ProblemMatching, ProblemSuperFlip, ProblemAiEval, ProblemChain } from 'ejun/src/interface';
 import {
   problemKind,
   normalizeMultiAnswers,
@@ -28,6 +28,8 @@ import {
   aiEvalSlotMatchesRubric,
   aiEvalParentIndicesWithOrderViolation,
   getProblemAuthorNoteList,
+  isChainProblem,
+  normalizeChainRows,
 } from 'ejun/src/model/problem';
 import type { AiEvalRubricLeaf } from 'ejun/src/model/problem';
 
@@ -80,6 +82,9 @@ type LessonPreviousStackEntry = {
   flipHintOpen: boolean;
   superFlipRevealed: boolean[][];
   superFlipMarkedOk: boolean | null;
+  /** chain[ri] — revealed for flip-type rows. */
+  chainRevealed: boolean[];
+  chainMarkedOk: boolean | null;
   optionOrder: number[];
   problemAttemptSnapshot: number;
   isAnswered: boolean;
@@ -139,6 +144,7 @@ function lessonProblemKindLabel(k: ReturnType<typeof problemKind>): string {
     : k === 'fill_blank' ? 'Problem kind fill blank'
     : k === 'matching' ? 'Problem kind matching'
     : k === 'super_flip' ? 'Problem kind super flip'
+    : k === 'chain' ? 'Problem kind chain'
     : k === 'ai_eval' ? 'Problem kind ai eval'
     : 'Problem kind single';
   const t = i18n(key);
@@ -157,6 +163,12 @@ function lessonProblemQueueTitleText(p: QueuedProblem): string {
   }
   if (problemKind(p) === 'ai_eval') {
     return String((p as ProblemAiEval).stem || '').trim();
+  }
+  if (problemKind(p) === 'chain') {
+    const ch = p as ProblemChain;
+    const st = typeof ch.stem === 'string' ? ch.stem.trim() : '';
+    if (st) return st;
+    return normalizeChainRows(ch.rows).map((r) => String(r.content ?? '').trim()).filter(Boolean).join(' · ') || '';
   }
   if (problemKind(p) === 'matching') {
     const m = p as ProblemMatching;
@@ -1171,6 +1183,9 @@ function LessonPage() {
   /** `superFlipRevealed[col][row]` — body cell revealed in super-flip table. */
   const [superFlipRevealed, setSuperFlipRevealed] = useState<boolean[][]>([]);
   const [superFlipMarkedOk, setSuperFlipMarkedOk] = useState<boolean | null>(null);
+  /** `chainRevealed[ri]` — row revealed in chain problem. */
+  const [chainRevealed, setChainRevealed] = useState<boolean[]>([]);
+  const [chainMarkedOk, setChainMarkedOk] = useState<boolean | null>(null);
   const [aiEvalSlotDraft, setAiEvalSlotDraft] = useState<Record<string, string>>({});
   const [aiEvalSubmitting, setAiEvalSubmitting] = useState(false);
   const [aiEvalFeedbackByPid, setAiEvalFeedbackByPid] = useState<Record<string, string>>({});
@@ -2308,6 +2323,9 @@ function LessonPage() {
     if (currentKind === 'super_flip') {
       return isAnswered && superFlipMarkedOk === true;
     }
+    if (currentKind === 'chain') {
+      return isAnswered && chainMarkedOk === true;
+    }
     if (currentKind === 'ai_eval') {
       const pe = currentProblem as ProblemAiEval;
       const passScore = typeof pe.passScore === 'number' ? pe.passScore : 60;
@@ -2349,6 +2367,7 @@ function LessonPage() {
     }
     if (k === 'flip') return i18n('Done');
     if (k === 'super_flip') return h.correct ? i18n('Done') : i18n('Problem super flip not familiar');
+    if (k === 'chain') return h.correct ? i18n('Done') : i18n('Problem chain not familiar');
     if (k === 'fill_blank') {
       if (h.fillAnswers?.length) return h.fillAnswers.map((s) => String(s ?? '').trim()).filter(Boolean).join('；') || i18n('N/A');
       return i18n('N/A');
@@ -2494,6 +2513,8 @@ function LessonPage() {
       setFlipHintOpen(r.flipHintOpen);
       setSuperFlipRevealed(r.superFlipRevealed.map((col) => [...col]));
       setSuperFlipMarkedOk(r.superFlipMarkedOk);
+      if (r.chainRevealed) setChainRevealed([...r.chainRevealed]);
+      if (r.chainMarkedOk !== undefined) setChainMarkedOk(r.chainMarkedOk);
       setOptionOrder([...r.optionOrder]);
       setIsAnswered(r.isAnswered);
       setShowAnalysis(r.showAnalysis);
@@ -2505,6 +2526,8 @@ function LessonPage() {
     const k = problemKind(currentProblem);
     setSuperFlipRevealed([]);
     setSuperFlipMarkedOk(null);
+    setChainRevealed([]);
+    setChainMarkedOk(null);
     setSelectedAnswer(null);
     setSelectedMulti([]);
     setSelectedTf(null);
@@ -2576,6 +2599,11 @@ function LessonPage() {
       const nrow = columns[0]?.length ?? 0;
       setSuperFlipRevealed(Array.from({ length: ncol }, () => Array.from({ length: nrow }, () => false)));
       setOptionOrder([]);
+    } else if (k === 'chain') {
+      const ch = currentProblem as ProblemChain;
+      const rows = normalizeChainRows(ch.rows);
+      setChainRevealed(rows.map((r) => false));
+      setOptionOrder([]);
     } else {
       setMatchingShuffleOrders([]);
       setOptionOrder([]);
@@ -2600,6 +2628,8 @@ function LessonPage() {
       flipHintOpen,
       superFlipRevealed: superFlipRevealed.map((col) => [...col]),
       superFlipMarkedOk,
+      chainRevealed: [...chainRevealed],
+      chainMarkedOk,
       optionOrder: [...optionOrder],
       problemAttemptSnapshot: problemAttempts[pid] ?? 0,
       isAnswered: true,
@@ -2621,6 +2651,8 @@ function LessonPage() {
     flipHintOpen,
     superFlipRevealed,
     superFlipMarkedOk,
+    chainRevealed,
+    chainMarkedOk,
     optionOrder,
     problemAttempts,
   ]);
@@ -2765,6 +2797,8 @@ function LessonPage() {
     setMatchingShuffleOrders([]);
     setSuperFlipRevealed([]);
     setSuperFlipMarkedOk(null);
+    setChainRevealed([]);
+    setChainMarkedOk(null);
     setIsAnswered(false);
     setShowAnalysis(false);
     setOptionOrder([]);
@@ -3242,6 +3276,70 @@ function LessonPage() {
     recordCorrectOrWrong(currentProblem, 1, true, timeSpent, problemId, currentAttempts);
   };
 
+  /** Chain: toggle flip-row reveal. */
+  const handleChainCellToggle = (ri: number) => {
+    if (!isAnswered && pendingLessonAdvance) return;
+    if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'chain') return;
+    const ch = currentProblem as ProblemChain;
+    const rows = normalizeChainRows(ch.rows);
+    if (rows[ri]?.rowType !== 'flip') return;
+    setChainRevealed((prev) => {
+      const next = [...prev];
+      next[ri] = !next[ri];
+      return next;
+    });
+  };
+
+  /** Chain: reveal all flip rows. */
+  const handleChainRevealAll = () => {
+    if (!isAnswered && pendingLessonAdvance) return;
+    if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'chain') return;
+    const ch = currentProblem as ProblemChain;
+    const rows = normalizeChainRows(ch.rows);
+    setChainRevealed(rows.map((r) => r.rowType === 'flip'));
+  };
+
+  /** Chain: cover all flip rows. */
+  const handleChainCoverAll = () => {
+    if (!isAnswered && pendingLessonAdvance) return;
+    if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'chain') return;
+    setChainRevealed((prev) => prev.map(() => false));
+  };
+
+  /** Chain: not familiar (submit as wrong). */
+  const handleChainNotFamiliar = () => {
+    if (!isAnswered && pendingLessonAdvance) return;
+    if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'chain') return;
+    const timeSpent = Date.now() - problemStartTime;
+    const problemId = currentProblem.pid;
+    const currentAttempts = (problemAttempts[problemId] || 0) + 1;
+    setChainMarkedOk(false);
+    setIsAnswered(true);
+    setShowAnalysis(true);
+    setProblemAttempts((prev) => ({ ...prev, [problemId]: currentAttempts }));
+    recordCorrectOrWrong(currentProblem, 0, false, timeSpent, problemId, currentAttempts);
+  };
+
+  /** Chain: submit (all flip rows revealed → correct). */
+  const handleChainSubmit = () => {
+    if (!isAnswered && pendingLessonAdvance) return;
+    if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'chain') return;
+    const ch = currentProblem as ProblemChain;
+    const rows = normalizeChainRows(ch.rows);
+    const nrow = rows.length;
+    if (!nrow) return;
+    const allFlipRevealed = rows.every((r, i) => r.rowType !== 'flip' || chainRevealed[i]);
+    if (!allFlipRevealed) return;
+    setChainMarkedOk(true);
+    const timeSpent = Date.now() - problemStartTime;
+    const problemId = currentProblem.pid;
+    const currentAttempts = (problemAttempts[problemId] || 0) + 1;
+    setIsAnswered(true);
+    setShowAnalysis(true);
+    setProblemAttempts((prev) => ({ ...prev, [problemId]: currentAttempts }));
+    recordCorrectOrWrong(currentProblem, 1, true, timeSpent, problemId, currentAttempts);
+  };
+
   const handleFillBlankSubmit = () => {
     if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'fill_blank') return;
     const pf = currentProblem as ProblemFillBlank;
@@ -3296,6 +3394,8 @@ function LessonPage() {
     setMatchingShuffleOrders([]);
     setSuperFlipRevealed([]);
     setSuperFlipMarkedOk(null);
+    setChainRevealed([]);
+    setChainMarkedOk(null);
     setIsAnswered(false);
     setShowAnalysis(false);
     setShuffleTrigger((t) => t + 1);
@@ -3350,6 +3450,8 @@ function LessonPage() {
           flipHintOpen,
           superFlipRevealed: superFlipRevealed.map((col) => [...col]),
           superFlipMarkedOk,
+          chainRevealed: [...chainRevealed],
+          chainMarkedOk,
           optionOrder: [...optionOrder],
           problemAttemptSnapshot: problemAttempts[cur.pid] ?? 0,
           isAnswered: true,
@@ -4876,7 +4978,7 @@ function LessonPage() {
               {currentProblemTitleLine}
             </span>
           ) : null}
-          {!isAnswered && currentKind !== 'flip' && currentKind !== 'super_flip' && (
+          {!isAnswered && currentKind !== 'flip' && currentKind !== 'super_flip' && currentKind !== 'chain' && (
             <button
               type="button"
               onClick={handlePeek}
@@ -4918,10 +5020,13 @@ function LessonPage() {
             }}>
               {(currentKind === 'flip' && isCorrect)
                 || (currentKind === 'super_flip' && isAnswered && isCorrect)
+                || (currentKind === 'chain' && isAnswered && isCorrect)
                 ? i18n('Done')
                 : currentKind === 'super_flip' && isAnswered && !isCorrect
                   ? i18n('Problem super flip not familiar')
-                  : (isCorrect ? i18n('Correct') : i18n('Incorrect'))}
+                  : currentKind === 'chain' && isAnswered && !isCorrect
+                    ? i18n('Problem chain not familiar')
+                    : (isCorrect ? i18n('Correct') : i18n('Incorrect'))}
             </span>
           )}
           {currentProblem ? (
@@ -5263,6 +5368,166 @@ function LessonPage() {
                         {i18n('Flip mark done')}
                       </button>
                     </>
+                    ) : null,
+                  )}
+                </>
+              );
+            })()}
+          </>
+        ) : currentKind === 'chain' ? (
+          <>
+            {(() => {
+              const ch = currentProblem as ProblemChain;
+              const rows = normalizeChainRows(ch.rows);
+              const stemText = typeof ch.stem === 'string' ? ch.stem.trim() : '';
+              const revealed = chainRevealed;
+              const nrow = rows.length;
+              const allFlipRevealed = nrow > 0 && rows.every((r, i) => r.rowType !== 'flip' || revealed[i]);
+              return (
+                <>
+                  {stemText ? (
+                    <div style={{ fontSize: '17px', fontWeight: 500, marginBottom: '14px', color: themeStyles.stemColor, lineHeight: 1.6 }}>
+                      <LessonProblemMarkdown
+                        text={ch.stem}
+                        inline={false}
+                        replaceImagesWithCache={replaceImagesWithCache}
+                      />
+                    </div>
+                  ) : null}
+                  <div style={{ marginBottom: '18px' }}>
+                    {rows.map((row, ri) => {
+                      const isFlipType = row.rowType === 'flip';
+                      const isRevealed = !isFlipType || isAnswered || showAnalysis || revealed[ri];
+                      return (
+                        <div key={`chain-row-${ri}`} style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 12, color: themeStyles.textSecondary, minWidth: 20, flexShrink: 0 }}>{ri + 1}.</span>
+                          {isFlipType && !isRevealed && !isAnswered ? (
+                            <button
+                              type="button"
+                              onClick={() => handleChainCellToggle(ri)}
+                              style={{
+                                flex: 1,
+                                padding: '14px 16px',
+                                border: `1px solid ${themeStyles.border}`,
+                                borderRadius: '8px',
+                                fontSize: '14px',
+                                fontWeight: 600,
+                                backgroundColor: themeStyles.optionNeutral,
+                                color: themeStyles.textTertiary,
+                                cursor: 'pointer',
+                                textAlign: 'left',
+                              }}
+                            >
+                              {i18n('Problem chain masked')}
+                            </button>
+                          ) : (
+                            <div style={{
+                              flex: 1,
+                              padding: '14px 16px',
+                              border: `1px solid ${themeStyles.border}`,
+                              borderRadius: '8px',
+                              fontSize: '14px',
+                              lineHeight: 1.45,
+                              backgroundColor: isFlipType ? themeStyles.bgSecondary : themeStyles.bgPrimary,
+                              color: themeStyles.textPrimary,
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-word',
+                            }}>
+                              {isFlipType && !isRevealed
+                                ? String(i18n('Problem chain masked'))
+                                : (row.content.trim() ? row.content : '—')}
+                            </div>
+                          )}
+                          <span style={{
+                            fontSize: 10,
+                            color: themeStyles.textTertiary,
+                            flexShrink: 0,
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            backgroundColor: isFlipType ? themeStyles.tagBg : themeStyles.successBg || themeStyles.bgSecondary,
+                          }}>
+                            {isFlipType ? i18n('Problem chain row type flip') : i18n('Problem chain row type text')}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {(!isAnswered || !pendingLessonAdvance) && renderLessonPracticeActionRow(
+                    !isAnswered ? (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px' }}>
+                        <button
+                          type="button"
+                          onClick={handleChainRevealAll}
+                          disabled={nrow < 1}
+                          style={{
+                            padding: '10px 18px',
+                            borderRadius: '8px',
+                            border: `1px solid ${themeStyles.border}`,
+                            backgroundColor: themeStyles.bgSecondary,
+                            color: themeStyles.textPrimary,
+                            cursor: nrow >= 1 ? 'pointer' : 'not-allowed',
+                            opacity: nrow >= 1 ? 1 : 0.55,
+                            fontSize: '14px',
+                            fontWeight: 600,
+                          }}
+                        >
+                          {i18n('Problem chain reveal all')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleChainCoverAll}
+                          disabled={nrow < 1}
+                          style={{
+                            padding: '10px 18px',
+                            borderRadius: '8px',
+                            border: `1px solid ${themeStyles.border}`,
+                            backgroundColor: themeStyles.bgSecondary,
+                            color: themeStyles.textPrimary,
+                            cursor: nrow >= 1 ? 'pointer' : 'not-allowed',
+                            opacity: nrow >= 1 ? 1 : 0.55,
+                            fontSize: '14px',
+                            fontWeight: 600,
+                          }}
+                        >
+                          {i18n('Problem chain cover all')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleChainNotFamiliar}
+                          disabled={nrow < 1}
+                          style={{
+                            padding: '10px 18px',
+                            borderRadius: '8px',
+                            border: `1px solid ${themeStyles.danger}`,
+                            backgroundColor: themeStyles.dangerBg,
+                            color: themeStyles.danger,
+                            cursor: nrow >= 1 ? 'pointer' : 'not-allowed',
+                            opacity: nrow >= 1 ? 1 : 0.55,
+                            fontSize: '14px',
+                            fontWeight: 600,
+                          }}
+                        >
+                          {i18n('Problem chain not familiar')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleChainSubmit}
+                          disabled={!allFlipRevealed}
+                          style={{
+                            padding: '10px 24px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            backgroundColor: allFlipRevealed ? themeStyles.success : themeStyles.disabled,
+                            color: themeStyles.whiteOnAccent,
+                            cursor: allFlipRevealed ? 'pointer' : 'not-allowed',
+                            opacity: allFlipRevealed ? 1 : 0.55,
+                            fontSize: '14px',
+                            fontWeight: 700,
+                          }}
+                        >
+                          {i18n('Submit answer')}
+                        </button>
+                      </div>
                     ) : null,
                   )}
                 </>

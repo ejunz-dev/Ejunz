@@ -24,7 +24,7 @@ import {
 } from '../model/base';
 
 export { readOptionalRequestBaseDocId, getBranchData, setBranchData };
-import type { BaseDoc, BaseNode, BaseEdge, CardDoc, FileInfo, ProblemFlip, ProblemTrueFalse, ProblemFillBlank, ProblemSingle, ProblemMulti, ProblemMatching, ProblemSuperFlip, Problem } from '../interface';
+import type { BaseDoc, BaseNode, BaseEdge, CardDoc, FileInfo, ProblemFlip, ProblemTrueFalse, ProblemFillBlank, ProblemSingle, ProblemMulti, ProblemMatching, ProblemSuperFlip, ProblemChain, Problem } from '../interface';
 import * as document from '../model/document';
 import { exec as execCb, execFile as execFileCb } from 'child_process';
 import fs from 'fs';
@@ -69,6 +69,7 @@ import {
     problemKind,
     matchingColumnsNormalized,
     superFlipNormalized,
+    normalizeChainRows,
     sanitizeProblemTagRegistryList,
     normalizeProblemTagInput,
     LearnProblemNoteModel,
@@ -595,6 +596,10 @@ async function buildTodayContributionAllDomains(uid: number): Promise<{
                     problemChars += String(sf.stem || '').length
                         + sn.headers.join('').length
                         + sn.columns.flat().join('').length;
+                } else if (pk === 'chain') {
+                    const ch = p as ProblemChain;
+                    problemChars += String(ch.stem || '').length
+                        + ch.rows.map((r) => (r.content || '') + r.rowType).join('').length;
                 } else if (typeof p.stem === 'string') {
                     problemChars += p.stem.length;
                 }
@@ -2877,6 +2882,18 @@ async function exportBaseToFile(base: BaseDoc, outputDir: string, branch?: strin
                     rowLines.push(columns.map((col) => String(col[r] ?? '')).join(' · '));
                 }
                 stem = `${head}${hdrLine ? `${hdrLine}\n` : ''}${rowLines.join('\n')}`.trim();
+                options = [];
+                answer = 0;
+            } else if (pk === 'chain') {
+                const ch = p as ProblemChain;
+                const head = typeof ch.stem === 'string' && ch.stem.trim() ? `${ch.stem.trim()}\n\n` : '';
+                const rows = normalizeChainRows(ch.rows);
+                const rowLines: string[] = [];
+                for (const r of rows) {
+                    const tag = r.rowType === 'flip' ? '[flip] ' : '[text] ';
+                    rowLines.push(`${tag}${r.content}`);
+                }
+                stem = `${head}${rowLines.join('\n')}`.trim();
                 options = [];
                 answer = 0;
             } else if (pk === 'true_false') {

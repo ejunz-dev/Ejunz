@@ -21,6 +21,7 @@ import type {
   ProblemMatching,
   ProblemSuperFlip,
   ProblemAiEval,
+  ProblemChain,
   ProblemAiEvalSubPoint,
   ProblemKind,
 } from 'ejun/src/interface';
@@ -7446,7 +7447,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 4. **rename**: rename a node or card
 5. **update_card_content**: change card body/markdown when the user asks to edit, polish, format, or improve *content* (not the title)
 6. **delete**: delete a node or card when asked
-7. **create_problem**: add practice problems for the **currently open card** when asked. Always include **\`title\`**: a very short plain-text label for lesson sidebars (not the full stem; omit HTML; ideally under ~40 characters). Also use \`problemKind\`: \`single\` (default, one correct option index in \`answer\`), \`multi\` (\`answer\` is an array of correct option indices), \`true_false\` (\`stem\` + \`answer\` 0 = false, 1 = true), \`flip\` (\`faceA\` / \`faceB\`, optional learner \`hint\`; no \`options\`), \`fill_blank\` (\`stem\` with \`___\` for each blank + \`answers\` string array in order; if no \`___\`, one blank after the stem), \`matching\` (optional \`stem\`: use \`columns\` — array of **columns**, each inner array is that column top-to-bottom; **same row index** across columns is one item; ≥2 rows and ≥2 columns; lesson gives **each column** an independent shuffled dropdown so the learner picks the correct row index in every column; or legacy \`left\`/\`right\`), \`super_flip\` (optional \`stem\`; \`headers\` string array per column, same length as column count; \`columns\` like matching—body cells only, **≥1 row and ≥1 column** (1×1 allowed); lesson always shows headers; **non-empty** body cells are masked until tapped; **empty or whitespace-only** cells stay visible as blank with no flip). **To update an existing practice row** (e.g. user referenced it from the AI terminal \`#\` chip or the prompt contains \`problem pid:\`), include \`"pid"\` set to that exact id plus \`cardId\`; this **replaces** that row. **Omit \`pid\`** only when adding a separate brand-new problem. **Completing (补全):** fill **all** still-empty problem fields the kind supports (e.g. \`analysis\` / 解析, \`title\`, \`stem\`, options, \`answers\`, table \`columns\`/\`headers\`, flip \`hint\`, etc.), not only table cells—**keep** values the user already entered.
+7. **create_problem**: add practice problems for the **currently open card** when asked. Always include **\`title\`**: a very short plain-text label for lesson sidebars (not the full stem; omit HTML; ideally under ~40 characters). Also use \`problemKind\`: \`single\` (default, one correct option index in \`answer\`), \`multi\` (\`answer\` is an array of correct option indices), \`true_false\` (\`stem\` + \`answer\` 0 = false, 1 = true), \`flip\` (\`faceA\` / \`faceB\`, optional learner \`hint\`; no \`options\`), \`fill_blank\` (\`stem\` with \`___\` for each blank + \`answers\` string array in order; if no \`___\`, one blank after the stem), \`matching\` (optional \`stem\`: use \`columns\` — array of **columns**, each inner array is that column top-to-bottom; **same row index** across columns is one item; ≥2 rows and ≥2 columns; lesson gives **each column** an independent shuffled dropdown so the learner picks the correct row index in every column; or legacy \`left\`/\`right\`), \`super_flip\` (optional \`stem\`; \`headers\` string array per column, same length as column count; \`columns\` like matching—body cells only, **≥1 row and ≥1 column** (1×1 allowed); lesson always shows headers; **non-empty** body cells are masked until tapped; **empty or whitespace-only** cells stay visible as blank with no flip), **\`chain\`** (\`rows\` array of \`{ rowType: "flip"|"text", content: string }\` — single column, flip rows masked in lesson until tapped, text rows always visible). **To update an existing practice row** (e.g. user referenced it from the AI terminal \`#\` chip or the prompt contains \`problem pid:\`), include \`"pid"\` set to that exact id plus \`cardId\`; this **replaces** that row. **Omit \`pid\`** only when adding a separate brand-new problem. **Completing (补全):** fill **all** still-empty problem fields the kind supports (e.g. \`analysis\` / 解析, \`title\`, \`stem\`, options, \`answers\`, table \`columns\`/\`headers\`, flip \`hint\`, etc.), not only table cells—**keep** values the user already entered.
 
 [Outline structure]
 ${baseText}
@@ -7598,7 +7599,7 @@ Reply with a JSON code block only for executable operations, using this shape:
 4. Use \`rename_card\` / \`rename_node\` only when the user clearly wants to change a **title/name**.
 5. **move_node**: read the outline above; match the user's folder/node by **name and full path**, then use the real **node ID** as \`targetParentId\`. Node IDs look like \`node_...\`; they are **not** card IDs (cards use long hex-like ids). "Move folder" means move a **node**. If you cannot resolve a target, reply with an error in plain text instead of guessing IDs.
 6. **move_card**: to move a **card**, use \`move_card\` (card id + \`targetNodeId\`). Never use \`move_node\` for a card. If the user @-mentions a card, use \`move_card\` with that card's id.
-7. **create_problem**: omit \`problemKind\` or set \`single\` for classic single-choice; include **\`title\`** (short sidebar/list label); \`multi\` requires \`answer\` as an array; \`true_false\` requires \`stem\` and \`answer\` 0/1; \`flip\` requires \`faceA\` and \`faceB\`, optional \`hint\` (learner Hint button), and must **not** include \`options\`; \`fill_blank\` requires \`stem\` and \`answers\` (array of strings, one per \`___\` left-to-right, or one string if a single blank); \`matching\` requires ≥2 rows: either \`columns\` (**array of columns**, each inner array one cell per row, same indexes align) with ≥2 columns—lesson shuffles **every** column’s pool independently—or legacy equal-length \`left\` and \`right\`; \`super_flip\` requires \`columns\` (same shape as matching but allows **1×1** minimum: ≥1 row and ≥1 column), optional \`stem\`, and \`headers\` parallel to columns (headers always visible; **non-empty** body cells flip; **empty** cells stay blank). **Include \`pid\`** to replace an existing practice question on that card (same id as in the user request); **omit \`pid\`** only when adding a brand-new problem.
+7. **create_problem**: omit \`problemKind\` or set \`single\` for classic single-choice; include **\`title\`** (short sidebar/list label); \`multi\` requires \`answer\` as an array; \`true_false\` requires \`stem\` and \`answer\` 0/1; \`flip\` requires \`faceA\` and \`faceB\`, optional \`hint\` (learner Hint button), and must **not** include \`options\`; \`fill_blank\` requires \`stem\` and \`answers\` (array of strings, one per \`___\` left-to-right, or one string if a single blank); \`matching\` requires ≥2 rows: either \`columns\` (**array of columns**, each inner array one cell per row, same indexes align) with ≥2 columns—lesson shuffles **every** column’s pool independently—or legacy equal-length \`left\` and \`right\`; \`super_flip\` requires \`columns\` (same shape as matching but allows **1×1** minimum: ≥1 row and ≥1 column), optional \`stem\`, and \`headers\` parallel to columns (headers always visible; **non-empty** body cells flip; **empty** cells stay blank); **\`chain\`** requires \`rows\` array of \`{ rowType: "flip"|"text", content: string }\` — \`flip\` rows are masked in lesson until tapped, \`text\` rows are always visible. **Include \`pid\`** to replace an existing practice question on that card (same id as in the user request); **omit \`pid\`** only when adding a brand-new problem.
 8. **Valid JSON**: never put raw line breaks or unescaped \`"\` inside a string value; use standard JSON escaping (backslash + quote, backslash + n for newline).
 9. **Streaming**: emit each \`operations[]\` entry as a **fully closed** \`{ ... }\` object (balanced braces) **before** starting the next. The editor applies each finished object immediately—trailing incomplete objects wait until complete.
 10. **Referenced practice problem**: If the user attached a **problem** in the AI terminal (\`#\` chip) or the expanded text includes \`problem pid:\`, treat requests as **editing that row**—output one \`create_problem\` with matching \`pid\` and the same \`cardId\`; do **not** omit \`pid\` or you will create a duplicate.
@@ -8712,6 +8713,7 @@ Reply with a JSON code block only for executable operations. For same-response f
             || rawKind === 'fill_blank'
             || rawKind === 'matching'
             || rawKind === 'super_flip'
+            || rawKind === 'chain'
             || rawKind === 'ai_eval'
               ? rawKind
               : 'single';
@@ -8943,6 +8945,26 @@ Reply with a JSON code block only for executable operations. For same-response f
               points,
               passScore: Number.isFinite(passScoreRaw) ? Math.max(0, Math.min(100, Math.round(passScoreRaw))) : 60,
               maxAttempts: Number.isFinite(maxAttemptsRaw) ? Math.max(1, Math.min(20, Math.round(maxAttemptsRaw))) : 3,
+              ...titleSpread,
+              ...(analysisStr ? { analysis: analysisStr } : {}),
+            });
+          } else if (kind === 'chain') {
+            const chRows = op.rows;
+            if (!Array.isArray(chRows) || chRows.length < 1) {
+              Notification.error(i18n('Chain problem requires rows array'));
+              errors.push('create_problem chain: 需要 rows 数组');
+              continue;
+            }
+            const rows = chRows.map((x: any) => ({
+              rowType: x.rowType === 'text' ? 'text' as const : 'flip' as const,
+              content: String(x.content ?? ''),
+            }));
+            const stemCh = typeof op.stem === 'string' ? op.stem.trim() : '';
+            newProblem = migrateRawProblem({
+              pid,
+              type: 'chain',
+              rows,
+              ...(stemCh ? { stem: stemCh } : {}),
               ...titleSpread,
               ...(analysisStr ? { analysis: analysisStr } : {}),
             });

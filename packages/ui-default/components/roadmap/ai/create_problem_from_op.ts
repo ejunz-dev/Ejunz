@@ -99,6 +99,7 @@ export function applyCreateProblemOp(
     || rawKind === 'fill_blank'
     || rawKind === 'matching'
     || rawKind === 'super_flip'
+    || rawKind === 'chain'
     || rawKind === 'ai_eval'
       ? rawKind
       : 'single';
@@ -204,6 +205,22 @@ export function applyCreateProblemOp(
       ...(typeof op.stem === 'string' && op.stem.trim() ? { stem: op.stem.trim() } : {}),
       columns: op.columns,
       ...(Array.isArray(op.headers) ? { headers: op.headers } : {}),
+      ...titleSpread,
+      ...(analysisStr ? { analysis: analysisStr } : {}),
+    });
+  } else if (kind === 'chain') {
+    const rows = Array.isArray(op.rows) ? op.rows.map((x: any) => ({
+      rowType: x.rowType === 'text' ? 'text' as const : 'flip' as const,
+      content: String(x.content ?? ''),
+    })) : [];
+    if (!rows.length) {
+      return { error: 'chain: rows array required' };
+    }
+    newProblem = migrateRawProblem({
+      pid,
+      type: 'chain',
+      rows,
+      ...(typeof op.stem === 'string' && op.stem.trim() ? { stem: op.stem.trim() } : {}),
       ...titleSpread,
       ...(analysisStr ? { analysis: analysisStr } : {}),
     });
