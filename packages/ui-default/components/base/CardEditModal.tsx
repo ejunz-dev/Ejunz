@@ -169,8 +169,8 @@ export function CardEditModal({
               disabled={saving}
               style={{
                 padding: '7px 18px', borderRadius: 8, border: 'none',
-                background: saving ? '#eee' : '#ffd24a',
-                color: saving ? '#999' : '#111',
+                background: saving ? 'var(--roadmap-bg-disabled, #eee)' : 'var(--roadmap-accent, #ffd24a)',
+                color: saving ? 'var(--roadmap-text-muted, #999)' : 'var(--roadmap-text-on-accent, #111)',
                 fontSize: 13, fontWeight: 600, cursor: saving ? 'default' : 'pointer',
                 transition: 'all 0.15s ease',
               }}

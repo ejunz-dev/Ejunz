@@ -172,7 +172,7 @@ export function BaseEditorCardTagsPanel({
           style={{ flex: 1, padding: '5px 8px', borderRadius: 4, border: `1px solid ${themeStyles.borderSecondary}`, background: themeStyles.bgPrimary, color: themeStyles.textPrimary, fontSize: 12, outline: 'none' }}
           autoComplete="off" />
         <button type="button" onClick={handleAdd}
-          style={{ padding: '5px 10px', borderRadius: 4, border: 'none', background: '#ffd24a', color: '#111', fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
+          style={{ padding: '5px 10px', borderRadius: 4, border: 'none', background: 'var(--roadmap-accent, #ffd24a)', color: 'var(--roadmap-text-on-accent, #111)', fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
           {i18n('Add')}
         </button>
       </div>
@@ -211,7 +211,7 @@ export function BaseEditorCardTagsPanel({
                     style={{ flex: 1, padding: '2px 6px', borderRadius: 3, border: `1px solid ${themeStyles.accent || '#4135d6'}`, background: themeStyles.bgPrimary, color: themeStyles.textPrimary, fontSize: 12, outline: 'none' }}
                     autoComplete="off" />
                   <button type="button" onClick={() => handleRename(parent)}
-                    style={{ padding: '2px 6px', borderRadius: 3, border: 'none', background: '#ffd24a', color: '#111', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>{i18n('Save')}</button>
+                    style={{ padding: '2px 6px', borderRadius: 3, border: 'none', background: 'var(--roadmap-accent, #ffd24a)', color: 'var(--roadmap-text-on-accent, #111)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>{i18n('Save')}</button>
                   <button type="button" onClick={() => setRenamingTag(null)}
                     style={{ padding: '2px 6px', borderRadius: 3, border: 'none', background: 'transparent', color: themeStyles.textSecondary, fontSize: 11, cursor: 'pointer' }}>{i18n('Cancel')}</button>
                 </>
@@ -246,7 +246,7 @@ export function BaseEditorCardTagsPanel({
                     style={{ flex: 1, padding: '3px 6px', borderRadius: 3, border: `1px solid ${themeStyles.borderSecondary}`, background: themeStyles.bgPrimary, color: themeStyles.textPrimary, fontSize: 11, outline: 'none' }}
                     autoComplete="off" />
                   <button type="button" onClick={() => handleAddChild(parent)}
-                    style={{ padding: '2px 6px', borderRadius: 3, border: 'none', background: '#ffd24a', color: '#111', fontSize: 11, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>+</button>
+                    style={{ padding: '2px 6px', borderRadius: 3, border: 'none', background: 'var(--roadmap-accent, #ffd24a)', color: 'var(--roadmap-text-on-accent, #111)', fontSize: 11, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>+</button>
                 </div>
               </div>
             )}
