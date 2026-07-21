@@ -355,9 +355,9 @@ function TreeBranch({
                                   return plist.map((p) => {
                                     const cs = cmap[p] || [];
                                     return (
-                                      <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 1, border: '1px solid #e65100', borderRadius: 3, overflow: 'hidden', fontSize: 9, lineHeight: '1.3' }}>
-                                        <span style={{ padding: '1px 4px', background: 'rgba(255,152,0,0.15)', color: '#e65100', fontWeight: 600 }}>{p}</span>
-                                        {cs.map((c) => <span key={p + '/' + c} style={{ padding: '1px 4px', borderLeft: '1px solid #e65100', color: '#e65100', opacity: 0.8 }}>{c}</span>)}
+                                      <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 1, border: '1px solid var(--roadmap-problem-tag-color, #e65100)', borderRadius: 3, overflow: 'hidden', fontSize: 9, lineHeight: '1.3' }}>
+                                        <span style={{ padding: '1px 4px', background: 'var(--roadmap-problem-tag-bg, rgba(255,152,0,0.15))', color: 'var(--roadmap-problem-tag-color, #e65100)', fontWeight: 600 }}>{p}</span>
+                                        {cs.map((c) => <span key={p + '/' + c} style={{ padding: '1px 4px', borderLeft: '1px solid var(--roadmap-problem-tag-color, #e65100)', color: 'var(--roadmap-problem-tag-color, #e65100)', opacity: 0.8 }}>{c}</span>)}
                                       </span>
                                     );
                                   });

@@ -120,8 +120,8 @@ export function ProblemEditModal({
               disabled={saving}
               style={{
                 padding: '7px 18px', borderRadius: 8, border: 'none',
-                background: saving ? '#eee' : '#ffd24a',
-                color: saving ? '#999' : '#111',
+                background: saving ? 'var(--roadmap-bg-disabled, #eee)' : 'var(--roadmap-accent, #ffd24a)',
+                color: saving ? 'var(--roadmap-text-muted, #999)' : 'var(--roadmap-text-on-accent, #111)',
                 fontSize: 13, fontWeight: 600, cursor: saving ? 'default' : 'pointer',
               }}
             >
@@ -199,8 +199,8 @@ export function ProblemEditModal({
                   const pSel = problemTags.includes(p);
                   const chs = childMap[p] || [];
                   buttons.push(
-                    <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 0, border: `1px solid ${pSel ? '#e65100' : 'var(--roadmap-border, #ddd)'}`, borderRadius: 4, overflow: 'hidden', fontSize: 11, lineHeight: '1.5' }}>
-                      <span style={{ padding: '3px 8px', cursor: 'pointer', background: pSel ? 'rgba(255, 152, 0, 0.15)' : 'transparent', color: pSel ? '#e65100' : 'var(--roadmap-text-secondary, #888)', fontWeight: 600 }}
+                    <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 0, border: `1px solid ${pSel ? 'var(--roadmap-problem-tag-color, #e65100)' : 'var(--roadmap-border, #ddd)'}`, borderRadius: 4, overflow: 'hidden', fontSize: 11, lineHeight: '1.5' }}>
+                      <span style={{ padding: '3px 8px', cursor: 'pointer', background: pSel ? 'var(--roadmap-problem-tag-bg, rgba(255,152,0,0.15))' : 'transparent', color: pSel ? 'var(--roadmap-problem-tag-color, #e65100)' : 'var(--roadmap-text-secondary, #888)', fontWeight: 600 }}
                         onClick={() => toggleTag(p)}>
                         {p}
                       </span>
@@ -208,7 +208,7 @@ export function ProblemEditModal({
                         const fullTag = p + '/' + c;
                         const cSel = problemTags.includes(fullTag);
                         return (
-                          <span key={fullTag} style={{ padding: '3px 6px', cursor: 'pointer', borderLeft: '1px solid var(--roadmap-border, #ddd)', background: cSel ? 'rgba(255, 152, 0, 0.15)' : 'transparent', color: cSel ? '#e65100' : 'var(--roadmap-text-secondary, #888)', fontWeight: cSel ? 600 : 400 }}
+                          <span key={fullTag} style={{ padding: '3px 6px', cursor: 'pointer', borderLeft: '1px solid var(--roadmap-border, #ddd)', background: cSel ? 'var(--roadmap-problem-tag-bg, rgba(255,152,0,0.15))' : 'transparent', color: cSel ? 'var(--roadmap-problem-tag-color, #e65100)' : 'var(--roadmap-text-secondary, #888)', fontWeight: cSel ? 600 : 400 }}
                             onClick={() => {
                               if (cSel) setProblemTags((prev) => prev.filter((t) => t !== fullTag));
                               else setProblemTags((prev) => prev.includes(p) ? [...prev, fullTag] : [...prev, p, fullTag]);
