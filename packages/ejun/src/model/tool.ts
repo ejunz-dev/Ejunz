@@ -463,11 +463,11 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
         name: 'problem_create',
         description: 'Add a practice problem to a card. Pass `problem` as a JSON object. '
             + 'Common fields: title (short sidebar label), stem, analysis, tags. '
-            + 'type: single (default) | multi | true_false | flip | fill_blank | matching | super_flip | ai_eval. '
+            + 'type: single (default) | multi | true_false | flip | fill_blank | matching | super_flip | chain | ai_eval. '
             + 'single/multi: options[] + answer (index or index array). true_false: stem + answer 0|1. '
             + 'flip: faceA, faceB, optional hint. fill_blank: stem with ___ + answers[]. '
             + 'matching: columns[][] (≥2 cols, ≥2 rows) or legacy left/right. '
-            + 'super_flip: headers[] + columns[][] (allows 1×1). ai_eval: stem + points[].',
+            + 'super_flip: headers[] + columns[][] (allows 1×1). chain: rows[] of {rowType:"flip"|"text", content:string}. ai_eval: stem + points[].',
         inputSchema: {
             type: 'object',
             properties: {
@@ -644,7 +644,7 @@ export async function buildMcpInstructions(
         'Concepts:',
         '- Node: a section/topic in the base\'s node tree. Nodes form a hierarchy via parentId/level. Each node has an id and text (title).',
         '- Card: a content block (title + markdown body) attached to a node. One node can hold multiple ordered cards.',
-        '- Problem: a practice exercise (quiz, flip card, matching, etc.) attached to a card. Types: single, multi, true_false, flip, fill_blank, matching, super_flip, ai_eval.',
+        '- Problem: a practice exercise (quiz, flip card, matching, etc.) attached to a card. Types: single, multi, true_false, flip, fill_blank, matching, super_flip, chain, ai_eval.',
         '',
         'Relationship: base → nodes (tree) → cards (content) → problems (exercises on each card).',
     ];
@@ -739,7 +739,7 @@ function normalizeProblemKind(raw: unknown): ProblemKind | undefined {
     const s = String(raw || '').toLowerCase().trim();
     if (!s) return undefined;
     const kinds: ProblemKind[] = [
-        'single', 'multi', 'true_false', 'flip', 'fill_blank', 'matching', 'super_flip', 'ai_eval',
+        'single', 'multi', 'true_false', 'flip', 'fill_blank', 'matching', 'super_flip', 'chain', 'ai_eval',
     ];
     return kinds.includes(s as ProblemKind) ? (s as ProblemKind) : undefined;
 }
@@ -762,7 +762,7 @@ function problemPreview(p: Problem): string {
         text = String((p as { faceA?: string }).faceA || '');
     } else if ('stem' in p) {
         text = String((p as { stem?: string }).stem || '');
-    } else if (type === 'matching' || type === 'super_flip') {
+    } else if (type === 'matching' || type === 'super_flip' || type === 'chain') {
         const cols = (p as { columns?: string[][] }).columns;
         if (Array.isArray(cols) && cols[0]?.length) text = cols[0].join(' | ');
     }

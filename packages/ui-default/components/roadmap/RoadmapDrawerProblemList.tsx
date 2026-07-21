@@ -9,11 +9,13 @@ import type {
   ProblemMulti,
   ProblemSingle,
   ProblemSuperFlip,
+  ProblemChain,
   ProblemTrueFalse,
 } from 'ejun/src/interface';
 import {
   matchingColumnsNormalized,
   normalizeMultiAnswers,
+  normalizeChainRows,
   problemKind,
   superFlipNormalized,
 } from 'ejun/src/model/problem';
@@ -35,6 +37,7 @@ function problemKindI18nKey(type?: string): string {
     case 'fill_blank': return 'Problem kind fill blank';
     case 'matching': return 'Problem kind matching';
     case 'super_flip': return 'Problem kind super flip';
+    case 'chain': return 'Problem kind chain';
     case 'ai_eval': return 'Problem kind ai eval';
     default: return 'Problem kind single';
   }
@@ -52,6 +55,7 @@ type RevealState = {
   flip?: boolean;
   matching?: Set<number>;
   superFlip?: boolean[][];
+  chain?: boolean[];
   aiEval?: Set<string>;
 };
 
@@ -343,6 +347,45 @@ function RoadmapDrawerProblemItem({
         </>
       );
     }
+    if (kind === 'chain') {
+      const ch = problem as ProblemChain;
+      const rows = normalizeChainRows(ch.rows);
+      const revealed = reveal.chain || [];
+      return (
+        <>
+          {ch.stem?.trim() ? (
+            <RoadmapProblemMarkdown markdown={ch.stem} className="roadmap-detail-drawer__problem-stem typo" />
+          ) : null}
+          <div style={{ marginTop: 8 }}>
+            {rows.map((row, ri) => {
+              const isRevealed = row.rowType !== 'flip' || revealed[ri];
+              return (
+                <div key={`ch-${ri}`} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-secondary)', minWidth: 16 }}>{ri + 1}.</span>
+                  <button
+                    type="button"
+                    className={`roadmap-detail-drawer__problem-reveal${isRevealed ? ' is-revealed' : ''}`}
+                    onClick={() => {
+                      if (row.rowType !== 'flip') return;
+                      const next = [...revealed];
+                      while (next.length <= ri) next.push(false);
+                      next[ri] = !next[ri];
+                      onRevealChange({ ...reveal, chain: next });
+                    }}
+                    style={{ flex: 1, minHeight: 40, padding: '8px 12px', fontSize: 13, textAlign: 'left', cursor: row.rowType === 'flip' ? 'pointer' : 'default' }}
+                  >
+                    {isRevealed ? (row.content.trim() || '—') : i18n('Problem chain masked')}
+                  </button>
+                  <span style={{ fontSize: 10, color: 'var(--text-tertiary)', flexShrink: 0, background: 'var(--bg-secondary)', borderRadius: 4, padding: '2px 6px' }}>
+                    {row.rowType === 'flip' ? i18n('Problem chain row type flip') : i18n('Problem chain row type text')}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      );
+    }
     if (kind === 'ai_eval') {
       const p = problem as ProblemAiEval;
       const revealed = reveal.aiEval || new Set<string>();
@@ -548,7 +591,7 @@ function RoadmapDrawerProblemItem({
     return null;
   };
 
-  const hideSeparateAnswers = kind === 'fill_blank' || kind === 'matching' || kind === 'super_flip' || kind === 'ai_eval';
+  const hideSeparateAnswers = kind === 'fill_blank' || kind === 'matching' || kind === 'super_flip' || kind === 'chain' || kind === 'ai_eval';
 
   return (
     <div className={`roadmap-detail-drawer__problem${expanded ? ' is-expanded' : ''}${selected ? ' is-selected' : ''}`}>

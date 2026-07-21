@@ -158,6 +158,7 @@ export function problemKindToI18nKey(kind: ProblemKind): string {
     case 'matching': return 'Problem kind matching';
     case 'super_flip': return 'Problem kind super flip';
     case 'ai_eval': return 'Problem kind ai eval';
+    case 'chain': return 'Problem kind chain';
     default: {
       const _x: never = kind;
       return String(_x);

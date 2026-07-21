@@ -11,7 +11,7 @@ import {
     Types,
 } from '../service/server';
 import { PERM, PRIV, STATUS_TEXTS } from '../model/builtin';
-import type { BaseDoc, BaseNode, CardDoc, ProblemAiEval, ProblemFlip, ProblemFillBlank, ProblemMatching, ProblemSuperFlip } from '../interface';
+import type { BaseDoc, BaseNode, CardDoc, ProblemAiEval, ProblemFlip, ProblemFillBlank, ProblemMatching, ProblemSuperFlip, ProblemChain } from '../interface';
 import { BaseModel, CardModel } from '../model/base';
 import RecordModel, { type SessionRecordDoc, type RecordProblemState } from '../model/record';
 import { problemKind, matchingColumnsNormalized, superFlipNormalized, flattenAiEvalRubricForScoring, aiEvalRubricSumMax } from '../model/problem';
@@ -288,6 +288,16 @@ async function problemRowsForRecord(rd: SessionRecordDoc): Promise<LessonHistory
                     st
                         || superFlipNormalized(sf).headers.map((x) => String(x ?? '').trim()).filter(Boolean).slice(0, 3).join(' · ')
                         || sf.pid || '',
+                    160,
+                );
+            }
+            else if (pk === 'chain') {
+                const ch = pr as ProblemChain;
+                const st = typeof ch.stem === 'string' && ch.stem.trim() ? ch.stem.trim() : '';
+                stemPreview = stripHtmlOneLine(
+                    st
+                        || ch.rows.map((r) => String(r.content ?? '').trim()).filter(Boolean).slice(0, 3).join(' · ')
+                        || ch.pid || '',
                     160,
                 );
             }

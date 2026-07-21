@@ -10,6 +10,8 @@ import type {
   ProblemMatching,
   ProblemSuperFlip,
   ProblemAiEval,
+  ProblemChain,
+  ProblemChainRow,
   ProblemAiEvalSubPoint,
   ProblemKind,
 } from 'ejun/src/interface';
@@ -33,6 +35,9 @@ import {
   SUPER_FLIP_ROW_MAX,
   SUPER_FLIP_COL_MIN,
   SUPER_FLIP_COL_MAX,
+  CHAIN_ROW_MIN,
+  CHAIN_ROW_MAX,
+  normalizeChainRows,
 } from 'ejun/src/model/problem';
 
 export type LearnProblemNotesDraftBatch = {
@@ -63,6 +68,8 @@ function problemKindLabelI18n(k: ProblemKind): string {
       return i18n('Problem kind super flip');
     case 'fill_blank':
       return i18n('Problem kind fill blank');
+    case 'chain':
+      return i18n('Problem kind chain');
     case 'ai_eval':
       return i18n('Problem kind ai eval');
     default:
@@ -194,6 +201,14 @@ export const EditableProblem = React.memo(({
       return;
     }
     if (baseProblemJsonStable(model, problem)) return;
+    // For chain problems, block save until all rows have a type selected.
+    if (problemKind(model) === 'chain') {
+      const ch = model as ProblemChain;
+      const rows = ch.rows;
+      if (!Array.isArray(rows) || rows.some((r) => !r.rowType)) {
+        return;
+      }
+    }
     onUpdate(model);
   }, [model, problem, onUpdate]);
 
@@ -486,6 +501,7 @@ export const EditableProblem = React.memo(({
             <option value="flip">{i18n('Problem kind flip')}</option>
             <option value="matching">{i18n('Problem kind matching')}</option>
             <option value="super_flip">{i18n('Problem kind super flip')}</option>
+            <option value="chain">{i18n('Problem kind chain')}</option>
             <option value="fill_blank">{i18n('Problem kind fill blank')}</option>
             <option value="ai_eval">{i18n('Problem kind ai eval')}</option>
           </select>
@@ -901,6 +917,148 @@ export const EditableProblem = React.memo(({
               </div>
             ));
           })()}
+        </>
+      ) : kind === 'chain' ? (
+        <>
+          <div style={{ marginBottom: '4px' }}>
+            <div style={{ fontSize: '11px', color: themeStyles.textSecondary, marginBottom: 2 }}>{i18n('Stem')}</div>
+            <textarea
+              value={(model as ProblemChain).stem ?? ''}
+              onChange={(e) =>
+                setModel({ ...(model as ProblemChain), stem: e.target.value.trim() ? e.target.value : undefined })
+              }
+              placeholder={i18n('Problem chain stem optional')}
+              style={taStyle}
+            />
+          </div>
+          <div style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: 12, fontSize: '11px', color: themeStyles.textPrimary }}>
+            <span style={{ fontWeight: 600 }}>🔗 {i18n('Problem kind chain')}</span>
+          </div>
+          <div style={{ fontSize: '11px', color: themeStyles.textSecondary, marginBottom: 6 }}>
+            {i18n('Problem chain editor hint')}
+          </div>
+          {normalizeChainRows((model as ProblemChain).rows).map((row, ri) => {
+            const rowTypeDeclared = !!row.rowType;
+            return (
+            <div key={ri} style={{
+              marginBottom: 10,
+              border: `1px solid ${rowTypeDeclared ? themeStyles.borderPrimary : '#e53935'}`,
+              opacity: rowTypeDeclared ? 1 : 0.7,
+              borderRadius: 4,
+              padding: '6px 8px',
+              background: themeStyles.bgSecondary,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <span style={{ fontSize: 11, color: themeStyles.textSecondary, minWidth: 16, flexShrink: 0 }}>
+                  {ri + 1}
+                </span>
+                <select
+                  value={row.rowType || ''}
+                  onChange={(e) => {
+                    const ch = model as ProblemChain;
+                    const rows = normalizeChainRows(ch.rows).map((r) => ({ ...r }));
+                    const val = e.target.value as 'flip' | 'text' | '';
+                    rows[ri] = { ...rows[ri], rowType: val || undefined };
+                    setModel({ ...ch, rows });
+                  }}
+                  style={{
+                    fontSize: 10, fontWeight: 600, padding: '2px 4px', borderRadius: 4,
+                    border: `1px solid ${themeStyles.borderPrimary}`,
+                    background: !rowTypeDeclared ? themeStyles.bgPrimary
+                      : row.rowType === 'flip' ? '#ff9800' : '#4caf50',
+                    color: !rowTypeDeclared ? themeStyles.textSecondary : '#fff',
+                    cursor: 'pointer', userSelect: 'none',
+                  }}
+                >
+                  <option value="">{i18n('Problem chain row type unset')}</option>
+                  <option value="flip">{i18n('Problem chain row type flip')}</option>
+                  <option value="text">{i18n('Problem chain row type text')}</option>
+                </select>
+                {!rowTypeDeclared ? (
+                  <span style={{ fontSize: 10, color: '#e53935', marginLeft: 4 }}>
+                    {i18n('Please select')}
+                  </span>
+                ) : null}
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const ch = model as ProblemChain;
+                      const rows = normalizeChainRows(ch.rows).map((r) => ({ ...r }));
+                      rows.splice(ri, 0, {});
+                      setModel({ ...ch, rows });
+                    }}
+                    title={i18n('Insert row before')}
+                    style={{
+                      width: 22, height: 22, padding: 0, fontSize: 14, lineHeight: '20px',
+                      borderRadius: 3, border: `1px solid ${themeStyles.borderPrimary}`,
+                      background: themeStyles.bgPrimary, color: themeStyles.textPrimary,
+                      cursor: 'pointer', flexShrink: 0,
+                    }}
+                  >+↑</button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const ch = model as ProblemChain;
+                      const rows = normalizeChainRows(ch.rows).map((r) => ({ ...r }));
+                      rows.splice(ri + 1, 0, {});
+                      setModel({ ...ch, rows });
+                    }}
+                    title={i18n('Insert row after')}
+                    style={{
+                      width: 22, height: 22, padding: 0, fontSize: 13, lineHeight: '20px',
+                      borderRadius: 3, border: `1px solid ${themeStyles.borderPrimary}`,
+                      background: themeStyles.bgPrimary, color: themeStyles.textPrimary,
+                      cursor: 'pointer', flexShrink: 0,
+                    }}
+                  >+↓</button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const ch = model as ProblemChain;
+                      const rows = normalizeChainRows(ch.rows).map((r) => ({ ...r }));
+                      if (rows.length <= 1) return;
+                      rows.splice(ri, 1);
+                      setModel({ ...ch, rows });
+                    }}
+                    disabled={normalizeChainRows((model as ProblemChain).rows).length <= 1}
+                    title={i18n('Delete row')}
+                    style={{
+                      width: 22, height: 22, padding: 0, fontSize: 14, lineHeight: '20px',
+                      borderRadius: 3, border: `1px solid ${themeStyles.borderPrimary}`,
+                      background: themeStyles.bgPrimary, color: themeStyles.textPrimary,
+                      cursor: normalizeChainRows((model as ProblemChain).rows).length > 1 ? 'pointer' : 'not-allowed',
+                      opacity: normalizeChainRows((model as ProblemChain).rows).length > 1 ? 1 : 0.35,
+                      flexShrink: 0,
+                    }}
+                  >×</button>
+                </div>
+              </div>
+              <textarea
+                value={row.content || ''}
+                onChange={(e) => {
+                  const ch = model as ProblemChain;
+                  const rows = normalizeChainRows(ch.rows).map((r) => ({ ...r }));
+                  rows[ri] = { ...rows[ri], content: e.target.value };
+                  setModel({ ...ch, rows });
+                }}
+                placeholder={rowTypeDeclared ? i18n('Problem chain cell') : i18n('Problem chain row type before content')}
+                style={{
+                  width: '100%',
+                  minHeight: '40px',
+                  resize: 'vertical',
+                  fontSize: '12px',
+                  padding: '4px 6px',
+                  boxSizing: 'border-box',
+                  border: `1px solid ${themeStyles.borderPrimary}`,
+                  borderRadius: 2,
+                  backgroundColor: rowTypeDeclared ? themeStyles.bgPrimary : `${themeStyles.bgPrimary}66`,
+                  color: themeStyles.textPrimary,
+                }}
+              />
+            </div>
+            );
+          })}
         </>
       ) : kind === 'ai_eval' ? (
         <>
