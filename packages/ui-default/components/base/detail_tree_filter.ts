@@ -11,6 +11,7 @@ export type BaseDetailFilter = {
   filterCard: string;
   filterProblem: string;
   filterCardTag: string;
+  filterProblemTag: string;
 };
 
 export type BaseDetailTreeVisibility = {
@@ -20,10 +21,10 @@ export type BaseDetailTreeVisibility = {
   matchCount: number;
 };
 
-const FILTER_KEYS = ['filterNode', 'filterCard', 'filterProblem', 'filterCardTag'] as const;
+const FILTER_KEYS = ['filterNode', 'filterCard', 'filterProblem', 'filterCardTag', 'filterProblemTag'] as const;
 
 export function emptyBaseDetailFilter(): BaseDetailFilter {
-  return { filterNode: '', filterCard: '', filterProblem: '', filterCardTag: '' };
+  return { filterNode: '', filterCard: '', filterProblem: '', filterCardTag: '', filterProblemTag: '' };
 }
 
 export function readBaseDetailFilterFromLocation(): BaseDetailFilter {
@@ -34,6 +35,7 @@ export function readBaseDetailFilterFromLocation(): BaseDetailFilter {
       filterCard: sp.get('filterCard') || '',
       filterProblem: sp.get('filterProblem') || '',
       filterCardTag: sp.get('filterCardTag') || '',
+      filterProblemTag: sp.get('filterProblemTag') || '',
     };
   } catch {
     return emptyBaseDetailFilter();
@@ -52,7 +54,7 @@ export function writeBaseDetailFilterToLocation(filters: BaseDetailFilter): void
 }
 
 export function isBaseDetailFilterActive(filters: BaseDetailFilter): boolean {
-  return !!(filters.filterNode.trim() || filters.filterCard.trim() || filters.filterProblem.trim() || filters.filterCardTag.trim());
+  return !!(filters.filterNode.trim() || filters.filterCard.trim() || filters.filterProblem.trim() || filters.filterCardTag.trim() || filters.filterProblemTag.trim());
 }
 
 function problemSearchText(problem: Record<string, unknown>): string {
@@ -83,6 +85,7 @@ function cardMatchesCardFilter(card: Card, filters: BaseDetailFilter): boolean {
   const cardQ = filters.filterCard.trim().toLowerCase();
   const problemQ = filters.filterProblem.trim().toLowerCase();
   const tagQ = filters.filterCardTag.trim().toLowerCase();
+  const probTagQ = filters.filterProblemTag.trim().toLowerCase();
   if (cardQ) {
     const text = `${cardDisplayLabel(card)} ${String(card.content || '')}`.toLowerCase();
     if (!text.includes(cardQ)) return false;
@@ -101,6 +104,19 @@ function cardMatchesCardFilter(card: Card, filters: BaseDetailFilter): boolean {
     ));
     if (!hasProblem) return false;
   }
+  if (probTagQ) {
+    const probTags = probTagQ.split(',').map((t) => t.trim()).filter(Boolean);
+    if (probTags.length > 0) {
+      const allProbTags: string[] = [];
+      (card.problems || []).forEach((problem) => {
+        if (Array.isArray((problem as any).tags)) {
+          (problem as any).tags.forEach((t: string) => allProbTags.push(t.toLowerCase()));
+        }
+      });
+      const matchesTag = probTags.some((ptag) => allProbTags.includes(ptag));
+      if (!matchesTag) return false;
+    }
+  }
   return true;
 }
 
@@ -109,7 +125,8 @@ function nodePassesAllFilters(node: BaseNode, cards: Card[], filters: BaseDetail
   const cardQ = filters.filterCard.trim();
   const problemQ = filters.filterProblem.trim();
   const tagQ = filters.filterCardTag.trim();
-  if (cardQ || problemQ || tagQ) {
+  const probTagQ = filters.filterProblemTag.trim();
+  if (cardQ || problemQ || tagQ || probTagQ) {
     return cards.some((card) => cardMatchesCardFilter(card, filters));
   }
   return true;
@@ -182,7 +199,7 @@ export function computeBaseDetailTreeVisibility(
     });
   });
 
-  const hasCardFilter = !!(filters.filterCard.trim() || filters.filterProblem.trim() || filters.filterCardTag.trim());
+  const hasCardFilter = !!(filters.filterCard.trim() || filters.filterProblem.trim() || filters.filterCardTag.trim() || filters.filterProblemTag.trim());
   const visibleCardIds = hasCardFilter ? matchingCardIds : null;
 
   return {
