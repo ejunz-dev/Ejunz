@@ -290,10 +290,37 @@ function TreeBranch({
                       </span>
                     ) : null}
                     {showCardTags && child.card.tags && child.card.tags.length > 0 ? (
-                      <span className="base-detail-tree__card-tags">
-                        {child.card.tags.map((tag) => (
-                          <span key={tag} className="base-detail-tree__tag">{tag}</span>
-                        ))}
+                      <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 4, alignItems: 'center', verticalAlign: 'middle' }}>
+                        {(() => {
+                          const parents: string[] = [];
+                          const childMap: Record<string, string[]> = {};
+                          for (const t of child.card.tags) {
+                            const sl = t.indexOf('/');
+                            if (sl > 0) {
+                              const p2 = t.slice(0, sl);
+                              const c2 = t.slice(sl + 1);
+                              if (!childMap[p2]) childMap[p2] = [];
+                              childMap[p2].push(c2);
+                            } else {
+                              parents.push(t);
+                            }
+                          }
+                          return parents.map((p) => {
+                            const chs = childMap[p] || [];
+                            return (
+                              <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 2, border: '1px solid var(--roadmap-tag-color, #4135d6)', borderRadius: 4, overflow: 'hidden', fontSize: 10, lineHeight: '1.4' }}>
+                                <span style={{ padding: '1px 5px', background: 'var(--roadmap-tag-bg, rgba(65,53,214,0.1))', color: 'var(--roadmap-tag-color, #4135d6)', fontWeight: 600 }}>{p}</span>
+                                {chs.length > 0 && (
+                                  <span style={{ display: 'inline-flex', gap: 1, padding: '1px 4px' }}>
+                                    {chs.map((c) => (
+                                      <span key={p + '/' + c} style={{ padding: '1px 4px', color: 'var(--roadmap-tag-color, #4135d6)', opacity: 0.8 }}>{c}</span>
+                                    ))}
+                                  </span>
+                                )}
+                              </span>
+                            );
+                          });
+                        })()}
                       </span>
                     ) : null}
                   </button>
