@@ -889,6 +889,19 @@ function BaseDetailViewer() {
             );
             return [...tags].sort();
           })()}
+          availableProblemTags={(() => {
+            const tags = new Set<string>();
+            const registry: string[] = Array.isArray(base.problemTags) ? base.problemTags : [];
+            registry.forEach((t) => tags.add(t));
+            Object.values(nodeCardsMap).forEach((cards) =>
+              cards.forEach((c) => {
+                if (Array.isArray(c.problems)) c.problems.forEach((p) => {
+                  if (Array.isArray(p.tags)) p.tags.forEach((t) => tags.add(t));
+                });
+              })
+            );
+            return [...tags].sort();
+          })()}
         />
       ) : null}
       <div className="roadmap-view">
