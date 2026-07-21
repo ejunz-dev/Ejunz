@@ -24,6 +24,62 @@ function SearchIcon() {
   );
 }
 
+/** Render tags as inline row boxes (parent | child1 | child2) with toggle logic. */
+function TagChipGroup({
+  tags,
+  selectedSet,
+  onToggle,
+  highlightColor,
+}: {
+  tags: string[];
+  selectedSet: Set<string>;
+  onToggle: (tag: string, isParent: boolean, parentTag?: string) => void;
+  highlightColor: string;
+}) {
+  // Build hierarchy
+  const parents: string[] = [];
+  const childMap: Record<string, string[]> = {};
+  for (const t of tags) {
+    const sl = t.indexOf('/');
+    if (sl > 0) {
+      const p = t.slice(0, sl);
+      const c = t.slice(sl + 1);
+      if (!childMap[p]) childMap[p] = [];
+      childMap[p].push(c);
+    } else {
+      parents.push(t);
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+      {parents.map((p) => {
+        const chs = childMap[p] || [];
+        const pSel = selectedSet.has(p);
+        const groupSel = pSel || chs.some((c) => selectedSet.has(p + '/' + c));
+        return (
+          <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 0, border: `1px solid ${groupSel ? highlightColor : 'var(--roadmap-border, #ddd)'}`, borderRadius: 4, overflow: 'hidden', fontSize: 11, lineHeight: '1.5' }}>
+            <span style={{ padding: '2px 7px', cursor: 'pointer', background: pSel ? 'var(--roadmap-tag-bg, rgba(65,53,214,0.1))' : 'var(--roadmap-bg-input, #f0f0f0)', color: pSel ? highlightColor : 'var(--roadmap-text-secondary, #888)', fontWeight: 600 }}
+              onClick={() => onToggle(p, true, undefined)}>
+              {p}
+            </span>
+            {chs.map((c) => {
+              const fullTag = p + '/' + c;
+              const cSel = selectedSet.has(fullTag);
+              return (
+                <span key={fullTag} style={{ padding: '2px 6px', cursor: 'pointer', borderLeft: '1px solid var(--roadmap-border, #ddd)', background: cSel ? 'var(--roadmap-tag-bg, rgba(65,53,214,0.1))' : 'transparent', color: cSel ? highlightColor : 'var(--roadmap-text-secondary, #888)', fontWeight: cSel ? 600 : 400 }}
+                  onClick={() => onToggle(fullTag, false, p)}>
+                  {c}
+                </span>
+              );
+            })}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 export function BaseDetailExplorer({
   searchQuery,
   filters,
@@ -32,6 +88,7 @@ export function BaseDetailExplorer({
   onApplyFilters,
   onClearFilters,
   availableCardTags,
+  availableProblemTags,
 }: {
   searchQuery: string;
   filters: BaseDetailFilter;
@@ -40,6 +97,7 @@ export function BaseDetailExplorer({
   onApplyFilters: (filters: BaseDetailFilter) => void;
   onClearFilters: () => void;
   availableCardTags?: string[];
+  availableProblemTags?: string[];
 }) {
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [filterDraft, setFilterDraft] = useState<BaseDetailFilter>(filters);
@@ -73,6 +131,23 @@ export function BaseDetailExplorer({
     onClearFilters();
     setFilterDialogOpen(false);
   }, [onClearFilters]);
+
+  const makeToggleHandler = (field: 'filterCardTag' | 'filterProblemTag') => (tag: string) => {
+    setFilterDraft((draft) => {
+      const current = draft[field].split(',').map((t) => t.trim()).filter(Boolean);
+      const set = new Set(current);
+      if (set.has(tag)) set.delete(tag);
+      else set.add(tag);
+      // Also remove children when parent is toggled off
+      if (field === 'filterCardTag') {
+        // no special handling needed — child tags are independent tags in the set
+      }
+      return { ...draft, [field]: [...set].join(', ') };
+    });
+  };
+
+  const parseActiveTags = (field: string): Set<string> =>
+    new Set(field.split(',').map((t) => t.trim()).filter(Boolean));
 
   return (
     <>
@@ -160,6 +235,8 @@ export function BaseDetailExplorer({
                   autoComplete="off"
                 />
               </label>
+
+              {/* Card tags filter */}
               <label className="roadmap-detail-explorer__field">
                 <span>{i18n('Card tags filter')}</span>
                 <input
@@ -170,34 +247,35 @@ export function BaseDetailExplorer({
                   autoComplete="off"
                   style={{ marginBottom: 6 }}
                 />
-                {availableCardTags && availableCardTags.length > 0 ? (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
-                    {availableCardTags.map((tag) => {
-                      const activeTags = filterDraft.filterCardTag.split(',').map((t) => t.trim()).filter(Boolean);
-                      const selected = activeTags.includes(tag);
-                      return (
-                        <button
-                          key={tag}
-                          type="button"
-                          onClick={() => {
-                            const current = new Set(activeTags);
-                            if (selected) current.delete(tag);
-                            else current.add(tag);
-                            setFilterDraft((draft) => ({ ...draft, filterCardTag: [...current].join(', ') }));
-                          }}
-                          style={{
-                            padding: '2px 8px', borderRadius: 4, border: 'none', cursor: 'pointer',
-                            background: selected ? 'var(--roadmap-tag-bg, rgba(65, 53, 214, 0.1))' : 'var(--roadmap-bg-input, #f0f0f0)',
-                            color: selected ? 'var(--roadmap-tag-color, var(--roadmap-accent, #4135d6))' : 'var(--roadmap-text-secondary, #888)',
-                            fontSize: 11, fontWeight: selected ? 600 : 400, outline: 'none',
-                          }}
-                        >
-                          {tag}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : null}
+                {availableCardTags && availableCardTags.length > 0 && (
+                  <TagChipGroup
+                    tags={availableCardTags}
+                    selectedSet={parseActiveTags(filterDraft.filterCardTag)}
+                    onToggle={makeToggleHandler('filterCardTag')}
+                    highlightColor="var(--roadmap-tag-color, #4135d6)"
+                  />
+                )}
+              </label>
+
+              {/* Problem tags filter */}
+              <label className="roadmap-detail-explorer__field">
+                <span>{i18n('Problem tags filter')}</span>
+                <input
+                  type="text"
+                  value={filterDraft.filterProblemTag}
+                  onChange={(e) => setFilterDraft((draft) => ({ ...draft, filterProblemTag: e.target.value }))}
+                  placeholder={i18n('Problem tags filter placeholder')}
+                  autoComplete="off"
+                  style={{ marginBottom: 6 }}
+                />
+                {availableProblemTags && availableProblemTags.length > 0 && (
+                  <TagChipGroup
+                    tags={availableProblemTags}
+                    selectedSet={parseActiveTags(filterDraft.filterProblemTag)}
+                    onToggle={makeToggleHandler('filterProblemTag')}
+                    highlightColor="#e65100"
+                  />
+                )}
               </label>
             </div>
             <div className="roadmap-detail-explorer__dialog-actions">
