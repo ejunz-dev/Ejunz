@@ -146,7 +146,7 @@ export function WSStatusIndicator({
               <span className="base-detail-ws-indicator__dropdown-tag">{v.pageType === 'detail' ? 'Detail' : 'Editor'}</span>
             </div>
           )) : (
-            <div className="base-detail-ws-indicator__dropdown-item" style={{ justifyContent: 'center', color: '#999' }}>
+            <div className="base-detail-ws-indicator__dropdown-item" style={{ justifyContent: 'center', color: 'var(--roadmap-text-muted, #999)' }}>
               {i18n('No other viewers')}
             </div>
           )}

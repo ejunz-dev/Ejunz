@@ -126,7 +126,7 @@ export function BaseEditorProblemTagsPanel({
           style={{ flex: 1, padding: '5px 8px', borderRadius: 4, border: `1px solid ${themeStyles.borderSecondary}`, background: themeStyles.bgPrimary, color: themeStyles.textPrimary, fontSize: 12, outline: 'none' }}
           autoComplete="off" />
         <button type="button" onClick={handleAdd}
-          style={{ padding: '5px 10px', borderRadius: 4, border: 'none', background: '#ffd24a', color: '#111', fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>{i18n('Add')}</button>
+          style={{ padding: '5px 10px', borderRadius: 4, border: 'none', background: 'var(--roadmap-accent, #ffd24a)', color: 'var(--roadmap-text-on-accent, #111)', fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>{i18n('Add')}</button>
       </div>
       {/* Parent tags */}
       {tree.parents.slice().reverse().map((parent) => {
@@ -143,13 +143,13 @@ export function BaseEditorProblemTagsPanel({
                 </button>
               )}
               {!hasChildren && <span style={{ width: 16 }} />}
-              <span style={{ flex: 1, fontWeight: 600, fontSize: 12, color: '#e65100' }}>{parent}</span>
+              <span style={{ flex: 1, fontWeight: 600, fontSize: 12, color: 'var(--roadmap-problem-tag-color, #e65100)' }}>{parent}</span>
               {renamingTag === parent ? (
                 <>
                   <input ref={renameRef} type="text" value={renameInput} onChange={(e) => setRenameInput(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') handleRename(parent); else if (e.key === 'Escape') setRenamingTag(null); }}
                     style={{ flex: 1, padding: '2px 6px', borderRadius: 3, border: `1px solid ${themeStyles.accent || '#4135d6'}`, background: themeStyles.bgPrimary, color: themeStyles.textPrimary, fontSize: 12, outline: 'none' }} autoComplete="off" />
-                  <button type="button" onClick={() => handleRename(parent)} style={{ padding: '2px 6px', borderRadius: 3, border: 'none', background: '#ffd24a', color: '#111', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>{i18n('Save')}</button>
+                  <button type="button" onClick={() => handleRename(parent)} style={{ padding: '2px 6px', borderRadius: 3, border: 'none', background: 'var(--roadmap-accent, #ffd24a)', color: 'var(--roadmap-text-on-accent, #111)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>{i18n('Save')}</button>
                   <button type="button" onClick={() => setRenamingTag(null)} style={{ padding: '2px 6px', borderRadius: 3, border: 'none', background: 'transparent', color: themeStyles.textSecondary, fontSize: 11, cursor: 'pointer' }}>{i18n('Cancel')}</button>
                 </>
               ) : (
@@ -172,7 +172,7 @@ export function BaseEditorProblemTagsPanel({
                     onKeyDown={(e) => { if (e.key === 'Enter') handleAddChild(parent); }}
                     placeholder={i18n('Add sub-tag...')}
                     style={{ flex: 1, padding: '3px 6px', borderRadius: 3, border: `1px solid ${themeStyles.borderSecondary}`, background: themeStyles.bgPrimary, color: themeStyles.textPrimary, fontSize: 11, outline: 'none' }} autoComplete="off" />
-                  <button type="button" onClick={() => handleAddChild(parent)} style={{ padding: '2px 6px', borderRadius: 3, border: 'none', background: '#ffd24a', color: '#111', fontSize: 11, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>+</button>
+                  <button type="button" onClick={() => handleAddChild(parent)} style={{ padding: '2px 6px', borderRadius: 3, border: 'none', background: 'var(--roadmap-accent, #ffd24a)', color: 'var(--roadmap-text-on-accent, #111)', fontSize: 11, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>+</button>
                 </div>
               </div>
             )}

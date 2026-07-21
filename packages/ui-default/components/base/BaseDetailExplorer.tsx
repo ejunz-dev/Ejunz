@@ -59,7 +59,7 @@ function TagChipGroup({
         const groupSel = pSel || chs.some((c) => selectedSet.has(p + '/' + c));
         return (
           <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 0, border: `1px solid ${groupSel ? highlightColor : 'var(--roadmap-border, #ddd)'}`, borderRadius: 4, overflow: 'hidden', fontSize: 11, lineHeight: '1.5' }}>
-            <span style={{ padding: '2px 7px', cursor: 'pointer', background: pSel ? 'var(--roadmap-tag-bg, rgba(65,53,214,0.1))' : 'var(--roadmap-bg-input, #f0f0f0)', color: pSel ? highlightColor : 'var(--roadmap-text-secondary, #888)', fontWeight: 600 }}
+            <span style={{ padding: '2px 7px', cursor: 'pointer', background: pSel ? 'var(--roadmap-tag-bg, rgba(65,53,214,0.1))' : 'var(--roadmap-bg-surface)', color: pSel ? highlightColor : 'var(--roadmap-text-secondary, #888)', fontWeight: 600 }}
               onClick={() => onToggle(p, true, undefined)}>
               {p}
             </span>
@@ -273,7 +273,7 @@ export function BaseDetailExplorer({
                     tags={availableProblemTags}
                     selectedSet={parseActiveTags(filterDraft.filterProblemTag)}
                     onToggle={makeToggleHandler('filterProblemTag')}
-                    highlightColor="#e65100"
+                    highlightColor="var(--roadmap-problem-tag-color, #e65100)"
                   />
                 )}
               </label>
