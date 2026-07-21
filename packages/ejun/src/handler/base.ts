@@ -5039,6 +5039,9 @@ export class BaseBatchSaveHandler extends Handler {
 
             // Auto-maintain cardTags registry from the batch save payload
             const allCardTags = new Set<string>();
+            // Preserve existing registry tags (even if no card currently uses them)
+            const existingRegistry = (base as BaseDoc & { cardTags?: unknown }).cardTags;
+            if (Array.isArray(existingRegistry)) existingRegistry.forEach((t: string) => allCardTags.add(t));
             for (const cc of cardCreates) {
                 if (Array.isArray(cc.tags)) cc.tags.forEach((t: string) => allCardTags.add(t));
             }
