@@ -348,10 +348,28 @@ function TreeBranch({
                               {problemTitle}
                             </span>
                             {showProblemTags && problem.tags && problem.tags.length > 0 ? (
-                              <span className="base-detail-tree__problem-tags">
-                                {problem.tags.map((ptag: string) => (
-                                  <span key={ptag} className="base-detail-tree__tag--problem">{ptag}</span>
-                                ))}
+                              <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 2, alignItems: 'center', verticalAlign: 'middle' }}>
+                                {(() => {
+                                  const pts = problem.tags as string[];
+                                  const plist: string[] = [];
+                                  const cmap: Record<string, string[]> = {};
+                                  for (const t of pts) {
+                                    const sl = t.indexOf('/');
+                                    if (sl > 0) { const p2 = t.slice(0, sl); const c2 = t.slice(sl + 1); if (!cmap[p2]) cmap[p2] = []; cmap[p2].push(c2); }
+                                    else plist.push(t);
+                                  }
+                                  return plist.map((p) => {
+                                    const cs = cmap[p] || [];
+                                    return (
+                                      <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 1, border: '1px solid #e65100', borderRadius: 3, overflow: 'hidden', fontSize: 9, lineHeight: '1.3' }}>
+                                        <span style={{ padding: '1px 4px', background: 'rgba(255,152,0,0.15)', color: '#e65100', fontWeight: 600 }}>{p}</span>
+                                        {cs.length > 0 && <span style={{ display: 'inline-flex', gap: 1, padding: '1px 3px' }}>
+                                          {cs.map((c) => <span key={p + '/' + c} style={{ padding: '1px 3px', color: '#e65100', opacity: 0.8 }}>{c}</span>)}
+                                        </span>}
+                                      </span>
+                                    );
+                                  });
+                                })()}
                               </span>
                             ) : null}
                           </button>

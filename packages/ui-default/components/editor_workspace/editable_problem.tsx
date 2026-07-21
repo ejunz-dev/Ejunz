@@ -523,27 +523,30 @@ export const EditableProblem = React.memo(({
               </span>
             )}
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, maxWidth: '100%' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'stretch', gap: 4, maxWidth: '100%' }}>
             {currentProblemTags.length > 0
-              ? currentProblemTags.map((t) => (
-                <span
-                  key={t}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    padding: '2px 8px',
-                    borderRadius: 999,
-                    border: `1px solid ${themeStyles.borderPrimary}`,
-                    backgroundColor: themeStyles.bgSecondary ?? themeStyles.bgPrimary,
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    maxWidth: '100%',
-                    wordBreak: 'break-word',
-                  }}
-                >
-                  {t}
-                </span>
-              ))
+              ? (() => {
+                  const plist: string[] = [];
+                  const cmap: Record<string, string[]> = {};
+                  for (const t of currentProblemTags) {
+                    const sl = t.indexOf('/');
+                    if (sl > 0) { const p2 = t.slice(0, sl); const c2 = t.slice(sl + 1); if (!cmap[p2]) cmap[p2] = []; cmap[p2].push(c2); }
+                    else { plist.push(t); }
+                  }
+                  return plist.map((p) => {
+                    const chs = cmap[p] || [];
+                    return (
+                      <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 1, border: '1px solid ' + themeStyles.borderPrimary, borderRadius: 4, overflow: 'hidden', fontSize: '11px', lineHeight: '1.4' }}>
+                        <span style={{ padding: '2px 7px', background: themeStyles.bgSecondary ?? themeStyles.bgPrimary, color: themeStyles.textPrimary, fontWeight: 600 }}>{p}</span>
+                        {chs.length > 0 && (
+                          <span style={{ display: 'inline-flex', gap: 1, padding: '2px 6px' }}>
+                            {chs.map((c) => <span key={p + '/' + c} style={{ padding: '0 3px', color: themeStyles.textSecondary }}>{c}</span>)}
+                          </span>
+                        )}
+                      </span>
+                    );
+                  });
+                })()
               : (
                 <span style={{ fontSize: '11px', color: themeStyles.textSecondary, fontStyle: 'italic' }}>
                   {i18n('Problem tag none')}
