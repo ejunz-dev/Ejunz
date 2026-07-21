@@ -494,6 +494,22 @@ edge_authorize: Edge Authorization
 'Problem kind matching': Matching pairs
 'Problem kind super flip': Super flip table
 'Problem kind ai eval': AI evaluation
+'Problem kind chain': Chain
+'Problem chain stem optional': Description (optional)
+'Problem chain row count': Rows
+'Problem chain editor hint': Each row can be flip (masked in lesson, tap to reveal) or text (always visible).
+'Problem chain cell': Cell content
+'Problem chain row type flip': Flip
+'Problem chain row type text': Text
+'Problem chain row type unset': Select type
+'Problem chain row type before content': Select type above first
+'Insert row before': Insert row above
+'Insert row after': Insert row below
+'Delete row': Delete this row
+'Problem chain masked': Tap to reveal
+'Problem chain not familiar': Not familiar
+'Problem chain reveal all': Reveal all
+'Problem chain cover all': Cover all
 'Problem ai eval stem placeholder': Enter the prompt for AI evaluation
 'Problem ai eval points': Evaluation points
 'Problem ai eval point title placeholder': Point title (shown in lesson)
