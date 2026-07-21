@@ -92,44 +92,38 @@ export function ProblemTagsEditModal({
               else { plist.push(t); }
             }
             const toggleTag = (tag: string) => {
-              if (tags.includes(tag)) setTags((prev) => prev.filter((t) => t !== tag));
+              if (tags.includes(tag)) setTags((prev) => prev.filter((t) => t !== tag && !t.startsWith(tag + "/")));
               else setTags((prev) => [...prev, tag]);
             };
-            return plist.map((p) => {
-              const pSel = tags.includes(p);
-              const chs = cmap[p] || [];
-              return (
-                <div key={p} style={{ border: `1px solid ${pSel ? '#e65100' : 'var(--roadmap-border, #ddd)'}`, borderRadius: 4, overflow: 'hidden', marginBottom: 4 }}>
-                  <button type="button" onClick={() => toggleTag(p)}
-                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '4px 10px', border: 'none', cursor: 'pointer',
-                      background: pSel ? 'rgba(255, 152, 0, 0.15)' : 'var(--roadmap-bg-input, #f0f0f0)',
-                      color: pSel ? '#e65100' : 'var(--roadmap-text-secondary, #888)',
-                      fontSize: 12, fontWeight: 600, outline: 'none' }}>
-                    {p}
-                  </button>
-                  {chs.length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, padding: '4px 10px' }}>
+            return (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {plist.map((p) => {
+                  const pSel = tags.includes(p);
+                  const chs = cmap[p] || [];
+                  return (
+                    <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 0, border: `1px solid ${pSel ? '#e65100' : 'var(--roadmap-border, #ddd)'}`, borderRadius: 4, overflow: 'hidden', fontSize: 12, lineHeight: '1.5' }}>
+                      <span style={{ padding: '3px 10px', cursor: 'pointer', background: pSel ? 'rgba(255, 152, 0, 0.15)' : 'transparent', color: pSel ? '#e65100' : 'var(--roadmap-text-secondary, #888)', fontWeight: 600 }}
+                        onClick={() => toggleTag(p)}>
+                        {p}
+                      </span>
                       {chs.map((c) => {
                         const fullTag = p + '/' + c;
                         const cSel = tags.includes(fullTag);
                         return (
-                          <button key={fullTag} type="button" onClick={() => {
-                            if (cSel) setTags((prev) => prev.filter((t) => t !== fullTag));
-                            else setTags((prev) => prev.includes(p) ? [...prev, fullTag] : [...prev, p, fullTag]);
-                          }}
-                            style={{ padding: '3px 8px', borderRadius: 3, border: 'none', cursor: 'pointer',
-                              background: cSel ? 'rgba(255, 152, 0, 0.15)' : 'var(--roadmap-bg-input, #f0f0f0)',
-                              color: cSel ? '#e65100' : 'var(--roadmap-text-secondary, #888)',
-                              fontSize: 11, fontWeight: cSel ? 600 : 400, outline: 'none' }}>
+                          <span key={fullTag} style={{ padding: '3px 8px', cursor: 'pointer', borderLeft: '1px solid var(--roadmap-border, #ddd)', background: cSel ? 'rgba(255, 152, 0, 0.15)' : 'transparent', color: cSel ? '#e65100' : 'var(--roadmap-text-secondary, #888)', fontWeight: cSel ? 600 : 400 }}
+                            onClick={() => {
+                              if (cSel) setTags((prev) => prev.filter((t) => t !== fullTag));
+                              else setTags((prev) => prev.includes(p) ? [...prev, fullTag] : [...prev, p, fullTag]);
+                            }}>
                             {c}
-                          </button>
+                          </span>
                         );
                       })}
-                    </div>
-                  )}
-                </div>
-              );
-            });
+                    </span>
+                  );
+                })}
+              </div>
+            );
           })()}
         </div>
 

@@ -191,7 +191,7 @@ export function ProblemEditModal({
                   else { parents.push(t); }
                 }
                 const toggleTag = (tag: string) => {
-                  if (problemTags.includes(tag)) setProblemTags((prev) => prev.filter((t) => t !== tag));
+                  if (problemTags.includes(tag)) setProblemTags((prev) => prev.filter((t) => t !== tag && !t.startsWith(tag + "/")));
                   else setProblemTags((prev) => [...prev, tag]);
                 };
                 const buttons: React.ReactNode[] = [];
@@ -199,39 +199,29 @@ export function ProblemEditModal({
                   const pSel = problemTags.includes(p);
                   const chs = childMap[p] || [];
                   buttons.push(
-                    <div key={p} style={{ border: `1px solid ${pSel ? '#e65100' : 'var(--roadmap-border, #ddd)'}`, borderRadius: 4, overflow: 'hidden' }}>
-                      <button type="button" onClick={() => toggleTag(p)}
-                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '3px 8px', border: 'none', cursor: 'pointer',
-                          background: pSel ? 'rgba(255, 152, 0, 0.15)' : 'var(--roadmap-bg-input, #f0f0f0)',
-                          color: pSel ? '#e65100' : 'var(--roadmap-text-secondary, #888)',
-                          fontSize: 11, fontWeight: 600, outline: 'none' }}>
+                    <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 0, border: `1px solid ${pSel ? '#e65100' : 'var(--roadmap-border, #ddd)'}`, borderRadius: 4, overflow: 'hidden', fontSize: 11, lineHeight: '1.5' }}>
+                      <span style={{ padding: '3px 8px', cursor: 'pointer', background: pSel ? 'rgba(255, 152, 0, 0.15)' : 'transparent', color: pSel ? '#e65100' : 'var(--roadmap-text-secondary, #888)', fontWeight: 600 }}
+                        onClick={() => toggleTag(p)}>
                         {p}
-                      </button>
-                      {chs.length > 0 && (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, padding: '4px 8px' }}>
-                          {chs.map((c) => {
-                            const fullTag = p + '/' + c;
-                            const cSel = problemTags.includes(fullTag);
-                            return (
-                              <button key={fullTag} type="button" onClick={() => {
-                                if (cSel) setProblemTags((prev) => prev.filter((t) => t !== fullTag));
-                                else setProblemTags((prev) => prev.includes(p) ? [...prev, fullTag] : [...prev, p, fullTag]);
-                              }}
-                                style={{ padding: '2px 7px', borderRadius: 3, border: 'none', cursor: 'pointer',
-                                  background: cSel ? 'rgba(255, 152, 0, 0.15)' : 'var(--roadmap-bg-input, #f0f0f0)',
-                                  color: cSel ? '#e65100' : 'var(--roadmap-text-secondary, #888)',
-                                  fontSize: 10, fontWeight: cSel ? 600 : 400, outline: 'none' }}>
-                                {c}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
+                      </span>
+                      {chs.map((c) => {
+                        const fullTag = p + '/' + c;
+                        const cSel = problemTags.includes(fullTag);
+                        return (
+                          <span key={fullTag} style={{ padding: '3px 6px', cursor: 'pointer', borderLeft: '1px solid var(--roadmap-border, #ddd)', background: cSel ? 'rgba(255, 152, 0, 0.15)' : 'transparent', color: cSel ? '#e65100' : 'var(--roadmap-text-secondary, #888)', fontWeight: cSel ? 600 : 400 }}
+                            onClick={() => {
+                              if (cSel) setProblemTags((prev) => prev.filter((t) => t !== fullTag));
+                              else setProblemTags((prev) => prev.includes(p) ? [...prev, fullTag] : [...prev, p, fullTag]);
+                            }}>
+                            {c}
+                          </span>
+                        );
+                      })}
+                    </span>
                   );
                 }
-                if (buttons.length > 0) return <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>{buttons}</div>;
-                return <span style={{ fontSize: 11, color: 'var(--roadmap-text-muted, #aaa)', fontStyle: 'italic' }}>{i18n('No tags available')}</span>;
+                if (buttons.length > 0) return <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{buttons}</div>;
+                return <span style={{ fontSize: 11, color: 'var(--roadmap-text-muted, #aaa)', fontStyle: 'italic' }}>{i18n('No tags available')}</span>;                return <span style={{ fontSize: 11, color: 'var(--roadmap-text-muted, #aaa)', fontStyle: 'italic' }}>{i18n('No tags available')}</span>;
               })()}
           </div>
         </div>

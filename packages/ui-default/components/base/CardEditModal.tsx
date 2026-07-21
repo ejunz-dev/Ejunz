@@ -270,82 +270,57 @@ export function CardEditModal({
             </label>
             {tagsForRender.length > 0 ? (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {tagsForRender.map((tag) => {
-                  const selected = tags.includes(tag);
-                  return (
-                    <button
-                      key={tag}
-                      type="button"
-                      onClick={() => {
-                        if (selected) setTags((prev) => prev.filter((t) => t !== tag));
-                        else setTags((prev) => [...prev, tag]);
-                      }}
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 4,
-                        padding: '4px 10px', borderRadius: 4, border: 'none',
-                        background: selected
-                          ? 'var(--roadmap-tag-bg, rgba(65, 53, 214, 0.1))'
-                          : 'var(--roadmap-bg-input, #f0f0f0)',
-                        color: selected
-                          ? 'var(--roadmap-tag-color, var(--roadmap-accent, #4135d6))'
-                          : 'var(--roadmap-text-secondary, #888)',
-                        fontSize: 12, fontWeight: selected ? 600 : 400,
-                        cursor: 'pointer', outline: 'none',
-                        transition: 'all 0.1s ease',
-                      }}
-                    >
-                      {tag}
-                    </button>
-                  );
-                })}
+                {(() => {
+                  const plist: string[] = [];
+                  const cmap: Record<string, string[]> = {};
+                  for (const t of tagsForRender) {
+                    const sl = t.indexOf('/');
+                    if (sl > 0) { const p2 = t.slice(0, sl); const c2 = t.slice(sl + 1); if (!cmap[p2]) cmap[p2] = []; cmap[p2].push(c2); }
+                    else { plist.push(t); }
+                  }
+                  const toggleTag = (tag: string) => {
+                    if (tags.includes(tag)) setTags((prev) => prev.filter((t) => t !== tag && !t.startsWith(tag + "/")));
+                    else setTags((prev) => [...prev, tag]);
+                  };
+                  return plist.map((p) => {
+                    const pSel = tags.includes(p);
+                    const chs = cmap[p] || [];
+                    return (
+                      <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 0, border: `1px solid ${pSel ? 'var(--roadmap-tag-color, #4135d6)' : 'var(--roadmap-border, #ddd)'}`, borderRadius: 4, overflow: 'hidden', fontSize: 12, lineHeight: '1.5' }}>
+                        <span style={{ padding: '3px 8px', cursor: 'pointer', background: pSel ? 'var(--roadmap-tag-bg, rgba(65,53,214,0.1))' : 'transparent', color: pSel ? 'var(--roadmap-tag-color, #4135d6)' : 'var(--roadmap-text-secondary, #888)', fontWeight: 600 }}
+                          onClick={() => toggleTag(p)}>
+                          {p}
+                        </span>
+                        {chs.map((c) => {
+                          const fullTag = p + '/' + c;
+                          const cSel = tags.includes(fullTag);
+                          return (
+                            <span key={fullTag} style={{ padding: '3px 6px', cursor: 'pointer', borderLeft: '1px solid var(--roadmap-border, #ddd)', background: cSel ? 'var(--roadmap-tag-bg, rgba(65,53,214,0.1))' : 'transparent', color: cSel ? 'var(--roadmap-tag-color, #4135d6)' : 'var(--roadmap-text-secondary, #888)', fontWeight: cSel ? 600 : 400 }}
+                              onClick={() => {
+                                if (cSel) setTags((prev) => prev.filter((t) => t !== fullTag));
+                                else setTags((prev) => prev.includes(p) ? [...prev, fullTag] : [...prev, p, fullTag]);
+                              }}>
+                              {c}
+                            </span>
+                          );
+                        })}
+                      </span>
+                    );
+                  });
+                })()}
                 {/* Also show tags already on the card that aren't in tagsForRender */}
                 {tags.filter((t) => !tagsForRender.includes(t)).map((tag) => (
-                  <span
-                    key={tag}
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 4,
-                      padding: '4px 10px', borderRadius: 4,
-                      background: 'var(--roadmap-tag-bg, rgba(65, 53, 214, 0.1))',
-                      color: 'var(--roadmap-tag-color, var(--roadmap-accent, #4135d6))',
-                      fontSize: 12, fontWeight: 600,
-                    }}
-                  >
+                  <span key={tag} style={{
+                    display: "inline-flex", alignItems: "center", gap: 4,
+                    padding: "3px 8px", borderRadius: 4,
+                    background: "var(--roadmap-tag-bg, rgba(65, 53, 214, 0.1))",
+                    color: "var(--roadmap-tag-color, var(--roadmap-accent, #4135d6))",
+                    fontSize: 12, fontWeight: 600,
+                  }}>
                     {tag}
-                    <button
-                      type="button"
-                      onClick={() => setTags((prev) => prev.filter((t) => t !== tag))}
-                      style={{
-                        border: 'none', background: 'transparent', cursor: 'pointer',
-                        padding: 0, fontSize: 14, lineHeight: 1, color: 'inherit', opacity: 0.6,
-                      }}
-                      aria-label={String(i18n('Remove tag'))}
-                    >×</button>
-                  </span>
-                ))}
-              </div>
-            ) : tags.length > 0 ? (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {tags.map((tag) => (
-                  <span
-                    key={tag}
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 4,
-                      padding: '4px 10px', borderRadius: 4,
-                      background: 'var(--roadmap-tag-bg, rgba(65, 53, 214, 0.1))',
-                      color: 'var(--roadmap-tag-color, var(--roadmap-accent, #4135d6))',
-                      fontSize: 12, fontWeight: 600,
-                    }}
-                  >
-                    {tag}
-                    <button
-                      type="button"
-                      onClick={() => setTags((prev) => prev.filter((t) => t !== tag))}
-                      style={{
-                        border: 'none', background: 'transparent', cursor: 'pointer',
-                        padding: 0, fontSize: 14, lineHeight: 1, color: 'inherit', opacity: 0.6,
-                      }}
-                      aria-label={String(i18n('Remove tag'))}
-                    >×</button>
+                    <button type="button" onClick={() => setTags((prev) => prev.filter((t) => t !== tag))}
+                      style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0, fontSize: 14, lineHeight: 1, color: "inherit", opacity: 0.6 }}
+                      aria-label={String(i18n("Remove tag"))}>×</button>
                   </span>
                 ))}
               </div>

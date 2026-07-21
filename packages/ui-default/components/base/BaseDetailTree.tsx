@@ -310,13 +310,7 @@ function TreeBranch({
                             return (
                               <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 2, border: '1px solid var(--roadmap-tag-color, #4135d6)', borderRadius: 4, overflow: 'hidden', fontSize: 10, lineHeight: '1.4' }}>
                                 <span style={{ padding: '1px 5px', background: 'var(--roadmap-tag-bg, rgba(65,53,214,0.1))', color: 'var(--roadmap-tag-color, #4135d6)', fontWeight: 600 }}>{p}</span>
-                                {chs.length > 0 && (
-                                  <span style={{ display: 'inline-flex', gap: 1, padding: '1px 4px' }}>
-                                    {chs.map((c) => (
-                                      <span key={p + '/' + c} style={{ padding: '1px 4px', color: 'var(--roadmap-tag-color, #4135d6)', opacity: 0.8 }}>{c}</span>
-                                    ))}
-                                  </span>
-                                )}
+                                {chs.map((c) => <span key={p + '/' + c} style={{ padding: '1px 4px', borderLeft: '1px solid var(--roadmap-tag-color, #4135d6)', color: 'var(--roadmap-tag-color, #4135d6)', opacity: 0.8 }}>{c}</span>)}
                               </span>
                             );
                           });
@@ -363,9 +357,7 @@ function TreeBranch({
                                     return (
                                       <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 1, border: '1px solid #e65100', borderRadius: 3, overflow: 'hidden', fontSize: 9, lineHeight: '1.3' }}>
                                         <span style={{ padding: '1px 4px', background: 'rgba(255,152,0,0.15)', color: '#e65100', fontWeight: 600 }}>{p}</span>
-                                        {cs.length > 0 && <span style={{ display: 'inline-flex', gap: 1, padding: '1px 3px' }}>
-                                          {cs.map((c) => <span key={p + '/' + c} style={{ padding: '1px 3px', color: '#e65100', opacity: 0.8 }}>{c}</span>)}
-                                        </span>}
+                                        {cs.map((c) => <span key={p + '/' + c} style={{ padding: '1px 4px', borderLeft: '1px solid #e65100', color: '#e65100', opacity: 0.8 }}>{c}</span>)}
                                       </span>
                                     );
                                   });
