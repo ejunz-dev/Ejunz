@@ -251,6 +251,7 @@ edge_authorize: Edge 授权
 'Final message will be': 最终消息将是
 'Flip mark done': 标记完成
 'Flip show back': 查看背面
+'Flip show front': 查看正面
 'Flip show hint': 显示提示
 'Flip hide hint': 收起提示
 'Flip hint label': 提示
