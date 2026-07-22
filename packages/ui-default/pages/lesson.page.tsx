@@ -990,20 +990,24 @@ function LessonPage() {
   const themeStyles = useMemo(() => {
     const dark = theme === 'dark';
     return {
-      bgPrimary: dark ? '#0f0f0f' : '#fff',
-      bgPage: dark
-        ? 'radial-gradient(ellipse 80% 50% at 50% 0%, rgba(76, 175, 80, 0.06) 0%, transparent 50%), #0f0f0f'
-        : '#fafafa',
-      bgCard: dark ? 'rgba(38, 39, 41, 0.92)' : '#fff',
+      bgPrimary: dark ? '#2d2d2d' : '#ffffff',
+      bgPage: dark ? '#1e1e1e' : '#fafafa',
+      bgCard: dark ? '#2d2d2d' : '#ffffff',
       bgSecondary: dark ? '#262729' : '#f5f5f5',
       bgHover: dark ? '#3a3b3d' : '#f3f4f6',
-      textPrimary: dark ? '#f0f0f0' : '#333',
-      textSecondary: dark ? '#9ca3af' : '#666',
-      textTertiary: dark ? '#6b7280' : '#999',
-      border: dark ? 'rgba(255,255,255,0.1)' : '#e0e0e0',
-      accent: dark ? '#38bdf8' : '#2196f3',
-      accentMutedBg: dark ? 'rgba(56, 189, 248, 0.14)' : '#e3f2fd',
-      accentMutedFg: dark ? '#7dd3fc' : '#1976d2',
+      textPrimary: dark ? '#e8e8e8' : '#111111',
+      textSecondary: dark ? '#bdbdbd' : '#666666',
+      textTertiary: dark ? '#888888' : '#999999',
+      border: dark ? '#3c3c3c' : '#ececec',
+      /** Yellow brand (roadmap main-node yellow) — primary action buttons. */
+      yellow: '#ffeb3b',
+      primary: dark ? '#262729' : '#f5f5f5',
+      primaryBorder: dark ? '#3c3c3c' : '#ececec',
+      whiteOnPrimary: dark ? '#e8e8e8' : '#111111',
+      /** Blue accent (roadmap hook-node blue) — secondary UI (tags, badges, sidebar highlights). */
+      accent: dark ? '#6eb3ff' : '#2b78e4',
+      accentMutedBg: dark ? 'rgba(110, 179, 255, 0.18)' : 'rgba(43, 120, 228, 0.10)',
+      accentMutedFg: dark ? '#6eb3ff' : '#2b78e4',
       reviewBg: dark ? 'rgba(251, 146, 60, 0.16)' : '#fff3e0',
       reviewFg: dark ? '#fdba74' : '#e65100',
       doneBg: dark ? 'rgba(34, 197, 94, 0.14)' : '#e8f5e9',
@@ -1014,21 +1018,23 @@ function LessonPage() {
       danger: '#f44336',
       dangerBg: dark ? 'rgba(244, 67, 54, 0.16)' : '#ffebee',
       orange: '#ff9800',
-      drawerScrim: 'rgba(0,0,0,0.45)',
-      stemColor: dark ? '#e5e5e5' : '#333',
-      bodyText: dark ? '#d1d5db' : '#555',
-      optionNeutral: dark ? '#262729' : '#fff',
-      optionBorderMuted: dark ? 'rgba(255,255,255,0.12)' : '#e0e0e0',
+      orangeMutedBg: dark ? 'rgba(255, 152, 0, 0.14)' : 'rgba(255, 152, 0, 0.10)',
+      orangeMutedFg: dark ? '#ff9800' : '#e65100',
+      drawerScrim: dark ? 'rgba(0,0,0,0.58)' : 'rgba(0,0,0,0.42)',
+      stemColor: dark ? '#e8e8e8' : '#111111',
+      bodyText: dark ? '#cccccc' : '#333333',
+      optionNeutral: dark ? '#262729' : '#ffffff',
+      optionBorderMuted: dark ? '#3c3c3c' : '#ececec',
       passedBannerBg: dark ? 'rgba(34, 197, 94, 0.12)' : '#e8f5e9',
       passedBannerBorder: dark ? 'rgba(74, 222, 128, 0.45)' : '#4caf50',
       passedTitle: dark ? '#86efac' : '#2e7d32',
       modalShadow: dark ? '0 4px 24px rgba(0,0,0,0.55)' : '0 4px 20px rgba(0,0,0,0.15)',
-      whiteOnAccent: '#fff',
+      whiteOnAccent: '#ffffff',
       drawerAsideShadow: dark ? '2px 0 16px rgba(0,0,0,0.5)' : '2px 0 8px rgba(0,0,0,0.15)',
       drawerAsideShadowRight: dark ? '-2px 0 16px rgba(0,0,0,0.5)' : '-2px 0 8px rgba(0,0,0,0.15)',
       /** Fill-in-the-blank: inputs sit on card — avoid near-black bgPrimary */
-      fillBlankInputBg: dark ? 'rgba(56, 189, 248, 0.12)' : '#f0f7ff',
-      fillBlankInputBorder: dark ? 'rgba(125, 211, 252, 0.5)' : 'rgba(33, 150, 243, 0.4)',
+      fillBlankInputBg: dark ? 'rgba(43, 120, 228, 0.10)' : '#f0f7ff',
+      fillBlankInputBorder: dark ? 'rgba(110, 179, 255, 0.45)' : 'rgba(43, 120, 228, 0.35)',
       fillBlankStemWellBg: dark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
     };
   }, [theme]);
@@ -1974,7 +1980,7 @@ function LessonPage() {
           {i18n('Session type')}
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 8px' }}>
-          <span style={{ fontSize: '14px', fontWeight: 700, color: themeStyles.accent }}>
+          <span style={{ fontSize: '14px', fontWeight: 700, color: themeStyles.yellow }}>
             {modeLabel}
           </span>
           {isTodayMode && (
@@ -2026,7 +2032,7 @@ function LessonPage() {
       width: `${pct}%`,
       height: '100%',
       borderRadius: '999px',
-      background: `linear-gradient(90deg, ${themeStyles.accent}, ${themeStyles.success})`,
+      background: `linear-gradient(90deg, ${themeStyles.yellow}, ${themeStyles.accent})`,
       transition: 'width 0.35s ease',
     });
 
@@ -2229,8 +2235,8 @@ function LessonPage() {
         flexShrink: 0,
         padding: '2px 6px',
         borderRadius: '4px',
-        backgroundColor: isOld ? themeStyles.reviewBg : themeStyles.accentMutedBg,
-        color: isOld ? themeStyles.reviewFg : themeStyles.accentMutedFg,
+        backgroundColor: isOld ? themeStyles.reviewBg : themeStyles.orangeMutedBg,
+        color: isOld ? themeStyles.reviewFg : themeStyles.orange,
       }}>
         {i18nLearnQueueCardTag(isOld ? 'old' : 'new')}
       </span>
@@ -3769,8 +3775,8 @@ function LessonPage() {
                     padding: '3px 8px',
                     borderRadius: '6px',
                     letterSpacing: '0.02em',
-                    backgroundColor: lessonTodayCardKind === 'review' ? themeStyles.reviewBg : themeStyles.accentMutedBg,
-                    color: lessonTodayCardKind === 'review' ? themeStyles.reviewFg : themeStyles.accentMutedFg,
+                    backgroundColor: lessonTodayCardKind === 'review' ? themeStyles.reviewBg : themeStyles.orangeMutedBg,
+                    color: lessonTodayCardKind === 'review' ? themeStyles.reviewFg : themeStyles.orange,
                   }}
                 >
                   {lessonTodayCardKindLabel}
@@ -3954,8 +3960,8 @@ function LessonPage() {
                   padding: '12px 32px',
                   border: 'none',
                   borderRadius: '6px',
-                  backgroundColor: themeStyles.accent,
-                  color: themeStyles.whiteOnAccent,
+                  backgroundColor: themeStyles.primary,
+                  color: themeStyles.whiteOnPrimary,
                   cursor: nextCardFromPassedLoading ? 'not-allowed' : 'pointer',
                   fontSize: '16px',
                   fontWeight: 'bold',
@@ -4094,8 +4100,8 @@ function LessonPage() {
                   padding: '12px 32px',
                   border: 'none',
                   borderRadius: '8px',
-                  backgroundColor: themeStyles.accent,
-                  color: themeStyles.whiteOnAccent,
+                  backgroundColor: themeStyles.primary,
+                  color: themeStyles.whiteOnPrimary,
                   cursor: browseSubmitting ? 'not-allowed' : 'pointer',
                   fontSize: '16px',
                   fontWeight: 'bold',
@@ -4157,9 +4163,9 @@ function LessonPage() {
       padding: '6px 8px',
       fontSize: '12px',
       borderRadius: '6px',
-      border: `1px solid ${isCurrent ? themeStyles.accent : themeStyles.border}`,
-      backgroundColor: isCurrent ? themeStyles.accentMutedBg : isCleared ? themeStyles.doneBg : themeStyles.bgSecondary,
-      color: isCurrent ? themeStyles.accentMutedFg : isCleared ? themeStyles.doneFg : themeStyles.textSecondary,
+      border: `1px solid ${isCurrent ? themeStyles.accent : isCleared ? themeStyles.success : themeStyles.orange}`,
+      backgroundColor: isCurrent ? themeStyles.accentMutedBg : isCleared ? themeStyles.doneBg : themeStyles.orangeMutedBg,
+      color: isCurrent ? themeStyles.accentMutedFg : isCleared ? themeStyles.doneFg : themeStyles.orange,
       fontWeight: isCurrent ? 600 : 400,
     };
     return (
@@ -4228,14 +4234,14 @@ function LessonPage() {
               marginBottom: '6px',
               fontSize: '12px',
               borderRadius: '6px',
-              backgroundColor: isCurrent ? themeStyles.accentMutedBg : inReview ? themeStyles.reviewBg : isDone ? themeStyles.doneBg : themeStyles.bgSecondary,
-              color: isCurrent ? themeStyles.accentMutedFg : inReview ? themeStyles.reviewFg : isDone ? themeStyles.doneFg : themeStyles.textSecondary,
+              backgroundColor: isCurrent ? themeStyles.accentMutedBg : inReview ? themeStyles.reviewBg : isDone ? themeStyles.doneBg : themeStyles.orangeMutedBg,
+              color: isCurrent ? themeStyles.accentMutedFg : inReview ? themeStyles.reviewFg : isDone ? themeStyles.doneFg : themeStyles.orange,
               fontWeight: isCurrent ? 600 : 400,
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
               gap: '8px',
-              border: `1px solid ${themeStyles.border}`,
+              border: `1px solid ${isCurrent ? themeStyles.accent : isDone ? themeStyles.success : themeStyles.orange}`,
               wordBreak: 'break-word',
             };
             const displayTitle = (fc?.cardTitle?.trim() && String(fc.cardTitle).trim()) || group.cardTitle;
@@ -4329,14 +4335,14 @@ function LessonPage() {
               marginBottom: '6px',
               fontSize: '12px',
               borderRadius: '6px',
-              backgroundColor: isCurrent ? themeStyles.accentMutedBg : inReview ? themeStyles.reviewBg : isDone ? themeStyles.doneBg : themeStyles.bgSecondary,
-              color: isCurrent ? themeStyles.accentMutedFg : inReview ? themeStyles.reviewFg : isDone ? themeStyles.doneFg : themeStyles.textSecondary,
+              backgroundColor: isCurrent ? themeStyles.accentMutedBg : inReview ? themeStyles.reviewBg : isDone ? themeStyles.doneBg : themeStyles.orangeMutedBg,
+              color: isCurrent ? themeStyles.accentMutedFg : inReview ? themeStyles.reviewFg : isDone ? themeStyles.doneFg : themeStyles.orange,
               fontWeight: isCurrent ? 600 : 400,
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
               gap: '8px',
-              border: `1px solid ${themeStyles.border}`,
+              border: `1px solid ${isCurrent ? themeStyles.accent : isDone ? themeStyles.success : themeStyles.orange}`,
               wordBreak: 'break-word',
             };
             const displayTitle = (fc?.cardTitle?.trim() && String(fc.cardTitle).trim()) || group.cardTitle;
@@ -4429,14 +4435,14 @@ function LessonPage() {
                 marginBottom: '6px',
                 fontSize: '12px',
                 borderRadius: '6px',
-                backgroundColor: isCurrent ? themeStyles.accentMutedBg : inReview ? themeStyles.reviewBg : isDone ? themeStyles.doneBg : themeStyles.bgSecondary,
-                color: isCurrent ? themeStyles.accentMutedFg : inReview ? themeStyles.reviewFg : isDone ? themeStyles.doneFg : themeStyles.textSecondary,
+                backgroundColor: isCurrent ? themeStyles.accentMutedBg : inReview ? themeStyles.reviewBg : isDone ? themeStyles.doneBg : themeStyles.orangeMutedBg,
+                color: isCurrent ? themeStyles.accentMutedFg : inReview ? themeStyles.reviewFg : isDone ? themeStyles.doneFg : themeStyles.orange,
                 fontWeight: isCurrent ? 600 : 400,
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 gap: '8px',
-                border: `1px solid ${themeStyles.border}`,
+                border: `1px solid ${isCurrent ? themeStyles.accent : isDone ? themeStyles.success : themeStyles.orange}`,
                 wordBreak: 'break-word',
               };
               const displayTitle = (fc?.cardTitle?.trim() && String(fc.cardTitle).trim()) || group.cardTitle;
@@ -4512,7 +4518,7 @@ function LessonPage() {
         <span style={{ fontSize: '12px', color: themeStyles.textTertiary, textTransform: 'uppercase' }}>
           {i18n('Lesson practice sidebar pending')}
         </span>
-        <span style={{ fontSize: '14px', fontWeight: 700, color: themeStyles.accent, flexShrink: 0 }}>
+        <span style={{ fontSize: '14px', fontWeight: 700, color: themeStyles.orange, flexShrink: 0 }}>
           {practiceProblemsPendingCount}
         </span>
       </div>
@@ -4537,8 +4543,8 @@ function LessonPage() {
           marginBottom: '2px',
           fontSize: '13px',
           borderRadius: '6px',
-          backgroundColor: isCurrent ? themeStyles.accentMutedBg : inReview ? themeStyles.reviewBg : isDone ? themeStyles.doneBg : 'transparent',
-          color: isCurrent ? themeStyles.accentMutedFg : inReview ? themeStyles.reviewFg : isDone ? themeStyles.doneFg : themeStyles.textSecondary,
+          backgroundColor: isCurrent ? themeStyles.accentMutedBg : inReview ? themeStyles.reviewBg : isDone ? themeStyles.doneBg : themeStyles.orangeMutedBg,
+          color: isCurrent ? themeStyles.accentMutedFg : inReview ? themeStyles.reviewFg : isDone ? themeStyles.doneFg : themeStyles.orange,
           fontWeight: isCurrent ? 600 : 400,
           display: 'flex',
           justifyContent: 'space-between',
@@ -4622,8 +4628,8 @@ function LessonPage() {
           marginBottom: '2px',
           fontSize: '13px',
           borderRadius: '6px',
-          backgroundColor: isCurrent ? themeStyles.accentMutedBg : inReview ? themeStyles.reviewBg : 'transparent',
-          color: isCurrent ? themeStyles.accentMutedFg : inReview ? themeStyles.reviewFg : themeStyles.textSecondary,
+          backgroundColor: isCurrent ? themeStyles.accentMutedBg : inReview ? themeStyles.reviewBg : themeStyles.orangeMutedBg,
+          color: isCurrent ? themeStyles.accentMutedFg : inReview ? themeStyles.reviewFg : themeStyles.orange,
           fontWeight: isCurrent ? 600 : 400,
           display: 'flex',
           justifyContent: 'space-between',
@@ -4664,7 +4670,7 @@ function LessonPage() {
             <span style={{ fontSize: '12px', color: themeStyles.textTertiary, textTransform: 'uppercase' }}>
               {i18n('Uncompleted')}
             </span>
-            <span style={{ fontSize: '14px', fontWeight: 700, color: themeStyles.accent, flexShrink: 0 }}>
+            <span style={{ fontSize: '14px', fontWeight: 700, color: themeStyles.orange, flexShrink: 0 }}>
               {lessonQueuePendingCount}
             </span>
           </div>
@@ -4897,9 +4903,9 @@ function LessonPage() {
   const lessonNavSecondaryBtn: React.CSSProperties = {
     padding: '11px 18px',
     borderRadius: '8px',
-    border: `1px solid ${themeStyles.border}`,
-    backgroundColor: themeStyles.bgSecondary,
-    color: themeStyles.textPrimary,
+    border: 'none',
+    backgroundColor: themeStyles.primary,
+    color: themeStyles.whiteOnPrimary,
     fontSize: '15px',
     fontWeight: 600,
   };
@@ -5049,9 +5055,9 @@ function LessonPage() {
                 style={{
                   padding: '6px 12px',
                   borderRadius: '6px',
-                  border: `1px solid ${themeStyles.border}`,
-                  backgroundColor: themeStyles.bgSecondary,
-                  color: themeStyles.textPrimary,
+                  border: 'none',
+                  backgroundColor: themeStyles.primary,
+                  color: themeStyles.whiteOnPrimary,
                   fontSize: '12px',
                   fontWeight: 600,
                   cursor: lessonCardInlineNavDisabled || currentCardIndex <= 0 ? 'not-allowed' : 'pointer',
@@ -5068,9 +5074,9 @@ function LessonPage() {
                 style={{
                   padding: '6px 12px',
                   borderRadius: '6px',
-                  border: `1px solid ${themeStyles.optionBorderMuted}`,
-                  backgroundColor: themeStyles.bgSecondary,
-                  color: themeStyles.textSecondary,
+                  border: 'none',
+                  backgroundColor: themeStyles.primary,
+                  color: themeStyles.whiteOnPrimary,
                   fontSize: '12px',
                   fontWeight: 600,
                   cursor: lessonCardInlineNavDisabled ? 'not-allowed' : 'pointer',
@@ -5183,10 +5189,10 @@ function LessonPage() {
                 onClick={() => setLessonProblemTagPanelOpen(true)}
                 style={{
                   padding: '4px 10px',
-                  border: `1px solid ${themeStyles.accent}`,
+                  border: `1px solid ${themeStyles.orange}`,
                   borderRadius: '4px',
-                  backgroundColor: themeStyles.accentMutedBg,
-                  color: themeStyles.accent,
+                  backgroundColor: themeStyles.orangeMutedBg,
+                  color: themeStyles.orange,
                   cursor: 'pointer',
                   fontSize: '11px',
                   fontWeight: 600,
@@ -5214,9 +5220,9 @@ function LessonPage() {
                 }
                 return plist2.map((p) => {
                   const chs = cmap2[p] || [];
-                  return React.createElement('span', { key: p, style: { display: 'inline-flex', alignItems: 'center', gap: 0, border: `1px solid ${themeStyles.accent}`, borderRadius: 3, overflow: 'hidden', fontSize: 11, lineHeight: 1.4 } },
-                    React.createElement('span', { style: { padding: '2px 6px', background: themeStyles.accentMutedBg, color: themeStyles.accent, fontWeight: 600 } }, p),
-                    chs.map((c) => React.createElement('span', { key: c, style: { padding: '2px 6px', borderLeft: `1px solid ${themeStyles.accent}`, color: themeStyles.textSecondary, fontWeight: 400 } }, c)),
+                  return React.createElement('span', { key: p, style: { display: 'inline-flex', alignItems: 'center', gap: 0, border: `1px solid ${themeStyles.orange}`, borderRadius: 3, overflow: 'hidden', fontSize: 11, lineHeight: 1.4 } },
+                    React.createElement('span', { style: { padding: '2px 6px', background: themeStyles.orangeMutedBg, color: themeStyles.orange, fontWeight: 600 } }, p),
+                    chs.map((c) => React.createElement('span', { key: c, style: { padding: '2px 6px', borderLeft: `1px solid ${themeStyles.orange}`, color: themeStyles.textSecondary, fontWeight: 400 } }, c)),
                   );
                 });
               })()}
@@ -5280,7 +5286,7 @@ function LessonPage() {
                       {hintBlock}
                       {(!isAnswered || !pendingLessonAdvance) && renderLessonPracticeActionRow(
                         !isAnswered ? (
-                          <button type="button" onClick={handleFlipShowBack} style={{ padding: '12px 24px', border: 'none', borderRadius: '8px', backgroundColor: themeStyles.accent, color: themeStyles.whiteOnAccent, cursor: 'pointer', fontSize: '15px', fontWeight: 600 }}>
+                          <button type="button" onClick={handleFlipShowBack} style={{ padding: '12px 24px', border: 'none', borderRadius: '8px', backgroundColor: themeStyles.primary, color: themeStyles.whiteOnPrimary, cursor: 'pointer', fontSize: '15px', fontWeight: 600 }}>
                             {i18n('Flip show back')}
                           </button>
                         ) : null,
@@ -5441,9 +5447,9 @@ function LessonPage() {
                         style={{
                           padding: '10px 18px',
                           borderRadius: '8px',
-                          border: `1px solid ${themeStyles.border}`,
-                          backgroundColor: themeStyles.bgSecondary,
-                          color: themeStyles.textPrimary,
+                          border: 'none',
+                          backgroundColor: themeStyles.primary,
+                          color: themeStyles.whiteOnPrimary,
                           cursor: ncol >= SUPER_FLIP_COL_MIN && nrow >= SUPER_FLIP_ROW_MIN ? 'pointer' : 'not-allowed',
                           opacity: ncol >= SUPER_FLIP_COL_MIN && nrow >= SUPER_FLIP_ROW_MIN ? 1 : 0.55,
                           fontSize: '14px',
@@ -5459,9 +5465,9 @@ function LessonPage() {
                         style={{
                           padding: '10px 18px',
                           borderRadius: '8px',
-                          border: `1px solid ${themeStyles.border}`,
-                          backgroundColor: themeStyles.bgSecondary,
-                          color: themeStyles.textPrimary,
+                          border: 'none',
+                          backgroundColor: themeStyles.primary,
+                          color: themeStyles.whiteOnPrimary,
                           cursor: ncol >= SUPER_FLIP_COL_MIN && nrow >= SUPER_FLIP_ROW_MIN ? 'pointer' : 'not-allowed',
                           opacity: ncol >= SUPER_FLIP_COL_MIN && nrow >= SUPER_FLIP_ROW_MIN ? 1 : 0.55,
                           fontSize: '14px',
@@ -5604,9 +5610,9 @@ function LessonPage() {
                           style={{
                             padding: '10px 18px',
                             borderRadius: '8px',
-                            border: `1px solid ${themeStyles.border}`,
-                            backgroundColor: themeStyles.bgSecondary,
-                            color: themeStyles.textPrimary,
+                            border: 'none',
+                            backgroundColor: themeStyles.primary,
+                            color: themeStyles.whiteOnPrimary,
                             cursor: nrow >= 1 ? 'pointer' : 'not-allowed',
                             opacity: nrow >= 1 ? 1 : 0.55,
                             fontSize: '14px',
@@ -5622,9 +5628,9 @@ function LessonPage() {
                           style={{
                             padding: '10px 18px',
                             borderRadius: '8px',
-                            border: `1px solid ${themeStyles.border}`,
-                            backgroundColor: themeStyles.bgSecondary,
-                            color: themeStyles.textPrimary,
+                            border: 'none',
+                            backgroundColor: themeStyles.primary,
+                            color: themeStyles.whiteOnPrimary,
                             cursor: nrow >= 1 ? 'pointer' : 'not-allowed',
                             opacity: nrow >= 1 ? 1 : 0.55,
                             fontSize: '14px',
@@ -5808,12 +5814,12 @@ function LessonPage() {
                   padding: '11px 24px',
                   border: 'none',
                   borderRadius: '8px',
-                  backgroundColor: themeStyles.accent,
-                  color: themeStyles.whiteOnAccent,
+                  backgroundColor: themeStyles.primary,
+                  color: themeStyles.whiteOnPrimary,
                   cursor: 'pointer',
                   fontSize: '15px',
                   fontWeight: 600,
-                  boxShadow: theme === 'dark' ? '0 2px 8px rgba(56, 189, 248, 0.25)' : '0 2px 6px rgba(33, 150, 243, 0.25)',
+                  boxShadow: theme === 'dark' ? '0 2px 8px rgba(110, 179, 255, 0.25)' : '0 2px 6px rgba(43, 120, 228, 0.25)',
                 }}
               >
                 {i18n('Submit answer')}
@@ -5934,16 +5940,16 @@ function LessonPage() {
                       padding: '11px 24px',
                       border: 'none',
                       borderRadius: '8px',
-                      backgroundColor: themeStyles.accent,
-                      color: themeStyles.whiteOnAccent,
+                      backgroundColor: themeStyles.primary,
+                      color: themeStyles.whiteOnPrimary,
                       cursor: bad ? 'not-allowed' : 'pointer',
                       opacity: bad ? 0.55 : 1,
                       fontSize: '15px',
                       fontWeight: 600,
                       boxShadow:
                         theme === 'dark'
-                          ? '0 2px 8px rgba(56, 189, 248, 0.25)'
-                          : '0 2px 6px rgba(33, 150, 243, 0.25)',
+                          ? '0 2px 8px rgba(110, 179, 255, 0.25)'
+                          : '0 2px 6px rgba(43, 120, 228, 0.25)',
                     }}
                   >
                     {i18n('Submit answer')}
@@ -6081,8 +6087,8 @@ function LessonPage() {
                           padding: '11px 24px',
                           border: 'none',
                           borderRadius: '8px',
-                          backgroundColor: themeStyles.accent,
-                          color: themeStyles.whiteOnAccent,
+                          backgroundColor: themeStyles.primary,
+                          color: themeStyles.whiteOnPrimary,
                           cursor:
                             aiEvalSubmitting
                             || rubricLeaves.length === 0
@@ -6099,8 +6105,8 @@ function LessonPage() {
                           fontWeight: 600,
                           boxShadow:
                             theme === 'dark'
-                              ? '0 2px 8px rgba(56, 189, 248, 0.25)'
-                              : '0 2px 6px rgba(33, 150, 243, 0.25)',
+                              ? '0 2px 8px rgba(110, 179, 255, 0.25)'
+                              : '0 2px 6px rgba(43, 120, 228, 0.25)',
                         }}
                       >
                         {aiEvalSubmitting ? i18n('Problem ai eval evaluating') : i18n('Submit answer')}
@@ -6287,7 +6293,7 @@ function LessonPage() {
               <button
                 type="button"
                 onClick={handleMultiConfirm}
-                style={{ padding: '10px 22px', border: 'none', borderRadius: '8px', backgroundColor: themeStyles.accent, color: themeStyles.whiteOnAccent, cursor: 'pointer', fontSize: '15px', fontWeight: 600 }}
+                style={{ padding: '10px 22px', border: 'none', borderRadius: '8px', backgroundColor: themeStyles.primary, color: themeStyles.whiteOnPrimary, cursor: 'pointer', fontSize: '15px', fontWeight: 600 }}
               >
                 {i18n('Submit answer')}
               </button>
@@ -6337,9 +6343,9 @@ function LessonPage() {
                   style={{
                     padding: '11px 24px',
                     borderRadius: '8px',
-                    border: `1px solid ${themeStyles.border}`,
-                    backgroundColor: themeStyles.bgSecondary,
-                    color: themeStyles.textPrimary,
+                    border: 'none',
+                    backgroundColor: themeStyles.primary,
+                    color: themeStyles.whiteOnPrimary,
                     cursor: 'pointer',
                     fontSize: '15px',
                     fontWeight: 600,
@@ -6356,12 +6362,12 @@ function LessonPage() {
                 padding: '11px 24px',
                 border: 'none',
                 borderRadius: '8px',
-                backgroundColor: themeStyles.accent,
-                color: themeStyles.whiteOnAccent,
+                backgroundColor: themeStyles.primary,
+                color: themeStyles.whiteOnPrimary,
                 cursor: 'pointer',
                 fontSize: '15px',
                 fontWeight: 600,
-                boxShadow: theme === 'dark' ? '0 2px 8px rgba(56, 189, 248, 0.25)' : '0 2px 6px rgba(33, 150, 243, 0.25)',
+                boxShadow: theme === 'dark' ? '0 2px 8px rgba(110, 179, 255, 0.25)' : '0 2px 6px rgba(43, 120, 228, 0.25)',
                 marginLeft: 'auto',
               }}
             >
