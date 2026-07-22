@@ -295,6 +295,13 @@ edge_authorize: Edge 授权
 'Lesson problem tag panel open': 管理标签
 'Lesson problem tag panel empty': 当前无标签
 'Lesson problem tag panel current': 当前标签
+'Lesson problem tag panel assign': 分派标签
+'Manage tags': 管理标签
+'Problem tags edit': 编辑标签
+'Add new tag group...': 新建标签组…
+'Add sub-tag...': 添加子标签…
+'Click to select': 点击选用
+'Selected': 已选用
 'Lesson problem tag panel readonly hint': 你没有编辑该题标签的权限。
 'Lesson problem tag panel choose registered': 从已登记标签中选择
 'Lesson problem tag panel new': 自定义新标签

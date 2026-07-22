@@ -1462,6 +1462,13 @@ Date: Date
 'Remove tag': 'Remove tag'
 'Add tag...': 'Add tag...'
 'No tags available': 'No tags available'
+'Lesson problem tag panel assign': Assign tags
+'Manage tags': Manage tags
+'Problem tags edit': Edit tags
+'Add new tag group...': 'Add new tag group…'
+'Click to select': 'Click to select'
+'Selected': 'Selected'
+'Add sub-tag...': 'Add sub-tag…'
 'No tags': 'No tags'
 'Please select a card first': 'Please select a card first'
 'Available tags': 'Available tags'
