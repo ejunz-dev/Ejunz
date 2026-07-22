@@ -872,17 +872,20 @@ function LessonProblemMarkdown({
 }) {
   const raw = text ?? '';
   const plain = raw.trim();
-  const [html, setHtml] = useState('');
-  const As = as ?? (inline ? 'span' : 'div');
-  const cls = `lesson-markdown-body${className ? ` ${className}` : ''}`;
 
   const rawHtml = useMemo(() => {
     if (!plain) return '';
     return renderRoadmapMarkdown(raw, inline);
   }, [raw, plain, inline]);
 
+  // Render the markdown HTML immediately, then swap image srcs to cached blob URLs once ready.
+  const [html, setHtml] = useState(rawHtml);
+  const As = as ?? (inline ? 'span' : 'div');
+  const cls = `lesson-markdown-body${className ? ` ${className}` : ''}`;
+
   useEffect(() => {
-    if (!rawHtml) { setHtml(''); return; }
+    setHtml(rawHtml);
+    if (!rawHtml) return;
     replaceImagesWithCache(rawHtml).then((x) => setHtml(x)).catch(() => setHtml(rawHtml));
   }, [rawHtml, replaceImagesWithCache]);
 
@@ -890,10 +893,7 @@ function LessonProblemMarkdown({
     if (emptyFallback === undefined) return null;
     return <As className={cls} style={style}>{emptyFallback}</As>;
   }
-  if (!html) {
-    return <As className={cls} style={style}>{raw}</As>;
-  }
-  return <As className={cls} style={style} dangerouslySetInnerHTML={{ __html: html }} />;
+  return <As className={cls} style={style} dangerouslySetInnerHTML={{ __html: html || rawHtml }} />;
 }
 
 function LessonPage() {
@@ -3305,6 +3305,12 @@ function LessonPage() {
     recordCorrectOrWrong(currentProblem, v, correct, timeSpent, problemId, currentAttempts);
   };
 
+  const handleFlipShowFront = () => {
+    if (!isAnswered && pendingLessonAdvance) return;
+    if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'flip') return;
+    setFlipStage('a');
+  };
+
   const handleFlipShowBack = () => {
     if (!isAnswered && pendingLessonAdvance) return;
     if (isAnswered || !currentProblem || problemKind(currentProblem) !== 'flip') return;
@@ -5311,7 +5317,11 @@ function LessonPage() {
                         />
                       </div>
                       {(!isAnswered || !pendingLessonAdvance) && renderLessonPracticeActionRow(
-                        null,
+                        !isAnswered ? (
+                          <button type="button" onClick={handleFlipShowFront} style={{ padding: '12px 24px', border: 'none', borderRadius: '8px', backgroundColor: themeStyles.primary, color: themeStyles.whiteOnPrimary, cursor: 'pointer', fontSize: '15px', fontWeight: 600 }}>
+                            {i18n('Flip show front')}
+                          </button>
+                        ) : null,
                         '2px',
                         !isAnswered ? (
                           <button type="button" onClick={handleFlipComplete} style={{ padding: '12px 24px', border: 'none', borderRadius: '8px', backgroundColor: themeStyles.success, color: themeStyles.whiteOnAccent, cursor: 'pointer', fontSize: '15px', fontWeight: 600 }}>
@@ -5370,7 +5380,14 @@ function LessonPage() {
                         <tr>
                           {headers.map((h, ci) => (
                             <th key={`sf-th-${currentProblem.pid}-${ci}`} style={thStyle}>
-                              {String(h ?? '').trim() ? String(h) : '—'}
+                              {String(h ?? '').trim() ? (
+                                <LessonProblemMarkdown
+                                  text={String(h)}
+                                  inline
+                                  replaceImagesWithCache={replaceImagesWithCache}
+                                  as="span"
+                                />
+                              ) : '—'}
                             </th>
                           ))}
                         </tr>
@@ -5419,7 +5436,11 @@ function LessonPage() {
                                 );
                               }
                               return (
-                                <td key={`sf-td-${ci}-${ri}`} style={tdStyle}>
+                                <td
+                                  key={`sf-td-${ci}-${ri}`}
+                                  style={tdStyle}
+                                  onClick={!isAnswered ? () => handleSuperFlipCellToggle(ci, ri) : undefined}
+                                >
                                   <button
                                     type="button"
                                     disabled={isAnswered}
@@ -5427,7 +5448,17 @@ function LessonPage() {
                                     style={cellBtn}
                                     aria-pressed={flipped}
                                   >
-                                    {flipped ? (text.trim() ? text : '—') : String(i18n('Problem super flip masked'))}
+                                    {flipped ? (
+                                      text.trim() ? (
+                                        <LessonProblemMarkdown
+                                          text={text}
+                                          inline
+                                          replaceImagesWithCache={replaceImagesWithCache}
+                                          as="span"
+                                          style={{ pointerEvents: 'none' }}
+                                        />
+                                      ) : '—'
+                                    ) : String(i18n('Problem super flip masked'))}
                                   </button>
                                 </td>
                               );
@@ -5549,7 +5580,7 @@ function LessonPage() {
                       return (
                         <div key={`chain-row-${ri}`} style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span style={{ fontSize: 12, color: themeStyles.textSecondary, minWidth: 20, flexShrink: 0 }}>{ri + 1}.</span>
-                          {isFlipType && !isRevealed && !isAnswered ? (
+                          {isFlipType && !isAnswered ? (
                             <button
                               type="button"
                               onClick={() => handleChainCellToggle(ri)}
@@ -5559,14 +5590,23 @@ function LessonPage() {
                                 border: `1px solid ${themeStyles.border}`,
                                 borderRadius: '8px',
                                 fontSize: '14px',
-                                fontWeight: 600,
-                                backgroundColor: themeStyles.optionNeutral,
-                                color: themeStyles.textTertiary,
-                                cursor: 'pointer',
+                                lineHeight: 1.45,
                                 textAlign: 'left',
+                                cursor: 'pointer',
+                                fontWeight: isRevealed ? 500 : 600,
+                                backgroundColor: isRevealed ? themeStyles.bgSecondary : themeStyles.optionNeutral,
+                                color: isRevealed ? themeStyles.textPrimary : themeStyles.textTertiary,
                               }}
                             >
-                              {i18n('Problem chain masked')}
+                              {isRevealed ? (
+                                <LessonProblemMarkdown
+                                  text={row.content?.trim() ? row.content : '—'}
+                                  inline
+                                  replaceImagesWithCache={replaceImagesWithCache}
+                                  as="span"
+                                  style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', pointerEvents: 'none' }}
+                                />
+                              ) : String(i18n('Problem chain masked'))}
                             </button>
                           ) : (
                             <div style={{
@@ -5578,12 +5618,18 @@ function LessonPage() {
                               lineHeight: 1.45,
                               backgroundColor: isFlipType ? themeStyles.bgSecondary : themeStyles.bgPrimary,
                               color: themeStyles.textPrimary,
-                              whiteSpace: 'pre-wrap',
-                              wordBreak: 'break-word',
                             }}>
                               {isFlipType && !isRevealed
                                 ? String(i18n('Problem chain masked'))
-                                : (row.content.trim() ? row.content : '—')}
+                                : (
+                                  <LessonProblemMarkdown
+                                    text={row.content?.trim() ? row.content : '—'}
+                                    inline
+                                    replaceImagesWithCache={replaceImagesWithCache}
+                                    as="span"
+                                    style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+                                  />
+                                )}
                             </div>
                           )}
                           <span style={{
