@@ -649,21 +649,18 @@ function LessonProblemTagPanelBody(props: {
                     else { plist2.push(t); }
                   }
                   return plist2.map((p) => {
-                    const pSel = draftTags.includes(p);
                     const chs = cmap2[p] || [];
                     return (
                       <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 0, border: `1px solid ${accent}`, borderRadius: 4, overflow: 'hidden', fontSize: 12, lineHeight: 1.5 }}>
-                        <span style={{ padding: '3px 10px', background: accentMutedBg, color: accent, fontWeight: 600, userSelect: 'none' }}>{p}</span>
+                        <span style={{ padding: '3px 10px', background: accentMutedBg, color: accent, fontWeight: 600, cursor: canEdit ? 'pointer' : 'default', userSelect: 'none' }}
+                          onClick={() => { if (canEdit) setDraftTags((prev) => prev.filter((x) => x !== p && !x.startsWith(p + '/'))); }}>{p}</span>
                         {chs.map((c) => {
                           const full = p + '/' + c;
                           return (
-                            <span key={full} style={{ padding: '3px 8px', borderLeft: `1px solid ${accent}`, color: accent, fontWeight: 600, userSelect: 'none' }}>
-                              {c}
-                            </span>
+                            <span key={full} style={{ padding: '3px 8px', borderLeft: `1px solid ${accent}`, color: accent, fontWeight: 600, cursor: canEdit ? 'pointer' : 'default', userSelect: 'none' }}
+                              onClick={() => { if (canEdit) setDraftTags((prev) => prev.filter((x) => x !== full)); }}>{c}</span>
                           );
                         })}
-                        <button type="button" onClick={() => { setDraftTags((prev) => prev.filter((x) => x !== p && !x.startsWith(p + '/'))); }}
-                          style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '3px 6px', fontSize: 14, lineHeight: 1, color: accent, opacity: 0.6, flexShrink: 0 }}>×</button>
                       </span>
                     );
                   });
