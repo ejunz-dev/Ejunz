@@ -2682,8 +2682,6 @@ async function ensureGitSafeDirectory(repoPath: string): Promise<string> {
  */
 async function ensureBaseGitRepo(domainId: string, docId: number, remoteUrl?: string): Promise<string> {
     const repoPath = getBaseGitPath(domainId, docId);
-    return repoPath;
-    /*
     await ensureGitSafeDirectory(repoPath);
     let isNewRepo = false;
     try {
@@ -2691,17 +2689,17 @@ async function ensureBaseGitRepo(domainId: string, docId: number, remoteUrl?: st
     } catch {
         isNewRepo = true;
         await exec('git init', { cwd: repoPath });
-        
+
         if (remoteUrl) {
             await exec(`git remote add origin ${remoteUrl}`, { cwd: repoPath });
         }
     }
-    
+
     const botName = system.get('ejunzrepo.github_bot_name') || 'ejunz-bot';
     const botEmail = system.get('ejunzrepo.github_bot_email') || 'bot@ejunz.local';
     await exec(`git config user.name "${botName}"`, { cwd: repoPath });
     await exec(`git config user.email "${botEmail}"`, { cwd: repoPath });
-    
+
     if (!isNewRepo && remoteUrl) {
         try {
             await exec(`git remote set-url origin ${remoteUrl}`, { cwd: repoPath });
@@ -2712,8 +2710,8 @@ async function ensureBaseGitRepo(domainId: string, docId: number, remoteUrl?: st
             }
         }
     }
-    
-    return repoPath; */
+
+    return repoPath;
 }
 
 /** Aggregated problem rows for Git export (problems.md / keys.md / problems_all.md). */
