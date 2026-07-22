@@ -442,6 +442,8 @@ function LessonProblemTagPanelBody(props: {
   textTertiary: string;
   accent: string;
   accentMutedBg: string;
+  domainId: string;
+  baseDocId: string;
   onPersist: (nextTags: string[]) => void;
   onRegisterOnly: (tag: string) => Promise<void>;
 }) {
@@ -461,215 +463,335 @@ function LessonProblemTagPanelBody(props: {
     accentMutedBg,
     onPersist,
     onRegisterOnly,
+    domainId,
+    baseDocId,
   } = props;
   const tagsNow = getProblemTagList(problem as Problem);
   const tagsKey = tagsNow.join('\n');
-  const merged = [...new Set([...registry, ...tagsNow])].sort((a, b) => a.localeCompare(b));
-  const [customDraft, setCustomDraft] = useState('');
-  useEffect(() => {
-    setCustomDraft('');
-  }, [problem.pid, problem.cardId, tagsKey]);
+  const tagRegApiUrl = domainId ? `/d/${domainId}/base/problem-tag` : '';
 
-  const registerCustom = async () => {
-    const t = normalizeProblemTagInput(customDraft);
-    if (!t || tagsNow.includes(t)) return;
+  const [activeTab, setActiveTab] = useState<'assign' | 'manage'>('assign');
+  /** Local draft of problem tags — save button flushes to server. */
+  const [draftTags, setDraftTags] = useState<string[]>(() => [...tagsNow]);
+  /** Keep baseline in a ref for dirty check. */
+  const initialTagsRef = useRef(tagsNow);
+  useEffect(() => { initialTagsRef.current = tagsNow; setDraftTags([...tagsNow]); }, [tagsKey]);
+  const tagsDirty = draftTags.join('\n') !== initialTagsRef.current.join('\n');
+
+  // ---- registry management state (local, no immediate API) ----
+  const [allTags, setAllTags] = useState<string[]>(() => {
+    const base: string[] = Array.isArray(registry) ? registry : [];
+    const all = new Set(base);
+    tagsNow.forEach((t) => all.add(t));
+    return [...all].sort((a, b) => a.localeCompare(b));
+  });
+  const allTagsRef = useRef(allTags);
+  // Keep baseline in sync with allTags only when saving updates it
+  const registryDirty = allTags.join('\n') !== allTagsRef.current.join('\n');
+
+  const [newTagInput, setNewTagInput] = useState('');
+  const [newChildInputs, setNewChildInputs] = useState<Record<string, string>>({});
+  const [renamingTag, setRenamingTag] = useState<string | null>(null);
+  const [renameInput, setRenameInput] = useState('');
+  const [saveBusy, setSaveBusy] = useState(false);
+  const renameRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { if (renamingTag && renameRef.current) { renameRef.current.focus(); renameRef.current.select(); } }, [renamingTag]);
+
+  const handleRegister = useCallback((tagPath: string) => {
+    setAllTags((prev) => [...new Set([...prev, tagPath])].sort((a, b) => a.localeCompare(b)));
+  }, []);
+
+  const handleDeleteRegistry = useCallback((tagPath: string) => {
+    setAllTags((prev) => prev.filter((t) => t !== tagPath && !t.startsWith(tagPath + '/')));
+  }, []);
+
+  const handleRenameRegistry = useCallback((oldPath: string) => {
+    const newPath = renameInput.trim();
+    if (!newPath || newPath === oldPath || newPath.includes('/')) { setRenamingTag(null); return; }
+    setAllTags((prev) => {
+      const mapped = prev.map((t) => {
+        if (t === oldPath) return newPath;
+        if (t.startsWith(oldPath + '/')) return newPath + t.slice(oldPath.length);
+        return t;
+      });
+      return [...new Set(mapped)].sort((a, b) => a.localeCompare(b));
+    });
+    setRenamingTag(null);
+  }, [renameInput]);
+
+  /** Flush all pending changes to server. */
+  const handleSave = useCallback(async () => {
+    setSaveBusy(true);
     try {
-      await onRegisterOnly(t);
-      onPersist([...new Set([...tagsNow, t])]);
-      setCustomDraft('');
-    } catch {
-      /* parent shows Notification */
+      // 1. Save problem tags if dirty
+      if (tagsDirty) {
+        onPersist(draftTags);
+      }
+      // 2. Save registry changes (diff from initialAllTags)
+      const init = allTagsRef.current;
+      const cur = allTags;
+      const added = cur.filter((t) => !init.includes(t));
+      const removed = init.filter((t) => !cur.includes(t));
+      if (tagRegApiUrl) {
+        const bid = Number(baseDocId);
+        for (const tag of removed) {
+          try { (window as any).__baseJustSaved = Date.now(); await request.post(tagRegApiUrl, { docId: bid, action: 'delete', tag }); } catch { /* skip */ }
+        }
+        for (const tag of added) {
+          try { await onRegisterOnly(tag); } catch { /* skip */ }
+        }
+      }
+      allTagsRef.current = [...allTags];
+      initialTagsRef.current = [...draftTags];
+      Notification.success(i18n('Saved'));
+    } catch { Notification.error(i18n('Save failed')); }
+    setSaveBusy(false);
+  }, [tagsDirty, draftTags, allTags, tagRegApiUrl, baseDocId, onPersist, onRegisterOnly]);
+
+  const anyDirty = tagsDirty || registryDirty;
+
+  // ---- tag tree ----
+  const buildTagTree = (flat: string[]) => {
+    const plist: string[] = [];
+    const cmap: Record<string, string[]> = {};
+    for (const t of flat) {
+      const sl = t.indexOf('/');
+      if (sl > 0) { const p = t.slice(0, sl); const c = t.slice(sl + 1); if (!cmap[p]) cmap[p] = []; cmap[p].push(c); }
+      else { plist.push(t); }
+    }
+    return { parents: [...new Set(plist)], children: cmap };
+  };
+  const tree = buildTagTree(allTags);
+
+  const toggleTag = (tagPath: string) => {
+    if (draftTags.includes(tagPath)) {
+      setDraftTags((prev) => prev.filter((x) => x !== tagPath && !x.startsWith(tagPath + '/')));
+    } else {
+      setDraftTags((prev) => [...prev, tagPath]);
     }
   };
 
-  const draftNorm = normalizeProblemTagInput(customDraft);
-
-  const fld: React.CSSProperties = {
-    width: '100%',
-    padding: '10px 12px',
-    borderRadius: 8,
+  const inpStyle: React.CSSProperties = {
+    flex: 1, padding: '5px 8px', borderRadius: 4,
     border: `1px solid ${border}`,
-    backgroundColor: bgPrimary,
-    color: textSecondary,
-    fontSize: 14,
-    boxSizing: 'border-box',
+    background: bgPrimary, color: textPrimary, fontSize: 12, outline: 'none',
   };
-
-  const btnPri: React.CSSProperties = {
-    padding: '10px 18px',
-    borderRadius: 8,
-    border: `1px solid ${accent}`,
-    backgroundColor: accent,
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: 600,
-    cursor: saving || registerSaving ? 'not-allowed' : 'pointer',
-    opacity: saving || registerSaving ? 0.65 : 1,
+  const btnAccent: React.CSSProperties = {
+    padding: '5px 10px', borderRadius: 4, border: 'none',
+    background: accent, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+    flexShrink: 0,
   };
-
-  const btnSec: React.CSSProperties = {
-    padding: '10px 18px',
-    borderRadius: 8,
-    border: `1px solid ${border}`,
-    backgroundColor: bgSecondary,
-    color: textPrimary,
-    fontSize: 14,
-    fontWeight: 600,
-    cursor: saving || registerSaving ? 'not-allowed' : 'pointer',
-    opacity: saving || registerSaving ? 0.65 : 1,
-  };
-
-  const btnDangerOutline: React.CSSProperties = {
-    ...btnSec,
-    borderColor: 'rgba(244, 67, 54, 0.45)',
-    color: '#f44336',
-  };
-
-  const chip: React.CSSProperties = {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 6,
-    padding: '6px 10px',
-    borderRadius: 999,
-    border: `1px solid ${border}`,
-    backgroundColor: bgSecondary,
-    color: textPrimary,
-    fontSize: 14,
-    fontWeight: 600,
-    maxWidth: '100%',
-    wordBreak: 'break-word',
-  };
-
-  const appendFromRegistry = (raw: string) => {
-    const t = normalizeProblemTagInput(raw);
-    if (!t || tagsNow.includes(t)) return;
-    onPersist([...tagsNow, t]);
-  };
-
-  const removeTag = (t: string) => {
-    onPersist(tagsNow.filter((x) => x !== t));
+  const btnDanger: React.CSSProperties = {
+    padding: '2px 5px', borderRadius: 3, border: 'none',
+    background: 'transparent', color: '#c00', fontSize: 12, cursor: 'pointer',
+    flexShrink: 0, fontWeight: 700,
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div>
-        <div style={{ fontSize: 12, fontWeight: 600, color: textTertiary, marginBottom: 6 }}>
-          {i18n('Lesson problem tag panel current')}
-        </div>
-        <div style={{
-          padding: '12px 14px',
-          borderRadius: 8,
-          border: `1px solid ${border}`,
-          backgroundColor: accentMutedBg,
-          minHeight: 48,
-        }}
-        >
-          {tagsNow.length === 0 ? (
-            <div style={{ fontSize: 16, fontWeight: 700, color: textSecondary }}>
-              {i18n('Lesson problem tag panel empty')}
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {tagsNow.map((t) => (
-                <span key={t} style={chip}>
-                  <span>{t}</span>
-                  {canEdit ? (
-                    <button
-                      type="button"
-                      title={i18n('Lesson problem tag chip remove')}
-                      onClick={() => removeTag(t)}
-                      disabled={saving || registerSaving}
-                      style={{
-                        flexShrink: 0,
-                        border: 'none',
-                        background: 'transparent',
-                        color: textTertiary,
-                        cursor: saving || registerSaving ? 'not-allowed' : 'pointer',
-                        fontSize: 16,
-                        lineHeight: 1,
-                        padding: 0,
-                      }}
-                    >
-                      ×
-                    </button>
-                  ) : null}
-                </span>
-              ))}
-            </div>
-          )}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, fontSize: 12, color: textPrimary }}>
+      {/* Tab bar */}
+      <div style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${border}`, paddingBottom: 8 }}>
+        <button type="button" onClick={() => setActiveTab('assign')}
+          style={{
+            padding: '4px 12px', borderRadius: '4px 4px 0 0', border: 'none', cursor: 'pointer',
+            backgroundColor: activeTab === 'assign' ? accentMutedBg : 'transparent',
+            color: activeTab === 'assign' ? accent : textSecondary,
+            fontWeight: activeTab === 'assign' ? 600 : 400, fontSize: 12,
+          }}
+        >{i18n('Lesson problem tag panel assign')}</button>
+        <button type="button" onClick={() => setActiveTab('manage')}
+          disabled={!canEdit}
+          style={{
+            padding: '4px 12px', borderRadius: '4px 4px 0 0', border: 'none', cursor: canEdit ? 'pointer' : 'not-allowed',
+            backgroundColor: activeTab === 'manage' ? accentMutedBg : 'transparent',
+            color: activeTab === 'manage' ? accent : textTertiary,
+            fontWeight: activeTab === 'manage' ? 600 : 400, fontSize: 12,
+            opacity: canEdit ? 1 : 0.5,
+          }}
+        >{i18n('Manage tags')}</button>
+        <div style={{ marginLeft: 'auto' }}>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saveBusy || !anyDirty}
+            style={{
+              padding: '4px 12px', borderRadius: 4, border: 'none',
+              background: anyDirty && !saveBusy ? accent : border,
+              color: anyDirty && !saveBusy ? '#fff' : textTertiary,
+              fontSize: 11, fontWeight: 600, cursor: saveBusy || !anyDirty ? 'not-allowed' : 'pointer',
+              opacity: saveBusy || !anyDirty ? 0.55 : 1,
+            }}
+          >
+            {saveBusy ? i18n('Saving...') : i18n('Save')}
+          </button>
         </div>
       </div>
 
-      {!canEdit ? (
-        <p style={{ margin: 0, fontSize: 13, color: textTertiary, lineHeight: 1.5 }}>
-          {i18n('Lesson problem tag panel readonly hint')}
-        </p>
-      ) : (
-        <>
+      {/* Tab: Assign tags to problem — two sections: current + available */}
+      {activeTab === 'assign' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* Current tags on this problem */}
           <div>
-            <label style={{ fontSize: 13, fontWeight: 600, color: textSecondary, display: 'block', marginBottom: 8 }} htmlFor="lesson-tag-panel-append">
-              {i18n('Lesson problem tag panel append registered')}
-            </label>
-            <select
-              id="lesson-tag-panel-append"
-              value=""
-              disabled={saving || registerSaving}
-              onChange={(e) => {
-                appendFromRegistry(e.target.value);
-                e.target.value = '';
-              }}
-              style={fld}
-            >
-              <option value="">{i18n('Lesson problem tag panel add registered placeholder')}</option>
-              {merged.filter((t) => !tagsNow.includes(t)).map((t) => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
+            <div style={{ fontWeight: 600, color: textSecondary, marginBottom: 6, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              {i18n('Lesson problem tag panel current')}
+            </div>
+            {draftTags.length === 0 ? (
+              <span style={{ fontSize: 12, color: textTertiary, fontStyle: 'italic' }}>{i18n('Lesson problem tag panel empty')}</span>
+            ) : (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {(() => {
+                  const plist2: string[] = [];
+                  const cmap2: Record<string, string[]> = {};
+                  for (const t of draftTags) {
+                    const sl = t.indexOf('/');
+                    if (sl > 0) { const p = t.slice(0, sl); const c = t.slice(sl + 1); if (!cmap2[p]) cmap2[p] = []; cmap2[p].push(c); }
+                    else { plist2.push(t); }
+                  }
+                  return plist2.map((p) => {
+                    const pSel = draftTags.includes(p);
+                    const chs = cmap2[p] || [];
+                    return (
+                      <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 0, border: `1px solid ${accent}`, borderRadius: 4, overflow: 'hidden', fontSize: 12, lineHeight: 1.5 }}>
+                        <span style={{ padding: '3px 10px', background: accentMutedBg, color: accent, fontWeight: 600, userSelect: 'none' }}>{p}</span>
+                        {chs.map((c) => {
+                          const full = p + '/' + c;
+                          return (
+                            <span key={full} style={{ padding: '3px 8px', borderLeft: `1px solid ${accent}`, color: accent, fontWeight: 600, userSelect: 'none' }}>
+                              {c}
+                            </span>
+                          );
+                        })}
+                        <button type="button" onClick={() => { setDraftTags((prev) => prev.filter((x) => x !== p && !x.startsWith(p + '/'))); }}
+                          style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '3px 6px', fontSize: 14, lineHeight: 1, color: accent, opacity: 0.6, flexShrink: 0 }}>×</button>
+                      </span>
+                    );
+                  });
+                })()}
+              </div>
+            )}
           </div>
+
+          {/* Available tags from registry */}
           <div>
-            <label style={{ fontSize: 13, fontWeight: 600, color: textSecondary, display: 'block', marginBottom: 8 }} htmlFor="lesson-tag-panel-custom">
-              {i18n('Lesson problem tag panel new')}
-            </label>
-            <input
-              id="lesson-tag-panel-custom"
-              type="text"
-              maxLength={64}
-              value={customDraft}
-              disabled={saving || registerSaving}
-              placeholder={i18n('Lesson problem tag new placeholder')}
-              onChange={(e) => setCustomDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  void registerCustom();
+            <div style={{ fontWeight: 600, color: textSecondary, marginBottom: 6, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              {i18n('Available tags')}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {(() => {
+                if (allTags.length === 0) return <span style={{ fontSize: 12, color: textTertiary, fontStyle: 'italic' }}>{i18n('No tags available')}</span>;
+                const plist2: string[] = [];
+                const cmap2: Record<string, string[]> = {};
+                for (const t of allTags) {
+                  const sl = t.indexOf('/');
+                  if (sl > 0) { const p = t.slice(0, sl); const c = t.slice(sl + 1); if (!cmap2[p]) cmap2[p] = []; cmap2[p].push(c); }
+                  else { plist2.push(t); }
                 }
-              }}
-              style={fld}
-            />
-            <div style={{ marginTop: 10, fontSize: 12, color: textTertiary, lineHeight: 1.45 }}>
-              {i18n('Lesson problem tag new hint')}
+                return plist2.map((p) => {
+                  const pSel = draftTags.includes(p);
+                  const chs = cmap2[p] || [];
+                  const tagBorderColor = pSel ? accent : border;
+                  const tagBgActive = accentMutedBg;
+                  const tagColorActive = accent;
+                  const tagColorInactive = textSecondary;
+                  return (
+                    <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 0, border: `1px solid ${tagBorderColor}`, borderRadius: 4, overflow: 'hidden', fontSize: 12, lineHeight: 1.5 }}>
+                      <span style={{ padding: '3px 10px', cursor: canEdit ? 'pointer' : 'default', background: pSel ? tagBgActive : 'transparent', color: pSel ? tagColorActive : tagColorInactive, fontWeight: 600, userSelect: 'none' }}
+                        onClick={() => { if (canEdit) { if (draftTags.includes(p)) setDraftTags((prev) => prev.filter((x) => x !== p && !x.startsWith(p + '/'))); else setDraftTags((prev) => [...prev, p]); } }}>
+                        {p}
+                      </span>
+                      {chs.map((c) => {
+                        const full = p + '/' + c;
+                        const cSel = draftTags.includes(full);
+                        return (
+                          <span key={full} style={{ padding: '3px 8px', cursor: canEdit ? 'pointer' : 'default', borderLeft: `1px solid ${cSel ? accent : border}`, background: cSel ? tagBgActive : 'transparent', color: cSel ? tagColorActive : tagColorInactive, fontWeight: cSel ? 600 : 400, userSelect: 'none' }}
+                            onClick={() => { if (canEdit) {
+                              if (cSel) setDraftTags((prev) => prev.filter((x) => x !== full));
+                              else setDraftTags((prev) => prev.includes(p) ? [...prev, full] : [...prev, p, full]);
+                            }}}>
+                            {c}
+                          </span>
+                        );
+                      })}
+                    </span>
+                  );
+                });
+              })()}
             </div>
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-            <button
-              type="button"
-              style={btnPri}
-              disabled={saving || registerSaving || !draftNorm || tagsNow.includes(draftNorm)}
-              onClick={() => { void registerCustom(); }}
-            >
-              {i18n('Lesson problem tag apply new')}
-            </button>
-            <button
-              type="button"
-              style={btnDangerOutline}
-              disabled={saving || registerSaving || tagsNow.length === 0}
-              onClick={() => onPersist([])}
-            >
-              {i18n('Lesson problem tag panel clear')}
-            </button>
+        </div>
+      ) : null}
+
+      {/* Tab: Manage registry */}
+      {activeTab === 'manage' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {/* Add new parent tag */}
+          <div style={{ display: 'flex', gap: 4 }}>
+            <input type="text" value={newTagInput} onChange={(e) => setNewTagInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && newTagInput.trim()) { e.preventDefault(); void handleRegister(newTagInput.trim()); setNewTagInput(''); } }}
+              placeholder={i18n('Add new tag group...')}
+              style={inpStyle} autoComplete="off" />
+            <button type="button" onClick={() => { if (newTagInput.trim()) { void handleRegister(newTagInput.trim()); setNewTagInput(''); } }} style={btnAccent}>{i18n('Add')}</button>
           </div>
-        </>
-      )}
+          {/* Tag groups with rename/delete */}
+          {tree.parents.slice().reverse().map((parent) => {
+            const children = tree.children[parent] || [];
+            return (
+              <div key={parent} style={{ border: `1px solid ${border}`, borderRadius: 6, overflow: 'hidden' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: 'rgba(255, 152, 0, 0.08)' }}>
+                  <span style={{ flex: 1, fontWeight: 600, fontSize: 12, color: accent }}>{parent}</span>
+                  {renamingTag === parent ? (
+                    <>
+                      <input ref={renameRef} type="text" value={renameInput} onChange={(e) => setRenameInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleRenameRegistry(parent); else if (e.key === 'Escape') setRenamingTag(null); }}
+                        style={{ ...inpStyle, flex: 1 }} autoComplete="off" />
+                      <button type="button" onClick={() => handleRenameRegistry(parent)} style={btnAccent}>{i18n('Save')}</button>
+                      <button type="button" onClick={() => setRenamingTag(null)} style={{ padding: '2px 6px', borderRadius: 3, border: 'none', background: 'transparent', color: textSecondary, fontSize: 11, cursor: 'pointer' }}>{i18n('Cancel')}</button>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" onClick={() => { setRenamingTag(parent); setRenameInput(parent); }} style={{ padding: '2px 5px', borderRadius: 3, border: 'none', background: 'transparent', color: textSecondary, fontSize: 11, cursor: 'pointer', flexShrink: 0 }} title={i18n('Rename')}>✏️</button>
+                      <button type="button" onClick={() => handleDeleteRegistry(parent)} style={btnDanger} title={i18n('Delete')}>×</button>
+                    </>
+                  )}
+                </div>
+                {children.length > 0 && (
+                  <div style={{ padding: '4px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {children.map((child) => {
+                      const full = parent + '/' + child;
+                      return (
+                        <div key={child} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 4px' }}>
+                          <span style={{ flex: 1, fontSize: 11, color: textSecondary, paddingLeft: 16 }}>{child}</span>
+                          <button type="button" onClick={() => handleDeleteRegistry(full)} style={btnDanger}>×</button>
+                        </div>
+                      );
+                    })}
+                    <div style={{ display: 'flex', gap: 4, padding: '4px 4px 2px' }}>
+                      <input type="text" value={newChildInputs[parent] || ''} onChange={(e) => setNewChildInputs((prev) => ({ ...prev, [parent]: e.target.value }))}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && (newChildInputs[parent] || '').trim()) { e.preventDefault(); void handleRegister(`${parent}/${(newChildInputs[parent] || '').trim()}`); setNewChildInputs((prev) => ({ ...prev, [parent]: '' })); } }}
+                        placeholder={i18n('Add sub-tag...')}
+                        style={{ ...inpStyle, fontSize: 11 }} autoComplete="off" />
+                      <button type="button" onClick={() => { if ((newChildInputs[parent] || '').trim()) { void handleRegister(`${parent}/${(newChildInputs[parent] || '').trim()}`); setNewChildInputs((prev) => ({ ...prev, [parent]: '' })); } }} style={btnAccent}>+</button>
+                    </div>
+                  </div>
+                )}
+                {children.length === 0 && (
+                  <div style={{ padding: '4px 8px', display: 'flex', gap: 4, padding: '4px 4px 2px' }}>
+                    <input type="text" value={newChildInputs[parent] || ''} onChange={(e) => setNewChildInputs((prev) => ({ ...prev, [parent]: e.target.value }))}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && (newChildInputs[parent] || '').trim()) { e.preventDefault(); void handleRegister(`${parent}/${(newChildInputs[parent] || '').trim()}`); setNewChildInputs((prev) => ({ ...prev, [parent]: '' })); } }}
+                      placeholder={i18n('Add sub-tag...')}
+                      style={{ ...inpStyle, fontSize: 11 }} autoComplete="off" />
+                    <button type="button" onClick={() => { if ((newChildInputs[parent] || '').trim()) { void handleRegister(`${parent}/${(newChildInputs[parent] || '').trim()}`); setNewChildInputs((prev) => ({ ...prev, [parent]: '' })); } }} style={btnAccent}>+</button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {tree.parents.length === 0 && (
+            <span style={{ color: textSecondary, fontStyle: 'italic', padding: '4px 0' }}>{i18n('No tags available')}</span>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -5040,26 +5162,6 @@ function LessonPage() {
             >
               <button
                 type="button"
-                aria-label={i18n('Lesson problem tag panel open')}
-                onClick={() => setLessonProblemTagPanelOpen(true)}
-                style={{
-                  padding: '6px 14px',
-                  border: `1px solid ${themeStyles.accent}`,
-                  borderRadius: '6px',
-                  backgroundColor: themeStyles.accentMutedBg,
-                  color: themeStyles.accent,
-                  cursor: 'pointer',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                }}
-              >
-                {(() => {
-                  const list = getProblemTagList(currentProblem as Problem);
-                  return list.length ? list.join(' · ') : i18n('Lesson problem tag panel empty');
-                })()}
-              </button>
-              <button
-                type="button"
                 aria-label={i18n('Lesson problem notes panel title')}
                 onClick={() => setLessonProblemNotesPanelOpen(true)}
                 style={{
@@ -5078,9 +5180,52 @@ function LessonPage() {
                   getProblemAuthorNoteList(currentProblem as Problem).length + lessonLearnerNoteCount,
                 )}
               </button>
+              <button
+                type="button"
+                aria-label={i18n('Problem tags edit')}
+                onClick={() => setLessonProblemTagPanelOpen(true)}
+                style={{
+                  padding: '4px 10px',
+                  border: `1px solid ${themeStyles.accent}`,
+                  borderRadius: '4px',
+                  backgroundColor: themeStyles.accentMutedBg,
+                  color: themeStyles.accent,
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                }}
+              >
+                {i18n('Problem tags edit')}
+              </button>
             </div>
           ) : null}
         </div>
+
+        {/* Tag row: between title and problem body */}
+        {currentProblem ? (
+          <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+              {(() => {
+                const list = getProblemTagList(currentProblem as Problem);
+                if (list.length === 0) return null;
+                const plist2: string[] = [];
+                const cmap2: Record<string, string[]> = {};
+                for (const t of list) {
+                  const sl = t.indexOf('/');
+                  if (sl > 0) { const p = t.slice(0, sl); const c = t.slice(sl + 1); if (!cmap2[p]) cmap2[p] = []; cmap2[p].push(c); }
+                  else { plist2.push(t); }
+                }
+                return plist2.map((p) => {
+                  const chs = cmap2[p] || [];
+                  return React.createElement('span', { key: p, style: { display: 'inline-flex', alignItems: 'center', gap: 0, border: `1px solid ${themeStyles.accent}`, borderRadius: 3, overflow: 'hidden', fontSize: 11, lineHeight: 1.4 } },
+                    React.createElement('span', { style: { padding: '2px 6px', background: themeStyles.accentMutedBg, color: themeStyles.accent, fontWeight: 600 } }, p),
+                    chs.map((c) => React.createElement('span', { key: c, style: { padding: '2px 6px', borderLeft: `1px solid ${themeStyles.accent}`, color: themeStyles.textSecondary, fontWeight: 400 } }, c)),
+                  );
+                });
+              })()}
+            </div>
+          </div>
+        ) : null}
 
         {currentKind === 'flip' ? (
           <>
@@ -6362,6 +6507,8 @@ function LessonPage() {
                 textTertiary={themeStyles.textTertiary}
                 accent={themeStyles.accent}
                 accentMutedBg={themeStyles.accentMutedBg}
+                domainId={lessonApiDomainId || ''}
+                baseDocId={baseDocId}
                 onPersist={(nextTags) => {
                   if (!lessonCanEditProblemTags) return;
                   void persistLessonProblemTag(String(currentProblem.cardId), currentProblem.pid, nextTags);
