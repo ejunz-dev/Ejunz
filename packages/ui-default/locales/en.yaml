@@ -371,6 +371,7 @@ edge_authorize: Edge Authorization
 'Lesson path card practise count title': Times this card was fully passed at the current section slot (each full pass in this lesson counts once; same counter as on the learning path)
 'Lesson problem queue': Question queue
 'Lesson progress session cards': Session progress (cards)
+'Lesson progress total problems': Total progress (questions)
 'Lesson progress current card problems': Current card (questions)
 'Lesson practice progress unit': questions
 'Lesson practice sidebar completed': Completed questions

@@ -2025,6 +2025,11 @@ function LessonPage() {
     return { newN, reviewN };
   }, [showCardQueueProgress, flatCards, isTodayMode, isSingleNodeMode, lessonSessionLearnStartSlot]);
 
+  const newOldLine = useMemo(
+    () => lessonQueueNewOldLine(lessonSessionQueueNewOldLabel, lessonSessionNewOldCounts),
+    [lessonSessionNewOldCounts, lessonSessionQueueNewOldLabel],
+  );
+
   const lessonSessionProgressCard = useMemo(() => {
     if (!showLessonSessionProgressCard) return null;
     const modeLabel = lessonSessionModeLabel || i18n('Learn session');
@@ -2121,13 +2126,15 @@ function LessonPage() {
       border: `1px solid ${themeStyles.border}`,
       overflow: 'hidden',
     };
-    const fillStyle = (pct: number): React.CSSProperties => ({
+    const fillStyle = (pct: number, background = `linear-gradient(90deg, ${themeStyles.yellow}, ${themeStyles.accent})`): React.CSSProperties => ({
       width: `${pct}%`,
       height: '100%',
       borderRadius: '999px',
-      background: `linear-gradient(90deg, ${themeStyles.yellow}, ${themeStyles.accent})`,
+      background,
       transition: 'width 0.35s ease',
     });
+    const totalProblemFill = `linear-gradient(90deg, ${themeStyles.orange}, ${themeStyles.accent})`;
+    const currentProblemFill = themeStyles.orange;
 
     const sessionCardTotal =
       secondBarExitHold?.phase === 1
@@ -2144,9 +2151,6 @@ function LessonPage() {
     const sessionCardPct = sessionCardTotal > 0
       ? Math.min(100, Math.round((sessionCardDone / sessionCardTotal) * 100))
       : 0;
-    const newOldLine = lessonQueueNewOldLine(lessonSessionQueueNewOldLabel, lessonSessionNewOldCounts);
-    const newOldPrefix = newOldLine ? `${newOldLine} · ` : '';
-
     const inExitHold = secondBarExitHold !== null;
     const displaySecondBarCardId = inExitHold ? secondBarExitHold.prevCardId : secondBarCardIdFromQueue;
     const fromAllForBar = allProblems.filter((p) => String(p.cardId) === displaySecondBarCardId);
@@ -2163,18 +2167,23 @@ function LessonPage() {
     const currentCardPct = currentCardProblemTotal > 0
       ? Math.min(100, Math.round((currentCardProblemDone / currentCardProblemTotal) * 100))
       : 0;
+    const totalProblemTotal = allProblems.length;
+    const totalProblemDone = allProblems.filter((p) => !!practiceClearedPids[p.pid]).length;
+    const showTotalProblemsBar = totalProblemTotal > 0;
+    const totalProblemPct = totalProblemTotal > 0
+      ? Math.min(100, Math.round((totalProblemDone / totalProblemTotal) * 100))
+      : 0;
 
     return (
       <div style={cardShell}>
         {modeBlock}
         {showSessionCardBar ? (
-          <div style={{ marginBottom: showCurrentCardProblemsBar ? '8px' : 0 }}>
-            <div style={{ fontSize: '11px', color: themeStyles.textTertiary, marginBottom: '3px' }}>
+          <div style={{ marginBottom: showTotalProblemsBar || showCurrentCardProblemsBar ? '12px' : 0 }}>
+            <div style={{ fontSize: '11px', color: themeStyles.textTertiary, marginBottom: '1px' }}>
               {i18n('Lesson progress session cards')}
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', marginBottom: '4px', gap: '8px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '13px', fontWeight: 600, color: themeStyles.accent }}>
-                {newOldPrefix}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', marginBottom: '2px', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: themeStyles.yellow, flexShrink: 0 }}>
                 {sessionCardDone} / {sessionCardTotal} {i18n('cards')} · {sessionCardPct}%
               </span>
             </div>
@@ -2183,18 +2192,33 @@ function LessonPage() {
             </div>
           </div>
         ) : null}
+        {showTotalProblemsBar ? (
+          <div style={{ marginBottom: showCurrentCardProblemsBar ? '12px' : 0 }}>
+            <div style={{ fontSize: '11px', color: themeStyles.textTertiary, marginBottom: '1px' }}>
+              {i18n('Lesson progress total problems')}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', marginBottom: '2px', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: themeStyles.accent }}>
+                {totalProblemDone} / {totalProblemTotal} {i18n('Lesson practice progress unit')} · {totalProblemPct}%
+              </span>
+            </div>
+            <div style={trackStyle}>
+              <div style={fillStyle(totalProblemPct, totalProblemFill)} />
+            </div>
+          </div>
+        ) : null}
         {showCurrentCardProblemsBar ? (
           <div>
-            <div style={{ fontSize: '11px', color: themeStyles.textTertiary, marginBottom: '3px' }}>
+            <div style={{ fontSize: '11px', color: themeStyles.textTertiary, marginBottom: '1px' }}>
               {i18n('Lesson progress current card problems')}
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', marginBottom: '4px', gap: '8px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '13px', fontWeight: 600, color: themeStyles.accent }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', marginBottom: '2px', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: themeStyles.orange }}>
                 {currentCardProblemDone} / {currentCardProblemTotal} {i18n('Lesson practice progress unit')} · {currentCardPct}%
               </span>
             </div>
             <div style={trackStyle}>
-              <div style={fillStyle(currentCardPct)} />
+              <div style={fillStyle(currentCardPct, currentProblemFill)} />
             </div>
           </div>
         ) : null}
@@ -2226,7 +2250,7 @@ function LessonPage() {
     secondBarExitHold,
     lessonQueueDoneCount,
     lessonSessionNewOldCounts,
-    lessonSessionQueueNewOldLabel,
+    newOldLine,
     themeStyles,
     theme,
     i18n,
@@ -4414,8 +4438,15 @@ function LessonPage() {
         gap: '8px',
         marginBottom: '8px',
       }}>
-        <span style={{ fontSize: '12px', color: themeStyles.textTertiary, textTransform: 'uppercase' }}>
-          {i18n('Lesson problem queue')}
+        <span style={{ display: 'flex', alignItems: 'baseline', gap: '6px', flexWrap: 'wrap', minWidth: 0 }}>
+          <span style={{ fontSize: '12px', color: themeStyles.textTertiary, textTransform: 'uppercase' }}>
+            {i18n('Lesson problem queue')}
+          </span>
+          {newOldLine ? (
+            <span style={{ fontSize: '11px', color: themeStyles.textTertiary, textTransform: 'none', fontWeight: 500 }}>
+              {newOldLine}
+            </span>
+          ) : null}
         </span>
         <span style={{ fontSize: '12px', fontWeight: 600, color: themeStyles.textSecondary, flexShrink: 0 }}>
           {practiceProblemsDoneCount}/{allProblems.length}
@@ -4512,8 +4543,15 @@ function LessonPage() {
           gap: '8px',
           marginBottom: '8px',
         }}>
-          <span style={{ fontSize: '12px', color: themeStyles.textTertiary, textTransform: 'uppercase' }}>
-            {i18n('Lesson problem queue')}
+          <span style={{ display: 'flex', alignItems: 'baseline', gap: '6px', flexWrap: 'wrap', minWidth: 0 }}>
+            <span style={{ fontSize: '12px', color: themeStyles.textTertiary, textTransform: 'uppercase' }}>
+              {i18n('Lesson problem queue')}
+            </span>
+            {newOldLine ? (
+              <span style={{ fontSize: '11px', color: themeStyles.textTertiary, textTransform: 'none', fontWeight: 500 }}>
+                {newOldLine}
+              </span>
+            ) : null}
           </span>
           <span style={{ fontSize: '12px', fontWeight: 600, color: themeStyles.textSecondary, flexShrink: 0 }}>
             {practiceProblemsPendingCount}/{allProblems.length}
