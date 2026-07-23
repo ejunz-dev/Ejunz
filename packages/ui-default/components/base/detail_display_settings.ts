@@ -7,6 +7,7 @@ export type BaseDetailDisplaySettings = {
   showCardTags: boolean;
   showAiTutor: boolean;
   showExpandSaveIndicator: boolean;
+  showWsIndicator: boolean;
   showToolbar: boolean;
   indicatorX: number;
   indicatorY: number;
@@ -29,6 +30,7 @@ export const defaultBaseDetailDisplaySettings = (): BaseDetailDisplaySettings =>
   showCardTags: false,
   showAiTutor: true,
   showExpandSaveIndicator: true,
+  showWsIndicator: true,
   showToolbar: true,
   indicatorX: 320,
   indicatorY: 72,
@@ -54,6 +56,7 @@ export function baseDetailDisplaySettingsEqual(
     && a.showCardTags === b.showCardTags
     && a.showAiTutor === b.showAiTutor
     && a.showExpandSaveIndicator === b.showExpandSaveIndicator
+    && a.showWsIndicator === b.showWsIndicator
     && a.showToolbar === b.showToolbar
     && a.indicatorX === b.indicatorX
     && a.indicatorY === b.indicatorY
@@ -81,6 +84,7 @@ export function readBaseDetailDisplaySettings(): BaseDetailDisplaySettings {
     showCardTags: Boolean(r.showCardTags),
     showAiTutor: r.showAiTutor !== false,
     showExpandSaveIndicator: r.showExpandSaveIndicator !== false,
+    showWsIndicator: r.showWsIndicator !== false,
     showToolbar: r.showToolbar !== false,
     indicatorX: typeof r.indicatorX === 'number' ? r.indicatorX : 320,
     indicatorY: typeof r.indicatorY === 'number' ? r.indicatorY : 72,
