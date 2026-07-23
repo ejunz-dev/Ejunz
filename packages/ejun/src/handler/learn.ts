@@ -602,16 +602,36 @@ function buildDagNodeLookup(sections: LearnDAGNode[], allDagNodes: LearnDAGNode[
     return m;
 }
 
-function mergedLearnNodeTitlesPath(dagLookup: Map<string, LearnDAGNode>, dagNode: LearnDAGNode): string[] {
-    const titles: string[] = [];
+type LessonCardProvenancePart = {
+    title: string;
+    href?: string;
+    nodeId?: string;
+    kind: 'base' | 'node';
+};
+
+function lessonBaseDetailHref(
+    domainId: string,
+    baseDocId: string | number,
+    branch: string,
+    nodeId?: string,
+): string {
+    const br = branch && String(branch).trim() ? String(branch).trim() : 'main';
+    const qs = nodeId ? `?nodeId=${encodeURIComponent(nodeId)}` : '';
+    return `/d/${encodeURIComponent(domainId)}/base/${encodeURIComponent(String(baseDocId))}/branch/${encodeURIComponent(br)}${qs}`;
+}
+
+function mergedLearnNodePathParts(dagLookup: Map<string, LearnDAGNode>, dagNode: LearnDAGNode): Array<{ id: string; title: string }> {
+    const parts: Array<{ id: string; title: string }> = [];
     for (const pid of dagNode.requireNids || []) {
-        const p = dagLookup.get(String(pid));
+        const id = String(pid);
+        const p = dagLookup.get(id);
         const t = (p?.title || '').trim();
-        if (t) titles.push(t);
+        if (t) parts.push({ id, title: t });
     }
+    const selfId = String(dagNode._id || '');
     const selfT = (dagNode.title || '').trim();
-    if (selfT && titles[titles.length - 1] !== selfT) titles.push(selfT);
-    return titles;
+    if (selfId && selfT && parts[parts.length - 1]?.title !== selfT) parts.push({ id: selfId, title: selfT });
+    return parts;
 }
 
 function findDagNodeForLearnCard(
@@ -630,12 +650,12 @@ function findDagNodeForLearnCard(
     return null;
 }
 
-function baseOutlineNodeTitlesPath(
+function baseOutlineNodePathParts(
     base: BaseDoc | null | undefined,
     branch: string,
     rawNodeId: string,
     translate: (key: string) => string,
-): string[] {
+): Array<{ id: string; title: string }> {
     if (!base || !rawNodeId) return [];
     const { nodes, edges } = getBranchData(base, branch);
     const nodeMap = new Map<string, BaseNode>();
@@ -659,15 +679,15 @@ function baseOutlineNodeTitlesPath(
         cur = parentMap.get(cur);
     }
     return chain
+        .reverse()
         .map((id) => {
             const n = nodeMap.get(id);
-            return ((n?.text || '').trim() || translate('Unnamed Node'));
-        })
-        .reverse();
+            return { id, title: ((n?.text || '').trim() || translate('Unnamed Node')) };
+        });
 }
 
 /** Base title — learn DAG / outline node titles (lesson provenance line). */
-async function formatLessonCardProvenanceLabel(args: {
+function buildLessonCardProvenanceParts(args: {
     domainId: string;
     translate: (key: string) => string;
     baseDoc: BaseDoc | null | undefined;
@@ -675,29 +695,41 @@ async function formatLessonCardProvenanceLabel(args: {
     rawNodeId: string;
     cardId: string;
     dagCache?: { sections: LearnDAGNode[]; allDagNodes: LearnDAGNode[] };
-}): Promise<string> {
-    const { translate, baseDoc, branch, rawNodeId, cardId, dagCache } = args;
+}): LessonCardProvenancePart[] {
+    const { domainId, translate, baseDoc, branch, rawNodeId, cardId, dagCache } = args;
+    const baseDocId = baseDoc?.docId;
     const baseTitle = (baseDoc?.title || '').trim();
-    if (!baseDoc?.docId || !rawNodeId) {
-        return [baseTitle].filter(Boolean).join(' - ');
+    const parts: LessonCardProvenancePart[] = [];
+    if (baseTitle) {
+        parts.push({
+            title: baseTitle,
+            href: baseDocId ? lessonBaseDetailHref(domainId, String(baseDocId), branch) : undefined,
+            kind: 'base',
+        });
     }
-    let nodeTitles: string[] = [];
+    if (!baseDocId || !rawNodeId) return parts;
+
+    let nodeParts: Array<{ id: string; title: string }> = [];
     if (dagCache) {
         const dagNode = findDagNodeForLearnCard(dagCache.sections, dagCache.allDagNodes, rawNodeId, cardId);
         if (dagNode) {
             const dagLookup = buildDagNodeLookup(dagCache.sections, dagCache.allDagNodes);
-            nodeTitles = mergedLearnNodeTitlesPath(dagLookup, dagNode);
+            nodeParts = mergedLearnNodePathParts(dagLookup, dagNode);
         }
     }
-    if (nodeTitles.length === 0 && baseDoc) {
-        nodeTitles = baseOutlineNodeTitlesPath(baseDoc, branch, rawNodeId, translate);
+    if (nodeParts.length === 0 && baseDoc) {
+        nodeParts = baseOutlineNodePathParts(baseDoc, branch, rawNodeId, translate);
     }
-    const parts = [baseTitle, ...nodeTitles].filter(Boolean);
-    const deduped: string[] = [];
-    for (const p of parts) {
-        if (deduped.length === 0 || deduped[deduped.length - 1] !== p) deduped.push(p);
+    for (const node of nodeParts) {
+        if (!node.title || parts[parts.length - 1]?.title === node.title) continue;
+        parts.push({
+            title: node.title,
+            href: lessonBaseDetailHref(domainId, String(baseDocId), branch, node.id),
+            nodeId: node.id,
+            kind: 'node',
+        });
     }
-    return deduped.join(' - ');
+    return parts;
 }
 
 function learnRecordProblemIds(card: { problems?: Array<{ pid?: string }> } | null | undefined): string[] {
@@ -3315,7 +3347,7 @@ async function buildSpaLessonSnapshotToday(
         todayResolvedBase,
         cardStorageBranch(currentCard as any) || todayLessonBranch,
     );
-    const lessonCardProvenanceLabel = await formatLessonCardProvenanceLabel({
+    const lessonCardProvenanceParts = buildLessonCardProvenanceParts({
         domainId: finalDomainId,
         translate,
         baseDoc: baseDocToday,
@@ -3323,6 +3355,7 @@ async function buildSpaLessonSnapshotToday(
         rawNodeId: String(currentItem.nodeId || ''),
         cardId: String(currentItem.cardId || ''),
     });
+    const lessonCardProvenanceLabel = lessonCardProvenanceParts.map((part) => part.title).join(' - ');
     const learningStartSlotSpa =
         typeof sDaily.currentLearnSectionIndex === 'number' && sDaily.currentLearnSectionIndex >= 0
             ? sDaily.currentLearnSectionIndex
@@ -3386,6 +3419,7 @@ async function buildSpaLessonSnapshotToday(
         lessonSessionDomainId: finalDomainId,
         learnRecordId: learnRecordIdToday || '',
         lessonCardProvenanceLabel,
+        lessonCardProvenanceParts,
         lessonLearnSessionMode: spaSessionMode,
         lessonTodayModesConfigLine,
         lessonTodayCardKind,
@@ -3484,7 +3518,7 @@ async function buildSpaLessonSnapshotNode(
         cardBaseIdNode,
         br,
     );
-    const lessonCardProvenanceLabel = await formatLessonCardProvenanceLabel({
+    const lessonCardProvenanceParts = buildLessonCardProvenanceParts({
         domainId: finalDomainId,
         translate,
         baseDoc: baseOfCard,
@@ -3493,6 +3527,7 @@ async function buildSpaLessonSnapshotNode(
         cardId: String(currentItem.cardId || ''),
         dagCache: { sections, allDagNodes },
     });
+    const lessonCardProvenanceLabel = lessonCardProvenanceParts.map((part) => part.title).join(' - ');
     const learnStartSlotNode = !ignoreGlobalLearnConfig
         && typeof dudocSpaNode?.currentLearnSectionIndex === 'number' && dudocSpaNode.currentLearnSectionIndex >= 0
         ? dudocSpaNode.currentLearnSectionIndex
@@ -3539,6 +3574,7 @@ async function buildSpaLessonSnapshotNode(
         lessonSessionDomainId: finalDomainId,
         learnRecordId: learnRecordIdSpaNode || '',
         lessonCardProvenanceLabel,
+        lessonCardProvenanceParts,
         lessonLearnSessionMode: '',
         lessonSessionLearnStartSlot: learnStartSlotNode,
         lessonSessionQueueNewOldLabel,
@@ -3849,7 +3885,7 @@ class LessonHandler extends Handler {
                     cardBr,
                 );
 
-                const lessonCardProvenanceLabel = await formatLessonCardProvenanceLabel({
+                const lessonCardProvenanceParts = buildLessonCardProvenanceParts({
                     domainId: finalDomainId,
                     translate: (k) => this.translate(k),
                     baseDoc: cardBase,
@@ -3857,6 +3893,7 @@ class LessonHandler extends Handler {
                     rawNodeId: String(card.nodeId || ''),
                     cardId: card.docId.toString(),
                 });
+                const lessonCardProvenanceLabel = lessonCardProvenanceParts.map((part) => part.title).join(' - ');
 
                 this.response.template = 'lesson.html';
                 this.response.body = {
@@ -3880,6 +3917,7 @@ class LessonHandler extends Handler {
                     lessonSessionDomainId: finalDomainId,
                     learnRecordId: learnRecordId || '',
                     lessonCardProvenanceLabel,
+                    lessonCardProvenanceParts,
                     lessonLearnSessionMode: '',
                     lessonTodayModesConfigLine: '',
                     lessonTodayCardKind: '',
@@ -4513,7 +4551,7 @@ class LessonHandler extends Handler {
                 cardStorageBranch(currentCard as any) || nodeLessonBranch,
             );
 
-            const lessonCardProvenanceLabel = await formatLessonCardProvenanceLabel({
+            const lessonCardProvenanceParts = buildLessonCardProvenanceParts({
                 domainId: finalDomainId,
                 translate: (k) => this.translate(k),
                 baseDoc: baseDocForNode,
@@ -4522,6 +4560,7 @@ class LessonHandler extends Handler {
                 cardId: String(currentItem.cardId || ''),
                 dagCache: { sections: trainSecNode, allDagNodes },
             });
+            const lessonCardProvenanceLabel = lessonCardProvenanceParts.map((part) => part.title).join(' - ');
 
             const nodeLearnStartSlot = !ignoreGlobalLearnConfig
                 && typeof (dudoc as any).currentLearnSectionIndex === 'number' && (dudoc as any).currentLearnSectionIndex >= 0
@@ -4571,6 +4610,7 @@ class LessonHandler extends Handler {
                 lessonSessionDomainId: finalDomainId,
                 learnRecordId: learnRecordIdNode || '',
                 lessonCardProvenanceLabel,
+                lessonCardProvenanceParts,
                 lessonLearnSessionMode: '',
                 lessonTodayModesConfigLine: '',
                 lessonTodayCardKind: '',
@@ -4808,7 +4848,7 @@ class LessonHandler extends Handler {
                 cardStorageBranch(currentCard as any) || todayLessonBranch,
             );
 
-            const lessonCardProvenanceLabel = await formatLessonCardProvenanceLabel({
+            const lessonCardProvenanceParts = buildLessonCardProvenanceParts({
                 domainId: finalDomainId,
                 translate: (k) => this.translate(k),
                 baseDoc: baseDocToday,
@@ -4816,6 +4856,7 @@ class LessonHandler extends Handler {
                 rawNodeId: String(currentItem.nodeId || ''),
                 cardId: String(currentItem.cardId || ''),
             });
+            const lessonCardProvenanceLabel = lessonCardProvenanceParts.map((part) => part.title).join(' - ');
 
             const todayLearnSessionModeOut = normalizeLearnSessionMode(
                 canReuseTodayFreeze
@@ -4885,6 +4926,7 @@ class LessonHandler extends Handler {
                 lessonSessionDomainId: finalDomainId,
                 learnRecordId: learnRecordIdToday || '',
                 lessonCardProvenanceLabel,
+                lessonCardProvenanceParts,
                 lessonLearnSessionMode: todayLearnSessionModeOut,
                 lessonTodayModesConfigLine,
                 lessonTodayCardKind,
