@@ -5911,9 +5911,9 @@ function LessonPage() {
                               {isRevealed ? (
                                 <LessonProblemMarkdown
                                   text={row.content?.trim() ? row.content : '—'}
-                                  inline
+                                  inline={false}
                                   replaceImagesWithCache={replaceImagesWithCache}
-                                  as="span"
+                                  as="div"
                                   style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', pointerEvents: 'none' }}
                                 />
                               ) : String(i18n('Problem chain masked'))}
@@ -5934,9 +5934,9 @@ function LessonPage() {
                                 : (
                                   <LessonProblemMarkdown
                                     text={row.content?.trim() ? row.content : '—'}
-                                    inline
+                                    inline={false}
                                     replaceImagesWithCache={replaceImagesWithCache}
-                                    as="span"
+                                    as="div"
                                     style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
                                   />
                                 )}
