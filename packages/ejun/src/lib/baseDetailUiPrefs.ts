@@ -13,6 +13,7 @@ export function sanitizeBaseDetailUiPrefs(raw: unknown): Record<string, unknown>
     if (typeof o.showCardTags === 'boolean') out.showCardTags = o.showCardTags;
     if (typeof o.showAiTutor === 'boolean') out.showAiTutor = o.showAiTutor;
     if (typeof o.showExpandSaveIndicator === 'boolean') out.showExpandSaveIndicator = o.showExpandSaveIndicator;
+    if (typeof o.showWsIndicator === 'boolean') out.showWsIndicator = o.showWsIndicator;
     if (typeof o.showToolbar === 'boolean') out.showToolbar = o.showToolbar;
     if (typeof o.indicatorX === 'number' && Number.isFinite(o.indicatorX)) out.indicatorX = o.indicatorX;
     if (typeof o.indicatorY === 'number' && Number.isFinite(o.indicatorY)) out.indicatorY = o.indicatorY;
