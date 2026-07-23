@@ -154,7 +154,7 @@ function clampSuperFlipColCount(n: unknown): number {
 }
 
 export const CHAIN_ROW_MIN = 1;
-export const CHAIN_ROW_MAX = 16;
+export const CHAIN_ROW_MAX = 100;
 
 function clampChainRowCount(n: unknown): number {
     const v = typeof n === 'number' && Number.isFinite(n) ? Math.round(n as number) : CHAIN_ROW_MIN;
