@@ -102,6 +102,7 @@ export function BaseDetailSettingsPanel({
               showCardTags: true,
               showAiTutor: true,
               showExpandSaveIndicator: true,
+              showWsIndicator: true,
               showToolbar: true,
             })}
           >
@@ -121,6 +122,7 @@ export function BaseDetailSettingsPanel({
               showCardTags: false,
               showAiTutor: false,
               showExpandSaveIndicator: false,
+              showWsIndicator: false,
               showToolbar: false,
             })}
           >
@@ -319,6 +321,27 @@ export function BaseDetailSettingsPanel({
                 ...defaultBaseDetailDisplaySettings(),
                 ...draft,
                 showExpandSaveIndicator: e.currentTarget.checked,
+              })}
+            />
+          </label>
+          <label className="roadmap-detail-settings__row">
+            <div className="roadmap-detail-settings__row-text">
+              <span className="roadmap-detail-settings__row-label">
+                {i18n('Show WS connection indicator')}
+              </span>
+              <span className="roadmap-detail-settings__row-desc">
+                {i18n('Show live collaboration connection status at top right')}
+              </span>
+            </div>
+            <input
+              type="checkbox"
+              className="roadmap-detail-settings__toggle"
+              checked={draft.showWsIndicator}
+              disabled={saving}
+              onChange={(e) => setDraft({
+                ...defaultBaseDetailDisplaySettings(),
+                ...draft,
+                showWsIndicator: e.currentTarget.checked,
               })}
             />
           </label>

@@ -806,6 +806,8 @@ Date: 날짜
 'Roadmap node number format hint': '형식 x.y (예: 1.1)'
 'Roadmap sub node number invalid': '하위 노드 번호는 x.y 형식이어야 합니다.'
 'Roadmap sub node number missing': '하위 노드 "{0}"에 번호가 없습니다.'
+'Show WS connection indicator': 'WS 연결 표시기 표시'
+'Show live collaboration connection status at top right': '오른쪽 상단에 실시간 협업 연결 상태를 표시합니다.'
 'Roadmap detail settings saved': 표시 설정이 저장되었습니다.
 'Roadmap detail settings save failed': 표시 설정 저장에 실패했습니다.
 'Resize sidebar': 사이드바 크기 조절

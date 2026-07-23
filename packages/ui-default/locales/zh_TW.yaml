@@ -656,6 +656,8 @@ Date: 日期
 'Roadmap node number format hint': 格式 x.y（如 1.1）
 'Roadmap sub node number invalid': 子節點序號必須是 x.y 格式。
 'Roadmap sub node number missing': 子節點 "{0}" 缺少序號。
+'Show WS connection indicator': 顯示 WS 連線指示器
+'Show live collaboration connection status at top right': 在右上角顯示即時協作連線狀態。
 'Roadmap detail settings saved': 顯示設定已儲存。
 'Roadmap detail settings save failed': 顯示設定儲存失敗。
 'Resize sidebar': 調整側欄寬度
