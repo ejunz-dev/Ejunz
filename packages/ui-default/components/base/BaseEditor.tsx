@@ -7396,7 +7396,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             if (k === 'multi') {
               const pm = p as ProblemMulti;
               const set = new Set(pm.answer || []);
-              const optionsText = pm.options.map((opt, oi) =>
+              const optionsText = (pm.options || []).map((opt, oi) =>
                 `  ${String.fromCharCode(65 + oi)}. ${opt}${set.has(oi) ? ' (correct)' : ''}`
               ).join('\n');
               problemsText += `\n  Problem ${index + 1} (ID: ${p.pid}): multiple choice\n`;
@@ -7409,7 +7409,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               return;
             }
             const ps = p as ProblemSingle;
-            const optionsText = ps.options.map((opt, oi) =>
+            const optionsText = (ps.options || []).map((opt, oi) =>
               `  ${String.fromCharCode(65 + oi)}. ${opt}${oi === ps.answer ? ' (correct)' : ''}`
             ).join('\n');
             problemsText += `\n  Problem ${index + 1} (ID: ${p.pid}): single choice\n`;
