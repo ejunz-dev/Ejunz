@@ -790,7 +790,7 @@ function BaseDetailViewer() {
   }, []);
 
   const handleSelectProblem = useCallback((pid: string) => {
-    setSelectedProblemId((prev) => (prev === pid ? null : pid));
+    setSelectedProblemId(pid);
   }, []);
 
   const handleEditProblem = useCallback((_pid: string, index: number) => {
