@@ -1904,6 +1904,8 @@ Date: 日期
 'Roadmap sub node number missing': 子节点 "{0}" 缺少序号。
 'Roadmap sub node number prefix invalid': 子节点 "{0}" 序号前缀必须与某个主节点序号一致。
 'Roadmap node number validation failed': 路线图节点序号校验失败，请修正后再保存。
+'Show WS connection indicator': 显示 WS 连接指示器
+'Show live collaboration connection status at top right': 在右上角显示实时协作连接状态。
 'Roadmap detail settings saved': 显示设置已保存。
 'Roadmap detail settings save failed': 显示设置保存失败。
 'Resize sidebar': 调整侧栏宽度

@@ -1329,6 +1329,8 @@ Date: Date
 'Roadmap sub node number missing': Sub node "{0}" is missing a number.
 'Roadmap sub node number prefix invalid': Sub node "{0}" number prefix must match a main node number.
 'Roadmap node number validation failed': Roadmap node number validation failed. Fix errors before saving.
+'Show WS connection indicator': Show WS connection indicator
+'Show live collaboration connection status at top right': Show live collaboration connection status at top right.
 'Roadmap detail settings saved': Display settings saved.
 'Roadmap detail settings save failed': Failed to save display settings.
 'Resize sidebar': Resize sidebar
