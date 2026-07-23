@@ -607,7 +607,7 @@ function BaseDetailViewer() {
     return ids;
   }, [nodes, edges]);
 
-  const learnTargetNodeId = contentRootNodeId;
+  const learnTargetNodeId = canvasFocusedNodeId ?? selectedNodeId ?? contentRootNodeId;
 
   const startSingleNodeLearn = useCallback(async () => {
     const nodeId = String(learnTargetNodeId || '').trim();
@@ -618,20 +618,21 @@ function BaseDetailViewer() {
       return;
     }
 
-    // Build node stats for the confirmation dialog
-    const descendantIds = collectDescendantNodeIds(nodeId);
-    const childNodeCount = descendantIds.length;
-    let cardCount = 0;
-    let problemCount = 0;
-    descendantIds.forEach((id) => {
-      const cards = nodeCardsMap[id] || [];
-      cardCount += cards.length;
-      problemCount += cards.reduce((sum, card) => sum + (card.problems?.length || 0), 0);
-    });
-    // Also count current node's own cards
-    const selfCards = nodeCardsMap[nodeId] || [];
-    cardCount += selfCards.length;
-    problemCount += selfCards.reduce((sum, card) => sum + (card.problems?.length || 0), 0);
+    // Base detail learning follows exactly the node and card set visible in the detail page,
+    // not the global /learn queue settings.
+    const subtreeNodeIds = [nodeId, ...collectDescendantNodeIds(nodeId)];
+    const visibleNodeIds = contentTreeVisibility?.visibleNodeIds;
+    const visibleCardIds = contentTreeVisibility?.visibleCardIds;
+    const learnNodeIds = visibleNodeIds
+      ? subtreeNodeIds.filter((id) => visibleNodeIds.has(id))
+      : subtreeNodeIds;
+    const learnCards = learnNodeIds.flatMap((id) => (
+      (nodeCardsMap[id] || []).filter((card) => !visibleCardIds || visibleCardIds.has(card.docId))
+    ));
+    const learnCardIds = Array.from(new Set(learnCards.map((card) => card.docId)));
+    const childNodeCount = learnNodeIds.filter((id) => id !== nodeId).length;
+    const cardCount = learnCardIds.length;
+    const problemCount = learnCards.reduce((sum, card) => sum + (card.problems?.length || 0), 0);
     const nodeLabel = nodeDisplayLabel(
       nodes.find((n) => n.id === nodeId) || { id: nodeId, text: '' },
     );
@@ -657,6 +658,9 @@ function BaseDetailViewer() {
         nodeId,
         baseDocId: baseDocNum,
         branch,
+        learnSource: 'base',
+        source: 'base_detail',
+        detailFilteredCardIds: learnCardIds,
       });
       const redir = res?.redirect ?? res?.body?.redirect ?? res?.data?.redirect;
       const url = redir || domainScopedPath('/learn/lesson', domainId);
@@ -677,7 +681,7 @@ function BaseDetailViewer() {
     } finally {
       setLearnBusy(false);
     }
-  }, [base.docId, base.domainId, branch, learnBusy, learnTargetNodeId, nodes, edges, nodeCardsMap]);
+  }, [base.docId, base.domainId, branch, collectDescendantNodeIds, contentTreeVisibility, learnBusy, learnTargetNodeId, nodeCardsMap, nodes]);
 
   const startEditorSession = useCallback(async () => {
     const nodeId = String(contentRootNodeId || '').trim();
