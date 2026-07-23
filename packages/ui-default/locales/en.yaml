@@ -332,6 +332,8 @@ edge_authorize: Edge Authorization
 'Learn session problem tag filter max hint': Up to {0} tags
 'Learn session problem tag filter no tags in base': No registered tags found for this base. Tags can still be persisted if synced from elsewhere.
 'No cards match session problem tag filter': No cards remain after filtering problems by tags.
+'{0} filter rules': '{0} filter rule(s)'
+'Filter rules': Filter rules
 'Learn requires cards with problems': No learnable problems found. Each queued card must contain at least one problem.
 'Learn ratio section label': Sub mode · new/review ratio (next daily run)
 'Learn ratio section hint': Main mode (deep/breadth/random) only affects ordering of **new-segment** cards in the daily queue. Daily goal counts **new** cards in mixed and new-only modes; in **review-only** mode the same number is how many **review** cards to draw. Each mixed daily session length = new slice (goal cap, cycle new pool if short) plus (new count × N) **old-segment** review pulls (cycle old pool if short; if there is no old segment, append none). New-only and review-only modes skip the other arm.

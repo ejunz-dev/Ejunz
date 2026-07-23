@@ -233,6 +233,9 @@ type LessonUiState = {
   hasProblems: boolean;
   rootNodeId: string;
   rootNodeTitle: string;
+  lessonSourceBranch: string;
+  lessonSourceUrl: string;
+  lessonFilterSummary: string;
   flatCards: Array<{
     nodeId: string;
     cardId: string;
@@ -814,6 +817,9 @@ function createInitialLessonUiState(): LessonUiState {
     hasProblems: !!U.hasProblems,
     rootNodeId: String(U.rootNodeId || ''),
     rootNodeTitle: String(U.rootNodeTitle || ''),
+    lessonSourceBranch: String(U.lessonSourceBranch || ''),
+    lessonSourceUrl: String(U.lessonSourceUrl || ''),
+    lessonFilterSummary: String(U.lessonFilterSummary || ''),
     flatCards: Array.isArray(U.flatCards) ? U.flatCards : [],
     nodeTree: Array.isArray(U.nodeTree) ? U.nodeTree : [],
     currentCardIndex: typeof U.currentCardIndex === 'number' ? U.currentCardIndex : 0,
@@ -912,6 +918,9 @@ function LessonPage() {
     hasProblems,
     rootNodeId,
     rootNodeTitle,
+    lessonSourceBranch,
+    lessonSourceUrl,
+    lessonFilterSummary,
     flatCards,
     nodeTree,
     currentCardIndex,
@@ -1510,6 +1519,9 @@ function LessonPage() {
       isAlonePractice: typeof payload.isAlonePractice === 'boolean' ? payload.isAlonePractice : prev.isAlonePractice,
       rootNodeId: typeof payload.rootNodeId === 'string' ? payload.rootNodeId : prev.rootNodeId,
       rootNodeTitle: typeof payload.rootNodeTitle === 'string' ? payload.rootNodeTitle : prev.rootNodeTitle,
+      lessonSourceBranch: typeof payload.lessonSourceBranch === 'string' ? payload.lessonSourceBranch : prev.lessonSourceBranch,
+      lessonSourceUrl: typeof payload.lessonSourceUrl === 'string' ? payload.lessonSourceUrl : prev.lessonSourceUrl,
+      lessonFilterSummary: typeof payload.lessonFilterSummary === 'string' ? payload.lessonFilterSummary : prev.lessonFilterSummary,
       lessonCardProvenanceLabel: typeof payload.lessonCardProvenanceLabel === 'string'
         ? payload.lessonCardProvenanceLabel
         : prev.lessonCardProvenanceLabel,
@@ -1924,6 +1936,48 @@ function LessonPage() {
     return '';
   }, [isTodayMode, rootNodeId, isSingleNodeMode, isAlonePractice]);
 
+  const singleNodeDetailUrl = useMemo(() => {
+    if (!isSingleNodeMode || !domainId || !baseDocId || !rootNodeId) return '';
+    if (lessonSourceUrl.trim()) return lessonSourceUrl.trim();
+    const branch = (lessonSourceBranch || 'main').trim() || 'main';
+    return `/d/${encodeURIComponent(domainId)}/base/${encodeURIComponent(baseDocId)}/branch/${encodeURIComponent(branch)}?nodeId=${encodeURIComponent(rootNodeId)}`;
+  }, [baseDocId, domainId, isSingleNodeMode, lessonSourceBranch, lessonSourceUrl, rootNodeId]);
+
+  const singleNodeFilterItems = useMemo(() => {
+    if (!isSingleNodeMode) return [];
+    return lessonFilterSummary.split(' · ').map((item) => item.trim()).filter(Boolean);
+  }, [isSingleNodeMode, lessonFilterSummary]);
+
+  const singleNodeFilterSummaryLabel = useMemo(() => {
+    const n = singleNodeFilterItems.length;
+    if (!n) return '';
+    const raw = i18n('{0} filter rules', n);
+    return raw.includes('{0}') ? raw.replace(/\{0\}/g, String(n)) : raw;
+  }, [i18n, singleNodeFilterItems.length]);
+
+  const openSingleNodeFilterDialog = useCallback(async () => {
+    if (!singleNodeFilterItems.length) return;
+    const { InfoDialog } = await import('vj/components/dialog/index');
+    const body = document.createElement('div');
+    const title = document.createElement('h2');
+    title.textContent = i18n('Filter rules');
+    const list = document.createElement('ul');
+    list.style.margin = '8px 0 0 18px';
+    list.style.lineHeight = '1.7';
+    singleNodeFilterItems.forEach((item) => {
+      const li = document.createElement('li');
+      li.textContent = item;
+      list.appendChild(li);
+    });
+    body.appendChild(title);
+    body.appendChild(list);
+    const dialog = new InfoDialog({
+      $body: body,
+      width: '460px',
+    });
+    await dialog.open();
+  }, [i18n, singleNodeFilterItems]);
+
   const lessonQueueDoneCount = useMemo(() => {
     if (!showCardQueueProgress) return 0;
     let n = 0;
@@ -1983,6 +2037,45 @@ function LessonPage() {
           <span style={{ fontSize: '14px', fontWeight: 700, color: themeStyles.yellow }}>
             {modeLabel}
           </span>
+          {isSingleNodeMode && rootNodeTitle && (
+            <>
+              <span style={{ fontSize: '13px', color: themeStyles.textTertiary }} aria-hidden>·</span>
+              {singleNodeDetailUrl ? (
+                <a
+                  href={singleNodeDetailUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ fontSize: '13px', fontWeight: 600, color: themeStyles.accent, textDecoration: 'none' }}
+                >
+                  {rootNodeTitle}
+                </a>
+              ) : (
+                <span style={{ fontSize: '13px', fontWeight: 600, color: themeStyles.textPrimary }}>
+                  {rootNodeTitle}
+                </span>
+              )}
+            </>
+          )}
+          {isSingleNodeMode && singleNodeFilterSummaryLabel && (
+            <>
+              <span style={{ fontSize: '13px', color: themeStyles.textTertiary }} aria-hidden>·</span>
+              <button
+                type="button"
+                onClick={openSingleNodeFilterDialog}
+                style={{
+                  border: 'none',
+                  padding: 0,
+                  background: 'transparent',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  color: themeStyles.textTertiary,
+                  cursor: 'pointer',
+                }}
+              >
+                {singleNodeFilterSummaryLabel}
+              </button>
+            </>
+          )}
           {isTodayMode && (
             <>
               <span style={{ fontSize: '13px', color: themeStyles.textTertiary }} aria-hidden>·</span>
@@ -2116,7 +2209,12 @@ function LessonPage() {
     card,
     lessonSessionModeLabel,
     isTodayMode,
+    isSingleNodeMode,
     rootNodeId,
+    rootNodeTitle,
+    singleNodeDetailUrl,
+    singleNodeFilterSummaryLabel,
+    openSingleNodeFilterDialog,
     lessonLearnSessionMode,
     lessonTodayModesConfigLine,
     flatCards,
