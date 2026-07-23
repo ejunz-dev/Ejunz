@@ -3520,6 +3520,13 @@ async function buildSpaLessonSnapshotNode(
         isTodayMode: false,
         rootNodeId: anchor,
         rootNodeTitle: rootNode.title || '',
+        lessonSourceBranch: learnBrNode,
+        lessonSourceUrl: isBaseDetailFilteredNodeSession(sNode)
+            ? ((sNode as SessionDoc & { lessonQueueDetailSourceUrl?: string | null }).lessonQueueDetailSourceUrl || '')
+            : '',
+        lessonFilterSummary: isBaseDetailFilteredNodeSession(sNode)
+            ? ((sNode as SessionDoc & { lessonQueueDetailFilterSummary?: string | null }).lessonQueueDetailFilterSummary || '')
+            : '',
         flatCards,
         flatQueueCards: flatQueueCardsSpaNode,
         nodeTree,
@@ -4545,6 +4552,13 @@ class LessonHandler extends Handler {
                 isSingleNodeMode: true,
                 rootNodeId: lessonNodeId,
                 rootNodeTitle: rootNode.title || '',
+                lessonSourceBranch: nodeLessonBranch,
+                lessonSourceUrl: isBaseDetailFilteredNodeSession(sNode)
+                    ? ((sNode as SessionDoc & { lessonQueueDetailSourceUrl?: string | null }).lessonQueueDetailSourceUrl || '')
+                    : '',
+                lessonFilterSummary: isBaseDetailFilteredNodeSession(sNode)
+                    ? ((sNode as SessionDoc & { lessonQueueDetailFilterSummary?: string | null }).lessonQueueDetailFilterSummary || '')
+                    : '',
                 flatCards: flatCards,
                 flatQueueCards: flatQueueCardsNodeLesson,
                 nodeTree,
@@ -4951,6 +4965,12 @@ class LessonHandler extends Handler {
             const detailFilteredCardIdsStart = body.source === 'base_detail' && Array.isArray(body.detailFilteredCardIds)
                 ? [...new Set(body.detailFilteredCardIds.map((id: unknown) => String(id || '').trim()).filter(Boolean))]
                 : null;
+            const detailSourceUrlStart = detailFilteredCardIdsStart !== null && typeof body.detailSourceUrl === 'string'
+                ? body.detailSourceUrl.trim().slice(0, 2048)
+                : '';
+            const detailFilterSummaryStart = detailFilteredCardIdsStart !== null && typeof body.detailFilterSummary === 'string'
+                ? body.detailFilterSummary.trim().slice(0, 512)
+                : '';
             const nodeSourceHint = learnSourceHint ?? learnSourceHintFromDoc(baseNodeStart);
             const { nodes: branchNodesForStart } = getBranchData(baseNodeStart, brN);
             const startAnchorNode = branchNodesForStart.find((n) => n.id === nodeIdStart);
@@ -5035,6 +5055,8 @@ class LessonHandler extends Handler {
                 lessonQueueLearnSectionOrderIndex: learnSectionOrderIndexStart,
                 lessonQueueSource: detailFilteredCardIdsStart !== null ? 'base_detail' : null,
                 lessonQueueDetailFilteredCardIds: detailFilteredCardIdsStart || [],
+                lessonQueueDetailSourceUrl: detailSourceUrlStart || null,
+                lessonQueueDetailFilterSummary: detailFilterSummaryStart || null,
                 lessonQueueLearnSessionCardFilter: detailFilteredCardIdsStart !== null ? 'all' : undefined,
                 lessonQueueLearnSessionProblemTagMode: detailFilteredCardIdsStart !== null ? 'off' : undefined,
                 lessonQueueLearnSessionProblemTags: detailFilteredCardIdsStart !== null ? [] : undefined,

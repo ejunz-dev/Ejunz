@@ -380,6 +380,8 @@ edge_authorize: Edge 授权
 'Learn session problem tag filter max hint': 最多可选 {0} 个标签
 'Learn session problem tag filter no tags in base': 当前知识库没有登记标签；若此前已同步仍可选中已保存的标签。
 'No cards match session problem tag filter': 过滤后剩余卡片数为 0，请放宽标签筛选。
+'{0} filter rules': '{0} 条过滤规则'
+'Filter rules': 过滤规则细则
 'Learn requires cards with problems': 当前没有可学习题目（每张卡片至少需要 1 道题目）。
 'Learn ratio section label': 学习副模式 · 新旧比例（下次会话）
 'Learn ratio section hint': 主模式（深度/广度/随机）只影响今日队列里「新」段卡片的展开顺序。混合与纯新模式下每日目标指**新卡**张数；**纯复习**模式下同一每日目标表示要抽取的**复习卡**张数。混合模式：今日会话 = 新卡（按目标截断，不足则循环）+ 新卡数×N 张旧段复习（不足则循环，无旧段则不追加）。纯新 / 纯复习会省略另一臂。

@@ -1457,6 +1457,8 @@ export interface SessionDoc {
     lessonQueueLearnSessionProblemTags?: string[];
     lessonQueueSource?: string | null;
     lessonQueueDetailFilteredCardIds?: string[];
+    lessonQueueDetailSourceUrl?: string | null;
+    lessonQueueDetailFilterSummary?: string | null;
     lessonQueueLearnSubMode?: string | null;
     lessonQueueLearnNewReviewRatio?: number | null;
     lessonQueueLearnNewReviewOrder?: string | null;
@@ -1501,6 +1503,8 @@ export type SessionPatch = Partial<Pick<
     | 'lessonQueueLearnSessionProblemTags'
     | 'lessonQueueSource'
     | 'lessonQueueDetailFilteredCardIds'
+    | 'lessonQueueDetailSourceUrl'
+    | 'lessonQueueDetailFilterSummary'
     | 'lessonQueueLearnSubMode'
     | 'lessonQueueLearnNewReviewRatio'
     | 'lessonQueueLearnNewReviewOrder'

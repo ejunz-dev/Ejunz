@@ -636,6 +636,20 @@ function BaseDetailViewer() {
     const nodeLabel = nodeDisplayLabel(
       nodes.find((n) => n.id === nodeId) || { id: nodeId, text: '' },
     );
+    const detailFilterSummary = [
+      detailFilters.filterNode.trim() ? `${i18n('Node')}: ${detailFilters.filterNode.trim()}` : '',
+      detailFilters.filterCard.trim() ? `${i18n('Card')}: ${detailFilters.filterCard.trim()}` : '',
+      detailFilters.filterProblem.trim() ? `${i18n('Problem')}: ${detailFilters.filterProblem.trim()}` : '',
+      detailFilters.filterCardTag.trim() ? `${i18n('Card tags')}: ${detailFilters.filterCardTag.trim()}` : '',
+      detailFilters.filterProblemTag.trim() ? `${i18n('Problem tags')}: ${detailFilters.filterProblemTag.trim()}` : '',
+      treeSearchQuery.trim() ? `${i18n('Search')}: ${treeSearchQuery.trim()}` : '',
+    ].filter(Boolean).join(' · ');
+    const detailSourceUrl = (() => {
+      const params = new URLSearchParams(window.location.search);
+      params.set('nodeId', nodeId);
+      const qs = params.toString();
+      return `${window.location.pathname}${qs ? `?${qs}` : ''}`;
+    })();
 
     // Show confirmation dialog
     const statsParts: string[] = [];
@@ -661,6 +675,8 @@ function BaseDetailViewer() {
         learnSource: 'base',
         source: 'base_detail',
         detailFilteredCardIds: learnCardIds,
+        detailSourceUrl,
+        detailFilterSummary,
       });
       const redir = res?.redirect ?? res?.body?.redirect ?? res?.data?.redirect;
       const url = redir || domainScopedPath('/learn/lesson', domainId);
@@ -681,7 +697,7 @@ function BaseDetailViewer() {
     } finally {
       setLearnBusy(false);
     }
-  }, [base.docId, base.domainId, branch, collectDescendantNodeIds, contentTreeVisibility, learnBusy, learnTargetNodeId, nodeCardsMap, nodes]);
+  }, [base.docId, base.domainId, branch, collectDescendantNodeIds, contentTreeVisibility, detailFilters, learnBusy, learnTargetNodeId, nodeCardsMap, nodes, treeSearchQuery]);
 
   const startEditorSession = useCallback(async () => {
     const nodeId = String(contentRootNodeId || '').trim();
