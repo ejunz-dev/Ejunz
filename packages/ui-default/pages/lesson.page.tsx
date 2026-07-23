@@ -219,6 +219,13 @@ type LessonProblemQueueSidebarGroup = {
   items: Array<{ p: QueuedProblem; globalIndex: number }>;
 };
 
+type LessonCardProvenancePart = {
+  title: string;
+  href?: string;
+  nodeId?: string;
+  kind?: 'base' | 'node';
+};
+
 type LessonUiState = {
   card: Card;
   node: Node;
@@ -251,6 +258,7 @@ type LessonUiState = {
   lessonReviewCardIds: string[];
   reviewCardId: string;
   lessonCardProvenanceLabel: string;
+  lessonCardProvenanceParts: LessonCardProvenancePart[];
   lessonLearnSessionMode: string;
   lessonTodayModesConfigLine: string;
   lessonTodayCardKind: 'new' | 'review' | '';
@@ -826,6 +834,9 @@ function createInitialLessonUiState(): LessonUiState {
     lessonReviewCardIds: Array.isArray(U.lessonReviewCardIds) ? U.lessonReviewCardIds.map(String) : [],
     reviewCardId: String(U.reviewCardId || ''),
     lessonCardProvenanceLabel: String(U.lessonCardProvenanceLabel || ''),
+    lessonCardProvenanceParts: Array.isArray(U.lessonCardProvenanceParts)
+      ? (U.lessonCardProvenanceParts as LessonCardProvenancePart[])
+      : [],
     lessonLearnSessionMode: String(U.lessonLearnSessionMode || ''),
     lessonTodayModesConfigLine: String(U.lessonTodayModesConfigLine || ''),
     lessonTodayCardKind: U.lessonTodayCardKind === 'review' ? 'review' : U.lessonTodayCardKind === 'new' ? 'new' : '',
@@ -927,6 +938,7 @@ function LessonPage() {
     lessonReviewCardIds,
     reviewCardId,
     lessonCardProvenanceLabel,
+    lessonCardProvenanceParts,
     lessonLearnSessionMode,
     lessonTodayModesConfigLine,
     lessonTodayCardKind,
@@ -1525,6 +1537,9 @@ function LessonPage() {
       lessonCardProvenanceLabel: typeof payload.lessonCardProvenanceLabel === 'string'
         ? payload.lessonCardProvenanceLabel
         : prev.lessonCardProvenanceLabel,
+      lessonCardProvenanceParts: Array.isArray(payload.lessonCardProvenanceParts)
+        ? (payload.lessonCardProvenanceParts as LessonUiState['lessonCardProvenanceParts'])
+        : prev.lessonCardProvenanceParts,
       lessonLearnSessionMode: typeof payload.lessonLearnSessionMode === 'string'
         ? payload.lessonLearnSessionMode
         : prev.lessonLearnSessionMode,
@@ -2030,6 +2045,141 @@ function LessonPage() {
     [lessonSessionNewOldCounts, lessonSessionQueueNewOldLabel],
   );
 
+  const currentProblem = problemQueue[currentProblemIndex];
+
+  const lessonDetailBranch = (lessonSourceBranch || 'main').trim() || 'main';
+  const buildLessonBaseDetailUrl = (nodeId?: string, cardId?: string, problemId?: string) => {
+    if (!domainId || !baseDocId) return '';
+    const params = new URLSearchParams();
+    if (nodeId) params.set('nodeId', nodeId);
+    if (cardId) params.set('cardId', cardId);
+    if (problemId) params.set('problemId', problemId);
+    const qs = params.toString();
+    return `/d/${encodeURIComponent(domainId)}/base/${encodeURIComponent(baseDocId)}/branch/${encodeURIComponent(lessonDetailBranch)}${qs ? `?${qs}` : ''}`;
+  };
+  const currentFlatCard = flatCards[currentCardIndex];
+  const currentCardIdForLink = String(currentFlatCard?.cardId || card.docId || '').trim();
+  const currentProblemCardIdForLink = String(currentProblem?.cardId || currentCardIdForLink).trim();
+  const findNodePathForCard = (
+    items: LessonNodeTreeItem[],
+    cardId: string,
+    ancestors: LessonCardProvenancePart[] = [],
+  ): LessonCardProvenancePart[] => {
+    for (const item of items) {
+      const nextAncestors = [
+        ...ancestors,
+        {
+          title: String(item.title || i18n('Unnamed Node')),
+          href: buildLessonBaseDetailUrl(item.id),
+          nodeId: item.id,
+          kind: 'node' as const,
+        },
+      ];
+      for (const child of item.children || []) {
+        const c = child as { type?: string; id?: string; title?: string; children?: unknown[] };
+        if (c.type === 'card' && String(c.id || '') === cardId) return nextAncestors;
+        if (c.type === 'node') {
+          const found = findNodePathForCard([c as LessonNodeTreeItem], cardId, nextAncestors);
+          if (found.length > 0) return found;
+        }
+      }
+    }
+    return [];
+  };
+  const fallbackPathTitles = lessonCardProvenanceLabel
+    .split(' - ')
+    .map((title) => title.trim())
+    .filter(Boolean);
+  const lessonCardProvenancePathParts = lessonCardProvenanceParts
+    .map((part) => ({ ...part, title: String(part.title || '').trim() }))
+    .filter((part) => part.title)
+    .map((part) => {
+      if (part.href || part.kind !== 'base') return part;
+      return { ...part, href: buildLessonBaseDetailUrl() };
+    });
+  const derivedNodePathParts = findNodePathForCard(nodeTree, currentCardIdForLink);
+  const lessonCardInlinePathParts = lessonCardProvenancePathParts.length > 0
+    ? lessonCardProvenancePathParts
+    : [
+      ...(fallbackPathTitles[0]
+        ? [{
+          title: fallbackPathTitles[0],
+          href: currentFlatCard?.nodeId ? buildLessonBaseDetailUrl(String(currentFlatCard.nodeId)) : buildLessonBaseDetailUrl(),
+          nodeId: currentFlatCard?.nodeId ? String(currentFlatCard.nodeId) : undefined,
+          kind: 'node' as const,
+        }]
+        : []),
+      ...(derivedNodePathParts.length > 0
+        ? derivedNodePathParts
+        : fallbackPathTitles.slice(1).map((title, idx, arr) => ({
+          title,
+          href: idx === arr.length - 1 && currentFlatCard?.nodeId
+            ? buildLessonBaseDetailUrl(String(currentFlatCard.nodeId))
+            : undefined,
+          nodeId: idx === arr.length - 1 && currentFlatCard?.nodeId ? String(currentFlatCard.nodeId) : undefined,
+          kind: 'node' as const,
+        }))),
+    ];
+  const currentCardNodeIdForLink = String(
+    currentFlatCard?.nodeId
+      || [...lessonCardInlinePathParts].reverse().find((part) => part.nodeId)?.nodeId
+      || '',
+  ).trim();
+  const currentProblemNodeIdForLink = String(
+    flatCards.find((fc) => String(fc.cardId) === currentProblemCardIdForLink)?.nodeId || currentCardNodeIdForLink,
+  ).trim();
+  const currentCardBaseDetailUrl = currentCardIdForLink
+    ? buildLessonBaseDetailUrl(currentCardNodeIdForLink, currentCardIdForLink)
+    : '';
+  const currentProblemBaseDetailUrl = currentProblemCardIdForLink && currentProblem?.pid
+    ? buildLessonBaseDetailUrl(currentProblemNodeIdForLink, currentProblemCardIdForLink, String(currentProblem.pid))
+    : '';
+  const lessonCardInlineText = `${lessonCardProvenanceLabel || '—'}-${String(card.title || i18n('Unnamed Card'))}`;
+  const renderLessonCardProvenancePath = (includeCardTitle = false) => {
+    if (lessonCardInlinePathParts.length === 0) return <span>—</span>;
+    return (
+      <>
+        {lessonCardInlinePathParts.map((part, idx) => {
+          const content = part.href ? (
+            <a
+              href={part.href}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              style={{ color: part.kind === 'node' ? themeStyles.yellow : themeStyles.accent, textDecoration: 'none' }}
+            >
+              {part.title}
+            </a>
+          ) : <span>{part.title}</span>;
+          return (
+            <React.Fragment key={`${part.kind || 'path'}-${part.nodeId || idx}-${part.title}`}>
+              {idx > 0 ? <span style={{ color: themeStyles.textTertiary }}> - </span> : null}
+              {content}
+            </React.Fragment>
+          );
+        })}
+        {includeCardTitle ? (
+          <>
+            <span style={{ color: themeStyles.textTertiary }}> - </span>
+            {currentCardBaseDetailUrl ? (
+              <a
+                href={currentCardBaseDetailUrl}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                style={{ color: themeStyles.accent, textDecoration: 'none' }}
+              >
+                {String(card.title || i18n('Unnamed Card'))}
+              </a>
+            ) : (
+              <span>{String(card.title || i18n('Unnamed Card'))}</span>
+            )}
+          </>
+        ) : null}
+      </>
+    );
+  };
+
   const lessonSessionProgressCard = useMemo(() => {
     if (!showLessonSessionProgressCard) return null;
     const modeLabel = lessonSessionModeLabel || i18n('Learn session');
@@ -2251,6 +2401,9 @@ function LessonPage() {
     lessonQueueDoneCount,
     lessonSessionNewOldCounts,
     newOldLine,
+    lessonCardProvenanceLabel,
+    renderLessonCardProvenancePath,
+    currentProblemBaseDetailUrl,
     themeStyles,
     theme,
     i18n,
@@ -2482,8 +2635,6 @@ function LessonPage() {
     document.addEventListener('click', handleImageClick, true);
     return () => document.removeEventListener('click', handleImageClick, true);
   }, []);
-
-  const currentProblem = problemQueue[currentProblemIndex];
 
   useEffect(() => {
     if (!currentProblem || !lessonApiDomainId) {
@@ -3911,7 +4062,9 @@ function LessonPage() {
                 </span>
               ) : null}
               {lessonCardProvenanceLabel ? (
-                <span style={{ flex: '1 1 160px', minWidth: 0 }}>{lessonCardProvenanceLabel}</span>
+                <span style={{ flex: '1 1 160px', minWidth: 0 }}>
+                  {renderLessonCardProvenancePath(false)}
+                </span>
               ) : null}
             </div>
           ) : null}
@@ -5139,7 +5292,6 @@ function LessonPage() {
   );
   const showLessonCardInlineNav = (isSingleNodeMode || isTodayMode) && !!lessonSessionId && !reviewCardId && flatCards.length > 0;
   const lessonCardInlineNavDisabled = lessonCardNavLoading || isSubmitting || browseSubmitting;
-  const lessonCardInlineText = `${lessonCardProvenanceLabel || '—'}-${String(card.title || i18n('Unnamed Card'))}`;
   const currentProblemTitleLine = (() => {
     if (!currentProblem) return '';
     const ttl = typeof currentProblem.title === 'string' ? currentProblem.title.trim() : '';
@@ -5175,18 +5327,20 @@ function LessonPage() {
           >
             新卡片
           </span>
-          <span style={{
-            flex: 1,
-            minWidth: 0,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            fontSize: '13px',
-            color: themeStyles.textPrimary,
-            fontWeight: 600,
-          }}
+          <span
+            title={lessonCardInlineText}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              fontSize: '13px',
+              color: themeStyles.textPrimary,
+              fontWeight: 600,
+            }}
           >
-            {lessonCardInlineText}
+            {renderLessonCardProvenancePath(true)}
           </span>
           {showLessonCardInlineNav ? (
             <>
@@ -5233,17 +5387,37 @@ function LessonPage() {
         </div>
         <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
           {currentProblemTitleLine ? (
-            <span style={{
-              flex: '1 1 160px',
-              minWidth: 0,
-              fontSize: '15px',
-              fontWeight: 700,
-              color: themeStyles.textPrimary,
-              lineHeight: 1.4,
-              wordBreak: 'break-word',
-            }}>
-              {currentProblemTitleLine}
-            </span>
+            currentProblemBaseDetailUrl ? (
+              <a
+                href={currentProblemBaseDetailUrl}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  flex: '1 1 160px',
+                  minWidth: 0,
+                  fontSize: '15px',
+                  fontWeight: 700,
+                  color: themeStyles.orange,
+                  lineHeight: 1.4,
+                  wordBreak: 'break-word',
+                  textDecoration: 'none',
+                }}
+              >
+                {currentProblemTitleLine}
+              </a>
+            ) : (
+              <span style={{
+                flex: '1 1 160px',
+                minWidth: 0,
+                fontSize: '15px',
+                fontWeight: 700,
+                color: themeStyles.textPrimary,
+                lineHeight: 1.4,
+                wordBreak: 'break-word',
+              }}>
+                {currentProblemTitleLine}
+              </span>
+            )
           ) : null}
           {!isAnswered && currentKind !== 'flip' && currentKind !== 'super_flip' && currentKind !== 'chain' && (
             <button
