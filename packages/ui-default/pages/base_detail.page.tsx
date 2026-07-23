@@ -335,15 +335,7 @@ function BaseDetailViewer() {
         docId: Number(base.docId),
         branch,
         displayPrefs: {
-          showToolbar: displaySettings.showToolbar,
-          indicatorX: displaySettings.indicatorX,
-          indicatorY: displaySettings.indicatorY,
-          toolbarOpen: displaySettings.toolbarOpen,
-          toolbarX: displaySettings.toolbarX,
-          toolbarY: displaySettings.toolbarY,
-          wsIndicatorX: displaySettings.wsIndicatorX,
-          wsIndicatorY: displaySettings.wsIndicatorY,
-          wsIndicatorOpen: displaySettings.wsIndicatorOpen,
+          ...displaySettings,
           expandedNodeIds: nodeIds ? Array.from(nodeIds) : [],
         },
       };
@@ -352,7 +344,7 @@ function BaseDetailViewer() {
       Notification.success(i18n('Saved'));
     } catch { /* silent */ }
     expandSaveBusyRef.current = false;
-  }, [base.docId, base.domainId, branch, displaySettings.indicatorX, displaySettings.indicatorY, displaySettings.toolbarOpen, displaySettings.toolbarX, displaySettings.toolbarY, displaySettings.wsIndicatorOpen, expandDirty]);
+  }, [base.docId, base.domainId, branch, displaySettings, expandDirty]);
 
   // Ctrl+S / Cmd+S saves expand state
   useEffect(() => {
@@ -551,6 +543,7 @@ function BaseDetailViewer() {
                 apply('showProblemTree', prefs.showProblemTree);
                 apply('showAiTutor', prefs.showAiTutor);
                 apply('showExpandSaveIndicator', prefs.showExpandSaveIndicator);
+                apply('showWsIndicator', prefs.showWsIndicator);
                 apply('showToolbar', prefs.showToolbar);
                 apply('indicatorX', prefs.indicatorX);
                 apply('indicatorY', prefs.indicatorY);
@@ -855,26 +848,28 @@ function BaseDetailViewer() {
           onClickSave={handleSaveExpandState}
         />
       ) : null}
-      <WSStatusIndicator
-        status={wsStatus}
-        viewerCount={viewerCount}
-        viewers={liveViewers}
-        open={displaySettings.wsIndicatorOpen}
-        posX={displaySettings.wsIndicatorX}
-        posY={displaySettings.wsIndicatorY}
-        onPosChange={(x, y) => {
-          setDisplaySettings((prev) => ({ ...prev, wsIndicatorX: x, wsIndicatorY: y }));
-          setExpandDirty(true);
-        }}
-        onToggle={() => {
-          setDisplaySettings((prev) => ({ ...prev, wsIndicatorOpen: !prev.wsIndicatorOpen }));
-          setExpandDirty(true);
-        }}
-        onRequestViewers={() => {
-          const s = (window as any).__baseWsSock;
-          if (s) s.send(JSON.stringify({ type: 'request_viewers' }));
-        }}
-      />
+      {displaySettings.showWsIndicator ? (
+        <WSStatusIndicator
+          status={wsStatus}
+          viewerCount={viewerCount}
+          viewers={liveViewers}
+          open={displaySettings.wsIndicatorOpen}
+          posX={displaySettings.wsIndicatorX}
+          posY={displaySettings.wsIndicatorY}
+          onPosChange={(x, y) => {
+            setDisplaySettings((prev) => ({ ...prev, wsIndicatorX: x, wsIndicatorY: y }));
+            setExpandDirty(true);
+          }}
+          onToggle={() => {
+            setDisplaySettings((prev) => ({ ...prev, wsIndicatorOpen: !prev.wsIndicatorOpen }));
+            setExpandDirty(true);
+          }}
+          onRequestViewers={() => {
+            const s = (window as any).__baseWsSock;
+            if (s) s.send(JSON.stringify({ type: 'request_viewers' }));
+          }}
+        />
+      ) : null}
       {displaySettings.showToolbar ? (
         <FloatingToolbar
           open={displaySettings.toolbarOpen}
