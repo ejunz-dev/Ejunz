@@ -2146,7 +2146,7 @@ function LessonPage() {
               target="_blank"
               rel="noreferrer"
               onClick={(e) => e.stopPropagation()}
-              style={{ color: part.kind === 'node' ? themeStyles.yellow : themeStyles.accent, textDecoration: 'none' }}
+              style={{ color: themeStyles.yellow, textDecoration: 'none' }}
             >
               {part.title}
             </a>
