@@ -99,14 +99,13 @@ function setupBaseCreateMigrateSubmit(prefill) {
       return;
     }
     const bid = String($form.find('[name="bid"]').val() || '').trim();
-    const { docId, branch, nodeId } = prefill.migrate;
+    const { docId, nodeId } = prefill.migrate;
     const domainId = window.UiContext?.domainId || 'system';
     const $submit = $('.base-form-page__actions .button.primary');
     $submit.prop('disabled', true);
     try {
       const res = await request.post(domainApiPath('/base/migrate-node-to-new', domainId), {
         docId,
-        branch: branch || 'main',
         nodeId,
         title,
         bid,
@@ -118,7 +117,7 @@ function setupBaseCreateMigrateSubmit(prefill) {
       }
       Notification.success(i18n('Separate as new base success'));
       const openSeg = res.bid ? String(res.bid) : String(res.newDocId);
-      window.location.href = domainScopedPath(`/base/${encodeURIComponent(openSeg)}/branch/${encodeURIComponent(branch || 'main')}`, domainId);
+      window.location.href = domainScopedPath(`/base/${encodeURIComponent(openSeg)}`, domainId);
     } catch (err) {
       Notification.error(err?.message || i18n('Separate as new base failed'));
     } finally {

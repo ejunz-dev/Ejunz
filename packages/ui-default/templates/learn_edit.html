@@ -15,19 +15,6 @@
             </div>
           </div>
           <div class="form__row">
-            <label class="form__label">{{ _('Branch') }}</label>
-            <div class="form__item">
-              <select name="branch" class="form__control">
-                {% for branch in branches %}
-                <option value="{{ branch }}" {% if branch == currentBranch %}selected{% endif %}>
-                  {{ branch }}
-                </option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="form__help">{{ _('Select the branch to use for learning') }}</div>
-          </div>
-          <div class="form__row">
             <button type="submit" class="primary button">{{ _('Save') }}</button>
             <a href="{{ url('learn') }}" class="button">{{ _('Cancel') }}</a>
           </div>

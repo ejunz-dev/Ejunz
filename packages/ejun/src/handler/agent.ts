@@ -21,7 +21,7 @@ import { randomstring } from '@ejunz/utils';
 import { McpClient, ChatMessage } from '../model/agent';
 import { Logger } from '../logger';
 import { PassThrough } from 'stream';
-import { BaseModel, getBranchData } from '../model/base';
+import { BaseModel } from '../model/base';
 import PluginModel from '../model/plugin';
 import {
     SYSTEM_TOOL_ID_PREFIX,
@@ -43,7 +43,7 @@ import { summarizePluginMcpAvailability } from '../service/mcp';
 import { listDomainMcps } from '../service/mcp';
 const AgentLogger = new Logger('agent');
 
-export type BaseLibraryBinding = { docId: number; branch: string };
+export type BaseLibraryBinding = { docId: number };
 
 /** At most one knowledge-base (TYPE_BASE) mount per agent; extra entries are ignored. */
 export function normalizeAgentBaseBindings(adoc: AgentDoc): BaseLibraryBinding[] | undefined {
@@ -53,8 +53,7 @@ export function normalizeAgentBaseBindings(adoc: AgentDoc): BaseLibraryBinding[]
     for (const x of raw) {
         const docId = Number((x as any).docId);
         if (!Number.isFinite(docId) || docId <= 0) continue;
-        const branch = String((x as any).branch ?? 'main').trim() || 'main';
-        out.push({ docId, branch });
+        out.push({ docId });
     }
     if (out.length === 0) return undefined;
     return [out[0]];
@@ -64,13 +63,6 @@ export function effectiveAgentBaseDocId(adoc: AgentDoc): number | undefined {
     const b = normalizeAgentBaseBindings(adoc);
     const id = b?.[0]?.docId;
     return Number.isFinite(id) && id > 0 ? id : undefined;
-}
-
-export function effectiveAgentBaseBranch(adoc: AgentDoc): string | undefined {
-    const b = normalizeAgentBaseBindings(adoc);
-    const br = b?.[0]?.branch;
-    const t = br && String(br).trim();
-    return t || undefined;
 }
 
 function positiveUid(raw: unknown): number | undefined {
@@ -85,31 +77,11 @@ export function effectiveAgentToolOwnerUid(adoc: AgentDoc, userOrUid?: any): num
     return requestUid || positiveUid((adoc as any)?.owner);
 }
 
-export function buildAgentToolContext(adoc: AgentDoc, userOrUid?: any): { baseDocId?: number; baseBranch?: string; owner?: number } {
+export function buildAgentToolContext(adoc: AgentDoc, userOrUid?: any): { baseDocId?: number; owner?: number } {
     return {
         baseDocId: effectiveAgentBaseDocId(adoc),
-        baseBranch: effectiveAgentBaseBranch(adoc),
         owner: effectiveAgentToolOwnerUid(adoc, userOrUid),
     };
-}
-
-function listBranchNamesForBaseDoc(base: BaseDoc | Record<string, unknown>): string[] {
-    const s = new Set<string>(['main']);
-    const branches = (base as any).branches;
-    if (Array.isArray(branches)) {
-        for (const b of branches) {
-            if (typeof b === 'string' && b.trim()) s.add(b.trim());
-        }
-    }
-    const branchData = (base as any).branchData;
-    if (branchData && typeof branchData === 'object' && !Array.isArray(branchData)) {
-        for (const b of Object.keys(branchData)) {
-            if (b.trim()) s.add(b.trim());
-        }
-    }
-    const current = (base as any).currentBranch;
-    if (typeof current === 'string' && current.trim()) s.add(current.trim());
-    return [...s];
 }
 
 function toolsForModelApi(_adoc: AgentDoc, executionTools: any[]): any[] {
@@ -178,7 +150,6 @@ async function callToolWithFallback(
     useWorker: boolean = true,
     mcpOpts?: {
         baseDocId?: number;
-        baseBranch?: string;
         executionTools?: any[];
     },
 ): Promise<any> {
@@ -199,7 +170,6 @@ async function callToolWithFallback(
                     : args;
                 return await callToolViaWorker(ctx, toolName, callArgs, domainId, agentId, uid, taskRecordId, 0, {
                     baseDocId: mcpOpts?.baseDocId,
-                    baseBranch: mcpOpts?.baseBranch,
                     owner: uid,
                     toolType: executionTool?.type,
                     token: executionTool?.token,
@@ -226,7 +196,6 @@ async function callToolWithFallback(
         executionTool?.token,
         executionTool?.type,
         mcpOpts?.baseDocId,
-        mcpOpts?.baseBranch,
         uid,
     );
 }
@@ -238,7 +207,6 @@ async function callAssignedTool(
     args: any,
     domainId: string,
     baseDocId?: number,
-    baseBranch?: string,
     uid?: number,
     currentAgentId?: string,
 ): Promise<any> {
@@ -258,7 +226,6 @@ async function callAssignedTool(
         executionTool?.token,
         executionTool?.type,
         baseDocId,
-        baseBranch,
         uid,
     );
 }
@@ -879,7 +846,6 @@ export async function processAgentChatInternal(
                                                         true,
                                                         {
                                                             baseDocId: toolContext.baseDocId,
-                                                            baseBranch: toolContext.baseBranch,
                                                             executionTools: tools,
                                                         },
                                                     );
@@ -1273,7 +1239,7 @@ export class AgentDetailHandler extends Handler {
             apiUrl = `${protocol}://${host}/api/agent`;
         }
         const rawBaseBindings = normalizeAgentBaseBindings(adoc) || [];
-        const enabledBaseLibrariesForDisplay: Array<{ docId: number; title: string; bid: string; branch: string }> = [];
+        const enabledBaseLibrariesForDisplay: Array<{ docId: number; title: string; bid: string }> = [];
         for (const b of rawBaseBindings) {
             const bdoc = await BaseModel.get(domainId, b.docId);
             if (bdoc) {
@@ -1281,14 +1247,12 @@ export class AgentDetailHandler extends Handler {
                     docId: bdoc.docId,
                     title: (bdoc.title && String(bdoc.title).trim()) || `Base #${bdoc.docId}`,
                     bid: (bdoc.bid && String(bdoc.bid).trim()) || '',
-                    branch: String(b.branch || 'main'),
                 });
             } else {
                 enabledBaseLibrariesForDisplay.push({
                     docId: b.docId,
                     title: `Base #${b.docId}`,
                     bid: '',
-                    branch: String(b.branch || 'main'),
                 });
             }
         }
@@ -1361,7 +1325,7 @@ export class AgentDetailHandler extends Handler {
 
 }
 
-/** Configure knowledge-base (TYPE_BASE) mount for an agent (one base + branch). */
+/** Configure knowledge-base (TYPE_BASE) mount for an agent (one base). */
 export class AgentBasesEditHandler extends Handler {
     @param('aid', Types.String)
     async _prepare(domainId: string, aid: string) {
@@ -1396,14 +1360,11 @@ export class AgentBasesEditHandler extends Handler {
             docId: bd.docId,
             title: (bd.title && String(bd.title).trim()) || `Base #${bd.docId}`,
             bid: (bd.bid && String(bd.bid).trim()) || '',
-            branches: listBranchNamesForBaseDoc(bd as any),
         }));
 
         const bb = normalizeAgentBaseBindings(adoc)?.[0];
-        const baseBindingsByDocId: Record<string, string> = {};
-        if (bb) {
-            baseBindingsByDocId[String(bb.docId)] = String(bb.branch || 'main');
-        }
+        const baseBindingsByDocId: Record<string, true> = {};
+        if (bb) baseBindingsByDocId[String(bb.docId)] = true;
 
         this.response.template = 'agent_bases.html';
         this.response.body = {
@@ -1444,7 +1405,7 @@ export class AgentBasesEditHandler extends Handler {
             }
         }
 
-        const normalized: Array<{ docId: number; branch: string }> = [];
+        const normalized: Array<{ docId: number }> = [];
         for (const row of rawList) {
             if (!row || typeof row !== 'object') continue;
             const docId = Number((row as any).docId);
@@ -1452,12 +1413,7 @@ export class AgentBasesEditHandler extends Handler {
             const bdoc = await BaseModel.get(domainId, docId);
             if (!bdoc) continue;
             if (!this.user.own(bdoc)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
-            let branch = String((row as any).branch ?? 'main').trim() || 'main';
-            const allowed = listBranchNamesForBaseDoc(bdoc as any);
-            if (!allowed.includes(branch)) {
-                branch = allowed.includes('main') ? 'main' : (allowed[0] || 'main');
-            }
-            normalized.push({ docId, branch });
+            normalized.push({ docId });
             break;
         }
 
@@ -1581,7 +1537,6 @@ function baseTutorPathLabelFor(nodeId: string, parentMap: Map<string, string>, n
 async function enrichBaseTutorSemanticResults(
     domainId: string,
     docId: number,
-    branch: string,
     results: BaseTutorSemanticResult[],
 ): Promise<BaseTutorSemanticResult[]> {
     let parentMap = new Map<string, string>();
@@ -1589,7 +1544,7 @@ async function enrichBaseTutorSemanticResults(
     try {
         const base = await BaseModel.get(domainId, docId);
         if (base) {
-            const { nodes, edges } = getBranchData(base, branch || 'main');
+            const { nodes, edges } = base;
             parentMap = buildBaseTutorParentMap(edges || []);
             nodeById = new Map((nodes || []).map((node: any) => [String(node.id), node]));
         }
@@ -1786,14 +1741,13 @@ export class AgentChatHandler extends Handler {
             const plugin = await PluginModel.get(domainId, binding.docId);
             if (!plugin) continue;
             const slashCount = (await resolveAgentSlashCatalog(domainId, { ...adoc, pluginBindings: [binding] } as AgentDoc)).length;
-            const branch = binding.branch || plugin.currentBranch || 'main';
-            const definitions = await loadPluginCardDefinitions(domainId, plugin, branch, binding.enabledNodeIds?.length ? new Set(binding.enabledNodeIds) : undefined);
+            const definitions = await loadPluginCardDefinitions(domainId, plugin, binding.enabledNodeIds?.length ? new Set(binding.enabledNodeIds) : undefined);
             const pluginToolIds = Array.from(new Set(definitions
                 .filter((def) => def.kind === 'mcp')
                 .flatMap((def) => def.toolIds || [])));
             const systemToolIds = pluginToolIds.filter((id) => id.startsWith(SYSTEM_TOOL_ID_PREFIX));
             const legacyPluginToolIds = pluginToolIds.filter((id) => !id.startsWith(SYSTEM_TOOL_ID_PREFIX) && ObjectId.isValid(id));
-            const mcpAvailability = await summarizePluginMcpAvailability(domainId, plugin, branch);
+            const mcpAvailability = await summarizePluginMcpAvailability(domainId, plugin);
             const rowsForPlugin = pluginMcpRows.filter((row) => Number((row.mcp.source as any)?.pluginDocId) === plugin.docId);
             const rowsByServerKey = new Map(rowsForPlugin.map((row) => [String((row.mcp.source as any)?.pluginServerKey || row.mid), row]));
             const usedMids = new Set<number>();
@@ -2093,7 +2047,6 @@ export class AgentChatHandler extends Handler {
                 agentContent: adoc.content || '',
                 agentMemory: adoc.memory || '',
                 baseDocId: effectiveAgentBaseDocId(adoc),
-                baseBranch: effectiveAgentBaseBranch(adoc),
                 /** Serialize OpenAI function tools; server resolves via McpClient. */
                 toolsForModel: modelTools.map(tool => ({
                     name: tool.name,
@@ -2978,7 +2931,6 @@ const agentPrompt = this.adoc.content || '';
                                                         parsedArgs,
                                                         domainId,
                                                         toolContext.baseDocId,
-                                                        toolContext.baseBranch,
                                                         toolContext.owner,
                                                         (this.adoc as any).aid || (this.adoc as any).docId?.toString(),
                                                     );
@@ -3424,7 +3376,7 @@ const agentPrompt = this.adoc.content || '';
                                                     let toolResult: any;
                                                     try {
                                                         const toolContext = buildAgentToolContext(this.adoc, this.user);
-                                                        toolResult = await callAssignedTool(mcpClient, tools, firstToolCall.function.name, parsedArgs, domainId, toolContext.baseDocId, toolContext.baseBranch, toolContext.owner, (this.adoc as any).aid || (this.adoc as any).docId?.toString());
+                                                        toolResult = await callAssignedTool(mcpClient, tools, firstToolCall.function.name, parsedArgs, domainId, toolContext.baseDocId, toolContext.owner, (this.adoc as any).aid || (this.adoc as any).docId?.toString());
                                                         AgentLogger.info(`Tool ${firstToolCall.function.name} returned (API WS)`, { resultLength: JSON.stringify(toolResult).length });
                                                     } catch (toolError: any) {
                                                         AgentLogger.error(`Tool ${firstToolCall.function.name} failed (API WS):`, toolError);
@@ -3814,7 +3766,7 @@ const agentPrompt = adoc.content || '';
                                                                 ? { ...parsedArgs, __agentId: (adoc as any).aid || (adoc as any)._id?.toString() || 'unknown', __agentName: (adoc as any).name || 'agent' }
                                                                 : parsedArgs;
                                                             const toolContext = buildAgentToolContext(adoc, this.user);
-                                                            toolResult = await callAssignedTool(mcpClient, tools, firstToolCall.function.name, toolArgs, adoc.domainId, toolContext.baseDocId, toolContext.baseBranch, toolContext.owner, (adoc as any).aid || (adoc as any).docId?.toString());
+                                                            toolResult = await callAssignedTool(mcpClient, tools, firstToolCall.function.name, toolArgs, adoc.domainId, toolContext.baseDocId, toolContext.owner, (adoc as any).aid || (adoc as any).docId?.toString());
                                                             AgentLogger.info(`Tool ${firstToolCall.function.name} returned (API)`, { resultLength: JSON.stringify(toolResult).length });
                                                         } catch (toolError: any) {
                                                             AgentLogger.error(`Tool ${firstToolCall.function.name} failed (API):`, toolError);
@@ -3955,7 +3907,7 @@ const agentPrompt = adoc.content || '';
                         ? { ...parsedArgs, __agentId: (adoc as any).aid || (adoc as any)._id?.toString() || 'unknown', __agentName: (adoc as any).name || 'agent' }
                         : parsedArgs;
                     const toolContext = buildAgentToolContext(adoc, this.user);
-                    const toolResult = await callAssignedTool(mcpClient, tools, firstToolCall.function?.name, toolArgs, adoc.domainId, toolContext.baseDocId, toolContext.baseBranch, toolContext.owner, (adoc as any).aid || (adoc as any).docId?.toString());
+                    const toolResult = await callAssignedTool(mcpClient, tools, firstToolCall.function?.name, toolArgs, adoc.domainId, toolContext.baseDocId, toolContext.owner, (adoc as any).aid || (adoc as any).docId?.toString());
                     AgentLogger.info('Tool returned:', { toolResult });
                     if (isFatalToolResolutionCode(toolResult?.code)) throw makeToolUnavailableError(firstToolCall.function?.name, toolResult.code);
 
@@ -4169,7 +4121,7 @@ export class AgentEditHandler extends Handler {
             AgentLogger.warn('Repo functionality is no longer available, ignoring repoIds');
         }
 
-        const pluginBindings: Array<{ docId: number; branch: string }> = [];
+        const pluginBindings: Array<{ docId: number }> = [];
         if (pluginDocIds && Array.isArray(pluginDocIds)) {
             const seenPluginIds = new Set<number>();
             for (const pid of pluginDocIds) {
@@ -4178,7 +4130,7 @@ export class AgentEditHandler extends Handler {
                 seenPluginIds.add(docId);
                 const plugin = await PluginModel.get(domainId, docId);
                 if (!plugin || !PluginModel.canRead(this.user, plugin)) continue;
-                pluginBindings.push({ docId, branch: 'main' });
+                pluginBindings.push({ docId });
             }
         }
 
@@ -4471,7 +4423,6 @@ export class DirectAiChatConnectionHandler extends ConnectionHandler {
         let historyData: any;
         let systemPrompt: string | undefined;
         let docId: string | undefined;
-        let branch: string | undefined;
         if (typeof msg === 'string') {
             try {
                 const parsed = JSON.parse(msg);
@@ -4479,7 +4430,6 @@ export class DirectAiChatConnectionHandler extends ConnectionHandler {
                 historyData = parsed.history;
                 systemPrompt = parsed.systemPrompt;
                 docId = parsed.docId;
-                branch = parsed.branch;
             } catch (e) {
                 this.send({ type: 'error', error: 'Invalid message format' });
                 return;
@@ -4489,7 +4439,6 @@ export class DirectAiChatConnectionHandler extends ConnectionHandler {
             historyData = msg.history;
             systemPrompt = msg.systemPrompt;
             docId = msg.docId;
-            branch = msg.branch;
         } else {
             this.send({ type: 'error', error: 'Invalid message format' });
             return;
@@ -4526,7 +4475,6 @@ export class DirectAiChatConnectionHandler extends ConnectionHandler {
         }
 
         // Build semantic retrieval context separately from the tutor system prompt.
-        const branchNorm = (branch && String(branch).trim()) || 'main';
         const docIdNum = Number(docId);
         let semanticBlock = '';
         let semanticCount = 0;
@@ -4534,15 +4482,14 @@ export class DirectAiChatConnectionHandler extends ConnectionHandler {
         if (systemPrompt && docIdNum > 0 && (this.ctx as any).embedding) {
             try {
                 const rawResults = await (this.ctx as any).embedding.searchSimilar(
-                    domainId, docIdNum, branchNorm, message, 8,
+                    domainId, docIdNum, message, 8,
                 );
-                semanticResults = await enrichBaseTutorSemanticResults(domainId, docIdNum, branchNorm, rawResults || []);
+                semanticResults = await enrichBaseTutorSemanticResults(domainId, docIdNum, rawResults || []);
                 semanticCount = semanticResults.length;
                 semanticBlock = formatBaseTutorSemanticBlock(semanticResults);
                 const toolInput = {
                     domainId,
                     docId: docIdNum,
-                    branch: branchNorm,
                     query: message,
                     limit: 8,
                     retrieval: 'embedding+keyword_rerank',
@@ -4581,8 +4528,7 @@ export class DirectAiChatConnectionHandler extends ConnectionHandler {
                         input: {
                             domainId,
                             docId: docIdNum || null,
-                            branch: branchNorm,
-                            query: message,
+                                    query: message,
                             limit: 8,
                             retrieval: 'embedding+keyword_rerank',
                         },
@@ -4607,7 +4553,6 @@ export class DirectAiChatConnectionHandler extends ConnectionHandler {
                 userId: this.user._id,
                 domainId,
                 docId: docId || null,
-                branch: branchNorm,
                 apiUrl,
                 model,
                 semanticResultsCount: semanticCount,
@@ -4622,7 +4567,6 @@ export class DirectAiChatConnectionHandler extends ConnectionHandler {
             userId: this.user._id,
             domainId,
             docId: docId || null,
-            branch: branchNorm,
             apiUrl,
             model,
             userMessageLength: message.length,

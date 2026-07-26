@@ -6,11 +6,10 @@ import { i18n, request } from 'vj/utils';
 import Notification from 'vj/components/notification';
 import { ContributionWall, type ContributionDetail } from '../components/ContributionWall';
 
-type LearnBaseOption = { docId: number; title?: string; branches?: string[] };
+type LearnBaseOption = { docId: number; title?: string };
 
 type PoolEntry = {
   baseDocId: number;
-  branch: string;
   dailyNodeGoal: number;
   dailyCardGoal: number;
   dailyProblemGoal: number;
@@ -38,7 +37,6 @@ function rowInDevelopRunQueue(row: DisplayRow): boolean {
 
 type DevelopWallBaseRecordCount = {
   baseDocId: number;
-  branch: string;
   recordCount: number;
 };
 
@@ -136,7 +134,6 @@ function DevelopPage() {
   const [displayPool] = useState<DisplayRow[]>(() =>
     initialRows.map((r, i) => ({
       baseDocId: Number(r.baseDocId),
-      branch: r.branch || 'main',
       dailyNodeGoal: Number(r.dailyNodeGoal) || 0,
       dailyCardGoal: Number(r.dailyCardGoal) || 0,
       dailyProblemGoal: Number(r.dailyProblemGoal) || 0,
@@ -259,12 +256,6 @@ function DevelopPage() {
 
   const poolSources = learnBases;
 
-  const sourceMeta = useMemo(() => {
-    const byId = new Map<number, LearnBaseOption>();
-    for (const s of poolSources) byId.set(Number(s.docId), s);
-    return byId;
-  }, [poolSources]);
-
   const allSourceMeta = useMemo(() => {
     const byId = new Map<number, LearnBaseOption>();
     for (const b of learnBases) byId.set(Number(b.docId), b);
@@ -291,7 +282,6 @@ function DevelopPage() {
   const openEditModal = useCallback(() => {
     setEditDraft(displayPool.map((r, i) => ({
       baseDocId: r.baseDocId,
-      branch: r.branch,
       dailyNodeGoal: r.dailyNodeGoal,
       dailyCardGoal: r.dailyCardGoal,
       dailyProblemGoal: r.dailyProblemGoal,
@@ -310,7 +300,6 @@ function DevelopPage() {
     if (!first) return;
     setEditDraft((d) => [...d, {
       baseDocId: Number(first.docId),
-      branch: (first.branches && first.branches[0]) || 'main',
       dailyNodeGoal: 0,
       dailyCardGoal: 0,
       dailyProblemGoal: 0,
@@ -342,7 +331,6 @@ function DevelopPage() {
     try {
       const pool = editDraft.map((row, i) => ({
         baseDocId: row.baseDocId,
-        branch: row.branch,
         dailyNodeGoal: row.dailyNodeGoal,
         dailyCardGoal: row.dailyCardGoal,
         dailyProblemGoal: row.dailyProblemGoal,
@@ -364,7 +352,6 @@ function DevelopPage() {
     const runQueue = pendingRunPool.length > 0 ? pendingRunPool : displayPool;
     const queue = runQueue.map((r) => ({
       baseDocId: r.baseDocId,
-      branch: r.branch || 'main',
     }));
     try {
       sessionStorage.setItem(`developRunQueue:${domainId}`, JSON.stringify(queue));
@@ -385,7 +372,6 @@ function DevelopPage() {
     try {
       const startBody: Record<string, unknown> = {
         baseDocId: first.baseDocId,
-        branch: first.branch,
       };
       const res: any = await request.post(`/d/${domainId}/session/develop/start`, startBody);
       const sessionId = res?.sessionId ?? res?.body?.sessionId;
@@ -447,7 +433,7 @@ function DevelopPage() {
     const doneToday = !!row.todayGoalsMet && rowHasDailyGoal(row);
     return (
       <div
-        key={`viz-${poolIndex}-${row.baseDocId}-${row.branch}`}
+        key={`viz-${poolIndex}-${row.baseDocId}`}
         style={{
           padding: isMobile ? 12 : 14,
           borderRadius: 12,
@@ -482,12 +468,6 @@ function DevelopPage() {
           </div>
           <div style={{ fontSize: 14, fontWeight: 700, color: themeStyles.textPrimary, lineHeight: 1.3 }}>
             {title}
-          </div>
-          <div style={{ fontSize: 11, color: themeStyles.textSecondary, marginTop: 2 }}>
-            {i18n('Develop branch')}
-            :
-            {' '}
-            <span style={{ color: themeStyles.accent, fontWeight: 600 }}>{row.branch}</span>
           </div>
         </div>
         <MiniProgress
@@ -1106,8 +1086,8 @@ function DevelopPage() {
                                     const title = allSourceMeta.get(b.baseDocId)?.title?.trim()
                                       || i18n('Develop wall base fallback title', b.baseDocId);
                                     return (
-                                      <li key={`${b.baseDocId}-${b.branch}`} style={{ marginBottom: 2 }}>
-                                        {i18n('Develop wall session base line', title, b.branch, b.recordCount)}
+                                      <li key={`${b.baseDocId}`} style={{ marginBottom: 2 }}>
+                                        {i18n('Develop wall session base line', title, b.recordCount)}
                                       </li>
                                     );
                                   })}
@@ -1375,8 +1355,6 @@ function DevelopPage() {
               ) : (
                 <>
                   {editDraft.map((row, idx) => {
-                    const b = sourceMeta.get(row.baseDocId);
-                    const branches = b?.branches?.length ? b.branches : ['main'];
                     return (
                       <div
                         key={`edit-${idx}-${row.baseDocId}`}
@@ -1393,9 +1371,7 @@ function DevelopPage() {
                             value={row.baseDocId}
                             onChange={(ev) => {
                               const docId = parseInt(ev.target.value, 10);
-                              const nb = sourceMeta.get(docId);
-                              const brs = nb?.branches?.length ? nb.branches : ['main'];
-                              updateEditRow(idx, { baseDocId: docId, branch: brs[0] || 'main' });
+                              updateEditRow(idx, { baseDocId: docId });
                             }}
                             style={{
                               flex: '1 1 200px',
@@ -1408,22 +1384,6 @@ function DevelopPage() {
                           >
                             {poolSources.map((lb) => (
                               <option key={lb.docId} value={lb.docId}>{(lb.title || '').trim() || lb.docId}</option>
-                            ))}
-                          </select>
-                          <select
-                            value={row.branch}
-                            onChange={(ev) => updateEditRow(idx, { branch: ev.target.value })}
-                            style={{
-                              flex: '0 1 140px',
-                              padding: 6,
-                              borderRadius: 8,
-                              border: `1px solid ${themeStyles.border}`,
-                              background: themeStyles.bgCard,
-                              color: themeStyles.textPrimary,
-                            }}
-                          >
-                            {branches.map((br) => (
-                              <option key={br} value={br}>{br}</option>
                             ))}
                           </select>
                         </div>

@@ -2,7 +2,7 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { i18n } from 'vj/utils';
 import type { BaseEdge, BaseNode, Card } from './types';
 import { buildBaseTutorSuggestedQuestions } from './ai/suggested_questions';
-import { useBaseAiTutorChat, type BaseAiTutorMessage } from './ai/useBaseAiTutorChat';
+import { useBaseAiTutorChat } from './ai/useBaseAiTutorChat';
 import AiTutorToolCallDisplay from './AiTutorToolCallDisplay';
 import AiTutorMarkdown from './AiTutorMarkdown';
 
@@ -71,7 +71,6 @@ export type BaseDetailAiTutorProps = {
   edges: BaseEdge[];
   nodeCardsMap: Record<string, Card[]>;
   docTitle: string;
-  branch: string;
   docDescription?: string;
   selectedNode: BaseNode | null;
   selectedCard: Card | null;
@@ -85,7 +84,6 @@ export function BaseDetailAiTutor({
   edges,
   nodeCardsMap,
   docTitle,
-  branch,
   docDescription,
   selectedNode,
   selectedCard,
@@ -111,7 +109,6 @@ export function BaseDetailAiTutor({
     selectedNode,
     selectedCard,
     docTitle,
-    branch,
     docDescription,
     docId,
   });

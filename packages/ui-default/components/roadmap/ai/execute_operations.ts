@@ -168,7 +168,6 @@ export async function executeRoadmapAiOperations(
             if (op.label != null || op.text != null) patch.label = String(op.label ?? op.text);
           }
           if (op.hookRoadmapDocId != null) patch.hookRoadmapDocId = op.hookRoadmapDocId;
-          if (op.hookRoadmapBranch != null) patch.hookRoadmapBranch = op.hookRoadmapBranch;
           if (op.hookRoadmapTitle != null) patch.hookRoadmapTitle = op.hookRoadmapTitle;
           return { ...node, data: { ...node.data, ...patch } };
         });

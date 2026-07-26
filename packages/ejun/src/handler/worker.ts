@@ -654,7 +654,6 @@ export async function callToolViaWorker(
     priority: number = 0,
     toolContext: {
         baseDocId?: number;
-        baseBranch?: string;
         owner?: number;
         toolType?: string;
         token?: string;
@@ -672,7 +671,6 @@ export async function callToolViaWorker(
         agentId,
         uid,
         baseDocId: toolContext.baseDocId,
-        baseBranch: toolContext.baseBranch,
         owner: toolContext.owner,
         toolType: toolContext.toolType,
         token: toolContext.token,
@@ -710,20 +708,19 @@ export class ToolCallInternalHandler extends Handler {
     @post('toolName', Types.String, true)
     @post('args', Types.Any, true)
     @post('baseDocId', Types.Int, true)
-    @post('baseBranch', Types.String, true)
     @post('owner', Types.Int, true)
     @post('toolType', Types.String, true)
     @post('token', Types.String, true)
     @post('mcpId', Types.Int, true)
-    async post(domainId: string, toolName: string, args: any, baseDocId?: number, baseBranch?: string, owner?: number, toolType?: string, token?: string, mcpId?: number) {
+    async post(domainId: string, toolName: string, args: any, baseDocId?: number, owner?: number, toolType?: string, token?: string, mcpId?: number) {
         const mcpClient = new (require('../model/agent').McpClient)();
         try {
             const callArgs = toolType === 'plugin_mcp' && mcpId ? { ...(args || {}), __mcpId: mcpId } : args;
             logger.info(
-                'Internal worker tool call: tool=%s type=%s hasToken=%s baseDocId=%s baseBranch=%s owner=%s mcpId=%s',
-                toolName, toolType || '', !!token, baseDocId || '', baseBranch || '', owner || '', mcpId || '',
+                'Internal worker tool call: tool=%s type=%s hasToken=%s baseDocId=%s owner=%s mcpId=%s',
+                toolName, toolType || '', !!token, baseDocId || '', owner || '', mcpId || '',
             );
-            const result = await mcpClient.callTool(toolName, callArgs, domainId, undefined, token, toolType, baseDocId, baseBranch, owner);
+            const result = await mcpClient.callTool(toolName, callArgs, domainId, undefined, token, toolType, baseDocId, owner);
             this.response.body = { result };
         } catch (error: any) {
             this.response.body = {

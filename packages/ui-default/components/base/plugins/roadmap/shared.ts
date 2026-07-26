@@ -16,7 +16,6 @@ export interface RoadmapNodeData {
   description?: string;
   nodeText?: string;
   hookRoadmapDocId?: string | number;
-  hookRoadmapBranch?: string;
   hookRoadmapTitle?: string;
   hookRoadmapUrl?: string;
   priority?: RoadmapPriority;
@@ -64,8 +63,6 @@ export interface RoadmapDoc {
   rid?: string | number;
   title?: string;
   content?: string;
-  currentBranch?: string;
-  branches?: string[];
   githubRepo?: string;
   nodes?: BaseRoadmapNode[];
   edges?: BaseRoadmapEdge[];

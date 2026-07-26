@@ -56,7 +56,7 @@ export function normalizeRoadmapCanvasBaseNode(node: BaseNode): BaseNode {
 function roadmapCanvasDataSnapshot(data?: Record<string, unknown>): string {
   const keys = [
     'posX', 'posY', 'lane', 'roadmapNodeType', 'nodeNumber', 'nodeText', 'description',
-    'hookRoadmapDocId', 'hookRoadmapBranch', 'hookRoadmapTitle', 'hookRoadmapUrl',
+    'hookRoadmapDocId', 'hookRoadmapTitle', 'hookRoadmapUrl',
   ];
   const source = data || {};
   return keys.map((key) => `${key}:${String(source[key] ?? '')}`).join('|');

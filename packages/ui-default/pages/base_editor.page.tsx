@@ -11,7 +11,7 @@ const getBaseUrl = (path: string, docId: string): string => {
   return domainScopedPath(`/base/${docId}${path}`);
 };
 
-const page = new NamedPage(['base_editor', 'base_editor_branch', 'develop_editor', 'plugin_editor'], async (pageName) => {
+const page = new NamedPage(['base_editor', 'develop_editor', 'plugin_editor'], async () => {
   try {
     const $container = $('#base-editor-mode');
     if (!$container.length) {
@@ -29,8 +29,6 @@ const page = new NamedPage(['base_editor', 'base_editor_branch', 'develop_editor
       const apiPath = domainApiPath(`/${editorApiBasePath}/data`, domainId);
       const initQs: Record<string, string> = {};
       if (docId) initQs.docId = docId;
-      const initBranch = (window as any).UiContext?.currentBranch;
-      if (initBranch) initQs.branch = initBranch;
       const response = await request.get(apiPath, initQs);
       initialData = response;
 

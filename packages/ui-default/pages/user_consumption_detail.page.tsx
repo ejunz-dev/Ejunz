@@ -128,7 +128,7 @@ function UserConsumptionDetailPage() {
 
   const getCardLink = (card: ConsumptionCard) => {
     if (baseDocId && card.nodeId) {
-      return `/d/${targetDomain._id}/base/${baseDocId}/branch/main/node/${card.nodeId}/cards?cardId=${card.docId}`;
+      return `/d/${targetDomain._id}/base/${baseDocId}/node/${card.nodeId}/cards?cardId=${card.docId}`;
     }
     return null;
   };

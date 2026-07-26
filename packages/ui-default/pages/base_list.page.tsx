@@ -15,7 +15,6 @@ interface BaseItem {
   updateAt: string;
   views: number;
   rpid?: number;
-  branch?: string;
   listStats?: {
     nodeCount: number;
     mainLevelCount: number;
@@ -29,11 +28,10 @@ function BaseList() {
   const [bases, setBases] = useState<BaseItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [rpid, setRpid] = useState<number | undefined>(undefined);
-  const [branch, setBranch] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     loadBases();
-  }, [rpid, branch]);
+  }, [rpid]);
 
   const loadBases = async () => {
     try {
@@ -41,7 +39,6 @@ function BaseList() {
       const domainId = (window as any).UiContext?.domainId || 'system';
       const params: Record<string, unknown> = { format: 'json' };
       if (rpid) params.rpid = rpid;
-      if (branch) params.branch = branch;
 
       const response = await request.get(domainApiPath('/base/list', domainId), params);
       setBases(response.bases || []);
@@ -124,7 +121,7 @@ function BaseList() {
               }}
               onClick={() => {
                 const domainId = (window as any).UiContext?.domainId || '';
-                window.location.href = domainScopedPath(`/base/${base.docId}/branch/main`, domainId);
+                window.location.href = domainScopedPath(`/base/${base.docId}`, domainId);
               }}
             >
               <h3 style={{ margin: '0 0 10px 0', fontSize: '18px', color: '#333' }}>
@@ -161,7 +158,7 @@ function BaseList() {
                 <a
                   href={(() => {
                     const domainId = (window as any).UiContext?.domainId || 'system';
-                    return domainScopedPath(`/base/${base.docId}/branch/main`, domainId);
+                    return domainScopedPath(`/base/${base.docId}`, domainId);
                   })()}
                   onClick={(e) => e.stopPropagation()}
                   style={{
@@ -226,8 +223,6 @@ const page = new NamedPage('base_list', async () => {
     }
 
     const rpid = $container.data('rpid');
-    const branch = $container.data('branch');
-
     ReactDOM.render(
       <BaseList />,
       $container[0]

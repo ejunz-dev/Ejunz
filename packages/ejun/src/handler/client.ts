@@ -2955,7 +2955,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                     }
                     
                     // 收集完整的上下文信息，供 worker 使用
-                    const { getAssignedTools, effectiveAgentBaseDocId, effectiveAgentBaseBranch } = require('./agent');
+                    const { getAssignedTools, effectiveAgentBaseDocId } = require('./agent');
                     const tools = await getAssignedTools(this.domain._id, agent);
                     
                     const agentPrompt = agent.content || '';
@@ -2979,7 +2979,6 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                         agentContent: agent.content || '',
                         agentMemory: agent.memory || '',
                         baseDocId: effectiveAgentBaseDocId(agent),
-                        baseBranch: effectiveAgentBaseBranch(agent),
                         tools: tools.map(tool => ({
                             name: tool.name,
                             description: tool.description,

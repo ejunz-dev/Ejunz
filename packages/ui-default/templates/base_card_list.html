@@ -1,131 +1,39 @@
 {% extends "layout/basic.html" %}
 {% block content %}
 <script>
-  {% set baseUrlValue = url("base_card_list_branch", domainId=base.domainId, docId=base.docId, branch=branch, nodeId=nodeId) %}
-  {{ set(UiContext, 'currentBranch', branch) }}
-  {{ set(UiContext, 'base', {
-    domainId: base.domainId,
-    docId: base.docId,
-    bid: base.bid,
-    currentBranch: branch
-  }) }}
+  {% set baseUrlValue = url("base_card_list", domainId=base.domainId, docId=base.docId, nodeId=nodeId) %}
+  {{ set(UiContext, 'base', { domainId: base.domainId, docId: base.docId, bid: base.bid }) }}
   {{ set(UiContext, 'cards', cards) }}
   {{ set(UiContext, 'baseUrl', baseUrlValue) }}
   {{ set(UiContext, 'nodeId', nodeId) }}
 </script>
-<div class="row base-card-list">
-  <!-- 左侧：卡片列表侧边栏 -->
-  <div class="base-card-list__sidebar">
-    <div class="base-card-list__header">
-      <h2 class="base-card-list__title">卡片列表</h2>
-      <div class="base-card-list__actions">
-        <button 
-          id="edit-mode-btn"
-          class="base-card-list__action-btn base-card-list__action-btn--edit"
-          title="{{ _('编辑') }}"
-        >
-          ✎
-        </button>
-        <button 
-          id="save-order-btn"
-          class="base-card-list__action-btn base-card-list__action-btn--save"
-          style="display: none;"
-          title="{{ _('保存') }}"
-        >
-          ✓
-        </button>
-        <button 
-          id="cancel-edit-btn"
-          class="base-card-list__action-btn base-card-list__action-btn--cancel"
-          style="display: none;"
-          title="{{ _('取消') }}"
-        >
-          ×
-        </button>
-        <button 
-          id="delete-cards-btn"
-          class="base-card-list__action-btn base-card-list__action-btn--delete"
-          style="display: none;"
-          title="{{ _('删除') }}"
-        >
-          🗑
-        </button>
-        <a 
-          href="{{ url('base_card_edit_branch', domainId=base.domainId, docId=base.docId, branch=branch, nodeId=nodeId) }}"
-          class="base-card-list__action-btn base-card-list__action-btn--new"
-          style="text-decoration: none;"
-          title="{{ _('新建') }}"
-        >
-          +
-        </a>
+<div class="row">
+  <div class="large-9 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">
+          <a href="{{ url('base_detail', domainId=base.domainId, docId=base.docId) }}">{{ base.title if base else '思维导图' }}</a>
+          <span style="margin: 0 10px;">/</span>
+          {{ card.title if card else '卡片' }}
+        </h1>
       </div>
-    </div>
-    <div id="card-list-container" class="base-card-list__container">
-      {% if cards and cards|length > 0 %}
-        {% for card in cards %}
-          <div
-            class="base-card-list__item card-item {% if selectedCard and card.docId.toString() == selectedCard.docId.toString() %}selected{% endif %}"
-            data-card-id="{{ card.docId }}"
-            data-order="{{ card.order or loop.index }}"
-          >
-            <div class="base-card-list__item-content">
-              <input 
-                type="checkbox" 
-                class="base-card-list__checkbox card-checkbox" 
-                data-card-id="{{ card.docId }}"
-              />
-              <span class="base-card-list__drag-handle drag-handle">⋮⋮</span>
-              <div class="base-card-list__item-title">
-                {{ card.title or '未命名卡片' }}
-              </div>
-            </div>
-          </div>
-        {% endfor %}
-      {% else %}
-        <div class="base-card-list__empty">
-          <p class="base-card-list__empty-text">暂无卡片</p>
-        </div>
-      {% endif %}
+      <div class="section__body"><div class="typo richmedia topic__content" data-emoji-enabled>{{ card.content|markdown|safe if card and card.content else '<p style="color: #888;">暂无内容</p>' }}</div></div>
     </div>
   </div>
-  
-  <!-- 右侧：卡片内容 -->
-  <div class="base-card-list__content">
+  <div class="large-3 columns">
     <div class="section">
-      <div class="section__header base-card-list__content-header">
-        <h1 class="section__title base-card-list__content-title">
-          <span id="card-title">{{ selectedCard.title if selectedCard else '请选择卡片' }}</span>
-          <span style="margin: 0 10px;">/</span>
-          {% if nodePath and nodePath|length > 0 %}
-            {% for pathNode in nodePath %}
-              {{ pathNode.text }}
-              <span style="margin: 0 10px;">/</span>
-            {% endfor %}
-          {% else %}
-            {{ nodeText }}
-            <span style="margin: 0 10px;">/</span>
-          {% endif %}
-          <a href="{{ url('base_detail_branch', domainId=base.domainId, docId=base.docId, branch=branch) }}">
-            {{ base.title if base else '思维导图' }}
-          </a>
-        </h1>
-        <a 
-          id="card-edit-btn"
-          href=""
-          class="button primary base-card-list__content-edit-btn"
-          style="display: none;"
-        >
-          {{ _('编辑') }}
-        </a>
-      </div>
+      <div class="section__header"><h2 class="section__title">{{ _('Card List') }}</h2></div>
       <div class="section__body">
-        <div id="card-content" class="typo richmedia topic__content" data-emoji-enabled>
-          {% if selectedCard and selectedCard.content %}
-            {{ selectedCard.content|markdown|safe }}
-          {% else %}
-            <p style="color: #888;">{% if selectedCard %}暂无内容{% else %}请从左侧选择一个卡片{% endif %}</p>
-          {% endif %}
-        </div>
+        {% if cards and cards|length > 0 %}
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            {% for c in cards %}
+              <a href="{{ url('base_card_detail', domainId=base.domainId, docId=base.docId, nodeId=nodeId, cardId=c.docId) }}" style="padding: 12px 16px; border-radius: 6px; text-decoration: none; color: #333; background: {% if c.docId.toString() == card.docId.toString() %}#e3f2fd{% else %}#fff{% endif %}; border: {% if c.docId.toString() == card.docId.toString() %}2px solid #2196f3{% else %}1px solid #e0e0e0{% endif %}; transition: all 0.2s ease; display: block;">
+                <div style="font-size: 14px; font-weight: {% if c.docId.toString() == card.docId.toString() %}600{% else %}400{% endif %}; margin-bottom: 4px;">{{ c.title or '未命名卡片' }}</div>
+                {% if c.content %}<div style="font-size: 12px; color: #666; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ c.content|truncate(50) }}</div>{% endif %}
+              </a>
+            {% endfor %}
+          </div>
+        {% else %}<p style="color: #888;">暂无卡片</p>{% endif %}
       </div>
     </div>
   </div>

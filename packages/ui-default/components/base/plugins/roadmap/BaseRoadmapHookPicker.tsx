@@ -7,14 +7,12 @@ export function buildBaseRoadmapHookUrl(
   targetRoadmapNodeId: string,
   basePath: string,
   docId?: string,
-  branch?: string,
 ): string {
   const params = new URLSearchParams(window.location.search);
   params.set('nodeId', targetRoadmapNodeId);
   params.delete('cardId');
-  const resolvedBranch = String(branch || (window as any).UiContext?.currentBranch || 'main').trim() || 'main';
   const path = docId
-    ? `/${basePath}/${docId}/branch/${encodeURIComponent(resolvedBranch)}`
+    ? `/${basePath}/${docId}`
     : window.location.pathname;
   return `${path}?${params.toString()}`;
 }
@@ -23,7 +21,6 @@ export function BaseRoadmapHookPicker({
   baseNodes,
   currentRoadmapNodeId,
   targetNodeId,
-  branch,
   title,
   basePath,
   docId,
@@ -33,13 +30,11 @@ export function BaseRoadmapHookPicker({
   currentRoadmapNodeId?: string | null;
   /** hookRoadmapDocId stores the target base roadmap node id. */
   targetNodeId?: string | number;
-  branch?: string;
   title?: string;
   basePath: string;
   docId?: string;
   onChange: (next: {
     hookRoadmapDocId: string;
-    hookRoadmapBranch: string;
     hookRoadmapTitle: string;
     hookRoadmapUrl: string;
     label?: string;
@@ -55,9 +50,6 @@ export function BaseRoadmapHookPicker({
   );
 
   const selectedId = targetNodeId != null && String(targetNodeId) !== '' ? String(targetNodeId) : '';
-  const currentBranch = String(
-    branch || (window as any).UiContext?.currentBranch || 'main',
-  ).trim() || 'main';
 
   return (
     <div className="roadmap-hook-picker">
@@ -84,9 +76,8 @@ export function BaseRoadmapHookPicker({
             const nextTitle = String(item?.text || '').trim();
             onChange({
               hookRoadmapDocId: nextId,
-              hookRoadmapBranch: currentBranch,
               hookRoadmapTitle: nextTitle,
-              hookRoadmapUrl: buildBaseRoadmapHookUrl(nextId, basePath, docId, currentBranch),
+              hookRoadmapUrl: buildBaseRoadmapHookUrl(nextId, basePath, docId),
               ...(nextTitle ? { label: nextTitle } : {}),
             });
           }}

@@ -1,17 +1,21 @@
 {% extends "layout/basic.html" %}
 {% block content %}
+{% set _base_doc_id = ('' ~ ((base.bid if base and base.bid else base.docId) if base and base.docId is not none else '')) %}
 <script>
-  {{ set(UiContext, 'currentBranch', currentBranch) }}
   {{ set(UiContext, 'base', {
     domainId: base.domainId,
-    docId: base.docId,
+    docId: _base_doc_id,
     bid: base.bid,
-    currentBranch: currentBranch,
     nodes: base.nodes or [],
     edges: base.edges or [],
     title: base.title
   }) }}
-  {{ set(UiContext, 'units', units or []) }}
+  {{ set(UiContext, 'nodeCardsMap', nodeCardsMap or {}) }}
+  {{ set(UiContext, 'files', files or []) }}
+  {{ set(UiContext, 'todayContribution', todayContribution or { nodes: 0, cards: 0, problems: 0, nodeChars: 0, cardChars: 0, problemChars: 0 }) }}
+  {{ set(UiContext, 'todayContributionAllDomains', todayContributionAllDomains or { nodes: 0, cards: 0, problems: 0, nodeChars: 0, cardChars: 0, problemChars: 0 }) }}
+  {{ set(UiContext, 'contributions', contributions or []) }}
+  {{ set(UiContext, 'contributionDetails', contributionDetails or {}) }}
 </script>
 <div class="row">
   <div class="large-12 columns">
@@ -23,4 +27,3 @@
   </div>
 </div>
 {% endblock %}
-

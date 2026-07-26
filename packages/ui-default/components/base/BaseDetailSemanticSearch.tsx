@@ -48,7 +48,6 @@ export type SemanticSearchItem = {
 export type BaseDetailSemanticSearchProps = {
   domainId: string;
   docId: string;
-  branch: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelectResult?: (result: SemanticSearchItem) => void;
@@ -57,7 +56,6 @@ export type BaseDetailSemanticSearchProps = {
 export function BaseDetailSemanticSearch({
   domainId,
   docId,
-  branch,
   open,
   onOpenChange,
   onSelectResult,
@@ -87,7 +85,7 @@ export function BaseDetailSemanticSearch({
     try {
       const res: any = await request.post(
         domainApiPath('/base/semantic-search', domainId),
-        { docId: Number(docId), branch, query: q, limit: 20 },
+        { docId: Number(docId), query: q, limit: 20 },
       );
       setResults((res?.results || []) as SemanticSearchItem[]);
     } catch {
@@ -95,7 +93,7 @@ export function BaseDetailSemanticSearch({
     } finally {
       setLoading(false);
     }
-  }, [query, domainId, docId, branch]);
+  }, [query, domainId, docId]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {

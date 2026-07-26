@@ -414,7 +414,7 @@ class UserDetailHandler extends Handler {
                 const independentNodeCount = await document.count(did, document.TYPE_NODE, { owner: uid });
                 
                 const bases = await document.getMulti(did, document.TYPE_BASE, { owner: uid })
-                    .project({ nodes: 1, branchData: 1 })
+                    .project({ nodes: 1 })
                     .toArray();
                 let baseNodeCount = 0;
                 for (const baseDoc of bases) {
@@ -423,18 +423,6 @@ class UserDetailHandler extends Handler {
                         for (const node of baseDoc.nodes) {
                             if (node && node.id) {
                                 nodeIds.add(node.id);
-                            }
-                        }
-                    }
-                    if (baseDoc.branchData && typeof baseDoc.branchData === 'object') {
-                        for (const branch in baseDoc.branchData) {
-                            const branchNodes = baseDoc.branchData[branch]?.nodes;
-                            if (branchNodes && Array.isArray(branchNodes)) {
-                                for (const node of branchNodes) {
-                                    if (node && node.id) {
-                                        nodeIds.add(node.id);
-                                    }
-                                }
                             }
                         }
                     }
@@ -529,12 +517,12 @@ class UserDetailHandler extends Handler {
             }
 
             const bases = await document.getMulti(did, document.TYPE_BASE, { owner: uid })
-                .project({ nodes: 1, branchData: 1, updateAt: 1, createdAt: 1 })
+                .project({ nodes: 1, updateAt: 1, createdAt: 1 })
                 .toArray();
             for (const baseDoc of bases) {
                 let totalNodesInBase = 0;
                 const nodeIds = new Set<string>();
-                
+
                 if (baseDoc.nodes && Array.isArray(baseDoc.nodes)) {
                     for (const node of baseDoc.nodes) {
                         if (node && node.id) {
@@ -542,20 +530,7 @@ class UserDetailHandler extends Handler {
                         }
                     }
                 }
-                
-                if (baseDoc.branchData && typeof baseDoc.branchData === 'object') {
-                    for (const branch in baseDoc.branchData) {
-                        const branchNodes = baseDoc.branchData[branch]?.nodes;
-                        if (branchNodes && Array.isArray(branchNodes)) {
-                            for (const node of branchNodes) {
-                                if (node && node.id) {
-                                    nodeIds.add(node.id);
-                                }
-                            }
-                        }
-                    }
-                }
-                
+
                 totalNodesInBase = nodeIds.size;
                 
                 if (totalNodesInBase > 0) {
@@ -993,17 +968,17 @@ class UserContributionDetailHandler extends Handler {
         }
 
         const bases = await document.getMulti(targetDomainId, document.TYPE_BASE, { owner: uid })
-            .project({ docId: 1, title: 1, nodes: 1, branchData: 1, updateAt: 1, createdAt: 1 })
+            .project({ docId: 1, title: 1, nodes: 1, updateAt: 1, createdAt: 1 })
             .toArray();
         for (const baseDoc of bases) {
-            const mapDate = baseDoc.updateAt 
+            const mapDate = baseDoc.updateAt
                 ? moment.utc(baseDoc.updateAt).format('YYYY-MM-DD')
                 : (baseDoc.createdAt ? moment.utc(baseDoc.createdAt).format('YYYY-MM-DD') : null);
-            
+
             if (mapDate === date) {
                 const nodeIds = new Set<string>();
                 const nodeMap = new Map<string, any>();
-                
+
                 if (baseDoc.nodes && Array.isArray(baseDoc.nodes)) {
                     for (const node of baseDoc.nodes) {
                         if (node && node.id) {
@@ -1012,23 +987,7 @@ class UserContributionDetailHandler extends Handler {
                         }
                     }
                 }
-                
-                if (baseDoc.branchData && typeof baseDoc.branchData === 'object') {
-                    for (const branch in baseDoc.branchData) {
-                        const branchNodes = baseDoc.branchData[branch]?.nodes;
-                        if (branchNodes && Array.isArray(branchNodes)) {
-                            for (const node of branchNodes) {
-                                if (node && node.id) {
-                                    nodeIds.add(node.id);
-                                    if (!nodeMap.has(node.id)) {
-                                        nodeMap.set(node.id, node);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                
+
                 for (const nodeId of nodeIds) {
                     const node = nodeMap.get(nodeId);
                     contributions.nodes.push({
@@ -1071,7 +1030,7 @@ class UserContributionDetailHandler extends Handler {
             }
         }
 
-        const base = await base.BaseModel.getByDomain(targetDomainId);
+        const baseDoc = await base.BaseModel.getByDomain(targetDomainId);
 
         this.response.template = 'user_contribution_detail.html';
         this.response.body = {
@@ -1079,7 +1038,7 @@ class UserContributionDetailHandler extends Handler {
             targetDomain,
             date,
             contributions,
-            baseDocId: base?.docId,
+            baseDocId: baseDoc?.docId,
         };
 
         this.UiContext.extraTitleContent = this.translate('Contributions on {0} in {1}').format(date, targetDomain.name);
@@ -1115,8 +1074,8 @@ class UserConsumptionDetailHandler extends Handler {
             createdAt: { $gte: startOfDay, $lte: endOfDay },
         }).toArray();
 
-        const base = await base.BaseModel.getByDomain(targetDomainId);
-        const baseDocId = base?.docId;
+        const baseDoc = await base.BaseModel.getByDomain(targetDomainId);
+        const baseDocId = baseDoc?.docId;
 
         const contributions: {
             nodes: Array<{ id: string; name: string; createdAt: Date; type: string }>;
@@ -1136,7 +1095,7 @@ class UserConsumptionDetailHandler extends Handler {
         for (const result of resultRecords) {
             if (result.nodeId) {
                 if (!nodeMap.has(result.nodeId)) {
-                    const baseNodes = base ? (base.nodes || []).filter((n: any) => n.id === result.nodeId) : [];
+                    const baseNodes = baseDoc ? (baseDoc.nodes || []).filter((n: any) => n.id === result.nodeId) : [];
                     const nodeData = baseNodes[0] || { id: result.nodeId, text: result.nodeId };
                     nodeMap.set(result.nodeId, nodeData);
                 }
@@ -1250,7 +1209,7 @@ class UserConsumptionDetailHandler extends Handler {
             targetDomain,
             date,
             contributions,
-            baseDocId: base?.docId,
+            baseDocId: baseDoc?.docId,
             totalTimeInSeconds: Math.round(totalTimeInMilliseconds / 1000),
         };
 

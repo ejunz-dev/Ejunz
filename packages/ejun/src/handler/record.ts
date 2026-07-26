@@ -11,7 +11,7 @@ import {
     Types,
 } from '../service/server';
 import { PERM, PRIV, STATUS_TEXTS } from '../model/builtin';
-import type { BaseDoc, BaseNode, CardDoc, ProblemAiEval, ProblemFlip, ProblemFillBlank, ProblemMatching, ProblemSuperFlip, ProblemChain } from '../interface';
+import type { BaseDoc, BaseNode, CardDoc, ProblemAiEval, ProblemFlip, ProblemFillBlank, ProblemMatching, ProblemSuperFlip, ProblemChain, ProblemSingle, ProblemMulti } from '../interface';
 import { BaseModel, CardModel } from '../model/base';
 import RecordModel, { type SessionRecordDoc, type RecordProblemState } from '../model/record';
 import { problemKind, matchingColumnsNormalized, superFlipNormalized, flattenAiEvalRubricForScoring, aiEvalRubricSumMax } from '../model/problem';
@@ -67,13 +67,11 @@ function recordCardUrl(
     buildUrl: (name: string, kwargs: Record<string, unknown>) => string,
     domainId: string,
     baseDocId: number,
-    branch: string,
     cardIdHex: string,
 ): string {
-    const pathUrl = buildUrl('base_detail_branch', {
+    const pathUrl = buildUrl('base_detail', {
         domainId,
         docId: String(baseDocId),
-        branch,
     });
     if (!pathUrl || pathUrl === '#') return '#';
     const sep = pathUrl.includes('?') ? '&' : '?';
@@ -111,7 +109,6 @@ async function buildRecordMainListRow(
         if (sess && isAgentSessionRow(sess) && sess.agentSessionKind) {
             sessionResumeUrl = buildUrl('session_chat_detail', { domainId: rd.domainId, sid: sess._id });
         } else if (sess && isDevelopSessionRow(sess)) {
-            const br = sess.branch && String(sess.branch).trim() ? String(sess.branch).trim() : 'main';
             const baseDocId = Number(sess.baseDocId ?? rd.baseDocId);
             let docSeg = '';
             if (Number.isFinite(baseDocId) && baseDocId > 0) {
@@ -122,10 +119,9 @@ async function buildRecordMainListRow(
                 }
             }
             if (!docSeg) docSeg = String(sess.baseDocId ?? rd.baseDocId ?? '');
-            const editorBase = buildUrl('base_editor_branch', {
+            const editorBase = buildUrl('base_editor', {
                 domainId: rd.domainId,
                 docId: docSeg,
-                branch: br,
             });
             const sep = editorBase.includes('?') ? '&' : '?';
             sessionResumeUrl = `${editorBase}${sep}session=${encodeURIComponent(sessionIdHex)}`;
@@ -190,7 +186,6 @@ async function enrichRecordRowDisplay(
         };
     }
     const domainId = rd.domainId;
-    const branch = rd.branch && rd.branch.length > 0 ? rd.branch : 'main';
     const baseDocId = typeof rd.baseDocId === 'number' && rd.baseDocId > 0 ? rd.baseDocId : 0;
     let cardTitle = rd.cardId;
     let cardUrl = '#';
@@ -201,7 +196,7 @@ async function enrichRecordRowDisplay(
             if (card && typeof card.title === 'string' && card.title.length > 0) {
                 cardTitle = card.title;
             }
-            cardUrl = recordCardUrl(buildUrl, domainId, baseDocId, branch, rd.cardId);
+            cardUrl = recordCardUrl(buildUrl, domainId, baseDocId, rd.cardId);
         } catch {
         }
     }
@@ -209,20 +204,13 @@ async function enrichRecordRowDisplay(
     return { cardTitle, cardUrl };
 }
 
-function nodesOnBranch(base: BaseDoc, branch: string): BaseNode[] {
-    const branchName = branch || 'main';
-    if (base.branchData?.[branchName]?.nodes) return base.branchData[branchName].nodes;
-    if (branchName === 'main') return base.nodes || [];
-    return [];
-}
 
 async function nodeTitleForRecord(rd: SessionRecordDoc): Promise<string> {
     const bid = typeof rd.baseDocId === 'number' && rd.baseDocId > 0 ? rd.baseDocId : 0;
     if (!bid || !rd.nodeId) return rd.nodeId || '';
     const base = await BaseModel.get(rd.domainId, bid);
     if (!base) return rd.nodeId;
-    const br = rd.branch && rd.branch.length ? rd.branch : 'main';
-    const nodes = nodesOnBranch(base, br);
+    const nodes = base.nodes || [];
     const n = nodes.find((x) => x.id === rd.nodeId);
     const t = (n as { title?: string } | undefined)?.title ?? n?.text;
     return t ? String(t) : rd.nodeId;
@@ -417,10 +405,13 @@ async function problemRowsForRecord(rd: SessionRecordDoc): Promise<LessonHistory
                         : []),
                 ];
             }
-        } else if (typeof p.selected === 'number' && pr?.options && p.selected >= 0 && p.selected < pr.options.length) {
-            selectedText = stripHtmlOneLine(String(pr.options[p.selected]), 120);
-        } else if (typeof p.selected === 'number') {
-            selectedText = `#${p.selected}`;
+        } else {
+            const choiceProblem = pr as (ProblemSingle | ProblemMulti | undefined);
+            if (typeof p.selected === 'number' && choiceProblem?.options && p.selected >= 0 && p.selected < choiceProblem.options.length) {
+                selectedText = stripHtmlOneLine(String(choiceProblem.options[p.selected]), 120);
+            } else if (typeof p.selected === 'number') {
+                selectedText = `#${p.selected}`;
+            }
         }
         let correctOptionText: string | undefined;
         let correctOptIdx: number | undefined;
@@ -428,9 +419,10 @@ async function problemRowsForRecord(rd: SessionRecordDoc): Promise<LessonHistory
             const fb = pr as ProblemFillBlank;
             correctOptionText = stripHtmlOneLine((fb.answers || []).map(String).join(' / '), 120);
         } else {
-            const ans = pr?.answer;
-            if (typeof ans === 'number' && pr?.options && ans >= 0 && ans < pr.options.length) {
-                correctOptionText = stripHtmlOneLine(String(pr.options[ans]), 120);
+            const choiceProblem = pr as (ProblemSingle | ProblemMulti | undefined);
+            const ans = choiceProblem?.answer;
+            if (typeof ans === 'number' && choiceProblem?.options && ans >= 0 && ans < choiceProblem.options.length) {
+                correctOptionText = stripHtmlOneLine(String(choiceProblem.options[ans]), 120);
                 correctOptIdx = ans;
             }
         }
@@ -478,7 +470,6 @@ export function lessonHistoryRowsToWire(rows: LessonHistoryRecordRow[]): Record<
         cardId: row.rdoc.cardId,
         nodeId: row.rdoc.nodeId,
         nodeTitle: row.nodeTitle,
-        branch: row.rdoc.branch,
         recordDisp: row.recordDisp,
         lastActivityAt: row.rdoc.lastActivityAt instanceof Date
             ? row.rdoc.lastActivityAt.toISOString()

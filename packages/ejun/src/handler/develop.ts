@@ -17,7 +17,7 @@ import SessionModel, {
 import { readDevelopSessionDeadlineMs } from '../lib/sessionUtcDaily';
 import { buildBaseEditorPageBody } from './base';
 import type { BaseDoc } from '../interface';
-import { developBranchKey, developTodayUtcYmd, getDevelopBranchDailyMany } from '../lib/developBranchDaily';
+import { developBaseKey, developTodayUtcYmd, getDevelopDailyMany } from '../lib/developBranchDaily';
 import { appendUserCheckinDay, countConsecutiveCheckinDays } from '../lib/checkin';
 import {
     developPoolHasAnyGoal,
@@ -43,22 +43,6 @@ import { buildSessionRecordHistoryRows, summarizeRecordDoc } from './record';
 
 export type { DevelopPoolEntryWire };
 
-function branchesForDevelopBase(base: BaseDoc): string[] {
-    const s = new Set<string>(['main']);
-    const raw = (base as any).branches;
-    if (Array.isArray(raw)) {
-        for (const x of raw) {
-            if (typeof x === 'string' && x.trim()) s.add(x.trim());
-        }
-    }
-    if (base.branchData) {
-        for (const k of Object.keys(base.branchData)) {
-            if (k) s.add(k);
-        }
-    }
-    return [...s];
-}
-
 type DevelopRowWithStats = DevelopPoolEntryWire & {
     todayNodes: number;
     todayCards: number;
@@ -71,7 +55,7 @@ function allDevelopGoalsMet(rows: DevelopRowWithStats[]): boolean {
     return rows.every(developRowGoalsMet);
 }
 
-/** GET `/develop/editor?session=` — same `base_editor.html` payload as branch editor, bound to a develop pool session. */
+/** GET `/develop/editor?session=` — same `base_editor.html` payload as the base editor, bound to a develop pool session. */
 class DevelopSessionEditorHandler extends Handler {
     @query('session', Types.String, true)
     async get(domainId: string, sessionHex?: string) {
@@ -104,7 +88,6 @@ class DevelopSessionEditorHandler extends Handler {
         if (!base) throw new NotFoundError('Base not found');
         if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
 
-        const requestedBranch = sess.branch && String(sess.branch).trim() ? String(sess.branch).trim() : 'main';
         const q = this.request.query || {};
         const hasCardInUrl = typeof q.cardId === 'string' && q.cardId.trim().length > 0;
         const hasNodeInUrl = typeof q.nodeId === 'string' && q.nodeId.trim().length > 0;
@@ -116,8 +99,7 @@ class DevelopSessionEditorHandler extends Handler {
                 savedDailyUrl,
                 sid,
                 baseDocId,
-                requestedBranch,
-            );
+                );
             if (locOk) {
                 this.response.redirect = savedDailyUrl;
                 return;
@@ -134,12 +116,11 @@ class DevelopSessionEditorHandler extends Handler {
         const editorBody = await buildBaseEditorPageBody({
             domainId,
             base,
-            requestedBranch,
             uid: this.user._id,
             priv: this.user.priv,
             domainName,
             db: this.ctx.db.db,
-            makeEditorUrl: (docId, br) => this.url('base_editor_branch', { docId: String(docId), branch: br }),
+            makeEditorUrl: (docId) => this.url('base_editor', { docId: String(docId) }),
             rootNodeIdFromQuery,
             developPoolUiMode: 'full',
             mapDocType: document.TYPE_BASE,
@@ -255,16 +236,15 @@ class DevelopHandler extends Handler {
         const learnBases = bases.map((b) => ({
             docId: Number(b.docId),
             title: ((b.title || '').trim() || String(b.docId)),
-            branches: branchesForDevelopBase(b),
         }));
 
         const date = developTodayUtcYmd();
-        const stats = await getDevelopBranchDailyMany(
+        const stats = await getDevelopDailyMany(
             this.ctx.db.db,
             finalDomainId,
             this.user._id,
             date,
-            developPool,
+            developPool.map((e) => e.baseDocId),
         );
 
         const rows = developPool.map((e) => {
@@ -272,7 +252,7 @@ class DevelopHandler extends Handler {
             const title = src
                 ? ((src.title || '').trim() || String(e.baseDocId))
                 : `Base ${e.baseDocId}`;
-            const st = stats.get(developBranchKey(e.baseDocId, e.branch)) || { nodes: 0, cards: 0, problems: 0 };
+            const st = stats.get(developBaseKey(e.baseDocId)) || { nodes: 0, cards: 0, problems: 0 };
             const rowStats = {
                 ...e,
                 todayNodes: st.nodes,
@@ -281,7 +261,7 @@ class DevelopHandler extends Handler {
             };
             const hasGoal = developRowHasDailyGoal(e);
             const todayGoalsMet = hasGoal && developRowGoalsMet(rowStats);
-            const editorUrl = this.url('base_editor_branch', { docId: String(e.baseDocId), branch: e.branch });
+            const editorUrl = this.url('base_editor', { docId: String(e.baseDocId) });
             return {
                 ...e,
                 baseTitle: title,
@@ -370,15 +350,15 @@ class DevelopHandler extends Handler {
             throw new ValidationError(this.translate('Develop check-in need goals set'));
         }
 
-        const stats = await getDevelopBranchDailyMany(
+        const stats = await getDevelopDailyMany(
             this.ctx.db.db,
             finalDomainId,
             this.user._id,
             todayYmd,
-            developPool,
+            developPool.map((e) => e.baseDocId),
         );
         const rows: DevelopRowWithStats[] = developPool.map((e) => {
-            const st = stats.get(developBranchKey(e.baseDocId, e.branch)) || { nodes: 0, cards: 0, problems: 0 };
+            const st = stats.get(developBaseKey(e.baseDocId)) || { nodes: 0, cards: 0, problems: 0 };
             return {
                 ...e,
                 todayNodes: st.nodes,
@@ -410,10 +390,6 @@ class DevelopHandler extends Handler {
             const b = await BaseModel.get(finalDomainId, e.baseDocId);
             if (!b) {
                 throw new ValidationError(this.translate('Develop unknown base'));
-            }
-            const allowed = new Set(branchesForDevelopBase(b));
-            if (!allowed.has(e.branch)) {
-                throw new ValidationError(this.translate('Develop invalid branch'));
             }
         }
         await clearDevelopSessionsAfterPoolChange(finalDomainId, this.user._id);

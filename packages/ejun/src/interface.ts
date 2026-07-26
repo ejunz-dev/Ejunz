@@ -211,10 +211,10 @@ declare module './model/agent'{
         apiKey?: string;
         memory?: string;
         repoIds?: number[];
-        /** Optional single knowledge-base mount (TYPE_BASE doc + branch). */
-        baseLibraryBindings?: Array<{ docId: number; branch: string }>;
+        /** Optional single knowledge-base mount (TYPE_BASE doc). */
+        baseLibraryBindings?: Array<{ docId: number }>;
         /** Web plugin mounts (TYPE_PLUGIN docs) enabled for slash commands and plugin-provided tools. */
-        pluginBindings?: Array<{ docId: number; branch?: string; enabledNodeIds?: string[] }>;
+        pluginBindings?: Array<{ docId: number; enabledNodeIds?: string[] }>;
     }
 }
 export type { AgentDoc } from './model/agent';
@@ -339,7 +339,6 @@ export interface BaseDoc {
     content: string;
     nodes: BaseNode[];
     edges: BaseEdge[];
-    branchData?: { [branch: string]: { nodes: BaseNode[]; edges: BaseEdge[] } };
     layout?: {
         type: 'hierarchical' | 'force' | 'manual';
         direction?: 'LR' | 'RL' | 'TB' | 'BT';
@@ -363,10 +362,7 @@ export interface BaseDoc {
     ip?: string;
     rpid?: number;
     bid?: string | number;
-    branch?: string;
     githubRepo?: string;
-    branches?: string[];
-    currentBranch?: string;
     parentId?: ObjectId;
     domainPosition?: { x: number; y: number };
     history?: BaseHistoryEntry[];
@@ -903,7 +899,6 @@ declare module './model/mcp' {
         token?: string;
         edgeId?: number;
         baseDocId?: number;
-        branch?: string;
         name?: string;
         description?: string;
         instructions?: string;
@@ -986,11 +981,9 @@ declare module './model/workflow_node' {
 export type { WorkflowDoc } from './model/workflow';
 export type { WorkflowNodeDoc } from './model/workflow_node';
 
-/** One Base + branch pair that contributes problems to the plan. */
+/** One Base that contributes problems to the plan. */
 export interface TrainingPlanSource {
     baseDocId: number;
-    sourceBranch: string;
-    targetBranch: string;
 }
 
 /**
@@ -1032,7 +1025,7 @@ export interface TrainingDoc {
     name: string;
     description?: string;
     introQuote?: string;
-    /** All Base+branch pairs composed into this plan (ordered). */
+    /** All Base sources composed into this plan (ordered). */
     planSources?: TrainingPlanSource[];
     /** Optional DAG metadata aligned by index with `sections`. */
     dag?: TrainingDagNode[];
@@ -1423,7 +1416,6 @@ export interface SessionDoc {
     domainId: string;
     uid: number;
     baseDocId?: number;
-    branch?: string;
     cardId?: string;
     nodeId?: string;
     cardIndex?: number;
@@ -1441,12 +1433,12 @@ export interface SessionDoc {
     lessonMode?: LessonMode;
     currentLearnSectionIndex?: number;
     currentLearnSectionId?: string;
+    currentLearnStartCardId?: string | null;
     lessonReviewCardIds?: string[];
     lessonCardTimesMs?: number[];
     lessonCardQueue?: LessonCardQueueItem[];
     lessonQueueAnchorNodeId?: string | null;
     lessonQueueBaseDocId?: number | null;
-    lessonQueueLearnBranch?: string | null;
     lessonQueueDay?: string | null;
     lessonQueueLearnSectionOrder?: string[];
     lessonQueueLearnStartCardId?: string | null;
@@ -1476,7 +1468,6 @@ export interface SessionDoc {
 export type SessionPatch = Partial<Pick<
     SessionDoc,
     | 'baseDocId'
-    | 'branch'
     | 'cardId'
     | 'nodeId'
     | 'cardIndex'
@@ -1487,12 +1478,12 @@ export type SessionPatch = Partial<Pick<
     | 'lessonMode'
     | 'currentLearnSectionIndex'
     | 'currentLearnSectionId'
+    | 'currentLearnStartCardId'
     | 'lessonReviewCardIds'
     | 'lessonCardTimesMs'
     | 'lessonCardQueue'
     | 'lessonQueueAnchorNodeId'
     | 'lessonQueueBaseDocId'
-    | 'lessonQueueLearnBranch'
     | 'lessonQueueDay'
     | 'lessonQueueLearnSectionOrder'
     | 'lessonQueueLearnStartCardId'

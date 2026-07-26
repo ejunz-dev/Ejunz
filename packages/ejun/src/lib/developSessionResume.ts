@@ -2,7 +2,7 @@ import { ObjectId } from 'mongodb';
 import DomainModel from '../model/domain';
 import SessionModel, { type SessionDoc } from '../model/session';
 import bus from '../service/bus';
-import { developBranchKey, developTodayUtcYmd } from './developBranchDaily';
+import { developTodayUtcYmd } from './developBranchDaily';
 import {
     loadDevelopRunQueuePool,
     loadUserDevelopPoolByMode,
@@ -16,12 +16,10 @@ import {
 } from './sessionListDisplay';
 import { isDevelopSessionPastDeadline, isSessionStalePastUtcCalendarDay } from './sessionUtcDaily';
 
-type DevelopBranchDailyDb = Parameters<typeof loadDevelopRunQueuePool>[0];
+type DevelopDailyDb = Parameters<typeof loadDevelopRunQueuePool>[0];
 
-/** Same window as `DevelopSessionStartHandler` session reuse. */
 export const DEVELOP_SESSION_REUSE_MS = 8 * 3600 * 1000;
 
-/** Exclude sessions that have been settled for today’s develop run. */
 export const developSessionNotSettledMongoFilter = {
     $or: [
         { 'progress.developSettledAt': { $exists: false } },
@@ -29,20 +27,13 @@ export const developSessionNotSettledMongoFilter = {
     ],
 };
 
-/** Daily-queue develop sessions only (excludes outline「单节点」编辑器会话). */
 export const developDailySessionKindMongo = {
     $or: [
         { developSessionKind: 'daily' as const },
         {
             $and: [
                 { developSessionKind: { $exists: false } },
-                {
-                    $or: [
-                        { nodeId: { $exists: false } },
-                        { nodeId: null },
-                        { nodeId: '' },
-                    ],
-                },
+                { $or: [{ nodeId: { $exists: false } }, { nodeId: null }, { nodeId: '' }] },
             ],
         },
     ],
@@ -51,10 +42,7 @@ export const developDailySessionKindMongo = {
 const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function clearDevelopDailySessionPointer(domainId: string, uid: number): Promise<void> {
-    await DomainModel.setUserInDomain(domainId, uid, {
-        developDailySessionId: null,
-        developDailySessionDay: null,
-    });
+    await DomainModel.setUserInDomain(domainId, uid, { developDailySessionId: null, developDailySessionDay: null });
 }
 
 export async function setDevelopDailySessionPointer(domainId: string, uid: number, sessionHex: string): Promise<void> {
@@ -64,78 +52,49 @@ export async function setDevelopDailySessionPointer(domainId: string, uid: numbe
     });
 }
 
-function poolKeySet(pool: DevelopPoolEntryWire[]): Set<string> {
-    return new Set(pool.map((e) => developBranchKey(e.baseDocId, e.branch)));
+function poolKeySet(pool: DevelopPoolEntryWire[]): Set<number> {
+    return new Set(pool.map((e) => e.baseDocId));
 }
 
-function developSessionInPool(doc: SessionDoc, poolKeys: Set<string>): boolean {
+function developSessionInPool(doc: SessionDoc, poolKeys: Set<number>): boolean {
     const bid = Number(doc.baseDocId);
-    if (!Number.isFinite(bid) || bid <= 0) return false;
-    const br = doc.branch && String(doc.branch).trim() ? String(doc.branch).trim() : 'main';
-    return poolKeys.has(developBranchKey(bid, br));
+    return Number.isFinite(bid) && bid > 0 && poolKeys.has(bid);
 }
 
 function isDevelopSessionResumable(
     doc: SessionDoc | null | undefined,
-    poolKeys: Set<string>,
+    poolKeys: Set<number>,
     now = Date.now(),
 ): doc is SessionDoc {
     if (!doc || !isDevelopSessionRow(doc)) return false;
-    if (isDevelopSessionPastDeadline(doc, now)) return false;
-    if (isDevelopSessionSettled(doc)) return false;
+    if (isDevelopSessionPastDeadline(doc, now) || isDevelopSessionSettled(doc)) return false;
     if ((doc as { lessonAbandonedAt?: Date | null }).lessonAbandonedAt) return false;
-    if (!developSessionInPool(doc, poolKeys)) return false;
-    if (isSessionStalePastUtcCalendarDay(doc, now)) return false;
+    if (!developSessionInPool(doc, poolKeys) || isSessionStalePastUtcCalendarDay(doc, now)) return false;
     const last = doc.lastActivityAt ? new Date(doc.lastActivityAt).getTime() : 0;
-    if (last < now - DEVELOP_SESSION_REUSE_MS) return false;
-    return true;
+    return last >= now - DEVELOP_SESSION_REUSE_MS;
 }
 
-/**
- * Pointer on `domain.user` for “today’s” develop editor session (UTC calendar day), mirroring learn daily.
- */
 export async function resolveDevelopDailySessionDoc(domainId: string, uid: number, dudoc: any): Promise<SessionDoc | null> {
     const todayYmd = developTodayUtcYmd();
     const ptrId = typeof dudoc?.developDailySessionId === 'string' ? dudoc.developDailySessionId.trim() : '';
     const ptrDay = typeof dudoc?.developDailySessionDay === 'string' ? dudoc.developDailySessionDay.trim() : '';
-
     if (ptrDay && (!YMD_RE.test(ptrDay) || ptrDay !== todayYmd)) {
         await clearDevelopDailySessionPointer(domainId, uid);
         return null;
     }
-    if (!ptrId || !ObjectId.isValid(ptrId)) {
+    if (!ptrId || !ObjectId.isValid(ptrId) || ptrDay !== todayYmd) {
         if (ptrId) await clearDevelopDailySessionPointer(domainId, uid);
         return null;
     }
-    if (ptrDay !== todayYmd) {
-        await clearDevelopDailySessionPointer(domainId, uid);
-        return null;
-    }
-
     const doc = await SessionModel.coll.findOne({ _id: new ObjectId(ptrId), domainId, uid }) as SessionDoc | null;
-    if (!doc) {
-        await clearDevelopDailySessionPointer(domainId, uid);
-        return null;
-    }
-    if ((doc as { lessonAbandonedAt?: Date | null }).lessonAbandonedAt) {
-        await clearDevelopDailySessionPointer(domainId, uid);
-        return null;
-    }
-    if (isDevelopSessionSettled(doc)) {
-        await clearDevelopDailySessionPointer(domainId, uid);
-        return null;
-    }
-    if (isSessionStalePastUtcCalendarDay(doc, Date.now()) || isDevelopSessionPastDeadline(doc)) {
+    if (!doc || (doc as { lessonAbandonedAt?: Date | null }).lessonAbandonedAt || isDevelopSessionSettled(doc)
+        || isSessionStalePastUtcCalendarDay(doc) || isDevelopSessionPastDeadline(doc)) {
         await clearDevelopDailySessionPointer(domainId, uid);
         return null;
     }
     return doc;
 }
 
-/**
- * Most recent develop editor session that is still valid for reuse (time window), not abandoned.
- * `pendingPool` = bases still in today’s develop run (excludes rows that already met daily goals).
- */
 export async function findResumableDevelopSessionDoc(
     domainId: string,
     uid: number,
@@ -143,43 +102,28 @@ export async function findResumableDevelopSessionDoc(
     pendingPool: DevelopPoolEntryWire[],
 ): Promise<SessionDoc | null> {
     const poolKeys = poolKeySet(pendingPool);
-
     const ptrRaw = await resolveDevelopDailySessionDoc(domainId, uid, dudoc);
     const fromPointer = isDevelopSessionResumable(ptrRaw, poolKeys) ? ptrRaw : null;
-    if (ptrRaw && !fromPointer) {
-        await clearDevelopDailySessionPointer(domainId, uid);
-    }
+    if (ptrRaw && !fromPointer) await clearDevelopDailySessionPointer(domainId, uid);
     if (fromPointer) return fromPointer;
 
     const cutoff = new Date(Date.now() - DEVELOP_SESSION_REUSE_MS);
-    const candidates = await SessionModel.coll
-        .find({
-            domainId,
-            uid,
-            appRoute: 'develop',
-            lastActivityAt: { $gte: cutoff },
-            $and: [
-                { $or: [{ lessonAbandonedAt: null }, { lessonAbandonedAt: { $exists: false } }] },
-                developSessionNotSettledMongoFilter,
-                developDailySessionKindMongo,
-            ],
-        })
-        .sort({ lastActivityAt: -1 })
-        .limit(20)
-        .toArray() as SessionDoc[];
-
-    for (const doc of candidates) {
-        if (isDevelopSessionResumable(doc, poolKeys)) return doc;
-    }
-    return null;
+    const candidates = await SessionModel.coll.find({
+        domainId,
+        uid,
+        appRoute: 'develop',
+        lastActivityAt: { $gte: cutoff },
+        $and: [
+            { $or: [{ lessonAbandonedAt: null }, { lessonAbandonedAt: { $exists: false } }] },
+            developSessionNotSettledMongoFilter,
+            developDailySessionKindMongo,
+        ],
+    }).sort({ lastActivityAt: -1 }).limit(20).toArray() as SessionDoc[];
+    return candidates.find((doc) => isDevelopSessionResumable(doc, poolKeys)) || null;
 }
 
-/**
- * Read-only: today’s resumable develop queue session id if any.
- * Does not clear stale pointers or write developDailySessionId (unlike {@link buildTodayDevelopResumeFields}).
- */
 export async function peekResumableDevelopDailySessionIdReadOnly(
-    db: DevelopBranchDailyDb,
+    db: DevelopDailyDb,
     domainId: string,
     uid: number,
     priv: number,
@@ -188,39 +132,26 @@ export async function peekResumableDevelopDailySessionIdReadOnly(
     const developMode = getDevelopMode(dudoc as Record<string, unknown> | null);
     const pendingPool = await loadDevelopRunQueuePool(db, domainId, uid, priv, developMode);
     const poolKeys = poolKeySet(pendingPool);
-
     const todayYmd = developTodayUtcYmd();
     const ptrId = typeof dudoc?.developDailySessionId === 'string' ? dudoc.developDailySessionId.trim() : '';
     const ptrDay = typeof dudoc?.developDailySessionDay === 'string' ? dudoc.developDailySessionDay.trim() : '';
-
     if (ptrId && ObjectId.isValid(ptrId) && YMD_RE.test(ptrDay) && ptrDay === todayYmd) {
         const doc = await SessionModel.coll.findOne({ _id: new ObjectId(ptrId), domainId, uid }) as SessionDoc | null;
-        if (doc && isDevelopSessionResumable(doc, poolKeys)) {
-            return doc._id.toString();
-        }
+        if (doc && isDevelopSessionResumable(doc, poolKeys)) return doc._id.toString();
     }
-
     const cutoff = new Date(Date.now() - DEVELOP_SESSION_REUSE_MS);
-    const candidates = await SessionModel.coll
-        .find({
-            domainId,
-            uid,
-            appRoute: 'develop',
-            lastActivityAt: { $gte: cutoff },
-            $and: [
-                { $or: [{ lessonAbandonedAt: null }, { lessonAbandonedAt: { $exists: false } }] },
-                developSessionNotSettledMongoFilter,
-                developDailySessionKindMongo,
-            ],
-        })
-        .sort({ lastActivityAt: -1 })
-        .limit(20)
-        .toArray() as SessionDoc[];
-
-    for (const doc of candidates) {
-        if (isDevelopSessionResumable(doc, poolKeys)) return doc._id.toString();
-    }
-    return null;
+    const candidates = await SessionModel.coll.find({
+        domainId,
+        uid,
+        appRoute: 'develop',
+        lastActivityAt: { $gte: cutoff },
+        $and: [
+            { $or: [{ lessonAbandonedAt: null }, { lessonAbandonedAt: { $exists: false } }] },
+            developSessionNotSettledMongoFilter,
+            developDailySessionKindMongo,
+        ],
+    }).sort({ lastActivityAt: -1 }).limit(20).toArray() as SessionDoc[];
+    return candidates.find((doc) => isDevelopSessionResumable(doc, poolKeys))?._id.toString() || null;
 }
 
 export type DevelopResumeFields = {
@@ -229,7 +160,7 @@ export type DevelopResumeFields = {
 };
 
 export async function buildTodayDevelopResumeFields(
-    db: DevelopBranchDailyDb,
+    db: DevelopDailyDb,
     domainId: string,
     uid: number,
     priv: number,
@@ -239,56 +170,34 @@ export async function buildTodayDevelopResumeFields(
     const developMode = getDevelopMode(dudoc as Record<string, unknown> | null);
     const pendingPool = await loadDevelopRunQueuePool(db, domainId, uid, priv, developMode);
     const s = await findResumableDevelopSessionDoc(domainId, uid, dudoc, pendingPool);
-    if (!s) {
-        return {
-            todayDevelopResumableSessionId: null,
-            todayDevelopResumeUrl: null,
-        };
-    }
+    if (!s) return { todayDevelopResumableSessionId: null, todayDevelopResumeUrl: null };
     const sid = s._id.toString();
     await setDevelopDailySessionPointer(domainId, uid, sid);
-    return {
-        todayDevelopResumableSessionId: sid,
-        todayDevelopResumeUrl: makeResumeUrl(sid),
-    };
+    return { todayDevelopResumableSessionId: sid, todayDevelopResumeUrl: makeResumeUrl(sid) };
 }
 
-/**
- * Whether the user has any open develop session today (in progress or paused per
- * {@link deriveSessionLearnStatus}; excludes settled, abandoned, timed out).
- */
-export async function hasDevelopSessionInProgressOrPaused(
-    domainId: string,
-    uid: number,
-    now = Date.now(),
-): Promise<boolean> {
-    const docs = await SessionModel.coll
-        .find({
-            domainId,
-            uid,
-            appRoute: 'develop',
-            $and: [
-                { $or: [{ lessonAbandonedAt: null }, { lessonAbandonedAt: { $exists: false } }] },
-                developSessionNotSettledMongoFilter,
-                developDailySessionKindMongo,
-            ],
-        })
-        .sort({ lastActivityAt: -1 })
-        .limit(40)
-        .toArray() as SessionDoc[];
-
-    for (const doc of docs) {
-        if (!isDevelopSessionRow(doc)) continue;
+export async function hasDevelopSessionInProgressOrPaused(domainId: string, uid: number, now = Date.now()): Promise<boolean> {
+    const docs = await SessionModel.coll.find({
+        domainId,
+        uid,
+        appRoute: 'develop',
+        $and: [
+            { $or: [{ lessonAbandonedAt: null }, { lessonAbandonedAt: { $exists: false } }] },
+            developSessionNotSettledMongoFilter,
+            developDailySessionKindMongo,
+        ],
+    }).sort({ lastActivityAt: -1 }).limit(40).toArray() as SessionDoc[];
+    return docs.some((doc) => {
+        if (!isDevelopSessionRow(doc)) return false;
         const st = deriveSessionLearnStatus(doc, now);
-        if (st === 'in_progress' || st === 'paused') return true;
-    }
-    return false;
+        return st === 'in_progress' || st === 'paused';
+    });
 }
 
 export async function clearDevelopSessionsAfterPoolChange(domainId: string, uid: number): Promise<void> {
     await clearDevelopDailySessionPointer(domainId, uid);
     const now = new Date();
-    const abandonFilter = {
+    const filter = {
         domainId,
         uid,
         appRoute: 'develop' as const,
@@ -298,12 +207,9 @@ export async function clearDevelopSessionsAfterPoolChange(domainId: string, uid:
             developDailySessionKindMongo,
         ],
     };
-    const toAbandon = await SessionModel.coll.find(abandonFilter).project({ _id: 1 }).toArray();
+    const toAbandon = await SessionModel.coll.find(filter).project({ _id: 1 }).toArray();
     if (!toAbandon.length) return;
-    await SessionModel.coll.updateMany(
-        { _id: { $in: toAbandon.map((d) => d._id) } },
-        { $set: { lessonAbandonedAt: now, lastActivityAt: now } },
-    );
+    await SessionModel.coll.updateMany({ _id: { $in: toAbandon.map((d) => d._id) } }, { $set: { lessonAbandonedAt: now, lastActivityAt: now } });
     for (const row of toAbandon) {
         const fresh = await SessionModel.coll.findOne({ _id: row._id, domainId, uid }) as SessionDoc | null;
         if (fresh) bus.broadcast('session/change', fresh);

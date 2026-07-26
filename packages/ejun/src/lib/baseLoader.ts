@@ -34,24 +34,17 @@ export interface ParsedCardNodeUrl {
     url: string;
     domainId?: string;
     docId?: string;
-    branch?: string;
     nodeId?: string;
     cardId?: string;
     parseError?: string;
 }
 
-/**
- * Canonical detail branch page path.
- */
-function baseDetailBranchPath(domainId: string, baseDocId: number, branch: string): string {
-    return `/d/${encodeURIComponent(domainId)}/base/${baseDocId}/branch/${encodeURIComponent(branch)}`;
+/** Canonical base detail page path. */
+function baseDetailPath(domainId: string, baseDocId: number): string {
+    return `/d/${encodeURIComponent(domainId)}/base/${baseDocId}`;
 }
 
-/**
- * Parse a single card/node URL: supports both
- *   /d/:domainId/base/:baseDocId/outline/branch/:branch (old) and
- *   /d/:domainId/base/:baseDocId/branch/:branch (new).
- */
+/** Parse a single card/node URL from the canonical base detail page. */
 function parseCardNodeUrl(url: string): ParsedCardNodeUrl {
     const result: ParsedCardNodeUrl = { url: url.trim() };
     const raw = result.url;
@@ -83,13 +76,12 @@ function parseCardNodeUrl(url: string): ParsedCardNodeUrl {
         }
 
         const rest = segments.slice(baseIdx + 1);
-        if (rest.length < 3 || (rest[1] === 'outline' ? rest.length < 4 : false)) {
-            result.parseError = 'path must be /d/:domainId/base/:baseDocId[/outline]/branch/:branch';
+        if (rest.length !== 1) {
+            result.parseError = 'path must be /d/:domainId/base/:baseDocId';
             return result;
         }
 
         result.docId = rest[0];
-        result.branch = rest[1] === 'outline' ? rest[3] : rest[2];
 
         return result;
     } catch (e) {
@@ -123,16 +115,16 @@ function buildNodeTree(nodes: BaseNode[], edges: BaseEdge[]): Map<string, BaseNo
     return childrenMap;
 }
 
-function cardUrl(origin: string, domainId: string, baseDocId: number, branch: string, _nodeId: string, cardId: ObjectId): string {
+function cardUrl(origin: string, domainId: string, baseDocId: number, _nodeId: string, cardId: ObjectId): string {
     return withOrigin(
         origin,
-        `${baseDetailBranchPath(domainId, baseDocId, branch)}?cardId=${encodeURIComponent(String(cardId))}`,
+        `${baseDetailPath(domainId, baseDocId)}?cardId=${encodeURIComponent(String(cardId))}`,
     );
 }
 
-function nodeUrl(origin: string, domainId: string, baseDocId: number, branch: string, nodeId: string): string {
+function nodeUrl(origin: string, domainId: string, baseDocId: number, nodeId: string): string {
     const q = new URLSearchParams({ nodeId });
-    return withOrigin(origin, `${baseDetailBranchPath(domainId, baseDocId, branch)}?${q.toString()}`);
+    return withOrigin(origin, `${baseDetailPath(domainId, baseDocId)}?${q.toString()}`);
 }
 
 function lessonCardUrl(origin: string, domainId: string, cardId: ObjectId): string {
@@ -149,7 +141,6 @@ async function loadBaseNodeRecursive(
     origin: string,
     domainId: string,
     baseDocId: number,
-    branch: string,
     nodeId: string,
     nodes: BaseNode[],
     childrenMap: Map<string, BaseNode[]>,
@@ -165,7 +156,7 @@ async function loadBaseNodeRecursive(
 
     const indent = '  '.repeat(level);
     let content = '';
-    const nodeLink = nodeUrl(origin, domainId, baseDocId, branch, nodeId);
+    const nodeLink = nodeUrl(origin, domainId, baseDocId, nodeId);
     const nodeLessonLink = lessonNodeUrl(origin, domainId, nodeId);
     const nodeTitle = node.text || 'Untitled';
 
@@ -182,7 +173,7 @@ async function loadBaseNodeRecursive(
                 content += `${indent}**Child nodes:**\n`;
                 for (const child of children) {
                     const childName = child.text || 'Untitled';
-                    const childLink = nodeUrl(origin, domainId, baseDocId, branch, child.id);
+                    const childLink = nodeUrl(origin, domainId, baseDocId, child.id);
                     const childLessonLink = lessonNodeUrl(origin, domainId, child.id);
                     content += `${indent}- [${childName}](${childLink}) [Lesson](${childLessonLink})\n`;
                 }
@@ -198,7 +189,6 @@ async function loadBaseNodeRecursive(
                 origin,
                 domainId,
                 baseDocId,
-                branch,
                 child.id,
                 nodes,
                 childrenMap,
@@ -228,7 +218,6 @@ function cardIdsInMap(nodeCardsMap: Record<string, CardDoc[]>): Set<string> {
 export async function loadBaseInstructions(
     domainId: string,
     maxLevel: number = -1,
-    branch?: string,
     baseDocId?: number,
     toolArgs?: Record<string, unknown>,
 ): Promise<string | null> {
@@ -236,12 +225,11 @@ export async function loadBaseInstructions(
         const filters = detailExplorerFiltersFromToolArgs(toolArgs);
         const payload = await fetchFilteredBaseDetail(domainId, {
             baseDocId,
-            branch,
             filters,
         });
         if (!payload) return null;
 
-        const { nodes, edges, base, currentBranch, outlineExplorerFilters } = payload;
+        const { nodes, edges, base, outlineExplorerFilters } = payload;
         if (nodes.length === 0) {
             if (hasActiveDetailExplorerFilters(filters)) {
                 return 'No nodes matched the outline filters (filterNode / filterCard / filterProblem). Try different keywords or omit filters.';
@@ -260,7 +248,6 @@ export async function loadBaseInstructions(
             linkOrigin,
             domainId,
             baseNumericId,
-            currentBranch,
             rootNode.id,
             nodes,
             childrenMap,
@@ -289,7 +276,6 @@ const INSTRUCTIONS_MAX_LENGTH = 12000;
 export async function loadBaseInstructionsByUrls(
     domainId: string,
     urls: string[],
-    branch?: string,
     baseDocIdArg?: number,
     toolArgs?: Record<string, unknown>,
 ): Promise<string | null> {
@@ -298,12 +284,11 @@ export async function loadBaseInstructionsByUrls(
         const filters = detailExplorerFiltersFromToolArgs(toolArgs);
         const payload = await fetchFilteredBaseDetail(domainId, {
             baseDocId: baseDocIdArg,
-            branch,
             filters,
         });
         if (!payload) return null;
 
-        const { nodes, base, currentBranch, outlineExplorerFilters, nodeCardsMap } = payload;
+        const { nodes, base, outlineExplorerFilters, nodeCardsMap } = payload;
         const linkOrigin = getPublicOriginForBaseLinks();
         const baseNumericId = Number((base as any).docId);
         const visibleCardIds = cardIdsInMap(nodeCardsMap);
@@ -344,7 +329,7 @@ export async function loadBaseInstructionsByUrls(
                     const title = card.title || 'Untitled';
                     const body = (card.content || '').trim();
                     const nodeId = (card as any).nodeId;
-                    const link = nodeId ? cardUrl(linkOrigin, domainId, baseNumericId, currentBranch, nodeId, card.docId) : '';
+                    const link = nodeId ? cardUrl(linkOrigin, domainId, baseNumericId, nodeId, card.docId) : '';
                     const lessonLink = lessonCardUrl(linkOrigin, domainId, card.docId);
                     parts.push(
                         link
@@ -364,7 +349,7 @@ export async function loadBaseInstructionsByUrls(
                     continue;
                 }
                 const nodeTitle = node?.text || 'Node';
-                const nodeLink = nodeUrl(linkOrigin, domainId, baseNumericId, currentBranch, parsed.nodeId);
+                const nodeLink = nodeUrl(linkOrigin, domainId, baseNumericId, parsed.nodeId);
                 const nodeLessonLink = lessonNodeUrl(linkOrigin, domainId, parsed.nodeId);
                 const nodeCards = nodeCardsMap[parsed.nodeId] || [];
                 const cardLines = nodeCards.map((card) => {

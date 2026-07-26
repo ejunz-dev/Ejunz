@@ -9,7 +9,7 @@ import { NodeDeviceModel } from './node';
 import AgentModel from './agent';
 import message from './message';
 import ClientModel from './client';
-import { getAssignedTools, appendAgentUniversalAssistantRules, effectiveAgentBaseDocId, effectiveAgentBaseBranch } from '../handler/agent';
+import { getAssignedTools, appendAgentUniversalAssistantRules, effectiveAgentBaseDocId } from '../handler/agent';
 import SessionModel from './session';
 
 const logger = new Logger('model/workflow_executor');
@@ -356,7 +356,6 @@ export class WorkflowExecutor {
             agentContent: agent.content || '',
             agentMemory: agent.memory || '',
             baseDocId: effectiveAgentBaseDocId(agent as any),
-            baseBranch: effectiveAgentBaseBranch(agent as any),
             tools: tools.map(tool => ({
                 name: tool.name,
                 description: tool.description,

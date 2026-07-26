@@ -58,7 +58,6 @@ interface MapDAGNode {
 interface LearnBaseLearnOption {
   docId: number;
   title?: string;
-  branches?: string[];
 }
 
 type LearnSessionModeUi = 'deep' | 'breadth' | 'random';
@@ -78,7 +77,6 @@ type LearnWallSessionRow = {
   statusLabel: string;
   progressText: string | null;
   baseDocId: number;
-  branch: string;
 };
 
 type LearnWallDayDetail = ContributionDetail & {
@@ -228,7 +226,6 @@ function LearnPage() {
     (window as any).UiContext?.selectedLearnBaseDocId != null && (window as any).UiContext?.selectedLearnBaseDocId !== ''
       ? Number((window as any).UiContext.selectedLearnBaseDocId)
       : null;
-  const learnBranchUi = String((window as any).UiContext?.learnBranch || 'main').trim() || 'main';
   const requireBaseSelection = !!(window as any).UiContext?.requireBaseSelection;
   const learnSourceSelectUrl = `/d/${domainId}/learn/base/select?redirect=${encodeURIComponent(`/d/${domainId}/learn`)}`;
   const initialLearnSessionMode = useMemo(
@@ -930,7 +927,7 @@ function LearnPage() {
               </div>
               <div style={{ fontSize: '14px', color: themeStyles.textPrimary, fontWeight: 600, wordBreak: 'break-word' }}>
                 {selectedLearnSource
-                  ? `${selectedLearnSource.title || String(selectedLearnSource.docId)} · ${learnBranchUi}`
+                  ? (selectedLearnSource.title || String(selectedLearnSource.docId))
                   : i18n('Pending selection')}
               </div>
             </div>
@@ -1035,7 +1032,7 @@ function LearnPage() {
               {i18n('Select a knowledge base before learning')}
             </div>
             <div style={{ fontSize: '13px', color: themeStyles.textSecondary, marginBottom: '16px' }}>
-              {i18n('Choose a base and branch, then save to continue learning.')}
+              {i18n('Choose a base, then save to continue learning.')}
             </div>
             <a
               href={learnSourceSelectUrl}

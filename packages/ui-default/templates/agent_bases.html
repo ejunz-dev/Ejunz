@@ -18,30 +18,21 @@
               <tr>
                 <th style="width:36px;"></th>
                 <th>{{ _('Knowledge base') }}</th>
-                <th style="width:140px;">{{ _('Branch') }}</th>
               </tr>
             </thead>
             <tbody>
               {% for b in basesForUi %}
               {% set bid = b.docId | string %}
-              {% set bound_branch = baseBindingsByDocId[bid] if baseBindingsByDocId and baseBindingsByDocId[bid] else '' %}
+              {% set bound = baseBindingsByDocId[bid] if baseBindingsByDocId and baseBindingsByDocId[bid] else false %}
               <tr data-doc-id="{{ b.docId }}">
                 <td>
                   <input type="checkbox" class="agent-base-lib-checkbox" name="basePick" value="{{ b.docId }}"
-                    {% if bound_branch %}checked{% endif %} />
+                    {% if bound %}checked{% endif %} />
                 </td>
                 <td>
                   <strong>{{ b.title | e }}</strong>
                   {% if b.bid %}<span class="supplementary"> ({{ b.bid }})</span>{% endif %}
                   <span class="supplementary"> #{{ b.docId }}</span>
-                </td>
-                <td>
-                  <select class="textbox agent-base-lib-branch" style="width:100%;" {% if not bound_branch %}disabled{% endif %}>
-                    {% for br in b.branches %}
-                    <option value="{{ br }}"
-                      {% if bound_branch == br %}selected{% elif not bound_branch and br == 'main' %}selected{% endif %}>{{ br }}</option>
-                    {% endfor %}
-                  </select>
                 </td>
               </tr>
               {% endfor %}
@@ -68,27 +59,13 @@
   const domainId = '{{ domainId }}';
   const aid = '{{ adoc.aid }}';
 
-  function syncRow(checkbox) {
-    const tr = checkbox.closest('tr');
-    if (!tr) return;
-    const sel = tr.querySelector('.agent-base-lib-branch');
-    if (!sel) return;
-    sel.disabled = !checkbox.checked;
-  }
-
   form.querySelectorAll('.agent-base-lib-checkbox').forEach((cb) => {
     cb.addEventListener('change', () => {
-      if (cb.checked) {
-        form.querySelectorAll('.agent-base-lib-checkbox').forEach((other) => {
-          if (other !== cb) {
-            other.checked = false;
-            syncRow(other);
-          }
-        });
-      }
-      syncRow(cb);
+      if (!cb.checked) return;
+      form.querySelectorAll('.agent-base-lib-checkbox').forEach((other) => {
+        if (other !== cb) other.checked = false;
+      });
     });
-    syncRow(cb);
   });
 
   const saveBtn = document.getElementById('agent-base-bindings-save');
@@ -97,11 +74,10 @@
     const baseLibraryBindings = [];
     form.querySelectorAll('tr[data-doc-id]').forEach((tr) => {
       const cb = tr.querySelector('.agent-base-lib-checkbox');
-      const sel = tr.querySelector('.agent-base-lib-branch');
-      if (!cb || !sel || !cb.checked) return;
+      if (!cb || !cb.checked) return;
       const docId = Number(tr.getAttribute('data-doc-id'));
       if (!Number.isFinite(docId) || docId <= 0) return;
-      baseLibraryBindings.push({ docId, branch: (sel.value || 'main').trim() || 'main' });
+      baseLibraryBindings.push({ docId });
     });
     try {
       const response = await fetch(`/d/${domainId}/agent/${aid}/bases`, {

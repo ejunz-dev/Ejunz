@@ -99,17 +99,13 @@ export async function validateDevelopEditorStoredLocation(
     locationUrl: string,
     sessionHex: string,
     expectedBaseDocId: number,
-    expectedBranch: string,
 ): Promise<boolean> {
     const loc = locationUrl.trim().slice(0, 2048);
     if (!loc || !sessionHex || !ObjectId.isValid(sessionHex)) return false;
     if (validateDevelopEditorEntryLocation(domainId, loc, sessionHex)) return true;
-    if (validateDevelopEditorEntryLocation(domainId, loc, sessionHex)) return true;
-    const m = /^\/d\/([^/]+)\/base\/([^/]+)\/branch\/([^/]+)\/editor(?:\/)?(?:\?|$)/.exec(loc);
+    const m = /^\/d\/([^/]+)\/base\/([^/]+)\/editor(?:\/)?(?:\?|$)/.exec(loc);
     if (!m) return false;
     if (m[1] !== domainId) return false;
-    const br = m[3] && String(m[3]).trim() ? String(m[3]).trim() : 'main';
-    if (br !== (expectedBranch && String(expectedBranch).trim() ? String(expectedBranch).trim() : 'main')) return false;
     const docSeg = decodeURIComponent(String(m[2] || ''));
     if (!docSeg) return false;
     const base = await resolveBaseFromEditorPathDocSeg(domainId, docSeg);
@@ -335,7 +331,6 @@ export default class SessionModel {
         uid: number,
         mcpId: number,
         baseDocId: number,
-        branch: string,
         opts?: { idleMinutes?: number },
     ): Promise<SessionDoc> {
         const idle = opts?.idleMinutes ?? SessionModel.MCP_IDLE_MINUTES;
@@ -359,7 +354,6 @@ export default class SessionModel {
             route: 'mcp',
             mcpId,
             baseDocId,
-            branch,
             title: `MCP base ${baseDocId} · ${now.toLocaleString()}`,
             recordIds: [] as ObjectId[],
             state: 'active' as const,
@@ -594,7 +588,6 @@ export default class SessionModel {
             sessionHex: string;
             locationUrl: string;
             expectedBaseDocId: number;
-            expectedBranch: string;
         },
     ): Promise<void> {
         const sessionHex = (input.sessionHex || '').trim();
@@ -606,7 +599,6 @@ export default class SessionModel {
             loc,
             sessionHex,
             input.expectedBaseDocId,
-            input.expectedBranch,
         );
         if (!ok) return;
 

@@ -36,16 +36,14 @@ function renderFilePreview(card: Card, domainId?: string, baseDocId?: string) {
   }
   const resolvedDomainId = domainId || (window as any).UiContext?.domainId || 'system';
   const resolvedDocId = baseDocId || String((window as any).UiContext?.base?.docId || '');
-  const branch = (window as any).UiContext?.currentBranch || 'main';
-
   // File-cards store files on the node, not on the card itself.
   // Use node-based download URL matching how BaseEditor previews them.
   const fileUrl = domainScopedPath(
-    `/base/${resolvedDocId}/node/${nodeId}/file/${encodeURIComponent(fileName)}?branch=${encodeURIComponent(branch)}&noDisposition=1`,
+    `/base/${resolvedDocId}/node/${nodeId}/file/${encodeURIComponent(fileName)}?noDisposition=1`,
     resolvedDomainId,
   );
   const downloadUrl = domainScopedPath(
-    `/base/${resolvedDocId}/node/${nodeId}/file/${encodeURIComponent(fileName)}?branch=${encodeURIComponent(branch)}`,
+    `/base/${resolvedDocId}/node/${nodeId}/file/${encodeURIComponent(fileName)}`,
     resolvedDomainId,
   );
 

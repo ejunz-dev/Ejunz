@@ -357,13 +357,10 @@ edge_authorize: Edge 授权
 'Pending selection': 待选择
 'Select learn base': 选择知识库
 'Select learn roadmap': 选择路线图
-'Select learn base and branch': 选择知识库与分支
 'Select learn roadmap and branch': 选择路线图与分支
 'Select a knowledge base before learning': 请先选择知识库再开始学习
 'Select a roadmap before learning': 请先选择路线图再开始学习
-'Choose a base and branch, then save to continue learning.': 选择知识库与分支并保存后即可继续学习。
 'Choose a roadmap and branch, then save to continue learning.': 选择路线图与分支并保存后即可继续学习。
-'Choose which knowledge base and branch to use for Learn.': 选择用于学习的知识库与分支。
 'Choose which roadmap and branch to use for Learn.': 选择用于学习的路线图与分支。
 'No knowledge base in this domain.': 该域内还没有知识库。
 'No roadmap in this domain.': 该域内还没有路线图。
@@ -689,7 +686,6 @@ edge_authorize: Edge 授权
 'Save completed, but {0} error(s) occurred': 保存完成，但有 {0} 个错误
 'Save failed': 保存失败
 'Save failed not logged in': 未登录，保存失败。
-'Save legacy branch': 保存旧版分支
 'Save sort failed': 保存排序失败
 'Save successful, {0} changes': 保存成功，共 {0} 项更改
 'Save TTS Configuration': 保存 TTS 配置
@@ -876,7 +872,6 @@ base_edit: 编辑知识库
 base_editor: 编辑器
 base_list: 知识库列表
 SID: 技能库编号（SID）
-'Optional: legacy single branch (used only when no library is selected above)': 可选：旧版单一分支（仅当上方未选择任何技能库时生效）。
 base_node: 知识库节点
 base_outline: 知识库
 base_save: 保存知识库
@@ -1171,12 +1166,11 @@ develop: 开发
 'Develop edit pool hint roadmap': 选择路线图与分支，并设置每日节点、卡片、题目目标；用 ↑↓ 调整顺序后保存。「开始开发」将按该顺序进入路线图编辑器。
 'Develop no roadmaps': 当前域内还没有路线图，请先创建路线图。
 'Develop unknown roadmap': 路线图不存在
-'Develop branch': 分支
 'Develop add row': 添加一项
-'Develop edit pool hint': 选择知识库与分支，并设置每日节点、卡片、题目目标；用 ↑↓ 调整顺序后保存。「开始开发」将按该顺序进入编辑器。
+'Develop edit pool hint': 选择知识库并设置每日节点、卡片、题目目标；用 ↑↓ 调整顺序后保存。「开始开发」将按该顺序进入编辑器。
 'Develop edit pool': 编辑开发池
 'Develop goal unset': —
-'Develop no pool hint': 还没有开发池条目。点击上方「编辑」添加知识库与分支及每日目标。
+'Develop no pool hint': 还没有开发池条目。点击上方「编辑」添加知识库及每日目标。
 'Develop progress overview': 今日目标与进度
 'Develop sidebar completed today': 今日已完成
 'Develop sidebar pending today': 待完成
@@ -1185,9 +1179,7 @@ develop: 开发
 'Develop goal cards': 卡片目标
 'Develop goal nodes': 节点目标
 'Develop goal problems': 题目目标
-'Develop invalid branch': 该知识库下不存在所选分支
 'Develop no bases': 当前域内还没有知识库，请先创建知识库。
-'Develop pick branch': 选择要进入的编辑器
 'Develop check-in blocked': 完成开发池内全部当日目标后可打卡
 'Develop check-in done': 今日已打卡
 'Develop check-in failed': 打卡失败
@@ -1208,12 +1200,12 @@ develop: 开发
 'Develop row today goals met': 今日目标已完成
 'Develop run queue empty today': 今日待开发任务已全部完成。
 'Develop start goals done today': 该知识库今日目标已完成，无需再进入开发队列。
-'Develop start base not in pool': 该知识库/分支不在你的开发任务列表中。
+'Develop start base not in pool': 该知识库不在你的开发任务列表中。
 'Outline editor start session': 开始编辑会话…
 'Outline editor start failed': 无法开始编辑会话，请重试。
 'Outline editor start invalid base': 当前大纲对应的知识库无效。
 'Outline editor start needs node': 从大纲进入编辑器需要指定节点。
-'Outline editor start invalid node': 该节点不在当前分支下。
+'Outline editor start invalid node': 该节点不在当前知识库下。
 'Outline editor popup blocked': 浏览器拦截了新标签页，请允许本站弹出窗口后重试。
 'Outline learn single card': 单卡片学习
 'Outline learn single node': 单节点学习
@@ -1262,7 +1254,7 @@ develop: 开发
 'Develop today progress': 今日进度（UTC，保存时累计）
 'Develop unknown base': 知识库不存在
 'Develop utc day': UTC 日期
-'Develop editor pool progress': 开发池 · 本知识库今日进度
+'Develop editor pool progress': 开发池 · 今日进度
 'Develop editor goals complete': 当前池条目的今日目标已完成。
 'Develop editor switch other base': 去其他知识库继续
 'Develop editor all pool goals met': 开发池内所有条目今日目标均已完成。
@@ -1290,11 +1282,11 @@ session_develop_list_title: 开发会话（列表）
 'Develop wall checked in': 当日已在本域完成开发打卡。
 'Develop wall sessions': 当日开发会话（UTC）
 'Develop wall no sessions': 当日无开发会话。
-'Develop wall session base line': '{0}（{1}）：{2} 条记录'
+'Develop wall session base line': '{0}：{1} 条记录'
 'Develop wall session no saves': 当日该会话下无编辑器保存记录。
 'Develop wall base fallback title': '知识库 {0}'
 'Develop session': 会话
-'Develop wall checkin only saves': 当日仅有打卡，未在统计中计入分支保存次数。
+'Develop wall checkin only saves': 当日仅有打卡，未在统计中计入保存次数。
 Leave Edit Mode: 离开编辑模式
 Less: 少
 lesson_history_col_attempts: 次数

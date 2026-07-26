@@ -242,7 +242,6 @@ const page = new NamedPage('base_card_list', () => {
     
     try {
       const domainId = window.UiContext?.domainId || 'system';
-      const branch = window.UiContext?.currentBranch || 'main';
       const docId = base.docId;
       const bid = base.bid;
       
@@ -514,15 +513,14 @@ const page = new NamedPage('base_card_list', () => {
     const editBtn = document.getElementById('card-edit-btn');
     if (editBtn) {
       const domainId = window.UiContext?.domainId || 'system';
-      const branch = window.UiContext?.currentBranch || 'main';
       const docId = base.docId;
       const bid = base.bid;
       
       let editUrl;
       if (docId) {
-        editUrl = `/d/${domainId}/base/${docId}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit`;
+        editUrl = `/d/${domainId}/base/${docId}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit`;
       } else if (bid) {
-        editUrl = `/d/${domainId}/base/bid/${bid}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit`;
+        editUrl = `/d/${domainId}/base/bid/${bid}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit`;
       }
       
       if (editUrl) {

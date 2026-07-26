@@ -9,7 +9,7 @@ import { Collection, type Db } from 'mongodb';
 
 export const TYPE_CARD: 71 = 71;
 
-const BASE_EDITOR_EXPLORER_MODES = new Set(['tree', 'pending', 'branches', 'git', 'mcp']);
+const BASE_EDITOR_EXPLORER_MODES = new Set(['tree', 'pending', 'git', 'mcp']);
 const BASE_EDITOR_NODE_SIDE_TABS = new Set(['intent', 'files', 'develop_queue']);
 const BASE_EDITOR_RIGHT_PANEL_TABS = new Set(['problems', 'develop_queue', 'plugin_node', 'plugin_mcp_services', 'roadmap_edge']);
 
@@ -78,13 +78,18 @@ export async function loadBaseEditorUiPrefs(
     mongoDb: Db,
     domainId: string,
     baseDocId: number,
-    branch: string,
     uid: unknown,
-): Promise<Record<string, string | number | boolean>> {
+): Promise<Record<string, unknown>> {
     try {
         const coll = mongoDb.collection('base.userEditorUi');
-        const b = branch && String(branch).trim() ? String(branch).trim() : 'main';
-        const doc = await coll.findOne({ domainId, baseDocId, branch: b, uid });
+        const doc = await coll.findOne(
+            {
+                domainId,
+                baseDocId,
+                uid,
+            },
+            { sort: { updateAt: -1, _id: -1 } },
+        );
         const prefs = sanitizeBaseEditorUiPrefs(doc?.prefs);
         // Re-append expandedNodeIds that sanitize might have stripped
         if (doc?.prefs && Array.isArray(doc.prefs.expandedNodeIds)) {
@@ -129,7 +134,6 @@ export class BaseModel {
         title: string,
         content: string = '',
         rpid?: number,
-        branch?: string,
         ip?: string,
         parentId?: ObjectId,
         domainName?: string,
@@ -191,7 +195,6 @@ export class BaseModel {
             views: 0,
             ip,
             rpid,
-            branch,
             parentId,
             tag: tag?.length ? tag : undefined,
             ...extraPayload,
@@ -226,9 +229,10 @@ export class BaseModel {
 
     static async getAll(domainId: string, query?: Filter<BaseDoc>, mapDocType: MindMapDocType = document.TYPE_BASE): Promise<BaseDoc[]> {
         const merged = (query || {}) as Filter<BaseDoc>;
-        return await document.getMulti(domainId, mapDocType, merged as any)
+        const list = await document.getMulti(domainId, mapDocType, merged as any)
             .sort({ updateAt: -1, docId: -1 })
             .toArray() as BaseDoc[];
+        return list;
     }
 
     /** Recently updated knowledge bases (`TYPE_BASE` only). */
@@ -241,12 +245,11 @@ export class BaseModel {
         return list as BaseDoc[];
     }
 
-    static async getByRepo(domainId: string, rpid: number, branch?: string): Promise<BaseDoc[]> {
-        const andParts: Filter<BaseDoc>[] = [{ rpid } as Filter<BaseDoc>];
-        if (branch) andParts.push({ branch } as Filter<BaseDoc>);
-        return await document.getMulti(domainId, document.TYPE_BASE, { $and: andParts } as Filter<BaseDoc>)
+    static async getByRepo(domainId: string, rpid: number): Promise<BaseDoc[]> {
+        const list = await document.getMulti(domainId, document.TYPE_BASE, { rpid } as Filter<BaseDoc>)
             .sort({ updateAt: -1, docId: -1 })
             .toArray();
+        return list as BaseDoc[];
     }
 
     static async update(
@@ -278,18 +281,6 @@ export class BaseModel {
                         newNodes[idx] = { ...newNodes[idx], text: updates.title };
                         updatePayload.nodes = newNodes;
                     }
-                    const branchData: any = (base as any).branchData || {};
-                    if (branchData.main && Array.isArray(branchData.main.nodes)) {
-                        const bNodes = [...branchData.main.nodes];
-                        const bIdx = bNodes.findIndex((n: BaseNode) => n.id === rootId);
-                        if (bIdx >= 0) {
-                            bNodes[bIdx] = { ...bNodes[bIdx], text: updates.title };
-                            updatePayload.branchData = {
-                                ...branchData,
-                                main: { ...branchData.main, nodes: bNodes },
-                            };
-                        }
-                    }
                 }
             }
         }
@@ -301,46 +292,23 @@ export class BaseModel {
         docId: number,
         nodeId: string,
         updates: Partial<BaseNode>,
-        branch?: string,
         mapDocType: MindMapDocType = document.TYPE_BASE,
     ): Promise<void> {
         const base = await this.get(domainId, docId, mapDocType);
         if (!base) throw new Error('Base not found');
 
-        const branchName = branch || (base as any).currentBranch || 'main';
-        const branchData: { [b: string]: { nodes: BaseNode[]; edges: BaseEdge[] } } = (base as any).branchData || {};
-
-        let nodes: BaseNode[];
-        let edges: BaseEdge[];
-        if (branchData[branchName] && branchData[branchName].nodes) {
-            nodes = branchData[branchName].nodes;
-            edges = branchData[branchName].edges || [];
-        } else if (branchName === 'main') {
-            nodes = base.nodes || [];
-            edges = base.edges || [];
-        } else {
-            throw new Error(`Branch "${branchName}" has no data`);
-        }
-
+        const nodes = base.nodes || [];
+        const edges = base.edges || [];
         const nodeIndex = nodes.findIndex(n => n.id === nodeId);
         if (nodeIndex === -1) throw new Error('Node not found');
 
         nodes[nodeIndex] = { ...nodes[nodeIndex], ...updates, updateAt: new Date() };
 
-        if (!branchData[branchName]) {
-            branchData[branchName] = { nodes: [], edges: [] };
-        }
-        branchData[branchName] = { nodes, edges };
-
-        const updatePayload: any = {
-            branchData,
+        const updatePayload: Partial<BaseDoc> = {
+            nodes,
+            edges,
             updateAt: new Date(),
         };
-
-        if (branchName === 'main') {
-            updatePayload.nodes = nodes;
-            updatePayload.edges = edges;
-        }
 
         if (typeof updates.text === 'string' && updates.text.trim()) {
             const rootNodeId = this.getRootNodeId(nodes, edges);
@@ -360,48 +328,23 @@ export class BaseModel {
             sourceHandle?: string;
             targetHandle?: string;
         },
-        branch?: string,
         mapDocType: MindMapDocType = document.TYPE_BASE,
     ): Promise<void> {
         const base = await this.get(domainId, docId, mapDocType);
         if (!base) throw new Error('Base not found');
 
-        const branchName = branch || (base as any).currentBranch || 'main';
-        const branchData: { [b: string]: { nodes: BaseNode[]; edges: BaseEdge[] } } = (base as any).branchData || {};
-
-        let nodes: BaseNode[];
-        let edges: BaseEdge[];
-        if (branchData[branchName] && branchData[branchName].nodes) {
-            nodes = branchData[branchName].nodes;
-            edges = branchData[branchName].edges || [];
-        } else if (branchName === 'main') {
-            nodes = base.nodes || [];
-            edges = base.edges || [];
-        } else {
-            throw new Error(`Branch "${branchName}" has no data`);
-        }
-
+        const nodes = base.nodes || [];
+        const edges = base.edges || [];
         const edgeIndex = edges.findIndex((edge) => edge.id === edgeId);
         if (edgeIndex === -1) throw new Error('Edge not found');
 
         edges[edgeIndex] = { ...edges[edgeIndex], ...updates };
 
-        if (!branchData[branchName]) {
-            branchData[branchName] = { nodes: [], edges: [] };
-        }
-        branchData[branchName] = { nodes, edges };
-
-        const updatePayload: any = {
-            branchData,
+        await document.set(domainId, mapDocType, docId, {
+            nodes,
+            edges,
             updateAt: new Date(),
-        };
-
-        if (branchName === 'main') {
-            updatePayload.nodes = nodes;
-            updatePayload.edges = edges;
-        }
-
-        await document.set(domainId, mapDocType, docId, updatePayload);
+        });
     }
 
     static async addNode(
@@ -409,32 +352,14 @@ export class BaseModel {
         docId: number,
         node: Omit<BaseNode, 'id'>,
         parentId?: string,
-        branch?: string,
         edgeSourceId?: string,
         mapDocType: MindMapDocType = document.TYPE_BASE,
     ): Promise<{ nodeId: string; edgeId?: string }> {
         const base = await this.get(domainId, docId, mapDocType);
         if (!base) throw new Error('Base not found');
 
-        const branchName = branch || (base as any).currentBranch || (base as any).branch || 'main';
-        const branchData: {
-            [branch: string]: { nodes: BaseNode[]; edges: BaseEdge[] };
-        } = (base as any).branchData || {};
-
-        let nodes: BaseNode[];
-        let edges: BaseEdge[];
-        
-        if (branchData[branchName] && branchData[branchName].nodes) {
-            nodes = branchData[branchName].nodes;
-            edges = branchData[branchName].edges || [];
-        } else if (branchName === 'main') {
-            nodes = base.nodes || [];
-            edges = base.edges || [];
-        } else {
-            nodes = [];
-            edges = [];
-        }
-
+        const nodes = base.nodes || [];
+        const edges = base.edges || [];
         const now = new Date();
         const newNodeId = `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const newNode: BaseNode = {
@@ -446,7 +371,7 @@ export class BaseModel {
 
         if (parentId) {
             const parentNode = nodes.find(n => n.id === parentId);
-            if (!parentNode) throw new Error(`Parent node not found: ${parentId}. Branch: ${branchName}`);
+            if (!parentNode) throw new Error(`Parent node not found: ${parentId}`);
 
             newNode.parentId = parentId;
             newNode.level = (parentNode.level || 0) + 1;
@@ -466,13 +391,13 @@ export class BaseModel {
         if (edgeSourceId) {
             const sourceExists = nodes.some(n => n.id === edgeSourceId);
             if (!sourceExists) {
-                throw new Error(`Source node not found: ${edgeSourceId}. Branch: ${branchName}`);
+                throw new Error(`Source node not found: ${edgeSourceId}`);
             }
 
             const existingEdge = edges.find(
                 e => e.source === edgeSourceId && e.target === newNodeId
             );
-            
+
             if (existingEdge) {
                 newEdgeId = existingEdge.id;
             } else {
@@ -486,59 +411,29 @@ export class BaseModel {
             }
         }
 
-        if (!branchData[branchName]) {
-            branchData[branchName] = { nodes: [], edges: [] };
-        }
-        branchData[branchName] = {
-            nodes: nodes,
-            edges: edges,
-        };
-
-        const updateData: any = {
-            branchData: branchData,
+        await document.set(domainId, mapDocType, docId, {
+            nodes,
+            edges,
             updateAt: new Date(),
-        };
-        
-        if (branchName === 'main') {
-            updateData.nodes = nodes;
-            updateData.edges = edges;
-        }
-
-        await document.set(domainId, mapDocType, docId, updateData);
+        });
 
         return { nodeId: newNodeId, edgeId: newEdgeId };
     }
 
-    static async deleteNode(domainId: string, docId: number, nodeId: string, branch?: string, mapDocType: MindMapDocType = document.TYPE_BASE): Promise<void> {
+    static async deleteNode(domainId: string, docId: number, nodeId: string, mapDocType: MindMapDocType = document.TYPE_BASE): Promise<void> {
         const actualDomainId = typeof domainId === 'string' ? domainId : String(domainId);
         const base = await this.get(actualDomainId, docId, mapDocType);
         if (!base) {
             throw new Error('Base not found');
         }
 
-        const branchName = branch || (base as any).currentBranch || (base as any).branch || 'main';
-        const branchData: {
-            [branch: string]: { nodes: BaseNode[]; edges: BaseEdge[] };
-        } = (base as any).branchData || {};
-
-        let nodes: BaseNode[];
-        let edges: BaseEdge[];
-        
-        if (branchData[branchName] && branchData[branchName].nodes) {
-            nodes = branchData[branchName].nodes;
-            edges = branchData[branchName].edges || [];
-        } else if (branchName === 'main') {
-            nodes = base.nodes || [];
-            edges = base.edges || [];
-        } else {
-            nodes = [];
-            edges = [];
-        }
+        const nodes = base.nodes || [];
+        let edges = base.edges || [];
 
         const node = nodes.find(n => n.id === nodeId);
         if (!node) {
             try {
-                const cards = await CardModel.getByNodeId(actualDomainId, base.docId, nodeId, branchName);
+                const cards = await CardModel.getByNodeId(actualDomainId, base.docId, nodeId);
                 for (const card of cards) {
                     await CardModel.delete(actualDomainId, card.docId);
                 }
@@ -595,7 +490,7 @@ export class BaseModel {
                     await storage.del(nodeStoragePaths, 0);
                 }
                 // Delete all cards under this node
-                const cards = await CardModel.getByNodeId(actualDomainId, docId, nodeIdToDelete, branchName);
+                const cards = await CardModel.getByNodeId(actualDomainId, docId, nodeIdToDelete);
                 for (const card of cards) {
                     // Delete physical files for file-cards (stored under node path)
                     if ((card as CardDoc).cardType === 'file' && (card as CardDoc).fileName) {
@@ -660,32 +555,17 @@ export class BaseModel {
 
         deleteNodeRecursive(nodeId);
 
-        if (!branchData[branchName]) {
-            branchData[branchName] = { nodes: [], edges: [] };
-        }
-        branchData[branchName] = {
-            nodes: nodes,
-            edges: edges,
-        };
-
-        const updateData: any = {
-            branchData: branchData,
+        await document.set(actualDomainId, mapDocType, docId, {
+            nodes,
+            edges,
             updateAt: new Date(),
-        };
-        
-        if (branchName === 'main') {
-            updateData.nodes = nodes;
-            updateData.edges = edges;
-        }
-
-        await document.set(actualDomainId, mapDocType, docId, updateData);
+        });
     }
 
     static async addEdge(
         domainId: string,
         docId: number,
         edge: Omit<BaseEdge, 'id'>,
-        branch?: string,
         mapDocType: MindMapDocType = document.TYPE_BASE,
     ): Promise<string> {
         let base = await this.get(domainId, docId, mapDocType);
@@ -701,138 +581,57 @@ export class BaseModel {
             }
         }
 
-        const branchName = branch || (base as any).currentBranch || (base as any).branch || 'main';
-        const branchData: {
-            [branch: string]: { nodes: BaseNode[]; edges: BaseEdge[] };
-        } = (base as any).branchData || {};
-
-        let nodes: BaseNode[];
-        let edges: BaseEdge[];
-        
-        if (branchData[branchName] && branchData[branchName].nodes) {
-            nodes = branchData[branchName].nodes;
-            edges = branchData[branchName].edges || [];
-        } else if (branchName === 'main') {
-            nodes = base.nodes || [];
-            edges = base.edges || [];
-        } else {
-            nodes = [];
-            edges = [];
-        }
-
+        const nodes = base.nodes || [];
+        const edges = base.edges || [];
         const sourceExists = nodes.some(n => n.id === edge.source);
         const targetExists = nodes.some(n => n.id === edge.target);
         if (!sourceExists || !targetExists) {
-            throw new Error(`Source or target node not found. Source: ${edge.source}, Target: ${edge.target}, Branch: ${branchName}`);
+            throw new Error(`Source or target node not found. Source: ${edge.source}, Target: ${edge.target}`);
         }
 
         const existingEdge = edges.find(
             e => e.source === edge.source && e.target === edge.target
         );
         if (existingEdge) {
-            if (!branchData[branchName]) {
-                branchData[branchName] = { nodes: nodes, edges: edges };
-            }
-            
-            const branchEdges = branchData[branchName].edges || [];
-            const branchHasEdge = branchEdges.some(
-                e => e.source === edge.source && e.target === edge.target
-            );
-            if (!branchHasEdge) {
-                branchEdges.push(existingEdge);
-                branchData[branchName] = {
-                    ...branchData[branchName],
-                    edges: branchEdges,
-                };
-            }
-
-            const updateData: any = {
-                branchData,
+            await document.set(domainId, mapDocType, docId, {
+                nodes,
+                edges,
                 updateAt: new Date(),
-            };
-            
-            if (branchName === 'main') {
-                updateData.nodes = nodes;
-                updateData.edges = edges;
-            }
-
-            await document.set(domainId, mapDocType, docId, updateData);
-
+            });
             return existingEdge.id;
         }
 
         const newEdgeId = `edge_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        const newEdge: BaseEdge = {
+        edges.push({
             ...edge,
             id: newEdgeId,
-        };
+        });
 
-        edges.push(newEdge);
-
-        if (!branchData[branchName]) {
-            branchData[branchName] = { nodes: nodes, edges: edges };
-        } else {
-            branchData[branchName] = {
-                ...branchData[branchName],
-                edges: edges,
-            };
-        }
-
-        const updateData: any = {
-            branchData: branchData,
+        await document.set(domainId, mapDocType, docId, {
+            nodes,
+            edges,
             updateAt: new Date(),
-        };
-        
-        if (branchName === 'main') {
-            updateData.nodes = nodes;
-            updateData.edges = edges;
-        }
-
-        await document.set(domainId, mapDocType, docId, updateData);
+        });
 
         return newEdgeId;
     }
 
-    static async deleteEdge(domainId: string, docId: number, edgeId: string, branch?: string, mapDocType: MindMapDocType = document.TYPE_BASE): Promise<void> {
+    static async deleteEdge(domainId: string, docId: number, edgeId: string, mapDocType: MindMapDocType = document.TYPE_BASE): Promise<void> {
         const base = await this.get(domainId, docId, mapDocType);
         if (!base) throw new Error('Base not found');
 
-        const branchName = branch || (base as any).currentBranch || 'main';
-        const branchData: { [b: string]: { nodes: BaseNode[]; edges: BaseEdge[] } } = (base as any).branchData || {};
-
-        let nodes: BaseNode[];
-        let edges: BaseEdge[];
-        if (branchData[branchName] && branchData[branchName].nodes) {
-            nodes = branchData[branchName].nodes;
-            edges = branchData[branchName].edges || [];
-        } else if (branchName === 'main') {
-            nodes = base.nodes || [];
-            edges = base.edges || [];
-        } else {
-            return;
-        }
-
+        const nodes = base.nodes || [];
+        const edges = base.edges || [];
         const edgeIndex = edges.findIndex(e => e.id === edgeId);
         if (edgeIndex !== -1) {
             edges.splice(edgeIndex, 1);
         }
 
-        if (!branchData[branchName]) {
-            branchData[branchName] = { nodes: [], edges: [] };
-        }
-        branchData[branchName] = { nodes, edges };
-
-        const updatePayload: any = {
-            branchData,
+        await document.set(domainId, mapDocType, docId, {
+            nodes,
+            edges,
             updateAt: new Date(),
-        };
-
-        if (branchName === 'main') {
-            updatePayload.nodes = nodes;
-            updatePayload.edges = edges;
-        }
-
-        await document.set(domainId, mapDocType, docId, updatePayload);
+        });
     }
 
     static async updateNodes(
@@ -905,7 +704,6 @@ export class BaseModel {
         updates: {
             nodes?: BaseNode[];
             edges?: BaseEdge[];
-            branchData?: { [branch: string]: { nodes: BaseNode[]; edges: BaseEdge[] } };
             content?: string;
             title?: string;
             layout?: BaseDoc['layout'];
@@ -913,7 +711,7 @@ export class BaseModel {
             theme?: BaseDoc['theme'];
             history?: BaseDoc['history'];
             problemTags?: string[];
-        },
+        } & Record<string, any>,
         mapDocType: MindMapDocType = document.TYPE_BASE,
     ): Promise<void> {
         await document.set(domainId, mapDocType, docId, {
@@ -948,7 +746,6 @@ export class CardModel {
         ip?: string,
         problems?: CardDoc['problems'],
         order?: number,
-        branch?: string,
         cardType?: string,
         fileType?: string,
         fileName?: string,
@@ -959,8 +756,7 @@ export class CardModel {
 
         let orderValue = order;
         if (orderValue === undefined) {
-            const filter: any = { baseDocId, nodeId };
-            if (branch) filter.branch = branch;
+            const filter = { baseDocId, nodeId };
             const lastByOrder = await document.getMulti(domainId, TYPE_CARD, filter)
                 .sort({ order: -1 })
                 .limit(1)
@@ -984,9 +780,6 @@ export class CardModel {
             createdAt: new Date(),
             order: orderValue,
         };
-        if (branch) {
-            (payload as any).branch = branch;
-        }
         if (problems && problems.length > 0) {
             (payload as any).problems = problems;
         }
@@ -1011,7 +804,8 @@ export class CardModel {
     }
 
     static async get(domainId: string, docId: ObjectId): Promise<CardDoc | null> {
-        return await document.get(domainId, TYPE_CARD, docId);
+        const cards = await document.getMulti(domainId, TYPE_CARD, { docId }).limit(1).toArray();
+        return (cards[0] as CardDoc | undefined) || null;
     }
 
     static async getRecentUpdated(domainId: string, limit: number = 10): Promise<CardDoc[]> {
@@ -1022,16 +816,9 @@ export class CardModel {
         return list as CardDoc[];
     }
 
-    static async getByNodeIds(domainId: string, baseDocId: number | ObjectId, nodeIds: string[], branch?: string): Promise<Map<string, CardDoc[]>> {
+    static async getByNodeIds(domainId: string, baseDocId: number | ObjectId, nodeIds: string[]): Promise<Map<string, CardDoc[]>> {
         if (!nodeIds.length) return new Map();
-        const filter: any = { baseDocId, nodeId: { $in: nodeIds } };
-        if (branch) {
-            if (branch === 'main') {
-                filter.$or = [{ branch: 'main' }, { branch: { $exists: false } }];
-            } else {
-                filter.branch = branch;
-            }
-        }
+        const filter = { baseDocId, nodeId: { $in: nodeIds } };
         const cards = await document.getMulti(domainId, TYPE_CARD, filter)
             .sort({ order: 1, cid: 1 })
             .toArray() as CardDoc[];
@@ -1047,15 +834,8 @@ export class CardModel {
         return map;
     }
 
-    static async getByNodeId(domainId: string, baseDocId: number | ObjectId, nodeId: string, branch?: string): Promise<CardDoc[]> {
-        const filter: any = { baseDocId, nodeId };
-        if (branch) {
-            if (branch === 'main') {
-                filter.$or = [{ branch: 'main' }, { branch: { $exists: false } }];
-            } else {
-                filter.branch = branch;
-            }
-        }
+    static async getByNodeId(domainId: string, baseDocId: number | ObjectId, nodeId: string): Promise<CardDoc[]> {
+        const filter = { baseDocId, nodeId };
         const cards = await document.getMulti(domainId, TYPE_CARD, filter)
             .sort({ order: 1, cid: 1 })
             .toArray();
@@ -1068,7 +848,7 @@ export class CardModel {
         cid: number,
         baseDocId?: number | ObjectId
     ): Promise<CardDoc | null> {
-        const filter: any = { nodeId, cid };
+        const filter: Record<string, unknown> = { nodeId, cid };
         if (baseDocId) {
             filter.baseDocId = baseDocId;
         }
@@ -1289,48 +1069,6 @@ export function readOptionalRequestBaseDocId(req: { body?: any; query?: any } | 
 export const nodeCreationDedupCache = new Map<string, number>();
 export const DEDUP_WINDOW_MS = 2000;
 
-export function getBranchData(base: BaseDoc, branch: string): { nodes: BaseNode[]; edges: BaseEdge[] } {
-    const branchName = branch || 'main';
-
-    if (base.branchData && base.branchData[branchName]) {
-        let nodes = base.branchData[branchName].nodes || [];
-        let edges = base.branchData[branchName].edges || [];
-        /**
-         * Some saves only populate `base.nodes` / `base.edges` for main while `branchData.main` exists
-         * but is still empty — outline / develop must not treat the branch as having no nodes.
-         */
-        if (branchName === 'main' && nodes.length === 0 && (base.nodes?.length || 0) > 0) {
-            nodes = base.nodes || [];
-            edges = base.edges || [];
-        }
-        return { nodes, edges };
-    }
-
-    if (branchName === 'main') {
-        return {
-            nodes: base.nodes || [],
-            edges: base.edges || [],
-        };
-    }
-
-    return { nodes: [], edges: [] };
-}
-
-export function setBranchData(base: BaseDoc, branch: string, nodes: BaseNode[], edges: BaseEdge[]): void {
-    const branchName = branch || 'main';
-
-    if (!base.branchData) {
-        base.branchData = {};
-    }
-
-    base.branchData[branchName] = { nodes, edges };
-
-    if (branchName === 'main') {
-        base.nodes = nodes;
-        base.edges = edges;
-    }
-}
-
 /**
  * Longest root-to-leaf path length (each node counts as one layer). Forest-safe.
  */
@@ -1399,7 +1137,7 @@ export function countMainLevelChildNodes(nodes: BaseNode[], edges: BaseEdge[]): 
 
 export type BaseListCardStats = { cardCount: number; problemCount: number };
 
-/** Card + problem counts per baseDocId for main-branch cards (and legacy docs without branch). */
+/** Card + problem counts per baseDocId across the single main data tree. */
 export async function loadCardStatsByBaseDocId(
     domainId: string,
     baseDocIds: number[],
@@ -1414,7 +1152,6 @@ export async function loadCardStatsByBaseDocId(
                 domainId,
                 docType: document.TYPE_CARD,
                 baseDocId: { $in: ids },
-                $or: [{ branch: 'main' }, { branch: { $exists: false } }],
             },
         },
         {
@@ -1458,7 +1195,8 @@ export function attachBaseListStats<T extends BaseDoc & { docId?: number | strin
 }> {
     return bases.map((b) => {
         const id = typeof b.docId === 'number' ? b.docId : Number((b as any).docId);
-        const { nodes, edges } = getBranchData(b as BaseDoc, 'main');
+        const nodes = b.nodes || [];
+        const edges = b.edges || [];
         const cs = Number.isFinite(id) ? cardStats.get(id) : undefined;
         return {
             ...b,
@@ -1693,14 +1431,14 @@ function previewBranchNodesAfterBatch(
 
 export function collectRoadmapBatchSaveNumberErrors(
     base: BaseDoc,
-    branch: string,
     batch: {
         nodeCreates?: BatchNodeCreatePreview[];
         nodeUpdates?: BatchNodeUpdatePreview[];
         nodeDeletes?: string[];
     },
 ): string[] {
-    const { nodes, edges } = getBranchData(base, branch);
+    const nodes = base.nodes || [];
+    const edges = base.edges || [];
     const previewNodes = previewBranchNodesAfterBatch(nodes, batch);
     return validateRoadmapCanvasNumbers(previewNodes, edges);
 }

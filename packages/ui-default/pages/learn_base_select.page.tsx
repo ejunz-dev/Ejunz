@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import { i18n, request } from 'vj/utils';
@@ -7,7 +7,6 @@ import Notification from 'vj/components/notification';
 interface LearnBaseItem {
   docId: number;
   title?: string;
-  branches?: string[];
 }
 
 function LearnBaseSelectPage() {
@@ -18,7 +17,6 @@ function LearnBaseSelectPage() {
     selectedLearnBaseDocIdRaw != null && selectedLearnBaseDocIdRaw !== ''
       ? Number(selectedLearnBaseDocIdRaw)
       : null;
-  const initialBranch = String((window as any).UiContext?.learnBranch || 'main').trim() || 'main';
   const redirect = ((window as any).UiContext?.redirect as string) || `/d/${domainId}/learn`;
 
   const [baseDocId, setBaseDocId] = useState<number | null>(() => {
@@ -28,23 +26,7 @@ function LearnBaseSelectPage() {
     const first = learnBases[0];
     return first ? Number(first.docId) : null;
   });
-  const selectedBase = useMemo(
-    () => (baseDocId != null ? learnBases.find((b) => Number(b.docId) === baseDocId) || null : null),
-    [learnBases, baseDocId],
-  );
-  const branchChoices = useMemo(() => {
-    const raw = selectedBase?.branches;
-    if (Array.isArray(raw) && raw.length > 0) return [...new Set(raw.map((x) => String(x).trim()).filter(Boolean))];
-    return ['main'];
-  }, [selectedBase]);
-  const [branch, setBranch] = useState(initialBranch);
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (!branchChoices.includes(branch)) {
-      setBranch(branchChoices[0] || 'main');
-    }
-  }, [branchChoices, branch]);
 
   const empty = useMemo(() => !learnBases || learnBases.length === 0, [learnBases]);
 
@@ -52,7 +34,7 @@ function LearnBaseSelectPage() {
     if (baseDocId == null || saving) return;
     setSaving(true);
     try {
-      await request.post(`/d/${domainId}/learn/base`, { baseDocId, branch: branch || 'main' });
+      await request.post(`/d/${domainId}/learn/base`, { baseDocId });
       window.location.href = redirect;
     } catch (error: any) {
       const msg = error?.response?.data?.message ?? error?.response?.data?.error ?? error?.message ?? i18n('Failed to save');
@@ -88,10 +70,10 @@ function LearnBaseSelectPage() {
           }}
         >
           <h1 style={{ margin: 0, marginBottom: 8, color: theme.textPrimary }}>
-            {i18n('Select learn base and branch')}
+            {i18n('Select learn base')}
           </h1>
           <div style={{ marginBottom: 16, color: theme.textSecondary, fontSize: 13 }}>
-            {i18n('Choose which knowledge base and branch to use for Learn.')}
+            {i18n('Choose which knowledge base to use for Learn.')}
           </div>
           {empty ? (
             <div>
@@ -137,29 +119,6 @@ function LearnBaseSelectPage() {
                     );
                   })}
                 </div>
-              </div>
-              <div>
-                <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 8 }}>{i18n('Branch')}</div>
-                <select
-                  value={branch}
-                  onChange={(e) => setBranch(e.target.value)}
-                  disabled={!selectedBase}
-                  style={{
-                    width: '100%',
-                    maxWidth: 420,
-                    padding: '10px 12px',
-                    borderRadius: 10,
-                    border: `1px solid ${theme.border}`,
-                    background: theme.optionBg,
-                    color: theme.textPrimary,
-                  }}
-                >
-                  {branchChoices.map((br) => (
-                    <option key={br} value={br}>
-                      {br}
-                    </option>
-                  ))}
-                </select>
               </div>
               <div style={{ marginTop: 8, display: 'flex', gap: 10 }}>
                 <button

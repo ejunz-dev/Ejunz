@@ -14,7 +14,6 @@ export interface RoadmapNodeData {
   description?: string;
   nodeText?: string;
   hookRoadmapDocId?: string | number;
-  hookRoadmapBranch?: string;
   hookRoadmapTitle?: string;
   hookRoadmapUrl?: string;
   priority?: RoadmapPriority;

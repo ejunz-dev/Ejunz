@@ -54,7 +54,6 @@ export function BaseDetailHeader({
   description,
   domainId,
   docId,
-  branch,
   treeDrawerOpen,
   onTreeDrawerOpen,
   aiTutorActive,
@@ -74,7 +73,6 @@ export function BaseDetailHeader({
   description?: string;
   domainId: string;
   docId: string;
-  branch: string;
   treeDrawerOpen?: boolean;
   onTreeDrawerOpen?: () => void;
   aiTutorActive?: boolean;

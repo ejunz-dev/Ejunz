@@ -425,7 +425,6 @@ export class McpClient {
         token?: string,
         toolType?: string,
         baseDocId?: number,
-        baseBranch?: string,
         toolCallerUid?: number,
         embeddingOverride?: any,
     ): Promise<any> {
@@ -447,12 +446,11 @@ export class McpClient {
                     ctxEmbeddingError = err?.message || String(err);
                 }
             }
-            ClientLogger.info('[diag] callTool context: name=%s toolType=%s domainId=%s baseDocId=%s branch=%s owner=%s hasEmbeddingOverride=%s hasCtxEmbedding=%s ctxEmbeddingError=%s pid=%d NODE_APP_INSTANCE=%s',
+            ClientLogger.info('[diag] callTool context: name=%s toolType=%s domainId=%s baseDocId=%s owner=%s hasEmbeddingOverride=%s hasCtxEmbedding=%s ctxEmbeddingError=%s pid=%d NODE_APP_INSTANCE=%s',
                 name,
                 toolType ?? '',
                 domainId || '',
                 baseDocId || '',
-                baseBranch || '',
                 toolCallerUid || '',
                 !!embeddingOverride,
                 ctxEmbedding,
@@ -463,7 +461,6 @@ export class McpClient {
             const systemToolContext = {
                 domainId,
                 baseDocId,
-                branch: baseBranch || 'main',
                 owner: toolCallerUid,
                 embedding,
             };
@@ -565,7 +562,6 @@ export class McpClient {
                             args,
                             domainId,
                             baseDocId,
-                            branch: baseBranch || 'main',
                             owner: toolCallerUid,
                         });
                     }

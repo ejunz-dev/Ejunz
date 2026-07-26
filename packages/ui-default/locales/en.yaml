@@ -309,13 +309,10 @@ edge_authorize: Edge Authorization
 'Pending selection': Pending selection
 'Select learn base': Select knowledge base
 'Select learn roadmap': Select roadmap
-'Select learn base and branch': Select knowledge base and branch
 'Select learn roadmap and branch': Select roadmap and branch
 'Select a knowledge base before learning': Select a knowledge base before learning
 'Select a roadmap before learning': Select a roadmap before learning
-'Choose a base and branch, then save to continue learning.': Choose a base and branch, then save to continue learning.
 'Choose a roadmap and branch, then save to continue learning.': Choose a roadmap and branch, then save to continue learning.
-'Choose which knowledge base and branch to use for Learn.': Choose which knowledge base and branch to use for Learn.
 'Choose which roadmap and branch to use for Learn.': Choose which roadmap and branch to use for Learn.
 'No knowledge base in this domain.': No knowledge base in this domain.
 'No roadmap in this domain.': No roadmap in this domain.
@@ -624,7 +621,6 @@ edge_authorize: Edge Authorization
 'Save completed, but {0} error(s) occurred': Save completed, but {0} error(s) occurred
 'Save failed': Save failed
 'Save failed not logged in': Not signed in. Save failed.
-'Save legacy branch': Save legacy branch
 'Save sort failed': Save sort failed
 'Save successful, {0} changes': 'Save successful, {0} changes'
 'Save TTS Configuration': Save TTS Configuration
@@ -863,12 +859,11 @@ develop: Develop
 'Develop edit pool hint roadmap': Pick roadmaps and branches, set daily goals. Use ↑↓ to set order, then save. Start develop follows this order into the roadmap editor.
 'Develop no roadmaps': No roadmaps in this domain yet. Create a roadmap first.
 'Develop unknown roadmap': Roadmap not found
-'Develop branch': Branch
 'Develop add row': Add entry
-'Develop edit pool hint': Pick bases and branches, set daily goals. Use ↑↓ to set order, then save. Start develop follows this order.
+'Develop edit pool hint': Pick bases, set daily goals, and use ↑↓ to set order before saving. Start develop follows this order.
 'Develop edit pool': Edit develop pool
 'Develop goal unset': —
-'Develop no pool hint': No entries yet. Tap Edit to add bases, branches, and daily goals.
+'Develop no pool hint': No entries yet. Tap Edit to add bases and daily goals.
 'Develop progress overview': Goals & today’s progress
 'Develop sidebar completed today': Completed today
 'Develop sidebar pending today': Pending today
@@ -877,9 +872,7 @@ develop: Develop
 'Develop goal cards': Card goal
 'Develop goal nodes': Node goal
 'Develop goal problems': Problem goal
-'Develop invalid branch': Branch does not exist on this base
 'Develop no bases': No knowledge bases in this domain yet. Create a base first.
-'Develop pick branch': Choose a base branch
 'Develop check-in blocked': Check in after all daily goals in the pool are met
 'Develop check-in done': Checked in today
 'Develop check-in failed': Check-in failed
@@ -900,12 +893,12 @@ develop: Develop
 'Develop row today goals met': Today’s goals done
 'Develop run queue empty today': No develop tasks left for today.
 'Develop start goals done today': This base already met today’s goals and is out of the develop run queue.
-'Develop start base not in pool': This base/branch is not in your develop pool.
+'Develop start base not in pool': This base is not in your develop pool.
 'Outline editor start session': Start editor session…
 'Outline editor start failed': Could not start an editor session. Try again.
 'Outline editor start invalid base': Invalid knowledge base for this outline.
 'Outline editor start needs node': A node id is required to start an editor session from the outline.
-'Outline editor start invalid node': That node is not part of this branch.
+'Outline editor start invalid node': That node is not part of this base.
 'Outline editor popup blocked': The browser blocked the new tab. Allow popups for this site and try again.
 'Outline learn single card': Learn this card only
 'Outline learn single node': Learn this node subtree
@@ -954,7 +947,7 @@ develop: Develop
 'Develop today progress': Today (UTC, increments on save)
 'Develop unknown base': Base not found
 'Develop utc day': UTC date
-'Develop editor pool progress': Develop pool (today · this branch)
+'Develop editor pool progress': Develop pool (today)
 'Develop editor goals complete': Daily goals for this pool entry are met.
 'Develop editor switch other base': Continue on another base
 'Develop editor all pool goals met': All develop pool entries have met their goals today.
@@ -982,11 +975,11 @@ session_develop_list_title: Develop sessions (live)
 'Develop wall checked in': Checked in today’s develop goals for this domain.
 'Develop wall sessions': Develop sessions this day (UTC)
 'Develop wall no sessions': No develop sessions for this day.
-'Develop wall session base line': '{0} ({1}): {2} record(s)'
+'Develop wall session base line': '{0}: {1} record(s)'
 'Develop wall session no saves': No editor saves in this session on this day.
 'Develop wall base fallback title': 'Base {0}'
 'Develop session': Session
-'Develop wall checkin only saves': Check-in only — no branch save counts recorded for this day.
+'Develop wall checkin only saves': Check-in only — no save counts recorded for this day.
 Less: Less
 lesson_history_col_attempts: Attempts
 lesson_history_col_correct: Correct answer
@@ -1407,8 +1400,8 @@ Date: Date
 'Base detail tree empty': No nodes in this knowledge base yet.
 'Base detail node empty': This node has no content yet.
 'Base detail card empty': This card has no content yet.
-'Base detail filter dialog hint': Matching nodes and cards are shown in Document Structure; non-matching branches are hidden.
-'Base detail content filter dialog hint': Filter the current content tree only. Non-matching branches are hidden.
+'Base detail filter dialog hint': Matching nodes and cards are shown in Document Structure; non-matching paths are hidden.
+'Base detail content filter dialog hint': Filter the current content tree only. Non-matching paths are hidden.
 'Base detail tree search placeholder': Filter current tree…
 'Base detail tree search aria': Filter content tree
 

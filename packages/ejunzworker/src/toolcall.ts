@@ -22,7 +22,6 @@ export class ToolCallTaskHandler {
             toolName: t.toolName || t.name,
             args: t.args || {},
             baseDocId: t.baseDocId,
-            baseBranch: t.baseBranch,
             owner: t.owner,
             toolType: t.toolType,
             token: t.token,

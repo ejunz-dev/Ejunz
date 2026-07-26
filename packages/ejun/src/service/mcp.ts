@@ -94,7 +94,6 @@ export type JsonRpcMessage = {
 export type McpServerMeta = {
     domainId: string;
     baseDocId?: number;
-    branch?: string;
     instructions?: string;
     toolOverrides?: { name: string; description: string }[];
 };
@@ -217,11 +216,11 @@ export default class McpService extends Service {
     }
 
     async registerOutboundEdge(tokenDoc: EdgeTokenDoc) {
-        const { domainId, token, owner, baseDocId, branch } = tokenDoc;
+        const { domainId, token, owner, baseDocId } = tokenDoc;
         try {
             let edge = await EdgeModel.getByToken(domainId, token);
             if (!edge) edge = await EdgeModel.add({ domainId, type: 'mcp', owner, token });
-            const mcp = await this.getOrCreateMcp(domainId, owner, token, baseDocId, branch);
+            const mcp = await this.getOrCreateMcp(domainId, owner, token, baseDocId);
             if (edge.mcpId !== mcp.mid) await EdgeModel.update(domainId, edge.eid, { mcpId: mcp.mid });
             const wasFirstConnection = !edge.tokenUsedAt;
             await EdgeModel.update(domainId, edge.eid, { status: 'online', tokenUsedAt: edge.tokenUsedAt || new Date() });
@@ -324,7 +323,6 @@ export default class McpService extends Service {
         uid: number;
         mcpId?: number;
         baseDocId: number;
-        branch: string;
         tool: string;
         args: Record<string, any>;
         result?: string;
@@ -335,12 +333,10 @@ export default class McpService extends Service {
         try {
             if (!input.uid || !input.mcpId) return;
             const baseDocId = input.baseDocId || 0;
-            const branch = input.branch || 'main';
-            const session = await SessionModel.getOrCreateMcpSession(input.domainId, input.uid, input.mcpId, baseDocId, branch);
+            const session = await SessionModel.getOrCreateMcpSession(input.domainId, input.uid, input.mcpId, baseDocId);
             await RecordModel.insertMcpToolRecord(input.domainId, input.uid, session._id, {
                 mcpId: input.mcpId,
                 baseDocId,
-                branch,
                 meta: {
                     tool: input.tool,
                     args: input.args || {},
@@ -363,7 +359,7 @@ export default class McpService extends Service {
         switch (method) {
         case 'initialize': {
             const baseDocId = meta?.baseDocId;
-            const instructions = meta?.instructions || await buildMcpInstructions({ domainId, baseDocId, branch: meta?.branch });
+            const instructions = meta?.instructions || await buildMcpInstructions({ domainId, baseDocId });
             return {
                 jsonrpc: '2.0',
                 id,
@@ -422,7 +418,7 @@ export default class McpService extends Service {
                     resultText = typeof result === 'string' ? result : JSON.stringify(result);
                     response = { jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: resultText }] } };
                     logger.info('MCP tools/call OK: %s, tool=%s, id=%s, %dms, result=%s', logCtx, name, `${msg.id}`, Date.now() - startedAt, clipForLog(resultText));
-                    if (isMcpBuiltinMutatingTool(name)) (this.ctx.emit as any)('base/update', toolCtx.baseDocId, null, toolCtx.branch);
+                    if (isMcpBuiltinMutatingTool(name)) (this.ctx.emit as any)('base/update', toolCtx.baseDocId, null);
                 } catch (e) {
                     isError = true;
                     errorMsg = (e as Error).message;
@@ -434,7 +430,6 @@ export default class McpService extends Service {
                     uid: toolCtx.owner,
                     mcpId: mcpMid,
                     baseDocId: toolCtx.baseDocId,
-                    branch: toolCtx.branch,
                     tool: name,
                     args,
                     result: isError ? undefined : resultText,
@@ -457,12 +452,9 @@ export default class McpService extends Service {
         return response;
     }
 
-    async getOrCreateMcpToken(domainId: string, owner: number, baseDocId?: number, branch?: string): Promise<string> {
-        const normalizedBranch = branch && branch !== 'main' ? branch : undefined;
+    async getOrCreateMcpToken(domainId: string, owner: number, baseDocId?: number): Promise<string> {
         const query: any = { domainId, type: 'mcp_sse', owner };
         if (baseDocId !== undefined && baseDocId !== null) query.baseDocId = baseDocId;
-        if (normalizedBranch) query.branch = normalizedBranch;
-        else query.$or = [{ branch: { $exists: false } }, { branch: null }, { branch: 'main' }];
         const existing = await EdgeTokenModel.coll.findOne(query);
         if (existing) {
             const fresh = await EdgeTokenModel.getByToken(existing.token);
@@ -471,23 +463,21 @@ export default class McpService extends Service {
         const token = await EdgeTokenModel.generateToken();
         await EdgeTokenModel.add(domainId, 'mcp_sse', token, owner, {
             baseDocId,
-            branch: normalizedBranch,
             expireAt: null,
             authenticatedAt: new Date(),
         });
         return token;
     }
 
-    async getOrCreateMcp(domainId: string, owner: number, token: string, baseDocId?: number, branch?: string): Promise<McpDoc> {
+    async getOrCreateMcp(domainId: string, owner: number, token: string, baseDocId?: number): Promise<McpDoc> {
         let mcp = await McpModel.getByToken(domainId, token);
         if (!mcp) {
-            const instructions = await buildMcpInstructions({ domainId, baseDocId, branch });
+            const instructions = await buildMcpInstructions({ domainId, baseDocId });
             mcp = await McpModel.add({
                 domainId,
                 owner,
                 token,
                 baseDocId,
-                branch,
                 name: baseDocId ? `MCP · base ${baseDocId}` : 'MCP',
                 kind: 'outbound',
                 source: { type: 'ejunz_base' },
@@ -509,16 +499,14 @@ export default class McpService extends Service {
         return String(baseDocId);
     }
 
-    buildConnectionInfo(input: { protocol: string; host: string; domainId: string; token: string; pathId?: string; branch?: string; serverName?: string }) {
-        const { protocol, host, domainId, token, pathId, branch } = input;
-        const normalizedBranch = branch && branch !== 'main' ? branch : undefined;
+    buildConnectionInfo(input: { protocol: string; host: string; domainId: string; token: string; pathId?: string; serverName?: string }) {
+        const { protocol, host, domainId, token, pathId } = input;
         const seg = pathId ? `/${encodeURIComponent(pathId)}` : '';
-        const branchQuery = normalizedBranch ? `?branch=${encodeURIComponent(normalizedBranch)}` : '';
         const serverName = normalizeMcpServerName(input.serverName, defaultMcpServerName(domainId, pathId));
         const baseUrl = `${protocol}://${host}/d/${domainId}/mcp/sse${seg}`;
         const url = `${baseUrl}?token=${token}`;
         const command = `claude mcp add --transport sse ${serverName} ${baseUrl} --header "Authorization: Bearer ${token}"`;
-        const httpBaseUrl = `${protocol}://${host}/d/${domainId}/mcp/http${seg}${branchQuery}`;
+        const httpBaseUrl = `${protocol}://${host}/d/${domainId}/mcp/http${seg}`;
         const httpUrl = httpBaseUrl;
         const httpCommand = `claude mcp add --transport http ${serverName} ${httpBaseUrl}`;
         return {
