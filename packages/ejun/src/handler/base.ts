@@ -73,6 +73,8 @@ import {
 } from '../model/problem';
 import LearnProblemNoteModel from '../model/learnProblemNote';
 import { collectRoadmapBatchSaveNumberErrors } from '../model/base';
+import { enqueueEmbeddingIndex, SEMANTIC_SEARCH_TOOL, buildEmbeddingStatusView } from '../service/embeddingWorker';
+import { callToolViaWorker } from './worker';
 
 type LearnProblemNotesBatchBlock = {
     pid: string;
@@ -1519,6 +1521,16 @@ export class BaseNodeHandler extends Handler {
                         undefined
                     );
                     this.response.body = { nodeId: result.nodeId };
+                    if ((text || '').trim()) {
+                        enqueueEmbeddingIndex({
+                            domainId: actualDomainId,
+                            baseDocId: docId,
+                            mode: 'incremental',
+                            nodeIds: [result.nodeId],
+                            owner: this.user._id,
+                            reason: 'node_add',
+                        }).catch((err: any) => console.error('Embedding queue error after node add:', err));
+                    }
                     return;
                 }
                 edgeSourceId = effectiveParentId;
@@ -1534,6 +1546,16 @@ export class BaseNodeHandler extends Handler {
                     undefined
                 );
                 this.response.body = { nodeId: result.nodeId };
+                if ((text || '').trim()) {
+                    enqueueEmbeddingIndex({
+                        domainId: actualDomainId,
+                        baseDocId: docId,
+                        mode: 'incremental',
+                        nodeIds: [result.nodeId],
+                        owner: this.user._id,
+                        reason: 'node_add',
+                    }).catch((err: any) => console.error('Embedding queue error after node add:', err));
+                }
                 return;
             }
 
@@ -1557,6 +1579,16 @@ export class BaseNodeHandler extends Handler {
                 edgeSource: edgeSourceId,
                 edgeTarget: edgeTargetId,
             };
+            if (newNodeId && (text || '').trim()) {
+                enqueueEmbeddingIndex({
+                    domainId: actualDomainId,
+                    baseDocId: docId,
+                    mode: 'incremental',
+                    nodeIds: [newNodeId],
+                    owner: this.user._id,
+                    reason: 'node_add',
+                }).catch((err: any) => console.error('Embedding queue error after node add:', err));
+            }
         } catch (error: any) {
             if (newNodeId) {
                 this.response.body = { 
@@ -1626,6 +1658,16 @@ export class BaseNodeHandler extends Handler {
         }
 
         await BaseModel.updateNode(domainId, docId, nodeId, updates);
+        if (updates.text !== undefined) {
+            enqueueEmbeddingIndex({
+                domainId,
+                baseDocId: docId,
+                mode: 'incremental',
+                nodeIds: [nodeId],
+                owner: this.user._id,
+                reason: 'node_update',
+            }).catch((err: any) => console.error('Embedding queue error after node update:', err));
+        }
         this.response.body = { success: true };
     }
 
@@ -1642,6 +1684,14 @@ export class BaseNodeHandler extends Handler {
 
         
         await BaseModel.deleteNode(domainId, docId, nodeId);
+        enqueueEmbeddingIndex({
+            domainId,
+            baseDocId: docId,
+            mode: 'incremental',
+            deletedNodeIds: [nodeId],
+            owner: this.user._id,
+            reason: 'node_delete',
+        }).catch((err: any) => console.error('Embedding queue error after node delete:', err));
         this.response.body = { success: true };
     }
 }
@@ -1948,13 +1998,32 @@ export class BaseSaveHandler extends Handler {
         (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'full_save');
         (this.ctx.emit as any)('base/git/status/update', docId);
 
-        // Fire-and-forget vectorize base content for semantic search — disabled
-        // because full re-index on every save is too expensive for large bases.
-        // if (hasNonPositionChanges && this.ctx.embedding) {
-        //     this.ctx.embedding.vectorizeBaseContent(domainId, docId).catch((err: any) => {
-        //         console.error('Embedding error after base save:', err);
-        //     });
-        // }
+        // Async incremental embedding: only node text add/change/delete.
+        const newNodesById = new Map(stampedNodes.map((n: BaseNode) => [n.id, n]));
+        const changedNodeIds: string[] = [];
+        const deletedNodeIds: string[] = [];
+        for (const [id, oldNode] of oldNodesById) {
+            if (!newNodesById.has(id)) deletedNodeIds.push(id);
+            else if ((oldNode.text || '') !== ((newNodesById.get(id) as BaseNode).text || '')) {
+                changedNodeIds.push(id);
+            }
+        }
+        for (const [id] of newNodesById) {
+            if (!oldNodesById.has(id)) changedNodeIds.push(id);
+        }
+        if (changedNodeIds.length || deletedNodeIds.length) {
+            enqueueEmbeddingIndex({
+                domainId,
+                baseDocId: docId,
+                mode: 'incremental',
+                nodeIds: changedNodeIds,
+                deletedNodeIds,
+                owner: this.user._id,
+                reason: 'base_save',
+            }).catch((err: any) => {
+                console.error('Embedding queue error after base save:', err);
+            });
+        }
 
         this.response.body = { success: true, hasNonPositionChanges };
     }
@@ -3156,6 +3225,14 @@ export class BaseCardHandler extends Handler {
         );
         
         this.response.body = { cardId: cardDocId.toString() };
+        enqueueEmbeddingIndex({
+            domainId,
+            baseDocId: Number(base.docId),
+            mode: 'incremental',
+            cardDocIds: [cardDocId.toString()],
+            owner: this.user._id,
+            reason: 'card_create',
+        }).catch((err: any) => console.error('Embedding queue error after card create:', err));
     }
     
     @param('docId', Types.PositiveInt, true)
@@ -3308,6 +3385,14 @@ export class BaseCardHandler extends Handler {
             await CardModel.delete(domainId, targetCard.docId);
             (this.ctx.emit as any)('base/update', base.docId, this.user._id, this.user.uname, 'delete_card');
             this.response.body = { success: true };
+            enqueueEmbeddingIndex({
+                domainId,
+                baseDocId: Number(base.docId),
+                mode: 'incremental',
+                deletedCardDocIds: [targetCard.docId.toString()],
+                owner: this.user._id,
+                reason: 'card_delete',
+            }).catch((err: any) => console.error('Embedding queue error after card delete:', err));
             return;
         }
 
@@ -3326,6 +3411,21 @@ export class BaseCardHandler extends Handler {
         }
 
         await CardModel.update(domainId, targetCard.docId, updates);
+        if (
+            updates.title !== undefined
+            || updates.content !== undefined
+            || updates.problems !== undefined
+            || updates.nodeId !== undefined
+        ) {
+            enqueueEmbeddingIndex({
+                domainId,
+                baseDocId: Number(base.docId),
+                mode: 'incremental',
+                cardDocIds: [targetCard.docId.toString()],
+                owner: this.user._id,
+                reason: 'card_update',
+            }).catch((err: any) => console.error('Embedding queue error after card update:', err));
+        }
         const changed: string[] = [];
         if (updates.title !== undefined) changed.push('title');
         if (updates.content !== undefined) changed.push('content');
@@ -4558,8 +4658,16 @@ export class BaseBatchSaveHandler extends Handler {
                 
             }
         }
-        
-        
+
+        // Embedding deltas (resolved IDs collected after creates / before deletes).
+        const embeddingNodeIds: string[] = [];
+        const embeddingDeletedNodeIds: string[] = nodeDeletes.map((id: string) => String(id));
+        const embeddingCardDocIds: string[] = [];
+        const embeddingDeletedCardDocIds: string[] = cardDeletes.map((id: string) => String(id));
+        for (const nodeUpdate of nodeUpdates) {
+            if (nodeUpdate.text !== undefined) embeddingNodeIds.push(String(nodeUpdate.nodeId));
+        }
+
         for (const nodeId of nodeDeletes) {
             try {
                 await BaseModel.deleteNode(actualDomainId, docId, nodeId, mdt);
@@ -4636,6 +4744,7 @@ export class BaseBatchSaveHandler extends Handler {
                     if (cardCreate.tempId) {
                         cardIdMap.set(cardCreate.tempId, response.toString());
                     }
+                    embeddingCardDocIds.push(response.toString());
                 }
             } catch (error: any) {
                 errors.push(`创建卡片失败: ${error.message || '未知错误'}`);
@@ -4807,14 +4916,31 @@ export class BaseBatchSaveHandler extends Handler {
         if (data.edgeDeletes?.length) summary.edgeDeletes = data.edgeDeletes.length;
         (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'batch_update', summary);
 
-        // Fire-and-forget vectorize base content for semantic search after successful batch save — disabled
-        // because full re-index on every save is too expensive for large bases.
-        // Uncomment if you need automatic embedding updates after each save.
-        // if (batchSuccess && this.ctx.embedding) {
-        //     this.ctx.embedding.vectorizeBaseContent(actualDomainId, docId).catch((err: any) => {
-        //         console.error('Embedding error after batch save:', err);
-        //     });
-        // }
+        if (batchSuccess) {
+            for (const realId of nodeIdMap.values()) embeddingNodeIds.push(realId);
+            for (const cardUpdate of cardUpdates) {
+                const touchesContent = cardUpdate.title !== undefined
+                    || cardUpdate.content !== undefined
+                    || cardUpdate.problems !== undefined
+                    || cardUpdate.nodeId !== undefined;
+                if (touchesContent && cardUpdate.cardId) {
+                    embeddingCardDocIds.push(String(cardUpdate.cardId));
+                }
+            }
+            enqueueEmbeddingIndex({
+                domainId: actualDomainId,
+                baseDocId: docId,
+                mode: 'incremental',
+                nodeIds: embeddingNodeIds,
+                deletedNodeIds: embeddingDeletedNodeIds,
+                cardDocIds: embeddingCardDocIds,
+                deletedCardDocIds: embeddingDeletedCardDocIds,
+                owner: this.user._id,
+                reason: 'batch_save',
+            }).catch((err: any) => {
+                console.error('Embedding queue error after batch save:', err);
+            });
+        }
 
         let developSessionEditTotalsResponse: ReturnType<typeof readDevelopSessionEditTotals> | undefined;
         if (batchSuccess && developSessionRaw && ObjectId.isValid(developSessionRaw)) {
@@ -5943,6 +6069,14 @@ export class BaseConnectionHandler extends ConnectionHandler {
         await this.sendUpdate(this.wsDomainId);
     }
 
+    @subscribe('base/embedding/status/update')
+    async onEmbeddingStatusUpdate(domainId: string, baseDocId: number) {
+        if (!this.wsDomainId || this.docId == null) return;
+        if (domainId !== this.wsDomainId) return;
+        if (Number(baseDocId) !== Number(this.docId)) return;
+        await this.sendEmbeddingStatus(domainId);
+    }
+
     async message(msg: any) {
         try {
             if (!msg || typeof msg !== 'object') {
@@ -6100,10 +6234,12 @@ export class BaseConnectionHandler extends ConnectionHandler {
             ]);
 
             const viewerCount = baseViewerCounts.get(base.docId)?.size ?? 0;
+            const embeddingStatus = await buildEmbeddingStatusView(domainId, base.docId).catch(() => null);
             this.send({
                 type: 'init',
                 gitStatus,
                 viewerCount,
+                embeddingStatus,
                 todayContribution: contrib.todayContribution,
                 todayContributionAllDomains: todayAllDomains,
                 contributions: contrib.contributions,
@@ -6163,6 +6299,19 @@ export class BaseConnectionHandler extends ConnectionHandler {
             });
         } catch (err) {
             logger.error('Failed to send git status:', err);
+        }
+    }
+
+    private async sendEmbeddingStatus(domainId: string) {
+        try {
+            if (this.docId == null) return;
+            const embeddingStatus = await buildEmbeddingStatusView(domainId, this.docId);
+            this.send({
+                type: 'embedding_status',
+                embeddingStatus,
+            });
+        } catch (err) {
+            logger.error('Failed to send embedding status:', err);
         }
     }
 
@@ -6901,29 +7050,20 @@ export class BaseSemanticSearchHandler extends Handler {
 
         const maxResults = Math.min(limit || 10, 50);
 
-        let results: Array<{
-            nodeId: string;
-            kind: 'node' | 'card';
-            cardDocId?: string;
-            cardTitle?: string;
-            text: string;
-            score: number;
-        }> = [];
-        if (this.ctx.embedding) {
-            try {
-                results = await this.ctx.embedding.searchSimilar(
-                    domainId,
-                    docId,
-                    query.trim(),
-                    maxResults,
-                );
-            } catch (err) {
-                this.ctx.logger.error('Semantic search error: %o', err);
-                // Return zero results rather than crashing
-            }
+        try {
+            const result = await callToolViaWorker(this.ctx, SEMANTIC_SEARCH_TOOL, {
+                query: query.trim(),
+                limit: maxResults,
+            }, domainId, undefined, this.user._id, undefined, 0, {
+                baseDocId: docId,
+                owner: this.user._id,
+                toolType: 'system',
+            });
+            this.response.body = { results: result?.results || [] };
+        } catch (err) {
+            this.ctx.logger.error('Semantic search worker error: %o', err);
+            throw err;
         }
-
-        this.response.body = { results };
     }
 }
 

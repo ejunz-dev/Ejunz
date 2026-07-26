@@ -9,6 +9,16 @@ import superagent from 'superagent';
 import logger from '../log';
 import { getConfig } from '../config';
 import { ToolCallTaskHandler } from '../toolcall';
+import {
+    EMBEDDING_TASK_TYPE,
+    EMBEDDING_INDEX_SUBTYPE,
+    EMBEDDING_INDEX_WORKER_TASK,
+    SEMANTIC_SEARCH_TOOL,
+    acquireEmbeddingLease,
+    completeEmbeddingIndex,
+    failEmbeddingIndex,
+    recoverExpiredEmbeddingWork,
+} from 'ejun/src/service/embeddingWorker';
 
 export interface WorkerTaskReporter {
     accepted(data?: any): Promise<void>;
@@ -249,13 +259,14 @@ function getWorkerStatusModel() {
 }
 
 async function executeToolViaServer(config: any, task: any, executionTool: any, modelToolName: string, args: any) {
+    const embedding = resolveEmbeddingService(config.ctx);
     logger.info('[diag] executeToolViaServer enter: modelToolName=%s executionToolName=%s executionToolType=%s hasServerUrl=%s hasConfigCtx=%s hasConfigCtxEmbedding=%s taskType=%s taskId=%s pid=%d NODE_APP_INSTANCE=%s',
         modelToolName,
         executionTool?.name || '',
         executionTool?.type || '',
         !!config.server_url,
         !!config.ctx,
-        !!(config.ctx as any)?.embedding,
+        !!embedding,
         task?.type || '',
         task?._id?.toString?.() || task?._id || '',
         process.pid,
@@ -282,7 +293,7 @@ async function executeToolViaServer(config: any, task: any, executionTool: any, 
             callTask.baseDocId || '',
             callTask.owner || '',
             callTask.toolType || '',
-            !!(config.ctx as any)?.embedding,
+            !!embedding,
             process.pid,
             process.env.NODE_APP_INSTANCE || '',
         );
@@ -297,7 +308,7 @@ async function executeToolViaServer(config: any, task: any, executionTool: any, 
             callTask.toolType,
             callTask.baseDocId,
             callTask.owner,
-            (config.ctx as any)?.embedding,
+            embedding,
         );
         return result;
     }
@@ -598,13 +609,35 @@ async function executeAgentTask(task: any, reporter: WorkerTaskReporter, config:
     throw new Error('Agent task exceeded maximum tool-call iterations');
 }
 
+function workerSystemToolContext(config: any, task: any) {
+    return {
+        domainId: task.domainId,
+        baseDocId: task.baseDocId || task.context?.baseDocId,
+        owner: task.owner || task.context?.owner || task.uid,
+        embedding: resolveEmbeddingService(config.ctx),
+    };
+}
+
+async function executeSemanticSearchTool(task: any, reporter: WorkerTaskReporter, config: any) {
+    const { executeLocalSystemTool } = require('ejun/src/service/mcp');
+    await reporter.status({ status: 'running', toolName: SEMANTIC_SEARCH_TOOL });
+    const result = await executeLocalSystemTool(
+        SEMANTIC_SEARCH_TOOL,
+        task.args || {},
+        workerSystemToolContext(config, task),
+    );
+    await reporter.complete({ result });
+}
+
 async function executeToolCallTask(task: any, reporter: WorkerTaskReporter, config: any) {
     await reporter.accepted();
+    const toolName = task.toolName || task.name || '';
+    const embedding = resolveEmbeddingService(config.ctx);
     logger.info('[diag] executeToolCallTask enter: tool=%s hasServerUrl=%s hasConfigCtx=%s hasConfigCtxEmbedding=%s domainId=%s baseDocId=%s owner=%s toolType=%s pid=%d NODE_APP_INSTANCE=%s',
-        task.toolName || task.name || '',
+        toolName,
         !!config.server_url,
         !!config.ctx,
-        !!(config.ctx as any)?.embedding,
+        !!embedding,
         task.domainId || '',
         task.baseDocId || '',
         task.owner || '',
@@ -612,13 +645,25 @@ async function executeToolCallTask(task: any, reporter: WorkerTaskReporter, conf
         process.pid,
         process.env.NODE_APP_INSTANCE || '',
     );
+    // Keep CPU-heavy embedding search on the worker, never proxy back to API server.
+    if (toolName === SEMANTIC_SEARCH_TOOL) {
+        try {
+            if (!embedding) {
+                throw new Error('Embedding service is not available in this worker');
+            }
+            await executeSemanticSearchTool(task, reporter, config);
+        } catch (e: any) {
+            await reporter.error({ message: e?.message || String(e), code: e?.code || 'WORKER_TOOL_CALL_ERROR', stack: e?.stack });
+        }
+        return;
+    }
     if (!config.server_url) {
         const McpClient = getMcpClient();
         const mcpClient = new McpClient();
         try {
-            await reporter.status({ status: 'running', toolName: task.toolName || task.name });
+            await reporter.status({ status: 'running', toolName });
             const result = await mcpClient.callTool(
-                task.toolName || task.name,
+                toolName,
                 task.args || {},
                 task.domainId,
                 undefined,
@@ -626,7 +671,7 @@ async function executeToolCallTask(task: any, reporter: WorkerTaskReporter, conf
                 task.toolType,
                 task.baseDocId,
                 task.owner,
-                (config.ctx as any)?.embedding,
+                embedding,
             );
             await reporter.complete({ result });
         } catch (e: any) {
@@ -668,10 +713,76 @@ async function executeMcpToolCallTask(task: any, reporter: WorkerTaskReporter) {
     await reporter.complete({ response });
 }
 
+function resolveEmbeddingService(ctx: any) {
+    try {
+        if (ctx?.embedding) return ctx.embedding;
+    } catch {
+        // Cordis throws when the fiber did not declare inject=['embedding'].
+    }
+    try {
+        return require('ejun/src/service/embedding').getEmbeddingService?.();
+    } catch {
+        return undefined;
+    }
+}
+
+async function executeEmbeddingIndexTask(task: any, reporter: WorkerTaskReporter, config: any) {
+    await reporter.accepted();
+    const domainId = task.domainId;
+    const baseDocId = Number(task.baseDocId);
+    const generation = Number(task.generation) || 0;
+    const attempt = Number(task.attempt) || 0;
+    try {
+        if (!domainId) throw new Error('domainId is required');
+        if (!Number.isFinite(baseDocId) || baseDocId <= 0) throw new Error('baseDocId is required');
+
+        const { getEmbeddingState } = require('ejun/src/service/embeddingWorker');
+        const state = await getEmbeddingState(domainId, baseDocId);
+        if (state?.nextRetryAt && state.nextRetryAt > new Date() && (state.attempt || 0) > 0) {
+            // Task was claimed early; leave recovery to re-queue after nextRetryAt.
+            await reporter.complete({
+                result: {
+                    ok: true,
+                    deferred: true,
+                    nextRetryAt: state.nextRetryAt,
+                    domainId,
+                    baseDocId,
+                    generation,
+                },
+            });
+            return;
+        }
+
+        // Take the lease before any heavy work so recoverExpiredEmbeddingWork
+        // cannot re-queue the same generation while we are already running.
+        const lease = await acquireEmbeddingLease({ domainId, baseDocId, generation, attempt });
+        if (!lease) {
+            await reporter.complete({ result: { ok: true, skipped: 'stale_generation', domainId, baseDocId, generation } });
+            return;
+        }
+
+        const embedding = resolveEmbeddingService(config.ctx);
+        if (!embedding) throw new Error('Embedding service is not available in this worker');
+
+        await reporter.status({ status: 'running', baseDocId, mode: task.mode || 'incremental', generation });
+        const result = await embedding.processIndexTask(task);
+        await completeEmbeddingIndex({ domainId, baseDocId, generation });
+        await reporter.complete({ result: { ok: true, ...result, generation, reason: task.reason || null } });
+    } catch (e: any) {
+        await failEmbeddingIndex({ domainId, baseDocId, generation, attempt }, e).catch(() => null);
+        await reporter.error({
+            message: e?.message || String(e),
+            code: e?.code || 'WORKER_EMBEDDING_INDEX_ERROR',
+            stack: e?.stack,
+        });
+    }
+}
+
 export async function executeWorkerTask(taskType: string, task: any, reporter: WorkerTaskReporter, config: any = {}) {
     if (taskType === 'agent_task') return executeAgentTask(task, reporter, config);
     if (taskType === 'tool_call') return executeToolCallTask(task, reporter, config);
     if (taskType === 'mcp_tool_call') return executeMcpToolCallTask(task, reporter);
+    if (taskType === EMBEDDING_INDEX_WORKER_TASK) return executeEmbeddingIndexTask(task, reporter, config);
     throw new Error(`Unsupported worker task type: ${taskType}`);
 }
 
@@ -687,6 +798,7 @@ function taskTypeFromDbTask(t: any) {
     if (t.type === 'task') return 'agent_task';
     if (t.type === 'tool_call') return 'tool_call';
     if (t.type === 'mcp' && t.subType === 'tool_call') return 'mcp_tool_call';
+    if (t.type === EMBEDDING_TASK_TYPE && t.subType === EMBEDDING_INDEX_SUBTYPE) return EMBEDDING_INDEX_WORKER_TASK;
     return null;
 }
 
@@ -830,6 +942,9 @@ function createBuiltinReporter(ctx: EjunzContext, dbTask: any, taskType: string,
                 (ctx.broadcast as any)('toolcall/complete', dbTask._id, data?.result ?? data?.data);
                 return;
             }
+            if (taskType === EMBEDDING_INDEX_WORKER_TASK) {
+                return;
+            }
             if (taskType === 'mcp_tool_call') {
                 const sessionId = dbTask.sessionId;
                 if (!sessionId) return;
@@ -863,6 +978,9 @@ function createBuiltinReporter(ctx: EjunzContext, dbTask: any, taskType: string,
                     message: err?.message || String(err || 'Tool call failed'),
                     code: err?.code || 'WORKER_TOOL_CALL_ERROR',
                 });
+                return;
+            }
+            if (taskType === EMBEDDING_INDEX_WORKER_TASK) {
                 return;
             }
             if (taskType === 'mcp_tool_call') {
@@ -915,10 +1033,12 @@ export async function apply(ctx: EjunzContext) {
     allocatedBuiltinWorkerId = await allocateBuiltinWorkerId(workerStatusModel, workerSourceId);
     const workerId = builtinWorkerId();
     const concurrency = getConfig('toolcallConcurrency') || 10;
+    const embeddingConcurrency = Math.max(1, Number(process.env.EJUNZ_EMBEDDING_CONCURRENCY) || 1);
     const activeTasks = new Map<string, any>();
     let reqCount = 0;
     const startedAt = new Date();
     let consumer: any;
+    let embeddingConsumer: any;
 
     const updateStatus = async () => upsertWorkerStatus({
         workerId,
@@ -931,13 +1051,15 @@ export async function apply(ctx: EjunzContext) {
         host: workerHost,
         pid: process.pid,
         nodeAppInstance: process.env.NODE_APP_INSTANCE,
-        consuming: !!consumer?.consuming,
+        consuming: !!(consumer?.consuming || embeddingConsumer?.consuming),
         concurrency,
+        embeddingConcurrency,
         processingCount: activeTasks.size,
         activeTasks: Array.from(activeTasks.values()).slice(0, 20),
         reqCount,
         startedAt,
         status: 'online',
+        taskTypes: ['agent_task', 'tool_call', 'mcp_tool_call', EMBEDDING_INDEX_WORKER_TASK],
     });
 
     const handleTask = async (t: any) => {
@@ -998,12 +1120,29 @@ export async function apply(ctx: EjunzContext) {
         concurrency,
         () => isWorkerPaused(workerId),
     );
+    embeddingConsumer = TaskModel.consume(
+        { type: EMBEDDING_TASK_TYPE, subType: EMBEDDING_INDEX_SUBTYPE },
+        handleTask,
+        false,
+        embeddingConcurrency,
+        () => isWorkerPaused(workerId),
+    );
+    // Delay first recover so in-flight claims can acquire leases before we re-queue.
+    const startupRecoverTimer = setTimeout(() => {
+        recoverExpiredEmbeddingWork().catch((err) => logger.warn('embedding recover on startup failed: %s', err?.message || err));
+    }, 2_000);
+    const recoverTimer = setInterval(() => {
+        recoverExpiredEmbeddingWork().catch(() => {});
+    }, 5_000);
     await updateStatus();
     const statusTimer = setInterval(() => updateStatus().catch(() => {}), 10000);
-    logger.info('Ejunz builtin worker consumer started (concurrency=%d)', concurrency);
+    logger.info('Ejunz builtin worker consumer started (concurrency=%d embeddingConcurrency=%d)', concurrency, embeddingConcurrency);
     return () => {
+        clearTimeout(startupRecoverTimer);
         clearInterval(statusTimer);
+        clearInterval(recoverTimer);
         consumer?.destroy?.();
+        embeddingConsumer?.destroy?.();
         removeWorkerStatus(workerId).catch(() => {});
     };
 }

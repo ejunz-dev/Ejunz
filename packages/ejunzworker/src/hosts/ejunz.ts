@@ -7,6 +7,8 @@ import { SystemError } from '../error';
 import { Session } from '../interface';
 import log from '../log';
 import { executeWorkerTask, WorkerTaskReporter } from './builtin';
+import { EMBEDDING_INDEX_WORKER_TASK, SEMANTIC_SEARCH_TOOL } from 'ejun/src/service/embeddingWorker';
+import { getEmbeddingRuntimeContext } from '../runtime/embedding';
 
 const WORKER_PROTOCOL = 'ejunz-worker-v1';
 
@@ -21,7 +23,9 @@ function workerVersion(config: any) {
 }
 
 function normalizeTaskTypes(taskTypes: any) {
-    if (!Array.isArray(taskTypes) || taskTypes.length === 0) return ['agent_task', 'tool_call', 'mcp_tool_call'];
+    if (!Array.isArray(taskTypes) || taskTypes.length === 0) {
+        return ['agent_task', 'tool_call', 'mcp_tool_call', EMBEDDING_INDEX_WORKER_TASK];
+    }
     return taskTypes.map((i) => String(i));
 }
 
@@ -260,7 +264,13 @@ export default class Ejunz implements Session {
             const reporter = this.createReporter(taskId, taskType);
             try {
                 log.info(`[${this.config.host}] Worker task started: ${taskType} ${taskId}`);
-                await executeWorkerTask(taskType, payload, reporter, this.config);
+                const needsEmbeddingRuntime = taskType === EMBEDDING_INDEX_WORKER_TASK
+                    || (taskType === 'tool_call'
+                        && (payload.toolName || payload.name) === SEMANTIC_SEARCH_TOOL);
+                const runtimeConfig = needsEmbeddingRuntime
+                    ? { ...this.config, ctx: await getEmbeddingRuntimeContext() }
+                    : this.config;
+                await executeWorkerTask(taskType, payload, reporter, runtimeConfig);
                 log.info(`[${this.config.host}] Worker task finished: ${taskType} ${taskId}`);
             } catch (e: any) {
                 log.error(`[${this.config.host}] Worker task failed: ${taskType} ${taskId}`, e);
@@ -290,11 +300,13 @@ export default class Ejunz implements Session {
             complete: (data?: any) => {
                 if (taskType === 'tool_call') return send({ key: 'tool_call.complete', ...data });
                 if (taskType === 'mcp_tool_call') return send({ key: 'mcp_tool_call.complete', ...data });
+                if (taskType === EMBEDDING_INDEX_WORKER_TASK) return send({ key: 'embedding.complete', ...data });
                 return send({ key: 'task.complete', ...data });
             },
             error: (error: any) => {
                 if (taskType === 'tool_call') return send({ key: 'tool_call.error', error });
                 if (taskType === 'mcp_tool_call') return send({ key: 'mcp_tool_call.error', error });
+                if (taskType === EMBEDDING_INDEX_WORKER_TASK) return send({ key: 'embedding.error', error });
                 return send({ key: 'task.error', error });
             },
         };

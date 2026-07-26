@@ -103,6 +103,12 @@ function BaseDetailViewer() {
   const [wsStatus, setWsStatus] = useState<WSConnectionStatus>('disconnected');
   const [viewerCount, setViewerCount] = useState(0);
   const [liveViewers, setLiveViewers] = useState<ViewerInfo[]>([]);
+  const [embeddingStatus, setEmbeddingStatus] = useState<{
+    status: 'never' | 'queued' | 'indexing' | 'ready' | 'error';
+    indexedCount?: number;
+    lastError?: string | null;
+    mode?: string | null;
+  } | null>(null);
   const title = base.title?.trim() || String(i18n('Knowledge Base'));
   const [liveNodes, setLiveNodes] = useState(base.nodes || []);
   const [liveEdges, setLiveEdges] = useState(base.edges || []);
@@ -410,6 +416,11 @@ function BaseDetailViewer() {
             const msg = JSON.parse(data);
             if (msg.type === 'init') {
               if (typeof msg.viewerCount === 'number') setViewerCount(msg.viewerCount);
+              if (msg.embeddingStatus) setEmbeddingStatus(msg.embeddingStatus);
+              return;
+            }
+            if (msg.type === 'embedding_status') {
+              if (msg.embeddingStatus) setEmbeddingStatus(msg.embeddingStatus);
               return;
             }
             if (msg.type === 'viewer_count') {
@@ -1014,6 +1025,7 @@ function BaseDetailViewer() {
         docId={base.docId || ''}
         open={semanticSearchOpen}
         onOpenChange={setSemanticSearchOpen}
+        embeddingStatus={embeddingStatus}
         onSelectResult={(result) => {
           if (result.kind === 'node') {
             const node = nodes.find((n) => n.id === result.nodeId);
