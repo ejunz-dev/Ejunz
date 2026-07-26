@@ -16,6 +16,12 @@ import {
 } from '../model/workerStatus';
 import bus from '../service/bus';
 import {
+    EMBEDDING_TASK_TYPE,
+    EMBEDDING_INDEX_SUBTYPE,
+    EMBEDDING_INDEX_WORKER_TASK,
+    recoverExpiredEmbeddingWork,
+} from '../service/embeddingWorker';
+import {
     ConnectionHandler, Handler, post, subscribe, Types,
 } from '../service/server';
 
@@ -45,8 +51,9 @@ export function getAgentStreamSnapshot(domainId: string, recordId: string): Agen
 
 const WORKER_PROTOCOL = 'ejunz-worker-v1';
 const DEFAULT_TASK_TYPES = ['agent_task', 'tool_call', 'mcp_tool_call'];
+const ALLOWED_TASK_TYPES = [...DEFAULT_TASK_TYPES, EMBEDDING_INDEX_WORKER_TASK];
 
-type EjunzWorkerTaskType = 'agent_task' | 'tool_call' | 'mcp_tool_call';
+type EjunzWorkerTaskType = 'agent_task' | 'tool_call' | 'mcp_tool_call' | typeof EMBEDDING_INDEX_WORKER_TASK;
 
 type WorkerMeta = {
     workerId: string;
@@ -80,6 +87,9 @@ function taskTypeFromDbTask(t: Task): EjunzWorkerTaskType | null {
     if (t.type === 'task') return 'agent_task';
     if (t.type === 'tool_call') return 'tool_call';
     if (t.type === 'mcp' && (t as any).subType === 'tool_call') return 'mcp_tool_call';
+    if (t.type === EMBEDDING_TASK_TYPE && (t as any).subType === EMBEDDING_INDEX_SUBTYPE) {
+        return EMBEDDING_INDEX_WORKER_TASK;
+    }
     return null;
 }
 
@@ -88,6 +98,9 @@ function buildTaskQuery(taskTypes: string[], minPriority?: number) {
     if (taskTypes.includes('agent_task')) clauses.push({ type: 'task' });
     if (taskTypes.includes('tool_call')) clauses.push({ type: 'tool_call' });
     if (taskTypes.includes('mcp_tool_call')) clauses.push({ type: 'mcp', subType: 'tool_call' });
+    if (taskTypes.includes(EMBEDDING_INDEX_WORKER_TASK)) {
+        clauses.push({ type: EMBEDDING_TASK_TYPE, subType: EMBEDDING_INDEX_SUBTYPE });
+    }
     const query: any = clauses.length === 1 ? { ...clauses[0] } : { $or: clauses.length ? clauses : [{ type: '__never__' }] };
     if (Number.isFinite(minPriority)) query.priority = { $gt: minPriority };
     return query;
@@ -95,7 +108,7 @@ function buildTaskQuery(taskTypes: string[], minPriority?: number) {
 
 function cleanTaskTypes(taskTypes: unknown): string[] {
     if (!(taskTypes instanceof Array)) return DEFAULT_TASK_TYPES.slice();
-    const allowed = new Set(DEFAULT_TASK_TYPES);
+    const allowed = new Set(ALLOWED_TASK_TYPES);
     const out = taskTypes.map((i) => String(i)).filter((i) => allowed.has(i));
     return out.length ? out : DEFAULT_TASK_TYPES.slice();
 }
@@ -392,6 +405,34 @@ class ToolCallTaskCallbackContext extends EjunzTaskCallbackContext {
     }
 }
 
+class EmbeddingTaskCallbackContext extends EjunzTaskCallbackContext {
+    async start() {
+        recoverExpiredEmbeddingWork().catch((err) => logger.warn('embedding recover failed: %o', err));
+    }
+
+    async accepted() {}
+
+    async complete() {
+        // State transitions are applied by the worker runtime (executeEmbeddingIndexTask).
+        this.finish(null);
+    }
+
+    async error(body: any = {}) {
+        const err = body?.error || body;
+        logger.error('Embedding worker task failed: taskId=%s error=%s', this.taskId, err?.message || String(err || 'Embedding task failed'));
+        // Failure/retry state is recorded by the worker runtime before reporting error.
+        this.finish(null);
+    }
+
+    async reset() {
+        if (this.completed) return;
+        await this.enqueue(async () => {
+            await task.add(taskWithoutId(this.dbTask));
+        });
+        this.finish(null);
+    }
+}
+
 class McpToolCallCallbackContext extends EjunzTaskCallbackContext {
     async start() {}
 
@@ -516,6 +557,7 @@ export class EjunzWorkerConnectionHandler extends ConnectionHandler {
     private createCallbackContext(t: Task, taskType: EjunzWorkerTaskType) {
         if (taskType === 'agent_task') return new AgentTaskCallbackContext(this.ctx, t, taskType, this.workerMeta.bind(this));
         if (taskType === 'tool_call') return new ToolCallTaskCallbackContext(this.ctx, t, taskType, this.workerMeta.bind(this));
+        if (taskType === EMBEDDING_INDEX_WORKER_TASK) return new EmbeddingTaskCallbackContext(this.ctx, t, taskType, this.workerMeta.bind(this));
         return new McpToolCallCallbackContext(this.ctx, t, taskType, this.workerMeta.bind(this));
     }
 
@@ -630,6 +672,8 @@ export class EjunzWorkerConnectionHandler extends ConnectionHandler {
         else if (msg.key === 'task.error') await cb.error(msg);
         else if (msg.key === 'tool_call.complete') await cb.complete(msg);
         else if (msg.key === 'tool_call.error') await cb.error(msg);
+        else if (msg.key === 'embedding.complete') await cb.complete(msg);
+        else if (msg.key === 'embedding.error') await cb.error(msg);
         else if (msg.key === 'mcp_tool_call.complete') await cb.complete(msg);
         else if (msg.key === 'mcp_tool_call.error') await cb.error(msg);
     }
@@ -684,7 +728,7 @@ export async function callToolViaWorker(
             const err = new Error(`Tool call timeout: ${toolName}`);
             (err as any).code = 'TIMEOUT';
             reject(err);
-        }, 30000);
+        }, toolName === 'semantic_search' ? 120000 : 30000);
 
         const handler = (completedTaskId: ObjectId, result: any) => {
             if (completedTaskId.toString() === taskId.toString()) {

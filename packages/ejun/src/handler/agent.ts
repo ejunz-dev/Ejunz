@@ -36,6 +36,7 @@ import {
 import * as document from '../model/document';
 import NodeModel from '../model/node';
 import { callToolViaWorker, getAgentStreamSnapshot } from './worker';
+import { SEMANTIC_SEARCH_TOOL } from '../service/embeddingWorker';
 import RecordModel from '../model/record';
 import SessionModel from '../model/session';
 import { parseCategory } from '../lib/category';
@@ -4479,11 +4480,17 @@ export class DirectAiChatConnectionHandler extends ConnectionHandler {
         let semanticBlock = '';
         let semanticCount = 0;
         let semanticResults: BaseTutorSemanticResult[] = [];
-        if (systemPrompt && docIdNum > 0 && (this.ctx as any).embedding) {
+        if (systemPrompt && docIdNum > 0) {
             try {
-                const rawResults = await (this.ctx as any).embedding.searchSimilar(
-                    domainId, docIdNum, message, 8,
-                );
+                const toolResult = await callToolViaWorker(this.ctx, SEMANTIC_SEARCH_TOOL, {
+                    query: message,
+                    limit: 8,
+                }, domainId, undefined, this.user._id, undefined, 0, {
+                    baseDocId: docIdNum,
+                    owner: this.user._id,
+                    toolType: 'system',
+                });
+                const rawResults = Array.isArray(toolResult?.results) ? toolResult.results : [];
                 semanticResults = await enrichBaseTutorSemanticResults(domainId, docIdNum, rawResults || []);
                 semanticCount = semanticResults.length;
                 semanticBlock = formatBaseTutorSemanticBlock(semanticResults);

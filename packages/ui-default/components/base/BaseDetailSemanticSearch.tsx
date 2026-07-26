@@ -45,13 +45,33 @@ export type SemanticSearchItem = {
   score: number;
 };
 
+export type EmbeddingStatusView = {
+  status: 'never' | 'queued' | 'indexing' | 'ready' | 'error';
+  indexedCount?: number;
+  lastError?: string | null;
+  mode?: string | null;
+} | null;
+
 export type BaseDetailSemanticSearchProps = {
   domainId: string;
   docId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelectResult?: (result: SemanticSearchItem) => void;
+  embeddingStatus?: EmbeddingStatusView;
 };
+
+function embeddingStatusLabel(status: EmbeddingStatusView): string | null {
+  if (!status?.status) return null;
+  if (status.status === 'never') return i18n('Not indexed');
+  if (status.status === 'queued') return i18n('Index queued');
+  if (status.status === 'indexing') return i18n('Indexing…');
+  if (status.status === 'error') return i18n('Index failed');
+  const count = status.indexedCount;
+  return typeof count === 'number' && count > 0
+    ? i18n('Indexed ({0})', count)
+    : i18n('Indexed');
+}
 
 export function BaseDetailSemanticSearch({
   domainId,
@@ -59,12 +79,14 @@ export function BaseDetailSemanticSearch({
   open,
   onOpenChange,
   onSelectResult,
+  embeddingStatus,
 }: BaseDetailSemanticSearchProps) {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<SemanticSearchItem[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const embeddingLabel = embeddingStatusLabel(embeddingStatus);
 
   useEffect(() => {
     if (open && inputRef.current) {
@@ -125,95 +147,106 @@ export function BaseDetailSemanticSearch({
             onClick={() => onOpenChange(false)}
             aria-hidden
           />
-          <div
-            className="roadmap-semantic-search-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label={i18n('Semantic Search')}
-          >
-            <div className="roadmap-semantic-search-modal__header">
-              <div className="roadmap-semantic-search-modal__title">
-                <SearchIcon />
-                {i18n('Semantic Search')}
-              </div>
-              <button
-                type="button"
-                className="roadmap-semantic-search-modal__close"
-                onClick={() => onOpenChange(false)}
-                aria-label={i18n('Close')}
+          <div className="roadmap-semantic-search-shell">
+            {embeddingLabel ? (
+              <div
+                className={`roadmap-semantic-search-index-status is-${embeddingStatus?.status || 'never'}`}
+                title={embeddingStatus?.lastError || embeddingLabel}
               >
-                <CloseIcon />
-              </button>
-            </div>
-
-            <div className="roadmap-semantic-search-modal__body">
-              <div className="roadmap-semantic-search-input-wrap">
-                <input
-                  ref={inputRef}
-                  type="text"
-                  className="roadmap-semantic-search-input"
-                  placeholder={String(i18n('Search knowledge base by meaning...'))}
-                  value={query}
-                  onChange={(e) => setQuery(e.currentTarget.value)}
-                  onKeyDown={handleKeyDown}
-                />
+                <span className="roadmap-semantic-search-index-status__dot" aria-hidden />
+                {embeddingLabel}
+              </div>
+            ) : null}
+            <div
+              className="roadmap-semantic-search-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-label={i18n('Semantic Search')}
+            >
+              <div className="roadmap-semantic-search-modal__header">
+                <div className="roadmap-semantic-search-modal__title">
+                  <SearchIcon />
+                  {i18n('Semantic Search')}
+                </div>
                 <button
                   type="button"
-                  className="roadmap-semantic-search-submit"
-                  disabled={loading || !query.trim()}
-                  onClick={doSearch}
+                  className="roadmap-semantic-search-modal__close"
+                  onClick={() => onOpenChange(false)}
+                  aria-label={i18n('Close')}
                 >
-                  {loading ? String(i18n('Searching...')) : String(i18n('Search'))}
+                  <CloseIcon />
                 </button>
               </div>
 
-              {loading ? (
-                <div className="roadmap-semantic-search-status">
-                  {i18n('Searching...')}
+              <div className="roadmap-semantic-search-modal__body">
+                <div className="roadmap-semantic-search-input-wrap">
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    className="roadmap-semantic-search-input"
+                    placeholder={String(i18n('Search knowledge base by meaning...'))}
+                    value={query}
+                    onChange={(e) => setQuery(e.currentTarget.value)}
+                    onKeyDown={handleKeyDown}
+                  />
+                  <button
+                    type="button"
+                    className="roadmap-semantic-search-submit"
+                    disabled={loading || !query.trim()}
+                    onClick={doSearch}
+                  >
+                    {loading ? String(i18n('Searching...')) : String(i18n('Search'))}
+                  </button>
                 </div>
-              ) : null}
 
-              {!loading && hasSearched && results.length === 0 ? (
-                <div className="roadmap-semantic-search-status roadmap-semantic-search-status--empty">
-                  {i18n('No results found')}
-                </div>
-              ) : null}
+                {loading ? (
+                  <div className="roadmap-semantic-search-status">
+                    {i18n('Searching...')}
+                  </div>
+                ) : null}
 
-              {results.length > 0 ? (
-                <ul className="roadmap-semantic-search-results">
-                  {results.map((r, i) => (
-                    <li key={`${r.kind}-${r.cardDocId || r.nodeId}-${i}`}>
-                      <button
-                        type="button"
-                        className="roadmap-semantic-search-result-item"
-                        onClick={() => handleResultClick(r)}
-                      >
-                        <div className="roadmap-semantic-search-result-item__icon">
-                          {r.kind === 'card' ? <CardIcon /> : <NodeIcon />}
-                        </div>
-                        <div className="roadmap-semantic-search-result-item__body">
-                          <div className="roadmap-semantic-search-result-item__text">
-                            {r.text.length > 120 ? r.text.slice(0, 120) + '…' : r.text}
+                {!loading && hasSearched && results.length === 0 ? (
+                  <div className="roadmap-semantic-search-status roadmap-semantic-search-status--empty">
+                    {i18n('No results found')}
+                  </div>
+                ) : null}
+
+                {results.length > 0 ? (
+                  <ul className="roadmap-semantic-search-results">
+                    {results.map((r, i) => (
+                      <li key={`${r.kind}-${r.cardDocId || r.nodeId}-${i}`}>
+                        <button
+                          type="button"
+                          className="roadmap-semantic-search-result-item"
+                          onClick={() => handleResultClick(r)}
+                        >
+                          <div className="roadmap-semantic-search-result-item__icon">
+                            {r.kind === 'card' ? <CardIcon /> : <NodeIcon />}
                           </div>
-                          <div className="roadmap-semantic-search-result-item__meta-row">
-                            <span className="roadmap-semantic-search-result-item__kind">
-                              {resultSubtitle(r)}
-                            </span>
-                            <span className="roadmap-semantic-search-result-item__score">
-                              {i18n('Match: {0}%', String(scorePercent(r.score)))}
-                            </span>
+                          <div className="roadmap-semantic-search-result-item__body">
+                            <div className="roadmap-semantic-search-result-item__text">
+                              {r.text.length > 120 ? r.text.slice(0, 120) + '…' : r.text}
+                            </div>
+                            <div className="roadmap-semantic-search-result-item__meta-row">
+                              <span className="roadmap-semantic-search-result-item__kind">
+                                {resultSubtitle(r)}
+                              </span>
+                              <span className="roadmap-semantic-search-result-item__score">
+                                {i18n('Match: {0}%', String(scorePercent(r.score)))}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                        <div className="roadmap-semantic-search-result-item__arrow" aria-hidden>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                            <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        </div>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
+                          <div className="roadmap-semantic-search-result-item__arrow" aria-hidden>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                              <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          </div>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
             </div>
           </div>
         </>
