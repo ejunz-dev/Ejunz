@@ -22,7 +22,7 @@ import ToolModel, {
     getEjunzToolsCatalog,
 } from './tool';
 import DomainMarketToolModel from './domain_market_tool';
-import { BaseModel, CardModel, getBranchData } from './base';
+import { BaseModel, CardModel } from './base';
 import PluginModel from './plugin';
 
 const logger = new Logger('model/mcp');
@@ -47,7 +47,6 @@ class McpModel {
             token: mcp.token,
             edgeId: mcp.edgeId,
             baseDocId: mcp.baseDocId,
-            branch: mcp.branch,
             name: mcp.name,
             description: mcp.description,
             instructions: mcp.instructions,
@@ -434,15 +433,12 @@ export async function parsePluginCardDefinition(card: CardDoc, node: BaseNode, p
     return sanitizePluginCardDefinition(meta, body, card, node, plugin, domainId);
 }
 
-export async function loadPluginCardDefinitions(domainId: string, plugin: PluginDoc, branch = 'main', enabledNodeIds?: Set<string>): Promise<PluginCardDefinition[]> {
-    const data = getBranchData(plugin as any, branch);
-    const nodes = data.nodes || [];
+export async function loadPluginCardDefinitions(domainId: string, plugin: PluginDoc, enabledNodeIds?: Set<string>): Promise<PluginCardDefinition[]> {
+    const nodes = plugin.nodes || [];
     const out: PluginCardDefinition[] = [];
     for (const node of nodes) {
         if (enabledNodeIds && !enabledNodeIds.has(node.id)) continue;
         const filter: any = { baseDocId: plugin.docId, nodeId: node.id };
-        if (branch === 'main') filter.$or = [{ branch: 'main' }, { branch: { $exists: false } }];
-        else filter.branch = branch;
         const cards = await document.getMulti(domainId, document.TYPE_CARD, filter).sort({ order: 1, cid: 1 }).toArray() as CardDoc[];
         for (const card of cards) {
             const def = await parsePluginCardDefinition(card, node, plugin, domainId);
@@ -455,7 +451,6 @@ export async function loadPluginCardDefinitions(domainId: string, plugin: Plugin
 export async function parsePluginDefinitionsFromSnapshot(input: {
     domainId: string;
     plugin: PluginDoc;
-    branch?: string;
     nodes: BaseNode[];
     nodeCardsMap: Record<string, CardDoc[]>;
 }): Promise<PluginCardDefinition[]> {
@@ -470,10 +465,9 @@ export async function parsePluginDefinitionsFromSnapshot(input: {
     return out;
 }
 
-export async function summarizePluginDefinitions(domainId: string, plugin: PluginDoc, branch = 'main') {
-    const data = getBranchData(plugin as any, branch);
-    const counts = { folder: (data.nodes || []).length, skill: 0, command: 0, mcp: 0 };
-    for (const def of await loadPluginCardDefinitions(domainId, plugin, branch)) {
+export async function summarizePluginDefinitions(domainId: string, plugin: PluginDoc) {
+    const counts = { folder: (plugin.nodes || []).length, skill: 0, command: 0, mcp: 0 };
+    for (const def of await loadPluginCardDefinitions(domainId, plugin)) {
         counts[def.kind] += 1;
     }
     return counts;
@@ -493,20 +487,19 @@ export type SlashCatalogEntry = {
     requireConfirmation?: boolean;
 };
 
-export function normalizeAgentPluginBindings(adoc: AgentDoc): Array<{ docId: number; branch: string; enabledNodeIds?: string[] }> {
+export function normalizeAgentPluginBindings(adoc: AgentDoc): Array<{ docId: number; enabledNodeIds?: string[] }> {
     const raw = (adoc as any).pluginBindings;
     if (!Array.isArray(raw)) return [];
-    const out: Array<{ docId: number; branch: string; enabledNodeIds?: string[] }> = [];
+    const out: Array<{ docId: number; enabledNodeIds?: string[] }> = [];
     const seen = new Set<number>();
     for (const b of raw) {
         const docId = Number(b?.docId);
         if (!Number.isFinite(docId) || docId <= 0 || seen.has(docId)) continue;
         seen.add(docId);
-        const branch = String(b?.branch || 'main').trim() || 'main';
         const enabledNodeIds = Array.isArray(b?.enabledNodeIds)
             ? b.enabledNodeIds.map((x: unknown) => String(x)).filter(Boolean).slice(0, 500)
             : undefined;
-        out.push({ docId, branch, ...(enabledNodeIds?.length ? { enabledNodeIds } : {}) });
+        out.push({ docId, ...(enabledNodeIds?.length ? { enabledNodeIds } : {}) });
     }
     return out;
 }
@@ -516,17 +509,13 @@ export async function visiblePluginsForUser(domainId: string, user: any): Promis
     return plugins.filter((p) => PluginModel.canRead(user, p) || PluginModel.canEdit(user, p));
 }
 
-async function loadBoundPluginDocs(domainId: string, adoc: AgentDoc): Promise<Array<{ plugin: PluginDoc; branch: string; enabledNodeIds?: Set<string> }>> {
+async function loadBoundPluginDocs(domainId: string, adoc: AgentDoc): Promise<Array<{ plugin: PluginDoc; enabledNodeIds?: Set<string> }>> {
     const bindings = normalizeAgentPluginBindings(adoc);
-    const out: Array<{ plugin: PluginDoc; branch: string; enabledNodeIds?: Set<string> }> = [];
+    const out: Array<{ plugin: PluginDoc; enabledNodeIds?: Set<string> }> = [];
     for (const b of bindings) {
         const plugin = await PluginModel.get(domainId, b.docId);
         if (!plugin || plugin.enabled === false) continue;
-        out.push({
-            plugin,
-            branch: b.branch || 'main',
-            ...(b.enabledNodeIds?.length ? { enabledNodeIds: new Set(b.enabledNodeIds) } : {}),
-        });
+        out.push({ plugin, ...(b.enabledNodeIds?.length ? { enabledNodeIds: new Set(b.enabledNodeIds) } : {}) });
     }
     return out;
 }
@@ -534,8 +523,8 @@ async function loadBoundPluginDocs(domainId: string, adoc: AgentDoc): Promise<Ar
 export async function resolveAgentSlashCatalog(domainId: string, adoc: AgentDoc): Promise<SlashCatalogEntry[]> {
     const out: SlashCatalogEntry[] = [];
     const seen = new Set<string>();
-    for (const { plugin, branch, enabledNodeIds } of await loadBoundPluginDocs(domainId, adoc)) {
-        for (const def of await loadPluginCardDefinitions(domainId, plugin, branch, enabledNodeIds)) {
+    for (const { plugin, enabledNodeIds } of await loadBoundPluginDocs(domainId, adoc)) {
+        for (const def of await loadPluginCardDefinitions(domainId, plugin, enabledNodeIds)) {
             if (def.kind !== 'skill' && def.kind !== 'command') continue;
             if (!def.name || !SLUG_RE.test(def.name) || seen.has(def.name)) continue;
             seen.add(def.name);
@@ -580,14 +569,14 @@ function shouldRefreshPluginMcpStatus(status: PluginDoc['mcpStatus']): boolean {
 
 export async function resolveAgentPluginTools(domainId: string, adoc: AgentDoc): Promise<AgentPluginTool[]> {
     const byId = new Map<string, AgentPluginTool>();
-    for (const { plugin, branch, enabledNodeIds } of await loadBoundPluginDocs(domainId, adoc)) {
-        const definitions = await loadPluginCardDefinitions(domainId, plugin, branch, enabledNodeIds);
+    for (const { plugin, enabledNodeIds } of await loadBoundPluginDocs(domainId, adoc)) {
+        const definitions = await loadPluginCardDefinitions(domainId, plugin, enabledNodeIds);
         let mcpStatus = plugin.mcpStatus;
         if (definitions.some((def) => def.kind === 'mcp' && (def.mcpConfigs?.length || 0) > 0) && shouldRefreshPluginMcpStatus(mcpStatus)) {
             try {
-                                const summary = await testPluginMcpDefinitions({ domainId, plugin, branch, definitions });
-                await syncPluginManagedMcps({ domainId, plugin, branch, definitions, testSummary: summary });
-                mcpStatus = await refreshPluginMcpStatus({ domainId, plugin, branch, reason: 'manual', definitions, testSummary: summary });
+                                const summary = await testPluginMcpDefinitions({ domainId, plugin, definitions });
+                await syncPluginManagedMcps({ domainId, plugin, definitions, testSummary: summary });
+                mcpStatus = await refreshPluginMcpStatus({ domainId, plugin, reason: 'manual', definitions, testSummary: summary });
             } catch (err: any) {
                 console.warn('[plugin-runtime] refresh plugin MCP tools failed:', err?.message || err);
             }
@@ -939,11 +928,9 @@ function allConfigs(definitions: PluginCardDefinition[]): Array<{ def: PluginCar
 export async function buildPluginDraftSnapshot(input: {
     domainId: string;
     plugin: PluginDoc;
-    branch: string;
     batch: any;
 }): Promise<{ nodes: BaseNode[]; nodeCardsMap: Record<string, CardDoc[]> }> {
-    const data = getBranchData(input.plugin as any, input.branch);
-    const nodes: BaseNode[] = (data.nodes || []).map((n: BaseNode) => ({ ...n, data: n.data ? { ...n.data } : n.data }));
+    const nodes: BaseNode[] = (input.plugin.nodes || []).map((n: BaseNode) => ({ ...n, data: n.data ? { ...n.data } : n.data }));
     const nodeById = new Map(nodes.map((n) => [n.id, n]));
     const deletedNodes = new Set<string>((input.batch.nodeDeletes || []).map((x: any) => String(x)));
     for (const nodeUpdate of input.batch.nodeUpdates || []) {
@@ -974,8 +961,6 @@ export async function buildPluginDraftSnapshot(input: {
     for (const node of nodes) {
         if (deletedNodes.has(node.id)) continue;
         const filter: any = { baseDocId: input.plugin.docId, nodeId: node.id };
-        if (input.branch === 'main') filter.$or = [{ branch: 'main' }, { branch: { $exists: false } }];
-        else filter.branch = input.branch;
         const cards = await document.getMulti(input.domainId, document.TYPE_CARD, filter).sort({ order: 1, cid: 1 }).toArray() as CardDoc[];
         nodeCardsMap[node.id] = cards.map((c) => ({ ...c }));
     }
@@ -1029,7 +1014,6 @@ export async function buildPluginDraftSnapshot(input: {
 export async function testPluginMcpDefinitions(input: {
     domainId: string;
     plugin: PluginDoc;
-    branch: string;
     definitions: PluginCardDefinition[];
     timeoutMs?: number;
 }): Promise<PluginMcpTestSummary> {
@@ -1072,7 +1056,6 @@ function statusFromSummary(summary: PluginMcpTestSummary, hasLegacyMcp = false):
 export async function syncPluginManagedMcps(input: {
     domainId: string;
     plugin: PluginDoc;
-    branch: string;
     definitions: PluginCardDefinition[];
     testSummary?: PluginMcpTestSummary;
 }): Promise<void> {
@@ -1146,18 +1129,15 @@ export async function syncPluginManagedMcps(input: {
 export async function refreshPluginMcpStatus(input: {
     domainId: string;
     plugin: PluginDoc;
-    branch?: string;
     reason: 'save' | 'periodic' | 'manual';
     definitions?: PluginCardDefinition[];
     testSummary?: PluginMcpTestSummary;
 }): Promise<PluginMcpStatus> {
-    const branch = input.branch || input.plugin.currentBranch || 'main';
-    const definitions = input.definitions || await loadPluginCardDefinitions(input.domainId, input.plugin, branch);
+    const definitions = input.definitions || await loadPluginCardDefinitions(input.domainId, input.plugin);
     const hasLegacyMcp = definitions.some((d) => d.kind === 'mcp' && (d.toolIds?.length || 0) > 0);
     const summary = input.testSummary || await testPluginMcpDefinitions({
         domainId: input.domainId,
         plugin: input.plugin,
-        branch,
         definitions,
     });
     const status = statusFromSummary(summary, hasLegacyMcp);
@@ -1165,10 +1145,10 @@ export async function refreshPluginMcpStatus(input: {
     return status;
 }
 
-export async function summarizePluginMcpAvailability(domainId: string, plugin: PluginDoc, branch = 'main') {
+export async function summarizePluginMcpAvailability(domainId: string, plugin: PluginDoc) {
     if (plugin.mcpStatus) return plugin.mcpStatus;
     try {
-        const definitions = await loadPluginCardDefinitions(domainId, plugin, branch);
+        const definitions = await loadPluginCardDefinitions(domainId, plugin);
         const hasConfig = definitions.some((d) => (d.mcpConfigs?.length || 0) > 0);
         const hasLegacyMcp = definitions.some((d) => (d.toolIds?.length || 0) > 0);
         if (!hasConfig) {
@@ -1189,14 +1169,12 @@ export async function summarizePluginMcpAvailability(domainId: string, plugin: P
 export async function parseDraftPluginMcpDefinitions(input: {
     domainId: string;
     plugin: PluginDoc;
-    branch: string;
     batch: any;
 }) {
     const snapshot = await buildPluginDraftSnapshot(input);
     return parsePluginDefinitionsFromSnapshot({
         domainId: input.domainId,
         plugin: input.plugin,
-        branch: input.branch,
         ...snapshot,
     });
 }
@@ -1205,11 +1183,10 @@ export async function checkAllEnabledPluginMcpStatus(domainId: string): Promise<
     const plugins = await PluginModel.getAll(domainId, { enabled: { $ne: false } } as any);
     for (const plugin of plugins) {
         try {
-            const branch = plugin.currentBranch || 'main';
-            const definitions = await loadPluginCardDefinitions(domainId, plugin, branch);
-            const summary = await testPluginMcpDefinitions({ domainId, plugin, branch, definitions });
-            await syncPluginManagedMcps({ domainId, plugin, branch, definitions, testSummary: summary });
-            await refreshPluginMcpStatus({ domainId, plugin, branch, reason: 'periodic', definitions, testSummary: summary });
+            const definitions = await loadPluginCardDefinitions(domainId, plugin);
+            const summary = await testPluginMcpDefinitions({ domainId, plugin, definitions });
+            await syncPluginManagedMcps({ domainId, plugin, definitions, testSummary: summary });
+            await refreshPluginMcpStatus({ domainId, plugin, reason: 'periodic', definitions, testSummary: summary });
         } catch (err: any) {
             pluginMcpLogger.warn('plugin MCP periodic check failed plugin=%s: %s', plugin.docId, err?.message || err);
         }
@@ -1260,7 +1237,7 @@ export async function callPluginMcpTool(input: {
     if (!pluginDocId || !pluginCardId || !pluginServerKey) throw new Error('Plugin MCP source metadata is incomplete');
     const plugin = await PluginModel.get(input.domainId, pluginDocId);
     if (!plugin) throw new Error('Plugin not found for MCP tool');
-    const definitions = await loadPluginCardDefinitions(input.domainId, plugin, plugin.currentBranch || 'main');
+    const definitions = await loadPluginCardDefinitions(input.domainId, plugin);
     const def = definitions.find((d) => d.cardId === pluginCardId);
     const cfg = def?.mcpConfigs?.find((c) => c.serverKey === pluginServerKey);
     if (!cfg) throw new Error('Plugin MCP config not found for tool');
@@ -1329,9 +1306,8 @@ function findFolderNode(nodes: BaseNode[], slug: string): BaseNode | undefined {
 }
 
 function buildDefaultPluginGraph(plugin: PluginDoc): { nodes: BaseNode[]; edges: BaseEdge[]; folders: Record<DefaultFolderKey, BaseNode> } {
-    const current = getBranchData(plugin as any, plugin.currentBranch || 'main');
-    const existingNodes = current.nodes?.length ? current.nodes : plugin.nodes || [];
-    const existingEdges = current.edges?.length ? current.edges : plugin.edges || [];
+    const existingNodes = plugin.nodes || [];
+    const existingEdges = plugin.edges || [];
     const root = normalizeRootNode(existingNodes[0]);
     const folders = {} as Record<DefaultFolderKey, BaseNode>;
 
@@ -1523,25 +1499,18 @@ async function upsertDefaultCard(
             nodeId,
             order,
         });
-        await document.set(domainId, document.TYPE_CARD, existing.docId, { branch: 'main' } as any);
         return;
     }
-    await CardModel.create(domainId, plugin.docId, nodeId, owner, title, content, undefined, undefined, order, 'main');
+    await CardModel.create(domainId, plugin.docId, nodeId, owner, title, content, undefined, undefined, order);
 }
 
 export async function syncSystemDefaultPluginShape(domainId: string, plugin: PluginDoc, owner: number): Promise<PluginDoc> {
     const { nodes, edges, folders } = buildDefaultPluginGraph(plugin);
-    const branchData = {
-        ...(plugin.branchData || {}),
-        main: { nodes, edges },
-    };
-
     await PluginModel.update(domainId, plugin.docId, {
         title: SYSTEM_DEFAULT_PLUGIN_TITLE,
         content: SYSTEM_DEFAULT_PLUGIN_DESCRIPTION,
         nodes,
         edges,
-        branchData,
         pluginSlug: SYSTEM_DEFAULT_PLUGIN_SLUG,
         enabled: true,
         visibility: 'system',

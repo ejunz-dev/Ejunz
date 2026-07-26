@@ -13,8 +13,6 @@ import {
     trimDetailExplorerFiltersForClient,
     type MindMapDocType,
     readOptionalRequestBaseDocId,
-    getBranchData,
-    setBranchData,
     nodeCreationDedupCache,
     DEDUP_WINDOW_MS,
     loadCardStatsByBaseDocId,
@@ -23,7 +21,7 @@ import {
     sanitizeBaseEditorUiPrefs,
 } from '../model/base';
 
-export { readOptionalRequestBaseDocId, getBranchData, setBranchData };
+export { readOptionalRequestBaseDocId } from '../model/base';
 import type { BaseDoc, BaseNode, BaseEdge, CardDoc, FileInfo, ProblemFlip, ProblemTrueFalse, ProblemFillBlank, ProblemSingle, ProblemMulti, ProblemMatching, ProblemSuperFlip, ProblemChain, Problem } from '../interface';
 import * as document from '../model/document';
 import { exec as execCb, execFile as execFileCb } from 'child_process';
@@ -43,7 +41,7 @@ import moment from 'moment-timezone';
 import UserModel from '../model/user';
 import { loadBaseDetailUiPrefs, saveBaseDetailUiPrefs } from '../lib/baseDetailUiPrefs';
 import { getTodayUserDomainContribution } from '../lib/homepageRanking';
-import { incDevelopBranchDaily } from '../lib/developBranchDaily';
+import { incDevelopDaily } from '../lib/developBranchDaily';
 import {
     buildDevelopEditorContextWire,
     computeDevelopRunQueueProgress,
@@ -72,8 +70,8 @@ import {
     normalizeChainRows,
     sanitizeProblemTagRegistryList,
     normalizeProblemTagInput,
-    LearnProblemNoteModel,
 } from '../model/problem';
+import LearnProblemNoteModel from '../model/learnProblemNote';
 import { collectRoadmapBatchSaveNumberErrors } from '../model/base';
 
 type LearnProblemNotesBatchBlock = {
@@ -169,7 +167,6 @@ export async function assertDevelopSessionAllowsEdits(
     uid: number,
     sessionHex: string,
     expectedDocId: number,
-    expectedBranch: string,
     expectedMapDocType: MindMapDocType,
 ): Promise<void> {
     if (!ObjectId.isValid(sessionHex)) {
@@ -189,11 +186,6 @@ export async function assertDevelopSessionAllowsEdits(
     }
     const bid = Number(sess.baseDocId);
     if (!Number.isFinite(bid) || bid !== Number(expectedDocId)) {
-        throw new BadRequestError(DEVELOP_SESSION_CLOSED_CODE);
-    }
-    const br = sess.branch && String(sess.branch).trim() ? String(sess.branch).trim() : 'main';
-    const brExp = expectedBranch && String(expectedBranch).trim() ? String(expectedBranch).trim() : 'main';
-    if (br !== brExp) {
         throw new BadRequestError(DEVELOP_SESSION_CLOSED_CODE);
     }
     const st = deriveSessionLearnStatus(sess);
@@ -437,24 +429,15 @@ async function buildContributionDataForDomain(
         }
     }
 
-    const basesForWall = await document.getMulti(domainId, document.TYPE_BASE, { owner: uid })
-        .project({ nodes: 1, branchData: 1, updateAt: 1, createdAt: 1 })
+    const basesForWallRaw = await document.getMulti(domainId, document.TYPE_BASE, { owner: uid })
+        .project({ nodes: 1, edges: 1, updateAt: 1, createdAt: 1 })
         .toArray();
+    const basesForWall = basesForWallRaw as BaseDoc[];
     for (const baseDoc of basesForWall) {
         const nodeIds = new Set<string>();
         if (baseDoc.nodes && Array.isArray(baseDoc.nodes)) {
             for (const node of baseDoc.nodes) {
                 if (node && (node as any).id) nodeIds.add((node as any).id);
-            }
-        }
-        if ((baseDoc as any).branchData && typeof (baseDoc as any).branchData === 'object') {
-            for (const branch in (baseDoc as any).branchData) {
-                const branchNodes = (baseDoc as any).branchData[branch]?.nodes;
-                if (branchNodes && Array.isArray(branchNodes)) {
-                    for (const node of branchNodes) {
-                        if (node && (node as any).id) nodeIds.add((node as any).id);
-                    }
-                }
             }
         }
         const totalNodesInBase = nodeIds.size;
@@ -542,11 +525,12 @@ async function buildTodayContributionAllDomains(uid: number): Promise<{
     let cardChars = 0;
     let problemChars = 0;
 
-    const basesToday = await document.coll.find({
+    const basesTodayRaw = await document.coll.find({
         docType: document.TYPE_BASE,
         owner: uid,
         updateAt: { $gte: todayStart, $lte: todayEnd },
     }).project({ nodes: 1, edges: 1 }).toArray();
+    const basesToday = basesTodayRaw as BaseDoc[];
     for (const b of basesToday) {
         const arr = (b as any).nodes;
         const edges = (b as any).edges || [];
@@ -618,17 +602,16 @@ async function buildTodayContributionAllDomains(uid: number): Promise<{
 class BaseDetailHandler extends Handler {
     base?: BaseDoc;
 
-    @param('docId', Types.PositiveInt, true)
-    async _prepare(domainId: string, docId: number) {
+    @param('docId', Types.String, true)
+    async _prepare(domainId: string, docId?: string) {
         const path = this.request.path || '';
         if (path.endsWith('.css.map') || path.endsWith('.js.map') || path.endsWith('.map')) {
             throw new NotFoundError('Static resource');
         }
         
         if (docId) {
-            this.base = await BaseModel.get(domainId, docId);
+            this.base = await resolveBaseByDocIdOrBid(domainId, docId);
         } else {
-            
             this.base = await BaseModel.getByDomain(domainId);
         }
         
@@ -639,84 +622,10 @@ class BaseDetailHandler extends Handler {
         await BaseModel.incrementViews(domainId, this.base.docId);
     }
 
-    @param('docId', Types.PositiveInt, true)
-    @param('branch', Types.String, true)
-    async get(domainId: string, docId: number, branch?: string) {
-        // If no branch parameter, redirect to branch URL
-        if (!branch || !String(branch).trim()) {
-            const target = this.url('base_detail_branch', { 
-                domainId, 
-                docId: docId || this.base!.docId, 
-                branch: 'main' 
-            });
-            this.response.redirect = target;
-            return;
-        }
-        
+    @param('docId', Types.String, true)
+    async get(domainId: string, docId?: string) {
         this.response.template = 'base_detail.html';
-        
-        // Handle branch parameter
-        const requestedBranch = branch;
-        const currentBaseBranch = (this.base as any)?.currentBranch || 'main';
-        
-        // Update currentBranch if different and checkout git branch
-        if (requestedBranch !== currentBaseBranch) {
-            await document.set(domainId, document.TYPE_BASE, this.base!.docId, { 
-                currentBranch: requestedBranch 
-            });
-            (this.base as any).currentBranch = requestedBranch;
-            
-            // Checkout to the requested branch in git
-            try {
-                const repoGitPath = getBaseGitPath(domainId, this.base!.docId);
-                try {
-                    await exec('git rev-parse --git-dir', { cwd: repoGitPath });
-                    // Git repo exists, checkout to the branch
-                    try {
-                        await exec(`git checkout ${requestedBranch}`, { cwd: repoGitPath });
-                    } catch {
-                        // Branch doesn't exist, ensure main exists first, then create it from main
-                        try {
-                            // Ensure main branch exists
-                            try {
-                                await exec(`git checkout main`, { cwd: repoGitPath });
-                            } catch {
-                                try {
-                                    await exec(`git checkout -b main`, { cwd: repoGitPath });
-                                } catch {
-                                    try {
-                                        const { stdout: currentBranch } = await exec('git rev-parse --abbrev-ref HEAD', { cwd: repoGitPath });
-                                        const baseBranch = currentBranch.trim() || 'main';
-                                        if (baseBranch !== 'main') {
-                                            await exec(`git checkout -b main`, { cwd: repoGitPath });
-                                        }
-                                    } catch {
-                                        // If all else fails, just try to create main branch
-                                        await exec(`git checkout -b main`, { cwd: repoGitPath });
-                                    }
-                                }
-                            }
-                            // Now create the requested branch from main
-                            await exec(`git checkout main`, { cwd: repoGitPath });
-                            await exec(`git checkout -b ${requestedBranch}`, { cwd: repoGitPath });
-                        } catch {}
-                    }
-                } catch {
-                    // Git repo not initialized, skip
-                }
-            } catch (err) {
-                console.error('Failed to checkout branch:', err);
-            }
-        }
-        
-        // Get branches list
-        const branches = Array.isArray((this.base as any)?.branches) 
-            ? (this.base as any).branches 
-            : ['main'];
-        if (!branches.includes('main')) {
-            branches.unshift('main');
-        }
-        
+
         // Get git status
         let gitStatus: any = null;
         const githubRepo = (this.base?.githubRepo || '') as string;
@@ -730,14 +639,14 @@ class BaseDetailHandler extends Handler {
                     githubRepo,
                     this.request.body?.githubToken,
                 );
-                gitStatus = await getBaseGitStatus(domainId, this.base!.docId, requestedBranch, REPO_URL);
+                gitStatus = await getBaseGitStatus(domainId, this.base!.docId, REPO_URL);
             } catch (err) {
                 console.error('Failed to get git status:', err);
                 gitStatus = null;
             }
         } else {
             try {
-                gitStatus = await getBaseGitStatus(domainId, this.base!.docId, requestedBranch);
+                gitStatus = await getBaseGitStatus(domainId, this.base!.docId);
             } catch (err) {
                 console.error('Failed to get local git status:', err);
                 gitStatus = null;
@@ -745,14 +654,14 @@ class BaseDetailHandler extends Handler {
         }
         
         
-        const branchData = getBranchData(this.base!, requestedBranch);
-        
-        
+        const nodes = this.base!.nodes || [];
+        const edges = this.base!.edges || [];
+
         let nodeCardsMap: Record<string, CardDoc[]> = {};
-        if (branchData.nodes && branchData.nodes.length > 0) {
-            const nodeIds = branchData.nodes.map(n => n.id);
+        if (nodes.length > 0) {
+            const nodeIds = nodes.map(n => n.id);
             try {
-                const cardsByNodeId = await CardModel.getByNodeIds(domainId, this.base!.docId, nodeIds, requestedBranch);
+                const cardsByNodeId = await CardModel.getByNodeIds(domainId, this.base!.docId, nodeIds);
                 for (const [nodeId, cards] of cardsByNodeId) {
                     if (cards && cards.length > 0) {
                         nodeCardsMap[nodeId] = cards.sort((a, b) =>
@@ -768,19 +677,16 @@ class BaseDetailHandler extends Handler {
             this.ctx.db.db,
             domainId,
             this.base!.docId,
-            requestedBranch,
             this.user._id,
         );
 
         this.response.body = {
             base: {
                 ...this.base,
-                nodes: branchData.nodes,
-                edges: branchData.edges,
+                nodes,
+                edges,
             },
             gitStatus,
-            currentBranch: requestedBranch,
-            branches,
             nodeCardsMap,
             files: this.base.files || [],
             baseDetailUiPrefs,
@@ -793,14 +699,12 @@ class BaseDetailHandler extends Handler {
 /** Per-user base editor UI prefs (POST only; load via UiContext). */
 export class BaseEditorUiPrefsHandler extends Handler {
     @post('docId', Types.PositiveInt)
-    @post('branch', Types.String, true)
     @post('editorUiPrefs', Types.Any, true)
-    async post(domainId: string, docId: number, branch?: string, editorUiPrefs?: unknown) {
+    async post(domainId: string, docId: number, editorUiPrefs?: unknown) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         const base = await BaseModel.get(domainId, docId);
         if (!base) throw new NotFoundError('Base not found');
 
-        const branchNorm = branch && String(branch).trim() ? String(branch).trim() : 'main';
         const sanitized = sanitizeBaseEditorUiPrefs(editorUiPrefs);
         // Re-append expandedNodeIds that sanitize may strip
         if (editorUiPrefs && typeof editorUiPrefs === 'object' && !Array.isArray(editorUiPrefs)) {
@@ -811,8 +715,14 @@ export class BaseEditorUiPrefsHandler extends Handler {
         }
         const coll = this.ctx.db.db.collection('base.userEditorUi');
         await coll.updateOne(
-            { domainId, baseDocId: docId, branch: branchNorm, uid: this.user._id },
-            { $set: { domainId, baseDocId: docId, branch: branchNorm, uid: this.user._id, prefs: sanitized, updateAt: new Date() } },
+            {
+                domainId,
+                baseDocId: docId,
+                uid: this.user._id,
+            },
+            {
+                $set: { domainId, baseDocId: docId, uid: this.user._id, prefs: sanitized, updateAt: new Date() },
+            },
             { upsert: true },
         );
 
@@ -824,32 +734,30 @@ export class BaseEditorUiPrefsHandler extends Handler {
 /** Per-user base detail display prefs (POST only; load via UiContext). */
 export class BaseDetailUiPrefsHandler extends Handler {
     @post('docId', Types.PositiveInt)
-    @post('branch', Types.String, true)
     @post('displayPrefs', Types.Any, true)
-    async post(domainId: string, docId: number, branch?: string, displayPrefs?: unknown) {
+    async post(domainId: string, docId: number, displayPrefs?: unknown) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         const base = await BaseModel.get(domainId, docId);
         if (!base) throw new NotFoundError('Base not found');
 
-        const branchNorm = branch && String(branch).trim() ? String(branch).trim() : 'main';
         await saveBaseDetailUiPrefs(
             this.ctx.db.db,
             domainId,
             docId,
-            branchNorm,
             this.user._id,
             displayPrefs,
         );
 
         this.response.body = { success: true };
-        (this.ctx.emit as any)('base/update', docId, undefined, branchNorm, this.user._id, this.user.uname, 'detail_ui_prefs');
+        (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'detail_ui_prefs');
     }
 }
 
 /** Root label for Git file import: not represented as a directory, so pull preserves the existing graph root / base title. */
-function getSyntheticRootTextForFileImport(base: BaseDoc, branch: string): string {
-    const { nodes, edges } = getBranchData(base, branch);
-    const root = (nodes || []).find((n) => !(edges || []).some((e) => e.target === n.id));
+function getSyntheticRootTextForFileImport(base: BaseDoc): string {
+    const nodes = base.nodes || [];
+    const edges = base.edges || [];
+    const root = nodes.find((n) => !edges.some((e) => e.target === n.id));
     const fromNode = root?.text?.trim();
     if (fromNode) return fromNode;
     const fromTitle = (base.title || '').trim();
@@ -875,14 +783,12 @@ class BaseStudyHandler extends Handler {
     }
 
     @param('docId', Types.PositiveInt, true)
-    @param('branch', Types.String, true)
-    async get(domainId: string, docId: number, branch?: string) {
-        const currentBranch = branch || (this.base as any)?.currentBranch || 'main';
-        const branchData = getBranchData(this.base!, currentBranch);
-        
-        
-        const rootNodes = branchData.nodes.filter(node => 
-            !branchData.edges.some(edge => edge.target === node.id)
+    async get(domainId: string, docId: number) {
+        const nodes = this.base!.nodes || [];
+        const edges = this.base!.edges || [];
+
+        const rootNodes = nodes.filter(node =>
+            !edges.some(edge => edge.target === node.id)
         );
 
         const units: Array<{
@@ -924,7 +830,7 @@ class BaseStudyHandler extends Handler {
                     for (const card of cards) {
                         if (card.problems && card.problems.length > 0) {
                             
-                            const cardUrl = `/d/${domainId}/base/${docId}/branch/${currentBranch}/node/${node.id}/cards?cardId=${card.docId}`;
+                            const cardUrl = `/d/${domainId}/base/${docId}/node/${node.id}/cards?cardId=${card.docId}`;
                             
                             for (const problem of card.problems) {
                                 allProblems.push({
@@ -956,10 +862,10 @@ class BaseStudyHandler extends Handler {
             });
             
             
-            const childEdges = branchData.edges.filter(e => e.source === rootNode.id);
+            const childEdges = edges.filter(e => e.source === rootNode.id);
             
             for (const edge of childEdges) {
-                const childNode = branchData.nodes.find(n => n.id === edge.target);
+                const childNode = nodes.find(n => n.id === edge.target);
                 if (childNode) {
                     const childProblems = await collectNodeProblems(childNode);
                     units.push({
@@ -975,34 +881,13 @@ class BaseStudyHandler extends Handler {
         this.response.body = {
             base: {
                 ...this.base,
-                nodes: branchData.nodes,
-                edges: branchData.edges,
-                currentBranch,
+                nodes,
+                edges,
             },
             units,
         };
     }
 }
-
-
-export interface BaseOutlineOptions {
-    template: string;
-    editorMode: 'base';
-    redirectRouteName: string;
-    getRequestedBranch: (branch?: string) => string;
-    getBase: (domainId: string, requestedBranch: string) => Promise<BaseDoc | null>;
-    createBase: (domainId: string, requestedBranch: string) => Promise<BaseDoc>;
-    defaultRootText: string;
-    cleanupBranchData?: (
-        domainId: string,
-        base: BaseDoc,
-        requestedBranch: string,
-        nodes: BaseNode[],
-        edges: BaseEdge[]
-    ) => Promise<{ nodes: BaseNode[]; edges: BaseEdge[] }>;
-}
-
-
 
 
 export interface BaseEditorOptions {
@@ -1011,14 +896,12 @@ export interface BaseEditorOptions {
     redirectRouteName: string;
     /** When set, sets `page_name` on the HTML payload. */
     responsePageName?: string;
-    getRequestedBranch: (branch?: string) => string;
-    getBase: (domainId: string, requestedBranch: string) => Promise<BaseDoc | null>;
-    createBase: (domainId: string, requestedBranch: string) => Promise<BaseDoc>;
+    getBase: (domainId: string) => Promise<BaseDoc | null>;
+    createBase: (domainId: string) => Promise<BaseDoc>;
     defaultRootText: string;
-    cleanupBranchData?: (
+    cleanupData?: (
         domainId: string,
         base: BaseDoc,
-        requestedBranch: string,
         nodes: BaseNode[],
         edges: BaseEdge[]
     ) => Promise<{ nodes: BaseNode[]; edges: BaseEdge[] }>;
@@ -1026,21 +909,29 @@ export interface BaseEditorOptions {
 
 
 export class BaseEditorHandler extends Handler {
-    protected getEditorOptions(domainId: string, branch?: string): BaseEditorOptions {
+    base?: BaseDoc;
+
+    @param('docId', Types.String, true)
+    async _prepare(domainId: string, docId?: string) {
+        if (docId) {
+            this.base = await resolveBaseByDocIdOrBid(domainId, docId);
+            if (!this.base) throw new NotFoundError('Base not found');
+        }
+    }
+
+    protected getEditorOptions(domainId: string): BaseEditorOptions {
         return {
             template: 'base_editor.html',
             editorMode: 'base',
-            redirectRouteName: 'base_editor_branch',
-            getRequestedBranch: (b) => (b && String(b).trim() ? b : 'main'),
+            redirectRouteName: 'base_editor',
             getBase: async (d) => BaseModel.getByDomain(d),
-            createBase: async (d, requestedBranch) => {
+            createBase: async (d) => {
                 const { docId } = await BaseModel.create(
                     d,
                     this.user._id,
                     this.domain.name || '知识库',
                     '',
                     undefined,
-                    requestedBranch,
                     this.request.ip,
                     undefined,
                     this.domain.name
@@ -1053,59 +944,35 @@ export class BaseEditorHandler extends Handler {
         };
     }
 
-    @param('branch', Types.String, true)
-    async get(domainId: string, branch?: string) {
+    async get(domainId: string) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
 
-        const opts = this.getEditorOptions(domainId, branch);
-        const requestedBranch = opts.getRequestedBranch(branch);
-
-        if (!branch || !String(branch).trim()) {
-            const target = this.url(opts.redirectRouteName as any, { domainId, branch: 'main' });
-            this.response.redirect = target;
-            return;
-        }
-
+        const opts = this.getEditorOptions(domainId);
         this.response.template = opts.template;
 
-        let base = await opts.getBase(domainId, requestedBranch);
-        if (!base) base = await opts.createBase(domainId, requestedBranch);
+        let base = this.base || await opts.getBase(domainId);
+        if (!base) base = await opts.createBase(domainId);
 
-        let nodes: BaseNode[] = [];
-        let edges: BaseEdge[] = [];
-        const branchData = getBranchData(base, requestedBranch);
-        nodes = branchData.nodes || [];
-        edges = branchData.edges || [];
+        let nodes: BaseNode[] = base.nodes || [];
+        let edges: BaseEdge[] = base.edges || [];
 
-        if (opts.cleanupBranchData) {
-            const cleaned = await opts.cleanupBranchData(domainId, base, requestedBranch, nodes, edges);
+        if (opts.cleanupData) {
+            const cleaned = await opts.cleanupData(domainId, base, nodes, edges);
             nodes = cleaned.nodes;
             edges = cleaned.edges;
         }
 
-        const currentBaseBranch = (base as any)?.currentBranch || 'main';
-        if (requestedBranch !== currentBaseBranch) {
-            await document.set(domainId, document.TYPE_BASE, base.docId, { currentBranch: requestedBranch });
-        }
-
         if (nodes.length === 0) {
             const rootNode: Omit<BaseNode, 'id'> = { text: opts.defaultRootText, level: 0 };
-            await BaseModel.addNode(domainId, base.docId, rootNode, undefined, requestedBranch);
+            await BaseModel.addNode(domainId, base.docId, rootNode);
             const updated = await BaseModel.get(domainId, base.docId);
             if (updated) {
-                const updatedBranchData = getBranchData(updated, requestedBranch);
-                nodes = updatedBranchData.nodes || [];
-                edges = updatedBranchData.edges || [];
+                nodes = updated.nodes || [];
+                edges = updated.edges || [];
             }
         }
 
-        const editorCardFilter: any = { baseDocId: base.docId };
-        if (requestedBranch === 'main') {
-            editorCardFilter.$or = [{ branch: 'main' }, { branch: { $exists: false } }];
-        } else {
-            editorCardFilter.branch = requestedBranch;
-        }
-        const allCards = await document.getMulti(domainId, TYPE_CARD, editorCardFilter)
+        const allCards = await document.getMulti(domainId, TYPE_CARD, { baseDocId: base.docId })
             .sort({ order: 1, cid: 1 })
             .toArray() as CardDoc[];
         let nodeCardsMap: Record<string, CardDoc[]> = {};
@@ -1119,9 +986,6 @@ export class BaseEditorHandler extends Handler {
             nodeCardsMap[nodeId].sort((a, b) =>
                 (a.order ?? 999999) - (b.order ?? 999999) || (a.cid - b.cid));
         }
-
-        const branches = Array.isArray((base as any)?.branches) ? (base as any).branches : ['main'];
-        if (!branches.includes('main')) branches.unshift('main');
 
         const uid = this.user._id;
         const domainName = (this as any).domain?.name || domainId;
@@ -1140,7 +1004,6 @@ export class BaseEditorHandler extends Handler {
             this.ctx.db.db,
             domainId,
             base.docId,
-            requestedBranch,
             uid,
         );
 
@@ -1151,8 +1014,6 @@ export class BaseEditorHandler extends Handler {
 
         this.response.body = {
             base: { ...base, nodes, edges },
-            currentBranch: requestedBranch,
-            branches,
             nodeCardsMap,
             files: base.files || [],
             domainId,
@@ -1173,12 +1034,11 @@ export class BaseEditorHandler extends Handler {
 export type BuildBaseEditorPageBodyArgs = {
     domainId: string;
     base: BaseDoc;
-    requestedBranch: string;
     uid: number;
     priv: number;
     domainName: string;
     db: { collection: (n: string) => any };
-    makeEditorUrl: (docId: number, branch: string) => string;
+    makeEditorUrl: (docId: number) => string;
     /** Optional node id from `?nodeId=` or develop session: initial focus / selection only (full explorer tree). */
     rootNodeIdFromQuery?: string;
     /** `none` = 大纲单节点 develop 会话，不展示每日队列 / 结算 UI。 */
@@ -1194,7 +1054,7 @@ export type BuildBaseEditorPageBodyArgs = {
 /** Shared HTML payload for `base_editor.html` (normal editor URL or `/develop/editor?session=`). */
 export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs): Promise<Record<string, unknown>> {
     const {
-        domainId, base, requestedBranch, uid, priv, domainName, db, makeEditorUrl,
+        domainId, base, uid, priv, domainName, db, makeEditorUrl,
         rootNodeIdFromQuery = '',
         developPoolUiMode = 'full',
         mapDocType: mapDocTypeArg,
@@ -1206,38 +1066,22 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
 
     const mdt: MindMapDocType = mapDocTypeArg ?? document.TYPE_BASE;
 
-    let nodes: BaseNode[] = [];
-    let edges: BaseEdge[] = [];
-
-    const branchData = getBranchData(base, requestedBranch);
-    nodes = branchData.nodes || [];
-    edges = branchData.edges || [];
-
-    const currentBaseBranch = (base as any)?.currentBranch || 'main';
-    if (requestedBranch !== currentBaseBranch) {
-        await document.set(domainId, mdt, base.docId, { currentBranch: requestedBranch });
-    }
+    let nodes: BaseNode[] = base.nodes || [];
+    let edges: BaseEdge[] = base.edges || [];
 
     if (nodes.length === 0) {
         const rootNode: Omit<BaseNode, 'id'> = { text: domainName || '知识库', level: 0 };
-        await BaseModel.addNode(domainId, base.docId, rootNode, undefined, requestedBranch, undefined, mdt);
+        await BaseModel.addNode(domainId, base.docId, rootNode, undefined, undefined, mdt);
         const updated = await BaseModel.get(domainId, base.docId, mdt);
         if (updated) {
-            const updatedBranchData = getBranchData(updated, requestedBranch);
-            nodes = updatedBranchData.nodes || [];
-            edges = updatedBranchData.edges || [];
+            nodes = updated.nodes || [];
+            edges = updated.edges || [];
         }
     }
 
     const nodeCardsMap: Record<string, CardDoc[]> = {};
     if (mdt === document.TYPE_BASE || mdt === document.TYPE_PLUGIN) {
-        const docCardFilter: any = { baseDocId: base.docId };
-        if (requestedBranch === 'main') {
-            docCardFilter.$or = [{ branch: 'main' }, { branch: { $exists: false } }];
-        } else {
-            docCardFilter.branch = requestedBranch;
-        }
-        const allCards = await document.getMulti(domainId, TYPE_CARD, docCardFilter)
+        const allCards = await document.getMulti(domainId, TYPE_CARD, { baseDocId: base.docId })
             .sort({ order: 1, cid: 1 })
             .toArray() as CardDoc[];
         for (const card of allCards) {
@@ -1252,9 +1096,6 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
         }
     }
 
-    const branches = Array.isArray((base as any)?.branches) ? (base as any).branches : ['main'];
-    if (!branches.includes('main')) branches.unshift('main');
-
     const baseForContrib = { ...base, nodes };
     const emptyContribution = { todayContribution: { nodes: 0, cards: 0, problems: 0, nodeChars: 0, cardChars: 0, problemChars: 0 }, contributions: [], contributionDetails: {} };
     const [contrib, todayAllDomains] = includeContribution ? await Promise.all([
@@ -1264,10 +1105,9 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
     const { todayContribution, contributions, contributionDetails } = contrib;
 
     const baseEditorUiPrefs = await loadBaseEditorUiPrefs(
-        db,
+        db as any,
         domainId,
         base.docId,
-        requestedBranch,
         uid,
     );
 
@@ -1287,7 +1127,6 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
             uid,
             pool: await loadUserDevelopPool(domainId, uid, priv),
             baseDocId: base.docId,
-            branch: requestedBranch,
             getBaseTitle: async (docId) => {
                 const b = await BaseModel.get(domainId, docId);
                 return b ? ((b.title || '').trim() || String(docId)) : `Base ${docId}`;
@@ -1297,8 +1136,6 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
 
     return {
         base: { ...base, nodes, edges },
-        currentBranch: requestedBranch,
-        branches,
         nodeCardsMap,
         files: base.files || [],
         domainId,
@@ -1354,7 +1191,6 @@ class BaseCreateHandler extends Handler {
             title,
             '',
             undefined,
-            'main',
             this.request.ip,
             undefined,
             this.domain.name,
@@ -1393,7 +1229,7 @@ class BaseCreateHandler extends Handler {
         }
 
         this.response.body = { docId, bid: finalBid || undefined };
-        this.response.redirect = this.url('base_detail_branch', { docId: finalBid || docId.toString(), branch: 'main' });
+        this.response.redirect = this.url('base_detail', { docId: finalBid || docId.toString() });
     }
 }
 
@@ -1487,9 +1323,8 @@ class BaseEditHandler extends Handler {
             return;
         }
         const outlineDocId = baseDoc.bid || baseDoc.docId;
-        this.response.redirect = this.url('base_detail_branch', {
+        this.response.redirect = this.url('base_detail', {
             docId: String(outlineDocId),
-            branch: baseDoc.currentBranch || 'main',
         });
     }
 
@@ -1530,8 +1365,6 @@ export class BaseNodeHandler extends Handler {
     @post('siblingId', Types.String, true)
     @post('operation', Types.String, true)
     @param('nodeId', Types.String, true)
-    @post('branch', Types.String, true)
-    
     async post(
         domainId: string,
         text?: string,
@@ -1541,12 +1374,11 @@ export class BaseNodeHandler extends Handler {
         siblingId?: string,
         operation?: string,
         nodeId?: string,
-        branch?: string,
     ) {
         const base = await this.resolveBase(domainId);
         
         if (operation === 'delete' && nodeId) {
-            return this.postDelete(domainId, nodeId, branch);
+            return this.postDelete(domainId, nodeId);
         }
         
         const body: any = this.request?.body || {};
@@ -1558,7 +1390,7 @@ export class BaseNodeHandler extends Handler {
         
         if (finalText !== undefined || operation === 'add') {
             const finalTextValue = finalText !== undefined ? finalText : '';
-            return this.postAdd(domainId, finalTextValue, x, y, parentId, siblingId, branch);
+            return this.postAdd(domainId, finalTextValue, x, y, parentId, siblingId);
         }
         
         throw new BadRequestError('Missing required parameters');
@@ -1569,15 +1401,13 @@ export class BaseNodeHandler extends Handler {
     @post('y', Types.Float, true)
     @post('parentId', Types.String, true)
     @post('siblingId', Types.String, true)
-    @post('branch', Types.String, true)
     async postAdd(
         domainId: string,
         text: string,
         x?: number,
         y?: number,
         parentId?: string,
-        siblingId?: string,
-        branch?: string
+        siblingId?: string
     ) {
         const startTime = Date.now();
         
@@ -1622,21 +1452,8 @@ export class BaseNodeHandler extends Handler {
             }
 
             
-            const effectiveBranch = branch || body.branch || (base as any).currentBranch || (base as any).branch || 'main';
-            
-            
-            const branchData: {
-                [branch: string]: { nodes: BaseNode[]; edges: BaseEdge[] };
-            } = (base as any).branchData || {};
-            
-            let nodes: BaseNode[];
-            if (branchData[effectiveBranch] && branchData[effectiveBranch].nodes) {
-                nodes = branchData[effectiveBranch].nodes;
-            } else if (effectiveBranch === 'main') {
-                nodes = base.nodes || [];
-            } else {
-                nodes = [];
-            }
+            const nodes = base.nodes || [];
+            const edges = base.edges || [];
             
             
             
@@ -1658,14 +1475,7 @@ export class BaseNodeHandler extends Handler {
                         if (timeSinceNodeCreation < DEDUP_WINDOW_MS && timeSinceNodeCreation >= 0) {
                             
                             
-                            let edgesForDedup: BaseEdge[];
-                            if (branchData[effectiveBranch] && branchData[effectiveBranch].edges) {
-                                edgesForDedup = branchData[effectiveBranch].edges;
-                            } else if (effectiveBranch === 'main') {
-                                edgesForDedup = base.edges || [];
-                            } else {
-                                edgesForDedup = [];
-                            }
+                            const edgesForDedup = edges;
                             
                             this.response.body = { 
                                 nodeId: recentDuplicateNode.id,
@@ -1684,7 +1494,7 @@ export class BaseNodeHandler extends Handler {
             if (finalSiblingId && !finalParentId) {
                 const siblingNode = nodes.find(n => n.id === finalSiblingId);
                 if (!siblingNode) {
-                    throw new NotFoundError(`Sibling node not found: ${finalSiblingId}. Branch: ${effectiveBranch}`);
+                    throw new NotFoundError(`Sibling node not found: ${finalSiblingId}`);
                 }
                 effectiveParentId = siblingNode.parentId;
             }
@@ -1706,7 +1516,7 @@ export class BaseNodeHandler extends Handler {
                         docId,
                         node,
                         effectiveParentId,
-                        effectiveBranch
+                        undefined
                     );
                     this.response.body = { nodeId: result.nodeId };
                     return;
@@ -1721,7 +1531,7 @@ export class BaseNodeHandler extends Handler {
                     docId,
                     node,
                     effectiveParentId,
-                    effectiveBranch
+                    undefined
                 );
                 this.response.body = { nodeId: result.nodeId };
                 return;
@@ -1732,8 +1542,7 @@ export class BaseNodeHandler extends Handler {
                 docId,
                 node,
                 effectiveParentId,
-                effectiveBranch,
-                edgeSourceId  
+                edgeSourceId,
             );
             
             newNodeId = result.nodeId;
@@ -1816,14 +1625,12 @@ export class BaseNodeHandler extends Handler {
             return;
         }
 
-        const effectiveBranch = body.branch?.trim() || (base as any).currentBranch || 'main';
-        await BaseModel.updateNode(domainId, docId, nodeId, updates, effectiveBranch);
+        await BaseModel.updateNode(domainId, docId, nodeId, updates);
         this.response.body = { success: true };
     }
 
     @param('nodeId', Types.String)
-    @post('branch', Types.String, true)
-    async postDelete(domainId: string, nodeId: string, branch?: string) {
+    async postDelete(domainId: string, nodeId: string) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
         const base = await this.resolveBase(domainId);
@@ -1834,9 +1641,7 @@ export class BaseNodeHandler extends Handler {
         }
 
         
-        const effectiveBranch = branch || (this.request.body as any)?.branch || (base as any).currentBranch || (base as any).branch || 'main';
-        
-        await BaseModel.deleteNode(domainId, docId, nodeId, effectiveBranch);
+        await BaseModel.deleteNode(domainId, docId, nodeId);
         this.response.body = { success: true };
     }
 }
@@ -1884,13 +1689,11 @@ export class BaseEdgeHandler extends Handler {
             label,
         };
 
-        const body: any = this.request?.body || {};
-        const effectiveBranch = body.branch?.trim() || (base as any).currentBranch || 'main';
         const newEdgeId = await BaseModel.addEdge(
             domainId,
             docId,
             edge,
-            effectiveBranch
+            undefined
         );
 
         this.response.body = { edgeId: newEdgeId };
@@ -1907,9 +1710,7 @@ export class BaseEdgeHandler extends Handler {
             this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
         }
 
-        const body: any = this.request?.body || {};
-        const effectiveBranch = body.branch?.trim() || (base as any).currentBranch || 'main';
-        await BaseModel.deleteEdge(domainId, docId, edgeId, effectiveBranch);
+        await BaseModel.deleteEdge(domainId, docId, edgeId);
         this.response.body = { success: true };
     }
 }
@@ -1966,7 +1767,6 @@ export class BaseSaveHandler extends Handler {
             updateAt: new Date(),
             views: 0,
             ip: this.request.ip,
-            branch: 'main',
         };
         const { domainId: _, content: __, owner: ___, ...restPayload } = payload;
         const nextDocId = await BaseModel.generateNextDocId(domainId);
@@ -2002,9 +1802,8 @@ export class BaseSaveHandler extends Handler {
             if (!baseOnly) throw new NotFoundError('Base not found');
             if (!this.user.own(baseOnly)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
             const docIdOnly = baseOnly.docId;
-            const branchOnly = data.branch?.trim() || (baseOnly as any).currentBranch || 'main';
-            await persistBaseEditorSaveSidecars(this, domainId, docIdOnly, branchOnly, data as Record<string, unknown>, mdt);
-            (this.ctx.emit as any)('base/update', docIdOnly, null, branchOnly, this.user._id, this.user.uname, 'sidecar_save');
+            await persistBaseEditorSaveSidecars(this, domainId, docIdOnly, data as Record<string, unknown>, mdt);
+            (this.ctx.emit as any)('base/update', docIdOnly, this.user._id, this.user.uname, 'sidecar_save');
             this.response.body = { success: true, hasNonPositionChanges: false };
             return;
         }
@@ -2033,19 +1832,16 @@ export class BaseSaveHandler extends Handler {
             }
         }
 
-        const branchForSidecars = data.branch?.trim() || (base as any).currentBranch || 'main';
-        await persistBaseEditorSaveSidecars(this, domainId, docId, branchForSidecars, data as Record<string, unknown>, mdt);
+        await persistBaseEditorSaveSidecars(this, domainId, docId, data as Record<string, unknown>, mdt);
 
         let { nodes, edges, layout, viewport, theme, operationDescription } = data;
-        
+
         const isExpandOnlySave = operationDescription === '自动保存展开状态' || operationDescription === '自动保存 outline 展开状态';
-        const requestBranch = data.branch?.trim();
         
         if (isExpandOnlySave && nodes && Array.isArray(nodes)) {
-            const currentBranch = requestBranch || (base as any).currentBranch || 'main';
-            const currentBranchData = getBranchData(base, currentBranch);
-            
-            const updatedNodes = currentBranchData.nodes.map((existingNode: BaseNode) => {
+            const currentData = { nodes: base.nodes || [], edges: base.edges || [] };
+
+            const updatedNodes = currentData.nodes.map((existingNode: BaseNode) => {
                 const updatedNode = nodes.find((n: BaseNode) => n.id === existingNode.id);
                 if (updatedNode) {
                     const result: BaseNode = { ...existingNode };
@@ -2060,15 +1856,12 @@ export class BaseSaveHandler extends Handler {
                 return existingNode;
             });
             
-            setBranchData(base, currentBranch, updatedNodes, currentBranchData.edges);
-            
             await BaseModel.updateFull(domainId, docId, {
-                branchData: base.branchData,
-                nodes: base.nodes, 
-                edges: base.edges, 
+                nodes: updatedNodes,
+                edges: currentData.edges,
             }, mdt);
             
-            (this.ctx.emit as any)('base/update', docId, null, currentBranch, this.user._id, this.user.uname, 'expand_save');
+            (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'expand_save');
 
             this.response.body = { success: true, hasNonPositionChanges: false };
             return;
@@ -2108,11 +1901,9 @@ export class BaseSaveHandler extends Handler {
             });
         }
         
-        const currentBranch = requestBranch || (base as any).currentBranch || 'main';
-        
-        const currentBranchData = getBranchData(base, currentBranch);
+        const currentData = { nodes: base.nodes || [], edges: base.edges || [] };
 
-        const oldNodesById = new Map(currentBranchData.nodes.map((n) => [n.id, n]));
+        const oldNodesById = new Map(currentData.nodes.map((n) => [n.id, n]));
         const now = new Date();
         const stampedNodes = (nodes || []).map((node: BaseNode) => {
             const oldNode = oldNodesById.get(node.id);
@@ -2125,19 +1916,16 @@ export class BaseSaveHandler extends Handler {
         });
 
         const hasNonPositionChanges = this.detectNonPositionChanges(
-            { ...base, nodes: currentBranchData.nodes, edges: currentBranchData.edges },
+            { ...base, nodes: currentData.nodes, edges: currentData.edges },
             stampedNodes,
             edges
         );
 
 
 
-        setBranchData(base, currentBranch, stampedNodes, edges || []);
-
         await BaseModel.updateFull(domainId, docId, {
-            branchData: base.branchData,
-            nodes: base.nodes, 
-            edges: base.edges, 
+            nodes: stampedNodes,
+            edges: edges || [],
             layout,
             viewport,
             theme,
@@ -2148,8 +1936,7 @@ export class BaseSaveHandler extends Handler {
             try {
                 const updatedBase = await BaseModel.get(domainId, docId, mdt);
                 if (updatedBase) {
-                    const branch = updatedBase.currentBranch || 'main';
-                    // await syncBaseToGit(domainId, updatedBase.docId, branch);
+                    // Git synchronization is handled explicitly by the Git endpoints.
                     ''
                 }
             } catch (err) {
@@ -2158,13 +1945,13 @@ export class BaseSaveHandler extends Handler {
             }
         }
         
-        (this.ctx.emit as any)('base/update', docId, null, currentBranch, this.user._id, this.user.uname, 'full_save');
+        (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'full_save');
         (this.ctx.emit as any)('base/git/status/update', docId);
 
         // Fire-and-forget vectorize base content for semantic search — disabled
         // because full re-index on every save is too expensive for large bases.
         // if (hasNonPositionChanges && this.ctx.embedding) {
-        //     this.ctx.embedding.vectorizeBaseContent(domainId, docId, currentBranch).catch((err: any) => {
+        //     this.ctx.embedding.vectorizeBaseContent(domainId, docId).catch((err: any) => {
         //         console.error('Embedding error after base save:', err);
         //     });
         // }
@@ -2242,13 +2029,12 @@ export class BaseSaveHandler extends Handler {
  */
 class BaseListHandler extends Handler {
     @param('rpid', Types.PositiveInt, true)
-    @param('branch', Types.String, true)
     @param('format', Types.String, true)
-    async get(domainId: string, rpid?: number, branch?: string, format?: string) {
+    async get(domainId: string, rpid?: number, format?: string) {
         let bases: BaseDoc[];
 
         if (rpid) {
-            bases = await BaseModel.getByRepo(domainId, rpid, branch);
+            bases = await BaseModel.getByRepo(domainId, rpid);
         } else {
             bases = await BaseModel.getAll(domainId);
         }
@@ -2258,11 +2044,11 @@ class BaseListHandler extends Handler {
         const cardStats = await loadCardStatsByBaseDocId(domainId, numericIds);
         const withStats = attachBaseListStats(basesPayload as any, cardStats);
         if (format === 'json') {
-            this.response.body = { bases: withStats, rpid, branch };
+            this.response.body = { bases: withStats, rpid };
             return;
         }
         this.response.template = 'base_list.html';
-        this.response.body = { bases: withStats, rpid, branch };
+        this.response.body = { bases: withStats, rpid };
     }
 }
 
@@ -2377,13 +2163,12 @@ class BaseCreateNewHandler extends Handler {
             this.domain.name || '知识库',
             '',
             undefined,
-            'main',
             this.request.ip,
             undefined,
             this.domain.name,
             true
         );
-        const target = this.url('base_detail_branch', { docId, branch: 'main' });
+        const target = this.url('base_detail', { docId });
         this.response.redirect = target;
     }
 }
@@ -2395,21 +2180,17 @@ class BaseDomainHandler extends Handler {
     @param('pjax', Types.Boolean)
     @param('all', Types.Boolean, true)
     async get(domainId: string, page = 1, q = '', pjax = false, all = false) {
-        
         const base = await BaseModel.getByDomain(domainId);
-        
         if (!base) {
             throw new NotFoundError('Base not found for this domain');
         }
-        
-        const branch = (base as any)?.currentBranch || 'main';
-        const branchData = getBranchData(base, branch);
-        
-        
-        const rootNodes = branchData.nodes.filter(node => 
-            node.level === 0 || !branchData.edges.some(edge => edge.target === node.id)
+
+        const baseNodes = base.nodes || [];
+        const baseEdges = base.edges || [];
+        const rootNodes = baseNodes.filter(node =>
+            node.level === 0 || !baseEdges.some(edge => edge.target === node.id)
         );
-        const rootNode = rootNodes[0] || branchData.nodes[0];
+        const rootNode = rootNodes[0] || baseNodes[0];
         
         if (!rootNode) {
             
@@ -2434,15 +2215,14 @@ class BaseDomainHandler extends Handler {
         
         
         const firstLevelNodeIds = new Set(
-            branchData.edges
+            baseEdges
                 .filter(edge => edge.source === rootNode.id)
                 .map(edge => edge.target)
         );
-        
-        const firstLevelNodes = branchData.nodes.filter(node => firstLevelNodeIds.has(node.id));
-        
-        
-        const firstLevelEdges = branchData.edges.filter(edge => 
+
+        const firstLevelNodes = baseNodes.filter(node => firstLevelNodeIds.has(node.id));
+
+        const firstLevelEdges = baseEdges.filter(edge =>
             firstLevelNodeIds.has(edge.source) && firstLevelNodeIds.has(edge.target)
         );
         
@@ -2508,14 +2288,13 @@ export class BaseDataHandler extends Handler {
         return BaseModel.getByDomain(domainId);
     }
     
-    protected async createBase(domainId: string, branch: string): Promise<BaseDoc> {
+    protected async createBase(domainId: string): Promise<BaseDoc> {
         const { docId } = await BaseModel.create(
             domainId,
             this.user._id,
             '思维导图',
             '',
             undefined,
-            branch,
             this.request.ip
         );
         const base = await BaseModel.get(domainId, docId);
@@ -2531,28 +2310,19 @@ export class BaseDataHandler extends Handler {
         return { baseDocId: base.docId };
     }
 
-    @param('branch', Types.String, true)
     @param('docId', Types.String, true)
-    async get(domainId: string, branch?: string, docId?: string) {
+    async get(domainId: string, docId?: string) {
         let base: BaseDoc | null = null;
         if (docId) {
             base = await resolveBaseByDocIdOrBid(domainId, docId);
             if (!base) throw new NotFoundError('Base not found');
         } else {
             base = await this.getBase(domainId);
-            if (!base) base = await this.createBase(domainId, branch || 'main');
+            if (!base) base = await this.createBase(domainId);
         }
-        
-        const currentBranch = branch || (base as any)?.currentBranch || 'main';
-        
-        let nodes: BaseNode[] = [];
-        let edges: BaseEdge[] = [];
-        
-        if (base) {
-            const branchData = getBranchData(base, currentBranch);
-            nodes = branchData.nodes || [];
-            edges = branchData.edges || [];
-        }
+
+        let nodes: BaseNode[] = base?.nodes || [];
+        let edges: BaseEdge[] = base?.edges || [];
         
         if (nodes.length === 0) {
             const rootNode: Omit<BaseNode, 'id'> = {
@@ -2563,24 +2333,16 @@ export class BaseDataHandler extends Handler {
                 domainId,
                 base!.docId,
                 rootNode,
-                undefined,
-                currentBranch
             );
             
             base = await BaseModel.get(domainId, base!.docId);
             if (base) {
-                const branchData = getBranchData(base, currentBranch);
-                nodes = branchData.nodes || [];
-                edges = branchData.edges || [];
+                nodes = base.nodes || [];
+                edges = base.edges || [];
             }
         }
         
-        const dataCardFilter: any = { ...this.getCardFilter(base) };
-        if (currentBranch === 'main') {
-            dataCardFilter.$or = [{ branch: 'main' }, { branch: { $exists: false } }];
-        } else {
-            dataCardFilter.branch = currentBranch;
-        }
+        const dataCardFilter = this.getCardFilter(base);
         const allCards = await document.getMulti(domainId, TYPE_CARD, dataCardFilter)
             .sort({ order: 1, cid: 1 })
             .toArray() as CardDoc[];
@@ -2614,14 +2376,12 @@ export class BaseDataHandler extends Handler {
                 this.ctx.db.db,
                 domainId,
                 base.docId,
-                currentBranch,
                 this.user._id,
             );
             baseDetailUiPrefs = await loadBaseDetailUiPrefs(
                 this.ctx.db.db,
                 domainId,
                 base.docId,
-                currentBranch,
                 this.user._id,
             );
         }
@@ -2630,7 +2390,6 @@ export class BaseDataHandler extends Handler {
             ...base,
             nodes,
             edges,
-            currentBranch,
             nodeCardsMap,
             baseDetailUiPrefs,
             baseEditorUiPrefs,
@@ -2639,7 +2398,6 @@ export class BaseDataHandler extends Handler {
             domainId: domainId,
             nodes: [],
             edges: [],
-            currentBranch,
             nodeCardsMap: {},
             baseDetailUiPrefs,
             baseEditorUiPrefs,
@@ -2776,7 +2534,7 @@ async function writeCardProblemsMarkdownBundle(targetDir: string, entries: Expor
  * Nodes: `{NN}-{sanitizedTitle}/` (recursive). Import accepts this and legacy unpadded `{N}-{sanitizedTitle}` / `.md` names.
  * Each card folder with problems also writes problems.md, keys.md, problems_all.md next to `{title}.md`.
  */
-async function exportBaseToFile(base: BaseDoc, outputDir: string, branch?: string, domainIdOverride?: string): Promise<void> {
+async function exportBaseToFile(base: BaseDoc, outputDir: string, domainIdOverride?: string): Promise<void> {
     await fs.promises.mkdir(outputDir, { recursive: true });
 
     const domainId = domainIdOverride || (base as any).domainId;
@@ -2788,10 +2546,8 @@ async function exportBaseToFile(base: BaseDoc, outputDir: string, branch?: strin
 
     const exportOrderPrefix = (idx: number) => String(idx).padStart(2, '0');
 
-    const currentBranch = branch || (base as any).currentBranch || 'main';
-    const branchData = getBranchData(base, currentBranch);
-    const nodes = branchData.nodes;
-    const edges = branchData.edges;
+    const nodes = base.nodes || [];
+    const edges = base.edges || [];
 
     const readmePath = path.join(outputDir, 'README.md');
     const contentText = base.content || '';
@@ -2810,7 +2566,7 @@ async function exportBaseToFile(base: BaseDoc, outputDir: string, branch?: strin
         | { kind: 'node'; order: number; sortKey: string; child: BaseNode };
 
     async function mergedChildrenForNode(parentNodeId: string): Promise<MergedChild[]> {
-        const cards = await CardModel.getByNodeId(domainId, base.docId, parentNodeId, currentBranch);
+        const cards = await CardModel.getByNodeId(domainId, base.docId, parentNodeId);
         const childEdges = (edges || []).filter(edge => edge.source === parentNodeId);
         const childNodes = childEdges
             .map(e => nodeMap.get(e.target))
@@ -3085,7 +2841,7 @@ async function createAndPushToGitHubOrgForBase(
         .toLowerCase()
         .replace(/[^a-z0-9-]/g, '-')
         .replace(/-+/g, '-')
-        .replace(/^-|-$/g, '') || `base-${bid}`;
+        .replace(/^-|-$/g, '') || `base-${docId}`;
 
     try {
         const remoteUrl = await createGitHubRepoForBase(orgName, repoName, baseTitle, GH_TOKEN, false);
@@ -3108,10 +2864,10 @@ async function createAndPushToGitHubOrgForBase(
             repoUrlForStorage = remoteUrl.replace(/^https:\/\/[^@]+@github\.com\//, 'https://github.com/');
         }
 
-        let base = await BaseModel.getBybid(domainId, bid);
+        let base = await BaseModel.get(domainId, docId);
         if (!base) {
             await new Promise(resolve => setTimeout(resolve, 100));
-            base = await BaseModel.getBybid(domainId, bid);
+            base = await BaseModel.get(domainId, docId);
         }
         
         if (base) {
@@ -3119,19 +2875,19 @@ async function createAndPushToGitHubOrgForBase(
                 githubRepo: repoUrlForStorage,
             });
         } else {
-            console.warn(`Base with bid ${bid} not found, skipping GitHub repo setup`);
+            console.warn(`Base with docId ${docId} not found, skipping GitHub repo setup`);
             return;
         }
 
         const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ejunz-base-create-'));
         try {
-            const baseForExport = await BaseModel.getBybid(domainId, bid);
+            const baseForExport = await BaseModel.get(domainId, docId);
             if (baseForExport) {
-                await exportBaseToFile(baseForExport, tmpDir, 'main', domainId);
+                await exportBaseToFile(baseForExport, tmpDir, domainId);
                 const commitMessage = `${domainId}/${user._id}/${user.uname || 'unknown'}: Initial commit`;
-                await gitInitAndPushBase(domainId, bid, baseForExport, REPO_URL, 'main', commitMessage);
+                await gitInitAndPushBase(domainId, docId, baseForExport, REPO_URL, commitMessage);
             } else {
-                console.warn(`Base with bid ${bid} not found for export, skipping`);
+                console.warn(`Base with docId ${docId} not found for export, skipping`);
             }
         } finally {
             try {
@@ -3151,10 +2907,10 @@ async function gitInitAndPushBase(
     domainId: string,
     docId: number,
     base: BaseDoc,
-    remoteUrlWithAuth: string, 
-    branch: string = 'main', 
+    remoteUrlWithAuth: string,
     commitMessage: string = 'chore: sync base from ejunz'
 ) {
+    const branch = 'main';
     const repoGitPath = await ensureBaseGitRepo(domainId, docId, remoteUrlWithAuth);
     
     
@@ -3232,13 +2988,7 @@ async function gitInitAndPushBase(
             try {
                 await exec(`git checkout -b ${branch} origin/${branch}`, execOptions);
             } catch {
-                try {
-                    const { stdout: currentBranch } = await exec('git rev-parse --abbrev-ref HEAD', execOptions);
-                    const baseBranch = String(currentBranch).trim() || 'main';
-                    await exec(`git checkout -b ${branch} ${baseBranch}`, execOptions);
-                } catch {
-                    await exec(`git checkout -b ${branch}`, execOptions);
-                }
+                await exec(`git checkout -b ${branch}`, execOptions);
             }
         }
         
@@ -3249,8 +2999,7 @@ async function gitInitAndPushBase(
             }
         }
         
-        // Export base to files (use the branch parameter from function signature)
-        await exportBaseToFile(base, repoGitPath, branch, domainId);
+        await exportBaseToFile(base, repoGitPath, domainId);
         
         await exec('git add -A', execOptions);
         
@@ -3289,8 +3038,7 @@ async function gitInitAndPushBase(
 class BaseGithubPushHandler extends Handler {
     @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
-    @param('branch', Types.String, true)
-    async post(domainId: string, docId: number, bid: number, branch?: string) {
+    async post(domainId: string, docId: number, bid: number) {
         const base = await resolveBaseDocFromGithubRequest(domainId, docId, bid, this.request);
         if (!base) {
             throw new NotFoundError('Base not found');
@@ -3314,9 +3062,6 @@ class BaseGithubPushHandler extends Handler {
         assertGithubPushPullToken(githubRepo, ghTok);
         const REPO_URL = buildGithubRemoteUrl(githubRepo, ghTok);
 
-        const effectiveBranch = (branch || base.branch || this.args?.branch || this.request.body?.branch || 'main').toString();
-        
-        
         try {
             const commitMessage = this.request.body?.commitMessage || `${domainId}/${this.user._id}/${this.user.uname || 'unknown'}: Update base`;
             await commitBaseChanges(domainId, base.docId, base, commitMessage, this.user._id, this.user.uname || 'unknown');
@@ -3328,20 +3073,19 @@ class BaseGithubPushHandler extends Handler {
         const commitMessage = `${domainId}/${this.user._id}/${this.user.uname || 'unknown'}: Update base`;
         
         try {
-            await gitInitAndPushBase(domainId, base.docId, base, REPO_URL, effectiveBranch, commitMessage);
-            this.response.body = { ok: true, branch: effectiveBranch };
+            await gitInitAndPushBase(domainId, base.docId, base, REPO_URL, commitMessage);
+            this.response.body = { ok: true };
         } catch (err: any) {
             console.error('Push failed:', err?.message || err);
             this.response.status = 500;
-            this.response.body = { ok: false, branch: effectiveBranch, error: err?.message || String(err) };
+            this.response.body = { ok: false, error: err?.message || String(err) };
         }
     }
 
     @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
-    @param('branch', Types.String, true)
-    async get(domainId: string, docId: number, bid: number, branch?: string) {
-        return this.post(domainId, docId, bid, branch);
+    async get(domainId: string, docId: number, bid: number) {
+        return this.post(domainId, docId, bid);
     }
 }
 
@@ -3400,7 +3144,6 @@ export class BaseCardHandler extends Handler {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         }
         
-        const cardBranch = body.branch?.trim() || (base as any).currentBranch || 'main';
         const cardDocId = await CardModel.create(
             domainId,
             base.docId,
@@ -3410,8 +3153,6 @@ export class BaseCardHandler extends Handler {
             finalContent,
             this.request.ip,
             body?.problems,
-            undefined,
-            cardBranch,
         );
         
         this.response.body = { cardId: cardDocId.toString() };
@@ -3556,7 +3297,7 @@ export class BaseCardHandler extends Handler {
         }
 
         if (!targetCard) throw new NotFoundError('Card not found');
-        const base = await BaseModel.get(domainId, targetCard.baseDocId);
+        const base = await BaseModel.get(domainId, Number(targetCard.baseDocId));
         if (!base) throw new NotFoundError('Base not found');
         if (!this.user.own(base)) {
             const perm = action === 'delete' ? PERM.PERM_DELETE_DISCUSSION : PERM.PERM_EDIT_DISCUSSION;
@@ -3565,8 +3306,7 @@ export class BaseCardHandler extends Handler {
 
         if (action === 'delete') {
             await CardModel.delete(domainId, targetCard.docId);
-            const branch = (base as any).currentBranch || 'main';
-            (this.ctx.emit as any)('base/update', base.docId, null, branch, this.user._id, this.user.uname, 'delete_card');
+            (this.ctx.emit as any)('base/update', base.docId, this.user._id, this.user.uname, 'delete_card');
             this.response.body = { success: true };
             return;
         }
@@ -3586,7 +3326,6 @@ export class BaseCardHandler extends Handler {
         }
 
         await CardModel.update(domainId, targetCard.docId, updates);
-        const branch = (base as any).currentBranch || 'main';
         const changed: string[] = [];
         if (updates.title !== undefined) changed.push('title');
         if (updates.content !== undefined) changed.push('content');
@@ -3594,7 +3333,7 @@ export class BaseCardHandler extends Handler {
         if (updates.nodeId !== undefined) changed.push('nodeId');
         if (updates.order !== undefined) changed.push('order');
         if (updates.tags !== undefined) changed.push('tags');
-        (this.ctx.emit as any)('base/update', base.docId, null, branch, this.user._id, this.user.uname, 'update_card', { changed });
+        (this.ctx.emit as any)('base/update', base.docId, this.user._id, this.user.uname, 'update_card', { changed });
         this.response.body = { success: true };
     }
 }
@@ -3605,25 +3344,22 @@ class BaseCardListHandler extends Handler {
     @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
     @param('nodeId', Types.String)
-    @param('branch', Types.String, true)
     @param('cardId', Types.ObjectId, true)
-    async get(domainId: string, docId: number, bid: number, nodeId: string, branch?: string, cardId?: ObjectId) {
+    async get(domainId: string, docId: number, bid: number, nodeId: string, cardId?: ObjectId) {
         const base = docId
             ? await BaseModel.get(domainId, docId)
             : bid
                 ? await BaseModel.getBybid(domainId, bid)
                 : await BaseModel.getByDomain(domainId);
         if (!base) throw new NotFoundError('Base not found');
-        
-        const effectiveBranch = branch || 'main';
-        const branchData = getBranchData(base, effectiveBranch);
-        const nodes = branchData.nodes || [];
-        const edges = branchData.edges || [];
+
+        const nodes = base.nodes || [];
+        const edges = base.edges || [];
         
         
         const node = nodes.find(n => n.id === nodeId);
         if (!node) {
-            throw new NotFoundError('Node not found in this branch');
+            throw new NotFoundError('Node not found in this base');
         }
         
         
@@ -3673,8 +3409,7 @@ class BaseCardListHandler extends Handler {
             cards,
             nodeId,
             nodeText: node?.text || '节点',
-            nodePath: reversedPathNodes, 
-            branch: branch || 'main',
+            nodePath: reversedPathNodes,
             selectedCard,
         };
         this.UiContext.extraTitleContent = extraTitleContent;
@@ -3825,27 +3560,24 @@ class BaseCardFileDownloadHandler extends Handler {
 }
 
 /**
- * Node-mounted files: list, upload, delete (branch-aware)
+ * Node-mounted files: list, upload, delete
  */
 class BaseNodeFilesHandler extends Handler {
     base?: BaseDoc;
     node?: BaseNode;
-    branch?: string;
     resolvedNodeId?: string;
     /** True if the node ID looks like a temp (unsaved) node */
     isTempNode: boolean = false;
 
     @param('docId', Types.PositiveInt, true)
     @param('nodeId', Types.String, true)
-    @param('branch', Types.String, true)
-    async _prepare(domainId: string, docId: number, nodeId: string, branch?: string) {
+    async _prepare(domainId: string, docId: number, nodeId: string) {
         this.base = await BaseModel.get(domainId, docId);
         if (!this.base) throw new NotFoundError('Base not found');
         if (!this.user.own(this.base)) {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         }
-        this.branch = branch || (this.base as any).currentBranch || 'main';
-        const { nodes } = getBranchData(this.base, this.branch);
+        const nodes = this.base.nodes || [];
         this.node = nodes.find((n) => n.id === nodeId) || null;
         this.resolvedNodeId = nodeId;
         // Allow uploads/downloads for temp node IDs even if the node doesn't exist yet
@@ -3854,8 +3586,7 @@ class BaseNodeFilesHandler extends Handler {
 
     @param('docId', Types.PositiveInt, true)
     @param('nodeId', Types.String, true)
-    @param('branch', Types.String, true)
-    async get(domainId: string, docId: number, nodeId: string, branch?: string) {
+    async get(domainId: string, docId: number, nodeId: string) {
         if (this.isTempNode) {
             this.response.body = { files: [] };
             return;
@@ -3872,36 +3603,34 @@ class BaseNodeFilesHandler extends Handler {
 
     @param('docId', Types.PositiveInt, true)
     @param('nodeId', Types.String, true)
-    @param('branch', Types.String, true)
-    async post(domainId: string, docId: number, nodeId: string, branch?: string) {
+    async post(domainId: string, docId: number, nodeId: string) {
         // Temp nodes: only accept uploads
         if (this.isTempNode) {
             const body = (this.request.body as any) || {};
             if (this.request.files?.file) {
                 const filename = body.filename || this.request.files.file.originalFilename || 'untitled';
-                return this.postUploadFile(domainId, docId, nodeId, branch, filename);
+                return this.postUploadFile(domainId, docId, nodeId, filename);
             }
             throw new ValidationError('file');
         }
         const body = (this.request.body as any) || {};
         if (this.request.files?.file) {
             const filename = body.filename || this.request.files.file.originalFilename || 'untitled';
-            return this.postUploadFile(domainId, docId, nodeId, branch, filename);
+            return this.postUploadFile(domainId, docId, nodeId, filename);
         }
         if (body.fileAction === 'rename' && typeof body.oldName === 'string' && typeof body.newName === 'string') {
-            return this.postRenameFile(domainId, docId, nodeId, branch, 'rename', body.oldName, body.newName);
+            return this.postRenameFile(domainId, docId, nodeId, 'rename', body.oldName, body.newName);
         }
         if (Array.isArray(body.files) && body.files.length > 0) {
-            return this.postDeleteFiles(domainId, docId, nodeId, branch, body.files);
+            return this.postDeleteFiles(domainId, docId, nodeId, body.files);
         }
         throw new ValidationError('file or files');
     }
 
     @param('docId', Types.PositiveInt, true)
     @param('nodeId', Types.String, true)
-    @param('branch', Types.String, true)
     @post('filename', Types.Filename, true)
-    async postUploadFile(domainId: string, docId: number, nodeId: string, branch?: string, filename?: string) {
+    async postUploadFile(domainId: string, docId: number, nodeId: string, filename?: string) {
         if (!this.isTempNode) {
             if ((this.node!.files?.length || 0) >= system.get('limit.user_files')) {
                 if (!this.user.hasPriv(PRIV.PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('count');
@@ -3932,9 +3661,8 @@ class BaseNodeFilesHandler extends Handler {
 
     @param('docId', Types.PositiveInt, true)
     @param('nodeId', Types.String, true)
-    @param('branch', Types.String, true)
     @post('files', Types.ArrayOf(Types.Filename))
-    async postDeleteFiles(domainId: string, docId: number, nodeId: string, branch?: string, files: string[] = []) {
+    async postDeleteFiles(domainId: string, docId: number, nodeId: string, files: string[] = []) {
         const storagePaths = files.map((name) => `base/${domainId}/${docId.toString()}/node/${nodeId}/${name}`);
         await Promise.all([
             storage.del(storagePaths, this.user._id),
@@ -3945,11 +3673,10 @@ class BaseNodeFilesHandler extends Handler {
 
     @param('docId', Types.PositiveInt, true)
     @param('nodeId', Types.String, true)
-    @param('branch', Types.String, true)
     @post('operation', Types.String, true)
     @post('oldName', Types.Filename, true)
     @post('newName', Types.Filename, true)
-    async postRenameFile(domainId: string, docId: number, nodeId: string, branch?: string, operation?: string, oldName?: string, newName?: string) {
+    async postRenameFile(domainId: string, docId: number, nodeId: string, operation?: string, oldName?: string, newName?: string) {
         if (operation !== 'rename' || !oldName || !newName) throw new ValidationError('operation, oldName, newName');
         const prefix = `base/${domainId}/${docId.toString()}/node/${nodeId}`;
         const oldPath = `${prefix}/${oldName}`;
@@ -3968,33 +3695,25 @@ class BaseNodeFilesHandler extends Handler {
     private async updateNodeFiles(domainId: string, docId: number, files: FileInfo[]) {
         const base = await BaseModel.get(domainId, docId);
         if (!base) throw new NotFoundError('Base not found');
-        const branchName = this.branch!;
-        const branchData = { ...(base.branchData || {}) };
-        if (!branchData[branchName]) {
-            branchData[branchName] = { nodes: base.nodes || [], edges: base.edges || [] };
-        }
-        const nodes = [...branchData[branchName].nodes];
+        const nodes = [...(base.nodes || [])];
         const idx = nodes.findIndex((n) => n.id === this.node!.id);
         if (idx < 0) throw new NotFoundError('Node not found');
         nodes[idx] = { ...nodes[idx], files };
-        branchData[branchName] = { ...branchData[branchName], nodes };
-        const updates: any = { branchData };
-        if (branchName === 'main') {
-            updates.nodes = nodes;
-            updates.edges = branchData[branchName].edges;
-        }
-        await BaseModel.updateFull(domainId, docId, updates);
+        await BaseModel.updateFull(domainId, docId, {
+            nodes,
+            edges: base.edges || [],
+            updateAt: new Date(),
+        });
     }
 }
 
 /**
- * Move a file from a node or card to another node (branch-aware).
+ * Move a file from a node or card to another node.
  */
 class BaseFileMoveHandler extends Handler {
     @param('docId', Types.PositiveInt, true)
     async post(domainId: string, docId: number) {
         const body = (this.request.body as any) || {};
-        const branch = body.branch || 'main';
         const fileName = body.fileName as string;
         const sourceType = body.sourceType as string;
         const sourceNodeId = body.sourceNodeId as string;
@@ -4016,7 +3735,7 @@ class BaseFileMoveHandler extends Handler {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         }
 
-        const { nodes } = getBranchData(base, branch);
+        const nodes = base.nodes || [];
         const targetNode = nodes.find((n) => n.id === targetNodeId);
         if (!targetNode) throw new NotFoundError('Target node not found');
         if ((targetNode.files || []).find((f) => f.name === fileName)) throw new FileExistsError(fileName);
@@ -4057,11 +3776,7 @@ class BaseFileMoveHandler extends Handler {
             });
         }
 
-        const branchData = { ...(base.branchData || {}) };
-        if (!branchData[branch]) {
-            branchData[branch] = { nodes: base.nodes || [], edges: base.edges || [] };
-        }
-        const updatedNodes = [...branchData[branch].nodes];
+        const updatedNodes = [...(base.nodes || [])];
         if (sourceType === 'node') {
             const sIdx = updatedNodes.findIndex((n) => n.id === sourceNodeId);
             if (sIdx < 0) throw new NotFoundError('Source node not found');
@@ -4076,13 +3791,11 @@ class BaseFileMoveHandler extends Handler {
             ...updatedNodes[tIdx],
             files: [...(updatedNodes[tIdx].files || []), payload],
         };
-        branchData[branch] = { ...branchData[branch], nodes: updatedNodes };
-        const updates: Partial<BaseDoc> = { branchData, updateAt: new Date() };
-        if (branch === 'main') {
-            updates.nodes = updatedNodes;
-            updates.edges = branchData[branch].edges;
-        }
-        await BaseModel.updateFull(domainId, docId, updates);
+        await BaseModel.updateFull(domainId, docId, {
+            nodes: updatedNodes,
+            edges: base.edges || [],
+            updateAt: new Date(),
+        });
         this.response.body = { ok: true };
     }
 }
@@ -4098,12 +3811,10 @@ class BaseNodeFileDownloadHandler extends Handler {
     @param('filename', Types.Filename)
     @param('noDisposition', Types.Boolean)
     @param('view', Types.Boolean)
-    @param('branch', Types.String, true)
-    async get(domainId: string, docId: number, nodeId: string, filename: string, noDisposition = false, view = false, branch?: string) {
+    async get(domainId: string, docId: number, nodeId: string, filename: string, noDisposition = false, view = false) {
         const base = await BaseModel.get(domainId, docId);
         if (!base) throw new NotFoundError('Base not found');
-        const branchName = branch || (base as any).currentBranch || 'main';
-        const { nodes } = getBranchData(base, branchName);
+        const nodes = base.nodes || [];
         const node = nodes.find((n) => n.id === nodeId);
         // Allow download for temp nodes even if node doesn't exist --- files were uploaded before save
         const isTempNode = !node && (nodeId.startsWith('temp-node-') || nodeId.startsWith('node_'));
@@ -4128,8 +3839,7 @@ class BaseCardEditHandler extends Handler {
     @param('bid', Types.PositiveInt, true)
     @param('nodeId', Types.String)
     @param('cardId', Types.ObjectId, true)
-    @param('branch', Types.String, true)
-    async get(domainId: string, docId: number, bid: number, nodeId: string, cardId?: ObjectId, branch?: string) {
+    async get(domainId: string, docId: number, bid: number, nodeId: string, cardId?: ObjectId) {
         const base = docId 
             ? await BaseModel.get(domainId, docId)
             : await BaseModel.getBybid(domainId, bid);
@@ -4149,7 +3859,6 @@ class BaseCardEditHandler extends Handler {
             base,
             card,
             nodeId,
-            branch: branch || 'main',
         };
         this.UiContext.extraTitleContent = `${card?.title || '卡片'} - ${base.title}`;
     }
@@ -4158,7 +3867,6 @@ class BaseCardEditHandler extends Handler {
     @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
     @param('nodeId', Types.String)
-    @param('branch', Types.String, true)
     
     @post('title', Types.String)
     @post('content', Types.String, true)
@@ -4174,7 +3882,6 @@ class BaseCardEditHandler extends Handler {
         docId: number,
         bid: number,
         nodeId: string,
-        branch?: string,
         title?: string,
         content?: string,
         tags?: string[],
@@ -4192,9 +3899,6 @@ class BaseCardEditHandler extends Handler {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         }
 
-        const effectiveBranch = branch || 'main';
-
-
         if (operation === 'update' && cardId) {
             const updates: any = {};
             if (title !== undefined) updates.title = title;
@@ -4203,16 +3907,14 @@ class BaseCardEditHandler extends Handler {
             await CardModel.update(domainId, cardId, updates);
             
             if (docId) {
-            this.response.redirect = this.url('base_card_list_branch', { 
+            this.response.redirect = this.url('base_card_list', {
                 docId: docId.toString(), 
-                branch: effectiveBranch, 
                 nodeId 
                 }) + `?cardId=${cardId.toString()}`;
         } else {
-                this.response.redirect = this.url('base_card_list_branch_bid', { 
-                    bid: bid.toString(), 
-                    branch: effectiveBranch, 
-                    nodeId 
+                this.response.redirect = this.url('base_card_list', {
+                    docId: base.docId.toString(),
+                        nodeId
                 }) + `?cardId=${cardId.toString()}`;
             }
             return;
@@ -4232,19 +3934,17 @@ class BaseCardEditHandler extends Handler {
                 this.request.ip,
                 undefined,
                 undefined,
-                effectiveBranch,
+                undefined,
             );
         
         if (docId) {
-            this.response.redirect = this.url('base_card_list_branch', { 
+            this.response.redirect = this.url('base_card_list', {
                 docId: docId.toString(), 
-                branch: effectiveBranch, 
                 nodeId 
             }) + `?cardId=${newCardId.toString()}`;
         } else {
-            this.response.redirect = this.url('base_card_list_branch_bid', { 
-                bid: bid.toString(), 
-                branch: effectiveBranch, 
+            this.response.redirect = this.url('base_card_list', {
+                docId: base.docId.toString(),
                 nodeId 
             }) + `?cardId=${newCardId.toString()}`;
         }
@@ -4254,7 +3954,6 @@ class BaseCardEditHandler extends Handler {
     @param('bid', Types.PositiveInt, true)
     @param('nodeId', Types.String)
     @route('cardId', Types.ObjectId, true)
-    @param('branch', Types.String, true)
     
     @post('title', Types.String, true)
     @post('content', Types.String, true)
@@ -4265,7 +3964,6 @@ class BaseCardEditHandler extends Handler {
         bid: number,
         nodeId: string,
         cardId?: ObjectId,
-        branch?: string,
         title?: string,
         content?: string,
         operation?: string
@@ -4281,17 +3979,14 @@ class BaseCardEditHandler extends Handler {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         }
         
-        const effectiveBranch = branch || 'main';
-        
         if (cardId) {
             
             if (operation === 'delete') {
                 const card = await CardModel.get(domainId, cardId);
                 if (!card) throw new NotFoundError('Card not found');
                 await CardModel.delete(domainId, cardId);
-            this.response.redirect = this.url('base_card_list_branch', { 
+            this.response.redirect = this.url('base_card_list', {
                 docId: docId.toString(), 
-                branch: effectiveBranch, 
                 nodeId 
             });
                 return;
@@ -4312,16 +4007,14 @@ class BaseCardEditHandler extends Handler {
                 this.response.redirect = returnUrlObj.pathname + returnUrlObj.search;
             } else {
             if (docId) {
-                this.response.redirect = this.url('base_card_list_branch', { 
+                this.response.redirect = this.url('base_card_list', {
                     docId: docId.toString(), 
-                    branch: effectiveBranch, 
-                    nodeId 
+                        nodeId
                 }) + `?cardId=${cardId.toString()}`;
             } else {
-                this.response.redirect = this.url('base_card_list_branch_bid', { 
-                    bid: bid.toString(), 
-                    branch: effectiveBranch, 
-                    nodeId 
+                this.response.redirect = this.url('base_card_list', {
+                    docId: base.docId.toString(),
+                        nodeId
                 }) + `?cardId=${cardId.toString()}`;
                 }
             }
@@ -4336,21 +4029,18 @@ class BaseCardDetailHandler extends Handler {
     @param('bid', Types.PositiveInt, true)
     @param('nodeId', Types.String)
     @param('cardId', Types.ObjectId)
-    @param('branch', Types.String, true)
-    async get(domainId: string, docId: number, bid: number, nodeId: string, cardId: ObjectId, branch?: string) {
+    async get(domainId: string, docId: number, bid: number, nodeId: string, cardId: ObjectId) {
         const base = docId 
             ? await BaseModel.get(domainId, docId)
             : await BaseModel.getBybid(domainId, bid);
         if (!base) throw new NotFoundError('Base not found');
         
-        const effectiveBranch = branch || 'main';
-        const branchData = getBranchData(base, effectiveBranch);
-        const nodes = branchData.nodes || [];
+        const nodes = base.nodes || [];
         
         
         const node = nodes.find(n => n.id === nodeId);
         if (!node) {
-            throw new NotFoundError('Node not found in this branch');
+            throw new NotFoundError('Node not found in this base');
         }
         
         const card = await CardModel.get(domainId, cardId);
@@ -4368,7 +4058,6 @@ class BaseCardDetailHandler extends Handler {
             cards,
             currentIndex: currentIndex >= 0 ? currentIndex : 0,
             nodeId,
-            branch: effectiveBranch,
         };
     }
     
@@ -4394,7 +4083,7 @@ class BaseCardDetailHandler extends Handler {
             const card = await CardModel.get(domainId, cardId);
             if (!card) throw new NotFoundError('Card not found');
             
-            const base = await BaseModel.getBybid(domainId, card.bid);
+            const base = await BaseModel.get(domainId, Number(card.baseDocId));
             if (!base) throw new NotFoundError('Base not found');
             if (!this.user.own(base)) {
                 this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
@@ -4409,7 +4098,7 @@ class BaseCardDetailHandler extends Handler {
         const card = await CardModel.get(domainId, cardId);
         if (!card) throw new NotFoundError('Card not found');
         
-        const base = await BaseModel.getBybid(domainId, card.bid);
+        const base = await BaseModel.get(domainId, Number(card.baseDocId));
         if (!base) throw new NotFoundError('Base not found');
         if (!this.user.own(base)) {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
@@ -4432,7 +4121,6 @@ export interface BatchSaveOptions {
     mapDocType: MindMapDocType;
     getBase: (actualDomainId: string) => Promise<BaseDoc | null>;
     createBase: (actualDomainId: string) => Promise<BaseDoc>;
-    getBranch: (base: BaseDoc) => string;
 }
 
 const DEVELOP_SAVE_CHANGE_LOG_CAP = 48;
@@ -4476,7 +4164,7 @@ function buildDevelopSaveChangeLines(data: Record<string, unknown>): DevelopSave
     return out;
 }
 
-/** After each save, recompute develop run progress from today’s pending queue and the session’s base/branch. */
+/** After each save, recompute develop run progress from today’s pending queue and the session’s base. */
 export async function refreshDevelopSessionRunProgressAfterBatchSave(
     db: { collection: (n: string) => any },
     domainId: string,
@@ -4497,9 +4185,8 @@ export async function refreshDevelopSessionRunProgressAfterBatchSave(
 
     const baseDocId = Number(cur.baseDocId);
     if (!Number.isFinite(baseDocId) || baseDocId <= 0) return;
-    const branch = cur.branch && String(cur.branch).trim() ? String(cur.branch).trim() : 'main';
     const run = await resolveDevelopRunProgressForSession(
-        db, domainId, uid, priv, baseDocId, branch, cur.progress,
+        db, domainId, uid, priv, baseDocId, cur.progress,
     );
     if (!run) return;
     const prevRaw = cur.progress;
@@ -4514,7 +4201,6 @@ export async function appendDevelopSaveRecordAfterBatchSave(
     domainId: string,
     uid: number,
     docId: number,
-    branch: string,
     developSessionIdHex: string,
     data: Record<string, unknown>,
     cardIdMap: Map<string, string>,
@@ -4532,8 +4218,6 @@ export async function appendDevelopSaveRecordAfterBatchSave(
     if (isDevelopSessionSettled(sess)) return;
     if (sess.developMapDocType !== expectedMapDocType) return;
     if (Number(sess.baseDocId) !== Number(docId)) return;
-    const brSes = sess.branch && String(sess.branch).trim() ? String(sess.branch).trim() : 'main';
-    if (brSes !== branch) return;
 
     const nodeCreates = (data.nodeCreates as unknown[] | undefined)?.length ?? 0;
     const nodeUpdates = (data.nodeUpdates as unknown[] | undefined)?.length ?? 0;
@@ -4553,7 +4237,7 @@ export async function appendDevelopSaveRecordAfterBatchSave(
         .map((c) => (c.tempId ? cardIdMap.get(c.tempId) : undefined))
         .filter((x): x is string => typeof x === 'string' && x.length > 0);
 
-    await RecordModel.insertDevelopSaveRecord(domainId, uid, sess._id, docId, branch, {
+    await RecordModel.insertDevelopSaveRecord(domainId, uid, sess._id, docId, {
         nodeCreates,
         nodeUpdates,
         nodeDeletes,
@@ -4598,7 +4282,7 @@ export async function appendDevelopSaveRecordAfterBatchSave(
 }
 
 export class BaseBatchSaveHandler extends Handler {
-    protected async sanitizeNodeCreatePayload(nodeCreate: any, realParentId: string | undefined, _ctx: { domainId: string; docId: number; branch: string; base: BaseDoc; mapDocType: MindMapDocType }): Promise<Partial<BaseNode>> {
+    protected async sanitizeNodeCreatePayload(nodeCreate: any, realParentId: string | undefined, _ctx: { domainId: string; docId: number; base: BaseDoc; mapDocType: MindMapDocType }): Promise<Partial<BaseNode>> {
         const nodePayload: Partial<BaseNode> = {
             text: nodeCreate.text,
             x: nodeCreate.x,
@@ -4623,7 +4307,7 @@ export class BaseBatchSaveHandler extends Handler {
         return nodePayload;
     }
 
-    protected async sanitizeNodeUpdatePayload(nodeUpdate: any, _ctx: { domainId: string; docId: number; branch: string; base: BaseDoc; mapDocType: MindMapDocType }): Promise<Partial<BaseNode>> {
+    protected async sanitizeNodeUpdatePayload(nodeUpdate: any, _ctx: { domainId: string; docId: number; base: BaseDoc; mapDocType: MindMapDocType }): Promise<Partial<BaseNode>> {
         const updates: Partial<BaseNode> = {};
         if (nodeUpdate.text != null) updates.text = nodeUpdate.text;
         if (nodeUpdate.order != null) updates.order = nodeUpdate.order;
@@ -4647,9 +4331,9 @@ export class BaseBatchSaveHandler extends Handler {
         return true;
     }
 
-    protected async beforeBatchApply(ctx: { domainId: string; docId: number; branch: string; base: BaseDoc; mapDocType: MindMapDocType; data: any }): Promise<{ success: true } | { success: false; code?: string; errors: string[]; details?: any }> {
+    protected async beforeBatchApply(ctx: { domainId: string; docId: number; base: BaseDoc; mapDocType: MindMapDocType; data: any }): Promise<{ success: true } | { success: false; code?: string; errors: string[]; details?: any }> {
         const data = ctx.data || {};
-        const numberErrors = collectRoadmapBatchSaveNumberErrors(ctx.base, ctx.branch, {
+        const numberErrors = collectRoadmapBatchSaveNumberErrors(ctx.base, {
             nodeCreates: data.nodeCreates,
             nodeUpdates: data.nodeUpdates,
             nodeDeletes: data.nodeDeletes,
@@ -4664,7 +4348,7 @@ export class BaseBatchSaveHandler extends Handler {
         return { success: true };
     }
 
-    protected async afterSuccessfulBatchApply(_ctx: { domainId: string; docId: number; branch: string; base: BaseDoc; mapDocType: MindMapDocType; data: any; nodeIdMap: Map<string, string>; cardIdMap: Map<string, string> }): Promise<void> {
+    protected async afterSuccessfulBatchApply(_ctx: { domainId: string; docId: number; base: BaseDoc; mapDocType: MindMapDocType; data: any; nodeIdMap: Map<string, string>; cardIdMap: Map<string, string> }): Promise<void> {
         // Subclasses may sync derived state after the batch has been persisted.
     }
 
@@ -4680,7 +4364,6 @@ export class BaseBatchSaveHandler extends Handler {
                     this.domain.name || '知识库',
                     '',
                     undefined,
-                    'main',
                     this.request.ip,
                     undefined,
                     this.domain.name
@@ -4689,7 +4372,6 @@ export class BaseBatchSaveHandler extends Handler {
                 if (!base) throw new Error('Failed to create base');
                 return base;
             },
-            getBranch: (base) => (base as any).currentBranch || 'main',
         };
     }
 
@@ -4711,7 +4393,6 @@ export class BaseBatchSaveHandler extends Handler {
         }
         if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         const docId = base.docId;
-        const branch = data.branch?.trim() || opts.getBranch(base);
 
         const developSessionRaw = typeof data.developSessionId === 'string' ? data.developSessionId.trim() : '';
         if (developSessionRaw) {
@@ -4721,18 +4402,17 @@ export class BaseBatchSaveHandler extends Handler {
                 this.user._id,
                 developSessionRaw,
                 Number(docId),
-                branch,
                 mdt,
             );
         }
 
-        const preflight = await this.beforeBatchApply({ domainId: actualDomainId, docId, branch, base, mapDocType: mdt, data });
+        const preflight = await this.beforeBatchApply({ domainId: actualDomainId, docId, base, mapDocType: mdt, data });
         if (!preflight.success) {
             this.response.body = {
                 success: false,
-                code: preflight.code,
-                errors: preflight.errors || [],
-                details: preflight.details,
+                code: (preflight as { code?: string }).code,
+                errors: (preflight as { errors?: string[] }).errors || [],
+                details: (preflight as { details?: unknown }).details,
             };
             return;
         }
@@ -4793,8 +4473,7 @@ export class BaseBatchSaveHandler extends Handler {
                     if (realParentId && !realParentId.startsWith('temp-node-')) {
                         const currentBase = await BaseModel.get(actualDomainId, docId, mdt);
                         if (currentBase) {
-                            const branchData = getBranchData(currentBase, branch);
-                            const parentExists = branchData.nodes.some((n: BaseNode) => n.id === realParentId);
+                            const parentExists = (currentBase.nodes || []).some((n: BaseNode) => n.id === realParentId);
                             if (!parentExists) {
                                 realParentId = undefined;
                             }
@@ -4806,7 +4485,6 @@ export class BaseBatchSaveHandler extends Handler {
                     const nodePayload = await this.sanitizeNodeCreatePayload(nodeCreate, realParentId, {
                         domainId: actualDomainId,
                         docId,
-                        branch,
                         base,
                         mapDocType: mdt,
                     });
@@ -4815,7 +4493,6 @@ export class BaseBatchSaveHandler extends Handler {
                         docId,
                         nodePayload as Omit<BaseNode, 'id'>,
                         realParentId,
-                        branch,
                         realParentId, // edgeSourceId
                         mdt,
                     );
@@ -4837,7 +4514,7 @@ export class BaseBatchSaveHandler extends Handler {
                                     fileInfos.push({ _id: sf.name, name: sf.name, ...pick(meta, ['size', 'lastModified', 'etag']) });
                                 }
                                 if (fileInfos.length > 0) {
-                                    await BaseModel.updateNode(actualDomainId, docId, result.nodeId, { files: fileInfos }, branch, mdt);
+                                    await BaseModel.updateNode(actualDomainId, docId, result.nodeId, { files: fileInfos }, mdt);
                                 }
                             }
                         } catch (_e) {
@@ -4863,12 +4540,11 @@ export class BaseBatchSaveHandler extends Handler {
                 const updates = await this.sanitizeNodeUpdatePayload(nodeUpdate, {
                     domainId: actualDomainId,
                     docId,
-                    branch,
                     base,
                     mapDocType: mdt,
                 });
                 if (Object.keys(updates).length === 0) continue;
-                await BaseModel.updateNode(actualDomainId, docId, nodeUpdate.nodeId, updates, branch, mdt);
+                await BaseModel.updateNode(actualDomainId, docId, nodeUpdate.nodeId, updates, mdt);
             } catch (error: any) {
                 errors.push(`更新节点失败: ${error.message || '未知错误'}`);
             }
@@ -4877,7 +4553,7 @@ export class BaseBatchSaveHandler extends Handler {
         
         for (const edgeId of edgeDeletes) {
             try {
-                await BaseModel.deleteEdge(actualDomainId, docId, edgeId, branch, mdt);
+                await BaseModel.deleteEdge(actualDomainId, docId, edgeId, mdt);
             } catch (error: any) {
                 
             }
@@ -4886,7 +4562,7 @@ export class BaseBatchSaveHandler extends Handler {
         
         for (const nodeId of nodeDeletes) {
             try {
-                await BaseModel.deleteNode(actualDomainId, docId, nodeId, branch, mdt);
+                await BaseModel.deleteNode(actualDomainId, docId, nodeId, mdt);
             } catch (error: any) {
                 errors.push(`删除节点失败: ${error.message || '未知错误'}`);
             }
@@ -4909,7 +4585,7 @@ export class BaseBatchSaveHandler extends Handler {
                         ...(edgeCreate.lineStyle ? { lineStyle: edgeCreate.lineStyle } : {}),
                         ...(edgeCreate.sourceHandle ? { sourceHandle: edgeCreate.sourceHandle } : {}),
                         ...(edgeCreate.targetHandle ? { targetHandle: edgeCreate.targetHandle } : {}),
-                    }, branch, mdt);
+                    }, mdt);
                 }
             } catch (error: any) {
                 errors.push(`创建边失败: ${error.message || '未知错误'}`);
@@ -4925,7 +4601,7 @@ export class BaseBatchSaveHandler extends Handler {
                     ...(edgeUpdate.lineStyle ? { lineStyle: edgeUpdate.lineStyle } : {}),
                     ...(edgeUpdate.sourceHandle ? { sourceHandle: edgeUpdate.sourceHandle } : {}),
                     ...(edgeUpdate.targetHandle ? { targetHandle: edgeUpdate.targetHandle } : {}),
-                }, branch, mdt);
+                }, mdt);
             } catch (error: any) {
                 errors.push(`更新边失败: ${error.message || '未知错误'}`);
             }
@@ -4950,7 +4626,6 @@ export class BaseBatchSaveHandler extends Handler {
                         this.request.ip,
                         cardCreate.problems,
                         cardCreate.order,
-                        branch,
                         cardCreate.cardType,
                         cardCreate.fileType,
                         cardCreate.fileName,
@@ -5022,7 +4697,7 @@ export class BaseBatchSaveHandler extends Handler {
         let batchSuccess = errors.length === 0;
         if (batchSuccess) {
             try {
-                await this.afterSuccessfulBatchApply({ domainId: actualDomainId, docId, branch, base, mapDocType: mdt, data, nodeIdMap, cardIdMap });
+                await this.afterSuccessfulBatchApply({ domainId: actualDomainId, docId, base, mapDocType: mdt, data, nodeIdMap, cardIdMap });
             } catch (err: any) {
                 errors.push(`保存后同步失败: ${err.message || '未知错误'}`);
                 batchSuccess = false;
@@ -5041,7 +4716,7 @@ export class BaseBatchSaveHandler extends Handler {
                 }
             }
             if (incNodes || incCards || incProblems) {
-                await incDevelopBranchDaily(this.ctx.db.db, actualDomainId, this.user._id, branch, docId, {
+                await incDevelopDaily(this.ctx.db.db, actualDomainId, this.user._id, docId, {
                     nodes: incNodes,
                     cards: incCards,
                     problems: incProblems,
@@ -5071,9 +4746,8 @@ export class BaseBatchSaveHandler extends Handler {
             }
             // Also include tags from existing cards that weren't updated
             try {
-                const branchData = getBranchData(base, branch);
-                const nodeIds = branchData.nodes.map((n: { id: string }) => n.id);
-                const existing = await CardModel.getByNodeIds(actualDomainId, docId, nodeIds, branch);
+                const nodeIds = (base.nodes || []).map((n: { id: string }) => n.id);
+                const existing = await CardModel.getByNodeIds(actualDomainId, docId, nodeIds);
                 for (const cards of existing.values()) {
                     for (const c of cards) {
                         if (Array.isArray(c.tags)) c.tags.forEach(addTagWithParents);
@@ -5106,7 +4780,6 @@ export class BaseBatchSaveHandler extends Handler {
                     actualDomainId,
                     this.user._id,
                     docId,
-                    branch,
                     developSessionRaw,
                     data,
                     cardIdMap,
@@ -5118,7 +4791,7 @@ export class BaseBatchSaveHandler extends Handler {
             }
         }
 
-        await persistBaseEditorSaveSidecars(this, actualDomainId, docId, branch, data as Record<string, unknown>, mdt, nodeIdMap);
+        await persistBaseEditorSaveSidecars(this, actualDomainId, docId, data as Record<string, unknown>, mdt, nodeIdMap);
         const summary: Record<string, number> = {};
         if (data.nodeCreates?.length) summary.nodeCreates = data.nodeCreates.length;
         if (data.nodeUpdates?.length) summary.nodeUpdates = data.nodeUpdates.length;
@@ -5132,13 +4805,13 @@ export class BaseBatchSaveHandler extends Handler {
         if (data.cardDeletes?.length) summary.cardDeletes = data.cardDeletes.length;
         if (data.edgeCreates?.length) summary.edgeCreates = data.edgeCreates.length;
         if (data.edgeDeletes?.length) summary.edgeDeletes = data.edgeDeletes.length;
-        (this.ctx.emit as any)('base/update', docId, null, branch, this.user._id, this.user.uname, 'batch_update', summary);
+        (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'batch_update', summary);
 
         // Fire-and-forget vectorize base content for semantic search after successful batch save — disabled
         // because full re-index on every save is too expensive for large bases.
         // Uncomment if you need automatic embedding updates after each save.
         // if (batchSuccess && this.ctx.embedding) {
-        //     this.ctx.embedding.vectorizeBaseContent(actualDomainId, docId, branch).catch((err: any) => {
+        //     this.ctx.embedding.vectorizeBaseContent(actualDomainId, docId).catch((err: any) => {
         //         console.error('Embedding error after batch save:', err);
         //     });
         // }
@@ -5169,12 +4842,13 @@ export class BaseBatchSaveHandler extends Handler {
 /**
  * Sync base data to git repository (without committing)
  */
-async function syncBaseToGit(domainId: string, docId: number, branch: string): Promise<void> {
+async function syncBaseToGit(domainId: string, docId: number): Promise<void> {
+    const branch = 'main';
     const base = await BaseModel.get(domainId, docId);
     if (!base) {
         return;
     }
-    
+
     const repoGitPath = getBaseGitPath(domainId, docId);
     
     try {
@@ -5194,8 +4868,7 @@ async function syncBaseToGit(domainId: string, docId: number, branch: string): P
     // Export to temp directory first
     const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ejunz-base-sync-'));
     try {
-        const branch = (base as any).currentBranch || 'main';
-        await exportBaseToFile(base, tmpDir, branch, domainId);
+        await exportBaseToFile(base, tmpDir, domainId);
         
         // Copy files to git repository and remove extra files
         const copyDirAndCleanup = async (src: string, dest: string) => {
@@ -5259,7 +4932,6 @@ async function syncBaseToGit(domainId: string, docId: number, branch: string): P
 async function getBaseGitStatus(
     domainId: string,
     docId: number,
-    branch: string,
     remoteUrl?: string
 ): Promise<{
     hasLocalRepo: boolean;
@@ -5281,6 +4953,7 @@ async function getBaseGitStatus(
         deleted: string[];
     };
 } | null> {
+    const branch = 'main';
     return null; // git disabled
     const repoGitPath = getBaseGitPath(domainId, docId);
     await ensureGitSafeDirectory(repoGitPath);
@@ -5489,24 +5162,16 @@ async function commitBaseChanges(
     await execFile('git', ['config', 'user.name', String(botName)], { cwd: repoGitPath });
     await execFile('git', ['config', 'user.email', String(botEmail)], { cwd: repoGitPath });
     
-    const branch = (base as any).currentBranch || base.branch || 'main';
+    const branch = 'main';
     try {
-        await execFile('git', ['checkout', String(branch)], { cwd: repoGitPath });
+        await execFile('git', ['checkout', branch], { cwd: repoGitPath });
     } catch {
-        // Branch doesn't exist, create it from main
-        try {
-            await execFile('git', ['checkout', 'main'], { cwd: repoGitPath });
-            await execFile('git', ['checkout', '-b', String(branch)], { cwd: repoGitPath });
-        } catch {
-            // If main doesn't exist either, just create the branch
-            await execFile('git', ['checkout', '-b', String(branch)], { cwd: repoGitPath });
-        }
+        await execFile('git', ['checkout', '-b', branch], { cwd: repoGitPath });
     }
     
     const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ejunz-base-commit-'));
     try {
-        const branch = (base as any).currentBranch || 'main';
-        await exportBaseToFile(base, tmpDir, branch, domainId);
+        await exportBaseToFile(base, tmpDir, domainId);
         
         
         const copyDirAndCleanup = async (src: string, dest: string) => {
@@ -5584,214 +5249,20 @@ async function commitBaseChanges(
 }
 
 /**
- * Base Branch Create Handler
+ * Base Git integration
  */
-class BaseBranchCreateHandler extends Handler {
-    @param('docId', Types.PositiveInt, true)
-    @param('bid', Types.PositiveInt, true)
-    @param('branch', Types.String, true)
-    async post(domainId: string, docId: number, bid: number, branch?: string) {
-        // Support both POST body and URL parameter
-        const newBranch = branch || this.request.body?.branch || '';
-        if (!newBranch || !newBranch.trim()) {
-            throw new Error('Branch name is required');
-        }
-        
-        const branchName = newBranch.trim();
-        if (branchName === 'main') {
-            throw new ForbiddenError('Cannot create branch named main');
-        }
-        
-        const base = docId 
-            ? await BaseModel.get(domainId, docId)
-            : await BaseModel.getBybid(domainId, bid);
-        if (!base) {
-            throw new NotFoundError('Base not found');
-        }
-        
-        if (!this.user.own(base)) {
-            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
-        }
-        
-        const currentBranch = (base as any).currentBranch || 'main';
-        if (currentBranch !== 'main') {
-            throw new ForbiddenError('Branches can only be created from the main branch.');
-        }
-        
-        const branches = Array.isArray((base as any).branches) ? [...(base as any).branches] : ['main'];
-        if (!branches.includes(branchName)) {
-            branches.push(branchName);
-        }
-        
-        
-        const mainBranchData = getBranchData(base, 'main');
-        setBranchData(base, branchName, 
-            JSON.parse(JSON.stringify(mainBranchData.nodes)), 
-            JSON.parse(JSON.stringify(mainBranchData.edges))
-        );
-        
-        await document.set(domainId, document.TYPE_BASE, base.docId, { 
-            branches, 
-            currentBranch: branchName,
-            branchData: base.branchData,
-        });
-        
-        try {
-            const repoGitPath = await ensureBaseGitRepo(domainId, bid);
-            
-            // Ensure main branch exists first
-            try {
-                await exec(`git checkout main`, { cwd: repoGitPath });
-            } catch {
-                try {
-                    await exec(`git checkout -b main`, { cwd: repoGitPath });
-                } catch {
-                    try {
-                        const { stdout: currentBranch } = await exec('git rev-parse --abbrev-ref HEAD', { cwd: repoGitPath });
-                        const baseBranch = currentBranch.trim() || 'main';
-                        if (baseBranch !== 'main') {
-                            await exec(`git checkout -b main`, { cwd: repoGitPath });
-                        }
-                    } catch {
-                        // If all else fails, just try to create main branch
-                        await exec(`git checkout -b main`, { cwd: repoGitPath });
-                    }
-                }
-            }
-            
-            // Now create the new branch from main
-            await exec(`git checkout main`, { cwd: repoGitPath });
-            await exec(`git checkout -b ${branchName}`, { cwd: repoGitPath });
-        } catch (err) {
-            console.error('Failed to create git branch:', err);
-            throw err;
-        }
-        
-        // Redirect to branch detail page
-        const redirectDocId = docId || base.docId;
-        this.response.redirect = this.url('base_detail_branch', { 
-            docId: redirectDocId.toString(), 
-            branch: branchName 
-        });
-    }
-    
-    @param('docId', Types.PositiveInt, true)
-    @param('branch', Types.String, true)
-    async get(domainId: string, docId: number, branch?: string) {
-        // Support GET request for URL-based branch creation
-        return this.post(domainId, docId, bid, branch);
-    }
-}
 
-class BaseBranchesHandler extends Handler {
-    @param('docId', Types.PositiveInt)
-    async get(domainId: string, docId: number) {
-        const base = await resolveBaseByDocIdOrBid(domainId, String(docId));
-        if (!base) throw new NotFoundError('Base not found');
-        const brSet = new Set<string>();
-        const branchesArr: string[] = Array.isArray((base as any).branches) ? (base as any).branches : [];
-        for (const b of branchesArr) {
-            const s = String(b || '').trim();
-            if (s) brSet.add(s);
-        }
-        const branchData: any = (base as any).branchData || {};
-        for (const k of Object.keys(branchData)) {
-            const s = String(k || '').trim();
-            if (s) brSet.add(s);
-        }
-        brSet.add('main');
-        const branches = Array.from(brSet);
-        branches.sort((a, b) => (a === 'main' ? -1 : b === 'main' ? 1 : a.localeCompare(b)));
-        const currentBranch = (base as any).currentBranch || 'main';
-        this.response.template = 'base_branches.html';
-        this.response.body = {
-            base: { ...base, docId: base.docId.toString() },
-            branches,
-            currentBranch,
-            domainId,
-        };
-    }
 
-    @param('docId', Types.PositiveInt)
-    async postCreateBranch(domainId: string, docId: number) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        const { branch: newBranch, sourceBranch } = this.request.body;
-        if (!newBranch || !newBranch.trim()) {
-            throw new BadRequestError('Branch name is required');
-        }
-        const branchName = newBranch.trim();
-        if (branchName === 'main') {
-            throw new ForbiddenError('Cannot create branch named main');
-        }
 
-        const base = await BaseModel.get(domainId, docId);
-        if (!base) throw new NotFoundError('Base not found');
-        if (!this.user.own(base)) {
-            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
-        }
 
-        const source = sourceBranch?.trim() || 'main';
-        const branches: string[] = Array.isArray((base as any).branches) ? [...(base as any).branches] : ['main'];
-        if (branches.includes(branchName)) {
-            throw new BadRequestError('Branch already exists');
-        }
-        branches.push(branchName);
 
-        const srcData = getBranchData(base, source);
-        setBranchData(base, branchName,
-            JSON.parse(JSON.stringify(srcData.nodes)),
-            JSON.parse(JSON.stringify(srcData.edges)),
-        );
-
-        await document.set(domainId, document.TYPE_BASE, base.docId, {
-            branches,
-            branchData: base.branchData,
-        });
-
-        this.response.body = { success: true };
-        this.response.redirect = this.url('base_branches', { docId: docId.toString() });
-    }
-}
-
-class BaseBranchDeleteHandler extends Handler {
-    @param('docId', Types.PositiveInt)
-    @param('branch', Types.String)
-    async post(domainId: string, docId: number, branch: string) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        const branchName = String(branch || '').trim();
-        if (!branchName) throw new BadRequestError('Branch name is required');
-        if (branchName === 'main') throw new ForbiddenError('Cannot delete main branch');
-
-        const base = await BaseModel.get(domainId, docId);
-        if (!base) throw new NotFoundError('Base not found');
-        if (!this.user.own(base)) this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
-
-        const branches: string[] = Array.isArray((base as any).branches) ? [...(base as any).branches] : ['main'];
-        const nextBranches = branches.filter((b) => String(b) !== branchName);
-        const nextBranchData: any = { ...((base as any).branchData || {}) };
-        if (nextBranchData[branchName]) delete nextBranchData[branchName];
-
-        // Remove all cards under this branch.
-        await document.deleteMulti(domainId, document.TYPE_CARD, { baseDocId: docId, branch: branchName } as any);
-
-        await document.set(domainId, document.TYPE_BASE, docId, {
-            branches: nextBranches,
-            branchData: nextBranchData,
-            updateAt: new Date(),
-        } as any);
-
-        this.response.body = { success: true };
-        this.response.redirect = this.url('base_branches', { docId: String(docId) });
-    }
-}
 
 /**
  * Base Git Status Handler
  */
 class BaseGitStatusHandler extends Handler {
     @param('docId', Types.PositiveInt, true)
-    @param('branch', Types.String, true)
-    async get(domainId: string, docId: number, branch?: string) {
+    async get(domainId: string, docId: number) {
         const qDoc = readOptionalRequestBaseDocId(this.request);
         const id = qDoc ?? (docId > 0 ? docId : undefined);
         const base = id
@@ -5801,7 +5272,6 @@ class BaseGitStatusHandler extends Handler {
             throw new NotFoundError('Base not found');
         }
 
-        const effectiveBranch = (branch || (base as any).currentBranch || 'main').toString();
         const githubRepo = (base.githubRepo || '') as string;
 
         let gitStatus: any = null;
@@ -5814,16 +5284,16 @@ class BaseGitStatusHandler extends Handler {
                     githubRepo,
                     this.request.body?.githubToken,
                 );
-                gitStatus = await getBaseGitStatus(domainId, base.docId, effectiveBranch, REPO_URL);
+                gitStatus = await getBaseGitStatus(domainId, base.docId, REPO_URL);
             } catch (err) {
                 console.error('Failed to get git status:', err);
-                gitStatus = await getBaseGitStatus(domainId, base.docId, effectiveBranch);
+                gitStatus = await getBaseGitStatus(domainId, base.docId);
             }
         } else {
-            gitStatus = await getBaseGitStatus(domainId, base.docId, effectiveBranch);
+            gitStatus = await getBaseGitStatus(domainId, base.docId);
         }
 
-        this.response.body = { gitStatus, branch: effectiveBranch };
+        this.response.body = { gitStatus };
     }
 }
 
@@ -5832,10 +5302,9 @@ class BaseGitStatusHandler extends Handler {
  */
 class BaseCommitHandler extends Handler {
     @param('docId', Types.PositiveInt, true)
-    @param('branch', Types.String, true)
     @param('commitMessage', Types.String, true)
     @param('note', Types.String, true)
-    async post(domainId: string, docId: number, branch?: string, commitMessage?: string, note?: string) {
+    async post(domainId: string, docId: number, commitMessage?: string, note?: string) {
         const body = this.request.body || {};
         const customMessage = commitMessage || note || body.commitMessage || body.note || '';
 
@@ -5852,23 +5321,18 @@ class BaseCommitHandler extends Handler {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         }
 
-        const branchFromPath = branch && String(branch).trim();
-        const branchFromBody = body.branch && String(body.branch).trim();
-        const effectiveBranch = (branchFromPath || branchFromBody || (base as any).currentBranch || 'main').toString();
-        const baseForCommit = { ...base, currentBranch: effectiveBranch, branch: effectiveBranch } as BaseDoc;
-        
         try {
             await commitBaseChanges(
                 domainId,
                 base.docId,
-                baseForCommit,
+                base,
                 customMessage,
                 this.user._id,
                 this.user.uname || 'unknown'
             );
 
             
-            (this.ctx.emit as any)('base/update', base.docId, base.bid, undefined, this.user._id, this.user.uname, 'git_commit', { message: customMessage?.trim() || '' });
+            (this.ctx.emit as any)('base/update', base.docId, this.user._id, this.user.uname, 'git_commit', { message: customMessage?.trim() || '' });
             (this.ctx.emit as any)('base/git/status/update', base.docId, base.bid);
 
             this.response.body = { ok: true, message: 'Changes committed successfully' };
@@ -5888,7 +5352,6 @@ async function importBaseFromFileStructure(
     domainId: string,
     baseDocId: number,
     localDir: string,
-    branch: string,
     syntheticRootText: string = 'Root',
 ): Promise<{ nodes: BaseNode[]; edges: BaseEdge[] }> {
     const nodes: BaseNode[] = [];
@@ -6002,7 +5465,6 @@ async function importBaseFromFileStructure(
                     '127.0.0.1',
                     undefined,
                     fileOrder,
-                    branch,
                 );
                 processedCardIds.add(newCardId.toString());
             }
@@ -6082,7 +5544,7 @@ async function importBaseFromFileStructure(
 
         try {
             const sortList = await collectSortedEntries(dirPath);
-            const existingCards = await CardModel.getByNodeId(domainId, baseDocId, nodeId, branch);
+            const existingCards = await CardModel.getByNodeId(domainId, baseDocId, nodeId);
             const existingCardsByTitle = new Map<string, CardDoc>();
             const processedCardIds = new Set<string>();
 
@@ -6136,7 +5598,7 @@ async function importBaseFromFileStructure(
 
     try {
         const topList = await collectSortedEntries(localDir);
-        const existingRootCards = await CardModel.getByNodeId(domainId, baseDocId, rootNodeId, branch);
+        const existingRootCards = await CardModel.getByNodeId(domainId, baseDocId, rootNodeId);
         const existingRootByTitle = new Map<string, CardDoc>();
         for (const card of existingRootCards) {
             if (card.title) existingRootByTitle.set(card.title, card);
@@ -6189,15 +5651,13 @@ async function importBaseFromFileStructure(
 
 async function cleanupBaseCards(
     domainId: string,
-    bid: number,
-    _nodes: BaseNode[] 
+    baseDocId: number,
 ): Promise<void> {
     try {
-        
-        await document.deleteMulti(domainId, TYPE_CARD as any, { bid } as any);
+        await document.deleteMulti(domainId, TYPE_CARD as any, { baseDocId } as any);
     } catch (err) {
         console.error(
-            `cleanupBaseCards failed for bid=${bid}:`,
+            `cleanupBaseCards failed for baseDocId=${baseDocId}:`,
             (err as any)?.message || err
         );
     }
@@ -6209,8 +5669,7 @@ async function cleanupBaseCards(
 class BaseGithubPullHandler extends Handler {
     @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
-    @param('branch', Types.String, true)
-    async post(domainId: string, docId: number, bid: number, branch?: string) {
+    async post(domainId: string, docId: number, bid: number) {
         const base = await resolveBaseDocFromGithubRequest(domainId, docId, bid, this.request);
         if (!base) {
             throw new NotFoundError('Base not found');
@@ -6234,7 +5693,7 @@ class BaseGithubPullHandler extends Handler {
         assertGithubPushPullToken(githubRepo, ghTok);
         const REPO_URL = buildGithubRemoteUrl(githubRepo, ghTok);
 
-        const effectiveBranch = (branch || base.branch || this.args?.branch || this.request.body?.branch || 'main').toString();
+        const effectiveBranch = 'main';
         
         const repoGitPath = await ensureBaseGitRepo(domainId, base.docId, REPO_URL);
         
@@ -6257,19 +5716,19 @@ class BaseGithubPullHandler extends Handler {
             await exec(`git reset --hard origin/${effectiveBranch}`, { cwd: repoGitPath });
             
             
-            await cleanupBaseCards(domainId, base.docId, []);
+            await cleanupBaseCards(domainId, base.docId);
 
             
             const { nodes, edges } = await importBaseFromFileStructure(
                 domainId,
                 base.docId,
                 repoGitPath,
-                effectiveBranch,
-                getSyntheticRootTextForFileImport(base, effectiveBranch),
+                getSyntheticRootTextForFileImport(base),
             );
             
-            // Update branch data
-            setBranchData(base, effectiveBranch, nodes, edges);
+            // Replace the single main tree.
+            base.nodes = nodes;
+            base.edges = edges;
             
             // Read README.md for content
             const readmePath = path.join(repoGitPath, 'README.md');
@@ -6279,17 +5738,16 @@ class BaseGithubPullHandler extends Handler {
             } catch {}
             
             await BaseModel.updateFull(domainId, base.docId, {
-                branchData: base.branchData,
-                nodes: base.nodes, 
-                edges: base.edges, 
+                nodes,
+                edges,
                 content,
             });
             
-            this.response.body = { ok: true, branch: effectiveBranch };
+            this.response.body = { ok: true };
         } catch (err: any) {
             console.error('Pull failed:', err?.message || err);
             this.response.status = 500;
-            this.response.body = { ok: false, branch: effectiveBranch, error: err?.message || String(err) };
+            this.response.body = { ok: false, error: err?.message || String(err) };
         }
     }
 }
@@ -6454,9 +5912,9 @@ export class BaseConnectionHandler extends ConnectionHandler {
 
         
         const dispose1 = (this.ctx.on as any)('base/update', async (...args: any[]) => {
-            const [updateDocId, updatebid, updateBranch, sourceUid, sourceUname, actionKey, actionDetail] = args;
+            const [updateDocId, sourceUid, sourceUname, actionKey, actionDetail] = args;
             if (updateDocId && updateDocId.toString() === this.docId!.toString()) {
-                await this.sendUpdate(finalDomainId, updateBranch, sourceUid, sourceUname, actionKey, actionDetail);
+                await this.sendUpdate(finalDomainId, sourceUid, sourceUname, actionKey, actionDetail);
             }
         });
         this.subscriptions.push({ dispose: dispose1 });
@@ -6611,7 +6069,6 @@ export class BaseConnectionHandler extends ConnectionHandler {
 
     private async buildDevelopEditorContextPayload(domainId: string, base: BaseDoc) {
         if (this.suppressDevelopPoolContext) return null;
-        const branch = (base as any).currentBranch || 'main';
         try {
             return await buildDevelopEditorContextWire({
                 db: this.ctx.db.db,
@@ -6619,12 +6076,11 @@ export class BaseConnectionHandler extends ConnectionHandler {
                 uid: this.user._id,
                 pool: await loadUserDevelopPool(domainId, this.user._id, this.user.priv),
                 baseDocId: base.docId,
-                branch,
                 getBaseTitle: async (docId) => {
                     const b = await BaseModel.get(domainId, docId);
                     return b ? ((b.title || '').trim() || String(docId)) : `Base ${docId}`;
                 },
-                makeEditorUrl: (docId, br) => this.url('base_editor_branch', { docId: String(docId), branch: br }),
+                makeEditorUrl: (docId) => this.url('base_editor', { docId: String(docId) }),
             });
         } catch (e) {
             logger.error('Failed to build develop editor context:', e);
@@ -6634,10 +6090,8 @@ export class BaseConnectionHandler extends ConnectionHandler {
 
     private async sendInitialData(domainId: string, base: BaseDoc) {
         try {
-            const branch = (base as any).currentBranch || 'main';
-            const gitStatus = await getBaseGitStatus(domainId, base.docId, branch).catch(() => null);
-            const branchData = getBranchData(base, branch);
-            const baseWithNodes = { ...base, nodes: branchData.nodes };
+            const gitStatus = await getBaseGitStatus(domainId, base.docId).catch(() => null);
+            const baseWithNodes = { ...base, nodes: base.nodes || [] };
             const domainName = (this as any).domain?.name || domainId;
             const [contrib, todayAllDomains, developEditorContext] = await Promise.all([
                 buildContributionDataForDomain(domainId, this.user._id, domainName, baseWithNodes),
@@ -6649,7 +6103,6 @@ export class BaseConnectionHandler extends ConnectionHandler {
             this.send({
                 type: 'init',
                 gitStatus,
-                branch,
                 viewerCount,
                 todayContribution: contrib.todayContribution,
                 todayContributionAllDomains: todayAllDomains,
@@ -6662,15 +6115,13 @@ export class BaseConnectionHandler extends ConnectionHandler {
         }
     }
 
-    private async sendUpdate(domainId: string, sourceBranch?: string, sourceUid?: number, sourceUname?: string, actionKey?: string, actionDetail?: any) {
+    private async sendUpdate(domainId: string, sourceUid?: number, sourceUname?: string, actionKey?: string, actionDetail?: any) {
         try {
             const base = await BaseModel.get(domainId, this.docId!);
             if (!base) return;
 
-            const branch = (base as any).currentBranch || 'main';
-            const gitStatus = await getBaseGitStatus(domainId, base.docId, branch).catch(() => null);
-            const branchData = getBranchData(base, branch);
-            const baseWithNodes = { ...base, nodes: branchData.nodes };
+            const gitStatus = await getBaseGitStatus(domainId, base.docId).catch(() => null);
+            const baseWithNodes = { ...base, nodes: base.nodes || [] };
             const domainName = (this as any).domain?.name || domainId;
             const [contrib, todayAllDomains, developEditorContext] = await Promise.all([
                 buildContributionDataForDomain(domainId, this.user._id, domainName, baseWithNodes),
@@ -6681,14 +6132,12 @@ export class BaseConnectionHandler extends ConnectionHandler {
             this.send({
                 type: 'update',
                 gitStatus,
-                branch,
-                sourceBranch: sourceBranch || branch,
                 sourceUid: sourceUid ?? this.user._id,
                 sourceUname: sourceUname ?? this.user.uname,
                 actionKey: actionKey || 'unknown',
                 actionDetail,
                 baseDetailUiPrefs: await loadBaseDetailUiPrefs(
-                    this.ctx.db.db, domainId, base.docId, branch, this.user._id,
+                    this.ctx.db.db, domainId, base.docId, this.user._id,
                 ).catch(() => undefined),
                 todayContribution: contrib.todayContribution,
                 todayContributionAllDomains: todayAllDomains,
@@ -6706,13 +6155,11 @@ export class BaseConnectionHandler extends ConnectionHandler {
             const base = await BaseModel.get(domainId, this.docId!);
             if (!base) return;
 
-            const branch = (base as any).currentBranch || 'main';
-            const gitStatus = await getBaseGitStatus(domainId, base.docId, branch).catch(() => null);
+            const gitStatus = await getBaseGitStatus(domainId, base.docId).catch(() => null);
 
             this.send({
                 type: 'git_status',
                 gitStatus,
-                branch,
             });
         } catch (err) {
             logger.error('Failed to send git status:', err);
@@ -6725,22 +6172,18 @@ class BaseDomainEditHandler extends Handler {
     @param('q', Types.Content, true)
     async get(domainId: string, q = '') {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        
-        
+
         const base = await BaseModel.getByDomain(domainId);
-        
         if (!base) {
             throw new NotFoundError('Base not found for this domain');
         }
-        
-        const branch = (base as any)?.currentBranch || 'main';
-        const branchData = getBranchData(base, branch);
-        
-        
-        const rootNodes = branchData.nodes.filter(node => 
-            node.level === 0 || !branchData.edges.some(edge => edge.target === node.id)
+
+        const baseNodes = base.nodes || [];
+        const baseEdges = base.edges || [];
+        const rootNodes = baseNodes.filter(node =>
+            node.level === 0 || !baseEdges.some(edge => edge.target === node.id)
         );
-        const rootNode = rootNodes[0] || branchData.nodes[0];
+        const rootNode = rootNodes[0] || baseNodes[0];
         
         if (!rootNode) {
             
@@ -6760,12 +6203,12 @@ class BaseDomainEditHandler extends Handler {
         
         
         const firstLevelNodeIds = new Set(
-            branchData.edges
+            baseEdges
                 .filter(edge => edge.source === rootNode.id)
                 .map(edge => edge.target)
         );
-        
-        let firstLevelNodes = branchData.nodes.filter(node => firstLevelNodeIds.has(node.id));
+
+        let firstLevelNodes = baseNodes.filter(node => firstLevelNodeIds.has(node.id));
         
         
         if (q && q.trim()) {
@@ -6777,7 +6220,7 @@ class BaseDomainEditHandler extends Handler {
         }
         
         
-        const firstLevelEdges = branchData.edges.filter(edge => 
+        const firstLevelEdges = baseEdges.filter(edge =>
             firstLevelNodeIds.has(edge.source) && firstLevelNodeIds.has(edge.target)
         );
         
@@ -6829,7 +6272,6 @@ class BaseMigrateNodeToNewHandler extends Handler {
         const actualDomainId = this.args.domainId || domainId || 'system';
         const body = (this.request.body || {}) as Record<string, unknown>;
         const sourceDocId = readOptionalRequestBaseDocId(this.request);
-        const branch = typeof body.branch === 'string' && body.branch.trim() ? body.branch.trim() : 'main';
         const nodeId = typeof body.nodeId === 'string' ? body.nodeId.trim() : '';
         const title = typeof body.title === 'string' ? body.title.trim() : '';
         const bidRaw = typeof body.bid === 'string' ? body.bid.trim() : '';
@@ -6855,10 +6297,11 @@ class BaseMigrateNodeToNewHandler extends Handler {
             }
         }
 
-        const { nodes, edges } = getBranchData(sourceBase, branch);
+        const nodes = sourceBase.nodes || [];
+        const edges = sourceBase.edges || [];
 
         if (!nodes.some((n) => n.id === nodeId)) {
-            throw new NotFoundError('Node not found in this branch');
+            throw new NotFoundError('Node not found in this base');
         }
 
         const subtreeIds = collectSubtreeNodeIds(nodes, edges, nodeId);
@@ -6872,7 +6315,6 @@ class BaseMigrateNodeToNewHandler extends Handler {
             title,
             '',
             undefined,
-            'main',
             this.request.ip,
             undefined,
             this.domain.name,
@@ -6924,10 +6366,7 @@ class BaseMigrateNodeToNewHandler extends Handler {
 
         const createdNew = await BaseModel.get(actualDomainId, newDocId);
         if (!createdNew) throw new Error('Failed to load new base after create');
-        const newBranchData: any = { ...(createdNew.branchData || {}) };
-        newBranchData.main = { nodes: copiedNodes, edges: copiedEdges };
         await BaseModel.updateFull(actualDomainId, newDocId, {
-            branchData: newBranchData,
             nodes: copiedNodes,
             edges: copiedEdges,
             title,
@@ -6935,7 +6374,7 @@ class BaseMigrateNodeToNewHandler extends Handler {
         });
 
         for (const nid of subtreeIds) {
-            const cs = await CardModel.getByNodeId(actualDomainId, sourceDocId, nid, branch);
+            const cs = await CardModel.getByNodeId(actualDomainId, sourceDocId, nid);
             for (const card of cs) {
                 const newCardId = await CardModel.create(
                     actualDomainId,
@@ -6947,7 +6386,6 @@ class BaseMigrateNodeToNewHandler extends Handler {
                     this.request.ip,
                     card.problems,
                     card.order,
-                    branch,
                 );
                 const cardUpdates: Partial<Pick<CardDoc, 'cardFace' | 'files'>> = {};
                 if (card.cardFace) cardUpdates.cardFace = card.cardFace;
@@ -6977,7 +6415,7 @@ class BaseMigrateNodeToNewHandler extends Handler {
             logger.error('copy-node-to-new: ensureBaseGitRepo failed', err);
         }
 
-        (this.ctx.emit as any)('base/update', newDocId, undefined, undefined, this.user._id, this.user.uname, 'migrate_node');
+        (this.ctx.emit as any)('base/update', newDocId, this.user._id, this.user.uname, 'migrate_node');
 
         this.response.body = {
             success: true,
@@ -7010,7 +6448,7 @@ export class BaseProblemTagRegistryHandler extends Handler {
         }
         const next = sanitizeProblemTagRegistryList([...prev, tag]);
         await BaseModel.updateFull(domainId, docId, { problemTags: next });
-        (this.ctx.emit as any)('base/update', docId, undefined, undefined, this.user._id, this.user.uname, 'add_tag', { tag });
+        (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'add_tag', { tag });
         this.response.body = { success: true, problemTags: next };
     }
 }
@@ -7045,7 +6483,7 @@ export class BaseCardTagRegistryHandler extends Handler {
             }
             const next = sanitizeProblemTagRegistryList([...current, tag]);
             await BaseModel.updateFull(domainId, docId, { cardTags: next });
-            (this.ctx.emit as any)('base/update', docId, undefined, undefined, this.user._id, this.user.uname, 'add_card_tag', { tag });
+            (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'add_card_tag', { tag });
             this.response.body = { success: true, cardTags: next };
         } else if (action === 'add_child') {
             // Add a child tag under a parent: parentTag/childTag
@@ -7059,7 +6497,7 @@ export class BaseCardTagRegistryHandler extends Handler {
             }
             const next = sanitizeProblemTagRegistryList([...current, fullTag]);
             await BaseModel.updateFull(domainId, docId, { cardTags: next });
-            (this.ctx.emit as any)('base/update', docId, undefined, undefined, this.user._id, this.user.uname, 'add_card_tag', { tag: fullTag });
+            (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'add_card_tag', { tag: fullTag });
             this.response.body = { success: true, cardTags: next };
         } else if (action === 'delete') {
             const tag = normalizeProblemTagInput(body.tag);
@@ -7067,7 +6505,7 @@ export class BaseCardTagRegistryHandler extends Handler {
             // Also remove children: "数学" → removes "数学", "数学/微积分", "数学/线性代数"
             const next = current.filter((t: string) => t !== tag && !t.startsWith(tag + '/'));
             await BaseModel.updateFull(domainId, docId, { cardTags: next });
-            (this.ctx.emit as any)('base/update', docId, undefined, undefined, this.user._id, this.user.uname, 'delete_card_tag', { tag });
+            (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'delete_card_tag', { tag });
             this.response.body = { success: true, cardTags: next };
         } else if (action === 'rename') {
             const oldTag = normalizeProblemTagInput(body.oldTag);
@@ -7083,9 +6521,8 @@ export class BaseCardTagRegistryHandler extends Handler {
             await BaseModel.updateFull(domainId, docId, { cardTags: deduped });
             // Also rename on all cards that have this tag or any child
             try {
-                const branchData = getBranchData(base, 'main');
-                const nodeIds = branchData.nodes.map((n: { id: string }) => n.id);
-                const allCards = await CardModel.getByNodeIds(domainId, docId, nodeIds, 'main');
+                const nodeIds = (base.nodes || []).map((n: { id: string }) => n.id);
+                const allCards = await CardModel.getByNodeIds(domainId, docId, nodeIds);
                 for (const cards of allCards.values()) {
                     for (const c of cards) {
                         if (Array.isArray(c.tags)) {
@@ -7101,7 +6538,7 @@ export class BaseCardTagRegistryHandler extends Handler {
                     }
                 }
             } catch { /* non-fatal; card-level tags may be incomplete */ }
-            (this.ctx.emit as any)('base/update', docId, undefined, undefined, this.user._id, this.user.uname, 'rename_card_tag', { oldTag, newTag });
+            (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'rename_card_tag', { oldTag, newTag });
             this.response.body = { success: true, cardTags: deduped };
         } else {
             // list
@@ -7137,7 +6574,7 @@ export class BaseProblemTagManageHandler extends Handler {
             }
             const next = sanitizeProblemTagRegistryList([...current, tag]);
             await BaseModel.updateFull(domainId, docId, { problemTags: next });
-            (this.ctx.emit as any)('base/update', docId, undefined, undefined, this.user._id, this.user.uname, 'add_problem_tag', { tag });
+            (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'add_problem_tag', { tag });
             this.response.body = { success: true, problemTags: next };
         } else if (action === 'add_child') {
             const parentTag = normalizeProblemTagInput(body.parentTag);
@@ -7150,7 +6587,7 @@ export class BaseProblemTagManageHandler extends Handler {
             }
             const next = sanitizeProblemTagRegistryList([...current, fullTag]);
             await BaseModel.updateFull(domainId, docId, { problemTags: next });
-            (this.ctx.emit as any)('base/update', docId, undefined, undefined, this.user._id, this.user.uname, 'add_problem_tag', { tag: fullTag });
+            (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'add_problem_tag', { tag: fullTag });
             this.response.body = { success: true, problemTags: next };
         } else if (action === 'delete') {
             const tag = normalizeProblemTagInput(body.tag);
@@ -7158,7 +6595,7 @@ export class BaseProblemTagManageHandler extends Handler {
             // Cascade: "数学" removes "数学", "数学/微积分"
             const next = current.filter((t: string) => t !== tag && !t.startsWith(tag + '/'));
             await BaseModel.updateFull(domainId, docId, { problemTags: next });
-            (this.ctx.emit as any)('base/update', docId, undefined, undefined, this.user._id, this.user.uname, 'delete_problem_tag', { tag });
+            (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'delete_problem_tag', { tag });
             this.response.body = { success: true, problemTags: next };
         } else if (action === 'rename') {
             const oldTag = normalizeProblemTagInput(body.oldTag);
@@ -7174,9 +6611,8 @@ export class BaseProblemTagManageHandler extends Handler {
             await BaseModel.updateFull(domainId, docId, { problemTags: deduped });
             // Also rename on all problems
             try {
-                const branchData = getBranchData(base, 'main');
-                const nodeIds = branchData.nodes.map((n: { id: string }) => n.id);
-                const allCards = await CardModel.getByNodeIds(domainId, docId, nodeIds, 'main');
+                const nodeIds = (base.nodes || []).map((n: { id: string }) => n.id);
+                const allCards = await CardModel.getByNodeIds(domainId, docId, nodeIds);
                 for (const cards of allCards.values()) {
                     for (const c of cards) {
                         if (Array.isArray(c.problems)) {
@@ -7197,7 +6633,7 @@ export class BaseProblemTagManageHandler extends Handler {
                     }
                 }
             } catch { /* non-fatal */ }
-            (this.ctx.emit as any)('base/update', docId, undefined, undefined, this.user._id, this.user.uname, 'rename_problem_tag', { oldTag, newTag });
+            (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'rename_problem_tag', { oldTag, newTag });
             this.response.body = { success: true, problemTags: deduped };
         } else {
             // list
@@ -7214,17 +6650,14 @@ async function persistBaseEditorSaveSidecars(
     h: Handler,
     domainId: string,
     baseDocId: number,
-    branchInput: string,
     data: Record<string, unknown>,
     mapDocType: MindMapDocType,
     nodeIdMap?: Map<string, string>,
 ): Promise<void> {
-    const branchNorm = branchInput && String(branchInput).trim() ? String(branchInput).trim() : 'main';
-
     if (Object.prototype.hasOwnProperty.call(data, 'editorUiPrefs') || Object.prototype.hasOwnProperty.call(data, 'expandedNodeIds')) {
         const coll = h.ctx.db.db.collection('base.userEditorUi');
         const $set: Record<string, unknown> = { updateAt: new Date() };
-        const $setOnInsert: Record<string, unknown> = { domainId, baseDocId, branch: branchNorm, uid: h.user._id };
+        const $setOnInsert: Record<string, unknown> = { domainId, baseDocId, uid: h.user._id };
 
         // Sanitize UI prefs (may drop expandedNodeIds if the server hasn't picked up the new field)
         if (Object.prototype.hasOwnProperty.call(data, 'editorUiPrefs')) {
@@ -7245,7 +6678,7 @@ async function persistBaseEditorSaveSidecars(
         }
 
         await coll.updateOne(
-            { domainId, baseDocId, branch: branchNorm, uid: h.user._id },
+            { domainId, baseDocId, uid: h.user._id },
             { $set, $setOnInsert },
             { upsert: true },
         );
@@ -7262,12 +6695,11 @@ async function persistBaseEditorSaveSidecars(
         && sessionForLoc
         && ObjectId.isValid(sessionForLoc)
     ) {
-        await assertDevelopSessionAllowsEdits(h, domainId, h.user._id, sessionForLoc, baseDocId, branchNorm, mapDocType);
+        await assertDevelopSessionAllowsEdits(h, domainId, h.user._id, sessionForLoc, baseDocId, mapDocType);
         await SessionModel.persistDevelopEditorUrl(domainId, h.user._id, {
             sessionHex: sessionForLoc,
             locationUrl: locRaw.trim(),
             expectedBaseDocId: baseDocId,
-            expectedBranch: branchNorm,
         });
     }
 }
@@ -7276,7 +6708,6 @@ async function persistBaseEditorSaveSidecars(
 export interface McpBaseGitInput {
     domainId: string;
     baseDocId: number;
-    branch?: string;
     owner: number;
     ownerName?: string;
     setting?: { get: (k: string) => unknown };
@@ -7288,11 +6719,10 @@ function mcpGitSettingCtx(input: McpBaseGitInput): { setting: { get: (k: string)
     return { setting: input.setting || { get: () => undefined } };
 }
 
-async function requireBaseForMcpGit(input: McpBaseGitInput): Promise<{ base: BaseDoc; branch: string }> {
+async function requireBaseForMcpGit(input: McpBaseGitInput): Promise<BaseDoc> {
     const base = await BaseModel.get(input.domainId, input.baseDocId, document.TYPE_BASE);
     if (!base) throw new Error(`Base not found: ${input.baseDocId}`);
-    const branch = (input.branch && String(input.branch).trim()) || 'main';
-    return { base, branch };
+    return base;
 }
 
 async function resolveMcpOwnerName(domainId: string, uid: number, fallback?: string): Promise<string> {
@@ -7302,12 +6732,9 @@ async function resolveMcpOwnerName(domainId: string, uid: number, fallback?: str
     return u?.uname || 'unknown';
 }
 
-function baseForGitBranch(base: BaseDoc, branch: string): BaseDoc {
-    return { ...base, currentBranch: branch, branch } as BaseDoc;
-}
 
 export async function mcpBaseGitStatus(input: McpBaseGitInput) {
-    const { base, branch } = await requireBaseForMcpGit(input);
+    const base = await requireBaseForMcpGit(input);
     const githubRepo = (base.githubRepo || '') as string;
     let gitStatus: Awaited<ReturnType<typeof getBaseGitStatus>> | null = null;
     if (githubRepo) {
@@ -7319,33 +6746,33 @@ export async function mcpBaseGitStatus(input: McpBaseGitInput) {
                 githubRepo,
                 input.githubToken,
             );
-            gitStatus = await getBaseGitStatus(input.domainId, base.docId, branch, repoUrl);
+            gitStatus = await getBaseGitStatus(input.domainId, base.docId, repoUrl);
         } catch {
-            gitStatus = await getBaseGitStatus(input.domainId, base.docId, branch);
+            gitStatus = await getBaseGitStatus(input.domainId, base.docId);
         }
     } else {
-        gitStatus = await getBaseGitStatus(input.domainId, base.docId, branch);
+        gitStatus = await getBaseGitStatus(input.domainId, base.docId);
     }
-    return { branch, githubRepo: githubRepo || null, gitStatus };
+    return { githubRepo: githubRepo || null, gitStatus };
 }
 
 export async function mcpBaseGitCommit(input: McpBaseGitInput) {
-    const { base, branch } = await requireBaseForMcpGit(input);
+    const base = await requireBaseForMcpGit(input);
     const ownerName = await resolveMcpOwnerName(input.domainId, input.owner, input.ownerName);
     await ensureBaseGitRepo(input.domainId, base.docId);
     await commitBaseChanges(
         input.domainId,
         base.docId,
-        baseForGitBranch(base, branch),
+        base,
         input.commitMessage || '',
         input.owner,
         ownerName,
     );
-    return { ok: true, branch, message: 'Changes committed to local git repository' };
+    return { ok: true, message: 'Changes committed to local git repository' };
 }
 
 export async function mcpBaseGitPush(input: McpBaseGitInput) {
-    const { base, branch } = await requireBaseForMcpGit(input);
+    const base = await requireBaseForMcpGit(input);
     const githubRepo = (base.githubRepo || '') as string;
     if (!githubRepo) {
         throw new Error('GitHub repository not configured. Use git_config_set or configure it in base settings.');
@@ -7366,7 +6793,7 @@ export async function mcpBaseGitPush(input: McpBaseGitInput) {
         await commitBaseChanges(
             input.domainId,
             base.docId,
-            baseForGitBranch(base, branch),
+            base,
             commitMessage,
             input.owner,
             ownerName,
@@ -7374,12 +6801,12 @@ export async function mcpBaseGitPush(input: McpBaseGitInput) {
     } catch (err: any) {
         console.warn('MCP git_push: commit before push failed (may be no changes):', err?.message || err);
     }
-    await gitInitAndPushBase(input.domainId, base.docId, base, repoUrl, branch, commitMessage);
-    return { ok: true, branch, githubRepo };
+    await gitInitAndPushBase(input.domainId, base.docId, base, repoUrl, commitMessage);
+    return { ok: true, githubRepo };
 }
 
 export async function mcpBaseGitPull(input: McpBaseGitInput) {
-    const { base, branch } = await requireBaseForMcpGit(input);
+    const base = await requireBaseForMcpGit(input);
     const githubRepo = (base.githubRepo || '') as string;
     if (!githubRepo) {
         throw new Error('GitHub repository not configured. Use git_config_set or configure it in base settings.');
@@ -7393,11 +6820,12 @@ export async function mcpBaseGitPull(input: McpBaseGitInput) {
     assertGithubPushPullToken(githubRepo, ghTok);
     const repoUrl = buildGithubRemoteUrl(githubRepo, ghTok);
     const repoGitPath = await ensureBaseGitRepo(input.domainId, base.docId, repoUrl);
+    const gitRef = 'main';
     try {
         try {
-            await exec(`git checkout ${branch}`, { cwd: repoGitPath });
+            await exec(`git checkout ${gitRef}`, { cwd: repoGitPath });
         } catch {
-            await exec(`git checkout -b ${branch}`, { cwd: repoGitPath });
+            await exec(`git checkout -b ${gitRef}`, { cwd: repoGitPath });
         }
         try {
             await exec(`git remote set-url origin ${repoUrl}`, { cwd: repoGitPath });
@@ -7407,28 +6835,27 @@ export async function mcpBaseGitPull(input: McpBaseGitInput) {
             } catch { /* ignore */ }
         }
         await exec('git fetch origin', { cwd: repoGitPath });
-        await exec(`git reset --hard origin/${branch}`, { cwd: repoGitPath });
-        await cleanupBaseCards(input.domainId, base.docId, []);
+        await exec(`git reset --hard origin/${gitRef}`, { cwd: repoGitPath });
+        await cleanupBaseCards(input.domainId, base.docId);
         const { nodes, edges } = await importBaseFromFileStructure(
             input.domainId,
             base.docId,
             repoGitPath,
-            branch,
-            getSyntheticRootTextForFileImport(base, branch),
+            getSyntheticRootTextForFileImport(base),
         );
-        setBranchData(base, branch, nodes, edges);
+        base.nodes = nodes;
+        base.edges = edges;
         const readmePath = path.join(repoGitPath, 'README.md');
         let content = base.content || '';
         try {
             content = await fs.promises.readFile(readmePath, 'utf-8');
         } catch { /* ignore */ }
         await BaseModel.updateFull(input.domainId, base.docId, {
-            branchData: base.branchData,
-            nodes: base.nodes,
-            edges: base.edges,
+            nodes,
+            edges,
             content,
         });
-        return { ok: true, branch, githubRepo, message: 'Pulled remote branch and imported into base' };
+        return { ok: true, githubRepo, message: 'Pulled remote content and imported into base' };
     } catch (err: any) {
         throw new Error(err?.message || String(err));
     }
@@ -7444,7 +6871,7 @@ export async function mcpBaseGitConfigGet(input: Pick<McpBaseGitInput, 'domainId
 export async function mcpBaseGitConfigSet(
     input: McpBaseGitInput & { githubRepo: string | null },
 ) {
-    const { base } = await requireBaseForMcpGit(input);
+    const base = await requireBaseForMcpGit(input);
     let repoUrlForStorage = input.githubRepo == null ? '' : String(input.githubRepo).trim();
     if (repoUrlForStorage && repoUrlForStorage.startsWith('https://') && repoUrlForStorage.includes('@github.com')) {
         repoUrlForStorage = repoUrlForStorage.replace(/^https:\/\/[^@]+@github\.com\//, 'https://github.com/');
@@ -7459,21 +6886,19 @@ export async function mcpBaseGitConfigSet(
  * Base Semantic Search Handler
  *
  * Accepts a plain-text query, embeds it, and returns semantically similar
- * node texts from the base's current branch.
+ * node texts from the base's single graph.
  */
 export class BaseSemanticSearchHandler extends Handler {
     @post('docId', Types.PositiveInt)
-    @post('branch', Types.String, true)
     @post('query', Types.String)
     @post('limit', Types.PositiveInt, true)
-    async post(domainId: string, docId: number, branch?: string, query?: string, limit?: number) {
+    async post(domainId: string, docId: number, query?: string, limit?: number) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         if (!query || !query.trim()) throw new BadRequestError('Query is required');
 
         const base = await BaseModel.get(domainId, docId);
         if (!base) throw new NotFoundError('Base not found');
 
-        const branchNorm = (branch && String(branch).trim()) || 'main';
         const maxResults = Math.min(limit || 10, 50);
 
         let results: Array<{
@@ -7489,7 +6914,6 @@ export class BaseSemanticSearchHandler extends Handler {
                 results = await this.ctx.embedding.searchSimilar(
                     domainId,
                     docId,
-                    branchNorm,
                     query.trim(),
                     maxResults,
                 );
@@ -7507,7 +6931,6 @@ export async function apply(ctx: Context) {
     ctx.Route('base_domain', '/base', BaseDomainListHandler);
     ctx.Route('base_create', '/base/create', BaseCreateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_outline_redirect_to_detail', '/base/:docId/outline', BaseDetailHandler);
-    ctx.Route('base_outline_branch_redirect_to_detail', '/base/:docId/outline/branch/:branch', BaseDetailHandler);
     ctx.Route('base_list', '/base/list', BaseListHandler);
     ctx.Route('base_data', '/base/data', BaseDataHandler);
     ctx.Route('base_editor_ui_prefs', '/base/editor-ui-prefs', BaseEditorUiPrefsHandler, PRIV.PRIV_USER_PROFILE);
@@ -7523,32 +6946,20 @@ export async function apply(ctx: Context) {
     ctx.Route('base_card_tag_manage', '/base/card-tag', BaseCardTagRegistryHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_card', '/base/card', BaseCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_card_update', '/base/card/:cardId', BaseCardHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_branch_create', '/base/branch', BaseBranchCreateHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_branch_create_with_param', '/base/branch/:branch/create', BaseBranchCreateHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_branch_delete', '/base/:docId/branch/:branch/delete', BaseBranchDeleteHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_git_status', '/base/git/status', BaseGitStatusHandler);
     ctx.Route('base_commit', '/base/commit', BaseCommitHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_commit_branch', '/base/branch/:branch/commit', BaseCommitHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_github_push', '/base/github/push', BaseGithubPushHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_github_push_branch', '/base/branch/:branch/github/push', BaseGithubPushHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_github_config', '/base/github/config', BaseGithubConfigHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_github_pull', '/base/github/pull', BaseGithubPullHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_github_pull_branch', '/base/branch/:branch/github/pull', BaseGithubPullHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_branches', '/base/:docId/branches', BaseBranchesHandler);
     ctx.Route('base_semantic_search', '/base/semantic-search', BaseSemanticSearchHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_detail', '/base/:docId', BaseDetailHandler);
-    ctx.Route('base_detail_branch', '/base/:docId/branch/:branch', BaseDetailHandler);
     ctx.Route('base_study', '/base/:docId/study', BaseStudyHandler);
-    ctx.Route('base_study_branch', '/base/:docId/branch/:branch/study', BaseStudyHandler);
     ctx.Route('base_edit', '/base/:docId/edit', BaseEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_editor', '/base/:docId/editor', BaseEditorHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_card_list', '/base/node/:nodeId/cards', BaseCardListHandler);
-    ctx.Route('base_card_list_branch', '/base/branch/:branch/node/:nodeId/cards', BaseCardListHandler);
     ctx.Route('base_card_edit', '/base/node/:nodeId/card/edit', BaseCardEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_card_edit_with_card', '/base/node/:nodeId/card/:cardId/edit', BaseCardEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_card_edit_branch', '/base/branch/:branch/node/:nodeId/card/edit', BaseCardEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_card_edit_branch_with_card', '/base/branch/:branch/node/:nodeId/card/:cardId/edit', BaseCardEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_card_detail', '/base/node/:nodeId/card/:cardId', BaseCardDetailHandler);
-    ctx.Route('base_card_detail_branch', '/base/branch/:branch/node/:nodeId/card/:cardId', BaseCardDetailHandler);
     ctx.Route('base_card_files', '/base/:docId/card/:cardId/files', BaseCardFilesHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_card_file_download', '/base/:docId/card/:cardId/file/:filename', BaseCardFileDownloadHandler);
     ctx.Route('base_node_files', '/base/:docId/node/:nodeId/files', BaseNodeFilesHandler, PRIV.PRIV_USER_PROFILE);

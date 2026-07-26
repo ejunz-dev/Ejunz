@@ -17,7 +17,6 @@ import {
 } from '../lib/developSessionResume';
 import {
     computeDevelopRunQueueProgress,
-    developBranchKey,
     developRunTerminalTotals,
     loadUserDevelopPoolByMode,
 } from '../lib/developPoolShared';
@@ -25,7 +24,6 @@ import { readDevelopSessionDeadlineMs } from '../lib/sessionUtcDaily';
 import { PERM, PRIV } from '../model/builtin';
 import { BaseModel } from '../model/base';
 import * as document from '../model/document';
-import { getBranchData } from './base';
 import DomainModel from '../model/domain';
 import type { SessionRecordDoc } from '../model/record';
 import SessionModel, { type SessionDoc, type SessionPatch } from '../model/session';
@@ -83,7 +81,6 @@ async function buildSessionListRow(
             const sep = base.includes('?') ? '&' : '?';
             resumeUrl = `${base}${sep}session=${encodeURIComponent(doc._id.toString())}`;
         } else {
-            const br = doc.branch && String(doc.branch).trim() ? String(doc.branch).trim() : 'main';
             const baseDocId = Number(doc.baseDocId);
             let docSeg = '';
             if (Number.isFinite(baseDocId) && baseDocId > 0) {
@@ -94,10 +91,9 @@ async function buildSessionListRow(
                 }
             }
             if (!docSeg) docSeg = String(doc.baseDocId ?? '');
-            const editorBase = self.url('base_editor_branch', {
+            const editorBase = self.url('base_editor', {
                 domainId: doc.domainId,
                 docId: docSeg,
-                branch: br,
             });
             const sep = editorBase.includes('?') ? '&' : '?';
             resumeUrl = `${editorBase}${sep}session=${encodeURIComponent(doc._id.toString())}`;
@@ -131,7 +127,6 @@ function readPatch(body: any): SessionPatch {
         if (!Number.isFinite(n)) throw new ValidationError('Invalid baseDocId');
         patch.baseDocId = n;
     }
-    if (typeof body.branch === 'string') patch.branch = body.branch;
     if (typeof body.cardId === 'string') patch.cardId = body.cardId;
     if (typeof body.nodeId === 'string') patch.nodeId = body.nodeId;
     if (body.cardIndex !== undefined) {
@@ -205,7 +200,6 @@ class DevelopSessionStartHandler extends Handler {
             throw new ValidationError('Invalid baseDocId');
         }
         const mapDocType = parseDevelopMapDocType(body);
-        const branch = typeof body.branch === 'string' && body.branch.trim() ? body.branch.trim() : 'main';
         const { doc: mindMap } = await loadDevelopMindMapDoc(finalDomainId, baseDocId, mapDocType);
         if (!this.user.own(mindMap)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
 
@@ -214,12 +208,11 @@ class DevelopSessionStartHandler extends Handler {
 
         const poolMode = 'base' as const;
         const fullPool = await loadUserDevelopPoolByMode(finalDomainId, this.user._id, this.user.priv, poolMode);
-        const poolKey = developBranchKey(baseDocId, branch);
         if (!nodeId) {
             if (!fullPool.length) {
                 throw new ValidationError(this.translate('Develop run queue empty today'));
             }
-            if (!fullPool.some((e) => developBranchKey(e.baseDocId, e.branch) === poolKey)) {
+            if (!fullPool.some((e) => e.baseDocId === baseDocId)) {
                 throw new ValidationError(this.translate('Develop start base not in pool'));
             }
         }
@@ -237,7 +230,6 @@ class DevelopSessionStartHandler extends Handler {
             uid: this.user._id,
             appRoute: 'develop',
             baseDocId,
-            branch,
             lastActivityAt: { $gte: cutoff },
             $and: [
                 { $or: [{ lessonAbandonedAt: null }, { lessonAbandonedAt: { $exists: false } }] },
@@ -271,8 +263,8 @@ class DevelopSessionStartHandler extends Handler {
             .toArray();
         const existing = recent[0] as SessionDoc | undefined;
 
-        const inPool = fullPool.some((e) => developBranchKey(e.baseDocId, e.branch) === poolKey);
-        const run = inPool ? computeDevelopRunQueueProgress(fullPool, baseDocId, branch) : null;
+        const inPool = fullPool.some((e) => e.baseDocId === baseDocId);
+        const run = inPool ? computeDevelopRunQueueProgress(fullPool, baseDocId) : null;
 
         const ttlSecRaw = Number(system.get('session.saved_expire_seconds'));
         const ttlSec = Number.isFinite(ttlSecRaw) && ttlSecRaw > 0 ? ttlSecRaw : 3600 * 24 * 30;
@@ -307,7 +299,6 @@ class DevelopSessionStartHandler extends Handler {
             appRoute: 'develop',
             route: 'develop',
             baseDocId,
-            branch,
             developSessionKind: 'daily',
             developMapDocType: mapDocType,
             ...(nodeId ? { nodeId } : {}),

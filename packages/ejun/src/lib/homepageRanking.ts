@@ -66,7 +66,7 @@ export async function getTodayUserDomainContribution(
     }
 
     const bases = await getMulti(domainId, TYPE_BASE, { owner: userId })
-        .project({ nodes: 1, branchData: 1, updateAt: 1, createdAt: 1 })
+        .project({ nodes: 1, updateAt: 1, createdAt: 1 })
         .toArray();
     for (const baseDoc of bases) {
         const totalNodesInBase = countNodesInBaseDoc(baseDoc as any);
@@ -103,25 +103,10 @@ export interface RankedStatRow extends DomainStatRow {
     rank: number;
 }
 
-function countNodesInBaseDoc(baseDoc: {
-    nodes?: Array<{ id?: string }>;
-    branchData?: Record<string, { nodes?: Array<{ id?: string }> }>;
-}): number {
+function countNodesInBaseDoc(baseDoc: { nodes?: Array<{ id?: string }> }): number {
     const nodeIds = new Set<string>();
-    if (baseDoc.nodes && Array.isArray(baseDoc.nodes)) {
-        for (const node of baseDoc.nodes) {
-            if (node?.id) nodeIds.add(node.id);
-        }
-    }
-    if (baseDoc.branchData && typeof baseDoc.branchData === 'object') {
-        for (const branch of Object.keys(baseDoc.branchData)) {
-            const branchNodes = baseDoc.branchData[branch]?.nodes;
-            if (branchNodes && Array.isArray(branchNodes)) {
-                for (const node of branchNodes) {
-                    if (node?.id) nodeIds.add(node.id);
-                }
-            }
-        }
+    for (const node of baseDoc.nodes || []) {
+        if (node?.id) nodeIds.add(node.id);
     }
     return nodeIds.size;
 }
@@ -165,7 +150,7 @@ export async function aggregateContributionByUser(domainId: string): Promise<Dom
     const bases = await coll
         .find(
             { domainId, docType: TYPE_BASE, owner: { $gt: 0 } },
-            { projection: { owner: 1, nodes: 1, branchData: 1 } },
+            { projection: { owner: 1, nodes: 1 } },
         )
         .toArray();
     for (const b of bases) {

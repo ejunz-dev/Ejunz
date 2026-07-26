@@ -639,7 +639,7 @@ export class SessionChatLiveHandler extends Handler {
             throw new Error('Domain not found');
         }
         
-        const { getAssignedTools, appendAgentUniversalAssistantRules, effectiveAgentBaseDocId, effectiveAgentBaseBranch } = require('./agent');
+        const { getAssignedTools, appendAgentUniversalAssistantRules, effectiveAgentBaseDocId } = require('./agent');
         const tools = await getAssignedTools(domainId, adoc);
         
         const agentPrompt = adoc.content || '';
@@ -673,7 +673,6 @@ export class SessionChatLiveHandler extends Handler {
             agentContent: adoc.content || '',
             agentMemory: adoc.memory || '',
             baseDocId: effectiveAgentBaseDocId(adoc),
-            baseBranch: effectiveAgentBaseBranch(adoc),
             tools: tools.map(tool => ({
                 name: tool.name,
                 description: tool.description,

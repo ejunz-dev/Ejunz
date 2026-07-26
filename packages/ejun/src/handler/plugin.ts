@@ -13,7 +13,7 @@ import {
     cleanupPluginMcpArtifacts,
 } from '../service/mcp';
 import { listDomainMcps } from '../service/mcp';
-import { BaseModel, CardModel, getBranchData, TYPE_CARD, type MindMapDocType } from '../model/base';
+import { BaseModel, CardModel, TYPE_CARD, type MindMapDocType } from '../model/base';
 import { PERM, PRIV } from '../model/builtin';
 import * as document from '../model/document';
 import DomainModel from '../model/domain';
@@ -39,7 +39,7 @@ async function buildPluginView(domainId: string, plugin: PluginDoc) {
     return {
         ...plugin,
         summary: await summarizePluginDefinitions(domainId, plugin),
-        mcpAvailability: await summarizePluginMcpAvailability(domainId, plugin, plugin.currentBranch || 'main'),
+        mcpAvailability: await summarizePluginMcpAvailability(domainId, plugin),
     };
 }
 
@@ -199,9 +199,6 @@ export class PluginEditorHandler extends Handler {
     @param('docId', Types.PositiveInt)
     async get(domainId: string, docId: number) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        const branch = typeof this.request.query?.branch === 'string' && this.request.query.branch.trim()
-            ? this.request.query.branch.trim()
-            : 'main';
         let availableMcpServices: any[] = [];
         try {
             availableMcpServices = await buildAvailableMcpServicesForPluginEditor(domainId, this.user);
@@ -211,12 +208,11 @@ export class PluginEditorHandler extends Handler {
         const body = await buildBaseEditorPageBody({
             domainId,
             base: this.plugin as unknown as BaseDoc,
-            requestedBranch: branch,
             uid: this.user._id,
             priv: this.user.priv,
             domainName: this.plugin!.title,
             db: this.ctx.db.db,
-            makeEditorUrl: (id, br) => this.url('plugin_editor', { docId: id, query: br === 'main' ? {} : { branch: br } }),
+            makeEditorUrl: (id) => this.url('plugin_editor', { docId: id }),
             developPoolUiMode: 'none',
             mapDocType: document.TYPE_PLUGIN,
             editorMode: 'plugins',
@@ -234,26 +230,22 @@ export class PluginEditorHandler extends Handler {
 }
 
 export class PluginDataHandler extends Handler {
-    @param('branch', Types.String, true)
     @param('docId', Types.PositiveInt, true)
-    async get(domainId: string, branch?: string, docId?: number) {
+    async get(domainId: string, docId?: number) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         if (!docId) throw new BadRequestError('docId');
         const plugin = await PluginModel.get(domainId, docId);
         if (!plugin) throw new NotFoundError('Plugin not found');
         if (!PluginModel.canRead(this.user, plugin) && !PluginModel.canEdit(this.user, plugin)) throw new ForbiddenError('Plugin not accessible');
-        const currentBranch = branch || plugin.currentBranch || 'main';
-        const branchData = getBranchData(plugin as unknown as BaseDoc, currentBranch);
         const nodeCardsMap: Record<string, CardDoc[]> = {};
-        for (const node of branchData.nodes || []) {
-            const cards = await CardModel.getByNodeId(domainId, plugin.docId, node.id, currentBranch);
+        for (const node of plugin.nodes || []) {
+            const cards = await CardModel.getByNodeId(domainId, plugin.docId, node.id);
             if (cards.length) nodeCardsMap[node.id] = cards;
         }
         this.response.body = {
             ...plugin,
-            nodes: branchData.nodes || [],
-            edges: branchData.edges || [],
-            currentBranch,
+            nodes: plugin.nodes || [],
+            edges: plugin.edges || [],
             nodeCardsMap,
         };
     }
@@ -266,7 +258,6 @@ export class PluginBatchSaveHandler extends BaseBatchSaveHandler {
             mapDocType: document.TYPE_PLUGIN as MindMapDocType,
             getBase: async (_d: string) => null,
             createBase: async () => { throw new BadRequestError('docId'); },
-            getBranch: (base: BaseDoc) => (base as any).currentBranch || 'main',
         };
     }
 
@@ -274,14 +265,14 @@ export class PluginBatchSaveHandler extends BaseBatchSaveHandler {
         return false;
     }
 
-    protected async sanitizeNodeCreatePayload(nodeCreate: any, realParentId: string | undefined, ctx: { domainId: string; docId: number; branch: string; base: BaseDoc; mapDocType: MindMapDocType }): Promise<Partial<BaseNode>> {
+    protected async sanitizeNodeCreatePayload(nodeCreate: any, realParentId: string | undefined, ctx: { domainId: string; docId: number; base: BaseDoc; mapDocType: MindMapDocType }): Promise<Partial<BaseNode>> {
         const payload = await super.sanitizeNodeCreatePayload(nodeCreate, realParentId, ctx);
         const data = await sanitizePluginNodeData(nodeCreate.data, ctx.domainId);
         if (data) payload.data = data as any;
         return payload;
     }
 
-    protected async sanitizeNodeUpdatePayload(nodeUpdate: any, ctx: { domainId: string; docId: number; branch: string; base: BaseDoc; mapDocType: MindMapDocType }): Promise<Partial<BaseNode>> {
+    protected async sanitizeNodeUpdatePayload(nodeUpdate: any, ctx: { domainId: string; docId: number; base: BaseDoc; mapDocType: MindMapDocType }): Promise<Partial<BaseNode>> {
         const payload = await super.sanitizeNodeUpdatePayload(nodeUpdate, ctx);
         if (nodeUpdate.data !== undefined) {
             const data = await sanitizePluginNodeData(nodeUpdate.data, ctx.domainId);
@@ -290,19 +281,17 @@ export class PluginBatchSaveHandler extends BaseBatchSaveHandler {
         return payload;
     }
 
-    protected async beforeBatchApply(ctx: { domainId: string; docId: number; branch: string; base: BaseDoc; mapDocType: MindMapDocType; data: any }) {
+    protected async beforeBatchApply(ctx: { domainId: string; docId: number; base: BaseDoc; mapDocType: MindMapDocType; data: any }) {
         const plugin = ctx.base as unknown as PluginDoc;
         const definitions = await parseDraftPluginMcpDefinitions({
             domainId: ctx.domainId,
             plugin,
-            branch: ctx.branch,
             batch: ctx.data,
         });
         if (!definitions.some((def) => (def.mcpConfigs?.length || 0) > 0 || (def.mcpConfigErrors?.length || 0) > 0)) return { success: true as const };
         const summary = await testPluginMcpDefinitions({
             domainId: ctx.domainId,
             plugin,
-            branch: ctx.branch,
             definitions,
         });
         if (!summary.ok) {
@@ -317,19 +306,18 @@ export class PluginBatchSaveHandler extends BaseBatchSaveHandler {
         return { success: true as const };
     }
 
-    protected async afterSuccessfulBatchApply(ctx: { domainId: string; docId: number; branch: string; base: BaseDoc; mapDocType: MindMapDocType; data: any }) {
+    protected async afterSuccessfulBatchApply(ctx: { domainId: string; docId: number; base: BaseDoc; mapDocType: MindMapDocType; data: any; nodeIdMap: Map<string, string>; cardIdMap: Map<string, string> }) {
         const plugin = await PluginModel.get(ctx.domainId, ctx.docId);
         if (!plugin) return;
         const cached = (ctx.data as any).__pluginMcpPreflight;
-        const definitions = await loadPluginCardDefinitions(ctx.domainId, plugin, ctx.branch);
+        const definitions = await loadPluginCardDefinitions(ctx.domainId, plugin);
         const summary = cached?.summary || await testPluginMcpDefinitions({
             domainId: ctx.domainId,
             plugin,
-            branch: ctx.branch,
             definitions,
         });
-        await syncPluginManagedMcps({ domainId: ctx.domainId, plugin, branch: ctx.branch, definitions, testSummary: summary });
-        await refreshPluginMcpStatus({ domainId: ctx.domainId, plugin, branch: ctx.branch, reason: 'save', definitions, testSummary: summary });
+        await syncPluginManagedMcps({ domainId: ctx.domainId, plugin, definitions, testSummary: summary });
+        await refreshPluginMcpStatus({ domainId: ctx.domainId, plugin, reason: 'save', definitions, testSummary: summary });
     }
 }
 

@@ -16,7 +16,7 @@
 
 import { Context, Service } from '../context';
 import { Logger } from '../logger';
-import { BaseModel, CardModel, getBranchData } from '../model/base';
+import { BaseModel, CardModel } from '../model/base';
 import type { BaseDoc, CardDoc } from '../interface';
 
 declare module '../context' {
@@ -39,7 +39,6 @@ const CHUNK_OVERLAP_CHARS = 80;
 interface EmbeddingDoc {
     domainId: string;
     baseDocId: number;
-    branch: string;
     /** "node" for node title embedding; "card" for card content embedding */
     kind: 'node' | 'card';
     /** For both kinds: the nodeId this content belongs to */
@@ -288,7 +287,6 @@ export class EmbeddingService extends Service {
     async vectorizeBaseContent(
         domainId: string,
         baseDocId: number,
-        branch: string,
     ): Promise<void> {
         const start = Date.now();
         try {
@@ -298,15 +296,16 @@ export class EmbeddingService extends Service {
                 return;
             }
 
-            const branchData = getBranchData(base, branch || 'main');
-            const nodes = branchData.nodes || [];
+            const coll = this.ctx.db.db.collection<EmbeddingDoc>(COLLECTION);
+            await coll.deleteMany({ domainId, baseDocId });
+
+            const nodes = base.nodes || [];
 
             if (!nodes.length) {
                 logger.debug('No nodes to vectorize for base %s/%s', domainId, baseDocId);
                 return;
             }
 
-            const coll = this.ctx.db.db.collection<EmbeddingDoc>(COLLECTION);
             const now = new Date();
 
             // ── 1. Embed node titles ──
@@ -317,15 +316,12 @@ export class EmbeddingService extends Service {
             }
 
             if (nodeEntries.length) {
-                // Remove old node embeddings for this base before re-indexing
-                await coll.deleteMany({ domainId, baseDocId, branch, kind: 'node' });
-
                 const texts = nodeEntries.map((e) => e.text);
                 const embeddings = await this.embedBatch(texts);
                 const ops = nodeEntries.map((e, i) => ({
                     insertOne: {
                         document: {
-                            domainId, baseDocId, branch,
+                            domainId, baseDocId,
                             kind: 'node' as const,
                             nodeId: e.nodeId,
                             chunkIndex: 0,
@@ -341,7 +337,7 @@ export class EmbeddingService extends Service {
             }
 
             // ── 2. Embed card content (with chunking) ──
-            const cards = await CardModel.getByNodeIds(domainId, baseDocId, nodes.map((n) => n.id), branch);
+            const cards = await CardModel.getByNodeIds(domainId, baseDocId, nodes.map((n) => n.id));
 
             const cardChunks: Array<{
                 nodeId: string;
@@ -371,15 +367,12 @@ export class EmbeddingService extends Service {
             }
 
             if (cardChunks.length) {
-                // Remove old card embeddings for this base before re-indexing
-                await coll.deleteMany({ domainId, baseDocId, branch, kind: 'card' });
-
                 const texts = cardChunks.map((e) => e.text);
                 const embeddings = await this.embedBatch(texts);
                 const ops = cardChunks.map((e, i) => ({
                     insertOne: {
                         document: {
-                            domainId, baseDocId, branch,
+                            domainId, baseDocId,
                             kind: 'card' as const,
                             nodeId: e.nodeId,
                             cardDocId: e.cardDocId,
@@ -408,7 +401,7 @@ export class EmbeddingService extends Service {
     }
 
     /**
-     * Search for semantically similar content within a base + branch.
+     * Search for semantically similar content within a base.
      *
      * Searches both node-title entries and card-content entries.  Results are
      * ranked by cosine similarity.  Fine for knowledge bases with <10k entries.
@@ -416,13 +409,12 @@ export class EmbeddingService extends Service {
     async searchSimilar(
         domainId: string,
         baseDocId: number,
-        branch: string,
         query: string,
         limit: number = 15,
     ): Promise<SearchResult[]> {
         const queryVec = await this.embed(query);
         const coll = this.ctx.db.db.collection<EmbeddingDoc>(COLLECTION);
-        const docs = await coll.find({ domainId, baseDocId, branch }).toArray();
+        const docs = await coll.find({ domainId, baseDocId }).toArray();
 
         if (!docs.length) return [];
 

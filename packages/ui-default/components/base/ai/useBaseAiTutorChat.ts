@@ -22,7 +22,6 @@ export interface UseBaseAiTutorChatOptions {
   selectedNode: BaseNode | null;
   selectedCard: Card | null;
   docTitle: string;
-  branch: string;
   docDescription?: string;
   docId?: string;
 }
@@ -44,7 +43,6 @@ export function useBaseAiTutorChat(options: UseBaseAiTutorChatOptions) {
     selectedNode,
     selectedCard,
     docTitle,
-    branch,
     docDescription,
     docId,
   } = options;
@@ -115,7 +113,6 @@ export function useBaseAiTutorChat(options: UseBaseAiTutorChatOptions) {
         baseText,
         selectedNodeContext,
         docTitle,
-        branch,
         docDescription,
       });
 
@@ -221,7 +218,6 @@ export function useBaseAiTutorChat(options: UseBaseAiTutorChatOptions) {
           systemPrompt,
           history: historyBeforeNewMessage,
           docId: docId || (window as any).UiContext?.base?.docId || '',
-          branch,
         }));
       };
       return true;
@@ -240,7 +236,7 @@ export function useBaseAiTutorChat(options: UseBaseAiTutorChatOptions) {
       setIsLoading(false);
       return false;
     }
-  }, [branch, docDescription, docTitle, isLoading, messages, scrollToBottom]);
+  }, [docDescription, docTitle, isLoading, messages, scrollToBottom]);
 
   return {
     messages,

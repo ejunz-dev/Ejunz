@@ -84,7 +84,6 @@ export function RoadmapNodeDrawer({
         || cleaned === 'Learn requires cards with problems'
         ? i18n('Learn requires cards with problems')
         : cleaned === 'That node is not part of this branch.'
-        || cleaned === 'That node is not part of this base branch'
         ? i18n('Outline editor start invalid node')
         : (cleaned || i18n('Outline learn start failed'));
       Notification.error(msg);

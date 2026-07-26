@@ -12,7 +12,6 @@ type Db = {
 
 export type DevelopWallBaseRecordCountWire = {
     baseDocId: number;
-    branch: string;
     recordCount: number;
 };
 
@@ -146,29 +145,27 @@ export async function buildDevelopDomainWallPayload(
         })
         .toArray() as SessionRecordDoc[];
 
-    /** day -> sessionHex -> "baseDocId\0branch" -> count */
-    const recordAggByDaySessionBase = new Map<string, Map<string, Map<string, number>>>();
-    const bump = (dayYmd: string, sessionHex: string, baseDocId: number, branch: string) => {
+    /** day -> sessionHex -> baseDocId -> count */
+    const recordAggByDaySessionBase = new Map<string, Map<string, Map<number, number>>>();
+    const bump = (dayYmd: string, sessionHex: string, baseDocId: number) => {
         if (!inRange(dayYmd, sinceYmd, untilYmd) || !sessionHex) return;
-        const bKey = `${baseDocId}\0${branch}`;
         if (!recordAggByDaySessionBase.has(dayYmd)) recordAggByDaySessionBase.set(dayYmd, new Map());
         const byS = recordAggByDaySessionBase.get(dayYmd)!;
         if (!byS.has(sessionHex)) byS.set(sessionHex, new Map());
         const byB = byS.get(sessionHex)!;
-        byB.set(bKey, (byB.get(bKey) || 0) + 1);
+        byB.set(baseDocId, (byB.get(baseDocId) || 0) + 1);
     };
 
     for (const rd of developRecords) {
         const sid = rd.sessionId ? rd.sessionId.toHexString() : '';
         if (!sid) continue;
-        const br = rd.branch && String(rd.branch).trim() ? String(rd.branch).trim() : 'main';
         const bid = Number(rd.baseDocId) || 0;
         const days = new Set<string>();
         const la = ymdUtc(rd.lastActivityAt);
         const cr = ymdUtc(rd.createdAt);
         if (la && inRange(la, sinceYmd, untilYmd)) days.add(la);
         if (cr && inRange(cr, sinceYmd, untilYmd)) days.add(cr);
-        for (const d of days) bump(d, sid, bid, br);
+        for (const d of days) bump(d, sid, bid);
     }
 
     const contributions: Array<{ date: string; type: 'node' | 'card' | 'problem'; count: number }> = [];
@@ -202,7 +199,7 @@ export async function buildDevelopDomainWallPayload(
     for (const date of allDates) {
         if (!inRange(date, sinceYmd, untilYmd)) continue;
         const agg = aggregate.get(date) || { nodes: 0, cards: 0, problems: 0 };
-        const bySession = recordAggByDaySessionBase.get(date) || new Map<string, Map<string, number>>();
+        const bySession = recordAggByDaySessionBase.get(date) || new Map<string, Map<number, number>>();
         const sessionHexes = [...new Set([
             ...bySession.keys(),
             ...(sessionsByDate.get(date) ? [...sessionsByDate.get(date)!.keys()] : []),
@@ -223,22 +220,14 @@ export async function buildDevelopDomainWallPayload(
                     sess = null;
                 }
             }
-            const baseMap = bySession.get(hex) || new Map<string, number>();
+            const baseMap = bySession.get(hex) || new Map<number, number>();
             const baseBreakdown: DevelopWallBaseRecordCountWire[] = [];
-            for (const [bKey, recordCount] of baseMap) {
-                const i = bKey.indexOf('\0');
-                const bidStr = i >= 0 ? bKey.slice(0, i) : bKey;
-                const branch = i >= 0 ? bKey.slice(i + 1) : 'main';
-                baseBreakdown.push({
-                    baseDocId: Number(bidStr) || 0,
-                    branch,
-                    recordCount,
-                });
+            for (const [baseDocId, recordCount] of baseMap) {
+                baseBreakdown.push({ baseDocId, recordCount });
             }
             baseBreakdown.sort((a, b) => {
                 if (b.recordCount !== a.recordCount) return b.recordCount - a.recordCount;
-                if (a.baseDocId !== b.baseDocId) return a.baseDocId - b.baseDocId;
-                return a.branch.localeCompare(b.branch);
+                return a.baseDocId - b.baseDocId;
             });
             const sortTs = sess?.lastActivityAt
                 ? new Date(sess.lastActivityAt).getTime()

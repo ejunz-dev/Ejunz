@@ -34,7 +34,6 @@
                 <td>
                   {% if mcp.baseDocId %}
                     <a href="{{ url('base_detail', { domainId: domainId, docId: mcp.baseDocId }) }}">Base {{ mcp.baseDocId }}</a>
-                    <span class="text-gray">/ {{ mcp.branch or 'main' }}</span>
                   {% else %}<span class="text-gray">未绑定</span>{% endif %}
                 </td>
               </tr>

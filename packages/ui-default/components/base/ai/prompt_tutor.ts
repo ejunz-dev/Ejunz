@@ -104,7 +104,6 @@ export function buildBaseAiTutorSystemPrompt(options: {
   baseText: string;
   selectedNodeContext: string;
   docTitle: string;
-  branch: string;
   docDescription?: string;
   semanticResults?: Array<{
     nodeId: string;
@@ -115,7 +114,7 @@ export function buildBaseAiTutorSystemPrompt(options: {
     score: number;
   }>;
 }): string {
-  const { baseText, selectedNodeContext, docTitle, branch, docDescription, semanticResults } = options;
+  const { baseText, selectedNodeContext, docTitle, docDescription, semanticResults } = options;
   const descBlock = docDescription?.trim()
     ? `\n[Document description]\n${docDescription.trim()}\n`
     : '';
@@ -132,7 +131,6 @@ export function buildBaseAiTutorSystemPrompt(options: {
 
 [Knowledge base]
 - Title: ${docTitle}
-- Branch: ${branch}
 ${descBlock}
 [Document structure and summaries]
 ${baseText}

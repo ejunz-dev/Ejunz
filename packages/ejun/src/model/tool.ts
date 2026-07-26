@@ -7,7 +7,7 @@ import storage from './storage';
 import type { ToolDoc, CardDoc, BaseNode, BaseEdge, FileInfo, Problem, ProblemKind } from '../interface';
 import EdgeModel from './edge';
 import DomainMarketToolModel from './domain_market_tool';
-import { BaseModel, CardModel, getBranchData } from './base';
+import { BaseModel, CardModel } from './base';
 import { migrateRawProblem } from './problem';
 import type { AgentScheduleDoc, AgentScheduleRunDoc } from './agent_schedule';
 import type { McpBaseGitInput } from '../handler/base';
@@ -330,7 +330,6 @@ export default ToolModel;
 export interface McpToolContext {
     domainId: string;
     baseDocId: number;
-    branch: string;
     owner: number;
     setting?: { get: (k: string) => unknown };
     embedding?: EmbeddingService;
@@ -511,12 +510,11 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
     },
     {
         name: 'git_status',
-        description: 'Get git sync status for this base: local/remote branch, ahead/behind, uncommitted changes, and file change lists. '
-            + 'Requires a local git repo (created on first commit/push). Optionally pass `branch` (defaults to MCP-bound branch).',
+        description: 'Get git sync status for this base: local/remote ref, ahead/behind, uncommitted changes, and file change lists. '
+            + 'Requires a local git repo (created on first commit/push).',
         inputSchema: {
             type: 'object',
             properties: {
-                branch: { type: 'string', description: 'Git branch to inspect (optional; defaults to bound branch).' },
                 githubToken: { type: 'string', description: 'GitHub PAT override for remote fetch (optional).' },
             },
             additionalProperties: false,
@@ -524,12 +522,11 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
     },
     {
         name: 'git_commit',
-        description: 'Export the current base/branch to the local git working tree and commit (does not push). '
+        description: 'Export the current base to the local git working tree and commit (does not push). '
             + 'Use after editing nodes/cards/problems when you want a local snapshot.',
         inputSchema: {
             type: 'object',
             properties: {
-                branch: { type: 'string', description: 'Branch to commit on (optional).' },
                 commitMessage: { type: 'string', description: 'Commit message body (optional).' },
             },
             additionalProperties: false,
@@ -542,7 +539,6 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
         inputSchema: {
             type: 'object',
             properties: {
-                branch: { type: 'string', description: 'Branch to push (optional).' },
                 commitMessage: { type: 'string', description: 'Commit message (optional).' },
                 githubToken: { type: 'string', description: 'GitHub PAT override (optional).' },
             },
@@ -551,12 +547,11 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
     },
     {
         name: 'git_pull',
-        description: 'Pull from GitHub and import the remote branch into this base (overwrites local branch data from remote). '
+        description: 'Pull from GitHub and import the remote content into this base. '
             + 'Destructive: replaces nodes/cards from the git tree. Requires githubRepo and token.',
         inputSchema: {
             type: 'object',
             properties: {
-                branch: { type: 'string', description: 'Branch to pull (optional).' },
                 githubToken: { type: 'string', description: 'GitHub PAT override (optional).' },
             },
             additionalProperties: false,
@@ -636,7 +631,7 @@ export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
 ];
 
 export async function buildMcpInstructions(
-    ctx: { domainId: string; baseDocId?: number; branch?: string },
+    ctx: { domainId: string; baseDocId?: number },
 ): Promise<string> {
     const lines: string[] = [
         'This MCP server is bound to a single Ejunz "base" — a knowledge base organized as an node tree.',
@@ -656,8 +651,8 @@ export async function buildMcpInstructions(
         } catch { /* ignore */ }
         lines.push(
             '',
-            `This endpoint is bound to base #${ctx.baseDocId}${title ? ` "${title}"` : ''} on branch "${ctx.branch || 'main'}". `
-            + 'All tools operate only within this base/branch.',
+            `This endpoint is bound to base #${ctx.baseDocId}${title ? ` "${title}"` : ''}. `
+            + 'All tools operate only within this base.',
         );
     }
     lines.push(
@@ -706,20 +701,11 @@ function toObjectId(value: unknown): ObjectId {
     return new ObjectId(s);
 }
 
-function cardMatchesBranch(card: CardDoc, branch: string): boolean {
-    const cardBranch = (card as CardDoc & { branch?: string }).branch || 'main';
-    if (branch === 'main') return cardBranch === 'main' || !cardBranch;
-    return cardBranch === branch;
-}
-
 async function requireCard(ctx: McpToolContext, cardId: unknown): Promise<CardDoc> {
     const card = await CardModel.get(ctx.domainId, toObjectId(cardId));
     if (!card) throw new Error('Card not found');
     if (String(card.baseDocId) !== String(ctx.baseDocId)) {
         throw new Error('Card does not belong to this base');
-    }
-    if (!cardMatchesBranch(card, ctx.branch)) {
-        throw new Error(`Card is on branch "${(card as CardDoc & { branch?: string }).branch || 'main'}", not "${ctx.branch}"`);
     }
     return card;
 }
@@ -790,11 +776,9 @@ function findProblemIndex(problems: Problem[], pid: string): number {
 }
 
 function toMcpGitInput(ctx: McpToolContext, args: Record<string, any>): McpBaseGitInput {
-    const branchArg = args.branch != null ? String(args.branch).trim() : '';
     return {
         domainId: ctx.domainId,
         baseDocId: ctx.baseDocId,
-        branch: branchArg || ctx.branch,
         owner: ctx.owner,
         setting: ctx.setting,
         githubToken: typeof args.githubToken === 'string' && args.githubToken.trim()
@@ -838,7 +822,7 @@ export async function executeMcpBuiltinTool(
     name: string,
     args: Record<string, any>,
 ): Promise<unknown> {
-    const { domainId, baseDocId, branch, owner } = ctx;
+    const { domainId, baseDocId, owner } = ctx;
     if (!baseDocId) throw new Error('This MCP endpoint is not bound to a base.');
     const base = await BaseModel.get(domainId, baseDocId, document.TYPE_BASE);
     if (!base) throw new Error(`Base not found: ${baseDocId}`);
@@ -847,7 +831,7 @@ export async function executeMcpBuiltinTool(
     case 'node_create': {
         const text = String(args.text || '').trim();
         if (!text) throw new Error('text is required');
-        const { nodes, edges } = getBranchData(base, branch);
+        const { nodes, edges } = base;
         const parentId = args.parentId
             ? String(args.parentId).trim()
             : findRootNodeId(nodes || [], edges || []);
@@ -855,7 +839,7 @@ export async function executeMcpBuiltinTool(
             throw new Error(`Parent node not found: ${parentId}`);
         }
         const res = await BaseModel.addNode(
-            domainId, baseDocId, { text } as any, parentId, branch, parentId,
+            domainId, baseDocId, { text } as any, parentId, parentId,
         );
         return { ok: true, nodeId: res.nodeId, edgeId: res.edgeId, parentId: parentId ?? null };
     }
@@ -863,13 +847,13 @@ export async function executeMcpBuiltinTool(
         const nodeId = String(args.nodeId || '');
         const text = String(args.text || '');
         if (!nodeId) throw new Error('nodeId is required');
-        await BaseModel.updateNode(domainId, baseDocId, nodeId, { text } as any, branch);
+        await BaseModel.updateNode(domainId, baseDocId, nodeId, { text } as any);
         return { ok: true, nodeId };
     }
     case 'node_delete': {
         const nodeId = String(args.nodeId || '');
         if (!nodeId) throw new Error('nodeId is required');
-        await BaseModel.deleteNode(domainId, baseDocId, nodeId, branch);
+        await BaseModel.deleteNode(domainId, baseDocId, nodeId);
         return { ok: true, nodeId };
     }
     case 'card_create': {
@@ -879,7 +863,7 @@ export async function executeMcpBuiltinTool(
         if (!title) throw new Error('title is required');
         const docId = await CardModel.create(
             domainId, baseDocId, nodeId, owner, title, String(args.content || ''),
-            undefined, undefined, undefined, branch,
+            undefined, undefined, undefined, undefined,
         );
         return { ok: true, cardId: String(docId) };
     }
@@ -898,10 +882,9 @@ export async function executeMcpBuiltinTool(
     case 'semantic_search': {
         const q = String(args.query || '').trim();
         if (!q) throw new Error('query is required');
-        logger.info('[diag] semantic_search entry: domainId=%s baseDocId=%s branch=%s owner=%s hasEmbedding=%s queryLength=%d pid=%d NODE_APP_INSTANCE=%s',
+        logger.info('[diag] semantic_search entry: domainId=%s baseDocId=%s owner=%s hasEmbedding=%s queryLength=%d pid=%d NODE_APP_INSTANCE=%s',
             domainId,
             baseDocId,
-            branch,
             owner,
             !!ctx.embedding,
             q.length,
@@ -912,13 +895,12 @@ export async function executeMcpBuiltinTool(
         const limit = Math.max(1, Math.min(50, Number(args.limit) || 15));
         const kind = String(args.kind || '').trim().toLowerCase();
         const requested = kind && (kind === 'node' || kind === 'card') ? Math.min(50, limit * 3) : limit;
-        const raw = await ctx.embedding.searchSimilar(domainId, baseDocId, branch, q, requested);
+        const raw = await ctx.embedding.searchSimilar(domainId, baseDocId, q, requested);
         const results = (kind && (kind === 'node' || kind === 'card')
             ? raw.filter((r) => r.kind === kind)
             : raw).slice(0, limit);
-        const rawBranch = getBranchData(base, branch);
-        const parentMap = buildParentMap(rawBranch.edges || []);
-        const nodeById = new Map((rawBranch.nodes || []).map((n) => [n.id, n]));
+        const parentMap = buildParentMap(base.edges || []);
+        const nodeById = new Map((base.nodes || []).map((n) => [n.id, n]));
         return {
             query: q,
             kind: kind || null,
@@ -1023,9 +1005,9 @@ export async function executeMcpBuiltinTool(
     case 'node_file_list': {
         const nodeId = String(args.nodeId || '');
         if (!nodeId) throw new Error('nodeId is required');
-        const { nodes } = getBranchData(base, branch);
+        const { nodes } = base;
         if (!nodes.some((n) => n.id === nodeId)) throw new Error('Node not found: ' + nodeId);
-        const cards = await CardModel.getByNodeId(domainId, baseDocId, nodeId, branch);
+        const cards = await CardModel.getByNodeId(domainId, baseDocId, nodeId);
         const fileCards = cards.filter((c) => (c as CardDoc).cardType === 'file');
         return fileCards.map((c) => ({
             cardId: String(c.docId),
@@ -1095,7 +1077,7 @@ export async function executeMcpBuiltinTool(
         const title = String(args.title || '').trim() || fileName;
         const cardDocId = await CardModel.create(
             domainId, baseDocId, nodeId, owner, title, '',
-            undefined, undefined, undefined, branch,
+            undefined, undefined, undefined,
             'file', fileType, fileName, meta.size || 0,
         );
         return { ok: true, cardId: String(cardDocId), nodeId, fileName, fileType, fileSize: meta.size };
@@ -1118,7 +1100,6 @@ export type SystemToolCatalogEntry = { name: string; description: string; inputS
 export interface SystemToolExecutionContext {
     domainId?: string;
     baseDocId?: number;
-    branch?: string;
     owner?: number;
     setting?: { get: (k: string) => unknown };
     embedding?: EmbeddingService;
@@ -1152,12 +1133,11 @@ export function getSystemToolCatalog(): SystemToolCatalogEntry[] {
 /** Run a system tool via plugin executor; throws if not registered. */
 export async function executeSystemTool(name: string, args: Record<string, unknown>, context?: SystemToolExecutionContext): Promise<unknown> {
     systemToolsLogger.info('[tool] systemTools: executeSystemTool name=%s hasExecutor=%s', name, !!registeredExecutor);
-    systemToolsLogger.info('[diag] executeSystemTool context: name=%s hasContext=%s domainId=%s baseDocId=%s branch=%s owner=%s hasEmbedding=%s pid=%d NODE_APP_INSTANCE=%s',
+    systemToolsLogger.info('[diag] executeSystemTool context: name=%s hasContext=%s domainId=%s baseDocId=%s owner=%s hasEmbedding=%s pid=%d NODE_APP_INSTANCE=%s',
         name,
         !!context,
         context?.domainId || '',
         context?.baseDocId || '',
-        context?.branch || '',
         context?.owner || '',
         !!context?.embedding,
         process.pid,
@@ -1178,12 +1158,11 @@ export async function executeSystemTool(name: string, args: Record<string, unkno
 export async function tryExecuteSystemTool(name: string, args: Record<string, unknown>, context?: SystemToolExecutionContext): Promise<unknown | null> {
     const inCatalog = registeredCatalog.some(t => t.name === name);
     systemToolsLogger.info('[tool] systemTools: tryExecuteSystemTool name=%s inCatalog=%s hasExecutor=%s', name, inCatalog, !!registeredExecutor);
-    systemToolsLogger.info('[diag] tryExecuteSystemTool context: name=%s hasContext=%s domainId=%s baseDocId=%s branch=%s owner=%s hasEmbedding=%s pid=%d NODE_APP_INSTANCE=%s',
+    systemToolsLogger.info('[diag] tryExecuteSystemTool context: name=%s hasContext=%s domainId=%s baseDocId=%s owner=%s hasEmbedding=%s pid=%d NODE_APP_INSTANCE=%s',
         name,
         !!context,
         context?.domainId || '',
         context?.baseDocId || '',
-        context?.branch || '',
         context?.owner || '',
         !!context?.embedding,
         process.pid,
@@ -1621,14 +1600,13 @@ function requireMcpToolContext(entry: LocalMcpToolEntry, context?: SystemToolExe
     }
     const fallbackEmbedding = require('../service/embedding').getEmbeddingService?.();
     const embedding = context.embedding || fallbackEmbedding;
-    systemToolsLogger.info('[diag] requireMcpToolContext: tool=%s hasContextEmbedding=%s hasFallbackEmbedding=%s finalHasEmbedding=%s domainId=%s baseDocId=%s branch=%s owner=%s pid=%d NODE_APP_INSTANCE=%s',
+    systemToolsLogger.info('[diag] requireMcpToolContext: tool=%s hasContextEmbedding=%s hasFallbackEmbedding=%s finalHasEmbedding=%s domainId=%s baseDocId=%s owner=%s pid=%d NODE_APP_INSTANCE=%s',
         entry.name,
         !!context.embedding,
         !!fallbackEmbedding,
         !!embedding,
         context.domainId,
         context.baseDocId,
-        context.branch || 'main',
         context.owner,
         process.pid,
         process.env.NODE_APP_INSTANCE || '',
@@ -1636,7 +1614,6 @@ function requireMcpToolContext(entry: LocalMcpToolEntry, context?: SystemToolExe
     return {
         domainId: context.domainId,
         baseDocId: context.baseDocId,
-        branch: context.branch || 'main',
         owner: context.owner,
         setting: context.setting,
         embedding,

@@ -102,7 +102,6 @@
               <strong>{{ row.title | e }}</strong>
               {% if row.bid %}<span class="supplementary"> ({{ row.bid }})</span>{% endif %}
               <span class="supplementary"> #{{ row.docId }}</span>
-              — {{ _('branch') }} <code>{{ row.branch }}</code>
             </li>
             {% endfor %}
           </ul>

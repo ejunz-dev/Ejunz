@@ -270,18 +270,16 @@ async function executeToolViaServer(config: any, task: any, executionTool: any, 
                 ? { ...(args || {}), __agentId: task.agentId }
                 : (args || {})),
         baseDocId: task.context?.baseDocId,
-        baseBranch: task.context?.baseBranch,
         owner: task.context?.owner || task.uid,
         toolType: executionTool?.type,
         token: executionTool?.token,
         mcpId: executionTool?.mcpId,
     };
     if (!config.server_url) {
-        logger.info('[diag] executeToolViaServer direct McpClient: tool=%s domainId=%s baseDocId=%s branch=%s owner=%s toolType=%s hasEmbeddingOverride=%s pid=%d NODE_APP_INSTANCE=%s',
+        logger.info('[diag] executeToolViaServer direct McpClient: tool=%s domainId=%s baseDocId=%s owner=%s toolType=%s hasEmbeddingOverride=%s pid=%d NODE_APP_INSTANCE=%s',
             callTask.toolName,
             callTask.domainId || '',
             callTask.baseDocId || '',
-            callTask.baseBranch || '',
             callTask.owner || '',
             callTask.toolType || '',
             !!(config.ctx as any)?.embedding,
@@ -298,7 +296,6 @@ async function executeToolViaServer(config: any, task: any, executionTool: any, 
             callTask.token,
             callTask.toolType,
             callTask.baseDocId,
-            callTask.baseBranch,
             callTask.owner,
             (config.ctx as any)?.embedding,
         );
@@ -603,14 +600,13 @@ async function executeAgentTask(task: any, reporter: WorkerTaskReporter, config:
 
 async function executeToolCallTask(task: any, reporter: WorkerTaskReporter, config: any) {
     await reporter.accepted();
-    logger.info('[diag] executeToolCallTask enter: tool=%s hasServerUrl=%s hasConfigCtx=%s hasConfigCtxEmbedding=%s domainId=%s baseDocId=%s branch=%s owner=%s toolType=%s pid=%d NODE_APP_INSTANCE=%s',
+    logger.info('[diag] executeToolCallTask enter: tool=%s hasServerUrl=%s hasConfigCtx=%s hasConfigCtxEmbedding=%s domainId=%s baseDocId=%s owner=%s toolType=%s pid=%d NODE_APP_INSTANCE=%s',
         task.toolName || task.name || '',
         !!config.server_url,
         !!config.ctx,
         !!(config.ctx as any)?.embedding,
         task.domainId || '',
         task.baseDocId || '',
-        task.baseBranch || '',
         task.owner || '',
         task.toolType || '',
         process.pid,
@@ -629,7 +625,6 @@ async function executeToolCallTask(task: any, reporter: WorkerTaskReporter, conf
                 task.token,
                 task.toolType,
                 task.baseDocId,
-                task.baseBranch,
                 task.owner,
                 (config.ctx as any)?.embedding,
             );

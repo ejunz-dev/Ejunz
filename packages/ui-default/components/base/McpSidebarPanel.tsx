@@ -10,7 +10,7 @@ function normalizeMcpServerName(name: string, fallback: string) {
   return sanitize(name) || sanitize(fallback) || 'ejunz';
 }
 
-export function McpSidebarPanel({ themeStyles, baseId, branch }: { themeStyles: any; baseId?: string; branch?: string }) {
+export function McpSidebarPanel({ themeStyles, baseId }: { themeStyles: any; baseId?: string }) {
   const domainId = (typeof window !== 'undefined' && (window as any).UiContext?.domainId) || 'system';
   const defaultServerName = `ejunz-${domainId}${baseId ? `-${baseId}` : ''}`;
   const [loading, setLoading] = useState(false);
@@ -23,7 +23,6 @@ export function McpSidebarPanel({ themeStyles, baseId, branch }: { themeStyles: 
       try {
         const qs: string[] = [];
         if (baseId) qs.push(`baseId=${encodeURIComponent(baseId)}`);
-        if (branch) qs.push(`branch=${encodeURIComponent(branch)}`);
         const res: any = await request.get(`/d/${domainId}/mcp/sse/token${qs.length ? `?${qs.join('&')}` : ''}`);
         if (cancelled) return;
         setStatus(res?.exists ? (res.status || 'pending') : 'pending');
@@ -32,7 +31,7 @@ export function McpSidebarPanel({ themeStyles, baseId, branch }: { themeStyles: 
     poll();
     const timer = setInterval(poll, 5000);
     return () => { cancelled = true; clearInterval(timer); };
-  }, [domainId, baseId, branch]);
+  }, [domainId, baseId]);
 
   const copyText = useCallback(async (text: string) => {
     if (!text) return false;
@@ -63,7 +62,6 @@ export function McpSidebarPanel({ themeStyles, baseId, branch }: { themeStyles: 
     try {
       const payload: Record<string, any> = {};
       if (baseId) payload.baseId = baseId;
-      if (branch) payload.branch = branch;
       if (serverName.trim()) payload.serverName = serverName.trim();
       const res: any = await request.post(`/d/${domainId}/mcp/sse/token`, payload);
       if (!res?.httpBaseUrl && !res?.httpUrl) {
@@ -79,7 +77,7 @@ export function McpSidebarPanel({ themeStyles, baseId, branch }: { themeStyles: 
     } finally {
       setLoading(false);
     }
-  }, [domainId, baseId, branch, serverName, copyText]);
+  }, [domainId, baseId, serverName, copyText]);
 
   return (
     <div style={{ padding: '8px', fontSize: '12px', color: themeStyles.textPrimary }}>

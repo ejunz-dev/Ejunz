@@ -84,8 +84,6 @@ export interface BaseDoc {
   content?: string;
   nodes: BaseNode[];
   edges: BaseEdge[];
-  currentBranch?: string;
-  branches?: string[];
   /** Problem tag registry at base level; edit in lesson, not in the base editor UI. */
   problemTags?: unknown;
   /** Card tag registry (auto-maintained from card tags). */
@@ -250,7 +248,7 @@ export type BaseEditorDisplaySettings = {
 };
 
 export type SavedEditorLayout = {
-  explorerMode: 'tree' | 'pending' | 'branches' | 'git' | 'mcp' | 'display' | 'tags' | 'problemTags';
+  explorerMode: 'tree' | 'pending' | 'git' | 'mcp' | 'display' | 'tags' | 'problemTags';
   nodeSidePanelTab: 'intent' | 'files' | 'develop_queue';
   editorRightPanelTab: EditorRightPanelTab;
   rightPanelOpen: boolean;
@@ -268,7 +266,6 @@ export type DevelopEditorContextWire = {
   dateUtc: string;
   current: {
     baseDocId: number;
-    branch: string;
     baseTitle: string;
     editorUrl: string;
     dailyNodeGoal: number;
@@ -281,7 +278,6 @@ export type DevelopEditorContextWire = {
   };
   othersIncomplete: Array<{
     baseDocId: number;
-    branch: string;
     baseTitle: string;
     dailyNodeGoal: number;
     dailyCardGoal: number;

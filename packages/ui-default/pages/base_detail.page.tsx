@@ -43,7 +43,6 @@ type BaseDetailContext = {
   domainId?: string;
   docId?: string;
   bid?: number;
-  currentBranch?: string;
   title?: string;
   content?: string;
   nodes?: BaseDoc['nodes'];
@@ -58,7 +57,6 @@ function getBaseDetailFromContext(): BaseDetailContext {
     domainId: ctx.domainId || (window as any).UiContext?.domainId || 'system',
     docId: String(ctx.docId || ''),
     bid: ctx.bid,
-    currentBranch: ctx.currentBranch || 'main',
     title: ctx.title || '',
     content: ctx.content || '',
     nodes: ctx.nodes || [],
@@ -106,7 +104,6 @@ function BaseDetailViewer() {
   const [viewerCount, setViewerCount] = useState(0);
   const [liveViewers, setLiveViewers] = useState<ViewerInfo[]>([]);
   const title = base.title?.trim() || String(i18n('Knowledge Base'));
-  const branch = base.currentBranch || 'main';
   const [liveNodes, setLiveNodes] = useState(base.nodes || []);
   const [liveEdges, setLiveEdges] = useState(base.edges || []);
   const nodes = liveNodes;
@@ -305,7 +302,6 @@ function BaseDetailViewer() {
     try {
       await request.post(domainApiPath('/base/detail-ui-prefs', base.domainId || 'system'), {
         docId: Number(base.docId),
-        branch,
         displayPrefs: next,
       });
       setDisplaySettings(next);
@@ -316,7 +312,7 @@ function BaseDetailViewer() {
     } finally {
       setDisplaySettingsSaving(false);
     }
-  }, [base.docId, base.domainId, branch]);
+  }, [base.docId, base.domainId]);
 
   const handleExpandedNodesChange = useCallback((nodeIds: Set<string>) => {
     // Mark dirty — user must save manually (Ctrl+S / Cmd+S)
@@ -333,7 +329,6 @@ function BaseDetailViewer() {
     try {
       const reqBody = {
         docId: Number(base.docId),
-        branch,
         displayPrefs: {
           ...displaySettings,
           expandedNodeIds: nodeIds ? Array.from(nodeIds) : [],
@@ -344,7 +339,7 @@ function BaseDetailViewer() {
       Notification.success(i18n('Saved'));
     } catch { /* silent */ }
     expandSaveBusyRef.current = false;
-  }, [base.docId, base.domainId, branch, displaySettings, expandDirty]);
+  }, [base.docId, base.domainId, displaySettings, expandDirty]);
 
   // Ctrl+S / Cmd+S saves expand state
   useEffect(() => {
@@ -397,7 +392,7 @@ function BaseDetailViewer() {
     if (!socketUrl || !domainId || !docId) return;
     let closed = false;
     let lastNotifyKey = '';
-    const apiQs: Record<string, string> = { docId, branch };
+    const apiQs: Record<string, string> = { docId };
     const dataUrl = domainApiPath('/base/data', domainId);
 
     const connect = async () => {
@@ -426,8 +421,6 @@ function BaseDetailViewer() {
               return;
             }
             if (msg.type !== 'update') return;
-            // Ignore updates for a different branch
-            if (msg.sourceBranch && branch && msg.sourceBranch !== branch) return;
             // Compute toast info now — show AFTER data re-fetch completes
             let toastPayload: { title: string; message: string } | null = null;
             if (msg.actionKey && msg.actionKey !== 'unknown') {
@@ -664,7 +657,6 @@ function BaseDetailViewer() {
         mode: 'node',
         nodeId,
         baseDocId: baseDocNum,
-        branch,
         learnSource: 'base',
         source: 'base_detail',
         detailFilteredCardIds: learnCardIds,
@@ -690,7 +682,7 @@ function BaseDetailViewer() {
     } finally {
       setLearnBusy(false);
     }
-  }, [base.docId, base.domainId, branch, collectDescendantNodeIds, contentTreeVisibility, detailFilters, learnBusy, learnTargetNodeId, nodeCardsMap, nodes, treeSearchQuery]);
+  }, [base.docId, base.domainId, collectDescendantNodeIds, contentTreeVisibility, detailFilters, learnBusy, learnTargetNodeId, nodeCardsMap, nodes, treeSearchQuery]);
 
   const startEditorSession = useCallback(async () => {
     const nodeId = String(contentRootNodeId || '').trim();
@@ -733,12 +725,10 @@ function BaseDetailViewer() {
     if (action !== 'ok') return;
 
     const domainId = base.domainId || 'system';
-    const branchName = base.currentBranch || 'main';
     setEditorBusy(true);
     try {
       const payload: Record<string, unknown> = {
         baseDocId: baseDocNum,
-        branch: branchName,
         nodeId,
         developMapDocType: 70,
       };
@@ -766,7 +756,7 @@ function BaseDetailViewer() {
     } finally {
       setEditorBusy(false);
     }
-  }, [base.docId, base.currentBranch, base.domainId, contentRootNodeId, editorBusy, nodes, nodeCardsMap]);
+  }, [base.docId, base.domainId, contentRootNodeId, editorBusy, nodes, nodeCardsMap]);
 
   const handleStartEditCard = useCallback(() => {
     if (selectedCard) setEditCard(selectedCard);
@@ -820,7 +810,6 @@ function BaseDetailViewer() {
         description={headerDescription}
         domainId={base.domainId || 'system'}
         docId={base.docId || ''}
-        branch={branch}
         treeDrawerOpen={treeDrawerOpen}
         onTreeDrawerOpen={() => setTreeDrawerOpen(true)}
         aiTutorActive={aiTutorOpen}
@@ -1005,7 +994,6 @@ function BaseDetailViewer() {
           edges={edges}
           nodeCardsMap={nodeCardsMap}
           docTitle={title}
-          branch={branch}
           docDescription={base.content}
           selectedNode={selectedNode}
           selectedCard={selectedCard}
@@ -1024,7 +1012,6 @@ function BaseDetailViewer() {
       <BaseDetailSemanticSearch
         domainId={base.domainId || 'system'}
         docId={base.docId || ''}
-        branch={branch}
         open={semanticSearchOpen}
         onOpenChange={setSemanticSearchOpen}
         onSelectResult={(result) => {

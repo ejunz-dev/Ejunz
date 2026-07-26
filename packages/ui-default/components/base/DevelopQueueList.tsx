@@ -1,6 +1,6 @@
 import React from 'react';
 import { i18n } from 'vj/utils';
-import { resolveDevelopQueueRowStats, normDevelopBranch, developQueueGoalCaption } from './utils';
+import { resolveDevelopQueueRowStats, developQueueGoalCaption } from './utils';
 import type { DevelopEditorContextWire } from './types';
 
 export function DevelopQueueList({
@@ -12,13 +12,13 @@ export function DevelopQueueList({
   busyIndex,
   onGo,
 }: {
-  items: Array<{ baseDocId: number; branch: string }>;
+  items: Array<{ baseDocId: number }>;
   currentIndex: number;
   devCtx: DevelopEditorContextWire;
   themeStyles: any;
   theme: 'light' | 'dark';
   busyIndex: number | null;
-  onGo: (baseDocId: number, branch: string, idx: number) => void;
+  onGo: (baseDocId: number, idx: number) => void;
 }) {
   const unset = i18n('Develop goal unset');
   const track = theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
@@ -29,16 +29,16 @@ export function DevelopQueueList({
       </div>
       <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
         {items.map((item, idx) => {
-          const st = resolveDevelopQueueRowStats(devCtx, item.baseDocId, item.branch);
+          const st = resolveDevelopQueueRowStats(devCtx, item.baseDocId);
           const isCurrent = idx === currentIndex;
           const busy = busyIndex !== null;
           const cap = (cur: number, goal: number) => developQueueGoalCaption(cur, goal, unset);
           return (
-            <li key={`${item.baseDocId}-${item.branch}-${idx}`}>
+            <li key={`${item.baseDocId}-${idx}`}>
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => onGo(item.baseDocId, item.branch, idx)}
+                onClick={() => onGo(item.baseDocId, idx)}
                 style={{
                   width: '100%',
                   textAlign: 'left',
@@ -57,7 +57,6 @@ export function DevelopQueueList({
                   <span style={{ fontWeight: 700, fontSize: 12, flex: 1, minWidth: 0 }}>
                     <span style={{ color: themeStyles.textTertiary, fontWeight: 600, marginRight: 6 }}>{idx + 1}.</span>
                     {st.baseTitle}
-                    <span style={{ color: themeStyles.textSecondary, fontWeight: 500 }}>{` · ${normDevelopBranch(item.branch)}`}</span>
                   </span>
                   {isCurrent ? (
                     <span style={{ fontSize: 10, fontWeight: 700, color: themeStyles.accent, flexShrink: 0 }}>{i18n('Develop queue current')}</span>
@@ -75,15 +74,9 @@ export function DevelopQueueList({
                     style={{
                       width: `${(() => {
                         const parts: number[] = [];
-                        if (st.dailyNodeGoal > 0) {
-                          parts.push(Math.min(100, (st.todayNodes / st.dailyNodeGoal) * 100));
-                        }
-                        if (st.dailyCardGoal > 0) {
-                          parts.push(Math.min(100, (st.todayCards / st.dailyCardGoal) * 100));
-                        }
-                        if (st.dailyProblemGoal > 0) {
-                          parts.push(Math.min(100, (st.todayProblems / st.dailyProblemGoal) * 100));
-                        }
+                        if (st.dailyNodeGoal > 0) parts.push(Math.min(100, (st.todayNodes / st.dailyNodeGoal) * 100));
+                        if (st.dailyCardGoal > 0) parts.push(Math.min(100, (st.todayCards / st.dailyCardGoal) * 100));
+                        if (st.dailyProblemGoal > 0) parts.push(Math.min(100, (st.todayProblems / st.dailyProblemGoal) * 100));
                         if (!parts.length) return 0;
                         return Math.round(parts.reduce((a, b) => a + b, 0) / parts.length);
                       })()}%`,

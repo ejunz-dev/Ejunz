@@ -4,16 +4,14 @@ export function developTodayUtcYmd(): string {
     return moment.utc().format('YYYY-MM-DD');
 }
 
-export function developBranchKey(baseDocId: number, branch: string): string {
-    const br = typeof branch === 'string' && branch.trim() ? branch.trim() : 'main';
-    return `${Number(baseDocId)}::${br}`;
+export function developBaseKey(baseDocId: number): string {
+    return String(Number(baseDocId));
 }
 
-export async function incDevelopBranchDaily(
+export async function incDevelopDaily(
     db: { collection: (n: string) => { updateOne: (...a: any[]) => Promise<any> } },
     domainId: string,
     uid: number,
-    branch: string,
     baseDocId: number,
     inc: { nodes: number; cards: number; problems: number },
 ): Promise<void> {
@@ -22,10 +20,9 @@ export async function incDevelopBranchDaily(
     const p = inc.problems || 0;
     if (!n && !c && !p) return;
     const date = developTodayUtcYmd();
-    const br = typeof branch === 'string' && branch.trim() ? branch.trim() : 'main';
     const bid = Number(baseDocId);
     await db.collection('develop_branch_daily').updateOne(
-        { domainId, uid, date, baseDocId: bid, branch: br },
+        { domainId, uid, date, baseDocId: bid },
         {
             $inc: { nodes: n, cards: c, problems: p },
             $set: { updateAt: new Date() },
@@ -34,7 +31,6 @@ export async function incDevelopBranchDaily(
                 uid,
                 date,
                 baseDocId: bid,
-                branch: br,
                 createAt: new Date(),
             },
         },
@@ -42,32 +38,29 @@ export async function incDevelopBranchDaily(
     );
 }
 
-export async function getDevelopBranchDailyMany(
+export async function getDevelopDailyMany(
     db: { collection: (n: string) => { find: (q: any) => { toArray: () => Promise<any[]> } } },
     domainId: string,
     uid: number,
     date: string,
-    keys: Array<{ baseDocId: number; branch: string }>,
+    baseDocIds: number[],
 ): Promise<Map<string, { nodes: number; cards: number; problems: number }>> {
     const m = new Map<string, { nodes: number; cards: number; problems: number }>();
-    if (!keys.length) return m;
-    const norm = keys.map((k) => ({
-        baseDocId: Number(k.baseDocId),
-        branch: typeof k.branch === 'string' && k.branch.trim() ? k.branch.trim() : 'main',
-    }));
+    const ids = [...new Set(baseDocIds.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))];
+    if (!ids.length) return m;
     const docs = await db.collection('develop_branch_daily').find({
         domainId,
         uid,
         date,
-        $or: norm.map((k) => ({ baseDocId: k.baseDocId, branch: k.branch })),
+        baseDocId: { $in: ids },
     }).toArray();
     for (const d of docs) {
-        const key = developBranchKey(Number(d.baseDocId), String(d.branch ?? 'main'));
-        m.set(key, {
-            nodes: Number(d.nodes) || 0,
-            cards: Number(d.cards) || 0,
-            problems: Number(d.problems) || 0,
-        });
+        const key = developBaseKey(Number(d.baseDocId));
+        const current = m.get(key) || { nodes: 0, cards: 0, problems: 0 };
+        current.nodes += Number(d.nodes) || 0;
+        current.cards += Number(d.cards) || 0;
+        current.problems += Number(d.problems) || 0;
+        m.set(key, current);
     }
     return m;
 }

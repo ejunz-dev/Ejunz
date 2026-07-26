@@ -96,7 +96,6 @@ export function defaultNodeDataForKind(kind: RoadmapNodeKind): Record<string, un
     description: '',
     nodeText: kind === 'text' ? '' : undefined,
     hookRoadmapDocId: kind === 'hook' ? '' : undefined,
-    hookRoadmapBranch: kind === 'hook' ? 'main' : undefined,
     hookRoadmapTitle: kind === 'hook' ? '' : undefined,
   };
 }

@@ -35,13 +35,18 @@ export async function loadBaseDetailUiPrefs(
     db: Db,
     domainId: string,
     baseDocId: number,
-    branch: string,
     uid: unknown,
 ): Promise<Record<string, unknown>> {
     try {
         const coll = db.collection('base.userDetailUi');
-        const b = branch && String(branch).trim() ? String(branch).trim() : 'main';
-        const doc = await coll.findOne({ domainId, baseDocId, branch: b, uid });
+        const doc = await coll.findOne(
+            {
+                domainId,
+                baseDocId,
+                uid,
+            },
+            { sort: { updateAt: -1, _id: -1 } },
+        );
         return sanitizeBaseDetailUiPrefs(doc?.prefs);
     } catch {
         return {};
@@ -52,20 +57,21 @@ export async function saveBaseDetailUiPrefs(
     db: Db,
     domainId: string,
     baseDocId: number,
-    branch: string,
     uid: unknown,
     displayPrefs: unknown,
 ): Promise<void> {
-    const branchNorm = branch && String(branch).trim() ? String(branch).trim() : 'main';
     const sanitized = sanitizeBaseDetailUiPrefs(displayPrefs);
     const coll = db.collection('base.userDetailUi');
     await coll.updateOne(
-        { domainId, baseDocId, branch: branchNorm, uid },
+        {
+            domainId,
+            baseDocId,
+            uid,
+        },
         {
             $set: {
                 domainId,
                 baseDocId,
-                branch: branchNorm,
                 uid,
                 prefs: sanitized,
                 updateAt: new Date(),

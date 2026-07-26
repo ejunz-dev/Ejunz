@@ -49,12 +49,6 @@ function effectiveAgentBaseDocId(adoc: AgentDoc): number | undefined {
     return Number.isFinite(docId) && docId! > 0 ? docId : undefined;
 }
 
-function effectiveAgentBaseBranch(adoc: AgentDoc): string | undefined {
-    const raw = (adoc as any).baseLibraryBindings;
-    const branch = Array.isArray(raw) && raw.length ? String(raw[0]?.branch || 'main').trim() : '';
-    return branch || undefined;
-}
-
 function normalizeChatHistory(history?: string | any[]): any[] {
     if (Array.isArray(history)) return history;
     if (typeof history !== 'string') return [];
@@ -192,7 +186,6 @@ export async function enqueueAgentTask(input: EnqueueAgentTaskInput): Promise<En
         agentContent: adoc.content || '',
         agentMemory: adoc.memory || '',
         baseDocId: effectiveAgentBaseDocId(adoc),
-        baseBranch: effectiveAgentBaseBranch(adoc),
         owner: input.uid,
         toolsForModel: tools.map((tool) => ({
             name: tool.name,

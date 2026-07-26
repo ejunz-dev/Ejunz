@@ -1030,9 +1030,8 @@ function baseEditorUiPrefsLocalStorageKey(): string | null {
   const ctx = (window as any).UiContext || {};
   const domainId = String(ctx.domainId || 'system');
   const docId = String(ctx.base?.docId || ctx.baseDocId || '').trim();
-  const branch = String(ctx.currentBranch || 'main').trim() || 'main';
   if (!docId) return null;
-  return `baseEditorUiPrefs:${domainId}:${docId}:${branch}`;
+  return `baseEditorUiPrefs:${domainId}:${docId}`;
 }
 
 function readLocalBaseEditorUiPrefs(): Record<string, unknown> | null {
@@ -1067,7 +1066,7 @@ export function readSavedBaseEditorUiPrefs(editorAiHidden: boolean): SavedEditor
     ...((serverRaw && typeof serverRaw === 'object' && !Array.isArray(serverRaw)) ? serverRaw : {}),
     ...((localRaw && typeof localRaw === 'object' && !Array.isArray(localRaw)) ? localRaw : {}),
   };
-  const modes = new Set(['tree', 'pending', 'branches', 'git', 'mcp', 'display']);
+  const modes = new Set(['tree', 'pending', 'git', 'mcp', 'display']);
   const nodeTabs = new Set(['intent', 'files', 'develop_queue']);
   const rightTabs = new Set(['problems', 'develop_queue', 'plugin_node', 'plugin_mcp_services', 'roadmap_edge']);
 
@@ -1148,16 +1147,11 @@ export function readSavedBaseEditorUiPrefs(editorAiHidden: boolean): SavedEditor
 }
 
 /* ------------------------------------------------------------------ */
-/*  normDevelopBranch / resolveDevelopQueueRowStats / developQueueGoalCaption */
+/*  resolveDevelopQueueRowStats / developQueueGoalCaption              */
 /* ------------------------------------------------------------------ */
-export function normDevelopBranch(b: string | undefined): string {
-  return typeof b === 'string' && b.trim() ? b.trim() : 'main';
-}
-
 export function resolveDevelopQueueRowStats(
   ctx: DevelopEditorContextWire,
   baseDocId: number,
-  branch: string,
 ): {
   baseTitle: string;
   dailyNodeGoal: number;
@@ -1167,9 +1161,8 @@ export function resolveDevelopQueueRowStats(
   todayCards: number;
   todayProblems: number;
 } {
-  const br = normDevelopBranch(branch);
   const c = ctx.current;
-  if (c.baseDocId === baseDocId && normDevelopBranch(c.branch) === br) {
+  if (c.baseDocId === baseDocId) {
     return {
       baseTitle: c.baseTitle,
       dailyNodeGoal: c.dailyNodeGoal,
@@ -1180,9 +1173,7 @@ export function resolveDevelopQueueRowStats(
       todayProblems: c.todayProblems,
     };
   }
-  const o = ctx.othersIncomplete.find(
-    (r) => r.baseDocId === baseDocId && normDevelopBranch(r.branch) === br,
-  );
+  const o = ctx.othersIncomplete.find((r) => r.baseDocId === baseDocId);
   if (o) {
     return {
       baseTitle: o.baseTitle,

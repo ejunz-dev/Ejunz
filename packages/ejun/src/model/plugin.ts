@@ -41,7 +41,6 @@ export class PluginModel {
             title || 'Untitled Plugin',
             content || '',
             undefined,
-            'main',
             ip,
             undefined,
             title || 'Plugin',
@@ -61,11 +60,11 @@ export class PluginModel {
     }
 
     static async get(domainId: string, docId: number): Promise<PluginDoc | null> {
-        return (await BaseModel.get(domainId, docId, document.TYPE_PLUGIN)) as PluginDoc | null;
+        return (await BaseModel.get(domainId, docId, document.TYPE_PLUGIN)) as unknown as PluginDoc | null;
     }
 
     static async getAll(domainId: string, query: Filter<PluginDoc> = {}): Promise<PluginDoc[]> {
-        return (await BaseModel.getAll(domainId, query as any, document.TYPE_PLUGIN)) as PluginDoc[];
+        return (await BaseModel.getAll(domainId, query as any, document.TYPE_PLUGIN)) as unknown as PluginDoc[];
     }
 
     static async update(domainId: string, docId: number, updates: Partial<PluginDoc>): Promise<void> {

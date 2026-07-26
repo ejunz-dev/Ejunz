@@ -104,14 +104,12 @@ import {
   mergeLearnProblemNoteDraftsIntoBatch,
   mergeServerNodeCardsMapWithLocalDrafts,
   migrateOrderFields,
-  normDevelopBranch,
   normalizeCardContentForCompare,
   parseSubtreeExportPayload,
   problemKindToI18nKey,
   readSavedBaseEditorUiPrefs,
   writeSavedBaseEditorUiPrefsLocal,
   resolveCardExportBody,
-  resolveDevelopQueueRowStats,
   resolveEditorRootNodeId,
   sameCardDocId,
   setBaseEditorFileDragImage,
@@ -310,9 +308,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
     let cancelled = false;
     const domainId = (window as any).UiContext?.domainId || 'system';
-    const branch = (window as any).UiContext?.currentBranch || 'main';
     request
-      .post(domainApiPath('/session/develop/start', domainId), { baseDocId: docIdNum, branch })
+      .post(domainApiPath('/session/develop/start', domainId), { baseDocId: docIdNum })
       .then((res: { sessionId?: string }) => {
         if (cancelled || !res?.sessionId) return;
         if (new URLSearchParams(window.location.search).get('session')) return;
@@ -331,7 +328,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   }, [developEditorContext, basePath, docId]);
 
   const [developRunQueueState, setDevelopRunQueueState] = useState<{
-    items: Array<{ baseDocId: number; branch: string }>;
+    items: Array<{ baseDocId: number }>;
     currentIndex: number;
   } | null>(null);
 
@@ -357,11 +354,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     [availableMcpServices],
   );
 
-  const navigateDevelopQueueItem = useCallback(async (baseDocId: number, branch: string, queueIndex: number) => {
+  const navigateDevelopQueueItem = useCallback(async (baseDocId: number, queueIndex: number) => {
     const d = (window as any).UiContext?.domainId || 'system';
     setDevelopQueueNavBusy(queueIndex);
     try {
-      const res: any = await request.post(domainApiPath('/session/develop/start', d), { baseDocId, branch });
+      const res: any = await request.post(domainApiPath('/session/develop/start', d), { baseDocId });
       const sessionId = res?.sessionId ?? res?.body?.sessionId;
       if (typeof sessionId === 'string' && sessionId.trim()) {
         window.location.href = domainScopedPath(`/develop/editor?session=${encodeURIComponent(sessionId.trim())}`, d);
@@ -403,7 +400,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const pendingProblemsMergeCardIdsRef = useRef<Set<string>>(new Set());
   const saveHandlerRef = useRef<() => void>(() => {});
 
-  const [explorerMode, setExplorerMode] = useState<'tree' | 'pending' | 'branches' | 'git' | 'mcp' | 'display' | 'tags' | 'problemTags' | 'settings'>(
+  const [explorerMode, setExplorerMode] = useState<'tree' | 'pending' | 'git' | 'mcp' | 'display' | 'tags' | 'problemTags' | 'settings'>(
     () => savedEditorLayout.explorerMode,
   );
   const [editorDisplaySettings, setEditorDisplaySettings] = useState<BaseEditorDisplaySettings>(
@@ -467,8 +464,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const apiPath = domainApiPath(`/${basePath}/data`, domainId);
     const editorApiQs: Record<string, string> = {};
     if (docId) editorApiQs.docId = docId;
-    const editorBranch = (window as any).UiContext?.currentBranch;
-    if (editorBranch) editorApiQs.branch = editorBranch;
 
     const connect = async () => {
       try {
@@ -498,7 +493,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               return;
             }
             if (msg.type === 'init' || msg.type === 'update') {
-              if (msg.type === 'update' && msg.sourceBranch && editorBranch && msg.sourceBranch !== editorBranch) return;
               // Compute toast info now, but show it AFTER data re-fetch completes
               let toastPayload: { title: string; message: string } | null = null;
               const buildSummary = (ak: string, det: any): string => {
@@ -678,10 +672,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               });
             }
             if (msg.type === 'git_status' && msg.gitStatus != null) {
-              const b = (window as any).UiContext?.currentBranch || 'main';
-              if (!msg.branch || msg.branch === b) {
-                setGitRemoteStatus(msg.gitStatus);
-              }
+              setGitRemoteStatus(msg.gitStatus);
             }
           } catch (e) {
             // ignore parse error
@@ -807,11 +798,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       return;
     }
     const domainId = (window as any).UiContext?.domainId || 'system';
-    const branch = String(
-      base.currentBranch || (window as any).UiContext?.currentBranch || 'main',
-    ).trim() || 'main';
     const docNum = docId ? Number(docId) : NaN;
-    let norm: Array<{ baseDocId: number; branch: string }> = [];
+    let norm: Array<{ baseDocId: number }> = [];
     try {
       const raw = sessionStorage.getItem(`developRunQueue:${domainId}`);
       if (raw) {
@@ -821,7 +809,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             .filter((x: any) => x && Number.isFinite(Number(x.baseDocId)))
             .map((x: any) => ({
               baseDocId: Number(x.baseDocId),
-              branch: String(x.branch || 'main').trim() || 'main',
             }));
         }
       }
@@ -830,17 +817,17 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     }
     if (norm.length === 0) {
       if (Number.isFinite(docNum) && docNum > 0) {
-        setDevelopRunQueueState({ items: [{ baseDocId: docNum, branch }], currentIndex: 0 });
+        setDevelopRunQueueState({ items: [{ baseDocId: docNum }], currentIndex: 0 });
       } else {
         setDevelopRunQueueState(null);
       }
       return;
     }
     const idx = Number.isFinite(docNum)
-      ? norm.findIndex((s) => s.baseDocId === docNum && s.branch === branch)
+      ? norm.findIndex((s) => s.baseDocId === docNum)
       : -1;
     setDevelopRunQueueState({ items: norm, currentIndex: idx });
-  }, [docId, developEditorContext, basePath, base.currentBranch]);
+  }, [docId, developEditorContext, basePath]);
 
   useEffect(() => {
     if (migrationResult.needsSave) {
@@ -856,7 +843,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           (window as any).__baseJustSaved = Date.now();
           await request.post(getBaseUrl('/save'), {
             ...(docId ? { docId } : {}),
-            branch: (window as any).UiContext?.currentBranch || 'main',
             nodes: migrationNodes,
             edges: migrationEdges,
             operationDescription: '自动迁移：为节点和卡片添加order字段',
@@ -1021,8 +1007,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     try {
       const qs: Record<string, string> = {};
       if (docId) qs.docId = docId;
-      const refBranch = (window as any).UiContext?.currentBranch;
-      if (refBranch) qs.branch = refBranch;
       const newData: any = await request.get(apiPath, qs);
       if (newData?.nodes != null || newData?.edges != null) {
         setBase(prev => {
@@ -1107,13 +1091,12 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     }
     const files = Array.from(fileList);
     const domainId = (window as any).UiContext?.domainId || 'system';
-    const branch = (window as any).UiContext?.currentBranch || 'main';
 
     if (pendingNodeUploadRef.current) {
       const { nodeId } = pendingNodeUploadRef.current;
       // Always upload files regardless of temp/saved node
       let url: string;
-      url = domainScopedPath(`/base/${docId}/node/${nodeId}/files?branch=${encodeURIComponent(branch)}`, domainId);
+      url = domainScopedPath(`/base/${docId}/node/${nodeId}/files`, domainId);
       try {
         await uploadFiles(url, files, {});
         await refetchEditorData();
@@ -1987,13 +1970,12 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   });
   const handleSaveUiPrefs = useCallback(async () => {
     const domainId = (window as any).UiContext?.domainId || "system";
-    const branch = (window as any).UiContext?.currentBranch || "main";
     const docIdNum = docId ? Number(docId) : NaN;
     if (!Number.isFinite(docIdNum)) return;
     (window as any).__baseJustSaved = Date.now();
     try {
       const payload = {
-        docId: docIdNum, branch,
+        docId: docIdNum,
         editorUiPrefs: {
           explorerMode, editorRightPanelTab, rightPanelOpen,
           aiBottomOpen: editorAiHidden ? false : aiBottomOpen,
@@ -2030,13 +2012,12 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     if (basePath !== 'base') return undefined;
     const path = window.location.pathname;
     const onDevEd = /\/develop\/editor(?:\/|$)/.test(path);
-    const onBaseBrEd = /\/base\/[^/]+\/branch\/[^/]+\/editor(?:\/|$)/.test(path);
-    if (!onDevEd && !onBaseBrEd) return undefined;
+    const onBaseEd = /\/base\/[^/]+\/editor(?:\/|$)/.test(path);
+    if (!onDevEd && !onBaseEd) return undefined;
     const sessionHex = new URLSearchParams(window.location.search).get('session')?.trim() || '';
     if (!sessionHex) return undefined;
     const baseDocIdNum = Number(docId);
     if (!Number.isFinite(baseDocIdNum) || baseDocIdNum <= 0) return undefined;
-    const branch = (window as any).UiContext?.currentBranch || 'main';
     if (developNavPersistTimerRef.current) clearTimeout(developNavPersistTimerRef.current);
     developNavPersistTimerRef.current = setTimeout(async () => {
       developNavPersistTimerRef.current = null;
@@ -2044,7 +2025,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         (window as any).__baseJustSaved = Date.now();
         await request.post(getBaseUrl('/save'), {
           docId: baseDocIdNum,
-          branch,
           sidecarOnly: true,
           developSessionId: sessionHex,
           developEditorLocation: `${window.location.pathname}${window.location.search || ''}`,
@@ -2063,12 +2043,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
   const fetchGitRemoteStatus = useCallback(async () => {
     if (basePath !== 'base' || !docId) return;
-    const branch = (window as any).UiContext?.currentBranch || 'main';
     setGitStatusLoading(true);
     try {
       const res: any = await request.get(getBaseUrl('/git/status'), {
         docId: String(docId),
-        branch,
       });
       setGitRemoteStatus(res?.gitStatus ?? null);
     } catch (_e) {
@@ -2087,8 +2065,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const t = setInterval(fetchGitRemoteStatus, 15000);
     return () => clearInterval(t);
   }, [explorerMode, basePath, docId, getBaseUrl, fetchGitRemoteStatus]);
-
-  const currentBranch = (window as any).UiContext?.currentBranch || 'main';
 
   const editorUiDomainId = useCallback((): string => {
     const rawDomainId = (window as any).UiContext?.domainId;
@@ -2141,7 +2117,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       Notification.error(i18n('Outline editor start invalid base'));
       return;
     }
-    const branch = (window as any).UiContext?.currentBranch || base.currentBranch || 'main';
     const domainId = editorUiDomainId();
     setEditorLearnBusy(true);
     try {
@@ -2149,7 +2124,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         mode: 'node',
         nodeId: nid,
         baseDocId: baseDocNum,
-        branch,
       });
       const redir = res?.redirect ?? res?.body?.redirect ?? res?.data?.redirect;
       const url = redir || domainScopedPath('/learn/lesson', domainId);
@@ -3075,7 +3049,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       
       const batchSaveData: any = {
         ...(docId ? { docId } : {}),
-        branch: (window as any).UiContext?.currentBranch || 'main',
         nodeCreates: [],
         nodeUpdates: [],
         nodeDeletes: [],
@@ -3093,7 +3066,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       }
 
       const baseDocIdNumForSave = docId ? Number(docId) : NaN;
-      const saveBranch = batchSaveData.branch;
       // editorUiPrefs and expandedNodeIds are saved separately via /base/editor-ui-prefs
       // (floating StatusIndicator + Ctrl+S when only prefs are dirty)
 
@@ -3414,8 +3386,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           try {
             const fetchQs: Record<string, string> = {};
             if (docId) fetchQs.docId = docId;
-            const fb = (window as any).UiContext?.currentBranch;
-            if (fb) fetchQs.branch = fb;
             currentBase = await request.get(
               domainApiPath(`/${basePath}/data`, domainId),
               fetchQs,
@@ -3959,7 +3929,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       if (hasFileMoveChanges && docId) {
         for (const move of pendingFileMoves.values()) {
           await request.post(getBaseUrl(`/${docId}/file/move`, docId), {
-            branch: saveBranch,
             fileName: move.fileName,
             sourceType: move.originalSourceType,
             sourceNodeId: move.originalSourceNodeId,
@@ -4081,8 +4050,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         try {
           const postSaveQs: Record<string, string> = {};
           if (docId) postSaveQs.docId = docId;
-          const psb = (window as any).UiContext?.currentBranch;
-          if (psb) postSaveQs.branch = psb;
           const response = await request.get(
             domainApiPath(`/${basePath}/data`, domainId),
             postSaveQs,
@@ -5253,14 +5220,12 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       title,
       migrate: {
         docId: numericDocId,
-        branch: currentBranch,
         nodeId,
       },
     }));
     window.location.href = domainScopedPath('/base/create');
   }, [
     docId,
-    currentBranch,
     pendingChanges.size,
     pendingDragChanges.size,
     pendingRenames.size,
@@ -10924,27 +10889,6 @@ Reply with a JSON code block only for executable operations. For same-response f
                 P
               </button>
             ) : null}
-            <button
-              onClick={() => setExplorerMode('branches')}
-              style={{
-                width: '34px',
-                height: '34px',
-                border: `1px solid ${themeStyles.borderSecondary}`,
-                borderRadius: '3px',
-                backgroundColor: explorerMode === 'branches' ? themeStyles.bgButtonActive : themeStyles.bgButton,
-                color: explorerMode === 'branches' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
-                cursor: 'pointer',
-                flexShrink: 0,
-              }}
-              title={i18n('View branches')}
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <circle cx="4" cy="3.5" r="1.5" />
-                <circle cx="4" cy="12.5" r="1.5" />
-                <circle cx="12" cy="8" r="1.5" />
-                <path d="M5.5 4.3L10.5 7.2M5.5 11.7l5-2.9" />
-              </svg>
-            </button>
             {basePath === 'base' && docId ? (
               <button
                 type="button"
@@ -11633,56 +11577,8 @@ Reply with a JSON code block only for executable operations. For same-response f
             </div>
             );
           })
-          ) : explorerMode === 'branches' ? (
-            <div style={{ padding: '8px' }}>
-              <div style={{
-                fontSize: '12px',
-                fontWeight: '600',
-                color: themeStyles.textSecondary,
-                marginBottom: '8px',
-                padding: '0 8px',
-              }}>
-                当前分支：{base.currentBranch || 'main'}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {(base.branches && base.branches.length > 0 ? base.branches : ['main']).map((branchName) => {
-                  const isCurrent = branchName === (base.currentBranch || 'main');
-                  const docSeg = String(docId || base.docId || base.bid || '').trim();
-                  const targetHref = docSeg
-                    ? getBaseUrl(`/${docSeg}/outline/branch/${encodeURIComponent(branchName)}`)
-                    : '#';
-                  return (
-                    <a
-                      key={branchName}
-                      href={isCurrent ? undefined : targetHref}
-                      onClick={isCurrent ? (e) => e.preventDefault() : undefined}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '8px 10px',
-                        borderRadius: '4px',
-                        textDecoration: 'none',
-                        border: `1px solid ${themeStyles.borderSecondary}`,
-                        backgroundColor: isCurrent ? themeStyles.bgSelected : themeStyles.bgButton,
-                        color: isCurrent ? themeStyles.textOnPrimary : themeStyles.textPrimary,
-                        fontSize: '12px',
-                        cursor: isCurrent ? 'default' : 'pointer',
-                      }}
-                    >
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {branchName}
-                      </span>
-                      <span style={{ fontSize: '11px', opacity: 0.85 }}>
-                        {isCurrent ? i18n('Current') : i18n('Go')}
-                      </span>
-                    </a>
-                  );
-                })}
-              </div>
-            </div>
           ) : explorerMode === 'mcp' ? (
-            <McpSidebarPanel themeStyles={themeStyles} baseId={docId} branch={currentBranch || 'main'} />
+            <McpSidebarPanel themeStyles={themeStyles} baseId={docId} />
           ) : explorerMode === 'display' ? (
             <div style={{ padding: '8px', fontSize: '12px', color: themeStyles.textPrimary }}>
               <div style={{
@@ -11836,7 +11732,7 @@ Reply with a JSON code block only for executable operations. For same-response f
           ) : explorerMode === 'git' && basePath === 'base' && docId ? (
             <div style={{ padding: '8px', fontSize: '12px', color: themeStyles.textPrimary }}>
               <div style={{ fontWeight: 600, color: themeStyles.textSecondary, marginBottom: '8px', padding: '0 8px' }}>
-                GitHub · 分支 {currentBranch || 'main'}
+                GitHub
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '0 8px' }}>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -12009,7 +11905,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                       setGitActionBusy('commit');
                       try {
                         await request.post(
-                          getBaseUrl(`/branch/${encodeURIComponent(currentBranch || 'main')}/commit`),
+                          getBaseUrl('/commit'),
                           { docId, note: gitCommitNote.trim() },
                         );
                         Notification.success(i18n('Committed to local Git repo'));
@@ -12043,7 +11939,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                       setGitActionBusy('pull');
                       try {
                         await request.post(
-                          getBaseUrl(`/branch/${encodeURIComponent(currentBranch || 'main')}/github/pull`),
+                          getBaseUrl('/github/pull'),
                           { docId },
                         );
                         Notification.success(i18n('Pull completed'));
@@ -12074,7 +11970,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                       setGitActionBusy('push');
                       try {
                         await request.post(
-                          getBaseUrl(`/branch/${encodeURIComponent(currentBranch || 'main')}/github/push`),
+                          getBaseUrl('/github/push'),
                           { docId },
                         );
                         Notification.success(i18n('Push completed'));
@@ -12584,20 +12480,19 @@ Reply with a JSON code block only for executable operations. For same-response f
 
       {/* Node file list modal */}
       {nodeFileListModal && docId && (() => {
-        const branch = (window as any).UiContext?.currentBranch || 'main';
         const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
         const { selfFiles, subfolders } = buildNodeFileFolderTree(nodeFileListModal.nodeId, base, nodeCardsMap);
         const allFiles = flattenNodeFileFolderTree(selfFiles, subfolders);
         const sortedSelfFiles = sortAggregatedFiles(selfFiles, nodeFileListSortBy, nodeFileListSortOrder);
         const showNodeFileTree = allFiles.length > 0 || subfolders.length > 0;
-        const nodeFileDownloadUrl = (nid: string, filename: string) => getBaseUrl(`/${docId}/node/${nid}/file/${encodeURIComponent(filename)}?branch=${encodeURIComponent(branch)}`, docId);
+        const nodeFileDownloadUrl = (nid: string, filename: string) => getBaseUrl(`/${docId}/node/${nid}/file/${encodeURIComponent(filename)}`, docId);
         const cardFileDownloadUrl = (cardId: string, filename: string) => getBaseUrl(`/${docId}/card/${cardId}/file/${encodeURIComponent(filename)}`, docId);
         const downloadUrlFor = (row: AggregatedFileItem) => row.sourceType === 'card' && row.sourceCardId ? cardFileDownloadUrl(row.sourceCardId, row.name) : nodeFileDownloadUrl(row.sourceNodeId, row.name);
         const previewUrlFor = (row: AggregatedFileItem) => {
           const u = downloadUrlFor(row);
           return u + (u.includes('?') ? '&noDisposition=1' : '?noDisposition=1');
         };
-        const filesListUrl = getBaseUrl(`/${docId}/node/${nodeFileListModal.nodeId}/files?branch=${encodeURIComponent(branch)}`, docId);
+        const filesListUrl = getBaseUrl(`/${docId}/node/${nodeFileListModal.nodeId}/files`, docId);
         const renderModalFileRow = (row: AggregatedFileItem, idx: number, depth: number) => (
           <li
             key={`${row.sourceType}-${row.sourceNodeId}-${row.sourceCardId || ''}-${row.name}-${idx}-${depth}`}
@@ -12618,7 +12513,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 ? filesListUrl
                 : row.sourceType === 'card' && row.sourceCardId
                   ? getBaseUrl(`/${docId}/card/${row.sourceCardId}/files`, docId)
-                  : getBaseUrl(`/${docId}/node/${row.sourceNodeId}/files?branch=${encodeURIComponent(branch)}`, docId);
+                  : getBaseUrl(`/${docId}/node/${row.sourceNodeId}/files`, docId);
               setFileListRowMenu({
                 x: e.clientX,
                 y: e.clientY,
@@ -14825,7 +14720,7 @@ Reply with a JSON code block only for executable operations. For same-response f
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: isMobile ? '1 1 100%' : undefined }}>
             <a
-              href={getBaseUrl(`/${docId}/branch/${base.currentBranch || 'main'}`)}
+              href={getBaseUrl(`/${docId}`)}
               style={{
                 padding: isMobile ? '10px 12px' : '4px 8px',
                 minHeight: isMobile ? '44px' : undefined,
@@ -15085,7 +14980,6 @@ Reply with a JSON code block only for executable operations. For same-response f
                 </span>
                 <span style={{ fontSize: 10, color: themeStyles.textTertiary, whiteSpace: 'nowrap' }}>
                   {devCtx.current.baseTitle}
-                  <span style={{ color: themeStyles.textSecondary }}>{` · ${devCtx.current.branch}`}</span>
                   <span style={{ marginLeft: 6 }}>{devCtx.dateUtc}</span>
                 </span>
               </div>
@@ -15259,7 +15153,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                     <div style={{ padding: 12 }}>
                       {devCtx.othersIncomplete.map((row) => (
                         <button
-                          key={`${row.baseDocId}-${row.branch}`}
+                          key={`${row.baseDocId}`}
                           type="button"
                           onClick={() => { window.location.href = row.editorUrl; }}
                           style={{
@@ -15277,7 +15171,6 @@ Reply with a JSON code block only for executable operations. For same-response f
                         >
                           <div style={{ fontWeight: 600, marginBottom: 4, fontSize: 12 }}>
                             {row.baseTitle}
-                            <span style={{ color: themeStyles.textSecondary, fontWeight: 500 }}>{` · ${row.branch}`}</span>
                           </div>
                           <div style={{ fontSize: 10, color: themeStyles.textSecondary, lineHeight: 1.45 }}>
                             <span style={{ color: themeStyles.statNode }}>{i18n('Develop today nodes')} {developGoalCaption(row.todayNodes, row.dailyNodeGoal)}</span>
@@ -15328,7 +15221,6 @@ Reply with a JSON code block only for executable operations. For same-response f
                   baseNodes={base.nodes}
                   currentRoadmapNodeId={roadmapPlugin.roadmapNodeId}
                   targetNodeId={roadmapCanvasSelectedData.hookRoadmapDocId as string | number | undefined}
-                  branch={String(roadmapCanvasSelectedData.hookRoadmapBranch || 'main')}
                   title={String(roadmapCanvasSelectedData.hookRoadmapTitle || '')}
                   basePath={basePath}
                   docId={docId}
@@ -15352,8 +15244,7 @@ Reply with a JSON code block only for executable operations. For same-response f
                 const filePreviewType = card?.fileType || '';
                 const cardFileName = card?.fileName || '';
                 if (isFileCard) {
-                  const branch = (window as any).UiContext?.currentBranch || 'main';
-                  const fileUrl = getBaseUrl(`/${docId}/node/${selectedFile.nodeId}/file/${encodeURIComponent(cardFileName)}?branch=${encodeURIComponent(branch)}&noDisposition=1`, docId);
+                  const fileUrl = getBaseUrl(`/${docId}/node/${selectedFile.nodeId}/file/${encodeURIComponent(cardFileName)}?noDisposition=1`, docId);
                   const containerStyle: React.CSSProperties = {
                     width: '100%', height: '100%', overflow: 'auto',
                     display: 'flex', flexDirection: 'column', alignItems: 'center',

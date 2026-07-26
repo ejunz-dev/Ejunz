@@ -36,7 +36,6 @@ export type LearnWallSessionWire = {
     statusLabel: string;
     progressText: string | null;
     baseDocId: number;
-    branch: string;
 };
 
 export type LearnWallDayDetailWire = {
@@ -295,7 +294,6 @@ export async function buildLearnDomainWallPayload(
                 statusLabel: translate(`session_status_${st}`),
                 progressText: formatSessionProgressDisplay(sess),
                 baseDocId: Number(sess.baseDocId) || 0,
-                branch: sess.branch && String(sess.branch).trim() ? String(sess.branch).trim() : 'main',
             });
         }
 

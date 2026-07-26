@@ -93,7 +93,6 @@ export interface SessionRecordDoc {
     cardId: string;
     nodeId: string;
     baseDocId: number;
-    branch: string;
     trainingDocId?: string | null;
     problems: RecordProblemState[];
     recordKind?: RecordKind;
@@ -123,7 +122,7 @@ export interface SessionRecordDoc {
 }
 
 export const RECORD_PROJECTION_LIST: (keyof SessionRecordDoc)[] = [
-    '_id', 'domainId', 'uid', 'sessionId', 'cardId', 'nodeId', 'baseDocId', 'branch',
+    '_id', 'domainId', 'uid', 'sessionId', 'cardId', 'nodeId', 'baseDocId',
     'updatedAt', 'lastActivityAt',
 ];
 
@@ -173,7 +172,6 @@ export default class RecordModel {
         cardId: string,
         nodeId: string,
         baseDocId: number,
-        branch: string,
         problemIds: string[],
         trainingDocId?: string | null,
     ): Promise<SessionRecordDoc> {
@@ -215,7 +213,6 @@ export default class RecordModel {
             cardId,
             nodeId,
             baseDocId,
-            branch,
             ...(tid ? { trainingDocId: tid } : {}),
             recordKind: 'learn_card',
             problems,
@@ -235,7 +232,6 @@ export default class RecordModel {
         uid: number,
         sessionMongoId: ObjectId,
         baseDocId: number,
-        branch: string,
         meta: DevelopSaveMeta,
     ): Promise<SessionRecordDoc> {
         const now = new Date();
@@ -248,7 +244,6 @@ export default class RecordModel {
             cardId: syntheticCardId,
             nodeId: '',
             baseDocId,
-            branch,
             problems: [],
             recordKind: 'develop_save',
             developMeta: meta,
@@ -270,7 +265,6 @@ export default class RecordModel {
         input: {
             mcpId: number;
             baseDocId: number;
-            branch: string;
             meta: McpToolCallMeta;
         },
     ): Promise<SessionRecordDoc> {
@@ -284,7 +278,6 @@ export default class RecordModel {
             cardId: syntheticCardId,
             nodeId: '',
             baseDocId: input.baseDocId,
-            branch: input.branch,
             problems: [],
             recordKind: 'mcp_tool',
             mcpId: input.mcpId,
@@ -352,7 +345,6 @@ export default class RecordModel {
             cardId: syntheticCardId,
             nodeId: '',
             baseDocId: 0,
-            branch: '',
             problems: [],
             recordKind: 'agent',
             status: STATUS.STATUS_TASK_WAITING,

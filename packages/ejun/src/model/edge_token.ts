@@ -10,7 +10,6 @@ export interface EdgeTokenDoc {
     token: string;
     owner: number; // 创建 token 的用户 ID
     baseDocId?: number; // MCP 出站 token 绑定的 base（其工具作用于该 base）
-    branch?: string; // MCP 出站 token 绑定的分支
     lastUsedAt: Date;
     authenticatedAt?: Date | null;
     createdAt: Date;
@@ -29,7 +28,7 @@ class EdgeTokenModel {
         type: string,
         token: string,
         owner: number,
-        extra?: { baseDocId?: number; branch?: string; expireAt?: Date | null; authenticatedAt?: Date | null },
+        extra?: { baseDocId?: number; expireAt?: Date | null; authenticatedAt?: Date | null },
     ): Promise<EdgeTokenDoc> {
         const now = new Date();
         const hasExpireOverride = extra && Object.prototype.hasOwnProperty.call(extra, 'expireAt');
@@ -42,7 +41,6 @@ class EdgeTokenModel {
             token,
             owner,
             baseDocId: extra?.baseDocId,
-            branch: extra?.branch,
             lastUsedAt: now,
             authenticatedAt: extra?.authenticatedAt,
             createdAt: now,

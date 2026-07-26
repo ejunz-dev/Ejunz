@@ -175,17 +175,15 @@ export async function apply(ctx: Context) {
         args?: Record<string, unknown>;
         domainId?: string;
         baseDocId?: number;
-        branch?: string;
         owner?: number;
     }) => {
         const result = await executeLocalMcpTool(payload.name, payload.args || {}, {
             domainId: payload.domainId,
             baseDocId: payload.baseDocId,
-            branch: payload.branch || 'main',
             owner: payload.owner,
         });
         if (payload.baseDocId && isMcpBuiltinMutatingTool(payload.name)) {
-            (ctx.emit as any)('base/update', payload.baseDocId, null, payload.branch || 'main');
+            (ctx.emit as any)('base/update', payload.baseDocId, null);
         }
         return result;
     });

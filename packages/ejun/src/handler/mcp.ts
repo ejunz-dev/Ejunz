@@ -42,9 +42,9 @@ function extractToken(h: Handler<Context>): { token: string; source: string } | 
     return null;
 }
 
-function buildMcpConnectionInfo(h: Handler<Context>, domainId: string, token: string, pathId?: string, branch?: string, serverName?: string) {
+function buildMcpConnectionInfo(h: Handler<Context>, domainId: string, token: string, pathId?: string, serverName?: string) {
     const { protocol, host } = detectOrigin(h);
-    return h.ctx.mcp.buildConnectionInfo({ protocol, host, domainId, token, pathId, branch, serverName });
+    return h.ctx.mcp.buildConnectionInfo({ protocol, host, domainId, token, pathId, serverName });
 }
 
 function userCanAuthorizeMcp(user: any, target: { domainId: string; baseDocId?: number }) {
@@ -93,7 +93,7 @@ function sendMcpAuthChallenge(h: Handler<Context>, error = 'Invalid or missing t
     h.response.body = JSON.stringify({ error });
 }
 
-function parseMcpResource(resource: string): { domainId: string; basePathId?: string; branch?: string } {
+function parseMcpResource(resource: string): { domainId: string; basePathId?: string } {
     let parsed: URL;
     try {
         parsed = new URL(resource);
@@ -107,7 +107,6 @@ function parseMcpResource(resource: string): { domainId: string; basePathId?: st
     return {
         domainId: decodeURIComponent(domainId),
         basePathId: parts[offset + 2] ? decodeURIComponent(parts[offset + 2]) : undefined,
-        branch: parsed.searchParams.get('branch') || undefined,
     };
 }
 
@@ -120,7 +119,7 @@ async function resolveMcpAuthResource(resource: string) {
         if (!base) throw new NotFoundError('Base not found');
         baseDocId = base.docId;
     }
-    return { domainId: parsed.domainId, baseDocId, branch: parsed.branch };
+    return { domainId: parsed.domainId, baseDocId };
 }
 
 function isAllowedLoopbackRedirect(redirectUri: string) {
@@ -202,7 +201,7 @@ export class McpConnectionHandler extends Handler<Context> {
         const { sessionId } = session;
         logger.info(
             'MCP session opened: sessionId=%s, domainId=%s, base=%s/%s, owner=%s, tokenSource=%s, ua=%s',
-            sessionId, domainId, tokenDoc.baseDocId ?? '-', tokenDoc.branch || 'main',
+            sessionId, domainId, tokenDoc.baseDocId ?? '-',
             tokenDoc.owner, cred?.source || '-', this.request.headers['user-agent'] || '-',
         );
 
@@ -292,7 +291,6 @@ export class McpMessageHandler extends Handler<Context> {
         const toolCtx: McpToolContext = {
             domainId,
             baseDocId: tokenDoc.baseDocId as number,
-            branch: tokenDoc.branch || 'main',
             owner: tokenDoc.owner,
             setting: (this.ctx as any).setting,
             embedding: (this.ctx as any).embedding,
@@ -302,12 +300,11 @@ export class McpMessageHandler extends Handler<Context> {
         const meta: McpServerMeta = {
             domainId,
             baseDocId: tokenDoc.baseDocId as number,
-            branch: tokenDoc.branch || 'main',
             instructions: mcpDoc?.instructions,
             toolOverrides: mcpDoc?.tools,
         };
 
-        const logCtx = `domainId=${domainId}, mid=${mcpDoc?.mid ?? '-'}, base=${toolCtx.baseDocId ?? '-'}/${toolCtx.branch}, `
+        const logCtx = `domainId=${domainId}, mid=${mcpDoc?.mid ?? '-'}, base=${toolCtx.baseDocId ?? '-'}, `
             + `owner=${toolCtx.owner}, session=${sessionId}`;
 
         for (const msg of messages) {
@@ -375,7 +372,6 @@ export class McpStreamableHandler extends Handler<Context> {
         const toolCtx: McpToolContext = {
             domainId,
             baseDocId: tokenDoc.baseDocId as number,
-            branch: tokenDoc.branch || 'main',
             owner: tokenDoc.owner,
             setting: (this.ctx as any).setting,
             embedding: (this.ctx as any).embedding,
@@ -385,12 +381,11 @@ export class McpStreamableHandler extends Handler<Context> {
         const meta: McpServerMeta = {
             domainId,
             baseDocId: tokenDoc.baseDocId as number,
-            branch: tokenDoc.branch || 'main',
             instructions: mcpDoc?.instructions,
             toolOverrides: mcpDoc?.tools,
         };
 
-        const logCtx = `domainId=${domainId}, mid=${mcpDoc?.mid ?? '-'}, base=${toolCtx.baseDocId ?? '-'}/${toolCtx.branch}, `
+        const logCtx = `domainId=${domainId}, mid=${mcpDoc?.mid ?? '-'}, base=${toolCtx.baseDocId ?? '-'}, `
             + `owner=${toolCtx.owner}, transport=http`;
 
         const responses: any[] = [];
@@ -423,18 +418,16 @@ export class McpTokenHandler extends Handler<Context> {
         const rawBaseId = this.request.body?.baseId ?? this.request.body?.baseDocId;
         const baseDocId = rawBaseId !== undefined && rawBaseId !== null && `${rawBaseId}` !== ''
             ? Number(rawBaseId) : undefined;
-        const branch = this.request.body?.branch ? String(this.request.body.branch) : undefined;
         const serverName = this.request.body?.serverName ? String(this.request.body.serverName) : undefined;
 
-        const token = await this.ctx.mcp.getOrCreateMcpToken(domainId, this.user._id, baseDocId, branch);
-        const mcp = await this.ctx.mcp.getOrCreateMcp(domainId, this.user._id, token, baseDocId, branch);
+        const token = await this.ctx.mcp.getOrCreateMcpToken(domainId, this.user._id, baseDocId);
+        const mcp = await this.ctx.mcp.getOrCreateMcp(domainId, this.user._id, token, baseDocId);
         const pathId = await this.ctx.mcp.resolveBasePathId(domainId, baseDocId ?? mcp.baseDocId);
         this.response.body = {
             success: true,
             baseDocId,
-            branch: branch || mcp.branch || 'main',
             ...this.ctx.mcp.buildStatus(domainId, mcp),
-            ...buildMcpConnectionInfo(this, domainId, token, pathId, branch || mcp.branch, serverName),
+            ...buildMcpConnectionInfo(this, domainId, token, pathId, serverName),
         };
     }
 
@@ -446,12 +439,8 @@ export class McpTokenHandler extends Handler<Context> {
         const baseDocId = rawBaseId !== undefined && rawBaseId !== null && `${rawBaseId}` !== ''
             ? Number(rawBaseId) : undefined;
 
-        const branch = this.request.query.branch ? String(this.request.query.branch) : undefined;
-        const normalizedBranch = branch && branch !== 'main' ? branch : undefined;
         const query: any = { domainId, type: 'mcp_sse', owner: this.user._id };
         if (baseDocId !== undefined && !Number.isNaN(baseDocId)) query.baseDocId = baseDocId;
-        if (normalizedBranch) query.branch = normalizedBranch;
-        else query.$or = [{ branch: { $exists: false } }, { branch: null }, { branch: 'main' }];
         const tokenDoc = await EdgeTokenModel.coll.findOne(query);
         if (!tokenDoc) {
             this.response.body = { success: true, exists: false };
@@ -528,7 +517,6 @@ export class McpOAuthAuthorizeHandler extends Handler<Context> {
             resource,
             domainId: target.domainId,
             baseDocId: target.baseDocId,
-            branch: target.branch,
             codeChallenge: q.code_challenge ? String(q.code_challenge) : undefined,
             codeChallengeMethod: q.code_challenge_method ? String(q.code_challenge_method) : undefined,
         });
@@ -567,14 +555,14 @@ export class McpOAuthTokenHandler extends Handler<Context> {
         }
 
         const owner = await UserModel.getById(data.domainId, data.uid);
-        if (!userCanAuthorizeMcp(owner, data)) {
+        if (!userCanAuthorizeMcp(owner, { domainId: data.domainId, baseDocId: data.baseDocId })) {
             this.response.status = 400;
             this.response.body = { error: 'invalid_grant' };
             return;
         }
 
-        const token = await this.ctx.mcp.getOrCreateMcpToken(data.domainId, data.uid, data.baseDocId, data.branch);
-        await this.ctx.mcp.getOrCreateMcp(data.domainId, data.uid, token, data.baseDocId, data.branch);
+        const token = await this.ctx.mcp.getOrCreateMcpToken(data.domainId, data.uid, data.baseDocId);
+        await this.ctx.mcp.getOrCreateMcp(data.domainId, data.uid, token, data.baseDocId);
         await EdgeTokenModel.markAuthenticated(token);
         const tokenDoc = await EdgeTokenModel.getByToken(token);
         await TokenModel.del(code, TokenModel.TYPE_OAUTH);
@@ -767,7 +755,7 @@ export class McpDetailHandler extends Handler<Context> {
         let info: ReturnType<typeof buildMcpConnectionInfo> | null = null;
         if (kind === 'outbound' && isOwner && mcp.token) {
             const pathId = await this.ctx.mcp.resolveBasePathId(domainId, mcp.baseDocId);
-            info = buildMcpConnectionInfo(this, domainId, mcp.token, pathId, mcp.branch);
+            info = buildMcpConnectionInfo(this, domainId, mcp.token, pathId);
         }
 
         this.response.template = 'mcp_detail.html';
@@ -811,7 +799,7 @@ export class McpEditHandler extends Handler<Context> {
             domainId,
             mcp,
             instructions: mcp.instructions ?? (await buildMcpInstructions({
-                domainId, baseDocId: mcp.baseDocId, branch: mcp.branch,
+                domainId, baseDocId: mcp.baseDocId,
             })),
             tools: resolveMcpTools(mcp.tools),
         };
@@ -838,7 +826,7 @@ export class McpEditHandler extends Handler<Context> {
 
         if (body.operation === 'reset') {
             const instructions = await buildMcpInstructions({
-                domainId, baseDocId: mcp.baseDocId, branch: mcp.branch,
+                domainId, baseDocId: mcp.baseDocId,
             });
             await McpModel.update(domainId, mid, {
                 instructions,

@@ -1,6 +1,8 @@
 import { ObjectId } from 'mongodb';
+import type { Context } from '../context';
+import type { AgentChatSessionDoc, BaseDoc, SessionDoc, SessionPatch } from '../interface';
 import db from '../service/db';
-import domain from './domain';
+import DomainModel from './domain';
 
 const collDAG = db.collection('learn_dag');
 const collProgress = db.collection('learn_progress');
@@ -13,11 +15,7 @@ export interface LearnDAGNode {
     _id: string;
     title: string;
     requireNids: string[];
-    cards: Array<{
-        cardId: string;
-        title: string;
-        order?: number;
-    }>;
+    cards: Array<{ cardId: string; title: string; order?: number }>;
     content?: string;
     order?: number;
 }
@@ -25,7 +23,6 @@ export interface LearnDAGNode {
 export interface LearnDAGDoc {
     domainId: string;
     baseDocId?: number | ObjectId;
-    branch: string;
     trainingDocId?: ObjectId;
     sections: LearnDAGNode[];
     dag: LearnDAGNode[];
@@ -39,120 +36,68 @@ class LearnModel {
     static collResult = collResult;
     static collConsumptionStats = collConsumptionStats;
 
-    static async getDAG(domainId: string, baseDocId: number | ObjectId, branch: string): Promise<LearnDAGDoc | null> {
-        const doc = await collDAG.findOne({
-            domainId,
-            baseDocId,
-            branch,
-        });
-        return doc as LearnDAGDoc | null;
+    static async getDAG(domainId: string, baseDocId: number | ObjectId): Promise<LearnDAGDoc | null> {
+        return collDAG.findOne(
+            { domainId, baseDocId },
+            { sort: { updateAt: -1, _id: -1 } },
+        ) as Promise<LearnDAGDoc | null>;
     }
 
     static async setDAG(
         domainId: string,
         baseDocId: number | ObjectId,
-        branch: string,
         data: { sections: LearnDAGNode[]; dag: LearnDAGNode[]; version: number; updateAt: Date },
-        extra?: Record<string, unknown>
+        extra?: Record<string, unknown>,
     ) {
-        const $set: Record<string, unknown> = {
-            domainId,
-            baseDocId,
-            branch,
-            sections: data.sections,
-            dag: data.dag,
-            version: data.version,
-            updateAt: data.updateAt,
-        };
+        const $set: Record<string, unknown> = { domainId, baseDocId, ...data };
         if (extra) Object.assign($set, extra);
         return collDAG.updateOne(
-            { domainId, baseDocId, branch },
+            { domainId, baseDocId },
             { $set },
-            { upsert: true }
-        );
-    }
-
-    /** Drop cached DAG so the next `ensureLearnBaseDAGCached` rebuilds from the current base. */
-    static async deleteDAG(domainId: string, baseDocId: number | ObjectId, branch: string) {
-        const br = (branch || 'main').trim() || 'main';
-        await collDAG.deleteOne({ domainId, baseDocId, branch: br });
-    }
-
-    static async getPassedCardIds(domainId: string, userId: number): Promise<Set<string>> {
-        const list = await collProgress
-            .find({ domainId, userId, passed: true })
-            .toArray();
-        return new Set(list.map((p) => p.cardId.toString()));
-    }
-
-    /**
-     * 每条 `learn_progress` 必须带 `learnSectionOrderIndex`：学习路径为节序槽位 0..n。
-     */
-    static async setCardPassed(
-        domainId: string,
-        userId: number,
-        cardId: ObjectId,
-        nodeId: string,
-        learnSectionOrderIndex: number,
-    ) {
-        const doc = {
-            domainId,
-            userId,
-            cardId,
-            nodeId,
-            passed: true,
-            passedAt: new Date(),
-            learnSectionOrderIndex,
-        };
-        return collProgress.updateOne(
-            { domainId, userId, cardId, learnSectionOrderIndex },
-            { $set: doc },
             { upsert: true },
         );
     }
 
+    static async deleteDAG(domainId: string, baseDocId: number | ObjectId) {
+        await collDAG.deleteMany({ domainId, baseDocId });
+    }
+
+    static async getPassedCardIds(domainId: string, userId: number): Promise<Set<string>> {
+        const list = await collProgress.find({ domainId, userId, passed: true }).toArray();
+        return new Set(list.map((p) => p.cardId.toString()));
+    }
+
+    static async setCardPassed(domainId: string, userId: number, cardId: ObjectId, nodeId: string, learnSectionOrderIndex: number) {
+        const doc = { domainId, userId, cardId, nodeId, passed: true, passedAt: new Date(), learnSectionOrderIndex };
+        return collProgress.updateOne({ domainId, userId, cardId, learnSectionOrderIndex }, { $set: doc }, { upsert: true });
+    }
+
     static async listPassedProgressDocs(domainId: string, userId: number) {
-        return collProgress
-            .find({ domainId, userId, passed: true })
-            .project({ cardId: 1, learnSectionOrderIndex: 1 })
-            .toArray();
+        return collProgress.find({ domainId, userId, passed: true }).project({ cardId: 1, learnSectionOrderIndex: 1 }).toArray();
     }
 
     static async deleteLearnProgressForSlotCards(domainId: string, userId: number, slot: number, cardObjectIds: ObjectId[]) {
-        if (!cardObjectIds.length) return;
-        await collProgress.deleteMany({ domainId, userId, learnSectionOrderIndex: slot, cardId: { $in: cardObjectIds } });
+        if (cardObjectIds.length) await collProgress.deleteMany({ domainId, userId, learnSectionOrderIndex: slot, cardId: { $in: cardObjectIds } });
     }
 
-    /** Remove learn_progress rows for the given cards (clears passed and any stored progress for those cards). */
     static async clearPassedProgressForUserCards(domainId: string, userId: number, cardIdStrings: string[]) {
         if (!cardIdStrings.length) return;
         const oids: ObjectId[] = [];
         for (const id of cardIdStrings) {
-            try {
-                oids.push(new ObjectId(id));
-            } catch {
-                /* skip invalid */
-            }
+            try { oids.push(new ObjectId(id)); } catch { /* skip invalid */ }
         }
-        if (!oids.length) return;
-        await collProgress.deleteMany({ domainId, userId, cardId: { $in: oids } });
+        if (oids.length) await collProgress.deleteMany({ domainId, userId, cardId: { $in: oids } });
     }
 
-    /** Clear all learn pass / slot progress for this user in the domain (full reset from section editor). */
     static async deleteAllPassedProgressForUser(domainId: string, userId: number) {
         await collProgress.deleteMany({ domainId, userId });
     }
 
-    /** Remove all path practise count keys (`learnPathCardPractiseCounts`). */
     static async clearLearnPathPractiseCounts(domainId: string, userId: number) {
-        return domain.updateUserInDomain(domainId, userId, { $unset: { learnPathCardPractiseCounts: '' } });
+        return DomainModel.updateUserInDomain(domainId, userId, { $unset: { learnPathCardPractiseCounts: '' } });
     }
 
-    static async getResults(
-        domainId: string,
-        userId: number,
-        filter: { createdAt?: { $gte?: Date; $lte?: Date; $lt?: Date } } = {},
-    ) {
+    static async getResults(domainId: string, userId: number, filter: { createdAt?: { $gte?: Date; $lte?: Date; $lt?: Date } } = {}) {
         return collResult.find({ domainId, userId, ...filter }).toArray();
     }
 
@@ -160,84 +105,50 @@ class LearnModel {
         return collResult.findOne({ _id: resultId, domainId, userId });
     }
 
-    static async addResult(
-        domainId: string,
-        userId: number,
-        doc: {
-            _id?: ObjectId;
-            cardId: ObjectId;
-            nodeId: string | null;
-            answerHistory: unknown[];
-            totalTime: number;
-            score: number;
-            createdAt: Date;
-        }
-    ) {
+    static async addResult(domainId: string, userId: number, doc: {
+        _id?: ObjectId;
+        cardId: ObjectId;
+        nodeId: string | null;
+        answerHistory: unknown[];
+        totalTime: number;
+        score: number;
+        createdAt: Date;
+    }) {
         const id = doc._id || new ObjectId();
-        await collResult.insertOne({
-            _id: id,
-            domainId,
-            userId,
-            cardId: doc.cardId,
-            nodeId: doc.nodeId,
-            answerHistory: doc.answerHistory,
-            totalTime: doc.totalTime,
-            score: doc.score,
-            createdAt: doc.createdAt,
-        });
+        await collResult.insertOne({ _id: id, domainId, userId, cardId: doc.cardId, nodeId: doc.nodeId, answerHistory: doc.answerHistory, totalTime: doc.totalTime, score: doc.score, createdAt: doc.createdAt });
         return id;
     }
 
-    static async incConsumptionStats(
-        domainId: string,
-        userId: number,
-        date: string,
-        inc: { nodes?: number; cards?: number; problems?: number; practices?: number; totalTime?: number }
-    ) {
-        const updateData: Record<string, unknown> = {
-            $set: { updateAt: new Date() },
-            $inc: { ...inc },
-        };
-        return collConsumptionStats.updateOne(
-            { domainId, userId, date },
-            updateData,
-            { upsert: true }
-        );
+    static async incConsumptionStats(domainId: string, userId: number, date: string, inc: { nodes?: number; cards?: number; problems?: number; practices?: number; totalTime?: number }) {
+        return collConsumptionStats.updateOne({ domainId, userId, date }, { $set: { updateAt: new Date() }, $inc: { ...inc } }, { upsert: true });
     }
 
     static async setUserLearnState(domainId: string, uid: number, update: Record<string, unknown>) {
-        return domain.setUserInDomain(domainId, uid, update);
+        return DomainModel.setUserInDomain(domainId, uid, update);
     }
 
-    /** 学习路径槽位+卡片维度的练习次数（与 `learn_progress` 的 slot 语义一致），用于路径展示与复习优先级。 */
     static async incPathCardPractiseCount(domainId: string, userId: number, sectionSlot: number, cardId: string) {
         const slot = Math.max(0, sectionSlot);
-        const cid = String(cardId);
-        const path = `learnPathCardPractiseCounts.${slot}:${cid}`;
-        return domain.updateUserInDomain(domainId, userId, { $inc: { [path]: 1 } });
+        const path = `learnPathCardPractiseCounts.${slot}:${String(cardId)}`;
+        return DomainModel.updateUserInDomain(domainId, userId, { $inc: { [path]: 1 } });
     }
 
-    /**
-     * 移除路径练习次数（`slot:cardId` 与 `learnPassPlacementKey` / pass 槽位一致）。
-     * 学习起点后移等与 `deleteLearnProgressForSlotCards` 同范围时调用。
-     */
     static async unsetPathCardPractiseCountKeys(domainId: string, userId: number, placementKeys: string[]) {
-        const uniq = [...new Set(placementKeys.map((k) => String(k)))];
-        if (!uniq.length) return;
-        const chunkSize = 500;
-        for (let i = 0; i < uniq.length; i += chunkSize) {
-            const part = uniq.slice(i, i + chunkSize);
+        const uniq = [...new Set(placementKeys.map(String))];
+        for (let i = 0; i < uniq.length; i += 500) {
             const $unset: Record<string, string> = {};
-            for (const k of part) {
-                $unset[`learnPathCardPractiseCounts.${k}`] = '';
-            }
-            await domain.updateUserInDomain(domainId, userId, { $unset });
+            for (const key of uniq.slice(i, i + 500)) $unset[`learnPathCardPractiseCounts.${key}`] = '';
+            if (Object.keys($unset).length) await DomainModel.updateUserInDomain(domainId, userId, { $unset });
         }
     }
 
     static async getUserLearnState(domainId: string, udoc: { _id: number; priv: number }) {
-        return domain.getDomainUser(domainId, udoc);
+        return DomainModel.getDomainUser(domainId, udoc);
     }
 }
 
 export default LearnModel;
+
+export async function apply(_ctx: Context) {
+    (global.Ejunz.model as any).learn = LearnModel;
+}

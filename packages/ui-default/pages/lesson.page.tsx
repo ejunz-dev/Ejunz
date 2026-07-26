@@ -240,7 +240,6 @@ type LessonUiState = {
   hasProblems: boolean;
   rootNodeId: string;
   rootNodeTitle: string;
-  lessonSourceBranch: string;
   lessonSourceUrl: string;
   lessonFilterSummary: string;
   flatCards: Array<{
@@ -825,7 +824,6 @@ function createInitialLessonUiState(): LessonUiState {
     hasProblems: !!U.hasProblems,
     rootNodeId: String(U.rootNodeId || ''),
     rootNodeTitle: String(U.rootNodeTitle || ''),
-    lessonSourceBranch: String(U.lessonSourceBranch || ''),
     lessonSourceUrl: String(U.lessonSourceUrl || ''),
     lessonFilterSummary: String(U.lessonFilterSummary || ''),
     flatCards: Array.isArray(U.flatCards) ? U.flatCards : [],
@@ -929,7 +927,6 @@ function LessonPage() {
     hasProblems,
     rootNodeId,
     rootNodeTitle,
-    lessonSourceBranch,
     lessonSourceUrl,
     lessonFilterSummary,
     flatCards,
@@ -1531,7 +1528,6 @@ function LessonPage() {
       isAlonePractice: typeof payload.isAlonePractice === 'boolean' ? payload.isAlonePractice : prev.isAlonePractice,
       rootNodeId: typeof payload.rootNodeId === 'string' ? payload.rootNodeId : prev.rootNodeId,
       rootNodeTitle: typeof payload.rootNodeTitle === 'string' ? payload.rootNodeTitle : prev.rootNodeTitle,
-      lessonSourceBranch: typeof payload.lessonSourceBranch === 'string' ? payload.lessonSourceBranch : prev.lessonSourceBranch,
       lessonSourceUrl: typeof payload.lessonSourceUrl === 'string' ? payload.lessonSourceUrl : prev.lessonSourceUrl,
       lessonFilterSummary: typeof payload.lessonFilterSummary === 'string' ? payload.lessonFilterSummary : prev.lessonFilterSummary,
       lessonCardProvenanceLabel: typeof payload.lessonCardProvenanceLabel === 'string'
@@ -1954,9 +1950,8 @@ function LessonPage() {
   const singleNodeDetailUrl = useMemo(() => {
     if (!isSingleNodeMode || !domainId || !baseDocId || !rootNodeId) return '';
     if (lessonSourceUrl.trim()) return lessonSourceUrl.trim();
-    const branch = (lessonSourceBranch || 'main').trim() || 'main';
-    return `/d/${encodeURIComponent(domainId)}/base/${encodeURIComponent(baseDocId)}/branch/${encodeURIComponent(branch)}?nodeId=${encodeURIComponent(rootNodeId)}`;
-  }, [baseDocId, domainId, isSingleNodeMode, lessonSourceBranch, lessonSourceUrl, rootNodeId]);
+    return `/d/${encodeURIComponent(domainId)}/base/${encodeURIComponent(baseDocId)}?nodeId=${encodeURIComponent(rootNodeId)}`;
+  }, [baseDocId, domainId, isSingleNodeMode, lessonSourceUrl, rootNodeId]);
 
   const singleNodeFilterItems = useMemo(() => {
     if (!isSingleNodeMode) return [];
@@ -2047,7 +2042,6 @@ function LessonPage() {
 
   const currentProblem = problemQueue[currentProblemIndex];
 
-  const lessonDetailBranch = (lessonSourceBranch || 'main').trim() || 'main';
   const buildLessonBaseDetailUrl = (nodeId?: string, cardId?: string, problemId?: string) => {
     if (!domainId || !baseDocId) return '';
     const params = new URLSearchParams();
@@ -2055,7 +2049,7 @@ function LessonPage() {
     if (cardId) params.set('cardId', cardId);
     if (problemId) params.set('problemId', problemId);
     const qs = params.toString();
-    return `/d/${encodeURIComponent(domainId)}/base/${encodeURIComponent(baseDocId)}/branch/${encodeURIComponent(lessonDetailBranch)}${qs ? `?${qs}` : ''}`;
+    return `/d/${encodeURIComponent(domainId)}/base/${encodeURIComponent(baseDocId)}${qs ? `?${qs}` : ''}`;
   };
   const currentFlatCard = flatCards[currentCardIndex];
   const currentCardIdForLink = String(currentFlatCard?.cardId || card.docId || '').trim();
