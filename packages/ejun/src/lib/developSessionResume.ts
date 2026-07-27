@@ -5,16 +5,14 @@ import bus from '../service/bus';
 import { developTodayUtcYmd } from './developBranchDaily';
 import {
     loadDevelopRunQueuePool,
-    loadUserDevelopPoolByMode,
     type DevelopPoolEntryWire,
 } from './developPoolShared';
-import { getDevelopMode } from './developModePrefs';
 import {
     deriveSessionLearnStatus,
     isDevelopSessionRow,
     isDevelopSessionSettled,
-} from './sessionListDisplay';
-import { isDevelopSessionPastDeadline, isSessionStalePastUtcCalendarDay } from './sessionUtcDaily';
+} from '../model/session';
+import { isDevelopSessionPastDeadline, isSessionStalePastUtcCalendarDay } from '../model/session';
 
 type DevelopDailyDb = Parameters<typeof loadDevelopRunQueuePool>[0];
 
@@ -129,7 +127,7 @@ export async function peekResumableDevelopDailySessionIdReadOnly(
     priv: number,
 ): Promise<string | null> {
     const dudoc = await DomainModel.getDomainUser(domainId, { _id: uid, priv });
-    const developMode = getDevelopMode(dudoc as Record<string, unknown> | null);
+    const developMode = 'base' as const;
     const pendingPool = await loadDevelopRunQueuePool(db, domainId, uid, priv, developMode);
     const poolKeys = poolKeySet(pendingPool);
     const todayYmd = developTodayUtcYmd();
@@ -167,7 +165,7 @@ export async function buildTodayDevelopResumeFields(
     makeResumeUrl: (sessionHex: string) => string,
 ): Promise<DevelopResumeFields> {
     const dudoc = await DomainModel.getDomainUser(domainId, { _id: uid, priv });
-    const developMode = getDevelopMode(dudoc as Record<string, unknown> | null);
+    const developMode = 'base' as const;
     const pendingPool = await loadDevelopRunQueuePool(db, domainId, uid, priv, developMode);
     const s = await findResumableDevelopSessionDoc(domainId, uid, dudoc, pendingPool);
     if (!s) return { todayDevelopResumableSessionId: null, todayDevelopResumeUrl: null };

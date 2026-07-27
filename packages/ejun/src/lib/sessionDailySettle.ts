@@ -4,7 +4,7 @@ import SessionModel from '../model/session';
 import bus from '../service/bus';
 import { deleteUserCache } from '../model/user';
 import { developDailySessionKindMongo, developSessionNotSettledMongoFilter } from './developSessionResume';
-import { isDevelopSessionPastDeadline, isSessionStalePastUtcCalendarDay } from './sessionUtcDaily';
+import { isDevelopSessionPastDeadline, isSessionStalePastUtcCalendarDay } from '../model/session';
 
 /**
  * Clear stale in-progress daily learn sessions after UTC day rollover (`task.session.utc0`).

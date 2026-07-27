@@ -34,7 +34,7 @@ import user from '../model/user';
 import {
     Handler, param, query, requireSudo, Types,
 } from '../service/server';
-import { getLearnDailyGoal } from '../lib/learnModePrefs';
+import { getLearnDailyGoal } from '../model/learn';
 import learn from '../model/learn';
 import moment from 'moment-timezone';
 import { camelCase, md5 } from '../utils';
@@ -45,7 +45,7 @@ import {
     computeStatScore,
     getTodayUserDomainConsumption,
     getTodayUserDomainContribution,
-} from '../lib/homepageRanking';
+} from '../model/rating';
 import RatingModel from '../model/rating';
 
 export class HomeHandler extends Handler {

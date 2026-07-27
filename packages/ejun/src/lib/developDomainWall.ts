@@ -2,7 +2,7 @@ import moment from 'moment-timezone';
 import { ObjectId } from 'mongodb';
 import SessionModel, { type SessionDoc } from '../model/session';
 import RecordModel, { type SessionRecordDoc } from '../model/record';
-import { deriveSessionLearnStatus, formatSessionProgressDisplay } from './sessionListDisplay';
+import { deriveSessionLearnStatus, formatSessionProgressDisplay } from '../model/session';
 
 type Db = {
     collection: (n: string) => {

@@ -18,14 +18,14 @@ import { problemKind, matchingColumnsNormalized, superFlipNormalized, flattenAiE
 import SessionModel, { type SessionDoc } from '../model/session';
 import user from '../model/user';
 import Agent from '../model/agent';
-import { buildDevelopRecordDetailAugment } from '../lib/developRecordSummarize';
+import { buildDevelopRecordDetailAugment } from '../model/record';
 import {
     deriveSessionRecordType,
     developSessionRecordTypeLabelKey,
     formatRecordProgressInSession,
     isAgentSessionRow,
     isDevelopSessionRow,
-} from '../lib/sessionListDisplay';
+} from '../model/session';
 
 export function summarizeRecordDoc(r: SessionRecordDoc): { code: string; color: string; label: string } {
     if (r.recordKind === 'agent') {

@@ -39,8 +39,8 @@ import storage from '../model/storage';
 import { sortFiles } from '@ejunz/utils/lib/common';
 import moment from 'moment-timezone';
 import UserModel from '../model/user';
-import { loadBaseDetailUiPrefs, saveBaseDetailUiPrefs } from '../lib/baseDetailUiPrefs';
-import { getTodayUserDomainContribution } from '../lib/homepageRanking';
+import { loadBaseDetailUiPrefs, saveBaseDetailUiPrefs } from '../model/base';
+import { getTodayUserDomainContribution } from '../model/rating';
 import { incDevelopDaily } from '../lib/developBranchDaily';
 import {
     buildDevelopEditorContextWire,
@@ -61,8 +61,8 @@ import {
     inferDevelopSessionKind,
     isDevelopSessionRow,
     isDevelopSessionSettled,
-} from '../lib/sessionListDisplay';
-import { isDevelopSessionPastDeadline, readDevelopSessionDeadlineMs } from '../lib/sessionUtcDaily';
+} from '../model/session';
+import { isDevelopSessionPastDeadline, readDevelopSessionDeadlineMs } from '../model/session';
 import {
     problemKind,
     matchingColumnsNormalized,
