@@ -41,14 +41,7 @@ import moment from 'moment-timezone';
 import UserModel from '../model/user';
 import { loadBaseDetailUiPrefs, saveBaseDetailUiPrefs } from '../model/base';
 import { getTodayUserDomainContribution } from '../model/rating';
-import { incDevelopDaily } from '../lib/developBranchDaily';
-import {
-    buildDevelopEditorContextWire,
-    computeDevelopRunQueueProgress,
-    loadDevelopRunQueuePool,
-    loadUserDevelopPool,
-    resolveDevelopRunProgressForSession,
-} from '../lib/developPoolShared';
+import DevelopModel from '../model/develop';
 import RecordModel, { type DevelopSaveChangeLine } from '../model/record';
 import SessionModel, {
     readDevelopEditorUrl,
@@ -1123,11 +1116,10 @@ export async function buildBaseEditorPageBody(args: BuildBaseEditorPageBodyArgs)
 
     const developEditorContext = developPoolUiMode === 'none'
         ? null
-        : await buildDevelopEditorContextWire({
-            db,
+        : await DevelopModel.buildDevelopEditorContextWire({
             domainId,
             uid,
-            pool: await loadUserDevelopPool(domainId, uid, priv),
+            pool: await DevelopModel.loadUserDevelopPool(domainId, uid, priv),
             baseDocId: base.docId,
             getBaseTitle: async (docId) => {
                 const b = await BaseModel.get(domainId, docId);
@@ -4266,7 +4258,6 @@ function buildDevelopSaveChangeLines(data: Record<string, unknown>): DevelopSave
 
 /** After each save, recompute develop run progress from today’s pending queue and the session’s base. */
 export async function refreshDevelopSessionRunProgressAfterBatchSave(
-    db: { collection: (n: string) => any },
     domainId: string,
     uid: number,
     priv: number,
@@ -4285,8 +4276,8 @@ export async function refreshDevelopSessionRunProgressAfterBatchSave(
 
     const baseDocId = Number(cur.baseDocId);
     if (!Number.isFinite(baseDocId) || baseDocId <= 0) return;
-    const run = await resolveDevelopRunProgressForSession(
-        db, domainId, uid, priv, baseDocId, cur.progress,
+    const run = await DevelopModel.resolveDevelopRunProgressForSession(
+        domainId, uid, priv, baseDocId, cur.progress,
     );
     if (!run) return;
     const prevRaw = cur.progress;
@@ -4825,7 +4816,7 @@ export class BaseBatchSaveHandler extends Handler {
                 }
             }
             if (incNodes || incCards || incProblems) {
-                await incDevelopDaily(this.ctx.db.db, actualDomainId, this.user._id, docId, {
+                await DevelopModel.incDevelopDaily(actualDomainId, this.user._id, docId, {
                     nodes: incNodes,
                     cards: incCards,
                     problems: incProblems,
@@ -4873,7 +4864,6 @@ export class BaseBatchSaveHandler extends Handler {
         if (batchSuccess && developSessionRaw) {
             try {
                 await refreshDevelopSessionRunProgressAfterBatchSave(
-                    this.ctx.db.db,
                     actualDomainId,
                     this.user._id,
                     this.user.priv,
@@ -6204,11 +6194,10 @@ export class BaseConnectionHandler extends ConnectionHandler {
     private async buildDevelopEditorContextPayload(domainId: string, base: BaseDoc) {
         if (this.suppressDevelopPoolContext) return null;
         try {
-            return await buildDevelopEditorContextWire({
-                db: this.ctx.db.db,
+            return await DevelopModel.buildDevelopEditorContextWire({
                 domainId,
                 uid: this.user._id,
-                pool: await loadUserDevelopPool(domainId, this.user._id, this.user.priv),
+                pool: await DevelopModel.loadUserDevelopPool(domainId, this.user._id, this.user.priv),
                 baseDocId: base.docId,
                 getBaseTitle: async (docId) => {
                     const b = await BaseModel.get(domainId, docId);

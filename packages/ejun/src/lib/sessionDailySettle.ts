@@ -3,7 +3,7 @@ import type { SessionDoc } from '../model/session';
 import SessionModel from '../model/session';
 import bus from '../service/bus';
 import { deleteUserCache } from '../model/user';
-import { developDailySessionKindMongo, developSessionNotSettledMongoFilter } from './developSessionResume';
+import DevelopModel from '../model/develop';
 import { isDevelopSessionPastDeadline, isSessionStalePastUtcCalendarDay } from '../model/session';
 
 /**
@@ -74,8 +74,8 @@ export async function markStaleDailyDevelopSessionsTimedOutUtc(): Promise<number
         appRoute: 'develop',
         $and: [
             { $or: [{ lessonAbandonedAt: null }, { lessonAbandonedAt: { $exists: false } }] },
-            developSessionNotSettledMongoFilter,
-            developDailySessionKindMongo,
+            DevelopModel.developSessionNotSettledMongoFilter,
+            DevelopModel.developDailySessionKindMongo,
             {
                 $or: [
                     { 'progress.developDailyTimedOutAt': { $exists: false } },
@@ -129,8 +129,8 @@ export async function settleStaleDevelopSessionPointersUtc(): Promise<number> {
         appRoute: 'develop',
         $and: [
             { $or: [{ lessonAbandonedAt: null }, { lessonAbandonedAt: { $exists: false } }] },
-            developSessionNotSettledMongoFilter,
-            developDailySessionKindMongo,
+            DevelopModel.developSessionNotSettledMongoFilter,
+            DevelopModel.developDailySessionKindMongo,
         ],
     });
     for await (const raw of cursor) {
