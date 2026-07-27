@@ -103,7 +103,6 @@ function setupBaseCreateMigrateSubmit(prefill) {
       Notification.error(i18n('Slug is required'));
       return;
     }
-    const bid = String($form.find('[name="bid"]').val() || '').trim();
     const { docId, nodeId } = prefill.migrate;
     const domainId = window.UiContext?.domainId || 'system';
     const $submit = $('.base-form-page__actions .button.primary');
@@ -114,7 +113,6 @@ function setupBaseCreateMigrateSubmit(prefill) {
         nodeId,
         title,
         slug,
-        bid,
       });
       sessionStorage.removeItem(BASE_CREATE_PREFILL_KEY);
       if (!res?.success) {
@@ -122,7 +120,7 @@ function setupBaseCreateMigrateSubmit(prefill) {
         return;
       }
       Notification.success(i18n('Separate as new base success'));
-      const openSeg = res.slug ? String(res.slug) : (res.bid ? String(res.bid) : String(res.newDocId));
+      const openSeg = res.slug ? String(res.slug) : String(res.newDocId);
       window.location.href = domainScopedPath(`/base/${encodeURIComponent(openSeg)}`, domainId);
     } catch (err) {
       Notification.error(err?.message || i18n('Separate as new base failed'));

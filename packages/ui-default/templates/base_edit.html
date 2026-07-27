@@ -27,15 +27,6 @@
 
           {{ form.form_text({
               columns: 12,
-              label: _('BID'),
-              name: 'bid',
-              placeholder: 'P1001',
-              value: base.bid|default(''),
-              help_text: _('Optional human-readable identifier, for example: P1001')
-          }) }}
-
-          {{ form.form_text({
-              columns: 12,
               label: _('Slug'),
               name: 'slug',
               placeholder: _('Only lowercase letters (a-z), digits (0-9), dots, underscores, and hyphens. Used in the URL.'),

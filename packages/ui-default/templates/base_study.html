@@ -1,11 +1,11 @@
 {% extends "layout/basic.html" %}
 {% block content %}
-{% set _base_doc_id = ('' ~ ((base.bid if base and base.bid else base.docId) if base and base.docId is not none else '')) %}
+{% set _base_doc_id = ('' ~ ((base.slug if base and base.slug else base.docId) if base and base.docId is not none else '')) %}
 <script>
   {{ set(UiContext, 'base', {
     domainId: base.domainId,
     docId: _base_doc_id,
-    bid: base.bid,
+    slug: base.slug,
     nodes: base.nodes or [],
     edges: base.edges or [],
     title: base.title

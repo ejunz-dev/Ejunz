@@ -42,7 +42,7 @@ import {
 type BaseDetailContext = {
   domainId?: string;
   docId?: string;
-  bid?: number;
+  slug?: string;
   title?: string;
   content?: string;
   nodes?: BaseDoc['nodes'];
@@ -56,7 +56,7 @@ function getBaseDetailFromContext(): BaseDetailContext {
   return {
     domainId: ctx.domainId || (window as any).UiContext?.domainId || 'system',
     docId: String(ctx.docId || ''),
-    bid: ctx.bid,
+    slug: ctx.slug && String(ctx.slug).trim() ? String(ctx.slug) : undefined,
     title: ctx.title || '',
     content: ctx.content || '',
     nodes: ctx.nodes || [],

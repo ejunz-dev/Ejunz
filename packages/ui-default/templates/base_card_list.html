@@ -2,7 +2,7 @@
 {% block content %}
 <script>
   {% set baseUrlValue = url("base_card_list", domainId=base.domainId, docId=base.docId, nodeId=nodeId) %}
-  {{ set(UiContext, 'base', { domainId: base.domainId, docId: base.docId, bid: base.bid }) }}
+  {{ set(UiContext, 'base', { domainId: base.domainId, docId: base.docId, slug: base.slug }) }}
   {{ set(UiContext, 'cards', cards) }}
   {{ set(UiContext, 'baseUrl', baseUrlValue) }}
   {{ set(UiContext, 'nodeId', nodeId) }}
