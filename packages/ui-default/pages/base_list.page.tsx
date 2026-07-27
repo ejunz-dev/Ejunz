@@ -121,7 +121,8 @@ function BaseList() {
               }}
               onClick={() => {
                 const domainId = (window as any).UiContext?.domainId || '';
-                window.location.href = domainScopedPath(`/base/${base.docId}`, domainId);
+                const linkKey = base.slug || base.docId;
+                window.location.href = domainScopedPath(`/base/${encodeURIComponent(linkKey)}`, domainId);
               }}
             >
               <h3 style={{ margin: '0 0 10px 0', fontSize: '18px', color: '#333' }}>
@@ -158,7 +159,8 @@ function BaseList() {
                 <a
                   href={(() => {
                     const domainId = (window as any).UiContext?.domainId || 'system';
-                    return domainScopedPath(`/base/${base.docId}`, domainId);
+                    const linkKey = (base as any).slug || base.docId;
+                    return domainScopedPath(`/base/${linkKey}`, domainId);
                   })()}
                   onClick={(e) => e.stopPropagation()}
                   style={{
@@ -175,7 +177,8 @@ function BaseList() {
                 <a
                   href={(() => {
                     const domainId = (window as any).UiContext?.domainId || 'system';
-                    return domainScopedPath(`/base/${base.docId}/edit`, domainId);
+                    const linkKey = (base as any).slug || base.docId;
+                    return domainScopedPath(`/base/${linkKey}/edit`, domainId);
                   })()}
                   onClick={(e) => e.stopPropagation()}
                   style={{

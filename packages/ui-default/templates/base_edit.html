@@ -36,6 +36,15 @@
 
           {{ form.form_text({
               columns: 12,
+              label: _('Slug'),
+              name: 'slug',
+              placeholder: _('Only lowercase letters (a-z), digits (0-9), dots, underscores, and hyphens. Used in the URL.'),
+              value: base.slug|default(''),
+              required: true
+          }) }}
+
+          {{ form.form_text({
+              columns: 12,
               label: _('Base Title'),
               name: 'title',
               placeholder: _('Enter base title'),

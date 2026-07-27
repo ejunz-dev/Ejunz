@@ -362,6 +362,7 @@ export interface BaseDoc {
     ip?: string;
     rpid?: number;
     bid?: string | number;
+    slug?: string;
     githubRepo?: string;
     parentId?: ObjectId;
     domainPosition?: { x: number; y: number };
