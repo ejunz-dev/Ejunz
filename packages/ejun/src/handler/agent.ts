@@ -1240,20 +1240,20 @@ export class AgentDetailHandler extends Handler {
             apiUrl = `${protocol}://${host}/api/agent`;
         }
         const rawBaseBindings = normalizeAgentBaseBindings(adoc) || [];
-        const enabledBaseLibrariesForDisplay: Array<{ docId: number; title: string; bid: string }> = [];
+        const enabledBaseLibrariesForDisplay: Array<{ docId: number; title: string; slug: string }> = [];
         for (const b of rawBaseBindings) {
             const bdoc = await BaseModel.get(domainId, b.docId);
             if (bdoc) {
                 enabledBaseLibrariesForDisplay.push({
                     docId: bdoc.docId,
                     title: (bdoc.title && String(bdoc.title).trim()) || `Base #${bdoc.docId}`,
-                    slug: (bdoc.slug bid: (bdoc.bid && String(bdoc.bid).trim()) || ''bid: (bdoc.bid && String(bdoc.bid).trim()) || '' String(bdoc.slug).trim()) || '',
+                    slug: (bdoc.slug && String(bdoc.slug).trim()) || '',
                 });
             } else {
                 enabledBaseLibrariesForDisplay.push({
                     docId: b.docId,
                     title: `Base #${b.docId}`,
-                    bid: '',
+                    slug: '',
                 });
             }
         }
@@ -1360,7 +1360,7 @@ export class AgentBasesEditHandler extends Handler {
         const basesForUi = basesRaw.map((bd) => ({
             docId: bd.docId,
             title: (bd.title && String(bd.title).trim()) || `Base #${bd.docId}`,
-            slug: (bd.slug bid: (bd.bid && String(bd.bid).trim()) || ''bid: (bd.bid && String(bd.bid).trim()) || '' String(bd.slug).trim()) || '',
+            slug: (bd.slug && String(bd.slug).trim()) || '',
         }));
 
         const bb = normalizeAgentBaseBindings(adoc)?.[0];
