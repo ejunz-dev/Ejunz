@@ -20,7 +20,7 @@ import {
     developRunTerminalTotals,
     loadUserDevelopPoolByMode,
 } from '../lib/developPoolShared';
-import { readDevelopSessionDeadlineMs } from '../lib/sessionUtcDaily';
+import { readDevelopSessionDeadlineMs } from '../model/session';
 import { PERM, PRIV } from '../model/builtin';
 import { BaseModel } from '../model/base';
 import * as document from '../model/document';
@@ -41,7 +41,7 @@ import {
     isLearnSessionRow,
     type SessionListRecordType,
     type SessionListStatus,
-} from '../lib/sessionListDisplay';
+} from '../model/session';
 import { recordSummariesForSessionRow } from './record';
 
 /** JSON-safe session document for lesson WebSocket clients. */

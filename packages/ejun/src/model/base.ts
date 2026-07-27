@@ -104,6 +104,87 @@ export async function loadBaseEditorUiPrefs(
 export type MindMapDocType = typeof document.TYPE_BASE | typeof document.TYPE_PLUGIN;
 export type MindMapDoc = BaseDoc | PluginDoc;
 
+/** Whitelist detail display prefs from DB or client body. */
+export function sanitizeBaseDetailUiPrefs(raw: unknown): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+    const o = raw as Record<string, unknown>;
+    if (typeof o.showProblemCount === 'boolean') out.showProblemCount = o.showProblemCount;
+    if (typeof o.showNodeNumber === 'boolean') out.showNodeNumber = o.showNodeNumber;
+    if (typeof o.showNodeCardTimestamps === 'boolean') out.showNodeCardTimestamps = o.showNodeCardTimestamps;
+    if (typeof o.showProblemTree === 'boolean') out.showProblemTree = o.showProblemTree;
+    if (typeof o.showProblemTags === 'boolean') out.showProblemTags = o.showProblemTags;
+    if (typeof o.showCardTags === 'boolean') out.showCardTags = o.showCardTags;
+    if (typeof o.showAiTutor === 'boolean') out.showAiTutor = o.showAiTutor;
+    if (typeof o.showExpandSaveIndicator === 'boolean') out.showExpandSaveIndicator = o.showExpandSaveIndicator;
+    if (typeof o.showWsIndicator === 'boolean') out.showWsIndicator = o.showWsIndicator;
+    if (typeof o.showToolbar === 'boolean') out.showToolbar = o.showToolbar;
+    if (typeof o.indicatorX === 'number' && Number.isFinite(o.indicatorX)) out.indicatorX = o.indicatorX;
+    if (typeof o.indicatorY === 'number' && Number.isFinite(o.indicatorY)) out.indicatorY = o.indicatorY;
+    if (typeof o.toolbarOpen === 'boolean') out.toolbarOpen = o.toolbarOpen;
+    if (typeof o.toolbarX === 'number' && Number.isFinite(o.toolbarX)) out.toolbarX = o.toolbarX;
+    if (typeof o.toolbarY === 'number' && Number.isFinite(o.toolbarY)) out.toolbarY = o.toolbarY;
+    if (typeof o.cardDrawerWidth === 'number' && Number.isFinite(o.cardDrawerWidth)) out.cardDrawerWidth = o.cardDrawerWidth;
+    if (typeof o.treeDrawerWidth === 'number' && Number.isFinite(o.treeDrawerWidth)) out.treeDrawerWidth = o.treeDrawerWidth;
+    if (typeof o.wsIndicatorX === 'number' && Number.isFinite(o.wsIndicatorX)) out.wsIndicatorX = o.wsIndicatorX;
+    if (typeof o.wsIndicatorY === 'number' && Number.isFinite(o.wsIndicatorY)) out.wsIndicatorY = o.wsIndicatorY;
+    if (typeof o.wsIndicatorOpen === 'boolean') out.wsIndicatorOpen = o.wsIndicatorOpen;
+    if (Array.isArray(o.expandedNodeIds)) {
+        out.expandedNodeIds = o.expandedNodeIds.filter((id: unknown) => typeof id === 'string');
+    }
+    return out;
+}
+
+export async function loadBaseDetailUiPrefs(
+    db: Db,
+    domainId: string,
+    baseDocId: number,
+    uid: unknown,
+): Promise<Record<string, unknown>> {
+    try {
+        const coll = db.collection('base.userDetailUi');
+        const doc = await coll.findOne(
+            {
+                domainId,
+                baseDocId,
+                uid,
+            },
+            { sort: { updateAt: -1, _id: -1 } },
+        );
+        return sanitizeBaseDetailUiPrefs(doc?.prefs);
+    } catch {
+        return {};
+    }
+}
+
+export async function saveBaseDetailUiPrefs(
+    db: Db,
+    domainId: string,
+    baseDocId: number,
+    uid: unknown,
+    displayPrefs: unknown,
+): Promise<void> {
+    const sanitized = sanitizeBaseDetailUiPrefs(displayPrefs);
+    const coll = db.collection('base.userDetailUi');
+    await coll.updateOne(
+        {
+            domainId,
+            baseDocId,
+            uid,
+        },
+        {
+            $set: {
+                domainId,
+                baseDocId,
+                uid,
+                prefs: sanitized,
+                updateAt: new Date(),
+            },
+        },
+        { upsert: true },
+    );
+}
+
 export class BaseModel {
     private static getRootNodeId(nodes: BaseNode[] = [], edges: BaseEdge[] = []): string | null {
         if (!nodes.length) return null;
@@ -1047,6 +1128,64 @@ export function applyDetailExplorerUrlFilters(
     }
 
     return { nodes: visibleNodes, edges: visibleEdges, nodeCardsMap: filteredMap };
+}
+
+/** Parse snake_case/camelCase detail explorer filters from tool arguments. */
+export function detailExplorerFiltersFromToolArgs(args: Record<string, unknown> | undefined | null): DetailExplorerFilters {
+    const g = (k: string) => typeof args?.[k] === 'string' ? args[k] as string : '';
+    return {
+        filterNode: g('filterNode') || g('filter_node'),
+        filterCard: g('filterCard') || g('filter_card'),
+        filterProblem: g('filterProblem') || g('filter_problem'),
+    };
+}
+
+export type FetchBaseOutlineOptions = {
+    baseDocId?: number;
+    filters: DetailExplorerFilters;
+};
+
+export async function fetchFilteredBaseDetail(
+    domainId: string,
+    options: FetchBaseOutlineOptions,
+): Promise<{
+    base: BaseDoc;
+    nodes: BaseNode[];
+    edges: BaseEdge[];
+    nodeCardsMap: Record<string, CardDoc[]>;
+    outlineExplorerFilters: DetailExplorerFilters;
+} | null> {
+    const base = options.baseDocId != null && Number.isFinite(options.baseDocId) && options.baseDocId > 0
+        ? await BaseModel.get(domainId, options.baseDocId, document.TYPE_BASE)
+        : await BaseModel.getByDomain(domainId);
+    if (!base) return null;
+
+    let nodes = base.nodes || [];
+    let edges = base.edges || [];
+    const allCards = await document.getMulti(
+        domainId,
+        TYPE_CARD,
+        { baseDocId: Number(base.docId) },
+    )
+        .sort({ order: 1, cid: 1 })
+        .toArray() as CardDoc[];
+    let nodeCardsMap: Record<string, CardDoc[]> = {};
+    for (const card of allCards) {
+        if (!card.nodeId) continue;
+        (nodeCardsMap[card.nodeId] ||= []).push(card);
+    }
+    for (const nodeId of Object.keys(nodeCardsMap)) {
+        nodeCardsMap[nodeId].sort((a, b) => (a.order ?? 999999) - (b.order ?? 999999) || a.cid - b.cid);
+    }
+
+    const outlineExplorerFilters = options.filters;
+    if (hasActiveDetailExplorerFilters(outlineExplorerFilters)) {
+        const applied = applyDetailExplorerUrlFilters(nodes, edges, nodeCardsMap, outlineExplorerFilters);
+        nodes = applied.nodes;
+        edges = applied.edges;
+        nodeCardsMap = applied.nodeCardsMap;
+    }
+    return { base, nodes, edges, nodeCardsMap, outlineExplorerFilters: trimDetailExplorerFiltersForClient(outlineExplorerFilters) };
 }
 
 /** Optional numeric base doc id from POST body or query (used by mindmap / base APIs). */

@@ -14,11 +14,11 @@ import SessionModel, {
     validateDevelopEditorStoredLocation,
     type SessionDoc,
 } from '../model/session';
-import { readDevelopSessionDeadlineMs } from '../lib/sessionUtcDaily';
+import { readDevelopSessionDeadlineMs } from '../model/session';
 import { buildBaseEditorPageBody } from './base';
 import type { BaseDoc } from '../interface';
 import { developBaseKey, developTodayUtcYmd, getDevelopDailyMany } from '../lib/developBranchDaily';
-import { appendUserCheckinDay, countConsecutiveCheckinDays } from '../lib/checkin';
+import { appendUserCheckinDay, countConsecutiveCheckinDays } from '../model/domain';
 import {
     developPoolHasAnyGoal,
     developRowGoalsMet,
@@ -38,7 +38,7 @@ import {
     developSessionRecordTypeLabelKey,
     formatSessionProgressDisplay,
     isDevelopSessionSettled,
-} from '../lib/sessionListDisplay';
+} from '../model/session';
 import { buildSessionRecordHistoryRows, summarizeRecordDoc } from './record';
 
 export type { DevelopPoolEntryWire };

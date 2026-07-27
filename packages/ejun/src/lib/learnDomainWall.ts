@@ -3,7 +3,7 @@ import { ObjectId } from 'mongodb';
 import learn from '../model/learn';
 import RecordModel, { type SessionRecordDoc } from '../model/record';
 import SessionModel, { type SessionDoc } from '../model/session';
-import { deriveSessionLearnStatus, formatSessionProgressDisplay } from './sessionListDisplay';
+import { deriveSessionLearnStatus, formatSessionProgressDisplay } from '../model/session';
 
 type Db = {
     collection: (n: string) => {

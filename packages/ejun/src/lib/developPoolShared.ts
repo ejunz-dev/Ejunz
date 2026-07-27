@@ -1,10 +1,5 @@
 import DomainModel from '../model/domain';
 import { developBaseKey, developTodayUtcYmd, getDevelopDailyMany } from './developBranchDaily';
-import {
-    developPoolFieldForMode,
-    getDevelopMode,
-    type DevelopSourceMode,
-} from './developModePrefs';
 
 export const DEVELOP_POOL_MAX = 24;
 
@@ -107,7 +102,7 @@ export async function loadDevelopRunQueuePool(
     domainId: string,
     uid: number,
     priv: number,
-    mode?: DevelopSourceMode,
+    mode?: 'base',
 ): Promise<DevelopPoolEntryWire[]> {
     const full = mode
         ? await loadUserDevelopPoolByMode(domainId, uid, priv, mode)
@@ -145,10 +140,10 @@ export async function loadUserDevelopPoolByMode(
     domainId: string,
     uid: number,
     priv: number,
-    mode: DevelopSourceMode,
+    mode: 'base',
 ): Promise<DevelopPoolEntryWire[]> {
     const dudoc = await DomainModel.getDomainUser(domainId, { _id: uid, priv });
-    const field = developPoolFieldForMode(mode);
+    const field = 'developPool';
     return normalizeDevelopPool((dudoc as any)?.[field]);
 }
 
@@ -156,10 +151,10 @@ export async function loadUserDevelopPoolForActiveMode(
     domainId: string,
     uid: number,
     priv: number,
-): Promise<{ mode: DevelopSourceMode; pool: DevelopPoolEntryWire[] }> {
+): Promise<{ mode: 'base'; pool: DevelopPoolEntryWire[] }> {
     const dudoc = await DomainModel.getDomainUser(domainId, { _id: uid, priv }) as Record<string, unknown> | null;
-    const mode = getDevelopMode(dudoc);
-    const field = developPoolFieldForMode(mode);
+    const mode = 'base' as const;
+    const field = 'developPool';
     return { mode, pool: normalizeDevelopPool(dudoc?.[field]) };
 }
 

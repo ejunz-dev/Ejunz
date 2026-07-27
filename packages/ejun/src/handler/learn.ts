@@ -22,7 +22,7 @@ import db from '../service/db';
 import moment from 'moment-timezone';
 import bus from '../service/bus';
 import { updateDomainRanking } from './domain';
-import { appendUserCheckinDay, countConsecutiveCheckinDays } from '../lib/checkin';
+import { appendUserCheckinDay, countConsecutiveCheckinDays } from '../model/domain';
 import {
     getLearnNewReviewOrder,
     getLearnNewReviewRatio,
@@ -43,7 +43,7 @@ import {
     type LearnSessionMode,
     type LearnSessionCardFilterMode,
     type LearnSessionProblemTagMode,
-} from '../lib/learnModePrefs';
+} from '../model/learn';
 import * as document from '../model/document';
 import { getProblemTagList, normalizeProblemTagInput, sanitizeProblemTagRegistryList } from '../model/problem';
 import SessionModel, { type LessonCardQueueItem, type SessionDoc, type SessionPatch } from '../model/session';
@@ -57,14 +57,14 @@ import {
     mergeDomainLessonState,
     resolveLessonSessionDoc,
     touchLessonSession,
-} from '../lib/lessonSession';
+} from '../model/session';
 import {
     deriveSessionLearnStatus,
     deriveSessionRecordType,
     formatSessionCardProgress,
     formatSessionProgressDisplay,
     isLearnSessionRow,
-} from '../lib/sessionListDisplay';
+} from '../model/session';
 import RecordModel, { type SessionRecordDoc } from '../model/record';
 import LearnProblemNoteModel from '../model/learnProblemNote';
 import {

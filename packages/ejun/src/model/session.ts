@@ -8,13 +8,23 @@ import {
     type FindOptions,
 } from 'mongodb';
 import type { Context } from '../context';
-import type { AgentChatSessionDoc, BaseDoc, SessionDoc, SessionPatch } from '../interface';
+import type { AgentChatSessionDoc, BaseDoc, LessonCardQueueItem, LessonMode, SessionDoc, SessionPatch } from '../interface';
 import { NotFoundError } from '../error';
 import db from '../service/db';
 import bus from '../service/bus';
 import { MaybeArray, NumberKeys } from '../typeutils';
-import { deriveSessionLearnStatus, isDevelopSessionSettled } from '../lib/sessionListDisplay';
 import { BaseModel } from './base';
+import type { SessionRecordDoc } from './record';
+import {
+    getLearnNewReviewOrder,
+    getLearnNewReviewRatio,
+    getLearnSessionCardFilter,
+    getLearnSessionMode,
+    learnSessionProblemTagSettingsMatchDuWithSession,
+    normalizeLearnNewReviewOrder,
+    normalizeLearnSessionCardFilter,
+    normalizeLearnSessionMode,
+} from './learn';
 
 export function agentChatSessionKindFilter(
     kind?: 'chat' | 'client' | { $in: ('chat' | 'client')[] },
@@ -626,6 +636,487 @@ export default class SessionModel {
             { silent: true },
         );
     }
+}
+
+export interface MergedLessonState {
+    lessonMode: LessonMode;
+    lessonCardIndex: number;
+    lessonCardId: string | undefined;
+    lessonNodeId: string | undefined;
+    currentLearnSectionIndex: number | undefined;
+    currentLearnSectionId: string | undefined;
+    lessonReviewCardIds: string[];
+    lessonCardTimesMs: number[];
+    lessonCardQueue: LessonCardQueueItem[];
+    lessonQueueAnchorNodeId: string | undefined;
+    lessonQueueBaseDocId: number | undefined;
+    lessonQueueLearnSectionOrderIndex: number | undefined;
+}
+
+export function mergeDomainLessonState(dudoc: any, sdoc: SessionDoc | null): MergedLessonState {
+    const d = dudoc || {};
+    if (!sdoc) {
+        return {
+            lessonMode: d.lessonMode ?? null,
+            lessonCardIndex: typeof d.lessonCardIndex === 'number' ? d.lessonCardIndex : 0,
+            lessonCardId: typeof d.lessonCardId === 'string' && d.lessonCardId ? d.lessonCardId : undefined,
+            lessonNodeId: d.lessonNodeId as string | undefined,
+            currentLearnSectionIndex: typeof d.currentLearnSectionIndex === 'number' ? d.currentLearnSectionIndex : undefined,
+            currentLearnSectionId: d.currentLearnSectionId as string | undefined,
+            lessonReviewCardIds: Array.isArray(d.lessonReviewCardIds) ? [...d.lessonReviewCardIds] : [],
+            lessonCardTimesMs: Array.isArray(d.lessonCardTimesMs) ? [...d.lessonCardTimesMs] : [],
+            lessonCardQueue: [],
+            lessonQueueAnchorNodeId: undefined,
+            lessonQueueBaseDocId: undefined,
+            lessonQueueLearnSectionOrderIndex: undefined,
+        };
+    }
+    return {
+        lessonMode: sdoc.lessonMode !== undefined ? sdoc.lessonMode : (d.lessonMode ?? null),
+        lessonCardIndex: typeof sdoc.cardIndex === 'number'
+            ? sdoc.cardIndex
+            : (typeof d.lessonCardIndex === 'number' ? d.lessonCardIndex : 0),
+        lessonCardId: (typeof sdoc.cardId === 'string' && sdoc.cardId.trim())
+            ? sdoc.cardId.trim()
+            : (typeof d.lessonCardId === 'string' && d.lessonCardId ? d.lessonCardId : undefined),
+        lessonNodeId: (typeof sdoc.nodeId === 'string' && sdoc.nodeId !== '') ? sdoc.nodeId : d.lessonNodeId as string | undefined,
+        currentLearnSectionIndex: typeof sdoc.currentLearnSectionIndex === 'number'
+            ? sdoc.currentLearnSectionIndex
+            : (typeof d.currentLearnSectionIndex === 'number' ? d.currentLearnSectionIndex : undefined),
+        currentLearnSectionId: sdoc.currentLearnSectionId ?? d.currentLearnSectionId as string | undefined,
+        lessonReviewCardIds: Array.isArray(sdoc.lessonReviewCardIds)
+            ? [...sdoc.lessonReviewCardIds]
+            : (Array.isArray(d.lessonReviewCardIds) ? [...d.lessonReviewCardIds] : []),
+        lessonCardTimesMs: Array.isArray(sdoc.lessonCardTimesMs)
+            ? [...sdoc.lessonCardTimesMs]
+            : (Array.isArray(d.lessonCardTimesMs) ? [...d.lessonCardTimesMs] : []),
+        lessonCardQueue: Array.isArray(sdoc.lessonCardQueue) ? [...sdoc.lessonCardQueue] : [],
+        lessonQueueAnchorNodeId: (sdoc.lessonQueueAnchorNodeId !== undefined && sdoc.lessonQueueAnchorNodeId !== '')
+            ? sdoc.lessonQueueAnchorNodeId as string
+            : undefined,
+        lessonQueueBaseDocId: typeof sdoc.lessonQueueBaseDocId === 'number' ? sdoc.lessonQueueBaseDocId : undefined,
+        lessonQueueLearnSectionOrderIndex: typeof sdoc.lessonQueueLearnSectionOrderIndex === 'number'
+            ? sdoc.lessonQueueLearnSectionOrderIndex
+            : undefined,
+    };
+}
+
+export async function touchLessonSession(domainId: string, uid: number, patch: SessionPatch, opts?: { silent?: boolean }) {
+    return SessionModel.touch(domainId, uid, patch, opts);
+}
+
+export function isLessonSessionAbandoned(doc: SessionDoc | null | undefined): boolean {
+    return !!(doc && (doc as SessionDoc & { lessonAbandonedAt?: Date | null }).lessonAbandonedAt);
+}
+
+const normSectionOrder = (arr: unknown): string[] => (Array.isArray(arr) ? arr : []).map((x) => String(x));
+
+export const LESSON_QUEUE_MIXED_LAYOUT_VERSION = 15;
+
+export function frozenTodayQueueMatchesLearnSettings(dudoc: any, s: SessionDoc): boolean {
+    const du = dudoc || {};
+    const ordDu = normSectionOrder(du.learnSectionOrder);
+    const rawSnap = (s as SessionDoc & { lessonQueueLearnSectionOrder?: string[] }).lessonQueueLearnSectionOrder;
+    const hasSnap = Array.isArray(rawSnap);
+    const ordS = hasSnap ? normSectionOrder(rawSnap) : null;
+    if (hasSnap) {
+        if (JSON.stringify(ordDu) !== JSON.stringify(ordS)) return false;
+    } else if (ordDu.length > 0) return false;
+
+    const di = typeof du.currentLearnSectionIndex === 'number' ? du.currentLearnSectionIndex : undefined;
+    const si = typeof s.currentLearnSectionIndex === 'number' ? s.currentLearnSectionIndex : undefined;
+    if (di !== undefined && (si === undefined || si !== di)) return false;
+    const did = typeof du.currentLearnSectionId === 'string' && du.currentLearnSectionId.trim()
+        ? du.currentLearnSectionId.trim() : undefined;
+    const sid = typeof s.currentLearnSectionId === 'string' && s.currentLearnSectionId.trim()
+        ? s.currentLearnSectionId.trim() : undefined;
+    if (did !== undefined && sid !== undefined && did !== sid) return false;
+
+    const dCard = typeof (du as { currentLearnStartCardId?: unknown }).currentLearnStartCardId === 'string'
+        && String((du as { currentLearnStartCardId: string }).currentLearnStartCardId).trim()
+        ? String((du as { currentLearnStartCardId: string }).currentLearnStartCardId).trim() : null;
+    const sCardRaw = (s as SessionDoc & { lessonQueueLearnStartCardId?: string | null }).lessonQueueLearnStartCardId;
+    const sCard = typeof sCardRaw === 'string' && sCardRaw.trim() ? sCardRaw.trim() : null;
+    if (dCard !== sCard) return false;
+
+    if (getLearnSessionMode(du) !== normalizeLearnSessionMode((s as any).lessonQueueLearnSessionMode)) return false;
+    const cardFilterDu = getLearnSessionCardFilter(du);
+    const rawCf = (s as any).lessonQueueLearnSessionCardFilter;
+    const cardFilterSnap = rawCf == null || String(rawCf).trim() === '' ? 'all' : normalizeLearnSessionCardFilter(rawCf);
+    if (cardFilterSnap !== cardFilterDu) return false;
+    if (!learnSessionProblemTagSettingsMatchDuWithSession(du, (s as any).lessonQueueLearnSessionProblemTagMode, (s as any).lessonQueueLearnSessionProblemTags)) return false;
+
+    const rDu = getLearnNewReviewRatio(du);
+    const rawR = (s as any).lessonQueueLearnNewReviewRatio;
+    if (typeof rawR !== 'number' || ![-1, 0, 1, 2, 3, 4, 5].includes(rawR) || rDu !== rawR) return false;
+    const oDu = getLearnNewReviewOrder(du);
+    const rawOrd = (s as any).lessonQueueLearnNewReviewOrder;
+    if (typeof rawOrd !== 'string' || !rawOrd.trim() || normalizeLearnNewReviewOrder(rawOrd) !== oDu) return false;
+    return (s as any).lessonQueueMixedLayoutVersion === LESSON_QUEUE_MIXED_LAYOUT_VERSION;
+}
+
+export function isLearnHomePlaceholderSession(doc: SessionDoc | null | undefined): boolean {
+    if (!doc || (doc.appRoute !== 'learn' && doc.route !== 'learn') || isLessonSessionAbandoned(doc)) return false;
+    if (doc.lessonMode != null) return false;
+    if (Array.isArray(doc.lessonCardQueue) && doc.lessonCardQueue.length > 0) return false;
+    return !(typeof doc.cardId === 'string' && doc.cardId.trim());
+}
+
+export async function resolveLessonSessionDoc(domainId: string, uid: number, querySessionId?: string | null): Promise<SessionDoc | null> {
+    const q = typeof querySessionId === 'string' ? querySessionId.trim() : '';
+    if (q && ObjectId.isValid(q)) {
+        const doc = await SessionModel.coll.findOne({ _id: new ObjectId(q), domainId, uid });
+        if (doc) return isLessonSessionAbandoned(doc as SessionDoc) ? null : doc as SessionDoc;
+    }
+    const fallback = await SessionModel.get(domainId, uid);
+    return isLessonSessionAbandoned(fallback) ? null : fallback;
+}
+
+export function lessonSessionIdFromDoc(doc: SessionDoc | null | undefined): string {
+    return doc?._id?.toString() ?? '';
+}
+
+export function appendLessonSessionToUrl(url: string, sessionId?: string | null): string {
+    if (!sessionId) return url;
+    const sep = url.includes('?') ? '&' : '?';
+    return `${url}${sep}session=${encodeURIComponent(sessionId)}`;
+}
+
+
+/** UTC calendar day `YYYY-MM-DD` for a timestamp (default: now). */
+export function sessionUtcYmd(ts: number = Date.now()): string {
+    const d = new Date(ts);
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+export const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Effective UTC day for a daily-lesson queue (explicit `lessonQueueDay` or row `createdAt`). */
+export function effectiveLessonQueueYmd(doc: SessionDoc): string | null {
+    const raw = doc.lessonQueueDay;
+    if (typeof raw === 'string' && YMD_RE.test(raw.trim())) return raw.trim();
+    if (doc.createdAt) return sessionUtcYmd(new Date(doc.createdAt).getTime());
+    return null;
+}
+
+/**
+ * UTC day for learn daily frozen queue staleness.
+ * Prefer explicit `lessonQueueDay` only (do not mix with ObjectId day): the same Mongo session row is reused
+ * across days, so `_id` creation date would falsely keep `timed_out` after "Start" clears the queue.
+ * If `lessonQueueDay` is missing, fall back to min(createdAt, ObjectId) for legacy rows that still have a queue.
+ */
+export function dailyRunAnchorYmd(doc: SessionDoc): string | null {
+    const raw = doc.lessonQueueDay;
+    if (typeof raw === 'string' && YMD_RE.test(raw.trim())) return raw.trim();
+    const parts: string[] = [];
+    if (doc.createdAt) parts.push(sessionUtcYmd(new Date(doc.createdAt).getTime()));
+    try {
+        parts.push(sessionUtcYmd(doc._id.getTimestamp().getTime()));
+    } catch {
+        /* ignore */
+    }
+    if (!parts.length) return null;
+    return parts.reduce((a, b) => (a < b ? a : b));
+}
+
+/**
+ * UTC anchor day for a session row from creation only (min of `createdAt` and ObjectId time).
+ * Used for develop pool sessions (no `lessonQueueDay`).
+ */
+export function sessionRowCreatedAnchorYmd(doc: SessionDoc): string | null {
+    const parts: string[] = [];
+    if (doc.createdAt) parts.push(sessionUtcYmd(new Date(doc.createdAt).getTime()));
+    try {
+        parts.push(sessionUtcYmd(doc._id.getTimestamp().getTime()));
+    } catch {
+        /* ignore */
+    }
+    if (!parts.length) return null;
+    return parts.reduce((a, b) => (a < b ? a : b));
+}
+
+function isDevelopRoute(doc: SessionDoc): boolean {
+    return doc.appRoute === 'develop' || doc.route === 'develop';
+}
+
+/** Wall-clock end of develop editor session (aligned with login cookie `saved_expire_seconds`). */
+export function readDevelopSessionDeadlineMs(doc: SessionDoc | null | undefined): number | null {
+    if (!doc) return null;
+    const p = doc.progress as Record<string, unknown> | undefined;
+    if (!p || typeof p !== 'object') return null;
+    const v = p.developSessionDeadlineAt;
+    if (v instanceof Date) {
+        const t = v.getTime();
+        return Number.isNaN(t) ? null : t;
+    }
+    if (typeof v === 'string' && v.trim()) {
+        const t = new Date(v.trim()).getTime();
+        return Number.isNaN(t) ? null : t;
+    }
+    return null;
+}
+
+/** Persisted UTC-day timeout for daily develop sessions (written by {@link markStaleDailyDevelopSessionsTimedOutUtc}). */
+export function readDevelopDailyTimedOutMs(doc: SessionDoc | null | undefined): number | null {
+    if (!doc) return null;
+    const p = doc.progress as Record<string, unknown> | undefined;
+    if (!p || typeof p !== 'object') return null;
+    const v = p.developDailyTimedOutAt;
+    if (v instanceof Date) {
+        const t = v.getTime();
+        return Number.isNaN(t) ? null : t;
+    }
+    if (typeof v === 'string' && v.trim()) {
+        const t = new Date(v.trim()).getTime();
+        return Number.isNaN(t) ? null : t;
+    }
+    return null;
+}
+
+export function isDevelopSessionPastDeadline(doc: SessionDoc | null | undefined, now: number = Date.now()): boolean {
+    const t = readDevelopSessionDeadlineMs(doc);
+    return t != null && now > t;
+}
+
+/**
+ * Shared rule for learn daily + develop: the session is tied to a UTC calendar day and that day is strictly
+ * before `now`’s UTC date.
+ *
+ * - **Develop** (`appRoute`/`route` develop): anchor = {@link sessionRowCreatedAnchorYmd} (same idea as learn
+ *   legacy fallback when `lessonQueueDay` is absent).
+ * - **Learn daily** (`lessonMode === 'today'`): non-empty queue → {@link dailyRunAnchorYmd}; empty queue but
+ *   explicit `lessonQueueDay` → compare that string to today.
+ *
+ * Does not inspect abandoned / settled / finished; callers gate those first.
+ */
+export function isSessionStalePastUtcCalendarDay(doc: SessionDoc, now: number = Date.now()): boolean {
+    const todayYmd = sessionUtcYmd(now);
+    if (isDevelopRoute(doc)) {
+        const anchor = sessionRowCreatedAnchorYmd(doc);
+        return !!(anchor && anchor < todayYmd);
+    }
+    if (doc.lessonMode !== 'today') return false;
+    const q = doc.lessonCardQueue ?? [];
+    const qLen = q.length;
+    const rawDay = doc.lessonQueueDay;
+    const explicitQueueDay = typeof rawDay === 'string' && YMD_RE.test(rawDay.trim()) ? rawDay.trim() : null;
+    if (qLen > 0) {
+        const anchor = dailyRunAnchorYmd(doc);
+        return !!(anchor && anchor < todayYmd);
+    }
+    if (explicitQueueDay && explicitQueueDay < todayYmd) return true;
+    return false;
+}
+
+
+const ON_LESSON_RECENT_MS = 3 * 60 * 1000;
+const LEGACY_ACTIVITY_MS = 5 * 60 * 1000;
+
+export type SessionListRecordType = 'daily' | 'single_card' | 'single_node' | 'develop' | 'agent' | 'schedule' | 'mcp' | 'other';
+
+export type SessionListStatus =
+    | 'in_progress'
+    | 'paused'
+    | 'finished'
+    | 'timed_out'
+    | 'abandoned'
+    | 'active'
+    | 'detached';
+
+export function isLearnSessionRow(doc: SessionDoc): boolean {
+    if (doc.appRoute === 'develop' || doc.route === 'develop') return false;
+    return doc.appRoute === 'learn'
+        || doc.route === 'learn'
+        || !!(doc.lessonCardQueue && doc.lessonCardQueue.length)
+        || doc.lessonMode != null;
+}
+
+export function isDevelopSessionRow(doc: SessionDoc): boolean {
+    return doc.appRoute === 'develop' || doc.route === 'develop';
+}
+
+/** Develop editor: daily run-queue session. */
+export type DevelopSessionKind = 'daily';
+
+export function inferDevelopSessionKind(doc: SessionDoc): DevelopSessionKind {
+    return 'daily';
+}
+
+/** i18n key for session list / history label (not `session_record_type_daily` / learn wording). */
+export function developSessionRecordTypeLabelKey(doc: SessionDoc): string | null {
+    if (!isDevelopSessionRow(doc)) return null;
+    return 'session_record_type_develop_daily';
+}
+
+export function isAgentSessionRow(doc: SessionDoc): boolean {
+    return doc.appRoute === 'agent' || doc.route === 'agent';
+}
+
+export function isMcpSessionRow(doc: SessionDoc): boolean {
+    return doc.appRoute === 'mcp' || doc.route === 'mcp';
+}
+
+export function isScheduleAgentSessionRow(doc: SessionDoc): boolean {
+    return isAgentSessionRow(doc) && (
+        doc.context?.source === 'schedule'
+        || !!doc.context?.scheduleId
+        || !!doc.context?.scheduleRunId
+    );
+}
+
+export function getDevelopSessionSettledAt(doc: SessionDoc | null | undefined): Date | null {
+    const p = doc?.progress as Record<string, unknown> | undefined;
+    if (!p || typeof p !== 'object') return null;
+    const v = p.developSettledAt;
+    if (v instanceof Date) return v;
+    if (typeof v === 'string') {
+        const d = new Date(v);
+        return Number.isNaN(d.getTime()) ? null : d;
+    }
+    return null;
+}
+
+export function isDevelopSessionSettled(doc: SessionDoc | null | undefined): boolean {
+    return getDevelopSessionSettledAt(doc) != null;
+}
+
+export function deriveSessionRecordType(doc: SessionDoc): SessionListRecordType {
+    if (isDevelopSessionRow(doc)) {
+        return 'daily';
+    }
+    if (isScheduleAgentSessionRow(doc)) return 'schedule';
+    if (isAgentSessionRow(doc)) return 'agent';
+    if (isMcpSessionRow(doc)) return 'mcp';
+    if (!isLearnSessionRow(doc)) return 'other';
+    if (isLearnHomePlaceholderSession(doc)) return 'other';
+    const mode = doc.lessonMode ?? null;
+    if (mode === 'node') return 'single_node';
+    if (mode === 'today') return 'daily';
+    return 'single_card';
+}
+
+/** Display string `current/total` (1-based) for live list rows; null when no frozen card queue. */
+export function formatSessionCardProgress(doc: SessionDoc): string | null {
+    const q = doc.lessonCardQueue ?? [];
+    const qLen = q.length;
+    if (qLen <= 0) return null;
+    const idx = typeof doc.cardIndex === 'number' ? doc.cardIndex : 0;
+    const current = idx >= qLen ? qLen : idx + 1;
+    return `${current}/${qLen}`;
+}
+
+/** Session list progress column: develop run queue (completed/total); learn = card queue progress. */
+export function formatSessionProgressDisplay(doc: SessionDoc): string | null {
+    if (isDevelopSessionRow(doc)) {
+        // only show progress for daily sessions
+        const dr = doc.progress?.developRun as { completed?: unknown; total?: unknown } | undefined;
+        const total = Number(dr?.total);
+        const completed = Number(dr?.completed);
+        if (Number.isFinite(total) && total > 0 && Number.isFinite(completed) && completed >= 0 && completed <= total) {
+            return `${completed}/${total}`;
+        }
+        return null;
+    }
+    return formatSessionCardProgress(doc);
+}
+
+export type SessionKindUi = 'learn' | 'develop' | 'agent' | 'mcp';
+
+export function deriveSessionKind(doc: SessionDoc): SessionKindUi {
+    if (isDevelopSessionRow(doc)) return 'develop';
+    if (isAgentSessionRow(doc)) return 'agent';
+    if (isMcpSessionRow(doc)) return 'mcp';
+    return 'learn';
+}
+
+/**
+ * Slot of this answer record in its learn session: card index in `lessonCardQueue`, else order in `recordIds`.
+ * Example: third card in a six-card run → `3/6`.
+ */
+export function formatRecordProgressInSession(rd: SessionRecordDoc, sess: SessionDoc | null): string | null {
+    if (!sess) return null;
+    const q = sess.lessonCardQueue ?? [];
+    const cardId = String(rd.cardId);
+    const nodeId = String(rd.nodeId || '');
+    const dom = rd.domainId;
+    if (q.length > 0) {
+        const idx = q.findIndex(
+            (it) => String(it.cardId) === cardId
+                && String(it.nodeId || '') === nodeId
+                && (!it.domainId || it.domainId === dom),
+        );
+        if (idx >= 0) return `${idx + 1}/${q.length}`;
+    }
+    const rids = sess.recordIds ?? [];
+    if (rids.length > 0) {
+        const myHex = rd._id.toHexString();
+        const pos = rids.findIndex((id) => id.toHexString() === myHex);
+        if (pos >= 0) return `${pos + 1}/${rids.length}`;
+    }
+    return null;
+}
+
+export function deriveSessionLearnStatus(doc: SessionDoc, now = Date.now()): SessionListStatus {
+    if (isDevelopSessionRow(doc)) {
+        if (isDevelopSessionSettled(doc)) return 'finished';
+        if ((doc as { lessonAbandonedAt?: Date | null }).lessonAbandonedAt) return 'abandoned';
+        // 定时任务已写入 DB：每日开发 UTC 跨日超时
+        if (
+            inferDevelopSessionKind(doc) === 'daily'
+            && readDevelopDailyTimedOutMs(doc) != null
+        ) {
+            return 'timed_out';
+        }
+        // 推导规则（任务未跑或与 DB 一致）：每日开发锚定 UTC 日历日
+        if (inferDevelopSessionKind(doc) === 'daily' && isSessionStalePastUtcCalendarDay(doc, now)) {
+            return 'timed_out';
+        }
+        if (isDevelopSessionPastDeadline(doc, now)) return 'timed_out';
+        if (!readDevelopSessionDeadlineMs(doc) && isSessionStalePastUtcCalendarDay(doc, now)) return 'timed_out';
+        const t = doc.lastActivityAt ? new Date(doc.lastActivityAt).getTime() : 0;
+        if (now - t < ON_LESSON_RECENT_MS) return 'in_progress';
+        return 'paused';
+    }
+    if ((doc as { lessonAbandonedAt?: Date | null }).lessonAbandonedAt) {
+        return 'abandoned';
+    }
+    if (!isLearnSessionRow(doc)) {
+        const t = doc.lastActivityAt ? new Date(doc.lastActivityAt).getTime() : 0;
+        return now - t < LEGACY_ACTIVITY_MS ? 'active' : 'detached';
+    }
+
+    if (isLearnHomePlaceholderSession(doc)) {
+        const t = doc.lastActivityAt ? new Date(doc.lastActivityAt).getTime() : 0;
+        return now - t < LEGACY_ACTIVITY_MS ? 'active' : 'detached';
+    }
+
+    const q = doc.lessonCardQueue ?? [];
+    const qLen = q.length;
+    const idx = typeof doc.cardIndex === 'number' ? doc.cardIndex : 0;
+    const last = doc.lastActivityAt ? new Date(doc.lastActivityAt).getTime() : 0;
+    const onLearn = doc.route === 'learn';
+    const recentOnLesson = onLearn && now - last < ON_LESSON_RECENT_MS;
+
+    if (doc.lessonMode === 'card' && idx >= 1) return 'finished';
+
+    if (qLen > 0 && idx >= qLen) return 'finished';
+
+    const daily = doc.lessonMode === 'today';
+    if (daily && isSessionStalePastUtcCalendarDay(doc, now)) return 'timed_out';
+
+    if (recentOnLesson) return 'in_progress';
+
+    if (qLen > 0 && idx < qLen) return 'paused';
+
+    if (doc.appRoute === 'learn' || doc.route === 'learn' || doc.lessonMode != null) {
+        return 'paused';
+    }
+
+    const t = doc.lastActivityAt ? new Date(doc.lastActivityAt).getTime() : 0;
+    return now - t < LEGACY_ACTIVITY_MS ? 'active' : 'detached';
 }
 
 export async function apply(ctx: Context) {
