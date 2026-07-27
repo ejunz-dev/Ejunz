@@ -5,6 +5,8 @@ import { Schedule } from '../interface';
 import { Logger } from '../logger';
 import db from '../service/db';
 import type { WorkerService } from '../service/worker';
+import SessionModel from './session';
+import DevelopModel from './develop';
 
 const logger = new Logger('model/schedule');
 const coll = db.collection('schedule');
@@ -25,7 +27,20 @@ async function getFirst(query: Filter<Schedule>) {
     return null;
 }
 
+export async function settleStaleSessionsAtUtc0(): Promise<{
+    learn: number;
+    develop: number;
+    developDailyTimedOut: number;
+}> {
+    const learn = await SessionModel.settleStaleDailyLessonSessionsUtc();
+    const developDailyTimedOut = await DevelopModel.markStaleDailyDevelopSessionsTimedOutUtc();
+    const develop = await DevelopModel.settleStaleDevelopSessionPointersUtc();
+    return { learn, develop, developDailyTimedOut };
+}
+
 class ScheduleModel {
+    static settleStaleSessionsAtUtc0 = settleStaleSessionsAtUtc0;
+
     static coll = coll;
 
     static async add(task: Partial<Schedule> & { type: string }) {
@@ -71,9 +86,7 @@ export async function apply(ctx: Context) {
             await ctx.parallel('task/daily');
         });
         c.worker.addHandler('task.session.utc0', async () => {
-            const { settleStaleSessionsAtUtc0 } =
-                require('../lib/sessionDailySettle') as typeof import('../lib/sessionDailySettle');
-            const r = await settleStaleSessionsAtUtc0();
+            const r = await ScheduleModel.settleStaleSessionsAtUtc0();
             new Logger('task/session').info(
                 'settleStaleSessionsAtUtc0: learn=%d develop=%d developDailyTimedOut=%d',
                 r.learn,

@@ -770,6 +770,97 @@ export async function buildDevelopDomainWallPayload(
 }
 
 
+export async function markStaleDailyDevelopSessionsTimedOutUtc(): Promise<number> {
+    const now = Date.now();
+    const nowDate = new Date();
+    const { deleteUserCache } = require('./user');
+    let count = 0;
+    const cursor = SessionModel.coll.find({
+        appRoute: 'develop',
+        $and: [
+            { $or: [{ lessonAbandonedAt: null }, { lessonAbandonedAt: { $exists: false } }] },
+            DevelopModel.developSessionNotSettledMongoFilter,
+            DevelopModel.developDailySessionKindMongo,
+            {
+                $or: [
+                    { 'progress.developDailyTimedOutAt': { $exists: false } },
+                    { 'progress.developDailyTimedOutAt': null },
+                ],
+            },
+        ],
+    });
+    for await (const raw of cursor) {
+        const doc = raw as SessionDoc;
+        const staleByDay = isSessionStalePastUtcCalendarDay(doc, now);
+        const pastDeadline = isDevelopSessionPastDeadline(doc, now);
+        if (!staleByDay && !pastDeadline) continue;
+
+        const prevRaw = doc.progress;
+        const prev =
+            prevRaw && typeof prevRaw === 'object' && !Array.isArray(prevRaw)
+                ? { ...(prevRaw as Record<string, unknown>) }
+                : {};
+        if (prev.developDailyTimedOutAt != null) continue;
+
+        prev.developDailyTimedOutAt = nowDate;
+        await SessionModel.coll.updateOne(
+            { _id: doc._id },
+            {
+                $set: {
+                    progress: prev as SessionDoc['progress'],
+                    updatedAt: nowDate,
+                    lastActivityAt: nowDate,
+                },
+            },
+        );
+        deleteUserCache(doc.domainId);
+        const updated = await SessionModel.coll.findOne({ _id: doc._id });
+        if (updated) {
+            bus.broadcast('session/change', updated as SessionDoc);
+            count += 1;
+        }
+    }
+    return count;
+}
+
+export async function settleStaleDevelopSessionPointersUtc(): Promise<number> {
+    const now = Date.now();
+    const { deleteUserCache } = require('./user');
+    let cleared = 0;
+    const cursor = SessionModel.coll.find({
+        appRoute: 'develop',
+        $and: [
+            { $or: [{ lessonAbandonedAt: null }, { lessonAbandonedAt: { $exists: false } }] },
+            DevelopModel.developSessionNotSettledMongoFilter,
+            DevelopModel.developDailySessionKindMongo,
+        ],
+    });
+    for await (const raw of cursor) {
+        const doc = raw as SessionDoc;
+        if (!isSessionStalePastUtcCalendarDay(doc, now) && !isDevelopSessionPastDeadline(doc, now)) continue;
+        const sidHex = doc._id.toHexString();
+        const r = await DomainModel.collUser.updateMany(
+            {
+                domainId: doc.domainId,
+                uid: doc.uid,
+                developDailySessionId: sidHex,
+            },
+            {
+                $set: {
+                    developDailySessionId: null,
+                    developDailySessionDay: null,
+                },
+            },
+        );
+        const n = Number((r as { modifiedCount?: number }).modifiedCount ?? 0);
+        if (n > 0) {
+            deleteUserCache(doc.domainId);
+            cleared += n;
+        }
+    }
+    return cleared;
+}
+
 class DevelopModel {
     static coll = coll;
 
@@ -796,6 +887,8 @@ class DevelopModel {
     static clearDevelopSessionsAfterPoolChange = clearDevelopSessionsAfterPoolChange;
 
     static buildDevelopDomainWallPayload = buildDevelopDomainWallPayload;
+    static markStaleDailyDevelopSessionsTimedOutUtc = markStaleDailyDevelopSessionsTimedOutUtc;
+    static settleStaleDevelopSessionPointersUtc = settleStaleDevelopSessionPointersUtc;
 
     static DEVELOP_POOL_MAX = DEVELOP_POOL_MAX;
     static DEVELOP_SESSION_REUSE_MS = DEVELOP_SESSION_REUSE_MS;

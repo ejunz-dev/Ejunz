@@ -141,7 +141,62 @@ export function readDevelopSessionEditTotals(sess: SessionDoc | null | undefined
     };
 }
 
+export async function settleStaleDailyLessonSessionsUtc(): Promise<number> {
+    const now = Date.now();
+    const DomainModel = require('./domain').default;
+    const { deleteUserCache } = require('./user');
+    let cleared = 0;
+    const cursor = SessionModel.coll.find({
+        lessonMode: 'today',
+        'lessonCardQueue.0': { $exists: true },
+    });
+    const nowDate = new Date();
+    for await (const raw of cursor) {
+        const doc = raw as SessionDoc;
+        const q = doc.lessonCardQueue ?? [];
+        const idx = typeof doc.cardIndex === 'number' ? doc.cardIndex : 0;
+        if (idx >= q.length) continue;
+        if (!isSessionStalePastUtcCalendarDay(doc, now)) continue;
+        const sidHex = doc._id.toHexString();
+        await SessionModel.coll.updateOne(
+            { _id: doc._id },
+            {
+                $set: {
+                    lessonMode: null,
+                    lessonCardQueue: [],
+                    cardIndex: null,
+                    lessonQueueDay: null,
+                    updatedAt: nowDate,
+                    lastActivityAt: nowDate,
+                },
+            },
+        );
+        await DomainModel.collUser.updateMany(
+            {
+                domainId: doc.domainId,
+                uid: doc.uid,
+                learnDailySessionId: sidHex,
+            },
+            {
+                $set: {
+                    learnDailySessionId: null,
+                    learnDailySessionDay: null,
+                },
+            },
+        );
+        deleteUserCache(doc.domainId);
+        const updated = await SessionModel.coll.findOne({ _id: doc._id });
+        if (updated) {
+            bus.broadcast('session/change', updated as SessionDoc);
+            cleared += 1;
+        }
+    }
+    return cleared;
+}
+
 export default class SessionModel {
+    static settleStaleDailyLessonSessionsUtc = settleStaleDailyLessonSessionsUtc;
+
     static coll = db.collection('session');
 
     static activeCutoff(minutes: number) {
