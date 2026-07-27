@@ -230,25 +230,22 @@ const page = new NamedPage('base_card_list', () => {
   
   // 加载当前节点的所有卡片（分批加载并预渲染内容）
   async function loadAllNodeCards() {
-    if (!base.bid && !base.docId) {
+    if (!base.docId) {
       console.warn('Base data not found');
       return;
     }
-    
+
     if (!nodeId) {
       console.warn('Node ID not found');
       return;
     }
-    
+
     try {
       const domainId = window.UiContext?.domainId || 'system';
       const docId = base.docId;
-      const bid = base.bid;
-      
+
       // 先获取卡片总数（通过 API 获取）
-      const cardApiUrl = docId
-        ? `/d/${domainId}/base/${docId}/card?nodeId=${encodeURIComponent(nodeId)}`
-        : `/d/${domainId}/base/bid/${bid}/card?nodeId=${encodeURIComponent(nodeId)}`;
+      const cardApiUrl = `/d/${domainId}/base/${docId}/card?nodeId=${encodeURIComponent(nodeId)}`;
       
       const cardResponse = await request.get(cardApiUrl);
       const allNodeCards = cardResponse.cards || [];
@@ -514,15 +511,11 @@ const page = new NamedPage('base_card_list', () => {
     if (editBtn) {
       const domainId = window.UiContext?.domainId || 'system';
       const docId = base.docId;
-      const bid = base.bid;
-      
+
       let editUrl;
-      if (docId) {
-        editUrl = `/d/${domainId}/base/${docId}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit`;
-      } else if (bid) {
-        editUrl = `/d/${domainId}/base/bid/${bid}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit`;
-      }
-      
+      const linkKey = base.slug || base.docId;
+      editUrl = `/d/${domainId}/base/${linkKey}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit`;
+
       if (editUrl) {
         editBtn.href = editUrl;
         editBtn.style.display = 'inline-block';

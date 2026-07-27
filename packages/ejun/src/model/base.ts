@@ -220,7 +220,6 @@ export class BaseModel {
         parentId?: ObjectId,
         domainName?: string,
         forceNew?: boolean,
-        bid?: string,
         tag?: string[],
         mapDocType: MindMapDocType = document.TYPE_BASE,
         rootNodeData?: Partial<BaseNode>,
@@ -259,7 +258,6 @@ export class BaseModel {
             ),
             content: content || '',
             owner,
-            bid: bid ? String(bid).trim() : undefined,
             nodes: [rootNode],
             edges: [],
             layout: {
@@ -330,6 +328,7 @@ export class BaseModel {
         if (s.length < 1) return 'Slug is required';
         if (s.length > 80) return 'Slug must be 80 characters or less';
         if (!/^[a-z0-9._-]+$/.test(s)) return 'Slug can only contain lowercase letters (a-z), digits (0-9), dots (.), underscores (_), and hyphens (-)';
+        if (/^\d+$/.test(s)) return 'Slug cannot be entirely numeric to avoid conflict with numeric IDs';
         if (/^[._-]/.test(s)) return 'Slug cannot start with a dot, underscore, or hyphen';
         if (/[._-]$/.test(s)) return 'Slug cannot end with a dot, underscore, or hyphen';
         if (/[._-]{2,}/.test(s)) return 'Slug cannot contain consecutive dots, underscores, or hyphens';
@@ -339,14 +338,20 @@ export class BaseModel {
     /**
      * Sanitize arbitrary text into a valid slug (for suggestions).
      */
-    static slugify(raw: string): string {
-        return String(raw || '')
+    /**
+     * Sanitize arbitrary text into a valid slug (for suggestions).
+     * Returns undefined if the result would be purely numeric (conflicts with docId).
+     */
+    static slugify(raw: string): string | undefined {
+        const s = String(raw || '')
             .trim()
             .toLowerCase()
             .replace(/[^a-z0-9._-]+/g, '-')
             .replace(/^-+|-+$/g, '')
             .replace(/[._-]{2,}/g, '-')
             .slice(0, 80);
+        if (!s || /^\d+$/.test(s)) return undefined;
+        return s;
     }
 
     static async getBySlug(domainId: string, slug: string): Promise<BaseDoc | null> {
@@ -384,7 +389,7 @@ export class BaseModel {
     static async update(
         domainId: string,
         docId: number,
-        updates: Partial<Pick<BaseDoc, 'title' | 'content' | 'layout' | 'viewport' | 'theme' | 'files' | 'parentId' | 'domainPosition' | 'tag' | 'bid' | 'slug'>>,
+        updates: Partial<Pick<BaseDoc, 'title' | 'content' | 'layout' | 'viewport' | 'theme' | 'files' | 'parentId' | 'domainPosition' | 'tag' | 'slug'>>,
         mapDocType: MindMapDocType = document.TYPE_BASE,
     ): Promise<void> {
         const updatePayload: any = {
@@ -392,10 +397,6 @@ export class BaseModel {
             updateAt: new Date(),
         };
         const unsetPayload: Record<string, 1> = {};
-        if ('bid' in updates && updates.bid === undefined) {
-            delete updatePayload.bid;
-            unsetPayload.bid = 1;
-        }
         if (updates.tag) {
             updatePayload.tag = Array.isArray(updates.tag) ? updates.tag : [updates.tag];
         }

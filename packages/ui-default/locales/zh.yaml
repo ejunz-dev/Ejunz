@@ -2051,5 +2051,6 @@ Date: 日期
 'Slug cannot start with a dot, underscore, or hyphen': '路径标识不能以点号、下划线或连字符开头'
 'Slug cannot end with a dot, underscore, or hyphen': '路径标识不能以点号、下划线或连字符结尾'
 'Slug cannot contain consecutive dots, underscores, or hyphens': '路径标识不能包含连续的点号、下划线或连字符'
+'Slug cannot be entirely numeric to avoid conflict with numeric IDs': '路径标识不能为纯数字，以免与数字 ID 冲突'
 'Unable to validate slug': '无法校验 slug'
 'Checking availability…': '正在检查可用性…'

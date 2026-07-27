@@ -361,7 +361,6 @@ export interface BaseDoc {
     views: number;
     ip?: string;
     rpid?: number;
-    bid?: string | number;
     slug?: string;
     githubRepo?: string;
     parentId?: ObjectId;

@@ -1247,7 +1247,7 @@ export class AgentDetailHandler extends Handler {
                 enabledBaseLibrariesForDisplay.push({
                     docId: bdoc.docId,
                     title: (bdoc.title && String(bdoc.title).trim()) || `Base #${bdoc.docId}`,
-                    bid: (bdoc.bid && String(bdoc.bid).trim()) || '',
+                    slug: (bdoc.slug bid: (bdoc.bid && String(bdoc.bid).trim()) || ''bid: (bdoc.bid && String(bdoc.bid).trim()) || '' String(bdoc.slug).trim()) || '',
                 });
             } else {
                 enabledBaseLibrariesForDisplay.push({
@@ -1360,7 +1360,7 @@ export class AgentBasesEditHandler extends Handler {
         const basesForUi = basesRaw.map((bd) => ({
             docId: bd.docId,
             title: (bd.title && String(bd.title).trim()) || `Base #${bd.docId}`,
-            bid: (bd.bid && String(bd.bid).trim()) || '',
+            slug: (bd.slug bid: (bd.bid && String(bd.bid).trim()) || ''bid: (bd.bid && String(bd.bid).trim()) || '' String(bd.slug).trim()) || '',
         }));
 
         const bb = normalizeAgentBaseBindings(adoc)?.[0];

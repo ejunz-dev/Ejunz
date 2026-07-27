@@ -324,10 +324,7 @@ async function resolveBaseByDocIdOrBid(domainId: string, docIdOrBid: string): Pr
         const byDocId = await BaseModel.get(domainId, Number(key));
         if (byDocId) return byDocId;
     }
-    // 2) Try bid (manual identifier)
-    const byBid = await BaseModel.getBybid(domainId, key);
-    if (byBid) return byBid;
-    // 3) Try slug (auto-generated from title)
+    // 2) Try slug (path identifier)
     return BaseModel.getBySlug(domainId, key);
 }
 
@@ -1161,13 +1158,11 @@ class BaseCreateHandler extends Handler {
     }
 
     @param('title', Types.String)
-    @param('bid', Types.String, true)
     @param('slug', Types.String, true)
     @post('tag', Types.Content, true, null, parseCategory)
     async post(
         domainId: string,
         title: string,
-        bid?: string,
         slug?: string,
         tag: string[] = [],
     ) {
@@ -1180,14 +1175,6 @@ class BaseCreateHandler extends Handler {
             throw new ValidationError('Slug is required');
         }
 
-        const finalBid = (bid || '').trim();
-        if (finalBid) {
-            const existed = await BaseModel.getBybid(actualDomainId, finalBid);
-            if (existed) {
-                throw new ValidationError(this.translate('Base bid already exists: {0}').replace('{0}', finalBid));
-            }
-        }
-
         const { docId } = await BaseModel.create(
             actualDomainId,
             this.user._id,
@@ -1198,7 +1185,6 @@ class BaseCreateHandler extends Handler {
             undefined,
             this.domain.name,
             true,
-            finalBid || undefined,
             tag?.length ? tag : undefined,
             document.TYPE_BASE,
             undefined,
@@ -1234,9 +1220,8 @@ class BaseCreateHandler extends Handler {
             
         }
 
-        this.response.body = { docId, bid: finalBid || undefined };
-        // Prefer slug for the redirect URL
-        const redirectKey = createdBase?.slug || finalBid || docId.toString();
+        this.response.body = { docId, slug: finalSlug };
+        const redirectKey = createdBase?.slug || docId.toString();
         this.response.redirect = this.url('base_detail', { docId: String(redirectKey) });
     }
 }
@@ -1288,7 +1273,6 @@ class BaseEditHandler extends Handler {
     @param('docId', Types.String)
     @param('title', Types.String, true)
     @param('content', Types.String, true)
-    @param('bid', Types.String, true)
     @param('slug', Types.String, true)
     @param('parentId', Types.ObjectId, true)
     @post('domainPosition', Types.Any, true)
@@ -1298,7 +1282,6 @@ class BaseEditHandler extends Handler {
         docId: string,
         title?: string,
         content?: string,
-        bid?: string,
         slug?: string,
         parentId?: ObjectId,
         domainPosition?: { x: number; y: number },
@@ -1311,22 +1294,10 @@ class BaseEditHandler extends Handler {
         if (parentId !== undefined) updates.parentId = parentId;
         if (domainPosition !== undefined) updates.domainPosition = domainPosition;
         if (tag !== undefined) updates.tag = tag;
-        if (bid !== undefined) {
-            const finalBid = String(bid).trim();
-            if (finalBid) {
-                const existed = await BaseModel.getBybid(domainId, finalBid);
-                if (existed && existed.docId !== baseDoc.docId) {
-                    throw new ValidationError(this.translate('Base bid already exists: {0}').replace('{0}', finalBid));
-                }
-                updates.bid = finalBid;
-            } else {
-                updates.bid = undefined;
-            }
-        }
         if (slug !== undefined) {
             const finalSlug = String(slug).trim();
             if (finalSlug) {
-                updates.slug = BaseModel.slugify(slug);
+                updates.slug = BaseModel.slugify(slug) || finalSlug;
             } else {
                 updates.slug = undefined;
             }
@@ -1341,7 +1312,7 @@ class BaseEditHandler extends Handler {
             return;
         }
         const finalSlug = ('slug' in updates) ? (updates.slug || undefined) : baseDoc.slug;
-        const outlineDocId = finalSlug || baseDoc.bid || baseDoc.docId;
+        const outlineDocId = finalSlug || baseDoc.docId;
         this.response.redirect = this.url('base_detail', {
             docId: String(outlineDocId),
         });
@@ -5475,7 +5446,7 @@ class BaseCommitHandler extends Handler {
 
             
             (this.ctx.emit as any)('base/update', base.docId, this.user._id, this.user.uname, 'git_commit', { message: customMessage?.trim() || '' });
-            (this.ctx.emit as any)('base/git/status/update', base.docId, base.bid);
+            (this.ctx.emit as any)('base/git/status/update', base.docId, base.slug);
 
             this.response.body = { ok: true, message: 'Changes committed successfully' };
         } catch (err: any) {
@@ -6438,7 +6409,6 @@ class BaseMigrateNodeToNewHandler extends Handler {
         const sourceDocId = readOptionalRequestBaseDocId(this.request);
         const nodeId = typeof body.nodeId === 'string' ? body.nodeId.trim() : '';
         const title = typeof body.title === 'string' ? body.title.trim() : '';
-        const bidRaw = typeof body.bid === 'string' ? body.bid.trim() : '';
         const slugRaw = typeof body.slug === 'string' ? body.slug.trim() : '';
 
         if (!sourceDocId || !nodeId) {
@@ -6456,14 +6426,6 @@ class BaseMigrateNodeToNewHandler extends Handler {
             throw new NotFoundError('Base not found');
         }
         if (!this.user.own(sourceBase)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
-
-        const finalBid = bidRaw;
-        if (finalBid) {
-            const existed = await BaseModel.getBybid(actualDomainId, finalBid);
-            if (existed) {
-                throw new ValidationError(this.translate('Base bid already exists: {0}').replace('{0}', finalBid));
-            }
-        }
 
         const nodes = sourceBase.nodes || [];
         const edges = sourceBase.edges || [];
@@ -6487,7 +6449,6 @@ class BaseMigrateNodeToNewHandler extends Handler {
             undefined,
             this.domain.name,
             true,
-            finalBid || undefined,
             undefined,
             document.TYPE_BASE,
             undefined,

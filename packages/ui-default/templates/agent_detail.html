@@ -100,7 +100,7 @@
             {% for row in enabledBaseLibrariesForDisplay %}
             <li>
               <strong>{{ row.title | e }}</strong>
-              {% if row.bid %}<span class="supplementary"> ({{ row.bid }})</span>{% endif %}
+              {% if row.slug %}<span class="supplementary"> ({{ row.slug }})</span>{% endif %}
               <span class="supplementary"> #{{ row.docId }}</span>
             </li>
             {% endfor %}

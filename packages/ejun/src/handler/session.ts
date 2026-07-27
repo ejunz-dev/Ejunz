@@ -77,7 +77,7 @@ async function buildSessionListRow(
             if (Number.isFinite(baseDocId) && baseDocId > 0) {
                 const baseDoc = await BaseModel.get(doc.domainId, baseDocId);
                 if (baseDoc) {
-                    const bid = (baseDoc as { bid?: string }).bid;
+                    const bid = (baseDoc as { slug?: string }).slug || String((baseDoc as any).docId);
                     docSeg = bid && String(bid).trim() ? String(bid).trim() : String(baseDoc.docId);
                 }
             }

@@ -493,7 +493,7 @@ export default class McpService extends Service {
         if (!baseDocId) return undefined;
         try {
             const base = await BaseModel.get(domainId, baseDocId);
-            const bid = (base as any)?.bid;
+            const bid = (base as any)?.slug || (base as any)?.docId;
             if (bid && String(bid).trim()) return String(bid).trim();
         } catch { /* fall back to docId */ }
         return String(baseDocId);
