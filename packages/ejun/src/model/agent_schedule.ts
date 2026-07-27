@@ -3,12 +3,11 @@ import { Filter, ObjectId } from 'mongodb';
 import type { Context } from '../context';
 import { STATUS } from './builtin';
 import bus from '../service/bus';
-import Agent from './agent';
+import AgentModel from './agent';
 import ScheduleModel from './schedule';
 import RecordModel from './record';
 import db from '../service/db';
 import { Logger } from '../logger';
-import { enqueueAgentTask } from '../lib/agentTaskQueue';
 
 const logger = new Logger('model/agent_schedule');
 const coll = db.collection('agent_schedule');
@@ -201,7 +200,7 @@ export default class AgentScheduleModel {
         if (input.scheduleType !== 'once' && input.scheduleType !== 'interval') throw new Error('scheduleType must be once or interval');
         const agentId = String(input.agentId || '').trim();
         if (!agentId) throw new Error('agentId is required when schedule_create is not called by an agent');
-        const adoc = await Agent.get(domainId, agentId, Agent.PROJECTION_PUBLIC);
+        const adoc = await AgentModel.get(domainId, agentId, AgentModel.PROJECTION_PUBLIC);
         if (!adoc) throw new Error(`Agent not found: ${agentId}`);
         const now = new Date();
         const doc: AgentScheduleDoc = {
@@ -262,7 +261,7 @@ export default class AgentScheduleModel {
         if (!cur || cur.deletedAt || cur.endedAt) throw new Error('Schedule not found');
         const next: AgentScheduleDoc = { ...cur };
         if (patch.agentId !== undefined) {
-            const adoc = await Agent.get(domainId, patch.agentId, Agent.PROJECTION_PUBLIC);
+            const adoc = await AgentModel.get(domainId, patch.agentId, AgentModel.PROJECTION_PUBLIC);
             if (!adoc) throw new Error(`Agent not found: ${patch.agentId}`);
             next.agentId = adoc.aid || adoc.docId.toString();
         }
@@ -482,7 +481,7 @@ export default class AgentScheduleModel {
         }
         const run = await this.createRun(doc, plannedAt, 'queued');
         try {
-            const result = await enqueueAgentTask({
+            const result = await AgentModel.enqueueAgentTask({
                 domainId: doc.domainId,
                 uid: doc.uid,
                 agentId: doc.agentId,

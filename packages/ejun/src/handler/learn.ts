@@ -73,7 +73,7 @@ import {
     summarizeRecordDoc,
 } from './record';
 import { sessionDocToWire } from './session';
-import { buildLearnDomainWallPayload } from '../lib/learnDomainWall';
+import { buildLearnDomainWallPayload } from '../model/learn';
 
 function utcLessonQueueDayString(): string {
     return moment.utc().format('YYYY-MM-DD');
@@ -3007,7 +3007,6 @@ class LearnHandler extends Handler {
         const untilLearnWallYmd = moment.utc().format('YYYY-MM-DD');
         const domainNameLearnWall = (this as any).domain?.name || finalDomainId;
         const learnWall = await buildLearnDomainWallPayload(
-            this.ctx.db.db,
             finalDomainId,
             domainNameLearnWall,
             this.user._id,
