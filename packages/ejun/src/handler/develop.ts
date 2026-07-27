@@ -17,21 +17,16 @@ import SessionModel, {
 import { readDevelopSessionDeadlineMs } from '../model/session';
 import { buildBaseEditorPageBody } from './base';
 import type { BaseDoc } from '../interface';
-import { developBaseKey, developTodayUtcYmd, getDevelopDailyMany } from '../lib/developBranchDaily';
-import { appendUserCheckinDay, countConsecutiveCheckinDays } from '../model/domain';
-import {
+import DevelopModel, {
+    developBaseKey,
+    developTodayUtcYmd,
     developPoolHasAnyGoal,
     developRowGoalsMet,
     developRowHasDailyGoal,
     normalizeDevelopPool,
     type DevelopPoolEntryWire,
-} from '../lib/developPoolShared';
-import { buildDevelopDomainWallPayload } from '../lib/developDomainWall';
-import {
-    buildTodayDevelopResumeFields,
-    clearDevelopSessionsAfterPoolChange,
-    hasDevelopSessionInProgressOrPaused,
-} from '../lib/developSessionResume';
+} from '../model/develop';
+import { appendUserCheckinDay, countConsecutiveCheckinDays } from '../model/domain';
 import {
     deriveSessionLearnStatus,
     deriveSessionRecordType,
@@ -239,8 +234,7 @@ class DevelopHandler extends Handler {
         }));
 
         const date = developTodayUtcYmd();
-        const stats = await getDevelopDailyMany(
-            this.ctx.db.db,
+        const stats = await DevelopModel.getDevelopDailyMany(
             finalDomainId,
             this.user._id,
             date,
@@ -282,8 +276,7 @@ class DevelopHandler extends Handler {
         const developCheckedInToday = developActivityDates.includes(date);
         const developAllGoalsMet = allDevelopGoalsMet(rows);
 
-        const resume = await buildTodayDevelopResumeFields(
-            this.ctx.db.db,
+        const resume = await DevelopModel.buildTodayDevelopResumeFields(
             finalDomainId,
             this.user._id,
             this.user.priv,
@@ -294,15 +287,14 @@ class DevelopHandler extends Handler {
             },
         );
 
-        const developContinueDevelop = await hasDevelopSessionInProgressOrPaused(
+        const developContinueDevelop = await DevelopModel.hasDevelopSessionInProgressOrPaused(
             finalDomainId,
             this.user._id,
         );
 
         const sinceWallYmd = moment.utc().subtract(364, 'days').format('YYYY-MM-DD');
         const domainNameWall = (this as any).domain?.name || finalDomainId;
-        const developWall = await buildDevelopDomainWallPayload(
-            this.ctx.db.db,
+        const developWall = await DevelopModel.buildDevelopDomainWallPayload(
             finalDomainId,
             domainNameWall,
             this.user._id,
@@ -350,8 +342,7 @@ class DevelopHandler extends Handler {
             throw new ValidationError(this.translate('Develop check-in need goals set'));
         }
 
-        const stats = await getDevelopDailyMany(
-            this.ctx.db.db,
+        const stats = await DevelopModel.getDevelopDailyMany(
             finalDomainId,
             this.user._id,
             todayYmd,
@@ -392,7 +383,7 @@ class DevelopHandler extends Handler {
                 throw new ValidationError(this.translate('Develop unknown base'));
             }
         }
-        await clearDevelopSessionsAfterPoolChange(finalDomainId, this.user._id);
+        await DevelopModel.clearDevelopSessionsAfterPoolChange(finalDomainId, this.user._id);
         await DomainModel.setUserInDomain(finalDomainId, this.user._id, { developPool: pool });
         this.response.body = { success: true, pool };
     }

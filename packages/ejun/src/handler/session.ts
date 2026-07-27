@@ -10,16 +10,7 @@ import {
     subscribe,
     Types,
 } from '../service/server';
-import {
-    clearDevelopDailySessionPointer,
-    DEVELOP_SESSION_REUSE_MS,
-    developSessionNotSettledMongoFilter,
-} from '../lib/developSessionResume';
-import {
-    computeDevelopRunQueueProgress,
-    developRunTerminalTotals,
-    loadUserDevelopPoolByMode,
-} from '../lib/developPoolShared';
+import DevelopModel from '../model/develop';
 import { readDevelopSessionDeadlineMs } from '../model/session';
 import { PERM, PRIV } from '../model/builtin';
 import { BaseModel } from '../model/base';
@@ -207,7 +198,7 @@ class DevelopSessionStartHandler extends Handler {
         const cardId = typeof body.cardId === 'string' ? body.cardId.trim() : '';
 
         const poolMode = 'base' as const;
-        const fullPool = await loadUserDevelopPoolByMode(finalDomainId, this.user._id, this.user.priv, poolMode);
+        const fullPool = await DevelopModel.loadUserDevelopPoolByMode(finalDomainId, this.user._id, this.user.priv, poolMode);
         if (!nodeId) {
             if (!fullPool.length) {
                 throw new ValidationError(this.translate('Develop run queue empty today'));
@@ -217,7 +208,7 @@ class DevelopSessionStartHandler extends Handler {
             }
         }
 
-        const cutoff = new Date(Date.now() - DEVELOP_SESSION_REUSE_MS);
+        const cutoff = new Date(Date.now() - DevelopModel.DEVELOP_SESSION_REUSE_MS);
         const emptyNodeId = {
             $or: [
                 { nodeId: { $exists: false } },
@@ -233,7 +224,7 @@ class DevelopSessionStartHandler extends Handler {
             lastActivityAt: { $gte: cutoff },
             $and: [
                 { $or: [{ lessonAbandonedAt: null }, { lessonAbandonedAt: { $exists: false } }] },
-                developSessionNotSettledMongoFilter,
+                DevelopModel.developSessionNotSettledMongoFilter,
             ],
         };
         (reuseFilter.$and as unknown[]).push({ developMapDocType: mapDocType });
@@ -264,7 +255,7 @@ class DevelopSessionStartHandler extends Handler {
         const existing = recent[0] as SessionDoc | undefined;
 
         const inPool = fullPool.some((e) => e.baseDocId === baseDocId);
-        const run = inPool ? computeDevelopRunQueueProgress(fullPool, baseDocId) : null;
+        const run = inPool ? DevelopModel.computeDevelopRunQueueProgress(fullPool, baseDocId) : null;
 
         const ttlSecRaw = Number(system.get('session.saved_expire_seconds'));
         const ttlSec = Number.isFinite(ttlSecRaw) && ttlSecRaw > 0 ? ttlSecRaw : 3600 * 24 * 30;
@@ -349,14 +340,14 @@ class DevelopSessionSettleHandler extends Handler {
             : {};
         prev.developSettledAt = new Date();
         const settleMode = 'base' as const;
-        const fullPool = await loadUserDevelopPoolByMode(finalDomainId, this.user._id, this.user.priv, settleMode);
-        const term = developRunTerminalTotals(sess.progress, fullPool.length);
+        const fullPool = await DevelopModel.loadUserDevelopPoolByMode(finalDomainId, this.user._id, this.user.priv, settleMode);
+        const term = DevelopModel.developRunTerminalTotals(sess.progress, fullPool.length);
         if (term) prev.developRun = term;
         await SessionModel.touchById(finalDomainId, this.user._id, sess._id, { progress: prev });
 
         const dudoc = await DomainModel.getDomainUser(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
         const ptr = typeof dudoc?.developDailySessionId === 'string' ? dudoc.developDailySessionId.trim() : '';
-        if (ptr === sessionHex) await clearDevelopDailySessionPointer(finalDomainId, this.user._id);
+        if (ptr === sessionHex) await DevelopModel.clearDevelopDailySessionPointer(finalDomainId, this.user._id);
 
         const histBase = this.url('develop_session_history', { domainId: finalDomainId });
         const sep = histBase.includes('?') ? '&' : '?';

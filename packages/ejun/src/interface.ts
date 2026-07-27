@@ -1304,7 +1304,7 @@ declare module './service/db' {
         'learn_progress': any;
         'learn_result': any;
         'learn_consumption_stats': any;
-        'develop_branch_daily': any;
+        'develop_branch_daily': import('./model/develop').DevelopBranchDailyDoc;
         /** Per-domain user lesson/live progress (Learn). */
         'session': SessionDoc;
         'session_record': import('./model/record').SessionRecordDoc;
@@ -1321,6 +1321,7 @@ export interface Model {
     discussion: typeof import('./model/discussion'),
     document: Omit<typeof import('./model/document'), 'apply'>,
     domain: typeof import('./model/domain').default,
+    develop: typeof import('./model/develop').default,
     agent: typeof import('./model/agent').default,
     message: typeof import('./model/message').default,
     opcount: typeof import('./model/opcount'),
