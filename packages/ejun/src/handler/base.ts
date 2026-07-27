@@ -319,11 +319,16 @@ async function resolveBaseDocFromGithubRequest(
 async function resolveBaseByDocIdOrBid(domainId: string, docIdOrBid: string): Promise<BaseDoc | null> {
     const key = String(docIdOrBid || '').trim();
     if (!key) return null;
+    // 1) Try docId (numeric)
     if (/^\d+$/.test(key)) {
         const byDocId = await BaseModel.get(domainId, Number(key));
         if (byDocId) return byDocId;
     }
-    return BaseModel.getBybid(domainId, key);
+    // 2) Try bid (manual identifier)
+    const byBid = await BaseModel.getBybid(domainId, key);
+    if (byBid) return byBid;
+    // 3) Try slug (auto-generated from title)
+    return BaseModel.getBySlug(domainId, key);
 }
 
 
@@ -766,19 +771,16 @@ function getSyntheticRootTextForFileImport(base: BaseDoc): string {
 class BaseStudyHandler extends Handler {
     base?: BaseDoc;
 
-    @param('docId', Types.PositiveInt, true)
-    @param('bid', Types.PositiveInt, true)
-    async _prepare(domainId: string, docId: number, bid: number) {
+    @param('docId', Types.String, true)
+    async _prepare(domainId: string, docId?: string) {
         if (docId) {
-            this.base = await BaseModel.get(domainId, docId);
-        } else if (bid) {
-            this.base = await BaseModel.getBybid(domainId, bid);
+            this.base = await resolveBaseByDocIdOrBid(domainId, docId);
         }
         if (!this.base) throw new NotFoundError('Base not found');
     }
 
-    @param('docId', Types.PositiveInt, true)
-    async get(domainId: string, docId: number) {
+    @param('docId', Types.String, true)
+    async get(domainId: string, docId?: string) {
         const nodes = this.base!.nodes || [];
         const edges = this.base!.edges || [];
 
@@ -1160,16 +1162,23 @@ class BaseCreateHandler extends Handler {
 
     @param('title', Types.String)
     @param('bid', Types.String, true)
+    @param('slug', Types.String, true)
     @post('tag', Types.Content, true, null, parseCategory)
     async post(
         domainId: string,
         title: string,
         bid?: string,
+        slug?: string,
         tag: string[] = [],
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        
+
         const actualDomainId = this.args.domainId || domainId || 'system';
+
+        const finalSlug = BaseModel.slugify(slug || '') || (slug || '').trim();
+        if (!finalSlug) {
+            throw new ValidationError('Slug is required');
+        }
 
         const finalBid = (bid || '').trim();
         if (finalBid) {
@@ -1178,7 +1187,7 @@ class BaseCreateHandler extends Handler {
                 throw new ValidationError(this.translate('Base bid already exists: {0}').replace('{0}', finalBid));
             }
         }
-        
+
         const { docId } = await BaseModel.create(
             actualDomainId,
             this.user._id,
@@ -1191,6 +1200,9 @@ class BaseCreateHandler extends Handler {
             true,
             finalBid || undefined,
             tag?.length ? tag : undefined,
+            document.TYPE_BASE,
+            undefined,
+            { slug: finalSlug },
         );
 
         let createdBase = await BaseModel.get(actualDomainId, docId);
@@ -1223,7 +1235,9 @@ class BaseCreateHandler extends Handler {
         }
 
         this.response.body = { docId, bid: finalBid || undefined };
-        this.response.redirect = this.url('base_detail', { docId: finalBid || docId.toString() });
+        // Prefer slug for the redirect URL
+        const redirectKey = createdBase?.slug || finalBid || docId.toString();
+        this.response.redirect = this.url('base_detail', { docId: String(redirectKey) });
     }
 }
 
@@ -1275,6 +1289,7 @@ class BaseEditHandler extends Handler {
     @param('title', Types.String, true)
     @param('content', Types.String, true)
     @param('bid', Types.String, true)
+    @param('slug', Types.String, true)
     @param('parentId', Types.ObjectId, true)
     @post('domainPosition', Types.Any, true)
     @post('tag', Types.Content, true, null, parseCategory)
@@ -1284,6 +1299,7 @@ class BaseEditHandler extends Handler {
         title?: string,
         content?: string,
         bid?: string,
+        slug?: string,
         parentId?: ObjectId,
         domainPosition?: { x: number; y: number },
         tag?: string[],
@@ -1307,6 +1323,14 @@ class BaseEditHandler extends Handler {
                 updates.bid = undefined;
             }
         }
+        if (slug !== undefined) {
+            const finalSlug = String(slug).trim();
+            if (finalSlug) {
+                updates.slug = BaseModel.slugify(slug);
+            } else {
+                updates.slug = undefined;
+            }
+        }
 
         await BaseModel.update(domainId, baseDoc.docId, updates);
         this.response.body = { docId: baseDoc.docId };
@@ -1316,7 +1340,8 @@ class BaseEditHandler extends Handler {
             this.response.redirect = returnUrl;
             return;
         }
-        const outlineDocId = baseDoc.bid || baseDoc.docId;
+        const finalSlug = ('slug' in updates) ? (updates.slug || undefined) : baseDoc.slug;
+        const outlineDocId = finalSlug || baseDoc.bid || baseDoc.docId;
         this.response.redirect = this.url('base_detail', {
             docId: String(outlineDocId),
         });
@@ -2229,7 +2254,8 @@ class BaseCreateNewHandler extends Handler {
             this.domain.name,
             true
         );
-        const target = this.url('base_detail', { docId });
+        const createdBase = await BaseModel.get(did, docId);
+        const target = this.url('base_detail', { docId: String(createdBase?.slug || docId) });
         this.response.redirect = target;
     }
 }
@@ -6413,12 +6439,16 @@ class BaseMigrateNodeToNewHandler extends Handler {
         const nodeId = typeof body.nodeId === 'string' ? body.nodeId.trim() : '';
         const title = typeof body.title === 'string' ? body.title.trim() : '';
         const bidRaw = typeof body.bid === 'string' ? body.bid.trim() : '';
+        const slugRaw = typeof body.slug === 'string' ? body.slug.trim() : '';
 
         if (!sourceDocId || !nodeId) {
             throw new ValidationError('docId and nodeId are required');
         }
         if (!title) {
             throw new ValidationError('title is required');
+        }
+        if (!slugRaw) {
+            throw new ValidationError('slug is required');
         }
 
         const sourceBase = await BaseModel.get(actualDomainId, sourceDocId);
@@ -6458,6 +6488,10 @@ class BaseMigrateNodeToNewHandler extends Handler {
             this.domain.name,
             true,
             finalBid || undefined,
+            undefined,
+            document.TYPE_BASE,
+            undefined,
+            { slug: slugRaw },
         );
         const newDocId = Number(newDocIdNum);
 
@@ -6559,6 +6593,7 @@ class BaseMigrateNodeToNewHandler extends Handler {
             success: true,
             newDocId,
             bid: finalBid || undefined,
+            slug: slugRaw || undefined,
         };
     }
 }
@@ -7056,6 +7091,38 @@ export class BaseSemanticSearchHandler extends Handler {
     }
 }
 
+/** Check slug availability (format + uniqueness). Returns `{ available, suggestion?, error? }` — GitHub-style. */
+export class BaseSlugCheckHandler extends Handler {
+    @post('slug', Types.String)
+    @post('docId', Types.PositiveInt, true)
+    async post(domainId: string, slug: string, docId?: number) {
+        const rawSlug = (slug || '').trim();
+        if (!rawSlug) {
+            this.response.body = { available: false, errorKey: 'Slug is required' };
+            return;
+        }
+        const suggestion = BaseModel.slugify(rawSlug) || undefined;
+        const slugErr = BaseModel.validateSlug(rawSlug);
+        if (slugErr) {
+            if (suggestion && suggestion !== rawSlug && !BaseModel.validateSlug(suggestion)) {
+                this.response.body = {
+                    available: false,
+                    suggestion,
+                };
+                return;
+            }
+            this.response.body = { available: false, errorKey: slugErr };
+            return;
+        }
+        const existing = await BaseModel.getBySlug(domainId, rawSlug);
+        if (existing && existing.docId !== docId) {
+            this.response.body = { available: false, errorKey: '{0} already exists in this domain', errorSlug: rawSlug };
+            return;
+        }
+        this.response.body = { available: true };
+    }
+}
+
 export async function apply(ctx: Context) {
     ctx.Route('base_domain', '/base', BaseDomainListHandler);
     ctx.Route('base_create', '/base/create', BaseCreateHandler, PRIV.PRIV_USER_PROFILE);
@@ -7081,6 +7148,7 @@ export async function apply(ctx: Context) {
     ctx.Route('base_github_config', '/base/github/config', BaseGithubConfigHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_github_pull', '/base/github/pull', BaseGithubPullHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_semantic_search', '/base/semantic-search', BaseSemanticSearchHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_slug_check', '/base/slug-check', BaseSlugCheckHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_detail', '/base/:docId', BaseDetailHandler);
     ctx.Route('base_study', '/base/:docId/study', BaseStudyHandler);
     ctx.Route('base_edit', '/base/:docId/edit', BaseEditHandler, PRIV.PRIV_USER_PROFILE);

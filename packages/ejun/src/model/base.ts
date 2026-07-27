@@ -6,6 +6,7 @@ import storage from './storage';
 import type { BaseDoc, BaseNode, BaseEdge, CardDoc, BaseHistoryEntry, PluginDoc } from '../interface';
 import db from '../service/db';
 import { Collection, type Db } from 'mongodb';
+import { ValidationError } from '../error';
 
 export const TYPE_CARD: 71 = 71;
 
@@ -281,6 +282,17 @@ export class BaseModel {
             ...extraPayload,
         };
 
+        // Validate slug if provided
+        const baseSlug = payload.slug as string | undefined;
+        if (baseSlug) {
+            const slugErr = BaseModel.validateSlug(baseSlug);
+            if (slugErr) throw new ValidationError(slugErr);
+            const existingBySlug = await BaseModel.getBySlug(domainId, baseSlug);
+            if (existingBySlug) {
+                throw new ValidationError('{0} already exists in this domain'.replace('{0}', baseSlug));
+            }
+        }
+
         const nextDocId = await this.generateNextDocId(domainId, mapDocType);
         const docId = await document.add(
             domainId,
@@ -305,6 +317,42 @@ export class BaseModel {
         const bidString = String(bid).trim();
         if (!bidString) return null;
         const list = await document.getMulti(domainId, document.TYPE_BASE, { bid: bidString } as Filter<BaseDoc>).limit(1).toArray();
+        return list.length > 0 ? (list[0] as BaseDoc) : null;
+    }
+
+    /**
+     * Validate slug format: only lowercase a-z, 0-9, dots, underscores, hyphens.
+     * Returns error message string or null if valid.
+     */
+    static validateSlug(slug: string): string | null {
+        if (!slug || !slug.trim()) return 'Slug is required';
+        const s = slug.trim();
+        if (s.length < 1) return 'Slug is required';
+        if (s.length > 80) return 'Slug must be 80 characters or less';
+        if (!/^[a-z0-9._-]+$/.test(s)) return 'Slug can only contain lowercase letters (a-z), digits (0-9), dots (.), underscores (_), and hyphens (-)';
+        if (/^[._-]/.test(s)) return 'Slug cannot start with a dot, underscore, or hyphen';
+        if (/[._-]$/.test(s)) return 'Slug cannot end with a dot, underscore, or hyphen';
+        if (/[._-]{2,}/.test(s)) return 'Slug cannot contain consecutive dots, underscores, or hyphens';
+        return null;
+    }
+
+    /**
+     * Sanitize arbitrary text into a valid slug (for suggestions).
+     */
+    static slugify(raw: string): string {
+        return String(raw || '')
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9._-]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .replace(/[._-]{2,}/g, '-')
+            .slice(0, 80);
+    }
+
+    static async getBySlug(domainId: string, slug: string): Promise<BaseDoc | null> {
+        const slugString = String(slug || '').trim().toLowerCase();
+        if (!slugString) return null;
+        const list = await document.getMulti(domainId, document.TYPE_BASE, { slug: slugString } as Filter<BaseDoc>).limit(1).toArray();
         return list.length > 0 ? (list[0] as BaseDoc) : null;
     }
 
@@ -336,7 +384,7 @@ export class BaseModel {
     static async update(
         domainId: string,
         docId: number,
-        updates: Partial<Pick<BaseDoc, 'title' | 'content' | 'layout' | 'viewport' | 'theme' | 'files' | 'parentId' | 'domainPosition' | 'tag' | 'bid'>>,
+        updates: Partial<Pick<BaseDoc, 'title' | 'content' | 'layout' | 'viewport' | 'theme' | 'files' | 'parentId' | 'domainPosition' | 'tag' | 'bid' | 'slug'>>,
         mapDocType: MindMapDocType = document.TYPE_BASE,
     ): Promise<void> {
         const updatePayload: any = {
@@ -350,6 +398,21 @@ export class BaseModel {
         }
         if (updates.tag) {
             updatePayload.tag = Array.isArray(updates.tag) ? updates.tag : [updates.tag];
+        }
+        // Validate slug if being updated
+        if ('slug' in updates) {
+            if (updates.slug === undefined || updates.slug === null || updates.slug === '') {
+                delete updatePayload.slug;
+                unsetPayload.slug = 1;
+            } else {
+                const slugErr = BaseModel.validateSlug(updates.slug);
+                if (slugErr) throw new ValidationError(slugErr);
+                // Check uniqueness against other bases
+                const existingBySlug = await BaseModel.getBySlug(domainId, updates.slug);
+                if (existingBySlug && existingBySlug.docId !== docId) {
+                    throw new ValidationError('{0} already exists in this domain'.replace('{0}', updates.slug));
+                }
+            }
         }
         if (typeof updates.title === 'string') {
             const base = await this.get(domainId, docId, mapDocType);
