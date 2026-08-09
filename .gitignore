@@ -43,6 +43,7 @@ packages/**/*.js
 !packages/geoip/download.js
 !examples/**
 packages/ui-default/public
+packages/ui-next/public
 packages/ui-default/misc/.iconfont
 packages/ui-default/static/locale
 plugins/

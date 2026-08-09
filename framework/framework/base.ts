@@ -76,10 +76,18 @@ export default (logger, xff, xhost) => async (ctx: KoaContext, next: Next) => {
                 || request.query.noTemplate || !response.template) {
                 // Send raw data
                 try {
-                    if (typeof response.body === 'object' && request.headers['x-ejunz-inject']) {
-                        const inject = request.headers['x-ejunz-inject'].toString().toLowerCase().split(',').map((i) => i.trim());
-                        if (inject.includes('uicontext')) response.body.UiContext = UiContext;
-                        if (inject.includes('usercontext')) response.body.UserContext = user;
+                    const injectHeader = request.headers['x-ejunz-inject'];
+                    if (injectHeader) {
+                        const inject = injectHeader.toString().toLowerCase().split(',').map((i) => i.trim());
+                        if (inject.includes('pagename')) {
+                            ctx.set('x-ejunz-page', (ctx as any)._matchedRouteName || '');
+                            ctx.set('x-ejunz-template', response.template || '');
+                        }
+                        if (response.body && typeof response.body === 'object') {
+                            if (inject.includes('uicontext')) response.body.UiContext = UiContext;
+                            if (inject.includes('usercontext')) response.body.UserContext = user;
+                            if (inject.includes('routemap')) response.body.routeMap = (handler.ctx as any).server.routeMap;
+                        }
                     }
                     response.body = JSON.stringify(response.body, serializer(false, handler));
                 } catch (e) {

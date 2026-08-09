@@ -351,6 +351,20 @@ export class WebService<C extends CordisContext = CordisContext> extends Service
     private activeHandlers: Map<Handler<C>, { start: number, name: string }> = new Map();
 
     renderers: Record<string, Renderer> = Object.create(null);
+    private _routeMap: Record<string, string> = Object.create(null);
+
+    get routeMap() {
+        return this._routeMap;
+    }
+
+    private rebuildRouteMap() {
+        const map: Record<string, string> = Object.create(null);
+        for (const layer of this.router.stack) {
+            if (layer.name && typeof layer.path === 'string') map[layer.name] = layer.path;
+        }
+        this._routeMap = map;
+    }
+
     server = koa;
     router = router;
     HandlerCommon = HandlerCommon;
@@ -362,7 +376,7 @@ export class WebService<C extends CordisContext = CordisContext> extends Service
         ctx.mixin('server', ['Route', 'Connection', 'withHandlerClass']);
         this.server.keys = this.config.keys;
         this.server.proxy = this.config.proxy;
-        const corsAllowHeaders = 'x-requested-with, accept, origin, content-type, upgrade-insecure-requests';
+        const corsAllowHeaders = 'x-requested-with, accept, origin, content-type, upgrade-insecure-requests, x-ejunz-inject';
         this.server.use(Compress());
         this.server.use(async (c, next) => {
             if (c.request.headers.origin && this.config.cors) {
@@ -372,6 +386,7 @@ export class WebService<C extends CordisContext = CordisContext> extends Service
                         c.set('Access-Control-Allow-Credentials', 'true');
                         c.set('Access-Control-Allow-Origin', c.request.headers.origin);
                         c.set('Access-Control-Allow-Headers', corsAllowHeaders);
+                        c.set('Access-Control-Expose-Headers', 'x-ejunz-page, x-ejunz-template');
                         c.set('Vary', 'Origin');
                         c.cors = true;
                     }
@@ -747,12 +762,14 @@ ${c.response.status} ${endTime - startTime}ms ${c.response.length}`);
             if (this.config.enableSSE) router.get(path, (ctx) => this.handleWS(ctx as any, HandlerClass, checker, null, null, savedContext));
         }
         const dispose = router.disposeLastOp;
+        this.rebuildRouteMap();
         // @ts-ignore
         this.ctx.parallel(`handler/register/${name}`, HandlerClass);
         this.ctx.effect(() => () => {
             this.registrationCount[name]--;
             if (!this.registrationCount[name]) delete this.registry[name];
             dispose();
+            this.rebuildRouteMap();
         });
     }
 

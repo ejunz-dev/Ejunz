@@ -1,0 +1,43 @@
+{
+  "name": "@ejunz/ui-next",
+  "version": "0.0.0",
+  "author": "Jacka10086 <i@jacka10086.me>",
+  "license": "AGPL-3.0",
+  "type": "module",
+  "main": "index.ts",
+  "types": "api.ts",
+  "preferUnplugged": true,
+  "ejunz": {
+    "cli": false
+  },
+  "files": [
+    "index.ts",
+    "api.ts",
+    "css.d.ts",
+    "src/",
+    "index.html",
+    "public/",
+    "tsconfig.json",
+    "vite.config.ts"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "esbuild": "0.25.2",
+    "is-relative-url": "^4.1.0",
+    "path-to-regexp": "^8.4.2",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "simple-git": "^3.36.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
+    "koa2-connect": "^1.0.2",
+    "vite": "^8.2.1"
+  }
+}
