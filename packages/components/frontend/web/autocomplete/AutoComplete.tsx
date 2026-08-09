@@ -7,7 +7,7 @@ import React, {
 } from 'react';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import Icon from '../Icon';
+import Icon from '../icon/Icon';
 
 export interface AutoCompleteProps<Item> {
   width?: string;

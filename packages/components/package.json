@@ -1,11 +1,18 @@
 {
   "name": "@ejunz/components",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Ejunz components — legacy app controls and Web/App UI-site components",
   "main": "./frontend/index.ts",
   "types": "./frontend/index.ts",
   "files": [
-    "frontend/",
+    "frontend/app/",
+    "frontend/web/",
+    "frontend/shared/",
+    "frontend/index.ts",
+    "frontend/registry.ts",
+    "frontend/styles.css",
+    "frontend/types.d.ts",
+    "frontend/web.css",
     "package.json"
   ],
   "exports": {
