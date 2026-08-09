@@ -1,6 +1,6 @@
 import { compile } from 'path-to-regexp';
 import { useCallback } from 'react';
-import { useUiContext } from '@/context/page-data';
+import { useUiContext } from '../context/page-data';
 import { useRouteMap } from './use-route-map';
 
 export interface UrlParams {
