@@ -21,7 +21,8 @@
       "types": "./runtime.ts",
       "import": "./runtime.ts",
       "default": "./runtime.ts"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "preferUnplugged": true,
   "ejunz": {
