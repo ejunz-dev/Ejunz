@@ -24,13 +24,13 @@ export const components: ComponentMeta[] = [
     platforms: ['web'],
     frameworks: ['react', 'vue', 'js'],
     files: {
-      react: 'frontend/ui-site/web-button/WebButton.react.tsx',
-      vue: 'frontend/ui-site/web-button/WebButton.vue.ts',
-      js: 'frontend/ui-site/web-button/web-button.js',
+      react: 'frontend/web/button/WebButton.react.tsx',
+      vue: 'frontend/web/button/WebButton.vue.ts',
+      js: 'frontend/web/button/web-button.js',
     },
     snippets: {
       react: `import { WebButton } from '@ejunz/components';\n\n<WebButton variant="primary">Get Started</WebButton>`,
-      vue: `import { WebButton } from '@ejunz/components/ui-site/web-button/WebButton.vue';\n\nh(WebButton, { variant: 'primary' }, () => 'Get Started')`,
+      vue: `import { WebButton } from '@ejunz/components/web/button/WebButton.vue';\n\nh(WebButton, { variant: 'primary' }, () => 'Get Started')`,
       js: `createWebButton(host, { label: 'Get Started', variant: 'primary' })`,
     },
   },
@@ -43,9 +43,9 @@ export const components: ComponentMeta[] = [
     platforms: ['web'],
     frameworks: ['react', 'vue', 'js'],
     files: {
-      react: 'frontend/ui-site/web-card/WebCard.react.tsx',
-      vue: 'frontend/ui-site/web-card/WebCard.vue.ts',
-      js: 'frontend/ui-site/web-card/web-card.js',
+      react: 'frontend/web/card/WebCard.react.tsx',
+      vue: 'frontend/web/card/WebCard.vue.ts',
+      js: 'frontend/web/card/web-card.js',
     },
     snippets: {
       react: `<WebCard title="Getting Started" description="Install and configure Ejunz." />`,
@@ -62,9 +62,9 @@ export const components: ComponentMeta[] = [
     platforms: ['web'],
     frameworks: ['react', 'vue', 'js'],
     files: {
-      react: 'frontend/ui-site/web-callout/WebCallout.react.tsx',
-      vue: 'frontend/ui-site/web-callout/WebCallout.vue.ts',
-      js: 'frontend/ui-site/web-callout/web-callout.js',
+      react: 'frontend/web/callout/WebCallout.react.tsx',
+      vue: 'frontend/web/callout/WebCallout.vue.ts',
+      js: 'frontend/web/callout/web-callout.js',
     },
     snippets: {
       react: `<WebCallout type="info" title="Tip">Use yarn build:ui after editing components.</WebCallout>`,
@@ -81,9 +81,9 @@ export const components: ComponentMeta[] = [
     platforms: ['web'],
     frameworks: ['react', 'vue', 'js'],
     files: {
-      react: 'frontend/ui-site/web-feature/WebFeature.react.tsx',
-      vue: 'frontend/ui-site/web-feature/WebFeature.vue.ts',
-      js: 'frontend/ui-site/web-feature/web-feature.js',
+      react: 'frontend/web/feature/WebFeature.react.tsx',
+      vue: 'frontend/web/feature/WebFeature.vue.ts',
+      js: 'frontend/web/feature/web-feature.js',
     },
     snippets: {
       react: `<WebFeature title="Ejunz" description="可部署，可扩展，可定制，可集成" />`,
@@ -100,9 +100,9 @@ export const components: ComponentMeta[] = [
     platforms: ['web'],
     frameworks: ['react', 'vue', 'js'],
     files: {
-      react: 'frontend/ui-site/web-repo-info/WebRepoInfo.react.tsx',
-      vue: 'frontend/ui-site/web-repo-info/WebRepoInfo.vue.ts',
-      js: 'frontend/ui-site/web-repo-info/web-repo-info.js',
+      react: 'frontend/web/repo-info/WebRepoInfo.react.tsx',
+      vue: 'frontend/web/repo-info/WebRepoInfo.vue.ts',
+      js: 'frontend/web/repo-info/web-repo-info.js',
     },
     snippets: {
       react: `<WebRepoInfo owner="ejunz-dev" repo="Ejunz" stars={1} />`,
@@ -119,9 +119,9 @@ export const components: ComponentMeta[] = [
     platforms: ['web'],
     frameworks: ['react', 'vue', 'js'],
     files: {
-      react: 'frontend/ui-site/web-root-toggle/WebRootToggle.react.tsx',
-      vue: 'frontend/ui-site/web-root-toggle/WebRootToggle.vue.ts',
-      js: 'frontend/ui-site/web-root-toggle/web-root-toggle.js',
+      react: 'frontend/web/root-toggle/WebRootToggle.react.tsx',
+      vue: 'frontend/web/root-toggle/WebRootToggle.vue.ts',
+      js: 'frontend/web/root-toggle/web-root-toggle.js',
     },
     snippets: {
       react: `<WebRootToggle value="Ejunz" options={options} onChange={setProduct} />`,
@@ -138,9 +138,9 @@ export const components: ComponentMeta[] = [
     platforms: ['web'],
     frameworks: ['react', 'vue', 'js'],
     files: {
-      react: 'frontend/ui-site/web-search-trigger/WebSearchTrigger.react.tsx',
-      vue: 'frontend/ui-site/web-search-trigger/WebSearchTrigger.vue.ts',
-      js: 'frontend/ui-site/web-search-trigger/web-search-trigger.js',
+      react: 'frontend/web/search-trigger/WebSearchTrigger.react.tsx',
+      vue: 'frontend/web/search-trigger/WebSearchTrigger.vue.ts',
+      js: 'frontend/web/search-trigger/web-search-trigger.js',
     },
     snippets: {
       react: `<WebSearchTrigger onClick={openSearch} />`,
@@ -157,9 +157,9 @@ export const components: ComponentMeta[] = [
     platforms: ['web'],
     frameworks: ['react', 'vue', 'js'],
     files: {
-      react: 'frontend/ui-site/web-theme-toggle/WebThemeToggle.react.tsx',
-      vue: 'frontend/ui-site/web-theme-toggle/WebThemeToggle.vue.ts',
-      js: 'frontend/ui-site/web-theme-toggle/web-theme-toggle.js',
+      react: 'frontend/web/theme-toggle/WebThemeToggle.react.tsx',
+      vue: 'frontend/web/theme-toggle/WebThemeToggle.vue.ts',
+      js: 'frontend/web/theme-toggle/web-theme-toggle.js',
     },
     snippets: {
       react: `<WebThemeToggle mode={mode} onChange={setMode} />`,
@@ -176,9 +176,9 @@ export const components: ComponentMeta[] = [
     platforms: ['web'],
     frameworks: ['react', 'vue', 'js'],
     files: {
-      react: 'frontend/ui-site/web-sidebar/WebSidebar.react.tsx',
-      vue: 'frontend/ui-site/web-sidebar/WebSidebar.vue.ts',
-      js: 'frontend/ui-site/web-sidebar/web-sidebar.js',
+      react: 'frontend/web/sidebar/WebSidebar.react.tsx',
+      vue: 'frontend/web/sidebar/WebSidebar.vue.ts',
+      js: 'frontend/web/sidebar/web-sidebar.js',
     },
     snippets: {
       react: `<WebSidebar groups={groups} header={{ title: '全部组件', href: '/components' }} />`,
@@ -197,13 +197,13 @@ export const components: ComponentMeta[] = [
     platforms: ['app'],
     frameworks: ['react', 'vue', 'js'],
     files: {
-      react: 'frontend/ui-site/button/Button.react.tsx',
-      vue: 'frontend/ui-site/button/Button.vue.ts',
-      js: 'frontend/ui-site/button/button.js',
+      react: 'frontend/app/button/Button.react.tsx',
+      vue: 'frontend/app/button/Button.vue.ts',
+      js: 'frontend/app/button/button.js',
     },
     snippets: {
       react: `import { Button } from '@ejunz/components';\n\n<Button variant="primary">继续</Button>`,
-      vue: `import { Button } from '@ejunz/components/ui-site/button/Button.vue';\n\nh(Button, { variant: 'primary' }, () => '继续')`,
+      vue: `import { Button } from '@ejunz/components/app/button/Button.vue';\n\nh(Button, { variant: 'primary' }, () => '继续')`,
       js: `createButton(host, { label: '继续', variant: 'primary' })`,
     },
   },
@@ -216,9 +216,9 @@ export const components: ComponentMeta[] = [
     platforms: ['app'],
     frameworks: ['react', 'vue', 'js'],
     files: {
-      react: 'frontend/ui-site/badge/Badge.react.tsx',
-      vue: 'frontend/ui-site/badge/Badge.vue.ts',
-      js: 'frontend/ui-site/badge/badge.js',
+      react: 'frontend/app/badge/Badge.react.tsx',
+      vue: 'frontend/app/badge/Badge.vue.ts',
+      js: 'frontend/app/badge/badge.js',
     },
     snippets: {
       react: `<Badge tone="accent">Online</Badge>`,
@@ -235,9 +235,9 @@ export const components: ComponentMeta[] = [
     platforms: ['app'],
     frameworks: ['react', 'vue', 'js'],
     files: {
-      react: 'frontend/ui-site/tag/Tag.react.tsx',
-      vue: 'frontend/ui-site/tag/Tag.vue.ts',
-      js: 'frontend/ui-site/tag/tag.js',
+      react: 'frontend/app/tag/Tag.react.tsx',
+      vue: 'frontend/app/tag/Tag.vue.ts',
+      js: 'frontend/app/tag/tag.js',
     },
     snippets: {
       react: `<Tag tone="accent">parent</Tag>`,
@@ -254,9 +254,9 @@ export const components: ComponentMeta[] = [
     platforms: ['app'],
     frameworks: ['react', 'vue', 'js'],
     files: {
-      react: 'frontend/ui-site/card/Card.react.tsx',
-      vue: 'frontend/ui-site/card/Card.vue.ts',
-      js: 'frontend/ui-site/card/card.js',
+      react: 'frontend/app/card/Card.react.tsx',
+      vue: 'frontend/app/card/Card.vue.ts',
+      js: 'frontend/app/card/card.js',
     },
     snippets: {
       react: `<Card title="Exporter">Connected.</Card>`,
@@ -273,9 +273,9 @@ export const components: ComponentMeta[] = [
     platforms: ['app'],
     frameworks: ['react', 'vue', 'js'],
     files: {
-      react: 'frontend/ui-site/empty-state/EmptyState.react.tsx',
-      vue: 'frontend/ui-site/empty-state/EmptyState.vue.ts',
-      js: 'frontend/ui-site/empty-state/empty-state.js',
+      react: 'frontend/app/empty-state/EmptyState.react.tsx',
+      vue: 'frontend/app/empty-state/EmptyState.vue.ts',
+      js: 'frontend/app/empty-state/empty-state.js',
     },
     snippets: {
       react: `<EmptyState text="暂无已加入的 Domain" />`,
@@ -292,9 +292,9 @@ export const components: ComponentMeta[] = [
     platforms: ['app'],
     frameworks: ['react', 'vue', 'js'],
     files: {
-      react: 'frontend/ui-site/app-shell/AppShell.react.tsx',
-      vue: 'frontend/ui-site/app-shell/AppShell.vue.ts',
-      js: 'frontend/ui-site/app-shell/app-shell.js',
+      react: 'frontend/app/app-shell/AppShell.react.tsx',
+      vue: 'frontend/app/app-shell/AppShell.vue.ts',
+      js: 'frontend/app/app-shell/app-shell.js',
     },
     snippets: {
       react: `<AppShell eyebrow="EJUNZ CORE" title="我的空间" metaLeft="https://host" metaRight="退出登录">...</AppShell>`,
@@ -311,9 +311,9 @@ export const components: ComponentMeta[] = [
     platforms: ['app'],
     frameworks: ['react', 'vue', 'js'],
     files: {
-      react: 'frontend/ui-site/bottom-nav/BottomNav.react.tsx',
-      vue: 'frontend/ui-site/bottom-nav/BottomNav.vue.ts',
-      js: 'frontend/ui-site/bottom-nav/bottom-nav.js',
+      react: 'frontend/app/bottom-nav/BottomNav.react.tsx',
+      vue: 'frontend/app/bottom-nav/BottomNav.vue.ts',
+      js: 'frontend/app/bottom-nav/bottom-nav.js',
     },
     snippets: {
       react: `<BottomNav current="home" items={items} onChange={setTab} />`,
@@ -330,9 +330,9 @@ export const components: ComponentMeta[] = [
     platforms: ['app'],
     frameworks: ['react', 'vue', 'js'],
     files: {
-      react: 'frontend/ui-site/stat-card/StatCard.react.tsx',
-      vue: 'frontend/ui-site/stat-card/StatCard.vue.ts',
-      js: 'frontend/ui-site/stat-card/stat-card.js',
+      react: 'frontend/app/stat-card/StatCard.react.tsx',
+      vue: 'frontend/app/stat-card/StatCard.vue.ts',
+      js: 'frontend/app/stat-card/stat-card.js',
     },
     snippets: {
       react: `<StatCard label="Domains" value={12} />`,
@@ -349,9 +349,9 @@ export const components: ComponentMeta[] = [
     platforms: ['app'],
     frameworks: ['react', 'vue', 'js'],
     files: {
-      react: 'frontend/ui-site/switch/Switch.react.tsx',
-      vue: 'frontend/ui-site/switch/Switch.vue.ts',
-      js: 'frontend/ui-site/switch/switch.js',
+      react: 'frontend/app/switch/Switch.react.tsx',
+      vue: 'frontend/app/switch/Switch.vue.ts',
+      js: 'frontend/app/switch/switch.js',
     },
     snippets: {
       react: `<Switch checked={on} onChange={setOn} />`,
@@ -368,14 +368,130 @@ export const components: ComponentMeta[] = [
     platforms: ['app'],
     frameworks: ['react', 'vue', 'js'],
     files: {
-      react: 'frontend/ui-site/list-row/ListRow.react.tsx',
-      vue: 'frontend/ui-site/list-row/ListRow.vue.ts',
-      js: 'frontend/ui-site/list-row/list-row.js',
+      react: 'frontend/app/list-row/ListRow.react.tsx',
+      vue: 'frontend/app/list-row/ListRow.vue.ts',
+      js: 'frontend/app/list-row/list-row.js',
     },
     snippets: {
       react: `<ListRow title="Demo" description="简介" meta="demo" />`,
       vue: `h(ListRow, { title: 'Demo', description: '简介', meta: 'demo' })`,
       js: `createListRow(host, { title: 'Demo', description: '简介', meta: 'demo' })`,
+    },
+  },
+
+  // —— Legacy Ejunz components ———
+  {
+    id: 'legacy-autocomplete',
+    name: 'AutoComplete',
+    category: 'Legacy',
+    description: 'Ejunz legacy autocomplete control. Requires host-provided query and selection callbacks.',
+    source: 'Ejunz legacy frontend',
+    platforms: ['app'],
+    frameworks: ['react'],
+    files: {
+      react: 'frontend/autocomplete/AutoComplete.tsx',
+      vue: 'frontend/autocomplete/AutoComplete.tsx',
+      js: 'frontend/autocomplete/AutoComplete.tsx',
+    },
+    snippets: {
+      react: `import AutoComplete from '@ejunz/components';\n\n<AutoComplete items={items} onSelect={onSelect} />`,
+      vue: 'Vue implementation is not provided by the legacy component.',
+      js: 'JavaScript factory is not provided by the legacy component.',
+    },
+  },
+  {
+    id: 'legacy-custom-select-autocomplete',
+    name: 'CustomSelectAutoComplete',
+    category: 'Legacy',
+    description: 'Ejunz legacy data-backed autocomplete wrapper.',
+    source: 'Ejunz legacy frontend',
+    platforms: ['app'],
+    frameworks: ['react'],
+    files: {
+      react: 'frontend/autocomplete/CustomSelectAutoComplete.tsx',
+      vue: 'frontend/autocomplete/CustomSelectAutoComplete.tsx',
+      js: 'frontend/autocomplete/CustomSelectAutoComplete.tsx',
+    },
+    snippets: {
+      react: `import { CustomSelectAutoComplete } from '@ejunz/components';`,
+      vue: 'Vue implementation is not provided by the legacy component.',
+      js: 'JavaScript factory is not provided by the legacy component.',
+    },
+  },
+  {
+    id: 'legacy-config-editor',
+    name: 'ConfigEditor',
+    category: 'Legacy',
+    description: 'Ejunz configuration editor; requires Monaco, schema, Markdown, and host save/action handlers.',
+    source: 'Ejunz legacy frontend',
+    platforms: ['app'],
+    frameworks: ['react'],
+    files: {
+      react: 'frontend/ConfigEditor.tsx',
+      vue: 'frontend/ConfigEditor.tsx',
+      js: 'frontend/ConfigEditor.tsx',
+    },
+    snippets: {
+      react: `import ConfigEditor from '@ejunz/components';\n\n<ConfigEditor config={config} onSave={onSave} />`,
+      vue: 'Vue implementation is not provided by the legacy component.',
+      js: 'JavaScript factory is not provided by the legacy component.',
+    },
+  },
+  {
+    id: 'legacy-icon',
+    name: 'Icon',
+    category: 'Legacy',
+    description: 'Ejunz legacy icon span component.',
+    source: 'Ejunz legacy frontend',
+    platforms: ['app'],
+    frameworks: ['react'],
+    files: {
+      react: 'frontend/Icon.tsx',
+      vue: 'frontend/Icon.tsx',
+      js: 'frontend/Icon.tsx',
+    },
+    snippets: {
+      react: `import { Icon } from '@ejunz/components';\n\n<Icon name="check" />`,
+      vue: 'Vue implementation is not provided by the legacy component.',
+      js: 'JavaScript factory is not provided by the legacy component.',
+    },
+  },
+  {
+    id: 'legacy-notification',
+    name: 'Notification',
+    category: 'Legacy',
+    description: 'Ejunz legacy toast service; requires a mounted ComponentsProvider/ToastContainer.',
+    source: 'Ejunz legacy frontend',
+    platforms: ['app'],
+    frameworks: ['react'],
+    files: {
+      react: 'frontend/Notification.tsx',
+      vue: 'frontend/Notification.tsx',
+      js: 'frontend/Notification.tsx',
+    },
+    snippets: {
+      react: `import { Notification } from '@ejunz/components';\n\nNotification.success('Saved')`,
+      vue: 'Vue implementation is not provided by the legacy component.',
+      js: 'JavaScript factory is not provided by the legacy component.',
+    },
+  },
+  {
+    id: 'legacy-components-provider',
+    name: 'ComponentsProvider',
+    category: 'Legacy',
+    description: 'Ejunz legacy provider for i18n/config context and toast rendering.',
+    source: 'Ejunz legacy frontend',
+    platforms: ['app'],
+    frameworks: ['react'],
+    files: {
+      react: 'frontend/provider.tsx',
+      vue: 'frontend/provider.tsx',
+      js: 'frontend/provider.tsx',
+    },
+    snippets: {
+      react: `import { ComponentsProvider } from '@ejunz/components';\n\n<ComponentsProvider>{children}</ComponentsProvider>`,
+      vue: 'Vue implementation is not provided by the legacy component.',
+      js: 'JavaScript factory is not provided by the legacy component.',
     },
   },
 ];

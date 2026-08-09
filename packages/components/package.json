@@ -1,6 +1,6 @@
 {
   "name": "@ejunz/components",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Ejunz components — legacy app controls and Web/App UI-site components",
   "main": "./frontend/index.ts",
   "types": "./frontend/index.ts",
@@ -10,12 +10,13 @@
   ],
   "exports": {
     ".": "./frontend/index.ts",
-    "./ui-site": "./frontend/ui-site/index.ts",
-    "./web": "./frontend/ui-site/web.ts",
-    "./registry": "./frontend/ui-site/registry.ts",
-    "./styles.css": "./frontend/ui-site/styles.css",
-    "./web.css": "./frontend/ui-site/web.css",
-    "./ui-site/*": "./frontend/ui-site/*",
+    "./app": "./frontend/app/index.ts",
+    "./web": "./frontend/web/index.ts",
+    "./registry": "./frontend/registry.ts",
+    "./styles.css": "./frontend/styles.css",
+    "./web.css": "./frontend/web.css",
+    "./app/*": "./frontend/app/*",
+    "./web/*": "./frontend/web/*",
     "./frontend/*": "./frontend/*"
   },
   "sideEffects": [
