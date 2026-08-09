@@ -4,3 +4,5 @@ export { default as ConfigEditor } from './ConfigEditor';
 export { default as Icon } from './Icon';
 export { default as Notification } from './Notification';
 export { default as ComponentsProvider } from './provider';
+
+export * from './ui-site';

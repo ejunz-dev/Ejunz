@@ -1,31 +1,59 @@
 {
-    "name": "@ejunz/components",
-    "version": "0.1.1",
-    "main": "./frontend/index.ts",
-    "repository": "https://github.com/ejunz-dev/Ejunz",
-    "sideEffects": [
-        "*.scss",
-        "*.css"
-    ],
-    "dependencies": {
-        "allotment": "^1.20.4",
-        "diff": "^8.0.2",
-        "js-yaml": "^4.1.0",
-        "lodash": "^4.17.21",
-        "react-dnd": "^16.0.1",
-        "react-dnd-html5-backend": "^16.0.1",
-        "react-toastify": "^11.0.5",
-        "schemastery-react": "^0.1.5"
-    },
-    "devDependencies": {
-        "@types/diff": "^8.0.0",
-        "@types/js-yaml": "^4.0.9",
-        "@types/lodash": "^4.17.20",
-        "sass": "^1.93.2"
-    },
-    "peerDependencies": {
-        "react": "*",
-        "react-dom": "*",
-        "schemastery": "*"
+  "name": "@ejunz/components",
+  "version": "0.2.1",
+  "description": "Ejunz components — legacy app controls and Web/App UI-site components",
+  "main": "./frontend/index.ts",
+  "types": "./frontend/index.ts",
+  "exports": {
+    ".": "./frontend/index.ts",
+    "./ui-site": "./frontend/ui-site/index.ts",
+    "./web": "./frontend/ui-site/web.ts",
+    "./registry": "./frontend/ui-site/registry.ts",
+    "./styles.css": "./frontend/ui-site/styles.css",
+    "./web.css": "./frontend/ui-site/web.css",
+    "./ui-site/*": "./frontend/ui-site/*",
+    "./frontend/*": "./frontend/*"
+  },
+  "sideEffects": [
+    "**/*.scss",
+    "**/*.css"
+  ],
+  "repository": "https://github.com/ejunz-dev/Ejunz",
+  "license": "AGPL-3.0",
+  "dependencies": {
+    "allotment": "^1.20.4",
+    "classnames": "^2.5.1",
+    "diff": "^8.0.2",
+    "js-yaml": "^4.1.1",
+    "lodash": "^4.17.21",
+    "prop-types": "^15.8.1",
+    "react-dnd": "^16.0.1",
+    "react-dnd-html5-backend": "^16.0.1",
+    "react-toastify": "^11.0.5",
+    "schemastery-react": "^0.1.5"
+  },
+  "devDependencies": {
+    "@types/diff": "^8.0.0",
+    "@types/jquery": "^3.5.32",
+    "@types/js-yaml": "^4.0.9",
+    "@types/lodash": "^4.17.20",
+    "@types/prop-types": "^15.7.15",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "sass": "^1.93.2",
+    "vue": "^3.5.18"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18",
+    "schemastery": "*",
+    "vue": ">=3"
+  },
+  "peerDependenciesMeta": {
+    "schemastery": {
+      "optional": true
     }
+  }
 }
