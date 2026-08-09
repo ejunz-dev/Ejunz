@@ -42,3 +42,10 @@ export { WebSidebar } from './sidebar/WebSidebar.react';
 export type { WebSidebarProps, WebSidebarGroup, WebSidebarItem } from './sidebar/WebSidebar.react';
 export { WebSidebar as WebSidebarVue } from './sidebar/WebSidebar.vue';
 export { createWebSidebar } from './sidebar/web-sidebar.js';
+
+export { default as AutoComplete, type AutoCompleteHandle, type AutoCompleteProps } from './autocomplete/AutoComplete';
+export { default as CustomSelectAutoComplete } from './autocomplete/CustomSelectAutoComplete';
+export { default as ConfigEditor } from './config-editor/ConfigEditor';
+export { default as Icon } from './icon/Icon';
+export { default as Notification } from './notification/Notification';
+export { default as ComponentsProvider, ComponentsContext } from './provider';

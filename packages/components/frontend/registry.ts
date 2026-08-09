@@ -9,8 +9,8 @@ export interface ComponentMeta {
   source: string;
   platforms: PlatformKind[];
   frameworks: FrameworkKind[];
-  files: Record<FrameworkKind, string>;
-  snippets: Record<FrameworkKind, string>;
+  files: Partial<Record<FrameworkKind, string>>;
+  snippets: Partial<Record<FrameworkKind, string>>;
 }
 
 export const components: ComponentMeta[] = [
@@ -386,17 +386,13 @@ export const components: ComponentMeta[] = [
     category: 'Legacy',
     description: 'Ejunz legacy autocomplete control. Requires host-provided query and selection callbacks.',
     source: 'Ejunz legacy frontend',
-    platforms: ['app'],
+    platforms: ['web'],
     frameworks: ['react'],
     files: {
       react: 'frontend/web/autocomplete/AutoComplete.tsx',
-      vue: 'frontend/web/autocomplete/AutoComplete.tsx',
-      js: 'frontend/web/autocomplete/AutoComplete.tsx',
     },
     snippets: {
-      react: `import AutoComplete from '@ejunz/components';\n\n<AutoComplete items={items} onSelect={onSelect} />`,
-      vue: 'Vue implementation is not provided by the legacy component.',
-      js: 'JavaScript factory is not provided by the legacy component.',
+      react: `import { AutoComplete } from '@ejunz/components';\n\n<AutoComplete items={items} onSelect={onSelect} />`,
     },
   },
   {
@@ -405,17 +401,13 @@ export const components: ComponentMeta[] = [
     category: 'Legacy',
     description: 'Ejunz legacy data-backed autocomplete wrapper.',
     source: 'Ejunz legacy frontend',
-    platforms: ['app'],
+    platforms: ['web'],
     frameworks: ['react'],
     files: {
       react: 'frontend/web/autocomplete/CustomSelectAutoComplete.tsx',
-      vue: 'frontend/web/autocomplete/CustomSelectAutoComplete.tsx',
-      js: 'frontend/web/autocomplete/CustomSelectAutoComplete.tsx',
     },
     snippets: {
       react: `import { CustomSelectAutoComplete } from '@ejunz/components';`,
-      vue: 'Vue implementation is not provided by the legacy component.',
-      js: 'JavaScript factory is not provided by the legacy component.',
     },
   },
   {
@@ -424,17 +416,13 @@ export const components: ComponentMeta[] = [
     category: 'Legacy',
     description: 'Ejunz configuration editor; requires Monaco, schema, Markdown, and host save/action handlers.',
     source: 'Ejunz legacy frontend',
-    platforms: ['app'],
+    platforms: ['web'],
     frameworks: ['react'],
     files: {
       react: 'frontend/web/config-editor/ConfigEditor.tsx',
-      vue: 'frontend/web/config-editor/ConfigEditor.tsx',
-      js: 'frontend/web/config-editor/ConfigEditor.tsx',
     },
     snippets: {
-      react: `import ConfigEditor from '@ejunz/components';\n\n<ConfigEditor config={config} onSave={onSave} />`,
-      vue: 'Vue implementation is not provided by the legacy component.',
-      js: 'JavaScript factory is not provided by the legacy component.',
+      react: `import { ConfigEditor } from '@ejunz/components';\n\n<ConfigEditor config={config} onSave={onSave} />`,
     },
   },
   {
@@ -443,17 +431,13 @@ export const components: ComponentMeta[] = [
     category: 'Legacy',
     description: 'Ejunz legacy icon span component.',
     source: 'Ejunz legacy frontend',
-    platforms: ['app'],
+    platforms: ['web'],
     frameworks: ['react'],
     files: {
       react: 'frontend/web/icon/Icon.tsx',
-      vue: 'frontend/web/icon/Icon.tsx',
-      js: 'frontend/web/icon/Icon.tsx',
     },
     snippets: {
       react: `import { Icon } from '@ejunz/components';\n\n<Icon name="check" />`,
-      vue: 'Vue implementation is not provided by the legacy component.',
-      js: 'JavaScript factory is not provided by the legacy component.',
     },
   },
   {
@@ -462,17 +446,13 @@ export const components: ComponentMeta[] = [
     category: 'Legacy',
     description: 'Ejunz legacy toast service; requires a mounted ComponentsProvider/ToastContainer.',
     source: 'Ejunz legacy frontend',
-    platforms: ['app'],
+    platforms: ['web'],
     frameworks: ['react'],
     files: {
       react: 'frontend/web/notification/Notification.tsx',
-      vue: 'frontend/web/notification/Notification.tsx',
-      js: 'frontend/web/notification/Notification.tsx',
     },
     snippets: {
       react: `import { Notification } from '@ejunz/components';\n\nNotification.success('Saved')`,
-      vue: 'Vue implementation is not provided by the legacy component.',
-      js: 'JavaScript factory is not provided by the legacy component.',
     },
   },
   {
@@ -481,17 +461,13 @@ export const components: ComponentMeta[] = [
     category: 'Legacy',
     description: 'Ejunz legacy provider for i18n/config context and toast rendering.',
     source: 'Ejunz legacy frontend',
-    platforms: ['app'],
+    platforms: ['web'],
     frameworks: ['react'],
     files: {
       react: 'frontend/web/provider.tsx',
-      vue: 'frontend/web/provider.tsx',
-      js: 'frontend/web/provider.tsx',
     },
     snippets: {
       react: `import { ComponentsProvider } from '@ejunz/components';\n\n<ComponentsProvider>{children}</ComponentsProvider>`,
-      vue: 'Vue implementation is not provided by the legacy component.',
-      js: 'JavaScript factory is not provided by the legacy component.',
     },
   },
 ];
