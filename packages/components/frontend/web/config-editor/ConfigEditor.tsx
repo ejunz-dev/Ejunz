@@ -5,7 +5,7 @@ import { diffLines } from 'diff';
 import yaml from 'js-yaml';
 import React from 'react';
 import { createSchemasteryReact } from 'schemastery-react';
-import { ComponentsContext } from './provider';
+import { ComponentsContext } from '../provider';
 
 const locales = {
   zh: 'zh-CN',

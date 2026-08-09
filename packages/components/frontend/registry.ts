@@ -389,9 +389,9 @@ export const components: ComponentMeta[] = [
     platforms: ['app'],
     frameworks: ['react'],
     files: {
-      react: 'frontend/autocomplete/AutoComplete.tsx',
-      vue: 'frontend/autocomplete/AutoComplete.tsx',
-      js: 'frontend/autocomplete/AutoComplete.tsx',
+      react: 'frontend/web/autocomplete/AutoComplete.tsx',
+      vue: 'frontend/web/autocomplete/AutoComplete.tsx',
+      js: 'frontend/web/autocomplete/AutoComplete.tsx',
     },
     snippets: {
       react: `import AutoComplete from '@ejunz/components';\n\n<AutoComplete items={items} onSelect={onSelect} />`,
@@ -408,9 +408,9 @@ export const components: ComponentMeta[] = [
     platforms: ['app'],
     frameworks: ['react'],
     files: {
-      react: 'frontend/autocomplete/CustomSelectAutoComplete.tsx',
-      vue: 'frontend/autocomplete/CustomSelectAutoComplete.tsx',
-      js: 'frontend/autocomplete/CustomSelectAutoComplete.tsx',
+      react: 'frontend/web/autocomplete/CustomSelectAutoComplete.tsx',
+      vue: 'frontend/web/autocomplete/CustomSelectAutoComplete.tsx',
+      js: 'frontend/web/autocomplete/CustomSelectAutoComplete.tsx',
     },
     snippets: {
       react: `import { CustomSelectAutoComplete } from '@ejunz/components';`,
@@ -427,9 +427,9 @@ export const components: ComponentMeta[] = [
     platforms: ['app'],
     frameworks: ['react'],
     files: {
-      react: 'frontend/ConfigEditor.tsx',
-      vue: 'frontend/ConfigEditor.tsx',
-      js: 'frontend/ConfigEditor.tsx',
+      react: 'frontend/web/config-editor/ConfigEditor.tsx',
+      vue: 'frontend/web/config-editor/ConfigEditor.tsx',
+      js: 'frontend/web/config-editor/ConfigEditor.tsx',
     },
     snippets: {
       react: `import ConfigEditor from '@ejunz/components';\n\n<ConfigEditor config={config} onSave={onSave} />`,
@@ -446,9 +446,9 @@ export const components: ComponentMeta[] = [
     platforms: ['app'],
     frameworks: ['react'],
     files: {
-      react: 'frontend/Icon.tsx',
-      vue: 'frontend/Icon.tsx',
-      js: 'frontend/Icon.tsx',
+      react: 'frontend/web/icon/Icon.tsx',
+      vue: 'frontend/web/icon/Icon.tsx',
+      js: 'frontend/web/icon/Icon.tsx',
     },
     snippets: {
       react: `import { Icon } from '@ejunz/components';\n\n<Icon name="check" />`,
@@ -465,9 +465,9 @@ export const components: ComponentMeta[] = [
     platforms: ['app'],
     frameworks: ['react'],
     files: {
-      react: 'frontend/Notification.tsx',
-      vue: 'frontend/Notification.tsx',
-      js: 'frontend/Notification.tsx',
+      react: 'frontend/web/notification/Notification.tsx',
+      vue: 'frontend/web/notification/Notification.tsx',
+      js: 'frontend/web/notification/Notification.tsx',
     },
     snippets: {
       react: `import { Notification } from '@ejunz/components';\n\nNotification.success('Saved')`,
@@ -484,9 +484,9 @@ export const components: ComponentMeta[] = [
     platforms: ['app'],
     frameworks: ['react'],
     files: {
-      react: 'frontend/provider.tsx',
-      vue: 'frontend/provider.tsx',
-      js: 'frontend/provider.tsx',
+      react: 'frontend/web/provider.tsx',
+      vue: 'frontend/web/provider.tsx',
+      js: 'frontend/web/provider.tsx',
     },
     snippets: {
       react: `import { ComponentsProvider } from '@ejunz/components';\n\n<ComponentsProvider>{children}</ComponentsProvider>`,
