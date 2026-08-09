@@ -33,6 +33,7 @@ const config = {
     compilerOptions: compilerOptionsBase,
     references: [
         { path: 'tsconfig.ui.json' },
+        { path: 'tsconfig.ui-next.json' },
         { path: 'plugins/tsconfig.json' },
     ],
     files: [],
@@ -73,7 +74,7 @@ for (const name of ['plugins', 'modules']) {
 const modules = [
     'packages/ejun',
     ...['packages', 'framework'].flatMap((i) => fs.readdirSync(path.resolve(process.cwd(), i)).map((j) => `${i}/${j}`)),
-].filter((i) => !i.includes('/.') && !i.includes('ui-default')).filter((i) => fs.statSync(path.resolve(process.cwd(), i)).isDirectory());
+].filter((i) => !i.includes('/.') && !i.includes('ui-default') && !i.includes('ui-next')).filter((i) => fs.statSync(path.resolve(process.cwd(), i)).isDirectory());
 
 const UIConfig = {
     exclude: [
@@ -126,6 +127,36 @@ const pluginsConfig = {
         },
     },
 };
+const UINextConfig = {
+    exclude: [
+        '**/node_modules',
+    ],
+    include: ['ts', 'tsx', 'vue', 'json']
+        .map((ext) => `packages/ui-next/src/**/*.${ext}`),
+    compilerOptions: {
+        ...compilerOptionsBase,
+        target: 'es2022',
+        module: 'ESNext',
+        moduleResolution: 'bundler',
+        jsx: 'react-jsx',
+        lib: ['ES2022', 'DOM', 'DOM.Iterable'],
+        strict: true,
+        noImplicitAny: false,
+        noFallthroughCasesInSwitch: true,
+        noUncheckedSideEffectImports: true,
+        moduleDetection: 'force',
+        useDefineForClassFields: true,
+        skipLibCheck: true,
+        allowSyntheticDefaultImports: true,
+        baseUrl: '.',
+        outDir: path.join(baseOutDir, 'ui-next'),
+        paths: {
+            '@/*': [
+                './packages/ui-next/src/*',
+            ],
+        },
+    },
+};
 fs.writeFileSync(path.resolve(process.cwd(), 'plugins', 'tsconfig.json'), JSON.stringify(pluginsConfig));
 
 for (const package of modules) {
@@ -155,4 +186,5 @@ for (const package of modules) {
     }
 }
 fs.writeFileSync(path.resolve(process.cwd(), 'tsconfig.ui.json'), JSON.stringify(UIConfig));
+fs.writeFileSync(path.resolve(process.cwd(), 'tsconfig.ui-next.json'), JSON.stringify(UINextConfig));
 fs.writeFileSync(path.resolve(process.cwd(), 'tsconfig.json'), JSON.stringify(config));
