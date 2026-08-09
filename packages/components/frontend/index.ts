@@ -5,4 +5,6 @@ export { default as Icon } from './Icon';
 export { default as Notification } from './Notification';
 export { default as ComponentsProvider } from './provider';
 
-export * from './ui-site';
+export * from './app';
+export * from './web';
+export * from './registry';
