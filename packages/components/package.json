@@ -1,6 +1,6 @@
 {
   "name": "@ejunz/components",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "Ejunz components — Web UI, core-client App UI, and legacy React controls",
   "main": "./frontend/index.ts",
   "types": "./frontend/index.ts",
