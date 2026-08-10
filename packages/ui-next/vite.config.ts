@@ -46,9 +46,5 @@ export default defineConfig(({ command }) => ({
             },
         },
     },
-    ssr: {
-        external: ['react', 'react-dom'],
-        noExternal: [/\/plugins\//],
-    },
     worker: { format: 'es' },
 }));
