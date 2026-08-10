@@ -422,7 +422,7 @@ export async function apply(ctx: Context) {
 
         // eslint-disable-next-line consistent-return
         return async () => {
-            await vite.close().catch((e) => console.error(e));
+            await vite.close().catch((e) => logger.error('Failed to close Vite SSR server: %o', e));
         };
     } else {
         const build = async () => {
