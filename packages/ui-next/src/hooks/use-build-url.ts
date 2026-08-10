@@ -14,7 +14,7 @@ export function useBuildUrl() {
   const getPrefix = useCallback((id?: string) => {
     id ||= domainId;
     const domainHost = Array.isArray(domain.host) ? domain.host : [domain.host];
-    const currentHost = window.location.host;
+    const currentHost = typeof window !== 'undefined' ? window.location.host : domainHost[0];
     return id === (domainHost && domainHost.includes(currentHost) ? domainId : 'system') ? '' : `/d/${id}`;
   }, [domainId, domain]);
 

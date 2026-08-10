@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import esbuild from 'esbuild';
 import c2k from 'koa2-connect/ts';
-import { createServer, type Plugin } from 'vite';
+import { build as buildVite, createServer, type Plugin } from 'vite';
 import { HandlerCommon, serializer } from '@ejunz/framework';
 import {
     Context, Handler, Logger,
@@ -38,6 +38,84 @@ function getAddonEntries(): Record<string, string> {
         }
     }
     return entries;
+}
+
+function createPageData(args: Record<string, any>, context: any) {
+    return {
+        name: context.handler.context._matchedRouteName,
+        template: context.handler.response.template || '',
+        args: {
+            UserContext: context.UserContext,
+            UiContext: context.handler.UiContext,
+            ...args,
+        },
+        url: context.handler.context.req.url!,
+    };
+}
+
+type SsrModule = {
+    renderPage: (pageData: ReturnType<typeof createPageData>, routeMap: Record<string, string>) => Promise<string>;
+};
+
+type SsrModuleLoader = (id: string) => Promise<SsrModule>;
+
+async function renderSsr(
+    html: string,
+    pageData: ReturnType<typeof createPageData>,
+    routeMap: Record<string, string>,
+    loadModule?: SsrModuleLoader,
+) {
+    try {
+        const module = loadModule
+            ? await loadModule('/src/entry-server.tsx')
+            : await loadProductionSsr();
+        const rendered = await module.renderPage(pageData, routeMap);
+        return html.replace('<div id="root"></div>', `<div id="root">${rendered}</div>`);
+    } catch (error) {
+        logger.warn('SSR render failed for %s: %o', pageData.name, error);
+        return html;
+    }
+}
+
+const ssrOutDir = path.resolve(process.cwd(), '.cache/ui-next-ssr');
+let productionSsrModule: Promise<SsrModule> | undefined;
+
+async function buildSsrBundle(): Promise<SsrModule | undefined> {
+    const previousEntries = process.env.EJUNZ_UI_SSR_ENTRIES;
+    process.env.EJUNZ_UI_SSR_ENTRIES = JSON.stringify(getAddonEntries());
+    try {
+        await buildVite({
+            root: __dirname,
+            configFile: path.resolve(__dirname, 'vite.config.ts'),
+            build: {
+                ssr: path.resolve(__dirname, 'src/entry-server.tsx'),
+                outDir: ssrOutDir,
+                emptyOutDir: true,
+                rollupOptions: {
+                    output: {
+                        format: 'cjs',
+                        entryFileNames: 'entry-server.cjs',
+                        chunkFileNames: 'chunks/[name]-[hash].cjs',
+                    },
+                },
+            },
+        });
+        return require(path.join(ssrOutDir, 'entry-server.cjs')) as SsrModule;
+    } catch (error) {
+        logger.warn('Failed to build production SSR bundle: %o', error);
+        return undefined;
+    } finally {
+        if (previousEntries === undefined) delete process.env.EJUNZ_UI_SSR_ENTRIES;
+        else process.env.EJUNZ_UI_SSR_ENTRIES = previousEntries;
+    }
+}
+
+function loadProductionSsr(): Promise<SsrModule> {
+    productionSsrModule ??= buildSsrBundle().then((module) => {
+        if (!module) throw new Error('Production SSR bundle is unavailable');
+        return module;
+    });
+    return productionSsrModule;
 }
 
 function ejunzPlugins(): Plugin {
@@ -318,16 +396,10 @@ export async function apply(ctx: Context) {
             asFallback: true,
             priority: 100,
             async render(_name, args, context) {
+                const pageData = createPageData(args, context);
                 const serialized = JSON.stringify({
                     EJUNZ_INJECTED: true,
-                    name: context.handler.context._matchedRouteName,
-                    template: context.handler.response.template || '',
-                    args: {
-                        UserContext: context.UserContext,
-                        UiContext: context.handler.UiContext,
-                        ...args,
-                    },
-                    url: context.handler.context.req.url!,
+                    ...pageData,
                     route_map: ctx.server.routeMap,
                     endpoint: ctx.setting.get('server.url') || undefined,
                 }, serializer(false, context.handler));
@@ -337,8 +409,14 @@ export async function apply(ctx: Context) {
                     buildInject(serialized),
                     ...injectedScripts(devAssetUrl, getViewLang(context.handler)),
                 ].join('\n');
-                const htmlToRender = html.replace(INJECT_MARKER, injectHtml);
-                return await vite.transformIndexHtml(context.handler.context.req.url!, htmlToRender);
+                const injectedHtml = html.replace(INJECT_MARKER, injectHtml);
+                const ssrHtml = await renderSsr(
+                    injectedHtml,
+                    pageData,
+                    ctx.server.routeMap,
+                    (id) => vite.ssrLoadModule(id),
+                );
+                return await vite.transformIndexHtml(context.handler.context.req.url!, ssrHtml);
             },
         });
 
@@ -352,6 +430,8 @@ export async function apply(ctx: Context) {
             await buildI18n();
             await buildCodeLangs();
             await buildVersions();
+            const ssrModule = await buildSsrBundle();
+            productionSsrModule = ssrModule ? Promise.resolve(ssrModule) : undefined;
         };
         ctx.on('app/started', build);
 
@@ -365,16 +445,10 @@ export async function apply(ctx: Context) {
                 const indexHtml = path.join(__dirname, 'public', 'index.html');
                 if (!fs.existsSync(indexHtml)) return PENDING_HTML;
                 const html = fs.readFileSync(indexHtml, 'utf-8');
+                const pageData = createPageData(args, context);
                 const serialized = JSON.stringify({
                     EJUNZ_INJECTED: true,
-                    name: context.handler.context._matchedRouteName,
-                    template: context.handler.response.template || '',
-                    args: {
-                        UserContext: context.UserContext,
-                        UiContext: context.handler.UiContext,
-                        ...args,
-                    },
-                    url: context.handler.context.req.url!,
+                    ...pageData,
                     route_map: ctx.server.routeMap,
                     endpoint: ctx.setting.get('server.url') || undefined,
                     plugins_url: `/plugins/${hashes['plugins.js'] || HASH_FALLBACK}/plugins.js`,
@@ -384,7 +458,8 @@ export async function apply(ctx: Context) {
                     buildInject(serialized),
                     ...injectedScripts(prodAssetUrl, getViewLang(context.handler)),
                 ].join('\n');
-                return html.replace(INJECT_MARKER, injectHtml);
+                const injectedHtml = html.replace(INJECT_MARKER, injectHtml);
+                return renderSsr(injectedHtml, pageData, ctx.server.routeMap);
             },
         });
         const debouncedBuild = ctx.debounce(build, 2000);
