@@ -1,29 +1,11 @@
 {
   "name": "@ejunz/ui-next",
-  "version": "0.1.1",
+  "version": "0.1.0",
   "author": "Jacka10086 <i@jacka10086.me>",
   "license": "AGPL-3.0",
   "type": "module",
   "main": "index.ts",
   "types": "api.ts",
-  "exports": {
-    ".": {
-      "types": "./api.ts",
-      "import": "./index.ts",
-      "default": "./index.ts"
-    },
-    "./api": {
-      "types": "./api.ts",
-      "import": "./api.ts",
-      "default": "./api.ts"
-    },
-    "./runtime": {
-      "types": "./runtime.ts",
-      "import": "./runtime.ts",
-      "default": "./runtime.ts"
-    },
-    "./package.json": "./package.json"
-  },
   "preferUnplugged": true,
   "ejunz": {
     "cli": false
@@ -31,7 +13,6 @@
   "files": [
     "index.ts",
     "api.ts",
-    "runtime.ts",
     "css.d.ts",
     "src/",
     "index.html",
