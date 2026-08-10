@@ -28,6 +28,22 @@ const PENDING_HTML = `<html>
 
 const INJECT_MARKER = '<!-- __EJUNZ_INJECTION__DO_NOT_REMOVE_THIS__ -->';
 const buildInject = (data: string) => `<script id="__EJUNZ_INJECTION__" type="application/json">${data}</script>`;
+let domStyles: string | undefined;
+
+function getDomStyles() {
+    if (domStyles != null) return domStyles;
+    const files = [
+        require.resolve('@ejunz/components/web.css'),
+        getAddonEntries()['ui-next-pages'] && path.resolve(path.dirname(getAddonEntries()['ui-next-pages']), 'pages.css'),
+    ].filter((file): file is string => !!file && fs.existsSync(file));
+    domStyles = files.map((file) => fs.readFileSync(file, 'utf8')).join('\n').replace(/<\/style/gi, '<\\/style');
+    return domStyles;
+}
+
+function injectDomStyles(html: string) {
+    const styles = getDomStyles();
+    return styles ? html.replace('</head>', `<style data-ejunz-dom-styles>${styles}</style></head>`) : html;
+}
 
 function getAddonEntries(): Record<string, string> {
     const entries: Record<string, string> = {};
@@ -384,7 +400,7 @@ export async function apply(ctx: Context) {
                     buildInject(serialized),
                     ...injectedScripts(devAssetUrl, getViewLang(context.handler)),
                 ].join('\n');
-                const injectedHtml = html.replace(INJECT_MARKER, injectHtml);
+                const injectedHtml = injectDomStyles(html.replace(INJECT_MARKER, injectHtml));
                 const renderedHtml = await renderDom(injectedHtml, pageData, ctx.server.routeMap);
                 return await vite.transformIndexHtml(context.handler.context.req.url!, renderedHtml);
             },
@@ -426,7 +442,7 @@ export async function apply(ctx: Context) {
                     buildInject(serialized),
                     ...injectedScripts(prodAssetUrl, getViewLang(context.handler)),
                 ].join('\n');
-                const injectedHtml = html.replace(INJECT_MARKER, injectHtml);
+                const injectedHtml = injectDomStyles(html.replace(INJECT_MARKER, injectHtml));
                 return renderDom(injectedHtml, pageData, ctx.server.routeMap);
             },
         });
