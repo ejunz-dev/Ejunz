@@ -2,14 +2,14 @@
 
 import './pages';
 
-import { StrictMode } from 'react';
+import { hydrateRoot } from 'react-dom/client';
 import { createRoot } from 'react-dom/client';
 import * as api from './api';
-import App from './app';
-import { PageDataProvider } from './context/page-data';
-import { RouterProvider } from './context/router';
-import { initialPage, pluginsUrl } from './globals';
+import UiNextRoot from './root';
+import { initialPage, isInjected, pluginsUrl } from './globals';
 import { installPlugin } from './registry';
+import { preloadPage } from './registry/page';
+
 
 declare global {
   interface Window {
@@ -46,13 +46,14 @@ async function loadPlugins() {
 
 // eslint-disable-next-line antfu/no-top-level-await
 await loadPlugins();
+await preloadPage(initialPage.name);
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <PageDataProvider initial={initialPage}>
-      <RouterProvider>
-        <App />
-      </RouterProvider>
-    </PageDataProvider>
-  </StrictMode>,
-);
+const root = document.getElementById('root');
+if (!root) throw new Error('Missing #root element');
+
+const app = <UiNextRoot initial={initialPage} />;
+if (isInjected && root.hasChildNodes()) {
+  hydrateRoot(root, app);
+} else {
+  createRoot(root).render(app);
+}

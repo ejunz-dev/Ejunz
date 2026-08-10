@@ -11,7 +11,17 @@ const buildPlugins = (): Plugin => ({
         return id === virtualModuleId ? resolvedVirtualModuleId : undefined;
     },
     load(id) {
-        return id === resolvedVirtualModuleId ? 'export default [];' : undefined;
+        if (id !== resolvedVirtualModuleId) return undefined;
+        let entries: Record<string, string> = {};
+        try {
+            entries = JSON.parse(process.env.EJUNZ_UI_SSR_ENTRIES || '{}');
+        } catch {
+            // Keep the standalone client build usable without the Ejunz server.
+        }
+        if (!Object.keys(entries).length) return 'export default [];';
+        const imports = Object.values(entries).map((entry, i) => `import * as plugin${i} from '${entry}';`).join('\n');
+        const plugins = Object.keys(entries).map((name, i) => `{ name: ${JSON.stringify(name)}, ...plugin${i} }`).join(', ');
+        return `${imports}\nexport default [${plugins}];`;
     },
 });
 
@@ -24,6 +34,7 @@ export default defineConfig(({ command }) => ({
             '@': path.resolve(__dirname, 'src'),
             '@ejunz/ui-next': path.resolve(__dirname, 'src/api.ts'),
         },
+        dedupe: ['react', 'react-dom'],
     },
     publicDir: 'pub',
     build: {
@@ -34,6 +45,10 @@ export default defineConfig(({ command }) => ({
                 codeSplitting: true,
             },
         },
+    },
+    ssr: {
+        external: ['react', 'react-dom'],
+        noExternal: [/\/plugins\//],
     },
     worker: { format: 'es' },
 }));
