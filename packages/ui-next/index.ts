@@ -338,9 +338,7 @@ export async function apply(ctx: Context) {
                     ...injectedScripts(devAssetUrl, getViewLang(context.handler)),
                 ].join('\n');
                 const htmlToRender = html.replace(INJECT_MARKER, injectHtml);
-                const rendered = await vite.transformIndexHtml(context.handler.context.req.url!, htmlToRender);
-                logger.info('SSR dev %s -> %s (%d bytes)', context.handler.context.req.url!, context.handler.context._matchedRouteName, Buffer.byteLength(rendered));
-                return rendered;
+                return await vite.transformIndexHtml(context.handler.context.req.url!, htmlToRender);
             },
         });
 
@@ -386,9 +384,7 @@ export async function apply(ctx: Context) {
                     buildInject(serialized),
                     ...injectedScripts(prodAssetUrl, getViewLang(context.handler)),
                 ].join('\n');
-                const rendered = html.replace(INJECT_MARKER, injectHtml);
-                logger.info('SSR prod %s -> %s (%d bytes)', context.handler.context.req.url!, context.handler.context._matchedRouteName, Buffer.byteLength(rendered));
-                return rendered;
+                return html.replace(INJECT_MARKER, injectHtml);
             },
         });
         const debouncedBuild = ctx.debounce(build, 2000);
