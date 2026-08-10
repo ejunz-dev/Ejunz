@@ -3,7 +3,7 @@ import path from 'path';
 import esbuild from 'esbuild';
 import c2k from 'koa2-connect/ts';
 import { createServer, type Plugin } from 'vite';
-import { HandlerCommon, serializer } from '@ejunz/framework';
+import { HandlerCommon, httpServer, serializer } from '@ejunz/framework';
 import {
     Context, Handler, Logger,
     NotFoundError, param, SettingModel, sha1, size, Types,
@@ -364,7 +364,7 @@ export async function apply(ctx: Context) {
             server: {
                 middlewareMode: true,
                 hmr: {
-                    port: 3010,
+                    server: httpServer,
                 },
                 headers: {
                     'Cross-Origin-Opener-Policy': 'same-origin',
