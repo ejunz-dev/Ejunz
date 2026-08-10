@@ -8,9 +8,7 @@ let injectionData: Record<string, any> = {};
 if (injectionEl) {
   try {
     injectionData = JSON.parse(injectionEl.textContent!);
-    console.log('[Ejunz] initial data:', injectionData);
   } catch (e) {
-    console.error('[Ejunz] Failed to parse injection data:', e);
   }
 }
 
