@@ -32,10 +32,10 @@ let domStyles: string | undefined;
 
 function getDomStyles() {
     if (domStyles != null) return domStyles;
-    const files = [
-        require.resolve('@ejunz/components/web.css'),
-        getAddonEntries()['ui-next-pages'] && path.resolve(path.dirname(getAddonEntries()['ui-next-pages']), 'pages.css'),
-    ].filter((file): file is string => !!file && fs.existsSync(file));
+    const addonStyles = Object.values(getAddonEntries())
+        .map((entry) => path.resolve(path.dirname(entry), 'pages.css'));
+    const files = [require.resolve('@ejunz/components/web.css'), ...addonStyles]
+        .filter((file, index, list): file is string => list.indexOf(file) === index && fs.existsSync(file));
     domStyles = files.map((file) => fs.readFileSync(file, 'utf8')).join('\n').replace(/<\/style/gi, '<\\/style');
     return domStyles;
 }
