@@ -2,12 +2,15 @@ import fs from 'fs';
 import path from 'path';
 import esbuild from 'esbuild';
 import c2k from 'koa2-connect/ts';
-import { build as buildVite, createServer, type Plugin } from 'vite';
+import { createServer, type Plugin } from 'vite';
 import { HandlerCommon, serializer } from '@ejunz/framework';
 import {
     Context, Handler, Logger,
     NotFoundError, param, SettingModel, sha1, size, Types,
 } from 'ejun';
+import { renderDomPage } from './src/entry-dom';
+import { installPlugin } from './src/dom/registry';
+import './src/pages';
 
 const logger = new Logger('ui-next');
 
@@ -40,7 +43,28 @@ function getAddonEntries(): Record<string, string> {
     return entries;
 }
 
+let domPluginsReady: Promise<void> | undefined;
+
+async function ensureDomPlugins() {
+    if (!domPluginsReady) {
+        domPluginsReady = (async () => {
+            for (const [name, entry] of Object.entries(getAddonEntries())) {
+                try {
+                    const plugin = require(entry) as { setup?: (api: any) => void };
+                    if (typeof plugin.setup === 'function') {
+                        installPlugin({ name, setup: plugin.setup });
+                    }
+                } catch (error) {
+                    logger.warn('Failed to load DOM UI plugin %s: %o', name, error);
+                }
+            }
+        })();
+    }
+    await domPluginsReady;
+}
+
 function createPageData(args: Record<string, any>, context: any) {
+    const host = context.handler.context.req.headers?.host || 'localhost';
     return {
         name: context.handler.context._matchedRouteName,
         template: context.handler.response.template || '',
@@ -50,72 +74,23 @@ function createPageData(args: Record<string, any>, context: any) {
             ...args,
         },
         url: context.handler.context.req.url!,
+        host,
     };
 }
 
-type SsrModule = {
-    renderPage: (pageData: ReturnType<typeof createPageData>, routeMap: Record<string, string>) => Promise<string>;
-};
-
-type SsrModuleLoader = (id: string) => Promise<SsrModule>;
-
-async function renderSsr(
+async function renderDom(
     html: string,
     pageData: ReturnType<typeof createPageData>,
     routeMap: Record<string, string>,
-    loadModule?: SsrModuleLoader,
 ) {
     try {
-        const module = loadModule
-            ? await loadModule('/src/entry-server.tsx')
-            : await loadProductionSsr();
-        const rendered = await module.renderPage(pageData, routeMap);
+        await ensureDomPlugins();
+        const rendered = renderDomPage(pageData, routeMap, pageData.host);
         return html.replace('<div id="root"></div>', `<div id="root">${rendered}</div>`);
     } catch (error) {
-        logger.warn('SSR render failed for %s: %o', pageData.name, error);
+        logger.warn('DOM render failed for %s: %o', pageData.name, error);
         return html;
     }
-}
-
-const ssrOutDir = path.resolve(process.cwd(), '.cache/ui-next-ssr');
-let productionSsrModule: Promise<SsrModule> | undefined;
-
-async function buildSsrBundle(): Promise<SsrModule | undefined> {
-    const previousEntries = process.env.EJUNZ_UI_SSR_ENTRIES;
-    process.env.EJUNZ_UI_SSR_ENTRIES = JSON.stringify(getAddonEntries());
-    try {
-        await buildVite({
-            root: __dirname,
-            configFile: path.resolve(__dirname, 'vite.config.ts'),
-            build: {
-                ssr: path.resolve(__dirname, 'src/entry-server.tsx'),
-                outDir: ssrOutDir,
-                emptyOutDir: true,
-                rollupOptions: {
-                    output: {
-                        format: 'cjs',
-                        entryFileNames: 'entry-server.cjs',
-                        chunkFileNames: 'chunks/[name]-[hash].cjs',
-                    },
-                },
-            },
-        });
-        return require(path.join(ssrOutDir, 'entry-server.cjs')) as SsrModule;
-    } catch (error) {
-        logger.warn('Failed to build production SSR bundle: %o', error);
-        return undefined;
-    } finally {
-        if (previousEntries === undefined) delete process.env.EJUNZ_UI_SSR_ENTRIES;
-        else process.env.EJUNZ_UI_SSR_ENTRIES = previousEntries;
-    }
-}
-
-function loadProductionSsr(): Promise<SsrModule> {
-    productionSsrModule ??= buildSsrBundle().then((module) => {
-        if (!module) throw new Error('Production SSR bundle is unavailable');
-        return module;
-    });
-    return productionSsrModule;
 }
 
 function ejunzPlugins(): Plugin {
@@ -410,13 +385,8 @@ export async function apply(ctx: Context) {
                     ...injectedScripts(devAssetUrl, getViewLang(context.handler)),
                 ].join('\n');
                 const injectedHtml = html.replace(INJECT_MARKER, injectHtml);
-                const ssrHtml = await renderSsr(
-                    injectedHtml,
-                    pageData,
-                    ctx.server.routeMap,
-                    (id) => vite.ssrLoadModule(id),
-                );
-                return await vite.transformIndexHtml(context.handler.context.req.url!, ssrHtml);
+                const renderedHtml = await renderDom(injectedHtml, pageData, ctx.server.routeMap);
+                return await vite.transformIndexHtml(context.handler.context.req.url!, renderedHtml);
             },
         });
 
@@ -430,8 +400,6 @@ export async function apply(ctx: Context) {
             await buildI18n();
             await buildCodeLangs();
             await buildVersions();
-            const ssrModule = await buildSsrBundle();
-            productionSsrModule = ssrModule ? Promise.resolve(ssrModule) : undefined;
         };
         ctx.on('app/started', build);
 
@@ -459,7 +427,7 @@ export async function apply(ctx: Context) {
                     ...injectedScripts(prodAssetUrl, getViewLang(context.handler)),
                 ].join('\n');
                 const injectedHtml = html.replace(INJECT_MARKER, injectHtml);
-                return renderSsr(injectedHtml, pageData, ctx.server.routeMap);
+                return renderDom(injectedHtml, pageData, ctx.server.routeMap);
             },
         });
         const debouncedBuild = ctx.debounce(build, 2000);
