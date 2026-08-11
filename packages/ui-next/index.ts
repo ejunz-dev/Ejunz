@@ -411,7 +411,7 @@ export async function apply(ctx: Context) {
             priority: 100,
             async render(name, args, context) {
                 const pageData = createPageData(args, context);
-                if (!resolvePage(pageData) && ctx.server.renderers['ui-default']) {
+                if (pageData.template !== 'next' && !resolvePage(pageData) && ctx.server.renderers['ui-default']) {
                     return ctx.server.renderers['ui-default'].render(name, args, context) as string | Promise<string>;
                 }
                 const serialized = JSON.stringify({
@@ -452,7 +452,7 @@ export async function apply(ctx: Context) {
             priority: 100,
             async render(name, args, context) {
                 const pageData = createPageData(args, context);
-                if (!resolvePage(pageData) && ctx.server.renderers['ui-default']) {
+                if (pageData.template !== 'next' && !resolvePage(pageData) && ctx.server.renderers['ui-default']) {
                     return ctx.server.renderers['ui-default'].render(name, args, context) as string | Promise<string>;
                 }
                 const indexHtml = path.join(__dirname, 'public', 'index.html');
