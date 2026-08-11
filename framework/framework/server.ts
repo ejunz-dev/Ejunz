@@ -127,7 +127,14 @@ export const koa = new Koa<Koa.DefaultState, KoaContext>({
 });
 export const router = new Router();
 export const httpServer = http.createServer(koa.callback());
-export const wsServer = new WebSocketServer({ server: httpServer });
+export const wsServer = new WebSocketServer({ noServer: true });
+httpServer.on('upgrade', (request, socket, head) => {
+    const pathname = new URL(request.url || '/', 'http://localhost').pathname;
+    if (pathname === '/__ejunz_vite_hmr') return;
+    wsServer.handleUpgrade(request, socket, head, (client) => {
+        wsServer.emit('connection', client, request);
+    });
+});
 koa.on('error', (error) => {
     if (!['ECONNRESET', 'EPIPE', 'ECONNABORTED'].includes(error.code) && !error.message.includes('Parse Error')) {
         logger.error('Koa app-level error', { error });
