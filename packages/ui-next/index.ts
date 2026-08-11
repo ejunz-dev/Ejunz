@@ -109,8 +109,19 @@ async function renderDom(
     }
 }
 
-function logSsrPage(mode: 'dev' | 'prod', pageData: ReturnType<typeof createPageData>, html: string) {
-    logger.info('SSR %s %s -> %s (%d bytes)', mode, pageData.url, pageData.name, Buffer.byteLength(html));
+function logNextResponse(context: any) {
+    const response = context.EjunzContext?.response;
+    const handler = context.handler;
+    if (!handler || response?.template !== 'next') return;
+    const body = response.body;
+    const bytes = typeof body === 'string'
+        ? Buffer.byteLength(body)
+        : body == null ? 0 : Buffer.byteLength(JSON.stringify(body));
+    const isJson = String(context.request?.headers?.accept || '').includes('application/json');
+    const mode = isJson ? 'JSON page-data' : `SSR ${process.env.DEV ? 'dev' : 'prod'}`;
+    const pageName = context._matchedRouteName || handler.context?._matchedRouteName || handler.constructor.name;
+    const url = context.request?.url || context.request?.path || '/';
+    logger.info('%s %s -> %s (%d bytes)', mode, url, pageName, bytes);
 }
 
 function ejunzPlugins(): Plugin {
@@ -362,6 +373,10 @@ const injectedScripts = (resolve: (name: string) => string, viewLang: string) =>
 export async function apply(ctx: Context) {
     if (process.env.EJUNZ_CLI) return;
 
+    ctx.server.addServerLayer('ui-next-logger', async (context: any, next: () => Promise<void>) => {
+        await next();
+        logNextResponse(context);
+    });
     ctx.Route('ui_next_constants', '/plugins/:version/:name', UiNextConstantHandler);
 
     if (process.env.DEV) {
@@ -413,7 +428,6 @@ export async function apply(ctx: Context) {
                 const injectedHtml = injectDomStyles(html.replace(INJECT_MARKER, injectHtml));
                 const renderedHtml = await renderDom(injectedHtml, pageData, ctx.server.routeMap);
                 const body = await vite.transformIndexHtml(context.handler.context.req.url!, renderedHtml);
-                logSsrPage('dev', pageData, body);
                 return body;
             },
         });
@@ -454,7 +468,6 @@ export async function apply(ctx: Context) {
                 ].join('\n');
                 const injectedHtml = injectDomStyles(html.replace(INJECT_MARKER, injectHtml));
                 const body = renderDom(injectedHtml, pageData, ctx.server.routeMap);
-                logSsrPage('prod', pageData, body);
                 return body;
             },
         });
