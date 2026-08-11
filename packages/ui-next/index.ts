@@ -9,6 +9,7 @@ import {
     NotFoundError, param, sha1, size, Types,
 } from 'ejun';
 import { renderDomPage } from './src/entry-dom';
+import { logUiNextResponse } from './src/logging';
 import { installPlugin } from './src/dom/registry';
 import './src/pages';
 
@@ -114,14 +115,11 @@ function logNextResponse(context: any) {
     const handler = context.handler;
     if (!handler || response?.template !== 'next') return;
     const body = response.body;
-    const bytes = typeof body === 'string'
-        ? Buffer.byteLength(body)
-        : body == null ? 0 : Buffer.byteLength(JSON.stringify(body));
-    const isJson = String(context.request?.headers?.accept || '').includes('application/json');
-    const mode = isJson ? 'JSON page-data' : `SSR ${process.env.DEV ? 'dev' : 'prod'}`;
+    const mode = String(context.request?.headers?.accept || '').includes('application/json')
+        ? 'json' : process.env.DEV ? 'dev' : 'prod';
     const pageName = context._matchedRouteName || handler.context?._matchedRouteName || handler.constructor.name;
     const url = context.request?.url || context.request?.path || '/';
-    logger.info('%s %s -> %s (%d bytes)', mode, url, pageName, bytes);
+    logUiNextResponse(logger, mode, url, pageName, body);
 }
 
 function ejunzPlugins(): Plugin {
