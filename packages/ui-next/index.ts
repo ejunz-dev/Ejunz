@@ -109,6 +109,10 @@ async function renderDom(
     }
 }
 
+function logSsrPage(mode: 'dev' | 'prod', pageData: ReturnType<typeof createPageData>, html: string) {
+    logger.info('SSR %s %s -> %s (%d bytes)', mode, pageData.url, pageData.name, Buffer.byteLength(html));
+}
+
 function ejunzPlugins(): Plugin {
     const virtualModuleId = 'virtual:ejunz-plugins';
     const resolvedVirtualModuleId = `\0${virtualModuleId}`;
@@ -408,7 +412,9 @@ export async function apply(ctx: Context) {
                 ].join('\n');
                 const injectedHtml = injectDomStyles(html.replace(INJECT_MARKER, injectHtml));
                 const renderedHtml = await renderDom(injectedHtml, pageData, ctx.server.routeMap);
-                return await vite.transformIndexHtml(context.handler.context.req.url!, renderedHtml);
+                const body = await vite.transformIndexHtml(context.handler.context.req.url!, renderedHtml);
+                logSsrPage('dev', pageData, body);
+                return body;
             },
         });
 
@@ -447,7 +453,9 @@ export async function apply(ctx: Context) {
                     ...injectedScripts(prodAssetUrl, getViewLang(context.handler)),
                 ].join('\n');
                 const injectedHtml = injectDomStyles(html.replace(INJECT_MARKER, injectHtml));
-                return renderDom(injectedHtml, pageData, ctx.server.routeMap);
+                const body = renderDom(injectedHtml, pageData, ctx.server.routeMap);
+                logSsrPage('prod', pageData, body);
+                return body;
             },
         });
         const debouncedBuild = ctx.debounce(build, 2000);
