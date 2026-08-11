@@ -3,10 +3,10 @@ import path from 'path';
 import esbuild from 'esbuild';
 import c2k from 'koa2-connect/ts';
 import { createServer, type Plugin } from 'vite';
-import { HandlerCommon, httpServer, serializer } from '@ejunz/framework';
+import { HandlerCommon, serializer } from '@ejunz/framework';
 import {
     Context, Handler, Logger,
-    NotFoundError, param, SettingModel, sha1, size, Types,
+    NotFoundError, param, sha1, size, Types,
 } from 'ejun';
 import { renderDomPage } from './src/entry-dom';
 import { installPlugin } from './src/dom/registry';
@@ -167,6 +167,7 @@ const federationPlugin: esbuild.Plugin = {
 
 const vfs: Record<string, string> = {};
 const hashes: Record<string, string> = {};
+let runtimeAssetsReady: Promise<void> | undefined;
 
 const applyCss = (css: string) => `
 (() => {
@@ -191,10 +192,6 @@ async function buildI18n() {
         if (id) localeList[id] = { name: global.Ejunz.locales[lang].__langname, flag: global.Ejunz.locales[lang].__flag };
     }
     addFile('locale-list.js', `window.EjunzLocaleList=${JSON.stringify(localeList)};`);
-}
-
-async function buildCodeLangs() {
-    addFile('code-langs.js', `window.EjunzCodeLangs=${JSON.stringify(SettingModel.langs)};`);
 }
 
 async function buildVersions() {
@@ -225,11 +222,27 @@ async function buildVersions() {
     addFile('versions.js', `window.EjunzVersions=${JSON.stringify(versions)};`);
 }
 
+async function buildRuntimeAssets() {
+    await buildI18n();
+    await buildVersions();
+}
+
+function ensureRuntimeAssets() {
+    if (!runtimeAssetsReady) {
+        runtimeAssetsReady = buildRuntimeAssets().catch((error) => {
+            runtimeAssetsReady = undefined;
+            throw error;
+        });
+    }
+    return runtimeAssetsReady;
+}
+
 class UiNextConstantHandler extends Handler {
     noCheckPermView = true;
 
     @param('name', Types.Filename)
     async all(domainId: string, name: string) {
+        if (process.env.DEV) await ensureRuntimeAssets();
         if (!(name in vfs)) throw new NotFoundError(name);
         this.response.type = 'application/javascript';
         this.response.body = vfs[name];
@@ -337,7 +350,6 @@ const HASH_FALLBACK = '00000000';
 const getViewLang = (handler: HandlerCommon) => handler.user?.viewLang || handler.session?.viewLang || 'zh';
 
 const injectedScripts = (resolve: (name: string) => string, viewLang: string) => [
-    'code-langs.js',
     'locale-list.js',
     `lang-${viewLang}.js`,
     'versions.js',
@@ -349,14 +361,8 @@ export async function apply(ctx: Context) {
     ctx.Route('ui_next_constants', '/plugins/:version/:name', UiNextConstantHandler);
 
     if (process.env.DEV) {
-        ctx.on('app/started', async () => {
-            await buildI18n();
-            await buildCodeLangs();
-            await buildVersions();
-        });
+        ctx.on('app/started', ensureRuntimeAssets);
         ctx.on('app/i18n/update', buildI18n);
-        ctx.on('system/setting-loaded', buildCodeLangs);
-        ctx.on('system/setting', buildCodeLangs);
 
         const vite = await createServer({
             root: __dirname,
@@ -364,7 +370,7 @@ export async function apply(ctx: Context) {
             server: {
                 middlewareMode: true,
                 hmr: {
-                    server: httpServer,
+                    port: 3010,
                 },
                 headers: {
                     'Cross-Origin-Opener-Policy': 'same-origin',
@@ -413,9 +419,7 @@ export async function apply(ctx: Context) {
     } else {
         const build = async () => {
             await buildPlugins();
-            await buildI18n();
-            await buildCodeLangs();
-            await buildVersions();
+            await buildRuntimeAssets();
         };
         ctx.on('app/started', build);
 
@@ -453,7 +457,6 @@ export async function apply(ctx: Context) {
         };
         ctx.on('app/watch/change', triggerHotUpdate);
         ctx.on('app/watch/unlink', triggerHotUpdate);
-        ctx.on('system/setting-loaded', buildCodeLangs);
         ctx.on('system/setting', debouncedBuild);
         ctx.on('app/i18n/update', debouncedBuild);
     }
