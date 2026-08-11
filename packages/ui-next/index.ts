@@ -10,7 +10,7 @@ import {
 } from 'ejun';
 import { renderDomPage } from './src/entry-dom';
 import { logUiNextResponse } from './src/logging';
-import { installPlugin } from './src/dom/registry';
+import { installPlugin, resolvePage } from './src/dom/registry';
 
 const logger = new Logger('ui-next');
 
@@ -409,8 +409,11 @@ export async function apply(ctx: Context) {
             output: 'html',
             asFallback: true,
             priority: 100,
-            async render(_name, args, context) {
+            async render(name, args, context) {
                 const pageData = createPageData(args, context);
+                if (!resolvePage(pageData) && ctx.server.renderers['ui-default']) {
+                    return ctx.server.renderers['ui-default'].render(name, args, context) as string | Promise<string>;
+                }
                 const serialized = JSON.stringify({
                     EJUNZ_INJECTED: true,
                     ...pageData,
@@ -447,11 +450,14 @@ export async function apply(ctx: Context) {
             output: 'html',
             asFallback: true,
             priority: 100,
-            async render(_name, args, context) {
+            async render(name, args, context) {
+                const pageData = createPageData(args, context);
+                if (!resolvePage(pageData) && ctx.server.renderers['ui-default']) {
+                    return ctx.server.renderers['ui-default'].render(name, args, context) as string | Promise<string>;
+                }
                 const indexHtml = path.join(__dirname, 'public', 'index.html');
                 if (!fs.existsSync(indexHtml)) return PENDING_HTML;
                 const html = fs.readFileSync(indexHtml, 'utf-8');
-                const pageData = createPageData(args, context);
                 const serialized = JSON.stringify({
                     EJUNZ_INJECTED: true,
                     ...pageData,
