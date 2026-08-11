@@ -38,6 +38,9 @@ packages/**/*.js
 !**/bin/*.js
 !*.page.js
 !packages/register/index.js
+## components (JS factory source files referenced by frontend index.ts)
+!packages/components/frontend/app/**/*.js
+!packages/components/frontend/web/**/*.js
 ## ui-default
 !packages/ui-default/**/*.js
 !packages/geoip/download.js
