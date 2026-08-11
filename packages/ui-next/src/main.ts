@@ -1,7 +1,5 @@
 /// <reference path="./vite-env.d.ts" />
 
-import './pages';
-
 import { endpoints, initialPage, isInjected, pluginsUrl, routeMapStore } from './globals';
 import { installPlugins } from './dom/registry';
 import { mountPage } from './dom/runtime';
