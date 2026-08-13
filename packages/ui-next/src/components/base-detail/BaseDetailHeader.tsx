@@ -46,7 +46,6 @@ export function BaseDetailHeader({ title, description, domainId, docId, nodeCoun
         <span className="bd-header__tab is-active" role="tab" aria-selected="true">▤ {i18n('Knowledge Base')}</span>
         <button type="button" className={`bd-header__tab${treeOpen ? ' is-active' : ''}`} onClick={onToggleTree} aria-selected={treeOpen}>⌘ {i18n('Document Structure')}</button>
       </div>
-      <div className="bd-header__meta">{docId ? <span className="bd-header__id">{docId}</span> : null}</div>
     </header>
   );
 }
