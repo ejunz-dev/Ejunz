@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { i18n } from '../../i18n';
 import { renderMarkdown } from './markdown';
 import { cardDisplayLabel } from './tree';
@@ -38,10 +39,10 @@ export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, selectedP
 
   if (!displayCard) return null;
   const url = fileUrl(displayCard, baseDocId, domainId);
-  return (
+  return createPortal(
     <>
-      <button type="button" className="bd-backdrop" onClick={onClose} aria-label={i18n('Close')} />
-      <aside ref={drawerRef} className="bd-drawer" tabIndex={-1} role="dialog" aria-modal="true" aria-label={cardDisplayLabel(displayCard)}>
+      <button type="button" className="bd-backdrop bd-card-backdrop" onClick={onClose} aria-label={i18n('Close')} />
+      <aside ref={drawerRef} className="bd-drawer bd-card-drawer" tabIndex={-1} role="dialog" aria-modal="true" aria-label={cardDisplayLabel(displayCard)}>
         <header className="bd-drawer__header">
           <div className="bd-drawer__tabs" role="tablist">
             <button type="button" role="tab" aria-selected={tab === 'content'} className={tab === 'content' ? 'is-active' : ''} onClick={() => setTab('content')}>{i18n('Content')}</button>
@@ -72,6 +73,7 @@ export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, selectedP
           </div>
         )}
       </aside>
-    </>
+    </>,
+    document.body,
   );
 }
