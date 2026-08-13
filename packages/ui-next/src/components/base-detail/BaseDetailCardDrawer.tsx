@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import Viewer from 'viewerjs';
+import 'viewerjs/dist/viewer.css';
 import { i18n } from '../../i18n';
 import { renderMarkdown } from './markdown';
 import { cardDisplayLabel } from './tree';
@@ -26,11 +28,15 @@ export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, selectedP
   const [loadingMedia, setLoadingMedia] = useState(true);
   const drawerRef = useRef<HTMLElement>(null);
   const markdownRef = useRef<HTMLDivElement>(null);
+  const viewerRef = useRef<Viewer | null>(null);
   const displayCard = card;
   const problems = displayCard?.problems || [];
+  const contentHtml = displayCard?.content ? renderMarkdown(displayCard.content) : '';
 
   useEffect(() => {
     if (!displayCard) return undefined;
+    viewerRef.current?.destroy();
+    viewerRef.current = null;
     setLoadingMedia(true);
     setTab(selectedProblemId ? 'problems' : 'content');
     drawerRef.current?.focus();
@@ -57,12 +63,47 @@ export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, selectedP
         element.removeEventListener('canplay', finishLoading);
         element.removeEventListener('error', finishLoading);
       });
+      viewerRef.current?.destroy();
+      viewerRef.current = null;
     };
   }, [displayCard, onClose, selectedProblemId]);
 
+  useEffect(() => {
+    if (!displayCard || !markdownRef.current) return undefined;
+    const images = markdownRef.current.querySelectorAll('img');
+    if (!images.length) return undefined;
+    const imageContainer = markdownRef.current;
+    const openViewer = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLImageElement)) return;
+      viewerRef.current?.destroy();
+      viewerRef.current = new Viewer(imageContainer, {
+        inline: false,
+        title: false,
+        navbar: false,
+        toolbar: {
+          zoomIn: true,
+          zoomOut: true,
+          oneToOne: true,
+          reset: true,
+          rotateLeft: true,
+          rotateRight: true,
+          flipHorizontal: true,
+          flipVertical: true,
+          prev: false,
+          next: false,
+          play: false,
+        },
+        viewed: () => setLoadingMedia(false),
+      });
+      viewerRef.current.view(Array.from(images).indexOf(target));
+    };
+    imageContainer.addEventListener('click', openViewer);
+    return () => imageContainer.removeEventListener('click', openViewer);
+  }, [contentHtml, displayCard?.docId]);
+
   if (!displayCard) return null;
   const url = fileUrl(displayCard, baseDocId, domainId);
-  const contentHtml = displayCard.content ? renderMarkdown(displayCard.content) : '';
   const hasEmbeddedMedia = /<(?:img|iframe|video|object|embed)\b/i.test(contentHtml);
   return createPortal(
     <>
