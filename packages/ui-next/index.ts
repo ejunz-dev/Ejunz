@@ -10,7 +10,7 @@ import {
 } from 'ejun';
 import { renderDomPage } from './src/entry-dom';
 import { logUiNextResponse } from './src/logging';
-import { installPlugin, resolvePage } from './src/dom/registry';
+import { installPlugin, listPages, resolvePage } from './src/dom/registry';
 import './src/pages';
 
 const logger = new Logger('ui-next');
@@ -376,6 +376,11 @@ export async function apply(ctx: Context) {
         logNextResponse(context);
     });
     ctx.Route('ui_next_constants', '/plugins/:version/:name', UiNextConstantHandler);
+
+    ctx.on('app/started', () => {
+        const pageNames = listPages();
+        logger.info('Registered pages (%d): %s', pageNames.length, pageNames.join(', '));
+    });
 
     if (process.env.DEV) {
         ctx.on('app/started', ensureRuntimeAssets);

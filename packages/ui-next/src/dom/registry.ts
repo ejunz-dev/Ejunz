@@ -7,6 +7,10 @@ export function registerPage(name: string, definition: PageDefinition): void {
   pages.set(name, definition);
 }
 
+export function listPages(): string[] {
+  return [...pages.keys()];
+}
+
 export function installPlugin(plugin: DomPluginDefinition): void {
   plugin.setup({ registerPage } satisfies DomPluginAPI);
 }
