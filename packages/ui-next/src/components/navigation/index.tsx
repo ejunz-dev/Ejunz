@@ -22,8 +22,48 @@ const navItems = [
   ['discussion_main', 'Discussions', 'discussion'],
 ] as const;
 
+function md5(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  const words: number[] = [];
+  for (let i = 0; i < bytes.length; i++) words[i >> 2] = (words[i >> 2] || 0) | (bytes[i] << ((i % 4) * 8));
+  const bitLength = bytes.length * 8;
+  words[bytes.length >> 2] = (words[bytes.length >> 2] || 0) | (0x80 << ((bytes.length % 4) * 8));
+  while (words.length % 16 !== 14) words.push(0);
+  words.push(bitLength, Math.floor(bitLength / 0x100000000));
+  const add = (x: number, y: number) => (x + y) | 0;
+  const rol = (x: number, n: number) => (x << n) | (x >>> (32 - n));
+  const k = Array.from({ length: 64 }, (_, i) => Math.floor(Math.abs(Math.sin(i + 1)) * 0x100000000));
+  const s = [7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21];
+  let a0 = 0x67452301; let b0 = 0xefcdab89; let c0 = 0x98badcfe; let d0 = 0x10325476;
+  for (let offset = 0; offset < words.length; offset += 16) {
+    let a = a0; let b = b0; let c = c0; let d = d0;
+    for (let i = 0; i < 64; i++) {
+      let f: number; let g: number;
+      if (i < 16) { f = (b & c) | (~b & d); g = i; }
+      else if (i < 32) { f = (d & b) | (~d & c); g = (5 * i + 1) % 16; }
+      else if (i < 48) { f = b ^ c ^ d; g = (3 * i + 5) % 16; }
+      else { f = c ^ (b | ~d); g = (7 * i) % 16; }
+      const previous = d;
+      d = c;
+      c = b;
+      const shift = s[(Math.floor(i / 16) * 4) + (i % 4)];
+      b = add(b, rol(add(add(a, f), add(k[i], words[offset + g])), shift));
+      a = previous;
+    }
+    a0 = add(a0, a); b0 = add(b0, b); c0 = add(c0, c); d0 = add(d0, d);
+  }
+  return [a0, b0, c0, d0].map((word) => Array.from({ length: 4 }, (_, i) => ((word >>> (i * 8)) & 255).toString(16).padStart(2, '0')).join('')).join('');
+}
+
 function avatarUrl(domain: DomainItem | null | undefined): string {
-  return domain?.avatarUrl || domain?.avatar || '/img/team_avatar.png';
+  const source = String(domain?.avatarUrl || domain?.avatar || '').trim();
+  if (!source) return '/img/team_avatar.png';
+  if (/^(https?:|data:|\/\/|\/)/.test(source)) return source;
+  if (source.startsWith('url:')) return source.slice(4);
+  if (source.startsWith('github:')) return `https://github.com/${encodeURIComponent(source.slice(7))}.png?size=64`;
+  if (source.startsWith('qq:')) return `https://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(source.slice(3))}&s=64`;
+  if (source.startsWith('gravatar:')) return `https://cn.gravatar.com/avatar/${md5(source.slice(9).trim().toLowerCase())}?d=mm&s=64`;
+  return '/img/team_avatar.png';
 }
 
 function isGuest(user: Record<string, any>): boolean {
