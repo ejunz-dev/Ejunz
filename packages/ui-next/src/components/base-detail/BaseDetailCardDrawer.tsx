@@ -29,6 +29,7 @@ export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, selectedP
   const drawerRef = useRef<HTMLElement>(null);
   const markdownRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<Viewer | null>(null);
+  const viewerImageRef = useRef<HTMLImageElement | null>(null);
   const displayCard = card;
   const problems = displayCard?.problems || [];
   const contentHtml = displayCard?.content ? renderMarkdown(displayCard.content) : '';
@@ -37,6 +38,8 @@ export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, selectedP
     if (!displayCard) return undefined;
     viewerRef.current?.destroy();
     viewerRef.current = null;
+    viewerImageRef.current?.remove();
+    viewerImageRef.current = null;
     setLoadingMedia(true);
     setTab(selectedProblemId ? 'problems' : 'content');
     drawerRef.current?.focus();
@@ -65,6 +68,8 @@ export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, selectedP
       });
       viewerRef.current?.destroy();
       viewerRef.current = null;
+      viewerImageRef.current?.remove();
+      viewerImageRef.current = null;
     };
   }, [displayCard, onClose, selectedProblemId]);
 
@@ -76,8 +81,15 @@ export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, selectedP
     const openViewer = (event: Event) => {
       const target = event.target;
       if (!(target instanceof HTMLImageElement)) return;
+      const preview = new Image();
+      preview.src = target.currentSrc || target.src;
+      preview.alt = target.alt;
+      preview.style.display = 'none';
+      document.body.appendChild(preview);
+      viewerImageRef.current?.remove();
+      viewerImageRef.current = preview;
       viewerRef.current?.destroy();
-      viewerRef.current = new Viewer(imageContainer, {
+      viewerRef.current = new Viewer(preview, {
         inline: false,
         title: false,
         navbar: false,
@@ -96,7 +108,7 @@ export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, selectedP
         },
         viewed: () => setLoadingMedia(false),
       });
-      viewerRef.current.view(Array.from(images).indexOf(target));
+      viewerRef.current.show();
     };
     imageContainer.addEventListener('click', openViewer);
     return () => imageContainer.removeEventListener('click', openViewer);
