@@ -5,6 +5,16 @@ import { defineSlot } from './registry';
 import { SlotErrorBoundary } from './registry/error-boundary';
 import { i18n } from './i18n';
 import { store } from './registry/store';
+import './components/loading.css';
+
+function Loading() {
+  return (
+    <div className="uix-loading" role="status" aria-label={i18n('Loading...')}>
+      <span className="uix-loading__spinner" aria-hidden="true" />
+      <span className="uix-loading__text">{i18n('Loading...')}</span>
+    </div>
+  );
+}
 
 const App = defineSlot('app:root', () => {
   const { name, template, args } = usePageData();
@@ -55,7 +65,7 @@ const App = defineSlot('app:root', () => {
     <SlotErrorBoundary slotName={slotName} label="renderer">
       <Suspense fallback={null}>
         <Layout>
-          <Suspense fallback={<div>{i18n('Loading...')}</div>}>
+          <Suspense fallback={<Loading />}>
             <Page />
           </Suspense>
         </Layout>

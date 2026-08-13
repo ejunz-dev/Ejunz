@@ -1,0 +1,29 @@
+.uix-loading {
+  min-height: 8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .65rem;
+  color: var(--web-muted-fg);
+  font-size: .85rem;
+}
+
+.uix-loading__spinner {
+  width: 1.35rem;
+  height: 1.35rem;
+  flex: 0 0 auto;
+  border: .2rem solid color-mix(in srgb, var(--web-primary) 22%, transparent);
+  border-left-color: var(--web-primary);
+  border-radius: 50%;
+  animation: uix-loading-spin .8s linear infinite;
+}
+
+@keyframes uix-loading-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .uix-loading__spinner {
+    animation-duration: 1.8s;
+  }
+}
