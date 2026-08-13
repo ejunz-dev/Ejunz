@@ -1,89 +1,31 @@
 {
-  "name": "@ejunz/components",
-  "version": "0.4.0",
-  "description": "Ejunz components — Web UI, core-client App UI, and legacy React controls",
-  "main": "./frontend/index.ts",
-  "types": "./frontend/index.ts",
-  "files": [
-    "frontend/app/",
-    "frontend/web/",
-    "frontend/shared/",
-    "frontend/index.ts",
-    "frontend/styles.css",
-    "frontend/types.d.ts",
-    "frontend/web.css",
-    "package.json"
-  ],
-  "exports": {
-    ".": "./frontend/index.ts",
-    "./app": "./frontend/app/index.ts",
-    "./web": "./frontend/web/index.ts",
-    "./shared": "./frontend/shared/index.ts",
-    "./styles.css": "./frontend/styles.css",
-    "./web.css": "./frontend/web.css",
-    "./app/*": "./frontend/app/*",
-    "./web/*": "./frontend/web/*",
-    "./shared/*": "./frontend/shared/*",
-    "./frontend/autocomplete/AutoComplete": "./frontend/web/autocomplete/AutoComplete.tsx",
-    "./frontend/autocomplete/AutoComplete.tsx": "./frontend/web/autocomplete/AutoComplete.tsx",
-    "./frontend/autocomplete/CustomSelectAutoComplete": "./frontend/web/autocomplete/CustomSelectAutoComplete.tsx",
-    "./frontend/autocomplete/CustomSelectAutoComplete.tsx": "./frontend/web/autocomplete/CustomSelectAutoComplete.tsx",
-    "./frontend/autocomplete/autocomplete.scss": "./frontend/web/autocomplete/autocomplete.scss",
-    "./frontend/ConfigEditor": "./frontend/web/config-editor/ConfigEditor.tsx",
-    "./frontend/ConfigEditor.tsx": "./frontend/web/config-editor/ConfigEditor.tsx",
-    "./frontend/Dom": "./frontend/shared/Dom.tsx",
-    "./frontend/Dom.tsx": "./frontend/shared/Dom.tsx",
-    "./frontend/Icon": "./frontend/web/icon/Icon.tsx",
-    "./frontend/Icon.tsx": "./frontend/web/icon/Icon.tsx",
-    "./frontend/Layout": "./frontend/shared/Layout.tsx",
-    "./frontend/Layout.tsx": "./frontend/shared/Layout.tsx",
-    "./frontend/Notification": "./frontend/web/notification/Notification.tsx",
-    "./frontend/Notification.tsx": "./frontend/web/notification/Notification.tsx",
-    "./frontend/common.scss": "./frontend/web/common.scss",
-    "./frontend/provider": "./frontend/web/provider.tsx",
-    "./frontend/provider.tsx": "./frontend/web/provider.tsx",
-    "./frontend/*": "./frontend/*"
-  },
-  "sideEffects": [
-    "**/*.scss",
-    "**/*.css"
-  ],
-  "repository": "https://github.com/ejunz-dev/Ejunz",
-  "license": "AGPL-3.0",
-  "dependencies": {
-    "allotment": "^1.20.4",
-    "classnames": "^2.5.1",
-    "diff": "^8.0.2",
-    "js-yaml": "^4.1.1",
-    "lodash": "^4.17.21",
-    "prop-types": "^15.8.1",
-    "react-dnd": "^16.0.1",
-    "react-dnd-html5-backend": "^16.0.1",
-    "react-toastify": "^11.0.5",
-    "schemastery-react": "^0.1.5"
-  },
-  "devDependencies": {
-    "@types/diff": "^8.0.0",
-    "@types/jquery": "^3.5.32",
-    "@types/js-yaml": "^4.0.9",
-    "@types/lodash": "^4.17.20",
-    "@types/prop-types": "^15.7.15",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
-    "sass": "^1.93.2",
-    "vue": "^3.5.18"
-  },
-  "peerDependencies": {
-    "react": ">=18",
-    "react-dom": ">=18",
-    "schemastery": "*",
-    "vue": ">=3"
-  },
-  "peerDependenciesMeta": {
-    "schemastery": {
-      "optional": true
+    "name": "@ejunz/components",
+    "version": "0.1.0",
+    "main": "./frontend/index.ts",
+    "repository": "https://github.com/ejunz-dev/Ejunz",
+    "sideEffects": [
+        "*.scss",
+        "*.css"
+    ],
+    "dependencies": {
+        "allotment": "^1.20.4",
+        "diff": "^8.0.2",
+        "js-yaml": "^4.1.0",
+        "lodash": "^4.17.21",
+        "react-dnd": "^16.0.1",
+        "react-dnd-html5-backend": "^16.0.1",
+        "react-toastify": "^11.0.5",
+        "schemastery-react": "^0.1.5"
+    },
+    "devDependencies": {
+        "@types/diff": "^8.0.0",
+        "@types/js-yaml": "^4.0.9",
+        "@types/lodash": "^4.17.20",
+        "sass": "^1.93.2"
+    },
+    "peerDependencies": {
+        "react": "*",
+        "react-dom": "*",
+        "schemastery": "*"
     }
-  }
 }
