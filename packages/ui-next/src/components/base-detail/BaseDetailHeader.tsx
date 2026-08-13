@@ -34,7 +34,6 @@ export function BaseDetailHeader({ title, description, domainId, docId, treeOpen
         </div>
       </div>
       <div className="bd-header__body">
-        <p className="bd-header__eyebrow">{i18n('Knowledge base')}</p>
         <h1>{title}</h1>
         {description?.trim() ? <p>{description}</p> : null}
       </div>

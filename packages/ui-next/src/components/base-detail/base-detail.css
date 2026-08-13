@@ -14,7 +14,7 @@
 .bd-header__actions { gap: .45rem; }
 .bd-header__action { border: 1px solid var(--bd-line); background: var(--bd-surface); color: var(--bd-ink); border-radius: 5px; padding: .42rem .7rem; cursor: pointer; font: inherit; font-size: .78rem; }
 .bd-header__action:hover, .bd-header__action:focus-visible { border-color: var(--bd-accent); color: var(--bd-accent); }
-.bd-header__body { padding: 3.8rem 0 1.8rem; max-width: 780px; }
+.bd-header__body { padding: 2.4rem 0 1.2rem; max-width: 780px; }
 .bd-header__eyebrow { margin: 0 0 .65rem; color: var(--bd-accent); text-transform: uppercase; letter-spacing: .13em; font-size: .68rem; font-weight: 700; }
 .bd-header h1 { margin: 0; font-size: clamp(2rem, 5vw, 4.4rem); letter-spacing: -.055em; line-height: .98; font-weight: 750; }
 .bd-header__body p:last-child { margin: 1rem 0 0; max-width: 650px; color: var(--bd-muted); line-height: 1.65; white-space: pre-wrap; }
@@ -119,7 +119,7 @@
 .bd-drawer__problems button.is-selected { color: var(--bd-accent); font-weight: 700; }
 @media (max-width: 760px) {
   .bd-header, .bd-explorer, .bd-page__main, .bd-page__stats { padding-inline: 1rem; }
-  .bd-header__body { padding-top: 2.6rem; }
+  .bd-header__body { padding-top: 1.8rem; }
   .bd-header h1 { font-size: 2.45rem; }
   .bd-explorer { align-items: stretch; flex-direction: column; }
   .bd-explorer__search { min-width: 0; }
