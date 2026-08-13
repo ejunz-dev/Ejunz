@@ -4,13 +4,28 @@ import Footnote from 'markdown-it-footnote';
 import Mark from 'markdown-it-mark';
 import MergeCells from 'markdown-it-merge-cells';
 import TOC from 'markdown-it-table-of-contents';
-import Imsize from 'markdown-it-imsize';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import { FilterCSS } from 'cssfilter';
 import { escapeAttrValue, FilterXSS, safeAttrValue } from 'xss';
 
 let renderer: MarkdownIt | null = null;
+
+function imageSizePlugin(md: MarkdownIt) {
+  md.inline.ruler.before('image', 'image_size', (state, silent) => {
+    const source = state.src.slice(state.pos);
+    const match = /^!\[([^\]]*)\]\((\S+?)(?:\s+=([\d%]*)(?:x([\d%]*))?)?\)/.exec(source);
+    if (!match) return false;
+    if (!silent) {
+      const token = state.push('image', 'img', 0);
+      token.attrs = [['src', match[2]], ['alt', match[1]]];
+      if (match[3]) token.attrPush(['width', match[3]]);
+      if (match[4]) token.attrPush(['height', match[4]]);
+    }
+    state.pos += match[0].length;
+    return true;
+  });
+}
 
 const whitelistClasses = new Set([
   'roadmap-text-btn',
@@ -237,7 +252,7 @@ function getRenderer(): MarkdownIt {
   md.linkify.tlds('.py', false);
   md.linkify.tlds('.zip', false);
   md.linkify.tlds('.mov', false);
-  md.use(Footnote).use(Mark).use(Imsize).use(Anchor).use(TOC).use(MergeCells).use(katexPlugin).use(mediaPlugin).use(roadmapButton);
+  md.use(Footnote).use(Mark).use(imageSizePlugin).use(Anchor).use(TOC).use(MergeCells).use(katexPlugin).use(mediaPlugin).use(roadmapButton);
   md.core.ruler.after('linkify', 'xss', (state) => {
     for (const token of state.tokens) {
       if (token.type === 'html_block') token.content = xss.process(token.content);
