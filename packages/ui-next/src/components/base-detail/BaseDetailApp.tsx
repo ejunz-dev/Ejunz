@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePageData } from '../../context/page-data';
 import { i18n } from '../../i18n';
 import { BaseDetailCardDrawer } from './BaseDetailCardDrawer';
@@ -14,6 +14,13 @@ import {
   getRootNodeIds,
   stringId,
 } from './tree';
+import {
+  countBaseDetailMatches,
+  emptyBaseDetailFilter,
+  filterTags,
+  readBaseDetailFilterFromLocation,
+  type BaseDetailFilter,
+} from './detail-filter';
 import type { BaseDetailBase, BaseDetailCard, BaseDetailData, BaseDetailEdge, BaseDetailNode } from './types';
 import './base-detail.css';
 
@@ -58,6 +65,13 @@ export default function BaseDetailApp() {
   });
   const [treeOpen, setTreeOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [filters, setFilters] = useState<BaseDetailFilter>(() => readBaseDetailFilterFromLocation());
+
+  useEffect(() => {
+    const syncFilters = () => setFilters(readBaseDetailFilterFromLocation());
+    window.addEventListener('popstate', syncFilters);
+    return () => window.removeEventListener('popstate', syncFilters);
+  }, []);
 
   const updateUrl = useCallback((patch: { nodeId?: string | null; cardId?: string | null; problemId?: string | null }) => {
     const params = new URLSearchParams(window.location.search);
@@ -102,23 +116,26 @@ export default function BaseDetailApp() {
   }, []);
 
   const cardCount = Object.values(nodeCardsMap).reduce((sum, cards) => sum + cards.length, 0);
+  const matchedCount = countBaseDetailMatches(nodes, nodeCardsMap, search, filters);
+  const availableCardTags = filterTags(Object.values(nodeCardsMap).flat());
+  const availableProblemTags = filterTags(Object.values(nodeCardsMap).flat(), true);
   const rootNode = nodes.find((node) => node.id === selectedNodeId) || nodes.find((node) => node.id === getRootNodeIds(nodes, edges)[0]);
   const title = base.title?.trim() || i18n('Knowledge Base');
 
   return (
     <div className="bd-page">
       <BaseDetailHeader title={rootNode && selectedNodeId !== getRootNodeIds(nodes, edges)[0] ? rootNode.text || i18n('Unnamed Node') : title} description={rootNode && selectedNodeId !== getRootNodeIds(nodes, edges)[0] ? title : base.content} domainId={domainId} docId={docId} treeOpen={treeOpen} onToggleTree={() => setTreeOpen((open) => !open)} onShare={() => undefined} />
-      <BaseDetailExplorer value={search} onChange={setSearch} nodeCount={nodes.length} cardCount={cardCount} />
+      <BaseDetailExplorer value={search} onChange={setSearch} filters={filters} matchedCount={matchedCount} onApplyFilters={setFilters} onClearFilters={() => setFilters(emptyBaseDetailFilter())} availableCardTags={availableCardTags} availableProblemTags={availableProblemTags} />
       <div className="bd-page__stats"><strong>{nodes.length}</strong> {i18n('nodes')} <span>·</span> <strong>{cardCount}</strong> {i18n('cards')}</div>
       <main className="bd-page__main">
         <section className="bd-page__structure" aria-label={i18n('Document Structure')}>
-          <BaseDetailTree rootNodeIds={getRootNodeIds(nodes, edges)} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} onToggle={toggleNode} selectedNodeId={selectedNodeId} selectedCardId={selectedCard?.docId || null} selectedProblemId={selectedProblemId} onSelectNode={selectNode} onSelectCard={selectCard} onSelectProblem={(card, pid) => { selectCard(card); selectProblem(pid); }} filter={search} />
+          <BaseDetailTree rootNodeIds={getRootNodeIds(nodes, edges)} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} onToggle={toggleNode} selectedNodeId={selectedNodeId} selectedCardId={selectedCard?.docId || null} selectedProblemId={selectedProblemId} onSelectNode={selectNode} onSelectCard={selectCard} onSelectProblem={(card, pid) => { selectCard(card); selectProblem(pid); }} filter={search} filters={filters} />
         </section>
         <section className="bd-page__content" aria-label={i18n('Content')}>
-          {selectedNodeId ? <BaseDetailNodeContent rootNodeId={selectedNodeId} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} selectedCardId={selectedCard?.docId || null} onSelectCard={selectCard} onSelectNode={selectNode} filter={search} /> : <div className="bd-empty">{i18n('Base detail tree empty')}</div>}
+          {selectedNodeId ? <BaseDetailNodeContent rootNodeId={selectedNodeId} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} selectedCardId={selectedCard?.docId || null} onSelectCard={selectCard} onSelectNode={selectNode} filter={search} filters={filters} /> : <div className="bd-empty">{i18n('Base detail tree empty')}</div>}
         </section>
       </main>
-      <BaseDetailTreeDrawer open={treeOpen} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} selectedNodeId={selectedNodeId} selectedCardId={selectedCard?.docId || null} onToggle={toggleNode} onSelectNode={(id) => { selectNode(id); setTreeOpen(false); }} onSelectCard={(card) => { selectCard(card); setTreeOpen(false); }} onClose={() => setTreeOpen(false)} filter={search} />
+      <BaseDetailTreeDrawer open={treeOpen} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} selectedNodeId={selectedNodeId} selectedCardId={selectedCard?.docId || null} onToggle={toggleNode} onSelectNode={(id) => { selectNode(id); setTreeOpen(false); }} onSelectCard={(card) => { selectCard(card); setTreeOpen(false); }} onClose={() => setTreeOpen(false)} filter={search} filters={filters} />
       <BaseDetailCardDrawer card={selectedCard} onClose={() => { setSelectedCard(null); setSelectedProblemId(null); updateUrl({ cardId: null, problemId: null }); }} onSelectProblem={selectProblem} selectedProblemId={selectedProblemId} baseDocId={docId} domainId={domainId} />
     </div>
   );

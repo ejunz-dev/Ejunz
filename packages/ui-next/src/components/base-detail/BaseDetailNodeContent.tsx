@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { i18n } from '../../i18n';
 import { renderMarkdown } from './markdown';
 import { cardDisplayLabel, collectSubtreeNodeIds, getSortedNodeCards, nodeDisplayLabel } from './tree';
+import { cardMatchesFilters, cardMatchesSearch, nodeMatchesFilter, nodeMatchesSearch, type BaseDetailFilter } from './detail-filter';
 import type { BaseDetailCard, BaseDetailEdge, BaseDetailNode } from './types';
 
 interface Props {
@@ -13,6 +14,7 @@ interface Props {
   onSelectCard: (card: BaseDetailCard) => void;
   onSelectNode: (nodeId: string) => void;
   filter?: string;
+  filters?: BaseDetailFilter;
 }
 
 function date(value: unknown): string {
@@ -35,15 +37,15 @@ function ProblemList({ card }: { card: BaseDetailCard }) {
   );
 }
 
-export function BaseDetailNodeContent({ rootNodeId, nodes, edges, nodeCardsMap, selectedCardId, onSelectCard, onSelectNode, filter = '' }: Props) {
+export function BaseDetailNodeContent({ rootNodeId, nodes, edges, nodeCardsMap, selectedCardId, onSelectCard, onSelectNode, filter = '', filters = { filterNode: '', filterCard: '', filterProblem: '', filterCardTag: '', filterProblemTag: '' } }: Props) {
   const query = filter.trim().toLowerCase();
   const sections = useMemo(() => [rootNodeId, ...collectSubtreeNodeIds(rootNodeId, nodes, edges)].map((nodeId) => {
     const node = nodes.find((item) => item.id === nodeId);
-    if (!node) return null;
-    const cards = getSortedNodeCards(nodeId, nodeCardsMap).filter((card) => !query || `${card.title || ''} ${card.content || ''} ${(card.tags || []).join(' ')}`.toLowerCase().includes(query));
+    if (!node || !nodeMatchesFilter(node, filters)) return null;
+    const cards = getSortedNodeCards(nodeId, nodeCardsMap).filter((card) => cardMatchesFilters(card, filters) && (!query || nodeMatchesSearch(node, query) || cardMatchesSearch(card, query)));
     if (!cards.length) return null;
     return { nodeId, node, cards };
-  }).filter((section): section is { nodeId: string; node: BaseDetailNode; cards: BaseDetailCard[] } => !!section), [edges, nodeCardsMap, nodes, query, rootNodeId]);
+  }).filter((section): section is { nodeId: string; node: BaseDetailNode; cards: BaseDetailCard[] } => !!section), [edges, filters, nodeCardsMap, nodes, query, rootNodeId]);
 
   if (!sections.length) return <div className="bd-empty bd-empty--content">{i18n('Base detail node empty')}</div>;
   return (
