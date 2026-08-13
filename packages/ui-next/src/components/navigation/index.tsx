@@ -67,26 +67,28 @@ function UserMenu({ user, domain }: { user: Record<string, any>; domain: DomainI
   const buildUrl = useBuildUrl();
   const uid = String(user._id);
   return (
-    <div className="uix-nav__menu-wrap">
+    <div
+      className="uix-nav__menu-wrap"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
       <button type="button" className="uix-nav__user" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
         <img src={user.avatarUrl || user.avatar || '/img/avatar.png'} alt="" />
         <span>{user.uname || `#${uid}`}</span><span aria-hidden>⌄</span>
       </button>
-      {open ? (
-        <div className="uix-nav__menu" role="menu">
-          <Link href={buildUrl('user_detail', { uid })} className="uix-nav__menu-link">My Profile</Link>
-          <Link to="home_messages" className="uix-nav__menu-link">Messages</Link>
-          <div className="uix-nav__menu-separator" />
-          <Link to="home_settings" params={{ category: 'domain' }} className="uix-nav__menu-link">@ {domain?.name || 'Domain'}</Link>
-          <Link to="home_settings" params={{ category: 'account' }} className="uix-nav__menu-link">Account settings</Link>
-          <Link to="home_settings" params={{ category: 'preference' }} className="uix-nav__menu-link">Preferences</Link>
-          <Link to="home_security" className="uix-nav__menu-link">Security</Link>
-          <Link to="home_domain" className="uix-nav__menu-link">My Domains</Link>
-          {user.priv != null && user.priv !== 0 ? <Link to="home_files" className="uix-nav__menu-link">My Files</Link> : null}
-          <div className="uix-nav__menu-separator" />
-          <LogoutButton />
-        </div>
-      ) : null}
+      <div className={`uix-nav__menu${open ? ' is-open' : ''}`} role="menu" aria-hidden={!open}>
+        <Link href={buildUrl('user_detail', { uid })} className="uix-nav__menu-link">My Profile</Link>
+        <Link to="home_messages" className="uix-nav__menu-link">Messages</Link>
+        <div className="uix-nav__menu-separator" />
+        <Link to="home_settings" params={{ category: 'domain' }} className="uix-nav__menu-link">@ {domain?.name || 'Domain'}</Link>
+        <Link to="home_settings" params={{ category: 'account' }} className="uix-nav__menu-link">Account settings</Link>
+        <Link to="home_settings" params={{ category: 'preference' }} className="uix-nav__menu-link">Preferences</Link>
+        <Link to="home_security" className="uix-nav__menu-link">Security</Link>
+        <Link to="home_domain" className="uix-nav__menu-link">My Domains</Link>
+        {user.priv != null && user.priv !== 0 ? <Link to="home_files" className="uix-nav__menu-link">My Files</Link> : null}
+        <div className="uix-nav__menu-separator" />
+        <LogoutButton />
+      </div>
     </div>
   );
 }
@@ -141,7 +143,7 @@ export function Navigation() {
             ))}
           </div>
           <div className="uix-nav__secondary">
-            {guest ? <><Link to="user_login" className="uix-nav__item">Login</Link><Link to="user_register" className="uix-nav__signup">Sign Up</Link><span className="uix-nav__badge">GUEST</span></> : <><div className="uix-nav__domain-wrap"><button type="button" className="uix-nav__domain" onClick={() => setDomainsOpen((value) => !value)} aria-expanded={domainsOpen}><img src={avatarUrl(ui.domain)} alt="" />{ui.domain?.name || currentDomain}<span>⌄</span></button>{domainsOpen && <DomainMenu current={currentDomain} domains={domains} onClose={() => setDomainsOpen(false)} />}</div><UserMenu user={user} domain={ui.domain} /></>}
+            {guest ? <><Link to="user_login" className="uix-nav__item">Login</Link><Link to="user_register" className="uix-nav__signup">Sign Up</Link><span className="uix-nav__badge">GUEST</span></> : <><div className="uix-nav__domain-wrap" onMouseEnter={() => setDomainsOpen(true)} onMouseLeave={() => setDomainsOpen(false)}><button type="button" className="uix-nav__domain" onClick={() => setDomainsOpen((value) => !value)} aria-expanded={domainsOpen}><img src={avatarUrl(ui.domain)} alt="" />{ui.domain?.name || currentDomain}<span>⌄</span></button><div className={`uix-domain-menu${domainsOpen ? ' is-open' : ''}`}><DomainMenu current={currentDomain} domains={domains} onClose={() => setDomainsOpen(false)} /></div></div><UserMenu user={user} domain={ui.domain} /></>}
           </div>
           <button type="button" className="uix-nav__mobile-button" onClick={() => { setDomainsOpen(false); setMobileOpen((open) => !open); }} aria-label="Open navigation" aria-expanded={mobileOpen}><HamburgerIcon active={mobileOpen} /></button>
         </div>

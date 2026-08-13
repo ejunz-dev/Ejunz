@@ -33,13 +33,13 @@ export function Footer() {
     <footer className="uix-footer">
       <div className="uix-footer__inner">
         <div className="uix-footer__left">
-          <div className="uix-footer__dropdown">
+          <div className="uix-footer__dropdown" onMouseEnter={() => setLanguageOpen(true)} onMouseLeave={() => setLanguageOpen(false)}>
             <button type="button" onClick={() => { setThemeOpen(false); setLanguageOpen((open) => !open); }} aria-expanded={languageOpen}>◎ Language⌄</button>
-            {languageOpen ? <div className="uix-footer__menu">{languages.map(([key, label]) => <Link key={key} to="switch_language" params={{ lang: key }} className="uix-footer__menu-link">{label}</Link>)}</div> : null}
+            <div className={`uix-footer__menu${languageOpen ? ' is-open' : ''}`}>{languages.map(([key, label]) => <Link key={key} to="switch_language" params={{ lang: key }} className="uix-footer__menu-link">{label}</Link>)}</div>
           </div>
-          <div className="uix-footer__dropdown">
+          <div className="uix-footer__dropdown" onMouseEnter={() => setThemeOpen(true)} onMouseLeave={() => setThemeOpen(false)}>
             <button type="button" onClick={() => { setLanguageOpen(false); setThemeOpen((open) => !open); }} aria-expanded={themeOpen}>◐ Theme⌄</button>
-            {themeOpen ? <div className="uix-footer__menu"><Link to="set_theme" params={{ theme: 'light' }} className="uix-footer__menu-link">Light</Link><Link to="set_theme" params={{ theme: 'dark' }} className="uix-footer__menu-link">Dark</Link></div> : null}
+            <div className={`uix-footer__menu${themeOpen ? ' is-open' : ''}`}><Link to="set_theme" params={{ theme: 'light' }} className="uix-footer__menu-link">Light</Link><Link to="set_theme" params={{ theme: 'dark' }} className="uix-footer__menu-link">Dark</Link></div>
           </div>
         </div>
         <div className="uix-footer__right">
