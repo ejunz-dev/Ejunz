@@ -1,3 +1,5 @@
+import './pages';
+
 import type { PageData } from './context/page-data';
 import { renderPage } from './dom/runtime';
 
