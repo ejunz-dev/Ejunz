@@ -2,6 +2,8 @@
 
 import './pages';
 
+import './components/ui.css';
+
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import * as api from './api';
