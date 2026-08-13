@@ -27,7 +27,7 @@ function avatarUrl(domain: DomainItem | null | undefined): string {
 }
 
 function isGuest(user: Record<string, any>): boolean {
-  return !user || !user._id;
+  return !user || user._id == null || user._id === 0 || user._id === '0';
 }
 
 function activeFor(name: string, prefix: string, pageName: string, template: string): boolean {
