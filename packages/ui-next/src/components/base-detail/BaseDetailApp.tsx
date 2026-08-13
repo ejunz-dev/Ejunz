@@ -56,7 +56,7 @@ export default function BaseDetailApp() {
   const initialCardId = query.get('cardId');
   const initialNodeId = query.get('nodeId');
   const initialCard = initialCardId ? findCardByDocId(initialCardId, nodeCardsMap) : null;
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(() => initialNodeId && nodes.some((node) => node.id === initialNodeId) ? initialNodeId : initialCard ? findCardHostNodeId(initialCard.docId, nodeCardsMap) : getRootNodeIds(nodes, edges)[0] || null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(() => initialNodeId && nodes.some((node) => node.id === initialNodeId) ? initialNodeId : initialCard ? findCardHostNodeId(initialCard.docId, nodeCardsMap) : null);
   const [selectedCard, setSelectedCard] = useState<BaseDetailCard | null>(initialCard);
   const [selectedProblemId, setSelectedProblemId] = useState<string | null>(() => query.get('problemId'));
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
