@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { usePageData } from '../context/page-data';
-import { Link } from '../components/link';
+import { Button, Card, Link, Tag } from '../components';
 import './basedomain.css';
 
 interface BaseItem {
@@ -33,35 +33,32 @@ export default function BaseDomain() {
     : bases;
 
   return (
-    <div className="uinp-bases">
-      <div className="uinp-bases__toolbar">
+    <div className="uix-bases">
+      <div className="uix-bases__toolbar">
         <input
-          className="uinp-bases__search"
+          className="uix-bases__search"
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search bases"
         />
-        <Link to="base_create" className="uinp-button uinp-button--primary">Create Base</Link>
+        <Button to="base_create" variant="primary">Create Base</Button>
       </div>
-      <div className="uinp-bases__grid">
+      <div className="uix-bases__grid">
         {filtered.map((base) => (
-          <div key={base.docId} className="uinp-base-card">
-            <h3 className="uinp-base-card__title">
-              <Link to="base_detail" params={{ docId: base.docId }}>{base.title || 'Untitled'}</Link>
-            </h3>
-            <p className="uinp-base-card__snippet">{snippet(base.content)}</p>
-            <div className="uinp-bases__card-footer">
-              <span className="uinp-bases__tags">
-                {(base.tag || []).map((tag) => <span key={tag} className="uinp-tag">{tag}</span>)}
+          <Card key={base.docId} title={base.title || 'Untitled'} to="base_detail" params={{ docId: base.docId }}>
+            <p className="uix-base-card__snippet">{snippet(base.content)}</p>
+            <div className="uix-bases__card-footer">
+              <span className="uix-bases__tags">
+                {(base.tag || []).map((tag) => <Tag key={tag}>{tag}</Tag>)}
               </span>
-              <span className="uinp-muted">{formatDate(base.updateAt)}</span>
+              <span className="uix-muted">{formatDate(base.updateAt)}</span>
             </div>
-          </div>
+          </Card>
         ))}
-        {!filtered.length ? <div className="uinp-muted">No bases found.</div> : null}
+        {!filtered.length ? <div className="uix-muted">No bases found.</div> : null}
       </div>
-      <p className="uinp-muted" style={{ marginTop: '1rem' }}>
+      <p className="uix-muted" style={{ marginTop: '1rem' }}>
         <Link to="homepage">Back to homepage</Link>
       </p>
     </div>

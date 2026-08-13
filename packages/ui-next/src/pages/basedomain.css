@@ -1,45 +1,33 @@
-/* Base list page — self-contained styles. No dependency on @ejunz/components. */
+/* Base list layout. Shared primitives (uix-card/tag/button/muted) live in components/ui.css. */
 
-.uinp-bases__toolbar {
+.uix-bases__toolbar {
   display: flex;
   gap: 0.75rem;
   margin-bottom: 1rem;
   align-items: center;
 }
-.uinp-bases__search {
+.uix-bases__search {
   flex: 1;
   padding: 0.4rem 0.75rem;
   border: 1px solid var(--web-border, hsl(0, 0%, 89.8%));
   border-radius: 6px;
   font-size: 0.875rem;
 }
-.uinp-bases__grid {
+.uix-bases__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 1rem;
 }
-.uinp-base-card {
-  border: 1px solid var(--web-border, hsl(0, 0%, 89.8%));
-  border-radius: 8px;
-  background: var(--web-card-bg, #fff);
-  padding: 0.9rem 1rem;
+.uix-bases__grid .uix-card {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
 }
-.uinp-base-card__title {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
+.uix-bases__grid .uix-card__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
 }
-.uinp-base-card__title a {
-  text-decoration: none;
-  color: var(--web-link, #2563eb);
-}
-.uinp-base-card__title a:hover {
-  text-decoration: underline;
-}
-.uinp-base-card__snippet {
+.uix-base-card__snippet {
   margin: 0;
   font-size: 0.875rem;
   color: var(--web-muted-fg, hsl(0, 0%, 45%));
@@ -48,51 +36,16 @@
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
 }
-.uinp-bases__card-footer {
+.uix-bases__card-footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 0.5rem;
   margin-top: auto;
+  padding-top: 0.5rem;
 }
-.uinp-bases__tags {
+.uix-bases__tags {
   display: flex;
   flex-wrap: wrap;
   gap: 0.25rem;
-}
-.uinp-muted {
-  color: var(--web-muted-fg, hsl(0, 0%, 45%));
-  font-size: 0.8rem;
-  white-space: nowrap;
-}
-
-/* Shared primitives (also defined in homepage.css) */
-.uinp-button {
-  display: inline-block;
-  padding: 0.4rem 0.9rem;
-  border-radius: 6px;
-  border: 1px solid var(--web-border, hsl(0, 0%, 89.8%));
-  background: var(--web-btn-bg, #fff);
-  color: inherit;
-  text-decoration: none;
-  font-size: 0.875rem;
-  line-height: 1.4;
-  cursor: pointer;
-}
-.uinp-button:hover {
-  opacity: 0.9;
-}
-.uinp-button--primary {
-  background: var(--web-primary, #2563eb);
-  border-color: var(--web-primary, #2563eb);
-  color: #fff;
-}
-.uinp-tag {
-  display: inline-block;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-  background: var(--web-tag-bg, hsl(0, 0%, 93.1%));
-  color: inherit;
-  font-size: 0.75rem;
-  text-decoration: none;
 }

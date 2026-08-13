@@ -1,13 +1,13 @@
-/* Homepage — self-contained styles. No dependency on @ejunz/components. */
+/* Homepage layout. Shared primitives (uix-card/list/button/tag/callout/muted) live in components/ui.css. */
 
-.uinp-home__columns {
+.uix-home__columns {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
   gap: 1rem;
   margin-top: 1rem;
   align-items: start;
 }
-.uinp-home__column {
+.uix-home__column {
   grid-column: span 12;
   min-width: 0;
   display: flex;
@@ -15,182 +15,75 @@
   gap: 1rem;
 }
 @media (max-width: 1024px) {
-  .uinp-home__column {
+  .uix-home__column {
     grid-column: span 12 !important;
   }
 }
-.uinp-muted {
-  color: var(--web-muted-fg, hsl(0, 0%, 45%));
-  font-size: 0.8rem;
-  white-space: nowrap;
-}
-.uinp-bulletin {
+.uix-bulletin {
   white-space: pre-wrap;
   word-break: break-word;
 }
-
-/* Card */
-.uinp-card {
-  border: 1px solid var(--web-border, hsl(0, 0%, 89.8%));
-  border-radius: 8px;
-  background: var(--web-card-bg, #fff);
-  overflow: hidden;
-}
-.uinp-card__header {
-  padding: 0.75rem 1rem 0;
-}
-.uinp-card__title {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
-}
-.uinp-card__desc {
-  margin: 0.25rem 0 0;
-  font-size: 0.8rem;
-  color: var(--web-muted-fg, hsl(0, 0%, 45%));
-}
-.uinp-card__body {
-  padding: 0.75rem 1rem 1rem;
-}
-
-/* List */
-.uinp-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.uinp-list__item {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 0.75rem;
-  padding: 0.3rem 0;
-}
-.uinp-list__item + .uinp-list__item {
-  border-top: 1px solid var(--web-border, hsl(0, 0%, 89.8%));
-}
-.uinp-list__title {
-  text-decoration: none;
-  color: var(--web-link, #2563eb);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.uinp-list__title:hover {
-  text-decoration: underline;
-}
-
-/* Button */
-.uinp-button {
-  display: inline-block;
-  padding: 0.4rem 0.9rem;
-  border-radius: 6px;
-  border: 1px solid var(--web-border, hsl(0, 0%, 89.8%));
-  background: var(--web-btn-bg, #fff);
-  color: inherit;
-  text-decoration: none;
-  font-size: 0.875rem;
-  line-height: 1.4;
-  cursor: pointer;
-}
-.uinp-button:hover {
-  opacity: 0.9;
-}
-.uinp-button--primary {
-  background: var(--web-primary, #2563eb);
-  border-color: var(--web-primary, #2563eb);
-  color: #fff;
-}
-
-/* Tag */
-.uinp-tag {
-  display: inline-block;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-  background: var(--web-tag-bg, hsl(0, 0%, 93.1%));
-  color: inherit;
-  font-size: 0.75rem;
-  text-decoration: none;
-}
-a.uinp-tag:hover {
-  background: var(--web-primary, #2563eb);
-  color: #fff;
-}
-
-/* Callout */
-.uinp-callout {
-  border-radius: 6px;
-  padding: 0.6rem 0.9rem;
-  border: 1px solid var(--web-border, hsl(0, 0%, 89.8%));
-  font-size: 0.875rem;
-}
-.uinp-callout--warn {
-  background: var(--web-warn-bg, hsl(48, 100%, 95%));
-  border-color: hsl(48, 100%, 70%);
-}
-
-/* Sections */
-.uinp-gate {
+.uix-gate {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   align-items: flex-start;
 }
-.uinp-checkin {
+.uix-checkin {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: 0.5rem;
   flex-wrap: wrap;
 }
-.uinp-stat strong {
+.uix-stat strong {
   font-size: 1.5rem;
   font-weight: 700;
 }
-.uinp-ok {
+.uix-ok {
   color: #4ade80;
 }
-.uinp-kv {
+.uix-kv {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: 0.75rem;
   padding: 0.15rem 0;
 }
-.uinp-triple {
+.uix-triple {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.uinp-rank {
+.uix-rank {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: baseline;
   column-gap: 0.75rem;
   padding: 0.15rem 0;
 }
-.uinp-rank--head {
+.uix-rank--head {
   font-size: 0.75rem;
   border-bottom: 1px solid var(--web-border, hsl(0, 0%, 89.8%));
   padding-bottom: 0.35rem;
   margin-bottom: 0.35rem;
 }
-.uinp-rank__user {
+.uix-rank__user {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.uinp-nodegroup {
+.uix-nodegroup {
   margin-bottom: 0.6rem;
 }
-.uinp-nodegroup:last-child {
+.uix-nodegroup:last-child {
   margin-bottom: 0;
 }
-.uinp-nodegroup__title {
+.uix-nodegroup__title {
   font-size: 0.8rem;
   font-weight: 600;
   margin-bottom: 0.3rem;
 }
-.uinp-chips {
+.uix-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 0.25rem;

@@ -1,7 +1,6 @@
 import { Fragment, type ReactNode } from 'react';
 import { usePageData } from '../context/page-data';
-import { useBuildUrl } from '../hooks/use-build-url';
-import { Link } from '../components/link';
+import { Button, Callout, Card, List, ListItem, Tag } from '../components';
 import './homepage.css';
 
 type Udict = Record<string, { uname?: string }>;
@@ -14,35 +13,14 @@ const formatTime = (value: unknown) => {
 };
 const userName = (udict: Udict, uid?: number) => (uid == null ? '' : udict[String(uid)]?.uname || `#${uid}`);
 
-function Card({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
-  return (
-    <section className="uinp-card">
-      <div className="uinp-card__header">
-        <h2 className="uinp-card__title">{title}</h2>
-        {description ? <p className="uinp-card__desc">{description}</p> : null}
-      </div>
-      <div className="uinp-card__body">{children}</div>
-    </section>
-  );
-}
-
-function ListRow({ to, params, title, meta }: { to: string; params?: Record<string, string>; title: string; meta?: ReactNode }) {
-  return (
-    <li className="uinp-list__item">
-      <Link to={to} params={params} className="uinp-list__title">{title}</Link>
-      {meta != null ? <span className="uinp-muted">{meta}</span> : null}
-    </li>
-  );
-}
-
 function StatTriple({ value }: { value?: { nodes?: number; cards?: number; problems?: number } }) {
   const parts = [value?.nodes ?? 0, value?.cards ?? 0, value?.problems ?? 0];
   const colors = ['#60a5fa', '#4ade80', '#fbbf24'];
   return (
-    <span className="uinp-triple">
+    <span className="uix-triple">
       {parts.map((part, i) => (
         <Fragment key={i}>
-          {i ? <span className="uinp-muted"> / </span> : null}
+          {i ? <span className="uix-muted"> / </span> : null}
           <span style={{ color: colors[i] }}>{part}</span>
         </Fragment>
       ))}
@@ -53,17 +31,17 @@ function StatTriple({ value }: { value?: { nodes?: number; cards?: number; probl
 function AccessGate({ payload, children }: { payload: any; children: ReactNode }) {
   if (payload?.needLogin) {
     return (
-      <div className="uinp-gate">
-        <p className="uinp-muted">Please login to view</p>
-        <Link to="user_login" className="uinp-button uinp-button--primary">Login</Link>
+      <div className="uix-gate">
+        <p className="uix-muted">Please login to view</p>
+        <Button to="user_login" variant="primary">Login</Button>
       </div>
     );
   }
   if (payload?.needJoinDomain) {
     return (
-      <div className="uinp-gate">
-        <p className="uinp-muted">Please join the domain to view</p>
-        <Link to="domain_join" className="uinp-button uinp-button--primary">Join Domain</Link>
+      <div className="uix-gate">
+        <p className="uix-muted">Please join the domain to view</p>
+        <Button to="domain_join" variant="primary">Join Domain</Button>
       </div>
     );
   }
@@ -75,7 +53,7 @@ function Ranking({ title, payload, udict }: { title: string; payload: any; udict
   if (!Array.isArray(rows) || !rows.length) return null;
   return (
     <Card title={title}>
-      <div className="uinp-rank uinp-rank--head uinp-muted">
+      <div className="uix-rank uix-rank--head uix-muted">
         <span>User</span>
         <span style={{ textAlign: 'center' }}>N / C / P</span>
         <span style={{ textAlign: 'right' }}>Rating</span>
@@ -84,9 +62,9 @@ function Ranking({ title, payload, udict }: { title: string; payload: any; udict
         const rating = Number(row.rating ?? 1);
         const color = rating > 1 ? '#4ade80' : rating < 1 ? '#f87171' : 'inherit';
         return (
-          <div className="uinp-rank" key={row.uid}>
-            <span className="uinp-rank__user">
-              {row.rank != null ? <span className="uinp-muted">{row.rank}. </span> : null}
+          <div className="uix-rank" key={row.uid}>
+            <span className="uix-rank__user">
+              {row.rank != null ? <span className="uix-muted">{row.rank}. </span> : null}
               {userName(udict, row.uid)}
             </span>
             <span style={{ textAlign: 'center' }}><StatTriple value={row} /></span>
@@ -115,24 +93,19 @@ function groupNodes(value: unknown): [string, any[]][] {
   return group(entries.map(([, item]) => item));
 }
 
-function renderSection(name: string, payload: unknown, udict: Udict, buildUrl: (n: string, p?: Record<string, string>) => string): ReactNode {
+function renderSection(name: string, payload: unknown, udict: Udict): ReactNode {
   if (name === 'bulletin') return null;
   if (name === 'error') {
-    return (
-      <div className="uinp-callout uinp-callout--warn" role="alert">
-        <strong>Section failed to load</strong>
-        <p className="uinp-muted">{text(payload)}</p>
-      </div>
-    );
+    return <Callout type="warn" title="Section failed to load">{text(payload)}</Callout>;
   }
   if (name === 'base') {
     const items = Array.isArray(payload) ? payload : [];
     if (!items.length) return null;
     return (
       <Card title="Recent Bases">
-        <ul className="uinp-list">
+        <List>
           {items.map((item: any) => (
-            <ListRow
+            <ListItem
               key={item.docId}
               to="base_detail"
               params={{ docId: item.docId }}
@@ -140,7 +113,7 @@ function renderSection(name: string, payload: unknown, udict: Udict, buildUrl: (
               meta={formatTime(item.updateAt)}
             />
           ))}
-        </ul>
+        </List>
       </Card>
     );
   }
@@ -149,9 +122,9 @@ function renderSection(name: string, payload: unknown, udict: Udict, buildUrl: (
     if (!items.length) return null;
     return (
       <Card title="Agent">
-        <ul className="uinp-list">
+        <List>
           {items.map((item: any) => (
-            <ListRow
+            <ListItem
               key={item.aid}
               to="agent_detail"
               params={{ aid: item.aid }}
@@ -159,21 +132,21 @@ function renderSection(name: string, payload: unknown, udict: Udict, buildUrl: (
               meta={formatTime(item.updateAt)}
             />
           ))}
-        </ul>
+        </List>
       </Card>
     );
   }
   if (name === 'checkin' && payload) {
     const data = payload as any;
     const body = (
-      <div className="uinp-checkin">
-        <span className="uinp-stat">
+      <div className="uix-checkin">
+        <span className="uix-stat">
           <a href={data.learnUrl || '#'}><strong>{data.learnDays ?? 0}</strong></a>
-          <span className="uinp-muted"> days</span>
+          <span className="uix-muted"> days</span>
         </span>
         {data.learnTodayDone
-          ? <span className="uinp-ok">Checked in</span>
-          : <span className="uinp-muted">{data.learnTodayRemaining} more cards to go</span>}
+          ? <span className="uix-ok">Checked in</span>
+          : <span className="uix-muted">{data.learnTodayRemaining} more cards to go</span>}
       </div>
     );
     return (
@@ -186,9 +159,9 @@ function renderSection(name: string, payload: unknown, udict: Udict, buildUrl: (
     const data = payload as any;
     const body = (
       <>
-        <div className="uinp-kv"><span>Content contribution</span><StatTriple value={data.contribution} /></div>
-        <div className="uinp-kv"><span>Learning consumption</span><StatTriple value={data.consumption} /></div>
-        <div className="uinp-muted" style={{ fontSize: '0.75rem' }}>Nodes / Cards / Problems</div>
+        <div className="uix-kv"><span>Content contribution</span><StatTriple value={data.contribution} /></div>
+        <div className="uix-kv"><span>Learning consumption</span><StatTriple value={data.consumption} /></div>
+        <div className="uix-muted" style={{ fontSize: '0.75rem' }}>Nodes / Cards / Problems</div>
       </>
     );
     return (
@@ -202,9 +175,9 @@ function renderSection(name: string, payload: unknown, udict: Udict, buildUrl: (
     if (!docs.length) return null;
     return (
       <Card title="Discussion">
-        <ul className="uinp-list">
+        <List>
           {docs.map((item: any) => (
-            <ListRow
+            <ListItem
               key={item.docId}
               to="discussion_detail"
               params={{ did: item.docId }}
@@ -212,9 +185,9 @@ function renderSection(name: string, payload: unknown, udict: Udict, buildUrl: (
               meta={`${item.nReply != null ? `${item.nReply} replies · ` : ''}${userName(udict, item.owner)}`}
             />
           ))}
-        </ul>
+        </List>
         <div style={{ marginTop: '0.5rem' }}>
-          <Link to="discussion_main" className="uinp-muted">More →</Link>
+          <Tag to="discussion_main" className="uix-muted">More →</Tag>
         </div>
       </Card>
     );
@@ -227,13 +200,11 @@ function renderSection(name: string, payload: unknown, udict: Udict, buildUrl: (
     return (
       <Card title="Discussion Nodes">
         {groups.map(([category, nodes]) => (
-          <div className="uinp-nodegroup" key={category}>
-            <div className="uinp-nodegroup__title">{category}</div>
-            <div className="uinp-chips">
+          <div className="uix-nodegroup" key={category}>
+            <div className="uix-nodegroup__title">{category}</div>
+            <div className="uix-chips">
               {nodes.map((node: any) => (
-                <Link to="discussion_node" params={{ type: 'node', name: node.docId }} className="uinp-tag" key={node.docId}>
-                  {node.docId}
-                </Link>
+                <Tag to="discussion_node" params={{ type: 'node', name: node.docId }} key={node.docId}>{node.docId}</Tag>
               ))}
             </div>
           </div>
@@ -246,18 +217,17 @@ function renderSection(name: string, payload: unknown, udict: Udict, buildUrl: (
 
 export default function Homepage() {
   const { args } = usePageData();
-  const buildUrl = useBuildUrl();
   const contents = Array.isArray(args.contents) ? args.contents : [];
   const udict = (args.udict || {}) as Udict;
   const domain = (args.domain || {}) as { bulletin?: string };
   return (
-    <div className="uinp-home">
-      {domain.bulletin ? <div className="uinp-bulletin">{domain.bulletin}</div> : null}
-      <div className="uinp-home__columns">
+    <div className="uix-home">
+      {domain.bulletin ? <div className="uix-bulletin">{domain.bulletin}</div> : null}
+      <div className="uix-home__columns">
         {contents.map((column: any, i) => (
-          <div key={i} className="uinp-home__column" style={{ gridColumn: `span ${column.width || 12}` }}>
+          <div key={i} className="uix-home__column" style={{ gridColumn: `span ${column.width || 12}` }}>
             {(column.sections || []).map(([name, payload]: [string, unknown], j: number) => (
-              <Fragment key={j}>{renderSection(name, payload, udict, buildUrl)}</Fragment>
+              <Fragment key={j}>{renderSection(name, payload, udict)}</Fragment>
             ))}
           </div>
         ))}

@@ -1,0 +1,126 @@
+/* Shared ui-next component styles. Imported once by src/main.tsx. */
+
+.uix-muted {
+  color: var(--web-muted-fg, hsl(0, 0%, 45%));
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+/* Card */
+.uix-card {
+  border: 1px solid var(--web-border, hsl(0, 0%, 89.8%));
+  border-radius: 8px;
+  background: var(--web-card-bg, #fff);
+  overflow: hidden;
+}
+.uix-card__header {
+  padding: 0.75rem 1rem 0;
+}
+.uix-card__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.uix-card__title a {
+  text-decoration: none;
+  color: var(--web-link, #2563eb);
+}
+.uix-card__title a:hover {
+  text-decoration: underline;
+}
+.uix-card__desc {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  color: var(--web-muted-fg, hsl(0, 0%, 45%));
+}
+.uix-card__body {
+  padding: 0.75rem 1rem 1rem;
+}
+
+/* List */
+.uix-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.uix-list__item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.3rem 0;
+}
+.uix-list__item + .uix-list__item {
+  border-top: 1px solid var(--web-border, hsl(0, 0%, 89.8%));
+}
+.uix-list__title {
+  text-decoration: none;
+  color: var(--web-link, #2563eb);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.uix-list__title:hover {
+  text-decoration: underline;
+}
+
+/* Button */
+.uix-button {
+  display: inline-block;
+  padding: 0.4rem 0.9rem;
+  border-radius: 6px;
+  border: 1px solid var(--web-border, hsl(0, 0%, 89.8%));
+  background: var(--web-btn-bg, #fff);
+  color: inherit;
+  text-decoration: none;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.uix-button:hover {
+  opacity: 0.9;
+}
+.uix-button--primary {
+  background: var(--web-primary, #2563eb);
+  border-color: var(--web-primary, #2563eb);
+  color: #fff;
+}
+.uix-button--ghost {
+  background: transparent;
+  border-color: transparent;
+}
+
+/* Tag */
+.uix-tag {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: var(--web-tag-bg, hsl(0, 0%, 93.1%));
+  color: inherit;
+  font-size: 0.75rem;
+  text-decoration: none;
+}
+a.uix-tag:hover {
+  background: var(--web-primary, #2563eb);
+  color: #fff;
+}
+
+/* Callout */
+.uix-callout {
+  border-radius: 6px;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--web-border, hsl(0, 0%, 89.8%));
+  font-size: 0.875rem;
+}
+.uix-callout--info {
+  background: var(--web-info-bg, hsl(210, 100%, 95%));
+  border-color: hsl(210, 100%, 75%);
+}
+.uix-callout--warn {
+  background: var(--web-warn-bg, hsl(48, 100%, 95%));
+  border-color: hsl(48, 100%, 70%);
+}
+.uix-callout--error {
+  background: var(--web-error-bg, hsl(0, 100%, 95%));
+  border-color: hsl(0, 100%, 75%);
+}
