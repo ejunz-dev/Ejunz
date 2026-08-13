@@ -53,6 +53,7 @@ export function BaseDetailNodeContent({
         onSelectProblem={onSelectProblem}
         filter={filter}
         filters={filters}
+        highlightSelectedNode={false}
         emptyMessage={i18n('Base detail node empty')}
       />
     </div>
