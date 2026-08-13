@@ -1,0 +1,73 @@
+import { useMemo } from 'react';
+import { renderMarkdown } from './markdown';
+import { cardDisplayLabel, collectSubtreeNodeIds, getSortedNodeCards, nodeDisplayLabel } from './tree';
+import type { BaseDetailCard, BaseDetailEdge, BaseDetailNode } from './types';
+
+interface Props {
+  rootNodeId: string;
+  nodes: BaseDetailNode[];
+  edges: BaseDetailEdge[];
+  nodeCardsMap: Record<string, BaseDetailCard[]>;
+  selectedCardId: string | null;
+  onSelectCard: (card: BaseDetailCard) => void;
+  onSelectNode: (nodeId: string) => void;
+  filter?: string;
+}
+
+function date(value: unknown): string {
+  if (!value) return '';
+  const parsed = new Date(String(value));
+  return Number.isNaN(parsed.valueOf()) ? '' : parsed.toLocaleString();
+}
+
+function ProblemList({ card }: { card: BaseDetailCard }) {
+  if (!card.problems?.length) return null;
+  return (
+    <details className="bd-card__problems">
+      <summary>{card.problems.length} practice {card.problems.length === 1 ? 'problem' : 'problems'}</summary>
+      <ol>
+        {card.problems.map((problem, index) => (
+          <li key={String(problem.pid || index)}>{String(problem.title || problem.stem || problem.content || `Problem ${index + 1}`).replace(/<[^>]+>/g, '').slice(0, 120)}</li>
+        ))}
+      </ol>
+    </details>
+  );
+}
+
+export function BaseDetailNodeContent({ rootNodeId, nodes, edges, nodeCardsMap, selectedCardId, onSelectCard, onSelectNode, filter = '' }: Props) {
+  const query = filter.trim().toLowerCase();
+  const sections = useMemo(() => [rootNodeId, ...collectSubtreeNodeIds(rootNodeId, nodes, edges)].map((nodeId) => {
+    const node = nodes.find((item) => item.id === nodeId);
+    if (!node) return null;
+    const cards = getSortedNodeCards(nodeId, nodeCardsMap).filter((card) => !query || `${card.title || ''} ${card.content || ''} ${(card.tags || []).join(' ')}`.toLowerCase().includes(query));
+    if (!cards.length) return null;
+    return { nodeId, node, cards };
+  }).filter((section): section is { nodeId: string; node: BaseDetailNode; cards: BaseDetailCard[] } => !!section), [edges, nodeCardsMap, nodes, query, rootNodeId]);
+
+  if (!sections.length) return <div className="bd-empty bd-empty--content">No cards under this node.</div>;
+  return (
+    <div className="bd-content">
+      {sections.map(({ nodeId, node, cards }) => (
+        <section className="bd-content__section" key={nodeId}>
+          <h2 className="bd-content__section-title">
+            {nodeId === rootNodeId ? nodeDisplayLabel(node) : <button type="button" onClick={() => onSelectNode(nodeId)}>{nodeDisplayLabel(node)}</button>}
+          </h2>
+          {cards.map((card) => {
+            const cardId = String(card.docId);
+            return (
+              <article className={`bd-card${selectedCardId === cardId ? ' is-selected' : ''}`} id={`base-detail-card-${cardId}`} key={cardId}>
+                <header className="bd-card__header">
+                  <button type="button" className="bd-card__title" onClick={() => onSelectCard(card)}>{cardDisplayLabel(card)}</button>
+                  <span className="bd-card__meta">{date(card.updateAt)}{card.problems?.length ? ` · ${card.problems.length} problems` : ''}</span>
+                </header>
+                {card.content ? <div className="bd-markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(card.content) }} /> : <p className="bd-muted">This card has no content.</p>}
+                {card.tags?.length ? <footer className="bd-card__tags">{card.tags.map((tag) => <span key={tag}>{tag}</span>)}</footer> : null}
+                <ProblemList card={card} />
+              </article>
+            );
+          })}
+        </section>
+      ))}
+    </div>
+  );
+}
