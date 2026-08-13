@@ -3,15 +3,11 @@ import path from 'path';
 import esbuild from 'esbuild';
 import c2k from 'koa2-connect/ts';
 import { createServer, type Plugin } from 'vite';
-import { HandlerCommon, httpServer, serializer } from '@ejunz/framework';
+import { HandlerCommon, serializer } from '@ejunz/framework';
 import {
     Context, Handler, Logger,
-    NotFoundError, param, sha1, size, Types,
+    NotFoundError, param, SettingModel, sha1, size, Types,
 } from 'ejun';
-import { renderDomPage } from './src/entry-dom';
-import { logUiNextResponse } from './src/logging';
-import { installPlugin, listPages, resolvePage } from './src/dom/registry';
-import './src/pages';
 
 const logger = new Logger('ui-next');
 
@@ -29,26 +25,6 @@ const PENDING_HTML = `<html>
 
 const INJECT_MARKER = '<!-- __EJUNZ_INJECTION__DO_NOT_REMOVE_THIS__ -->';
 const buildInject = (data: string) => `<script id="__EJUNZ_INJECTION__" type="application/json">${data}</script>`;
-let domStyles: string | undefined;
-
-function getDomStyles() {
-    if (domStyles != null) return domStyles;
-    const addonStyles = Object.values(getAddonEntries())
-        .map((entry) => path.resolve(path.dirname(entry), 'pages.css'));
-    const builtinStyles = [
-        path.resolve(__dirname, 'src/pages/homepage.css'),
-        path.resolve(__dirname, 'src/pages/login.css'),
-    ];
-    const files = [require.resolve('@ejunz/components/web.css'), ...builtinStyles, ...addonStyles]
-        .filter((file, index, list): file is string => list.indexOf(file) === index && fs.existsSync(file));
-    domStyles = files.map((file) => fs.readFileSync(file, 'utf8')).join('\n').replace(/<\/style/gi, '<\\/style');
-    return domStyles;
-}
-
-function injectDomStyles(html: string) {
-    const styles = getDomStyles();
-    return styles ? html.replace('</head>', `<style data-ejunz-dom-styles>${styles}</style></head>`) : html;
-}
 
 function getAddonEntries(): Record<string, string> {
     const entries: Record<string, string> = {};
@@ -62,73 +38,6 @@ function getAddonEntries(): Record<string, string> {
         }
     }
     return entries;
-}
-
-let domPluginsReady: Promise<void> | undefined;
-
-async function ensureDomPlugins() {
-    if (!domPluginsReady) {
-        domPluginsReady = (async () => {
-            for (const [name, entry] of Object.entries(getAddonEntries())) {
-                try {
-                    const plugin = require(entry) as { setup?: (api: any) => void };
-                    if (typeof plugin.setup === 'function') {
-                        installPlugin({ name, setup: plugin.setup });
-                    }
-                } catch (error) {
-                    logger.warn('Failed to load DOM UI plugin %s: %o', name, error);
-                }
-            }
-        })();
-    }
-    await domPluginsReady;
-}
-
-function createPageData(args: Record<string, any>, context: any) {
-    const host = context.handler.context.req.headers?.host || 'localhost';
-    return {
-        name: context.handler.context._matchedRouteName,
-        template: context.handler.response.template || '',
-        args: {
-            UserContext: context.UserContext,
-            UiContext: context.handler.UiContext,
-            ...args,
-        },
-        url: context.handler.context.req.url!,
-        host,
-    };
-}
-
-async function renderDom(
-    html: string,
-    pageData: ReturnType<typeof createPageData>,
-    routeMap: Record<string, string>,
-) {
-    try {
-        await ensureDomPlugins();
-        const rendered = renderDomPage(pageData, routeMap, pageData.host);
-        return html.replace('<div id="root"></div>', `<div id="root">${rendered}</div>`);
-    } catch (error) {
-        logger.warn('DOM render failed for %s: %o', pageData.name, error);
-        return html;
-    }
-}
-
-function logNextResponse(context: any) {
-    const response = context.EjunzContext?.response;
-    const handler = context.handler;
-    if (!handler || !response?.template) return;
-    const pageName = context._matchedRouteName || handler.context?._matchedRouteName || handler.constructor.name;
-    // Log responses actually rendered by the ui-next renderer: the 'next'
-    // template, or any template resolved to a registered DOM page (e.g. the
-    // homepage route uses main.html but renders through the built-in
-    // homepage page).
-    if (response.template !== 'next' && !resolvePage({ name: pageName, template: response.template, args: {}, url: '' })) return;
-    const body = response.body;
-    const mode = String(context.request?.headers?.accept || '').includes('application/json')
-        ? 'json' : process.env.DEV ? 'dev' : 'prod';
-    const url = context.request?.url || context.request?.path || '/';
-    logUiNextResponse(logger, mode, url, pageName, body);
 }
 
 function ejunzPlugins(): Plugin {
@@ -189,7 +98,6 @@ const federationPlugin: esbuild.Plugin = {
 
 const vfs: Record<string, string> = {};
 const hashes: Record<string, string> = {};
-let runtimeAssetsReady: Promise<void> | undefined;
 
 const applyCss = (css: string) => `
 (() => {
@@ -214,6 +122,10 @@ async function buildI18n() {
         if (id) localeList[id] = { name: global.Ejunz.locales[lang].__langname, flag: global.Ejunz.locales[lang].__flag };
     }
     addFile('locale-list.js', `window.EjunzLocaleList=${JSON.stringify(localeList)};`);
+}
+
+async function buildCodeLangs() {
+    addFile('code-langs.js', `window.EjunzCodeLangs=${JSON.stringify(SettingModel.langs)};`);
 }
 
 async function buildVersions() {
@@ -244,27 +156,11 @@ async function buildVersions() {
     addFile('versions.js', `window.EjunzVersions=${JSON.stringify(versions)};`);
 }
 
-async function buildRuntimeAssets() {
-    await buildI18n();
-    await buildVersions();
-}
-
-function ensureRuntimeAssets() {
-    if (!runtimeAssetsReady) {
-        runtimeAssetsReady = buildRuntimeAssets().catch((error) => {
-            runtimeAssetsReady = undefined;
-            throw error;
-        });
-    }
-    return runtimeAssetsReady;
-}
-
 class UiNextConstantHandler extends Handler {
     noCheckPermView = true;
 
     @param('name', Types.Filename)
     async all(domainId: string, name: string) {
-        if (process.env.DEV) await ensureRuntimeAssets();
         if (!(name in vfs)) throw new NotFoundError(name);
         this.response.type = 'application/javascript';
         this.response.body = vfs[name];
@@ -372,6 +268,7 @@ const HASH_FALLBACK = '00000000';
 const getViewLang = (handler: HandlerCommon) => handler.user?.viewLang || handler.session?.viewLang || 'zh';
 
 const injectedScripts = (resolve: (name: string) => string, viewLang: string) => [
+    'code-langs.js',
     'locale-list.js',
     `lang-${viewLang}.js`,
     'versions.js',
@@ -380,21 +277,17 @@ const injectedScripts = (resolve: (name: string) => string, viewLang: string) =>
 export async function apply(ctx: Context) {
     if (process.env.EJUNZ_CLI) return;
 
-    ctx.server.addServerLayer('ui-next-logger', async (context: any, next: () => Promise<void>) => {
-        await next();
-        logNextResponse(context);
-    });
     ctx.Route('ui_next_constants', '/plugins/:version/:name', UiNextConstantHandler);
 
-    ctx.on('app/started', async () => {
-        await ensureDomPlugins();
-        const pageNames = listPages();
-        logger.info('Registered pages (%d): %s', pageNames.length, pageNames.join(', '));
-    });
-
     if (process.env.DEV) {
-        ctx.on('app/started', ensureRuntimeAssets);
+        ctx.on('app/started', async () => {
+            await buildI18n();
+            await buildCodeLangs();
+            await buildVersions();
+        });
         ctx.on('app/i18n/update', buildI18n);
+        ctx.on('system/setting-loaded', buildCodeLangs);
+        ctx.on('system/setting', buildCodeLangs);
 
         const vite = await createServer({
             root: __dirname,
@@ -402,8 +295,7 @@ export async function apply(ctx: Context) {
             server: {
                 middlewareMode: true,
                 hmr: {
-                    server: httpServer,
-                    path: '/__ejunz_vite_hmr',
+                    port: 3010,
                 },
                 headers: {
                     'Cross-Origin-Opener-Policy': 'same-origin',
@@ -425,14 +317,17 @@ export async function apply(ctx: Context) {
             output: 'html',
             asFallback: true,
             priority: 100,
-            async render(name, args, context) {
-                const pageData = createPageData(args, context);
-                if (pageData.template !== 'next' && !resolvePage(pageData) && ctx.server.renderers['ui-default']) {
-                    return ctx.server.renderers['ui-default'].render(name, args, context) as string | Promise<string>;
-                }
+            async render(_name, args, context) {
                 const serialized = JSON.stringify({
                     EJUNZ_INJECTED: true,
-                    ...pageData,
+                    name: context.handler.context._matchedRouteName,
+                    template: context.handler.response.template || '',
+                    args: {
+                        UserContext: context.UserContext,
+                        UiContext: context.handler.UiContext,
+                        ...args,
+                    },
+                    url: context.handler.context.req.url!,
                     route_map: ctx.server.routeMap,
                     endpoint: ctx.setting.get('server.url') || undefined,
                 }, serializer(false, context.handler));
@@ -442,21 +337,21 @@ export async function apply(ctx: Context) {
                     buildInject(serialized),
                     ...injectedScripts(devAssetUrl, getViewLang(context.handler)),
                 ].join('\n');
-                const injectedHtml = injectDomStyles(html.replace(INJECT_MARKER, injectHtml));
-                const renderedHtml = await renderDom(injectedHtml, pageData, ctx.server.routeMap);
-                const body = await vite.transformIndexHtml(context.handler.context.req.url!, renderedHtml);
-                return body;
+                const htmlToRender = html.replace(INJECT_MARKER, injectHtml);
+                return await vite.transformIndexHtml(context.handler.context.req.url!, htmlToRender);
             },
         });
 
         // eslint-disable-next-line consistent-return
         return async () => {
-            await vite.close().catch((e) => logger.error('Failed to close Vite SSR server: %o', e));
+            await vite.close().catch((e) => console.error(e));
         };
     } else {
         const build = async () => {
             await buildPlugins();
-            await buildRuntimeAssets();
+            await buildI18n();
+            await buildCodeLangs();
+            await buildVersions();
         };
         ctx.on('app/started', build);
 
@@ -466,17 +361,20 @@ export async function apply(ctx: Context) {
             output: 'html',
             asFallback: true,
             priority: 100,
-            async render(name, args, context) {
-                const pageData = createPageData(args, context);
-                if (pageData.template !== 'next' && !resolvePage(pageData) && ctx.server.renderers['ui-default']) {
-                    return ctx.server.renderers['ui-default'].render(name, args, context) as string | Promise<string>;
-                }
+            async render(_name, args, context) {
                 const indexHtml = path.join(__dirname, 'public', 'index.html');
                 if (!fs.existsSync(indexHtml)) return PENDING_HTML;
                 const html = fs.readFileSync(indexHtml, 'utf-8');
                 const serialized = JSON.stringify({
                     EJUNZ_INJECTED: true,
-                    ...pageData,
+                    name: context.handler.context._matchedRouteName,
+                    template: context.handler.response.template || '',
+                    args: {
+                        UserContext: context.UserContext,
+                        UiContext: context.handler.UiContext,
+                        ...args,
+                    },
+                    url: context.handler.context.req.url!,
                     route_map: ctx.server.routeMap,
                     endpoint: ctx.setting.get('server.url') || undefined,
                     plugins_url: `/plugins/${hashes['plugins.js'] || HASH_FALLBACK}/plugins.js`,
@@ -486,9 +384,7 @@ export async function apply(ctx: Context) {
                     buildInject(serialized),
                     ...injectedScripts(prodAssetUrl, getViewLang(context.handler)),
                 ].join('\n');
-                const injectedHtml = injectDomStyles(html.replace(INJECT_MARKER, injectHtml));
-                const body = renderDom(injectedHtml, pageData, ctx.server.routeMap);
-                return body;
+                return html.replace(INJECT_MARKER, injectHtml);
             },
         });
         const debouncedBuild = ctx.debounce(build, 2000);
@@ -498,6 +394,7 @@ export async function apply(ctx: Context) {
         };
         ctx.on('app/watch/change', triggerHotUpdate);
         ctx.on('app/watch/unlink', triggerHotUpdate);
+        ctx.on('system/setting-loaded', buildCodeLangs);
         ctx.on('system/setting', debouncedBuild);
         ctx.on('app/i18n/update', debouncedBuild);
     }

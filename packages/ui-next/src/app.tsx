@@ -19,10 +19,16 @@ const App = defineSlot('app:root', () => {
       const templateSlot = `page:${templateName}` as `page:${string}`;
       const templateEntry = store.getDefault(templateSlot);
       if (templateEntry) {
+        if (import.meta.env.DEV) {
+          console.log(`[ui-next] using template "${templateName}" for page "${name}"`);
+        }
         return [templateSlot, templateEntry] as const;
       }
     }
     const slot = `page:${name}` as `page:${string}`;
+    if (import.meta.env.DEV) {
+      console.log(`[ui-next] using page slot "${slot}"`);
+    }
     return [slot, store.getDefault(slot)] as const;
   }, [name, template, isError]);
 
@@ -31,7 +37,7 @@ const App = defineSlot('app:root', () => {
     () => store.getVersion(slotName),
   ], [slotName]);
 
-  useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  useSyncExternalStore(subscribe, getSnapshot);
 
   if (!entry) {
     return (
@@ -43,14 +49,13 @@ const App = defineSlot('app:root', () => {
 
   const Layout = store.getDefault(`layout:${entry.layout}`) ?? DefaultLayout;
   const { Page } = entry;
-  const PageComponent = entry.component ?? Page;
 
   return (
     <SlotErrorBoundary slotName={slotName} label="renderer">
       <Suspense fallback={null}>
         <Layout>
           <Suspense fallback={<div>Loading...</div>}>
-            <PageComponent />
+            <Page />
           </Suspense>
         </Layout>
       </Suspense>
