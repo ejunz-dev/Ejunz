@@ -116,11 +116,16 @@ async function renderDom(
 function logNextResponse(context: any) {
     const response = context.EjunzContext?.response;
     const handler = context.handler;
-    if (!handler || response?.template !== 'next') return;
+    if (!handler || !response?.template) return;
+    const pageName = context._matchedRouteName || handler.context?._matchedRouteName || handler.constructor.name;
+    // Log responses actually rendered by the ui-next renderer: the 'next'
+    // template, or any template resolved to a registered DOM page (e.g. the
+    // homepage route uses main.html but renders through the built-in
+    // homepage page).
+    if (response.template !== 'next' && !resolvePage({ name: pageName, template: response.template, args: {}, url: '' })) return;
     const body = response.body;
     const mode = String(context.request?.headers?.accept || '').includes('application/json')
         ? 'json' : process.env.DEV ? 'dev' : 'prod';
-    const pageName = context._matchedRouteName || handler.context?._matchedRouteName || handler.constructor.name;
     const url = context.request?.url || context.request?.path || '/';
     logUiNextResponse(logger, mode, url, pageName, body);
 }
