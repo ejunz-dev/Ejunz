@@ -5,6 +5,7 @@ import { randomPick, Time } from '@ejunz/utils';
 import { PERM } from '../../model/builtin';
 import system from '../../model/system';
 import token from '../../model/token';
+import avatar from '../../lib/avatar';
 
 export interface UiContextBase {
     cdn_prefix: string;
@@ -31,7 +32,10 @@ export default async (ctx: KoaContext, next: Next) => {
         if (UiContext.ws_prefix.includes(',')) UiContext.ws_prefix = randomPick(UiContext.ws_prefix.split(','));
     }
     UiContext.domainId = domainId;
-    UiContext.domain = domainInfo;
+    UiContext.domain = domainInfo ? {
+        ...domainInfo,
+        avatarUrl: domainInfo.avatar ? avatar(domainInfo.avatar, 64) : '/img/team_avatar.png',
+    } : domainInfo;
     ctx.EjunzContext.UiContext = UiContext;
     ctx.EjunzContext.domain = domainInfo;
     ctx.EjunzContext.args = args;
