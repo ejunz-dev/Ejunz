@@ -3,7 +3,7 @@
 .uix-footer__left, .uix-footer__right { display: flex; flex-wrap: wrap; align-items: center; gap: 20px; }
 .uix-footer__right { justify-content: flex-end; }
 .uix-footer__dropdown { position: relative; }
-.uix-footer__dropdown > button { border: 0; padding: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; }
+.uix-footer__dropdown > button { display: inline-flex; align-items: center; gap: .25rem; height: 2rem; padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; line-height: 1; }
 .uix-footer__dropdown > button:hover, .uix-footer a:hover { color: var(--web-link); }
 .uix-footer__menu { position: absolute; bottom: calc(100% + 6px); left: 0; z-index: 4; min-width: 120px; padding: 5px 0; border: 1px solid var(--web-border); border-radius: 4px; background: var(--web-card-bg); box-shadow: 0 5px 18px var(--web-shadow); opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(4px); transition: opacity .14s, visibility .14s, transform .14s; }
 .uix-footer__menu.is-open { opacity: 1; visibility: visible; pointer-events: auto; transform: translateY(0); }
