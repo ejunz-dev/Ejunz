@@ -133,6 +133,24 @@
 .bd-drawer__problems li { margin: .65rem 0; }
 .bd-drawer__problems button { border: 0; background: transparent; color: inherit; cursor: pointer; text-align: left; }
 .bd-drawer__problems button.is-selected { color: var(--bd-accent); font-weight: 700; }
+.bd-problem-list { display: grid; gap: .6rem; }
+.bd-problem { border: 1px solid var(--bd-line); border-radius: 6px; overflow: hidden; }
+.bd-problem.is-selected { border-color: var(--bd-accent); }
+.bd-problem__head { display: flex; align-items: center; gap: .55rem; width: 100%; padding: .65rem .75rem; border: 0; background: var(--bd-surface); color: var(--bd-ink); cursor: pointer; text-align: left; font: inherit; }
+.bd-problem__head:hover, .bd-problem.is-expanded .bd-problem__head { background: var(--bd-accent-soft); }
+.bd-problem__kind { flex: 0 0 auto; padding: .12rem .35rem; border-radius: 4px; background: var(--bd-bg); color: var(--bd-muted); font-size: .66rem; }
+.bd-problem__title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .82rem; }
+.bd-problem__body { padding: .85rem; border-top: 1px solid var(--bd-line); background: var(--bd-bg); }
+.bd-problem__markdown { display: block; line-height: 1.55; }
+.bd-problem__markdown--inline { display: inline; }
+.bd-problem__stem { margin-bottom: .8rem; }
+.bd-problem__options { display: grid; gap: .35rem; margin: .7rem 0; }
+.bd-problem__option { display: flex; gap: .5rem; padding: .45rem .55rem; border: 1px solid var(--bd-line); border-radius: 4px; background: var(--bd-surface); }
+.bd-problem__option b { flex: 0 0 auto; color: var(--bd-accent); }
+.bd-problem__answers { display: grid; gap: .45rem; margin-top: .9rem; padding-top: .7rem; border-top: 1px solid var(--bd-line); }
+.bd-problem__reveal, .bd-problem__blank { width: fit-content; padding: .4rem .6rem; border: 1px dashed var(--bd-accent); border-radius: 4px; background: var(--bd-surface); color: var(--bd-accent); cursor: pointer; font: inherit; text-align: left; }
+.bd-problem__reveal:hover, .bd-problem__blank:hover, .bd-problem__blank.is-revealed { background: var(--bd-accent-soft); }
+.bd-problem__blank { display: inline-block; min-width: 3.5rem; margin: 0 .2rem; padding: .1rem .35rem; }
 @media (max-width: 760px) {
   .bd-header, .bd-explorer, .bd-page__main, .bd-page__stats { padding-inline: 1rem; }
   .bd-header__body { padding-top: 1.8rem; }
