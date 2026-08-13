@@ -4,6 +4,7 @@ import Viewer from 'viewerjs';
 import 'viewerjs/dist/viewer.css';
 import { i18n } from '../../i18n';
 import { renderMarkdown } from './markdown';
+import { BaseDetailProblemList } from './BaseDetailProblemList';
 import { cardDisplayLabel } from './tree';
 import type { BaseDetailCard } from './types';
 import './base-detail.css';
@@ -148,12 +149,7 @@ export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, selectedP
         ) : (
           <div className="bd-drawer__body bd-drawer__problems">
             <h2>{cardDisplayLabel(displayCard)}</h2>
-            <ol>
-              {problems.map((problem, index) => {
-                const pid = String(problem.pid || `problem-${index}`);
-                return <li key={pid}><button type="button" className={selectedProblemId === pid ? 'is-selected' : ''} onClick={() => onSelectProblem?.(pid)}>{String(problem.title || problem.stem || problem.content || `${i18n('Problem')} ${index + 1}`).replace(/<[^>]+>/g, '').slice(0, 180)}</button></li>;
-              })}
-            </ol>
+            <BaseDetailProblemList problems={problems} selectedProblemId={selectedProblemId} onSelectProblem={onSelectProblem} />
           </div>
         )}
       </aside>
