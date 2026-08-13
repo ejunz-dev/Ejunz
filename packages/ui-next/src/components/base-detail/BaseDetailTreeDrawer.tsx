@@ -25,8 +25,8 @@ export function BaseDetailTreeDrawer({ open, nodes, edges, nodeCardsMap, expande
   const roots = getRootNodeIds(nodes, edges);
   return createPortal(
     <>
-      <button type="button" className="bd-backdrop" onClick={onClose} aria-label={i18n('Close')} />
-      <aside className="bd-drawer bd-drawer--tree" role="dialog" aria-modal="true" aria-label={i18n('Document Structure')}>
+      <button type="button" className="bd-backdrop bd-tree-backdrop" onClick={onClose} aria-label={i18n('Close')} />
+      <aside className="bd-drawer bd-drawer--tree bd-tree-drawer" role="dialog" aria-modal="true" aria-label={i18n('Document Structure')}>
         <header className="bd-drawer__header">
           <div><strong>{i18n('Document Structure')}</strong><span className="bd-drawer__count">{nodes.length + Object.values(nodeCardsMap).reduce((sum, cards) => sum + cards.length, 0)}</span></div>
           <button type="button" className="bd-drawer__close" onClick={onClose} aria-label={i18n('Close')}>×</button>

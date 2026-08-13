@@ -45,9 +45,50 @@ function TagList({ tags, problem = false }: { tags?: string[]; problem?: boolean
   );
 }
 
+function ChevronIcon({ expanded }: { expanded: boolean }) {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
+      <path d="M4.5 2.5L8 6l-3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={expanded ? 'bd-tree__chevron is-expanded' : 'bd-tree__chevron'} />
+    </svg>
+  );
+}
+
+function FolderIcon({ expanded }: { expanded: boolean }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      {expanded ? <path fillRule="evenodd" clipRule="evenodd" d="M1.5 3l.5-.5h5.67l.5.5L9 5h4.5l.5.5v1.19l-.02.01 1.99 5.52-.47.78H2l-.5-.5V3zm5.5 2L6 4.5H2V5h5z" /> : <path fillRule="evenodd" clipRule="evenodd" d="M7.17 3H1.5l-.5.5V5h1V4h5.33l.5.5V7H14L13 4.91l-.44-.12-.5-1.13L11.98 3H7.17zM14 8H2v4.5l.5.5h11l.5-.5V8zm-1 0v4H3V8h10z" />}
+    </svg>
+  );
+}
+
+function RoadmapIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <circle cx="4" cy="8" r="2" stroke="currentColor" strokeWidth="1.4" />
+      <circle cx="12" cy="4" r="2" stroke="currentColor" strokeWidth="1.4" />
+      <circle cx="12" cy="12" r="2" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M6 7.2l4-2.4M6 8.8l4 2.4" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  );
+}
+
 function CardIcon({ card }: { card: BaseDetailCard }) {
   const type = `${card.fileType || card.cardType || ''}`.toLowerCase();
-  return <span className="bd-tree__card-icon" aria-hidden>{type === 'image' ? '▧' : type === 'pdf' ? '▤' : type === 'video' ? '▶' : '▱'}</span>;
+  const color = type === 'pdf' ? '#d93025' : type === 'image' ? '#1a73e8' : type === 'video' ? '#e8710a' : type === 'audio' ? '#7c33d3' : type === 'code' ? '#0d652d' : '#5f6b7a';
+  const path = type === 'pdf'
+    ? 'M13.85 4.44l-3.28-3.3-.35-.14H2.5l-.5.5V7h1V2h6v3.5l.5.5H13v1h1V4.8zM10 5V2l3 3h-3zM2.5 8l-.5.5v6l.5.5h11l.5-.5v-6l-.5-.5h-11zM13 13v1H3V9h10v4z'
+    : type === 'image'
+      ? 'M14.25 4.74L11 6.62V4.5l-.5-.5h-9l-.5.5v7l.5.5h9l.5-.5v-2l3.25 1.87.75-.47V5.18zM10 11H2V5h8v6zm4-1l-3-1.7v-.52L14 6v4z'
+      : type === 'video' || type === 'audio'
+        ? 'M13.47 2L5.47 2.5 5 3v7.5A2.5 2.5 0 1 0 6 12.5V6.47l7-.44V7h1V2.5zM3.5 11A1.5 1.5 0 1 1 2 12.5 1.5 1.5 0 0 1 3.5 11z'
+        : type === 'code'
+          ? 'M13.85 4.44L10.57 1.14 10.22 1H2.5l-.5.5v13l.5.5h11l.5-.5V4.8zM13 14H3V2h6v3.5l.5.5H13zM6.85 7.85L5.2 9.5l1.65 1.65-.7.7-2-2v-.7l2-2zm2.3 0l.7-.7 2 2v.7l-2 2-.7-.7 1.65-1.65z'
+          : 'M1.5 2h13l.5.5v10l-.5.5h-13l-.5-.5v-10zM2 3v9h12V3H2zm2 2h8v1H4zm0 2h6v1H4zm0 2h4v1H4z';
+  return <span className="bd-tree__card-icon" aria-hidden><svg width="16" height="16" viewBox="0 0 16 16" fill={color}><path d={path} /></svg></span>;
+}
+
+function ProblemIcon() {
+  return <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden><circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.3" /><path d="M6.4 6.1a1.7 1.7 0 1 1 2.72 1.36c-.7.51-1.12.8-1.12 1.64M8 11.5v.1" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>;
 }
 
 function TreeBranch({
@@ -69,11 +110,11 @@ function TreeBranch({
       <div className={`bd-tree__row bd-tree__row--node${selectedNodeId === nodeId ? ' is-selected' : ''}${node.type === 'roadmap' ? ' is-roadmap' : ''}`} style={{ paddingLeft: `${level * 1.1}rem` }}>
         {hasChildren ? (
           <button type="button" className="bd-tree__toggle" onClick={() => onToggle(nodeId)} aria-expanded={expanded} aria-label={expanded ? i18n('Collapse') : i18n('Expand')}>
-            {expanded ? '⌄' : '›'}
+            <ChevronIcon expanded={expanded} />
           </button>
         ) : <span className="bd-tree__toggle-spacer" />}
         <button type="button" className="bd-tree__main" onClick={() => onSelectNode(nodeId)}>
-          <span className="bd-tree__node-icon" aria-hidden>{node.type === 'roadmap' ? '⌘' : expanded ? '▾' : '▸'}</span>
+          <span className="bd-tree__node-icon">{node.type === 'roadmap' ? <RoadmapIcon /> : <FolderIcon expanded={expanded} />}</span>
           <span className="bd-tree__label" title={nodeDisplayLabel(node)}>{nodeDisplayLabel(node)}</span>
         </button>
       </div>
@@ -97,7 +138,7 @@ function TreeBranch({
                 return (
                   <button type="button" key={pid} className={`bd-tree__row bd-tree__row--problem${selectedProblemId === pid ? ' is-selected' : ''}`} style={{ paddingLeft: `${(level + 2) * 1.1}rem` }} onClick={() => { onSelectCard(child.card); onSelectProblem?.(child.card, pid); }}>
                     <span className="bd-tree__toggle-spacer" />
-                    <span className="bd-tree__main"><span className="bd-tree__label">{problemLabel(problem, index)}</span><TagList tags={problem.tags} problem /></span>
+                    <span className="bd-tree__main"><ProblemIcon /><span className="bd-tree__label">{problemLabel(problem, index)}</span><TagList tags={problem.tags} problem /></span>
                   </button>
                 );
               })}
