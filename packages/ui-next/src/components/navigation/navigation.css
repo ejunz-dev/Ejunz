@@ -13,7 +13,8 @@
 .uix-nav__domain-wrap, .uix-nav__menu-wrap { position: relative; height: 100%; display: flex; align-items: center; }
 .uix-nav__domain, .uix-nav__user { height: 100%; display: flex; align-items: center; gap: 6px; border: 0; background: transparent; color: #222; cursor: pointer; font: inherit; font-size: 13px; }
 .uix-nav__domain img, .uix-nav__user img, .uix-domain-menu__item img { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; }
-.uix-nav__menu, .uix-domain-menu { position: absolute; top: calc(100% + 1px); right: 0; z-index: 35; min-width: 190px; padding: 7px 0; border: 1px solid #d9e0e4; border-radius: 4px; background: #fff; box-shadow: 0 8px 25px rgba(0,0,0,.14); }
+.uix-nav__menu, .uix-domain-menu { position: absolute; top: calc(100% + 1px); right: 0; z-index: 35; min-width: 190px; padding: 7px 0; border: 1px solid #d9e0e4; border-radius: 4px; background: #fff; box-shadow: 0 8px 25px rgba(0,0,0,.14); opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-4px); transition: opacity .14s, visibility .14s, transform .14s; }
+.uix-nav__menu.is-open, .uix-domain-menu.is-open { opacity: 1; visibility: visible; pointer-events: auto; transform: translateY(0); }
 .uix-nav__menu-link { display: block; width: 100%; padding: 8px 14px; border: 0; background: transparent; color: #25313a; text-align: left; text-decoration: none; cursor: pointer; font: inherit; font-size: 13px; }
 .uix-nav__menu-link:hover { background: #edf4f8; color: #1769aa; }
 .uix-nav__menu-separator { height: 1px; margin: 6px 0; background: #e4e9ec; }
