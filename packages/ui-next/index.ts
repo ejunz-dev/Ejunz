@@ -377,7 +377,8 @@ export async function apply(ctx: Context) {
     });
     ctx.Route('ui_next_constants', '/plugins/:version/:name', UiNextConstantHandler);
 
-    ctx.on('app/started', () => {
+    ctx.on('app/started', async () => {
+        await ensureDomPlugins();
         const pageNames = listPages();
         logger.info('Registered pages (%d): %s', pageNames.length, pageNames.join(', '));
     });
