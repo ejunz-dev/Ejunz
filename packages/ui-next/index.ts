@@ -11,6 +11,7 @@ import {
 import { renderDomPage } from './src/entry-dom';
 import { logUiNextResponse } from './src/logging';
 import { installPlugin, resolvePage } from './src/dom/registry';
+import './src/pages';
 
 const logger = new Logger('ui-next');
 
