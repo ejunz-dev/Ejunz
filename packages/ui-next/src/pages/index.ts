@@ -1,4 +1,4 @@
 import { registerPage } from '../registry/page';
 
 registerPage('homepage', () => import('./homepage'));
-registerPage('basedomain', () => import('./basedomain'));
+registerPage('base_domain', () => import('./basedomain'));
