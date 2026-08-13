@@ -15,6 +15,9 @@ export function Footer() {
   const domainExtra = typeof ui.domain?.ui?.footer_extra_html === 'string' ? ui.domain.ui.footer_extra_html : '';
   const version = typeof window !== 'undefined' ? (window as any).EjunzVersions?.ejun : undefined;
   const professional = Boolean((ui as any).server?.pro || (ui as any).pro);
+  const currentLanguage = String((user as any).viewLang || 'zh');
+  const currentLanguageInfo = getLocaleList()[currentLanguage] || getLocaleList()[currentLanguage.split('_')[0]];
+  const currentTheme = user.theme === 'dark' ? 'dark' : 'light';
 
   useEffect(() => {
     if (!languageOpen && !themeOpen) return undefined;
@@ -33,12 +36,12 @@ export function Footer() {
       <div className="uix-footer__inner">
         <div className="uix-footer__left">
           <div className="uix-footer__dropdown" onMouseEnter={() => setLanguageOpen(true)} onMouseLeave={() => setLanguageOpen(false)}>
-            <button type="button" onClick={() => { setThemeOpen(false); setLanguageOpen((open) => !open); }} aria-expanded={languageOpen}>◎ {i18n('Language')}⌄</button>
-            <div className={`uix-footer__menu${languageOpen ? ' is-open' : ''}`}>{languages.map(([key, info]) => <a key={key} href={buildUrl('switch_language', { lang: key })} className="uix-footer__menu-link">{info.flag ? `${info.flag} ` : ""}{info.name}</a>)}</div>
+            <button type="button" onClick={() => { setThemeOpen(false); setLanguageOpen((open) => !open); }} aria-expanded={languageOpen}>◎ {currentLanguageInfo?.flag ? `${currentLanguageInfo.flag} ` : ''}{currentLanguageInfo?.name || i18n('Language')}⌄</button>
+            <div className={`uix-footer__menu${languageOpen ? ' is-open' : ''}`}>{languages.map(([key, info]) => <a key={key} href={buildUrl('switch_language', { lang: key })} className={`uix-footer__menu-link${key === currentLanguage ? ' is-active' : ''}`}>{info.flag ? `${info.flag} ` : ''}{info.name}{key === currentLanguage ? ' ✓' : ''}</a>)}</div>
           </div>
           <div className="uix-footer__dropdown" onMouseEnter={() => setThemeOpen(true)} onMouseLeave={() => setThemeOpen(false)}>
-            <button type="button" onClick={() => { setLanguageOpen(false); setThemeOpen((open) => !open); }} aria-expanded={themeOpen}>◐ {i18n('theme')}⌄</button>
-            <div className={`uix-footer__menu${themeOpen ? ' is-open' : ''}`}><a href={buildUrl('set_theme', { theme: 'light' })} className="uix-footer__menu-link">{i18n('Light')}</a><a href={buildUrl('set_theme', { theme: 'dark' })} className="uix-footer__menu-link">{i18n('Dark')}</a></div>
+            <button type="button" onClick={() => { setLanguageOpen(false); setThemeOpen((open) => !open); }} aria-expanded={themeOpen}>◐ {i18n(currentTheme === 'dark' ? 'Dark' : 'Light')}⌄</button>
+            <div className={`uix-footer__menu${themeOpen ? ' is-open' : ''}`}><a href={buildUrl('set_theme', { theme: 'light' })} className={`uix-footer__menu-link${currentTheme === 'light' ? ' is-active' : ''}`}>{i18n('Light')}{currentTheme === 'light' ? ' ✓' : ''}</a><a href={buildUrl('set_theme', { theme: 'dark' })} className={`uix-footer__menu-link${currentTheme === 'dark' ? ' is-active' : ''}`}>{i18n('Dark')}{currentTheme === 'dark' ? ' ✓' : ''}</a></div>
           </div>
         </div>
         <div className="uix-footer__right">
