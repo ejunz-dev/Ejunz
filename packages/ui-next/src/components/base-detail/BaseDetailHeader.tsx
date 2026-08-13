@@ -7,14 +7,12 @@ interface Props {
   description?: string;
   domainId: string;
   docId: string;
-  nodeCount: number;
-  cardCount: number;
   treeOpen: boolean;
   onToggleTree: () => void;
   onShare: () => void;
 }
 
-export function BaseDetailHeader({ title, description, domainId, docId, nodeCount, cardCount, treeOpen, onToggleTree, onShare }: Props) {
+export function BaseDetailHeader({ title, description, domainId, docId, treeOpen, onToggleTree, onShare }: Props) {
   const buildUrl = useBuildUrl();
   const [copied, setCopied] = useState(false);
   const listUrl = buildUrl('base_domain', { domainId });
@@ -36,10 +34,7 @@ export function BaseDetailHeader({ title, description, domainId, docId, nodeCoun
         </div>
       </div>
       <div className="bd-header__body">
-        <div className="bd-header__title-row">
-          <h1>{title}</h1>
-          <span className="bd-header__stats"><strong>{nodeCount}</strong> {i18n('nodes')} <span>·</span> <strong>{cardCount}</strong> {i18n('cards')}</span>
-        </div>
+        <h1>{title}</h1>
         {description?.trim() ? <p>{description}</p> : null}
       </div>
       <div className="bd-header__tabs" role="tablist" aria-label={i18n('Knowledge Base')}>
