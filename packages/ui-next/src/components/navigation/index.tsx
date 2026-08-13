@@ -93,10 +93,10 @@ function UserMenu({ user, domain }: { user: Record<string, any>; domain: DomainI
   );
 }
 
-function DomainMenu({ current, domains, mobile = false, onClose }: { current: string; domains: DomainItem[]; mobile?: boolean; onClose?: () => void }) {
+function DomainMenu({ current, domains, mobile = false, inline = false, onClose }: { current: string; domains: DomainItem[]; mobile?: boolean; inline?: boolean; onClose?: () => void }) {
   const buildUrl = useBuildUrl();
   return (
-    <div className={`uix-domain-menu${mobile ? ' uix-domain-menu--mobile' : ''}`}>
+    <div className={`${inline ? 'uix-domain-menu__panel' : 'uix-domain-menu'}${mobile ? ' uix-domain-menu--mobile' : ''}`}>
       <div className="uix-domain-menu__title">Joined domains</div>
       <div className="uix-domain-menu__list">
         {domains.map((domain) => {
@@ -143,7 +143,7 @@ export function Navigation() {
             ))}
           </div>
           <div className="uix-nav__secondary">
-            {guest ? <><Link to="user_login" className="uix-nav__item">Login</Link><Link to="user_register" className="uix-nav__signup">Sign Up</Link><span className="uix-nav__badge">GUEST</span></> : <><div className="uix-nav__domain-wrap" onMouseEnter={() => setDomainsOpen(true)} onMouseLeave={() => setDomainsOpen(false)}><button type="button" className="uix-nav__domain" onClick={() => setDomainsOpen((value) => !value)} aria-expanded={domainsOpen}><img src={avatarUrl(ui.domain)} alt="" />{ui.domain?.name || currentDomain}<span>⌄</span></button><div className={`uix-domain-menu${domainsOpen ? ' is-open' : ''}`}><DomainMenu current={currentDomain} domains={domains} onClose={() => setDomainsOpen(false)} /></div></div><UserMenu user={user} domain={ui.domain} /></>}
+            {guest ? <><Link to="user_login" className="uix-nav__item">Login</Link><Link to="user_register" className="uix-nav__signup">Sign Up</Link><span className="uix-nav__badge">GUEST</span></> : <><div className="uix-nav__domain-wrap" onMouseEnter={() => setDomainsOpen(true)} onMouseLeave={() => setDomainsOpen(false)}><button type="button" className="uix-nav__domain" onClick={() => setDomainsOpen((value) => !value)} aria-expanded={domainsOpen}><img src={avatarUrl(ui.domain)} alt="" />{ui.domain?.name || currentDomain}<span>⌄</span></button><div className={`uix-domain-menu${domainsOpen ? ' is-open' : ''}`}><DomainMenu inline current={currentDomain} domains={domains} onClose={() => setDomainsOpen(false)} /></div></div><UserMenu user={user} domain={ui.domain} /></>}
           </div>
           <button type="button" className="uix-nav__mobile-button" onClick={() => { setDomainsOpen(false); setMobileOpen((open) => !open); }} aria-label="Open navigation" aria-expanded={mobileOpen}><HamburgerIcon active={mobileOpen} /></button>
         </div>
