@@ -164,7 +164,10 @@ export class User {
             if (!dids.includes('system')) dids = ['system', ...dids];
             if (dids.length > 0) {
                 const ddocs = await domain.getMulti({ _id: { $in: dids } } as any).toArray();
-                const list = ddocs.filter((d) => d != null);
+                const list = ddocs.filter((d) => d != null).map((d) => ({
+                    ...d,
+                    avatarUrl: d.avatar ? avatar(d.avatar, 64) : '/img/team_avatar.png',
+                }));
                 list.sort((a, b) => (a._id === 'system' ? -1 : b._id === 'system' ? 1 : 0));
                 user.joinedDomains = list;
             } else {
