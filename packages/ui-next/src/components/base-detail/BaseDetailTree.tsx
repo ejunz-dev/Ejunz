@@ -133,10 +133,12 @@ function TreeBranch({
               {child.card.problems?.map((problem, index) => {
                 const pid = String(problem.pid || `problem-${index}`);
                 return (
-                  <button type="button" key={pid} className={`bd-tree__row bd-tree__row--problem${selectedProblemId === pid ? ' is-selected' : ''}`} style={{ paddingLeft: `${(level + 2) * 1.1}rem` }} onClick={() => { onSelectCard(child.card); onSelectProblem?.(child.card, pid); }}>
+                  <div key={pid} className="bd-tree__row bd-tree__row--problem" style={{ paddingLeft: `${(level + 2) * 1.1}rem` }}>
                     <span className="bd-tree__toggle-spacer" />
-                    <span className="bd-tree__main"><span className="bd-tree__label">{problemLabel(problem, index)}</span><TagList tags={problem.tags} problem /></span>
-                  </button>
+                    <button type="button" className="bd-tree__main" onClick={() => { onSelectCard(child.card); onSelectProblem?.(child.card, pid); }}>
+                      <span className="bd-tree__label">{problemLabel(problem, index)}</span><TagList tags={problem.tags} problem />
+                    </button>
+                  </div>
                 );
               })}
             </Fragment>
