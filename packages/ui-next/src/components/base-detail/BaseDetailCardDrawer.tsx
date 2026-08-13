@@ -22,10 +22,8 @@ function fileUrl(card: BaseDetailCard, baseDocId?: string, domainId?: string): s
 
 export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, selectedProblemId, baseDocId, domainId }: Props) {
   const [tab, setTab] = useState<'content' | 'problems'>('content');
-  const previousCard = useRef<BaseDetailCard | null>(null);
   const drawerRef = useRef<HTMLElement>(null);
-  if (card) previousCard.current = card;
-  const displayCard = card || previousCard.current;
+  const displayCard = card;
   const problems = displayCard?.problems || [];
 
   useEffect(() => {
@@ -35,7 +33,7 @@ export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, selectedP
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [displayCard?.docId, onClose, selectedProblemId]);
+  }, [displayCard, onClose, selectedProblemId]);
 
   if (!displayCard) return null;
   const url = fileUrl(displayCard, baseDocId, domainId);
