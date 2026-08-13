@@ -38,7 +38,7 @@
 .uix-hamburger.is-active > span:nth-child(3) { transform: translateY(-9px) rotate(-45deg); }
 .uix-mobile-header .uix-hamburger { color: #45515a; }
 .uix-nav__mobile-button { border: 0; background: transparent; color: #45515a; cursor: pointer; padding: 8px; }
-.uix-shell-backdrop { position: fixed; z-index: 40; inset: 0; border: 0; background: rgba(20,27,32,.52); }
+.uix-shell-backdrop { display: none; position: fixed; z-index: 40; inset: 0; border: 0; background: rgba(20,27,32,.52); }
 .uix-mobile-menu, .uix-domain-drawer { position: fixed; z-index: 41; top: 0; bottom: 0; width: min(330px, calc(100vw - 42px)); background: #1d1f20; box-shadow: 5px 0 22px rgba(0,0,0,.28); }
 .uix-mobile-menu { right: 0; }
 .uix-domain-drawer { left: 0; background: #fff; box-shadow: 5px 0 22px rgba(0,0,0,.18); }
@@ -51,4 +51,4 @@
 .uix-mobile-header { height: 48px; align-items: center; justify-content: space-between; padding: 0 13px; background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,.16); }
 .uix-mobile-header button { border: 0; background: none; color: #45515a; cursor: pointer; font-size: 22px; line-height: 1; }
 .uix-mobile-header img { height: 25px; width: auto; }
-@media (max-width: 700px) { .uix-nav { display: none; } .uix-mobile-header { display: flex; position: relative; z-index: 30; } }
+@media (max-width: 700px) { .uix-nav { display: none; } .uix-mobile-header { display: flex; position: relative; z-index: 30; } .uix-shell-backdrop { display: block; } }
