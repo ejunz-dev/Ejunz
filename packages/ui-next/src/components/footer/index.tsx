@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from '../link';
 import { useUiContext, useUserContext } from '../../context/page-data';
 import './footer.css';
@@ -17,16 +17,28 @@ export function Footer() {
   const version = typeof window !== 'undefined' ? (window as any).EjunzVersions?.ejun : undefined;
   const professional = Boolean((ui as any).server?.pro || (ui as any).pro);
 
+  useEffect(() => {
+    if (!languageOpen && !themeOpen) return undefined;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setLanguageOpen(false);
+        setThemeOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [languageOpen, themeOpen]);
+
   return (
     <footer className="uix-footer">
       <div className="uix-footer__inner">
         <div className="uix-footer__left">
           <div className="uix-footer__dropdown">
-            <button type="button" onClick={() => setLanguageOpen((open) => !open)} aria-expanded={languageOpen}>◎ Language⌄</button>
+            <button type="button" onClick={() => { setThemeOpen(false); setLanguageOpen((open) => !open); }} aria-expanded={languageOpen}>◎ Language⌄</button>
             {languageOpen ? <div className="uix-footer__menu">{languages.map(([key, label]) => <Link key={key} to="switch_language" params={{ lang: key }} className="uix-footer__menu-link">{label}</Link>)}</div> : null}
           </div>
           <div className="uix-footer__dropdown">
-            <button type="button" onClick={() => setThemeOpen((open) => !open)} aria-expanded={themeOpen}>◐ Theme⌄</button>
+            <button type="button" onClick={() => { setLanguageOpen(false); setThemeOpen((open) => !open); }} aria-expanded={themeOpen}>◐ Theme⌄</button>
             {themeOpen ? <div className="uix-footer__menu"><Link to="set_theme" params={{ theme: 'light' }} className="uix-footer__menu-link">Light</Link><Link to="set_theme" params={{ theme: 'dark' }} className="uix-footer__menu-link">Dark</Link></div> : null}
           </div>
         </div>
