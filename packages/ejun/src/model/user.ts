@@ -172,7 +172,10 @@ export class User {
                 user.joinedDomains = list;
             } else {
                 const sys = await domain.get('system');
-                user.joinedDomains = sys ? [sys] : [];
+                user.joinedDomains = sys ? [{
+                    ...sys,
+                    avatarUrl: sys.avatar ? avatar(sys.avatar, 64) : '/img/team_avatar.png',
+                }] : [];
             }
         } catch {
             user.joinedDomains = [];
