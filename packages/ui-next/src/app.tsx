@@ -3,6 +3,7 @@ import DefaultLayout from './components/layout';
 import { usePageData } from './context/page-data';
 import { defineSlot } from './registry';
 import { SlotErrorBoundary } from './registry/error-boundary';
+import { i18n } from './i18n';
 import { store } from './registry/store';
 
 const App = defineSlot('app:root', () => {
@@ -42,7 +43,7 @@ const App = defineSlot('app:root', () => {
   if (!entry) {
     return (
       <div>
-        Page not found: <code>{name}</code>
+        {i18n('Page not found:')} <code>{name}</code>
       </div>
     );
   }
@@ -54,7 +55,7 @@ const App = defineSlot('app:root', () => {
     <SlotErrorBoundary slotName={slotName} label="renderer">
       <Suspense fallback={null}>
         <Layout>
-          <Suspense fallback={<div>Loading...</div>}>
+          <Suspense fallback={<div>{i18n('Loading...')}</div>}>
             <Page />
           </Suspense>
         </Layout>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { i18n } from '../../i18n';
 
 interface Props {
   value: string;
@@ -17,13 +18,13 @@ export function BaseDetailExplorer({ value, onChange, nodeCount, cardCount }: Pr
   }, [focused]);
   return (
     <div className="bd-explorer">
-      <button type="button" className="bd-explorer__filter" aria-label="Open filters">☷ <span>Filter</span></button>
+      <button type="button" className="bd-explorer__filter" aria-label={i18n('Roadmap detail filter aria')}>☷ <span>{i18n('Roadmap detail filter open')}</span></button>
       <label className="bd-explorer__search">
         <span aria-hidden>⌕</span>
-        <input type="search" value={value} onChange={(event) => onChange(event.target.value)} onFocus={() => setFocused(true)} placeholder="Search nodes and cards" aria-label="Search nodes and cards" />
-        {value ? <button type="button" onClick={() => onChange('')} aria-label="Clear search">×</button> : null}
+        <input type="search" value={value} onChange={(event) => onChange(event.target.value)} onFocus={() => setFocused(true)} placeholder={i18n('Base detail tree search placeholder')} aria-label={i18n('Base detail tree search aria')} />
+        {value ? <button type="button" onClick={() => onChange('')} aria-label={i18n('Roadmap detail filter clear')}>×</button> : null}
       </label>
-      <span className="bd-explorer__summary">{focused || value ? `${nodeCount} nodes · ${cardCount} cards` : 'Browse the base structure'}</span>
+      <span className="bd-explorer__summary">{focused || value ? `${nodeCount} ${i18n('nodes')} · ${cardCount} ${i18n('cards')}` : i18n('Base detail content filter dialog hint')}</span>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { Fragment, useMemo } from 'react';
+import { i18n } from '../../i18n';
 import {
   cardDisplayLabel,
   getMixedNodeChildren,
@@ -30,7 +31,7 @@ function matches(card: BaseDetailCard, query: string): boolean {
 function problemLabel(problem: BaseDetailProblem, index: number): string {
   const title = String(problem.title || problem.stem || problem.content || '')
     .replace(/<[^>]+>/g, '').trim();
-  return title.slice(0, 72) || `Problem ${index + 1}`;
+  return title.slice(0, 72) || `${i18n('Problem')} ${index + 1}`;
 }
 
 function TagList({ tags, problem = false }: { tags?: string[]; problem?: boolean }) {
@@ -65,7 +66,7 @@ function TreeBranch({
     <div className="bd-tree__branch">
       <div className={`bd-tree__row bd-tree__row--node${selectedNodeId === nodeId ? ' is-selected' : ''}${node.type === 'roadmap' ? ' is-roadmap' : ''}`} style={{ paddingLeft: `${level * 1.1}rem` }}>
         {hasChildren ? (
-          <button type="button" className="bd-tree__toggle" onClick={() => onToggle(nodeId)} aria-expanded={expanded} aria-label={expanded ? 'Collapse' : 'Expand'}>
+          <button type="button" className="bd-tree__toggle" onClick={() => onToggle(nodeId)} aria-expanded={expanded} aria-label={expanded ? i18n('Collapse') : i18n('Expand')}>
             {expanded ? '⌄' : '›'}
           </button>
         ) : <span className="bd-tree__toggle-spacer" />}
@@ -112,9 +113,9 @@ function subtreeMatches(nodeId: string, nodes: BaseDetailNode[], edges: BaseDeta
   return getMixedNodeChildren(nodeId, nodes, edges, cards).some((child) => child.kind === 'card' ? matches(child.card, query) : subtreeMatches(child.node.id, nodes, edges, cards, query));
 }
 
-export function BaseDetailTree({ rootNodeIds, nodes, edges, nodeCardsMap, expandedNodes, onToggle, selectedNodeId, selectedCardId, selectedProblemId, onSelectNode, onSelectCard, onSelectProblem, filter = '', emptyMessage = 'No nodes yet.' }: Props) {
+export function BaseDetailTree({ rootNodeIds, nodes, edges, nodeCardsMap, expandedNodes, onToggle, selectedNodeId, selectedCardId, selectedProblemId, onSelectNode, onSelectCard, onSelectProblem, filter = '', emptyMessage = i18n('Base detail tree empty') }: Props) {
   const query = filter.trim().toLowerCase();
   const visibleRoots = useMemo(() => rootNodeIds.filter((id) => !query || subtreeMatches(id, nodes, edges, nodeCardsMap, query)), [edges, nodeCardsMap, nodes, query, rootNodeIds]);
-  if (!visibleRoots.length) return <p className="bd-empty">{query ? 'No matching content.' : emptyMessage}</p>;
+  if (!visibleRoots.length) return <p className="bd-empty">{query ? i18n('Roadmap detail search no results') : emptyMessage}</p>;
   return <div className="bd-tree">{visibleRoots.map((id) => <TreeBranch key={id} nodeId={id} level={0} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} onToggle={onToggle} selectedNodeId={selectedNodeId} selectedCardId={selectedCardId} selectedProblemId={selectedProblemId} onSelectNode={onSelectNode} onSelectCard={onSelectCard} onSelectProblem={onSelectProblem} query={query} />)}</div>;
 }

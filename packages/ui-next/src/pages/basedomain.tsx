@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { usePageData } from '../context/page-data';
 import { Button, Card, Link, Tag } from '../components';
+import { i18n } from '../i18n';
 import './basedomain.css';
 
 interface BaseItem {
@@ -40,13 +41,13 @@ export default function BaseDomain() {
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search bases"
+          placeholder={i18n('Search')}
         />
-        <Button to="base_create" variant="primary">Create Base</Button>
+        <Button to="base_create" variant="primary">{i18n('Create Base')}</Button>
       </div>
       <div className="uix-bases__grid">
         {filtered.map((base) => (
-          <Card key={base.docId} title={base.title || 'Untitled'} to="base_detail" params={{ docId: base.docId }}>
+          <Card key={base.docId} title={base.title || i18n('Untitled')} to="base_detail" params={{ docId: base.docId }}>
             <p className="uix-base-card__snippet">{snippet(base.content)}</p>
             <div className="uix-bases__card-footer">
               <span className="uix-bases__tags">
@@ -56,10 +57,10 @@ export default function BaseDomain() {
             </div>
           </Card>
         ))}
-        {!filtered.length ? <div className="uix-muted">No bases found.</div> : null}
+        {!filtered.length ? <div className="uix-muted">{i18n('No knowledge bases in this domain yet.')}</div> : null}
       </div>
       <p className="uix-muted" style={{ marginTop: '1rem' }}>
-        <Link to="homepage">Back to homepage</Link>
+        <Link to="homepage">{i18n('homepage')}</Link>
       </p>
     </div>
   );

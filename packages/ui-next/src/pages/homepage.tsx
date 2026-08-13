@@ -1,6 +1,7 @@
 import { Fragment, type ReactNode } from 'react';
 import { usePageData } from '../context/page-data';
 import { Button, Callout, Card, List, ListItem, Tag } from '../components';
+import { i18n } from '../i18n';
 import './homepage.css';
 
 type Udict = Record<string, { uname?: string }>;
@@ -32,16 +33,16 @@ function AccessGate({ payload, children }: { payload: any; children: ReactNode }
   if (payload?.needLogin) {
     return (
       <div className="uix-gate">
-        <p className="uix-muted">Please login to view</p>
-        <Button to="user_login" variant="primary">Login</Button>
+        <p className="uix-muted">{i18n('Please login to view')}</p>
+        <Button to="user_login" variant="primary">{i18n('Login')}</Button>
       </div>
     );
   }
   if (payload?.needJoinDomain) {
     return (
       <div className="uix-gate">
-        <p className="uix-muted">Please join the domain to view</p>
-        <Button to="domain_join" variant="primary">Join Domain</Button>
+        <p className="uix-muted">{i18n('Please join the domain to view')}</p>
+        <Button to="domain_join" variant="primary">{i18n('Join Domain')}</Button>
       </div>
     );
   }
@@ -54,9 +55,9 @@ function Ranking({ title, payload, udict }: { title: string; payload: any; udict
   return (
     <Card title={title}>
       <div className="uix-rank uix-rank--head uix-muted">
-        <span>User</span>
+        <span>{i18n('User')}</span>
         <span style={{ textAlign: 'center' }}>N / C / P</span>
-        <span style={{ textAlign: 'right' }}>Rating</span>
+        <span style={{ textAlign: 'right' }}>{i18n('Rating')}</span>
       </div>
       {rows.map((row: any) => {
         const rating = Number(row.rating ?? 1);
@@ -81,7 +82,7 @@ function groupNodes(value: unknown): [string, any[]][] {
   const group = (items: any[]) => {
     const groups = new Map<string, any[]>();
     for (const node of items) {
-      const key = text(node?.content || 'Other');
+      const key = text(node?.content || i18n('Other'));
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(node);
     }
@@ -102,20 +103,20 @@ function renderSection(name: string, payload: unknown, udict: Udict, domain: { b
     ) : null;
   }
   if (name === 'error') {
-    return <Callout type="warn" title="Section failed to load">{text(payload)}</Callout>;
+    return <Callout type="warn" title={i18n('Request failed')}>{text(payload)}</Callout>;
   }
   if (name === 'base') {
     const items = Array.isArray(payload) ? payload : [];
     if (!items.length) return null;
     return (
-      <Card title="Recent Bases">
+      <Card title={i18n('Recent Bases')}>
         <List>
           {items.map((item: any) => (
             <ListItem
               key={item.docId}
               to="base_detail"
               params={{ docId: item.docId }}
-              title={item.title || 'Untitled'}
+              title={item.title || i18n('Untitled')}
               meta={formatTime(item.updateAt)}
             />
           ))}
@@ -127,14 +128,14 @@ function renderSection(name: string, payload: unknown, udict: Udict, domain: { b
     const items = Array.isArray(payload) ? payload : [];
     if (!items.length) return null;
     return (
-      <Card title="Agent">
+      <Card title={i18n('Agent')}>
         <List>
           {items.map((item: any) => (
             <ListItem
               key={item.aid}
               to="agent_detail"
               params={{ aid: item.aid }}
-              title={item.title || 'Untitled'}
+              title={item.title || i18n('Untitled')}
               meta={formatTime(item.updateAt)}
             />
           ))}
@@ -148,15 +149,15 @@ function renderSection(name: string, payload: unknown, udict: Udict, domain: { b
       <div className="uix-checkin">
         <span className="uix-stat">
           <a href={data.learnUrl || '#'}><strong>{data.learnDays ?? 0}</strong></a>
-          <span className="uix-muted"> days</span>
+          <span className="uix-muted"> {i18n('days')}</span>
         </span>
         {data.learnTodayDone
-          ? <span className="uix-ok">Checked in</span>
-          : <span className="uix-muted">{data.learnTodayRemaining} more cards to go</span>}
+          ? <span className="uix-ok">{i18n('Checked in')}</span>
+          : <span className="uix-muted">{i18n('{0} more cards to go', data.learnTodayRemaining)}</span>}
       </div>
     );
     return (
-      <Card title="Check-in Days" description={data.userUname ? text(data.userUname) : undefined}>
+      <Card title={i18n('Check-in Days')} description={data.userUname ? text(data.userUname) : undefined}>
         <AccessGate payload={data}>{body}</AccessGate>
       </Card>
     );
@@ -165,13 +166,13 @@ function renderSection(name: string, payload: unknown, udict: Udict, domain: { b
     const data = payload as any;
     const body = (
       <>
-        <div className="uix-kv"><span>Content contribution</span><StatTriple value={data.contribution} /></div>
-        <div className="uix-kv"><span>Learning consumption</span><StatTriple value={data.consumption} /></div>
-        <div className="uix-muted" style={{ fontSize: '0.75rem' }}>Nodes / Cards / Problems</div>
+        <div className="uix-kv"><span>{i18n('Content contribution')}</span><StatTriple value={data.contribution} /></div>
+        <div className="uix-kv"><span>{i18n('Learning consumption')}</span><StatTriple value={data.consumption} /></div>
+        <div className="uix-muted" style={{ fontSize: '0.75rem' }}>{i18n('Content')}</div>
       </>
     );
     return (
-      <Card title="Today's domain activity" description={data.date ? `UTC ${text(data.date)}` : undefined}>
+      <Card title={i18n("Today's domain activity")} description={data.date ? `UTC ${text(data.date)}` : undefined}>
         <AccessGate payload={data}>{body}</AccessGate>
       </Card>
     );
@@ -180,31 +181,31 @@ function renderSection(name: string, payload: unknown, udict: Udict, domain: { b
     const docs = Array.isArray(payload) && Array.isArray(payload[0]) ? payload[0] : [];
     if (!docs.length) return null;
     return (
-      <Card title="Discussion">
+      <Card title={i18n('Discussion')}>
         <List>
           {docs.map((item: any) => (
             <ListItem
               key={item.docId}
               to="discussion_detail"
               params={{ did: item.docId }}
-              title={item.title || 'Untitled'}
+              title={item.title || i18n('Untitled')}
               meta={`${item.nReply != null ? `${item.nReply} replies · ` : ''}${userName(udict, item.owner)}`}
             />
           ))}
         </List>
         <div style={{ marginTop: '0.5rem' }}>
-          <Tag to="discussion_main" className="uix-muted">More →</Tag>
+          <Tag to="discussion_main" className="uix-muted">{i18n('More')} →</Tag>
         </div>
       </Card>
     );
   }
-  if (name === 'contribution_ranking') return <Ranking title="Contribution ranking" payload={payload} udict={udict} />;
-  if (name === 'consumption_ranking') return <Ranking title="Consumption ranking" payload={payload} udict={udict} />;
+  if (name === 'contribution_ranking') return <Ranking title={i18n('Contribution ranking')} payload={payload} udict={udict} />;
+  if (name === 'consumption_ranking') return <Ranking title={i18n('Consumption ranking')} payload={payload} udict={udict} />;
   if (name === 'discussion_nodes') {
     const groups = groupNodes(payload);
     if (!groups.length) return null;
     return (
-      <Card title="Discussion Nodes">
+      <Card title={i18n('Discussion Nodes')}>
         {groups.map(([category, nodes]) => (
           <div className="uix-nodegroup" key={category}>
             <div className="uix-nodegroup__title">{category}</div>

@@ -1,4 +1,5 @@
 import React from 'react';
+import { i18n } from '../i18n';
 
 interface SlotErrorBoundaryProps {
   slotName: string;
@@ -42,7 +43,7 @@ export class SlotErrorBoundary extends React.Component<SlotErrorBoundaryProps, S
           fontFamily: 'monospace',
         }}
       >
-        <strong>Slot Error</strong> in <code>{slotName}</code>
+        <strong>{i18n('Slot Error')}</strong> {i18n('in')} <code>{slotName}</code>
         {label && <> / <code>{label}</code></>}
         <pre style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>
           {this.state.error?.message}

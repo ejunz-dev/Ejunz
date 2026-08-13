@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { i18n } from '../../i18n';
 import { renderMarkdown } from './markdown';
 import { cardDisplayLabel } from './tree';
 import type { BaseDetailCard } from './types';
@@ -39,14 +40,14 @@ export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, selectedP
   const url = fileUrl(displayCard, baseDocId, domainId);
   return (
     <>
-      <button type="button" className="bd-backdrop" onClick={onClose} aria-label="Close card" />
+      <button type="button" className="bd-backdrop" onClick={onClose} aria-label={i18n('Close')} />
       <aside ref={drawerRef} className="bd-drawer" tabIndex={-1} role="dialog" aria-modal="true" aria-label={cardDisplayLabel(displayCard)}>
         <header className="bd-drawer__header">
           <div className="bd-drawer__tabs" role="tablist">
-            <button type="button" role="tab" aria-selected={tab === 'content'} className={tab === 'content' ? 'is-active' : ''} onClick={() => setTab('content')}>Content</button>
-            {problems.length ? <button type="button" role="tab" aria-selected={tab === 'problems'} className={tab === 'problems' ? 'is-active' : ''} onClick={() => setTab('problems')}>Problems <span>{problems.length}</span></button> : null}
+            <button type="button" role="tab" aria-selected={tab === 'content'} className={tab === 'content' ? 'is-active' : ''} onClick={() => setTab('content')}>{i18n('Content')}</button>
+            {problems.length ? <button type="button" role="tab" aria-selected={tab === 'problems'} className={tab === 'problems' ? 'is-active' : ''} onClick={() => setTab('problems')}>{i18n('Problems')} <span>{problems.length}</span></button> : null}
           </div>
-          <button type="button" className="bd-drawer__close" onClick={onClose} aria-label="Close">×</button>
+          <button type="button" className="bd-drawer__close" onClick={onClose} aria-label={i18n('Close')}>×</button>
         </header>
         {tab === 'content' ? (
           <div className="bd-drawer__body">
@@ -54,9 +55,9 @@ export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, selectedP
             {displayCard.cardFace ? <div className="bd-drawer__face bd-markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(displayCard.cardFace) }} /> : null}
             {displayCard.cardType === 'file' && url ? (
               <div className="bd-drawer__file">
-                {displayCard.fileType === 'image' ? <img src={url} alt={displayCard.fileName || ''} /> : displayCard.fileType === 'video' ? <video controls src={url} /> : displayCard.fileType === 'audio' ? <audio controls src={url} /> : <a href={url} target="_blank" rel="noreferrer">Open {displayCard.fileName}</a>}
+                {displayCard.fileType === 'image' ? <img src={url} alt={displayCard.fileName || ''} /> : displayCard.fileType === 'video' ? <video controls src={url} /> : displayCard.fileType === 'audio' ? <audio controls src={url} /> : <a href={url} target="_blank" rel="noreferrer">{i18n('Open')} {displayCard.fileName}</a>}
               </div>
-            ) : displayCard.content ? <div className="bd-markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(displayCard.content) }} /> : <p className="bd-muted">This card has no content.</p>}
+            ) : displayCard.content ? <div className="bd-markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(displayCard.content) }} /> : <p className="bd-muted">{i18n('Base detail card empty')}</p>}
             {displayCard.tags?.length ? <div className="bd-card__tags">{displayCard.tags.map((tag) => <span key={tag}>{tag}</span>)}</div> : null}
           </div>
         ) : (
@@ -65,7 +66,7 @@ export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, selectedP
             <ol>
               {problems.map((problem, index) => {
                 const pid = String(problem.pid || `problem-${index}`);
-                return <li key={pid}><button type="button" className={selectedProblemId === pid ? 'is-selected' : ''} onClick={() => onSelectProblem?.(pid)}>{String(problem.title || problem.stem || problem.content || `Problem ${index + 1}`).replace(/<[^>]+>/g, '').slice(0, 180)}</button></li>;
+                return <li key={pid}><button type="button" className={selectedProblemId === pid ? 'is-selected' : ''} onClick={() => onSelectProblem?.(pid)}>{String(problem.title || problem.stem || problem.content || `${i18n('Problem')} ${index + 1}`).replace(/<[^>]+>/g, '').slice(0, 180)}</button></li>;
               })}
             </ol>
           </div>
