@@ -1,0 +1,3 @@
+.uix-shell { min-height: 100vh; display: flex; flex-direction: column; }
+.uix-shell__panel { min-height: 100vh; display: flex; flex: 1; flex-direction: column; }
+.uix-shell__main { flex: 1; min-width: 0; }

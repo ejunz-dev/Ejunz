@@ -1,0 +1,39 @@
+.uix-nav { position: relative; z-index: 30; height: 58px; background: rgba(255,255,255,.98); box-shadow: 0 1px 7px rgba(0,0,0,.18); }
+.uix-nav__inner { height: 100%; max-width: 1440px; margin: auto; padding: 0 18px; display: flex; align-items: center; gap: 10px; }
+.uix-nav__logo { flex: 0 0 auto; display: block; padding: 0 5px; }
+.uix-nav__logo img { display: block; width: auto; height: 30px; }
+.uix-nav__main, .uix-nav__secondary { display: flex; align-items: center; height: 100%; }
+.uix-nav__main { flex: 1; }
+.uix-nav__secondary { gap: 5px; margin-left: auto; }
+.uix-nav__item, .uix-nav__signup { display: flex; align-items: center; height: 100%; padding: 0 14px; border-top: 3px solid transparent; color: #222; text-decoration: none; font-size: 14px; transition: border-color .16s, background .16s; }
+.uix-nav__item:hover, .uix-nav__item.is-active { border-color: #1769aa; background: #f4f7f9; text-decoration: none; }
+.uix-nav__signup { height: 34px; margin: 0 4px; padding-inline: 16px; border: 1px solid #1769aa; border-radius: 17px; color: #1769aa; }
+.uix-nav__signup:hover { background: #1769aa; color: #fff; }
+.uix-nav__badge { padding: 3px 7px; border-radius: 3px; background: #e8edf0; color: #65727b; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+.uix-nav__domain-wrap, .uix-nav__menu-wrap { position: relative; height: 100%; display: flex; align-items: center; }
+.uix-nav__domain, .uix-nav__user { height: 100%; display: flex; align-items: center; gap: 6px; border: 0; background: transparent; color: #222; cursor: pointer; font: inherit; font-size: 13px; }
+.uix-nav__domain img, .uix-nav__user img, .uix-domain-menu__item img { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; }
+.uix-nav__menu, .uix-domain-menu { position: absolute; top: calc(100% + 1px); right: 0; z-index: 35; min-width: 190px; padding: 7px 0; border: 1px solid #d9e0e4; border-radius: 4px; background: #fff; box-shadow: 0 8px 25px rgba(0,0,0,.14); }
+.uix-nav__menu-link { display: block; width: 100%; padding: 8px 14px; border: 0; background: transparent; color: #25313a; text-align: left; text-decoration: none; cursor: pointer; font: inherit; font-size: 13px; }
+.uix-nav__menu-link:hover { background: #edf4f8; color: #1769aa; }
+.uix-nav__menu-separator { height: 1px; margin: 6px 0; background: #e4e9ec; }
+.uix-domain-menu { min-width: 230px; }
+.uix-domain-menu__title { padding: 8px 14px; border-bottom: 1px solid #e4e9ec; color: #71808d; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+.uix-domain-menu__item { display: flex; align-items: center; gap: 8px; padding: 8px 14px; color: #25313a; text-decoration: none; font-size: 13px; }
+.uix-domain-menu__item:hover, .uix-domain-menu__item.is-active { background: #edf4f8; color: #1769aa; }
+.uix-domain-menu__footer { display: block; margin-top: 4px; padding: 9px 14px 5px; border-top: 1px solid #e4e9ec; color: #1769aa; text-decoration: none; font-size: 12px; }
+.uix-nav__mobile-button, .uix-mobile-header { display: none; }
+.uix-shell-backdrop { position: fixed; z-index: 40; inset: 0; border: 0; background: rgba(20,27,32,.52); }
+.uix-mobile-menu, .uix-domain-drawer { position: fixed; z-index: 41; top: 0; bottom: 0; width: min(330px, calc(100vw - 42px)); background: #1d1f20; box-shadow: 5px 0 22px rgba(0,0,0,.28); }
+.uix-mobile-menu { right: 0; }
+.uix-domain-drawer { left: 0; background: #fff; box-shadow: 5px 0 22px rgba(0,0,0,.18); }
+.uix-mobile-menu__close { display: block; margin: 10px 14px 15px auto; border: 0; background: none; color: #fff; cursor: pointer; font-size: 28px; }
+.uix-mobile-menu__links { display: flex; flex-direction: column; }
+.uix-mobile-menu .uix-nav__item { height: 44px; border-top: 0; border-left: 3px solid transparent; color: #fff; }
+.uix-mobile-menu .uix-nav__item:hover, .uix-mobile-menu .uix-nav__item.is-active { border-color: #55a7da; background: rgba(255,255,255,.1); }
+.uix-mobile-menu .uix-nav__menu-wrap { height: auto; display: block; }
+.uix-mobile-menu .uix-nav__user { width: 100%; height: 44px; padding: 0 17px; color: #fff; }
+.uix-mobile-header { height: 48px; align-items: center; justify-content: space-between; padding: 0 13px; background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,.16); }
+.uix-mobile-header button { border: 0; background: none; color: #45515a; cursor: pointer; font-size: 22px; line-height: 1; }
+.uix-mobile-header img { height: 25px; width: auto; }
+@media (max-width: 700px) { .uix-nav { display: none; } .uix-mobile-header { display: flex; position: relative; z-index: 30; } }
