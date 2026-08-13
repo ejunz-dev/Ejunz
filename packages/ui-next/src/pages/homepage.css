@@ -55,7 +55,7 @@
   font-weight: 700;
 }
 .uix-ok {
-  color: #4ade80;
+  color: var(--web-positive);
 }
 .uix-kv {
   display: flex;
