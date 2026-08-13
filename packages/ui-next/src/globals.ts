@@ -1,14 +1,14 @@
 import isRelativeUrl from 'is-relative-url';
 import type { PageData } from './context/page-data';
 
-const hasDocument = typeof document !== 'undefined';
-const hasWindow = typeof window !== 'undefined';
-const injectionEl = hasDocument ? document.getElementById('__EJUNZ_INJECTION__') : null;
+const injectionEl = document.getElementById('__EJUNZ_INJECTION__');
 let injectionData: Record<string, any> = {};
 if (injectionEl) {
   try {
     injectionData = JSON.parse(injectionEl.textContent!);
+    console.log('[Ejunz] initial data:', injectionData);
   } catch (e) {
+    console.error('[Ejunz] Failed to parse injection data:', e);
   }
 }
 
@@ -46,21 +46,19 @@ export const routeMapStore: RouteMapStore = import.meta.hot?.data?.routeMapStore
 if (import.meta.hot) import.meta.hot.data.routeMapStore = routeMapStore;
 
 export const endpoints: string[] = (() => {
-  const protocol = hasWindow ? window.location.protocol : 'http:';
   if (ejunzDomains.length) {
     return ejunzDomains
-      .map((d) => d.includes('://') ? d : `${protocol}//${d}`)
+      .map((d) => d.includes('://') ? d : `${window.location.protocol}//${d}`)
       .map((d) => d.replace(/\/$/, ''));
   }
   if (typeof injectionData.endpoint === 'string') {
     const ep = injectionData.endpoint;
     if (isRelativeUrl(ep, { allowProtocolRelative: false })) {
-      const base = hasWindow ? window.location.href : 'http://localhost/';
-      return [new URL(ep, base).href.replace(/\/$/, '')];
+      return [new URL(ep, window.location.href).href.replace(/\/$/, '')];
     }
     return [ep.replace(/\/$/, '')];
   }
-  return [hasWindow ? window.location.origin : 'http://localhost'];
+  return [window.location.origin];
 })();
 export const endpointOrigins = new Set(endpoints.map((ep) => new URL(ep).origin));
 
@@ -68,5 +66,5 @@ export const initialPage: PageData = {
   name: (injectionData.name as string) || '',
   template: (injectionData.template as string) || '',
   args: (injectionData.args as any) || {},
-  url: (injectionData.url as string) || (hasWindow ? window.location.pathname + window.location.search : '/'),
+  url: (injectionData.url as string) || (window.location.pathname + window.location.search),
 };

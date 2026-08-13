@@ -40,7 +40,7 @@ export function defineSlot<P extends React.ComponentProps<any>>(
   const getSnapshot = () => store.getVersion(name);
 
   const SlotComponent: React.FC<P> = (props) => {
-    const version = useSyncExternalStore(subscribeSlot, getSnapshot, getSnapshot);
+    const version = useSyncExternalStore(subscribeSlot, getSnapshot);
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
     const chain = useMemo(() => buildChain(store.getInterceptors(name), store.getDefault(name)!, name), [version]);

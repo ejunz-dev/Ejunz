@@ -12,8 +12,6 @@ export interface PageModule<P = any> {
 export type PageLoader<P = any> = () => Promise<PageModule<P>>;
 export interface PageEntry<P = any> {
   Page: React.LazyExoticComponent<React.ComponentType<P>>;
-  component?: React.ComponentType<P>;
-  load: () => Promise<React.ComponentType<P>>;
   layout: string;
 }
 export interface RegisterPageOptions {

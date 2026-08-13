@@ -1,8 +1,4 @@
-import { registerPage } from '../dom/registry';
-import { basedomain } from './dom';
-import { homepage } from './homepage';
-import { login } from './login';
+import { registerPage } from '../registry/page';
 
-registerPage('homepage', homepage);
-registerPage('basedomain', basedomain);
-registerPage('user_login', login);
+registerPage('homepage', () => import('./homepage'));
+registerPage('basedomain', () => import('./basedomain'));
