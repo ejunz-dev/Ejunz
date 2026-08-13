@@ -7,12 +7,14 @@ interface Props {
   description?: string;
   domainId: string;
   docId: string;
+  nodeCount: number;
+  cardCount: number;
   treeOpen: boolean;
   onToggleTree: () => void;
   onShare: () => void;
 }
 
-export function BaseDetailHeader({ title, description, domainId, docId, treeOpen, onToggleTree, onShare }: Props) {
+export function BaseDetailHeader({ title, description, domainId, docId, nodeCount, cardCount, treeOpen, onToggleTree, onShare }: Props) {
   const buildUrl = useBuildUrl();
   const [copied, setCopied] = useState(false);
   const listUrl = buildUrl('base_domain', { domainId });
@@ -34,14 +36,17 @@ export function BaseDetailHeader({ title, description, domainId, docId, treeOpen
         </div>
       </div>
       <div className="bd-header__body">
-        <h1>{title}</h1>
+        <div className="bd-header__title-row">
+          <h1>{title}</h1>
+          <span className="bd-header__stats"><strong>{nodeCount}</strong> {i18n('nodes')} <span>·</span> <strong>{cardCount}</strong> {i18n('cards')}</span>
+        </div>
         {description?.trim() ? <p>{description}</p> : null}
       </div>
       <div className="bd-header__tabs" role="tablist" aria-label={i18n('Knowledge Base')}>
         <span className="bd-header__tab is-active" role="tab" aria-selected="true">▤ {i18n('Knowledge Base')}</span>
         <button type="button" className={`bd-header__tab${treeOpen ? ' is-active' : ''}`} onClick={onToggleTree} aria-selected={treeOpen}>⌘ {i18n('Document Structure')}</button>
       </div>
-      <div className="bd-header__meta"><span>{i18n('Content')}</span>{docId ? <span className="bd-header__id">{docId}</span> : null}</div>
+      <div className="bd-header__meta">{docId ? <span className="bd-header__id">{docId}</span> : null}</div>
     </header>
   );
 }

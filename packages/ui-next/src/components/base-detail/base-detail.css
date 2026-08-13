@@ -16,7 +16,10 @@
 .bd-header__action:hover, .bd-header__action:focus-visible { border-color: var(--bd-accent); color: var(--bd-accent); }
 .bd-header__body { padding: 2.4rem 0 1.2rem; max-width: 780px; }
 .bd-header__eyebrow { margin: 0 0 .65rem; color: var(--bd-accent); text-transform: uppercase; letter-spacing: .13em; font-size: .68rem; font-weight: 700; }
+.bd-header__title-row { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
 .bd-header h1 { margin: 0; font-size: clamp(2rem, 5vw, 4.4rem); letter-spacing: -.055em; line-height: .98; font-weight: 750; }
+.bd-header__stats { color: var(--bd-muted); font-size: .76rem; white-space: nowrap; }
+.bd-header__stats strong { color: var(--bd-ink); font-size: .9rem; }
 .bd-header__body p:last-child { margin: 1rem 0 0; max-width: 650px; color: var(--bd-muted); line-height: 1.65; white-space: pre-wrap; }
 .bd-header__tabs { display: flex; align-items: center; gap: 1.25rem; margin-top: 1.35rem; border-top: 1px solid var(--bd-line); }
 .bd-header__tab { display: inline-flex; align-items: center; gap: .4rem; min-height: 3rem; margin-bottom: -1px; padding: 0 .1rem; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--bd-muted); cursor: pointer; font: inherit; font-size: .78rem; font-weight: 600; }
@@ -48,7 +51,7 @@
 .bd-confirm-dialog__actions { display: flex; justify-content: flex-end; gap: .5rem; }
 .bd-confirm-dialog__actions button { border: 1px solid var(--bd-line); border-radius: 5px; padding: .45rem .8rem; background: var(--bd-surface); color: var(--bd-ink); cursor: pointer; font: inherit; font-size: .78rem; }
 .bd-confirm-dialog__actions button:hover, .bd-confirm-dialog__actions button.is-primary { border-color: var(--bd-accent); color: var(--bd-accent); }
-.bd-page__stats { width: min(780px, calc(100% - 2rem)); margin: 0 auto; gap: .5rem; padding: .1rem 0 .2rem; }
+.bd-page__stats { display: none; width: min(780px, calc(100% - 2rem)); margin: 0 auto; gap: .5rem; padding: .1rem 0 .2rem; }
 .bd-page__stats strong { color: var(--bd-ink); font-size: .95rem; }
 .bd-page__main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; padding: 1rem 2rem 4rem; }
 .bd-page__structure { display: none; }
