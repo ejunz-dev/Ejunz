@@ -1,1 +1,1 @@
-export { default } from '../base-detail/BaseDetailApp';
+export { default } from '../components/base-detail/BaseDetailApp';

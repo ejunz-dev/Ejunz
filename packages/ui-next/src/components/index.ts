@@ -5,3 +5,4 @@ export { Button, type ButtonProps, type ButtonVariant } from './button';
 export { Tag, type TagProps } from './tag';
 export { Callout, type CalloutProps, type CalloutType } from './callout';
 export { Field, type FieldProps } from './field';
+export * from './base-detail';
