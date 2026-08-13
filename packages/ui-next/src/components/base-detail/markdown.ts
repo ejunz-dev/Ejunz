@@ -19,6 +19,7 @@ function imageSizePlugin(md: MarkdownIt) {
     if (!silent) {
       const token = state.push('image', 'img', 0);
       token.attrs = [['src', match[2]], ['alt', match[1]]];
+      token.children = [];
       if (match[3]) token.attrPush(['width', match[3]]);
       if (match[4]) token.attrPush(['height', match[4]]);
     }
