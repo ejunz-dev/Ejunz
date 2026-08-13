@@ -37,6 +37,10 @@ export function BaseDetailHeader({ title, description, domainId, docId, treeOpen
         <h1>{title}</h1>
         {description?.trim() ? <p>{description}</p> : null}
       </div>
+      <div className="bd-header__tabs" role="tablist" aria-label="Base detail views">
+        <span className="bd-header__tab is-active" role="tab" aria-selected="true">▤ Knowledge Base</span>
+        <button type="button" className={`bd-header__tab${treeOpen ? ' is-active' : ''}`} onClick={onToggleTree} aria-selected={treeOpen}>⌘ Document Structure</button>
+      </div>
       <div className="bd-header__meta"><span>Document view</span>{docId ? <span className="bd-header__id">{docId}</span> : null}</div>
     </header>
   );

@@ -13,7 +13,7 @@
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
 }
 .bd-header, .bd-explorer, .bd-page__main, .bd-page__stats { max-width: 1320px; margin-inline: auto; }
-.bd-header { padding: 2rem 2rem 1.35rem; }
+.bd-header { width: min(780px, calc(100% - 2rem)); margin: 1.5rem auto 1.25rem; padding: 1.25rem 1.5rem 0; box-sizing: border-box; border: 1px solid #e8e8e8; border-radius: 10px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.035); }
 .bd-header__topline, .bd-header__actions, .bd-header__meta, .bd-explorer, .bd-page__stats { display: flex; align-items: center; }
 .bd-header__topline { justify-content: space-between; gap: 1rem; }
 .bd-header__back { color: var(--bd-muted); font-size: .82rem; text-decoration: none; }
@@ -25,16 +25,22 @@
 .bd-header__eyebrow { margin: 0 0 .65rem; color: var(--bd-accent); text-transform: uppercase; letter-spacing: .13em; font-size: .68rem; font-weight: 700; }
 .bd-header h1 { margin: 0; font-size: clamp(2rem, 5vw, 4.4rem); letter-spacing: -.055em; line-height: .98; font-weight: 750; }
 .bd-header__body p:last-child { margin: 1rem 0 0; max-width: 650px; color: var(--bd-muted); line-height: 1.65; white-space: pre-wrap; }
-.bd-header__meta { gap: .7rem; border-top: 1px solid var(--bd-line); padding-top: .8rem; color: var(--bd-muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; }
+.bd-header__tabs { display: flex; align-items: center; gap: 1.25rem; margin-top: 1.35rem; border-top: 1px solid var(--bd-line); }
+.bd-header__tab { display: inline-flex; align-items: center; gap: .4rem; min-height: 3rem; margin-bottom: -1px; padding: 0 .1rem; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--bd-muted); cursor: pointer; font: inherit; font-size: .78rem; font-weight: 600; }
+.bd-header__tab.is-active { border-bottom-color: var(--bd-ink); color: var(--bd-ink); }
+.bd-header__meta { gap: .7rem; padding-top: .8rem; color: var(--bd-muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; }
 .bd-header__id { color: var(--bd-ink); font-family: ui-monospace, monospace; text-transform: none; letter-spacing: 0; }
-.bd-explorer { gap: 1rem; padding: .85rem 2rem; border-top: 1px solid var(--bd-line); border-bottom: 1px solid var(--bd-line); }
+.bd-explorer { width: min(780px, calc(100% - 2rem)); margin: 0 auto 1rem; box-sizing: border-box; gap: .6rem; padding: .75rem 1rem; border: 1px solid #e8e8e8; border-radius: 10px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.035); }
+.bd-explorer__filter { display: inline-flex; align-items: center; gap: .35rem; min-height: 2.25rem; padding: 0 .75rem; border: 1px solid var(--bd-line); border-radius: 6px; background: var(--bd-surface); color: var(--bd-ink); cursor: pointer; font: inherit; font-size: .78rem; }
+.bd-explorer__filter:hover { border-color: var(--bd-accent); color: var(--bd-accent); }
 .bd-explorer__search { display: flex; align-items: center; gap: .45rem; min-width: min(420px, 100%); padding: .5rem .7rem; background: var(--bd-surface); border: 1px solid var(--bd-line); border-radius: 5px; color: var(--bd-muted); }
 .bd-explorer__search input { width: 100%; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; font-size: .84rem; }
 .bd-explorer__search button { border: 0; background: transparent; color: var(--bd-muted); cursor: pointer; font-size: 1rem; }
 .bd-explorer__summary, .bd-page__stats { color: var(--bd-muted); font-size: .76rem; }
-.bd-page__stats { gap: .5rem; padding: 1.1rem 2rem .2rem; }
+.bd-page__stats { width: min(780px, calc(100% - 2rem)); margin: 0 auto; gap: .5rem; padding: .1rem 0 .2rem; }
 .bd-page__stats strong { color: var(--bd-ink); font-size: .95rem; }
-.bd-page__main { display: grid; grid-template-columns: minmax(280px, .72fr) minmax(0, 1.55fr); gap: 1rem; padding: 1rem 2rem 4rem; }
+.bd-page__main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; padding: 1rem 2rem 4rem; }
+.bd-page__structure { display: none; }
 .bd-page__structure, .bd-page__content { min-width: 0; }
 .bd-page__structure { position: sticky; top: 1rem; align-self: start; max-height: calc(100vh - 2rem); overflow: auto; padding: .7rem; border: 1px solid var(--bd-line); background: rgba(255,255,255,.62); border-radius: 7px; }
 .bd-tree__row { display: flex; min-height: 2rem; align-items: stretch; border-radius: 4px; }
@@ -53,7 +59,9 @@
 .bd-content__section-title { display: flex; align-items: center; gap: .6rem; margin: 0 0 .7rem; color: var(--bd-accent); font-size: .76rem; text-transform: uppercase; letter-spacing: .1em; }
 .bd-content__section-title button, .bd-card__title { border: 0; padding: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; }
 .bd-content__section-title button:hover, .bd-card__title:hover { text-decoration: underline; }
-.bd-card { margin-bottom: .75rem; border: 1px solid var(--bd-line); border-radius: 7px; background: var(--bd-surface); overflow: hidden; }
+.bd-card { margin-bottom: .75rem; border: 1px solid #e8e8e8; border-radius: 6px; background: #fff; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.035); }
+.bd-content { max-width: 860px; margin: 0 auto; }
+.bd-content__section-title { padding-bottom: .45rem; border-bottom: 1px solid var(--bd-line); }
 .bd-card.is-selected { border-color: var(--bd-accent); box-shadow: 0 0 0 2px var(--bd-accent-soft); }
 .bd-card__header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding: .9rem 1rem .6rem; }
 .bd-card__title { color: var(--bd-ink); font-size: 1.05rem; font-weight: 700; text-align: left; }
@@ -95,7 +103,7 @@
   .bd-explorer { align-items: stretch; flex-direction: column; }
   .bd-explorer__search { min-width: 0; }
   .bd-page__main { display: block; }
-  .bd-page__structure { position: static; max-height: 45vh; margin-bottom: 1rem; }
+  .bd-page__structure { display: none; position: static; max-height: 45vh; margin-bottom: 1rem; }
   .bd-header__action span { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; } }
