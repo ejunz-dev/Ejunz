@@ -96,7 +96,9 @@ function groupNodes(value: unknown): [string, any[]][] {
 function renderSection(name: string, payload: unknown, udict: Udict, domain: { bulletin?: string }): ReactNode {
   if (name === 'bulletin') {
     return domain.bulletin ? (
-      <Card title="Bulletin"><div className="uix-bulletin">{domain.bulletin}</div></Card>
+      <section className="uix-card uix-bulletin-widget">
+        <div className="uix-card__body uix-bulletin">{domain.bulletin}</div>
+      </section>
     ) : null;
   }
   if (name === 'error') {
