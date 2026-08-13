@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePageData } from '../../context/page-data';
 import { i18n } from '../../i18n';
 import { BaseDetailCardDrawer } from './BaseDetailCardDrawer';
+import { BaseDetailConfirmDialog } from './BaseDetailConfirmDialog';
 import { BaseDetailExplorer } from './BaseDetailExplorer';
 import { BaseDetailHeader } from './BaseDetailHeader';
 import { BaseDetailNodeContent } from './BaseDetailNodeContent';
@@ -66,6 +67,7 @@ export default function BaseDetailApp() {
   const [treeOpen, setTreeOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<BaseDetailFilter>(() => readBaseDetailFilterFromLocation());
+  const [pendingNodeId, setPendingNodeId] = useState<string | null>(null);
 
   useEffect(() => {
     const syncFilters = () => setFilters(readBaseDetailFilterFromLocation());
@@ -104,11 +106,15 @@ export default function BaseDetailApp() {
 
   const selectNodeFromContent = useCallback((nodeId: string) => {
     if (nodeId === selectedNodeId) return;
-    const node = nodes.find((item) => item.id === nodeId);
-    const label = node?.text?.trim() || i18n('Unnamed Node');
-    if (typeof window !== 'undefined' && !window.confirm(`${i18n('Confirm')}: ${label}`)) return;
-    selectNode(nodeId);
-  }, [nodes, selectNode, selectedNodeId]);
+    setPendingNodeId(nodeId);
+  }, [selectedNodeId]);
+
+  const confirmNodeSwitch = useCallback(() => {
+    if (pendingNodeId) selectNode(pendingNodeId);
+    setPendingNodeId(null);
+  }, [pendingNodeId, selectNode]);
+
+  const cancelNodeSwitch = useCallback(() => setPendingNodeId(null), []);
 
   const selectProblem = useCallback((pid: string) => {
     setSelectedProblemId(pid);
@@ -145,6 +151,13 @@ export default function BaseDetailApp() {
       </main>
       <BaseDetailTreeDrawer open={treeOpen} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} selectedNodeId={selectedNodeId} selectedCardId={selectedCard?.docId || null} onToggle={toggleNode} onSelectNode={(id) => { selectNode(id); setTreeOpen(false); }} onSelectCard={(card) => { selectCard(card); setTreeOpen(false); }} onClose={() => setTreeOpen(false)} filter={search} filters={filters} />
       <BaseDetailCardDrawer card={selectedCard} onClose={() => { setSelectedCard(null); setSelectedProblemId(null); updateUrl({ cardId: null, problemId: null }); }} onSelectProblem={selectProblem} selectedProblemId={selectedProblemId} baseDocId={docId} domainId={domainId} />
+      {pendingNodeId ? (
+        <BaseDetailConfirmDialog
+          nodeLabel={nodes.find((node) => node.id === pendingNodeId)?.text?.trim() || i18n('Unnamed Node')}
+          onConfirm={confirmNodeSwitch}
+          onCancel={cancelNodeSwitch}
+        />
+      ) : null}
     </div>
   );
 }
