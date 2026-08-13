@@ -17,5 +17,6 @@ export default async (ctx: KoaContext, next) => {
         await UserModel.setById(user._id, { loginip: ctx.request.ip });
     }
     ctx.EjunzContext.user = await user.private();
+    ctx.EjunzContext.UiContext.joinedDomains = ctx.EjunzContext.user.joinedDomains || [];
     await next();
 };
