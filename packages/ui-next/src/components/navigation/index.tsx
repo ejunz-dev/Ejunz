@@ -35,6 +35,16 @@ function activeFor(name: string, prefix: string, pageName: string, template: str
   return page === name || page.startsWith(prefix);
 }
 
+function HamburgerIcon({ active = false }: { active?: boolean }) {
+  return (
+    <span className={`uix-hamburger${active ? ' is-active' : ''}`} aria-hidden>
+      <span />
+      <span />
+      <span />
+    </span>
+  );
+}
+
 function LogoutButton() {
   const [busy, setBusy] = useState(false);
   const buildUrl = useBuildUrl();
@@ -118,6 +128,8 @@ export function Navigation() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [domainsOpen, mobileOpen]);
 
+  const closeDrawers = () => { setMobileOpen(false); setDomainsOpen(false); };
+
   return (
     <>
       <nav className="uix-nav" aria-label="Main navigation">
@@ -131,11 +143,11 @@ export function Navigation() {
           <div className="uix-nav__secondary">
             {guest ? <><Link to="user_login" className="uix-nav__item">Login</Link><Link to="user_register" className="uix-nav__signup">Sign Up</Link><span className="uix-nav__badge">GUEST</span></> : <><div className="uix-nav__domain-wrap"><button type="button" className="uix-nav__domain" onClick={() => setDomainsOpen((value) => !value)} aria-expanded={domainsOpen}><img src={avatarUrl(ui.domain)} alt="" />{ui.domain?.name || currentDomain}<span>⌄</span></button>{domainsOpen && <DomainMenu current={currentDomain} domains={domains} onClose={() => setDomainsOpen(false)} />}</div><UserMenu user={user} domain={ui.domain} /></>}
           </div>
-          <button type="button" className="uix-nav__mobile-button" onClick={() => setMobileOpen(true)} aria-label="Open navigation" aria-expanded={mobileOpen}>☰</button>
+          <button type="button" className="uix-nav__mobile-button" onClick={() => { setDomainsOpen(false); setMobileOpen((open) => !open); }} aria-label="Open navigation" aria-expanded={mobileOpen}><HamburgerIcon active={mobileOpen} /></button>
         </div>
       </nav>
-      <div className="uix-mobile-header"><button type="button" onClick={() => setDomainsOpen(true)} aria-label="Open domains">☰</button><a href="/"><img src="/components/navigation/nav-logo-small_dark.png" alt="Ejunz" /></a><button type="button" onClick={() => setMobileOpen(true)} aria-label="Open navigation">☰</button></div>
-      {(mobileOpen || domainsOpen) ? <button type="button" className="uix-shell-backdrop" onClick={() => { setMobileOpen(false); setDomainsOpen(false); }} aria-label="Close navigation" /> : null}
+      <div className="uix-mobile-header"><button type="button" onClick={() => { setMobileOpen(false); setDomainsOpen((open) => !open); }} aria-label="Open domains" aria-expanded={domainsOpen}><HamburgerIcon active={domainsOpen} /></button><a href="/"><img src="/components/navigation/nav-logo-small_dark.png" alt="Ejunz" /></a><button type="button" onClick={() => { setDomainsOpen(false); setMobileOpen((open) => !open); }} aria-label="Open navigation" aria-expanded={mobileOpen}><HamburgerIcon active={mobileOpen} /></button></div>
+      {(mobileOpen || domainsOpen) ? <button type="button" className="uix-shell-backdrop" onClick={closeDrawers} aria-label="Close navigation" /> : null}
       {mobileOpen ? <aside className="uix-mobile-menu"><button type="button" className="uix-mobile-menu__close" onClick={() => setMobileOpen(false)} aria-label="Close">×</button><div className="uix-mobile-menu__links">{navItems.map(([route, label, prefix]) => <Link key={route} to={route} onClick={() => setMobileOpen(false)} className={`uix-nav__item${activeFor(route, prefix, name, template) ? ' is-active' : ''}`}>{label}</Link>)}{guest ? <><Link to="user_login" onClick={() => setMobileOpen(false)} className="uix-nav__item">Login</Link><Link to="user_register" onClick={() => setMobileOpen(false)} className="uix-nav__item">Sign Up</Link></> : <UserMenu user={user} domain={ui.domain} />}</div></aside> : null}
       {domainsOpen && !guest ? <aside className="uix-domain-drawer"><DomainMenu current={currentDomain} domains={domains} mobile onClose={() => setDomainsOpen(false)} /></aside> : null}
     </>
