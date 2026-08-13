@@ -1,4 +1,4 @@
-.uix-nav { position: relative; z-index: 30; height: 58px; background: var(--web-card-bg); box-shadow: 0 1px 7px var(--web-shadow); }
+.uix-nav { position: fixed; inset: 0 0 auto; z-index: 500; height: 58px; background: var(--web-card-bg); box-shadow: 0 1px 7px var(--web-shadow); }
 .uix-nav__inner { height: 100%; max-width: 1440px; margin: auto; padding: 0 18px; display: flex; align-items: center; gap: 10px; }
 .uix-nav__logo { flex: 0 0 auto; display: block; padding: 0 5px; }
 .uix-nav__logo img { display: block; width: auto; height: 30px; }
@@ -51,4 +51,4 @@
 .uix-mobile-header { height: 48px; align-items: center; justify-content: space-between; padding: 0 13px; background: var(--web-card-bg); box-shadow: 0 1px 6px rgba(0,0,0,.16); }
 .uix-mobile-header button { border: 0; background: none; color: var(--web-muted-fg); cursor: pointer; font-size: 22px; line-height: 1; }
 .uix-mobile-header img { height: 25px; width: auto; }
-@media (max-width: 700px) { .uix-nav { display: none; } .uix-mobile-header { display: flex; position: relative; z-index: 30; } .uix-shell-backdrop { display: block; } }
+@media (max-width: 700px) { .uix-shell { padding-top: 48px; } .uix-nav { display: none; } .uix-mobile-header { display: flex; position: fixed; inset: 0 0 auto; z-index: 500; } .uix-shell-backdrop { display: block; } }
