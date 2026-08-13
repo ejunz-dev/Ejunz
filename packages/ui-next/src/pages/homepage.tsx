@@ -93,9 +93,11 @@ function groupNodes(value: unknown): [string, any[]][] {
   return group(entries.map(([, item]) => item));
 }
 
-function renderSection(name: string, payload: unknown, udict: Udict): ReactNode {
+function renderSection(name: string, payload: unknown, udict: Udict, domain: { bulletin?: string }): ReactNode {
   if (name === 'bulletin') {
-    return payload ? <Card title="Bulletin"><div className="uix-bulletin">{text(payload)}</div></Card> : null;
+    return domain.bulletin ? (
+      <Card title="Bulletin"><div className="uix-bulletin">{domain.bulletin}</div></Card>
+    ) : null;
   }
   if (name === 'error') {
     return <Callout type="warn" title="Section failed to load">{text(payload)}</Callout>;
@@ -224,18 +226,11 @@ export default function Homepage() {
   const domain = (args.domain || {}) as { bulletin?: string };
   return (
     <div className="uix-home">
-      {domain.bulletin ? (
-        <section className="uix-card uix-home__bulletin">
-          <div className="uix-card__body">
-            <div className="uix-bulletin">{domain.bulletin}</div>
-          </div>
-        </section>
-      ) : null}
       <div className="uix-home__columns">
         {contents.map((column: any, i) => (
           <div key={i} className="uix-home__column" style={{ gridColumn: `span ${column.width || 12}` }}>
             {(column.sections || []).map(([name, payload]: [string, unknown], j: number) => (
-              <Fragment key={j}>{renderSection(name, payload, udict)}</Fragment>
+              <Fragment key={j}>{renderSection(name, payload, udict, domain)}</Fragment>
             ))}
           </div>
         ))}
