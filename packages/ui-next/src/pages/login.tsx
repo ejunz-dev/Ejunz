@@ -2,12 +2,13 @@ import { useRef, useState } from 'react';
 import { usePageData } from '../context/page-data';
 import { useBuildUrl } from '../hooks/use-build-url';
 import { Button, Callout, Card, Field } from '../components';
+import { i18n } from '../i18n';
 import './login.css';
 
 async function fetchJSON(input: string, init?: RequestInit) {
   const res = await fetch(input, init);
   const data = await res.json().catch(() => ({} as any));
-  if (!res.ok || data?.error) throw new Error(data?.error || res.statusText || 'Request failed');
+  if (!res.ok || data?.error) throw new Error(data?.error || res.statusText || i18n('Request failed'));
   return data;
 }
 
@@ -15,10 +16,10 @@ async function fetchJSON(input: string, init?: RequestInit) {
 // authenticator, exchange the result for a login challenge.
 async function verifyWebauthn(uname: string): Promise<string> {
   if (!window.isSecureContext || !('credentials' in navigator)) {
-    throw new Error('Your browser does not support WebAuthn or you are not in a secure context.');
+    throw new Error(i18n('Your browser does not support WebAuthn or you are not in secure context.'));
   }
   const info = await fetchJSON(`/user/webauthn?uname=${encodeURIComponent(uname)}`);
-  if (!info.authOptions) throw new Error('Failed to fetch registration data.');
+  if (!info.authOptions) throw new Error(i18n('Failed to fetch registration data.'));
   const { startAuthentication } = await import('@simplewebauthn/browser');
   const result = await startAuthentication({ optionsJSON: info.authOptions });
   await fetchJSON('/user/webauthn', {
@@ -101,35 +102,35 @@ export default function UserLogin() {
 
   return (
     <div className="uix-auth">
-      <Card title="Login">
+      <Card title={i18n('Login')}>
         {error ? <Callout type="error">{error}</Callout> : null}
         <form method="POST" ref={formRef} onSubmit={handleSubmit}>
           {/* Keep credential fields mounted so the native submit always includes them */}
           <div className="uix-auth__fields" style={step === 'verify' ? { display: 'none' } : undefined}>
-            <Field label="Username" name="uname" type="text" autoFocus required />
-            <Field label="Password" name="password" type="password" required />
+            <Field label={i18n('Username')} name="uname" type="text" autoFocus required />
+            <Field label={i18n('Password')} name="password" type="password" required />
             <label className="uix-auth__remember">
               <input type="checkbox" name="rememberme" />
-              <span>Remember me</span>
+              <span>{i18n('Remember me')}</span>
             </label>
             <Button type="submit" variant="primary" disabled={busy}>
-              {busy ? 'Please wait…' : 'Login'}
+              {busy ? i18n('Please wait…') : i18n('Login')}
             </Button>
-            <a className="uix-muted" href={buildUrl('user_lostpass')}>Forgot password or username?</a>
+            <a className="uix-muted" href={buildUrl('user_lostpass')}>{i18n('Forgot Password and/or Username')}</a>
           </div>
           <div className="uix-auth__fields" style={step === 'credentials' ? { display: 'none' } : undefined}>
-            <Callout type="info" title="Two Factor Authentication">
-              Your account has two factor authentication enabled. Please verify to continue.
+            <Callout type="info" title={i18n('Two Factor Authentication')}>
+              {i18n('Your account has two factor authentication enabled. Please choose an authenticator to verify.')}
             </Callout>
             {methods.authn ? (
               <Button onClick={runWebauthn} disabled={busy}>
-                {busy ? 'Verifying…' : 'Use Authenticator'}
+                {busy ? i18n('Verifying…') : i18n('Use Authenticator')}
               </Button>
             ) : null}
             {methods.tfa ? (
               <>
                 <Field
-                  label="6-Digit Code"
+                  label={i18n('6-Digit Code')}
                   type="text"
                   inputMode="numeric"
                   autoComplete="one-time-code"
@@ -137,7 +138,7 @@ export default function UserLogin() {
                   onChange={(e) => setTfaCode(e.target.value)}
                   autoFocus={!methods.authn}
                 />
-                <Button onClick={submitTfa} disabled={!tfaCode}>Use TFA Code</Button>
+                <Button onClick={submitTfa} disabled={!tfaCode}>{i18n('Use TFA Code')}</Button>
               </>
             ) : null}
           </div>

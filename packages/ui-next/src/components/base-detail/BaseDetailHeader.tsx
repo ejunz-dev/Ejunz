@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useBuildUrl } from '../../hooks/use-build-url';
+import { i18n } from '../../i18n';
 
 interface Props {
   title: string;
@@ -26,22 +27,22 @@ export function BaseDetailHeader({ title, description, domainId, docId, treeOpen
   return (
     <header className="bd-header">
       <div className="bd-header__topline">
-        <a className="bd-header__back" href={listUrl}>← All bases</a>
+        <a className="bd-header__back" href={listUrl}>← {i18n('All Bases')}</a>
         <div className="bd-header__actions">
-          <button type="button" className="bd-header__action" onClick={onToggleTree} aria-expanded={treeOpen}>☷ <span>Structure</span></button>
-          <button type="button" className="bd-header__action" onClick={share} aria-label="Copy page link">↗ <span>{copied ? 'Copied' : 'Share'}</span></button>
+          <button type="button" className="bd-header__action" onClick={onToggleTree} aria-expanded={treeOpen}>☷ <span>{i18n('Document Structure')}</span></button>
+          <button type="button" className="bd-header__action" onClick={share} aria-label={i18n('Copy link')}>↗ <span>{copied ? i18n('Copied') : i18n('Share')}</span></button>
         </div>
       </div>
       <div className="bd-header__body">
-        <p className="bd-header__eyebrow">Knowledge base</p>
+        <p className="bd-header__eyebrow">{i18n('Knowledge base')}</p>
         <h1>{title}</h1>
         {description?.trim() ? <p>{description}</p> : null}
       </div>
-      <div className="bd-header__tabs" role="tablist" aria-label="Base detail views">
-        <span className="bd-header__tab is-active" role="tab" aria-selected="true">▤ Knowledge Base</span>
-        <button type="button" className={`bd-header__tab${treeOpen ? ' is-active' : ''}`} onClick={onToggleTree} aria-selected={treeOpen}>⌘ Document Structure</button>
+      <div className="bd-header__tabs" role="tablist" aria-label={i18n('Knowledge Base')}>
+        <span className="bd-header__tab is-active" role="tab" aria-selected="true">▤ {i18n('Knowledge Base')}</span>
+        <button type="button" className={`bd-header__tab${treeOpen ? ' is-active' : ''}`} onClick={onToggleTree} aria-selected={treeOpen}>⌘ {i18n('Document Structure')}</button>
       </div>
-      <div className="bd-header__meta"><span>Document view</span>{docId ? <span className="bd-header__id">{docId}</span> : null}</div>
+      <div className="bd-header__meta"><span>{i18n('Content')}</span>{docId ? <span className="bd-header__id">{docId}</span> : null}</div>
     </header>
   );
 }

@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { i18n } from '../../i18n';
 import { renderMarkdown } from './markdown';
 import { cardDisplayLabel, collectSubtreeNodeIds, getSortedNodeCards, nodeDisplayLabel } from './tree';
 import type { BaseDetailCard, BaseDetailEdge, BaseDetailNode } from './types';
@@ -24,10 +25,10 @@ function ProblemList({ card }: { card: BaseDetailCard }) {
   if (!card.problems?.length) return null;
   return (
     <details className="bd-card__problems">
-      <summary>{card.problems.length} practice {card.problems.length === 1 ? 'problem' : 'problems'}</summary>
+      <summary>{card.problems.length} {i18n('practice')} {card.problems.length === 1 ? i18n('problem') : i18n('problems')}</summary>
       <ol>
         {card.problems.map((problem, index) => (
-          <li key={String(problem.pid || index)}>{String(problem.title || problem.stem || problem.content || `Problem ${index + 1}`).replace(/<[^>]+>/g, '').slice(0, 120)}</li>
+          <li key={String(problem.pid || index)}>{String(problem.title || problem.stem || problem.content || `${i18n('Problem')} ${index + 1}`).replace(/<[^>]+>/g, '').slice(0, 120)}</li>
         ))}
       </ol>
     </details>
@@ -44,7 +45,7 @@ export function BaseDetailNodeContent({ rootNodeId, nodes, edges, nodeCardsMap, 
     return { nodeId, node, cards };
   }).filter((section): section is { nodeId: string; node: BaseDetailNode; cards: BaseDetailCard[] } => !!section), [edges, nodeCardsMap, nodes, query, rootNodeId]);
 
-  if (!sections.length) return <div className="bd-empty bd-empty--content">No cards under this node.</div>;
+  if (!sections.length) return <div className="bd-empty bd-empty--content">{i18n('Base detail node empty')}</div>;
   return (
     <div className="bd-content">
       {sections.map(({ nodeId, node, cards }) => (
@@ -58,9 +59,9 @@ export function BaseDetailNodeContent({ rootNodeId, nodes, edges, nodeCardsMap, 
               <article className={`bd-card${selectedCardId === cardId ? ' is-selected' : ''}`} id={`base-detail-card-${cardId}`} key={cardId}>
                 <header className="bd-card__header">
                   <button type="button" className="bd-card__title" onClick={() => onSelectCard(card)}>{cardDisplayLabel(card)}</button>
-                  <span className="bd-card__meta">{date(card.updateAt)}{card.problems?.length ? ` · ${card.problems.length} problems` : ''}</span>
+                  <span className="bd-card__meta">{date(card.updateAt)}{card.problems?.length ? ` · ${card.problems.length} ${i18n('problems')}` : ''}</span>
                 </header>
-                {card.content ? <div className="bd-markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(card.content) }} /> : <p className="bd-muted">This card has no content.</p>}
+                {card.content ? <div className="bd-markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(card.content) }} /> : <p className="bd-muted">{i18n('Base detail card empty')}</p>}
                 {card.tags?.length ? <footer className="bd-card__tags">{card.tags.map((tag) => <span key={tag}>{tag}</span>)}</footer> : null}
                 <ProblemList card={card} />
               </article>
