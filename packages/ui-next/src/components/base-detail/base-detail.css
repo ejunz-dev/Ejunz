@@ -79,10 +79,22 @@
 .bd-card__title { color: var(--bd-ink); font-size: 1.05rem; font-weight: 700; text-align: left; }
 .bd-card__meta { color: var(--bd-muted); font-size: .68rem; white-space: nowrap; }
 .bd-markdown { padding: 0 1rem 1rem; line-height: 1.7; overflow-wrap: anywhere; }
-.bd-markdown h1, .bd-markdown h2, .bd-markdown h3 { line-height: 1.2; }
+.bd-markdown h1, .bd-markdown h2, .bd-markdown h3, .bd-markdown h4, .bd-markdown h5, .bd-markdown h6 { margin: 1.2em 0 .55em; line-height: 1.2; }
+.bd-markdown p { margin: .7em 0; }
+.bd-markdown ul, .bd-markdown ol { margin: .7em 0; padding-left: 1.6rem; }
+.bd-markdown li + li { margin-top: .25rem; }
+.bd-markdown table { width: 100%; margin: 1rem 0; border-collapse: collapse; font-size: .9em; }
+.bd-markdown th, .bd-markdown td { padding: .45rem .6rem; border: 1px solid var(--bd-line); text-align: left; vertical-align: top; }
+.bd-markdown th { background: var(--bd-bg); font-weight: 700; }
+.bd-markdown img { max-width: 100%; height: auto; }
+.bd-markdown hr { margin: 1.25rem 0; border: 0; border-top: 1px solid var(--bd-line); }
 .bd-markdown code { padding: .1rem .25rem; background: #edf0f2; border-radius: 3px; font-family: ui-monospace, monospace; font-size: .88em; }
 .bd-markdown pre { overflow: auto; padding: .8rem; background: #202a33; color: #edf4f8; border-radius: 4px; }
-.bd-markdown blockquote { margin-inline: 0; padding-left: 1rem; border-left: 3px solid var(--bd-accent); color: var(--bd-muted); }
+.bd-markdown blockquote { margin: 1rem 0; padding: .1rem 0 .1rem 1rem; border-left: 3px solid var(--bd-accent); color: var(--bd-muted); }
+.bd-markdown a { color: var(--bd-accent); }
+.bd-markdown .footnotes { margin-top: 1.5rem; border-top: 1px solid var(--bd-line); font-size: .85em; }
+.bd-markdown .roadmap-text-btn { display: flex; width: fit-content; margin: .8rem auto; padding: .45rem .8rem; border: 1px solid var(--bd-accent); border-radius: 5px; }
+.bd-markdown .roadmap-text-btn a { text-decoration: none; }
 .bd-card__tags { padding: 0 1rem .9rem; margin-left: 0; }
 .bd-card__problems { margin: 0 1rem 1rem; color: var(--bd-muted); font-size: .8rem; }
 .bd-card__problems summary { cursor: pointer; }
