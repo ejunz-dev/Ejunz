@@ -52,7 +52,9 @@
 .bd-tree__toggle, .bd-tree__toggle-spacer { flex: 0 0 1.65rem; display: grid; place-items: center; border: 0; background: transparent; color: var(--bd-muted); }
 .bd-tree__toggle { cursor: pointer; }
 .bd-tree__main { min-width: 0; flex: 1; display: flex; align-items: center; gap: .45rem; border: 0; background: transparent; color: inherit; padding: .35rem .4rem; text-align: left; cursor: pointer; font: inherit; font-size: .8rem; }
-.bd-tree__node-icon, .bd-tree__card-icon { flex: 0 0 1rem; color: var(--bd-accent); text-align: center; }
+.bd-tree__node-icon, .bd-tree__card-icon { flex: 0 0 1rem; display: inline-flex; align-items: center; justify-content: center; color: var(--bd-accent); text-align: center; }
+.bd-tree__chevron { transition: transform .16s ease; transform-origin: center; }
+.bd-tree__chevron.is-expanded { transform: rotate(90deg); }
 .bd-tree__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bd-tree__problem-count, .bd-drawer__count { margin-left: auto; padding: .08rem .35rem; border-radius: 10px; background: #edf0f2; color: var(--bd-muted); font-size: .68rem; }
 .bd-tree__tags, .bd-card__tags { display: flex; flex-wrap: wrap; gap: .25rem; margin-left: auto; }
@@ -81,9 +83,14 @@
 .bd-card__problems li { margin-top: .35rem; }
 .bd-empty, .bd-muted { color: var(--bd-muted); }
 .bd-empty { padding: 2rem 1rem; text-align: center; }
-.bd-backdrop { position: fixed; z-index: 20; inset: 0; border: 0; background: rgba(16, 28, 37, .3); cursor: pointer; }
-.bd-drawer { position: fixed; z-index: 21; inset: 0 0 0 auto; width: min(620px, calc(100vw - 1rem)); background: var(--bd-surface); box-shadow: -14px 0 36px rgba(16, 28, 37, .16); overflow: auto; }
-.bd-drawer--tree { inset: 0 auto 0 0; width: min(420px, calc(100vw - 1rem)); box-shadow: 14px 0 36px rgba(16, 28, 37, .16); }
+.bd-backdrop { position: fixed; z-index: 200; inset: 0; border: 0; background: rgba(16, 28, 37, .42); cursor: pointer; animation: bd-backdrop-in .2s ease; }
+.bd-drawer { position: fixed; z-index: 201; inset: 0 0 0 auto; width: min(620px, calc(100vw - 1rem)); background: var(--bd-surface); box-shadow: -14px 0 36px rgba(16, 28, 37, .16); overflow: auto; animation: bd-drawer-in-right .24s ease; }
+.bd-drawer--tree { inset: 0 auto 0 0; width: min(420px, calc(100vw - 1rem)); box-shadow: 12px 0 40px rgba(0, 0, 0, .14); animation: bd-drawer-in-left .24s ease; }
+@keyframes bd-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes bd-drawer-in-left { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+@keyframes bd-drawer-in-right { from { transform: translateX(100%); } to { transform: translateX(0); } }
+.bd-tree-drawer { border-right: 1px solid var(--bd-line); }
+.bd-tree-backdrop { pointer-events: auto; }
 .bd-drawer__header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: .8rem; padding: .8rem 1rem; border-bottom: 1px solid var(--bd-line); background: var(--bd-surface); }
 .bd-drawer__tabs { display: flex; gap: .8rem; }
 .bd-drawer__tabs button { border: 0; border-bottom: 2px solid transparent; padding: .35rem 0; background: transparent; color: var(--bd-muted); cursor: pointer; font: inherit; font-size: .8rem; }
