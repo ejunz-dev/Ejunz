@@ -1,5 +1,22 @@
 /* Shared ui-next component styles. Imported once by src/main.tsx. */
 
+/* Field */
+.uix-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.uix-field__label {
+  font-size: 0.8rem;
+  color: var(--web-muted-fg, hsl(0, 0%, 45%));
+}
+.uix-field__input {
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--web-border, hsl(0, 0%, 89.8%));
+  border-radius: 6px;
+  font-size: 0.875rem;
+}
+
 .uix-muted {
   color: var(--web-muted-fg, hsl(0, 0%, 45%));
   font-size: 0.8rem;
