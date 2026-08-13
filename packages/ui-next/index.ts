@@ -35,7 +35,10 @@ function getDomStyles() {
     if (domStyles != null) return domStyles;
     const addonStyles = Object.values(getAddonEntries())
         .map((entry) => path.resolve(path.dirname(entry), 'pages.css'));
-    const files = [require.resolve('@ejunz/components/web.css'), ...addonStyles]
+    const builtinStyles = [
+        path.resolve(__dirname, 'src/pages/homepage.css'),
+    ];
+    const files = [require.resolve('@ejunz/components/web.css'), ...builtinStyles, ...addonStyles]
         .filter((file, index, list): file is string => list.indexOf(file) === index && fs.existsSync(file));
     domStyles = files.map((file) => fs.readFileSync(file, 'utf8')).join('\n').replace(/<\/style/gi, '<\\/style');
     return domStyles;
