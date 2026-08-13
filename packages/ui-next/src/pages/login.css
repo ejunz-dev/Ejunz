@@ -1,0 +1,41 @@
+/* Login page styles for the built-in user_login DOM page
+   (component primitives live in @ejunz/components/web.css). */
+
+.uinp-auth {
+  max-width: 360px;
+  margin: 4rem auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.uinp-auth__title {
+  margin: 0;
+  text-align: center;
+}
+.uinp-auth__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+.uinp-inline {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+.uinp-auth__submit {
+  width: 100%;
+}
+.uinp-error-stack {
+  font-size: 0.75rem;
+  overflow-x: auto;
+  padding: 0.75rem;
+  border-radius: 6px;
+  background: var(--web-secondary, hsl(0, 0%, 93.1%));
+}
+.uinp-muted {
+  color: var(--web-muted-fg, hsl(0, 0%, 45%));
+  font-size: 0.8rem;
+  white-space: nowrap;
+}

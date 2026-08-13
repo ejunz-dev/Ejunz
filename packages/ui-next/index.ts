@@ -37,6 +37,7 @@ function getDomStyles() {
         .map((entry) => path.resolve(path.dirname(entry), 'pages.css'));
     const builtinStyles = [
         path.resolve(__dirname, 'src/pages/homepage.css'),
+        path.resolve(__dirname, 'src/pages/login.css'),
     ];
     const files = [require.resolve('@ejunz/components/web.css'), ...builtinStyles, ...addonStyles]
         .filter((file, index, list): file is string => list.indexOf(file) === index && fs.existsSync(file));
