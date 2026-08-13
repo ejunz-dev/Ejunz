@@ -95,6 +95,9 @@
 .bd-markdown .footnotes { margin-top: 1.5rem; border-top: 1px solid var(--bd-line); font-size: .85em; }
 .bd-markdown .roadmap-text-btn { display: flex; width: fit-content; margin: .8rem auto; padding: .45rem .8rem; border: 1px solid var(--bd-accent); border-radius: 5px; }
 .bd-markdown .roadmap-text-btn a { text-decoration: none; }
+.bd-markdown__media { display: block; width: 100%; max-width: 100%; min-height: 360px; margin: 1rem 0; border: 0; }
+.bd-markdown__media--embed { height: 500px; }
+.bd-markdown__media--pdf { height: 560px; border: 1px solid var(--bd-line); }
 .bd-card__tags { padding: 0 1rem .9rem; margin-left: 0; }
 .bd-card__problems { margin: 0 1rem 1rem; color: var(--bd-muted); font-size: .8rem; }
 .bd-card__problems summary { cursor: pointer; }
