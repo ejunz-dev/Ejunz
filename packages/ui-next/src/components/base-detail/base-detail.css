@@ -1,12 +1,5 @@
 /* Base detail: a quiet archive surface with a single blue-pencil accent. */
 .bd-page {
-  --bd-bg: #f5f7f8;
-  --bd-surface: #fff;
-  --bd-ink: #17212b;
-  --bd-muted: #71808d;
-  --bd-line: #dce3e8;
-  --bd-accent: #1769aa;
-  --bd-accent-soft: #e8f2fa;
   min-height: 100vh;
   color: var(--bd-ink);
   background: var(--bd-bg);

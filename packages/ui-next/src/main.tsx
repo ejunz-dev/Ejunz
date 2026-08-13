@@ -2,6 +2,7 @@
 
 import './pages';
 
+import './components/theme.css';
 import './components/ui.css';
 
 import { StrictMode } from 'react';

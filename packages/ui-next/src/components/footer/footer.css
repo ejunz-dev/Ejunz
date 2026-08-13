@@ -1,13 +1,13 @@
-.uix-footer { background: #f0f3f5; color: #5c6972; }
+.uix-footer { background: var(--web-card-bg); color: var(--web-muted-fg); }
 .uix-footer__inner { max-width: 1320px; margin: auto; padding: 18px 24px; display: flex; justify-content: space-between; gap: 20px; font-size: 12px; line-height: 2; }
 .uix-footer__left, .uix-footer__right { display: flex; flex-wrap: wrap; align-items: center; gap: 20px; }
 .uix-footer__right { justify-content: flex-end; }
 .uix-footer__dropdown { position: relative; }
 .uix-footer__dropdown > button { border: 0; padding: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; }
-.uix-footer__dropdown > button:hover, .uix-footer a:hover { color: #1769aa; }
-.uix-footer__menu { position: absolute; bottom: calc(100% + 6px); left: 0; z-index: 4; min-width: 120px; padding: 5px 0; border: 1px solid #d4dde2; border-radius: 4px; background: #fff; box-shadow: 0 5px 18px rgba(0,0,0,.12); opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(4px); transition: opacity .14s, visibility .14s, transform .14s; }
+.uix-footer__dropdown > button:hover, .uix-footer a:hover { color: var(--web-link); }
+.uix-footer__menu { position: absolute; bottom: calc(100% + 6px); left: 0; z-index: 4; min-width: 120px; padding: 5px 0; border: 1px solid var(--web-border); border-radius: 4px; background: var(--web-card-bg); box-shadow: 0 5px 18px var(--web-shadow); opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(4px); transition: opacity .14s, visibility .14s, transform .14s; }
 .uix-footer__menu.is-open { opacity: 1; visibility: visible; pointer-events: auto; transform: translateY(0); }
-.uix-footer__menu-link { display: block; padding: 5px 12px; color: #44515a; text-decoration: none; white-space: nowrap; }
+.uix-footer__menu-link { display: block; padding: 5px 12px; color: var(--web-fg); text-decoration: none; white-space: nowrap; }
 .uix-footer__item { display: inline-block; }
 .uix-footer a { color: inherit; text-decoration: none; }
 @media (max-width: 700px) { .uix-footer__inner { display: block; padding: 14px 16px; } .uix-footer__left, .uix-footer__right { justify-content: flex-start; gap: 14px; } .uix-footer__right { margin-top: 6px; } }

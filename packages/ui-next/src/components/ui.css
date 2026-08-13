@@ -100,7 +100,7 @@
 .uix-button--primary {
   background: var(--web-primary, #2563eb);
   border-color: var(--web-primary, #2563eb);
-  color: #fff;
+  color: var(--web-on-primary, #fff);
 }
 .uix-button--ghost {
   background: transparent;
@@ -119,7 +119,7 @@
 }
 a.uix-tag:hover {
   background: var(--web-primary, #2563eb);
-  color: #fff;
+  color: var(--web-on-primary, #fff);
 }
 
 /* Callout */
