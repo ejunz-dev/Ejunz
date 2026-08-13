@@ -90,17 +90,25 @@ export default function BaseDetailApp() {
     updateUrl({ nodeId, cardId: null, problemId: null });
   }, [updateUrl]);
 
-  const selectCard = useCallback((card: BaseDetailCard) => {
+  const selectCard = useCallback((card: BaseDetailCard, switchNode = true) => {
     const cardId = stringId(card.docId);
     const host = findCardHostNodeId(cardId, nodeCardsMap);
     setSelectedCard(card);
-    if (host) {
+    if (host && switchNode) {
       setSelectedNodeId(host);
       setExpandedNodes((current) => new Set([...current, host]));
     }
     setSelectedProblemId(null);
-    updateUrl({ nodeId: host, cardId, problemId: null });
-  }, [nodeCardsMap, updateUrl]);
+    updateUrl({ nodeId: switchNode ? host : selectedNodeId || host, cardId, problemId: null });
+  }, [nodeCardsMap, selectedNodeId, updateUrl]);
+
+  const selectNodeFromContent = useCallback((nodeId: string) => {
+    if (nodeId === selectedNodeId) return;
+    const node = nodes.find((item) => item.id === nodeId);
+    const label = node?.text?.trim() || i18n('Unnamed Node');
+    if (typeof window !== 'undefined' && !window.confirm(`${i18n('Confirm')}: ${label}`)) return;
+    selectNode(nodeId);
+  }, [nodes, selectNode, selectedNodeId]);
 
   const selectProblem = useCallback((pid: string) => {
     setSelectedProblemId(pid);
@@ -132,7 +140,7 @@ export default function BaseDetailApp() {
           <BaseDetailTree rootNodeIds={getRootNodeIds(nodes, edges)} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} onToggle={toggleNode} selectedNodeId={selectedNodeId} selectedCardId={selectedCard?.docId || null} selectedProblemId={selectedProblemId} onSelectNode={selectNode} onSelectCard={selectCard} onSelectProblem={(card, pid) => { selectCard(card); selectProblem(pid); }} filter={search} filters={filters} />
         </section>
         <section className="bd-page__content" aria-label={i18n('Content')}>
-          {selectedNodeId ? <BaseDetailNodeContent rootNodeId={selectedNodeId} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} onToggle={toggleNode} selectedNodeId={selectedNodeId} selectedCardId={selectedCard?.docId || null} selectedProblemId={selectedProblemId} onSelectCard={selectCard} onSelectNode={selectNode} onSelectProblem={(card, pid) => { selectCard(card); selectProblem(pid); }} filter={search} filters={filters} /> : <div className="bd-empty">{i18n('Base detail tree empty')}</div>}
+          {selectedNodeId ? <BaseDetailNodeContent rootNodeId={selectedNodeId} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} onToggle={toggleNode} selectedNodeId={selectedNodeId} selectedCardId={selectedCard?.docId || null} selectedProblemId={selectedProblemId} onSelectCard={(card) => selectCard(card, false)} onSelectNode={selectNodeFromContent} onSelectProblem={(card, pid) => { selectCard(card, false); selectProblem(pid); }} filter={search} filters={filters} /> : <div className="bd-empty">{i18n('Base detail tree empty')}</div>}
         </section>
       </main>
       <BaseDetailTreeDrawer open={treeOpen} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} selectedNodeId={selectedNodeId} selectedCardId={selectedCard?.docId || null} onToggle={toggleNode} onSelectNode={(id) => { selectNode(id); setTreeOpen(false); }} onSelectCard={(card) => { selectCard(card); setTreeOpen(false); }} onClose={() => setTreeOpen(false)} filter={search} filters={filters} />

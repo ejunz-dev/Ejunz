@@ -67,6 +67,7 @@
 .bd-content__section-title button:hover, .bd-card__title:hover { text-decoration: underline; }
 .bd-card { margin-bottom: .75rem; border: 1px solid #e8e8e8; border-radius: 6px; background: #fff; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.035); }
 .bd-content { max-width: 860px; margin: 0 auto; }
+.bd-content--tree { width: min(780px, calc(100% - 2rem)); max-width: 780px; margin-inline: auto; }
 .bd-content__section-title { padding-bottom: .45rem; border-bottom: 1px solid var(--bd-line); }
 .bd-card.is-selected { border-color: var(--bd-accent); box-shadow: 0 0 0 2px var(--bd-accent-soft); }
 .bd-card__header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding: .9rem 1rem .6rem; }
