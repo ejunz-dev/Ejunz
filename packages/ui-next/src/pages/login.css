@@ -1,0 +1,18 @@
+/* Login page. Shared primitives (uix-card/field/button/callout/muted) live in components/ui.css. */
+
+.uix-auth {
+  max-width: 360px;
+  margin: 4rem auto;
+}
+.uix-auth__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+.uix-auth__remember {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}

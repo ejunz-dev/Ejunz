@@ -5,6 +5,7 @@ export { List, ListItem, type ListItemProps, type ListProps } from './components
 export { Button, type ButtonProps, type ButtonVariant } from './components/button';
 export { Tag, type TagProps } from './components/tag';
 export { Callout, type CalloutProps, type CalloutType } from './components/callout';
+export { Field, type FieldProps } from './components/field';
 
 // Context
 export { type PageData, usePageData } from './context/page-data';

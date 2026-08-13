@@ -12,6 +12,9 @@ export interface ButtonProps {
   href?: string;
   /** Visual variant. */
   variant?: ButtonVariant;
+  /** Native button type (only applies when rendering a <button>). */
+  type?: 'button' | 'submit' | 'reset';
+  disabled?: boolean;
   className?: string;
   children?: ReactNode;
   onClick?: () => void;
@@ -19,7 +22,7 @@ export interface ButtonProps {
 
 /** Button-styled control. Renders a Link, an anchor, or a <button>. */
 export function Button({
-  to, params, href, variant = 'default', className = '', children, onClick,
+  to, params, href, variant = 'default', type = 'button', disabled = false, className = '', children, onClick,
 }: ButtonProps) {
   const cls = ['uix-button', variant !== 'default' ? `uix-button--${variant}` : '', className]
     .filter(Boolean)
@@ -30,5 +33,5 @@ export function Button({
   if (href) {
     return <a className={cls} href={href} onClick={onClick}>{children}</a>;
   }
-  return <button className={cls} onClick={onClick}>{children}</button>;
+  return <button className={cls} type={type} disabled={disabled} onClick={onClick}>{children}</button>;
 }
