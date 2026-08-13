@@ -4,6 +4,7 @@ import { i18n } from '../../i18n';
 import { renderMarkdown } from './markdown';
 import { cardDisplayLabel } from './tree';
 import type { BaseDetailCard } from './types';
+import './base-detail.css';
 
 interface Props {
   card: BaseDetailCard | null;
@@ -22,21 +23,47 @@ function fileUrl(card: BaseDetailCard, baseDocId?: string, domainId?: string): s
 
 export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, selectedProblemId, baseDocId, domainId }: Props) {
   const [tab, setTab] = useState<'content' | 'problems'>('content');
+  const [loadingMedia, setLoadingMedia] = useState(true);
   const drawerRef = useRef<HTMLElement>(null);
+  const markdownRef = useRef<HTMLDivElement>(null);
   const displayCard = card;
   const problems = displayCard?.problems || [];
 
   useEffect(() => {
     if (!displayCard) return undefined;
+    setLoadingMedia(true);
     setTab(selectedProblemId ? 'problems' : 'content');
     drawerRef.current?.focus();
+    const media = markdownRef.current?.querySelectorAll('img, iframe, video, object, embed');
+    const finishLoading = () => setLoadingMedia(false);
+    if (!media?.length) {
+      finishLoading();
+    } else {
+      media.forEach((element) => {
+        element.addEventListener('load', finishLoading);
+        element.addEventListener('loadeddata', finishLoading);
+        element.addEventListener('canplay', finishLoading);
+        element.addEventListener('error', finishLoading);
+        if (element instanceof HTMLImageElement && element.complete) finishLoading();
+      });
+    }
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      media?.forEach((element) => {
+        element.removeEventListener('load', finishLoading);
+        element.removeEventListener('loadeddata', finishLoading);
+        element.removeEventListener('canplay', finishLoading);
+        element.removeEventListener('error', finishLoading);
+      });
+    };
   }, [displayCard, onClose, selectedProblemId]);
 
   if (!displayCard) return null;
   const url = fileUrl(displayCard, baseDocId, domainId);
+  const contentHtml = displayCard.content ? renderMarkdown(displayCard.content) : '';
+  const hasEmbeddedMedia = /<(?:img|iframe|video|object|embed)\b/i.test(contentHtml);
   return createPortal(
     <>
       <button type="button" className="bd-backdrop bd-card-backdrop" onClick={onClose} aria-label={i18n('Close')} />
@@ -54,9 +81,15 @@ export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, selectedP
             {displayCard.cardFace ? <div className="bd-drawer__face bd-markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(displayCard.cardFace) }} /> : null}
             {displayCard.cardType === 'file' && url ? (
               <div className="bd-drawer__file">
-                {displayCard.fileType === 'image' ? <img src={url} alt={displayCard.fileName || ''} /> : displayCard.fileType === 'video' ? <video controls src={url} /> : displayCard.fileType === 'audio' ? <audio controls src={url} /> : <a href={url} target="_blank" rel="noreferrer">{i18n('Open')} {displayCard.fileName}</a>}
+                {loadingMedia ? <span className="bd-media-loader" role="status" aria-label={i18n('Loading...')} /> : null}
+                {displayCard.fileType === 'image' ? <img src={url} alt={displayCard.fileName || ''} onLoad={() => setLoadingMedia(false)} onError={() => setLoadingMedia(false)} /> : displayCard.fileType === 'video' ? <video controls src={url} onLoadedData={() => setLoadingMedia(false)} onError={() => setLoadingMedia(false)} /> : displayCard.fileType === 'audio' ? <audio controls src={url} onCanPlay={() => setLoadingMedia(false)} onError={() => setLoadingMedia(false)} /> : <a href={url} target="_blank" rel="noreferrer" onClick={() => setLoadingMedia(false)}>{i18n('Open')} {displayCard.fileName}</a>}
               </div>
-            ) : displayCard.content ? <div className="bd-markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(displayCard.content) }} /> : <p className="bd-muted">{i18n('Base detail card empty')}</p>}
+            ) : displayCard.content ? (
+              <div className="bd-markdown--media-aware">
+                <div ref={markdownRef} className="bd-markdown" dangerouslySetInnerHTML={{ __html: contentHtml }} />
+                {hasEmbeddedMedia && loadingMedia ? <span className="bd-media-loader" role="status" aria-label={i18n('Loading...')} /> : null}
+              </div>
+            ) : <p className="bd-muted">{i18n('Base detail card empty')}</p>}
             {displayCard.tags?.length ? <div className="bd-card__tags">{displayCard.tags.map((tag) => <span key={tag}>{tag}</span>)}</div> : null}
           </div>
         ) : (
