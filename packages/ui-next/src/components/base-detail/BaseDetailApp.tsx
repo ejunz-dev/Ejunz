@@ -12,6 +12,7 @@ import {
   defaultExpandedNodeIds,
   findCardByDocId,
   findCardHostNodeId,
+  collectSubtreeNodeIds,
   getRootNodeIds,
   stringId,
 } from './tree';
@@ -129,7 +130,11 @@ export default function BaseDetailApp() {
     });
   }, []);
 
-  const cardCount = Object.values(nodeCardsMap).reduce((sum, cards) => sum + cards.length, 0);
+  const currentNodeIds = selectedNodeId ? [selectedNodeId, ...collectSubtreeNodeIds(selectedNodeId, nodes, edges)] : [];
+  const currentNodeIdSet = new Set(currentNodeIds);
+  const currentCards = Object.entries(nodeCardsMap).filter(([nodeId]) => currentNodeIdSet.has(nodeId)).flatMap(([, cards]) => cards);
+  const currentCardCount = currentCards.length;
+  const problemCount = currentCards.reduce((sum, card) => sum + (card.problems?.length || 0), 0);
   const matchedCount = countBaseDetailMatches(nodes, nodeCardsMap, search, filters);
   const availableCardTags = filterTags(Object.values(nodeCardsMap).flat());
   const availableProblemTags = filterTags(Object.values(nodeCardsMap).flat(), true);
@@ -138,9 +143,9 @@ export default function BaseDetailApp() {
 
   return (
     <div className="bd-page">
-      <BaseDetailHeader title={rootNode && selectedNodeId !== getRootNodeIds(nodes, edges)[0] ? rootNode.text || i18n('Unnamed Node') : title} description={rootNode && selectedNodeId !== getRootNodeIds(nodes, edges)[0] ? title : base.content} domainId={domainId} docId={docId} nodeCount={nodes.length} cardCount={cardCount} treeOpen={treeOpen} onToggleTree={() => setTreeOpen((open) => !open)} onShare={() => undefined} />
+      <BaseDetailHeader title={rootNode && selectedNodeId !== getRootNodeIds(nodes, edges)[0] ? rootNode.text || i18n('Unnamed Node') : title} description={rootNode && selectedNodeId !== getRootNodeIds(nodes, edges)[0] ? title : base.content} domainId={domainId} docId={docId} treeOpen={treeOpen} onToggleTree={() => setTreeOpen((open) => !open)} onShare={() => undefined} />
       <BaseDetailExplorer value={search} onChange={setSearch} filters={filters} matchedCount={matchedCount} onApplyFilters={setFilters} onClearFilters={() => setFilters(emptyBaseDetailFilter())} availableCardTags={availableCardTags} availableProblemTags={availableProblemTags} />
-      <div className="bd-page__stats"><strong>{nodes.length}</strong> {i18n('nodes')} <span>·</span> <strong>{cardCount}</strong> {i18n('cards')}</div>
+      <div className="bd-page__stats"><strong>{currentNodeIds.length}</strong> {i18n('nodes')} <span>·</span> <strong>{currentCardCount}</strong> {i18n('cards')} <span>·</span> <strong>{problemCount}</strong> {i18n('problems')}</div>
       <main className="bd-page__main">
         <section className="bd-page__structure" aria-label={i18n('Document Structure')}>
           <BaseDetailTree rootNodeIds={getRootNodeIds(nodes, edges)} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} onToggle={toggleNode} selectedNodeId={selectedNodeId} selectedCardId={selectedCard?.docId || null} selectedProblemId={selectedProblemId} onSelectNode={selectNode} onSelectCard={selectCard} onSelectProblem={(card, pid) => { selectCard(card); selectProblem(pid); }} filter={search} filters={filters} />
