@@ -171,11 +171,7 @@ export class User {
                 list.sort((a, b) => (a._id === 'system' ? -1 : b._id === 'system' ? 1 : 0));
                 user.joinedDomains = list;
             } else {
-                const sys = await domain.get('system');
-                user.joinedDomains = sys ? [{
-                    ...sys,
-                    avatarUrl: sys.avatar ? avatar(sys.avatar, 64) : '/img/team_avatar.png',
-                }] : [];
+                user.joinedDomains = [];
             }
         } catch {
             user.joinedDomains = [];
