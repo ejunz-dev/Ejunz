@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Link } from '../link';
 import { useUiContext, useUserContext } from '../../context/page-data';
+import { useBuildUrl } from '../../hooks/use-build-url';
 import { getLocaleList, i18n } from '../../i18n';
 import './footer.css';
 
@@ -9,6 +9,7 @@ const languages = Object.entries(getLocaleList());
 export function Footer() {
   const ui = useUiContext();
   const user = useUserContext();
+  const buildUrl = useBuildUrl();
   const [languageOpen, setLanguageOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
   const domainExtra = typeof ui.domain?.ui?.footer_extra_html === 'string' ? ui.domain.ui.footer_extra_html : '';
@@ -33,11 +34,11 @@ export function Footer() {
         <div className="uix-footer__left">
           <div className="uix-footer__dropdown" onMouseEnter={() => setLanguageOpen(true)} onMouseLeave={() => setLanguageOpen(false)}>
             <button type="button" onClick={() => { setThemeOpen(false); setLanguageOpen((open) => !open); }} aria-expanded={languageOpen}>◎ {i18n('Language')}⌄</button>
-            <div className={`uix-footer__menu${languageOpen ? ' is-open' : ''}`}>{languages.map(([key, info]) => <Link key={key} to="switch_language" params={{ lang: key }} className="uix-footer__menu-link">{info.flag ? `${info.flag} ` : ""}{info.name}</Link>)}</div>
+            <div className={`uix-footer__menu${languageOpen ? ' is-open' : ''}`}>{languages.map(([key, info]) => <a key={key} href={buildUrl('switch_language', { lang: key })} className="uix-footer__menu-link">{info.flag ? `${info.flag} ` : ""}{info.name}</a>)}</div>
           </div>
           <div className="uix-footer__dropdown" onMouseEnter={() => setThemeOpen(true)} onMouseLeave={() => setThemeOpen(false)}>
             <button type="button" onClick={() => { setLanguageOpen(false); setThemeOpen((open) => !open); }} aria-expanded={themeOpen}>◐ {i18n('theme')}⌄</button>
-            <div className={`uix-footer__menu${themeOpen ? ' is-open' : ''}`}><Link to="set_theme" params={{ theme: 'light' }} className="uix-footer__menu-link">{i18n('Light')}</Link><Link to="set_theme" params={{ theme: 'dark' }} className="uix-footer__menu-link">{i18n('Dark')}</Link></div>
+            <div className={`uix-footer__menu${themeOpen ? ' is-open' : ''}`}><a href={buildUrl('set_theme', { theme: 'light' })} className="uix-footer__menu-link">{i18n('Light')}</a><a href={buildUrl('set_theme', { theme: 'dark' })} className="uix-footer__menu-link">{i18n('Dark')}</a></div>
           </div>
         </div>
         <div className="uix-footer__right">
