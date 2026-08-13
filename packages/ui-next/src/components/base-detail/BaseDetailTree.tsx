@@ -5,6 +5,7 @@ import {
   getMixedNodeChildren,
   nodeDisplayLabel,
 } from './tree';
+import { cardMatchesFilters, cardMatchesSearch, nodeMatchesFilter, nodeMatchesSearch, type BaseDetailFilter } from './detail-filter';
 import type { BaseDetailCard, BaseDetailEdge, BaseDetailNode, BaseDetailProblem } from './types';
 
 interface Props {
@@ -21,11 +22,12 @@ interface Props {
   onSelectCard: (card: BaseDetailCard) => void;
   onSelectProblem?: (card: BaseDetailCard, pid: string) => void;
   filter?: string;
+  filters?: BaseDetailFilter;
   emptyMessage?: string;
 }
 
 function matches(card: BaseDetailCard, query: string): boolean {
-  return `${card.title || ''} ${card.content || ''} ${(card.tags || []).join(' ')}`.toLowerCase().includes(query);
+  return cardMatchesSearch(card, query);
 }
 
 function problemLabel(problem: BaseDetailProblem, index: number): string {
@@ -50,16 +52,16 @@ function CardIcon({ card }: { card: BaseDetailCard }) {
 
 function TreeBranch({
   nodeId, level, nodes, edges, nodeCardsMap, expandedNodes, onToggle,
-  selectedNodeId, selectedCardId, selectedProblemId, onSelectNode, onSelectCard, onSelectProblem, query,
-}: Omit<Props, 'rootNodeIds' | 'emptyMessage' | 'filter'> & { nodeId: string; level: number; query: string }) {
+  selectedNodeId, selectedCardId, selectedProblemId, onSelectNode, onSelectCard, onSelectProblem, query, filters,
+}: Omit<Props, 'rootNodeIds' | 'emptyMessage' | 'filter' | 'filters'> & { nodeId: string; level: number; query: string; filters: BaseDetailFilter }) {
   const node = nodes.find((item) => item.id === nodeId);
   if (!node) return null;
   const children = getMixedNodeChildren(nodeId, nodes, edges, nodeCardsMap).filter((child) => (
-    !query || child.kind === 'node'
-      ? !query || subtreeMatches(child.kind === 'node' ? child.node.id : nodeId, nodes, edges, nodeCardsMap, query)
-      : matches(child.card, query)
+    child.kind === 'node'
+      ? subtreeMatches(child.node.id, nodes, edges, nodeCardsMap, query, filters)
+      : cardMatchesFilters(child.card, filters) && (!query || matches(child.card, query) || nodeMatchesSearch(node, query))
   ));
-  const expanded = expandedNodes.has(nodeId) || !!query;
+  const expanded = expandedNodes.has(nodeId) || !!query || Object.values(filters).some(Boolean);
   const hasChildren = children.length > 0;
 
   return (
@@ -78,7 +80,7 @@ function TreeBranch({
       {expanded && hasChildren ? (
         <div className="bd-tree__children">
           {children.map((child) => child.kind === 'node' ? (
-            <TreeBranch key={child.node.id} nodeId={child.node.id} level={level + 1} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} onToggle={onToggle} selectedNodeId={selectedNodeId} selectedCardId={selectedCardId} selectedProblemId={selectedProblemId} onSelectNode={onSelectNode} onSelectCard={onSelectCard} onSelectProblem={onSelectProblem} query={query} />
+            <TreeBranch key={child.node.id} nodeId={child.node.id} level={level + 1} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} onToggle={onToggle} selectedNodeId={selectedNodeId} selectedCardId={selectedCardId} selectedProblemId={selectedProblemId} onSelectNode={onSelectNode} onSelectCard={onSelectCard} onSelectProblem={onSelectProblem} query={query} filters={filters} />
           ) : (
             <Fragment key={child.card.docId}>
               <div className={`bd-tree__row bd-tree__row--card${selectedCardId === child.card.docId ? ' is-selected' : ''}`} style={{ paddingLeft: `${(level + 1) * 1.1}rem` }}>
@@ -107,15 +109,30 @@ function TreeBranch({
   );
 }
 
-function subtreeMatches(nodeId: string, nodes: BaseDetailNode[], edges: BaseDetailEdge[], cards: Record<string, BaseDetailCard[]>, query: string): boolean {
-  const node = nodes.find((item) => item.id === nodeId);
-  if (node?.text?.toLowerCase().includes(query)) return true;
-  return getMixedNodeChildren(nodeId, nodes, edges, cards).some((child) => child.kind === 'card' ? matches(child.card, query) : subtreeMatches(child.node.id, nodes, edges, cards, query));
+function hasCardFilters(filters: BaseDetailFilter): boolean {
+  return !!(filters.filterCard.trim() || filters.filterProblem.trim() || filters.filterCardTag.trim() || filters.filterProblemTag.trim());
 }
 
-export function BaseDetailTree({ rootNodeIds, nodes, edges, nodeCardsMap, expandedNodes, onToggle, selectedNodeId, selectedCardId, selectedProblemId, onSelectNode, onSelectCard, onSelectProblem, filter = '', emptyMessage = i18n('Base detail tree empty') }: Props) {
+function cardIsVisible(card: BaseDetailCard, node: BaseDetailNode, query: string, filters: BaseDetailFilter): boolean {
+  if (!nodeMatchesFilter(node, filters) || !cardMatchesFilters(card, filters)) return false;
+  return !query || nodeMatchesSearch(node, query) || matches(card, query);
+}
+
+function subtreeMatches(nodeId: string, nodes: BaseDetailNode[], edges: BaseDetailEdge[], cards: Record<string, BaseDetailCard[]>, query: string, filters: BaseDetailFilter): boolean {
+  const node = nodes.find((item) => item.id === nodeId);
+  if (!node) return false;
+  const nodeMatches = nodeMatchesFilter(node, filters) && (!query || nodeMatchesSearch(node, query));
+  const ownCards = getMixedNodeChildren(nodeId, nodes, edges, cards).filter((child): child is { kind: 'card'; card: BaseDetailCard; order: number } => child.kind === 'card');
+  if (nodeMatches && (!hasCardFilters(filters) || ownCards.some((child) => cardMatchesFilters(child.card, filters)))) return true;
+  return getMixedNodeChildren(nodeId, nodes, edges, cards).some((child) => child.kind === 'node'
+    ? subtreeMatches(child.node.id, nodes, edges, cards, query, filters)
+    : cardIsVisible(child.card, node, query, filters));
+}
+
+export function BaseDetailTree({ rootNodeIds, nodes, edges, nodeCardsMap, expandedNodes, onToggle, selectedNodeId, selectedCardId, selectedProblemId, onSelectNode, onSelectCard, onSelectProblem, filter = '', filters = { filterNode: '', filterCard: '', filterProblem: '', filterCardTag: '', filterProblemTag: '' }, emptyMessage = i18n('Base detail tree empty') }: Props) {
   const query = filter.trim().toLowerCase();
-  const visibleRoots = useMemo(() => rootNodeIds.filter((id) => !query || subtreeMatches(id, nodes, edges, nodeCardsMap, query)), [edges, nodeCardsMap, nodes, query, rootNodeIds]);
-  if (!visibleRoots.length) return <p className="bd-empty">{query ? i18n('Roadmap detail search no results') : emptyMessage}</p>;
-  return <div className="bd-tree">{visibleRoots.map((id) => <TreeBranch key={id} nodeId={id} level={0} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} onToggle={onToggle} selectedNodeId={selectedNodeId} selectedCardId={selectedCardId} selectedProblemId={selectedProblemId} onSelectNode={onSelectNode} onSelectCard={onSelectCard} onSelectProblem={onSelectProblem} query={query} />)}</div>;
+  const active = !!query || Object.values(filters).some(Boolean);
+  const visibleRoots = useMemo(() => rootNodeIds.filter((id) => !active || subtreeMatches(id, nodes, edges, nodeCardsMap, query, filters)), [active, edges, filters, nodeCardsMap, nodes, query, rootNodeIds]);
+  if (!visibleRoots.length) return <p className="bd-empty">{active ? i18n('Roadmap detail search no results') : emptyMessage}</p>;
+  return <div className="bd-tree">{visibleRoots.map((id) => <TreeBranch key={id} nodeId={id} level={0} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} onToggle={onToggle} selectedNodeId={selectedNodeId} selectedCardId={selectedCardId} selectedProblemId={selectedProblemId} onSelectNode={onSelectNode} onSelectCard={onSelectCard} onSelectProblem={onSelectProblem} query={query} filters={filters} />)}</div>;
 }
