@@ -23,7 +23,7 @@ const navItems = [
 ] as const;
 
 function avatarUrl(domain: DomainItem | null | undefined): string {
-  return domain?.avatarUrl || '/img/team_avatar.png';
+  return domain?.avatarUrl || '';
 }
 
 function isGuest(user: Record<string, any>): boolean {
@@ -120,9 +120,9 @@ export function Navigation() {
   const guest = isGuest(user);
   const currentDomain = String(ui.domainId || 'system');
   const domains = useMemo(() => {
-    const items = user.joinedDomains || user.domains || ui.joinedDomains || [];
+    const items = ui.joinedDomains || [];
     return Array.isArray(items) ? items : [];
-  }, [ui.joinedDomains, user.domains, user.joinedDomains]);
+  }, [ui.joinedDomains]);
 
   useEffect(() => {
     if (!mobileOpen && !domainsOpen && !mobileDomainsOpen) return undefined;
