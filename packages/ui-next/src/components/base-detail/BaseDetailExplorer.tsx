@@ -17,6 +17,7 @@ export function BaseDetailExplorer({ value, onChange, nodeCount, cardCount }: Pr
   }, [focused]);
   return (
     <div className="bd-explorer">
+      <button type="button" className="bd-explorer__filter" aria-label="Open filters">☷ <span>Filter</span></button>
       <label className="bd-explorer__search">
         <span aria-hidden>⌕</span>
         <input type="search" value={value} onChange={(event) => onChange(event.target.value)} onFocus={() => setFocused(true)} placeholder="Search nodes and cards" aria-label="Search nodes and cards" />
