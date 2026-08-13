@@ -46,10 +46,23 @@ export function useSetPageData(): React.Dispatch<React.SetStateAction<PageData>>
   return usePageDataContext().setData;
 }
 
+function parseContext(value: unknown): Record<string, any> {
+  if (value && typeof value === 'object') return value as Record<string, any>;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === 'object') return parsed as Record<string, any>;
+    } catch {
+      // Keep the empty context fallback for malformed or legacy payloads.
+    }
+  }
+  return {};
+}
+
 export function useUiContext(): PageData['args']['UiContext'] {
-  return usePageDataContext().data.args.UiContext;
+  return parseContext(usePageDataContext().data.args.UiContext);
 }
 
 export function useUserContext(): PageData['args']['UserContext'] {
-  return usePageDataContext().data.args.UserContext;
+  return parseContext(usePageDataContext().data.args.UserContext);
 }
