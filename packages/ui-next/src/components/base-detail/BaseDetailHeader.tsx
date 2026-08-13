@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useBuildUrl } from '../hooks/use-build-url';
+import { useBuildUrl } from '../../hooks/use-build-url';
 
 interface Props {
   title: string;

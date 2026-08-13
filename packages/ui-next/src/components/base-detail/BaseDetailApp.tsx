@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { usePageData } from '../context/page-data';
+import { usePageData } from '../../context/page-data';
 import { BaseDetailCardDrawer } from './BaseDetailCardDrawer';
 import { BaseDetailExplorer } from './BaseDetailExplorer';
 import { BaseDetailHeader } from './BaseDetailHeader';
