@@ -9,6 +9,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import * as api from './api';
 import App from './app';
+import { NotificationProvider } from './components/notification';
 import { PageDataProvider } from './context/page-data';
 import { RouterProvider } from './context/router';
 import { initialPage, pluginsUrl } from './globals';
@@ -54,7 +55,9 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <PageDataProvider initial={initialPage}>
       <RouterProvider>
-        <App />
+        <NotificationProvider>
+          <App />
+        </NotificationProvider>
       </RouterProvider>
     </PageDataProvider>
   </StrictMode>,

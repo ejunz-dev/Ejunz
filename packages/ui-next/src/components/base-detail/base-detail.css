@@ -151,7 +151,6 @@
 .bd-problem__reveal, .bd-problem__blank { width: fit-content; padding: .4rem .6rem; border: 1px dashed var(--bd-accent); border-radius: 4px; background: var(--bd-surface); color: var(--bd-accent); cursor: pointer; font: inherit; text-align: left; }
 .bd-problem__reveal:hover, .bd-problem__blank:hover, .bd-problem__blank.is-revealed { background: var(--bd-accent-soft); }
 .bd-problem__blank { display: inline-block; min-width: 3.5rem; margin: 0 .2rem; padding: .1rem .35rem; }
-.bd-save-notice { position: fixed; z-index: 1300; top: 1rem; left: 50%; transform: translateX(-50%); padding: .55rem .9rem; border: 1px solid var(--web-positive); border-radius: 6px; background: var(--bd-surface); color: var(--web-positive); box-shadow: 0 8px 24px rgba(16, 28, 37, .16); font-size: .8rem; font-weight: 600; }
 .bd-drawer__header-actions { display: flex; align-items: center; gap: .45rem; }
 .bd-drawer__edit, .bd-problem__edit { border: 1px solid var(--bd-line); border-radius: 4px; padding: .3rem .55rem; background: var(--bd-surface); color: var(--bd-muted); cursor: pointer; font: inherit; font-size: .72rem; }
 .bd-drawer__edit:hover, .bd-problem__edit:hover { border-color: var(--bd-accent); color: var(--bd-accent); }
