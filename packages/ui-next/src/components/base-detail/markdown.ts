@@ -117,28 +117,88 @@ function katexPlugin(md: MarkdownIt) {
     };
   };
 
+  const findClosing = (source: string, start: number, delimiter: string) => {
+    let end = start;
+    while ((end = source.indexOf(delimiter, end)) !== -1) {
+      let backslashes = 0;
+      for (let cursor = end - 1; cursor >= 0 && source[cursor] === '\\'; cursor -= 1) backslashes += 1;
+      if (backslashes % 2 === 0) return end;
+      end += delimiter.length;
+    }
+    return -1;
+  };
+
+  md.inline.ruler.before('escape', 'math_inline_tex', (state, silent) => {
+    const source = state.src.slice(state.pos);
+    const delimiter = source.startsWith('\\(') ? { open: '\\(', close: '\\)', display: false }
+      : source.startsWith('\\[') ? { open: '\\[', close: '\\]', display: true }
+        : null;
+    if (!delimiter) return false;
+    const start = state.pos + delimiter.open.length;
+    const end = findClosing(state.src, start, delimiter.close);
+    if (end < 0 || end === start) return false;
+    if (!silent) {
+      const token = state.push('math_inline', 'math', 0);
+      token.content = state.src.slice(start, end);
+      token.meta = { displayMode: delimiter.display };
+    }
+    state.pos = end + delimiter.close.length;
+    return true;
+  });
+
   md.inline.ruler.after('escape', 'math_inline', (state, silent) => {
     if (state.src.charCodeAt(state.pos) !== 36) return false;
     const start = state.pos + 1;
     const open = isValidDelimiter(state.src, state.pos, state.posMax);
     if (!open.canOpen) return false;
-    let end = start;
-    while ((end = state.src.indexOf('$', end)) !== -1) {
-      let backslashes = 0;
-      for (let cursor = end - 1; cursor >= 0 && state.src[cursor] === '\\'; cursor -= 1) backslashes += 1;
-      if (backslashes % 2 === 0) break;
-      end += 1;
-    }
-    if (end === -1 || end === start || !isValidDelimiter(state.src, end, state.posMax).canClose) return false;
+    let end = findClosing(state.src, start, '$');
+    if (end === start || end < 0 || !isValidDelimiter(state.src, end, state.posMax).canClose) return false;
     if (!silent) {
       const token = state.push('math_inline', 'math', 0);
       token.content = state.src.slice(start, end);
+      token.meta = { displayMode: false };
     }
     state.pos = end + 1;
     return true;
   });
 
-  md.block.ruler.after('blockquote', 'math_block', (state, startLine, endLine, silent) => {
+  md.block.ruler.after('blockquote', 'math_block_tex', (state, startLine, endLine, silent) => {
+    const lineStart = state.bMarks[startLine] + state.tShift[startLine];
+    const lineEnd = state.eMarks[startLine];
+    const first = state.src.slice(lineStart, lineEnd).trim();
+    const bracket = first.startsWith('\\[');
+    const environment = /^\\begin\\{(equation|align|alignat|gather|CD)\\}/.exec(first);
+    if (!bracket && !environment) return false;
+    if (silent) return true;
+    const open = bracket ? '\\[' : environment![0];
+    const close = bracket ? '\\]' : `\\end{${environment![1]}}`;
+    let nextLine = startLine;
+    let content = first.slice(open.length);
+    if (content.trim().endsWith(close)) {
+      content = content.trim().slice(0, -close.length);
+    } else {
+      let found = false;
+      while (++nextLine < endLine) {
+        const nextStart = state.bMarks[nextLine] + state.tShift[nextLine];
+        const nextEnd = state.eMarks[nextLine];
+        const line = state.src.slice(nextStart, nextEnd);
+        if (line.trim().endsWith(close)) {
+          content += `\\n${line.trim().slice(0, -close.length)}`;
+          found = true;
+          break;
+        }
+        content += `\\n${line}`;
+      }
+      if (!found) return false;
+    }
+    const token = state.push('math_block', 'math', 0);
+    token.block = true;
+    token.content = content.trim();
+    state.line = nextLine + 1;
+    return true;
+  });
+
+  md.block.ruler.after('math_block_tex', 'math_block', (state, startLine, endLine, silent) => {
     const lineStart = state.bMarks[startLine] + state.tShift[startLine];
     const lineEnd = state.eMarks[startLine];
     if (state.src.slice(lineStart, lineStart + 2) !== '$$') return false;
@@ -154,11 +214,11 @@ function katexPlugin(md: MarkdownIt) {
         const nextEnd = state.eMarks[nextLine];
         const line = state.src.slice(nextStart, nextEnd);
         if (line.trim().endsWith('$$')) {
-          content += `\n${line.trim().slice(0, -2)}`;
+          content += `\\n${line.trim().slice(0, -2)}`;
           found = true;
           break;
         }
-        content += `\n${line}`;
+        content += `\\n${line}`;
       }
       if (!found) return false;
     }
@@ -176,7 +236,7 @@ function katexPlugin(md: MarkdownIt) {
       return `<code class="katex-error">${md.utils.escapeHtml(source)}</code>`;
     }
   };
-  md.renderer.rules.math_inline = (tokens, index) => render(tokens[index].content, false);
+  md.renderer.rules.math_inline = (tokens, index) => render(tokens[index].content, !!tokens[index].meta?.displayMode);
   md.renderer.rules.math_block = (tokens, index) => `${render(tokens[index].content, true)}\n`;
 }
 
