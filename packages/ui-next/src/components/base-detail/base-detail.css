@@ -201,7 +201,7 @@
 .bd-problem__head-row .bd-problem__head { min-width: 0; flex: 1; }
 .bd-problem__edit { flex: 0 0 auto; margin: .35rem .4rem .35rem 0; }
 .bd-edit-backdrop { position: fixed; z-index: 1200; inset: 0; display: grid; place-items: center; padding: 1rem; background: rgba(16, 28, 37, .48); }
-.bd-edit-dialog { display: flex; flex-direction: column; width: min(900px, calc(100vw - 2rem)); height: min(800px, calc(100vh - 2rem)); max-height: calc(100vh - 2rem); overflow: hidden; border: 1px solid var(--bd-line); border-radius: 10px; background: var(--bd-surface); color: var(--bd-ink); box-shadow: 0 18px 60px rgba(16, 28, 37, .28); }
+.bd-edit-dialog { display: flex; flex-direction: column; width: min(900px, calc(100vw - 2rem)); height: min(720px, calc(100vh - 2rem)); max-height: calc(100vh - 2rem); overflow: hidden; border: 1px solid var(--bd-line); border-radius: 10px; background: var(--bd-surface); color: var(--bd-ink); box-shadow: 0 18px 60px rgba(16, 28, 37, .28); }
 .bd-edit-dialog--problem { width: min(900px, calc(100vw - 2rem)); }
 .bd-edit-dialog__header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .85rem 1rem; border-bottom: 1px solid var(--bd-line); }
 .bd-edit-dialog__header h2 { margin: 0; font-size: 1rem; }
