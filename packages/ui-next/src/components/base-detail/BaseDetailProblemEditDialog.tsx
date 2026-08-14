@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Problem } from 'ejun/src/interface';
 import { i18n } from '../../i18n';
-import { BaseDetailProblemForm } from './BaseDetailProblemForm';
+import { BaseDetailProblemEditor } from './BaseDetailProblemEditor';
+import { BaseDetailProblemTagPicker } from './BaseDetailProblemTagPicker';
 import type { BaseDetailCard, BaseDetailProblem } from './types';
 import './base-detail.css';
 
@@ -17,25 +18,6 @@ interface Props {
   onClose: () => void;
 }
 
-function tagGroups(tags: string[]) {
-  const parents: string[] = [];
-  const children = new Map<string, string[]>();
-  for (const tag of tags) {
-    const slash = tag.indexOf('/');
-    if (slash > 0) {
-      const parent = tag.slice(0, slash);
-      const child = tag.slice(slash + 1);
-      const group = children.get(parent) || [];
-      group.push(child);
-      children.set(parent, group);
-    } else {
-      parents.push(tag);
-    }
-  }
-  for (const parent of children.keys()) if (!parents.includes(parent)) parents.push(parent);
-  return { parents, children };
-}
-
 export function BaseDetailProblemEditDialog({ card, problem, problemIndex, domainId, baseDocId, availableTags = [], onSave, onClose }: Props) {
   const initialProblem = problem as unknown as Problem;
   const [updatedProblem, setUpdatedProblem] = useState<Problem>(initialProblem);
@@ -48,12 +30,6 @@ export function BaseDetailProblemEditDialog({ card, problem, problemIndex, domai
   savingRef.current = saving;
   updatedProblemRef.current = updatedProblem;
   problemTagsRef.current = problemTags;
-
-  const allTags = useMemo(() => {
-    const values = new Set([...availableTags, ...(problem.tags || [])]);
-    return [...values].filter(Boolean).sort();
-  }, [availableTags, problem.tags]);
-  const groups = useMemo(() => tagGroups(allTags), [allTags]);
 
   async function save() {
     if (savingRef.current) return;
@@ -82,18 +58,6 @@ export function BaseDetailProblemEditDialog({ card, problem, problemIndex, domai
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onClose]);
 
-  const toggleParent = (parent: string) => {
-    setProblemTags((current) => current.includes(parent)
-      ? current.filter((tag) => tag !== parent && !tag.startsWith(`${parent}/`))
-      : [...current, parent]);
-  };
-  const toggleChild = (parent: string, child: string) => {
-    const tag = `${parent}/${child}`;
-    setProblemTags((current) => current.includes(tag)
-      ? current.filter((item) => item !== tag)
-      : current.includes(parent) ? [...current, tag] : [...current, parent, tag]);
-  };
-
   return createPortal(
     <div className="bd-edit-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
       <section className="bd-edit-dialog bd-edit-dialog--problem" role="dialog" aria-modal="true" aria-labelledby="bd-problem-edit-title">
@@ -107,7 +71,7 @@ export function BaseDetailProblemEditDialog({ card, problem, problemIndex, domai
         </header>
         <div className="bd-edit-dialog__body">
           {error ? <p className="bd-edit-dialog__error" role="alert">{error}</p> : null}
-          <BaseDetailProblemForm
+          <BaseDetailProblemEditor
             problem={updatedProblem}
             index={problemIndex}
             cardId={card.docId}
@@ -119,6 +83,7 @@ export function BaseDetailProblemEditDialog({ card, problem, problemIndex, domai
             onDelete={() => undefined}
             docId={baseDocId}
             getBaseUrl={(path) => `${domainId !== 'system' ? `/d/${encodeURIComponent(domainId)}` : ''}${path}`}
+            showProblemTagSummary={false}
             themeStyles={{
               borderPrimary: 'var(--bd-line)',
               bgPrimary: 'var(--bd-surface)',
@@ -129,23 +94,10 @@ export function BaseDetailProblemEditDialog({ card, problem, problemIndex, domai
               warning: 'var(--web-negative)',
             }}
           />
-          <div className="bd-edit-field bd-edit-field--problem-tags">
-            <span>{i18n('Problem tags')}</span>
-            {allTags.length ? (
-              <div className="bd-edit-tags">
-                {groups.parents.map((parent) => (
-                  <span className="bd-edit-tag-group" key={parent}>
-                    <button type="button" className={`bd-edit-tag bd-edit-tag--problem${problemTags.includes(parent) ? ' is-selected' : ''}`} onClick={() => toggleParent(parent)}>{parent}</button>
-                    {(groups.children.get(parent) || []).map((child) => {
-                      const tag = `${parent}/${child}`;
-                      return <button type="button" className={`bd-edit-tag bd-edit-tag--child bd-edit-tag--problem${problemTags.includes(tag) ? ' is-selected' : ''}`} key={tag} onClick={() => toggleChild(parent, child)}>{child}</button>;
-                    })}
-                  </span>
-                ))}
-              </div>
-            ) : <span className="bd-edit-dialog__muted">{i18n('No tags available')}</span>}
-          </div>
         </div>
+        <footer className="bd-edit-dialog__footer bd-edit-dialog__footer--problem-tags">
+          <BaseDetailProblemTagPicker value={problemTags} availableTags={availableTags} onChange={setProblemTags} disabled={saving} />
+        </footer>
       </section>
     </div>,
     document.body,

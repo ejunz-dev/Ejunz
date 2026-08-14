@@ -159,6 +159,7 @@ export const EditableProblem = React.memo(({
   learnerNotesReloadEpoch = 0,
   onLearnerNotesDraftChange,
   onEditTags,
+  showProblemTagSummary = true,
 }: {
   problem: Problem;
   index: number;
@@ -183,6 +184,7 @@ export const EditableProblem = React.memo(({
   learnerNotesReloadEpoch?: number;
   onLearnerNotesDraftChange?: (draftKey: string, batch: LearnProblemNotesDraftBatch | null) => void;
   onEditTags?: (problem: Problem) => void;
+  showProblemTagSummary?: boolean;
 }) => {
   const [model, setModel] = useState<Problem>(problem);
   /** Parent `problem` snapshot by JSON; resync local `model` when AI / agent replaces the same `pid` in-place. */
@@ -510,6 +512,7 @@ export const EditableProblem = React.memo(({
             <option value="ai_eval">{i18n('Problem kind ai eval')}</option>
           </select>
         </label>
+        {showProblemTagSummary ? (
         <div
           style={{
             fontSize: '11px',
@@ -570,6 +573,7 @@ export const EditableProblem = React.memo(({
               )}
           </div>
         </div>
+        ) : null}
         {isNew && <span style={{ fontSize: '10px', color: themeStyles.success }}>{i18n('New')}</span>}
         {isEdited && !isNew && <span style={{ fontSize: '10px', color: themeStyles.warning }}>{i18n('Edited')}</span>}
       </div>

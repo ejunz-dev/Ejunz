@@ -211,7 +211,10 @@
 .bd-edit-button:hover { border-color: var(--bd-accent); color: var(--bd-accent); }
 .bd-edit-button--primary { border-color: var(--bd-accent); background: var(--bd-accent); color: #fff; }
 .bd-edit-button:disabled { cursor: wait; opacity: .55; }
-.bd-edit-dialog__body { display: flex; flex-direction: column; gap: .85rem; min-height: 0; overflow: auto; padding: 1rem; }
+.bd-edit-dialog__body { display: flex; flex: 1 1 auto; flex-direction: column; gap: .85rem; min-height: 0; overflow-x: hidden; overflow-y: auto; padding: 1rem; }
+.bd-edit-dialog__footer { flex: 0 0 auto; min-height: 0; padding: .75rem 1rem; border-top: 1px solid var(--bd-line); background: var(--bd-surface); }
+.bd-edit-dialog__footer--problem-tags .bd-edit-field--problem-tags { padding-top: 0; border-top: 0; }
+.bd-edit-dialog__footer--problem-tags .bd-edit-tags { max-height: min(8rem, 24vh); overflow-y: auto; align-content: flex-start; }
 .bd-edit-dialog__error { flex: 0 0 auto; margin: 0; padding: .6rem .7rem; border: 1px solid var(--web-negative); border-radius: 5px; background: var(--web-error-bg); color: var(--web-negative); font-size: .78rem; overflow-wrap: anywhere; }
 .bd-edit-field { display: grid; gap: .3rem; color: var(--bd-ink); font-size: .75rem; font-weight: 600; }
 .bd-edit-field input, .bd-edit-field textarea { min-width: 0; box-sizing: border-box; border: 1px solid var(--bd-line); border-radius: 5px; padding: .55rem .65rem; background: var(--bd-bg); color: var(--bd-ink); font: inherit; font-weight: 400; }
