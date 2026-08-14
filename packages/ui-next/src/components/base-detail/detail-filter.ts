@@ -127,3 +127,34 @@ export function countBaseDetailMatches(nodes: BaseDetailNode[], nodeCardsMap: Re
   }
   return count;
 }
+
+export interface BaseDetailStats {
+  nodes: number;
+  cards: number;
+  problems: number;
+}
+
+export function countBaseDetailStats(
+  nodes: BaseDetailNode[],
+  nodeCardsMap: Record<string, BaseDetailCard[]>,
+  scopeNodeIds: string[],
+  query: string,
+  filters: BaseDetailFilter,
+): BaseDetailStats {
+  const scope = new Set(scopeNodeIds);
+  let nodeCount = 0;
+  let cardCount = 0;
+  let problemCount = 0;
+
+  for (const node of nodes) {
+    if (!scope.has(node.id)) continue;
+    const cards = nodeCardsMap[node.id] || [];
+    const matchingCards = cards.filter((card) => cardMatchesSelection(card, node, query, filters));
+    const nodeMatches = nodeMatchesFilter(node, filters) && (!query.trim() || nodeMatchesSearch(node, query));
+    if (nodeMatches || matchingCards.length > 0) nodeCount += 1;
+    cardCount += matchingCards.length;
+    problemCount += matchingCards.reduce((sum, card) => sum + (card.problems?.length || 0), 0);
+  }
+
+  return { nodes: nodeCount, cards: cardCount, problems: problemCount };
+}
