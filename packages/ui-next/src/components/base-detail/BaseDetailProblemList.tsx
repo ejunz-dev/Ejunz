@@ -7,6 +7,7 @@ interface Props {
   problems: BaseDetailProblem[];
   selectedProblemId?: string | null;
   onSelectProblem?: (pid: string) => void;
+  onEditProblem?: (pid: string, index: number) => void;
 }
 
 type RevealState = {
@@ -33,7 +34,7 @@ function Markdown({ value, inline = false }: { value?: unknown; inline?: boolean
   return <span className={inline ? 'bd-problem__markdown bd-problem__markdown--inline' : 'bd-problem__markdown'} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
-function ProblemItem({ problem, index, selected, onSelect }: { problem: BaseDetailProblem; index: number; selected: boolean; onSelect?: () => void }) {
+function ProblemItem({ problem, index, selected, onSelect, onEdit }: { problem: BaseDetailProblem; index: number; selected: boolean; onSelect?: () => void; onEdit?: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const [reveal, setReveal] = useState<RevealState>({});
   const type = kind(problem);
@@ -58,11 +59,14 @@ function ProblemItem({ problem, index, selected, onSelect }: { problem: BaseDeta
 
   return (
     <article className={`bd-problem${expanded ? ' is-expanded' : ''}${selected ? ' is-selected' : ''}`}>
-      <button type="button" className="bd-problem__head" aria-expanded={expanded} onClick={() => { onSelect?.(); setExpanded((value) => !value); }}>
-        <span className="bd-problem__kind">{i18n(`Problem kind ${type.replace('_', ' ')}`)}</span>
-        <span className="bd-problem__title">{title(problem, index)}</span>
-        <span aria-hidden>{expanded ? '▾' : '▸'}</span>
-      </button>
+      <div className="bd-problem__head-row">
+        <button type="button" className="bd-problem__head" aria-expanded={expanded} onClick={() => { onSelect?.(); setExpanded((value) => !value); }}>
+          <span className="bd-problem__kind">{i18n(`Problem kind ${type.replace('_', ' ')}`)}</span>
+          <span className="bd-problem__title">{title(problem, index)}</span>
+          <span aria-hidden>{expanded ? '▾' : '▸'}</span>
+        </button>
+        {onEdit ? <button type="button" className="bd-problem__edit" onClick={onEdit} aria-label={`${i18n('Edit Problem')} #${index + 1}`}>{i18n('Edit')}</button> : null}
+      </div>
       {expanded ? (
         <div className="bd-problem__body">
           {renderStem()}
@@ -81,7 +85,10 @@ function ProblemItem({ problem, index, selected, onSelect }: { problem: BaseDeta
   );
 }
 
-export function BaseDetailProblemList({ problems, selectedProblemId, onSelectProblem }: Props) {
+export function BaseDetailProblemList({ problems, selectedProblemId, onSelectProblem, onEditProblem }: Props) {
   if (!problems.length) return <p className="bd-muted">{i18n('Roadmap drawer problems empty')}</p>;
-  return <div className="bd-problem-list">{problems.map((problem, index) => <ProblemItem key={String(problem.pid || index)} problem={problem} index={index} selected={selectedProblemId === String(problem.pid || `problem-${index}`)} onSelect={() => onSelectProblem?.(String(problem.pid || `problem-${index}`))} />)}</div>;
+  return <div className="bd-problem-list">{problems.map((problem, index) => {
+    const pid = String(problem.pid || `problem-${index}`);
+    return <ProblemItem key={pid} problem={problem} index={index} selected={selectedProblemId === pid} onSelect={() => onSelectProblem?.(pid)} onEdit={onEditProblem ? () => onEditProblem(pid, index) : undefined} />;
+  })}</div>;
 }

@@ -1,6 +1,10 @@
 export { default as BaseDetailApp } from './BaseDetailApp';
 export { BaseDetailCardDrawer } from './BaseDetailCardDrawer';
+export { BaseDetailCardEditDialog } from './BaseDetailCardEditDialog';
 export { BaseDetailExplorer } from './BaseDetailExplorer';
+export { BaseDetailProblemEditDialog } from './BaseDetailProblemEditDialog';
+export { BaseDetailProblemForm } from './BaseDetailProblemForm';
+export { domainApiPath, requestJson, updateBaseCard } from './base-detail-api';
 export { BaseDetailHeader } from './BaseDetailHeader';
 export { BaseDetailNodeContent } from './BaseDetailNodeContent';
 export { BaseDetailTree } from './BaseDetailTree';

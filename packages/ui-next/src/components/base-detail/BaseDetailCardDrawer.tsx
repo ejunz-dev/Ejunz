@@ -13,6 +13,9 @@ interface Props {
   card: BaseDetailCard | null;
   onClose: () => void;
   onSelectProblem?: (pid: string) => void;
+  onEditCard?: () => void;
+  onEditProblem?: (pid: string, index: number) => void;
+  editorBusy?: boolean;
   selectedProblemId?: string | null;
   baseDocId?: string;
   domainId?: string;
@@ -24,7 +27,7 @@ function fileUrl(card: BaseDetailCard, baseDocId?: string, domainId?: string): s
   return `${prefix}/base/${encodeURIComponent(baseDocId)}/node/${encodeURIComponent(card.nodeId)}/file/${encodeURIComponent(card.fileName)}?noDisposition=1`;
 }
 
-export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, selectedProblemId, baseDocId, domainId }: Props) {
+export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, onEditCard, onEditProblem, editorBusy, selectedProblemId, baseDocId, domainId }: Props) {
   const [tab, setTab] = useState<'content' | 'problems'>('content');
   const [loadingMedia, setLoadingMedia] = useState(true);
   const drawerRef = useRef<HTMLElement>(null);
@@ -127,7 +130,10 @@ export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, selectedP
             <button type="button" role="tab" aria-selected={tab === 'content'} className={tab === 'content' ? 'is-active' : ''} onClick={() => setTab('content')}>{i18n('Content')}</button>
             {problems.length ? <button type="button" role="tab" aria-selected={tab === 'problems'} className={tab === 'problems' ? 'is-active' : ''} onClick={() => setTab('problems')}>{i18n('Problems')} <span>{problems.length}</span></button> : null}
           </div>
-          <button type="button" className="bd-drawer__close" onClick={onClose} aria-label={i18n('Close')}>×</button>
+          <div className="bd-drawer__header-actions">
+            {onEditCard ? <button type="button" className="bd-drawer__edit" onClick={onEditCard} disabled={editorBusy} aria-busy={editorBusy || undefined}>{i18n('Edit')}</button> : null}
+            <button type="button" className="bd-drawer__close" onClick={onClose} aria-label={i18n('Close')}>×</button>
+          </div>
         </header>
         {tab === 'content' ? (
           <div className="bd-drawer__body">
@@ -149,7 +155,7 @@ export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, selectedP
         ) : (
           <div className="bd-drawer__body bd-drawer__problems">
             <h2>{cardDisplayLabel(displayCard)}</h2>
-            <BaseDetailProblemList problems={problems} selectedProblemId={selectedProblemId} onSelectProblem={onSelectProblem} />
+            <BaseDetailProblemList problems={problems} selectedProblemId={selectedProblemId} onSelectProblem={onSelectProblem} onEditProblem={onEditProblem} />
           </div>
         )}
       </aside>
