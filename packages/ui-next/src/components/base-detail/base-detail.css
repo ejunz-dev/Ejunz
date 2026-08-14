@@ -75,12 +75,14 @@
 .bd-status-indicator.is-dirty .bd-status-indicator__dot { background: var(--web-negative); }
 .bd-status-indicator__label { white-space: nowrap; font-size: .7rem; font-weight: 600; }
 .bd-ws-indicator-wrap { position: fixed; z-index: 1061; pointer-events: none; }
-.bd-ws-indicator { display: flex; align-items: center; gap: .35rem; min-height: 1.7rem; padding: 0 .5rem; border: 1px solid var(--bd-line); border-radius: 6px; background: var(--bd-surface); color: var(--bd-muted); box-shadow: 0 4px 16px rgba(16, 28, 37, .16); pointer-events: auto; user-select: none; }
+.bd-ws-indicator { display: flex; align-items: center; gap: .35rem; width: 28px; height: 28px; overflow: hidden; padding: 0 .5rem; border: 1px solid var(--bd-line); border-radius: 999px; background: var(--bd-surface); color: var(--bd-muted); box-shadow: 0 4px 16px rgba(16, 28, 37, .16); pointer-events: auto; user-select: none; }
 .bd-ws-indicator.is-connected { color: var(--web-positive); }
 .bd-ws-indicator.is-connecting { color: #b7791f; }
 .bd-ws-indicator.is-disconnected { color: var(--web-negative); }
 .bd-ws-indicator__dot { width: .45rem; height: .45rem; border-radius: 50%; background: currentColor; }
-.bd-ws-indicator__label { white-space: nowrap; font-size: .68rem; font-weight: 600; }
+.bd-ws-indicator__label { visibility: hidden; white-space: nowrap; font-size: .68rem; font-weight: 600; }
+.bd-ws-indicator.is-connected { width: auto; min-width: 60px; }
+.bd-ws-indicator.is-connected .bd-ws-indicator__label { visibility: visible; }
 .bd-ws-indicator__dropdown { position: absolute; top: calc(100% + .35rem); right: 0; min-width: 12rem; overflow: hidden; border: 1px solid var(--bd-line); border-radius: 6px; background: var(--bd-surface); color: var(--bd-ink); box-shadow: 0 8px 24px rgba(16, 28, 37, .2); pointer-events: auto; }
 .bd-ws-indicator__viewer { display: flex; align-items: center; gap: .45rem; padding: .45rem .6rem; border-bottom: 1px solid var(--bd-line); font-size: .72rem; }
 .bd-ws-indicator__viewer:last-child { border-bottom: 0; }
