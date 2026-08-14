@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "@simplewebauthn/browser": "^13.2.2",
+    "cssfilter": "^0.0.11",
     "esbuild": "0.25.2",
     "is-relative-url": "^4.1.0",
     "katex": "^0.16.25",
@@ -36,13 +37,13 @@
     "markdown-it-mark": "^4.0.0",
     "markdown-it-merge-cells": "^2.0.0",
     "markdown-it-table-of-contents": "^1.1.0",
-    "cssfilter": "^0.0.11",
-    "xss": "^1.0.15",
-    "viewerjs": "^1.11.7",
+    "md-editor-rt": "^6.1.0",
     "path-to-regexp": "^8.4.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "simple-git": "^3.36.0"
+    "simple-git": "^3.36.0",
+    "viewerjs": "^1.11.7",
+    "xss": "^1.0.15"
   },
   "devDependencies": {
     "@types/react": "^19.2.18",

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { i18n } from '../../i18n';
+import { MarkdownEditor } from '../markdown-editor';
 import type { BaseDetailCard } from './types';
 import './base-detail.css';
 
@@ -93,6 +94,7 @@ export function BaseDetailCardEditDialog({ card, availableTags = [], onSave, onC
       ? current.filter((item) => item !== tag)
       : current.includes(parent) ? [...current, tag] : [...current, parent, tag]);
   };
+  const editorTheme = typeof document !== 'undefined' && document.documentElement.classList.contains('theme--dark') ? 'dark' : 'light';
 
   return createPortal(
     <div className="bd-edit-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
@@ -113,7 +115,7 @@ export function BaseDetailCardEditDialog({ card, availableTags = [], onSave, onC
           </label>
           <label className="bd-edit-field bd-edit-field--content">
             <span>{i18n('Content')}</span>
-            <textarea value={content} onChange={(event) => setContent(event.target.value)} placeholder={i18n('Write card content in markdown...')} />
+            <MarkdownEditor value={content} onChange={setContent} theme={editorTheme} style={{ height: '100%', minHeight: '16rem' }} />
           </label>
           <div className="bd-edit-field">
             <span>{i18n('Card tags')}</span>

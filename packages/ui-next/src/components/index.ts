@@ -7,4 +7,5 @@ export { Callout, type CalloutProps, type CalloutType } from './callout';
 export { Field, type FieldProps } from './field';
 export { Notification, NotificationHost, NotificationProvider, type NotificationOptions, type NotificationPosition, type NotificationType } from './notification';
 export * from './homepage';
+export { MarkdownEditor } from './markdown-editor';
 export * from './base-detail';

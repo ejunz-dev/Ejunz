@@ -217,7 +217,8 @@
 .bd-edit-field input, .bd-edit-field textarea { min-width: 0; box-sizing: border-box; border: 1px solid var(--bd-line); border-radius: 5px; padding: .55rem .65rem; background: var(--bd-bg); color: var(--bd-ink); font: inherit; font-weight: 400; }
 .bd-edit-field textarea { min-height: 15rem; resize: vertical; line-height: 1.6; font-family: ui-monospace, monospace; }
 .bd-edit-field--content { min-height: 19rem; }
-.bd-edit-field--content textarea { flex: 1; min-height: 16rem; }
+.bd-edit-field--content textarea, .bd-edit-field--content .uix-markdown-editor, .bd-edit-field--content .uix-markdown-editor__fallback { flex: 1; min-height: 16rem; }
+.bd-edit-field--content .md-editor { min-height: 16rem; }
 .bd-edit-tags { display: flex; flex-wrap: wrap; gap: .35rem; }
 .bd-edit-tag-group { display: inline-flex; overflow: hidden; border: 1px solid var(--bd-line); border-radius: 4px; }
 .bd-edit-tag { border: 0; border-right: 1px solid var(--bd-line); padding: .25rem .5rem; background: transparent; color: var(--bd-muted); cursor: pointer; font: inherit; font-size: .7rem; }
