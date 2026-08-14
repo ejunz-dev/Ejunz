@@ -78,18 +78,6 @@ export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, onEditCar
   }, [displayCard, onClose, selectedProblemId]);
 
   useEffect(() => {
-    if (!displayCard) return undefined;
-    const previousBodyOverflow = document.body.style.overflow;
-    const previousDocumentOverflow = document.documentElement.style.overflow;
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousBodyOverflow;
-      document.documentElement.style.overflow = previousDocumentOverflow;
-    };
-  }, [displayCard?.docId]);
-
-  useEffect(() => {
     if (!displayCard || !markdownRef.current) return undefined;
     const images = markdownRef.current.querySelectorAll('img');
     if (!images.length) return undefined;
