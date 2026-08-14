@@ -629,6 +629,7 @@ function RoadmapDrawerProblemItem({
           </button>
         </div>
       ) : null}
+      {problem.tags?.length ? <div className="roadmap-detail-drawer__problem-tags">{problem.tags.map((tag) => <span key={tag}>{tag}</span>)}</div> : null}
       {expanded ? (
         <div className="roadmap-detail-drawer__problem-body">
           {renderStem()}
