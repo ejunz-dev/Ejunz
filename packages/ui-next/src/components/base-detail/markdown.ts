@@ -330,8 +330,15 @@ function getRenderer(): MarkdownIt {
   return md;
 }
 
+function normalizeLatexDelimiters(value: string): string {
+  return value
+    .replace(/\\begin\{(equation|align|alignat|gather|CD)(\*)?\}([\s\S]*?)\\end\{\1\2\}/g, (_match, _name, _star, body: string) => `$$${body}$$`)
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_match, body: string) => `$$${body}$$`)
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_match, body: string) => `$${body}$`);
+}
+
 export function renderMarkdown(markdown: string, inline = false): string {
-  const value = String(markdown || '').trim();
+  const value = normalizeLatexDelimiters(String(markdown || '').trim());
   if (!value) return '';
   return inline ? getRenderer().renderInline(value) : getRenderer().render(value);
 }
