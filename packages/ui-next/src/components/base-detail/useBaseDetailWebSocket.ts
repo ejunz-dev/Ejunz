@@ -16,7 +16,8 @@ interface Options {
 
 function buildWebSocketUrl(socketUrl: string): string {
   const prefix = typeof window !== 'undefined' ? String((window as any).UiContext?.ws_prefix || '') : '';
-  return `${prefix}${socketUrl}`;
+  const normalizedPrefix = prefix.endsWith('/base/') && socketUrl.startsWith('base/') ? prefix.slice(0, -'base/'.length) : prefix;
+  return `${normalizedPrefix}${socketUrl}`;
 }
 
 export function useBaseDetailWebSocket({ socketUrl, onMessage }: Options) {
