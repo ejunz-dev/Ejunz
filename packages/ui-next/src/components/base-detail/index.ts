@@ -2,6 +2,7 @@ export { default as BaseDetailApp } from './BaseDetailApp';
 export { BaseDetailCardDrawer } from './BaseDetailCardDrawer';
 export { BaseDetailCardEditDialog } from './BaseDetailCardEditDialog';
 export { BaseDetailExplorer } from './BaseDetailExplorer';
+export { BaseDetailFilterTagGroup } from './BaseDetailFilterTagGroup';
 export { BaseDetailProblemEditDialog } from './BaseDetailProblemEditDialog';
 export { BaseDetailProblemEditor } from './BaseDetailProblemEditor';
 export { BaseDetailProblemForm } from './BaseDetailProblemForm';

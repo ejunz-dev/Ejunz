@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { i18n } from '../../i18n';
+import { BaseDetailFilterTagGroup } from './BaseDetailFilterTagGroup';
 import {
   emptyBaseDetailFilter,
   isBaseDetailFilterActive,
@@ -18,12 +19,12 @@ interface Props {
   availableProblemTags: string[];
 }
 
-function TagInput({ label, placeholder, value, onChange, tags }: { label: string; placeholder: string; value: string; onChange: (value: string) => void; tags: string[] }) {
+function TagInput({ label, placeholder, value, onChange, tags, variant }: { label: string; placeholder: string; value: string; onChange: (value: string) => void; tags: string[]; variant?: 'card' | 'problem' }) {
   return (
     <label className="bd-explorer__field">
       <span>{label}</span>
       <input type="text" value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} autoComplete="off" />
-      {tags.length ? <small>{tags.join(' · ')}</small> : null}
+      {tags.length && variant ? <BaseDetailFilterTagGroup tags={tags} value={value} onChange={onChange} variant={variant} /> : null}
     </label>
   );
 }
@@ -80,8 +81,8 @@ export function BaseDetailExplorer({ value, onChange, filters, matchedCount, onA
               <TagInput label={i18n('Roadmap detail filter node label')} placeholder={i18n('Roadmap detail filter node placeholder')} value={filterDraft.filterNode} onChange={(filterNode) => setFilterDraft((draft) => ({ ...draft, filterNode }))} tags={[]} />
               <TagInput label={i18n('Roadmap detail filter content label')} placeholder={i18n('Roadmap detail filter content placeholder')} value={filterDraft.filterCard} onChange={(filterCard) => setFilterDraft((draft) => ({ ...draft, filterCard }))} tags={[]} />
               <TagInput label={i18n('Roadmap detail filter problem label')} placeholder={i18n('Roadmap detail filter problem placeholder')} value={filterDraft.filterProblem} onChange={(filterProblem) => setFilterDraft((draft) => ({ ...draft, filterProblem }))} tags={[]} />
-              <TagInput label={i18n('Card tags filter')} placeholder={i18n('Card tags filter placeholder')} value={filterDraft.filterCardTag} onChange={(filterCardTag) => setFilterDraft((draft) => ({ ...draft, filterCardTag }))} tags={availableCardTags} />
-              <TagInput label={i18n('Problem tags filter')} placeholder={i18n('Problem tags filter placeholder')} value={filterDraft.filterProblemTag} onChange={(filterProblemTag) => setFilterDraft((draft) => ({ ...draft, filterProblemTag }))} tags={availableProblemTags} />
+              <TagInput label={i18n('Card tags filter')} placeholder={i18n('Card tags filter placeholder')} value={filterDraft.filterCardTag} onChange={(filterCardTag) => setFilterDraft((draft) => ({ ...draft, filterCardTag }))} tags={availableCardTags} variant="card" />
+              <TagInput label={i18n('Problem tags filter')} placeholder={i18n('Problem tags filter placeholder')} value={filterDraft.filterProblemTag} onChange={(filterProblemTag) => setFilterDraft((draft) => ({ ...draft, filterProblemTag }))} tags={availableProblemTags} variant="problem" />
             </div>
             <div className="bd-explorer__actions">
               <button type="button" onClick={clearFilters}>{i18n('Roadmap detail filter clear')}</button>
