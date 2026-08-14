@@ -6,7 +6,8 @@ import { BaseDetailCardDrawer } from './BaseDetailCardDrawer';
 import { BaseDetailCardEditDialog } from './BaseDetailCardEditDialog';
 import { BaseDetailConfirmDialog } from './BaseDetailConfirmDialog';
 import { BaseDetailProblemEditDialog } from './BaseDetailProblemEditDialog';
-import { updateBaseCard } from './base-detail-api';
+import { BaseDetailSettingsDialog } from './BaseDetailSettingsDialog';
+import { requestJson, updateBaseCard } from './base-detail-api';
 import { BaseDetailExplorer } from './BaseDetailExplorer';
 import { BaseDetailHeader } from './BaseDetailHeader';
 import { BaseDetailNodeContent } from './BaseDetailNodeContent';
@@ -28,6 +29,7 @@ import {
   readBaseDetailFilterFromLocation,
   type BaseDetailFilter,
 } from './detail-filter';
+import { readBaseDetailDisplaySettings, type BaseDetailDisplaySettings } from './display-settings';
 import type { BaseDetailBase, BaseDetailCard, BaseDetailData, BaseDetailEdge, BaseDetailNode } from './types';
 import './base-detail.css';
 
@@ -74,6 +76,9 @@ export default function BaseDetailApp() {
     return new Set(saved?.length ? saved : defaultExpandedNodeIds(nodes, edges));
   });
   const [treeOpen, setTreeOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [displaySettings, setDisplaySettings] = useState<BaseDetailDisplaySettings>(() => readBaseDetailDisplaySettings(data.baseDetailUiPrefs));
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<BaseDetailFilter>(() => readBaseDetailFilterFromLocation());
   const [pendingNodeId, setPendingNodeId] = useState<string | null>(null);
@@ -173,6 +178,23 @@ export default function BaseDetailApp() {
     void Notification.success(i18n('Saved'));
   }, [domainId, replaceCard]);
 
+  const saveDisplaySettings = useCallback(async (next: BaseDetailDisplaySettings) => {
+    setSettingsSaving(true);
+    try {
+      await requestJson('/base/detail-ui-prefs', {
+        domainId,
+        body: { docId, displayPrefs: next },
+      });
+      setDisplaySettings(next);
+      setSettingsOpen(false);
+      void Notification.success(i18n('Saved'));
+    } catch (cause) {
+      void Notification.error(cause instanceof Error ? cause.message : i18n('Save failed'));
+    } finally {
+      setSettingsSaving(false);
+    }
+  }, [docId, domainId]);
+
   const openCardEditor = useCallback(() => {
     if (selectedCard) setEditCard(selectedCard);
   }, [selectedCard]);
@@ -203,18 +225,18 @@ export default function BaseDetailApp() {
 
   return (
     <div className="bd-page">
-      <BaseDetailHeader title={rootNode && selectedNodeId !== getRootNodeIds(nodes, edges)[0] ? rootNode.text || i18n('Unnamed Node') : title} description={rootNode && selectedNodeId !== getRootNodeIds(nodes, edges)[0] ? title : base.content} domainId={domainId} docId={docId} treeOpen={treeOpen} onToggleTree={() => setTreeOpen((open) => !open)} onShare={() => undefined} />
+      <BaseDetailHeader title={rootNode && selectedNodeId !== getRootNodeIds(nodes, edges)[0] ? rootNode.text || i18n('Unnamed Node') : title} description={rootNode && selectedNodeId !== getRootNodeIds(nodes, edges)[0] ? title : base.content} domainId={domainId} docId={docId} treeOpen={treeOpen} onToggleTree={() => setTreeOpen((open) => !open)} onShare={() => undefined} onOpenSettings={() => setSettingsOpen(true)} />
       <BaseDetailExplorer value={search} onChange={setSearch} filters={filters} matchedCount={matchedCount} onApplyFilters={setFilters} onClearFilters={() => setFilters(emptyBaseDetailFilter())} availableCardTags={availableCardTags} availableProblemTags={availableProblemTags} />
       <div className="bd-page__stats"><strong>{currentStats.nodes}</strong> {i18n('nodes')} <span>·</span> <strong>{currentStats.cards}</strong> {i18n('cards')} <span>·</span> <strong>{currentStats.problems}</strong> {i18n('problems')}</div>
       <main className="bd-page__main">
         <section className="bd-page__structure" aria-label={i18n('Document Structure')}>
-          <BaseDetailTree rootNodeIds={getRootNodeIds(nodes, edges)} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} onToggle={toggleNode} selectedNodeId={selectedNodeId} selectedCardId={selectedCard?.docId || null} selectedProblemId={selectedProblemId} onSelectNode={selectNode} onSelectCard={selectCard} onSelectProblem={(card, pid) => { selectCard(card); selectProblem(pid); }} filter={search} filters={filters} />
+          <BaseDetailTree rootNodeIds={getRootNodeIds(nodes, edges)} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} onToggle={toggleNode} selectedNodeId={selectedNodeId} selectedCardId={selectedCard?.docId || null} selectedProblemId={selectedProblemId} onSelectNode={selectNode} onSelectCard={selectCard} onSelectProblem={(card, pid) => { selectCard(card); selectProblem(pid); }} filter={search} filters={filters} displaySettings={displaySettings} />
         </section>
         <section className="bd-page__content" aria-label={i18n('Content')}>
-          {selectedNodeId ? <BaseDetailNodeContent rootNodeId={selectedNodeId} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} onToggle={toggleNode} selectedNodeId={selectedNodeId} selectedCardId={selectedCard?.docId || null} selectedProblemId={selectedProblemId} onSelectCard={(card) => selectCard(card, false)} onSelectNode={selectNodeFromContent} onSelectProblem={(card, pid) => { selectCard(card, false); selectProblem(pid); }} filter={search} filters={filters} /> : <div className="bd-empty">{i18n('Base detail tree empty')}</div>}
+          {selectedNodeId ? <BaseDetailNodeContent rootNodeId={selectedNodeId} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} onToggle={toggleNode} selectedNodeId={selectedNodeId} selectedCardId={selectedCard?.docId || null} selectedProblemId={selectedProblemId} onSelectCard={(card) => selectCard(card, false)} onSelectNode={selectNodeFromContent} onSelectProblem={(card, pid) => { selectCard(card, false); selectProblem(pid); }} filter={search} filters={filters} displaySettings={displaySettings} /> : <div className="bd-empty">{i18n('Base detail tree empty')}</div>}
         </section>
       </main>
-      <BaseDetailTreeDrawer open={treeOpen} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} selectedNodeId={selectedNodeId} selectedCardId={selectedCard?.docId || null} onToggle={toggleNode} onSelectNode={(id) => { selectNode(id); setTreeOpen(false); }} onSelectCard={(card) => { selectCard(card); setTreeOpen(false); }} onClose={() => setTreeOpen(false)} filter={search} filters={filters} />
+      <BaseDetailTreeDrawer open={treeOpen} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} selectedNodeId={selectedNodeId} selectedCardId={selectedCard?.docId || null} onToggle={toggleNode} onSelectNode={(id) => { selectNode(id); setTreeOpen(false); }} onSelectCard={(card) => { selectCard(card); setTreeOpen(false); }} onClose={() => setTreeOpen(false)} filter={search} filters={filters} displaySettings={displaySettings} drawerWidth={displaySettings.treeDrawerWidth} />
       <BaseDetailCardDrawer
         card={selectedCard}
         onClose={() => { setSelectedCard(null); setSelectedProblemId(null); updateUrl({ cardId: null, problemId: null }); }}
@@ -225,6 +247,7 @@ export default function BaseDetailApp() {
         selectedProblemId={selectedProblemId}
         baseDocId={docId}
         domainId={domainId}
+        drawerWidth={displaySettings.cardDrawerWidth}
       />
       {editCard ? <BaseDetailCardEditDialog card={editCard} availableTags={availableCardTags} onSave={saveCard} onClose={() => setEditCard(null)} /> : null}
       {editProblem && editingProblemCard && editingProblem ? (
@@ -239,6 +262,7 @@ export default function BaseDetailApp() {
           onClose={() => setEditProblem(null)}
         />
       ) : null}
+      <BaseDetailSettingsDialog open={settingsOpen} settings={displaySettings} saving={settingsSaving} onClose={() => setSettingsOpen(false)} onSave={saveDisplaySettings} />
       {pendingNodeId ? (
         <BaseDetailConfirmDialog
           nodeLabel={nodes.find((node) => node.id === pendingNodeId)?.text?.trim() || i18n('Unnamed Node')}

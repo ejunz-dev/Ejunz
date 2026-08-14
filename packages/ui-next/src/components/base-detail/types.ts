@@ -1,3 +1,5 @@
+import type { BaseDetailDisplaySettings } from './display-settings';
+
 export interface BaseDetailNode {
   id: string;
   text?: string;
@@ -54,7 +56,7 @@ export interface BaseDetailBase {
   problemTags?: string[];
 }
 
-export interface BaseDetailPrefs {
+export interface BaseDetailPrefs extends Partial<BaseDetailDisplaySettings> {
   expandedNodeIds?: string[];
 }
 
