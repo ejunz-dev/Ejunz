@@ -113,10 +113,10 @@ export function BaseDetailCardEditDialog({ card, availableTags = [], onSave, onC
             <span>{i18n('Title')}</span>
             <input value={title} onChange={(event) => setTitle(event.target.value)} autoFocus />
           </label>
-          <label className="bd-edit-field bd-edit-field--content">
+          <div className="bd-edit-field bd-edit-field--content">
             <span>{i18n('Content')}</span>
             <MarkdownEditor value={content} onChange={setContent} theme={editorTheme} style={{ height: '100%', minHeight: '16rem' }} />
-          </label>
+          </div>
           <div className="bd-edit-field">
             <span>{i18n('Card tags')}</span>
             {allTags.length ? (
