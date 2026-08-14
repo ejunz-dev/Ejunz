@@ -138,6 +138,7 @@ export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, onEditCar
         {tab === 'content' ? (
           <div className="bd-drawer__body">
             <h2>{cardDisplayLabel(displayCard)}</h2>
+            {displayCard.tags?.length ? <div className="bd-card__tags bd-card__tags--drawer">{displayCard.tags.map((tag) => <span key={tag}>{tag}</span>)}</div> : null}
             {displayCard.cardFace ? <div className="bd-drawer__face bd-markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(displayCard.cardFace) }} /> : null}
             {displayCard.cardType === 'file' && url ? (
               <div className="bd-drawer__file">
@@ -150,11 +151,11 @@ export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, onEditCar
                 {hasEmbeddedMedia && loadingMedia ? <span className="bd-media-loader" role="status" aria-label={i18n('Loading...')} /> : null}
               </div>
             ) : <p className="bd-muted">{i18n('Base detail card empty')}</p>}
-            {displayCard.tags?.length ? <div className="bd-card__tags">{displayCard.tags.map((tag) => <span key={tag}>{tag}</span>)}</div> : null}
           </div>
         ) : (
           <div className="bd-drawer__body bd-drawer__problems">
             <h2>{cardDisplayLabel(displayCard)}</h2>
+            {displayCard.tags?.length ? <div className="bd-card__tags bd-card__tags--drawer">{displayCard.tags.map((tag) => <span key={tag}>{tag}</span>)}</div> : null}
             <BaseDetailProblemList problems={problems} resetKey={String(displayCard.docId)} selectedProblemId={selectedProblemId} onSelectProblem={onSelectProblem} onEditProblem={onEditProblem} />
           </div>
         )}

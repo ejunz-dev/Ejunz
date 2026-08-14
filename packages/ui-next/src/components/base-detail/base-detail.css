@@ -102,6 +102,10 @@
 .bd-media-loader { position: absolute; z-index: 1; top: 50%; left: 50%; width: 2rem; height: 2rem; margin: -1rem; border: 3px solid var(--bd-line); border-top-color: var(--bd-accent); border-radius: 50%; animation: bd-media-spin .7s linear infinite; pointer-events: none; }
 @keyframes bd-media-spin { to { transform: rotate(360deg); } }
 .bd-card__tags { padding: 0 1rem .9rem; margin-left: 0; }
+.bd-card__tags--drawer { margin: -.4rem 0 .9rem; padding: 0; }
+.bd-card__tags--drawer span, .roadmap-detail-drawer__problem-tags span { padding: .12rem .34rem; border: 1px solid #c9dce9; border-radius: 3px; color: var(--bd-accent); font-size: .64rem; }
+.roadmap-detail-drawer__problem-tags { display: flex; flex-wrap: wrap; gap: .25rem; padding: 0 .8rem .75rem; }
+.roadmap-detail-drawer__problem-tags span { border-color: #e9cfb0; color: #a65c14; }
 .bd-card__problems { margin: 0 1rem 1rem; color: var(--bd-muted); font-size: .8rem; }
 .bd-card__problems summary { cursor: pointer; }
 .bd-card__problems li { margin-top: .35rem; }
