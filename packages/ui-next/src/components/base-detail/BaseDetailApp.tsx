@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePageData } from '../../context/page-data';
+import Notification from '../notification';
 import { i18n } from '../../i18n';
 import { BaseDetailCardDrawer } from './BaseDetailCardDrawer';
 import { BaseDetailCardEditDialog } from './BaseDetailCardEditDialog';
@@ -57,7 +58,6 @@ export default function BaseDetailApp() {
   const [nodeCardsMap, setNodeCardsMap] = useState(data.nodeCardsMap);
   const [editCard, setEditCard] = useState<BaseDetailCard | null>(null);
   const [editProblem, setEditProblem] = useState<{ cardId: string; pid: string; index: number } | null>(null);
-  const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const nodes = base.nodes || [];
   const edges = base.edges || [];
   const docId = stringId(base.docId || base.bid || base.slug);
@@ -80,12 +80,6 @@ export default function BaseDetailApp() {
   useEffect(() => {
     setNodeCardsMap(data.nodeCardsMap);
   }, [data.nodeCardsMap]);
-
-  useEffect(() => {
-    if (!saveNotice) return undefined;
-    const timer = window.setTimeout(() => setSaveNotice(null), 2400);
-    return () => window.clearTimeout(timer);
-  }, [saveNotice]);
 
   useEffect(() => {
     const syncFilters = () => setFilters(readBaseDetailFilterFromLocation());
@@ -156,14 +150,14 @@ export default function BaseDetailApp() {
     });
     replaceCard(updatedCard);
     setEditCard(null);
-    setSaveNotice(i18n('Saved'));
+    void Notification.success(i18n('Saved'));
   }, [domainId, replaceCard]);
 
   const saveProblemCard = useCallback(async (updatedCard: BaseDetailCard) => {
     await updateBaseCard(domainId, updatedCard.docId, { problems: updatedCard.problems });
     replaceCard(updatedCard);
     setEditProblem(null);
-    setSaveNotice(i18n('Saved'));
+    void Notification.success(i18n('Saved'));
   }, [domainId, replaceCard]);
 
   const openCardEditor = useCallback(() => {
@@ -199,7 +193,6 @@ export default function BaseDetailApp() {
 
   return (
     <div className="bd-page">
-      {saveNotice ? <div className="bd-save-notice" role="status" aria-live="polite">{saveNotice}</div> : null}
       <BaseDetailHeader title={rootNode && selectedNodeId !== getRootNodeIds(nodes, edges)[0] ? rootNode.text || i18n('Unnamed Node') : title} description={rootNode && selectedNodeId !== getRootNodeIds(nodes, edges)[0] ? title : base.content} domainId={domainId} docId={docId} treeOpen={treeOpen} onToggleTree={() => setTreeOpen((open) => !open)} onShare={() => undefined} />
       <BaseDetailExplorer value={search} onChange={setSearch} filters={filters} matchedCount={matchedCount} onApplyFilters={setFilters} onClearFilters={() => setFilters(emptyBaseDetailFilter())} availableCardTags={availableCardTags} availableProblemTags={availableProblemTags} />
       <div className="bd-page__stats"><strong>{currentNodeIds.length}</strong> {i18n('nodes')} <span>·</span> <strong>{currentCardCount}</strong> {i18n('cards')} <span>·</span> <strong>{problemCount}</strong> {i18n('problems')}</div>
