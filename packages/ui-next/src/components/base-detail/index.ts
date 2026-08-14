@@ -1,6 +1,7 @@
 export { default as BaseDetailApp } from './BaseDetailApp';
 export { BaseDetailCardDrawer } from './BaseDetailCardDrawer';
 export { BaseDetailCardEditDialog } from './BaseDetailCardEditDialog';
+export { BaseDetailFloatingToolbar } from './BaseDetailFloatingToolbar';
 export { BaseDetailExplorer } from './BaseDetailExplorer';
 export { BaseDetailSettingsDialog } from './BaseDetailSettingsDialog';
 export { BaseDetailFilterTagGroup } from './BaseDetailFilterTagGroup';
@@ -8,6 +9,7 @@ export { BaseDetailProblemEditDialog } from './BaseDetailProblemEditDialog';
 export { BaseDetailProblemEditor } from './BaseDetailProblemEditor';
 export { BaseDetailProblemForm } from './BaseDetailProblemForm';
 export { BaseDetailProblemTagPicker } from './BaseDetailProblemTagPicker';
+export { BaseDetailStatusIndicator } from './BaseDetailStatusIndicator';
 export * from './display-settings';
 export { domainApiPath, requestJson, updateBaseCard } from './base-detail-api';
 export { BaseDetailHeader } from './BaseDetailHeader';

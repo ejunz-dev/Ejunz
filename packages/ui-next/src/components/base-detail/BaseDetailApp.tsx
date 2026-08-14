@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePageData } from '../../context/page-data';
 import Notification from '../notification';
 import { i18n } from '../../i18n';
@@ -7,6 +7,8 @@ import { BaseDetailCardEditDialog } from './BaseDetailCardEditDialog';
 import { BaseDetailConfirmDialog } from './BaseDetailConfirmDialog';
 import { BaseDetailProblemEditDialog } from './BaseDetailProblemEditDialog';
 import { BaseDetailSettingsDialog } from './BaseDetailSettingsDialog';
+import { BaseDetailStatusIndicator } from './BaseDetailStatusIndicator';
+import { BaseDetailFloatingToolbar } from './BaseDetailFloatingToolbar';
 import { requestJson, updateBaseCard } from './base-detail-api';
 import { BaseDetailExplorer } from './BaseDetailExplorer';
 import { BaseDetailHeader } from './BaseDetailHeader';
@@ -71,13 +73,15 @@ export default function BaseDetailApp() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(() => initialNodeId && nodes.some((node) => node.id === initialNodeId) ? initialNodeId : initialCard ? findCardHostNodeId(initialCard.docId, nodeCardsMap) : null);
   const [selectedCard, setSelectedCard] = useState<BaseDetailCard | null>(initialCard);
   const [selectedProblemId, setSelectedProblemId] = useState<string | null>(() => query.get('problemId'));
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
-    const saved = data.baseDetailUiPrefs.expandedNodeIds;
-    return new Set(saved?.length ? saved : defaultExpandedNodeIds(nodes, edges));
-  });
+  const initialExpandedNodeIds: string[] = data.baseDetailUiPrefs.expandedNodeIds?.length
+    ? [...data.baseDetailUiPrefs.expandedNodeIds]
+    : [...defaultExpandedNodeIds(nodes, edges)];
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => new Set(initialExpandedNodeIds));
+  const expandedSnapshotRef = useRef<string[]>(initialExpandedNodeIds);
   const [treeOpen, setTreeOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
+  const [uiPrefsDirty, setUiPrefsDirty] = useState(false);
   const [displaySettings, setDisplaySettings] = useState<BaseDetailDisplaySettings>(() => readBaseDetailDisplaySettings(data.baseDetailUiPrefs));
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<BaseDetailFilter>(() => readBaseDetailFilterFromLocation());
@@ -178,14 +182,21 @@ export default function BaseDetailApp() {
     void Notification.success(i18n('Saved'));
   }, [domainId, replaceCard]);
 
+  const persistDisplayPrefs = useCallback(async (next: BaseDetailDisplaySettings, nextExpandedNodes: Set<string>) => {
+    const expandedNodeIds = [...nextExpandedNodes];
+    await requestJson('/base/detail-ui-prefs', {
+      domainId,
+      body: { docId, displayPrefs: { ...next, expandedNodeIds } },
+    });
+    setDisplaySettings(next);
+    expandedSnapshotRef.current = expandedNodeIds;
+    setUiPrefsDirty(false);
+  }, [docId, domainId]);
+
   const saveDisplaySettings = useCallback(async (next: BaseDetailDisplaySettings) => {
     setSettingsSaving(true);
     try {
-      await requestJson('/base/detail-ui-prefs', {
-        domainId,
-        body: { docId, displayPrefs: next },
-      });
-      setDisplaySettings(next);
+      await persistDisplayPrefs(next, expandedNodes);
       setSettingsOpen(false);
       void Notification.success(i18n('Saved'));
     } catch (cause) {
@@ -193,7 +204,35 @@ export default function BaseDetailApp() {
     } finally {
       setSettingsSaving(false);
     }
-  }, [docId, domainId]);
+  }, [expandedNodes, persistDisplayPrefs]);
+
+  const saveUiPrefs = useCallback(async () => {
+    if (settingsSaving || !uiPrefsDirty) return;
+    setSettingsSaving(true);
+    try {
+      await persistDisplayPrefs(displaySettings, expandedNodes);
+      void Notification.success(i18n('Saved'));
+    } catch (cause) {
+      void Notification.error(cause instanceof Error ? cause.message : i18n('Save failed'));
+    } finally {
+      setSettingsSaving(false);
+    }
+  }, [displaySettings, expandedNodes, persistDisplayPrefs, settingsSaving, uiPrefsDirty]);
+
+  useEffect(() => {
+    if (JSON.stringify([...expandedNodes]) !== JSON.stringify(expandedSnapshotRef.current)) setUiPrefsDirty(true);
+  }, [expandedNodes]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && uiPrefsDirty) {
+        event.preventDefault();
+        void saveUiPrefs();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [saveUiPrefs, uiPrefsDirty]);
 
   const openCardEditor = useCallback(() => {
     if (selectedCard) setEditCard(selectedCard);
@@ -262,6 +301,8 @@ export default function BaseDetailApp() {
           onClose={() => setEditProblem(null)}
         />
       ) : null}
+      {displaySettings.showExpandSaveIndicator ? <BaseDetailStatusIndicator dirty={uiPrefsDirty} posX={displaySettings.indicatorX} posY={displaySettings.indicatorY} onPosChange={(indicatorX, indicatorY) => { setDisplaySettings((current) => ({ ...current, indicatorX, indicatorY })); setUiPrefsDirty(true); }} onClickSave={() => void saveUiPrefs()} /> : null}
+      {displaySettings.showToolbar ? <BaseDetailFloatingToolbar open={displaySettings.toolbarOpen} posX={displaySettings.toolbarX} posY={displaySettings.toolbarY} onOpenChange={(toolbarOpen) => { setDisplaySettings((current) => ({ ...current, toolbarOpen })); setUiPrefsDirty(true); }} onPosChange={(toolbarX, toolbarY) => { setDisplaySettings((current) => ({ ...current, toolbarX, toolbarY })); setUiPrefsDirty(true); }} onTreeOpen={() => setTreeOpen(true)} onSearchOpen={() => document.querySelector<HTMLInputElement>('.bd-explorer__search input')?.focus()} /> : null}
       <BaseDetailSettingsDialog open={settingsOpen} settings={displaySettings} saving={settingsSaving} onClose={() => setSettingsOpen(false)} onSave={saveDisplaySettings} />
       {pendingNodeId ? (
         <BaseDetailConfirmDialog
