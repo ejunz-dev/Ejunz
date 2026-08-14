@@ -206,16 +206,17 @@ function renderSection(name: string, payload: unknown, udict: Udict, domain: { b
   if (name === 'consumption_ranking') return <Ranking title={i18n('Consumption ranking')} payload={payload} udict={udict} />;
   if (name === 'discussion_nodes') {
     const groups = groupNodes(payload);
-    if (!groups.length) return null;
     return (
       <Card title={i18n('Discussion Nodes')}>
         {groups.map(([category, nodes]) => (
           <div className="uix-nodegroup" key={category}>
             <div className="uix-nodegroup__title">{category}</div>
             <div className="uix-chips">
-              {nodes.map((node: any) => (
-                <Tag to="discussion_node" params={{ type: 'node', name: node.docId }} key={node.docId}>{node.docId}</Tag>
-              ))}
+              {nodes.map((node: any, index: number) => {
+                const nodeId = String(node?.docId ?? node?._id ?? '');
+                if (!nodeId) return null;
+                return <Tag to="discussion_node" params={{ type: 'node', name: nodeId }} key={`${nodeId}-${index}`}>{nodeId}</Tag>;
+              })}
             </div>
           </div>
         ))}
