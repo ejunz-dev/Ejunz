@@ -19,6 +19,7 @@ interface Props {
   selectedProblemId?: string | null;
   baseDocId?: string;
   domainId?: string;
+  drawerWidth?: number;
 }
 
 function fileUrl(card: BaseDetailCard, baseDocId?: string, domainId?: string): string {
@@ -27,7 +28,7 @@ function fileUrl(card: BaseDetailCard, baseDocId?: string, domainId?: string): s
   return `${prefix}/base/${encodeURIComponent(baseDocId)}/node/${encodeURIComponent(card.nodeId)}/file/${encodeURIComponent(card.fileName)}?noDisposition=1`;
 }
 
-export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, onEditCard, onEditProblem, editorBusy, selectedProblemId, baseDocId, domainId }: Props) {
+export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, onEditCard, onEditProblem, editorBusy, selectedProblemId, baseDocId, domainId, drawerWidth }: Props) {
   const [tab, setTab] = useState<'content' | 'problems'>('content');
   const [loadingMedia, setLoadingMedia] = useState(true);
   const drawerRef = useRef<HTMLElement>(null);
@@ -124,7 +125,7 @@ export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, onEditCar
   return createPortal(
     <>
       <button type="button" className="bd-backdrop bd-card-backdrop" onClick={onClose} aria-label={i18n('Close')} />
-      <aside ref={drawerRef} className="bd-drawer bd-card-drawer" tabIndex={-1} role="dialog" aria-modal="true" aria-label={cardDisplayLabel(displayCard)}>
+      <aside ref={drawerRef} className="bd-drawer bd-card-drawer" style={drawerWidth ? { width: `min(${drawerWidth}px, calc(100vw - 1rem))` } : undefined} tabIndex={-1} role="dialog" aria-modal="true" aria-label={cardDisplayLabel(displayCard)}>
         <header className="bd-drawer__header">
           <div className="bd-drawer__tabs" role="tablist">
             <button type="button" role="tab" aria-selected={tab === 'content'} className={tab === 'content' ? 'is-active' : ''} onClick={() => setTab('content')}>{i18n('Content')}</button>

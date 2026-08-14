@@ -1,6 +1,7 @@
 import { i18n } from '../../i18n';
 import { BaseDetailTree } from './BaseDetailTree';
 import type { BaseDetailFilter } from './detail-filter';
+import type { BaseDetailDisplaySettings } from './display-settings';
 import type { BaseDetailCard, BaseDetailEdge, BaseDetailNode } from './types';
 
 interface Props {
@@ -18,6 +19,7 @@ interface Props {
   onSelectProblem?: (card: BaseDetailCard, pid: string) => void;
   filter?: string;
   filters?: BaseDetailFilter;
+  displaySettings?: BaseDetailDisplaySettings;
 }
 
 export function BaseDetailNodeContent({
@@ -35,6 +37,7 @@ export function BaseDetailNodeContent({
   onSelectProblem,
   filter = '',
   filters = { filterNode: '', filterCard: '', filterProblem: '', filterCardTag: '', filterProblemTag: '' },
+  displaySettings,
 }: Props) {
   return (
     <div className="bd-content bd-content--tree">
@@ -53,6 +56,7 @@ export function BaseDetailNodeContent({
         onSelectProblem={onSelectProblem}
         filter={filter}
         filters={filters}
+        displaySettings={displaySettings}
         highlightSelectedNode={false}
         emptyMessage={i18n('Base detail node empty')}
       />

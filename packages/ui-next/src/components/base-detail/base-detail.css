@@ -49,6 +49,24 @@
 .bd-explorer__actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: 1.1rem; }
 .bd-explorer__actions button { border: 1px solid var(--bd-line); border-radius: 5px; padding: .45rem .7rem; background: var(--bd-surface); color: var(--bd-ink); cursor: pointer; font: inherit; font-size: .78rem; }
 .bd-explorer__actions button:hover, .bd-explorer__actions button.is-primary { border-color: var(--bd-accent); color: var(--bd-accent); }
+.bd-settings-backdrop { position: fixed; z-index: 1100; inset: 0; display: grid; place-items: center; padding: 1rem; background: rgba(16, 28, 37, .48); }
+.bd-settings-dialog { display: flex; flex-direction: column; width: min(560px, calc(100vw - 2rem)); max-height: min(720px, calc(100vh - 2rem)); overflow: hidden; border: 1px solid var(--bd-line); border-radius: 10px; background: var(--bd-surface); color: var(--bd-ink); box-shadow: 0 18px 50px rgba(16, 28, 37, .28); }
+.bd-settings-dialog__header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .9rem 1rem; border-bottom: 1px solid var(--bd-line); }
+.bd-settings-dialog__header h2 { margin: 0; font-size: 1.05rem; }
+.bd-settings-dialog__close { border: 0; background: transparent; color: var(--bd-muted); cursor: pointer; font-size: 1.35rem; line-height: 1; }
+.bd-settings-dialog__hint { margin: .8rem 1rem; color: var(--bd-muted); font-size: .78rem; line-height: 1.5; }
+.bd-settings-dialog__actions { display: flex; flex-wrap: wrap; gap: .4rem; padding: 0 1rem .7rem; }
+.bd-settings-dialog__list { min-height: 0; overflow-y: auto; padding: 0 1rem; }
+.bd-settings-dialog__row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .72rem 0; border-top: 1px solid color-mix(in srgb, var(--bd-line) 70%, transparent); cursor: pointer; }
+.bd-settings-dialog__row--nested { padding-left: 1.25rem; }
+.bd-settings-dialog__row-text { display: flex; min-width: 0; flex-direction: column; gap: .18rem; }
+.bd-settings-dialog__row-label { color: var(--bd-ink); font-size: .78rem; font-weight: 600; }
+.bd-settings-dialog__row-description { color: var(--bd-muted); font-size: .7rem; font-weight: 400; line-height: 1.4; }
+.bd-settings-dialog__row input { flex: 0 0 auto; width: 1rem; height: 1rem; accent-color: var(--bd-accent); }
+.bd-settings-dialog__footer { display: flex; justify-content: flex-end; gap: .5rem; padding: .8rem 1rem; border-top: 1px solid var(--bd-line); }
+.bd-settings-button { border: 1px solid var(--bd-line); border-radius: 5px; padding: .42rem .7rem; background: var(--bd-surface); color: var(--bd-ink); cursor: pointer; font: inherit; font-size: .76rem; }
+.bd-settings-button:hover, .bd-settings-button--primary { border-color: var(--bd-accent); color: var(--bd-accent); }
+.bd-settings-button:disabled, .bd-settings-dialog__close:disabled { cursor: wait; opacity: .55; }
 .bd-confirm-backdrop { position: fixed; z-index: 1100; inset: 0; border: 0; background: rgba(16, 28, 37, .48); }
 .bd-confirm-dialog { position: fixed; z-index: 1101; top: 50%; left: 50%; width: min(420px, calc(100vw - 2rem)); transform: translate(-50%, -50%); padding: 1.25rem; border: 1px solid var(--bd-line); border-radius: 10px; background: var(--bd-surface); color: var(--bd-ink); box-shadow: 0 18px 50px rgba(16, 28, 37, .28); }
 .bd-confirm-dialog h2 { margin: 0; font-size: 1.15rem; }
@@ -71,6 +89,7 @@
 .bd-tree__chevron { transition: transform .16s ease; transform-origin: center; }
 .bd-tree__chevron.is-expanded { transform: rotate(90deg); }
 .bd-tree__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bd-tree__meta { flex: 0 0 auto; color: var(--bd-muted); font-size: .66rem; font-weight: 400; }
 .bd-tree__problem-count, .bd-drawer__count { margin-left: auto; padding: .08rem .35rem; border-radius: 10px; background: #edf0f2; color: var(--bd-muted); font-size: .68rem; }
 .bd-tree__tags, .bd-card__tags { display: flex; flex-wrap: wrap; gap: .25rem; margin-left: auto; }
 .bd-tree__tag, .bd-card__tags span { padding: .12rem .34rem; border: 1px solid #c9dce9; border-radius: 3px; color: var(--bd-accent); font-size: .64rem; }

@@ -10,9 +10,10 @@ interface Props {
   treeOpen: boolean;
   onToggleTree: () => void;
   onShare: () => void;
+  onOpenSettings: () => void;
 }
 
-export function BaseDetailHeader({ title, description, domainId, docId, treeOpen, onToggleTree, onShare }: Props) {
+export function BaseDetailHeader({ title, description, domainId, docId, treeOpen, onToggleTree, onShare, onOpenSettings }: Props) {
   const buildUrl = useBuildUrl();
   const [copied, setCopied] = useState(false);
   const listUrl = buildUrl('base_domain', { domainId });
@@ -30,6 +31,7 @@ export function BaseDetailHeader({ title, description, domainId, docId, treeOpen
         <a className="bd-header__back" href={listUrl}>← {i18n('All Bases')}</a>
         <div className="bd-header__actions">
           <button type="button" className="bd-header__action" onClick={onToggleTree} aria-expanded={treeOpen}>☷ <span>{i18n('Document Structure')}</span></button>
+          <button type="button" className="bd-header__action" onClick={onOpenSettings} aria-label={i18n('Roadmap detail settings title')}>⚙ <span>{i18n('Settings')}</span></button>
           <button type="button" className="bd-header__action" onClick={share} aria-label={i18n('Copy link')}>↗ <span>{copied ? i18n('Copied') : i18n('Share')}</span></button>
         </div>
       </div>
