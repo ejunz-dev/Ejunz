@@ -34,7 +34,7 @@
 .bd-explorer__dialog p { margin: .5rem 0 1rem; color: var(--bd-muted); font-size: .82rem; line-height: 1.5; }
 .bd-explorer__fields { display: grid; gap: .8rem; }
 .bd-explorer__field { display: grid; gap: .3rem; color: var(--bd-ink); font-size: .78rem; font-weight: 600; }
-.bd-explorer__field input { min-width: 0; padding: .55rem .65rem; border: 1px solid var(--bd-line); border-radius: 5px; background: var(--bd-bg); color: var(--bd-ink); font: inherit; font-weight: 400; }
+.bd-explorer__field input { width: 100%; min-width: 0; box-sizing: border-box; padding: .55rem .65rem; border: 1px solid var(--bd-line); border-radius: 5px; background: var(--bd-bg); color: var(--bd-ink); font: inherit; font-weight: 400; }
 .bd-explorer__field small { color: var(--bd-muted); font-size: .68rem; font-weight: 400; line-height: 1.5; }
 .bd-filter-tags { display: flex; flex-wrap: wrap; gap: .35rem; }
 .bd-filter-tag-group { display: inline-flex; overflow: hidden; border: 1px solid var(--bd-line); border-radius: 4px; }
