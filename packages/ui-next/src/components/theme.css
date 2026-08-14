@@ -20,6 +20,8 @@
   --bd-line: #dce3e8;
   --bd-accent: #1769aa;
   --bd-accent-soft: #e8f2fa;
+  --bd-problem-accent: #a65c14;
+  --bd-problem-accent-soft: #fff2e4;
   --web-positive: #15803d;
   --web-negative: #b91c1c;
   --web-shadow: rgba(0, 0, 0, .14);
@@ -47,6 +49,8 @@ html.theme--dark {
   --bd-line: #38434d;
   --bd-accent: #7db7e8;
   --bd-accent-soft: #263d50;
+  --bd-problem-accent: #f2a65a;
+  --bd-problem-accent-soft: #4a2e18;
   --web-positive: #4ade80;
   --web-negative: #f87171;
   --web-shadow: rgba(0, 0, 0, .34);
