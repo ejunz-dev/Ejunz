@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePageData } from '../../context/page-data';
 import { i18n } from '../../i18n';
 import { BaseDetailCardDrawer } from './BaseDetailCardDrawer';
+import { BaseDetailCardEditDialog } from './BaseDetailCardEditDialog';
 import { BaseDetailConfirmDialog } from './BaseDetailConfirmDialog';
+import { BaseDetailProblemEditDialog } from './BaseDetailProblemEditDialog';
+import { updateBaseCard } from './base-detail-api';
 import { BaseDetailExplorer } from './BaseDetailExplorer';
 import { BaseDetailHeader } from './BaseDetailHeader';
 import { BaseDetailNodeContent } from './BaseDetailNodeContent';
@@ -50,7 +53,10 @@ function readQuery() {
 export default function BaseDetailApp() {
   const { args } = usePageData();
   const data = useMemo(() => normalizeData(args), [args]);
-  const { base, nodeCardsMap, domainId } = data;
+  const { base, domainId } = data;
+  const [nodeCardsMap, setNodeCardsMap] = useState(data.nodeCardsMap);
+  const [editCard, setEditCard] = useState<BaseDetailCard | null>(null);
+  const [editProblem, setEditProblem] = useState<{ cardId: string; pid: string; index: number } | null>(null);
   const nodes = base.nodes || [];
   const edges = base.edges || [];
   const docId = stringId(base.docId || base.bid || base.slug);
@@ -69,6 +75,10 @@ export default function BaseDetailApp() {
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<BaseDetailFilter>(() => readBaseDetailFilterFromLocation());
   const [pendingNodeId, setPendingNodeId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setNodeCardsMap(data.nodeCardsMap);
+  }, [data.nodeCardsMap]);
 
   useEffect(() => {
     const syncFilters = () => setFilters(readBaseDetailFilterFromLocation());
@@ -122,6 +132,41 @@ export default function BaseDetailApp() {
     updateUrl({ problemId: pid });
   }, [updateUrl]);
 
+  const replaceCard = useCallback((updatedCard: BaseDetailCard) => {
+    const cardId = stringId(updatedCard.docId);
+    setNodeCardsMap((current) => Object.fromEntries(Object.entries(current).map(([nodeId, cards]) => [
+      nodeId,
+      cards.map((card) => stringId(card.docId) === cardId ? updatedCard : card),
+    ])));
+    setSelectedCard((current) => current && stringId(current.docId) === cardId ? updatedCard : current);
+  }, []);
+
+  const saveCard = useCallback(async (updatedCard: BaseDetailCard) => {
+    await updateBaseCard(domainId, updatedCard.docId, {
+      title: updatedCard.title,
+      content: updatedCard.content,
+      tags: updatedCard.tags,
+    });
+    replaceCard(updatedCard);
+    setEditCard(null);
+  }, [domainId, replaceCard]);
+
+  const saveProblemCard = useCallback(async (updatedCard: BaseDetailCard) => {
+    await updateBaseCard(domainId, updatedCard.docId, { problems: updatedCard.problems });
+    replaceCard(updatedCard);
+    setEditProblem(null);
+  }, [domainId, replaceCard]);
+
+  const openCardEditor = useCallback(() => {
+    if (selectedCard) setEditCard(selectedCard);
+  }, [selectedCard]);
+
+  const openProblemEditor = useCallback((pid: string, index: number) => {
+    if (!selectedCard) return;
+    setSelectedProblemId(pid);
+    setEditProblem({ cardId: stringId(selectedCard.docId), pid, index });
+  }, [selectedCard]);
+
   const toggleNode = useCallback((nodeId: string) => {
     setExpandedNodes((current) => {
       const next = new Set(current);
@@ -136,10 +181,12 @@ export default function BaseDetailApp() {
   const currentCardCount = currentCards.length;
   const problemCount = currentCards.reduce((sum, card) => sum + (card.problems?.length || 0), 0);
   const matchedCount = countBaseDetailMatches(nodes, nodeCardsMap, search, filters);
-  const availableCardTags = filterTags(Object.values(nodeCardsMap).flat());
-  const availableProblemTags = filterTags(Object.values(nodeCardsMap).flat(), true);
+  const availableCardTags = [...new Set([...(base.cardTags || []), ...filterTags(Object.values(nodeCardsMap).flat())])].sort();
+  const availableProblemTags = [...new Set([...(base.problemTags || []), ...filterTags(Object.values(nodeCardsMap).flat(), true)])].sort();
   const rootNode = nodes.find((node) => node.id === selectedNodeId) || nodes.find((node) => node.id === getRootNodeIds(nodes, edges)[0]);
   const title = base.title?.trim() || i18n('Knowledge Base');
+  const editingProblemCard = editProblem ? findCardByDocId(editProblem.cardId, nodeCardsMap) : null;
+  const editingProblem = editingProblemCard?.problems?.[editProblem?.index ?? -1] || null;
 
   return (
     <div className="bd-page">
@@ -155,7 +202,30 @@ export default function BaseDetailApp() {
         </section>
       </main>
       <BaseDetailTreeDrawer open={treeOpen} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} selectedNodeId={selectedNodeId} selectedCardId={selectedCard?.docId || null} onToggle={toggleNode} onSelectNode={(id) => { selectNode(id); setTreeOpen(false); }} onSelectCard={(card) => { selectCard(card); setTreeOpen(false); }} onClose={() => setTreeOpen(false)} filter={search} filters={filters} />
-      <BaseDetailCardDrawer card={selectedCard} onClose={() => { setSelectedCard(null); setSelectedProblemId(null); updateUrl({ cardId: null, problemId: null }); }} onSelectProblem={selectProblem} selectedProblemId={selectedProblemId} baseDocId={docId} domainId={domainId} />
+      <BaseDetailCardDrawer
+        card={selectedCard}
+        onClose={() => { setSelectedCard(null); setSelectedProblemId(null); updateUrl({ cardId: null, problemId: null }); }}
+        onSelectProblem={selectProblem}
+        onEditCard={openCardEditor}
+        onEditProblem={openProblemEditor}
+        editorBusy={Boolean(editCard || editProblem)}
+        selectedProblemId={selectedProblemId}
+        baseDocId={docId}
+        domainId={domainId}
+      />
+      {editCard ? <BaseDetailCardEditDialog card={editCard} availableTags={availableCardTags} onSave={saveCard} onClose={() => setEditCard(null)} /> : null}
+      {editProblem && editingProblemCard && editingProblem ? (
+        <BaseDetailProblemEditDialog
+          card={editingProblemCard}
+          problem={editingProblem}
+          problemIndex={editProblem.index}
+          domainId={domainId}
+          baseDocId={docId}
+          availableTags={availableProblemTags}
+          onSave={saveProblemCard}
+          onClose={() => setEditProblem(null)}
+        />
+      ) : null}
       {pendingNodeId ? (
         <BaseDetailConfirmDialog
           nodeLabel={nodes.find((node) => node.id === pendingNodeId)?.text?.trim() || i18n('Unnamed Node')}
