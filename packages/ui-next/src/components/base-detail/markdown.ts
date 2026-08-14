@@ -268,7 +268,8 @@ function getRenderer(): MarkdownIt {
   return md;
 }
 
-export function renderMarkdown(markdown: string): string {
+export function renderMarkdown(markdown: string, inline = false): string {
   const value = String(markdown || '').trim();
-  return value ? getRenderer().render(value) : '';
+  if (!value) return '';
+  return inline ? getRenderer().renderInline(value) : getRenderer().render(value);
 }
