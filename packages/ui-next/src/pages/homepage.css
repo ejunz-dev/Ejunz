@@ -37,6 +37,23 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+.uix-hitokoto {
+  margin: 0;
+  line-height: 1.7;
+}
+.uix-suggestion-groups {
+  display: grid;
+  gap: 0.75rem;
+}
+.uix-suggestion-group h3 {
+  margin: 0 0 0.3rem;
+  font-size: 0.8rem;
+}
+.uix-suggestion-group ol {
+  min-height: 1.1rem;
+  margin: 0;
+  padding-left: 1.25rem;
+}
 .uix-gate {
   display: flex;
   flex-direction: column;
