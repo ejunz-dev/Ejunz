@@ -1,6 +1,7 @@
 import { Fragment, type ReactNode } from 'react';
 import { usePageData } from '../context/page-data';
 import { Button, Callout, Card, List, ListItem, Tag } from '../components';
+import { HitokotoWidget, SuggestionWidget } from '../components/homepage';
 import { i18n } from '../i18n';
 import './homepage.css';
 
@@ -95,6 +96,8 @@ function groupNodes(value: unknown): [string, any[]][] {
 }
 
 function renderSection(name: string, payload: unknown, udict: Udict, domain: { bulletin?: string }): ReactNode {
+  if (name === 'hitokoto') return <HitokotoWidget />;
+  if (name === 'suggestion') return <SuggestionWidget />;
   if (name === 'bulletin') {
     return domain.bulletin ? (
       <section className="uix-card uix-bulletin-widget">
@@ -219,7 +222,7 @@ function renderSection(name: string, payload: unknown, udict: Udict, domain: { b
       </Card>
     );
   }
-  return null;
+  return <Callout type="warn" title={i18n('Request failed')}>{i18n('Template {0} not found.', name)}</Callout>;
 }
 
 export default function Homepage() {
