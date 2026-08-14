@@ -24,8 +24,11 @@ import type { BaseDetailProblem } from './types';
 
 function BaseDetailProblemMarkdown({ markdown, inline = false, className, emptyLabel = '—' }: { markdown: string; inline?: boolean; className?: string; emptyLabel?: string }) {
   const raw = markdown ?? '';
-  if (!raw.trim()) return <div className={className}>{emptyLabel}</div>;
-  return <div className={className} dangerouslySetInnerHTML={{ __html: renderMarkdown(raw) }} data-inline={inline || undefined} />;
+  if (!raw.trim()) return inline ? <span className={className}>{emptyLabel}</span> : <div className={className}>{emptyLabel}</div>;
+  const html = renderMarkdown(raw, inline);
+  return inline
+    ? <span className={className} dangerouslySetInnerHTML={{ __html: html }} />
+    : <div className={className} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 function problemDisplayTitle(problem: Problem, indexOneBased: number): string {
