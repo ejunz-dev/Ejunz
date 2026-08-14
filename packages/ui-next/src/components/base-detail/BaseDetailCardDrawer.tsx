@@ -155,7 +155,7 @@ export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, onEditCar
         ) : (
           <div className="bd-drawer__body bd-drawer__problems">
             <h2>{cardDisplayLabel(displayCard)}</h2>
-            <BaseDetailProblemList problems={problems} selectedProblemId={selectedProblemId} onSelectProblem={onSelectProblem} onEditProblem={onEditProblem} />
+            <BaseDetailProblemList problems={problems} resetKey={String(displayCard.docId)} selectedProblemId={selectedProblemId} onSelectProblem={onSelectProblem} onEditProblem={onEditProblem} />
           </div>
         )}
       </aside>

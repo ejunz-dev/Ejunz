@@ -1,94 +1,709 @@
-import { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { i18n } from '../../i18n';
+import type {
+  Problem,
+  ProblemAiEval,
+  ProblemFillBlank,
+  ProblemFlip,
+  ProblemMatching,
+  ProblemMulti,
+  ProblemSingle,
+  ProblemSuperFlip,
+  ProblemChain,
+  ProblemTrueFalse,
+} from 'ejun/src/interface';
+import {
+  matchingColumnsNormalized,
+  normalizeMultiAnswers,
+  normalizeChainRows,
+  problemKind,
+  superFlipNormalized,
+} from 'ejun/src/model/problem';
 import { renderMarkdown } from './markdown';
 import type { BaseDetailProblem } from './types';
 
-interface Props {
-  problems: BaseDetailProblem[];
-  selectedProblemId?: string | null;
-  onSelectProblem?: (pid: string) => void;
-  onEditProblem?: (pid: string, index: number) => void;
+function BaseDetailProblemMarkdown({ markdown, inline = false, className, emptyLabel = '—' }: { markdown: string; inline?: boolean; className?: string; emptyLabel?: string }) {
+  const raw = markdown ?? '';
+  if (!raw.trim()) return <div className={className}>{emptyLabel}</div>;
+  return <div className={className} dangerouslySetInnerHTML={{ __html: renderMarkdown(raw) }} data-inline={inline || undefined} />;
+}
+
+function problemDisplayTitle(problem: Problem, indexOneBased: number): string {
+  const title = String(problem.title || '').trim();
+  if (title) return title;
+  const stem = String((problem as { stem?: string }).stem || '').trim();
+  if (stem) return stem.replace(/<[^>]+>/g, '').slice(0, 80);
+  return String(i18n('Outline card problems untitled item', indexOneBased));
+}
+
+function problemKindI18nKey(type?: string): string {
+  switch (type) {
+    case 'multi': return 'Problem kind multi';
+    case 'true_false': return 'Problem kind true false';
+    case 'flip': return 'Problem kind flip';
+    case 'fill_blank': return 'Problem kind fill blank';
+    case 'matching': return 'Problem kind matching';
+    case 'super_flip': return 'Problem kind super flip';
+    case 'chain': return 'Problem kind chain';
+    case 'ai_eval': return 'Problem kind ai eval';
+    default: return 'Problem kind single';
+  }
+}
+
+function problemKindBadge(problem: Problem): string {
+  return i18n(problemKindI18nKey(problem.type));
 }
 
 type RevealState = {
-  answer?: boolean;
-  answers?: Set<number>;
+  single?: boolean;
+  multi?: Set<number>;
+  trueFalse?: boolean;
+  fillBlank?: Set<number>;
   flip?: boolean;
-  blanks?: Set<number>;
+  matching?: Set<number>;
+  superFlip?: boolean[][];
+  chain?: boolean[];
+  aiEval?: Set<string>;
 };
 
-function kind(problem: BaseDetailProblem): string {
-  return String(problem.type || 'single');
+function emptyRevealState(): RevealState {
+  return {};
 }
 
-function title(problem: BaseDetailProblem, index: number): string {
-  return String(problem.title || problem.stem || problem.faceA || `${i18n('Problem')} ${index + 1}`).replace(/<[^>]+>/g, '').slice(0, 100);
+function toggleSetItem(set: Set<number>, item: number): Set<number> {
+  const next = new Set(set);
+  if (next.has(item)) next.delete(item);
+  else next.add(item);
+  return next;
+}
+
+function toggleStringSetItem(set: Set<string>, item: string): Set<string> {
+  const next = new Set(set);
+  if (next.has(item)) next.delete(item);
+  else next.add(item);
+  return next;
 }
 
 function optionLabel(index: number): string {
   return `${String.fromCharCode(65 + index)}.`;
 }
 
-function Markdown({ value, inline = false }: { value?: unknown; inline?: boolean }) {
-  const html = renderMarkdown(String(value || ''));
-  return <span className={inline ? 'bd-problem__markdown bd-problem__markdown--inline' : 'bd-problem__markdown'} dangerouslySetInnerHTML={{ __html: html }} />;
-}
+function RoadmapDrawerProblemItem({
+  problem,
+  indexOneBased,
+  expanded,
+  reveal,
+  selected,
+  onToggle,
+  onSelect,
+  onEdit,
+  onRevealChange,
+}: {
+  problem: Problem;
+  indexOneBased: number;
+  expanded: boolean;
+  reveal: RevealState;
+  selected?: boolean;
+  onToggle: () => void;
+  onSelect?: () => void;
+  onEdit?: () => void;
+  onRevealChange: (next: RevealState) => void;
+}) {
+  const kind = problemKind(problem);
+  const title = problemDisplayTitle(problem, indexOneBased);
 
-function ProblemItem({ problem, index, selected, onSelect, onEdit }: { problem: BaseDetailProblem; index: number; selected: boolean; onSelect?: () => void; onEdit?: () => void }) {
-  const [expanded, setExpanded] = useState(false);
-  const [reveal, setReveal] = useState<RevealState>({});
-  const type = kind(problem);
-  const options = Array.isArray(problem.options) ? problem.options : [];
-  const answers = Array.isArray(problem.answers) ? problem.answers : [];
-  const correct = typeof problem.answer === 'number' ? [problem.answer] : Array.isArray(problem.answer) ? problem.answer : [];
-
-  useEffect(() => {
-    setExpanded(false);
-    setReveal({});
-  }, [problem.pid]);
-
-  const renderStem = () => {
-    if (type === 'flip') return <Markdown value={reveal.flip ? problem.faceB : problem.faceA} />;
-    if (type === 'fill_blank') {
-      const segments = String(problem.stem || '').split('___');
-      const revealed = reveal.blanks || new Set<number>();
-      return <div className="bd-problem__stem">{segments.map((segment, segmentIndex) => <span key={segmentIndex}><Markdown value={segment} inline />{segmentIndex < segments.length - 1 ? <button type="button" className={`bd-problem__blank${revealed.has(segmentIndex) ? ' is-revealed' : ''}`} onClick={() => { const next = new Set(revealed); if (next.has(segmentIndex)) next.delete(segmentIndex); else next.add(segmentIndex); setReveal({ ...reveal, blanks: next }); }}>{revealed.has(segmentIndex) ? answers[segmentIndex] || '—' : '___'}</button> : null}</span>)}</div>;
+  const renderOptions = () => {
+    if (kind === 'single') {
+      const p = problem as ProblemSingle;
+      const options = p.options || [];
+      return (
+        <div className="roadmap-detail-drawer__problem-options">
+          {options.map((option, idx) => (
+            <div key={`opt-${idx}`} className="roadmap-detail-drawer__problem-option">
+              <span className="roadmap-detail-drawer__problem-option-label">{optionLabel(idx)}</span>
+              <BaseDetailProblemMarkdown markdown={option} inline className="roadmap-detail-drawer__problem-option-text typo" />
+            </div>
+          ))}
+        </div>
+      );
     }
-    return <Markdown value={problem.stem} />;
+    if (kind === 'multi') {
+      const p = problem as ProblemMulti;
+      const options = p.options || [];
+      return (
+        <div className="roadmap-detail-drawer__problem-options">
+          {options.map((option, idx) => (
+            <div key={`opt-${idx}`} className="roadmap-detail-drawer__problem-option">
+              <span className="roadmap-detail-drawer__problem-option-label">{optionLabel(idx)}</span>
+              <BaseDetailProblemMarkdown markdown={option} inline className="roadmap-detail-drawer__problem-option-text typo" />
+            </div>
+          ))}
+        </div>
+      );
+    }
+    if (kind === 'true_false') {
+      return (
+        <div className="roadmap-detail-drawer__problem-options">
+          <div className="roadmap-detail-drawer__problem-option">
+            <span className="roadmap-detail-drawer__problem-option-label">A.</span>
+            <span>{i18n('Correct')}</span>
+          </div>
+          <div className="roadmap-detail-drawer__problem-option">
+            <span className="roadmap-detail-drawer__problem-option-label">B.</span>
+            <span>{i18n('Incorrect')}</span>
+          </div>
+        </div>
+      );
+    }
+    return null;
   };
 
+  const renderStem = () => {
+    if (kind === 'flip') {
+      const p = problem as ProblemFlip;
+      return (
+        <BaseDetailProblemMarkdown
+          markdown={p.faceA || ''}
+          className="roadmap-detail-drawer__problem-stem typo"
+        />
+      );
+    }
+    if (kind === 'fill_blank') {
+      const p = problem as ProblemFillBlank;
+      const stemStr = p.stem || '';
+      const answers = p.answers || [];
+      if (!stemStr.trim()) {
+        return <BaseDetailProblemMarkdown markdown="" className="roadmap-detail-drawer__problem-stem typo" />;
+      }
+      const segments = stemStr.includes('___') ? stemStr.split('___') : [stemStr, ''];
+      const revealed = reveal.fillBlank || new Set<number>();
+      return (
+        <div className="roadmap-detail-drawer__problem-stem roadmap-detail-drawer__problem-stem--fill">
+          {segments.map((segment, segIdx) => (
+            <React.Fragment key={`fb-${segIdx}`}>
+              <BaseDetailProblemMarkdown markdown={segment} inline className="typo" />
+              {segIdx < segments.length - 1 ? (
+                <button
+                  type="button"
+                  className={`roadmap-detail-drawer__problem-blank${revealed.has(segIdx) ? ' is-revealed' : ''}`}
+                  onClick={() => {
+                    onRevealChange({
+                      ...reveal,
+                      fillBlank: toggleSetItem(revealed, segIdx),
+                    });
+                  }}
+                >
+                  {revealed.has(segIdx)
+                    ? (answers[segIdx] || '—')
+                    : '___'}
+                </button>
+              ) : null}
+            </React.Fragment>
+          ))}
+        </div>
+      );
+    }
+    if (kind === 'matching') {
+      const p = problem as ProblemMatching;
+      const cols = matchingColumnsNormalized(p);
+      const rowCount = cols.length ? Math.max(...cols.map((col) => col.length), 0) : 0;
+      const revealedRows = reveal.matching || new Set<number>();
+      return (
+        <>
+          {p.stem?.trim() ? (
+            <BaseDetailProblemMarkdown markdown={p.stem} className="roadmap-detail-drawer__problem-stem typo" />
+          ) : null}
+          <div className="roadmap-detail-drawer__problem-table-wrap">
+            <table className="roadmap-detail-drawer__problem-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  {cols.map((_, colIdx) => (
+                    <th key={`mh-${colIdx}`}>{i18n('Problem matching column label', colIdx + 1)}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: rowCount }, (_, rowIdx) => {
+                  const rowRevealed = revealedRows.has(rowIdx);
+                  return (
+                    <tr key={`mr-${rowIdx}`}>
+                      <td>{rowIdx + 1}</td>
+                      {cols.map((col, colIdx) => {
+                        const cell = String(col[rowIdx] ?? '').trim();
+                        if (rowRevealed || colIdx === 0) {
+                          if (colIdx === 0 || !rowRevealed) {
+                            return (
+                              <td key={`mc-${colIdx}-${rowIdx}`}>
+                                {cell || '—'}
+                              </td>
+                            );
+                          }
+                          return (
+                            <td key={`mc-${colIdx}-${rowIdx}`}>
+                              <button
+                                type="button"
+                                className="roadmap-detail-drawer__problem-reveal is-revealed"
+                                onClick={() => {
+                                  onRevealChange({
+                                    ...reveal,
+                                    matching: toggleSetItem(revealedRows, rowIdx),
+                                  });
+                                }}
+                              >
+                                {cell || '—'}
+                              </button>
+                            </td>
+                          );
+                        }
+                        return (
+                          <td key={`mc-${colIdx}-${rowIdx}`}>
+                            <button
+                              type="button"
+                              className="roadmap-detail-drawer__problem-reveal"
+                              onClick={() => {
+                                onRevealChange({
+                                  ...reveal,
+                                  matching: toggleSetItem(revealedRows, rowIdx),
+                                });
+                              }}
+                            >
+                              {i18n('Problem super flip masked')}
+                            </button>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      );
+    }
+    if (kind === 'super_flip') {
+      const p = problem as ProblemSuperFlip;
+      const { headers, columns } = superFlipNormalized(p);
+      const colCount = columns.length;
+      const rowCount = colCount ? Math.max(0, ...columns.map((col) => col.length)) : 0;
+      const revealed = reveal.superFlip || Array.from({ length: colCount }, () => Array.from({ length: rowCount }, () => false));
+      return (
+        <>
+          {p.stem?.trim() ? (
+            <BaseDetailProblemMarkdown markdown={p.stem} className="roadmap-detail-drawer__problem-stem typo" />
+          ) : null}
+          <div className="roadmap-detail-drawer__problem-table-wrap">
+            <table className="roadmap-detail-drawer__problem-table">
+              <thead>
+                <tr>
+                  {headers.map((header, colIdx) => (
+                    <th key={`sh-${colIdx}`}>{header || i18n('Problem matching column label', colIdx + 1)}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: rowCount }, (_, rowIdx) => (
+                  <tr key={`sr-${rowIdx}`}>
+                    {columns.map((col, colIdx) => {
+                      const cell = String(col[rowIdx] ?? '').trim();
+                      const isRevealed = !!(revealed[colIdx] && revealed[colIdx][rowIdx]);
+                      if (!cell) return <td key={`sc-${colIdx}-${rowIdx}`} />;
+                      if (!isRevealed) {
+                        return (
+                          <td key={`sc-${colIdx}-${rowIdx}`}>
+                            <button
+                              type="button"
+                              className="roadmap-detail-drawer__problem-reveal"
+                              onClick={() => {
+                                const next = revealed.map((colRev) => [...colRev]);
+                                while (next.length <= colIdx) next.push([]);
+                                while (next[colIdx].length <= rowIdx) next[colIdx].push(false);
+                                next[colIdx][rowIdx] = true;
+                                onRevealChange({ ...reveal, superFlip: next });
+                              }}
+                            >
+                              {i18n('Problem super flip masked')}
+                            </button>
+                          </td>
+                        );
+                      }
+                      return (
+                        <td key={`sc-${colIdx}-${rowIdx}`}>
+                          <button
+                            type="button"
+                            className="roadmap-detail-drawer__problem-reveal is-revealed"
+                            onClick={() => {
+                              const next = revealed.map((colRev) => [...colRev]);
+                              while (next.length <= colIdx) next.push([]);
+                              while (next[colIdx].length <= rowIdx) next[colIdx].push(false);
+                              next[colIdx][rowIdx] = false;
+                              onRevealChange({ ...reveal, superFlip: next });
+                            }}
+                          >
+                            {cell}
+                          </button>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      );
+    }
+    if (kind === 'chain') {
+      const ch = problem as ProblemChain;
+      const rows = normalizeChainRows(ch.rows);
+      const revealed = reveal.chain || [];
+      return (
+        <>
+          {ch.stem?.trim() ? (
+            <BaseDetailProblemMarkdown markdown={ch.stem} className="roadmap-detail-drawer__problem-stem typo" />
+          ) : null}
+          <div style={{ marginTop: 8 }}>
+            {rows.map((row, ri) => {
+              const isRevealed = row.rowType !== 'flip' || revealed[ri];
+              return (
+                <div key={`ch-${ri}`} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-secondary)', minWidth: 16 }}>{ri + 1}.</span>
+                  <button
+                    type="button"
+                    className={`roadmap-detail-drawer__problem-reveal${isRevealed ? ' is-revealed' : ''}`}
+                    onClick={() => {
+                      if (row.rowType !== 'flip') return;
+                      const next = [...revealed];
+                      while (next.length <= ri) next.push(false);
+                      next[ri] = !next[ri];
+                      onRevealChange({ ...reveal, chain: next });
+                    }}
+                    style={{ flex: 1, minHeight: 40, padding: '8px 12px', fontSize: 13, textAlign: 'left', cursor: row.rowType === 'flip' ? 'pointer' : 'default' }}
+                  >
+                    {isRevealed ? (String(row.content || '').trim() || '—') : i18n('Problem chain masked')}
+                  </button>
+                  <span style={{ fontSize: 10, color: 'var(--text-tertiary)', flexShrink: 0, background: 'var(--bg-secondary)', borderRadius: 4, padding: '2px 6px' }}>
+                    {row.rowType === 'flip' ? i18n('Problem chain row type flip') : i18n('Problem chain row type text')}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      );
+    }
+    if (kind === 'ai_eval') {
+      const p = problem as ProblemAiEval;
+      const revealed = reveal.aiEval || new Set<string>();
+      const rubricItems: Array<{ id: string; label: string; content: string; score: number }> = [];
+      (p.points || []).forEach((point, pointIdx) => {
+        const subs = Array.isArray(point.subPoints) ? point.subPoints : [];
+        if (subs.length) {
+          subs.forEach((sub, subIdx) => {
+            const parent = String(point.title || '').trim();
+            const child = String(sub.title || '').trim();
+            rubricItems.push({
+              id: sub.id || `ae-${pointIdx}-${subIdx}`,
+              label: parent && child ? `${parent} · ${child}` : (child || parent || `#${rubricItems.length + 1}`),
+              content: String(sub.content || '').trim(),
+              score: typeof sub.score === 'number' ? sub.score : 0,
+            });
+          });
+        }
+      });
+      return (
+        <>
+          <BaseDetailProblemMarkdown markdown={p.stem || ''} className="roadmap-detail-drawer__problem-stem typo" />
+          <div className="roadmap-detail-drawer__problem-rubric">
+            {rubricItems.map((item) => {
+              const isRevealed = revealed.has(item.id);
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`roadmap-detail-drawer__problem-rubric-item${isRevealed ? ' is-revealed' : ''}`}
+                  onClick={() => {
+                    onRevealChange({
+                      ...reveal,
+                      aiEval: toggleStringSetItem(revealed, item.id),
+                    });
+                  }}
+                >
+                  <span className="roadmap-detail-drawer__problem-rubric-label">{item.label}</span>
+                  {isRevealed ? (
+                    <span className="roadmap-detail-drawer__problem-rubric-body">
+                      {item.content || '—'}
+                      <span className="roadmap-detail-drawer__problem-rubric-score">
+                        {item.score}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="roadmap-detail-drawer__problem-rubric-mask">
+                      {i18n('Problem super flip masked')}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      );
+    }
+    const stem = String((problem as { stem?: string }).stem || '');
+    return (
+      <BaseDetailProblemMarkdown markdown={stem} className="roadmap-detail-drawer__problem-stem typo" />
+    );
+  };
+
+  const renderAnswerReveals = () => {
+    if (kind === 'single') {
+      const p = problem as ProblemSingle;
+      const options = p.options || [];
+      const answerIdx = typeof p.answer === 'number' ? p.answer : -1;
+      const revealed = !!reveal.single;
+      return (
+        <div className="roadmap-detail-drawer__problem-answers">
+          <div className="roadmap-detail-drawer__problem-answers-title">{i18n('Correct Answer')}</div>
+          {!revealed ? (
+            <button
+              type="button"
+              className="roadmap-detail-drawer__problem-reveal"
+              onClick={() => onRevealChange({ ...reveal, single: true })}
+            >
+              {i18n('Roadmap drawer problem tap reveal answer')}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="roadmap-detail-drawer__problem-answer is-revealed"
+              onClick={() => onRevealChange({ ...reveal, single: false })}
+            >
+              <span className="roadmap-detail-drawer__problem-option-label">
+                {answerIdx >= 0 ? optionLabel(answerIdx) : ''}
+              </span>
+              <BaseDetailProblemMarkdown
+                markdown={answerIdx >= 0 && options[answerIdx] != null ? String(options[answerIdx]) : '—'}
+                inline
+                className="typo"
+              />
+            </button>
+          )}
+        </div>
+      );
+    }
+    if (kind === 'multi') {
+      const p = problem as ProblemMulti;
+      const options = p.options || [];
+      const correct = normalizeMultiAnswers(p.answer);
+      const revealed = reveal.multi || new Set<number>();
+      return (
+        <div className="roadmap-detail-drawer__problem-answers">
+          <div className="roadmap-detail-drawer__problem-answers-title">{i18n('Correct Answer')}</div>
+          <div className="roadmap-detail-drawer__problem-answer-list">
+            {correct.map((idx) => {
+              const isRevealed = revealed.has(idx);
+              if (!isRevealed) {
+                return (
+                  <button
+                    key={`ans-${idx}`}
+                    type="button"
+                    className="roadmap-detail-drawer__problem-reveal"
+                    onClick={() => {
+                      onRevealChange({
+                        ...reveal,
+                        multi: toggleSetItem(revealed, idx),
+                      });
+                    }}
+                  >
+                    {i18n('Roadmap drawer problem tap reveal answer')}
+                    {correct.length > 1 ? ` (${optionLabel(idx)})` : ''}
+                  </button>
+                );
+              }
+              return (
+                <button
+                  key={`ans-${idx}`}
+                  type="button"
+                  className="roadmap-detail-drawer__problem-answer is-revealed"
+                  onClick={() => {
+                    onRevealChange({
+                      ...reveal,
+                      multi: toggleSetItem(revealed, idx),
+                    });
+                  }}
+                >
+                  <span className="roadmap-detail-drawer__problem-option-label">{optionLabel(idx)}</span>
+                  <BaseDetailProblemMarkdown markdown={String(options[idx] ?? '—')} inline className="typo" />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+    if (kind === 'true_false') {
+      const p = problem as ProblemTrueFalse;
+      const revealed = !!reveal.trueFalse;
+      const answerText = p.answer === 1 ? i18n('Correct') : i18n('Incorrect');
+      return (
+        <div className="roadmap-detail-drawer__problem-answers">
+          <div className="roadmap-detail-drawer__problem-answers-title">{i18n('Correct Answer')}</div>
+          {!revealed ? (
+            <button
+              type="button"
+              className="roadmap-detail-drawer__problem-reveal"
+              onClick={() => onRevealChange({ ...reveal, trueFalse: true })}
+            >
+              {i18n('Roadmap drawer problem tap reveal answer')}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="roadmap-detail-drawer__problem-answer is-revealed"
+              onClick={() => onRevealChange({ ...reveal, trueFalse: false })}
+            >
+              {answerText}
+            </button>
+          )}
+        </div>
+      );
+    }
+    if (kind === 'flip') {
+      const p = problem as ProblemFlip;
+      const revealed = !!reveal.flip;
+      return (
+        <div className="roadmap-detail-drawer__problem-answers">
+          <div className="roadmap-detail-drawer__problem-answers-title">{i18n('Correct Answer')}</div>
+          {!revealed ? (
+            <button
+              type="button"
+              className="roadmap-detail-drawer__problem-reveal"
+              onClick={() => onRevealChange({ ...reveal, flip: true })}
+            >
+              {i18n('Roadmap drawer problem reveal back')}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="roadmap-detail-drawer__problem-answer is-revealed roadmap-detail-drawer__problem-answer--block"
+              onClick={() => onRevealChange({ ...reveal, flip: false })}
+            >
+              <BaseDetailProblemMarkdown markdown={p.faceB || '—'} className="typo" />
+            </button>
+          )}
+        </div>
+      );
+    }
+    return null;
+  };
+
+  const hideSeparateAnswers = kind === 'fill_blank' || kind === 'matching' || kind === 'super_flip' || kind === 'chain' || kind === 'ai_eval';
+
   return (
-    <article className={`bd-problem${expanded ? ' is-expanded' : ''}${selected ? ' is-selected' : ''}`}>
-      <div className="bd-problem__head-row">
-        <button type="button" className="bd-problem__head" aria-expanded={expanded} onClick={() => { onSelect?.(); setExpanded((value) => !value); }}>
-          <span className="bd-problem__kind">{i18n(`Problem kind ${type.replace('_', ' ')}`)}</span>
-          <span className="bd-problem__title">{title(problem, index)}</span>
-          <span aria-hidden>{expanded ? '▾' : '▸'}</span>
-        </button>
-        {onEdit ? <button type="button" className="bd-problem__edit" onClick={onEdit} aria-label={`${i18n('Edit Problem')} #${index + 1}`}>{i18n('Edit')}</button> : null}
-      </div>
-      {expanded ? (
-        <div className="bd-problem__body">
-          {renderStem()}
-          {(type === 'single' || type === 'multi' || type === 'true_false') ? (
-            <div className="bd-problem__options">
-              {(type === 'true_false' ? [i18n('Correct'), i18n('Incorrect')] : options).map((option, optionIndex) => <div className="bd-problem__option" key={optionIndex}><b>{optionLabel(optionIndex)}</b><Markdown value={option} inline /></div>)}
-            </div>
-          ) : null}
-          {type === 'flip' ? <button type="button" className="bd-problem__reveal" onClick={() => setReveal({ ...reveal, flip: !reveal.flip })}>{reveal.flip ? i18n('Roadmap drawer problem reveal back') : i18n('Roadmap drawer problem tap reveal answer')}</button> : null}
-          {(type === 'single' || type === 'multi' || type === 'true_false') ? (
-            <div className="bd-problem__answers"><strong>{i18n('Correct Answer')}</strong>{correct.map((answerIndex) => <button type="button" className="bd-problem__reveal" key={answerIndex} onClick={() => setReveal({ ...reveal, answer: !reveal.answer })}>{reveal.answer ? <><b>{optionLabel(answerIndex)}</b> <Markdown value={type === 'true_false' ? (answerIndex === 1 ? i18n('Correct') : i18n('Incorrect')) : options[answerIndex]} inline /></> : i18n('Roadmap drawer problem tap reveal answer')}</button>)}</div>
-          ) : null}
+    <div className={`roadmap-detail-drawer__problem${expanded ? ' is-expanded' : ''}${selected ? ' is-selected' : ''}`}>
+      <button
+        type="button"
+        className="roadmap-detail-drawer__problem-head"
+        aria-expanded={expanded}
+        onClick={() => { onSelect?.(); onToggle(); }}
+      >
+        <span className="roadmap-detail-drawer__resource-badge">{problemKindBadge(problem)}</span>
+        <span className="roadmap-detail-drawer__problem-head-title">{title}</span>
+        <span className="roadmap-detail-drawer__problem-chevron" aria-hidden>{expanded ? '▾' : '▸'}</span>
+      </button>
+      {onEdit ? (
+        <div style={{ padding: '0 14px 8px' }}>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onEdit(); }}
+            style={{
+              fontSize: 11, padding: '2px 8px', borderRadius: 4, border: '1px solid var(--roadmap-border, #ddd)',
+              background: 'transparent', color: 'var(--roadmap-text-secondary, #999)', cursor: 'pointer',
+            }}
+          >
+            {i18n('Edit')}
+          </button>
         </div>
       ) : null}
-    </article>
+      {expanded ? (
+        <div className="roadmap-detail-drawer__problem-body">
+          {renderStem()}
+          {renderOptions()}
+          {!hideSeparateAnswers ? renderAnswerReveals() : null}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
-export function BaseDetailProblemList({ problems, selectedProblemId, onSelectProblem, onEditProblem }: Props) {
-  if (!problems.length) return <p className="bd-muted">{i18n('Roadmap drawer problems empty')}</p>;
-  return <div className="bd-problem-list">{problems.map((problem, index) => {
-    const pid = String(problem.pid || `problem-${index}`);
-    return <ProblemItem key={pid} problem={problem} index={index} selected={selectedProblemId === pid} onSelect={() => onSelectProblem?.(pid)} onEdit={onEditProblem ? () => onEditProblem(pid, index) : undefined} />;
-  })}</div>;
+export function RoadmapDrawerProblemList({
+  problems,
+  resetKey = '',
+  selectedProblemId,
+  onSelectProblem,
+  onEditProblem,
+}: {
+  problems: BaseDetailProblem[];
+  resetKey?: string;
+  selectedProblemId?: string | null;
+  onSelectProblem?: (pid: string) => void;
+  onEditProblem?: (pid: string, index: number) => void;
+}) {
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+  const [revealById, setRevealById] = useState<Record<string, RevealState>>({});
+
+  useEffect(() => {
+    setExpandedIds(new Set());
+    setRevealById({});
+  }, [resetKey]);
+
+  const toggleExpanded = useCallback((pid: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(pid)) {
+        next.delete(pid);
+        setRevealById((reveals) => {
+          const copy = { ...reveals };
+          delete copy[pid];
+          return copy;
+        });
+      } else {
+        next.add(pid);
+      }
+      return next;
+    });
+  }, []);
+
+  const setReveal = useCallback((pid: string, next: RevealState) => {
+    setRevealById((prev) => ({ ...prev, [pid]: next }));
+  }, []);
+
+  if (!problems.length) {
+    return <p className="roadmap-detail-drawer__empty">{i18n('Roadmap drawer problems empty')}</p>;
+  }
+
+  return (
+    <div className="roadmap-detail-drawer__problem-list">
+      {problems.map((problem, idx) => {
+        const pid = String(problem.pid || `p-${idx}`);
+        return (
+          <RoadmapDrawerProblemItem
+            key={pid}
+            problem={problem as unknown as Problem}
+            indexOneBased={idx + 1}
+            expanded={expandedIds.has(pid)}
+            selected={selectedProblemId === pid}
+            reveal={revealById[pid] || emptyRevealState()}
+            onToggle={() => toggleExpanded(pid)}
+            onSelect={() => onSelectProblem?.(pid)}
+            onEdit={onEditProblem ? () => onEditProblem(pid, idx) : undefined}
+            onRevealChange={(next) => setReveal(pid, next)}
+          />
+        );
+      })}
+    </div>
+  );
 }
+
+export const BaseDetailProblemList = RoadmapDrawerProblemList;
