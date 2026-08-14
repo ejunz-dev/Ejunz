@@ -130,9 +130,11 @@ function katexPlugin(md: MarkdownIt) {
 
   md.inline.ruler.before('escape', 'math_inline_tex', (state, silent) => {
     const source = state.src.slice(state.pos);
+    const environment = /^\\begin\\{(equation|align|alignat|gather|CD)\\*?\\}/.exec(source);
     const delimiter = source.startsWith('\\(') ? { open: '\\(', close: '\\)', display: false }
       : source.startsWith('\\[') ? { open: '\\[', close: '\\]', display: true }
-        : null;
+        : environment ? { open: environment[0], close: `\\end{${environment[1]}}`, display: true }
+          : null;
     if (!delimiter) return false;
     const start = state.pos + delimiter.open.length;
     const end = findClosing(state.src, start, delimiter.close);
