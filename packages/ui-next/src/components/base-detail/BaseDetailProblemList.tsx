@@ -197,7 +197,7 @@ function RoadmapDrawerProblemItem({
                   }}
                 >
                   {revealed.has(segIdx)
-                    ? (answers[segIdx] || '—')
+                    ? <BaseDetailProblemMarkdown markdown={String(answers[segIdx] || '—')} inline />
                     : '___'}
                 </button>
               ) : null}
@@ -238,7 +238,7 @@ function RoadmapDrawerProblemItem({
                           if (colIdx === 0 || !rowRevealed) {
                             return (
                               <td key={`mc-${colIdx}-${rowIdx}`}>
-                                {cell || '—'}
+                                <BaseDetailProblemMarkdown markdown={cell || '—'} inline />
                               </td>
                             );
                           }
@@ -254,7 +254,7 @@ function RoadmapDrawerProblemItem({
                                   });
                                 }}
                               >
-                                {cell || '—'}
+                                <BaseDetailProblemMarkdown markdown={cell || '—'} inline />
                               </button>
                             </td>
                           );
@@ -301,7 +301,7 @@ function RoadmapDrawerProblemItem({
               <thead>
                 <tr>
                   {headers.map((header, colIdx) => (
-                    <th key={`sh-${colIdx}`}>{header || i18n('Problem matching column label', colIdx + 1)}</th>
+                    <th key={`sh-${colIdx}`}><BaseDetailProblemMarkdown markdown={header || i18n('Problem matching column label', colIdx + 1)} inline /></th>
                   ))}
                 </tr>
               </thead>
@@ -344,7 +344,7 @@ function RoadmapDrawerProblemItem({
                               onRevealChange({ ...reveal, superFlip: next });
                             }}
                           >
-                            {cell}
+                            <BaseDetailProblemMarkdown markdown={cell} inline />
                           </button>
                         </td>
                       );
@@ -384,7 +384,7 @@ function RoadmapDrawerProblemItem({
                     }}
                     style={{ flex: 1, minHeight: 40, padding: '8px 12px', fontSize: 13, textAlign: 'left', cursor: row.rowType === 'flip' ? 'pointer' : 'default' }}
                   >
-                    {isRevealed ? (String(row.content || '').trim() || '—') : i18n('Problem chain masked')}
+                    {isRevealed ? <BaseDetailProblemMarkdown markdown={String(row.content || '').trim() || '—'} inline /> : i18n('Problem chain masked')}
                   </button>
                   <span style={{ fontSize: 10, color: 'var(--text-tertiary)', flexShrink: 0, background: 'var(--bg-secondary)', borderRadius: 4, padding: '2px 6px' }}>
                     {row.rowType === 'flip' ? i18n('Problem chain row type flip') : i18n('Problem chain row type text')}
@@ -433,10 +433,10 @@ function RoadmapDrawerProblemItem({
                     });
                   }}
                 >
-                  <span className="roadmap-detail-drawer__problem-rubric-label">{item.label}</span>
+                  <span className="roadmap-detail-drawer__problem-rubric-label"><BaseDetailProblemMarkdown markdown={item.label} inline /></span>
                   {isRevealed ? (
                     <span className="roadmap-detail-drawer__problem-rubric-body">
-                      {item.content || '—'}
+                      <BaseDetailProblemMarkdown markdown={item.content || '—'} inline />
                       <span className="roadmap-detail-drawer__problem-rubric-score">
                         {item.score}
                       </span>
