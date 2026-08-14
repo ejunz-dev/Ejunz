@@ -9,6 +9,7 @@ import { BaseDetailProblemEditDialog } from './BaseDetailProblemEditDialog';
 import { BaseDetailSettingsDialog } from './BaseDetailSettingsDialog';
 import { BaseDetailStatusIndicator } from './BaseDetailStatusIndicator';
 import { BaseDetailFloatingToolbar } from './BaseDetailFloatingToolbar';
+import { BaseDetailWSStatusIndicator } from './BaseDetailWSStatusIndicator';
 import { requestJson, updateBaseCard } from './base-detail-api';
 import { BaseDetailExplorer } from './BaseDetailExplorer';
 import { BaseDetailHeader } from './BaseDetailHeader';
@@ -32,6 +33,7 @@ import {
   type BaseDetailFilter,
 } from './detail-filter';
 import { readBaseDetailDisplaySettings, type BaseDetailDisplaySettings } from './display-settings';
+import { useBaseDetailWebSocket } from './useBaseDetailWebSocket';
 import type { BaseDetailBase, BaseDetailCard, BaseDetailData, BaseDetailEdge, BaseDetailNode } from './types';
 import './base-detail.css';
 
@@ -60,6 +62,7 @@ export default function BaseDetailApp() {
   const { args } = usePageData();
   const data = useMemo(() => normalizeData(args), [args]);
   const { base, domainId } = data;
+  const { status: wsStatus, viewerCount, viewers, send: sendWsMessage } = useBaseDetailWebSocket({ socketUrl: data.socketUrl });
   const [nodeCardsMap, setNodeCardsMap] = useState(data.nodeCardsMap);
   const [editCard, setEditCard] = useState<BaseDetailCard | null>(null);
   const [editProblem, setEditProblem] = useState<{ cardId: string; pid: string; index: number } | null>(null);
@@ -302,6 +305,7 @@ export default function BaseDetailApp() {
         />
       ) : null}
       {displaySettings.showExpandSaveIndicator ? <BaseDetailStatusIndicator dirty={uiPrefsDirty} posX={displaySettings.indicatorX} posY={displaySettings.indicatorY} onPosChange={(indicatorX, indicatorY) => { setDisplaySettings((current) => ({ ...current, indicatorX, indicatorY })); setUiPrefsDirty(true); }} onClickSave={() => void saveUiPrefs()} /> : null}
+      {displaySettings.showWsIndicator ? <BaseDetailWSStatusIndicator status={wsStatus} viewerCount={viewerCount} viewers={viewers} open={displaySettings.wsIndicatorOpen} posX={displaySettings.wsIndicatorX} posY={displaySettings.wsIndicatorY} onPosChange={(wsIndicatorX, wsIndicatorY) => { setDisplaySettings((current) => ({ ...current, wsIndicatorX, wsIndicatorY })); setUiPrefsDirty(true); }} onToggle={() => { setDisplaySettings((current) => ({ ...current, wsIndicatorOpen: !current.wsIndicatorOpen })); setUiPrefsDirty(true); }} onRequestViewers={() => sendWsMessage({ type: 'request_viewers' })} /> : null}
       {displaySettings.showToolbar ? <BaseDetailFloatingToolbar open={displaySettings.toolbarOpen} posX={displaySettings.toolbarX} posY={displaySettings.toolbarY} onOpenChange={(toolbarOpen) => { setDisplaySettings((current) => ({ ...current, toolbarOpen })); setUiPrefsDirty(true); }} onPosChange={(toolbarX, toolbarY) => { setDisplaySettings((current) => ({ ...current, toolbarX, toolbarY })); setUiPrefsDirty(true); }} onTreeOpen={() => setTreeOpen(true)} onSearchOpen={() => document.querySelector<HTMLInputElement>('.bd-explorer__search input')?.focus()} /> : null}
       <BaseDetailSettingsDialog open={settingsOpen} settings={displaySettings} saving={settingsSaving} onClose={() => setSettingsOpen(false)} onSave={saveDisplaySettings} />
       {pendingNodeId ? (
