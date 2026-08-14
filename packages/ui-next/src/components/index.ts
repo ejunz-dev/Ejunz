@@ -8,4 +8,5 @@ export { Field, type FieldProps } from './field';
 export { Notification, NotificationHost, NotificationProvider, type NotificationOptions, type NotificationPosition, type NotificationType } from './notification';
 export * from './homepage';
 export { MarkdownEditor } from './markdown-editor';
+export { default as Sock } from './socket';
 export * from './base-detail';
