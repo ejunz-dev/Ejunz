@@ -38,30 +38,42 @@ export function useBaseDetailWebSocket({ socketUrl, wsPrefix, onMessage }: Optio
       setStatus('disconnected');
       return undefined;
     }
+    let disposed = false;
     setStatus('connecting');
-    const socket = new Sock(buildWebSocketUrl(socketUrl, wsPrefix));
-    socketRef.current = socket;
-    socket.onopen = () => setStatus('connected');
-    socket.onclose = () => setStatus('disconnected');
-    socket.onmessage = (_event, data) => {
-      let message: Record<string, any>;
-      try {
-        message = JSON.parse(data);
-      } catch {
-        return;
-      }
-      if (message.type === 'init' || message.type === 'viewer_count') {
-        if (typeof message.viewerCount === 'number') setViewerCount(message.viewerCount);
-        if (typeof message.count === 'number') setViewerCount(message.count);
-      }
-      if (message.type === 'viewers_list' && Array.isArray(message.list)) setViewers(message.list);
-      onMessageRef.current?.(message);
-    };
+    // Defer socket creation by one tick so React StrictMode's dev double-invoke
+    // (setup → cleanup → setup) never creates a socket that is closed again while
+    // still connecting — that makes the browser log "WebSocket is closed before
+    // the connection is established" for a socket that was never meant to live.
+    const timer = window.setTimeout(() => {
+      if (disposed) return;
+      const socket = new Sock(buildWebSocketUrl(socketUrl, wsPrefix));
+      socketRef.current = socket;
+      socket.onopen = () => { if (!disposed) setStatus('connected'); };
+      socket.onclose = () => { if (!disposed) setStatus('disconnected'); };
+      socket.onmessage = (_event, data) => {
+        if (disposed) return;
+        let message: Record<string, any>;
+        try {
+          message = JSON.parse(data);
+        } catch {
+          return;
+        }
+        if (message.type === 'init' || message.type === 'viewer_count') {
+          if (typeof message.viewerCount === 'number') setViewerCount(message.viewerCount);
+          if (typeof message.count === 'number') setViewerCount(message.count);
+        }
+        if (message.type === 'viewers_list' && Array.isArray(message.list)) setViewers(message.list);
+        onMessageRef.current?.(message);
+      };
+    }, 0);
     return () => {
-      socket.close();
-      if (socketRef.current === socket) socketRef.current = null;
+      disposed = true;
+      window.clearTimeout(timer);
+      const socket = socketRef.current;
+      socketRef.current = null;
+      socket?.close();
     };
-  }, [socketUrl]);
+  }, [socketUrl, wsPrefix]);
 
   return { status, viewerCount, viewers, send };
 }
