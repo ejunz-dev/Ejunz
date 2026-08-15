@@ -1,4 +1,5 @@
 import { Fragment, useMemo } from 'react';
+import { useUserContext } from '../../context/page-data';
 import { i18n } from '../../i18n';
 import {
   cardDisplayLabel,
@@ -39,10 +40,51 @@ function problemLabel(problem: BaseDetailProblem, index: number): string {
   return title.slice(0, 72) || `${i18n('Problem')} ${index + 1}`;
 }
 
-function timestampLabel(value: string | Date | undefined): string {
-  if (!value) return '';
-  const date = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString();
+function formatAbsoluteDate(raw?: string | Date | null): string {
+  if (!raw) return '';
+  const date = raw instanceof Date ? raw : new Date(raw);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function formatRelativeDate(raw?: string | Date | null, locale = 'zh'): string {
+  if (!raw) return '';
+  const date = raw instanceof Date ? raw : new Date(raw);
+  if (Number.isNaN(date.getTime())) return '';
+  const diffMs = date.getTime() - Date.now();
+  const absMs = Math.abs(diffMs);
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'always' });
+  // Match moment's fromNow() unit thresholds.
+  let unit: Intl.RelativeTimeFormatUnit;
+  let value: number;
+  if (absMs < 45_000) { unit = 'second'; value = Math.round(diffMs / 1000); }
+  else if (absMs < 90_000) { unit = 'minute'; value = Math.round(diffMs / minute); }
+  else if (absMs < 45 * minute) { unit = 'minute'; value = Math.round(diffMs / minute); }
+  else if (absMs < 90 * minute) { unit = 'hour'; value = Math.round(diffMs / hour); }
+  else if (absMs < 22 * hour) { unit = 'hour'; value = Math.round(diffMs / hour); }
+  else if (absMs < 36 * hour) { unit = 'day'; value = Math.round(diffMs / day); }
+  else if (absMs < 25 * day) { unit = 'day'; value = Math.round(diffMs / day); }
+  else if (absMs < 45 * day) { unit = 'month'; value = Math.round(diffMs / (30 * day)); }
+  else if (absMs < 345 * day) { unit = 'month'; value = Math.round(diffMs / (30 * day)); }
+  else if (absMs < 545 * day) { unit = 'year'; value = Math.round(diffMs / (365 * day)); }
+  else { unit = 'year'; value = Math.round(diffMs / (365 * day)); }
+  return rtf.format(value, unit);
+}
+
+function TimestampMeta({ createdAt, updateAt }: { createdAt?: string | Date | null; updateAt?: string | Date | null }) {
+  const user = useUserContext();
+  const locale = String((user as any)?.viewLang || 'zh');
+  const created = formatAbsoluteDate(createdAt);
+  const updated = formatRelativeDate(updateAt, locale);
+  if (!created && !updated) return null;
+  const parts: string[] = [];
+  if (created) parts.push(i18n('Created at: {0}', created));
+  if (updated) parts.push(i18n('Updated at: {0}', updated));
+  return <span className="bd-tree__meta">{parts.join(' · ')}</span>;
 }
 
 function TagList({ tags, problem = false }: { tags?: string[]; problem?: boolean }) {
@@ -122,7 +164,7 @@ function TreeBranch({
           <span className="bd-tree__node-icon">{node.type === 'roadmap' ? <RoadmapIcon /> : <FolderIcon expanded={expanded} />}</span>
           <span className="bd-tree__label" title={nodeDisplayLabel(node)}>{nodeDisplayLabel(node)}</span>
           {displaySettings.showNodeNumber && node.order != null ? <span className="bd-tree__meta">#{node.order + 1}</span> : null}
-          {displaySettings.showNodeCardTimestamps && (node.updateAt || node.createdAt) ? <span className="bd-tree__meta">{timestampLabel(node.updateAt || node.createdAt)}</span> : null}
+          {displaySettings.showNodeCardTimestamps ? <TimestampMeta createdAt={node.createdAt} updateAt={node.updateAt} /> : null}
         </button>
       </div>
       {expanded && hasChildren ? (
@@ -137,7 +179,7 @@ function TreeBranch({
                   <CardIcon card={child.card} />
                   <span className="bd-tree__label" title={cardDisplayLabel(child.card)}>{cardDisplayLabel(child.card)}</span>
                   {displaySettings.showProblemCount && child.card.problems?.length ? <span className="bd-tree__problem-count">{child.card.problems.length}</span> : null}
-                  {displaySettings.showNodeCardTimestamps && (child.card.updateAt || child.card.createdAt) ? <span className="bd-tree__meta">{timestampLabel(child.card.updateAt || child.card.createdAt)}</span> : null}
+                  {displaySettings.showNodeCardTimestamps ? <TimestampMeta createdAt={child.card.createdAt} updateAt={child.card.updateAt} /> : null}
                   {displaySettings.showCardTags ? <TagList tags={child.card.tags} /> : null}
                 </button>
               </div>
