@@ -68,8 +68,7 @@
 .bd-settings-button:hover, .bd-settings-button--primary { border-color: var(--bd-accent); color: var(--bd-accent); }
 .bd-settings-button:disabled, .bd-settings-dialog__close:disabled { cursor: wait; opacity: .55; }
 .bd-status-indicator-wrap, .bd-toolbar-wrap { position: fixed; z-index: 1060; pointer-events: none; }
-.bd-status-indicator-wrap { right: 0; }
-.bd-status-indicator { display: flex; align-items: center; gap: .35rem; width: 28px; min-height: 1.7rem; overflow: hidden; padding: 0 .45rem; border: 1px solid var(--bd-line); border-right: 0; border-radius: 6px 0 0 6px; background: var(--bd-surface); color: var(--bd-muted); box-shadow: 0 4px 16px rgba(16, 28, 37, .16); pointer-events: auto; user-select: none; }
+.bd-status-indicator { display: flex; align-items: center; gap: .35rem; width: 28px; min-height: 1.7rem; overflow: hidden; padding: 0 .45rem; border: 1px solid var(--bd-line); border-radius: 6px; background: var(--bd-surface); color: var(--bd-muted); box-shadow: 0 4px 16px rgba(16, 28, 37, .16); pointer-events: auto; user-select: none; }
 .bd-status-indicator.is-dirty { border-color: var(--web-negative); color: var(--web-negative); }
 .bd-status-indicator__dot { flex: 0 0 .45rem; width: .45rem; height: .45rem; border-radius: 50%; background: var(--web-positive); }
 .bd-status-indicator.is-dirty .bd-status-indicator__dot { background: var(--web-negative); }
