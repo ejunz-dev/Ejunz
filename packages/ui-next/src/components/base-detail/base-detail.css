@@ -13,7 +13,7 @@
 .bd-header__back:hover { color: var(--bd-accent); }
 .bd-header__actions { gap: .45rem; }
 .bd-header__action { border: 1px solid var(--bd-line); background: var(--bd-surface); color: var(--bd-ink); border-radius: 5px; padding: .42rem .7rem; cursor: pointer; font: inherit; font-size: .78rem; }
-.bd-header__action:hover, .bd-header__action:focus-visible { border-color: var(--bd-accent); color: var(--bd-accent); }
+.bd-header__action:hover, .bd-header__action:focus-visible, .bd-header__action.is-active { border-color: var(--bd-accent); color: var(--bd-accent); }
 .bd-header__body { padding: 2.4rem 0 1.2rem; max-width: 780px; }
 .bd-header__eyebrow { margin: 0 0 .65rem; color: var(--bd-accent); text-transform: uppercase; letter-spacing: .13em; font-size: .68rem; font-weight: 700; }
 .bd-header h1 { margin: 0; font-size: clamp(2rem, 5vw, 4.4rem); letter-spacing: -.055em; line-height: .98; font-weight: 750; }
@@ -301,4 +301,44 @@
   .bd-page__structure { display: none; position: static; max-height: 45vh; margin-bottom: 1rem; }
   .bd-header__action span { display: none; }
 }
+/* Semantic search modal */
+.bd-semantic-search-backdrop { position: fixed; inset: 0; z-index: 150; background: rgba(16, 28, 37, .45); animation: bd-backdrop-in .2s ease; }
+.bd-semantic-search-shell { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 160; width: calc(100vw - 32px); max-width: 520px; box-sizing: border-box; display: flex; flex-direction: column; align-items: stretch; gap: 10px; animation: bd-semantic-search-in .24s ease; }
+.bd-semantic-search-index-status { display: flex; align-items: center; justify-content: center; gap: 8px; align-self: center; padding: 7px 14px; border-radius: 999px; border: 1px solid var(--bd-line); background: var(--bd-surface); box-shadow: 0 8px 24px rgba(16, 28, 37, .12); font-size: 12px; font-weight: 500; color: var(--bd-muted); user-select: none; white-space: nowrap; }
+.bd-semantic-search-index-status.is-indexing .bd-semantic-search-index-status__dot { animation: bd-embed-pulse 1s ease-in-out infinite; }
+.bd-semantic-search-index-status.is-ready { color: #1b7f3a; border-color: rgba(27, 127, 58, .25); }
+.bd-semantic-search-index-status.is-error { color: #b42318; border-color: rgba(180, 35, 24, .25); }
+.bd-semantic-search-index-status.is-queued, .bd-semantic-search-index-status.is-indexing { color: #9a6700; border-color: rgba(154, 103, 0, .28); }
+.bd-semantic-search-index-status.is-never { color: var(--bd-muted); }
+.bd-semantic-search-index-status__dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+@keyframes bd-embed-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+.bd-semantic-search-modal { width: 100%; box-sizing: border-box; background: var(--bd-surface); border: 1px solid var(--bd-line); border-radius: 12px; box-shadow: 0 24px 56px rgba(16, 28, 37, .18); display: flex; flex-direction: column; max-height: 80vh; }
+.bd-semantic-search-modal__header { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 12px; border-bottom: 1px solid var(--bd-line); }
+.bd-semantic-search-modal__title { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; color: var(--bd-ink); }
+.bd-semantic-search-modal__title svg { color: var(--bd-muted); }
+.bd-semantic-search-modal__close { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: var(--bd-muted); cursor: pointer; transition: background .15s, color .15s; }
+.bd-semantic-search-modal__close:hover { background: var(--bd-accent-soft); color: var(--bd-ink); }
+.bd-semantic-search-modal__body { padding: 14px 18px 18px; overflow-y: auto; flex: 1; }
+.bd-semantic-search-input-wrap { display: flex; gap: 8px; margin-bottom: 16px; }
+.bd-semantic-search-input { flex: 1; min-width: 0; border: 1px solid var(--bd-line); border-radius: 8px; padding: 10px 14px; font-size: 14px; background: var(--bd-bg); color: var(--bd-ink); outline: 0; transition: border-color .15s; font: inherit; }
+.bd-semantic-search-input:focus { border-color: var(--bd-accent); }
+.bd-semantic-search-input::placeholder { color: var(--bd-muted); }
+.bd-semantic-search-submit { flex-shrink: 0; border: 0; border-radius: 8px; padding: 8px 16px; font-size: 14px; font-weight: 500; background: var(--bd-accent); color: #fff; cursor: pointer; transition: opacity .15s; font: inherit; }
+.bd-semantic-search-submit:hover:not(:disabled) { opacity: .85; }
+.bd-semantic-search-submit:disabled { opacity: .45; cursor: not-allowed; }
+.bd-semantic-search-status { text-align: center; padding: 32px 0; color: var(--bd-muted); font-size: 14px; }
+.bd-semantic-search-status--empty { color: var(--bd-muted); font-style: italic; }
+.bd-semantic-search-results { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.bd-semantic-search-result-item { display: flex; align-items: flex-start; gap: 10px; width: 100%; box-sizing: border-box; padding: 10px 14px; border: 1px solid var(--bd-line); border-radius: 8px; background: var(--bd-bg); color: var(--bd-ink); font-size: 14px; text-align: left; cursor: pointer; transition: background .12s, border-color .12s; font: inherit; }
+.bd-semantic-search-result-item:hover { background: var(--bd-accent-soft); border-color: var(--bd-accent); }
+.bd-semantic-search-result-item__icon { flex-shrink: 0; margin-top: 2px; color: var(--bd-muted); }
+.bd-semantic-search-result-item__body { flex: 1; min-width: 0; }
+.bd-semantic-search-result-item__text { line-height: 1.4; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 4px; }
+.bd-semantic-search-result-item__meta-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.bd-semantic-search-result-item__kind { color: var(--bd-muted); }
+.bd-semantic-search-result-item__score { font-weight: 600; color: var(--bd-accent); }
+.bd-semantic-search-result-item__arrow { flex-shrink: 0; margin-top: 2px; color: var(--bd-muted); opacity: .5; transition: opacity .12s; }
+.bd-semantic-search-result-item:hover .bd-semantic-search-result-item__arrow { opacity: 1; }
+@keyframes bd-semantic-search-in { from { opacity: 0; transform: translate(-50%, calc(-50% + 12px)); } to { opacity: 1; transform: translate(-50%, -50%); } }
+
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; } }

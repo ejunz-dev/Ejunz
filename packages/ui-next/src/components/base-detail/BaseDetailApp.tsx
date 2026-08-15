@@ -7,6 +7,7 @@ import { BaseDetailCardEditDialog } from './BaseDetailCardEditDialog';
 import { BaseDetailConfirmDialog } from './BaseDetailConfirmDialog';
 import { BaseDetailProblemEditDialog } from './BaseDetailProblemEditDialog';
 import { BaseDetailSettingsDialog } from './BaseDetailSettingsDialog';
+import { BaseDetailSemanticSearch, type EmbeddingStatusView, type SemanticSearchItem } from './BaseDetailSemanticSearch';
 import { BaseDetailStatusIndicator } from './BaseDetailStatusIndicator';
 import { BaseDetailFloatingToolbar } from './BaseDetailFloatingToolbar';
 import { BaseDetailWSStatusIndicator } from './BaseDetailWSStatusIndicator';
@@ -63,7 +64,15 @@ export default function BaseDetailApp() {
   const { args } = usePageData();
   const data = useMemo(() => normalizeData(args), [args]);
   const { base, domainId } = data;
-  const { status: wsStatus, viewerCount, viewers, send: sendWsMessage } = useBaseDetailWebSocket({ socketUrl: data.socketUrl, wsPrefix: data.wsPrefix });
+  const { status: wsStatus, viewerCount, viewers, send: sendWsMessage } = useBaseDetailWebSocket({
+    socketUrl: data.socketUrl,
+    wsPrefix: data.wsPrefix,
+    onMessage: (message) => {
+      if ((message.type === 'init' || message.type === 'embedding_status') && message.embeddingStatus) {
+        setEmbeddingStatus(message.embeddingStatus as EmbeddingStatusView);
+      }
+    },
+  });
   const [nodeCardsMap, setNodeCardsMap] = useState(data.nodeCardsMap);
   const [editCard, setEditCard] = useState<BaseDetailCard | null>(null);
   const [editProblem, setEditProblem] = useState<{ cardId: string; pid: string; index: number } | null>(null);
@@ -85,6 +94,8 @@ export default function BaseDetailApp() {
   const [treeOpen, setTreeOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
+  const [semanticSearchOpen, setSemanticSearchOpen] = useState(false);
+  const [embeddingStatus, setEmbeddingStatus] = useState<EmbeddingStatusView>(null);
   const [uiPrefsDirty, setUiPrefsDirty] = useState(false);
   const [displaySettings, setDisplaySettings] = useState<BaseDetailDisplaySettings>(() => readBaseDetailDisplaySettings(data.baseDetailUiPrefs));
   const [search, setSearch] = useState('');
@@ -141,6 +152,21 @@ export default function BaseDetailApp() {
     setSelectedProblemId(null);
     updateUrl({ nodeId: switchNode ? host : selectedNodeId || host, cardId, problemId: null });
   }, [nodeCardsMap, selectedNodeId, updateUrl]);
+
+  const handleSemanticSelect = useCallback((result: SemanticSearchItem) => {
+    if (result.kind === 'node') {
+      if (nodes.some((node) => node.id === stringId(result.nodeId))) selectNode(stringId(result.nodeId));
+    } else if (result.kind === 'card') {
+      const cardId = stringId(result.cardDocId || '');
+      const card = findCardByDocId(cardId, nodeCardsMap);
+      if (card) {
+        selectCard(card);
+      } else {
+        const hostNodeId = findCardHostNodeId(cardId, nodeCardsMap);
+        if (hostNodeId) selectNode(hostNodeId);
+      }
+    }
+  }, [nodes, nodeCardsMap, selectCard, selectNode]);
 
   const selectNodeFromContent = useCallback((nodeId: string) => {
     if (nodeId === selectedNodeId) return;
@@ -268,7 +294,7 @@ export default function BaseDetailApp() {
 
   return (
     <div className="bd-page">
-      <BaseDetailHeader title={rootNode && selectedNodeId !== getRootNodeIds(nodes, edges)[0] ? rootNode.text || i18n('Unnamed Node') : title} description={rootNode && selectedNodeId !== getRootNodeIds(nodes, edges)[0] ? title : base.content} domainId={domainId} docId={docId} treeOpen={treeOpen} onToggleTree={() => setTreeOpen((open) => !open)} onShare={() => undefined} onOpenSettings={() => setSettingsOpen(true)} />
+      <BaseDetailHeader title={rootNode && selectedNodeId !== getRootNodeIds(nodes, edges)[0] ? rootNode.text || i18n('Unnamed Node') : title} description={rootNode && selectedNodeId !== getRootNodeIds(nodes, edges)[0] ? title : base.content} domainId={domainId} docId={docId} treeOpen={treeOpen} onToggleTree={() => setTreeOpen((open) => !open)} onShare={() => undefined} onOpenSettings={() => setSettingsOpen(true)} onSearchClick={() => setSemanticSearchOpen(true)} searchActive={semanticSearchOpen} />
       <BaseDetailExplorer value={search} onChange={setSearch} filters={filters} matchedCount={matchedCount} onApplyFilters={setFilters} onClearFilters={() => setFilters(emptyBaseDetailFilter())} availableCardTags={availableCardTags} availableProblemTags={availableProblemTags} />
       <div className="bd-page__stats"><strong>{currentStats.nodes}</strong> {i18n('nodes')} <span>·</span> <strong>{currentStats.cards}</strong> {i18n('cards')} <span>·</span> <strong>{currentStats.problems}</strong> {i18n('problems')}</div>
       <main className="bd-page__main">
@@ -307,8 +333,16 @@ export default function BaseDetailApp() {
       ) : null}
       {displaySettings.showExpandSaveIndicator ? <BaseDetailStatusIndicator dirty={uiPrefsDirty} posX={displaySettings.indicatorX} posY={displaySettings.indicatorY} onPosChange={(indicatorX, indicatorY) => { setDisplaySettings((current) => ({ ...current, indicatorX, indicatorY })); setUiPrefsDirty(true); }} onClickSave={() => void saveUiPrefs()} /> : null}
       {displaySettings.showWsIndicator ? <BaseDetailWSStatusIndicator status={wsStatus} viewerCount={viewerCount} viewers={viewers} open={displaySettings.wsIndicatorOpen} posX={displaySettings.wsIndicatorX} posY={displaySettings.wsIndicatorY} onPosChange={(wsIndicatorX, wsIndicatorY) => { setDisplaySettings((current) => ({ ...current, wsIndicatorX, wsIndicatorY })); setUiPrefsDirty(true); }} onToggle={() => { setDisplaySettings((current) => ({ ...current, wsIndicatorOpen: !current.wsIndicatorOpen })); setUiPrefsDirty(true); }} onRequestViewers={() => sendWsMessage({ type: 'request_viewers' })} /> : null}
-      {displaySettings.showToolbar ? <BaseDetailFloatingToolbar open={displaySettings.toolbarOpen} posX={displaySettings.toolbarX} posY={displaySettings.toolbarY} onOpenChange={(toolbarOpen) => { setDisplaySettings((current) => ({ ...current, toolbarOpen })); setUiPrefsDirty(true); }} onPosChange={(toolbarX, toolbarY) => { setDisplaySettings((current) => ({ ...current, toolbarX, toolbarY })); setUiPrefsDirty(true); }} onTreeOpen={() => setTreeOpen(true)} onSearchOpen={() => document.querySelector<HTMLInputElement>('.bd-explorer__search input')?.focus()} /> : null}
+      {displaySettings.showToolbar ? <BaseDetailFloatingToolbar open={displaySettings.toolbarOpen} posX={displaySettings.toolbarX} posY={displaySettings.toolbarY} onOpenChange={(toolbarOpen) => { setDisplaySettings((current) => ({ ...current, toolbarOpen })); setUiPrefsDirty(true); }} onPosChange={(toolbarX, toolbarY) => { setDisplaySettings((current) => ({ ...current, toolbarX, toolbarY })); setUiPrefsDirty(true); }} onTreeOpen={() => setTreeOpen(true)} onSearchOpen={() => setSemanticSearchOpen(true)} /> : null}
       <BaseDetailSettingsDialog open={settingsOpen} settings={displaySettings} saving={settingsSaving} onClose={() => setSettingsOpen(false)} onSave={saveDisplaySettings} />
+      <BaseDetailSemanticSearch
+        domainId={domainId}
+        docId={docId}
+        open={semanticSearchOpen}
+        onOpenChange={setSemanticSearchOpen}
+        embeddingStatus={embeddingStatus}
+        onSelectResult={handleSemanticSelect}
+      />
       {pendingNodeId ? (
         <BaseDetailConfirmDialog
           nodeLabel={nodes.find((node) => node.id === pendingNodeId)?.text?.trim() || i18n('Unnamed Node')}

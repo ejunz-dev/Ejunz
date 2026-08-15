@@ -83,7 +83,7 @@ export function BaseDetailFloatingToolbar({ open, posX, posY, onOpenChange, onPo
           <span className="bd-toolbar-trigger__dot" />
         </div>
         <div className={`bd-toolbar-side bd-toolbar-side--right${open ? ' is-visible' : ''}`}>
-          <button type="button" className="bd-toolbar-item" onClick={onSearchOpen} title={i18n('Filter current tree')} aria-label={i18n('Filter current tree')}>⌕</button>
+          <button type="button" className="bd-toolbar-item" onClick={onSearchOpen} title={i18n('Semantic Search')} aria-label={i18n('Semantic Search')}>⌕</button>
         </div>
       </div>
       <div className={`bd-toolbar-menu bd-toolbar-menu--bottom${open ? ' is-visible' : ''}`}>
