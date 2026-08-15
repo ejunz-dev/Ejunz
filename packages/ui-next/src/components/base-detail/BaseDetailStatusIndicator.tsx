@@ -26,13 +26,18 @@ export function BaseDetailStatusIndicator({ dirty, posX, posY, onPosChange, onCl
     const element = innerRef.current;
     if (!element) return;
     if (!fullWidthRef.current) {
+      // The label is display:none while clean, so reveal it to measure the
+      // expanded pill width; restore the class before the next style pass.
+      const wasDirty = element.classList.contains('is-dirty');
+      element.classList.add('is-dirty');
       element.style.transition = 'none';
       element.style.width = 'auto';
       fullWidthRef.current = Math.max(element.offsetWidth, 60);
+      element.classList.toggle('is-dirty', wasDirty);
       element.style.transition = '';
     }
     element.style.transition = 'width .3s ease-out';
-    element.style.width = dirty ? `${fullWidthRef.current}px` : '28px';
+    element.style.width = dirty ? `${fullWidthRef.current}px` : '1.7rem';
   }, [dirty]);
 
   const onPointerDown = useCallback((event: PointerEvent<HTMLDivElement>) => {
