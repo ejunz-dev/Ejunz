@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { i18n } from '../../i18n';
 import {
   defaultBaseDetailDisplaySettings,
@@ -89,23 +89,25 @@ export function BaseDetailSettingsDialog({ open, settings, saving = false, onClo
         </div>
         <div className="bd-settings-dialog__list">
           {rows.map((row) => (
-            <label className="bd-settings-dialog__row" key={row.key}>
-              <span className="bd-settings-dialog__row-text">
-                <span className="bd-settings-dialog__row-label">{row.label}</span>
-                <span className="bd-settings-dialog__row-description">{row.description}</span>
-              </span>
-              <input type="checkbox" checked={draft[row.key]} disabled={saving} onChange={(event) => update(row.key, event.currentTarget.checked)} />
-            </label>
+            <Fragment key={row.key}>
+              <label className="bd-settings-dialog__row">
+                <span className="bd-settings-dialog__row-text">
+                  <span className="bd-settings-dialog__row-label">{row.label}</span>
+                  <span className="bd-settings-dialog__row-description">{row.description}</span>
+                </span>
+                <input type="checkbox" checked={draft[row.key]} disabled={saving} onChange={(event) => update(row.key, event.currentTarget.checked)} />
+              </label>
+              {row.key === 'showProblemTree' && draft.showProblemTree ? (
+                <label className="bd-settings-dialog__row bd-settings-dialog__row--nested">
+                  <span className="bd-settings-dialog__row-text">
+                    <span className="bd-settings-dialog__row-label">{i18n('Show problem tags')}</span>
+                    <span className="bd-settings-dialog__row-description">{i18n('Show problem tags hint')}</span>
+                  </span>
+                  <input type="checkbox" checked={draft.showProblemTags} disabled={saving} onChange={(event) => update('showProblemTags', event.currentTarget.checked)} />
+                </label>
+              ) : null}
+            </Fragment>
           ))}
-          {draft.showProblemTree ? (
-            <label className="bd-settings-dialog__row bd-settings-dialog__row--nested">
-              <span className="bd-settings-dialog__row-text">
-                <span className="bd-settings-dialog__row-label">{i18n('Show problem tags')}</span>
-                <span className="bd-settings-dialog__row-description">{i18n('Show problem tags hint')}</span>
-              </span>
-              <input type="checkbox" checked={draft.showProblemTags} disabled={saving} onChange={(event) => update('showProblemTags', event.currentTarget.checked)} />
-            </label>
-          ) : null}
         </div>
         <footer className="bd-settings-dialog__footer">
           <button type="button" className="bd-settings-button" onClick={onClose} disabled={saving}>{i18n('Cancel')}</button>
