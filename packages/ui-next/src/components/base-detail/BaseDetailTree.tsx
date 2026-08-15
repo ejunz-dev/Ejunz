@@ -178,8 +178,8 @@ function TreeBranch({
                 <button type="button" className="bd-tree__main" onClick={() => onSelectCard(child.card)}>
                   <CardIcon card={child.card} />
                   <span className="bd-tree__label" title={cardDisplayLabel(child.card)}>{cardDisplayLabel(child.card)}</span>
-                  {displaySettings.showProblemCount && child.card.problems?.length ? <span className="bd-tree__problem-count">{child.card.problems.length}</span> : null}
                   {displaySettings.showNodeCardTimestamps ? <TimestampMeta createdAt={child.card.createdAt} updateAt={child.card.updateAt} /> : null}
+                  {displaySettings.showProblemCount && child.card.problems?.length ? <span className="bd-tree__problem-count">{child.card.problems.length}</span> : null}
                   {displaySettings.showCardTags ? <TagList tags={child.card.tags} /> : null}
                 </button>
               </div>
