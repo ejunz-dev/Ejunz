@@ -13,9 +13,11 @@ interface Props {
   onOpenSettings: () => void;
   onSearchClick?: () => void;
   searchActive?: boolean;
+  onAiTutorClick?: () => void;
+  aiTutorActive?: boolean;
 }
 
-export function BaseDetailHeader({ title, description, domainId, docId, treeOpen, onToggleTree, onShare, onOpenSettings, onSearchClick, searchActive }: Props) {
+export function BaseDetailHeader({ title, description, domainId, docId, treeOpen, onToggleTree, onShare, onOpenSettings, onSearchClick, searchActive, onAiTutorClick, aiTutorActive }: Props) {
   const buildUrl = useBuildUrl();
   const [copied, setCopied] = useState(false);
   const listUrl = buildUrl('base_domain', { domainId });
@@ -45,7 +47,10 @@ export function BaseDetailHeader({ title, description, domainId, docId, treeOpen
         {description?.trim() ? <p>{description}</p> : null}
       </div>
       <div className="bd-header__tabs" role="tablist" aria-label={i18n('Knowledge Base')}>
-        <span className="bd-header__tab is-active" role="tab" aria-selected="true">▤ {i18n('Knowledge Base')}</span>
+        <span className={`bd-header__tab${aiTutorActive ? '' : ' is-active'}`} role="tab" aria-selected={!aiTutorActive}>▤ {i18n('Knowledge Base')}</span>
+        {onAiTutorClick ? (
+          <button type="button" className={`bd-header__tab${aiTutorActive ? ' is-active' : ''}`} onClick={onAiTutorClick} aria-selected={aiTutorActive}>✦ {i18n('Roadmap AI tutor')}</button>
+        ) : null}
         <button type="button" className={`bd-header__tab${treeOpen ? ' is-active' : ''}`} onClick={onToggleTree} aria-selected={treeOpen}>⌘ {i18n('Document Structure')}</button>
       </div>
     </header>

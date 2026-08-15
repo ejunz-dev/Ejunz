@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePageData } from '../../context/page-data';
 import Notification from '../notification';
 import { i18n } from '../../i18n';
+import { BaseDetailAiTutor } from './BaseDetailAiTutor';
 import { BaseDetailCardDrawer } from './BaseDetailCardDrawer';
 import { BaseDetailCardEditDialog } from './BaseDetailCardEditDialog';
 import { BaseDetailConfirmDialog } from './BaseDetailConfirmDialog';
@@ -96,6 +97,7 @@ export default function BaseDetailApp() {
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [semanticSearchOpen, setSemanticSearchOpen] = useState(false);
   const [embeddingStatus, setEmbeddingStatus] = useState<EmbeddingStatusView>(null);
+  const [aiTutorOpen, setAiTutorOpen] = useState(false);
   const [uiPrefsDirty, setUiPrefsDirty] = useState(false);
   const [displaySettings, setDisplaySettings] = useState<BaseDetailDisplaySettings>(() => readBaseDetailDisplaySettings(data.baseDetailUiPrefs));
   const [search, setSearch] = useState('');
@@ -288,13 +290,14 @@ export default function BaseDetailApp() {
   const availableCardTags = [...new Set([...(base.cardTags || []), ...filterTags(Object.values(nodeCardsMap).flat())])].sort();
   const availableProblemTags = [...new Set([...(base.problemTags || []), ...filterTags(Object.values(nodeCardsMap).flat(), true)])].sort();
   const rootNode = nodes.find((node) => node.id === selectedNodeId) || nodes.find((node) => node.id === getRootNodeIds(nodes, edges)[0]);
+  const selectedNode = nodes.find((node) => node.id === selectedNodeId) || null;
   const title = base.title?.trim() || i18n('Knowledge Base');
   const editingProblemCard = editProblem ? findCardByDocId(editProblem.cardId, nodeCardsMap) : null;
   const editingProblem = editingProblemCard?.problems?.[editProblem?.index ?? -1] || null;
 
   return (
     <div className="bd-page">
-      <BaseDetailHeader title={rootNode && selectedNodeId !== getRootNodeIds(nodes, edges)[0] ? rootNode.text || i18n('Unnamed Node') : title} description={rootNode && selectedNodeId !== getRootNodeIds(nodes, edges)[0] ? title : base.content} domainId={domainId} docId={docId} treeOpen={treeOpen} onToggleTree={() => setTreeOpen((open) => !open)} onShare={() => undefined} onOpenSettings={() => setSettingsOpen(true)} onSearchClick={() => setSemanticSearchOpen(true)} searchActive={semanticSearchOpen} />
+      <BaseDetailHeader title={rootNode && selectedNodeId !== getRootNodeIds(nodes, edges)[0] ? rootNode.text || i18n('Unnamed Node') : title} description={rootNode && selectedNodeId !== getRootNodeIds(nodes, edges)[0] ? title : base.content} domainId={domainId} docId={docId} treeOpen={treeOpen} onToggleTree={() => setTreeOpen((open) => !open)} onShare={() => undefined} onOpenSettings={() => setSettingsOpen(true)} onSearchClick={() => setSemanticSearchOpen(true)} searchActive={semanticSearchOpen} onAiTutorClick={() => setAiTutorOpen(true)} aiTutorActive={aiTutorOpen} />
       <BaseDetailExplorer value={search} onChange={setSearch} filters={filters} matchedCount={matchedCount} onApplyFilters={setFilters} onClearFilters={() => setFilters(emptyBaseDetailFilter())} availableCardTags={availableCardTags} availableProblemTags={availableProblemTags} />
       <div className="bd-page__stats"><strong>{currentStats.nodes}</strong> {i18n('nodes')} <span>·</span> <strong>{currentStats.cards}</strong> {i18n('cards')} <span>·</span> <strong>{currentStats.problems}</strong> {i18n('problems')}</div>
       <main className="bd-page__main">
@@ -343,6 +346,21 @@ export default function BaseDetailApp() {
         embeddingStatus={embeddingStatus}
         onSelectResult={handleSemanticSelect}
       />
+      {displaySettings.showAiTutor ? (
+        <BaseDetailAiTutor
+          nodes={nodes}
+          edges={edges}
+          nodeCardsMap={nodeCardsMap}
+          docTitle={title}
+          docDescription={base.content}
+          selectedNode={selectedNode}
+          selectedCard={selectedCard}
+          open={aiTutorOpen}
+          onOpenChange={setAiTutorOpen}
+          docId={docId}
+          domainId={domainId}
+        />
+      ) : null}
       {pendingNodeId ? (
         <BaseDetailConfirmDialog
           nodeLabel={nodes.find((node) => node.id === pendingNodeId)?.text?.trim() || i18n('Unnamed Node')}
