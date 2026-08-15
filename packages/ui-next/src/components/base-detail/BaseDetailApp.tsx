@@ -50,6 +50,7 @@ function normalizeData(args: Record<string, any>): BaseDetailData {
     nodeCardsMap,
     baseDetailUiPrefs: (args.baseDetailUiPrefs || context.baseDetailUiPrefs || {}) as BaseDetailData['baseDetailUiPrefs'],
     socketUrl: args.socketUrl || context.socketUrl,
+    wsPrefix: typeof context.ws_prefix === 'string' && context.ws_prefix ? context.ws_prefix : '/',
     domainId: stringId(base.domainId || context.domainId || 'system'),
   };
 }
@@ -62,7 +63,7 @@ export default function BaseDetailApp() {
   const { args } = usePageData();
   const data = useMemo(() => normalizeData(args), [args]);
   const { base, domainId } = data;
-  const { status: wsStatus, viewerCount, viewers, send: sendWsMessage } = useBaseDetailWebSocket({ socketUrl: data.socketUrl });
+  const { status: wsStatus, viewerCount, viewers, send: sendWsMessage } = useBaseDetailWebSocket({ socketUrl: data.socketUrl, wsPrefix: data.wsPrefix });
   const [nodeCardsMap, setNodeCardsMap] = useState(data.nodeCardsMap);
   const [editCard, setEditCard] = useState<BaseDetailCard | null>(null);
   const [editProblem, setEditProblem] = useState<{ cardId: string; pid: string; index: number } | null>(null);

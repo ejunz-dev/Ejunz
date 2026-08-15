@@ -11,16 +11,19 @@ export interface BaseDetailViewerInfo {
 
 interface Options {
   socketUrl?: string;
+  /** ws prefix injected by the server (UiContext.ws_prefix). Falls back to window.UiContext, then '/'. */
+  wsPrefix?: string;
   onMessage?: (message: Record<string, any>) => void;
 }
 
-function buildWebSocketUrl(socketUrl: string): string {
-  const prefix = typeof window !== 'undefined' ? String((window as any).UiContext?.ws_prefix || '') : '';
+function buildWebSocketUrl(socketUrl: string, wsPrefix?: string): string {
+  const prefix = wsPrefix
+    ?? (typeof window !== 'undefined' ? String((window as any).UiContext?.ws_prefix || '/') : '/');
   const normalizedPrefix = prefix.endsWith('/base/') && socketUrl.startsWith('base/') ? prefix.slice(0, -'base/'.length) : prefix;
   return `${normalizedPrefix}${socketUrl}`;
 }
 
-export function useBaseDetailWebSocket({ socketUrl, onMessage }: Options) {
+export function useBaseDetailWebSocket({ socketUrl, wsPrefix, onMessage }: Options) {
   const [status, setStatus] = useState<BaseDetailWsStatus>('disconnected');
   const [viewerCount, setViewerCount] = useState(0);
   const [viewers, setViewers] = useState<BaseDetailViewerInfo[]>([]);
@@ -36,7 +39,7 @@ export function useBaseDetailWebSocket({ socketUrl, onMessage }: Options) {
       return undefined;
     }
     setStatus('connecting');
-    const socket = new Sock(buildWebSocketUrl(socketUrl));
+    const socket = new Sock(buildWebSocketUrl(socketUrl, wsPrefix));
     socketRef.current = socket;
     socket.onopen = () => setStatus('connected');
     socket.onclose = () => setStatus('disconnected');

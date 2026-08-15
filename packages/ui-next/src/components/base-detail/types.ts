@@ -65,5 +65,6 @@ export interface BaseDetailData {
   nodeCardsMap: Record<string, BaseDetailCard[]>;
   baseDetailUiPrefs: BaseDetailPrefs;
   socketUrl?: string;
+  wsPrefix: string;
   domainId: string;
 }
