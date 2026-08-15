@@ -120,8 +120,8 @@
 .bd-tree__node-icon, .bd-tree__card-icon { flex: 0 0 1rem; display: inline-flex; align-items: center; justify-content: center; color: var(--bd-accent); text-align: center; }
 .bd-tree__chevron { transition: transform .16s ease; transform-origin: center; }
 .bd-tree__chevron.is-expanded { transform: rotate(90deg); }
-.bd-tree__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bd-tree__meta { flex: 0 0 auto; color: var(--bd-muted); font-size: .66rem; font-weight: 400; }
+.bd-tree__label { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bd-tree__meta { flex: 0 1 auto; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--bd-muted); font-size: .66rem; font-weight: 400; text-align: right; }
 .bd-tree__problem-count, .bd-drawer__count { margin-left: auto; padding: .08rem .35rem; border-radius: 10px; background: #edf0f2; color: var(--bd-muted); font-size: .68rem; }
 .bd-tree__tags, .bd-card__tags { display: flex; flex-wrap: wrap; gap: .25rem; margin-left: auto; }
 .bd-tree__tag, .bd-card__tags span { padding: .12rem .34rem; border: 1px solid #c9dce9; border-radius: 3px; color: var(--bd-accent); font-size: .64rem; }
