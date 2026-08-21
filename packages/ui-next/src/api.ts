@@ -6,10 +6,12 @@ export { Button, type ButtonProps, type ButtonVariant } from './components/butto
 export { Tag, type TagProps } from './components/tag';
 export { Callout, type CalloutProps, type CalloutType } from './components/callout';
 export { Field, type FieldProps } from './components/field';
+export { Navigation } from './components/navigation';
+export { Footer } from './components/footer';
 export * from './components/base-detail';
 
 // Context
-export { type PageData, usePageData } from './context/page-data';
+export { type PageData, usePageData, useUiContext, useUserContext } from './context/page-data';
 export { type RouterState, useNavigate, useRouterState } from './context/router';
 export { useBuildUrl } from './hooks/use-build-url';
 

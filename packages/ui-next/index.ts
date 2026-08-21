@@ -274,6 +274,20 @@ const injectedScripts = (resolve: (name: string) => string, viewLang: string) =>
     'versions.js',
 ].map((name) => `<script src="${resolve(name)}"></script>`);
 
+function buildNavItems(handler: any) {
+    const nodes = global.Ejunz?.ui?.getNodes?.('Nav') || [];
+    return nodes.filter((item: any) => item.checker(handler)).map((item: any) => {
+        const rawArgs = typeof item.args === 'function' ? item.args(handler) : item.args || {};
+        const args = Object.fromEntries(Object.entries(rawArgs).filter(([key, value]) => key !== 'prefix' && key !== 'displayName' && ['string', 'number', 'boolean'].includes(typeof value)));
+        return {
+            name: String(item.name),
+            ...((item.displayName || rawArgs.displayName) ? { displayName: String(item.displayName || rawArgs.displayName) } : {}),
+            args,
+            ...(rawArgs.prefix ? { prefix: String(rawArgs.prefix) } : {}),
+        };
+    });
+}
+
 export async function apply(ctx: Context) {
     if (process.env.EJUNZ_CLI) return;
 
@@ -324,7 +338,7 @@ export async function apply(ctx: Context) {
                     template: context.handler.response.template || '',
                     args: {
                         UserContext: context.UserContext,
-                        UiContext: context.handler.UiContext,
+                        UiContext: { ...context.handler.UiContext, navItems: buildNavItems(context.handler) },
                         ...args,
                     },
                     url: context.handler.context.req.url!,
@@ -371,7 +385,7 @@ export async function apply(ctx: Context) {
                     template: context.handler.response.template || '',
                     args: {
                         UserContext: context.UserContext,
-                        UiContext: context.handler.UiContext,
+                        UiContext: { ...context.handler.UiContext, navItems: buildNavItems(context.handler) },
                         ...args,
                     },
                     url: context.handler.context.req.url!,
