@@ -49,4 +49,6 @@ export * from '@ejunz/framework/decorators';
 export * from '@ejunz/framework/validator';
 export * as StorageService from './service/storage';
 export { EventMap } from './service/bus';
+export { createProvider } from './service/provider';
+export type { Provider } from './service/provider';
 export { db, pwsh };

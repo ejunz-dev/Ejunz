@@ -860,6 +860,7 @@ export async function executeMcpBuiltinTool(
         const nodeId = String(args.nodeId || '');
         const title = String(args.title || '').trim();
         if (!nodeId) throw new Error('nodeId is required');
+        if (!(base.nodes || []).some((node) => node.id === nodeId)) throw new Error('Node not found: ' + nodeId);
         if (!title) throw new Error('title is required');
         const docId = await CardModel.create(
             domainId, baseDocId, nodeId, owner, title, String(args.content || ''),
@@ -868,16 +869,18 @@ export async function executeMcpBuiltinTool(
         return { ok: true, cardId: String(docId) };
     }
     case 'card_update': {
+        const card = await requireCard(ctx, args.cardId);
         const updates: Record<string, any> = {};
         if (typeof args.title === 'string') updates.title = args.title;
         if (typeof args.content === 'string') updates.content = args.content;
         if (!Object.keys(updates).length) throw new Error('Nothing to update (title or content required)');
-        await CardModel.update(domainId, toObjectId(args.cardId), updates);
-        return { ok: true, cardId: String(args.cardId) };
+        await CardModel.update(domainId, card.docId, updates);
+        return { ok: true, cardId: String(card.docId) };
     }
     case 'card_delete': {
-        await CardModel.delete(domainId, toObjectId(args.cardId));
-        return { ok: true, cardId: String(args.cardId) };
+        const card = await requireCard(ctx, args.cardId);
+        await CardModel.delete(domainId, card.docId);
+        return { ok: true, cardId: String(card.docId) };
     }
     case 'semantic_search': {
         const q = String(args.query || '').trim();
@@ -1051,6 +1054,7 @@ export async function executeMcpBuiltinTool(
         const fileName = String(args.fileName || '').trim();
         const fileUrl = String(args.fileUrl || '').trim();
         if (!nodeId) throw new Error('nodeId is required');
+        if (!(base.nodes || []).some((node) => node.id === nodeId)) throw new Error('Node not found: ' + nodeId);
         if (!fileName) throw new Error('fileName is required');
         if (!fileUrl) throw new Error('fileUrl is required');
         // Download file from URL
@@ -1087,6 +1091,7 @@ export async function executeMcpBuiltinTool(
     }
 }
 
+export const executeBaseTool = executeMcpBuiltinTool
 
 // ---- systemTools ----
 /**
