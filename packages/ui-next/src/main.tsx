@@ -3,6 +3,7 @@
 import './pages';
 
 import './components/theme.css';
+import './components/base-detail/base-detail.css';
 import './components/ui.css';
 
 import { StrictMode } from 'react';
