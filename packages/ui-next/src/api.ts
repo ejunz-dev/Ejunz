@@ -6,6 +6,7 @@ export { Button, type ButtonProps, type ButtonVariant } from './components/butto
 export { Tag, type TagProps } from './components/tag';
 export { Callout, type CalloutProps, type CalloutType } from './components/callout';
 export { Field, type FieldProps } from './components/field';
+export { Notification } from './components/notification';
 export { Navigation } from './components/navigation';
 export { Footer } from './components/footer';
 export * from './components/base-detail';
