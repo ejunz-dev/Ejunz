@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useBuildUrl } from '../../hooks/use-build-url';
 import { i18n } from '../../i18n';
 
@@ -11,6 +11,8 @@ interface Props {
   onToggleTree: () => void;
   onShare: () => void;
   onOpenSettings: () => void;
+  onOpenDisplaySettings?: () => void;
+  metadata?: ReactNode;
   onSearchClick?: () => void;
   searchActive?: boolean;
   onAiTutorClick?: () => void;
@@ -19,7 +21,7 @@ interface Props {
   editActive?: boolean;
 }
 
-export function BaseDetailHeader({ title, description, domainId, docId, treeOpen, onToggleTree, onShare, onOpenSettings, onSearchClick, searchActive, onAiTutorClick, aiTutorActive, onEditClick, editActive }: Props) {
+export function BaseDetailHeader({ title, description, domainId, docId, treeOpen, onToggleTree, onShare, onOpenSettings, onOpenDisplaySettings, metadata, onSearchClick, searchActive, onAiTutorClick, aiTutorActive, onEditClick, editActive }: Props) {
   const buildUrl = useBuildUrl();
   const [copied, setCopied] = useState(false);
   const listUrl = buildUrl('base_domain', { domainId });
@@ -41,6 +43,7 @@ export function BaseDetailHeader({ title, description, domainId, docId, treeOpen
             <button type="button" className={`bd-header__action${searchActive ? ' is-active' : ''}`} onClick={onSearchClick} aria-label={i18n('Semantic Search')}>⌕ <span>{i18n('Search')}</span></button>
           ) : null}
           {onEditClick ? <button type="button" className={`bd-header__action${editActive ? ' is-active' : ''}`} onClick={onEditClick} aria-pressed={editActive}>{editActive ? '✓' : '✎'} <span>编辑</span></button> : null}
+          {onOpenDisplaySettings ? <button type="button" className="bd-header__action" onClick={onOpenDisplaySettings} aria-label="显示设置">◌ <span>显示</span></button> : null}
           <button type="button" className="bd-header__action" onClick={onOpenSettings} aria-label={i18n('Roadmap detail settings title')}>⚙ <span>{i18n('Settings')}</span></button>
           <button type="button" className="bd-header__action" onClick={share} aria-label={i18n('Copy link')}>↗ <span>{copied ? i18n('Copied') : i18n('Share')}</span></button>
         </div>
@@ -48,6 +51,7 @@ export function BaseDetailHeader({ title, description, domainId, docId, treeOpen
       <div className="bd-header__body">
         <h1>{title}</h1>
         {description?.trim() ? <p>{description}</p> : null}
+        {metadata}
       </div>
       <div className="bd-header__tabs" role="tablist" aria-label={i18n('Knowledge Base')}>
         <span className={`bd-header__tab${aiTutorActive ? '' : ' is-active'}`} role="tab" aria-selected={!aiTutorActive}>▤ {i18n('Knowledge Base')}</span>
