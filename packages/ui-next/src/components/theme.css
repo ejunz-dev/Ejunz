@@ -22,6 +22,9 @@
   --bd-accent-soft: #e8f2fa;
   --bd-problem-accent: #a65c14;
   --bd-problem-accent-soft: #fff2e4;
+  --bd-tutor-accent: #e8a317;
+  --bd-tutor-soft: #fff8e6;
+  --bd-tutor-soft-hover: #fff3d4;
   --web-positive: #15803d;
   --web-negative: #b91c1c;
   --web-shadow: rgba(0, 0, 0, .14);
@@ -51,6 +54,9 @@ html.theme--dark {
   --bd-accent-soft: #263d50;
   --bd-problem-accent: #f2a65a;
   --bd-problem-accent-soft: #4a2e18;
+  --bd-tutor-accent: #f2b65d;
+  --bd-tutor-soft: #4a2e18;
+  --bd-tutor-soft-hover: #5a3a1f;
   --web-positive: #4ade80;
   --web-negative: #f87171;
   --web-shadow: rgba(0, 0, 0, .34);

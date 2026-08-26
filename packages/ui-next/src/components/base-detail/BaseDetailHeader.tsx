@@ -15,9 +15,11 @@ interface Props {
   searchActive?: boolean;
   onAiTutorClick?: () => void;
   aiTutorActive?: boolean;
+  onEditClick?: () => void;
+  editActive?: boolean;
 }
 
-export function BaseDetailHeader({ title, description, domainId, docId, treeOpen, onToggleTree, onShare, onOpenSettings, onSearchClick, searchActive, onAiTutorClick, aiTutorActive }: Props) {
+export function BaseDetailHeader({ title, description, domainId, docId, treeOpen, onToggleTree, onShare, onOpenSettings, onSearchClick, searchActive, onAiTutorClick, aiTutorActive, onEditClick, editActive }: Props) {
   const buildUrl = useBuildUrl();
   const [copied, setCopied] = useState(false);
   const listUrl = buildUrl('base_domain', { domainId });
@@ -38,6 +40,7 @@ export function BaseDetailHeader({ title, description, domainId, docId, treeOpen
           {onSearchClick ? (
             <button type="button" className={`bd-header__action${searchActive ? ' is-active' : ''}`} onClick={onSearchClick} aria-label={i18n('Semantic Search')}>⌕ <span>{i18n('Search')}</span></button>
           ) : null}
+          {onEditClick ? <button type="button" className={`bd-header__action${editActive ? ' is-active' : ''}`} onClick={onEditClick} aria-pressed={editActive}>{editActive ? '✓' : '✎'} <span>编辑</span></button> : null}
           <button type="button" className="bd-header__action" onClick={onOpenSettings} aria-label={i18n('Roadmap detail settings title')}>⚙ <span>{i18n('Settings')}</span></button>
           <button type="button" className="bd-header__action" onClick={share} aria-label={i18n('Copy link')}>↗ <span>{copied ? i18n('Copied') : i18n('Share')}</span></button>
         </div>
