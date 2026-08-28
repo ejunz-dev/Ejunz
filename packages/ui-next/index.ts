@@ -220,6 +220,11 @@ export async function buildPlugins() {
             minify: true,
             jsx: 'automatic',
             jsxImportSource: 'react',
+            loader: {
+                '.ttf': 'file',
+                '.woff': 'file',
+                '.woff2': 'file',
+            },
         });
         if (result.errors.length) logger.error('Plugin build errors: %o', result.errors);
 
