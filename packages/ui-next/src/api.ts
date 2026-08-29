@@ -27,4 +27,5 @@ export { defineSlot } from './registry';
 // Shared dependencies
 export { default as React } from 'react';
 export { default as ReactDOM } from 'react-dom/client';
+export { default as ReactDOMCore } from 'react-dom';
 export { default as jsxRuntime } from 'react/jsx-runtime';
