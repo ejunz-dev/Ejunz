@@ -4,7 +4,12 @@
     "workspaces": [
         "packages/*",
         "framework/*",
-        "plugins/*",
+        "plugins/agent",
+        "plugins/agent/ejunz-agent/vendor/*",
+        "plugins/agent/ejunz-agent/packages/*/*",
+        "plugins/agent/ejunz-agent/native/landlock-run",
+        "plugins/agent/ejunz-agent/native/landlock-run/packages/*",
+        "plugins/agent/ejunz-agent/apps/*",
         "modules/*"
     ],
     "main": "package.json",
