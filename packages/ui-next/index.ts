@@ -72,6 +72,7 @@ const federationPlugin: esbuild.Plugin = {
     setup(b) {
         const mappings: Record<string, string> = {
             react: 'React',
+            'react-dom': 'ReactDOMCore',
             'react-dom/client': 'ReactDOM',
             'react/jsx-runtime': 'jsxRuntime',
         };
