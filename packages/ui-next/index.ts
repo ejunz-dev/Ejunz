@@ -321,6 +321,9 @@ export async function apply(ctx: Context) {
                     'Cross-Origin-Embedder-Policy': 'require-corp',
                 },
             },
+            resolve: {
+                dedupe: ['react', 'react-dom'],
+            },
             appType: 'custom',
             plugins: [ejunzPlugins()],
         });

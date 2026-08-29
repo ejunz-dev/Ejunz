@@ -24,6 +24,7 @@ export default defineConfig(({ command }) => ({
             '@': path.resolve(__dirname, 'src'),
             '@ejunz/ui-next': path.resolve(__dirname, 'src/api.ts'),
         },
+        dedupe: ['react', 'react-dom'],
     },
     publicDir: 'pub',
     build: {
