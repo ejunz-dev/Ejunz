@@ -215,6 +215,7 @@ export async function buildPlugins() {
             assetNames: 'asset-[hash]',
             metafile: true,
             write: false,
+            tsconfigRaw: { compilerOptions: { jsx: 'react-jsx' } },
             target: ['chrome90'],
             plugins: [federationPlugin],
             minify: true,
