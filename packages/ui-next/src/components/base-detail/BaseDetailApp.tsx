@@ -66,7 +66,9 @@ export default function BaseDetailApp() {
   const { args } = usePageData();
   const { setMobileNavActions } = useNavigationActions();
   const data = useMemo(() => normalizeData(args), [args]);
-  const { base, domainId } = data;
+  const { base: initialBase, domainId } = data;
+  const refreshBaseRef = useRef<(() => Promise<void>) | null>(null);
+  const refreshVersionRef = useRef(0);
   const { status: wsStatus, viewerCount, viewers, send: sendWsMessage } = useBaseDetailWebSocket({
     socketUrl: data.socketUrl,
     wsPrefix: data.wsPrefix,
@@ -74,8 +76,10 @@ export default function BaseDetailApp() {
       if ((message.type === 'init' || message.type === 'embedding_status') && message.embeddingStatus) {
         setEmbeddingStatus(message.embeddingStatus as EmbeddingStatusView);
       }
+      if (message.type === 'update') void refreshBaseRef.current?.();
     },
   });
+  const [base, setBase] = useState(initialBase);
   const [nodeCardsMap, setNodeCardsMap] = useState(data.nodeCardsMap);
   const [editCard, setEditCard] = useState<BaseDetailCard | null>(null);
   const [editProblem, setEditProblem] = useState<{ cardId: string; pid: string; index: number } | null>(null);
@@ -105,10 +109,30 @@ export default function BaseDetailApp() {
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<BaseDetailFilter>(() => readBaseDetailFilterFromLocation());
   const [pendingNodeId, setPendingNodeId] = useState<string | null>(null);
+  const refreshBase = useCallback(async () => {
+    const version = ++refreshVersionRef.current;
+    try {
+      const payload = await requestJson<Record<string, any>>(`/base/data?docId=${encodeURIComponent(docId)}`, { domainId });
+      if (version !== refreshVersionRef.current || !Array.isArray(payload.nodes) || !payload.nodeCardsMap || typeof payload.nodeCardsMap !== 'object') return;
+      const refreshed = normalizeData({ base: payload, nodeCardsMap: payload.nodeCardsMap, UiContext: { domainId } });
+      setBase(refreshed.base);
+      setNodeCardsMap(refreshed.nodeCardsMap);
+      setSelectedCard((current) => current ? findCardByDocId(stringId(current.docId), refreshed.nodeCardsMap) : null);
+      if (selectedCard && !findCardByDocId(stringId(selectedCard.docId), refreshed.nodeCardsMap)) setSelectedProblemId(null);
+      if (!uiPrefsDirty && payload.baseDetailUiPrefs && typeof payload.baseDetailUiPrefs === 'object' && !Array.isArray(payload.baseDetailUiPrefs)) {
+        setDisplaySettings((current) => ({ ...current, ...readBaseDetailDisplaySettings(payload.baseDetailUiPrefs) }));
+        if (Array.isArray(payload.baseDetailUiPrefs.expandedNodeIds)) setExpandedNodes(new Set(payload.baseDetailUiPrefs.expandedNodeIds.filter((id: unknown) => typeof id === 'string')));
+      }
+    } catch {
+      return;
+    }
+  }, [domainId, docId, selectedCard, uiPrefsDirty]);
+  refreshBaseRef.current = refreshBase;
 
   useEffect(() => {
+    setBase(data.base);
     setNodeCardsMap(data.nodeCardsMap);
-  }, [data.nodeCardsMap]);
+  }, [data.base, data.nodeCardsMap]);
 
   useEffect(() => {
     if (!editCard && !editProblem) return undefined;
