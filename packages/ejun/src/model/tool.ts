@@ -343,6 +343,79 @@ export interface McpToolDef {
 
 export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
     {
+        name: 'base_create',
+        description: 'Create a new Ejunz Base in the current domain. The new Base is returned by id and is not automatically selected for this session.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                title: { type: 'string', description: 'Base title (required).' },
+                content: { type: 'string', description: 'Base description or markdown content (optional).' },
+                slug: { type: 'string', description: 'Optional unique lowercase URL slug.' },
+                tag: { type: 'array', items: { type: 'string' }, description: 'Optional Base tags.' },
+            },
+            required: ['title'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'base_list',
+        description: 'List all Ejunz Bases in the current domain.',
+        inputSchema: {
+            type: 'object',
+            properties: {},
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'base_search',
+        description: 'Search Ejunz Bases in the current domain by title, content, slug, or tags.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                query: { type: 'string', description: 'Search text.' },
+                limit: { type: 'number', description: 'Maximum result count, up to 50.' },
+            },
+            required: ['query'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'base_get',
+        description: 'Read an Ejunz Base by baseId, including metadata, content, nodes, and edges.',
+        inputSchema: {
+            type: 'object',
+            properties: { baseId: { type: 'integer', description: 'Existing Base id.' } },
+            required: ['baseId'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'base_update',
+        description: 'Update an Ejunz Base by baseId: title, content, slug, or tags.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                baseId: { type: 'integer', description: 'Existing Base id.' },
+                title: { type: 'string', description: 'New Base title.' },
+                content: { type: 'string', description: 'New Base description or markdown content.' },
+                slug: { type: 'string', description: 'New unique lowercase URL slug; empty clears it.' },
+                tag: { type: 'array', items: { type: 'string' }, description: 'Replacement Base tags.' },
+            },
+            required: ['baseId'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'base_delete',
+        description: 'Delete an Ejunz Base by baseId.',
+        inputSchema: {
+            type: 'object',
+            properties: { baseId: { type: 'integer', description: 'Existing Base id.' } },
+            required: ['baseId'],
+            additionalProperties: false,
+        },
+    },
+    {
         name: 'node_create',
         description: 'Create a new node (section/topic). '
             + 'Pass parentId to nest it under an existing node; omit parentId to create it under the bound base root node.',
@@ -634,7 +707,7 @@ export async function buildMcpInstructions(
     ctx: { domainId: string; baseDocId?: number },
 ): Promise<string> {
     const lines: string[] = [
-        'This MCP server is bound to a single Ejunz "base" — a knowledge base organized as an node tree.',
+        'This MCP server operates in the current Ejunz domain. Base content tools use a selected Base, while base_list and base_search discover Bases in the domain.',
         '',
         'Concepts:',
         '- Node: a section/topic in the base\'s node tree. Nodes form a hierarchy via parentId/level. Each node has an id and text (title).',
@@ -652,21 +725,24 @@ export async function buildMcpInstructions(
         lines.push(
             '',
             `This endpoint is bound to base #${ctx.baseDocId}${title ? ` "${title}"` : ''}. `
-            + 'All tools operate only within this base.',
+            + 'Node, card, problem, file, and Git tools operate within this base unless documented otherwise. '
+            + 'base_get, base_update, and base_delete take an explicit baseId.',
         );
     }
     lines.push(
         '',
         'Typical workflow:',
-        '1. semantic_search(query) — find content by meaning (vector/embedding search across node titles and card content).',
-        '2. Use create/update/delete tools to modify nodes, cards, and problems when you already know their ids.',
-        '3. problem_list(cardId) / problem_get(cardId, pid) — list or read practice problems on a known card.',
-        '4. git_status — check local/remote sync; git_commit / git_push / git_pull — sync with GitHub (configure repo via git_config_set).',
+        '1. base_list() or base_search(query) — find a Base in the current domain.',
+        '2. base_get(baseId) — inspect the selected Base before modifying it.',
+        '3. semantic_search(query) — find content by meaning (vector/embedding search across node titles and card content).',
+        '4. Use create/update/delete tools to modify nodes, cards, and problems when you already know their ids.',
+        '5. git_status — check local/remote sync; git_commit / git_push / git_pull — sync with GitHub (configure repo via git_config_set).',
     );
     return lines.join('\n');
 }
 
 const MCP_BUILTIN_MUTATING_TOOLS = new Set([
+    'base_create', 'base_update', 'base_delete',
     'node_create', 'node_update', 'node_delete',
     'card_create', 'card_update', 'card_delete',
     'node_file_create', 'node_file_delete',
@@ -822,12 +898,84 @@ export async function executeMcpBuiltinTool(
     name: string,
     args: Record<string, any>,
 ): Promise<unknown> {
-    const { domainId, baseDocId, owner } = ctx;
-    if (!baseDocId) throw new Error('This MCP endpoint is not bound to a base.');
+    const { domainId, owner } = ctx;
+    if (name === 'base_create') {
+        const title = String(args.title || '').trim();
+        if (!title) throw new Error('title is required');
+        const content = typeof args.content === 'string' ? args.content : '';
+        const slug = typeof args.slug === 'string' ? args.slug.trim() : undefined;
+        const tag = Array.isArray(args.tag)
+            ? args.tag.filter((value: unknown): value is string => typeof value === 'string').map((value) => value.trim()).filter(Boolean)
+            : undefined;
+        const created = await BaseModel.create(
+            domainId,
+            owner,
+            title,
+            content,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            true,
+            tag,
+            document.TYPE_BASE,
+            undefined,
+            slug === undefined ? undefined : { slug },
+        );
+        const base = await BaseModel.get(domainId, created.docId, document.TYPE_BASE);
+        return { ok: true, baseId: created.docId, base };
+    }
+    if (name === 'base_list' || name === 'base_search') {
+        const query = name === 'base_search' ? String(args.query || '').trim().toLowerCase() : '';
+        if (name === 'base_search' && !query) throw new Error('query is required');
+        const limit = Math.max(1, Math.min(50, Number(args.limit) || 15));
+        const bases = await BaseModel.getAll(domainId, undefined, document.TYPE_BASE);
+        const matches = query === '' ? bases : bases.filter((item) => [item.title, item.content, item.slug, ...(item.tag || [])]
+            .filter((value): value is string => typeof value === 'string')
+            .some((value) => value.toLowerCase().includes(query)));
+        return {
+            ok: true,
+            query: query || null,
+            count: Math.min(matches.length, limit),
+            bases: matches.slice(0, limit).map((item) => ({
+                baseId: item.docId,
+                title: item.title,
+                content: item.content,
+                ...(item.slug ? { slug: item.slug } : {}),
+                ...(item.tag?.length ? { tag: item.tag } : {}),
+                createdAt: item.createdAt,
+                updateAt: item.updateAt,
+            })),
+        };
+    }
+    const requestedBaseId = ['base_get', 'base_update', 'base_delete'].includes(name) ? Number(args.baseId) : ctx.baseDocId;
+    const baseDocId = Number.isSafeInteger(requestedBaseId) && requestedBaseId > 0 ? requestedBaseId : 0;
+    if (!baseDocId) throw new Error(['base_get', 'base_update', 'base_delete'].includes(name) ? 'baseId is required' : 'This MCP endpoint is not bound to a base.');
     const base = await BaseModel.get(domainId, baseDocId, document.TYPE_BASE);
     if (!base) throw new Error(`Base not found: ${baseDocId}`);
 
     switch (name) {
+    case 'base_get':
+        return { ok: true, base };
+    case 'base_update': {
+        const updates: Record<string, unknown> = {};
+        if (Object.prototype.hasOwnProperty.call(args, 'title')) {
+            const title = String(args.title || '').trim();
+            if (!title) throw new Error('title cannot be empty');
+            updates.title = title;
+        }
+        if (typeof args.content === 'string') updates.content = args.content;
+        if (typeof args.slug === 'string') updates.slug = args.slug.trim();
+        if (Array.isArray(args.tag)) {
+            updates.tag = args.tag.filter((value: unknown): value is string => typeof value === 'string').map((value) => value.trim()).filter(Boolean);
+        }
+        if (Object.keys(updates).length === 0) throw new Error('Nothing to update');
+        await BaseModel.update(domainId, baseDocId, updates as Parameters<typeof BaseModel.update>[2], document.TYPE_BASE);
+        return { ok: true, baseId: baseDocId, base: await BaseModel.get(domainId, baseDocId, document.TYPE_BASE) };
+    }
+    case 'base_delete':
+        await BaseModel.delete(domainId, baseDocId, document.TYPE_BASE);
+        return { ok: true, baseId: baseDocId };
     case 'node_create': {
         const text = String(args.text || '').trim();
         if (!text) throw new Error('text is required');
