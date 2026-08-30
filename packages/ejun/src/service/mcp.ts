@@ -418,7 +418,7 @@ export default class McpService extends Service {
                     resultText = typeof result === 'string' ? result : JSON.stringify(result);
                     response = { jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: resultText }] } };
                     logger.info('MCP tools/call OK: %s, tool=%s, id=%s, %dms, result=%s', logCtx, name, `${msg.id}`, Date.now() - startedAt, clipForLog(resultText));
-                    if (isMcpBuiltinMutatingTool(name)) (this.ctx.emit as any)('base/update', toolCtx.baseDocId, null);
+                    if (isMcpBuiltinMutatingTool(name)) this.ctx.broadcast('base/update', toolCtx.baseDocId, null);
                 } catch (e) {
                     isError = true;
                     errorMsg = (e as Error).message;

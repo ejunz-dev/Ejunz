@@ -746,7 +746,7 @@ export class BaseDetailUiPrefsHandler extends Handler {
         );
 
         this.response.body = { success: true };
-        (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'detail_ui_prefs');
+        this.ctx.broadcast('base/update', docId, this.user._id, this.user.uname, 'detail_ui_prefs');
     }
 }
 
@@ -1841,7 +1841,7 @@ export class BaseSaveHandler extends Handler {
             if (!this.user.own(baseOnly)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
             const docIdOnly = baseOnly.docId;
             await persistBaseEditorSaveSidecars(this, domainId, docIdOnly, data as Record<string, unknown>, mdt);
-            (this.ctx.emit as any)('base/update', docIdOnly, this.user._id, this.user.uname, 'sidecar_save');
+            this.ctx.broadcast('base/update', docIdOnly, this.user._id, this.user.uname, 'sidecar_save');
             this.response.body = { success: true, hasNonPositionChanges: false };
             return;
         }
@@ -1899,7 +1899,7 @@ export class BaseSaveHandler extends Handler {
                 edges: currentData.edges,
             }, mdt);
             
-            (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'expand_save');
+            this.ctx.broadcast('base/update', docId, this.user._id, this.user.uname, 'expand_save');
 
             this.response.body = { success: true, hasNonPositionChanges: false };
             return;
@@ -1983,7 +1983,7 @@ export class BaseSaveHandler extends Handler {
             }
         }
         
-        (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'full_save');
+        this.ctx.broadcast('base/update', docId, this.user._id, this.user.uname, 'full_save');
         (this.ctx.emit as any)('base/git/status/update', docId);
 
         // Async incremental embedding: only node text add/change/delete.
@@ -3372,7 +3372,7 @@ export class BaseCardHandler extends Handler {
 
         if (action === 'delete') {
             await CardModel.delete(domainId, targetCard.docId);
-            (this.ctx.emit as any)('base/update', base.docId, this.user._id, this.user.uname, 'delete_card');
+            this.ctx.broadcast('base/update', base.docId, this.user._id, this.user.uname, 'delete_card');
             this.response.body = { success: true };
             enqueueEmbeddingIndex({
                 domainId,
@@ -3422,7 +3422,7 @@ export class BaseCardHandler extends Handler {
         if (updates.nodeId !== undefined) changed.push('nodeId');
         if (updates.order !== undefined) changed.push('order');
         if (updates.tags !== undefined) changed.push('tags');
-        (this.ctx.emit as any)('base/update', base.docId, this.user._id, this.user.uname, 'update_card', { changed });
+        this.ctx.broadcast('base/update', base.docId, this.user._id, this.user.uname, 'update_card', { changed });
         this.response.body = { success: true };
     }
 }
@@ -4901,7 +4901,7 @@ export class BaseBatchSaveHandler extends Handler {
         if (data.cardDeletes?.length) summary.cardDeletes = data.cardDeletes.length;
         if (data.edgeCreates?.length) summary.edgeCreates = data.edgeCreates.length;
         if (data.edgeDeletes?.length) summary.edgeDeletes = data.edgeDeletes.length;
-        (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'batch_update', summary);
+        this.ctx.broadcast('base/update', docId, this.user._id, this.user.uname, 'batch_update', summary);
 
         if (batchSuccess) {
             for (const realId of nodeIdMap.values()) embeddingNodeIds.push(realId);
@@ -5445,7 +5445,7 @@ class BaseCommitHandler extends Handler {
             );
 
             
-            (this.ctx.emit as any)('base/update', base.docId, this.user._id, this.user.uname, 'git_commit', { message: customMessage?.trim() || '' });
+            this.ctx.broadcast('base/update', base.docId, this.user._id, this.user.uname, 'git_commit', { message: customMessage?.trim() || '' });
             (this.ctx.emit as any)('base/git/status/update', base.docId, base.slug);
 
             this.response.body = { ok: true, message: 'Changes committed successfully' };
@@ -6548,7 +6548,7 @@ class BaseMigrateNodeToNewHandler extends Handler {
             logger.error('copy-node-to-new: ensureBaseGitRepo failed', err);
         }
 
-        (this.ctx.emit as any)('base/update', newDocId, this.user._id, this.user.uname, 'migrate_node');
+        this.ctx.broadcast('base/update', newDocId, this.user._id, this.user.uname, 'migrate_node');
 
         this.response.body = {
             success: true,
@@ -6582,7 +6582,7 @@ export class BaseProblemTagRegistryHandler extends Handler {
         }
         const next = sanitizeProblemTagRegistryList([...prev, tag]);
         await BaseModel.updateFull(domainId, docId, { problemTags: next });
-        (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'add_tag', { tag });
+        this.ctx.broadcast('base/update', docId, this.user._id, this.user.uname, 'add_tag', { tag });
         this.response.body = { success: true, problemTags: next };
     }
 }
@@ -6617,7 +6617,7 @@ export class BaseCardTagRegistryHandler extends Handler {
             }
             const next = sanitizeProblemTagRegistryList([...current, tag]);
             await BaseModel.updateFull(domainId, docId, { cardTags: next });
-            (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'add_card_tag', { tag });
+            this.ctx.broadcast('base/update', docId, this.user._id, this.user.uname, 'add_card_tag', { tag });
             this.response.body = { success: true, cardTags: next };
         } else if (action === 'add_child') {
             // Add a child tag under a parent: parentTag/childTag
@@ -6631,7 +6631,7 @@ export class BaseCardTagRegistryHandler extends Handler {
             }
             const next = sanitizeProblemTagRegistryList([...current, fullTag]);
             await BaseModel.updateFull(domainId, docId, { cardTags: next });
-            (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'add_card_tag', { tag: fullTag });
+            this.ctx.broadcast('base/update', docId, this.user._id, this.user.uname, 'add_card_tag', { tag: fullTag });
             this.response.body = { success: true, cardTags: next };
         } else if (action === 'delete') {
             const tag = normalizeProblemTagInput(body.tag);
@@ -6639,7 +6639,7 @@ export class BaseCardTagRegistryHandler extends Handler {
             // Also remove children: "数学" → removes "数学", "数学/微积分", "数学/线性代数"
             const next = current.filter((t: string) => t !== tag && !t.startsWith(tag + '/'));
             await BaseModel.updateFull(domainId, docId, { cardTags: next });
-            (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'delete_card_tag', { tag });
+            this.ctx.broadcast('base/update', docId, this.user._id, this.user.uname, 'delete_card_tag', { tag });
             this.response.body = { success: true, cardTags: next };
         } else if (action === 'rename') {
             const oldTag = normalizeProblemTagInput(body.oldTag);
@@ -6672,7 +6672,7 @@ export class BaseCardTagRegistryHandler extends Handler {
                     }
                 }
             } catch { /* non-fatal; card-level tags may be incomplete */ }
-            (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'rename_card_tag', { oldTag, newTag });
+            this.ctx.broadcast('base/update', docId, this.user._id, this.user.uname, 'rename_card_tag', { oldTag, newTag });
             this.response.body = { success: true, cardTags: deduped };
         } else {
             // list
@@ -6708,7 +6708,7 @@ export class BaseProblemTagManageHandler extends Handler {
             }
             const next = sanitizeProblemTagRegistryList([...current, tag]);
             await BaseModel.updateFull(domainId, docId, { problemTags: next });
-            (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'add_problem_tag', { tag });
+            this.ctx.broadcast('base/update', docId, this.user._id, this.user.uname, 'add_problem_tag', { tag });
             this.response.body = { success: true, problemTags: next };
         } else if (action === 'add_child') {
             const parentTag = normalizeProblemTagInput(body.parentTag);
@@ -6721,7 +6721,7 @@ export class BaseProblemTagManageHandler extends Handler {
             }
             const next = sanitizeProblemTagRegistryList([...current, fullTag]);
             await BaseModel.updateFull(domainId, docId, { problemTags: next });
-            (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'add_problem_tag', { tag: fullTag });
+            this.ctx.broadcast('base/update', docId, this.user._id, this.user.uname, 'add_problem_tag', { tag: fullTag });
             this.response.body = { success: true, problemTags: next };
         } else if (action === 'delete') {
             const tag = normalizeProblemTagInput(body.tag);
@@ -6729,7 +6729,7 @@ export class BaseProblemTagManageHandler extends Handler {
             // Cascade: "数学" removes "数学", "数学/微积分"
             const next = current.filter((t: string) => t !== tag && !t.startsWith(tag + '/'));
             await BaseModel.updateFull(domainId, docId, { problemTags: next });
-            (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'delete_problem_tag', { tag });
+            this.ctx.broadcast('base/update', docId, this.user._id, this.user.uname, 'delete_problem_tag', { tag });
             this.response.body = { success: true, problemTags: next };
         } else if (action === 'rename') {
             const oldTag = normalizeProblemTagInput(body.oldTag);
@@ -6767,7 +6767,7 @@ export class BaseProblemTagManageHandler extends Handler {
                     }
                 }
             } catch { /* non-fatal */ }
-            (this.ctx.emit as any)('base/update', docId, this.user._id, this.user.uname, 'rename_problem_tag', { oldTag, newTag });
+            this.ctx.broadcast('base/update', docId, this.user._id, this.user.uname, 'rename_problem_tag', { oldTag, newTag });
             this.response.body = { success: true, problemTags: deduped };
         } else {
             // list

@@ -62,13 +62,63 @@ function readQuery() {
   return new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search);
 }
 
+function buildBaseUpdateSummary(actionKey: unknown, actionDetail: unknown): string {
+  const key = String(actionKey || '');
+  const detail = actionDetail && typeof actionDetail === 'object' && !Array.isArray(actionDetail)
+    ? actionDetail as Record<string, any>
+    : {};
+  switch (key) {
+    case 'batch_update': {
+      const parts: string[] = [];
+      if (detail.nodeCreates) parts.push(i18n('{0} new nodes', detail.nodeCreates));
+      if (detail.nodeUpdates) parts.push(i18n('{0} nodes updated', detail.nodeUpdates));
+      if (detail.nodeDeletes) parts.push(i18n('{0} nodes deleted', detail.nodeDeletes));
+      if (detail.cardCreates) parts.push(i18n('{0} new cards', detail.cardCreates));
+      if (detail.cardUpdates) parts.push(i18n('{0} cards updated', detail.cardUpdates) + (detail.problemUpdates ? ` (${i18n('{0} problems', detail.problemUpdates)})` : ''));
+      if (detail.cardDeletes) parts.push(i18n('{0} cards deleted', detail.cardDeletes));
+      if (detail.edgeCreates) parts.push(i18n('{0} new edges', detail.edgeCreates));
+      if (detail.edgeDeletes) parts.push(i18n('{0} edges deleted', detail.edgeDeletes));
+      return parts.join('，') || i18n('Saved');
+    }
+    case 'full_save': return i18n('Saved');
+    case 'sidecar_save': return i18n('Settings saved');
+    case 'expand_save': return i18n('Tree state saved');
+    case 'update_card': {
+      const changed = (Array.isArray(detail.changed) ? detail.changed : []).map((field: string) => {
+        const labels: Record<string, string> = { title: i18n('Title'), content: i18n('Content'), problems: i18n('Problems'), nodeId: i18n('Node'), order: i18n('Order'), tags: i18n('Tags') };
+        return labels[field] || field;
+      });
+      return changed.length ? i18n('Card updated: ') + changed.join('，') : i18n('Card updated');
+    }
+    case 'delete_card':
+    case 'card_delete': return i18n('Card deleted');
+    case 'card_create': return i18n('Card created');
+    case 'card_update': return i18n('Card updated');
+    case 'node_create': return i18n('Node created');
+    case 'node_update': return i18n('Node updated');
+    case 'node_delete': return i18n('Node deleted');
+    case 'problem_create': return i18n('Problem created');
+    case 'problem_update': return i18n('Problem updated');
+    case 'problem_delete': return i18n('Problem deleted');
+    case 'node_file_create': return i18n('File added');
+    case 'node_file_delete': return i18n('File deleted');
+    case 'git_pull': return i18n('Base pulled');
+    case 'git_commit': return detail.message ? i18n('Committed: {0}', detail.message) : i18n('Committed');
+    case 'migrate_node': return i18n('Node migrated to new base');
+    case 'add_tag': return detail.tag ? i18n('Tag added: {0}', detail.tag) : i18n('Tag added');
+    default: return i18n('Content has been updated');
+  }
+}
+
 export default function BaseDetailApp() {
   const { args } = usePageData();
   const { setMobileNavActions } = useNavigationActions();
   const data = useMemo(() => normalizeData(args), [args]);
   const { base: initialBase, domainId } = data;
-  const refreshBaseRef = useRef<(() => Promise<void>) | null>(null);
+  const refreshBaseRef = useRef<(() => Promise<boolean>) | null>(null);
   const refreshVersionRef = useRef(0);
+  const lastNotifyRef = useRef({ key: '', at: 0 });
+  const localSaveAtRef = useRef(0);
   const { status: wsStatus, viewerCount, viewers, send: sendWsMessage } = useBaseDetailWebSocket({
     socketUrl: data.socketUrl,
     wsPrefix: data.wsPrefix,
@@ -76,7 +126,35 @@ export default function BaseDetailApp() {
       if ((message.type === 'init' || message.type === 'embedding_status') && message.embeddingStatus) {
         setEmbeddingStatus(message.embeddingStatus as EmbeddingStatusView);
       }
-      if (message.type === 'update') void refreshBaseRef.current?.();
+      if (message.type === 'update') {
+        const actionKey = String(message.actionKey || '');
+        const isTagAction = actionKey === 'add_card_tag' || actionKey === 'delete_card_tag' || actionKey === 'rename_card_tag'
+          || actionKey === 'add_problem_tag' || actionKey === 'delete_problem_tag' || actionKey === 'rename_problem_tag';
+        const now = Date.now();
+        const isOwnSave = localSaveAtRef.current > 0 && now - localSaveAtRef.current < 3000;
+        const notifyKey = `${String(message.sourceUid ?? '')}:${actionKey}`;
+        const shouldNotify = Boolean(actionKey && actionKey !== 'unknown' && !isOwnSave && !isTagAction
+          && (notifyKey !== lastNotifyRef.current.key || now - lastNotifyRef.current.at >= 3000));
+        if (shouldNotify) lastNotifyRef.current = { key: notifyKey, at: now };
+        const refresh = refreshBaseRef.current?.();
+        if (refresh) {
+          void refresh.then((synced) => {
+            if (!shouldNotify) return;
+            if (synced) {
+              void Notification.show({
+                title: String(message.sourceUname || ''),
+                message: buildBaseUpdateSummary(message.actionKey, message.actionDetail),
+                type: 'info',
+                closable: true,
+                position: 'top-right',
+                duration: 5000,
+              });
+            } else {
+              void Notification.error(i18n('Content update sync failed'));
+            }
+          });
+        }
+      }
     },
   });
   const [base, setBase] = useState(initialBase);
@@ -109,11 +187,12 @@ export default function BaseDetailApp() {
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<BaseDetailFilter>(() => readBaseDetailFilterFromLocation());
   const [pendingNodeId, setPendingNodeId] = useState<string | null>(null);
-  const refreshBase = useCallback(async () => {
+  const refreshBase = useCallback(async (): Promise<boolean> => {
     const version = ++refreshVersionRef.current;
     try {
       const payload = await requestJson<Record<string, any>>(`/base/data?docId=${encodeURIComponent(docId)}`, { domainId });
-      if (version !== refreshVersionRef.current || !Array.isArray(payload.nodes) || !payload.nodeCardsMap || typeof payload.nodeCardsMap !== 'object') return;
+      if (version !== refreshVersionRef.current) return true;
+      if (!Array.isArray(payload.nodes) || !payload.nodeCardsMap || typeof payload.nodeCardsMap !== 'object') return false;
       const refreshed = normalizeData({ base: payload, nodeCardsMap: payload.nodeCardsMap, UiContext: { domainId } });
       setBase(refreshed.base);
       setNodeCardsMap(refreshed.nodeCardsMap);
@@ -123,8 +202,9 @@ export default function BaseDetailApp() {
         setDisplaySettings((current) => ({ ...current, ...readBaseDetailDisplaySettings(payload.baseDetailUiPrefs) }));
         if (Array.isArray(payload.baseDetailUiPrefs.expandedNodeIds)) setExpandedNodes(new Set(payload.baseDetailUiPrefs.expandedNodeIds.filter((id: unknown) => typeof id === 'string')));
       }
+      return true;
     } catch {
-      return;
+      return false;
     }
   }, [domainId, docId, selectedCard, uiPrefsDirty]);
   refreshBaseRef.current = refreshBase;
@@ -223,6 +303,7 @@ export default function BaseDetailApp() {
   }, []);
 
   const saveCard = useCallback(async (updatedCard: BaseDetailCard) => {
+    localSaveAtRef.current = Date.now();
     await updateBaseCard(domainId, updatedCard.docId, {
       title: updatedCard.title,
       content: updatedCard.content,
@@ -234,6 +315,7 @@ export default function BaseDetailApp() {
   }, [domainId, replaceCard]);
 
   const saveProblemCard = useCallback(async (updatedCard: BaseDetailCard) => {
+    localSaveAtRef.current = Date.now();
     await updateBaseCard(domainId, updatedCard.docId, { problems: updatedCard.problems });
     replaceCard(updatedCard);
     setEditProblem(null);
