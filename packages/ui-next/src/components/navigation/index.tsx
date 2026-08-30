@@ -189,7 +189,7 @@ export function Navigation() {
       </div>
       {(mobileOpen || mobileDomainsOpen) && <button type="button" className="uix-shell-backdrop" onClick={closeDrawers} aria-label={i18n('Close')} />}
       {mobileOpen ? <aside className="uix-mobile-menu"><button type="button" className="uix-mobile-menu__close" onClick={() => setMobileOpen(false)} aria-label={i18n('Close')}>×</button><div className="uix-mobile-menu__links">{navItems.map((item) => <Link key={item.name} to={item.name} params={item.args} onClick={() => setMobileOpen(false)} className={`uix-nav__item${activeFor(item.name, item.prefix || item.name, name, template) ? ' is-active' : ''}`}>{i18n(item.displayName || item.name)}</Link>)}{guest ? <><Link to="user_login" onClick={() => setMobileOpen(false)} className="uix-nav__item">{i18n('Login')}</Link><Link to="user_register" onClick={() => setMobileOpen(false)} className="uix-nav__item">{i18n('Sign Up')}</Link></> : <UserMenu user={user} domain={ui.domain} />}</div></aside> : null}
-      {mobileDomainsOpen && !guest ? <aside className="uix-domain-drawer"><DomainMenu current={currentDomain} domains={domains} mobile targetRoute={domainTargetRoute} onClose={() => setMobileDomainsOpen(false)} /></aside> : null}
+      {mobileDomainsOpen && !guest ? <aside className="uix-domain-drawer"><DomainMenu current={currentDomain} domains={domains} mobile inline targetRoute={domainTargetRoute} onClose={() => setMobileDomainsOpen(false)} /></aside> : null}
     </>
   );
 }
