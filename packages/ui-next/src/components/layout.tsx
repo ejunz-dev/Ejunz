@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { usePageData, useUserContext } from '../context/page-data';
 import { defineSlot } from '../registry';
 import { Navigation } from './navigation';
+import { NavigationProvider } from './navigation/context';
 import { Footer } from './footer';
 
 import './navigation/navigation.css';
@@ -22,13 +23,15 @@ const Layout = defineSlot('layout:default', ({ children }: React.PropsWithChildr
   }, [theme]);
 
   return (
-    <div className={`uix-shell theme--${theme}${isBaseDetail ? ' uix-shell--base-detail' : ''}`}>
-      <Navigation />
-      <div className="uix-shell__panel">
-        <main className="uix-shell__main">{children}</main>
-        <Footer />
+    <NavigationProvider>
+      <div className={`uix-shell theme--${theme}${isBaseDetail ? ' uix-shell--base-detail' : ''}`}>
+        <Navigation />
+        <div className="uix-shell__panel">
+          <main className="uix-shell__main">{children}</main>
+          <Footer />
+        </div>
       </div>
-    </div>
+    </NavigationProvider>
   );
 });
 

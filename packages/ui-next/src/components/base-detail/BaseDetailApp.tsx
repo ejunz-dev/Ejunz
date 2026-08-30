@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePageData } from '../../context/page-data';
 import Notification from '../notification';
 import { i18n } from '../../i18n';
+import { useNavigationActions } from '../navigation/context';
 import { BaseDetailAiTutor } from './BaseDetailAiTutor';
 import { BaseDetailCardDrawer } from './BaseDetailCardDrawer';
 import { BaseDetailCardEditDialog } from './BaseDetailCardEditDialog';
@@ -63,6 +64,7 @@ function readQuery() {
 
 export default function BaseDetailApp() {
   const { args } = usePageData();
+  const { setMobileNavActions } = useNavigationActions();
   const data = useMemo(() => normalizeData(args), [args]);
   const { base, domainId } = data;
   const { status: wsStatus, viewerCount, viewers, send: sendWsMessage } = useBaseDetailWebSocket({
@@ -250,6 +252,51 @@ export default function BaseDetailApp() {
       setSettingsSaving(false);
     }
   }, [displaySettings, expandedNodes, persistDisplayPrefs, settingsSaving, uiPrefsDirty]);
+
+  const toggleMobileWsIndicator = useCallback(() => {
+    setDisplaySettings((current) => ({ ...current, wsIndicatorOpen: !current.wsIndicatorOpen }));
+    setUiPrefsDirty(true);
+  }, []);
+  const openMobileTree = useCallback(() => setTreeOpen(true), []);
+  const openMobileSearch = useCallback(() => setSemanticSearchOpen(true), []);
+  const scrollTop = useCallback(() => {
+    document.documentElement.scrollTo({ top: 0, behavior: 'smooth' });
+    document.body.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+  const scrollBottom = useCallback(() => {
+    const height = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+    document.documentElement.scrollTo({ top: height, behavior: 'smooth' });
+    document.body.scrollTo({ top: height, behavior: 'smooth' });
+  }, []);
+
+  useEffect(() => {
+    const wsDotClass = wsStatus === 'connected' ? '' : wsStatus === 'connecting' ? ' is-connecting' : ' is-disconnected';
+    const wsPopup = wsStatus === 'connected' ? (
+      <div className="uix-mobile-header__popup uix-mobile-header__popup--right">
+        {viewers.length ? viewers.map((viewer) => (
+          <div className="uix-mobile-header__popup-viewer" key={viewer.uid}>
+            <span>{viewer.pageType === 'detail' ? '📖' : '✏️'}</span>
+            <span>{viewer.uname}</span>
+            <small>{viewer.pageType === 'detail' ? 'Detail' : 'Editor'}</small>
+          </div>
+        )) : <div className="uix-mobile-header__popup-viewer uix-mobile-header__popup-viewer--empty">{i18n('No other viewers')}</div>}
+      </div>
+    ) : null;
+    setMobileNavActions(
+      displaySettings.showToolbar ? [
+        { id: 'base-scroll-top', label: i18n('Scroll to top'), icon: '↑', onClick: scrollTop },
+        { id: 'base-tree', label: i18n('Document Structure'), icon: '☷', onClick: openMobileTree },
+        { id: 'base-search', label: i18n('Semantic Search'), icon: '⌕', onClick: openMobileSearch },
+        { id: 'base-scroll-bottom', label: i18n('Scroll to bottom'), icon: '↓', onClick: scrollBottom },
+      ] : [],
+      [
+        ...(displaySettings.showExpandSaveIndicator ? [{ id: 'base-save-status', label: uiPrefsDirty ? i18n('Unsaved changes — click to save') : i18n('Saved'), icon: <span className={`uix-mobile-header__status-dot${uiPrefsDirty ? ' is-dirty' : ''}`} />, active: uiPrefsDirty, onClick: () => void saveUiPrefs() }] : []),
+        ...(displaySettings.showWsIndicator ? [{ id: 'base-ws-status', label: wsStatus === 'connected' ? i18n('Online: {0}', viewerCount ?? 1) : wsStatus === 'connecting' ? i18n('Connecting…') : i18n('Disconnected'), icon: <span className={`uix-mobile-header__ws-count${wsDotClass}`}>{wsStatus === 'connected' ? viewerCount ?? 1 : 0}</span>, active: displaySettings.wsIndicatorOpen, popup: wsPopup, popupOpen: displaySettings.wsIndicatorOpen && wsStatus === 'connected', onClick: toggleMobileWsIndicator }] : []),
+      ],
+    );
+  }, [displaySettings.showExpandSaveIndicator, displaySettings.showToolbar, displaySettings.showWsIndicator, displaySettings.wsIndicatorOpen, openMobileSearch, openMobileTree, saveUiPrefs, scrollBottom, scrollTop, setMobileNavActions, toggleMobileWsIndicator, uiPrefsDirty, viewerCount, viewers, wsStatus]);
+
+  useEffect(() => () => setMobileNavActions([], []), [setMobileNavActions]);
 
   useEffect(() => {
     if (JSON.stringify([...expandedNodes]) !== JSON.stringify(expandedSnapshotRef.current)) setUiPrefsDirty(true);

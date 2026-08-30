@@ -2,6 +2,7 @@ import { createPortal } from 'react-dom';
 import { i18n } from '../../i18n';
 import { getRootNodeIds } from './tree';
 import { BaseDetailTree } from './BaseDetailTree';
+import { useDrawerPresence, useDrawerSwipe } from './drawer-hooks';
 import type { BaseDetailDisplaySettings } from './display-settings';
 import type { BaseDetailCard, BaseDetailEdge, BaseDetailNode } from './types';
 
@@ -24,12 +25,14 @@ interface Props {
 }
 
 export function BaseDetailTreeDrawer({ open, nodes, edges, nodeCardsMap, expandedNodes, selectedNodeId, selectedCardId, onToggle, onSelectNode, onSelectCard, onClose, filter = '', filters, displaySettings, drawerWidth }: Props) {
-  if (!open) return null;
+  const { present, closing } = useDrawerPresence(open);
+  const swipe = useDrawerSwipe('left', onClose);
+  if (!present) return null;
   const roots = getRootNodeIds(nodes, edges);
   return createPortal(
     <>
-      <button type="button" className="bd-backdrop bd-tree-backdrop" onClick={onClose} aria-label={i18n('Close')} />
-      <aside className="bd-drawer bd-drawer--tree bd-tree-drawer" style={drawerWidth ? { width: `min(${drawerWidth}px, calc(100vw - 1rem))` } : undefined} role="dialog" aria-modal="true" aria-label={i18n('Document Structure')}>
+      <button type="button" className={`bd-backdrop bd-tree-backdrop${closing ? ' is-closing' : ''}`} onClick={onClose} aria-label={i18n('Close')} />
+      <aside className={`bd-drawer bd-drawer--tree bd-tree-drawer${closing ? ' is-closing' : ''}`} style={{ ...(drawerWidth ? { width: `min(${drawerWidth}px, calc(100vw - 1rem))` } : {}), ...swipe.style }} onPointerDown={swipe.onPointerDown} onPointerMove={swipe.onPointerMove} onPointerUp={swipe.onPointerUp} onPointerCancel={swipe.onPointerCancel} role="dialog" aria-modal="true" aria-label={i18n('Document Structure')}>
         <header className="bd-drawer__header">
           <div><strong>{i18n('Document Structure')}</strong><span className="bd-drawer__count">{nodes.length + Object.values(nodeCardsMap).reduce((sum, cards) => sum + cards.length, 0)}</span></div>
           <button type="button" className="bd-drawer__close" onClick={onClose} aria-label={i18n('Close')}>×</button>

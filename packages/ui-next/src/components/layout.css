@@ -2,16 +2,14 @@
 .uix-shell__panel { min-height: 100vh; display: flex; flex: 1; flex-direction: column; }
 .uix-shell__main { flex: 1; min-width: 0; }
 
-/* Base Detail owns its full document viewport and intentionally scrolls below the fixed nav. */
 .uix-shell--base-detail .uix-shell__main { min-height: calc(100vh - 58px); }
 .uix-shell--base-detail .uix-shell__main { min-height: calc(100vh - 58px); }
 .uix-shell--base-detail .uix-shell__main > .bd-page { min-height: calc(100vh - 58px); }
 
-/* Base Detail keeps the global navigation in normal document flow instead of pinning it while scrolling. */
-.uix-shell--base-detail .uix-nav { position: absolute; }
+.uix-shell--base-detail .uix-nav { position: fixed; }
 
 @media (max-width: 700px) {
-  .uix-shell--base-detail .uix-mobile-header { position: absolute; }
+  .uix-shell--base-detail .uix-mobile-header { position: fixed; }
   .uix-shell--base-detail .uix-shell__main { min-height: calc(100vh - 48px); }
   .uix-shell--base-detail .uix-shell__main > .bd-page { min-height: calc(100vh - 48px); }
 }
