@@ -1,4 +1,4 @@
-import { Fragment, useMemo } from 'react';
+import { Fragment, useMemo, type ReactNode } from 'react';
 import { useUserContext } from '../../context/page-data';
 import { i18n } from '../../i18n';
 import {
@@ -33,6 +33,7 @@ interface Props {
   selectedCardIds?: ReadonlySet<string>;
   onToggleNodeSelection?: (nodeId: string) => void;
   onToggleCardSelection?: (cardId: string) => void;
+  renderCardTitle?: (card: BaseDetailCard) => ReactNode;
 }
 
 function matches(card: BaseDetailCard, query: string): boolean {
@@ -143,10 +144,30 @@ function CardIcon({ card }: { card: BaseDetailCard }) {
   return <span className="bd-tree__card-icon" aria-hidden><svg width="16" height="16" viewBox="0 0 16 16" fill={color}><path d={path} /></svg></span>;
 }
 
+function CardMain({ card, displaySettings, onSelect, renderTitle }: {
+  card: BaseDetailCard;
+  displaySettings: BaseDetailDisplaySettings;
+  onSelect: () => void;
+  renderTitle?: (card: BaseDetailCard) => ReactNode;
+}) {
+  const content = (
+    <>
+      <CardIcon card={card} />
+      {renderTitle ? renderTitle(card) : <span className="bd-tree__label" title={cardDisplayLabel(card)}>{cardDisplayLabel(card)}</span>}
+      {displaySettings.showNodeCardTimestamps ? <TimestampMeta createdAt={card.createdAt} updateAt={card.updateAt} /> : null}
+      {displaySettings.showProblemCount && card.problems?.length ? <span className="bd-tree__problem-count">{card.problems.length}</span> : null}
+      {displaySettings.showCardTags ? <TagList tags={card.tags} /> : null}
+    </>
+  );
+  return renderTitle
+    ? <div className="bd-tree__main bd-tree__main--editing">{content}</div>
+    : <button type="button" className="bd-tree__main" onClick={onSelect}>{content}</button>;
+}
+
 function TreeBranch({
   nodeId, level, nodes, edges, nodeCardsMap, expandedNodes, onToggle,
   selectedNodeId, selectedCardId, selectedProblemId, onSelectNode, onSelectCard, onSelectProblem, query, filters, displaySettings, highlightSelectedNode,
-  editMode, selectedNodeIds, selectedCardIds, onToggleNodeSelection, onToggleCardSelection,
+  editMode, selectedNodeIds, selectedCardIds, onToggleNodeSelection, onToggleCardSelection, renderCardTitle,
 }: Omit<Props, 'rootNodeIds' | 'emptyMessage' | 'filter' | 'filters' | 'displaySettings' | 'highlightSelectedNode'> & { nodeId: string; level: number; query: string; filters: BaseDetailFilter; displaySettings: BaseDetailDisplaySettings; highlightSelectedNode: boolean }) {
   const node = nodes.find((item) => item.id === nodeId);
   if (!node) return null;
@@ -177,19 +198,13 @@ function TreeBranch({
       {expanded && hasChildren ? (
         <div className="bd-tree__children">
           {children.map((child) => child.kind === 'node' ? (
-            <TreeBranch key={child.node.id} nodeId={child.node.id} level={level + 1} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} onToggle={onToggle} selectedNodeId={selectedNodeId} selectedCardId={selectedCardId} selectedProblemId={selectedProblemId} onSelectNode={onSelectNode} onSelectCard={onSelectCard} onSelectProblem={onSelectProblem} query={query} filters={filters} displaySettings={displaySettings} highlightSelectedNode={highlightSelectedNode} editMode={editMode} selectedNodeIds={selectedNodeIds} selectedCardIds={selectedCardIds} onToggleNodeSelection={onToggleNodeSelection} onToggleCardSelection={onToggleCardSelection} />
+            <TreeBranch key={child.node.id} nodeId={child.node.id} level={level + 1} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} onToggle={onToggle} selectedNodeId={selectedNodeId} selectedCardId={selectedCardId} selectedProblemId={selectedProblemId} onSelectNode={onSelectNode} onSelectCard={onSelectCard} onSelectProblem={onSelectProblem} query={query} filters={filters} displaySettings={displaySettings} highlightSelectedNode={highlightSelectedNode} editMode={editMode} selectedNodeIds={selectedNodeIds} selectedCardIds={selectedCardIds} onToggleNodeSelection={onToggleNodeSelection} onToggleCardSelection={onToggleCardSelection} renderCardTitle={renderCardTitle} />
           ) : (
             <Fragment key={child.card.docId}>
               <div className={`bd-tree__row bd-tree__row--card${selectedCardId === child.card.docId ? ' is-selected' : ''}`} style={{ paddingLeft: `${(level + 1) * 1.1}rem` }}>
                 {editMode && <input type="checkbox" className="bd-tree__selection" checked={selectedCardIds?.has(String(child.card.docId)) === true} onChange={() => onToggleCardSelection?.(String(child.card.docId))} onClick={(event) => event.stopPropagation()} aria-label={`Select ${cardDisplayLabel(child.card)}`} />}
                 <span className="bd-tree__toggle-spacer" />
-                <button type="button" className="bd-tree__main" onClick={() => onSelectCard(child.card)}>
-                  <CardIcon card={child.card} />
-                  <span className="bd-tree__label" title={cardDisplayLabel(child.card)}>{cardDisplayLabel(child.card)}</span>
-                  {displaySettings.showNodeCardTimestamps ? <TimestampMeta createdAt={child.card.createdAt} updateAt={child.card.updateAt} /> : null}
-                  {displaySettings.showProblemCount && child.card.problems?.length ? <span className="bd-tree__problem-count">{child.card.problems.length}</span> : null}
-                  {displaySettings.showCardTags ? <TagList tags={child.card.tags} /> : null}
-                </button>
+                <CardMain card={child.card} displaySettings={displaySettings} onSelect={() => onSelectCard(child.card)} renderTitle={renderCardTitle} />
               </div>
               {displaySettings.showProblemTree ? child.card.problems?.map((problem, index) => {
                 const pid = String(problem.pid || `problem-${index}`);
@@ -230,10 +245,10 @@ function subtreeMatches(nodeId: string, nodes: BaseDetailNode[], edges: BaseDeta
     : cardIsVisible(child.card, node, query, filters));
 }
 
-export function BaseDetailTree({ rootNodeIds, nodes, edges, nodeCardsMap, expandedNodes, onToggle, selectedNodeId, selectedCardId, selectedProblemId, onSelectNode, onSelectCard, onSelectProblem, filter = '', filters = { filterNode: '', filterCard: '', filterProblem: '', filterCardTag: '', filterProblemTag: '' }, displaySettings = defaultBaseDetailDisplaySettings(), highlightSelectedNode = true, emptyMessage = i18n('Base detail tree empty'), editMode = false, selectedNodeIds, selectedCardIds, onToggleNodeSelection, onToggleCardSelection }: Props) {
+export function BaseDetailTree({ rootNodeIds, nodes, edges, nodeCardsMap, expandedNodes, onToggle, selectedNodeId, selectedCardId, selectedProblemId, onSelectNode, onSelectCard, onSelectProblem, filter = '', filters = { filterNode: '', filterCard: '', filterProblem: '', filterCardTag: '', filterProblemTag: '' }, displaySettings = defaultBaseDetailDisplaySettings(), highlightSelectedNode = true, emptyMessage = i18n('Base detail tree empty'), editMode = false, selectedNodeIds, selectedCardIds, onToggleNodeSelection, onToggleCardSelection, renderCardTitle }: Props) {
   const query = filter.trim().toLowerCase();
   const active = !!query || Object.values(filters).some(Boolean);
   const visibleRoots = useMemo(() => rootNodeIds.filter((id) => !active || subtreeMatches(id, nodes, edges, nodeCardsMap, query, filters)), [active, edges, filters, nodeCardsMap, nodes, query, rootNodeIds]);
   if (!visibleRoots.length) return <p className="bd-empty">{active ? i18n('Roadmap detail search no results') : emptyMessage}</p>;
-  return <div className="bd-tree">{visibleRoots.map((id) => <TreeBranch key={id} nodeId={id} level={0} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} onToggle={onToggle} selectedNodeId={selectedNodeId} selectedCardId={selectedCardId} selectedProblemId={selectedProblemId} onSelectNode={onSelectNode} onSelectCard={onSelectCard} onSelectProblem={onSelectProblem} query={query} filters={filters} displaySettings={displaySettings} highlightSelectedNode={highlightSelectedNode} editMode={editMode} selectedNodeIds={selectedNodeIds} selectedCardIds={selectedCardIds} onToggleNodeSelection={onToggleNodeSelection} onToggleCardSelection={onToggleCardSelection} />)}</div>;
+  return <div className="bd-tree">{visibleRoots.map((id) => <TreeBranch key={id} nodeId={id} level={0} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} onToggle={onToggle} selectedNodeId={selectedNodeId} selectedCardId={selectedCardId} selectedProblemId={selectedProblemId} onSelectNode={onSelectNode} onSelectCard={onSelectCard} onSelectProblem={onSelectProblem} query={query} filters={filters} displaySettings={displaySettings} highlightSelectedNode={highlightSelectedNode} editMode={editMode} selectedNodeIds={selectedNodeIds} selectedCardIds={selectedCardIds} onToggleNodeSelection={onToggleNodeSelection} onToggleCardSelection={onToggleCardSelection} renderCardTitle={renderCardTitle} />)}</div>;
 }
