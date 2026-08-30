@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useSyncExternalStore, type ReactNode } from 'react';
 
 export interface MobileNavAction {
   id: string;
@@ -16,23 +16,31 @@ interface NavigationContextValue {
   setMobileNavActions: (left: MobileNavAction[], right: MobileNavAction[]) => void;
 }
 
-const NavigationContext = createContext<NavigationContextValue | null>(null);
+type MobileNavState = Pick<NavigationContextValue, 'mobileNavLeft' | 'mobileNavRight'>;
+
+let state: MobileNavState = { mobileNavLeft: [], mobileNavRight: [] };
+const listeners = new Set<() => void>();
+
+const setMobileNavActions = (left: MobileNavAction[], right: MobileNavAction[]) => {
+  state = { mobileNavLeft: left, mobileNavRight: right };
+  listeners.forEach((listener) => listener());
+};
+
+const subscribe = (listener: () => void) => {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+};
+
+const getSnapshot = () => state;
+const contextValue: NavigationContextValue = { ...state, setMobileNavActions };
+const NavigationContext = createContext<NavigationContextValue>(contextValue);
 
 export function NavigationProvider({ children }: { children: ReactNode }) {
-  const [actions, setActions] = useState({ left: [] as MobileNavAction[], right: [] as MobileNavAction[] });
-  const setMobileNavActions = useCallback((left: MobileNavAction[], right: MobileNavAction[]) => {
-    setActions({ left, right });
-  }, []);
-  const value = useMemo(() => ({
-    mobileNavLeft: actions.left,
-    mobileNavRight: actions.right,
-    setMobileNavActions,
-  }), [actions.left, actions.right, setMobileNavActions]);
-  return <NavigationContext.Provider value={value}>{children}</NavigationContext.Provider>;
+  return <NavigationContext.Provider value={contextValue}>{children}</NavigationContext.Provider>;
 }
 
 export function useNavigationActions(): NavigationContextValue {
+  useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const context = useContext(NavigationContext);
-  if (!context) throw new Error('useNavigationActions must be used within NavigationProvider');
-  return context;
+  return { ...context, ...state };
 }

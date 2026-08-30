@@ -11,6 +11,7 @@ import { createRoot } from 'react-dom/client';
 import * as api from './api';
 import App from './app';
 import { NotificationProvider } from './components/notification';
+import { NavigationProvider } from './components/navigation/context';
 import { PageDataProvider } from './context/page-data';
 import { RouterProvider } from './context/router';
 import { initialPage, pluginsUrl } from './globals';
@@ -57,7 +58,9 @@ createRoot(document.getElementById('root')!).render(
     <PageDataProvider initial={initialPage}>
       <RouterProvider>
         <NotificationProvider>
-          <App />
+          <NavigationProvider>
+            <App />
+          </NavigationProvider>
         </NotificationProvider>
       </RouterProvider>
     </PageDataProvider>
