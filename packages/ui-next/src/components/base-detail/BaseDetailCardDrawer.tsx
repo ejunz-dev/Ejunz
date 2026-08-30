@@ -5,6 +5,7 @@ import 'viewerjs/dist/viewer.css';
 import { i18n } from '../../i18n';
 import { renderMarkdown } from './markdown';
 import { BaseDetailProblemList } from './BaseDetailProblemList';
+import { useDrawerPresence, useDrawerSwipe } from './drawer-hooks';
 import { cardDisplayLabel } from './tree';
 import type { BaseDetailCard } from './types';
 import './base-detail.css';
@@ -29,13 +30,20 @@ function fileUrl(card: BaseDetailCard, baseDocId?: string, domainId?: string): s
 }
 
 export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, onEditCard, onEditProblem, editorBusy, selectedProblemId, baseDocId, domainId, drawerWidth }: Props) {
+  const { present, closing } = useDrawerPresence(Boolean(card));
+  const swipe = useDrawerSwipe('right', onClose);
+  const [renderedCard, setRenderedCard] = useState(card);
   const [tab, setTab] = useState<'content' | 'problems'>('content');
   const [loadingMedia, setLoadingMedia] = useState(true);
   const drawerRef = useRef<HTMLElement>(null);
   const markdownRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<Viewer | null>(null);
   const viewerImageRef = useRef<HTMLImageElement | null>(null);
-  const displayCard = card;
+  const displayCard = renderedCard;
+
+  useEffect(() => {
+    if (card) setRenderedCard(card);
+  }, [card]);
   const problems = displayCard?.problems || [];
   const contentHtml = displayCard?.content ? renderMarkdown(displayCard.content) : '';
 
@@ -119,13 +127,13 @@ export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, onEditCar
     return () => imageContainer.removeEventListener('click', openViewer);
   }, [contentHtml, displayCard?.docId]);
 
-  if (!displayCard) return null;
+  if (!present || !displayCard) return null;
   const url = fileUrl(displayCard, baseDocId, domainId);
   const hasEmbeddedMedia = /<(?:img|iframe|video|object|embed)\b/i.test(contentHtml);
   return createPortal(
     <>
-      <button type="button" className="bd-backdrop bd-card-backdrop" onClick={onClose} aria-label={i18n('Close')} />
-      <aside ref={drawerRef} className="bd-drawer bd-card-drawer" style={drawerWidth ? { width: `min(${drawerWidth}px, calc(100vw - 1rem))` } : undefined} tabIndex={-1} role="dialog" aria-modal="true" aria-label={cardDisplayLabel(displayCard)}>
+      <button type="button" className={`bd-backdrop bd-card-backdrop${closing ? ' is-closing' : ''}`} onClick={onClose} aria-label={i18n('Close')} />
+      <aside ref={drawerRef} className={`bd-drawer bd-card-drawer${closing ? ' is-closing' : ''}`} style={{ ...(drawerWidth ? { width: `min(${drawerWidth}px, calc(100vw - 1rem))` } : {}), ...swipe.style }} onPointerDown={swipe.onPointerDown} onPointerMove={swipe.onPointerMove} onPointerUp={swipe.onPointerUp} onPointerCancel={swipe.onPointerCancel} tabIndex={-1} role="dialog" aria-modal="true" aria-label={cardDisplayLabel(displayCard)}>
         <header className="bd-drawer__header">
           <div className="bd-drawer__tabs" role="tablist">
             <button type="button" role="tab" aria-selected={tab === 'content'} className={tab === 'content' ? 'is-active' : ''} onClick={() => setTab('content')}>{i18n('Content')}</button>

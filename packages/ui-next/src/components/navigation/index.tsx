@@ -4,6 +4,7 @@ import { Link } from '../link';
 import { usePageData, useUiContext, useUserContext } from '../../context/page-data';
 import { useBuildUrl } from '../../hooks/use-build-url';
 import { i18n } from '../../i18n';
+import { useNavigationActions, type MobileNavAction } from './context';
 import './navigation.css';
 
 interface DomainItem {
@@ -40,6 +41,30 @@ function HamburgerIcon({ active = false }: { active?: boolean }) {
       <span />
       <span />
     </span>
+  );
+}
+
+function MobileNavActions({ actions, side }: { actions: MobileNavAction[]; side: 'left' | 'right' }) {
+  if (!actions.length) return null;
+  return (
+    <div className={`uix-mobile-header__actions uix-mobile-header__actions--${side}`}>
+      {actions.map((action) => (
+        <div className="uix-mobile-header__action-wrap" key={action.id}>
+          <button
+            type="button"
+            className={`uix-mobile-header__action${action.active ? ' is-active' : ''}`}
+            onClick={action.onClick}
+            aria-label={action.label}
+            aria-pressed={action.active}
+            aria-expanded={action.popup ? action.popupOpen : undefined}
+            title={action.label}
+          >
+            {action.icon}
+          </button>
+          {action.popup && action.popupOpen ? action.popup : null}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -110,6 +135,7 @@ function DomainMenu({ current, domains, mobile = false, inline = false, onClose,
 
 export function Navigation() {
   const { name, template } = usePageData();
+  const { mobileNavLeft, mobileNavRight } = useNavigationActions();
   const ui = useUiContext();
   const pageRoute = typeof template === 'string' ? template.replace(/\.html$/, '') : name;
   const domainTargetRoute = pageRoute === 'ejunz_agent' ? 'ejunz_agent' : 'homepage';
@@ -150,7 +176,17 @@ export function Navigation() {
           <button type="button" className="uix-nav__mobile-button" onClick={() => { setDomainsOpen(false); setMobileOpen((open) => !open); }} aria-label={i18n('Open')} aria-expanded={mobileOpen}><HamburgerIcon active={mobileOpen} /></button>
         </div>
       </nav>
-      <div className="uix-mobile-header"><button type="button" onClick={() => { setMobileOpen(false); setDomainsOpen(false); setMobileDomainsOpen((open) => !open); }} aria-label={i18n('Open')} aria-expanded={mobileDomainsOpen}><HamburgerIcon active={mobileDomainsOpen} /></button><a href="/"><img src={navLogo} alt="Ejunz" /></a><button type="button" onClick={() => { setDomainsOpen(false); setMobileDomainsOpen(false); setMobileOpen((open) => !open); }} aria-label={i18n('Open')} aria-expanded={mobileOpen}><HamburgerIcon active={mobileOpen} /></button></div>
+      <div className={`uix-mobile-header${mobileNavLeft.length || mobileNavRight.length ? ' uix-mobile-header--base-detail' : ''}`}>
+        <div className="uix-mobile-header__cluster uix-mobile-header__cluster--left">
+          <button type="button" onClick={() => { setMobileOpen(false); setDomainsOpen(false); setMobileDomainsOpen((open) => !open); }} aria-label={i18n('Open')} aria-expanded={mobileDomainsOpen}><HamburgerIcon active={mobileDomainsOpen} /></button>
+          <MobileNavActions actions={mobileNavLeft} side="left" />
+        </div>
+        <a href="/"><img src={navLogo} alt="Ejunz" /></a>
+        <div className="uix-mobile-header__cluster uix-mobile-header__cluster--right">
+          <MobileNavActions actions={mobileNavRight} side="right" />
+          <button type="button" onClick={() => { setDomainsOpen(false); setMobileDomainsOpen(false); setMobileOpen((open) => !open); }} aria-label={i18n('Open')} aria-expanded={mobileOpen}><HamburgerIcon active={mobileOpen} /></button>
+        </div>
+      </div>
       {(mobileOpen || mobileDomainsOpen) && <button type="button" className="uix-shell-backdrop" onClick={closeDrawers} aria-label={i18n('Close')} />}
       {mobileOpen ? <aside className="uix-mobile-menu"><button type="button" className="uix-mobile-menu__close" onClick={() => setMobileOpen(false)} aria-label={i18n('Close')}>×</button><div className="uix-mobile-menu__links">{navItems.map((item) => <Link key={item.name} to={item.name} params={item.args} onClick={() => setMobileOpen(false)} className={`uix-nav__item${activeFor(item.name, item.prefix || item.name, name, template) ? ' is-active' : ''}`}>{i18n(item.displayName || item.name)}</Link>)}{guest ? <><Link to="user_login" onClick={() => setMobileOpen(false)} className="uix-nav__item">{i18n('Login')}</Link><Link to="user_register" onClick={() => setMobileOpen(false)} className="uix-nav__item">{i18n('Sign Up')}</Link></> : <UserMenu user={user} domain={ui.domain} />}</div></aside> : null}
       {mobileDomainsOpen && !guest ? <aside className="uix-domain-drawer"><DomainMenu current={currentDomain} domains={domains} mobile targetRoute={domainTargetRoute} onClose={() => setMobileDomainsOpen(false)} /></aside> : null}
