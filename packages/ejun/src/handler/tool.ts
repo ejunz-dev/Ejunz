@@ -183,7 +183,7 @@ export async function apply(ctx: Context) {
             owner: payload.owner,
         });
         if (payload.baseDocId && isMcpBuiltinMutatingTool(payload.name)) {
-            (ctx.emit as any)('base/update', payload.baseDocId, null);
+            ctx.broadcast('base/update', payload.baseDocId, null);
         }
         return result;
     });

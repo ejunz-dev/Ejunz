@@ -58,6 +58,7 @@ export interface EventMap {
     'monitor/update': (type: 'server' | 'worker', $set: any) => VoidReturn;
     'monitor/collect': (info: any) => VoidReturn;
     'api/update': () => void;
+    'base/update': (docId: number, sourceUid?: number | null, sourceUname?: string, actionKey?: string, actionDetail?: any) => VoidReturn;
     'task/daily': () => void;
     'task/daily/finish': (pref: Record<string, number>) => void;
 

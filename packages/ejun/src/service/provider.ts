@@ -36,7 +36,7 @@ export function createProvider(
                 }, name, args);
                 if (signal.aborted) throw signal.reason ?? new Error('provider call aborted');
                 if (isMcpBuiltinMutatingTool(name)) {
-                    (ctx.emit as any)('base/update', scope.baseId, scope.owner, undefined, name);
+                    ctx.broadcast('base/update', scope.baseId, scope.owner, undefined, name);
                 }
                 logger.info('[base-provider] call done name=%s domain=%s baseId=%d durationMs=%d', name, scope.domain, scope.baseId, Date.now() - startedAt);
                 return result;
