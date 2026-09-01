@@ -68,6 +68,8 @@ import LearnProblemNoteModel from '../model/learnProblemNote';
 import { collectRoadmapBatchSaveNumberErrors } from '../model/base';
 import { enqueueEmbeddingIndex, SEMANTIC_SEARCH_TOOL, buildEmbeddingStatusView } from '../service/embeddingWorker';
 import { callToolViaWorker } from './worker';
+import type { McpBaseGitInput } from '../tool/base/git/types';
+export type { McpBaseGitInput } from '../tool/base/git/types';
 
 type LearnProblemNotesBatchBlock = {
     pid: string;
@@ -6836,17 +6838,6 @@ async function persistBaseEditorSaveSidecars(
             expectedBaseDocId: baseDocId,
         });
     }
-}
-
-/** MCP git tool input (bound base + token owner). */
-export interface McpBaseGitInput {
-    domainId: string;
-    baseDocId: number;
-    owner: number;
-    ownerName?: string;
-    setting?: { get: (k: string) => unknown };
-    githubToken?: string;
-    commitMessage?: string;
 }
 
 function mcpGitSettingCtx(input: McpBaseGitInput): { setting: { get: (k: string) => unknown } } {

@@ -3,15 +3,48 @@ import { SYSTEM_TOOLS_CATALOG, executeSystemTool as executeEjunzMarketMcpTool, e
 import { Context } from '../context';
 import { Logger } from '../logger';
 import * as document from './document';
-import storage from './storage';
-import type { ToolDoc, CardDoc, BaseNode, BaseEdge, FileInfo, Problem, ProblemKind } from '../interface';
+import type { ToolDoc } from '../interface';
 import EdgeModel from './edge';
 import DomainMarketToolModel from './domain_market_tool';
-import { BaseModel, CardModel } from './base';
-import { migrateRawProblem } from './problem';
-import type { AgentScheduleDoc, AgentScheduleRunDoc } from './agent_schedule';
-import type { McpBaseGitInput } from '../handler/base';
+import { BaseModel } from './base';
 import type { EmbeddingService } from '../service/embedding';
+import type { McpToolContext, SystemToolExecutionContext, ToolArgs } from '../tool/types';
+import * as baseCreateTool from '../tool/base/create';
+import * as baseDeleteTool from '../tool/base/delete';
+import * as baseGetTool from '../tool/base/get';
+import * as baseListTool from '../tool/base/list';
+import * as baseSearchTool from '../tool/base/search';
+import * as baseUpdateTool from '../tool/base/update';
+import * as baseSemanticSearchTool from '../tool/base/semantic-search';
+import * as cardCreateTool from '../tool/base/card/create';
+import * as cardDeleteTool from '../tool/base/card/delete';
+import * as cardUpdateTool from '../tool/base/card/update';
+import * as fileCreateTool from '../tool/base/file/create';
+import * as fileDeleteTool from '../tool/base/file/delete';
+import * as fileGetTool from '../tool/base/file/get';
+import * as fileListTool from '../tool/base/file/list';
+import * as gitCommitTool from '../tool/base/git/commit';
+import * as gitConfigGetTool from '../tool/base/git/config-get';
+import * as gitConfigSetTool from '../tool/base/git/config-set';
+import * as gitPullTool from '../tool/base/git/pull';
+import * as gitPushTool from '../tool/base/git/push';
+import * as gitStatusTool from '../tool/base/git/status';
+import * as nodeCreateTool from '../tool/base/node/create';
+import * as nodeDeleteTool from '../tool/base/node/delete';
+import * as nodeUpdateTool from '../tool/base/node/update';
+import * as problemCreateTool from '../tool/base/problem/create';
+import * as problemDeleteTool from '../tool/base/problem/delete';
+import * as problemGetTool from '../tool/base/problem/get';
+import * as problemListTool from '../tool/base/problem/list';
+import * as problemUpdateTool from '../tool/base/problem/update';
+import * as scheduleCreateTool from '../tool/schedule/create';
+import * as scheduleDeleteTool from '../tool/schedule/delete';
+import * as scheduleGetTool from '../tool/schedule/get';
+import * as scheduleHistoryTool from '../tool/schedule/history';
+import * as scheduleListTool from '../tool/schedule/list';
+import * as schedulePauseTool from '../tool/schedule/pause';
+import * as scheduleResumeTool from '../tool/schedule/resume';
+import * as scheduleUpdateTool from '../tool/schedule/update';
 
 const logger = new Logger('model/tool');
 
@@ -327,13 +360,7 @@ export default ToolModel;
 (global.Ejunz.model as any).tool = ToolModel;
 
 // ---- mcpBuiltinTools ----
-export interface McpToolContext {
-    domainId: string;
-    baseDocId: number;
-    owner: number;
-    setting?: { get: (k: string) => unknown };
-    embedding?: EmbeddingService;
-}
+export type { McpToolContext } from '../tool/types';
 
 export interface McpToolDef {
     name: string;
@@ -771,471 +798,47 @@ export function resolveMcpTools(overrides?: { name: string; description: string 
     }));
 }
 
-function toObjectId(value: unknown): ObjectId {
-    const s = String(value || '').trim();
-    if (!ObjectId.isValid(s)) throw new Error(`Invalid cardId: ${s}`);
-    return new ObjectId(s);
-}
-
-async function requireCard(ctx: McpToolContext, cardId: unknown): Promise<CardDoc> {
-    const card = await CardModel.get(ctx.domainId, toObjectId(cardId));
-    if (!card) throw new Error('Card not found');
-    if (String(card.baseDocId) !== String(ctx.baseDocId)) {
-        throw new Error('Card does not belong to this base');
-    }
-    return card;
-}
-
-function parseProblemPayload(raw: unknown): Record<string, unknown> {
-    if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>;
-    if (typeof raw === 'string' && raw.trim()) {
-        try {
-            const parsed = JSON.parse(raw);
-            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
-        } catch { /* fall through */ }
-    }
-    throw new Error('problem must be a JSON object');
-}
-
-function normalizeProblemKind(raw: unknown): ProblemKind | undefined {
-    const s = String(raw || '').toLowerCase().trim();
-    if (!s) return undefined;
-    const kinds: ProblemKind[] = [
-        'single', 'multi', 'true_false', 'flip', 'fill_blank', 'matching', 'super_flip', 'chain', 'ai_eval',
-    ];
-    return kinds.includes(s as ProblemKind) ? (s as ProblemKind) : undefined;
-}
-
-function buildProblemRaw(payload: Record<string, unknown>, pid: string): Record<string, unknown> {
-    const raw: Record<string, unknown> = { ...payload, pid };
-    const kind = normalizeProblemKind(payload.type ?? payload.problemKind ?? payload.kind);
-    if (kind) raw.type = kind;
-    return raw;
-}
-
-function newProblemPid(): string {
-    return `p_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function problemPreview(p: Problem): string {
-    const type = (p as Problem & { type?: string }).type || 'single';
-    let text = '';
-    if (type === 'flip') {
-        text = String((p as { faceA?: string }).faceA || '');
-    } else if ('stem' in p) {
-        text = String((p as { stem?: string }).stem || '');
-    } else if (type === 'matching' || type === 'super_flip' || type === 'chain') {
-        const cols = (p as { columns?: string[][] }).columns;
-        if (Array.isArray(cols) && cols[0]?.length) text = cols[0].join(' | ');
-    }
-    const trimmed = text.replace(/\s+/g, ' ').trim();
-    return trimmed.length > 120 ? `${trimmed.slice(0, 117)}…` : trimmed;
-}
-
-function summarizeProblem(p: Problem) {
-    const type = (p as Problem & { type?: string }).type || 'single';
-    return {
-        pid: p.pid,
-        type,
-        title: p.title || '',
-        preview: problemPreview(p),
-        tags: Array.isArray(p.tags) ? p.tags : [],
-    };
-}
-
-async function saveCardProblems(domainId: string, card: CardDoc, problems: Problem[]): Promise<void> {
-    await CardModel.update(domainId, card.docId, { problems });
-}
-
-function findProblemIndex(problems: Problem[], pid: string): number {
-    return problems.findIndex((p) => String(p.pid) === pid);
-}
-
-function toMcpGitInput(ctx: McpToolContext, args: Record<string, any>): McpBaseGitInput {
-    return {
-        domainId: ctx.domainId,
-        baseDocId: ctx.baseDocId,
-        owner: ctx.owner,
-        setting: ctx.setting,
-        githubToken: typeof args.githubToken === 'string' && args.githubToken.trim()
-            ? args.githubToken.trim()
-            : undefined,
-        commitMessage: typeof args.commitMessage === 'string' ? args.commitMessage : undefined,
-    };
-}
-
-/** target -> source (child -> parent) map derived from edges. */
-function buildParentMap(edges: BaseEdge[]): Map<string, string> {
-    const m = new Map<string, string>();
-    for (const e of edges || []) m.set(e.target, e.source);
-    return m;
-}
-
-function findRootNodeId(nodes: BaseNode[] = [], edges: BaseEdge[] = []): string | undefined {
-    if (!nodes.length) return undefined;
-    const levelRoot = nodes.find((n) => n.level === 0);
-    if (levelRoot?.id) return levelRoot.id;
-    const parentMap = buildParentMap(edges);
-    return nodes.find((n) => !parentMap.has(n.id))?.id || nodes[0]?.id;
-}
-
-/** Builds the " › " separated node-title path for a node, root first. */
-function pathLabelFor(nodeId: string, parentMap: Map<string, string>, nodeById: Map<string, BaseNode>): string {
-    const chain: string[] = [];
-    const seen = new Set<string>();
-    let cur: string | undefined = nodeId;
-    while (cur && !seen.has(cur)) {
-        seen.add(cur);
-        const n = nodeById.get(cur);
-        chain.push((n?.text || '').trim() || 'Untitled');
-        cur = parentMap.get(cur);
-    }
-    return chain.reverse().join(' › ');
-}
-
 export async function executeMcpBuiltinTool(
     ctx: McpToolContext,
     name: string,
-    args: Record<string, any>,
+    args: ToolArgs,
 ): Promise<unknown> {
-    const { domainId, owner } = ctx;
-    if (name === 'base_create') {
-        const title = String(args.title || '').trim();
-        if (!title) throw new Error('title is required');
-        const content = typeof args.content === 'string' ? args.content : '';
-        const slug = typeof args.slug === 'string' ? args.slug.trim() : undefined;
-        const tag = Array.isArray(args.tag)
-            ? args.tag.filter((value: unknown): value is string => typeof value === 'string').map((value) => value.trim()).filter(Boolean)
-            : undefined;
-        const created = await BaseModel.create(
-            domainId,
-            owner,
-            title,
-            content,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            true,
-            tag,
-            document.TYPE_BASE,
-            undefined,
-            slug === undefined ? undefined : { slug },
-        );
-        const base = await BaseModel.get(domainId, created.docId, document.TYPE_BASE);
-        return { ok: true, baseId: created.docId, base };
-    }
-    if (name === 'base_list' || name === 'base_search') {
-        const query = name === 'base_search' ? String(args.query || '').trim().toLowerCase() : '';
-        if (name === 'base_search' && !query) throw new Error('query is required');
-        const limit = Math.max(1, Math.min(50, Number(args.limit) || 15));
-        const bases = await BaseModel.getAll(domainId, undefined, document.TYPE_BASE);
-        const matches = query === '' ? bases : bases.filter((item) => [item.title, item.content, item.slug, ...(item.tag || [])]
-            .filter((value): value is string => typeof value === 'string')
-            .some((value) => value.toLowerCase().includes(query)));
-        return {
-            ok: true,
-            query: query || null,
-            count: Math.min(matches.length, limit),
-            bases: matches.slice(0, limit).map((item) => ({
-                baseId: item.docId,
-                title: item.title,
-                content: item.content,
-                ...(item.slug ? { slug: item.slug } : {}),
-                ...(item.tag?.length ? { tag: item.tag } : {}),
-                createdAt: item.createdAt,
-                updateAt: item.updateAt,
-            })),
-        };
-    }
+    if (name === 'base_create') return baseCreateTool.execute(ctx, args);
+    if (name === 'base_list') return baseListTool.execute(ctx, args);
+    if (name === 'base_search') return baseSearchTool.execute(ctx, args);
+
     const requestedBaseId = ['base_get', 'base_update', 'base_delete'].includes(name) ? Number(args.baseId) : ctx.baseDocId;
     const baseDocId = Number.isSafeInteger(requestedBaseId) && requestedBaseId > 0 ? requestedBaseId : 0;
     if (!baseDocId) throw new Error(['base_get', 'base_update', 'base_delete'].includes(name) ? 'baseId is required' : 'This MCP endpoint is not bound to a base.');
-    const base = await BaseModel.get(domainId, baseDocId, document.TYPE_BASE);
-    if (!base) throw new Error(`Base not found: ${baseDocId}`);
+    const toolContext = baseDocId === ctx.baseDocId ? ctx : { ...ctx, baseDocId };
 
     switch (name) {
-    case 'base_get':
-        return { ok: true, base };
-    case 'base_update': {
-        const updates: Record<string, unknown> = {};
-        if (Object.prototype.hasOwnProperty.call(args, 'title')) {
-            const title = String(args.title || '').trim();
-            if (!title) throw new Error('title cannot be empty');
-            updates.title = title;
-        }
-        if (typeof args.content === 'string') updates.content = args.content;
-        if (typeof args.slug === 'string') updates.slug = args.slug.trim();
-        if (Array.isArray(args.tag)) {
-            updates.tag = args.tag.filter((value: unknown): value is string => typeof value === 'string').map((value) => value.trim()).filter(Boolean);
-        }
-        if (Object.keys(updates).length === 0) throw new Error('Nothing to update');
-        await BaseModel.update(domainId, baseDocId, updates as Parameters<typeof BaseModel.update>[2], document.TYPE_BASE);
-        return { ok: true, baseId: baseDocId, base: await BaseModel.get(domainId, baseDocId, document.TYPE_BASE) };
-    }
-    case 'base_delete':
-        await BaseModel.delete(domainId, baseDocId, document.TYPE_BASE);
-        return { ok: true, baseId: baseDocId };
-    case 'node_create': {
-        const text = String(args.text || '').trim();
-        if (!text) throw new Error('text is required');
-        const { nodes, edges } = base;
-        const parentId = args.parentId
-            ? String(args.parentId).trim()
-            : findRootNodeId(nodes || [], edges || []);
-        if (parentId && !(nodes || []).some((n) => n.id === parentId)) {
-            throw new Error(`Parent node not found: ${parentId}`);
-        }
-        const res = await BaseModel.addNode(
-            domainId, baseDocId, { text } as any, parentId, parentId,
-        );
-        return { ok: true, nodeId: res.nodeId, edgeId: res.edgeId, parentId: parentId ?? null };
-    }
-    case 'node_update': {
-        const nodeId = String(args.nodeId || '');
-        const text = String(args.text || '');
-        if (!nodeId) throw new Error('nodeId is required');
-        await BaseModel.updateNode(domainId, baseDocId, nodeId, { text } as any);
-        return { ok: true, nodeId };
-    }
-    case 'node_delete': {
-        const nodeId = String(args.nodeId || '');
-        if (!nodeId) throw new Error('nodeId is required');
-        await BaseModel.deleteNode(domainId, baseDocId, nodeId);
-        return { ok: true, nodeId };
-    }
-    case 'card_create': {
-        const nodeId = String(args.nodeId || '');
-        const title = String(args.title || '').trim();
-        if (!nodeId) throw new Error('nodeId is required');
-        if (!(base.nodes || []).some((node) => node.id === nodeId)) throw new Error('Node not found: ' + nodeId);
-        if (!title) throw new Error('title is required');
-        const docId = await CardModel.create(
-            domainId, baseDocId, nodeId, owner, title, String(args.content || ''),
-            undefined, undefined, undefined, undefined,
-        );
-        return { ok: true, cardId: String(docId) };
-    }
-    case 'card_update': {
-        const card = await requireCard(ctx, args.cardId);
-        const updates: Record<string, any> = {};
-        if (typeof args.title === 'string') updates.title = args.title;
-        if (typeof args.content === 'string') updates.content = args.content;
-        if (!Object.keys(updates).length) throw new Error('Nothing to update (title or content required)');
-        await CardModel.update(domainId, card.docId, updates);
-        return { ok: true, cardId: String(card.docId) };
-    }
-    case 'card_delete': {
-        const card = await requireCard(ctx, args.cardId);
-        await CardModel.delete(domainId, card.docId);
-        return { ok: true, cardId: String(card.docId) };
-    }
-    case 'semantic_search': {
-        const q = String(args.query || '').trim();
-        if (!q) throw new Error('query is required');
-        logger.info('[diag] semantic_search entry: domainId=%s baseDocId=%s owner=%s hasEmbedding=%s queryLength=%d pid=%d NODE_APP_INSTANCE=%s',
-            domainId,
-            baseDocId,
-            owner,
-            !!ctx.embedding,
-            q.length,
-            process.pid,
-            process.env.NODE_APP_INSTANCE || '',
-        );
-        if (!ctx.embedding) throw new Error('Semantic search is not available (embedding service not loaded)');
-        const limit = Math.max(1, Math.min(50, Number(args.limit) || 15));
-        const kind = String(args.kind || '').trim().toLowerCase();
-        const requested = kind && (kind === 'node' || kind === 'card') ? Math.min(50, limit * 3) : limit;
-        const raw = await ctx.embedding.searchSimilar(domainId, baseDocId, q, requested);
-        const results = (kind && (kind === 'node' || kind === 'card')
-            ? raw.filter((r) => r.kind === kind)
-            : raw).slice(0, limit);
-        const parentMap = buildParentMap(base.edges || []);
-        const nodeById = new Map((base.nodes || []).map((n) => [n.id, n]));
-        return {
-            query: q,
-            kind: kind || null,
-            matchedCount: results.length,
-            results: results.map((r, index) => ({
-                rank: r.rank || index + 1,
-                nodeId: r.nodeId,
-                kind: r.kind,
-                cardDocId: r.cardDocId || null,
-                cardTitle: r.cardTitle || null,
-                chunkIndex: r.chunkIndex ?? 0,
-                path: pathLabelFor(r.nodeId, parentMap, nodeById) || null,
-                text: r.text,
-                score: Math.round(r.score * 10000) / 10000,
-                semanticScore: Math.round((r.semanticScore ?? r.score) * 10000) / 10000,
-                keywordScore: Math.round((r.keywordScore || 0) * 10000) / 10000,
-                matchedTerms: Array.isArray(r.matchedTerms) ? r.matchedTerms : [],
-            })),
-        };
-    }
-    case 'problem_list': {
-        const card = await requireCard(ctx, args.cardId);
-        const problems = card.problems || [];
-        return {
-            cardId: String(card.docId),
-            count: problems.length,
-            problems: problems.map(summarizeProblem),
-        };
-    }
-    case 'problem_get': {
-        const card = await requireCard(ctx, args.cardId);
-        const pid = String(args.pid || '').trim();
-        if (!pid) throw new Error('pid is required');
-        const problems = card.problems || [];
-        const idx = findProblemIndex(problems, pid);
-        if (idx < 0) throw new Error(`Problem not found: ${pid}`);
-        return { cardId: String(card.docId), problem: problems[idx] };
-    }
-    case 'problem_create': {
-        const card = await requireCard(ctx, args.cardId);
-        const payload = parseProblemPayload(args.problem);
-        const pid = newProblemPid();
-        const problem = migrateRawProblem(buildProblemRaw(payload, pid));
-        const problems = [...(card.problems || []), problem];
-        await saveCardProblems(domainId, card, problems);
-        return { ok: true, cardId: String(card.docId), pid: problem.pid, problem };
-    }
-    case 'problem_update': {
-        const card = await requireCard(ctx, args.cardId);
-        const pid = String(args.pid || '').trim();
-        if (!pid) throw new Error('pid is required');
-        const payload = parseProblemPayload(args.problem);
-        const problems = [...(card.problems || [])];
-        const idx = findProblemIndex(problems, pid);
-        if (idx < 0) throw new Error(`Problem not found: ${pid}`);
-        const merged = { ...(problems[idx] as unknown as Record<string, unknown>), ...payload, pid };
-        const problem = migrateRawProblem(buildProblemRaw(merged, pid));
-        problems[idx] = problem;
-        await saveCardProblems(domainId, card, problems);
-        return { ok: true, cardId: String(card.docId), pid, problem };
-    }
-    case 'problem_delete': {
-        const card = await requireCard(ctx, args.cardId);
-        const pid = String(args.pid || '').trim();
-        if (!pid) throw new Error('pid is required');
-        const problems = card.problems || [];
-        const idx = findProblemIndex(problems, pid);
-        if (idx < 0) throw new Error(`Problem not found: ${pid}`);
-        const next = problems.filter((_, i) => i !== idx);
-        await saveCardProblems(domainId, card, next);
-        return { ok: true, cardId: String(card.docId), pid };
-    }
-    case 'git_status': {
-        const { mcpBaseGitStatus } = await import('../handler/base');
-        return mcpBaseGitStatus(toMcpGitInput(ctx, args));
-    }
-    case 'git_commit': {
-        const { mcpBaseGitCommit } = await import('../handler/base');
-        return mcpBaseGitCommit(toMcpGitInput(ctx, args));
-    }
-    case 'git_push': {
-        const { mcpBaseGitPush } = await import('../handler/base');
-        return mcpBaseGitPush(toMcpGitInput(ctx, args));
-    }
-    case 'git_pull': {
-        const { mcpBaseGitPull } = await import('../handler/base');
-        return mcpBaseGitPull(toMcpGitInput(ctx, args));
-    }
-    case 'git_config_get': {
-        const { mcpBaseGitConfigGet } = await import('../handler/base');
-        return mcpBaseGitConfigGet({ domainId: ctx.domainId, baseDocId: ctx.baseDocId });
-    }
-    case 'git_config_set': {
-        const { mcpBaseGitConfigSet } = await import('../handler/base');
-        const raw = args.githubRepo;
-        const githubRepo = raw == null ? null : String(raw).trim();
-        return mcpBaseGitConfigSet({
-            ...toMcpGitInput(ctx, args),
-            githubRepo: githubRepo || null,
-        });
-    }
-    case 'node_file_list': {
-        const nodeId = String(args.nodeId || '');
-        if (!nodeId) throw new Error('nodeId is required');
-        const { nodes } = base;
-        if (!nodes.some((n) => n.id === nodeId)) throw new Error('Node not found: ' + nodeId);
-        const cards = await CardModel.getByNodeId(domainId, baseDocId, nodeId);
-        const fileCards = cards.filter((c) => (c as CardDoc).cardType === 'file');
-        return fileCards.map((c) => ({
-            cardId: String(c.docId),
-            title: c.title,
-            fileName: (c as CardDoc).fileName || '',
-            fileType: (c as CardDoc).fileType || '',
-            fileSize: (c as CardDoc).fileSize || 0,
-            nodeId: c.nodeId,
-        }));
-    }
-    case 'node_file_get': {
-        const card = await requireCard(ctx, args.cardId);
-        if ((card as CardDoc).cardType !== 'file') throw new Error('Not a file-card: ' + args.cardId);
-        const downloadUrl = `/base/${baseDocId}/node/${card.nodeId}/file/${encodeURIComponent((card as CardDoc).fileName || '')}`;
-        return {
-            cardId: String(card.docId),
-            title: card.title,
-            fileName: (card as CardDoc).fileName || '',
-            fileType: (card as CardDoc).fileType || '',
-            fileSize: (card as CardDoc).fileSize || 0,
-            nodeId: card.nodeId,
-            content: card.content,
-            downloadUrl,
-        };
-    }
-    case 'node_file_delete': {
-        const card = await requireCard(ctx, args.cardId);
-        if ((card as CardDoc).cardType !== 'file') throw new Error('Not a file-card: ' + args.cardId);
-        // Delete the physical file from storage (node-level path)
-        const fileName = (card as CardDoc).fileName;
-        if (fileName) {
-            const storagePath = `base/${domainId}/${baseDocId.toString()}/node/${card.nodeId}/${fileName}`;
-            try { await storage.del([storagePath], owner); } catch { /* file may not exist */ }
-        }
-        // Remove the card document
-        await CardModel.delete(domainId, card.docId);
-        return { ok: true, cardId: String(args.cardId), deletedFile: !!fileName };
-    }
-    case 'node_file_create': {
-        const nodeId = String(args.nodeId || '');
-        const fileName = String(args.fileName || '').trim();
-        const fileUrl = String(args.fileUrl || '').trim();
-        if (!nodeId) throw new Error('nodeId is required');
-        if (!(base.nodes || []).some((node) => node.id === nodeId)) throw new Error('Node not found: ' + nodeId);
-        if (!fileName) throw new Error('fileName is required');
-        if (!fileUrl) throw new Error('fileUrl is required');
-        // Download file from URL
-        const response = await fetch(fileUrl);
-        if (!response.ok) throw new Error(`Failed to download file: ${response.status} ${response.statusText}`);
-        const buffer = Buffer.from(await response.arrayBuffer());
-        // Store on node
-        const storagePath = `base/${domainId}/${baseDocId.toString()}/node/${nodeId}/${fileName}`;
-        await storage.put(storagePath, buffer, owner);
-        const meta = await storage.getMeta(storagePath);
-        if (!meta) throw new Error('Failed to store file');
-        // Create file-card
-        const ext = fileName.split('.').pop()?.toLowerCase() || '';
-        const imageExt = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico']);
-        const videoExt = new Set(['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'wmv']);
-        const audioExt = new Set(['mp3', 'wav', 'flac', 'aac', 'ogg', 'wma', 'm4a']);
-        const codeExt = new Set(['js', 'ts', 'tsx', 'jsx', 'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp', 'css', 'scss', 'less', 'html', 'json', 'yaml', 'yml', 'xml', 'md', 'sh', 'bash', 'sql', 'vue', 'svelte']);
-        let fileType = 'other';
-        if (ext === 'pdf') fileType = 'pdf';
-        else if (imageExt.has(ext)) fileType = 'image';
-        else if (videoExt.has(ext)) fileType = 'video';
-        else if (audioExt.has(ext)) fileType = 'audio';
-        else if (codeExt.has(ext)) fileType = 'code';
-        const title = String(args.title || '').trim() || fileName;
-        const cardDocId = await CardModel.create(
-            domainId, baseDocId, nodeId, owner, title, '',
-            undefined, undefined, undefined,
-            'file', fileType, fileName, meta.size || 0,
-        );
-        return { ok: true, cardId: String(cardDocId), nodeId, fileName, fileType, fileSize: meta.size };
-    }
-    default:
-        throw new Error(`Unknown tool: ${name}`);
+    case 'base_get': return baseGetTool.execute(toolContext, args);
+    case 'base_update': return baseUpdateTool.execute(toolContext, args);
+    case 'base_delete': return baseDeleteTool.execute(toolContext, args);
+    case 'node_create': return nodeCreateTool.execute(toolContext, args);
+    case 'node_update': return nodeUpdateTool.execute(toolContext, args);
+    case 'node_delete': return nodeDeleteTool.execute(toolContext, args);
+    case 'card_create': return cardCreateTool.execute(toolContext, args);
+    case 'card_update': return cardUpdateTool.execute(toolContext, args);
+    case 'card_delete': return cardDeleteTool.execute(toolContext, args);
+    case 'semantic_search': return baseSemanticSearchTool.execute(toolContext, args);
+    case 'problem_list': return problemListTool.execute(toolContext, args);
+    case 'problem_get': return problemGetTool.execute(toolContext, args);
+    case 'problem_create': return problemCreateTool.execute(toolContext, args);
+    case 'problem_update': return problemUpdateTool.execute(toolContext, args);
+    case 'problem_delete': return problemDeleteTool.execute(toolContext, args);
+    case 'git_status': return gitStatusTool.execute(toolContext, args);
+    case 'git_commit': return gitCommitTool.execute(toolContext, args);
+    case 'git_push': return gitPushTool.execute(toolContext, args);
+    case 'git_pull': return gitPullTool.execute(toolContext, args);
+    case 'git_config_get': return gitConfigGetTool.execute(toolContext, args);
+    case 'git_config_set': return gitConfigSetTool.execute(toolContext, args);
+    case 'node_file_list': return fileListTool.execute(toolContext, args);
+    case 'node_file_get': return fileGetTool.execute(toolContext, args);
+    case 'node_file_delete': return fileDeleteTool.execute(toolContext, args);
+    case 'node_file_create': return fileCreateTool.execute(toolContext, args);
+    default: throw new Error(`Unknown tool: ${name}`);
     }
 }
 
@@ -1250,13 +853,7 @@ export const executeBaseTool = executeMcpBuiltinTool
 const systemToolsLogger = new Logger('systemTools');
 
 export type SystemToolCatalogEntry = { name: string; description: string; inputSchema: any };
-export interface SystemToolExecutionContext {
-    domainId?: string;
-    baseDocId?: number;
-    owner?: number;
-    setting?: { get: (k: string) => unknown };
-    embedding?: EmbeddingService;
-}
+export type { SystemToolExecutionContext } from '../tool/types';
 export type SystemToolExecutor = (name: string, args: Record<string, unknown>, context?: SystemToolExecutionContext) => Promise<unknown>;
 
 let registeredCatalog: SystemToolCatalogEntry[] = [];
@@ -1334,12 +931,6 @@ export async function tryExecuteSystemTool(name: string, args: Record<string, un
 
 
 // ---- scheduleSystemTools ----
-type AgentScheduleModelStatic = typeof import('./agent_schedule').default;
-
-function AgentScheduleModel(): AgentScheduleModelStatic {
-    return require('./agent_schedule').default;
-}
-
 export const SCHEDULE_SYSTEM_TOOL_NAMES = new Set([
     'schedule_create',
     'schedule_get',
@@ -1480,175 +1071,22 @@ export function isScheduleSystemToolMutating(name: string): boolean {
     return new Set(['schedule_create', 'schedule_update', 'schedule_delete', 'schedule_pause', 'schedule_resume']).has(name);
 }
 
-function requireContext(context?: SystemToolExecutionContext): { domainId: string; owner: number } {
-    if (!context?.domainId) throw new Error('Schedule tool requires a domain execution context.');
-    const owner = Number(context.owner);
-    if (!Number.isFinite(owner) || owner <= 0) throw new Error('Schedule tool requires a positive caller/owner context.');
-    return { domainId: context.domainId, owner };
-}
-
-function scheduleUrl(domainId: string, path = '/schedule'): string {
-    return `/d/${domainId}${path}`;
-}
-
-function objectIdString(id?: ObjectId): string | undefined {
-    return id?.toHexString?.();
-}
-
-function scheduleToWire(domainId: string, doc: AgentScheduleDoc) {
-    return {
-        id: doc._id.toHexString(),
-        scheduleId: doc._id.toHexString(),
-        domainId: doc.domainId,
-        uid: doc.uid,
-        agentId: doc.agentId,
-        title: doc.title,
-        command: doc.command,
-        enabled: doc.enabled,
-        scheduleType: doc.scheduleType,
-        executeAt: doc.executeAt?.toISOString?.(),
-        intervalCount: doc.intervalCount,
-        intervalUnit: doc.intervalUnit,
-        maxRuns: doc.maxRuns,
-        endAt: doc.endAt?.toISOString?.(),
-        timezone: doc.timezone,
-        nextRunAt: doc.nextRunAt?.toISOString?.(),
-        lastRunAt: doc.lastRunAt?.toISOString?.(),
-        lastRunStatus: doc.lastRunStatus,
-        lastRunId: objectIdString(doc.lastRunId),
-        runCount: doc.runCount,
-        endedAt: doc.endedAt?.toISOString?.(),
-        endReason: doc.endReason,
-        deletedAt: doc.deletedAt?.toISOString?.(),
-        scheduleUrl: scheduleUrl(domainId, `/schedule?scheduleId=${encodeURIComponent(doc._id.toHexString())}`),
-        historyUrl: scheduleUrl(domainId, `/schedule/history?scheduleId=${encodeURIComponent(doc._id.toHexString())}`),
-    };
-}
-
-function runToWire(domainId: string, run: AgentScheduleRunDoc) {
-    const rid = run.recordId?.toHexString?.();
-    const sid = run.agentChatSessionId?.toHexString?.();
-    return {
-        id: run._id.toHexString(),
-        runId: run._id.toHexString(),
-        scheduleId: run.scheduleId.toHexString(),
-        domainId: run.domainId,
-        uid: run.uid,
-        agentId: run.agentId,
-        command: run.command,
-        plannedAt: run.plannedAt?.toISOString?.(),
-        queuedAt: run.queuedAt?.toISOString?.(),
-        completedAt: run.completedAt?.toISOString?.(),
-        status: run.status,
-        taskId: objectIdString(run.taskId),
-        recordId: rid,
-        agentChatSessionId: sid,
-        error: run.error,
-        recordUrl: rid ? scheduleUrl(domainId, `/record/${encodeURIComponent(rid)}`) : undefined,
-        sessionUrl: sid ? scheduleUrl(domainId, `/session/chat/${encodeURIComponent(sid)}`) : undefined,
-    };
-}
-
-function listFilter(args: Record<string, unknown>, owner: number) {
-    const filter: Record<string, unknown> = { uid: owner };
-    if (typeof args.agentId === 'string' && args.agentId.trim()) filter.agentId = args.agentId.trim();
-    if (typeof args.enabled === 'boolean') filter.enabled = args.enabled;
-    return filter;
-}
-
-function historyFilter(args: Record<string, unknown>, owner: number) {
-    const filter: Record<string, unknown> = { uid: owner };
-    if (typeof args.scheduleId === 'string' && ObjectId.isValid(args.scheduleId)) filter.scheduleId = new ObjectId(args.scheduleId);
-    if (typeof args.agentId === 'string' && args.agentId.trim()) filter.agentId = args.agentId.trim();
-    if (typeof args.status === 'string' && args.status.trim()) filter.status = args.status.trim();
-    return filter;
-}
-
 export async function executeScheduleSystemTool(
     name: string,
     args: Record<string, unknown> = {},
     context?: SystemToolExecutionContext,
 ): Promise<unknown> {
-    const { domainId, owner } = requireContext(context);
-    const a = args || {};
-    if (name === 'schedule_create') {
-        const doc = await AgentScheduleModel().create(domainId, {
-            uid: owner,
-            agentId: String(a.agentId || (a as any).__agentId || ''),
-            title: typeof a.title === 'string' ? a.title : undefined,
-            command: String(a.command || ''),
-            scheduleType: a.scheduleType as any,
-            executeAt: a.executeAt as any,
-            intervalCount: Number(a.intervalCount || 1),
-            intervalUnit: a.intervalUnit as any,
-            maxRuns: a.maxRuns === undefined ? undefined : Number(a.maxRuns),
-            endAt: a.endAt as any,
-            timezone: typeof a.timezone === 'string' ? a.timezone : undefined,
-            enabled: typeof a.enabled === 'boolean' ? a.enabled : undefined,
-            description: typeof a.description === 'string' ? a.description : undefined,
-            source: 'system_tool',
-        });
-        return { ok: true, schedule: scheduleToWire(domainId, doc) };
+    switch (name) {
+    case 'schedule_create': return scheduleCreateTool.execute(args, context);
+    case 'schedule_get': return scheduleGetTool.execute(args, context);
+    case 'schedule_list': return scheduleListTool.execute(args, context);
+    case 'schedule_update': return scheduleUpdateTool.execute(args, context);
+    case 'schedule_delete': return scheduleDeleteTool.execute(args, context);
+    case 'schedule_pause': return schedulePauseTool.execute(args, context);
+    case 'schedule_resume': return scheduleResumeTool.execute(args, context);
+    case 'schedule_history': return scheduleHistoryTool.execute(args, context);
+    default: throw new Error(`Unknown schedule tool: ${name}`);
     }
-    if (name === 'schedule_get') {
-        const doc = await AgentScheduleModel().get(domainId, String(a.scheduleId || ''));
-        if (!doc || doc.uid !== owner) throw new Error('Schedule not found');
-        return { schedule: scheduleToWire(domainId, doc) };
-    }
-    if (name === 'schedule_list') {
-        const res = await AgentScheduleModel().list(domainId, listFilter(a, owner), {
-            page: Number(a.page || 1),
-            limit: Number(a.limit || 20),
-            includeDeleted: a.includeDeleted === true,
-            includeEnded: a.includeEnded === true,
-        });
-        return {
-            schedules: res.rows.map((doc) => scheduleToWire(domainId, doc)),
-            count: res.count,
-            page: res.page,
-            limit: res.limit,
-            scheduleUrl: scheduleUrl(domainId),
-            historyUrl: scheduleUrl(domainId, '/schedule/history'),
-        };
-    }
-    if (name === 'schedule_update') {
-        const cur = await AgentScheduleModel().get(domainId, String(a.scheduleId || ''));
-        if (!cur || cur.uid !== owner) throw new Error('Schedule not found');
-        const doc = await AgentScheduleModel().update(domainId, cur._id, a as any);
-        return { ok: true, schedule: scheduleToWire(domainId, doc) };
-    }
-    if (name === 'schedule_delete') {
-        const cur = await AgentScheduleModel().get(domainId, String(a.scheduleId || ''));
-        if (!cur || cur.uid !== owner) throw new Error('Schedule not found');
-        await AgentScheduleModel().softDelete(domainId, cur._id);
-        return { ok: true, scheduleId: cur._id.toHexString() };
-    }
-    if (name === 'schedule_pause') {
-        const cur = await AgentScheduleModel().get(domainId, String(a.scheduleId || ''));
-        if (!cur || cur.uid !== owner) throw new Error('Schedule not found');
-        const doc = await AgentScheduleModel().pause(domainId, cur._id);
-        return { ok: true, schedule: scheduleToWire(domainId, doc) };
-    }
-    if (name === 'schedule_resume') {
-        const cur = await AgentScheduleModel().get(domainId, String(a.scheduleId || ''));
-        if (!cur || cur.uid !== owner) throw new Error('Schedule not found');
-        const doc = await AgentScheduleModel().resume(domainId, cur._id);
-        return { ok: true, schedule: scheduleToWire(domainId, doc) };
-    }
-    if (name === 'schedule_history') {
-        const res = await AgentScheduleModel().history(domainId, historyFilter(a, owner), {
-            page: Number(a.page || 1),
-            limit: Number(a.limit || 20),
-        });
-        return {
-            runs: res.rows.map((run) => runToWire(domainId, run)),
-            count: res.count,
-            page: res.page,
-            limit: res.limit,
-            historyUrl: scheduleUrl(domainId, '/schedule/history'),
-        };
-    }
-    throw new Error(`Unknown schedule tool: ${name}`);
 }
 
 
