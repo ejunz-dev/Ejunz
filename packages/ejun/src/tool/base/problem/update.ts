@@ -1,8 +1,8 @@
 import { migrateRawProblem } from '../../../model/problem';
 import { buildProblemRaw, findProblemIndex, parseProblemPayload, requireCard, saveCardProblems } from '../shared';
-import type { McpToolContext, ToolArgs } from '../../types';
+import type { ToolContext, ToolArgs } from '../../types';
 
-export async function execute(ctx: McpToolContext, args: ToolArgs): Promise<unknown> {
+export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown> {
     const card = await requireCard(ctx, args.cardId);
     const pid = String(args.pid || '').trim();
     if (!pid) throw new Error('pid is required');

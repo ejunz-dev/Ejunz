@@ -1,6 +1,6 @@
 import type { EmbeddingService } from '../service/embedding';
 
-export interface McpToolContext {
+export interface ToolContext {
     domainId: string;
     baseDocId: number;
     owner: number;

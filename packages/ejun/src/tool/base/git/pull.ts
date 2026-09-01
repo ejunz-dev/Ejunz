@@ -1,10 +1,10 @@
-import { toMcpGitInput } from '../shared';
-import type { McpToolContext, ToolArgs } from '../../types';
+import { toGitInput } from '../shared';
+import type { ToolContext, ToolArgs } from '../../types';
 
 function getGitHandlers(): typeof import('../../../handler/base') {
     return require('../../../handler/base');
 }
 
-export async function execute(ctx: McpToolContext, args: ToolArgs): Promise<unknown> {
-    return getGitHandlers().mcpBaseGitPull(toMcpGitInput(ctx, args));
+export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown> {
+    return getGitHandlers().baseGitPull(toGitInput(ctx, args));
 }

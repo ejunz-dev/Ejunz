@@ -6,12 +6,12 @@ import DomainMarketToolModel from '../model/domain_market_tool';
 import { ValidationError } from '../error';
 import type { ToolDoc } from '../interface';
 import {
-    executeLocalMcpTool,
-    getLocalMcpToolCatalog,
-    getMarketMcpTools,
-    isLocalMcpToolAvailableInDomain,
+    executeLocalTool,
+    getLocalToolCatalog,
+    getMarketTools,
+    isLocalToolAvailableInDomain,
 } from '../service/mcp';
-import { isMcpBuiltinMutatingTool } from '../service/mcp';
+import { isBuiltinMutatingTool } from '../service/mcp';
 import {
     EJUNZ_TOOLS_MCP_LOCAL_KEY,
     ensureBuiltinEjunzToolsMcp,
@@ -31,11 +31,11 @@ import {
 const logger = new Logger('handler/tool');
 
 export async function domainMarketHasInstalledToolName(domainId: string, name: string): Promise<boolean> {
-    return isLocalMcpToolAvailableInDomain(domainId, name);
+    return isLocalToolAvailableInDomain(domainId, name);
 }
 
 /** Optional market MCP tools from @ejunz/ejunztools. */
-export const MARKET_TOOLS_CATALOG = getMarketMcpTools() as Array<{
+export const MARKET_TOOLS_CATALOG = getMarketTools() as Array<{
     id: string;
     name: string;
     description: string;
@@ -166,7 +166,7 @@ export async function apply(ctx: Context) {
         if (!domainId) return [];
         const enabled = await DomainMarketToolModel.getByDomain(domainId);
         const enabledKeys = new Set(enabled.map((doc) => doc.toolKey));
-        return getLocalMcpToolCatalog()
+        return getLocalToolCatalog()
             .filter((entry) => entry.defaultEnabled || entry.source === 'system' || enabledKeys.has(entry.id))
             .map((entry) => ({ name: entry.name, description: entry.description, inputSchema: entry.inputSchema }));
     });
@@ -177,12 +177,12 @@ export async function apply(ctx: Context) {
         baseDocId?: number;
         owner?: number;
     }) => {
-        const result = await executeLocalMcpTool(payload.name, payload.args || {}, {
+        const result = await executeLocalTool(payload.name, payload.args || {}, {
             domainId: payload.domainId,
             baseDocId: payload.baseDocId,
             owner: payload.owner,
         });
-        if (payload.baseDocId && isMcpBuiltinMutatingTool(payload.name)) {
+        if (payload.baseDocId && isBuiltinMutatingTool(payload.name)) {
             ctx.broadcast('base/update', payload.baseDocId, null);
         }
         return result;

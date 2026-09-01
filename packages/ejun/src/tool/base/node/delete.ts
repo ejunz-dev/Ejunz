@@ -1,7 +1,7 @@
 import { BaseModel } from '../../../model/base';
-import type { McpToolContext, ToolArgs } from '../../types';
+import type { ToolContext, ToolArgs } from '../../types';
 
-export async function execute(ctx: McpToolContext, args: ToolArgs): Promise<unknown> {
+export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown> {
     const nodeId = String(args.nodeId || '');
     if (!nodeId) throw new Error('nodeId is required');
     await BaseModel.deleteNode(ctx.domainId, ctx.baseDocId, nodeId);

@@ -1,6 +1,6 @@
 import { Logger } from '../logger';
 import type { Context } from '../context';
-import { executeBaseTool, isMcpBuiltinMutatingTool } from '../model/tool';
+import { executeBaseTool, isBuiltinMutatingTool } from '../model/tool';
 
 const logger = new Logger('service/provider');
 
@@ -35,7 +35,7 @@ export function createProvider(
                     embedding: get('embedding'),
                 }, name, args);
                 if (signal.aborted) throw signal.reason ?? new Error('provider call aborted');
-                if (isMcpBuiltinMutatingTool(name)) {
+                if (isBuiltinMutatingTool(name)) {
                     ctx.broadcast('base/update', scope.baseId, scope.owner, undefined, name);
                 }
                 logger.info('[base-provider] call done name=%s domain=%s baseId=%d durationMs=%d', name, scope.domain, scope.baseId, Date.now() - startedAt);

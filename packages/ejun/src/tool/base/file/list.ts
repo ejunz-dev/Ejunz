@@ -1,9 +1,9 @@
 import * as document from '../../../model/document';
 import { BaseModel, CardModel } from '../../../model/base';
 import type { CardDoc } from '../../../interface';
-import type { McpToolContext, ToolArgs } from '../../types';
+import type { ToolContext, ToolArgs } from '../../types';
 
-export async function execute(ctx: McpToolContext, args: ToolArgs): Promise<unknown> {
+export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown> {
     const nodeId = String(args.nodeId || '');
     if (!nodeId) throw new Error('nodeId is required');
     const base = await BaseModel.get(ctx.domainId, ctx.baseDocId, document.TYPE_BASE);

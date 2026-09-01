@@ -2,9 +2,9 @@ import { CardModel } from '../../../model/base';
 import storage from '../../../model/storage';
 import type { CardDoc } from '../../../interface';
 import { requireCard } from '../shared';
-import type { McpToolContext, ToolArgs } from '../../types';
+import type { ToolContext, ToolArgs } from '../../types';
 
-export async function execute(ctx: McpToolContext, args: ToolArgs): Promise<unknown> {
+export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown> {
     const card = await requireCard(ctx, args.cardId);
     if ((card as CardDoc).cardType !== 'file') throw new Error(`Not a file-card: ${args.cardId}`);
     const fileName = (card as CardDoc).fileName;

@@ -10,14 +10,14 @@ import type { EdgeTokenDoc } from '../model/edge_token';
 import type { McpDoc } from '../interface';
 import { randomstring } from '../utils';
 import {
-    MCP_BUILTIN_TOOLS_CATALOG,
+    BUILTIN_TOOLS_CATALOG,
     buildMcpInstructions,
-    defaultMcpToolDescriptions,
-    executeMcpBuiltinTool,
-    isMcpBuiltinMutatingTool,
-    isMcpBuiltinTool,
-    resolveMcpTools,
-    type McpToolContext,
+    defaultToolDescriptions,
+    executeBuiltinTool,
+    isBuiltinMutatingTool,
+    isBuiltinTool,
+    resolveTools,
+    type ToolContext,
 } from '../model/tool';
 import {
     getNormalizedMcp,
@@ -29,14 +29,14 @@ import {
     setEdgeTokenConnectedChecker,
 } from '../model/mcp';
 import {
-    executeLocalMcpTool,
+    executeLocalTool,
     executeLocalSystemTool,
-    findLocalMcpToolByIdOrName,
-    getLocalMcpToolCatalog,
+    findLocalToolByIdOrName,
+    getLocalToolCatalog,
     getLocalSystemToolCatalog,
-    getMarketMcpTools,
+    getMarketTools,
     applyEjunzToolsMcpRuntime,
-    isLocalMcpToolAvailableInDomain,
+    isLocalToolAvailableInDomain,
     isLocalSystemToolAvailableInDomain,
 } from '../model/tool';
 import {
@@ -377,14 +377,14 @@ export default class McpService extends Service {
         case 'ping':
             return { jsonrpc: '2.0', id, result: {} };
         case 'tools/list':
-            return { jsonrpc: '2.0', id, result: { tools: resolveMcpTools(meta?.toolOverrides) } };
+            return { jsonrpc: '2.0', id, result: { tools: resolveTools(meta?.toolOverrides) } };
         default:
             if (hasId) return { jsonrpc: '2.0', id, error: { code: -32601, message: `Method not found: ${method}` } };
             return null;
         }
     }
 
-    async processMessage(msg: JsonRpcMessage, toolCtx: McpToolContext, meta: McpServerMeta, mcpDoc: { mid: number } | null, logCtx: string): Promise<any | null> {
+    async processMessage(msg: JsonRpcMessage, toolCtx: ToolContext, meta: McpServerMeta, mcpDoc: { mid: number } | null, logCtx: string): Promise<any | null> {
         logger.info('MCP recv: %s, method=%s, id=%s', logCtx, msg?.method || '-', `${msg?.id ?? '-'}`);
         if (msg && msg.method === 'tools/call' && msg.id !== undefined && msg.id !== null) {
             const name = msg.params?.name;
@@ -393,7 +393,7 @@ export default class McpService extends Service {
                 logger.warn('MCP tools/call rejected (missing name): %s, id=%s', logCtx, `${msg.id}`);
                 return { jsonrpc: '2.0', id: msg.id, error: { code: -32602, message: 'Invalid params: name is required' } };
             }
-            if (!isMcpBuiltinTool(name)) {
+            if (!isBuiltinTool(name)) {
                 logger.warn('MCP tools/call unknown tool: %s, tool=%s, id=%s', logCtx, name, `${msg.id}`);
                 return { jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true } };
             }
@@ -414,11 +414,11 @@ export default class McpService extends Service {
             let errorMsg: string | undefined;
             try {
                 try {
-                    const result = await executeMcpBuiltinTool(toolCtx, name, args);
+                    const result = await executeBuiltinTool(toolCtx, name, args);
                     resultText = typeof result === 'string' ? result : JSON.stringify(result);
                     response = { jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: resultText }] } };
                     logger.info('MCP tools/call OK: %s, tool=%s, id=%s, %dms, result=%s', logCtx, name, `${msg.id}`, Date.now() - startedAt, clipForLog(resultText));
-                    if (isMcpBuiltinMutatingTool(name)) this.ctx.broadcast('base/update', toolCtx.baseDocId, null);
+                    if (isBuiltinMutatingTool(name)) this.ctx.broadcast('base/update', toolCtx.baseDocId, null);
                 } catch (e) {
                     isError = true;
                     errorMsg = (e as Error).message;
@@ -483,7 +483,7 @@ export default class McpService extends Service {
                 source: { type: 'ejunz_base' },
                 assignable: false,
                 instructions,
-                tools: defaultMcpToolDescriptions(),
+                tools: defaultToolDescriptions(),
             });
         }
         return mcp;
@@ -543,12 +543,12 @@ export default class McpService extends Service {
     ensureBuiltinEjunzToolsMcp = ensureBuiltinEjunzToolsMcp;
     removeBuiltinEjunzToolsMcp = removeBuiltinEjunzToolsMcp;
     getLocalSystemToolCatalog = getLocalSystemToolCatalog;
-    getLocalMcpToolCatalog = getLocalMcpToolCatalog;
-    getMarketMcpTools = getMarketMcpTools;
-    findLocalMcpToolByIdOrName = findLocalMcpToolByIdOrName;
-    isLocalMcpToolAvailableInDomain = isLocalMcpToolAvailableInDomain;
+    getLocalToolCatalog = getLocalToolCatalog;
+    getMarketTools = getMarketTools;
+    findLocalToolByIdOrName = findLocalToolByIdOrName;
+    isLocalToolAvailableInDomain = isLocalToolAvailableInDomain;
     isLocalSystemToolAvailableInDomain = isLocalSystemToolAvailableInDomain;
-    executeLocalMcpTool = executeLocalMcpTool;
+    executeLocalTool = executeLocalTool;
     executeLocalSystemTool = executeLocalSystemTool;
     registerSystemToolCatalog = registerSystemToolCatalog;
     registerSystemToolExecutor = registerSystemToolExecutor;
@@ -570,11 +570,11 @@ export default class McpService extends Service {
     getBuiltinEjunzToolsVersion = getBuiltinEjunzToolsVersion;
     getEjunzToolsCatalog = getEjunzToolsCatalog;
     executeBuiltinEjunzToolsTool = executeBuiltinEjunzToolsTool;
-    builtinToolsCatalog = MCP_BUILTIN_TOOLS_CATALOG;
+    builtinToolsCatalog = BUILTIN_TOOLS_CATALOG;
     buildMcpInstructions = buildMcpInstructions;
-    resolveMcpTools = resolveMcpTools;
-    defaultMcpToolDescriptions = defaultMcpToolDescriptions;
-    isMcpBuiltinMutatingTool = isMcpBuiltinMutatingTool;
+    resolveTools = resolveTools;
+    defaultToolDescriptions = defaultToolDescriptions;
+    isBuiltinMutatingTool = isBuiltinMutatingTool;
 }
 
 export async function apply(ctx: Context) {

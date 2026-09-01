@@ -1,9 +1,9 @@
 import { BaseModel } from '../../model/base';
 import * as document from '../../model/document';
 import { buildParentMap, pathLabelFor } from './shared';
-import type { McpToolContext, ToolArgs } from '../types';
+import type { ToolContext, ToolArgs } from '../types';
 
-export async function execute(ctx: McpToolContext, args: ToolArgs): Promise<unknown> {
+export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown> {
     const query = String(args.query || '').trim();
     if (!query) throw new Error('query is required');
     if (!ctx.embedding) throw new Error('Semantic search is not available (embedding service not loaded)');
