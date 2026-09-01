@@ -13,9 +13,9 @@ import UserModel from '../model/user';
 import { NotFoundError, ValidationError } from '../error';
 import { randomstring } from '../utils';
 import {
-    MCP_BUILTIN_TOOLS_CATALOG, buildMcpInstructions,
-    defaultMcpToolDescriptions, resolveMcpTools,
-    type JsonRpcMessage, type McpServerMeta, type McpToolContext,
+    BUILTIN_TOOLS_CATALOG, buildMcpInstructions,
+    defaultToolDescriptions, resolveTools,
+    type JsonRpcMessage, type McpServerMeta, type ToolContext,
 } from '../service/mcp';
 import { McpMarketAddHandler, McpMarketHandler, McpMarketRemoveHandler } from './tool';
 
@@ -288,7 +288,7 @@ export class McpMessageHandler extends Handler<Context> {
         const body = this.request.body;
         const messages: JsonRpcMessage[] = Array.isArray(body) ? body : [body];
 
-        const toolCtx: McpToolContext = {
+        const toolCtx: ToolContext = {
             domainId,
             baseDocId: tokenDoc.baseDocId as number,
             owner: tokenDoc.owner,
@@ -369,7 +369,7 @@ export class McpStreamableHandler extends Handler<Context> {
         const isBatch = Array.isArray(body);
         const messages: JsonRpcMessage[] = isBatch ? body : [body];
 
-        const toolCtx: McpToolContext = {
+        const toolCtx: ToolContext = {
             domainId,
             baseDocId: tokenDoc.baseDocId as number,
             owner: tokenDoc.owner,
@@ -801,7 +801,7 @@ export class McpEditHandler extends Handler<Context> {
             instructions: mcp.instructions ?? (await buildMcpInstructions({
                 domainId, baseDocId: mcp.baseDocId,
             })),
-            tools: resolveMcpTools(mcp.tools),
+            tools: resolveTools(mcp.tools),
         };
     }
 
@@ -830,14 +830,14 @@ export class McpEditHandler extends Handler<Context> {
             });
             await McpModel.update(domainId, mid, {
                 instructions,
-                tools: defaultMcpToolDescriptions(),
+                tools: defaultToolDescriptions(),
             });
             if (mcp.token) this.ctx.mcp.notifyToolsListChanged(mcp.token);
             this.response.redirect = this.url('mcp_edit', { mid });
             return;
         }
 
-        const tools = MCP_BUILTIN_TOOLS_CATALOG.map((t) => {
+        const tools = BUILTIN_TOOLS_CATALOG.map((t) => {
             const raw2 = body[`tool_${t.name}`];
             const desc = typeof raw2 === 'string' ? raw2.trim() : '';
             return { name: t.name, description: desc || t.description };

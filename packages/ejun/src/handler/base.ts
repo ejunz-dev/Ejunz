@@ -68,8 +68,8 @@ import LearnProblemNoteModel from '../model/learnProblemNote';
 import { collectRoadmapBatchSaveNumberErrors } from '../model/base';
 import { enqueueEmbeddingIndex, SEMANTIC_SEARCH_TOOL, buildEmbeddingStatusView } from '../service/embeddingWorker';
 import { callToolViaWorker } from './worker';
-import type { McpBaseGitInput } from '../tool/base/git/types';
-export type { McpBaseGitInput } from '../tool/base/git/types';
+import type { BaseGitInput } from '../tool/base/git/types';
+export type { BaseGitInput } from '../tool/base/git/types';
 
 type LearnProblemNotesBatchBlock = {
     pid: string;
@@ -6840,17 +6840,17 @@ async function persistBaseEditorSaveSidecars(
     }
 }
 
-function mcpGitSettingCtx(input: McpBaseGitInput): { setting: { get: (k: string) => unknown } } {
+function gitSettingContext(input: BaseGitInput): { setting: { get: (k: string) => unknown } } {
     return { setting: input.setting || { get: () => undefined } };
 }
 
-async function requireBaseForMcpGit(input: McpBaseGitInput): Promise<BaseDoc> {
+async function requireBaseForGit(input: BaseGitInput): Promise<BaseDoc> {
     const base = await BaseModel.get(input.domainId, input.baseDocId, document.TYPE_BASE);
     if (!base) throw new Error(`Base not found: ${input.baseDocId}`);
     return base;
 }
 
-async function resolveMcpOwnerName(domainId: string, uid: number, fallback?: string): Promise<string> {
+async function resolveGitOwnerName(domainId: string, uid: number, fallback?: string): Promise<string> {
     if (fallback && fallback.trim()) return fallback.trim();
     if (!uid) return 'unknown';
     const u = await UserModel.getById(domainId, uid);
@@ -6858,14 +6858,14 @@ async function resolveMcpOwnerName(domainId: string, uid: number, fallback?: str
 }
 
 
-export async function mcpBaseGitStatus(input: McpBaseGitInput) {
-    const base = await requireBaseForMcpGit(input);
+export async function baseGitStatus(input: BaseGitInput) {
+    const base = await requireBaseForGit(input);
     const githubRepo = (base.githubRepo || '') as string;
     let gitStatus: Awaited<ReturnType<typeof getBaseGitStatus>> | null = null;
     if (githubRepo) {
         try {
             const repoUrl = await resolveGithubRemoteUrlForRepo(
-                mcpGitSettingCtx(input),
+                gitSettingContext(input),
                 input.domainId,
                 input.owner,
                 githubRepo,
@@ -6881,9 +6881,9 @@ export async function mcpBaseGitStatus(input: McpBaseGitInput) {
     return { githubRepo: githubRepo || null, gitStatus };
 }
 
-export async function mcpBaseGitCommit(input: McpBaseGitInput) {
-    const base = await requireBaseForMcpGit(input);
-    const ownerName = await resolveMcpOwnerName(input.domainId, input.owner, input.ownerName);
+export async function baseGitCommit(input: BaseGitInput) {
+    const base = await requireBaseForGit(input);
+    const ownerName = await resolveGitOwnerName(input.domainId, input.owner, input.ownerName);
     await ensureBaseGitRepo(input.domainId, base.docId);
     await commitBaseChanges(
         input.domainId,
@@ -6896,21 +6896,21 @@ export async function mcpBaseGitCommit(input: McpBaseGitInput) {
     return { ok: true, message: 'Changes committed to local git repository' };
 }
 
-export async function mcpBaseGitPush(input: McpBaseGitInput) {
-    const base = await requireBaseForMcpGit(input);
+export async function baseGitPush(input: BaseGitInput) {
+    const base = await requireBaseForGit(input);
     const githubRepo = (base.githubRepo || '') as string;
     if (!githubRepo) {
         throw new Error('GitHub repository not configured. Use git_config_set or configure it in base settings.');
     }
     const ghTok = await resolveGithubToken(
-        mcpGitSettingCtx(input),
+        gitSettingContext(input),
         input.domainId,
         input.owner,
         input.githubToken,
     );
     assertGithubPushPullToken(githubRepo, ghTok);
     const repoUrl = buildGithubRemoteUrl(githubRepo, ghTok);
-    const ownerName = await resolveMcpOwnerName(input.domainId, input.owner, input.ownerName);
+    const ownerName = await resolveGitOwnerName(input.domainId, input.owner, input.ownerName);
     const commitMessage = input.commitMessage
         || `${input.domainId}/${input.owner}/${ownerName}: Update base`;
     await ensureBaseGitRepo(input.domainId, base.docId, repoUrl);
@@ -6930,14 +6930,14 @@ export async function mcpBaseGitPush(input: McpBaseGitInput) {
     return { ok: true, githubRepo };
 }
 
-export async function mcpBaseGitPull(input: McpBaseGitInput) {
-    const base = await requireBaseForMcpGit(input);
+export async function baseGitPull(input: BaseGitInput) {
+    const base = await requireBaseForGit(input);
     const githubRepo = (base.githubRepo || '') as string;
     if (!githubRepo) {
         throw new Error('GitHub repository not configured. Use git_config_set or configure it in base settings.');
     }
     const ghTok = await resolveGithubToken(
-        mcpGitSettingCtx(input),
+        gitSettingContext(input),
         input.domainId,
         input.owner,
         input.githubToken,
@@ -6986,17 +6986,17 @@ export async function mcpBaseGitPull(input: McpBaseGitInput) {
     }
 }
 
-export async function mcpBaseGitConfigGet(input: Pick<McpBaseGitInput, 'domainId' | 'baseDocId'>) {
+export async function baseGitConfigGet(input: Pick<BaseGitInput, 'domainId' | 'baseDocId'>) {
     const base = await BaseModel.get(input.domainId, input.baseDocId, document.TYPE_BASE);
     if (!base) throw new Error(`Base not found: ${input.baseDocId}`);
     const githubRepo = ((base.githubRepo || '') as string) || null;
     return { githubRepo };
 }
 
-export async function mcpBaseGitConfigSet(
-    input: McpBaseGitInput & { githubRepo: string | null },
+export async function baseGitConfigSet(
+    input: BaseGitInput & { githubRepo: string | null },
 ) {
-    const base = await requireBaseForMcpGit(input);
+    const base = await requireBaseForGit(input);
     let repoUrlForStorage = input.githubRepo == null ? '' : String(input.githubRepo).trim();
     if (repoUrlForStorage && repoUrlForStorage.startsWith('https://') && repoUrlForStorage.includes('@github.com')) {
         repoUrlForStorage = repoUrlForStorage.replace(/^https:\/\/[^@]+@github\.com\//, 'https://github.com/');

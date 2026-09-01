@@ -1,8 +1,8 @@
 import * as document from '../../model/document';
 import { BaseModel } from '../../model/base';
-import type { McpToolContext, ToolArgs } from '../types';
+import type { ToolContext, ToolArgs } from '../types';
 
-export async function execute(ctx: McpToolContext, _args: ToolArgs): Promise<unknown> {
+export async function execute(ctx: ToolContext, _args: ToolArgs): Promise<unknown> {
     await BaseModel.delete(ctx.domainId, ctx.baseDocId, document.TYPE_BASE);
     return { ok: true, baseId: ctx.baseDocId };
 }

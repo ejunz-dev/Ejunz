@@ -1,8 +1,8 @@
 import { BaseModel } from '../../../model/base';
 import { findRootNodeId } from '../shared';
-import type { McpToolContext, ToolArgs } from '../../types';
+import type { ToolContext, ToolArgs } from '../../types';
 
-export async function execute(ctx: McpToolContext, args: ToolArgs): Promise<unknown> {
+export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown> {
     const text = String(args.text || '').trim();
     if (!text) throw new Error('text is required');
     const base = await BaseModel.get(ctx.domainId, ctx.baseDocId);

@@ -1,4 +1,4 @@
-export interface McpBaseGitInput {
+export interface BaseGitInput {
     domainId: string;
     baseDocId: number;
     owner: number;

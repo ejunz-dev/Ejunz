@@ -1,8 +1,8 @@
 import * as document from '../../model/document';
 import { BaseModel } from '../../model/base';
-import type { McpToolContext, ToolArgs } from '../types';
+import type { ToolContext, ToolArgs } from '../types';
 
-export async function execute(ctx: McpToolContext, args: ToolArgs): Promise<unknown> {
+export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown> {
     const query = String(args.query || '').trim().toLowerCase();
     if (!query) throw new Error('query is required');
     const limit = Math.max(1, Math.min(50, Number(args.limit) || 15));

@@ -11,11 +11,11 @@ import type { EdgeDoc } from './edge';
 import EdgeModel from './edge';
 import EdgeTokenModel from './edge_token';
 import ToolModel, {
-    getLocalMcpToolCatalog,
+    getLocalToolCatalog,
     getLocalSystemToolCatalog,
-    findLocalMcpToolByIdOrName,
-    isLocalMcpToolAvailableInDomain,
-    resolveMcpTools,
+    findLocalToolByIdOrName,
+    isLocalToolAvailableInDomain,
+    resolveTools,
     getBuiltinEjunzToolsLabel,
     getBuiltinEjunzToolsRuntime,
     getBuiltinEjunzToolsVersion,
@@ -399,9 +399,9 @@ async function sanitizePluginCardDefinition(raw: unknown, body: string, card: Ca
             if (id.startsWith(SYSTEM_TOOL_ID_PREFIX)) {
                 const toolKey = id.slice(SYSTEM_TOOL_ID_PREFIX.length).trim();
                 if (!toolKey || !SLUG_RE.test(toolKey)) continue;
-                const entry = findLocalMcpToolByIdOrName(toolKey);
+                const entry = findLocalToolByIdOrName(toolKey);
                 if (!entry) continue;
-                if (domainId && !(await isLocalMcpToolAvailableInDomain(domainId, toolKey))) continue;
+                if (domainId && !(await isLocalToolAvailableInDomain(domainId, toolKey))) continue;
                 toolIds.push(`${SYSTEM_TOOL_ID_PREFIX}${toolKey}`);
                 continue;
             }
@@ -587,8 +587,8 @@ export async function resolveAgentPluginTools(domainId: string, adoc: AgentDoc):
                 if (id.startsWith(SYSTEM_TOOL_ID_PREFIX)) {
                     if (byId.has(id)) continue;
                     const toolKey = id.slice(SYSTEM_TOOL_ID_PREFIX.length).trim();
-                    const entry = findLocalMcpToolByIdOrName(toolKey);
-                    if (!entry || !(await isLocalMcpToolAvailableInDomain(domainId, toolKey))) continue;
+                    const entry = findLocalToolByIdOrName(toolKey);
+                    if (!entry || !(await isLocalToolAvailableInDomain(domainId, toolKey))) continue;
                     byId.set(id, {
                         name: entry.name,
                         description: entry.description || '',
@@ -1734,7 +1734,7 @@ function tokenPreview(token: string): string {
 async function systemTools(domainId: string): Promise<NormalizedMcpTool[]> {
     const enabled = await DomainMarketToolModel.getByDomain(domainId);
     const enabledKeys = new Set(enabled.map((doc) => doc.toolKey));
-    const tools = getLocalMcpToolCatalog()
+    const tools = getLocalToolCatalog()
         .filter((entry) => entry.source === 'system' || enabledKeys.has(entry.id))
         .map((entry) => ({
             uniqueId: uniqueSystemToolId(entry.id),
@@ -1783,7 +1783,7 @@ async function inboundTools(domainId: string, edge: EdgeDoc, kind: McpKind = 'in
 }
 
 async function outboundTools(mcp: McpDoc): Promise<NormalizedMcpTool[]> {
-    return resolveMcpTools(mcp.tools).map((tool) => ({
+    return resolveTools(mcp.tools).map((tool) => ({
         uniqueId: uniqueOutboundToolId(mcp, tool.name),
         name: tool.name,
         description: tool.description || '',

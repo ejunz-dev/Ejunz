@@ -8,7 +8,7 @@ import EdgeModel from './edge';
 import DomainMarketToolModel from './domain_market_tool';
 import { BaseModel } from './base';
 import type { EmbeddingService } from '../service/embedding';
-import type { McpToolContext, SystemToolExecutionContext, ToolArgs } from '../tool/types';
+import type { ToolContext, SystemToolExecutionContext, ToolArgs } from '../tool/types';
 import * as baseCreateTool from '../tool/base/create';
 import * as baseDeleteTool from '../tool/base/delete';
 import * as baseGetTool from '../tool/base/get';
@@ -360,15 +360,15 @@ export default ToolModel;
 (global.Ejunz.model as any).tool = ToolModel;
 
 // ---- mcpBuiltinTools ----
-export type { McpToolContext } from '../tool/types';
+export type { ToolContext } from '../tool/types';
 
-export interface McpToolDef {
+export interface ToolDef {
     name: string;
     description: string;
     inputSchema: Record<string, any>;
 }
 
-export const MCP_BUILTIN_TOOLS_CATALOG: McpToolDef[] = [
+export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
     {
         name: 'base_create',
         description: 'Create a new Ejunz Base in the current domain. The new Base is returned by id and is not automatically selected for this session.',
@@ -768,7 +768,7 @@ export async function buildMcpInstructions(
     return lines.join('\n');
 }
 
-const MCP_BUILTIN_MUTATING_TOOLS = new Set([
+const BUILTIN_MUTATING_TOOLS = new Set([
     'base_create', 'base_update', 'base_delete',
     'node_create', 'node_update', 'node_delete',
     'card_create', 'card_update', 'card_delete',
@@ -777,29 +777,29 @@ const MCP_BUILTIN_MUTATING_TOOLS = new Set([
     'git_pull', 'git_config_set',
 ]);
 
-export function isMcpBuiltinTool(name: string): boolean {
-    return MCP_BUILTIN_TOOLS_CATALOG.some((t) => t.name === name);
+export function isBuiltinTool(name: string): boolean {
+    return BUILTIN_TOOLS_CATALOG.some((t) => t.name === name);
 }
 
-export function isMcpBuiltinMutatingTool(name: string): boolean {
-    return MCP_BUILTIN_MUTATING_TOOLS.has(name);
+export function isBuiltinMutatingTool(name: string): boolean {
+    return BUILTIN_MUTATING_TOOLS.has(name);
 }
 
-export function defaultMcpToolDescriptions(): { name: string; description: string }[] {
-    return MCP_BUILTIN_TOOLS_CATALOG.map((t) => ({ name: t.name, description: t.description }));
+export function defaultToolDescriptions(): { name: string; description: string }[] {
+    return BUILTIN_TOOLS_CATALOG.map((t) => ({ name: t.name, description: t.description }));
 }
 
-export function resolveMcpTools(overrides?: { name: string; description: string }[]): McpToolDef[] {
-    if (!overrides || !overrides.length) return MCP_BUILTIN_TOOLS_CATALOG;
+export function resolveTools(overrides?: { name: string; description: string }[]): ToolDef[] {
+    if (!overrides || !overrides.length) return BUILTIN_TOOLS_CATALOG;
     const map = new Map(overrides.map((o) => [o.name, o.description]));
-    return MCP_BUILTIN_TOOLS_CATALOG.map((t) => ({
+    return BUILTIN_TOOLS_CATALOG.map((t) => ({
         ...t,
         description: map.has(t.name) && map.get(t.name) ? (map.get(t.name) as string) : t.description,
     }));
 }
 
-export async function executeMcpBuiltinTool(
-    ctx: McpToolContext,
+export async function executeBuiltinTool(
+    ctx: ToolContext,
     name: string,
     args: ToolArgs,
 ): Promise<unknown> {
@@ -842,7 +842,7 @@ export async function executeMcpBuiltinTool(
     }
 }
 
-export const executeBaseTool = executeMcpBuiltinTool
+export const executeBaseTool = executeBuiltinTool
 
 // ---- systemTools ----
 /**
@@ -1091,17 +1091,17 @@ export async function executeScheduleSystemTool(
 
 
 // ---- localSystemTools ----
-export type LocalMcpToolSource = 'system' | 'schedule' | 'market_mcp';
+export type LocalToolSource = 'system' | 'schedule' | 'market_mcp';
 
-export interface LocalMcpToolEntry extends SystemToolCatalogEntry {
+export interface LocalToolEntry extends SystemToolCatalogEntry {
     id: string;
-    source: LocalMcpToolSource;
+    source: LocalToolSource;
     defaultEnabled: boolean;
     requiresBaseContext?: boolean;
     mutating?: boolean;
 }
 
-const defaultSystemToolEntries: LocalMcpToolEntry[] = MCP_BUILTIN_TOOLS_CATALOG.map((tool) => ({
+const defaultSystemToolEntries: LocalToolEntry[] = BUILTIN_TOOLS_CATALOG.map((tool) => ({
     id: tool.name,
     name: tool.name,
     description: `${tool.description}\n\nRequires an Ejunz base-bound execution context.`,
@@ -1109,10 +1109,10 @@ const defaultSystemToolEntries: LocalMcpToolEntry[] = MCP_BUILTIN_TOOLS_CATALOG.
     source: 'system',
     defaultEnabled: true,
     requiresBaseContext: true,
-    mutating: isMcpBuiltinMutatingTool(tool.name),
+    mutating: isBuiltinMutatingTool(tool.name),
 }));
 
-const scheduleSystemToolEntries: LocalMcpToolEntry[] = SCHEDULE_SYSTEM_TOOLS_CATALOG.map((tool) => ({
+const scheduleSystemToolEntries: LocalToolEntry[] = SCHEDULE_SYSTEM_TOOLS_CATALOG.map((tool) => ({
     id: tool.name,
     name: tool.name,
     description: `${tool.description}\n\nRequires a domain execution context.`,
@@ -1123,7 +1123,7 @@ const scheduleSystemToolEntries: LocalMcpToolEntry[] = SCHEDULE_SYSTEM_TOOLS_CAT
     mutating: isScheduleSystemToolMutating(tool.name),
 }));
 
-const marketMcpToolEntries: LocalMcpToolEntry[] = SYSTEM_TOOLS_CATALOG.map((tool) => ({
+const marketMcpToolEntries: LocalToolEntry[] = SYSTEM_TOOLS_CATALOG.map((tool) => ({
     id: tool.id,
     name: tool.name,
     description: tool.description || '',
@@ -1132,8 +1132,8 @@ const marketMcpToolEntries: LocalMcpToolEntry[] = SYSTEM_TOOLS_CATALOG.map((tool
     defaultEnabled: false,
 }));
 
-const localMcpToolCatalog: LocalMcpToolEntry[] = (() => {
-    const out: LocalMcpToolEntry[] = [];
+const localToolCatalog: LocalToolEntry[] = (() => {
+    const out: LocalToolEntry[] = [];
     const seen = new Set<string>();
     for (const tool of [...defaultSystemToolEntries, ...scheduleSystemToolEntries, ...marketMcpToolEntries]) {
         const key = tool.id || tool.name;
@@ -1144,23 +1144,23 @@ const localMcpToolCatalog: LocalMcpToolEntry[] = (() => {
     return out;
 })();
 
-export function getLocalSystemToolCatalog(): LocalMcpToolEntry[] {
+export function getLocalSystemToolCatalog(): LocalToolEntry[] {
     return [...defaultSystemToolEntries, ...scheduleSystemToolEntries];
 }
 
-export function getLocalMcpToolCatalog(): LocalMcpToolEntry[] {
-    return localMcpToolCatalog;
+export function getLocalToolCatalog(): LocalToolEntry[] {
+    return localToolCatalog;
 }
 
-export function getMarketMcpTools(): LocalMcpToolEntry[] {
+export function getMarketTools(): LocalToolEntry[] {
     return marketMcpToolEntries;
 }
 
-export function findLocalMcpToolByIdOrName(idOrName: string): LocalMcpToolEntry | undefined {
-    return localMcpToolCatalog.find((tool) => tool.id === idOrName || tool.name === idOrName);
+export function findLocalToolByIdOrName(idOrName: string): LocalToolEntry | undefined {
+    return localToolCatalog.find((tool) => tool.id === idOrName || tool.name === idOrName);
 }
 
-export function findLocalSystemToolByIdOrName(idOrName: string): LocalMcpToolEntry | undefined {
+export function findLocalSystemToolByIdOrName(idOrName: string): LocalToolEntry | undefined {
     return getLocalSystemToolCatalog().find((tool) => tool.id === idOrName || tool.name === idOrName);
 }
 
@@ -1168,8 +1168,8 @@ export function isDefaultLocalSystemTool(toolKey: string): boolean {
     return findLocalSystemToolByIdOrName(toolKey)?.defaultEnabled === true;
 }
 
-export async function isLocalMcpToolAvailableInDomain(domainId: string, toolKeyOrName: string): Promise<boolean> {
-    const entry = findLocalMcpToolByIdOrName(toolKeyOrName);
+export async function isLocalToolAvailableInDomain(domainId: string, toolKeyOrName: string): Promise<boolean> {
+    const entry = findLocalToolByIdOrName(toolKeyOrName);
     if (!entry) return false;
     if (entry.source === 'system') return true;
     return DomainMarketToolModel.has(domainId, entry.id);
@@ -1179,7 +1179,7 @@ export async function isLocalSystemToolAvailableInDomain(_domainId: string, tool
     return !!findLocalSystemToolByIdOrName(toolKeyOrName);
 }
 
-function requireMcpToolContext(entry: LocalMcpToolEntry, context?: SystemToolExecutionContext): McpToolContext {
+function requireToolContext(entry: LocalToolEntry, context?: SystemToolExecutionContext): ToolContext {
     if (!context?.domainId) {
         throw new Error(`Editor MCP tool requires a domain execution context: ${entry.name}`);
     }
@@ -1191,7 +1191,7 @@ function requireMcpToolContext(entry: LocalMcpToolEntry, context?: SystemToolExe
     }
     const fallbackEmbedding = require('../service/embedding').getEmbeddingService?.();
     const embedding = context.embedding || fallbackEmbedding;
-    systemToolsLogger.info('[diag] requireMcpToolContext: tool=%s hasContextEmbedding=%s hasFallbackEmbedding=%s finalHasEmbedding=%s domainId=%s baseDocId=%s owner=%s pid=%d NODE_APP_INSTANCE=%s',
+    systemToolsLogger.info('[diag] requireToolContext: tool=%s hasContextEmbedding=%s hasFallbackEmbedding=%s finalHasEmbedding=%s domainId=%s baseDocId=%s owner=%s pid=%d NODE_APP_INSTANCE=%s',
         entry.name,
         !!context.embedding,
         !!fallbackEmbedding,
@@ -1221,15 +1221,15 @@ export async function executeLocalSystemTool(
     if (entry.source === 'schedule' || isScheduleSystemTool(entry.name)) {
         return executeScheduleSystemTool(entry.name, args || {}, context);
     }
-    return executeMcpBuiltinTool(requireMcpToolContext(entry, context), entry.name, args || {});
+    return executeBuiltinTool(requireToolContext(entry, context), entry.name, args || {});
 }
 
-export async function executeLocalMcpTool(
+export async function executeLocalTool(
     name: string,
     args: Record<string, unknown>,
     context?: SystemToolExecutionContext,
 ): Promise<unknown> {
-    const entry = findLocalMcpToolByIdOrName(name);
+    const entry = findLocalToolByIdOrName(name);
     if (!entry) throw new Error(`Unknown System Tools tool: ${name}`);
     if (entry.source === 'system') return executeLocalSystemTool(entry.name, args, context);
     if (!context?.domainId || !(await DomainMarketToolModel.has(context.domainId, entry.id))) {

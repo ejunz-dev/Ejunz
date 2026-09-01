@@ -1,9 +1,9 @@
 import { CardModel, BaseModel } from '../../../model/base';
 import storage from '../../../model/storage';
 import * as document from '../../../model/document';
-import type { McpToolContext, ToolArgs } from '../../types';
+import type { ToolContext, ToolArgs } from '../../types';
 
-export async function execute(ctx: McpToolContext, args: ToolArgs): Promise<unknown> {
+export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown> {
     const nodeId = String(args.nodeId || '');
     const fileName = String(args.fileName || '').trim();
     const fileUrl = String(args.fileUrl || '').trim();

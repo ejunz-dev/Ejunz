@@ -30,7 +30,7 @@ import db from '../service/db';
 import EdgeModel from './edge';
 import ToolModel from './tool';
 import { EdgeServerConnectionHandler } from '../handler/edge';
-import { findLocalSystemToolByIdOrName, isLocalMcpToolAvailableInDomain } from './tool';
+import { findLocalSystemToolByIdOrName, isLocalToolAvailableInDomain } from './tool';
 import _ from 'lodash';
 import RecordModel from './record';
 import SessionModel from './session';
@@ -694,7 +694,7 @@ export class McpClient {
             };
 
             // Local MCP tools: default system tools or domain-market enabled MCP tools.
-            if (domainId && await isLocalMcpToolAvailableInDomain(domainId, name)) {
+            if (domainId && await isLocalToolAvailableInDomain(domainId, name)) {
                 const { tryExecuteSystemTool } = require('../service/mcp');
                 const sysEarly = await tryExecuteSystemTool(name, args || {}, systemToolContext);
                 if (sysEarly !== null) {

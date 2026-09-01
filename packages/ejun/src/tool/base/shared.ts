@@ -2,8 +2,8 @@ import { ObjectId } from 'mongodb';
 import type { CardDoc, Problem, ProblemKind, BaseEdge, BaseNode } from '../../interface';
 import { CardModel } from '../../model/base';
 import { migrateRawProblem } from '../../model/problem';
-import type { McpToolContext, ToolArgs } from '../types';
-import type { McpBaseGitInput } from './git/types';
+import type { ToolContext, ToolArgs } from '../types';
+import type { BaseGitInput } from './git/types';
 
 export function toObjectId(value: unknown): ObjectId {
     const s = String(value || '').trim();
@@ -11,7 +11,7 @@ export function toObjectId(value: unknown): ObjectId {
     return new ObjectId(s);
 }
 
-export async function requireCard(ctx: McpToolContext, cardId: unknown): Promise<CardDoc> {
+export async function requireCard(ctx: ToolContext, cardId: unknown): Promise<CardDoc> {
     const card = await CardModel.get(ctx.domainId, toObjectId(cardId));
     if (!card) throw new Error('Card not found');
     if (String(card.baseDocId) !== String(ctx.baseDocId)) throw new Error('Card does not belong to this base');
@@ -73,7 +73,7 @@ export function findProblemIndex(problems: Problem[], pid: string): number {
     return problems.findIndex((problem) => String(problem.pid) === pid);
 }
 
-export function toMcpGitInput(ctx: McpToolContext, args: ToolArgs): McpBaseGitInput {
+export function toGitInput(ctx: ToolContext, args: ToolArgs): BaseGitInput {
     return {
         domainId: ctx.domainId,
         baseDocId: ctx.baseDocId,
