@@ -458,12 +458,13 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
     },
     {
         name: 'node_update',
-        description: 'Rename a node (change its title/text). Use an existing nodeId.',
+        description: 'Rename and/or move a node. Pass parentId to move it under an existing node; omit parentId to keep its current parent.',
         inputSchema: {
             type: 'object',
             properties: {
                 nodeId: { type: 'string', description: 'Existing node id.' },
                 text: { type: 'string', description: 'New node title/text.' },
+                parentId: { type: 'string', description: 'Existing parent node id (optional; omit to keep the current parent).' },
             },
             required: ['nodeId', 'text'],
             additionalProperties: false,

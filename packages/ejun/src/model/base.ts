@@ -442,12 +442,99 @@ export class BaseModel {
         const base = await this.get(domainId, docId, mapDocType);
         if (!base) throw new Error('Base not found');
 
-        const nodes = base.nodes || [];
-        const edges = base.edges || [];
+        const nodes = (base.nodes || []).map((node) => ({
+            ...node,
+            ...(node.children ? { children: [...node.children] } : {}),
+        }));
+        const edges = [...(base.edges || [])];
         const nodeIndex = nodes.findIndex(n => n.id === nodeId);
         if (nodeIndex === -1) throw new Error('Node not found');
 
-        nodes[nodeIndex] = { ...nodes[nodeIndex], ...updates, updateAt: new Date() };
+        const moving = Object.prototype.hasOwnProperty.call(updates, 'parentId');
+        const currentNode = nodes[nodeIndex];
+        let nextParentId = currentNode.parentId;
+        if (moving) {
+            nextParentId = updates.parentId || undefined;
+            if (nextParentId === nodeId) throw new Error('A node cannot be moved under itself');
+
+            if (nextParentId) {
+                const parentExists = nodes.some((node) => node.id === nextParentId);
+                if (!parentExists) throw new Error(`Parent node not found: ${nextParentId}`);
+
+                const descendants = new Set<string>();
+                const visit = (id: string) => {
+                    if (descendants.has(id)) return;
+                    descendants.add(id);
+                    const node = nodes.find((candidate) => candidate.id === id);
+                    for (const child of nodes) {
+                        if (child.parentId === id) visit(child.id);
+                    }
+                    for (const childId of node?.children || []) visit(childId);
+                    for (const edge of edges) {
+                        if (edge.source === id) visit(edge.target);
+                    }
+                };
+                visit(nodeId);
+                if (descendants.has(nextParentId)) {
+                    throw new Error('A node cannot be moved under one of its descendants');
+                }
+            }
+
+            if (currentNode.parentId !== nextParentId) {
+                const previousParent = nodes.find((node) => node.id === currentNode.parentId);
+                if (previousParent?.children) {
+                    previousParent.children = previousParent.children.filter((id) => id !== nodeId);
+                }
+
+                const nextParent = nodes.find((node) => node.id === nextParentId);
+                if (nextParent && !nextParent.children?.includes(nodeId)) {
+                    nextParent.children = [...(nextParent.children || []), nodeId];
+                }
+
+                const previousEdgeIndex = edges.findIndex(
+                    (edge) => edge.source === currentNode.parentId && edge.target === nodeId,
+                );
+                const nextEdgeIndex = nextParentId
+                    ? edges.findIndex((edge) => edge.source === nextParentId && edge.target === nodeId)
+                    : -1;
+                if (nextParentId && nextEdgeIndex === -1) {
+                    if (previousEdgeIndex !== -1) {
+                        edges[previousEdgeIndex] = { ...edges[previousEdgeIndex], source: nextParentId };
+                    } else {
+                        edges.push({
+                            id: `edge_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                            source: nextParentId,
+                            target: nodeId,
+                        });
+                    }
+                } else if (previousEdgeIndex !== -1 && previousEdgeIndex !== nextEdgeIndex) {
+                    edges.splice(previousEdgeIndex, 1);
+                }
+            }
+        }
+
+        const updatedNode: BaseNode = { ...currentNode, ...updates, updateAt: new Date() };
+        if (moving) {
+            if (nextParentId) updatedNode.parentId = nextParentId;
+            else delete updatedNode.parentId;
+            updatedNode.level = nextParentId
+                ? (nodes.find((node) => node.id === nextParentId)?.level || 0) + 1
+                : 0;
+        }
+        nodes[nodeIndex] = updatedNode;
+
+        if (moving) {
+            const updateChildLevels = (parentId: string, parentLevel: number, visited = new Set<string>()) => {
+                for (let index = 0; index < nodes.length; index++) {
+                    const child = nodes[index];
+                    if (child.parentId !== parentId || visited.has(child.id)) continue;
+                    visited.add(child.id);
+                    nodes[index] = { ...child, level: parentLevel + 1 };
+                    updateChildLevels(child.id, parentLevel + 1, visited);
+                }
+            };
+            updateChildLevels(nodeId, updatedNode.level || 0, new Set([nodeId]));
+        }
 
         const updatePayload: Partial<BaseDoc> = {
             nodes,
