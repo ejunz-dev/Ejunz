@@ -492,7 +492,7 @@ export class BaseModel {
                 }
 
                 const previousEdgeIndex = edges.findIndex(
-                    (edge) => edge.source === currentNode.parentId && edge.target === nodeId,
+                    (edge) => edge.target === nodeId,
                 );
                 const nextEdgeIndex = nextParentId
                     ? edges.findIndex((edge) => edge.source === nextParentId && edge.target === nodeId)
