@@ -18,6 +18,7 @@ import * as baseUpdateTool from '../tool/base/update';
 import * as baseSemanticSearchTool from '../tool/base/semantic-search';
 import * as cardCreateTool from '../tool/base/card/create';
 import * as cardDeleteTool from '../tool/base/card/delete';
+import * as cardGetTool from '../tool/base/card/get';
 import * as cardUpdateTool from '../tool/base/card/update';
 import * as fileCreateTool from '../tool/base/file/create';
 import * as fileDeleteTool from '../tool/base/file/delete';
@@ -31,6 +32,7 @@ import * as gitPushTool from '../tool/base/git/push';
 import * as gitStatusTool from '../tool/base/git/status';
 import * as nodeCreateTool from '../tool/base/node/create';
 import * as nodeDeleteTool from '../tool/base/node/delete';
+import * as nodeGetTool from '../tool/base/node/get';
 import * as nodeUpdateTool from '../tool/base/node/update';
 import * as problemCreateTool from '../tool/base/problem/create';
 import * as problemDeleteTool from '../tool/base/problem/delete';
@@ -471,6 +473,16 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
         },
     },
     {
+        name: 'node_get',
+        description: 'Read a node and its direct child nodes plus cards attached to it. Returns ids and titles for child nodes, and ids, titles, and content for cards without recursively expanding nested nodes.',
+        inputSchema: {
+            type: 'object',
+            properties: { nodeId: { type: 'string', description: 'Existing node id.' } },
+            required: ['nodeId'],
+            additionalProperties: false,
+        },
+    },
+    {
         name: 'node_delete',
         description: 'Delete a node by id (and its cards). Use an existing nodeId.',
         inputSchema: {
@@ -504,6 +516,16 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
                 title: { type: 'string', description: 'New title (optional).' },
                 content: { type: 'string', description: 'New markdown body (optional).' },
             },
+            required: ['cardId'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'card_get',
+        description: 'Read a card by cardId and return its title and markdown content.',
+        inputSchema: {
+            type: 'object',
+            properties: { cardId: { type: 'string', description: 'Card docId (hex).' } },
             required: ['cardId'],
             additionalProperties: false,
         },
@@ -819,8 +841,10 @@ export async function executeBuiltinTool(
     case 'base_delete': return baseDeleteTool.execute(toolContext, args);
     case 'node_create': return nodeCreateTool.execute(toolContext, args);
     case 'node_update': return nodeUpdateTool.execute(toolContext, args);
+    case 'node_get': return nodeGetTool.execute(toolContext, args);
     case 'node_delete': return nodeDeleteTool.execute(toolContext, args);
     case 'card_create': return cardCreateTool.execute(toolContext, args);
+    case 'card_get': return cardGetTool.execute(toolContext, args);
     case 'card_update': return cardUpdateTool.execute(toolContext, args);
     case 'card_delete': return cardDeleteTool.execute(toolContext, args);
     case 'semantic_search': return baseSemanticSearchTool.execute(toolContext, args);
