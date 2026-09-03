@@ -408,7 +408,7 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
     },
     {
         name: 'base_get',
-        description: 'Read an Ejunz Base by baseId, including metadata, content, nodes, and edges.',
+        description: 'Read an Ejunz Base by baseId, including metadata, content, nodes, edges, and a tree-shaped outline of node/card ids and titles.',
         inputSchema: {
             type: 'object',
             properties: { baseId: { type: 'integer', description: 'Existing Base id.' } },
