@@ -300,6 +300,14 @@ export async function apply(ctx: Context) {
 
     ctx.Route('ui_next_constants', '/plugins/:version/:name', UiNextConstantHandler);
 
+    // Enrich the shared UiContext with nav items so both the initial HTML
+    // render and JSON page-data fetches (e.g. useRefresh) carry the nav.
+    // handler.UiContext is a reference to ctx.EjunzContext.UiContext, and this
+    // runs before base.ts injects UiContext into the JSON response.
+    ctx.on('handler/finish', (h: any) => {
+        if (h?.UiContext) h.UiContext.navItems = buildNavItems(h);
+    });
+
     if (process.env.DEV) {
         ctx.on('app/started', async () => {
             await buildI18n();
