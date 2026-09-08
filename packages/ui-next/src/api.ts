@@ -14,7 +14,7 @@ export * from './components/base-detail';
 
 // Context
 export { type PageData, usePageData, useUiContext, useUserContext } from './context/page-data';
-export { type RouterState, useNavigate, useRouterState } from './context/router';
+export { type RouterState, useNavigate, useRefresh, useRouterState } from './context/router';
 export { useBuildUrl } from './hooks/use-build-url';
 
 // Registry

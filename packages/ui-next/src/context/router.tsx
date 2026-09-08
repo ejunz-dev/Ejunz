@@ -32,6 +32,7 @@ export interface RouterState {
 
 interface RouterNavigateContextValue {
   navigate: (url: string) => Promise<void>;
+  refresh: () => Promise<void>;
 }
 
 const RouterStateContext = createContext<RouterState | null>(null);
@@ -159,7 +160,11 @@ export const RouterProvider: React.FC<React.PropsWithChildren> = ({ children }) 
     if (ok) history.pushState({ url }, '', url);
   }, [fetchPage, isSameOrigin]);
 
-  const navigateValue = useMemo<RouterNavigateContextValue>(() => ({ navigate }), [navigate]);
+  const refresh = useCallback(async () => {
+    await fetchPage(window.location.pathname + window.location.search);
+  }, [fetchPage]);
+
+  const navigateValue = useMemo<RouterNavigateContextValue>(() => ({ navigate, refresh }), [navigate, refresh]);
 
   return (
     <RouterNavigateContext.Provider value={navigateValue}>
@@ -180,4 +185,10 @@ export function useNavigate(): (url: string) => Promise<void> {
   const ctx = useContext(RouterNavigateContext);
   if (!ctx) throw new Error('useNavigate must be used within RouterProvider');
   return ctx.navigate;
+}
+
+export function useRefresh(): () => Promise<void> {
+  const ctx = useContext(RouterNavigateContext);
+  if (!ctx) throw new Error('useRefresh must be used within RouterProvider');
+  return ctx.refresh;
 }
