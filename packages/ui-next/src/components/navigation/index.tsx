@@ -141,6 +141,8 @@ export function Navigation() {
   const domainTargetRoute = pageRoute === 'ejunz_agent' ? 'ejunz_agent' : 'homepage';
   const user = useUserContext();
   const navItems = Array.isArray(ui.navItems) ? ui.navItems as NavItem[] : [];
+  const brandLogo = ui.navBrandLogo || navLogo;
+  const brandUrl = ui.navBrandUrl || '/';
   const [mobileOpen, setMobileOpen] = useState(false);
   const [domainsOpen, setDomainsOpen] = useState(false);
   const [mobileDomainsOpen, setMobileDomainsOpen] = useState(false);
@@ -164,7 +166,7 @@ export function Navigation() {
     <>
       <nav className="uix-nav" aria-label={i18n('homepage')}>
         <div className="uix-nav__inner">
-          <a className="uix-nav__logo" href="/" aria-label="Ejunz"><img src={navLogo} alt="Ejunz" /></a>
+          <a className="uix-nav__logo" href={brandUrl} aria-label="Ejunz"><img src={brandLogo} alt="Ejunz" /></a>
           <div className="uix-nav__main">
             {navItems.map((item) => (
               <Link key={item.name} to={item.name} params={item.args} className={`uix-nav__item${activeFor(item.name, item.prefix || item.name, name, template) ? ' is-active' : ''}`}>{i18n(item.displayName || item.name)}</Link>
