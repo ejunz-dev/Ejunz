@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import './autocomplete.css';
 
 export interface AutoCompleteItem {
@@ -38,8 +39,21 @@ export function AutoComplete({
   const [results, setResults] = useState<AutoCompleteItem[]>([]);
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
+  const [listPos, setListPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const boxRef = useRef<HTMLDivElement>(null);
+
+  const updateListPos = useCallback(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setListPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+  }, []);
+
+  const openList = useCallback(() => {
+    updateListPos();
+    setOpen(true);
+  }, [updateListPos]);
 
   const runQuery = useCallback(async (q: string) => {
     if (!q.trim()) {
@@ -106,13 +120,16 @@ export function AutoComplete({
           placeholder={placeholder}
           value={text}
           disabled={disabled}
-          onChange={(e) => { setText(e.target.value); setOpen(true); }}
-          onFocus={() => setOpen(true)}
+          onChange={(e) => { setText(e.target.value); openList(); }}
+          onFocus={openList}
           onKeyDown={onKeyDown}
         />
       </div>
-      {open && results.length > 0 ? (
-        <ul className="uix-autocomplete__list">
+      {open && results.length > 0 && listPos ? createPortal(
+        <ul
+          className="uix-autocomplete__list"
+          style={{ position: 'fixed', top: listPos.top, left: listPos.left, width: listPos.width }}
+        >
           {results.map((item, idx) => {
             const isSelected = selected.includes(item.key);
             return (
@@ -128,7 +145,8 @@ export function AutoComplete({
               </li>
             );
           })}
-        </ul>
+        </ul>,
+        document.body,
       ) : null}
     </div>
   );

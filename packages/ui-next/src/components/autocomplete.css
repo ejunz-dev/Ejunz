@@ -49,11 +49,7 @@
 }
 
 .uix-autocomplete__list {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
-  z-index: 20;
+  z-index: 10000;
   max-height: 220px;
   overflow-y: auto;
   margin: 0;
