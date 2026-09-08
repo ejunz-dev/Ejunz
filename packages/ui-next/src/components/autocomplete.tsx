@@ -20,6 +20,8 @@ export interface AutoCompleteProps {
   onRemove: (key: string) => void;
   /** Async search; return items matching the query. */
   query: (q: string) => Promise<AutoCompleteItem[]>;
+  /** Optional label rendered on the same row as the input. */
+  label?: string;
   placeholder?: string;
   disabled?: boolean;
 }
@@ -33,7 +35,7 @@ export interface AutoCompleteProps {
  * the ui-default AutoComplete so ui-next plugins do not depend on ui-default.
  */
 export function AutoComplete({
-  selected, onSelect, onRemove, query, placeholder = 'Search...', disabled = false,
+  selected, onSelect, onRemove, query, label, placeholder = 'Search...', disabled = false,
 }: AutoCompleteProps) {
   const [text, setText] = useState('');
   const [results, setResults] = useState<AutoCompleteItem[]>([]);
@@ -111,13 +113,8 @@ export function AutoComplete({
 
   return (
     <div className="uix-autocomplete" ref={boxRef}>
-      <div className="uix-autocomplete__chips">
-        {selected.map((key) => (
-          <span key={key} className="uix-autocomplete__chip">
-            {key}
-            <button type="button" onClick={() => onRemove(key)} aria-label={`Remove ${key}`}>×</button>
-          </span>
-        ))}
+      <div className="uix-autocomplete__row">
+        {label ? <span className="uix-autocomplete__rowlabel">{label}</span> : null}
         <input
           type="text"
           className="uix-autocomplete__input"
@@ -129,6 +126,16 @@ export function AutoComplete({
           onKeyDown={onKeyDown}
         />
       </div>
+      {selected.length > 0 ? (
+        <div className="uix-autocomplete__chips">
+          {selected.map((key) => (
+            <span key={key} className="uix-autocomplete__chip">
+              {key}
+              <button type="button" onClick={() => onRemove(key)} aria-label={`Remove ${key}`}>×</button>
+            </span>
+          ))}
+        </div>
+      ) : null}
       {open && results.length > 0 && listPos ? createPortal(
         <ul
           ref={listRef}

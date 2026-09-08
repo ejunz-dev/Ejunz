@@ -3,11 +3,24 @@
   width: 100%;
 }
 
+.uix-autocomplete__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.uix-autocomplete__rowlabel {
+  font-weight: 600;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
 .uix-autocomplete__chips {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
   align-items: center;
+  margin-top: 0.4rem;
   padding: 0.4rem 0.6rem;
   border: 1px solid var(--web-border, hsl(0, 0%, 89.8%));
   border-radius: 6px;
@@ -17,12 +30,13 @@
 .uix-autocomplete__input {
   flex: 1;
   min-width: 140px;
-  border: none;
+  border: 1px solid var(--web-border, hsl(0, 0%, 89.8%));
+  border-radius: 6px;
   outline: none;
-  background: transparent;
+  background: var(--web-card-bg, #fff);
   font-size: 0.875rem;
   color: inherit;
-  padding: 0.2rem 0;
+  padding: 0.35rem 0.6rem;
 }
 
 .uix-autocomplete__chip {
