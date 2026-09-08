@@ -42,6 +42,7 @@ export function AutoComplete({
   const [listPos, setListPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const boxRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
 
   const updateListPos = useCallback(() => {
     const el = boxRef.current;
@@ -77,7 +78,10 @@ export function AutoComplete({
 
   useEffect(() => {
     const onDocClick = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      const inside = (boxRef.current && boxRef.current.contains(target)) ||
+        (listRef.current && listRef.current.contains(target));
+      if (!inside) setOpen(false);
     };
     document.addEventListener('mousedown', onDocClick);
     return () => document.removeEventListener('mousedown', onDocClick);
@@ -127,6 +131,7 @@ export function AutoComplete({
       </div>
       {open && results.length > 0 && listPos ? createPortal(
         <ul
+          ref={listRef}
           className="uix-autocomplete__list"
           style={{ position: 'fixed', top: listPos.top, left: listPos.left, width: listPos.width }}
         >
