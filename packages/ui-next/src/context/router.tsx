@@ -161,8 +161,50 @@ export const RouterProvider: React.FC<React.PropsWithChildren> = ({ children }) 
   }, [fetchPage, isSameOrigin]);
 
   const refresh = useCallback(async () => {
-    await fetchPage(window.location.pathname + window.location.search);
-  }, [fetchPage]);
+    // Re-fetch the current page's content data without replacing the shared
+    // UiContext/UserContext (which carry the nav). This mirrors PJAX: keep the
+    // surrounding shell, update only the page body.
+    const url = window.location.pathname + window.location.search;
+    abortRef.current?.abort();
+    const gen = ++genRef.current;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    for (const ep of endpoints) {
+      try {
+        const signal = endpoints.length > 1
+          ? AbortSignal.any([controller.signal, AbortSignal.timeout(10000)])
+          : controller.signal;
+        const reqUrl = new URL(url, ep).href;
+        const res = await fetch(reqUrl, {
+          signal,
+          headers: {
+            Accept: 'application/json',
+            'x-ejunz-inject': 'pagename',
+          },
+        });
+        if (res.redirected) {
+          window.location.href = res.url;
+          return;
+        }
+        if (!res.ok) throw new Error(`Refresh failed: ${res.status} ${res.statusText}`);
+        const body = await res.json();
+        const pageName = res.headers.get('x-ejunz-page') || '';
+        const template = res.headers.get('x-ejunz-template') || '';
+        if (gen !== genRef.current) return;
+        setData((prev) => ({
+          ...prev,
+          args: { ...prev.args, ...body },
+          name: pageName,
+          template,
+          url,
+        }));
+        return;
+      } catch (e) {
+        if (e instanceof DOMException && e.name === 'AbortError') return;
+        console.warn('[Ejunz] refresh endpoint', ep, 'failed:', e instanceof Error ? e.message : String(e));
+      }
+    }
+  }, [endpoints, setData]);
 
   const navigateValue = useMemo<RouterNavigateContextValue>(() => ({ navigate, refresh }), [navigate, refresh]);
 
