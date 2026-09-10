@@ -97,13 +97,34 @@ export const RouterProvider: React.FC<React.PropsWithChildren> = ({ children }) 
           if (init && body.routeMap && typeof body.routeMap === 'object') {
             routeMapStore.set(body.routeMap);
           }
-          setData((prev) => ({
-            ...prev,
-            args: body,
-            name: pageName,
-            template,
-            url,
-          }));
+          setData((prev) => {
+            const { UiContext, UserContext, ...pageArgs } = body;
+            const previousUiContext = prev.args.UiContext || {};
+            const nextUiContext = UiContext && typeof UiContext === 'object'
+              ? { ...UiContext }
+              : { ...previousUiContext };
+
+            // navItems is added by the initial HTML renderer. JSON page-data
+            // responses do not include it, but navigation must keep the shell
+            // menu while still replacing page/domain-specific context values.
+            if (nextUiContext.navItems === undefined && previousUiContext.navItems !== undefined) {
+              nextUiContext.navItems = previousUiContext.navItems;
+            }
+
+            return {
+              ...prev,
+              args: {
+                ...pageArgs,
+                UiContext: nextUiContext,
+                UserContext: UserContext && typeof UserContext === 'object'
+                  ? UserContext
+                  : prev.args.UserContext,
+              },
+              name: pageName,
+              template,
+              url,
+            };
+          });
           dispatch({ type: 'FETCH_SUCCESS' });
           return true;
         } catch (e) {
