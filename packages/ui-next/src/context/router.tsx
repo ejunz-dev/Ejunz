@@ -31,7 +31,7 @@ export interface RouterState {
 }
 
 export interface RefreshOptions {
-  context?: boolean;
+  context?: boolean | string[];
 }
 
 interface RouterNavigateContextValue {
@@ -169,8 +169,9 @@ export const RouterProvider: React.FC<React.PropsWithChildren> = ({ children }) 
     // UiContext/UserContext by default so ordinary page refreshes preserve the
     // surrounding shell; callers can opt in when server-side context changed.
     const url = window.location.pathname + window.location.search;
+    const contextFields = Array.isArray(options.context) ? new Set(options.context) : null;
     const inject = options.context
-      ? 'uicontext,usercontext,pagename'
+      ? `${contextFields ? 'uicontext' : 'uicontext,usercontext'},pagename`
       : 'pagename';
     abortRef.current?.abort();
     const gen = ++genRef.current;
@@ -198,13 +199,33 @@ export const RouterProvider: React.FC<React.PropsWithChildren> = ({ children }) 
         const pageName = res.headers.get('x-ejunz-page') || '';
         const template = res.headers.get('x-ejunz-template') || '';
         if (gen !== genRef.current) return;
-        setData((prev) => ({
-          ...prev,
-          args: { ...prev.args, ...body },
-          name: pageName,
-          template,
-          url,
-        }));
+        setData((prev) => {
+          const { UiContext, UserContext, ...pageArgs } = body;
+          const args = { ...prev.args, ...pageArgs };
+
+          if (contextFields) {
+            const nextUiContext = { ...prev.args.UiContext };
+            for (const key of contextFields) {
+              if (UiContext && Object.prototype.hasOwnProperty.call(UiContext, key)) {
+                nextUiContext[key] = UiContext[key];
+              } else {
+                delete nextUiContext[key];
+              }
+            }
+            args.UiContext = nextUiContext;
+          } else if (options.context) {
+            args.UiContext = { ...prev.args.UiContext, ...(UiContext || {}) };
+            args.UserContext = { ...prev.args.UserContext, ...(UserContext || {}) };
+          }
+
+          return {
+            ...prev,
+            args,
+            name: pageName,
+            template,
+            url,
+          };
+        });
         return;
       } catch (e) {
         if (e instanceof DOMException && e.name === 'AbortError') return;
