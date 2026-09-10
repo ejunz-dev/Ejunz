@@ -1,7 +1,7 @@
 import { Logger } from 'ejun/src/logger';
 import type { Context } from 'ejun/src/context';
 // Pulls the `ctx.tools` declaration on Context into this program's types.
-import type {} from 'ejun/src/service/tools';
+import type {} from './registry';
 import type { ToolArgs, ToolContext, ToolSpec } from './types';
 
 const logger = new Logger('ejunztools/provider');

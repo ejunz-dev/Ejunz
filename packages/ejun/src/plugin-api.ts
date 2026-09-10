@@ -49,7 +49,4 @@ export * from '@ejunz/framework/decorators';
 export * from '@ejunz/framework/validator';
 export * as StorageService from './service/storage';
 export { EventMap } from './service/bus';
-export { default as ToolService } from './service/tools';
-export type { RegisteredTool, ToolDeclaration, ToolSource } from './service/tools';
-export type { ToolArgs, ToolContext, ToolSpec } from './tool/types';
 export { db, pwsh };

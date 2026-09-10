@@ -31,19 +31,6 @@ export interface WorkerTaskReporter {
     error(error: any): Promise<void>;
 }
 
-function registerSystemToolsIfAvailable() {
-    try {
-        const { getLocalSystemToolCatalog, executeLocalSystemTool } = require('@ejunz/ejunztools/src/mcp');
-        const { registerSystemToolCatalog, registerSystemToolExecutor } = require('@ejunz/ejunztools/src/mcp');
-        const catalog = getLocalSystemToolCatalog();
-        registerSystemToolCatalog(catalog);
-        registerSystemToolExecutor(executeLocalSystemTool);
-        logger.info('Core System Tools registered for worker (count=%d)', catalog.length);
-    } catch (e: any) {
-        logger.warn('Core System Tools not registered in worker: %s', e?.message || e);
-    }
-}
-
 function normalizeToolParameters(raw: any) {
     const parameters = raw && typeof raw === 'object' && !Array.isArray(raw) ? { ...raw } : {};
     if (parameters.type !== 'object') parameters.type = 'object';
@@ -619,13 +606,11 @@ function workerSystemToolContext(config: any, task: any) {
 }
 
 async function executeSemanticSearchTool(task: any, reporter: WorkerTaskReporter, config: any) {
-    const { executeLocalSystemTool } = require('@ejunz/ejunztools/src/mcp');
+    // Run the tool implementation directly: the registry exposes it as
+    // `base_semantic_search`, while worker tasks name it by `SEMANTIC_SEARCH_TOOL`.
+    const { execute } = require('@ejunz/ejunztools/src/base/semantic-search');
     await reporter.status({ status: 'running', toolName: SEMANTIC_SEARCH_TOOL });
-    const result = await executeLocalSystemTool(
-        SEMANTIC_SEARCH_TOOL,
-        task.args || {},
-        workerSystemToolContext(config, task),
-    );
+    const result = await execute(workerSystemToolContext(config, task), task.args || {});
     await reporter.complete({ result });
 }
 
@@ -692,24 +677,16 @@ async function executeToolCallTask(task: any, reporter: WorkerTaskReporter, conf
 
 async function executeMcpToolCallTask(task: any, reporter: WorkerTaskReporter) {
     await reporter.accepted();
-    let response: any;
-    try {
-        // deregistered: the system-tool machinery was removed.
-        const { executeSystemTool } = require('@ejunz/ejunztools/src/mcp');
-        const result = await executeSystemTool(task.name, task.args || {});
-        const text = typeof result === 'string' ? result : JSON.stringify(result);
-        response = {
-            jsonrpc: '2.0',
-            id: task.rpcId,
-            result: { content: [{ type: 'text', text }], isError: false },
-        };
-    } catch (e: any) {
-        response = {
-            jsonrpc: '2.0',
-            id: task.rpcId,
-            result: { content: [{ type: 'text', text: e?.message || String(e) }], isError: true },
-        };
-    }
+    // The system-tool machinery went away with the MCP service: tool calls arrive as
+    // `tool_call` tasks and run through the host tool registry.
+    const response = {
+        jsonrpc: '2.0',
+        id: task.rpcId,
+        result: {
+            content: [{ type: 'text', text: 'system_tool_unavailable: the MCP system-tool machinery was removed' }],
+            isError: true,
+        },
+    };
     await reporter.complete({ response });
 }
 

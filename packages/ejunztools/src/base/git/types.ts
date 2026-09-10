@@ -1,2 +1,2 @@
-/** The git tool input contract, declared once in core. */
-export type { BaseGitInput } from 'ejun/src/tool/base/git/types';
+/** The git endpoint input contract, declared by the handler that consumes it. */
+export type { BaseGitInput } from 'ejun/src/handler/base';

@@ -1,14 +1,15 @@
-import { Logger } from '../logger';
-import { Context, Service } from '../context';
-import type { ToolArgs, ToolContext, ToolSpec } from '../tool/types';
+import { Logger } from 'ejun/src/logger';
+import { Context, Service } from 'ejun/src/context';
+import type { ToolArgs, ToolCalledPayload, ToolContext, ToolSpec } from './types';
+import type { VoidReturn } from 'ejun/src/service/bus';
 
-declare module '../context' {
+declare module 'ejun/src/context' {
     interface Context {
         tools: ToolService;
     }
 }
 
-const logger = new Logger('service/tools');
+const logger = new Logger('ejunztools/registry');
 
 /**
  * One tool an addon contributes: its model-facing declaration and its implementation.
@@ -194,5 +195,12 @@ export default class ToolService extends Service {
             });
         }
         return result;
+    }
+}
+
+declare module 'ejun/src/service/bus' {
+    interface EventMap {
+        /** Emitted after a mutating tool call succeeded, so owners refresh what they show. */
+        'tool/called': (payload: ToolCalledPayload) => VoidReturn;
     }
 }

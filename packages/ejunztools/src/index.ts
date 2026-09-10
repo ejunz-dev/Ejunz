@@ -9,8 +9,8 @@
  * @module
  */
 import type { Context } from 'ejun/src/context';
-// Brings the `ctx.tools` declaration on Context into this program's types.
-import type { ToolDeclaration } from 'ejun/src/service/tools';
+import ToolService from './registry';
+import type { ToolDeclaration } from './registry';
 import {
     BUILTIN_TOOLS_CATALOG,
     isBuiltinMutatingTool,
@@ -109,17 +109,17 @@ function declaration(definition: ToolDef): ToolDeclaration {
 }
 
 /**
- * The registry this addon publishes into. Declared so the addon waits for it instead
- * of reading a service that is not there yet.
- */
-export const inject = ['tools'];
-
-/**
- * Start this addon: plug the MCP service and publish the Base tool set.
- * @param ctx - host context holding the tool registry.
+ * Start this addon: publish the tool registry, then the Base tool set.
+ *
+ * The registry is read through the service store: a service property read is checked
+ * against the reading fiber's inject list, which this addon does not declare because it
+ * is the one providing the service.
+ * @param ctx - host context.
  */
 export async function apply(ctx: Context): Promise<void> {
-    // The MCP service this addon used to plug is deregistered: consumers read the
-    // registry through the provider and the Agent bridge instead.
-    ctx.tools.register({ source: 'base', tools: BUILTIN_TOOLS_CATALOG.map(declaration) });
+    await ctx.plugin(ToolService);
+    const services = ctx as any;
+    const tools = (typeof services.get === 'function' ? services.get('tools') : services.tools) as ToolService | undefined;
+    if (!tools) throw new Error('ejunztools: the tool registry did not start');
+    tools.register({ source: 'base', tools: BUILTIN_TOOLS_CATALOG.map(declaration) });
 }
