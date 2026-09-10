@@ -1,57 +1,29 @@
 import { Logger } from 'ejun/src/logger';
 import type { Context } from 'ejun/src/context';
-// Pulls the `ctx.tools` declaration on Context into this program's types.
 import type {} from './registry';
 import type { ToolArgs, ToolContext, ToolSpec } from './types';
 
 const logger = new Logger('ejunztools/provider');
 
-/** Scope one provider acts for. */
 export interface ProviderScope {
     readonly domainId: string;
     readonly owner: number;
-    /** Base the tools act on, when the scope is bound to one. */
     readonly baseDocId?: number;
+    readonly sessionId?: string;
 }
 
-/**
- * Executes the tools an addon registered, for one scope.
- *
- * The provider holds no tool list of its own: it reads the registry on every call,
- * so a tool registered later — by any addon — is callable without rebuilding it.
- */
 export interface Provider {
     readonly scope: Readonly<ProviderScope>;
-    /**
-     * Read the tools this scope exposes.
-     * @param source - restrict to one registered source; omitted reads every source.
-     * @returns the model-facing declarations.
-     */
     catalog(source?: string): ToolSpec[];
-    /**
-     * Execute one registered tool.
-     * @param name - tool name.
-     * @param args - tool arguments.
-     * @param signal - aborts the call.
-     * @returns the tool result.
-     */
     call(name: string, args: ToolArgs, signal: AbortSignal): Promise<unknown>;
 }
 
-/**
- * Build a provider over the tools registered in `ctx`.
- * @param ctx - context holding the tool registry.
- * @param scope - domain, Base, and owner every call acts for.
- * @returns the provider for that scope.
- */
 export function createProvider(
     ctx: Context,
     scope: ProviderScope,
 ): Provider {
     const services = ctx as any;
     const get = (name: string) => (typeof services.get === 'function' ? services.get(name) : services[name]);
-    // The registry is read through the service store: a service property read is checked
-    // against the reading fiber's inject list, which the caller's context need not declare.
     const registry = () => {
         const tools = get('tools');
         if (!tools) throw new Error('ejunztools: the host tool registry is unavailable');
@@ -61,12 +33,13 @@ export function createProvider(
         domainId: scope.domainId,
         baseDocId: scope.baseDocId ?? 0,
         owner: scope.owner,
+        ...(scope.sessionId ? { sessionId: scope.sessionId } : {}),
         setting: get('setting'),
         embedding: get('embedding'),
     });
     return {
         scope: Object.freeze({ ...scope }),
-        catalog: (source?: string) => registry().catalog(source),
+        catalog: (source?: string) => registry().catalog(source, undefined, scope.domainId),
         async call(name, args, signal) {
             if (signal.aborted) throw signal.reason ?? new Error('provider call aborted');
             const startedAt = Date.now();

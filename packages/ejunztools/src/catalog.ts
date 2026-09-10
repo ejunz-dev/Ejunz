@@ -1,21 +1,12 @@
-/**
- * The built-in Base tool catalog: the model-facing definitions, the set of
- * mutating operations, and the name lookups derived from them.
- *
- * Pure data with no imports and no side effects, so a consumer outside the Ejunz
- * application reads one definition list instead of keeping a copy: the Ejunz Agent
- * bridge (`plugins/agent/base-tools.ts`) maps these operations to model-visible
- * names, and the Agent package that registers tools in the Agent process
- * (`plugins/agent/ejunz-agent/packages/ejunz/tool-ejunz-base`) registers the bridge
- * catalog it receives. This module is their single source.
- * @module
- */
-
 export interface ToolDef {
-    /** Dispatcher operation name: what `executeBuiltinTool` accepts. */
     name: string;
-    /** Model-visible tool name: what the registry publishes and the model calls. */
     expose: string;
+    description: string;
+    inputSchema: Record<string, any>;
+}
+
+export interface SessionToolDef {
+    name: string;
     description: string;
     inputSchema: Record<string, any>;
 }
@@ -433,6 +424,28 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
     },
 ];
 
+export const SESSION_TOOLS_CATALOG: SessionToolDef[] = [
+    {
+        name: 'base_context',
+        description: 'Get the current Ejunz Base domain context and scope.',
+        inputSchema: {
+            type: 'object',
+            properties: {},
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'base_select',
+        description: 'Switch the current Agent session to an Ejunz Base by baseId.',
+        inputSchema: {
+            type: 'object',
+            properties: { baseId: { type: 'integer', description: 'Existing Base id.' } },
+            required: ['baseId'],
+            additionalProperties: false,
+        },
+    },
+];
+
 const BUILTIN_MUTATING_TOOLS = new Set([
     'base_create', 'base_update', 'base_delete',
     'node_create', 'node_update', 'node_delete',
@@ -442,22 +455,18 @@ const BUILTIN_MUTATING_TOOLS = new Set([
     'git_pull', 'git_config_set',
 ]);
 
-/** Whether `name` is an operation this catalog defines. */
 export function isBuiltinTool(name: string): boolean {
     return BUILTIN_TOOLS_CATALOG.some((t) => t.name === name);
 }
 
-/** Whether `name` changes Base content, so its callers broadcast `base/update`. */
 export function isBuiltinMutatingTool(name: string): boolean {
     return BUILTIN_MUTATING_TOOLS.has(name);
 }
 
-/** The catalog as `{ name, description }` pairs, for consumers that override descriptions. */
 export function defaultToolDescriptions(): { name: string; description: string }[] {
     return BUILTIN_TOOLS_CATALOG.map((t) => ({ name: t.name, description: t.description }));
 }
 
-/** The catalog in declaration order, with per-name description overrides applied. */
 export function resolveTools(overrides?: { name: string; description: string }[]): ToolDef[] {
     if (!overrides || !overrides.length) return BUILTIN_TOOLS_CATALOG;
     const map = new Map(overrides.map((o) => [o.name, o.description]));
