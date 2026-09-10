@@ -183,7 +183,7 @@ export function Navigation() {
           <button type="button" onClick={() => { setMobileOpen(false); setDomainsOpen(false); setMobileDomainsOpen((open) => !open); }} aria-label={i18n('Open')} aria-expanded={mobileDomainsOpen}><HamburgerIcon active={mobileDomainsOpen} /></button>
           <MobileNavActions actions={mobileNavLeft} side="left" />
         </div>
-        <a href="/"><img src={navLogo} alt="Ejunz" /></a>
+        <a href={brandUrl}><img src={brandLogo} alt="Ejunz" /></a>
         <div className="uix-mobile-header__cluster uix-mobile-header__cluster--right">
           <MobileNavActions actions={mobileNavRight} side="right" />
           <button type="button" onClick={() => { setDomainsOpen(false); setMobileDomainsOpen(false); setMobileOpen((open) => !open); }} aria-label={i18n('Open')} aria-expanded={mobileOpen}><HamburgerIcon active={mobileOpen} /></button>

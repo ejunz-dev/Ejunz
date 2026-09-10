@@ -30,9 +30,13 @@ export interface RouterState {
   error: Error | null;
 }
 
+export interface RefreshOptions {
+  context?: boolean;
+}
+
 interface RouterNavigateContextValue {
   navigate: (url: string) => Promise<void>;
-  refresh: () => Promise<void>;
+  refresh: (options?: RefreshOptions) => Promise<void>;
 }
 
 const RouterStateContext = createContext<RouterState | null>(null);
@@ -160,11 +164,14 @@ export const RouterProvider: React.FC<React.PropsWithChildren> = ({ children }) 
     if (ok) history.pushState({ url }, '', url);
   }, [fetchPage, isSameOrigin]);
 
-  const refresh = useCallback(async () => {
-    // Re-fetch the current page's content data without replacing the shared
-    // UiContext/UserContext (which carry the nav). This mirrors PJAX: keep the
-    // surrounding shell, update only the page body.
+  const refresh = useCallback(async (options: RefreshOptions = {}) => {
+    // Re-fetch the current page's content data. Keep the shared
+    // UiContext/UserContext by default so ordinary page refreshes preserve the
+    // surrounding shell; callers can opt in when server-side context changed.
     const url = window.location.pathname + window.location.search;
+    const inject = options.context
+      ? 'uicontext,usercontext,pagename'
+      : 'pagename';
     abortRef.current?.abort();
     const gen = ++genRef.current;
     const controller = new AbortController();
@@ -179,7 +186,7 @@ export const RouterProvider: React.FC<React.PropsWithChildren> = ({ children }) 
           signal,
           headers: {
             Accept: 'application/json',
-            'x-ejunz-inject': 'pagename',
+            'x-ejunz-inject': inject,
           },
         });
         if (res.redirected) {
@@ -229,7 +236,7 @@ export function useNavigate(): (url: string) => Promise<void> {
   return ctx.navigate;
 }
 
-export function useRefresh(): () => Promise<void> {
+export function useRefresh(): (options?: RefreshOptions) => Promise<void> {
   const ctx = useContext(RouterNavigateContext);
   if (!ctx) throw new Error('useRefresh must be used within RouterProvider');
   return ctx.refresh;
