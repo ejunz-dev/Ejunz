@@ -7,9 +7,9 @@ import { Logger } from '../logger';
 import * as document from './document';
 import type { AgentDoc, BaseEdge, BaseNode, CardDoc, McpDoc, PluginDoc, PluginMcpStatus, PluginNodeData, ToolDoc } from '../interface';
 import type { User } from '../interface';
-import type { EdgeDoc } from './edge';
-import EdgeModel from './edge';
-import EdgeTokenModel from './edge_token';
+import type { EdgeDoc } from '../../../../plugins/edge/model/edge';
+import EdgeModel from '../../../../plugins/edge/model/edge';
+import EdgeTokenModel from '../../../../plugins/edge/model/edge_token';
 import ToolModel, {
     getLocalToolCatalog,
     getLocalSystemToolCatalog,
@@ -20,7 +20,7 @@ import ToolModel, {
     getBuiltinEjunzToolsRuntime,
     getBuiltinEjunzToolsVersion,
     getEjunzToolsCatalog,
-} from './tool';
+} from '../../../../plugins/edge/model/tool';
 import DomainMarketToolModel from './domain_market_tool';
 import { BaseModel, CardModel } from './base';
 import PluginModel from './plugin';

@@ -1,12 +1,12 @@
 import { Context, Service } from '../context';
 import { Logger } from '../logger';
-import EdgeModel from '../model/edge';
-import EdgeTokenModel from '../model/edge_token';
+import EdgeModel from '../../../../plugins/edge/model/edge';
+import EdgeTokenModel from '../../../../plugins/edge/model/edge_token';
 import McpModel from '../model/mcp';
 import SessionModel from '../model/session';
 import RecordModel from '../model/record';
 import { BaseModel } from '../model/base';
-import type { EdgeTokenDoc } from '../model/edge_token';
+import type { EdgeTokenDoc } from '../../../../plugins/edge/model/edge_token';
 import type { McpDoc } from '../interface';
 import { randomstring } from '../utils';
 import {
@@ -18,7 +18,7 @@ import {
     isBuiltinTool,
     resolveTools,
     type ToolContext,
-} from '../model/tool';
+} from '../../../../plugins/edge/model/tool';
 import {
     getNormalizedMcp,
     listDomainMcps,
@@ -38,14 +38,14 @@ import {
     applyEjunzToolsMcpRuntime,
     isLocalToolAvailableInDomain,
     isLocalSystemToolAvailableInDomain,
-} from '../model/tool';
+} from '../../../../plugins/edge/model/tool';
 import {
     executeSystemTool,
     getSystemToolCatalog,
     registerSystemToolCatalog,
     registerSystemToolExecutor,
     tryExecuteSystemTool,
-} from '../model/tool';
+} from '../../../../plugins/edge/model/tool';
 import {
     callPluginMcpTool,
     checkAllEnabledPluginMcpStatus,
@@ -64,9 +64,9 @@ import {
     getBuiltinEjunzToolsVersion,
     getEjunzToolsCatalog,
     registerBuiltinEjunzToolsRuntime,
-} from '../model/tool';
+} from '../../../../plugins/edge/model/tool';
 
-export * from '../model/tool';
+export * from '../../../../plugins/edge/model/tool';
 export * from '../model/mcp';
 
 const logger = new Logger('service/mcp');

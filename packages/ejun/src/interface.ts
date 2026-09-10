@@ -657,7 +657,7 @@ declare module './model/node' {
         content?: string;
     }
 }
-export type { NodeDoc } from './model/node';
+export type { NodeDoc } from '../../../plugins/edge/model/node';
 
 // Scene document
 declare module './model/scene' {
@@ -849,7 +849,7 @@ declare module './model/client' {
     }
 }
 export type { McpServerDoc, McpToolDoc } from './model/mcp';
-export type { ClientDoc } from './model/client';
+export type { ClientDoc } from '../../../plugins/edge/model/client';
 
 declare module './model/edge' {
     interface EdgeDoc {
@@ -886,7 +886,7 @@ declare module './model/edge' {
         content?: string;
     }
 }
-export type { EdgeDoc } from './model/edge';
+export type { EdgeDoc } from '../../../plugins/edge/model/edge';
 
 declare module './model/mcp' {
     interface McpDoc {
@@ -1068,7 +1068,7 @@ declare module './model/tool' {
         content?: string;
     }
 }
-export type { ToolDoc } from './model/tool';
+export type { ToolDoc } from '../../../plugins/edge/model/tool';
 
 export interface AssignedToolEntry {
     name: string;
@@ -1080,7 +1080,7 @@ export interface AssignedToolEntry {
     system?: boolean;
 }
 export type { DomainMarketToolDoc } from './model/domain_market_tool';
-export type { ClientChatDoc } from './model/client_chat';
+export type { ClientChatDoc } from '../../../plugins/edge/model/client_chat';
 
 export interface DomainDoc extends Record<string, any> {
     _id: string,

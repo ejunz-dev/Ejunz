@@ -844,7 +844,7 @@ export class WorkflowAgentsListHandler extends Handler<Context> {
 export class WorkflowClientsListHandler extends Handler<Context> {
     async get() {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        const ClientModel = require('../model/client').default;
+        const ClientModel = require('../../../../plugins/edge/model/client').default;
         const clients = await ClientModel.getByDomain(this.domain._id);
         this.response.body = { clients: clients.map(c => ({ clientId: c.clientId, name: c.name })) };
     }

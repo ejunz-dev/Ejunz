@@ -34,7 +34,7 @@ import {
     visiblePluginsForUser,
 } from '../model/mcp';
 import * as document from '../model/document';
-import NodeModel from '../model/node';
+import NodeModel from '../../../../plugins/edge/model/node';
 import { callToolViaWorker, getAgentStreamSnapshot } from './worker';
 import { SEMANTIC_SEARCH_TOOL } from '../service/embeddingWorker';
 import RecordModel from '../model/record';

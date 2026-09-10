@@ -19,7 +19,7 @@ import BlackListModel from '../model/blacklist';
 import { PERM, PRIV, STATUS } from '../model/builtin';
 import domain from '../model/domain';
 import * as document from '../model/document';
-import * as node from '../model/node';
+import * as node from '../../../../plugins/edge/model/node';
 import * as base from '../model/base';
 import * as oplog from '../model/oplog';
 import ScheduleModel from '../model/schedule';

@@ -4,7 +4,7 @@ import { Context } from '../context';
 import { ValidationError, PermissionError, NotFoundError } from '../error';
 import { Logger } from '../logger';
 import SceneModel, { SceneEventModel } from '../model/scene';
-import NodeModel, { NodeDeviceModel } from '../model/node';
+import NodeModel, { NodeDeviceModel } from '../../../../plugins/edge/model/node';
 import { PRIV } from '../model/builtin';
 
 const logger = new Logger('handler/scene');
@@ -542,7 +542,7 @@ export class SceneEventEditHandler extends Handler<Context> {
         }
 
         // 获取所有Client和组件列表（用于下拉选择）
-        const ClientModel = require('../model/client').default;
+        const ClientModel = require('../../../../plugins/edge/model/client').default;
         const clients = await ClientModel.getByDomain(this.domain._id);
         const cleanedClients = clients.map(c => ({
             clientId: c.clientId,
@@ -551,8 +551,8 @@ export class SceneEventEditHandler extends Handler<Context> {
         
         // 获取每个client的widget列表（从数据库读取，优先；如果数据库没有则从内存读取，向后兼容）
         const clientWidgetsMap: Record<number, string[]> = {};
-        const { ClientWidgetModel, ClientGsiFieldModel } = require('../model/client');
-        const ClientConnectionHandler = require('./client').ClientConnectionHandler;
+        const { ClientWidgetModel, ClientGsiFieldModel } = require('../../../../plugins/edge/model/client');
+        const ClientConnectionHandler = require('../../../../plugins/edge/handler/client').ClientConnectionHandler;
         for (const client of clients) {
             try {
                 // 优先从数据库读取
@@ -763,7 +763,7 @@ export class SceneEventEditHandler extends Handler<Context> {
             sourceGsiValueAny = sourceGsiValue;
 
             // 验证Client是否存在
-            const ClientModel = require('../model/client').default;
+            const ClientModel = require('../../../../plugins/edge/model/client').default;
             const sourceClient = await ClientModel.getByClientId(this.domain._id, sourceClientIdNum);
             if (!sourceClient) {
                 throw new ValidationError('sourceClientId');
@@ -780,7 +780,7 @@ export class SceneEventEditHandler extends Handler<Context> {
             sourceWidgetNameStr = sourceWidgetName;
 
             // 验证Client是否存在
-            const ClientModel = require('../model/client').default;
+            const ClientModel = require('../../../../plugins/edge/model/client').default;
             const sourceClient = await ClientModel.getByClientId(this.domain._id, sourceClientIdNum);
             if (!sourceClient) {
                 throw new ValidationError('sourceClientId');
@@ -829,7 +829,7 @@ export class SceneEventEditHandler extends Handler<Context> {
                 }
 
                 // 验证Client是否存在
-                const ClientModel = require('../model/client').default;
+                const ClientModel = require('../../../../plugins/edge/model/client').default;
                 const targetClient = await ClientModel.getByClientId(this.domain._id, targetClientIdNum);
                 if (!targetClient) {
                     throw new ValidationError('target.targetClientId');
@@ -1081,7 +1081,7 @@ export class SceneEventEditHandler extends Handler<Context> {
             if (!sourceClientIdNum || isNaN(sourceClientIdNum)) {
                 throw new ValidationError('sourceClientId');
             }
-            const ClientModel = require('../model/client').default;
+            const ClientModel = require('../../../../plugins/edge/model/client').default;
             const sourceClient = await ClientModel.getByClientId(this.domain._id, sourceClientIdNum);
             if (!sourceClient) {
                 throw new ValidationError('sourceClientId');
@@ -1102,7 +1102,7 @@ export class SceneEventEditHandler extends Handler<Context> {
             if (!sourceWidgetName || typeof sourceWidgetName !== 'string') {
                 throw new ValidationError('sourceWidgetName');
             }
-            const ClientModel = require('../model/client').default;
+            const ClientModel = require('../../../../plugins/edge/model/client').default;
             const sourceClient = await ClientModel.getByClientId(this.domain._id, sourceClientIdNum);
             if (!sourceClient) {
                 throw new ValidationError('sourceClientId');
@@ -1168,7 +1168,7 @@ export class SceneEventEditHandler extends Handler<Context> {
                     }
 
                     // 验证Client是否存在
-                    const ClientModel = require('../model/client').default;
+                    const ClientModel = require('../../../../plugins/edge/model/client').default;
                     const targetClient = await ClientModel.getByClientId(this.domain._id, targetClientIdNum);
                     if (!targetClient) {
                         throw new ValidationError('target.targetClientId');
@@ -1422,7 +1422,7 @@ export class SceneEventHandler extends Handler<Context> {
             }
 
             // 验证Client是否存在
-            const ClientModel = require('../model/client').default;
+            const ClientModel = require('../../../../plugins/edge/model/client').default;
             const sourceClient = await ClientModel.getByClientId(this.domain._id, sourceClientIdNum);
             if (!sourceClient) {
                 throw new ValidationError('sourceClientId');
@@ -1486,7 +1486,7 @@ export class SceneEventHandler extends Handler<Context> {
                     }
 
                     // 验证Client是否存在
-                    const ClientModel = require('../model/client').default;
+                    const ClientModel = require('../../../../plugins/edge/model/client').default;
                     const targetClient = await ClientModel.getByClientId(this.domain._id, targetClientIdNum);
                     if (!targetClient) {
                         throw new ValidationError('target.targetClientId');
@@ -1812,7 +1812,7 @@ async function executeTargetAction(
                 return;
             }
 
-            const ClientModel = require('../model/client').default;
+            const ClientModel = require('../../../../plugins/edge/model/client').default;
             const targetClient = await ClientModel.getByClientId(domainId, target.targetClientId);
             if (!targetClient) {
                 logger.warn('Target client not found: sceneId=%d, eventId=%d, targetClientId=%d', 
@@ -1831,7 +1831,7 @@ async function executeTargetAction(
                 visible = false;
             } else if (target.targetAction === 'toggle' || target.targetAction === '切换') {
                 // 切换：从ClientConnectionHandler的内存状态获取当前状态，然后取反
-                const ClientConnectionHandler = require('./client').ClientConnectionHandler;
+                const ClientConnectionHandler = require('../../../../plugins/edge/handler/client').ClientConnectionHandler;
                 const handler = ClientConnectionHandler.getConnection(target.targetClientId);
                 const currentVisible = handler?.getWidgetState(target.targetWidgetName) ?? false;
                 visible = !currentVisible;
@@ -1847,7 +1847,7 @@ async function executeTargetAction(
             }
 
             // 通过ClientConnectionHandler发送控制命令
-            const ClientConnectionHandler = require('./client').ClientConnectionHandler;
+            const ClientConnectionHandler = require('../../../../plugins/edge/handler/client').ClientConnectionHandler;
             const handler = ClientConnectionHandler.getConnection(target.targetClientId);
             if (!handler) {
                 logger.warn('Target client not connected: sceneId=%d, eventId=%d, targetClientId=%d', 
@@ -2060,7 +2060,7 @@ export async function apply(ctx: Context) {
             logger.info('Scene handler received client/widget/update: clientId=%d, widgetName=%s, visible=%s, domainId=%s', 
                 clientId, widgetName, visible, domainId || 'not provided');
             
-            const ClientModel = require('../model/client').default;
+            const ClientModel = require('../../../../plugins/edge/model/client').default;
             let client = null;
             let finalDomainId = domainId || 'system';
             
@@ -2351,7 +2351,7 @@ export async function apply(ctx: Context) {
             logger.info('Scene handler received client/gsi/update: clientId=%d, domainId=%s', 
                 clientId, domainId || 'not provided');
             
-            const ClientModel = require('../model/client').default;
+            const ClientModel = require('../../../../plugins/edge/model/client').default;
             let client = null;
             let finalDomainId = domainId || 'system';
             

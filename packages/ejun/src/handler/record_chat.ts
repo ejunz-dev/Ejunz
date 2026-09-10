@@ -57,7 +57,7 @@ async function getAgentChatSessionStatus(
     }
 
     if (sdoc.type === 'client' && sdoc.clientId) {
-        const ClientConnectionHandler = require('./client').ClientConnectionHandler;
+        const ClientConnectionHandler = require('../../../../plugins/edge/handler/client').ClientConnectionHandler;
         const handler = ClientConnectionHandler.getConnection(sdoc.clientId);
         
         if (handler) {

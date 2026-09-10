@@ -5,10 +5,10 @@ import * as document from './document';
 import WorkflowModel from './workflow';
 import WorkflowNodeModel from './workflow_node';
 import type { WorkflowDoc, WorkflowNodeDoc } from '../interface';
-import { NodeDeviceModel } from './node';
+import { NodeDeviceModel } from '../../../../plugins/edge/model/node';
 import AgentModel from './agent';
 import message from './message';
-import ClientModel from './client';
+import ClientModel from '../../../../plugins/edge/model/client';
 import { getAssignedTools, appendAgentUniversalAssistantRules, effectiveAgentBaseDocId } from '../handler/agent';
 import SessionModel from './session';
 
@@ -458,7 +458,7 @@ export class WorkflowExecutor {
 
                     // 根据配置发送给 client
                     if (clientId && finalContent) {
-                        const ClientConnectionHandler = require('../handler/client').ClientConnectionHandler;
+                        const ClientConnectionHandler = require('../../../../plugins/edge/handler/client').ClientConnectionHandler;
                         const clientHandler = ClientConnectionHandler.getConnection(clientId);
                         
                         if (returnType === 'tts' && clientHandler) {

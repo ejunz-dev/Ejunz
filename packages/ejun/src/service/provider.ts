@@ -1,6 +1,6 @@
 import { Logger } from '../logger';
 import type { Context } from '../context';
-import { executeBaseTool, isBuiltinMutatingTool } from '../model/tool';
+import { executeBaseTool, isBuiltinMutatingTool } from '../../../../plugins/edge/model/tool';
 
 const logger = new Logger('service/provider');
 

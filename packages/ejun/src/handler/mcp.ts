@@ -6,7 +6,7 @@ import { ConnectionHandler, subscribe } from '../service/server';
 import { Logger } from '../logger';
 import { PRIV } from '../model/builtin';
 import { BaseModel } from '../model/base';
-import EdgeTokenModel from '../model/edge_token';
+import EdgeTokenModel from '../../../../plugins/edge/model/edge_token';
 import McpModel, { type NormalizedMcpRow, type McpKind } from '../model/mcp';
 import TokenModel from '../model/token';
 import UserModel from '../model/user';
