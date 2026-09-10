@@ -23,16 +23,6 @@ import { Logger } from '../logger';
 import { PassThrough } from 'stream';
 import { BaseModel } from '../model/base';
 import PluginModel from '../model/plugin';
-import {
-    SYSTEM_TOOL_ID_PREFIX,
-    loadPluginCardDefinitions,
-    normalizeAgentPluginBindings,
-    parseAgentSlashInvocation,
-    renderSlashSystemBlock,
-    resolveAgentPluginTools,
-    resolveAgentSlashCatalog,
-    visiblePluginsForUser,
-} from '../model/mcp';
 import * as document from '../model/document';
 import NodeModel from '../../../../plugins/edge/model/node';
 import { callToolViaWorker, getAgentStreamSnapshot } from './worker';
@@ -40,8 +30,6 @@ import { SEMANTIC_SEARCH_TOOL } from '../service/embeddingWorker';
 import RecordModel from '../model/record';
 import SessionModel from '../model/session';
 import { parseCategory } from '../lib/category';
-import { summarizePluginMcpAvailability } from '../service/mcp';
-import { listDomainMcps } from '../service/mcp';
 const AgentLogger = new Logger('agent');
 
 export type BaseLibraryBinding = { docId: number };
@@ -994,17 +982,10 @@ export async function processAgentChatInternal(
 // Resolve tools available to an Agent from hidden/legacy MCP assignments and plugin MCP cards.
 // Agent edit no longer manually assigns MCPs; bound plugins contribute MCP tools automatically.
 export async function getAssignedTools(domainId: string, adoc?: AgentDoc): Promise<any[]> {
-    const finalTools: any[] = [];
-    const processedNames = new Set<string>();
-    const pluginTools = adoc ? await resolveAgentPluginTools(domainId, adoc) : [];
-    for (const tool of pluginTools) {
-        const name = String(tool?.name || '').trim();
-        if (!name || processedNames.has(name)) continue;
-        finalTools.push(tool);
-        processedNames.add(name);
-    }
-    AgentLogger.info('getAssignedTools: finalTools=%d from pluginTools=%d', finalTools.length, pluginTools.length);
-    return finalTools;
+    // The plugin tool surface is deleted: an agent carries no plugin-assigned tools.
+    void domainId;
+    void adoc;
+    return [];
 }
 
 
@@ -1180,23 +1161,6 @@ function prepareAgentMessages(messages: any[]): any[] {
     return normalizeAgentMessages(truncateAgentMessages(messages));
 }
 
-class AgentMcpStatusHandler extends Handler {
-    @param('aid', Types.String)
-    async get(domainId: string, aid: string) {
-        const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
-        const adoc = await Agent.get(domainId, normalizedId);
-        if (!adoc) {
-            this.response.body = { connected: false, toolCount: 0 };
-            return;
-        }
-        
-        let tools = await getAssignedTools(domainId, adoc);
-        this.response.body = { 
-            connected: true, 
-            toolCount: tools.length 
-        };
-    }
-}
 
 export class AgentDetailHandler extends Handler {
     adoc?: AgentDoc;
@@ -1258,13 +1222,8 @@ export class AgentDetailHandler extends Handler {
             }
         }
 
-        const enabledPluginsForDisplay = [] as Array<{ docId: number; title: string; pluginSlug?: string; slashCount: number }>;
-        for (const b of normalizeAgentPluginBindings(adoc)) {
-            const p = await PluginModel.get(domainId, b.docId);
-            if (!p) continue;
-            const slashCount = (await resolveAgentSlashCatalog(domainId, { ...adoc, pluginBindings: [b] } as AgentDoc)).length;
-            enabledPluginsForDisplay.push({ docId: p.docId, title: p.title, pluginSlug: p.pluginSlug, slashCount });
-        }
+        // Agent plugin bindings are deleted: no plugin counts are reported.
+        const enabledPluginsForDisplay: any[] = [];
 
         this.response.template = 'agent_detail.html';
         this.response.body = {
@@ -1717,113 +1676,11 @@ export class AgentChatHandler extends Handler {
         const apiKey = (this.domain as any)['apiKey'] || '';
         const aiModel = (this.domain as any)['model'] || 'deepseek-chat';
         const apiUrl = (this.domain as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions';
-        const slashCatalog = await resolveAgentSlashCatalog(domainId, adoc);
-        const mcpRows = await listDomainMcps(domainId, this.user);
-        const pluginMcpRows = mcpRows.filter((row) => row.kind === 'plugin');
-        const systemToolsRow = mcpRows.find((row) => row.kind === 'system' && row.mcp.source?.type === 'system_tools');
-        const enabledPluginsForChat = [] as Array<{
-            docId: number;
-            title: string;
-            pluginSlug?: string;
-            slashCount: number;
-            mcpAvailability: string;
-            hasMcpConfig: boolean;
-            mcpServers: Array<{
-                key: string;
-                name: string;
-                mid?: number;
-                status: 'online' | 'offline' | 'pending' | 'unknown';
-                availability: string;
-                toolCount: number;
-                error?: string;
-            }>;
-        }>;
-        for (const binding of normalizeAgentPluginBindings(adoc)) {
-            const plugin = await PluginModel.get(domainId, binding.docId);
-            if (!plugin) continue;
-            const slashCount = (await resolveAgentSlashCatalog(domainId, { ...adoc, pluginBindings: [binding] } as AgentDoc)).length;
-            const definitions = await loadPluginCardDefinitions(domainId, plugin, binding.enabledNodeIds?.length ? new Set(binding.enabledNodeIds) : undefined);
-            const pluginToolIds = Array.from(new Set(definitions
-                .filter((def) => def.kind === 'mcp')
-                .flatMap((def) => def.toolIds || [])));
-            const systemToolIds = pluginToolIds.filter((id) => id.startsWith(SYSTEM_TOOL_ID_PREFIX));
-            const legacyPluginToolIds = pluginToolIds.filter((id) => !id.startsWith(SYSTEM_TOOL_ID_PREFIX) && ObjectId.isValid(id));
-            const mcpAvailability = await summarizePluginMcpAvailability(domainId, plugin);
-            const rowsForPlugin = pluginMcpRows.filter((row) => Number((row.mcp.source as any)?.pluginDocId) === plugin.docId);
-            const rowsByServerKey = new Map(rowsForPlugin.map((row) => [String((row.mcp.source as any)?.pluginServerKey || row.mid), row]));
-            const usedMids = new Set<number>();
-            const mcpServers: Array<{
-                key: string;
-                name: string;
-                mid?: number;
-                status: 'online' | 'offline' | 'pending' | 'unknown';
-                availability: string;
-                toolCount: number;
-                error?: string;
-            }> = (mcpAvailability.servers || []).map((server) => {
-                const row = rowsByServerKey.get(String(server.key))
-                    || rowsForPlugin.find((item) => item.mid === server.mcpId);
-                if (row) usedMids.add(row.mid);
-                return {
-                    key: server.key,
-                    name: server.name || row?.name || server.key,
-                    mid: row?.mid || server.mcpId,
-                    status: row?.status || 'unknown' as const,
-                    availability: server.availability,
-                    toolCount: row?.toolCount ?? server.toolCount ?? 0,
-                    error: server.error,
-                };
-            });
-            for (const row of rowsForPlugin) {
-                if (usedMids.has(row.mid)) continue;
-                mcpServers.push({
-                    key: String((row.mcp.source as any)?.pluginServerKey || row.mid),
-                    name: row.name,
-                    mid: row.mid,
-                    status: row.status,
-                    availability: row.online ? 'available' : 'unavailable',
-                    toolCount: row.toolCount,
-                    error: row.mcp.lastCheckError,
-                });
-            }
-            for (const id of systemToolIds) {
-                const toolKey = id.slice(SYSTEM_TOOL_ID_PREFIX.length);
-                const systemTool = systemToolsRow?.tools?.find((tool) => tool.toolKey === toolKey || tool.name === toolKey);
-                mcpServers.push({
-                    key: id,
-                    name: systemTool?.name || toolKey,
-                    mid: systemToolsRow?.mid,
-                    status: systemToolsRow?.status || 'unknown',
-                    availability: systemToolsRow?.online ? 'available' : 'unknown',
-                    toolCount: systemTool ? 1 : 0,
-                });
-            }
-            for (const id of legacyPluginToolIds) {
-                const tool = await document.get(domainId, document.TYPE_TOOL, new ObjectId(id));
-                if (!tool) continue;
-                const row = pluginMcpRows.find((item) => item.mid === (tool as any).mcpId);
-                mcpServers.push({
-                    key: `plugin:${id}`,
-                    name: row?.name || (tool as any).name || 'Plugin MCP',
-                    mid: (tool as any).mcpId,
-                    status: row?.status || 'unknown',
-                    availability: row?.online ? 'available' : 'unknown',
-                    toolCount: 1,
-                    error: row?.mcp.lastCheckError,
-                });
-            }
-            enabledPluginsForChat.push({
-                docId: plugin.docId,
-                title: plugin.title,
-                pluginSlug: plugin.pluginSlug,
-                slashCount,
-                mcpAvailability: mcpAvailability.availability,
-                hasMcpConfig: !!mcpAvailability.hasMcpConfig || mcpServers.length > 0,
-                mcpServers,
-            });
-        }
+        // The plugin/MCP surface is deleted: the page reports no plugin tools.
+        const slashCatalog: any[] = [];
+        const enabledPluginsForChat: any[] = [];
 
-        // WebSocket URL is built in templates
+
         const host = this.domain?.host;
 
 
@@ -1911,32 +1768,7 @@ export class AgentChatHandler extends Handler {
 
         let slashInvocation: any = null;
         let slashSystemBlock = '';
-        if (String(message).trimStart().startsWith('/')) {
-            const slashCatalog = await resolveAgentSlashCatalog(domainId, adoc);
-            const parsedSlash = parseAgentSlashInvocation(String(message), slashCatalog) as any;
-            if (parsedSlash?.error) {
-                this.response.status = 400;
-                this.response.body = {
-                    error: parsedSlash.error,
-                    suggestions: (parsedSlash.suggestions || []).map((x: any) => ({
-                        name: x.name,
-                        kind: x.kind,
-                        description: x.description,
-                    })),
-                };
-                return;
-            }
-            if (parsedSlash?.entry) {
-                slashInvocation = {
-                    name: parsedSlash.entry.name,
-                    kind: parsedSlash.entry.kind,
-                    pluginDocId: parsedSlash.entry.pluginDocId,
-                    nodeId: parsedSlash.entry.nodeId,
-                    args: parsedSlash.args,
-                };
-                slashSystemBlock = renderSlashSystemBlock(parsedSlash.entry, parsedSlash.args || '', domainId, adoc, parsedSlash.raw || String(message));
-            }
-        }
+        // Slash commands come from the deleted plugin surface.
 
         let chatSessionId: ObjectId | undefined;
         const chatSessionIdParam = this.request.body?.chatSessionId;
@@ -4039,14 +3871,9 @@ export class AgentEditHandler extends Handler {
 
         // Selected repo IDs
         const assignedRepoIds = (agent.repoIds || []).map(id => id.toString());
-        const allPlugins = (await visiblePluginsForUser(domainId, this.user)).map((p) => ({
-            docId: p.docId,
-            title: p.title,
-            pluginSlug: p.pluginSlug,
-            enabled: p.enabled !== false,
-            visibility: p.visibility || 'private',
-        }));
-        const assignedPluginDocIds = normalizeAgentPluginBindings(agent).map((b) => String(b.docId));
+        // Plugin selection is deleted from the agent editor.
+        const allPlugins: any[] = [];
+        const assignedPluginDocIds: string[] = [];
 
         this.response.template = 'agent_edit.html';
         this.response.body = {
@@ -4709,7 +4536,6 @@ export async function apply(ctx: Context) {
     ctx.Route('agent_chat', '/agent/:aid/chat', AgentChatHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Connection('agent_chat_session', '/agent-chat-session', AgentChatSessionConnectionHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_edit', '/agent/:aid/edit', AgentEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('agent_mcp_status', '/agent/:aid/mcp-tools/status', AgentMcpStatusHandler);
     ctx.Route('agent_detail', '/agent/:aid', AgentDetailHandler);
     ctx.Route('agent_api', '/api/agent', AgentApiHandler);
     ctx.Connection('agent_api_ws', '/api/agent/chat-ws', AgentApiConnectionHandler);

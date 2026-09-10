@@ -30,17 +30,10 @@ import db from '../service/db';
 import EdgeModel from '../../../../plugins/edge/model/edge';
 import ToolModel from '../../../../plugins/edge/model/tool';
 import { EdgeServerConnectionHandler } from '../../../../plugins/edge/handler/edge';
-import { findLocalSystemToolByIdOrName, isLocalToolAvailableInDomain } from '../../../../plugins/edge/model/tool';
 import _ from 'lodash';
 import RecordModel from './record';
 import SessionModel from './session';
 import TaskModel from './task';
-import {
-    parseAgentSlashInvocation,
-    renderSlashSystemBlock,
-    resolveAgentPluginTools,
-    resolveAgentSlashCatalog,
-} from './mcp';
 
 const agentTaskLogger = new AppLogger('model/agent');
 
@@ -90,16 +83,10 @@ function normalizeChatHistory(history?: string | any[]): any[] {
 }
 
 export async function getAgentExecutionTools(domainId: string, adoc: AgentDoc): Promise<any[]> {
-    const finalTools: any[] = [];
-    const processedNames = new Set<string>();
-    const pluginTools = await resolveAgentPluginTools(domainId, adoc);
-    for (const tool of pluginTools) {
-        const name = String(tool?.name || '').trim();
-        if (!name || processedNames.has(name)) continue;
-        finalTools.push(tool);
-        processedNames.add(name);
-    }
-    return finalTools;
+    // The plugin tool surface is deleted: an agent carries no plugin tools.
+    void domainId;
+    void adoc;
+    return [];
 }
 
 export interface EnqueueAgentTaskInput {
@@ -141,26 +128,6 @@ export async function enqueueAgentTask(input: EnqueueAgentTaskInput): Promise<En
     const history = normalizeChatHistory(input.history);
     let slashInvocation: any = null;
     let slashSystemBlock = '';
-    if (input.parseSlashCommand === true && message.trimStart().startsWith('/')) {
-        const slashCatalog = await resolveAgentSlashCatalog(input.domainId, adoc);
-        const parsedSlash = parseAgentSlashInvocation(message, slashCatalog) as any;
-        if (parsedSlash?.error) {
-            const err = new Error(parsedSlash.error);
-            (err as any).code = 'SLASH_COMMAND_ERROR';
-            (err as any).suggestions = parsedSlash.suggestions || [];
-            throw err;
-        }
-        if (parsedSlash?.entry) {
-            slashInvocation = {
-                name: parsedSlash.entry.name,
-                kind: parsedSlash.entry.kind,
-                pluginDocId: parsedSlash.entry.pluginDocId,
-                nodeId: parsedSlash.entry.nodeId,
-                args: parsedSlash.args,
-            };
-            slashSystemBlock = renderSlashSystemBlock(parsedSlash.entry, parsedSlash.args || '', input.domainId, adoc, parsedSlash.raw || message);
-        }
-    }
 
     let chatSessionId = input.chatSessionId;
     if (chatSessionId) {
@@ -693,25 +660,8 @@ export class McpClient {
                 embedding,
             };
 
-            // Local MCP tools: default system tools or domain-market enabled MCP tools.
-            if (domainId && await isLocalToolAvailableInDomain(domainId, name)) {
-                const { tryExecuteSystemTool } = require('../service/mcp');
-                const sysEarly = await tryExecuteSystemTool(name, args || {}, systemToolContext);
-                if (sysEarly !== null) {
-                    return sysEarly;
-                }
-            }
-
-            // toolType system → built-in editor/base System Tools. These are default tools, not Tool Market installs.
-            // Also protect known local system tools from stale/missing type metadata, without shadowing explicit edge/plugin tools.
-            const isLocalSystemTool = !!findLocalSystemToolByIdOrName(name);
-            if (toolType === 'system' || (!toolType && isLocalSystemTool)) {
-                const { executeSystemTool } = require('../service/mcp');
-                ClientLogger.info('[tool] callTool: name=%s -> branch=system (executeSystemTool, type=%s, hasToken=%s)', name, toolType || '', !!token);
-                return executeSystemTool(name, args || {}, systemToolContext);
-            }
-
             // Check if it's a repo internal MCP tool (format: repo_{rpid}_{operation}...)
+
             // Supported operations:
             // - Single operation words: commit, push, ask, pull
             // - Operation + underscore + type: query_doc, create_doc, edit_block, delete_block, create_branch, search_doc, search_block, sync_branch
@@ -738,21 +688,6 @@ export class McpClient {
                     ClientLogger.error('Repo internal MCP tool call failed: %s', (e as Error).message);
                     throw e;
                 }
-            }
-
-            if (toolType === 'ejunztools') {
-                const { executeBuiltinEjunzToolsTool } = require('../service/mcp');
-                ClientLogger.info('[tool] callTool: name=%s -> branch=ejunztools', name);
-                return await executeBuiltinEjunzToolsTool(name, args || {});
-            }
-
-            if (toolType === 'plugin_mcp' && domainId) {
-                const mcpId = Number((args as any)?.__mcpId);
-                const cleanArgs = { ...(args || {}) };
-                delete (cleanArgs as any).__mcpId;
-                if (!Number.isFinite(mcpId) || mcpId <= 0) throw new Error(`Plugin MCP metadata missing for tool: ${name}`);
-                const { callPluginMcpTool } = require('../service/mcp');
-                return await callPluginMcpTool({ domainId, mcpId, name, args: cleanArgs });
             }
 
             if (token) {

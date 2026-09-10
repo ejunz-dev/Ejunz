@@ -721,50 +721,7 @@ declare module './model/scene' {
 }
 export type { SceneDoc, SceneEventDoc } from './model/scene';
 
-// MCP Server document
-declare module './model/mcp' {
-    interface McpServerDoc {
-        _id: ObjectId;
-        docType: document['TYPE_EDGE'];
-        docId: ObjectId;
-        domainId: string;
-        serverId: number;
-        name: string;
-        description?: string;
-        wsEndpoint: string;
-        wsToken?: string;
-        status?: 'connected' | 'disconnected' | 'error';
-        lastConnectedAt?: Date;
-        lastDisconnectedAt?: Date;
-        errorMessage?: string;
-        toolsCount?: number;
-        type?: 'provider' | 'repo' | 'node';
-        createdAt: Date;
-        updatedAt: Date;
-        owner: number;
-        content?: string;
-    }
 
-    interface McpToolDoc {
-        _id: ObjectId;
-        docType: document['TYPE_TOOL'];
-        docId: ObjectId;
-        domainId: string;
-        serverId: number;
-        serverDocId: ObjectId;
-        toolId: number;
-        name: string;
-        description: string;
-        inputSchema: {
-            type: string;
-            properties?: Record<string, any>;
-        };
-        createdAt: Date;
-        updatedAt: Date;
-        owner: number;
-        content?: string;
-    }
-}
 
 
 // Client Chat document
@@ -848,7 +805,6 @@ declare module './model/client' {
         content?: string;
     }
 }
-export type { McpServerDoc, McpToolDoc } from './model/mcp';
 export type { ClientDoc } from '../../../plugins/edge/model/client';
 
 declare module './model/edge' {
@@ -887,53 +843,6 @@ declare module './model/edge' {
     }
 }
 export type { EdgeDoc } from '../../../plugins/edge/model/edge';
-
-declare module './model/mcp' {
-    interface McpDoc {
-        _id: ObjectId;
-        docType: document['TYPE_MCP'];
-        docId: ObjectId;
-        domainId: string;
-        mid: number;
-        owner: number;
-        token?: string;
-        edgeId?: number;
-        baseDocId?: number;
-        name?: string;
-        description?: string;
-        instructions?: string;
-        tools?: { name: string; description: string }[];
-        kind?: 'outbound' | 'system' | 'inbound' | 'plugin' | 'ejunztools';
-        source?: {
-            type: 'ejunz_base' | 'system_tools' | 'edge' | 'external' | 'plugin' | 'ejunztools';
-            edgeDocId?: ObjectId;
-            edgeId?: number;
-            localKey?: string;
-            externalUrl?: string;
-            pluginDocId?: number;
-            pluginCardId?: string;
-            pluginServerKey?: string;
-            runtimeMode?: 'builtin' | 'ws';
-            runtimeVersion?: string;
-            packageName?: string;
-            configHash?: string;
-            transport?: 'http' | 'sse';
-        };
-        assignable?: boolean;
-        status: 'online' | 'offline';
-        lastConnectedAt?: Date;
-        lastDisconnectedAt?: Date;
-        lastUsedAt?: Date;
-        lastCheckedAt?: Date;
-        lastCheckError?: string;
-        toolCount?: number;
-        createdAt: Date;
-        updatedAt: Date;
-        content?: string;
-    }
-}
-export type { McpDoc } from './model/mcp';
-
 // Workflow document
 declare module './model/workflow' {
     interface WorkflowDoc {

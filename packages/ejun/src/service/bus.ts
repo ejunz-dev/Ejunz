@@ -9,6 +9,7 @@ import type {
     MessageDoc, User,
 } from '../interface';
 import type { DocType } from '../model/document';
+import type { ToolCalledPayload } from '../tool/types';
 import type { SessionRecordDoc } from '../model/record';
 import type { SessionDoc } from '../model/session';
 
@@ -59,6 +60,7 @@ export interface EventMap {
     'monitor/collect': (info: any) => VoidReturn;
     'api/update': () => void;
     'base/update': (docId: number, sourceUid?: number | null, sourceUname?: string, actionKey?: string, actionDetail?: any) => VoidReturn;
+    'tool/called': (payload: ToolCalledPayload) => VoidReturn;
     'task/daily': () => void;
     'task/daily/finish': (pref: Record<string, number>) => void;
 

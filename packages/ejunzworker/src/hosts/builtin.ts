@@ -33,8 +33,8 @@ export interface WorkerTaskReporter {
 
 function registerSystemToolsIfAvailable() {
     try {
-        const { getLocalSystemToolCatalog, executeLocalSystemTool } = require('ejun/src/service/mcp');
-        const { registerSystemToolCatalog, registerSystemToolExecutor } = require('ejun/src/service/mcp');
+        const { getLocalSystemToolCatalog, executeLocalSystemTool } = require('@ejunz/ejunztools/src/mcp');
+        const { registerSystemToolCatalog, registerSystemToolExecutor } = require('@ejunz/ejunztools/src/mcp');
         const catalog = getLocalSystemToolCatalog();
         registerSystemToolCatalog(catalog);
         registerSystemToolExecutor(executeLocalSystemTool);
@@ -619,7 +619,7 @@ function workerSystemToolContext(config: any, task: any) {
 }
 
 async function executeSemanticSearchTool(task: any, reporter: WorkerTaskReporter, config: any) {
-    const { executeLocalSystemTool } = require('ejun/src/service/mcp');
+    const { executeLocalSystemTool } = require('@ejunz/ejunztools/src/mcp');
     await reporter.status({ status: 'running', toolName: SEMANTIC_SEARCH_TOOL });
     const result = await executeLocalSystemTool(
         SEMANTIC_SEARCH_TOOL,
@@ -694,8 +694,8 @@ async function executeMcpToolCallTask(task: any, reporter: WorkerTaskReporter) {
     await reporter.accepted();
     let response: any;
     try {
-        registerSystemToolsIfAvailable();
-        const { executeSystemTool } = require('ejun/src/service/mcp');
+        // deregistered: the system-tool machinery was removed.
+        const { executeSystemTool } = require('@ejunz/ejunztools/src/mcp');
         const result = await executeSystemTool(task.name, task.args || {});
         const text = typeof result === 'string' ? result : JSON.stringify(result);
         response = {
@@ -1021,7 +1021,7 @@ function createBuiltinReporter(ctx: EjunzContext, dbTask: any, taskType: string,
 }
 
 export async function apply(ctx: EjunzContext) {
-    registerSystemToolsIfAvailable();
+    // deregistered: the system-tool machinery was removed.
     if (process.env.NODE_APP_INSTANCE && process.env.NODE_APP_INSTANCE !== '0') return;
 
     const TaskModel = getTaskModel();
