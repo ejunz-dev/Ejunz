@@ -11,6 +11,12 @@ export interface SessionToolDef {
     inputSchema: Record<string, any>;
 }
 
+export interface ScheduleToolDef {
+    name: string;
+    description: string;
+    inputSchema: Record<string, any>;
+}
+
 export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
     {
         name: 'base_create',
@@ -446,6 +452,135 @@ export const SESSION_TOOLS_CATALOG: SessionToolDef[] = [
     },
 ];
 
+export const SCHEDULE_TOOLS_CATALOG: ScheduleToolDef[] = [
+    {
+        name: 'schedule_create',
+        description: 'Create an Agent schedule that runs one command at a time you set. A "once" schedule requires executeAt; an "interval" schedule repeats every intervalCount intervalUnit, optionally bounded by maxRuns or endAt. The schedule belongs to the calling user and runs the command as the Agent named by agentId.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                agentId: { type: 'string', description: 'Id of the Agent that runs the command (required).' },
+                command: { type: 'string', description: 'The message the Agent runs on each trigger (required).' },
+                scheduleType: { type: 'string', enum: ['once', 'interval'], description: '"once" runs at executeAt; "interval" repeats.' },
+                title: { type: 'string', description: 'Optional schedule title (defaults to the command text).' },
+                executeAt: { type: 'string', description: 'When a "once" schedule runs, as an ISO-8601 timestamp.' },
+                intervalCount: { type: 'integer', description: 'How many intervalUnit units apart an "interval" schedule runs (default 1).' },
+                intervalUnit: { type: 'string', enum: ['minute', 'hour', 'day', 'week', 'month'], description: 'Unit of an "interval" schedule (default "day").' },
+                maxRuns: { type: 'integer', description: 'Optional run limit of an "interval" schedule.' },
+                endAt: { type: 'string', description: 'Optional ISO-8601 timestamp after which an "interval" schedule stops.' },
+                timezone: { type: 'string', description: 'IANA time zone the times are read in (default "UTC").' },
+                enabled: { type: 'boolean', description: 'Whether the schedule starts enabled (default true).' },
+                description: { type: 'string', description: 'Optional note kept with the schedule.' },
+            },
+            required: ['agentId', 'command', 'scheduleType'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'schedule_get',
+        description: 'Read one Agent schedule the calling user owns, including its next run time and last run status.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                scheduleId: { type: 'string', description: 'Existing schedule id (required).' },
+            },
+            required: ['scheduleId'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'schedule_list',
+        description: 'List the Agent schedules the calling user owns, most recently updated first, at most 100 per page.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                agentId: { type: 'string', description: 'Only schedules that run as this Agent.' },
+                enabled: { type: 'boolean', description: 'Only enabled, or only paused, schedules.' },
+                includeEnded: { type: 'boolean', description: 'Include schedules that already ended (default false).' },
+                includeDeleted: { type: 'boolean', description: 'Include deleted schedules (default false).' },
+                page: { type: 'integer', description: 'Page number, starting at 1 (default 1).' },
+                limit: { type: 'integer', description: 'Page size, at most 100 (default 20).' },
+            },
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'schedule_update',
+        description: 'Change one Agent schedule the calling user owns. Only the arguments you pass change; a deleted or already ended schedule cannot be updated.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                scheduleId: { type: 'string', description: 'Existing schedule id (required).' },
+                agentId: { type: 'string', description: 'Id of the Agent that runs the command.' },
+                command: { type: 'string', description: 'The message the Agent runs on each trigger.' },
+                title: { type: 'string', description: 'Schedule title.' },
+                scheduleType: { type: 'string', enum: ['once', 'interval'], description: 'Schedule kind to switch to.' },
+                executeAt: { type: 'string', description: 'When a "once" schedule runs, as an ISO-8601 timestamp.' },
+                intervalCount: { type: 'integer', description: 'How many intervalUnit units apart an "interval" schedule runs.' },
+                intervalUnit: { type: 'string', enum: ['minute', 'hour', 'day', 'week', 'month'], description: 'Unit of an "interval" schedule.' },
+                maxRuns: { type: 'integer', description: 'Run limit of an "interval" schedule, at least 1.' },
+                endAt: { type: 'string', description: 'ISO-8601 timestamp after which an "interval" schedule stops; pass an empty string to clear it.' },
+                timezone: { type: 'string', description: 'IANA time zone the times are read in.' },
+                enabled: { type: 'boolean', description: 'Whether the schedule runs.' },
+                description: { type: 'string', description: 'Note kept with the schedule.' },
+            },
+            required: ['scheduleId'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'schedule_delete',
+        description: 'Delete one Agent schedule the calling user owns. The schedule stops running and disappears from later listings; the runs it already recorded are kept.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                scheduleId: { type: 'string', description: 'Existing schedule id (required).' },
+            },
+            required: ['scheduleId'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'schedule_pause',
+        description: 'Pause one Agent schedule the calling user owns so that it stops running until it is resumed.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                scheduleId: { type: 'string', description: 'Existing schedule id (required).' },
+            },
+            required: ['scheduleId'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'schedule_resume',
+        description: 'Resume a paused Agent schedule the calling user owns, from its next future run time.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                scheduleId: { type: 'string', description: 'Existing schedule id (required).' },
+            },
+            required: ['scheduleId'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'schedule_history',
+        description: 'List the recorded runs of the Agent schedules the calling user owns, newest first, at most 100 per page. Each run reports its status and links to the Agent session it produced.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                scheduleId: { type: 'string', description: 'Only runs of this schedule.' },
+                agentId: { type: 'string', description: 'Only runs of schedules that run as this Agent.' },
+                status: { type: 'string', enum: ['queued', 'running', 'success', 'error', 'skipped'], description: 'Only runs in this state.' },
+                page: { type: 'integer', description: 'Page number, starting at 1 (default 1).' },
+                limit: { type: 'integer', description: 'Page size, at most 100 (default 20).' },
+            },
+            additionalProperties: false,
+        },
+    },
+];
+
 const BUILTIN_MUTATING_TOOLS = new Set([
     'base_create', 'base_update', 'base_delete',
     'node_create', 'node_update', 'node_delete',
@@ -455,12 +590,21 @@ const BUILTIN_MUTATING_TOOLS = new Set([
     'git_pull', 'git_config_set',
 ]);
 
+const SCHEDULE_MUTATING_TOOLS = new Set([
+    'schedule_create', 'schedule_update', 'schedule_delete',
+    'schedule_pause', 'schedule_resume',
+]);
+
 export function isBuiltinTool(name: string): boolean {
     return BUILTIN_TOOLS_CATALOG.some((t) => t.name === name);
 }
 
 export function isBuiltinMutatingTool(name: string): boolean {
     return BUILTIN_MUTATING_TOOLS.has(name);
+}
+
+export function isScheduleMutatingTool(name: string): boolean {
+    return SCHEDULE_MUTATING_TOOLS.has(name);
 }
 
 export function defaultToolDescriptions(): { name: string; description: string }[] {

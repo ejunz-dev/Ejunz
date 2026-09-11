@@ -1,19 +1,12 @@
-/**
- * The Ejunz Base tool set, registered into the Ejunz tool registry.
- *
- * The implementations live in this package; the declarations they are published
- * under (names, descriptions, JSON Schemas) come from the shared catalog, which
- * keeps one definition of each tool. Plugging `apply` publishes the set under the
- * source id `base`, which is what the MCP server, the tool provider, and the
- * Ejunz Agent bridge read.
- * @module
- */
 import type { Context } from 'ejun/src/context';
 import ToolService from './registry';
 import type { ToolDeclaration } from './registry';
 import {
     BUILTIN_TOOLS_CATALOG,
+    SCHEDULE_TOOLS_CATALOG,
     isBuiltinMutatingTool,
+    isScheduleMutatingTool,
+    type ScheduleToolDef,
     type ToolDef,
 } from './catalog';
 import type { ToolArgs, ToolContext } from './types';
@@ -47,8 +40,15 @@ import * as problemDelete from './base/problem/delete';
 import * as problemGet from './base/problem/get';
 import * as problemList from './base/problem/list';
 import * as problemUpdate from './base/problem/update';
+import * as scheduleCreate from './schedule/create';
+import * as scheduleDelete from './schedule/delete';
+import * as scheduleGet from './schedule/get';
+import * as scheduleHistory from './schedule/history';
+import * as scheduleList from './schedule/list';
+import * as schedulePause from './schedule/pause';
+import * as scheduleResume from './schedule/resume';
+import * as scheduleUpdate from './schedule/update';
 
-/** Implementation of each declared tool, keyed by its declared name. */
 const IMPLEMENTATIONS: Record<string, (context: ToolContext, args: ToolArgs) => Promise<unknown>> = {
     base_create: baseCreate.execute,
     base_list: baseList.execute,
@@ -82,14 +82,19 @@ const IMPLEMENTATIONS: Record<string, (context: ToolContext, args: ToolArgs) => 
     node_file_create: fileCreate.execute,
 };
 
-/** Tools whose Base may come from the arguments rather than the calling scope. */
+const SCHEDULE_IMPLEMENTATIONS: Record<string, (args: ToolArgs, context: ToolContext) => Promise<unknown>> = {
+    schedule_create: scheduleCreate.execute,
+    schedule_get: scheduleGet.execute,
+    schedule_list: scheduleList.execute,
+    schedule_update: scheduleUpdate.execute,
+    schedule_delete: scheduleDelete.execute,
+    schedule_pause: schedulePause.execute,
+    schedule_resume: scheduleResume.execute,
+    schedule_history: scheduleHistory.execute,
+};
+
 const EXPLICIT_BASE_TOOLS = new Set(['base_get', 'base_update', 'base_delete']);
 
-/**
- * Resolve the Base one call acts on, then run its implementation.
- * @param definition - declared tool.
- * @returns the registry declaration, including the execution rule.
- */
 function declaration(definition: ToolDef): ToolDeclaration {
     const run = IMPLEMENTATIONS[definition.name];
     if (!run) throw new Error(`no implementation for declared tool ${definition.name}`);
@@ -108,18 +113,23 @@ function declaration(definition: ToolDef): ToolDeclaration {
     };
 }
 
-/**
- * Start this addon: publish the tool registry, then the Base tool set.
- *
- * The registry is read through the service store: a service property read is checked
- * against the reading fiber's inject list, which this addon does not declare because it
- * is the one providing the service.
- * @param ctx - host context.
- */
+function scheduleDeclaration(definition: ScheduleToolDef): ToolDeclaration {
+    const run = SCHEDULE_IMPLEMENTATIONS[definition.name];
+    if (!run) throw new Error(`no implementation for declared schedule tool ${definition.name}`);
+    return {
+        name: definition.name,
+        description: definition.description,
+        inputSchema: definition.inputSchema,
+        mutating: isScheduleMutatingTool(definition.name),
+        execute: (context, args) => run(args || {}, context),
+    };
+}
+
 export async function apply(ctx: Context): Promise<void> {
     await ctx.plugin(ToolService);
     const services = ctx as any;
     const tools = (typeof services.get === 'function' ? services.get('tools') : services.tools) as ToolService | undefined;
     if (!tools) throw new Error('ejunztools: the tool registry did not start');
     tools.register({ source: 'base', tools: BUILTIN_TOOLS_CATALOG.map(declaration) });
+    tools.register({ source: 'schedule', tools: SCHEDULE_TOOLS_CATALOG.map(scheduleDeclaration) });
 }
