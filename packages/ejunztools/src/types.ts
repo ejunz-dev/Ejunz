@@ -1,4 +1,4 @@
-import type { EmbeddingService } from 'ejun/src/service/embedding';
+import type { EmbeddingService } from './embedding/service';
 
 export interface ToolContext {
     domainId: string;

@@ -28,7 +28,7 @@ async function createEmbeddingRuntimeContext() {
     require('ejun/src/model/document');
     require('ejun/src/model/base');
     require('ejun/src/model/task');
-    await ctx.plugin(unwrap(require('ejun/src/service/embedding')));
+    await ctx.plugin(unwrap(require('@ejunz/ejunztools/src/embedding/service')));
     await new Promise((resolve) => {
         ctx.inject(['db', 'embedding'], resolve);
     });

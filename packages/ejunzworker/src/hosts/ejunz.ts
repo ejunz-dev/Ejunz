@@ -8,7 +8,7 @@ import { Session } from '../interface';
 import log from '../log';
 import { executeWorkerTask, WorkerTaskReporter } from './builtin';
 import { EMBEDDING_INDEX_WORKER_TASK, SEMANTIC_SEARCH_TOOL } from 'ejun/src/service/embeddingWorker';
-import { getEmbeddingRuntimeContext } from '../runtime/embedding';
+import { getEmbeddingRuntimeContext } from '@ejunz/ejunztools/src/embedding/runtime';
 
 const WORKER_PROTOCOL = 'ejunz-worker-v1';
 
