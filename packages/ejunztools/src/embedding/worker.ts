@@ -1,13 +1,3 @@
-/**
- * Embedding index worker queue.
- *
- * Tasks are coalesced per Base (domainId + baseDocId). A persistent
- * `base.embedding_state` document tracks generation / lease / retry so that:
- *   - concurrent saves merge into one pending task
- *   - full_rebuild is never downgraded by incremental saves
- *   - findOneAndDelete claim + worker crash can be recovered from state
- */
-
 import { hostname } from 'os';
 import { ObjectId } from 'mongodb';
 import { nanoid } from 'nanoid';
@@ -126,6 +116,17 @@ export interface EmbeddingIndexTaskPayload extends EmbeddingIndexDelta {
     priority: number;
 }
 
+export type EmbeddingProgressPhase = 'nodes' | 'cards' | 'writing';
+
+export interface EmbeddingIndexProgress {
+    phase: EmbeddingProgressPhase;
+    done: number;
+    total: number;
+    updatedAt: Date;
+}
+
+export type EmbeddingProgressReporter = (phase: EmbeddingProgressPhase, done: number, total: number) => void;
+
 export interface EmbeddingStateDoc {
     domainId: string;
     baseDocId: number;
@@ -142,6 +143,7 @@ export interface EmbeddingStateDoc {
     leaseUntil?: Date | null;
     nextRetryAt?: Date | null;
     lastError?: string | null;
+    progress?: EmbeddingIndexProgress | null;
     pendingTaskId?: ObjectId | null;
     updatedAt: Date;
     requestedAt?: Date;
@@ -221,21 +223,15 @@ async function replacePendingTask(state: EmbeddingStateDoc): Promise<ObjectId> {
     return taskId;
 }
 
-/**
- * Enqueue (or coalesce into) an embedding index task for a Base.
- * No-op when incremental delta is empty.
- */
 export async function enqueueEmbeddingIndex(input: EmbeddingIndexEnqueueInput): Promise<ObjectId | null> {
     await ready();
     const domainId = String(input.domainId || '').trim();
     const baseDocId = Number(input.baseDocId);
     if (!domainId) throw new Error('domainId is required');
     if (!Number.isFinite(baseDocId) || baseDocId <= 0) throw new Error('baseDocId is required');
-
     const mode = input.mode || 'incremental';
     const delta = normalizeDelta(input);
     if (!hasWork(mode, delta)) return null;
-
     const coalesceKey = embeddingCoalesceKey(domainId, baseDocId);
     const now = new Date();
     const coll = stateColl();
@@ -243,7 +239,6 @@ export async function enqueueEmbeddingIndex(input: EmbeddingIndexEnqueueInput): 
     const nextMode = mergeMode(existing?.mode, mode);
     const nextDelta = mergeDelta(existing, delta, nextMode);
     const generation = (existing?.generation || 0) + 1;
-
     const state: EmbeddingStateDoc = {
         domainId,
         baseDocId,
@@ -260,19 +255,18 @@ export async function enqueueEmbeddingIndex(input: EmbeddingIndexEnqueueInput): 
         leaseUntil: null,
         nextRetryAt: null,
         lastError: null,
+        progress: null,
         pendingTaskId: null,
         updatedAt: now,
         requestedAt: now,
         owner: input.owner ?? existing?.owner,
         reason: input.reason || existing?.reason,
     };
-
     await coll.updateOne(
         { domainId, baseDocId },
         { $set: state },
         { upsert: true },
     );
-
     const taskId = await replacePendingTask(state);
     notifyEmbeddingStatus(domainId, baseDocId);
     logger.debug(
@@ -290,7 +284,6 @@ export async function enqueueEmbeddingIndex(input: EmbeddingIndexEnqueueInput): 
     return taskId;
 }
 
-/** Convenience: enqueue a full rebuild for a Base. */
 export async function enqueueEmbeddingFullRebuild(input: {
     domainId: string;
     baseDocId: number;
@@ -309,17 +302,57 @@ export async function getEmbeddingState(domainId: string, baseDocId: number): Pr
     return stateColl().findOne({ domainId, baseDocId });
 }
 
+const PROGRESS_BROADCAST_MS = 1000;
+const lastProgressBroadcast = new Map<string, number>();
+
+export async function setEmbeddingProgress(
+    domainId: string,
+    baseDocId: number,
+    generation: number,
+    progress: EmbeddingIndexProgress | null,
+): Promise<void> {
+    try {
+        await ready();
+        const res = await stateColl().updateOne(
+            { domainId, baseDocId, generation },
+            { $set: { progress, updatedAt: new Date() } },
+        );
+        if (!res.matchedCount) return;
+        const key = embeddingCoalesceKey(domainId, baseDocId);
+        const now = Date.now();
+        if (progress && (lastProgressBroadcast.get(key) || 0) + PROGRESS_BROADCAST_MS > now) return;
+        lastProgressBroadcast.set(key, now);
+        notifyEmbeddingStatus(domainId, baseDocId);
+    } catch (err) {
+        logger.warn('Failed to store embedding progress for %s/%s: %o', domainId, baseDocId, err);
+    }
+}
+
 export interface EmbeddingStatusView {
     status: 'never' | 'queued' | 'indexing' | 'ready' | 'error';
     mode: EmbeddingIndexMode | null;
     generation: number;
     appliedGeneration: number;
     indexedCount: number;
+    progress: { phase: EmbeddingProgressPhase; done: number; total: number; percent: number; updatedAt: string } | null;
     lastError: string | null;
     updatedAt: string | null;
 }
 
 const EMBEDDING_COLLECTION = 'base.embedding';
+
+function progressView(progress: EmbeddingIndexProgress | null | undefined): EmbeddingStatusView['progress'] {
+    if (!progress || !progress.phase) return null;
+    const total = Number(progress.total) || 0;
+    const done = Number(progress.done) || 0;
+    return {
+        phase: progress.phase,
+        done,
+        total,
+        percent: total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0,
+        updatedAt: new Date(progress.updatedAt).toISOString(),
+    };
+}
 
 export async function buildEmbeddingStatusView(
     domainId: string,
@@ -337,11 +370,11 @@ export async function buildEmbeddingStatusView(
             generation: 0,
             appliedGeneration: 0,
             indexedCount,
+            progress: null,
             lastError: null,
             updatedAt: null,
         };
     }
-
     const now = new Date();
     const pending = state.generation > (state.appliedGeneration || 0);
     const leaseActive = !!(
@@ -355,16 +388,88 @@ export async function buildEmbeddingStatusView(
     else if (pending) status = 'queued';
     else if (indexedCount === 0 && state.generation === 0) status = 'never';
     else status = 'ready';
-
     return {
         status,
         mode: state.mode || null,
         generation: state.generation || 0,
         appliedGeneration: state.appliedGeneration || 0,
         indexedCount,
+        progress: pending ? progressView(state.progress) : null,
         lastError: state.lastError || null,
         updatedAt: state.updatedAt ? new Date(state.updatedAt).toISOString() : null,
     };
+}
+
+export interface EmbeddingIndexSnapshot {
+
+    vectors: number;
+    nodeVectors: number;
+    cardVectors: number;
+    cardCount: number;
+    models: { model: string; count: number }[];
+    dimensions: number | null;
+    oldestUpdatedAt: Date | null;
+    newestUpdatedAt: Date | null;
+    nodes: Map<string, { text: string; updatedAt: Date }>;
+    cards: Map<string, { chunks: number; title: string; updatedAt: Date }>;
+}
+
+export async function loadEmbeddingIndexSnapshot(
+    domainId: string,
+    baseDocId: number,
+): Promise<EmbeddingIndexSnapshot> {
+    await ready();
+    const coll = db.db.collection(EMBEDDING_COLLECTION);
+    const docs = await coll.find({ domainId, baseDocId }).project({
+        kind: 1, nodeId: 1, cardDocId: 1, cardTitle: 1, text: 1, model: 1, updatedAt: 1,
+    }).toArray();
+    const sample = await coll.findOne({ domainId, baseDocId }, { projection: { embedding: 1 } });
+    const snapshot: EmbeddingIndexSnapshot = {
+        vectors: docs.length,
+        nodeVectors: 0,
+        cardVectors: 0,
+        cardCount: 0,
+        models: [],
+        dimensions: Array.isArray((sample as any)?.embedding) ? (sample as any).embedding.length : null,
+        oldestUpdatedAt: null,
+        newestUpdatedAt: null,
+        nodes: new Map(),
+        cards: new Map(),
+    };
+    const modelCounts = new Map<string, number>();
+    for (const raw of docs) {
+        const doc = raw as unknown as {
+            kind: 'node' | 'card';
+            nodeId: string;
+            cardDocId?: string;
+            cardTitle?: string;
+            text: string;
+            model: string;
+            updatedAt: Date;
+        };
+        const updatedAt = doc.updatedAt instanceof Date ? doc.updatedAt : new Date(doc.updatedAt);
+        if (!snapshot.oldestUpdatedAt || updatedAt < snapshot.oldestUpdatedAt) snapshot.oldestUpdatedAt = updatedAt;
+        if (!snapshot.newestUpdatedAt || updatedAt > snapshot.newestUpdatedAt) snapshot.newestUpdatedAt = updatedAt;
+        modelCounts.set(doc.model, (modelCounts.get(doc.model) || 0) + 1);
+        if (doc.kind === 'node') {
+            snapshot.nodeVectors++;
+            snapshot.nodes.set(doc.nodeId, { text: doc.text || '', updatedAt });
+            continue;
+        }
+        snapshot.cardVectors++;
+        if (!doc.cardDocId) continue;
+        const held = snapshot.cards.get(doc.cardDocId);
+        snapshot.cards.set(doc.cardDocId, {
+            chunks: (held?.chunks || 0) + 1,
+            title: doc.cardTitle || held?.title || '',
+            updatedAt: !held || updatedAt > held.updatedAt ? updatedAt : held.updatedAt,
+        });
+    }
+    snapshot.cardCount = snapshot.cards.size;
+    snapshot.models = [...modelCounts.entries()]
+        .map(([model, count]) => ({ model, count }))
+        .sort((a, b) => b.count - a.count);
+    return snapshot;
 }
 
 function notifyEmbeddingStatus(domainId: string, baseDocId: number) {
@@ -375,10 +480,6 @@ function notifyEmbeddingStatus(domainId: string, baseDocId: number) {
     }
 }
 
-/**
- * Acquire a lease before processing a claimed task.
- * Returns null when the task is stale (a newer generation already exists).
- */
 export async function acquireEmbeddingLease(
     payload: Pick<EmbeddingIndexTaskPayload, 'domainId' | 'baseDocId' | 'generation' | 'attempt'>,
     owner = workerInstanceId,
@@ -404,7 +505,6 @@ export async function acquireEmbeddingLease(
     ) {
         throw new Error(`Embedding lease held by ${state.leaseOwner} until ${state.leaseUntil.toISOString()}`);
     }
-
     const res = await coll.findOneAndUpdate(
         {
             domainId: payload.domainId,
@@ -453,10 +553,6 @@ export async function renewEmbeddingLease(
     return res.modifiedCount > 0;
 }
 
-/**
- * Mark generation applied and clear pending delta when it still matches.
- * If a newer generation arrived while we worked, leave it pending.
- */
 export async function completeEmbeddingIndex(
     payload: Pick<EmbeddingIndexTaskPayload, 'domainId' | 'baseDocId' | 'generation'>,
     owner = workerInstanceId,
@@ -466,7 +562,6 @@ export async function completeEmbeddingIndex(
     const coll = stateColl();
     const state = await coll.findOne({ domainId: payload.domainId, baseDocId: payload.baseDocId });
     if (!state) return;
-
     if (state.generation === payload.generation) {
         await coll.updateOne(
             { domainId: payload.domainId, baseDocId: payload.baseDocId, generation: payload.generation },
@@ -483,6 +578,7 @@ export async function completeEmbeddingIndex(
                     leaseUntil: null,
                     nextRetryAt: null,
                     lastError: null,
+                    progress: null,
                     pendingTaskId: null,
                     updatedAt: now,
                 },
@@ -491,8 +587,6 @@ export async function completeEmbeddingIndex(
         notifyEmbeddingStatus(payload.domainId, payload.baseDocId);
         return;
     }
-
-    // Newer generation exists — release our lease only.
     await coll.updateOne(
         { domainId: payload.domainId, baseDocId: payload.baseDocId, leaseOwner: owner },
         {
@@ -506,9 +600,6 @@ export async function completeEmbeddingIndex(
     notifyEmbeddingStatus(payload.domainId, payload.baseDocId);
 }
 
-/**
- * Record failure, schedule retry with exponential backoff, and re-queue.
- */
 export async function failEmbeddingIndex(
     payload: Pick<EmbeddingIndexTaskPayload, 'domainId' | 'baseDocId' | 'generation' | 'attempt'>,
     error: unknown,
@@ -522,8 +613,6 @@ export async function failEmbeddingIndex(
     const coll = stateColl();
     const state = await coll.findOne({ domainId: payload.domainId, baseDocId: payload.baseDocId });
     if (!state) return null;
-
-    // A newer generation already replaced this work — do not overwrite its schedule.
     if (state.generation !== payload.generation) {
         await coll.updateOne(
             { domainId: payload.domainId, baseDocId: payload.baseDocId, leaseOwner: owner },
@@ -531,9 +620,6 @@ export async function failEmbeddingIndex(
         );
         return null;
     }
-
-    // Another worker already holds a live lease for this generation — do not
-    // clobber its progress (e.g. a CLI process that failed before acquiring).
     if (
         state.leaseOwner
         && state.leaseOwner !== owner
@@ -546,7 +632,6 @@ export async function failEmbeddingIndex(
         );
         return null;
     }
-
     const updated: EmbeddingStateDoc = {
         ...state,
         attempt,
@@ -554,6 +639,7 @@ export async function failEmbeddingIndex(
         lastError: message.slice(0, 2000),
         leaseOwner: null,
         leaseUntil: null,
+        progress: null,
         pendingTaskId: null,
         updatedAt: now,
     };
@@ -562,9 +648,6 @@ export async function failEmbeddingIndex(
         { $set: updated },
     );
     notifyEmbeddingStatus(payload.domainId, payload.baseDocId);
-
-    // Re-queue immediately; consumer can still respect nextRetryAt via recover if needed.
-    // Keep the task so workers can pick it up after backoff via recoverExpiredEmbeddingWork.
     logger.warn(
         'Embedding index failed for %s/%s gen=%d attempt=%d: %s (retry at %s)',
         payload.domainId, payload.baseDocId, payload.generation, attempt, message, nextRetryAt.toISOString(),
@@ -572,10 +655,6 @@ export async function failEmbeddingIndex(
     return null;
 }
 
-/**
- * Re-queue work that was claimed (task deleted) but never completed —
- * expired lease, or pending generation with no task document.
- */
 export async function recoverExpiredEmbeddingWork(limit = 20): Promise<number> {
     await ready();
     const now = new Date();
@@ -589,24 +668,20 @@ export async function recoverExpiredEmbeddingWork(limit = 20): Promise<number> {
             { nextRetryAt: { $lte: now } },
         ],
     }).limit(limit).toArray();
-
     let recovered = 0;
     for (const state of candidates) {
         if (state.leaseOwner && state.leaseUntil && state.leaseUntil > now) continue;
         if (state.nextRetryAt && state.nextRetryAt > now) continue;
-
         const pending = state.pendingTaskId
             ? await task.get(state.pendingTaskId)
             : null;
         if (pending) continue;
-
         const sameKeyPending = await task.count({
             type: EMBEDDING_TASK_TYPE,
             subType: EMBEDDING_INDEX_SUBTYPE,
             coalesceKey: state.coalesceKey,
         });
         if (sameKeyPending > 0) continue;
-
         await replacePendingTask({
             ...state,
             leaseOwner: null,

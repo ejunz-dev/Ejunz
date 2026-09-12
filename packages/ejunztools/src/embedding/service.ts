@@ -1,19 +1,3 @@
-/**
- * Embedding Service
- *
- * Lazily loads a local semantic embedding model (Xenova/all-MiniLM-L6-v2 via
- * @xenova/transformers) and generates vector embeddings for base editor
- * content after each save.  Embeddings are persisted in the
- * `base.embedding` MongoDB collection and can power semantic search later.
- *
- * Currently indexes two kinds of documents:
- *   - "node"   –  the node's title text (for quick heading-level matches)
- *   - "card"   –  the card's title + content + problem text (the real knowledge)
- *
- * The model (~80 MB) is downloaded on first use and cached locally via
- * Hugging Face's cache (~/.cache/huggingface/).
- */
-
 import { ObjectId } from 'mongodb';
 import { Context, Service } from 'ejun/src/context';
 import { Logger } from 'ejun/src/logger';
@@ -23,8 +7,10 @@ import type { CardDoc } from 'ejun/src/interface';
 import db from 'ejun/src/service/db';
 import {
     buildEmbeddingIndexTaskFromDb,
+    setEmbeddingProgress,
     type EmbeddingIndexMode,
     type EmbeddingIndexTaskPayload,
+    type EmbeddingProgressReporter,
 } from './worker';
 import {
     clamp01,
@@ -42,57 +28,27 @@ declare module 'ejun/src/context' {
 
 const logger = new Logger('embedding');
 const COLLECTION = 'base.embedding';
-/**
- * Sentence-embedding model used for every vector this service stores.
- *
- * This replaced `Xenova/all-MiniLM-L6-v2`, which is English-only: it collapses
- * unrelated Chinese strings onto identical vectors, so on a predominantly
- * Chinese knowledge base cosine similarity carried no signal and unrelated
- * titles scored exactly the same. Do not downgrade this back to a
- * non-multilingual model.
- *
- * Both models are 384 wide, so a stale vector cannot be recognised by its
- * dimension — see the `model` field on `EmbeddingDoc`.
- */
+
 const EMBEDDING_MODEL = 'Xenova/paraphrase-multilingual-MiniLM-L12-v2';
 const BATCH_SIZE = 32;
 
-// all-MiniLM-L6-v2 max 256 tokens.
-// For mixed CN/EN content we stay well within limit at ~800 chars per chunk.
 const CHUNK_MAX_CHARS = 800;
 const CHUNK_OVERLAP_CHARS = 80;
 
-/** A single stored embedding document. */
 interface EmbeddingDoc {
     domainId: string;
     baseDocId: number;
-    /** "node" for node title embedding; "card" for card content embedding */
     kind: 'node' | 'card';
-    /** For both kinds: the nodeId this content belongs to */
     nodeId: string;
-    /** Only for kind="card": the ObjectId string of the card document */
     cardDocId?: string;
-    /** Only for kind="card": the card title for display */
     cardTitle?: string;
-    /** 0-based chunk index when a card is split into multiple chunks */
     chunkIndex: number;
-    /** The text that was embedded */
     text: string;
     embedding: number[];
-    /**
-     * Id of the model that produced `embedding`.
-     *
-     * Vectors from two different models are not comparable, and this model has
-     * the same width as the one it replaced, so a stale vector is otherwise
-     * indistinguishable from a current one. Writes always stamp this; search
-     * filters on it, so a base that has not been re-indexed yet returns no
-     * results rather than ranking incomparable vectors.
-     */
     model: string;
     updatedAt: Date;
 }
 
-/** Stable identity for upsert / unique index (no branch). */
 function embeddingLogicKey(doc: Pick<EmbeddingDoc, 'domainId' | 'baseDocId' | 'kind' | 'nodeId' | 'cardDocId' | 'chunkIndex'>) {
     return {
         domainId: doc.domainId,
@@ -109,14 +65,10 @@ export interface SearchResult {
     kind: 'node' | 'card';
     cardDocId?: string;
     cardTitle?: string;
-    /** 0-based chunk index when kind=card is split into chunks */
     chunkIndex: number;
     text: string;
-    /** Final score after semantic similarity plus bounded keyword boost. */
     score: number;
-    /** Raw cosine similarity from the embedding model. */
     semanticScore: number;
-    /** Bounded exact-keyword boost used for technical terms in the query. */
     keywordScore: number;
     matchedTerms?: string[];
     rank: number;
@@ -169,7 +121,6 @@ export class EmbeddingService extends Service {
     private pipe: any = null;
     private loadPromise: Promise<void> | null = null;
     private indexesReady = false;
-
     constructor(ctx: Context) {
         super(ctx, 'embedding');
         currentEmbeddingService = this;
@@ -181,22 +132,10 @@ export class EmbeddingService extends Service {
             !!(global as any).app,
         );
     }
-
-    /**
-     * Split long text into overlapping chunks suitable for embedding.
-     *
-     * Splitting strategy (tiered, best-effort):
-     *   1. Double newline (paragraph boundary)
-     *   2. Single newline
-     *   3. Sentence-ending punctuation （。！？.!?）
-     *   4. Comma / semicolon
-     *   5. Hard character count (last resort — no natural boundary found)
-     */
     chunkText(text: string, maxLen = CHUNK_MAX_CHARS, overlap = CHUNK_OVERLAP_CHARS): string[] {
         text = text.trim();
         if (!text) return [];
         if (text.length <= maxLen) return [text];
-
         const chunks: string[] = [];
         let start = 0;
         while (start < text.length) {
@@ -204,8 +143,6 @@ export class EmbeddingService extends Service {
                 chunks.push(text.slice(start).trim());
                 break;
             }
-
-            // Candidate end: first natural boundary within maxLen from `start`
             const end = this.findChunkBoundary(text, start, maxLen);
             chunks.push(text.slice(start, end).trim());
             start = end - overlap;
@@ -216,60 +153,40 @@ export class EmbeddingService extends Service {
     private findChunkBoundary(text: string, start: number, maxLen: number): number {
         const end = start + maxLen;
         if (end >= text.length) return text.length;
-
         const slice = text.slice(start, end);
-
-        // 1) Double newline (paragraph)
         let idx = slice.lastIndexOf('\n\n');
         if (idx > maxLen * 0.3) return start + idx + 2;
-
-        // 2) Single newline
         idx = slice.lastIndexOf('\n');
         if (idx > maxLen * 0.3) return start + idx + 1;
-
-        // 3) Sentence-ending punctuation (优先 CJK，再英文)
         for (const sep of ['。', '！', '？', '\n', '. ', '! ', '? ']) {
             const j = slice.lastIndexOf(sep);
             if (j > maxLen * 0.3) return start + j + sep.length;
         }
-
-        // 4) Comma / semicolon
         for (const sep of ['，', '；', ', ', '; ']) {
             const j = slice.lastIndexOf(sep);
             if (j > maxLen * 0.3) return start + j + sep.length;
         }
-
-        // 5) Hard cut at maxLen
         return end;
     }
 
-    /**
-     * Generate a single embedding for the given text.
-     */
     async embed(text: string): Promise<number[]> {
         await this.ensureModel();
         const result = await this.pipe(text, { pooling: 'mean', normalize: true });
         return Array.from(result.data) as number[];
     }
 
-    /**
-     * Generate embeddings for a batch of texts.
-     * Texts are processed in smaller sub-batches to cap peak memory.
-     */
-    async embedBatch(texts: string[]): Promise<number[][]> {
+    async embedBatch(texts: string[], onBatch?: (done: number, total: number) => void): Promise<number[][]> {
         if (!texts.length) return [];
         await this.ensureModel();
-
         const all: number[][] = [];
         for (let i = 0; i < texts.length; i += BATCH_SIZE) {
             const batch = texts.slice(i, i + BATCH_SIZE);
             const output = await this.pipe(batch, { pooling: 'mean', normalize: true });
-
-            // output.tolist() returns number[][] when input is an array
             const list: number[][] = output.tolist();
             for (const vec of list) {
                 all.push(vec);
             }
+            onBatch?.(all.length, texts.length);
         }
         return all;
     }
@@ -318,7 +235,6 @@ export class EmbeddingService extends Service {
     ) {
         await this.ensureEmbeddingIndexes();
         const coll = this.collection();
-        // Compute-then-replace: only wipe the old slice after new vectors are ready.
         if (!docs.length) {
             await coll.deleteMany(filter);
             return;
@@ -333,7 +249,6 @@ export class EmbeddingService extends Service {
         for (let i = 0; i < ops.length; i += 500) {
             await coll.bulkWrite(ops.slice(i, i + 500), { ordered: false });
         }
-        // Drop stale chunks when a card shrinks (or node text becomes empty → no docs).
         const keepKeys = new Set(docs.map((d) => JSON.stringify(embeddingLogicKey(d))));
         const existing = await coll.find(filter).project({
             domainId: 1, baseDocId: 1, kind: 1, nodeId: 1, cardDocId: 1, chunkIndex: 1,
@@ -353,9 +268,13 @@ export class EmbeddingService extends Service {
         baseDocId: number,
         entries: Array<{ nodeId: string; text: string }>,
         now = new Date(),
+        onProgress?: EmbeddingProgressReporter,
     ): Promise<EmbeddingDoc[]> {
         if (!entries.length) return [];
-        const embeddings = await this.embedBatch(entries.map((e) => e.text));
+        const embeddings = await this.embedBatch(
+            entries.map((e) => e.text),
+            onProgress && ((done, total) => onProgress('nodes', done, total)),
+        );
         return entries.map((e, i) => ({
             domainId,
             baseDocId,
@@ -374,6 +293,7 @@ export class EmbeddingService extends Service {
         baseDocId: number,
         cards: CardDoc[],
         now = new Date(),
+        onProgress?: EmbeddingProgressReporter,
     ): Promise<EmbeddingDoc[]> {
         const chunks: Array<{
             nodeId: string;
@@ -399,7 +319,10 @@ export class EmbeddingService extends Service {
             }
         }
         if (!chunks.length) return [];
-        const embeddings = await this.embedBatch(chunks.map((c) => c.text));
+        const embeddings = await this.embedBatch(
+            chunks.map((c) => c.text),
+            onProgress && ((done, total) => onProgress('cards', done, total)),
+        );
         return chunks.map((c, i) => ({
             domainId,
             baseDocId,
@@ -429,13 +352,11 @@ export class EmbeddingService extends Service {
         return document.getMulti(domainId, TYPE_CARD, { docId: { $in: oids } }).toArray() as Promise<CardDoc[]>;
     }
 
-    /**
-     * Full rebuild of all node + card embeddings for a Base.
-     * Throws on failure so the worker can retry; old vectors stay until
-     * the new set is written (delete happens only after successful embed,
-     * except when the base is empty / missing).
-     */
-    async rebuildBaseContent(domainId: string, baseDocId: number): Promise<void> {
+    async rebuildBaseContent(
+        domainId: string,
+        baseDocId: number,
+        onProgress?: EmbeddingProgressReporter,
+    ): Promise<void> {
         const start = Date.now();
         await this.ensureEmbeddingIndexes();
         const base = await BaseModel.get(domainId, baseDocId);
@@ -445,7 +366,6 @@ export class EmbeddingService extends Service {
             logger.warn('Base not found for vectorization; cleared embeddings: %s/%s', domainId, baseDocId);
             return;
         }
-
         const nodes = base.nodes || [];
         const now = new Date();
         const nodeEntries: { nodeId: string; text: string }[] = [];
@@ -453,18 +373,14 @@ export class EmbeddingService extends Service {
             const t = node.text?.trim();
             if (t) nodeEntries.push({ nodeId: node.id, text: t });
         }
-
         const cardsByNode = nodes.length
             ? await CardModel.getByNodeIds(domainId, baseDocId, nodes.map((n) => n.id))
             : new Map<string, CardDoc[]>();
         const allCards: CardDoc[] = [];
         for (const list of cardsByNode.values()) allCards.push(...list);
-
-        const nodeDocs = await this.buildNodeDocs(domainId, baseDocId, nodeEntries, now);
-        const cardDocs = await this.buildCardDocs(domainId, baseDocId, allCards, now);
+        const nodeDocs = await this.buildNodeDocs(domainId, baseDocId, nodeEntries, now, onProgress);
+        const cardDocs = await this.buildCardDocs(domainId, baseDocId, allCards, now, onProgress);
         const docs = [...nodeDocs, ...cardDocs];
-
-        // Swap in the new full set only after embeddings are ready.
         if (!docs.length) {
             await coll.deleteMany({ domainId, baseDocId });
         } else {
@@ -477,6 +393,7 @@ export class EmbeddingService extends Service {
             }));
             for (let i = 0; i < ops.length; i += 500) {
                 await coll.bulkWrite(ops.slice(i, i + 500), { ordered: false });
+                onProgress?.('writing', Math.min(i + 500, ops.length), ops.length);
             }
             const keep = new Set(docs.map((d) => JSON.stringify(embeddingLogicKey(d))));
             const existing = await coll.find({ domainId, baseDocId }).project({
@@ -487,7 +404,6 @@ export class EmbeddingService extends Service {
                 .map((d) => (d as any)._id);
             if (stale.length) await coll.deleteMany({ _id: { $in: stale } });
         }
-
         logger.debug(
             'Rebuilt %d nodes + %d card-chunks for %s/%s (%d ms)',
             nodeDocs.length, cardDocs.length,
@@ -496,13 +412,16 @@ export class EmbeddingService extends Service {
         );
     }
 
-    /** @deprecated Prefer rebuildBaseContent / processIndexTask; kept as compatible wrapper. */
     async vectorizeBaseContent(domainId: string, baseDocId: number): Promise<void> {
         await this.rebuildBaseContent(domainId, baseDocId);
     }
 
-    /** Upsert embeddings for the given node IDs from current base.nodes text. */
-    async updateNodeEmbeddings(domainId: string, baseDocId: number, nodeIds: string[]): Promise<void> {
+    async updateNodeEmbeddings(
+        domainId: string,
+        baseDocId: number,
+        nodeIds: string[],
+        onProgress?: EmbeddingProgressReporter,
+    ): Promise<void> {
         const ids = [...new Set(nodeIds.map((id) => String(id || '').trim()).filter(Boolean))];
         if (!ids.length) return;
         await this.ensureEmbeddingIndexes();
@@ -520,7 +439,7 @@ export class EmbeddingService extends Service {
             if (!node || !text) emptyIds.push(nodeId);
             else entries.push({ nodeId, text });
         }
-        const docs = await this.buildNodeDocs(domainId, baseDocId, entries);
+        const docs = await this.buildNodeDocs(domainId, baseDocId, entries, new Date(), onProgress);
         for (const nodeId of ids) {
             const nodeDocs = docs.filter((d) => d.nodeId === nodeId);
             await this.replaceDocs({ domainId, baseDocId, kind: 'node', nodeId }, nodeDocs);
@@ -532,7 +451,6 @@ export class EmbeddingService extends Service {
         }
     }
 
-    /** Delete node embeddings and all card embeddings under those nodes. */
     async deleteNodeEmbeddings(domainId: string, baseDocId: number, nodeIds: string[]): Promise<void> {
         const ids = [...new Set(nodeIds.map((id) => String(id || '').trim()).filter(Boolean))];
         if (!ids.length) return;
@@ -540,14 +458,18 @@ export class EmbeddingService extends Service {
         await this.collection().deleteMany({ domainId, baseDocId, nodeId: { $in: ids } });
     }
 
-    /** Upsert card chunk embeddings for the given card document IDs. */
-    async updateCardEmbeddings(domainId: string, baseDocId: number, cardDocIds: string[]): Promise<void> {
+    async updateCardEmbeddings(
+        domainId: string,
+        baseDocId: number,
+        cardDocIds: string[],
+        onProgress?: EmbeddingProgressReporter,
+    ): Promise<void> {
         const ids = [...new Set(cardDocIds.map((id) => String(id || '').trim()).filter(Boolean))];
         if (!ids.length) return;
         await this.ensureEmbeddingIndexes();
         const cards = await this.loadCardsByIds(domainId, ids);
         const found = new Set(cards.map((c) => c.docId.toString()));
-        const docs = await this.buildCardDocs(domainId, baseDocId, cards);
+        const docs = await this.buildCardDocs(domainId, baseDocId, cards, new Date(), onProgress);
         for (const cardDocId of ids) {
             const cardDocs = docs.filter((d) => d.cardDocId === cardDocId);
             await this.replaceDocs({ domainId, baseDocId, kind: 'card', cardDocId }, cardDocs);
@@ -569,10 +491,6 @@ export class EmbeddingService extends Service {
         });
     }
 
-    /**
-     * Apply an incremental or full_rebuild index payload.
-     * Always throws on failure for the worker retry path.
-     */
     async processIndexTask(raw: EmbeddingIndexTaskPayload | Record<string, unknown>): Promise<{
         mode: EmbeddingIndexMode;
         domainId: string;
@@ -582,12 +500,18 @@ export class EmbeddingService extends Service {
         const { domainId, baseDocId, mode } = payload;
         if (!domainId) throw new Error('domainId is required');
         if (!Number.isFinite(baseDocId) || baseDocId <= 0) throw new Error('baseDocId is required');
-
+        const onProgress: EmbeddingProgressReporter = (phase, done, total) => {
+            void setEmbeddingProgress(domainId, baseDocId, payload.generation, {
+                phase,
+                done,
+                total,
+                updatedAt: new Date(),
+            });
+        };
         if (mode === 'full_rebuild') {
-            await this.rebuildBaseContent(domainId, baseDocId);
+            await this.rebuildBaseContent(domainId, baseDocId, onProgress);
             return { mode, domainId, baseDocId };
         }
-
         if (payload.deletedNodeIds.length) {
             await this.deleteNodeEmbeddings(domainId, baseDocId, payload.deletedNodeIds);
         }
@@ -595,32 +519,14 @@ export class EmbeddingService extends Service {
             await this.deleteCardEmbeddings(domainId, baseDocId, payload.deletedCardDocIds);
         }
         if (payload.nodeIds.length) {
-            await this.updateNodeEmbeddings(domainId, baseDocId, payload.nodeIds);
+            await this.updateNodeEmbeddings(domainId, baseDocId, payload.nodeIds, onProgress);
         }
         if (payload.cardDocIds.length) {
-            await this.updateCardEmbeddings(domainId, baseDocId, payload.cardDocIds);
+            await this.updateCardEmbeddings(domainId, baseDocId, payload.cardDocIds, onProgress);
         }
         return { mode, domainId, baseDocId };
     }
 
-    /**
-     * Search for semantically similar content within a base.
-     *
-     * Searches both node-title entries and card-content entries.  Results are
-     * ranked by cosine similarity.  Fine for knowledge bases with <10k entries.
-     */
-    /**
-     * Search node titles and card content within one base.
-     *
-     * Ranking blends cosine similarity with the graded keyword score, computed
-     * in memory over the base's vectors — a linear scan is fine at this scale.
-     *
-     * Only vectors stamped with the current `EMBEDDING_MODEL` are considered.
-     * Vectors from another model are not comparable, and the model this one
-     * replaced has the same width, so filtering by the stamp is the only thing
-     * that prevents incomparable vectors from being ranked silently. A base that
-     * has not been re-indexed therefore returns nothing rather than garbage.
-     */
     async searchSimilar(
         domainId: string,
         baseDocId: number,
@@ -630,27 +536,15 @@ export class EmbeddingService extends Service {
         const queryVec = await this.embed(query);
         const coll = this.ctx.db.db.collection<EmbeddingDoc>(COLLECTION);
         const docs = await coll.find({ domainId, baseDocId, model: EMBEDDING_MODEL }).toArray();
-
         if (!docs.length) return [];
-
         const matchers = extractKeywordTerms(query).map(toTermMatcher);
-        // `embed` and `embedBatch` both run the pipeline with `normalize: true`, so
-        // every stored and query vector is unit length and the dot product is the
-        // cosine. Dividing by the query magnitude keeps this correct even if a
-        // stored vector is somehow not normalised.
         const queryMag = Math.sqrt(queryVec.reduce((sum, v) => sum + v * v, 0));
         const scored: SearchResult[] = [];
-
         docs.forEach((doc, order) => {
             const dot = doc.embedding.reduce((sum, v, i) => sum + v * queryVec[i], 0);
             const semanticScore = queryMag ? clamp01(dot / queryMag) : 0;
             const { keywordScore, matchedTerms } = scoreKeywordMatch(matchers, doc);
-            // A blend, not a clamped sum: `Math.min(1, semantic + keyword)` used to
-            // collapse every high-scoring document onto exactly 1 and destroy the
-            // ordering between them. A convex blend stays strictly monotonic in
-            // both components and cannot leave [0, 1].
             const score = semanticScore * (1 - KEYWORD_BLEND) + keywordScore * KEYWORD_BLEND;
-
             scored.push({
                 nodeId: doc.nodeId,
                 kind: doc.kind,
@@ -665,15 +559,10 @@ export class EmbeddingService extends Service {
                 rank: order + 1,
             });
         });
-
         scored.sort((a, b) => b.score - a.score
             || b.keywordScore - a.keywordScore
             || b.semanticScore - a.semanticScore
             || a.rank - b.rank);
-
-        // One long card is split into several chunks and would otherwise occupy
-        // several ranks: keep the best-ranked chunk per card, then re-rank the
-        // survivors so `rank` is contiguous and honour `limit` after grouping.
         const grouped: SearchResult[] = [];
         const seenCards = new Set<string>();
         for (const result of scored) {
@@ -688,7 +577,6 @@ export class EmbeddingService extends Service {
         return grouped;
     }
 
-    /** Lazy-load the ONNX embedding model (downloaded on first call). */
     private async ensureModel(): Promise<void> {
         if (this.pipe) return;
         if (this.loadPromise) await this.loadPromise;
@@ -707,7 +595,7 @@ export class EmbeddingService extends Service {
             });
             logger.success('Embedding model "%s" loaded in %d ms', EMBEDDING_MODEL, Date.now() - t0);
         } catch (err) {
-            this.loadPromise = null; // allow retry on next call
+            this.loadPromise = null;
             logger.error('Failed to load embedding model "%s": %o', EMBEDDING_MODEL, err);
             throw err;
         }

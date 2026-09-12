@@ -428,6 +428,39 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
             additionalProperties: false,
         },
     },
+    {
+        name: 'embedding_status',
+        expose: 'base_embedding_status',
+        description: 'Report the vector (embedding) index of a Base: the queue state, how many vectors are stored and which model stamped them, '
+            + 'and the gap against live nodes and cards (missing, stale, detached, orphaned). While a rebuild runs, `state.progress` gives its live phase '
+            + 'and percentage. Use it before and after base_embedding_reindex, or to find content that semantic search cannot see. Defaults to the '
+            + 'session\'s Base; pass `baseId` for another Base in the domain.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                baseId: { type: 'integer', description: 'Base to inspect (optional; defaults to the session\'s Base).' },
+            },
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'embedding_reindex',
+        expose: 'base_embedding_reindex',
+        description: 'Queue a vector (embedding) rebuild for a Base and return as soon as it is queued; the rebuild then runs for as long as it needs, '
+            + 'with no deadline, and base_embedding_status reports its live progress. `mode: "full_rebuild"` (the default) re-embeds every node title and '
+            + 'card chunk and drops vectors whose content is gone; `mode: "incremental"` re-embeds only the given `nodeIds` / `cardIds`. Defaults to the '
+            + 'session\'s Base; pass `baseId` for another Base in the domain.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                baseId: { type: 'integer', description: 'Base to re-index (optional; defaults to the session\'s Base).' },
+                mode: { type: 'string', enum: ['full_rebuild', 'incremental'], description: 'Rebuild scope (default "full_rebuild").' },
+                nodeIds: { type: 'array', items: { type: 'string' }, description: 'Node ids to re-embed; required for mode "incremental" unless cardIds are given.' },
+                cardIds: { type: 'array', items: { type: 'string' }, description: 'Card docIds to re-embed; required for mode "incremental" unless nodeIds are given.' },
+            },
+            additionalProperties: false,
+        },
+    },
 ];
 
 export const SESSION_TOOLS_CATALOG: SessionToolDef[] = [
@@ -587,6 +620,7 @@ const BUILTIN_MUTATING_TOOLS = new Set([
     'card_create', 'card_update', 'card_delete',
     'node_file_create', 'node_file_delete',
     'problem_create', 'problem_update', 'problem_delete',
+    'embedding_reindex',
     'git_pull', 'git_config_set',
 ]);
 

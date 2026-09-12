@@ -17,6 +17,8 @@ import * as baseList from './base/list';
 import * as baseSearch from './base/search';
 import * as baseUpdate from './base/update';
 import * as semanticSearch from './base/semantic-search';
+import * as embeddingStatus from './base/embedding/status';
+import * as embeddingReindex from './base/embedding/reindex';
 import * as cardCreate from './base/card/create';
 import * as cardDelete from './base/card/delete';
 import * as cardGet from './base/card/get';
@@ -65,6 +67,8 @@ const IMPLEMENTATIONS: Record<string, (context: ToolContext, args: ToolArgs) => 
     card_get: cardGet.execute,
     card_delete: cardDelete.execute,
     semantic_search: semanticSearch.execute,
+    embedding_status: embeddingStatus.execute,
+    embedding_reindex: embeddingReindex.execute,
     problem_list: problemList.execute,
     problem_get: problemGet.execute,
     problem_create: problemCreate.execute,
@@ -95,17 +99,23 @@ const SCHEDULE_IMPLEMENTATIONS: Record<string, (args: ToolArgs, context: ToolCon
 
 const EXPLICIT_BASE_TOOLS = new Set(['base_get', 'base_update', 'base_delete']);
 
+const OPTIONAL_BASE_TOOLS = new Set(['embedding_status', 'embedding_reindex']);
+
 function declaration(definition: ToolDef): ToolDeclaration {
     const run = IMPLEMENTATIONS[definition.name];
     if (!run) throw new Error(`no implementation for declared tool ${definition.name}`);
     const explicitBase = EXPLICIT_BASE_TOOLS.has(definition.name);
+    const optionalBase = OPTIONAL_BASE_TOOLS.has(definition.name);
     return {
         name: definition.expose,
         description: definition.description,
         inputSchema: definition.inputSchema,
         mutating: isBuiltinMutatingTool(definition.name),
         async execute(context, args) {
-            const requested = explicitBase ? Number(args.baseId) : context.baseDocId;
+            const namedBaseId = Number(args.baseId);
+            const requested = explicitBase ? namedBaseId
+                : optionalBase && Number.isSafeInteger(namedBaseId) && namedBaseId > 0 ? namedBaseId
+                    : context.baseDocId;
             const baseDocId = Number.isSafeInteger(requested) && requested > 0 ? requested : 0;
             if (!baseDocId) throw new Error(explicitBase ? 'baseId is required' : 'This endpoint is not bound to a base.');
             return run({ ...context, baseDocId }, args || {});
