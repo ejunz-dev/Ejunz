@@ -17,6 +17,12 @@ export interface ScheduleToolDef {
     inputSchema: Record<string, any>;
 }
 
+export const MAX_NODES_PER_CALL = 500;
+export const MAX_FILE_CREATES_PER_CALL = 50;
+export const MAX_FILE_DOWNLOADS_IN_FLIGHT = 5;
+export const MAX_CARDS_PER_CALL = 500;
+export const MAX_PROBLEMS_PER_CALL = 500;
+
 export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
     {
         name: 'base_create',
@@ -461,6 +467,464 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
             additionalProperties: false,
         },
     },
+    {
+        name: 'node_create_many',
+        expose: 'base_node_create_many',
+        description: 'Create several nodes at once, in one read and one write of the Base. `nodes` is an array of '
+            + '`{ text, ref?, parentId?, parentRef? }`. A `ref` names an entry so a later entry can use it as its `parentRef`, which builds a whole '
+            + 'tree in one call; an entry with neither parent attaches to the call\'s `parentId`, or to the Base\'s root node. The Base is read once, '
+            + 'every node and edge is built in memory, and one update writes them all, so the call is atomic: either every node arrives or nothing '
+            + 'changes. Refused for a missing text, a duplicate or dangling reference, or too many entries, and it writes nothing in that case. '
+            + 'Use it instead of calling `base_node_create` once per node. One call creates at most ' + MAX_NODES_PER_CALL + ' nodes.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                parentId: { type: 'string', description: 'Node that every entry without a parent attaches to (optional; defaults to the Base\'s root node). The node must already exist.' },
+                nodes: {
+                    type: 'array',
+                    minItems: 1,
+                    maxItems: MAX_NODES_PER_CALL,
+                    description: 'Nodes to create, in order: a parent must come before the entries that name it.',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            text: { type: 'string', description: 'Node text (required).' },
+                            ref: { type: 'string', description: 'Optional name for this entry, for a later entry\'s parentRef.' },
+                            parentId: { type: 'string', description: 'Existing node of this Base to attach to (optional).' },
+                            parentRef: { type: 'string', description: 'ref of an earlier entry to attach to (optional; keep one of parentId and parentRef).' },
+                        },
+                        required: ['text'],
+                        additionalProperties: false,
+                    },
+                },
+            },
+            required: ['nodes'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'card_create_many',
+        expose: 'base_card_create_many',
+        description: 'Create several cards at once. `cards` is an array of `{ nodeId, title, content?, tags?, problems? }`, where `problems` holds the '
+            + 'payloads `base_problem_create` takes, stored with the card as it is created. The Base is read once and every card is checked before the '
+            + 'first insert, so a refused call inserts nothing. Each card is its own document and therefore one insert that carries its own problems, so '
+            + 'no card is ever half-created; a failure the database itself reports part way through is named in `refusedCards` and `ok` is false. Use it '
+            + 'instead of calling `base_card_create` once per card. One call creates at most ' + MAX_CARDS_PER_CALL + ' cards.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                cards: {
+                    type: 'array',
+                    minItems: 1,
+                    maxItems: MAX_CARDS_PER_CALL,
+                    description: 'Cards to create, in order.',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            nodeId: { type: 'string', description: 'Existing node to attach the card to (required).' },
+                            title: { type: 'string', description: 'Card title (required).' },
+                            content: { type: 'string', description: 'Card markdown body (optional).' },
+                            tags: { type: 'array', items: { type: 'string' }, description: 'Optional card tags.' },
+                            problems: {
+                                type: 'array',
+                                description: 'Practice problems stored on the card as it is created, each the same payload `base_problem_create` takes.',
+                                items: { type: 'object' },
+                            },
+                        },
+                        required: ['nodeId', 'title'],
+                        additionalProperties: false,
+                    },
+                },
+            },
+            required: ['cards'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'problem_create_many',
+        expose: 'base_problem_create_many',
+        description: 'Add problems to cards, several at once. `entries` is an array of `{ cardId, problems }`, where `problems` holds the payloads '
+            + '`base_problem_create` takes. All the problems of one card land in one write of that card, so many problems cost one read and one write '
+            + 'instead of one of each per problem, and a card never holds a partial set of what an entry sent it. Every problem is validated and every '
+            + 'card is read before the first write, so a refused call changes nothing; a card the database itself refuses is named in `refusedEntries` '
+            + 'and `ok` is false. Use it instead of calling `base_problem_create` once per problem. One call adds at most ' + MAX_PROBLEMS_PER_CALL + ' problems.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                entries: {
+                    type: 'array',
+                    minItems: 1,
+                    description: 'One entry per card, each naming every problem that card receives.',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            cardId: { type: 'string', description: 'Existing card of this Base (required).' },
+                            problems: {
+                                type: 'array',
+                                minItems: 1,
+                                description: 'Problems to append to that card, each the payload `base_problem_create` takes.',
+                                items: { type: 'object' },
+                            },
+                        },
+                        required: ['cardId', 'problems'],
+                        additionalProperties: false,
+                    },
+                },
+            },
+            required: ['entries'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'node_get_many',
+        expose: 'base_node_get_many',
+        description: 'Read several nodes of one Base in a single call, each reported exactly as `base_node_get` reports one: its title, its child nodes '
+            + 'and its cards. The Base document is read once and the cards of every named node come from one further read, so the call costs two reads '
+            + 'however many nodes it names, instead of two reads per node. A read changes nothing, so a node this Base does not hold is listed in '
+            + '`missingNodeIds` and `ok` is false. Use it instead of calling `base_node_get` once per node. One call reads at most ' + MAX_NODES_PER_CALL + ' nodes.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                nodeIds: {
+                    type: 'array',
+                    minItems: 1,
+                    maxItems: MAX_NODES_PER_CALL,
+                    items: { type: 'string' },
+                    description: 'Node ids to read, in order.',
+                },
+            },
+            required: ['nodeIds'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'card_get_many',
+        expose: 'base_card_get_many',
+        description: 'Read several cards of one Base in a single call, each reported exactly as `base_card_get` reports one. The cards come from one '
+            + 'read of the card collection, so the call costs one read however many cards it names, instead of one read per card. A read changes '
+            + 'nothing, so a card this Base does not hold is listed in `missingCardIds` and `ok` is false. Use it instead of calling `base_card_get` '
+            + 'once per card. One call reads at most ' + MAX_CARDS_PER_CALL + ' cards.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                cardIds: {
+                    type: 'array',
+                    minItems: 1,
+                    maxItems: MAX_CARDS_PER_CALL,
+                    items: { type: 'string' },
+                    description: 'Card docIds to read, in order.',
+                },
+            },
+            required: ['cardIds'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'problem_get_many',
+        expose: 'base_problem_get_many',
+        description: 'Read several practice problems in a single call, each reported exactly as `base_problem_get` reports one. The cards holding them '
+            + 'come from one read, so the call costs one read however many problems it names, instead of one read per problem. A read changes nothing, '
+            + 'so a card or a problem this Base does not hold is listed in `missing` with its reason and `ok` is false. Use it instead of calling '
+            + '`base_problem_get` once per problem.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                entries: {
+                    type: 'array',
+                    minItems: 1,
+                    maxItems: MAX_PROBLEMS_PER_CALL,
+                    description: 'One entry per problem to read.',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            cardId: { type: 'string', description: 'Card holding the problem (required).' },
+                            pid: { type: 'string', description: 'Problem id (required).' },
+                        },
+                        required: ['cardId', 'pid'],
+                        additionalProperties: false,
+                    },
+                },
+            },
+            required: ['entries'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'node_update_many',
+        expose: 'base_node_update_many',
+        description: 'Update several nodes of one Base in a single call: `entries` is an array of `{ nodeId, text?, parentId? }`, and an entry changes '
+            + 'what it names. Node text and place in the tree live in the Base document, so one read and one write apply every entry, instead of one of '
+            + 'each per node, and the call is atomic: either every entry lands or the document is unchanged. An entry the move rules refuse (an absent '
+            + 'node or parent, a move under itself or under one of its descendants) refuses the whole call and writes nothing. Renaming the root node '
+            + 'renames the Base, as `base_node_update` does. Use it instead of calling `base_node_update` once per node. One call updates at most '
+            + MAX_NODES_PER_CALL + ' nodes.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                entries: {
+                    type: 'array',
+                    minItems: 1,
+                    maxItems: MAX_NODES_PER_CALL,
+                    description: 'One entry per node, in the order the updates apply.',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            nodeId: { type: 'string', description: 'Node to change (required).' },
+                            text: { type: 'string', description: 'New node text (optional).' },
+                            parentId: { type: 'string', description: 'Existing node to move this node under (optional).' },
+                        },
+                        required: ['nodeId'],
+                        additionalProperties: false,
+                    },
+                },
+            },
+            required: ['entries'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'card_update_many',
+        expose: 'base_card_update_many',
+        description: 'Update several cards of one Base in a single call: `entries` is an array of `{ cardId, title?, content? }`, and an entry must name '
+            + 'at least one field. A card is its own document, so each card that changes is one write, and the call saves the reading and the checks: '
+            + 'the cards are read once and an id that names no card of this Base refuses the whole call, so a refused call writes nothing. A failure the '
+            + 'database itself reports is named in `refusedCards` and `ok` is false. Use it instead of calling `base_card_update` once per card. One '
+            + 'call updates at most ' + MAX_CARDS_PER_CALL + ' cards.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                entries: {
+                    type: 'array',
+                    minItems: 1,
+                    maxItems: MAX_CARDS_PER_CALL,
+                    description: 'One entry per card.',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            cardId: { type: 'string', description: 'Card to change (required).' },
+                            title: { type: 'string', description: 'New card title (optional).' },
+                            content: { type: 'string', description: 'New card markdown body (optional).' },
+                        },
+                        required: ['cardId'],
+                        additionalProperties: false,
+                    },
+                },
+            },
+            required: ['entries'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'problem_update_many',
+        expose: 'base_problem_update_many',
+        description: 'Update several practice problems in a single call: `entries` is an array of `{ cardId, pid, problem }`, where `problem` holds the '
+            + 'fields to change, as `base_problem_update` takes them. A card holds its problems, so every problem that changes on one card is written '
+            + 'once: n problems over k cards cost one read and k writes instead of one of each per problem. Every payload is read and every named '
+            + 'problem is checked before the first write, so a refused call changes nothing; a card the database itself refuses is named in '
+            + '`refusedEntries`. Use it instead of calling `base_problem_update` once per problem. One call updates at most ' + MAX_PROBLEMS_PER_CALL + ' problems.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                entries: {
+                    type: 'array',
+                    minItems: 1,
+                    maxItems: MAX_PROBLEMS_PER_CALL,
+                    description: 'One entry per problem.',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            cardId: { type: 'string', description: 'Card holding the problem (required).' },
+                            pid: { type: 'string', description: 'Problem id (required).' },
+                            problem: { type: 'object', description: 'Fields to change on that problem, merged into it (required).' },
+                        },
+                        required: ['cardId', 'pid', 'problem'],
+                        additionalProperties: false,
+                    },
+                },
+            },
+            required: ['entries'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'node_delete_many',
+        expose: 'base_node_delete_many',
+        description: 'Delete several nodes of one Base in a single call: `nodeIds` names the nodes, and each one takes its descendants with it exactly '
+            + 'as `base_node_delete` does. The whole graph change is one read and one write of the Base document, so n subtrees cost one of each instead '
+            + 'of one per node, and the node and edge removal is atomic. The cards on the removed nodes, and the files stored on those nodes and cards, '
+            + 'follow their nodes one operation each. The root node cannot be removed: naming it refuses the whole call and writes nothing. An id this '
+            + 'Base does not hold is listed in `missingNodeIds` and `ok` is false. Use it instead of calling `base_node_delete` once per node. One call '
+            + 'removes at most ' + MAX_NODES_PER_CALL + ' nodes.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                nodeIds: {
+                    type: 'array',
+                    minItems: 1,
+                    maxItems: MAX_NODES_PER_CALL,
+                    items: { type: 'string' },
+                    description: 'Nodes to remove; a node already removed as a descendant of another is ignored.',
+                },
+            },
+            required: ['nodeIds'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'card_delete_many',
+        expose: 'base_card_delete_many',
+        description: 'Delete several cards of one Base in a single call. A card is its own document, so every named card goes with one delete of the '
+            + 'card collection and one delete of its status rows, instead of two statements per card. The cards are read once first, and an id that '
+            + 'names no card of this Base refuses the whole call, so a refused call deletes nothing. It removes what `base_card_delete` removes and '
+            + 'nothing else. Use it instead of calling `base_card_delete` once per card. One call removes at most ' + MAX_CARDS_PER_CALL + ' cards.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                cardIds: {
+                    type: 'array',
+                    minItems: 1,
+                    maxItems: MAX_CARDS_PER_CALL,
+                    items: { type: 'string' },
+                    description: 'Cards to remove.',
+                },
+            },
+            required: ['cardIds'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'problem_delete_many',
+        expose: 'base_problem_delete_many',
+        description: 'Delete several practice problems in a single call: `entries` is an array of `{ cardId, pids }`. A card holds its problems, so every '
+            + 'problem removed from one card is written once: n problems over k cards cost one read and k writes instead of one of each per problem. '
+            + 'Every card is read and every named problem is found before the first write, so a refused call changes nothing; a card the database itself '
+            + 'refuses is named in `refusedEntries`. Use it instead of calling `base_problem_delete` once per problem. One call removes at most '
+            + MAX_PROBLEMS_PER_CALL + ' problems.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                entries: {
+                    type: 'array',
+                    minItems: 1,
+                    description: 'One entry per card, naming every problem that card loses.',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            cardId: { type: 'string', description: 'Card to change (required).' },
+                            pids: {
+                                type: 'array',
+                                minItems: 1,
+                                items: { type: 'string' },
+                                description: 'Problem ids to remove from that card (required).',
+                            },
+                        },
+                        required: ['cardId', 'pids'],
+                        additionalProperties: false,
+                    },
+                },
+            },
+            required: ['entries'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'node_file_create_many',
+        expose: 'base_node_file_create_many',
+        description: 'Store several files on nodes of one Base in a single call, each becoming a file-card, as `base_node_file_create` makes one. '
+            + '`files` is an array of `{ nodeId, fileName, fileUrl, title? }`. The Base is read once to check every node and the whole list is validated '
+            + 'before the first download, so a refused call stores nothing. The downloads run a few at a time, and every entry is reported on its own: a '
+            + 'download or a card the server refuses is named in `refusedFiles` and `ok` is false, while the files that arrived stay. One call stores at '
+            + 'most ' + MAX_FILE_CREATES_PER_CALL + ' files.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                files: {
+                    type: 'array',
+                    minItems: 1,
+                    maxItems: MAX_FILE_CREATES_PER_CALL,
+                    description: 'Files to download and store, in order.',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            nodeId: { type: 'string', description: 'Existing node to attach the file-card to (required).' },
+                            fileName: { type: 'string', description: 'Filename (required); it also sets the stored path, so one file per node.' },
+                            fileUrl: { type: 'string', description: 'Public URL to download the file from (required).' },
+                            title: { type: 'string', description: 'Optional card title (defaults to fileName).' },
+                        },
+                        required: ['nodeId', 'fileName', 'fileUrl'],
+                        additionalProperties: false,
+                    },
+                },
+            },
+            required: ['files'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'node_file_list_many',
+        expose: 'base_node_file_list_many',
+        description: 'List the files of several nodes in a single call, each node reported as `base_node_file_list` reports it. The Base document is read '
+            + 'once and the cards of every named node come from one further read, so the call costs two reads however many nodes it names. A read changes '
+            + 'nothing, so a node this Base does not hold is listed in `missingNodeIds` and `ok` is false. One call lists at most ' + MAX_NODES_PER_CALL + ' nodes.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                nodeIds: {
+                    type: 'array',
+                    minItems: 1,
+                    maxItems: MAX_NODES_PER_CALL,
+                    items: { type: 'string' },
+                    description: 'Nodes whose files are wanted.',
+                },
+            },
+            required: ['nodeIds'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'node_file_get_many',
+        expose: 'base_node_file_get_many',
+        description: 'Read several file-cards in a single call, each reported as `base_node_file_get` reports one: its name, type, size, node, content and '
+            + 'the URL its file is served at. The cards come from one read, so the call costs one read however many it names. A read changes nothing, so a '
+            + 'card this Base does not hold, or one that is not a file-card, is listed in `missing` with its reason and `ok` is false. One call reads at '
+            + 'most ' + MAX_CARDS_PER_CALL + ' cards.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                cardIds: {
+                    type: 'array',
+                    minItems: 1,
+                    maxItems: MAX_CARDS_PER_CALL,
+                    items: { type: 'string' },
+                    description: 'File-cards to read.',
+                },
+            },
+            required: ['cardIds'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'node_file_delete_many',
+        expose: 'base_node_file_delete_many',
+        description: 'Delete several file-cards of one Base in a single call, with the file each one holds. Each card is removed as '
+            + '`base_node_file_delete` removes one: the stored body first, then the card. The cards are read once, and a card this Base does not hold, or '
+            + 'one that is not a file-card, refuses the whole call before anything is removed. Use it instead of calling `base_node_file_delete` once per '
+            + 'card. One call removes at most ' + MAX_CARDS_PER_CALL + ' cards.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                cardIds: {
+                    type: 'array',
+                    minItems: 1,
+                    maxItems: MAX_CARDS_PER_CALL,
+                    items: { type: 'string' },
+                    description: 'File-cards to remove.',
+                },
+            },
+            required: ['cardIds'],
+            additionalProperties: false,
+        },
+    },
 ];
 
 export const SESSION_TOOLS_CATALOG: SessionToolDef[] = [
@@ -616,6 +1080,10 @@ export const SCHEDULE_TOOLS_CATALOG: ScheduleToolDef[] = [
 
 const BUILTIN_MUTATING_TOOLS = new Set([
     'base_create', 'base_update', 'base_delete',
+    'node_create_many', 'card_create_many', 'problem_create_many',
+    'node_update_many', 'card_update_many', 'problem_update_many',
+    'node_delete_many', 'card_delete_many', 'problem_delete_many',
+    'node_file_create_many', 'node_file_delete_many',
     'node_create', 'node_update', 'node_delete',
     'card_create', 'card_update', 'card_delete',
     'node_file_create', 'node_file_delete',

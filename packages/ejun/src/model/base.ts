@@ -21,7 +21,6 @@ const BASE_EDITOR_PROBLEMS_W_MAX = 800;
 const BASE_EDITOR_AI_H_MIN = 120;
 const BASE_EDITOR_AI_H_MAX = 640;
 
-/** Whitelist + clamp per-user base editor UI prefs from DB or client body. */
 export function sanitizeBaseEditorUiPrefs(raw: unknown): Record<string, unknown> {
     const out: Record<string, unknown> = {};
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
@@ -92,7 +91,7 @@ export async function loadBaseEditorUiPrefs(
             { sort: { updateAt: -1, _id: -1 } },
         );
         const prefs = sanitizeBaseEditorUiPrefs(doc?.prefs);
-        // Re-append expandedNodeIds that sanitize might have stripped
+
         if (doc?.prefs && Array.isArray(doc.prefs.expandedNodeIds)) {
             prefs.expandedNodeIds = doc.prefs.expandedNodeIds.filter((id: unknown) => typeof id === 'string');
         }
@@ -105,7 +104,6 @@ export async function loadBaseEditorUiPrefs(
 export type MindMapDocType = typeof document.TYPE_BASE | typeof document.TYPE_PLUGIN;
 export type MindMapDoc = BaseDoc | PluginDoc;
 
-/** Whitelist detail display prefs from DB or client body. */
 export function sanitizeBaseDetailUiPrefs(raw: unknown): Record<string, unknown> {
     const out: Record<string, unknown> = {};
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
@@ -280,7 +278,6 @@ export class BaseModel {
             ...extraPayload,
         };
 
-        // Validate slug if provided
         const baseSlug = payload.slug as string | undefined;
         if (baseSlug) {
             const slugErr = BaseModel.validateSlug(baseSlug);
@@ -310,7 +307,6 @@ export class BaseModel {
         return (await document.get(domainId, mapDocType, docId)) as BaseDoc | null;
     }
 
-
     static async getBybid(domainId: string, bid: string | number): Promise<BaseDoc | null> {
         const bidString = String(bid).trim();
         if (!bidString) return null;
@@ -318,10 +314,6 @@ export class BaseModel {
         return list.length > 0 ? (list[0] as BaseDoc) : null;
     }
 
-    /**
-     * Validate slug format: only lowercase a-z, 0-9, dots, underscores, hyphens.
-     * Returns error message string or null if valid.
-     */
     static validateSlug(slug: string): string | null {
         if (!slug || !slug.trim()) return 'Slug is required';
         const s = slug.trim();
@@ -335,13 +327,6 @@ export class BaseModel {
         return null;
     }
 
-    /**
-     * Sanitize arbitrary text into a valid slug (for suggestions).
-     */
-    /**
-     * Sanitize arbitrary text into a valid slug (for suggestions).
-     * Returns undefined if the result would be purely numeric (conflicts with docId).
-     */
     static slugify(raw: string): string | undefined {
         const s = String(raw || '')
             .trim()
@@ -369,7 +354,6 @@ export class BaseModel {
         return list;
     }
 
-    /** Recently updated knowledge bases (`TYPE_BASE` only). */
     static async getRecentUpdated(domainId: string, limit: number = 10): Promise<BaseDoc[]> {
         const list = await document
             .getMulti(domainId, document.TYPE_BASE, {} as Filter<BaseDoc>)
@@ -400,7 +384,7 @@ export class BaseModel {
         if (updates.tag) {
             updatePayload.tag = Array.isArray(updates.tag) ? updates.tag : [updates.tag];
         }
-        // Validate slug if being updated
+
         if ('slug' in updates) {
             if (updates.slug === undefined || updates.slug === null || updates.slug === '') {
                 delete updatePayload.slug;
@@ -408,7 +392,7 @@ export class BaseModel {
             } else {
                 const slugErr = BaseModel.validateSlug(updates.slug);
                 if (slugErr) throw new ValidationError(slugErr);
-                // Check uniqueness against other bases
+
                 const existingBySlug = await BaseModel.getBySlug(domainId, updates.slug);
                 if (existingBySlug && existingBySlug.docId !== docId) {
                     throw new ValidationError('{0} already exists in this domain'.replace('{0}', updates.slug));
@@ -439,14 +423,15 @@ export class BaseModel {
         updates: Partial<BaseNode>,
         mapDocType: MindMapDocType = document.TYPE_BASE,
     ): Promise<void> {
-        const base = await this.get(domainId, docId, mapDocType);
-        if (!base) throw new Error('Base not found');
+        await this.applyNodeUpdates(domainId, docId, [{ ...updates, nodeId }], mapDocType);
+    }
 
-        const nodes = (base.nodes || []).map((node) => ({
-            ...node,
-            ...(node.children ? { children: [...node.children] } : {}),
-        }));
-        const edges = [...(base.edges || [])];
+    private static applyNodeUpdate(
+        nodes: BaseNode[],
+        edges: BaseEdge[],
+        update: Partial<BaseNode> & { nodeId: string },
+    ): string {
+        const { nodeId, ...updates } = update;
         const nodeIndex = nodes.findIndex(n => n.id === nodeId);
         if (nodeIndex === -1) throw new Error('Node not found');
 
@@ -535,20 +520,41 @@ export class BaseModel {
             };
             updateChildLevels(nodeId, updatedNode.level || 0, new Set([nodeId]));
         }
+        return nodeId;
+    }
+
+    static async applyNodeUpdates(
+        domainId: string,
+        docId: number,
+        updates: (Partial<BaseNode> & { nodeId: string })[],
+        mapDocType: MindMapDocType = document.TYPE_BASE,
+    ): Promise<string[]> {
+        const base = await this.get(domainId, docId, mapDocType);
+        if (!base) throw new Error('Base not found');
+
+        const nodes = (base.nodes || []).map((node) => ({
+            ...node,
+            ...(node.children ? { children: [...node.children] } : {}),
+        }));
+        const edges = [...(base.edges || [])];
+
+        const titleOf = new Map<string, string>();
+        const changed: string[] = [];
+        for (const update of updates) {
+            changed.push(this.applyNodeUpdate(nodes, edges, update));
+            if (typeof update.text === 'string' && update.text.trim()) titleOf.set(update.nodeId, update.text);
+        }
 
         const updatePayload: Partial<BaseDoc> = {
             nodes,
             edges,
             updateAt: new Date(),
         };
-
-        if (typeof updates.text === 'string' && updates.text.trim()) {
-            const rootNodeId = this.getRootNodeId(nodes, edges);
-            if (rootNodeId === nodeId) {
-                updatePayload.title = updates.text;
-            }
-        }
+        const rootNodeId = this.getRootNodeId(nodes, edges);
+        const title = rootNodeId ? titleOf.get(rootNodeId) : undefined;
+        if (title !== undefined) updatePayload.title = title;
         await document.set(domainId, mapDocType, docId, updatePayload);
+        return changed;
     }
 
     static async updateEdge(
@@ -653,46 +659,59 @@ export class BaseModel {
     }
 
     static async deleteNode(domainId: string, docId: number, nodeId: string, mapDocType: MindMapDocType = document.TYPE_BASE): Promise<void> {
+        await this.deleteNodes(domainId, docId, [nodeId], mapDocType);
+    }
+
+    static async deleteNodes(
+        domainId: string,
+        docId: number,
+        nodeIds: string[],
+        mapDocType: MindMapDocType = document.TYPE_BASE,
+    ): Promise<{ removed: string[]; missing: string[] }> {
         const actualDomainId = typeof domainId === 'string' ? domainId : String(domainId);
         const base = await this.get(actualDomainId, docId, mapDocType);
-        if (!base) {
-            throw new Error('Base not found');
-        }
+        if (!base) throw new Error('Base not found');
 
         const nodes = base.nodes || [];
         let edges = base.edges || [];
+        const rootNodeId = this.getRootNodeId(nodes, edges);
 
-        const node = nodes.find(n => n.id === nodeId);
-        if (!node) {
+        const named: string[] = [];
+        const missing: string[] = [];
+        for (const nodeId of nodeIds) {
+            if (!nodes.some(n => n.id === nodeId)) {
+                if (!missing.includes(nodeId)) missing.push(nodeId);
+            } else if (rootNodeId && nodeId === rootNodeId) {
+                throw new Error('Root node cannot be deleted');
+            } else if (!named.includes(nodeId)) {
+                named.push(nodeId);
+            }
+        }
+
+        for (const nodeId of missing) {
             try {
-                const cards = await CardModel.getByNodeId(actualDomainId, base.docId, nodeId);
+                const cards = await CardModel.getByNodeId(actualDomainId, docId, nodeId);
                 for (const card of cards) {
                     await CardModel.delete(actualDomainId, card.docId);
                 }
             } catch (err) {
             }
-            return;
-        }
-
-        const rootNodeId = this.getRootNodeId(nodes, edges);
-        if (rootNodeId && nodeId === rootNodeId) {
-            throw new Error('Root node cannot be deleted');
         }
 
         const nodesToDelete = new Set<string>();
-        
+
         const collectChildNodes = (id: string) => {
             if (nodesToDelete.has(id)) {
                 return;
             }
-            
+
             nodesToDelete.add(id);
             const nodeToDelete = nodes.find(n => n.id === id);
-            
+
             if (!nodeToDelete) {
                 return;
             }
-            
+
             if (nodeToDelete.children && nodeToDelete.children.length > 0) {
                 nodeToDelete.children.forEach(childId => {
                     if (!nodesToDelete.has(childId)) {
@@ -700,7 +719,7 @@ export class BaseModel {
                     }
                 });
             }
-            
+
             const childEdges = edges.filter(e => e.source === id);
             childEdges.forEach(edge => {
                 if (!nodesToDelete.has(edge.target)) {
@@ -709,11 +728,13 @@ export class BaseModel {
             });
         };
 
-        collectChildNodes(nodeId);
+        for (const nodeId of named) {
+            collectChildNodes(nodeId);
+        }
 
         for (const nodeIdToDelete of nodesToDelete) {
             try {
-                // Delete physical files stored directly on this node
+
                 const nodeToDel = nodes.find(n => n.id === nodeIdToDelete);
                 if (nodeToDel?.files?.length) {
                     const nodeStoragePaths = nodeToDel.files.map(
@@ -721,15 +742,15 @@ export class BaseModel {
                     );
                     await storage.del(nodeStoragePaths, 0);
                 }
-                // Delete all cards under this node
+
                 const cards = await CardModel.getByNodeId(actualDomainId, docId, nodeIdToDelete);
                 for (const card of cards) {
-                    // Delete physical files for file-cards (stored under node path)
+
                     if ((card as CardDoc).cardType === 'file' && (card as CardDoc).fileName) {
                         const filePath = `base/${actualDomainId}/${docId.toString()}/node/${nodeIdToDelete}/${(card as CardDoc).fileName}`;
-                        try { await storage.del([filePath], 0); } catch { /* ignore */ }
+                        try { await storage.del([filePath], 0); } catch { }
                     }
-                    // Also delete any files attached to the card document
+
                     if ((card as any).files?.length) {
                         const cardStoragePaths = (card as any).files.map(
                             (f: any) => `base/${actualDomainId}/${docId.toString()}/card/${card.docId.toString()}/${f.name}`
@@ -744,54 +765,59 @@ export class BaseModel {
 
         const deleteNodeRecursive = (id: string) => {
             const nodeToDelete = nodes.find(n => n.id === id);
-            
+
             if (!nodeToDelete) {
                 return;
             }
-            
+
             const childIds = new Set<string>();
-            
+
             if (nodeToDelete.children && nodeToDelete.children.length > 0) {
                 nodeToDelete.children.forEach(childId => {
                     childIds.add(childId);
                 });
             }
-            
+
             const childEdges = edges.filter(e => e.source === id);
             childEdges.forEach(edge => {
                 childIds.add(edge.target);
             });
-            
+
             childIds.forEach(childId => {
                 deleteNodeRecursive(childId);
             });
-            
+
             const index = nodes.findIndex(n => n.id === id);
             if (index !== -1) nodes.splice(index, 1);
-            
+
             edges = edges.filter(e => e.source !== id && e.target !== id);
         };
 
-        if (node.parentId) {
-            const parentNode = nodes.find(n => n.id === node.parentId);
-            if (parentNode?.children) {
-                parentNode.children = parentNode.children.filter(id => id !== nodeId);
-                const parentIndex = nodes.findIndex(n => n.id === node.parentId);
-                if (parentIndex !== -1) {
-                    nodes[parentIndex] = parentNode;
+        for (const nodeId of named) {
+            const node = nodes.find(n => n.id === nodeId);
+            if (!node) continue;
+
+            if (node.parentId) {
+                const parentNode = nodes.find(n => n.id === node.parentId);
+                if (parentNode?.children) {
+                    parentNode.children = parentNode.children.filter(id => id !== nodeId);
+                    const parentIndex = nodes.findIndex(n => n.id === node.parentId);
+                    if (parentIndex !== -1) {
+                        nodes[parentIndex] = parentNode;
+                    }
                 }
             }
-        }
-        
-        edges = edges.filter(e => !(e.source === node.parentId && e.target === nodeId));
 
-        deleteNodeRecursive(nodeId);
+            edges = edges.filter(e => !(e.source === node.parentId && e.target === nodeId));
+            deleteNodeRecursive(nodeId);
+        }
 
         await document.set(actualDomainId, mapDocType, docId, {
             nodes,
             edges,
             updateAt: new Date(),
         });
+        return { removed: named, missing };
     }
 
     static async addEdge(
@@ -1102,7 +1128,6 @@ export class CardModel {
         });
     }
 
-    /** 用于学习 DAG 缓存失效：卡片变更不会写回 base 的 `updateAt`，需单独参与版本计算。 */
     static async maxUpdateAtMsForBase(domainId: string, baseDocId: number | ObjectId): Promise<number> {
         const rows = await document.getMulti(domainId, document.TYPE_CARD, { baseDocId })
             .sort({ updateAt: -1 })
@@ -1122,7 +1147,6 @@ export class CardModel {
     }
 }
 
-/** URL query–driven narrowing for outline file-tree (used by outline / base data handlers). */
 export type DetailExplorerFilters = {
     filterNode: string;
     filterCard: string;
@@ -1207,11 +1231,6 @@ export function trimDetailExplorerFiltersForClient(
     };
 }
 
-/**
- * Restricts outline file-tree nodes/edges and card lists using URL query keywords.
- * When multiple dimensions are set (node / card / problem), a node matches only if
- * every active dimension is satisfied (node title, card title only, problems).
- */
 export function applyDetailExplorerUrlFilters(
     nodes: BaseNode[],
     edges: BaseEdge[],
@@ -1281,7 +1300,6 @@ export function applyDetailExplorerUrlFilters(
     return { nodes: visibleNodes, edges: visibleEdges, nodeCardsMap: filteredMap };
 }
 
-/** Parse snake_case/camelCase detail explorer filters from tool arguments. */
 export function detailExplorerFiltersFromToolArgs(args: Record<string, unknown> | undefined | null): DetailExplorerFilters {
     const g = (k: string) => typeof args?.[k] === 'string' ? args[k] as string : '';
     return {
@@ -1339,7 +1357,6 @@ export async function fetchFilteredBaseDetail(
     return { base, nodes, edges, nodeCardsMap, outlineExplorerFilters: trimDetailExplorerFiltersForClient(outlineExplorerFilters) };
 }
 
-/** Optional numeric base doc id from POST body or query (used by mindmap / base APIs). */
 export function readOptionalRequestBaseDocId(req: { body?: any; query?: any } | undefined): number | undefined {
     if (!req) return undefined;
     const body = req.body || {};
@@ -1355,13 +1372,9 @@ export function readOptionalRequestBaseDocId(req: { body?: any; query?: any } | 
     }
 }
 
-/** De-dupe rapid repeat node-creation requests (mindmap node API). */
 export const nodeCreationDedupCache = new Map<string, number>();
 export const DEDUP_WINDOW_MS = 2000;
 
-/**
- * Longest root-to-leaf path length (each node counts as one layer). Forest-safe.
- */
 export function computeMaxNodeLayers(nodes: BaseNode[], edges: BaseEdge[]): number {
     if (!nodes?.length) return 0;
     const nodeIds = new Set(nodes.map((n) => n.id));
@@ -1403,9 +1416,6 @@ export function computeMaxNodeLayers(nodes: BaseNode[], edges: BaseEdge[]): numb
     return maxDepth;
 }
 
-/**
- * Count of distinct nodes one hop below root(s): targets of edges whose source is a root (no incoming edge).
- */
 export function countMainLevelChildNodes(nodes: BaseNode[], edges: BaseEdge[]): number {
     if (!nodes?.length) return 0;
     const nodeIds = new Set(nodes.map((n) => n.id));
@@ -1427,7 +1437,6 @@ export function countMainLevelChildNodes(nodes: BaseNode[], edges: BaseEdge[]): 
 
 export type BaseListCardStats = { cardCount: number; problemCount: number };
 
-/** Card + problem counts per baseDocId across the single main data tree. */
 export async function loadCardStatsByBaseDocId(
     domainId: string,
     baseDocIds: number[],
@@ -1470,7 +1479,6 @@ export async function loadCardStatsByBaseDocId(
     return map;
 }
 
-/** Attach list row stats (node/card/problem counts, depth) for base list UIs. */
 export function attachBaseListStats<T extends BaseDoc & { docId?: number | string }>(
     bases: T[],
     cardStats: Map<number, { cardCount: number; problemCount: number }>,
@@ -1501,7 +1509,6 @@ export function attachBaseListStats<T extends BaseDoc & { docId?: number | strin
     });
 }
 
-/** Base 内嵌 roadmap 画布（`BaseNode.type === 'roadmap'` 及其 canvas 子节点）。 */
 const ROADMAP_NODE_KINDS = new Set(['main', 'sub', 'hook', 'text']);
 const ROADMAP_LEGACY_KIND_MAP: Record<string, string> = {
     root: 'main',
@@ -1733,9 +1740,8 @@ export function collectRoadmapBatchSaveNumberErrors(
     return validateRoadmapCanvasNumbers(previewNodes, edges);
 }
 
-// @ts-ignore
 global.Ejunz.model.base = BaseModel;
-// @ts-ignore
+
 global.Ejunz.model.card = CardModel;
 export default { BaseModel, CardModel };
 

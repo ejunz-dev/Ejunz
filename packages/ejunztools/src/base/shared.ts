@@ -1,6 +1,7 @@
 import { ObjectId } from 'mongodb';
 import type { CardDoc, Problem, ProblemKind, BaseEdge, BaseNode } from 'ejun/src/interface';
 import { CardModel } from 'ejun/src/model/base';
+import * as document from 'ejun/src/model/document';
 import { migrateRawProblem } from 'ejun/src/model/problem';
 import type { ToolContext, ToolArgs } from '../types';
 import type { BaseGitInput } from './git/types';
@@ -16,6 +17,76 @@ export async function requireCard(ctx: ToolContext, cardId: unknown): Promise<Ca
     if (!card) throw new Error('Card not found');
     if (String(card.baseDocId) !== String(ctx.baseDocId)) throw new Error('Card does not belong to this base');
     return card;
+}
+
+export function asText(raw: unknown): string {
+    return raw === undefined || raw === null ? '' : String(raw).trim();
+}
+
+export function idList(raw: unknown, label: string, limit: number): string[] {
+    if (!Array.isArray(raw) || !raw.length) throw new Error(`${label} must be a non-empty array of ids`);
+    if (raw.length > limit) {
+        throw new Error(`${label} holds ${raw.length} entries and one call takes ${limit}; split the work across calls`);
+    }
+    const ids: string[] = [];
+    for (const [index, entry] of raw.entries()) {
+        const id = asText(entry);
+        if (!id) throw new Error(`${label}[${index}] must be a non-empty id`);
+        if (!ids.includes(id)) ids.push(id);
+    }
+    return ids;
+}
+
+export async function cardsById(ctx: ToolContext, cardIds: string[]): Promise<Map<string, CardDoc>> {
+    if (!cardIds.length) return new Map();
+    const objectIds = cardIds.map((cardId) => toObjectId(cardId));
+    const cards = await document
+        .getMulti(ctx.domainId, document.TYPE_CARD, { docId: { $in: objectIds } })
+        .toArray() as CardDoc[];
+    const byId = new Map<string, CardDoc>();
+    for (const card of cards) {
+
+        if (String(card.baseDocId) !== String(ctx.baseDocId)) continue;
+        byId.set(String(card.docId), card);
+    }
+    return byId;
+}
+
+export function fileStoragePath(ctx: ToolContext, nodeId: string, fileName: string): string {
+    return `base/${ctx.domainId}/${ctx.baseDocId.toString()}/node/${nodeId}/${fileName}`;
+}
+
+export function fileTypeOf(fileName: string): string {
+    const ext = fileName.split('.').pop()?.toLowerCase() || '';
+    const imageExt = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico']);
+    const videoExt = new Set(['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'wmv']);
+    const audioExt = new Set(['mp3', 'wav', 'flac', 'aac', 'ogg', 'wma', 'm4a']);
+    const codeExt = new Set(['js', 'ts', 'tsx', 'jsx', 'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp', 'css', 'scss', 'less', 'html', 'json', 'yaml', 'yml', 'xml', 'md', 'sh', 'bash', 'sql', 'vue', 'svelte']);
+    if (ext === 'pdf') return 'pdf';
+    if (imageExt.has(ext)) return 'image';
+    if (videoExt.has(ext)) return 'video';
+    if (audioExt.has(ext)) return 'audio';
+    if (codeExt.has(ext)) return 'code';
+    return 'other';
+}
+
+export function fileCardSummary(card: CardDoc) {
+    return {
+        cardId: String(card.docId),
+        title: card.title,
+        fileName: card.fileName || '',
+        fileType: card.fileType || '',
+        fileSize: card.fileSize || 0,
+        nodeId: card.nodeId,
+    };
+}
+
+export function fileCardDetail(card: CardDoc, baseDocId: number) {
+    return {
+        ...fileCardSummary(card),
+        content: card.content,
+        downloadUrl: `/base/${baseDocId}/node/${card.nodeId}/file/${encodeURIComponent(card.fileName || '')}`,
+    };
 }
 
 export function parseProblemPayload(raw: unknown): Record<string, unknown> {

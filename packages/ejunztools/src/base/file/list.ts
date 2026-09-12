@@ -1,6 +1,7 @@
 import * as document from 'ejun/src/model/document';
 import { BaseModel, CardModel } from 'ejun/src/model/base';
 import type { CardDoc } from 'ejun/src/interface';
+import { fileCardSummary } from '../shared';
 import type { ToolContext, ToolArgs } from '../../types';
 
 export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown> {
@@ -10,12 +11,5 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
     if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
     if (!(base.nodes || []).some((node) => node.id === nodeId)) throw new Error(`Node not found: ${nodeId}`);
     const cards = await CardModel.getByNodeId(ctx.domainId, ctx.baseDocId, nodeId);
-    return cards.filter((card) => (card as CardDoc).cardType === 'file').map((card) => ({
-        cardId: String(card.docId),
-        title: card.title,
-        fileName: (card as CardDoc).fileName || '',
-        fileType: (card as CardDoc).fileType || '',
-        fileSize: (card as CardDoc).fileSize || 0,
-        nodeId: card.nodeId,
-    }));
+    return cards.filter((card) => (card as CardDoc).cardType === 'file').map((card) => fileCardSummary(card));
 }
