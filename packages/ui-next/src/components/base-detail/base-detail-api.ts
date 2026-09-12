@@ -17,22 +17,69 @@ async function parseResponse(response: Response): Promise<any> {
   }
 }
 
+/** A failure payload carries the message either flat or under `error`. */
+function failureMessage(payload: any, status: number): string {
+  const error = payload?.error;
+  const nested = error && typeof error === 'object' ? error.message : error;
+  return String(payload?.message || nested || payload?.body || `HTTP ${status}`);
+}
+
 export async function requestJson<T = any>(
   path: string,
-  options: { domainId?: string; method?: string; body?: unknown } = {},
+  options: { domainId?: string; method?: string; body?: unknown; acceptJson?: boolean } = {},
 ): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+  // Handlers that render HTML answer a JSON request with their page payload, so
+  // failures arrive as `{ error }` instead of a rendered error page.
+  if (options.acceptJson) headers.Accept = 'application/json';
   const response = await fetch(domainApiPath(path, options.domainId), {
     method: options.method || (options.body === undefined ? 'GET' : 'POST'),
     credentials: 'same-origin',
-    headers: options.body === undefined ? undefined : { 'Content-Type': 'application/json' },
+    headers: Object.keys(headers).length ? headers : undefined,
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
   });
   const payload = await parseResponse(response);
   if (!response.ok || payload?.success === false) {
-    const message = payload?.message || payload?.error || payload?.body || `HTTP ${response.status}`;
-    throw new Error(String(message));
+    throw new Error(failureMessage(payload, response.status));
   }
   return payload as T;
+}
+
+export interface StartNodeLessonOptions {
+  domainId: string;
+  nodeId: string;
+  /** Numeric base doc id (`BaseDoc.docId`). */
+  baseDocId: number;
+  /** Card docIds currently visible in the detail page; the session is scoped to them. */
+  detailFilteredCardIds: string[];
+  detailSourceUrl: string;
+  detailFilterSummary: string;
+}
+
+/**
+ * Queue a single-node practice session and return the lesson URL to open.
+ * Sends `source: 'base_detail'` so the server records the detail page filters
+ * the session came from.
+ */
+export async function startNodeLesson(options: StartNodeLessonOptions): Promise<string> {
+  const response = await requestJson<{ redirect?: string }>('/learn/lesson/start', {
+    domainId: options.domainId,
+    acceptJson: true,
+    body: {
+      mode: 'node',
+      nodeId: options.nodeId,
+      baseDocId: options.baseDocId,
+      learnSource: 'base',
+      source: 'base_detail',
+      detailFilteredCardIds: options.detailFilteredCardIds,
+      detailSourceUrl: options.detailSourceUrl,
+      detailFilterSummary: options.detailFilterSummary,
+    },
+  });
+  const redirect = typeof response?.redirect === 'string' ? response.redirect.trim() : '';
+  if (!redirect) throw new Error('Learn lesson start missing redirect');
+  return redirect;
 }
 
 export async function updateBaseCard(

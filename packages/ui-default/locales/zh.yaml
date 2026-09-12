@@ -1,5 +1,11 @@
 
 
+
+
+
+  {0}
+  操作失败：
+  请修正上述问题后重试。
 __id: zh
 __interface: 1
 __langname: 简体中文
@@ -10,10 +16,13 @@ __langname: 简体中文
 '"{data}" copied to clipboard!': “{data}”已复制到剪贴板！
 '(No content)': (无内容)
 '{0} {1} delete your discussion reply {2} in "{3}"({4}).' : '{0} {1} 从讨论 {3}({4}) 删除了你的回复 {2}。'
+'{0} already exists in this domain': '{0} 已存在'
 '{0} comments': '{0} 条评论'
 '{0} days ago': '{0}天前'
 '{0} discussions': '{0} 条讨论'
+'{0} filter rules': '{0} 条过滤规则'
 '{0} is a moderator of this domain.': '{}是这个域的管理者之一。'
+'{0} is available': '{0} 可用'
 '{0} limit exceeded (limit: {2} operations in {1} seconds).': '{0} 超过频率限制。限制：{1} 秒内最多 {2} 次操作。'
 '{0} more cards to go': 还差 {0} 张卡片
 '{0} more times to go': 还差 {0} 次
@@ -25,12 +34,21 @@ __langname: 简体中文
 '↓ # Stars': '↓ 收藏数'
 '↓ Create Time': '↓ 创建时间'
 '↓ Update Time': '↓ 更新时间'
+'1 day': '1 天'
+'1 hour': '1 小时'
+'1 year': '1 年'
+'30 days': '30 天'
+'7 days': '7 天'
 'A domain ID cannot be changed after creation. It is supposed to be:': '创建后将无法更改 ID。ID 必须满足以下条件：'
 'Access Point Type': 接入点类型
 'Accuracy': 正确率
+'Actions / Expiry': '操作 / 过期设置'
 'Actions': 操作
 'Add failed.': 添加失败
+'Add new tag group...': 新建标签组…
 'Add Root Doc': 添加根文档
+'Add sub-tag...': 添加子标签…
+'Add tag...': '添加标签...'
 'Add to top of order': 添加到顺序顶部
 'Added to tool list.': 已添加到工具列表
 'Added': 已添加
@@ -40,25 +58,17 @@ __langname: 简体中文
 'Agent configuration saved successfully': Agent 配置已保存
 'Agent Configuration': Agent 配置
 'Agent Knowledge Base': Agent 知识库
-'Configure Agent Knowledge Base': 配置 Agent 知识库
-'No knowledge base is mounted for this agent yet.': 此 Agent 尚未挂载知识库。
-'Optionally mount one domain knowledge base (outline / cards) for this agent.': 可选：为此 Agent 挂载一个域内知识库（大纲/卡片）。
-'Save knowledge base mount': 保存知识库挂载
-'Failed to save knowledge base mount': 保存知识库挂载失败。
-'Knowledge base': 知识库
-'No knowledge bases in this domain yet.': 该域内还没有知识库。
-'Core library': 核心库
-'Core': 核心
-'At least one enabled library must be marked as core.': 已启用的技能库中，至少须将一个标记为核心库。
-'Back to Agent': 返回 Agent
 'Agent': 智能体
 'Ahead of remote by {0} commit(s)': 领先远程 {0} 个提交
 'AI chat failed': AI 聊天失败
 'AI executed operations': AI 已执行操作
+'AI grade': AI 评分
 'AI returned incomplete problem data': AI返回的题目数据不完整
 'AI returned invalid format': AI返回的格式不正确，请重试
 'AI': AI
+'All Bases': 全部知识库
 'Allow using gravatar:email qq:id github:name url:link format.': '允许使用 gravatar:email，qq:id，github:name，url:link 格式。'
+'An Edge client is requesting to register to the current domain.': 有一个 Edge 客户端正在请求注册到当前域。
 'Analysis (optional)': 解析（可选）
 'Analysis': 解析
 'Answer index invalid': 答案索引无效
@@ -71,18 +81,45 @@ __langname: 简体中文
 'ASR (Speech Recognition) Configuration': ASR (语音识别) 配置
 'ASR configuration saved successfully': ASR 配置已保存
 'ASR Configuration': ASR 配置
+'Assignable MCP services in this domain': 当前域可用的 MCP 服务
+'assignable': '可分配'
+'At least one enabled library must be marked as core.': 已启用的技能库中，至少须将一个标记为核心库。
 'At least two options required for create_problem': create_problem 操作的选项数量不足
 'At least two options required': 至少需要两个选项
 'Attempts': 尝试数量
+'Authentication Time': '认证时间'
+'Authorize and register': 授权并注册
+'Authorize Edge registration': 授权 Edge 注册
+'Available MCP services': 可用 MCP 服务
+'Available tags': '可用标签'
+'Back to Agent': 返回 Agent
 'Back to Details': 返回详情
 'Back to Learn': 返回学习
+'Back to list': 返回列表
 'Back to List': 返回列表
 'Back to Tools List': 返回工具列表
+'Base bid already exists: {0}': 'BID 已存在：{0}'
+'Base detail card empty': 该卡片暂无内容。
+'Base detail content filter dialog hint': 仅过滤当前内容区的树，不匹配的树枝会被隐藏。
+'Base detail content placeholder': 从文档结构中选择节点以查看内容。
+'Base detail filter dialog hint': 匹配的节点与卡片会显示在文档结构中，不匹配的树枝会被隐藏。
+'Base detail node empty': 该节点暂无内容。
+'Base detail tree empty': 该知识库暂无节点。
+'Base detail tree search aria': 过滤内容树
+'Base detail tree search placeholder': 过滤当前树…
+'Base editor problems tab': 练习题
 'Base has no nodes': 知识库暂无节点
+'Base roadmap card title': 卡片标题
+'Base roadmap card type hook': 跳转卡片
+'Base roadmap card type main': 主卡片
+'Base roadmap card type sub': 子卡片
+'Base roadmap card type text': 文本卡片
+'Base roadmap new card': 新建卡片
 'Base URL': Base URL
 'Basic Info': 基本信息
 'Batch save failed': 批量保存失败
 'Behind remote by {0} commit(s)': 落后远程 {0} 个提交
+'Blank': 第 {0} 空
 'Block': 块
 'branch': 分支
 'Breadth learning mode': 广度学习模式
@@ -93,29 +130,28 @@ __langname: 简体中文
 'Card already in target node': 卡片已经在目标节点下
 'Card data not found, cannot generate problem': 未找到对应的卡片数据，无法生成题目
 'Card face is displayed in lessons alongside Know it / No impression. Supports Markdown.': 卡面会在课时中与 Know it / No impression 一起展示，支持 Markdown
+'Card problems': 本卡片的练习题
 'Card Results': 各卡片结果
+'Card tags filter placeholder': '用逗号分隔的标签名'
+'Card tags filter': '按卡片标签过滤'
+'Card tags': '卡片标签'
 'Card': 卡片
 'cardId is required': cardId 是必需的
+'Cards: {0}': 卡片：{0} 张
 'Check-in Days': 打卡天数
 'Check-in remaining': 今日还需
 'Checked in': 已打卡
+'Checking availability…': '正在检查可用性…'
+'Child nodes: {0}': 子节点：{0} 个
+'Choose a roadmap and branch, then save to continue learning.': 选择路线图与分支并保存后即可继续学习。
+'Choose which roadmap and branch to use for Learn.': 选择用于学习的路线图与分支。
 'Clear Agent': 清除 Agent
 'Clear Logs': 清空日志
 'Click a section on the left to add to the top of the order.': 点击左侧章节的加号添加到顺序列表顶部。
 'Click a section to add it to the top of the order list.': 点击章节右侧的加号可将其添加至顺序列表顶部。
-'Section Order': 学习路径节序
-'Reset learn DAG': 从大纲重建
-'Reset learn DAG description': 按当前知识库最新大纲重建学习路径，并将节序恢复为与大纲一致（会覆盖已保存的自定义顺序）。
-'Learn DAG reset done': 已根据最新大纲重新生成学习路径。
-'Learn DAG reset failed': 从大纲重建学习路径失败。
-'Reset learn progress': 重置进度
-'Reset learn progress description': 清除该用户在本域内的通过记录、路径练习次数等进度，保留当前节序与学习起点；会结束进行中的课时会话以便下次从头开始。
-'Reset learn progress confirm': 确定清除该用户在本域内的学习进度（通过状态、路径练习计数等）吗？节序与当前学习节将保持不变。
-'Learn progress reset done': 学习进度已清除。
-'Learn progress reset failed': 重置学习进度失败。
-'Resetting...': 重建中…
 'Click the "Create Client" button above to create a new client': 点击上方"创建客户端"按钮来创建新的客户端
 'Click to expand questions': 点击展开题目
+'Click to select': 点击选用
 'Client Connection Logs': 客户端连接日志
 'Client ID': 客户端 ID
 'Client Information': 客户端信息
@@ -124,14 +160,19 @@ __langname: 简体中文
 'Clients can connect via the following WebSocket URL (Token must be generated first)': 客户端可以通过以下 WebSocket URL 连接（需要先为客户端生成 Token）
 'Clipboard unavailable': 剪贴板不可用
 'Close and retry': 关闭并重新作答
+'Collapse panel': 收起面板
 'Collapse': 折叠
 'Collecting data...': 正在收集数据...
+'Column': 第 {0} 列
 'Commit Message': 提交消息
 'commits': 提交
 'Completed cards': 已完成卡片
 'Completed sections': 已完成
 'Completed today': 今日已完成
 'Configuration': 配置
+'Configure Agent Knowledge Base': 配置 Agent 知识库
+'Confirm deleting {0} selected MCP endpoint(s)? Their tokens will be invalidated immediately.': '确认删除已选的 {0} 个 MCP 端点吗？它们的 Token 将立即失效。'
+'Confirm deleting {0} selected roadmap(s)?': 确认删除已选的 {0} 条路线图？
 'Confirm': 确认
 'Congratulations! You have completed all practice questions correctly.': 恭喜！您已正确完成所有练习题。
 'Connect to the WebSocket URL above using the generated Token': 使用生成的 Token 连接到上述 WebSocket URL
@@ -150,8 +191,8 @@ __langname: 简体中文
 'Contributions on {0} in {1}': '{0} 在 {1} 的贡献'
 'Contributions on {0}': '{0} 的详细贡献'
 'Conversation Details': 对话详情
-'Copied to clipboard': 已复制到剪贴板
 'Convert to node': 转换为节点
+'Copied to clipboard': 已复制到剪贴板
 'Copied': 已复制
 'Copy "{data}" failed :(': '复制“{data}”失败 :('
 'Copy content': 复制内容
@@ -159,66 +200,156 @@ __langname: 简体中文
 'Copy link': 复制链接
 'Copy selected': 复制选中项
 'Copy structure': 复制结构
+'Core library': 核心库
+'Core': 核心
 'Correct answer (mark)': 正确答案
 'Correct answer': 正确答案
 'Correct Answer': 正确答案
 'Correct needed': 再答对
 'Correct': 正确
-'Create one': 去创建
+'Cover all': 全部遮住
+'Create a roadmap document for this domain.': 为本域创建路线图文档。
+'Create a roadmap to get started.': 创建路线图以开始。
 'Create Client': 创建客户端
+'Create one': 去创建
 'Create remote branch': 创建远程分支
+'Create Roadmap': 创建路线图
+'Created at: {0}': '创建：{0}'
 'Created Clients': 已创建的客户端
 'Created Time': 创建时间
 'Cumulative': 累计
 'Current base (Learn)': 当前知识库（学习）
 'Current base structure': 当前知识库结构
 'Current dataset: {0}': '当前测试数据: {0}'
+'Current knowledge base (Learn)': 当前知识库（学习）
 'Current Progress': 当前进度
+'Current roadmap (Learn)': 当前路线图（学习）
 'Current': 当前
 'Currently Selected Agent': 当前选择的 Agent
-'Cut': 已剪切
 'Cut selected': 剪切选中项
+'Cut': 已剪切
 'Daily Goal': 每日目标
 'days': 天
 'Deep learning mode': 深度学习模式
 'Default message': 默认消息
 'Delete Card': 删除卡片
 'Delete Client': 删除客户端
+'Delete Node': 删除节点
 'Delete problem': 删除题目
+'Delete Roadmap': 删除路线图
+'Delete row': 删除此行
 'Delete selected': 删除选中项
 'Delete Server': 删除服务器
-'Delete Node': 删除节点
 'Delete Token': 删除 Token
+'Deleting an outbound MCP invalidates its token immediately.': '删除出站 MCP 会立即使其 Token 失效。'
 'Description (Optional)': 描述（可选）
+'Develop add row': 添加一项
+'Develop check-in blocked': 完成开发池内全部当日目标后可打卡
+'Develop check-in done': 今日已打卡
+'Develop check-in failed': 打卡失败
+'Develop check-in goals not met': 当日目标尚未全部完成
+'Develop check-in need goals set': 请至少为一项设置大于 0 的每日目标
+'Develop check-in need pool': 请先在「编辑」中添加开发池条目
+'Develop check-in': 每日打卡
+'Develop continue': 继续开发
+'Develop domain contribution wall caption': 本知识库内累计到每日目标的开发与保存次数（UTC）。色块越深表示当日节点/卡片/题目编辑越多；也可能因打卡或仅有编辑器活动而点亮。
+'Develop domain contribution wall': 本域开发贡献
+'Develop edit pool hint roadmap': 选择路线图与分支，并设置每日节点、卡片、题目目标；用 ↑↓ 调整顺序后保存。「开始开发」将按该顺序进入路线图编辑器。
+'Develop edit pool hint': 选择知识库并设置每日节点、卡片、题目目标；用 ↑↓ 调整顺序后保存。「开始开发」将按该顺序进入编辑器。
+'Develop edit pool': 编辑开发池
+'Develop editor all pool goals met': 开发池内所有条目今日目标均已完成。
+'Develop editor end session': 结束会话
+'Develop editor goals complete': 当前池条目的今日目标已完成。
+'Develop editor pool progress': 开发池 · 今日进度
+'Develop editor settle': 结算
+'Develop editor switch modal hint': 点击下方条目进入对应编辑器；进度为当前 UTC 日。
+'Develop editor switch modal title': 今日尚未完成目标的开发池条目
+'Develop editor switch other base': 去其他知识库继续
+'Develop goal cards': 卡片目标
+'Develop goal nodes': 节点目标
+'Develop goal problems': 题目目标
+'Develop goal unset': —
+'Develop mode knowledge base': 知识库
+'Develop mode roadmap': 路线图
+'Develop move down': 下移
+'Develop move up': 上移
+'Develop no bases': 当前域内还没有知识库，请先创建知识库。
+'Develop no pool hint': 还没有开发池条目。点击上方「编辑」添加知识库及每日目标。
+'Develop no roadmaps': 当前域内还没有路线图，请先创建路线图。
+'Develop pool order hint': 列表顺序即为开发顺序；在「编辑」中用 ↑↓ 调整后保存。
+'Develop pool skip done hint': 已达今日目标的库不会进入「开始开发」队列。
+'Develop pool': 开发池
+'Develop progress overview': 今日目标与进度
+'Develop queue current': 当前
+'Develop queue sidebar hint': 点击一项将打开对应知识库的开发会话（未保存的修改请先保存）。
+'Develop queue tab': 队列
+'Develop row today goals met': 今日目标已完成
+'Develop run clear': 结束队列
+'Develop run next': 下一个
+'Develop run queue empty today': 今日待开发任务已全部完成。
+'Develop run queue': 开发队列
+'Develop save failed': 保存失败
+'Develop save pool': 保存开发池
+'Develop session closed reload hint': 该开发会话已结束或不可用，将刷新页面以查看最新状态。
+'Develop session contribution': 本会话
+'Develop session deadline hint': 以下时间后本会话将自动结束（本地时间）：
+'Develop session elapsed label': 已持续时间：
+'Develop session started label': 开始时间（本地）：
+'Develop session': 会话
+'Develop settle already': 该开发会话已结算。
+'Develop settle failed': 结算失败。
+'Develop settle outline session': 单节点（大纲）编辑会话不能按每日开发池结算，请直接关闭或跨日后查看历史。
+'Develop settle pool incomplete': 开发池内尚有条目未达成今日目标，无法结算。
+'Develop sidebar completed today': 今日已完成
+'Develop sidebar no completed': 暂无已全部达成当日目标的学习库。
+'Develop sidebar no pending': 当前没有待完成项。
+'Develop sidebar pending today': 待完成
+'Develop start base not in pool': 该知识库不在你的开发任务列表中。
+'Develop start failed': 无法开始开发会话，请稍后重试
+'Develop start goals done today': 该知识库今日目标已完成，无需再进入开发队列。
+'Develop start no pending': 今日待开发任务已全部完成；若有未结束的会话可先继续。
+'Develop start': 开始开发
+'Develop today cards': 卡片
+'Develop today nodes': 节点
+'Develop today problems': 题目
+'Develop today progress': 今日进度（UTC，保存时累计）
+'Develop unknown base': 知识库不存在
+'Develop unknown roadmap': 路线图不存在
+'Develop utc day': UTC 日期
+'Develop wall base fallback title': '知识库 {0}'
+'Develop wall checked in': 当日已在本域完成开发打卡。
+'Develop wall checkin only saves': 当日仅有打卡，未在统计中计入保存次数。
+'Develop wall no sessions': 当日无开发会话。
+'Develop wall session base line': '{0}：{1} 条记录'
+'Develop wall session no saves': 当日该会话下无编辑器保存记录。
+'Develop wall sessions': 当日开发会话（UTC）
+'Develop': 开发
 'Device': 设备
 'Disconnected': 已断开
 'Discussion: Terms Of Service': 讨论区服务条款
 'Discussion': 讨论
 'Doc': 文档
+'Document Structure': 文档结构
 'Domains': 域
 'Done': 已完成
 'Download Audio': 下载音频
 'Download Recording': 下载录音
 'Drag items to reorder': 拖拽项目以改变顺序
 'Drop here to delete': 拖到这里删除
+'Edge authorization succeeded': Edge 授权成功
 'Edge Connection Status': Edge 连接状态
 'Edge page': Edge 页面
 'Edge Type': Edge 类型
-'Edge authorization succeeded': Edge 授权成功
-'Authorize Edge registration': 授权 Edge 注册
-'The Edge client has received its connection token and will reconnect automatically to complete registration.': Edge 客户端已收到连接 Token，并会自动重连完成注册。
-'You can close this page.': 你可以关闭此页面。
-'An Edge client is requesting to register to the current domain.': 有一个 Edge 客户端正在请求注册到当前域。
-'Expires At': 过期时间
-'Authorize and register': 授权并注册
-edge_authorize: Edge 授权
 'Edit card face': 编辑卡面
 'Edit Client': 编辑客户端
+'Edit graph': 编辑图谱
 'Edited': 已编辑
+'ejunztools': 'Ejunz Tools'
 'Enable Server VAD': 启用服务器 VAD
 'Endpoint': Endpoint
 'Enter custom commit message (optional)': 请输入自定义提交消息（可选）
 'Enter new title': 输入新标题
+'Enter roadmap title': 输入路线图标题
 'Enter single card mode?': 进入单卡片模式？
 'Enter single node mode?': 进入单节点模式？
 'Enter title for new': 输入新
@@ -226,9 +357,15 @@ edge_authorize: Edge 授权
 'Error': 错误
 'Existing problems': 已有题目列表
 'Exit multi-select': 退出多选模式
+'Exit': 退出
 'Expand': 展开
+'Expiration Time': '过期时间'
+'Expired': '已过期'
+'Expires At': 过期时间
+'Expiry': '过期设置'
 'Export complete': 导出完成
 'Export failed': 导出失败
+'external': '外部'
 'Failed to clear Agent configuration: {0}': '清除 Agent 配置失败: {0}'
 'Failed to delete API key': 删除 API Key 失败
 'Failed to delete conversation': '删除对话失败'
@@ -243,18 +380,22 @@ edge_authorize: Edge 授权
 'Failed to push to GitHub': '推送到 GitHub 失败'
 'Failed to save Agent configuration: {0}': '保存 Agent 配置失败: {0}'
 'Failed to save ASR configuration: {0}': '保存 ASR 配置失败: {0}'
+'Failed to save knowledge base mount': 保存知识库挂载失败。
 'Failed to save learn session mode': 保存学习模式失败
+'Failed to save learn sub mode': 保存学习副模式失败
 'Failed to save TTS configuration: {0}': '保存 TTS 配置失败: {0}'
 'Failed to set learning point': 设置学习点失败
+'False': 错误
 'File Mode': 文件模式
 'File view': 文件视图
+'Filter rules': 过滤规则细则
 'Final message will be': 最终消息将是
+'Flip hide hint': 收起提示
+'Flip hint label': 提示
 'Flip mark done': 标记完成
 'Flip show back': 查看背面
 'Flip show front': 查看正面
 'Flip show hint': 显示提示
-'Flip hide hint': 收起提示
-'Flip hint label': 提示
 'Folder description': 文件夹描述
 'Folder/Directory': 文件夹/目录
 'Format: category 1, sub category 1.1, sub category 1.2, ..., sub category 1.x, ..., category n, sub category n.1, sub category n.2, ..., sub category n.m, ...': 格式：分类1, 子分类1.1, 子分类1.2, ..., 子分类1.x, ..., 分类n, 子分类n.1, 子分类n.2, ..., 子分类n.m, ...
@@ -272,205 +413,211 @@ edge_authorize: Edge 授权
 'Image upload failed': 图片上传失败
 'Import hint': 粘贴内容到下方，使用 ## 标题 与 --- 分隔多个卡片
 'Import structure and content': 导入结构与内容
+'inbound': '入站'
 'Incorrect': 错误
 'Input Parameters': 输入参数
+'Input roadmap title': 输入路线图标题
 'Input Schema': 输入模式
+'Insert {0} selected into AI terminal': 将 {0} 项选中内容插入 AI 终端
 'Insert above': 向上插入
 'Insert at bottom': 底部插入
 'Insert below': 向下插入
 'Insert here': 插入此处
 'Insert into AI terminal': 插入到 AI 终端
 'Insert problem into AI terminal': 将题目插入到 AI 终端
-'Practice problem pid not on open card': 当前卡片上没有该题目 id，无法更新
-'Lesson problem tag label': 题目标签
-'Problem tag none': （无标签 / 默认分组）
-'Lesson problem tag save failed': 保存题目标签失败
-'Lesson problem tag save missing node': 无法保存标签：卡片缺少所属节点信息
-'Lesson problem tag save no card': 无法保存标签：当前页找不到对应卡片
-'Lesson problem tag new placeholder': 输入新标签名称
-'Lesson problem tag apply new': 添加
-'Lesson problem tag new hint': 将标签登记到当前知识库（最多 64 字符）；登记后会自动追加到本题，也可从上方下拉追加已有标签。
-'Lesson problem tag register ok': 已登记并已追加到本题。
-'Lesson problem tag register failed': 登记标签失败
-'Lesson problem tag panel title': 题目标签
-'Lesson problem tag panel open': 管理标签
-'Lesson problem tag panel empty': 当前无标签
-'Lesson problem tag panel current': 当前标签
-'Lesson problem tag panel assign': 分派标签
-'Manage tags': 管理标签
-'Problem tags edit': 编辑标签
-'Add new tag group...': 新建标签组…
-'Add sub-tag...': 添加子标签…
-'Click to select': 点击选用
-'Selected': 已选用
-'Lesson problem tag panel readonly hint': 你没有编辑该题标签的权限。
-'Lesson problem tag panel choose registered': 从已登记标签中选择
-'Lesson problem tag panel new': 自定义新标签
-'Lesson problem tag panel clear': 清除标签
-'Lesson problem tag panel append registered': 追加已登记标签
-'Lesson problem tag panel add registered placeholder': 选择要追加的标签…
-'Lesson problem tag chip remove': 移除
-'Lesson problem notes panel title': 笔记
-'Lesson problem notes count badge': '{0} 条笔记'
-'Lesson problem notes empty list': 暂无笔记
-'Lesson problem notes add': 添加笔记
-'Lesson problem notes placeholder': 写下你的笔记…
-'Lesson problem notes submit': 发布
-'Lesson problem notes submitting': 发布中…
-'Lesson problem notes saved': 已发布。
-'Lesson problem notes load failed': 加载笔记失败。
-'Lesson problem notes save failed': 发布笔记失败。
-'Lesson problem notes updated': 已更新笔记。
-'Lesson problem notes edited at': 编辑于 {0}
-'Lesson problem notes edit': 编辑
-'Lesson problem notes save edit': 保存
-'Lesson problem notes cancel edit': 取消
-'Lesson problem notes delete': 删除
-'Lesson problem notes deleting': 删除中…
-'Lesson problem notes delete confirm': 确定删除这条笔记？此操作无法撤销。
-'Lesson problem notes deleted': 已删除笔记。
-'Lesson problem notes delete failed': 删除失败。
-'Problem editor notes title': 笔记
-'Problem editor notes empty': 暂无笔记。
-'Problem editor notes add': 添加
-'Problem editor notes delete': 删除
-'Problem editor notes remove row': 移除该条
-'Problem editor notes pending short': 条待保存
-'Loading...': 加载中…
-'Insert {0} selected into AI terminal': 将 {0} 项选中内容插入 AI 终端
+'Insert row after': 在下面插入行
+'Insert row before': 在上面插入行
+'Invalid lesson navigate': 无效的卡片跳转请求
 'Join {0}': '加入 {0}'
 'Join Domain': 加入域
 'Jump to {0}': 跳至 {0}
 'Know it': 认识
+'Knowledge base': 知识库
+'Knowledge Base': 知识库
 'Language Type': 语言类型
 'Last check-in': 上次打卡
 'Last Commit': 最后提交
 'Last Connected Time': 最后连接时间
 'Last Connected': 最后连接
 'Last Disconnected Time': 最后断开时间
-'Learn session mode': 学习模式（下次会话）
-'Learn session preferences': 学习会话设置
+'Last used': '上次使用'
+'Learn DAG reset done': 已根据最新大纲重新生成学习路径。
+'Learn DAG reset failed': 从大纲重建学习路径失败。
+'Learn domain learn wall caption': 本域内每日学习练习与答题结果统计（UTC）。色块越深表示节点/卡片/题目活动越多；也可能因打卡或打开过学习会话而点亮。选日后按学习会话列出，每行日期链到该会话历史。
+'Learn domain learn wall': 本域学习墙
+'Learn lesson start missing redirect': 开始学习失败，服务器未返回有效跳转地址。
+'Learn mixed schedule new first': 先学新
+'Learn mixed schedule one one': 1+1（一新一旧）
+'Learn mixed schedule review first': 先复习
+'Learn mixed schedule shuffle': 随机打乱
+'Learn mixed schedule': 学新+复习时的顺序
 'Learn mode knowledge base': 知识库
 'Learn mode roadmap': 路线图
-'Current knowledge base (Learn)': 当前知识库（学习）
-'Current roadmap (Learn)': 当前路线图（学习）
-'Pending selection': 待选择
-'Select learn base': 选择知识库
-'Select learn roadmap': 选择路线图
-'Select learn roadmap and branch': 选择路线图与分支
-'Select a knowledge base before learning': 请先选择知识库再开始学习
-'Select a roadmap before learning': 请先选择路线图再开始学习
-'Choose a roadmap and branch, then save to continue learning.': 选择路线图与分支并保存后即可继续学习。
-'Choose which roadmap and branch to use for Learn.': 选择用于学习的路线图与分支。
-'No knowledge base in this domain.': 该域内还没有知识库。
-'No roadmap in this domain.': 该域内还没有路线图。
-'This roadmap branch has no practice nodes': 该路线图分支没有可练习的节点
-'Learn session card filter': 卡片过滤（下次会话）
-'Learn session card filter all': 学习所有卡片（含无题目的）
-'Learn session card filter with problems': 只学有题目的卡片
-'Learn session card filter without problems': 只学无题目的卡片
-'Learn session problem tag filter': 题目标签过滤（针对卡片内的题目）
-'Learn session problem tag filter off': 不按题目标签过滤题目
-'Learn session problem tag filter include': 只练习所选标签的题目
-'Learn session problem tag filter exclude': 排除所选标签的题目
-'Learn session problem tag filter tags label': 题目标签（多选）
-'Learn session problem tag filter max hint': 最多可选 {0} 个标签
-'Learn session problem tag filter no tags in base': 当前知识库没有登记标签；若此前已同步仍可选中已保存的标签。
-'No cards match session problem tag filter': 过滤后剩余卡片数为 0，请放宽标签筛选。
-'{0} filter rules': '{0} 条过滤规则'
-'Filter rules': 过滤规则细则
-'Learn requires cards with problems': 当前没有可学习题目（每张卡片至少需要 1 道题目）。
-'Learn ratio section label': 学习副模式 · 新旧比例（下次会话）
-'Learn ratio section hint': 主模式（深度/广度/随机）只影响今日队列里「新」段卡片的展开顺序。混合与纯新模式下每日目标指**新卡**张数；**纯复习**模式下同一每日目标表示要抽取的**复习卡**张数。混合模式：今日会话 = 新卡（按目标截断，不足则循环）+ 新卡数×N 张旧段复习（不足则循环，无旧段则不追加）。纯新 / 纯复习会省略另一臂。
-'Learn today ratio summary': 每张新卡配 {0} 张复习卡
-'Learn today ratio summary new only': 仅新题（本次不排复习）
-'Learn today ratio summary review only': 仅复习（张数沿用每日目标）
-'New vs review ratio label new only': '纯新题（1 : 0）'
-'New vs review ratio label review only': '纯复习（0 : 1，张数=每日目标）'
-'Learn path card loop count': 练{0}次
-'Learn path card loop count title': 学习路径该节槽下累计完成次数（每次完整做题计一次，复习排队优先次数少的卡片）
-'Learn sub mode': 学习副模式（下次会话）
-'Learn sub mode new only': 纯学新（仅学习起点节槽及之后的卡）
-'Learn sub mode review only': 纯复习（仅学习起点节槽之前的卡）
-'Learn sub mode mixed': 学新 + 复习
-'Learn new review ratio': 新卡与复习卡比例（新/旧只看学习起点前后节槽；复习总张数 ≈ 新段卡数 × N）
-'Learn new review order label': 新旧顺序（下次今日会话）
-'Learn new review order hint': 在新卡张数与复习张数确定之后，决定冻结队列里「复习段」相对「新学段」是先做、后做还是打混；不改变张数与比例。打乱顺序在同一 UTC 日内保持稳定。
 'Learn new review order aria': 今日队列中新卡与复习卡的先后与打乱方式
+'Learn new review order hint': 在新卡张数与复习张数确定之后，决定冻结队列里「复习段」相对「新学段」是先做、后做还是打混；不改变张数与比例。打乱顺序在同一 UTC 日内保持稳定。
+'Learn new review order label': 新旧顺序（下次今日会话）
 'Learn new review order new first': 先新后旧（默认）
 'Learn new review order old first': 先旧后新
 'Learn new review order shuffle': 新旧打乱
-'Learn mixed schedule': 学新+复习时的顺序
-'Learn mixed schedule review first': 先复习
-'Learn mixed schedule new first': 先学新
-'Learn mixed schedule shuffle': 随机打乱
-'Learn mixed schedule one one': 1+1（一新一旧）
-'Learn sub mode hint': 与「学习副模式 · 新旧比例」相同说明（见该处提示）。
-'Learn today modes config': '主模式：{0} · 副模式：{1}'
-'Learn today card kind new': 新卡片
-'Learn today card kind review': 复习卡片
-'Learn today queue empty': 今日没有可排的卡片（请检查会话里「卡片过滤」「题目标签」与学习起点设置，或是否已全部学完）。
-'Learn lesson start missing redirect': 开始学习失败，服务器未返回有效跳转地址。
-'Lesson session new old counts': '{0} 张新 · {1} 张旧'
-'Lesson path card practise count': 已过 {0} 次
-'Lesson path card practise count title': 本卡片在当前节槽累计完整过关次数（每次在本课完整过关计一次，与学习路径统计一致）
-'Lesson problem queue': 题目队列
-'Lesson progress session cards': 会话进度（卡片）
-'Lesson progress total problems': 总题目进度
-'Lesson progress current card problems': 当前卡片题目
-'Lesson practice progress unit': 题
-'Lesson practice sidebar completed': 已完成题目
-'Lesson practice sidebar pending': 待完成题目
-'No completed problems yet': 暂无已完成题目
+'Learn new review ratio': 新卡与复习卡比例（新/旧只看学习起点前后节槽；复习总张数 ≈ 新段卡数 × N）
+'Learn path card loop count title': 学习路径该节槽下累计完成次数（每次完整做题计一次，复习排队优先次数少的卡片）
+'Learn path card loop count': 练{0}次
+'Learn progress reset done': 学习进度已清除。
+'Learn progress reset failed': 重置学习进度失败。
 'Learn queue card tag new': 新
 'Learn queue card tag old': 旧
-'Failed to save learn sub mode': 保存学习副模式失败
-'New vs review ratio label': '新 : 复习 = 1 : {0}'
+'Learn ratio section hint': 主模式（深度/广度/随机）只影响今日队列里「新」段卡片的展开顺序。混合与纯新模式下每日目标指**新卡**张数；**纯复习**模式下同一每日目标表示要抽取的**复习卡**张数。混合模式：今日会话 = 新卡（按目标截断，不足则循环）+ 新卡数×N 张旧段复习（不足则循环，无旧段则不追加）。纯新 / 纯复习会省略另一臂。
+'Learn ratio section label': 学习副模式 · 新旧比例（下次会话）
+'Learn requires cards with problems': 当前没有可学习题目（每张卡片至少需要 1 道题目）。
+'Learn session card filter all': 学习所有卡片（含无题目的）
+'Learn session card filter with problems': 只学有题目的卡片
+'Learn session card filter without problems': 只学无题目的卡片
+'Learn session card filter': 卡片过滤（下次会话）
+'Learn session mode': 学习模式（下次会话）
+'Learn session preferences': 学习会话设置
+'Learn session problem tag filter exclude': 排除所选标签的题目
+'Learn session problem tag filter include': 只练习所选标签的题目
+'Learn session problem tag filter max hint': 最多可选 {0} 个标签
+'Learn session problem tag filter no tags in base': 当前知识库没有登记标签；若此前已同步仍可选中已保存的标签。
+'Learn session problem tag filter off': 不按题目标签过滤题目
+'Learn session problem tag filter tags label': 题目标签（多选）
+'Learn session problem tag filter': 题目标签过滤（针对卡片内的题目）
 'Learn session': 学习会话
 'Learn Settings': 学习设置
+'Learn sub mode hint': 与「学习副模式 · 新旧比例」相同说明（见该处提示）。
+'Learn sub mode mixed': 学新 + 复习
+'Learn sub mode new only': 纯学新（仅学习起点节槽及之后的卡）
+'Learn sub mode review only': 纯复习（仅学习起点节槽之前的卡）
+'Learn sub mode': 学习副模式（下次会话）
+'Learn tab learn wall': 学习墙
+'Learn today card kind new': 新卡片
+'Learn today card kind review': 复习卡片
+'Learn today modes config': '主模式：{0} · 副模式：{1}'
+'Learn today queue empty': 今日没有可排的卡片（请检查会话里「卡片过滤」「题目标签」与学习起点设置，或是否已全部学完）。
+'Learn today ratio summary new only': 仅新题（本次不排复习）
+'Learn today ratio summary review only': 仅复习（张数沿用每日目标）
+'Learn today ratio summary': 每张新卡配 {0} 张复习卡
+'Learn wall checked in': 当日已在本域完成学习打卡。
+'Learn wall checkin only saves': 当日仅有打卡，无计入统计的练习数据。
+'Learn wall no sessions': 当日无学习会话。
+'Learn wall session record count': '{0} 条记录'
+'Learn wall sessions': 当日学习会话（UTC）
 'Learning consumption': 学习消耗
 'Learning Path': 学习路径
 'Learning point set': 学习点已设置
 'Learning start': 学习起点
+'Lesson browse card hint': 这张卡片没有练习题目，读完内容后选择你的掌握程度。
+'Lesson card navigation failed': 切换卡片失败
+'Lesson card queue navigation': 卡片队列导航
+'Lesson navigate unsupported': 仅支持今日任务或单节点模式下的卡片跳转
 'Lesson Passed': 课程通过
+'Lesson path card practise count title': 本卡片在当前节槽累计完整过关次数（每次在本课完整过关计一次，与学习路径统计一致）
+'Lesson path card practise count': 已过 {0} 次
+'Lesson practice progress unit': 题
+'Lesson practice redo': 重做
+'Lesson practice sidebar completed': 已完成题目
+'Lesson practice sidebar pending': 待完成题目
+'Lesson problem notes add': 添加笔记
+'Lesson problem notes cancel edit': 取消
+'Lesson problem notes count badge': '{0} 条笔记'
+'Lesson problem notes delete confirm': 确定删除这条笔记？此操作无法撤销。
+'Lesson problem notes delete failed': 删除失败。
+'Lesson problem notes delete': 删除
+'Lesson problem notes deleted': 已删除笔记。
+'Lesson problem notes deleting': 删除中…
+'Lesson problem notes edit': 编辑
+'Lesson problem notes edited at': 编辑于 {0}
+'Lesson problem notes empty list': 暂无笔记
+'Lesson problem notes load failed': 加载笔记失败。
+'Lesson problem notes panel title': 笔记
+'Lesson problem notes placeholder': 写下你的笔记…
+'Lesson problem notes save edit': 保存
+'Lesson problem notes save failed': 发布笔记失败。
+'Lesson problem notes saved': 已发布。
+'Lesson problem notes submit': 发布
+'Lesson problem notes submitting': 发布中…
+'Lesson problem notes updated': 已更新笔记。
+'Lesson problem queue': 题目队列
+'Lesson problem tag apply new': 添加
+'Lesson problem tag chip remove': 移除
+'Lesson problem tag label': 题目标签
+'Lesson problem tag new hint': 将标签登记到当前知识库（最多 64 字符）；登记后会自动追加到本题，也可从上方下拉追加已有标签。
+'Lesson problem tag new placeholder': 输入新标签名称
+'Lesson problem tag panel add registered placeholder': 选择要追加的标签…
+'Lesson problem tag panel append registered': 追加已登记标签
+'Lesson problem tag panel assign': 分派标签
+'Lesson problem tag panel choose registered': 从已登记标签中选择
+'Lesson problem tag panel clear': 清除标签
+'Lesson problem tag panel current': 当前标签
+'Lesson problem tag panel empty': 当前无标签
+'Lesson problem tag panel new': 自定义新标签
+'Lesson problem tag panel open': 管理标签
+'Lesson problem tag panel readonly hint': 你没有编辑该题标签的权限。
+'Lesson problem tag panel title': 题目标签
+'Lesson problem tag register failed': 登记标签失败
+'Lesson problem tag register ok': 已登记并已追加到本题。
+'Lesson problem tag save failed': 保存题目标签失败
+'Lesson problem tag save missing node': 无法保存标签：卡片缺少所属节点信息
+'Lesson problem tag save no card': 无法保存标签：当前页找不到对应卡片
+'Lesson progress current card problems': 当前卡片题目
+'Lesson progress session cards': 会话进度（卡片）
+'Lesson progress total problems': 总题目进度
+'Lesson redo question': 重来
+'Lesson session new old counts': '{0} 张新 · {1} 张旧'
+'Lesson session not found': 未找到可练习的学习会话，请从知识库重新开始。
+'Lesson skip card hint': 不记录通过或答题进度。跳过今日任务最后一张即结束今日队列；单节点模式下将进入本节汇总。
+'Lesson skip problem': 下一题
 'Link copied to clipboard': 链接已复制到剪贴板
 'Loading PDF library...': 正在加载PDF库...
+'Loading...': 加载中…
 'Local branch not found': 本地分支未找到
 'Local Branch': 本地分支
 'Local Repository': 本地仓库
 'Lock Scroll': 锁定滚动
 'Locked': 已锁定
 'Login expired, please log in again.': 登录已过期，请重新登录。
+'Manage Roadmap': 管理路线图
+'Manage System Tools': '管理 System Tools'
+'Manage tags': 管理标签
 'Manuscript Mode': 文稿模式
 'Max consecutive': 最长连续
+'MCP dashboard description': 'MCP 现在是工具的顶层对象：这里同时显示出站 MCP、System Tools MCP，以及外部接入的入站 MCP。点击任意 MCP 可查看其下工具与唯一工具 ID。'
+'MCP Dashboard': 'MCP 仪表盘'
 'MCP Tools Management': MCP 工具管理
 'MCP Tools': MCP 工具
 'Model': 模型
-'Multi-select': 多选模式
 'Multi-select mode': 多选模式
+'Multi-select': 多选模式
+'Never used': '从未使用'
 'New card': 新卡片
 'New Card': 新建卡片
+'New child Node': 新建子节点
 'New Content Block': 新建内容块
 'New Folder': 新建文件夹
 'New multiple Cards': 新建多个卡片
 'New multiple child Nodes': 新建多个子节点
 'New multiple Nodes': 新建多个节点
-'New node': 新节点
 'New Node': 新建节点
+'New node': 新节点
 'New sibling Card': 新建同级卡片
 'New sibling Node': 新建同级节点
-'New child Node': 新建子节点
+'New vs review ratio label new only': '纯新题（1 : 0）'
+'New vs review ratio label review only': '纯复习（0 : 1，张数=每日目标）'
+'New vs review ratio label': '新 : 复习 = 1 : {0}'
 'New': 新建
 'Next Card': 下一张卡片
 'Next': 下一题
 'No audio available': 无音频可用
+'No available MCP services': 暂无可用 MCP 服务
 'No cards available in this section.': 此章节暂无可用卡片。
+'No cards match session problem tag filter': 过滤后剩余卡片数为 0，请放宽标签筛选。
 'No changes to save': 没有更改需要保存
 'No chat history yet': 暂无聊天记录
 'No child nodes or cards': 暂无子节点和卡片
 'No clients created yet': 暂无已创建的客户端
 'No commit message': 无提交消息
 'No completed cards': 今日暂无已完成卡片
+'No completed problems yet': 暂无已完成题目
 'No completed sections': 暂无已完成
 'No content or practice questions available.': 暂无内容或练习题。
 'No content to copy': 无内容可复制
@@ -478,8 +625,12 @@ edge_authorize: Edge 授权
 'No courses available.': 暂无可用课程。
 'No description': 无描述
 'No impression': 没印象
+'No knowledge base in this domain.': 该域内还没有知识库。
+'No knowledge base is mounted for this agent yet.': 此 Agent 尚未挂载知识库。
+'No knowledge bases in this domain yet.': 该域内还没有知识库。
 'No local git repository': 无本地 git 仓库
 'No MCP tools yet. When MCP server connects and registers, they will appear here.': 暂无注册的 MCP 工具。当 MCP 服务器连接并注册工具后，它们将显示在这里。
+'No MCP.': '暂无 MCP。'
 'No messages in this conversation': 此对话中暂无消息
 'No nodes available.': 暂无可用节点。
 'No pending changes': 没有待保存的更改
@@ -490,169 +641,223 @@ edge_authorize: Edge 授权
 'No recent nodes.': 暂无最近更新的节点
 'No recording available': 无录音可用
 'No remote repository configured': 未配置远程仓库
+'No roadmap in this domain.': 该域内还没有路线图。
 'No sections available.': 暂无可用章节。
 'No system tools.': 暂无系统工具。
+'No tags available': '暂无可用标签'
+'No tags': '无标签'
 'No tools available': 暂无工具
+'No tools exposed': 暂无工具
 'No tools yet. Tools list will be automatically synced after server connection.': 暂无工具。服务器连接后会自动同步工具列表。
 'No valid content (use ## Title and --- to separate cards)': 未识别到有效内容（请使用 ## 标题 与 --- 分隔多个卡片）
 'No': 否
 'Node already in delete list': 该节点已经在待删除列表中
 'Node Complete': 节点完成
 'Node does not exist': 节点不存在
+'Node has no content': 该节点暂无内容
 'Node moved successfully': 节点已移动
 'Node': 节点
+'not assignable': '不可分配'
 'Not enabled': 不启用
+'Not familiar': 不熟悉
 'OK': 确定
+'Only lowercase letters (a-z), digits (0-9), dots, underscores, and hyphens. Used in the URL.': '仅限小写字母 (a-z)、数字 (0-9)、点号、下划线和连字符，用于 URL。'
+'Only outbound MCP endpoints can be deleted from this page.': '只有出站 MCP 端点可以从此页面删除。'
 'Open file list': 查看文件列表
 'Open practice for card: {0}': 将为卡片「{0}」打开练习
 'Open practice for node: {0}': 将为节点「{0}」打开练习
 'Operation failed': 执行操作失败
 'Operations': 操作
 'Option': 选项
+'Optional human-readable identifier, for example: P1001': '可选的易读编号，例如：P1001'
+'Optional human-readable roadmap identifier, for example: R1001': '可选的人类可读路线图标识，例如：R1001'
+'Optional short description shown in list views.': 可选的简短描述，显示在列表视图中。
+'Optionally mount one domain knowledge base (outline / cards) for this agent.': 可选：为此 Agent 挂载一个域内知识库（大纲/卡片）。
 'Original score: {0}': '原得分: {0}'
+'outbound endpoint': '出站端点'
+'outbound': '出站'
+'Outline card problems button': 'Problem（{0}）'
+'Outline card problems card label': '卡片：{0}'
+'Outline card problems empty': 此卡片暂无 Problem。
+'Outline card problems untitled item': 'Problem {0}'
+'Outline editor popup blocked': 浏览器拦截了新标签页，请允许本站弹出窗口后重试。
+'Outline editor start failed': 无法开始编辑会话，请重试。
+'Outline editor start invalid base': 当前大纲对应的知识库无效。
+'Outline editor start invalid node': 该节点不在当前知识库下。
+'Outline editor start needs node': 从大纲进入编辑器需要指定节点。
+'Outline editor start session': 开始编辑会话…
+'Outline explorer filter apply': 应用
+'Outline explorer filter aria': 按关键词缩小大纲（服务端）
+'Outline explorer filter cancel': 取消
+'Outline explorer filter card placeholder': 卡片标题…
+'Outline explorer filter clear': 清除
+'Outline explorer filter dialog title': 服务端过滤
+'Outline explorer filter label': 服务端过滤
+'Outline explorer filter node placeholder': 节点标题…
+'Outline explorer filter open': 过滤
+'Outline explorer filter problem placeholder': Problem 内容…
+'Outline learn invalid card': 该卡片 ID 无效，无法开始学习。
+'Outline learn single card': 单卡片学习
+'Outline learn single node': 单节点学习
+'Outline learn start failed': 无法开始学习，请重试。
+'Outline search aria': 搜索大纲
+'Outline search kind card': 卡片
+'Outline search kind node': 节点
+'Outline search no results': 无匹配项
+'Outline search placeholder': 搜索节点、卡片…
+'Pair': '配对'
 'Paste exported structure JSON below. It will be attached under the current node. Card faces and file metadata will be restored. Save to persist.': 将导出的结构JSON粘贴到下方，将挂到当前节点下。卡面与文件元数据会一并恢复，保存后生效。
 'Path': 路径
 'PDF export failed': 导出PDF失败
 'PDF export successful': PDF导出成功
 'Peek': 偷看
+'Pending connection': '待连接'
 'Pending delete': 待删除
 'Pending sections': 待完成
+'Pending selection': 待选择
 'Play Audio': 播放音频
 'Play Recording': 播放录音
 'Please create a base first.': 请先创建知识库。
-'Please create a base with at least one section.': 请创建至少包含一个章节的知识库。
 'Please create a base with at least one section first.': 请先创建至少包含一个章节的知识库。
-'Please create a roadmap with at least one practice node.': 请创建至少包含一个可练习节点的路线图。
-'Please create a roadmap with at least one practice node first.': 请先创建至少包含一个可练习节点的路线图。
+'Please create a base with at least one section.': 请创建至少包含一个章节的知识库。
 'Please create a base with course structure (course -> section -> unit -> lesson)': 请创建包含课程结构的知识库（课程 -> 阶段 -> 单元 -> 课程）
+'Please create a roadmap with at least one practice node first.': 请先创建至少包含一个可练习节点的路线图。
+'Please create a roadmap with at least one practice node.': 请创建至少包含一个可练习节点的路线图。
 'Please generate token on': 请在
 'Please join the domain to view': 请加入该域以显示
 'Please login to view': 请登录以显示
 'Please paste or enter content to import': 请输入或粘贴要导入的内容
+'Please select a card first': '请先选择一张卡片'
 'Please select a card on the left first': 请先在左侧选择一个卡片
 'Please select a conversation from the left sidebar to view chat details': 请从左侧边栏选择一个对话以查看聊天详情
+'Please select at least one MCP to delete.': '请至少选择一个要删除的 MCP。'
+'Please select at least one roadmap to delete.': 请至少选择一条路线图再删除。
 'Please select items to delete first': 请先选择要删除的项目
 'Please select the correct answer': 请选择正确的答案选项
 'Please select': 请选择
+'plugin MCP': '插件 MCP'
+'Plugin node definition': 插件节点定义
+'Plugin nodes are folders. Add markdown cards under folders for skill, command, and MCP definitions.': 插件节点是文件夹。请在文件夹下添加 markdown 卡片来定义 skill、command 和 MCP。
+'plugin': '插件'
+'Points': 分
 'Practice Alone': 单独练习
+'Practice problem pid not on open card': 当前卡片上没有该题目 id，无法更新
 'Practice Questions': 练习题
 'Practice Results': 练习结果
 'Practice': 练习
 'Preview image': 预览图片
-'Previous': 上一题
-'Lesson skip problem': 下一题
-'Lesson card queue navigation': 卡片队列导航
 'Previous card': 上一张卡
-'Skip card': 跳过此卡
-'Lesson skip card hint': 不记录通过或答题进度。跳过今日任务最后一张即结束今日队列；单节点模式下将进入本节汇总。
-'Lesson card navigation failed': 切换卡片失败
-'Invalid lesson navigate': 无效的卡片跳转请求
-'Lesson navigate unsupported': 仅支持今日任务或单节点模式下的卡片跳转
-'Lesson practice redo': 重做
-'Problem generated, please review': 题目已生成，请检查并确认
-'Problem kind single': 单选
-'Problem kind multi': 多选
-'Problem kind true false': 判断
-'Problem kind flip': 翻转
-'Problem kind fill blank': 填空题
-'Problem kind matching': 配对题
-'Problem kind super flip': 超级翻转题
-'Problem kind ai eval': AI评测题
-'Problem kind chain': 链条题
-'Problem chain stem optional': 说明（可为空）
-'Problem chain row count': 行数
-'Problem chain editor hint': 每行可设置为翻转（做题时遮蔽，点击揭示）或文字（始终可见）。
+'Previous': 上一题
+'Problem ai eval add point': 新增评测点
+'Problem ai eval add sub point': 新增子评测点
+'Problem ai eval alias input placeholder': 短语（如：第二个烟囱）
+'Problem ai eval answer aliases label': 同义参考
+'Problem ai eval earned total': 本次总得分
+'Problem ai eval evaluating': AI 评测中...
+'Problem ai eval failed': AI 评测失败，请稍后重试。
+'Problem ai eval hard zero empty slot': 该子评测点作答为空，按规则该点记 0 分
+'Problem ai eval hard zero missing content': 该格未命中标准或任一同义表述，按规则该点记 0 分
+'Problem ai eval hard zero wrong order': 评测点「{0}」未遵守各评测点之间的清单顺序（同一评测点内子项不强制顺序）；顺序不符时该评测点整组记 0 分
+'Problem ai eval invalid point reasons': AI 未返回有效的逐点评分原因，请重试。
+'Problem ai eval invalid point scores': AI 未返回有效的逐点评分，请重试。
+'Problem ai eval max attempts': 最大尝试次数
+'Problem ai eval need points': 至少需要一个带子评测点的评测点（points）
+'Problem ai eval parent score hint': 父级分值不计入总分；满分以子评测点分值之和为准（可填 0）
+'Problem ai eval pass score': 通过分
+'Problem ai eval point earned': 本点评分
+'Problem ai eval point reason': AI评分原因
+'Problem ai eval point standard content': 评测点标准内容
+'Problem ai eval point title placeholder': 评测点标题（学习中展示）
+'Problem ai eval points': 评测点
+'Problem ai eval slot placeholder': 针对该子评测点作答
+'Problem ai eval stem placeholder': 请输入需要 AI 评测的题干
+'Problem ai eval sub point content placeholder': 子评测标准（AI 评分依据）
+'Problem ai eval sub point title placeholder': 子评测点标题（展示）
+'Problem ai eval sub points': 子评测点
+'Problem ai eval total score': 总分值
+'Problem answer false': 错
+'Problem answer true': 对
 'Problem chain cell': 该行内容
-'Problem chain row type flip': 翻转
-'Problem chain row type text': 文字
-'Problem chain row type unset': 请选择类型
-'Problem chain row type before content': 请先选择上方类型再填写内容
-'Insert row before': 在上面插入行
-'Insert row after': 在下面插入行
-'Delete row': 删除此行
+'Problem chain cover all': 全部遮蔽
+'Problem chain editor hint': 每行可设置为翻转（做题时遮蔽，点击揭示）或文字（始终可见）。
 'Problem chain masked': 点击揭示
 'Problem chain not familiar': 不熟悉
 'Problem chain reveal all': 全部揭示
-'Problem chain cover all': 全部遮蔽
-'Problem ai eval stem placeholder': 请输入需要 AI 评测的题干
-'Problem ai eval points': 评测点
-'Problem ai eval point title placeholder': 评测点标题（学习中展示）
-'Problem ai eval add point': 新增评测点
-'Problem ai eval sub points': 子评测点
-'Problem ai eval add sub point': 新增子评测点
-'Problem ai eval sub point title placeholder': 子评测点标题（展示）
-'Problem ai eval sub point content placeholder': 子评测标准（AI 评分依据）
-'Problem ai eval need points': 至少需要一个带子评测点的评测点（points）
-'Problem ai eval alias input placeholder': 短语（如：第二个烟囱）
-'Problem ai eval slot placeholder': 针对该子评测点作答
-'Problem ai eval answer aliases label': 同义参考
-'Problem ai eval parent score hint': 父级分值不计入总分；满分以子评测点分值之和为准（可填 0）
-'Problem ai eval total score': 总分值
-'Problem ai eval point earned': 本点评分
-'Problem ai eval point standard content': 评测点标准内容
-'Problem ai eval point reason': AI评分原因
-'Problem ai eval earned total': 本次总得分
-'Problem ai eval pass score': 通过分
-'Problem ai eval max attempts': 最大尝试次数
-'Problem ai eval evaluating': AI 评测中...
-'Problem ai eval failed': AI 评测失败，请稍后重试。
-'Problem ai eval invalid point scores': AI 未返回有效的逐点评分，请重试。
-'Problem ai eval invalid point reasons': AI 未返回有效的逐点评分原因，请重试。
-'Problem ai eval hard zero missing content': 该格未命中标准或任一同义表述，按规则该点记 0 分
-'Problem ai eval hard zero empty slot': 该子评测点作答为空，按规则该点记 0 分
-'Problem ai eval hard zero wrong order': 评测点「{0}」未遵守各评测点之间的清单顺序（同一评测点内子项不强制顺序）；顺序不符时该评测点整组记 0 分
-'Problem reorder up': 上移
-'Problem reorder down': 下移
-'Problem reorder hint': 点击题目右上角「上移 / 下移」（在红色删除左侧）调整顺序；保存后生效。
-'Problem insert above': 在此题上方插入
-'Problem insert below': 在此题下方插入
-'Problem matching stem optional': 说明（可为空）
-'Problem matching pair count': 配对行数
-'Problem matching column count': 列数（≥2）
-'Problem matching column label': '列 {0}'
-'Problem matching row label': '行 {0}'
-'Problem matching cell': 该列该行的内容
-'Problem matching pairs hint': 数据按「列」存储（每列自上而下为各行）；同一行索引在列之间为正确配对。课程中对每一列各自打乱下拉，须为该行在每一列都选中原行序号。（两列即左右两池各自打乱。）
-'Problem matching left': 第 1 列单元格
-'Problem matching right': 最后一列单元格
-'Problem matching choose': 选择匹配项…
-'Problem matching pairs too few': 配对题至少需要 2 行
-'Problem matching columns too few': 配对题至少需要 2 列
-'Problem super flip editor hint': 表头在课程中会始终展示；以下为表格正文。留空的格子在课程中不遮蔽、无需翻面。其余数据按「列」存储（与配对题相同：每列自上而下对应各行）。
-'Problem super flip column header label': '列表头 {0}'
-'Problem super flip header placeholder': 表头
-'Problem super flip masked': 点击翻面
-'Problem super flip reveal all': 全部翻开
-'Problem super flip cover all': 全部遮蔽
-'Problem super flip not familiar': 不熟悉
-'Problem super flip row count': 行数（≥1）
-'Problem super flip column count': 列数（≥1）
-'Problem super flip columns invalid': 「超级翻转题」需要合法的 columns（二维数组，至少 1 列）
-'Problem super flip columns too few': 超级翻转题至少需要 1 列
-'Problem super flip rows too few': 超级翻转题至少需要 1 行
-'Problem field type': 题型
-'Problem tag': 标签
-'Problem tag default': 默认
-'Problem tag new placeholder': 自定义标签
-'Problem tag add': 添加
-'Problem tag empty': 请先输入标签名称
-'Problem tag editor read only hint': 标签仅在课程学习中可改，此处只读。
-'Problem title': 题目标题
-'Problem option slots': 选项槽
-'Problem multi all correct': 需全部选对才算过
+'Problem chain row count': 行数
+'Problem chain row type before content': 请先选择上方类型再填写内容
+'Problem chain row type flip': 翻转
+'Problem chain row type text': 文字
+'Problem chain row type unset': 请选择类型
+'Problem chain stem optional': 说明（可为空）
+'Problem editor notes add': 添加
+'Problem editor notes delete': 删除
+'Problem editor notes empty': 暂无笔记。
+'Problem editor notes pending short': 条待保存
+'Problem editor notes remove row': 移除该条
+'Problem editor notes title': 笔记
 'Problem face A label': A 面（先展示）
-'Problem face B label': B 面（认识/不认识后翻转）
 'Problem face A placeholder': 正面内容
+'Problem face B label': B 面（认识/不认识后翻转）
 'Problem face B placeholder': 背面内容
-'Problem flip hint label': 提示（学习者可见）
-'Problem flip hint placeholder': 翻面前的轻量提示，选填；课程中可通过「显示提示」查看。
-'Problem answer true': 对
-'Problem answer false': 错
-'Problem fill blank stem hint': 在题干中用三个下划线 ___ 表示每个空格；若不写 ___，则在题干后显示一个空格。
+'Problem field type': 题型
 'Problem fill blank answers label': 参考答案（从左到右，每个空格一行）
 'Problem fill blank slot label': '第{0}空'
-'Pair': '配对'
-
+'Problem fill blank stem hint': 在题干中用三个下划线 ___ 表示每个空格；若不写 ___，则在题干后显示一个空格。
+'Problem flip hint label': 提示（学习者可见）
+'Problem flip hint placeholder': 翻面前的轻量提示，选填；课程中可通过「显示提示」查看。
+'Problem generated, please review': 题目已生成，请检查并确认
+'Problem insert above': 在此题上方插入
+'Problem insert below': 在此题下方插入
+'Problem kind ai eval': AI评测题
+'Problem kind chain': 链条题
+'Problem kind fill blank': 填空题
+'Problem kind flip': 翻转
+'Problem kind matching': 配对题
+'Problem kind multi': 多选
+'Problem kind single': 单选
+'Problem kind super flip': 超级翻转题
+'Problem kind true false': 判断
+'Problem matching cell': 该列该行的内容
+'Problem matching choose': 选择匹配项…
+'Problem matching column count': 列数（≥2）
+'Problem matching column label': '列 {0}'
+'Problem matching columns too few': 配对题至少需要 2 列
+'Problem matching left': 第 1 列单元格
+'Problem matching pair count': 配对行数
+'Problem matching pairs hint': 数据按「列」存储（每列自上而下为各行）；同一行索引在列之间为正确配对。课程中对每一列各自打乱下拉，须为该行在每一列都选中原行序号。（两列即左右两池各自打乱。）
+'Problem matching pairs too few': 配对题至少需要 2 行
+'Problem matching right': 最后一列单元格
+'Problem matching row label': '行 {0}'
+'Problem matching stem optional': 说明（可为空）
+'Problem multi all correct': 需全部选对才算过
+'Problem option slots': 选项槽
+'Problem reorder down': 下移
+'Problem reorder hint': 点击题目右上角「上移 / 下移」（在红色删除左侧）调整顺序；保存后生效。
+'Problem reorder up': 上移
+'Problem super flip column count': 列数（≥1）
+'Problem super flip column header label': '列表头 {0}'
+'Problem super flip columns invalid': 「超级翻转题」需要合法的 columns（二维数组，至少 1 列）
+'Problem super flip columns too few': 超级翻转题至少需要 1 列
+'Problem super flip cover all': 全部遮蔽
+'Problem super flip editor hint': 表头在课程中会始终展示；以下为表格正文。留空的格子在课程中不遮蔽、无需翻面。其余数据按「列」存储（与配对题相同：每列自上而下对应各行）。
+'Problem super flip header placeholder': 表头
+'Problem super flip masked': 点击翻面
+'Problem super flip not familiar': 不熟悉
+'Problem super flip reveal all': 全部翻开
+'Problem super flip row count': 行数（≥1）
+'Problem super flip rows too few': 超级翻转题至少需要 1 行
+'Problem tag add': 添加
+'Problem tag default': 默认
+'Problem tag editor read only hint': 标签仅在课程学习中可改，此处只读。
+'Problem tag empty': 请先输入标签名称
+'Problem tag new placeholder': 自定义标签
+'Problem tag none': （无标签 / 默认分组）
+'Problem tag': 标签
+'Problem tags edit': 编辑标签
+'Problem tags': '题目标签'
+'Problem title': 题目标题
+'Problem': 题目
+'Problems: {0}': 题目：{0} 道
 'Provider (MCP)': Provider (MCP)
 'Provider': 提供商
 'Pulling from GitHub...': 正在从 GitHub 拉取...
@@ -664,7 +869,6 @@ edge_authorize: Edge 授权
 'Question': 题目
 'Random learning mode': 随机学习模式
 'Recent Bases': 最近更新的知识库
-'Rename': 重命名
 'Recent Cards': 最近更新的卡片
 'Recent Nodes': 最近更新的节点
 'Redirecting': 跳转中
@@ -675,8 +879,171 @@ edge_authorize: Edge 授权
 'Remote Branch Status': 远程分支状态
 'Remote Branch': 远程分支
 'Remote Repository': 远程仓库
+'Remove Selected': '删除所选'
+'Remove tag': '移除标签'
+'Rename': 重命名
 'Request failed': 请求失败
+'Reset learn DAG description': 按当前知识库最新大纲重建学习路径，并将节序恢复为与大纲一致（会覆盖已保存的自定义顺序）。
+'Reset learn DAG': 从大纲重建
+'Reset learn progress confirm': 确定清除该用户在本域内的学习进度（通过状态、路径练习计数等）吗？节序与当前学习节将保持不变。
+'Reset learn progress description': 清除该用户在本域内的通过记录、路径练习次数等进度，保留当前节序与学习起点；会结束进行中的课时会话以便下次从头开始。
+'Reset learn progress': 重置进度
+'Resetting...': 重建中…
+'Resize sidebar': 调整侧栏宽度
+'Resize terminal panel': 调整终端高度
 'Response Time': 响应时间
+'Reveal all': 全部翻开
+'Review': 复习
+'Roadmap add adjacent blocked': 该方向没有可用的相邻泳道
+'Roadmap add node': 节点
+'Roadmap AI applying operations': 正在应用 {0} 个操作
+'Roadmap AI chat error': '错误：{0}'
+'Roadmap AI execute error': '执行操作失败：{0}'
+'Roadmap AI operations applied': AI 操作已应用
+'Roadmap AI operations failed': |-
+'Roadmap AI parse error': '无法解析 AI 操作：{0}'
+'Roadmap AI problem missing nodeId': create_problem 需要有效的 nodeId
+'Roadmap AI processing': 处理中
+'Roadmap AI receiving operations': 正在接收操作…
+'Roadmap AI terminal hint': AI 已就绪。描述要创建或修改的节点、连线或题目，在下方输入后按 Enter 发送；变更会立即应用到画布，记得保存。
+'Roadmap AI thinking': 思考中…
+'Roadmap AI tutor bar hint': 有问题？在这里输入
+'Roadmap AI tutor greeting': 你好，今天我能帮你什么？
+'Roadmap AI tutor input placeholder': 问我任何关于这条路线图的问题…
+'Roadmap AI tutor open': 打开 AI 导师
+'Roadmap AI tutor question node': 关于路线图中的「{0}」，我应该了解什么？
+'Roadmap AI tutor question order': 我应该按什么顺序学习这条路线图？
+'Roadmap AI tutor question overview': 这条路线图「{0}」主要讲什么？
+'Roadmap AI tutor question progress': 如何跟踪我在这条路线图上的学习进度？
+'Roadmap AI tutor question start': 我应该从这条路线图的哪里开始？
+'Roadmap AI tutor suggestions lead': 关于这条路线图，你可能想问：
+'Roadmap AI tutor': AI 导师
+'Roadmap AI waiting for operations': 等待操作列表…
+'Roadmap branch': 分支
+'Roadmap canvas': 画布
+'Roadmap connection not allowed': 该目标节点类型不允许此连接。
+'Roadmap delete edge': 删除连线
+'Roadmap detail empty': 路线图还没有内容。
+'Roadmap detail filter apply': 应用
+'Roadmap detail filter aria': 在画布上筛选路线图节点
+'Roadmap detail filter cancel': 取消
+'Roadmap detail filter clear': 清除
+'Roadmap detail filter content label': 节点内容
+'Roadmap detail filter content placeholder': Markdown 正文…
+'Roadmap detail filter dialog hint': 不匹配的节点会在画布上变淡。筛选条件会同步到 URL。
+'Roadmap detail filter dialog title': 筛选路线图
+'Roadmap detail filter match count': 匹配 {0} 个
+'Roadmap detail filter node label': 节点标题
+'Roadmap detail filter node placeholder': 节点标题…
+'Roadmap detail filter open': 筛选
+'Roadmap detail filter problem label': 练习题
+'Roadmap detail filter problem placeholder': 题目文本…
+'Roadmap detail search aria': 搜索路线图
+'Roadmap detail search kind node': 节点
+'Roadmap detail search kind problem': 题目
+'Roadmap detail search no results': 无匹配结果
+'Roadmap detail search placeholder': 搜索节点和题目…
+'Roadmap detail search problem untitled': 未命名题目
+'Roadmap detail settings hint': 控制此页路线图画布的显示方式。
+'Roadmap detail settings open': 显示设置
+'Roadmap detail settings save failed': 显示设置保存失败。
+'Roadmap detail settings saved': 显示设置已保存。
+'Roadmap detail settings show node card timestamps hint': 在目录树中显示节点和卡片的创建时间、上次修改时间。
+'Roadmap detail settings show node card timestamps': 显示节点和卡片时间
+'Roadmap detail settings show node number hint': 在 main/sub 节点左上角以绿色字体显示拓扑顺序序号。
+'Roadmap detail settings show node number': 显示节点序号
+'Roadmap detail settings show problem count hint': 在 main/sub 节点右上角以气泡数字显示该节点的练习题数量。
+'Roadmap detail settings show problem count': 显示题目数量
+'Roadmap detail settings title': 显示设置
+'Roadmap drawer content': 内容
+'Roadmap drawer practice problems': 练习题
+'Roadmap drawer problem reveal back': 点击显示背面
+'Roadmap drawer problem tap reveal answer': 点击显示答案
+'Roadmap drawer problems empty': 该节点暂无练习题。
+'Roadmap drawer problems': 题目
+'Roadmap drawer resources': 资源
+'Roadmap drawer start card practice': 开始刷题
+'Roadmap drawer start node practice busy': 正在进入刷题…
+'Roadmap drawer start node practice invalid doc': 当前路线图无效，无法开始刷题。
+'Roadmap drawer start node practice': 开始单节点刷题
+'Roadmap edge inspector': 连线检查器
+'Roadmap edge label': 依赖说明
+'Roadmap edge source': 源节点
+'Roadmap edge target': 目标节点
+'Roadmap editor settings applied pending': 显示设置已更新，请使用 Save 提交。
+'Roadmap editor settings hint': 修改会立即在画布预览中生效，点击保存后进入待提交；与图谱变更一起使用顶部 Save 提交到 roadmap 文档（与 detail 页的 personal 显示设置无关）。
+'Roadmap editor settings title': 显示设置
+'Roadmap Editor': 路线图编辑器
+'Roadmap fit canvas': 适应画布
+'Roadmap hook linked': 已链接路线图
+'Roadmap hook node hint': 为该跳转节点选择目标路线图，不支持编辑正文内容。
+'Roadmap hook select placeholder': 选择路线图
+'Roadmap hook target': 目标路线图
+'Roadmap inspector empty hint': 点击节点可编辑 Markdown 内容；点击连线可切换线型。左右实线同行联动，虚线自由布局。Delete / Backspace 可删除。保存时会一并写入图谱与节点内容。
+'Roadmap inspector empty title': 选择一个节点或连线
+'Roadmap lane option': '区域 {0}'
+'Roadmap lane': 区域
+'Roadmap line dashed': 虚线
+'Roadmap line solid': 实线
+'Roadmap line style': 线型
+'Roadmap load failed': 加载路线图失败。
+'Roadmap main node dashed target forbidden': 主节点不能作为虚线终点。
+'Roadmap main node number format hint': 格式 x（如 1）
+'Roadmap main node number invalid': 主节点 "{0}" 序号必须是大于 0 的整数。
+'Roadmap main node number missing': 主节点 "{0}" 缺少序号。
+'Roadmap markdown preview failed': Markdown 渲染失败。
+'Roadmap new decision': 新决策
+'Roadmap new milestone': 新里程碑
+'Roadmap new node': 新节点
+'Roadmap new release': 新发布
+'Roadmap new task': 新任务
+'Roadmap node content empty': 此节点暂无内容。
+'Roadmap node content': 节点内容
+'Roadmap node editor': 节点编辑
+'Roadmap node inspector': 节点检查器
+'Roadmap node lead text': 引导文本
+'Roadmap node number validation failed': 路线图节点序号校验失败，请修正后再保存。
+'Roadmap node number': 节点序号
+'Roadmap node type decision': 决策
+'Roadmap node type hook': 跳转节点
+'Roadmap node type main': 主节点
+'Roadmap node type milestone': 里程碑
+'Roadmap node type release': 发布
+'Roadmap node type root': 总览
+'Roadmap node type sub': 子节点
+'Roadmap node type task': 任务
+'Roadmap node type text': 文本节点
+'Roadmap node type': 节点类型
+'Roadmap owner': 负责人
+'Roadmap panel pending': 待保存
+'Roadmap pending created edges': 新建连线
+'Roadmap pending created nodes': 新建节点
+'Roadmap pending deleted edges': 删除连线
+'Roadmap pending deleted nodes': 删除节点
+'Roadmap pending display settings': 显示设置
+'Roadmap pending empty': 暂无待提交的更改
+'Roadmap pending updated edges': 连线更改
+'Roadmap pending updated nodes': 节点更改
+'Roadmap pending updated problems': 题目更改
+'Roadmap pending viewport changed': 视口更改
+'Roadmap practice problems node type forbidden': 只有 main 和 sub 节点支持练习题
+'Roadmap priority high': 高
+'Roadmap priority low': 低
+'Roadmap priority medium': 中
+'Roadmap priority': 优先级
+'Roadmap rid already exists: {0}': '路线图 RID 已存在：{0}'
+'Roadmap save failed': 保存路线图失败。
+'Roadmap save operation': 保存路线图
+'Roadmap saved': 路线图已保存。
+'Roadmap status blocked': 阻塞
+'Roadmap status done': 已完成
+'Roadmap status in progress': 进行中
+'Roadmap status planned': 计划中
+'Roadmap sub node number format hint': 格式 x.y（如 1.1，前一位为主节点序号）
+'Roadmap sub node number invalid': 子节点 "{0}" 序号必须是 x.y 格式。
+'Roadmap sub node number missing': 子节点 "{0}" 缺少序号。
+'Roadmap sub node number prefix invalid': 子节点 "{0}" 序号前缀必须与某个主节点序号一致。
+'Roadmap sub node solid target forbidden': 子节点只能作为主节点的实线终点；其他来源请使用虚线，或从主节点连线。
 'Role {1} already exists in domain {0}.': '域 {0} 中已存在角色 {1}。'
 'Root node cannot be deleted': 根节点不可删除
 'Save Agent Configuration': 保存 Agent 配置
@@ -684,8 +1051,10 @@ edge_authorize: Edge 授权
 'Save ASR Configuration': 保存 ASR 配置
 'Save changes': 保存更改
 'Save completed, but {0} error(s) occurred': 保存完成，但有 {0} 个错误
-'Save failed': 保存失败
 'Save failed not logged in': 未登录，保存失败。
+'Save failed': 保存失败
+'Save knowledge base mount': 保存知识库挂载
+'Save not logged in refresh then login': 未登录或登录已失效。请刷新页面后重新登录，再继续保存。
 'Save sort failed': 保存排序失败
 'Save successful, {0} changes': 保存成功，共 {0} 项更改
 'Save TTS Configuration': 保存 TTS 配置
@@ -695,41 +1064,88 @@ edge_authorize: Edge 授权
 'Saving progress...': 正在保存进度...
 'Saving...': 正在保存...
 'Saving': 保存中
+'Score': 得分
+'Search MCP': '搜索 MCP'
+'Search roadmaps': 搜索路线图
+'Section Order': 学习路径节序
 'Sections': 章节
 'Select a conversation to view details': 选择对话以查看详情
+'Select a knowledge base before learning': 请先选择知识库再开始学习
+'Select a roadmap before learning': 请先选择路线图再开始学习
 'Select a section from the sidebar': 请从左侧选择章节
 'Select Agent': 选择 Agent
+'Select learn base': 选择知识库
+'Select learn roadmap and branch': 选择路线图与分支
+'Select learn roadmap': 选择路线图
 'Select the branch to use for learning': 选择用于学习的分支
 'Select the type of access point to generate a token': 选择接入点类型以生成 token
+'Select': 请选择
+'Selected MCP endpoint(s) have been deleted.': '已删除所选 MCP 端点。'
+'Selected roadmaps have been deleted.': 已删除所选路线图。
+'Selected': 已选用
+'Separate as new base create hint': 将此节点及其整棵子树（子节点、卡片与附件）复制到新的知识库，原知识库保持不变。标题默认为节点名称，可在确认前修改。
+'Separate as new base failed': 独立为新的 base 失败。
+'Separate as new base invalid doc': 无法独立为新的 base：文档 ID 无效。
+'Separate as new base save node first': 请先将节点保存后再独立为新的 base。
+'Separate as new base save pending first': 请先在编辑器中保存所有未提交的修改。
+'Separate as new base success': 已创建新知识库并完成子树复制。
+'Separate as new base title required': 请输入知识库标题。
+'Separate as new base': 独立为新的 base
 'Server ID': 服务器 ID
 'Server Information': 服务器信息
 'Server': 服务器
 'Session type': 会话类型
 'Set as start': 设为学习起点
 'Show Answer': 显示答案
+'Show card tags hint': '在树状显示中展示卡片的标签'
+'Show card tags': '显示卡片标签'
+'Show live collaboration connection status at top right': 在右上角显示实时协作连接状态。
+'Show problem tags hint': '在树状显示中的题目旁展示题目标签'
+'Show problem tags': '显示题目标签'
+'Show WS connection indicator': 显示 WS 连接指示器
 'Single choice generated and saved': 单选题已生成并保存
 'Single-card session': 单卡片会话
 'Single-node session': 单节点会话
+'Skip card': 跳过此卡
+'Slug can only contain lowercase letters (a-z), digits (0-9), dots (.), underscores (_), and hyphens (-)': '路径标识只能包含小写字母 (a-z)、数字 (0-9)、点号 (.)、下划线 (_) 和连字符 (-)'
+'Slug cannot be entirely numeric to avoid conflict with numeric IDs': '路径标识不能为纯数字，以免与数字 ID 冲突'
+'Slug cannot contain consecutive dots, underscores, or hyphens': '路径标识不能包含连续的点号、下划线或连字符'
+'Slug cannot end with a dot, underscore, or hyphen': '路径标识不能以点号、下划线或连字符结尾'
+'Slug cannot start with a dot, underscore, or hyphen': '路径标识不能以点号、下划线或连字符开头'
+'Slug is not available': '路径标识不可用'
+'Slug is required': '请输入路径标识'
+'Slug must be 80 characters or less': '路径标识不能超过 80 个字符'
+'Slug': '路径标识'
+'Sorry, there are no roadmaps yet.': 抱歉，目前还没有路线图。
 'Sort order updated, click Save to persist': 排序已更新，请点击"保存更改"按钮保存
 'Sort': 排序
 'Source card': 题目来源
 'Source': 来源
+'Specific time': '指定时间'
+'Start develop session for node:': 是否进入节点开发会话？
+'Start learning session for node:': 是否开始节点学习？
 'Start Learning': 开始学习
 'Status': 状态
 'Stem cannot be empty': 题干不能为空
 'Stem is required': 题干是必需的
 'Stem': 题干
 'Submit answer': 提交答案
+'Submit': 提交
 'Successfully pulled from GitHub': 成功从 GitHub 拉取
 'Successfully pushed to GitHub': 成功推送到 GitHub
+'Switch to node:': 是否切换为该节点？
 'System MCP tools (not from Edge). Click "Add" to add to current domain ': 系统提供的 MCP 工具（非 Edge 端）。点击「添加」可将工具加入当前域的
 'System tool (not Edge)': 系统工具，非 Edge
+'system_tools': 'System Tools'
 'Table of contents': 目录
 'Table of Contents': 目录
 'Tap below to resume': 点击下方继续
+'Terminal input': 终端输入
+'The Edge client has received its connection token and will reconnect automatically to complete registration.': Edge 客户端已收到连接 Token，并会自动重连完成注册。
 'The value `{1}` of {0} already exists.': '{0} 的值 `{1}` 已经存在。'
 'Thinking...': 正在思考...
 'This branch is behind remote by {0} commit(s). Please use Pull to sync.': 此分支落后远程 {0} 个提交。请使用 Pull 同步。
+'This roadmap branch has no practice nodes': 该路线图分支没有可练习的节点
 'This section requires completion of the following sections first': 此章节需要先完成以下章节
 'This tool has no input parameters defined.': 该工具没有定义输入参数。
 'Time Spent': 用时
@@ -750,20 +1166,27 @@ edge_authorize: Edge 授权
 'Tool Name': 工具名称
 'Tool uninstalled.': 已卸载。
 'Tool': 工具
+'ToolDoc ID': ToolDoc ID
 'Tools Count': 工具数量
 'Tools List': 工具列表
+'Tools': '工具'
 'Total check-in days': 总打卡天数
 'Total progress': 总进度
 'Total Time': 总用时
 'Tree view': 树形视图
+'True': 正确
 'TTS (Text-to-Speech) Configuration': TTS (文本转语音) 配置
 'TTS configuration saved successfully': TTS 配置已保存
 'TTS Configuration': TTS 配置
+'Type / Source': '类型 / 来源'
+'Type and press Enter to add tag': '输入后按回车添加标签'
 'Unable to add this item to AI context': 无法将该项加入 AI 上下文
+'Unable to validate slug': '无法校验 slug'
 'Uncommitted changes': 未提交的更改
 'Uninstall failed.': 卸载失败
 'Uninstall': 卸载
 'Uninstalling...': 卸载中...
+'Unique tool ID': 唯一工具 ID
 'Unknown error': 未知错误
 'Unnamed Course': 未命名课程
 'Unnamed Lesson': 未命名课程
@@ -773,26 +1196,37 @@ edge_authorize: Edge 授权
 'Unnamed': 未命名
 'Unsupported file type. Please upload an image (png, jpg, jpeg, gif).': 不支持的文件类型，请上传图片文件（png、jpg、jpeg、gif）
 'Up to date with remote': 与远程同步
-'Upload file': 上传文件
-'Upload file (create card)': 上传文件（创建卡片）
+'Update Roadmap': 更新路线图
 'Update Time': 更新时间
+'Updated at: {0}': '修改：{0}'
+'Upload file (create card)': 上传文件（创建卡片）
+'Upload file': 上传文件
 'Upload image': 上传图片
 'Uploading...': 上传中...
 'Usage Steps': 使用步骤
+'Use ToolDoc IDs in plugin MCP cards': 在插件 MCP 卡片中使用 ToolDoc ID
 'User {0} mentioned you in {1:link}': '用户 {0} 在 {1:link} 中提到了你。'
 'View Connection Logs': 查看连接日志
 'View Parameters': 查看参数
 'View pending changes': 查看待提交的更改
 'View Section': 查看章节
+'View tools': '查看工具'
 'Voice': 语音
 'WebSocket Endpoint': WebSocket 接入点
 'WebSocket Token Management': WebSocket Token 管理
 'WebSocket URL': WebSocket URL
 'Working': 工作中
 'Yes': 是
+'You are not allowed to delete this MCP.': '你无权删除此 MCP。'
+'You can close this page.': 你可以关闭此页面。
+'You have permission to create roadmaps for this domain.': 您有权为本域创建路线图。
+'Your answer': 你的答案
 'Your Answer': 您的答案
 'your custom message': 您的自定义消息
+'Your new repository will be created as {0}.': '你的知识库将被创建为 {0}。'
 "Confirm deleting {0} selected base(s)?": "确定要删除选中的 {0} 个仓库吗？"
+"Split by ', '. Or pick categories from the sidebar.": '使用英文逗号分隔，或从右侧分类栏点击添加。'
+"Split by ', '.": '使用英文逗号（,）分隔。'
 "This domain today": 本日本域
 "Today's contribution": 今日贡献
 "Today's domain activity": 本域今日动态
@@ -822,6 +1256,7 @@ Add: 添加
 Additional File: 附加文件
 Admin {0} delete your discussion "{1}". : 管理员 {0} 删除了你的讨论 "{1}"。
 Admin {0} delete your discussion tail reply {1} in "{2}"({3}). : 管理员 {0} 从讨论 {2}({3}) 中删除了你的楼中楼回复 {1}。
+agent_chat_empty_sessions: 暂无会话，点击「新对话」开始。
 agent_create: 创建智能体
 agent_detail: 智能体详情
 agent_domain: 智能体
@@ -831,7 +1266,9 @@ agent_main: 智能体
 agent_manage: 智能体管理
 agent_role: 智能体角色
 agent_user: 智能体用户
+AI editor state reverted: 已恢复到本次 AI 回复前的编辑状态。
 All Domains Learn: 全域学习
+All Roadmaps: 全部路线图
 All: 全部
 Allow builtin-login: 启用内置登录
 Allow users send messages: 允许用户使用私信
@@ -850,28 +1287,14 @@ Back to: 返回
 Base Node: 知识库节点
 Base type: 知识库类型
 base_create: 创建知识库
-Create Base: 创建知识库
-Create a knowledge base document for this domain.: 为此域创建一个知识库。
-Input base title: 输入知识库标题
-BID: 编号（BID）
-'Optional human-readable identifier, for example: P1001': '可选的易读编号，例如：P1001'
-"Split by ', '. Or pick categories from the sidebar.": '使用英文逗号分隔，或从右侧分类栏点击添加。'
-"Split by ', '.": '使用英文逗号（,）分隔。'
-Click to add: 点击添加
-'Base bid already exists: {0}': 'BID 已存在：{0}'
-Standard knowledge base: 普通知识库
 base_data: 知识库数据
 base_delete: 删除知识库
 base_detail: 知识库详情
 base_domain: 知识库
-Show tags: 显示标签
-Views: 访问
-Updated: 更新
 base_edge: 知识库边
 base_edit: 编辑知识库
 base_editor: 编辑器
 base_list: 知识库列表
-SID: 技能库编号（SID）
 base_node: 知识库节点
 base_outline: 知识库
 base_save: 保存知识库
@@ -882,6 +1305,7 @@ Begin Date: 开始日期
 Begin Time: 开始时间
 Belongs to card: 所属卡片
 Belongs to: 属于
+BID: 编号（BID）
 Bio Visibility: 个人简介可见性
 Bio: 个人简介
 block_create: 创建块
@@ -901,6 +1325,8 @@ By clicking the button, you will become a member of the domain {0}.: 点击按�
 By Username / UID: 由用户名或 UID
 Calendar View: 日历视图
 Calendar: 日历
+Cancel scheduled task: 取消定时任务
+Cancel this scheduled task?: 确定取消该定时任务？
 Cancel: 取消
 Cards: 卡片
 cards: 张卡片
@@ -915,6 +1341,7 @@ Choose the background image in your profile page.: 选择您资料页面的背�
 Clear Marks: 清除标记
 Click here to chat with me: 点击这里与我聊天
 click to add: 点击添加
+Click to add: 点击添加
 client_create: 创建客户端
 client_detail: 客户端详情
 client_domain: 客户端管理
@@ -938,7 +1365,6 @@ Contact: 联系
 content: 内容
 Content: 内容
 Continue: 继续
-'Lesson redo question': 重来
 Contribution Wall: 贡献墙
 Contributions in the past year: 过去一年的贡献
 Contributions: 贡献
@@ -951,6 +1377,8 @@ Copyright Complaint: 版权申诉
 CPU Info: CPU信息
 Create a branch: 创建分支
 Create a Discussion: 创建一个讨论
+Create a knowledge base document for this domain.: 为此域创建一个知识库。
+Create Base: 创建知识库
 Create Branch: 新建分支
 Create Discussion in {0}: 在 {0} 下创建讨论
 Create Discussion: 创建讨论
@@ -961,8 +1389,6 @@ Create new branch: 创建新分支
 Create Role: 创建角色
 Create: 创建
 Created at: 创建时间
-'Created at: {0}': '创建：{0}'
-'Updated at: {0}': '修改：{0}'
 Created By: 创建人
 current domain: 当前域
 Current Email: 当前电子邮件
@@ -972,6 +1398,7 @@ Current Password: 当前密码
 Current Status: 当前状态
 currently offline: 目前离线
 Custom File Name (Optional): 自定义文件名（可选）
+Date: 日期
 Default: 默认
 Delay: 延迟
 Delete a user: 删除用户
@@ -985,6 +1412,13 @@ delete: 删除
 Delete: 删除
 Description: 说明
 Destination Domain: 目标域
+develop_session_history_back: 返回开发首页
+develop_session_history_detail_title: 各次保存明细
+develop_session_history_hint_abandoned: 该开发会话已放弃，以下为该次开发中的保存记录。
+develop_session_history_hint_finished: 本会话已结算，以下为该次开发中的保存记录。
+develop_session_history_hint_timed_out: 该开发会话已因跨 UTC 日超时，以下为该次开发中的保存记录。
+develop_session_history_title: 开发会话（历史）
+develop: 开发
 Development: 开发
 Disabled: 关闭
 Discussion {1} not found.: 讨论 {1} 不存在。
@@ -1037,7 +1471,9 @@ Download: 下载
 Downvote: 差评
 Duration (hours): 持续时间 (小时)
 Duration: 持续时间
+edge_authorize: Edge 授权
 edge_domain: 链接
+edges: 条连线
 Edit Content: 编辑内容
 Edit description of this domain: 修改此域描述
 Edit discussion replies of own discussion: 修改自己讨论中的回复
@@ -1049,19 +1485,13 @@ Edit own discussion replies: 修改讨论中自己的回复
 Edit own discussions: 修改自己的讨论
 Edit permissions of a role: 修改角色权限
 Edit Profile: 编辑个人信息
+Edit scheduled task: 编辑定时任务
 Edit: 编辑
 Email Visibility: Email 可见性
 Email: 电子邮件
 Enable File Mode: 启用文件模式
 Enable Iterative Mode: 启用迭代模式
 Enabled: 开启
-Edit scheduled task: 编辑定时任务
-Paused: 已暂停
-Cancel scheduled task: 取消定时任务
-Cancel this scheduled task?: 确定取消该定时任务？
-Schedule deleted: 定时任务已取消
-Schedule updated and paused: 定时任务已更新并暂停
-Schedule updated and enabled: 定时任务已更新并启用
 End at: 结束于
 End Date: 结束日期
 End Time: 结束时间
@@ -1078,6 +1508,7 @@ Field {0} validation failed. ({2}): 字段 {0} 验证失败。 ({2})
 Field {0} validation failed.: 字段 {0} 验证失败。
 File Version (Optional): 文件版本（可选）
 Filter: 过滤
+Folder: 文件夹
 Footer: 页脚
 Forgot Password and/or Username: 忘记密码和/或用户名
 Forgot password or username?: 忘记密码或者用户名？
@@ -1124,6 +1555,7 @@ Init Discussion Nodes: 初始化讨论结点
 Initialize: 初始化
 Inline codes: 行内代码
 Inline formulas: 行内公式
+Input base title: 输入知识库标题
 Input Format: 输入格式
 Insert Code: 插入代码
 Insert Image: 插入图像
@@ -1145,148 +1577,12 @@ Last Submit At: 最后递交于
 Last Update At: 最后活动时间
 LaTeX Expressions: LaTeX 表达式
 Learn More: 了解更多
+Learn wall result problems_done: '{0} 道题'
+Learn wall result score: '得分：{0}'
+Learn wall result time_sec: '用时 {0} 秒'
+Learn wall result untitled card: 未命名卡片
 learn: 学习
 Learn: 学习
-'Learn tab learn wall': 学习墙
-'Learn domain learn wall': 本域学习墙
-'Learn domain learn wall caption': 本域内每日学习练习与答题结果统计（UTC）。色块越深表示节点/卡片/题目活动越多；也可能因打卡或打开过学习会话而点亮。选日后按学习会话列出，每行日期链到该会话历史。
-'Learn wall checked in': 当日已在本域完成学习打卡。
-'Learn wall checkin only saves': 当日仅有打卡，无计入统计的练习数据。
-'Learn wall sessions': 当日学习会话（UTC）
-'Learn wall no sessions': 当日无学习会话。
-'Learn wall session record count': '{0} 条记录'
-Learn wall result untitled card: 未命名卡片
-Learn wall result score: '得分：{0}'
-Learn wall result problems_done: '{0} 道题'
-Learn wall result time_sec: '用时 {0} 秒'
-develop: 开发
-'Develop': 开发
-'Develop mode knowledge base': 知识库
-'Develop mode roadmap': 路线图
-'Develop edit pool hint roadmap': 选择路线图与分支，并设置每日节点、卡片、题目目标；用 ↑↓ 调整顺序后保存。「开始开发」将按该顺序进入路线图编辑器。
-'Develop no roadmaps': 当前域内还没有路线图，请先创建路线图。
-'Develop unknown roadmap': 路线图不存在
-'Develop add row': 添加一项
-'Develop edit pool hint': 选择知识库并设置每日节点、卡片、题目目标；用 ↑↓ 调整顺序后保存。「开始开发」将按该顺序进入编辑器。
-'Develop edit pool': 编辑开发池
-'Develop goal unset': —
-'Develop no pool hint': 还没有开发池条目。点击上方「编辑」添加知识库及每日目标。
-'Develop progress overview': 今日目标与进度
-'Develop sidebar completed today': 今日已完成
-'Develop sidebar pending today': 待完成
-'Develop sidebar no completed': 暂无已全部达成当日目标的学习库。
-'Develop sidebar no pending': 当前没有待完成项。
-'Develop goal cards': 卡片目标
-'Develop goal nodes': 节点目标
-'Develop goal problems': 题目目标
-'Develop no bases': 当前域内还没有知识库，请先创建知识库。
-'Develop check-in blocked': 完成开发池内全部当日目标后可打卡
-'Develop check-in done': 今日已打卡
-'Develop check-in failed': 打卡失败
-'Develop check-in goals not met': 当日目标尚未全部完成
-'Develop check-in need goals set': 请至少为一项设置大于 0 的每日目标
-'Develop check-in need pool': 请先在「编辑」中添加开发池条目
-'Develop check-in': 每日打卡
-'Develop pool': 开发池
-'Develop save failed': 保存失败
-'Develop save pool': 保存开发池
-'Develop start': 开始开发
-'Develop continue': 继续开发
-'Develop session closed reload hint': 该开发会话已结束或不可用，将刷新页面以查看最新状态。
-'Save not logged in refresh then login': 未登录或登录已失效。请刷新页面后重新登录，再继续保存。
-'Develop start failed': 无法开始开发会话，请稍后重试
-'Develop pool order hint': 列表顺序即为开发顺序；在「编辑」中用 ↑↓ 调整后保存。
-'Develop pool skip done hint': 已达今日目标的库不会进入「开始开发」队列。
-'Develop row today goals met': 今日目标已完成
-'Develop run queue empty today': 今日待开发任务已全部完成。
-'Develop start goals done today': 该知识库今日目标已完成，无需再进入开发队列。
-'Develop start base not in pool': 该知识库不在你的开发任务列表中。
-'Outline editor start session': 开始编辑会话…
-'Outline editor start failed': 无法开始编辑会话，请重试。
-'Outline editor start invalid base': 当前大纲对应的知识库无效。
-'Outline editor start needs node': 从大纲进入编辑器需要指定节点。
-'Outline editor start invalid node': 该节点不在当前知识库下。
-'Outline editor popup blocked': 浏览器拦截了新标签页，请允许本站弹出窗口后重试。
-'Outline learn single card': 单卡片学习
-'Outline learn single node': 单节点学习
-'Separate as new base': 独立为新的 base
-'Separate as new base create hint': 将此节点及其整棵子树（子节点、卡片与附件）复制到新的知识库，原知识库保持不变。标题默认为节点名称，可在确认前修改。
-'Separate as new base title required': 请输入知识库标题。
-'Separate as new base save node first': 请先将节点保存后再独立为新的 base。
-'Separate as new base invalid doc': 无法独立为新的 base：文档 ID 无效。
-'Separate as new base save pending first': 请先在编辑器中保存所有未提交的修改。
-'Separate as new base failed': 独立为新的 base 失败。
-'Separate as new base success': 已创建新知识库并完成子树复制。
-'Outline learn start failed': 无法开始学习，请重试。
-'Outline learn invalid card': 该卡片 ID 无效，无法开始学习。
-'Outline card problems button': 'Problem（{0}）'
-'Outline card problems empty': 此卡片暂无 Problem。
-'Outline card problems card label': '卡片：{0}'
-'Outline card problems untitled item': 'Problem {0}'
-'Outline search placeholder': 搜索节点、卡片…
-'Outline search aria': 搜索大纲
-'Outline search no results': 无匹配项
-'Outline search kind node': 节点
-'Outline search kind card': 卡片
-'Outline explorer filter label': 服务端过滤
-'Outline explorer filter open': 过滤
-'Outline explorer filter dialog title': 服务端过滤
-'Outline explorer filter cancel': 取消
-'Outline explorer filter node placeholder': 节点标题…
-'Outline explorer filter card placeholder': 卡片标题…
-'Outline explorer filter problem placeholder': Problem 内容…
-'Outline explorer filter apply': 应用
-'Outline explorer filter clear': 清除
-'Outline explorer filter aria': 按关键词缩小大纲（服务端）
-'Develop start no pending': 今日待开发任务已全部完成；若有未结束的会话可先继续。
-'Develop move up': 上移
-'Develop move down': 下移
-'Develop run queue': 开发队列
-'Develop queue tab': 队列
-'Develop queue sidebar hint': 点击一项将打开对应知识库的开发会话（未保存的修改请先保存）。
-'Develop queue current': 当前
-'Base editor problems tab': 练习题
-'Develop run next': 下一个
-'Develop run clear': 结束队列
-'Develop today cards': 卡片
-'Develop today nodes': 节点
-'Develop today problems': 题目
-'Develop today progress': 今日进度（UTC，保存时累计）
-'Develop unknown base': 知识库不存在
-'Develop utc day': UTC 日期
-'Develop editor pool progress': 开发池 · 今日进度
-'Develop editor goals complete': 当前池条目的今日目标已完成。
-'Develop editor switch other base': 去其他知识库继续
-'Develop editor all pool goals met': 开发池内所有条目今日目标均已完成。
-'Develop editor switch modal title': 今日尚未完成目标的开发池条目
-'Develop editor switch modal hint': 点击下方条目进入对应编辑器；进度为当前 UTC 日。
-'Develop session contribution': 本会话
-'Develop editor end session': 结束会话
-'Develop session deadline hint': 以下时间后本会话将自动结束（本地时间）：
-'Develop session started label': 开始时间（本地）：
-'Develop session elapsed label': 已持续时间：
-'Develop editor settle': 结算
-'Develop settle failed': 结算失败。
-'Develop settle pool incomplete': 开发池内尚有条目未达成今日目标，无法结算。
-'Develop settle already': 该开发会话已结算。
-'Develop settle outline session': 单节点（大纲）编辑会话不能按每日开发池结算，请直接关闭或跨日后查看历史。
-develop_session_history_title: 开发会话（历史）
-develop_session_history_back: 返回开发首页
-develop_session_history_hint_finished: 本会话已结算，以下为该次开发中的保存记录。
-develop_session_history_hint_timed_out: 该开发会话已因跨 UTC 日超时，以下为该次开发中的保存记录。
-develop_session_history_hint_abandoned: 该开发会话已放弃，以下为该次开发中的保存记录。
-develop_session_history_detail_title: 各次保存明细
-session_develop_list_title: 开发会话（列表）
-'Develop domain contribution wall': 本域开发贡献
-'Develop domain contribution wall caption': 本知识库内累计到每日目标的开发与保存次数（UTC）。色块越深表示当日节点/卡片/题目编辑越多；也可能因打卡或仅有编辑器活动而点亮。
-'Develop wall checked in': 当日已在本域完成开发打卡。
-'Develop wall sessions': 当日开发会话（UTC）
-'Develop wall no sessions': 当日无开发会话。
-'Develop wall session base line': '{0}：{1} 条记录'
-'Develop wall session no saves': 当日该会话下无编辑器保存记录。
-'Develop wall base fallback title': '知识库 {0}'
-'Develop session': 会话
-'Develop wall checkin only saves': 当日仅有打卡，未在统计中计入保存次数。
 Leave Edit Mode: 离开编辑模式
 Less: 少
 lesson_history_col_attempts: 次数
@@ -1362,18 +1658,7 @@ Node ID: 节点ID
 node_domain: 节点管理
 nodes: 个节点
 Nodes: 节点
-'Assignable MCP services in this domain': 当前域可用的 MCP 服务
-'Available MCP services': 可用 MCP 服务
-'Card problems': 本卡片的练习题
-Folder: 文件夹
-'No available MCP services': 暂无可用 MCP 服务
-'No tools exposed': 暂无工具
 None: 无
-'Plugin node definition': 插件节点定义
-'Plugin nodes are folders. Add markdown cards under folders for skill, command, and MCP definitions.': 插件节点是文件夹。请在文件夹下添加 markdown 卡片来定义 skill、command 和 MCP。
-'ToolDoc ID': ToolDoc ID
-'Unique tool ID': 唯一工具 ID
-'Use ToolDoc IDs in plugin MCP cards': 在插件 MCP 卡片中使用 ToolDoc ID
 Not Attended: 未参加
 Not available: 不可用
 Not Claimed: 未认领
@@ -1409,6 +1694,7 @@ Password reset mail has been sent to your email.: 密码重置邮件已发送到
 Password: 密码
 Passwords don't match.: 验证密码不匹配。
 Path {0} not found.: 路径 {0} 不存在。
+Paused: 已暂停
 Peak Memory: 峰值内存
 perm_contest: 比赛
 perm_discussion: 讨论
@@ -1449,14 +1735,6 @@ record_col_session_question_idx: 题号
 record_col_session_type: 会话类型
 record_col_session: 会话
 record_col_short: 记录
-record_field_node: 节点
-record_field_session: 会话
-record_link_record_list: 记录
-record_link_session_list: 学习会话
-record_main_empty_filter: 没有符合条件的记录。
-record_main_empty: 该时间范围内暂无记录。
-record_main_list_title: 各卡记录（实时）
-record_main: 记录
 record_develop_changes_empty: 暂无明细。
 record_develop_changes_summary_hint: 以下为按类型汇总条数（旧记录可能没有逐条说明）。
 record_develop_changes_title: 本次保存的改动
@@ -1476,6 +1754,21 @@ record_develop_op_edge_delete: 删除连线
 record_develop_op_node_create: 新建节点
 record_develop_op_node_delete: 删除节点
 record_develop_op_node_update: 更新节点
+record_field_node: 节点
+record_field_session: 会话
+record_link_record_list: 记录
+record_link_session_list: 学习会话
+record_main_empty_filter: 没有符合条件的记录。
+record_main_empty: 该时间范围内暂无记录。
+record_main_list_title: 各卡记录（实时）
+record_main: 记录
+record_mcp_args: 调用参数
+record_mcp_duration: 耗时
+record_mcp_failed: 失败
+record_mcp_result: 返回结果
+record_mcp_status: 状态
+record_mcp_succeeded: 成功
+record_mcp_tool_title: MCP 工具调用
 record_no_problems: 暂无子题条目。
 record_open_detail: 查看
 record_page_title: 记录
@@ -1509,29 +1802,16 @@ Reset Password or Find Username: 重置密码或找回用户名
 Reset Password: 重置密码
 Reset: 重置
 Restart: 重新启动
+Revert AI operations: 撤销
+Reverted: 已撤销
+roadmap_main: 路线图
+Roadmap: 路线图
 Role Assignment: 角色分配
 Role has been updated to {0} for selected users.: 所选用户角色已更新为 {0}。
 Role has been updated to {0}.: 角色已更新为 {0}。
 Role name can only contains numbers, letters and underscores.: 角色名称只能包含数字、字母和下划线。
 Role: 角色
-Revert AI operations: 撤销
-Reverted: 已撤销
-AI editor state reverted: 已恢复到本次 AI 回复前的编辑状态。
 Roles: 角色
-session_chat_domain: 智能体会话
-session_chat_detail: 会话详情
-session_chat_live: 对话
-session_chat_none: 暂无会话
-session_chat_none_filter: 没有符合筛选条件的会话
-session_chat_back_list: 返回会话列表
-session_chat_back_detail: 返回详情
-session_chat_no_records: 本会话下暂无记录
-session_chat_id_label: 会话 ID
-session_chat_enter: 进入对话
-session_chat_title_placeholder: 会话标题
-session_chat_delete_confirm: 确定删除该会话？
-session_chat_delete: 删除会话
-agent_chat_empty_sessions: 暂无会话，点击「新对话」开始。
 Rule: 规则
 Run: 运行
 Save All Changes: 保存所有修改
@@ -1540,6 +1820,9 @@ Saved session: 已保存的会话
 scene_detail: 情景详情
 scene_domain: 情景
 scene_edit: 编辑情景
+Schedule deleted: 定时任务已取消
+Schedule updated and enabled: 定时任务已更新并启用
+Schedule updated and paused: 定时任务已更新并暂停
 Scripts: 脚本
 Search: 搜索
 Secret (visible to admins): 保密（对管理员可见）
@@ -1563,45 +1846,52 @@ Send Verification Email: 发送验证邮件
 Send: 发送
 Service Status: 服务状态
 session_active_minutes: 列出最近 N 分钟内有活动的用户
+session_chat_back_detail: 返回详情
+session_chat_back_list: 返回会话列表
+session_chat_delete_confirm: 确定删除该会话？
+session_chat_delete: 删除会话
+session_chat_detail: 会话详情
+session_chat_domain: 智能体会话
+session_chat_enter: 进入对话
+session_chat_id_label: 会话 ID
+session_chat_live: 对话
+session_chat_no_records: 本会话下暂无记录
+session_chat_none_filter: 没有符合筛选条件的会话
+session_chat_none: 暂无会话
+session_chat_title_placeholder: 会话标题
 session_col_branch: 分支
 session_col_card_progress: 卡片进度
 session_col_position: 卡片 / 节点
 session_col_progress: 进度
-session_col_records: 记录
-session_col_session_kind: 类型
 session_col_record_type: 会话类型
+session_col_records: 记录
 session_col_route: 页面
+session_col_session_kind: 类型
 session_col_started_at: 开始时间
+session_develop_list_title: 开发会话（列表）
 session_domain: 会话
 session_filter_any: 全部
 session_filter_kind: 会话类别
 session_filter_record_type: 会话类型
 session_filter_status: 状态
+session_kind_agent: 智能体
+session_kind_develop: 开发
+session_kind_learn: 学习
 session_last_activity: 最近活动
 session_learn_empty_filter: 没有符合条件的会话。
 session_learn_empty: 当前域内暂无近期学习活动。
 session_learn_list_title: 学习会话（实时）
-session_kind_develop: 开发
-session_kind_agent: 智能体
-session_kind_learn: 学习
 session_main: 会话
+session_record_type_agent: 对话
 session_record_type_daily: 每日练习
-session_record_type_other: 其他
-session_record_type_single_card: 单卡片练习
-session_record_type_single_node: 单节点练习
-session_record_type_develop: 开发编辑
 session_record_type_develop_daily: 每日开发
 session_record_type_develop_outline: 大纲单节点编辑
-session_record_type_agent: 对话
-session_record_type_schedule: 定时任务
+session_record_type_develop: 开发编辑
 session_record_type_mcp: Edge / MCP
-record_mcp_tool_title: MCP 工具调用
-record_mcp_status: 状态
-record_mcp_succeeded: 成功
-record_mcp_failed: 失败
-record_mcp_duration: 耗时
-record_mcp_args: 调用参数
-record_mcp_result: 返回结果
+session_record_type_other: 其他
+session_record_type_schedule: 定时任务
+session_record_type_single_card: 单卡片练习
+session_record_type_single_node: 单节点练习
 session_status_abandoned: 已放弃
 session_status_active: 在线
 session_status_detached: 离线
@@ -1631,7 +1921,9 @@ She: 她
 Show all tags: 显示所有标签
 show invisible characters when formatting code: 在格式化后的代码中显示不可见字符
 Show MOD badge: 展示 MOD 徽章
+Show tags: 显示标签
 Show: 显示
+SID: 技能库编号（SID）
 Sign In: 登录
 SIGN IN: 登录
 Sign up mail has been sent to your email.: 注册邮件已经发送到您的垃圾箱。
@@ -1649,10 +1941,12 @@ Source type: 来源类型
 Spaces: 空间
 Split by: 分隔符
 Split View: 分屏预览
+Standard knowledge base: 普通知识库
 Star Topic: 收藏讨论
 Star: 收藏
 Start at: 开始于
 Statistics: 统计
+Stats: 统计
 Status is hidden: 状态已隐藏
 status: 状态
 Storage engine accessKey: 存储桶 accessKey
@@ -1708,10 +2002,12 @@ Unordered List: 无序列表
 Unsaved session expire seconds: 未保存的会话的过期秒数
 Unstar Topic: 取消收藏
 Unstar: 取消收藏
+Untitled: 未命名
 Update Permission: 更新权限
 Update Resources: 更新关联资源
 Update Settings: 更新设置
 Update: 更新
+Updated: 更新
 Upload File: 上传文件
 Upload: 上传
 Uploaded By: 上传者
@@ -1750,6 +2046,7 @@ View or create discussion: 查看与发表讨论
 View result: 查看结果
 View this domain: 查看此域
 View: 查看
+Views: 访问
 Visit: 查看
 Vote: 投票
 WeChat Visibility: 微信可见性
@@ -1776,281 +2073,3 @@ You need to enter the invitation code to join the domain.: 您需要输入邀请
 You're not logged in.: 您没有登录。
 Your permission: 您的权限
 Your role: 您的角色
-roadmap_main: 路线图
-All Roadmaps: 全部路线图
-Roadmap: 路线图
-'Roadmap Editor': 路线图编辑器
-'Create Roadmap': 创建路线图
-'Edit graph': 编辑图谱
-'Manage Roadmap': 管理路线图
-'Update Roadmap': 更新路线图
-'Delete Roadmap': 删除路线图
-'Back to list': 返回列表
-'Search roadmaps': 搜索路线图
-'Create a roadmap document for this domain.': 为本域创建路线图文档。
-'Create a roadmap to get started.': 创建路线图以开始。
-'Sorry, there are no roadmaps yet.': 抱歉，目前还没有路线图。
-'You have permission to create roadmaps for this domain.': 您有权为本域创建路线图。
-'Enter roadmap title': 输入路线图标题
-'Input roadmap title': 输入路线图标题
-'Optional human-readable roadmap identifier, for example: R1001': '可选的人类可读路线图标识，例如：R1001'
-'Optional short description shown in list views.': 可选的简短描述，显示在列表视图中。
-'Please select at least one roadmap to delete.': 请至少选择一条路线图再删除。
-'Confirm deleting {0} selected roadmap(s)?': 确认删除已选的 {0} 条路线图？
-'Selected roadmaps have been deleted.': 已删除所选路线图。
-'Roadmap rid already exists: {0}': '路线图 RID 已存在：{0}'
-Untitled: 未命名
-edges: 条连线
-Stats: 统计
-'Roadmap load failed': 加载路线图失败。
-'Roadmap save operation': 保存路线图
-'Roadmap saved': 路线图已保存。
-'Roadmap save failed': 保存路线图失败。
-'Roadmap fit canvas': 适应画布
-'Roadmap delete edge': 删除连线
-'Roadmap node inspector': 节点检查器
-'Roadmap lane': 区域
-'Roadmap lane option': '区域 {0}'
-'Roadmap priority': 优先级
-'Roadmap owner': 负责人
-Date: 日期
-'Roadmap edge inspector': 连线检查器
-'Roadmap canvas': 画布
-'Roadmap panel pending': 待保存
-'Roadmap pending empty': 暂无待提交的更改
-'Roadmap pending created nodes': 新建节点
-'Roadmap pending updated nodes': 节点更改
-'Roadmap pending deleted nodes': 删除节点
-'Roadmap pending created edges': 新建连线
-'Roadmap pending updated edges': 连线更改
-'Roadmap pending deleted edges': 删除连线
-'Roadmap pending viewport changed': 视口更改
-'Roadmap pending updated problems': 题目更改
-'Roadmap AI terminal hint': AI 已就绪。描述要创建或修改的节点、连线或题目，在下方输入后按 Enter 发送；变更会立即应用到画布，记得保存。
-'Roadmap AI thinking': 思考中…
-'Roadmap AI receiving operations': 正在接收操作…
-'Roadmap AI waiting for operations': 等待操作列表…
-'Roadmap AI processing': 处理中
-'Roadmap AI applying operations': 正在应用 {0} 个操作
-'Roadmap AI operations applied': AI 操作已应用
-'Roadmap AI operations failed': |-
-  操作失败：
-  {0}
-
-  请修正上述问题后重试。
-'Roadmap AI chat error': '错误：{0}'
-'Roadmap AI parse error': '无法解析 AI 操作：{0}'
-'Roadmap AI execute error': '执行操作失败：{0}'
-'Roadmap AI problem missing nodeId': create_problem 需要有效的 nodeId
-'Roadmap practice problems node type forbidden': 只有 main 和 sub 节点支持练习题
-'Roadmap AI tutor': AI 导师
-'Roadmap AI tutor open': 打开 AI 导师
-'Roadmap AI tutor bar hint': 有问题？在这里输入
-'Roadmap AI tutor greeting': 你好，今天我能帮你什么？
-'Roadmap AI tutor suggestions lead': 关于这条路线图，你可能想问：
-'Roadmap AI tutor input placeholder': 问我任何关于这条路线图的问题…
-'Roadmap AI tutor question node': 关于路线图中的「{0}」，我应该了解什么？
-'Roadmap AI tutor question overview': 这条路线图「{0}」主要讲什么？
-'Roadmap AI tutor question order': 我应该按什么顺序学习这条路线图？
-'Roadmap AI tutor question start': 我应该从这条路线图的哪里开始？
-'Roadmap AI tutor question progress': 如何跟踪我在这条路线图上的学习进度？
-'Roadmap detail search placeholder': 搜索节点和题目…
-'Roadmap detail search aria': 搜索路线图
-'Roadmap detail search no results': 无匹配结果
-'Roadmap detail search kind node': 节点
-'Roadmap detail search kind problem': 题目
-'Roadmap detail search problem untitled': 未命名题目
-'Roadmap detail filter open': 筛选
-'Roadmap detail filter aria': 在画布上筛选路线图节点
-'Roadmap detail filter dialog title': 筛选路线图
-'Roadmap detail filter dialog hint': 不匹配的节点会在画布上变淡。筛选条件会同步到 URL。
-'Roadmap detail filter node label': 节点标题
-'Roadmap detail filter node placeholder': 节点标题…
-'Roadmap detail filter content label': 节点内容
-'Roadmap detail filter content placeholder': Markdown 正文…
-'Roadmap detail filter problem label': 练习题
-'Roadmap detail filter problem placeholder': 题目文本…
-'Roadmap detail filter apply': 应用
-'Roadmap detail filter clear': 清除
-'Roadmap detail filter cancel': 取消
-'Roadmap detail filter match count': 匹配 {0} 个
-'Roadmap detail settings open': 显示设置
-'Roadmap detail settings title': 显示设置
-'Roadmap editor settings title': 显示设置
-'Roadmap editor settings hint': 修改会立即在画布预览中生效，点击保存后进入待提交；与图谱变更一起使用顶部 Save 提交到 roadmap 文档（与 detail 页的 personal 显示设置无关）。
-'Roadmap editor settings applied pending': 显示设置已更新，请使用 Save 提交。
-'Roadmap pending display settings': 显示设置
-'Roadmap detail settings hint': 控制此页路线图画布的显示方式。
-'Roadmap detail settings show problem count': 显示题目数量
-'Roadmap detail settings show problem count hint': 在 main/sub 节点右上角以气泡数字显示该节点的练习题数量。
-'Roadmap detail settings show node number': 显示节点序号
-'Roadmap detail settings show node number hint': 在 main/sub 节点左上角以绿色字体显示拓扑顺序序号。
-'Roadmap detail settings show node card timestamps': 显示节点和卡片时间
-'Roadmap detail settings show node card timestamps hint': 在目录树中显示节点和卡片的创建时间、上次修改时间。
-'Roadmap node number': 节点序号
-'Roadmap main node number format hint': 格式 x（如 1）
-'Roadmap sub node number format hint': 格式 x.y（如 1.1，前一位为主节点序号）
-'Roadmap main node number missing': 主节点 "{0}" 缺少序号。
-'Roadmap main node number invalid': 主节点 "{0}" 序号必须是大于 0 的整数。
-'Roadmap sub node number invalid': 子节点 "{0}" 序号必须是 x.y 格式。
-'Roadmap sub node number missing': 子节点 "{0}" 缺少序号。
-'Roadmap sub node number prefix invalid': 子节点 "{0}" 序号前缀必须与某个主节点序号一致。
-'Roadmap node number validation failed': 路线图节点序号校验失败，请修正后再保存。
-'Show WS connection indicator': 显示 WS 连接指示器
-'Show live collaboration connection status at top right': 在右上角显示实时协作连接状态。
-'Roadmap detail settings saved': 显示设置已保存。
-'Roadmap detail settings save failed': 显示设置保存失败。
-'Resize sidebar': 调整侧栏宽度
-'Resize terminal panel': 调整终端高度
-'Terminal input': 终端输入
-'Collapse panel': 收起面板
-'Roadmap edge label': 依赖说明
-'Roadmap line style': 线型
-'Roadmap line solid': 实线
-'Roadmap line dashed': 虚线
-'Roadmap edge source': 源节点
-'Roadmap edge target': 目标节点
-'Roadmap inspector empty title': 选择一个节点或连线
-'Roadmap inspector empty hint': 点击节点可编辑 Markdown 内容；点击连线可切换线型。左右实线同行联动，虚线自由布局。Delete / Backspace 可删除。保存时会一并写入图谱与节点内容。
-'Roadmap detail empty': 路线图还没有内容。
-'Roadmap status in progress': 进行中
-'Roadmap status done': 已完成
-'Roadmap status blocked': 阻塞
-'Roadmap status planned': 计划中
-'Roadmap node type root': 总览
-'Roadmap node type milestone': 里程碑
-'Roadmap node type decision': 决策
-'Roadmap node type release': 发布
-'Roadmap node type task': 任务
-'Roadmap node type main': 主节点
-'Roadmap node type sub': 子节点
-'Roadmap node type hook': 跳转节点
-'Roadmap node type text': 文本节点
-'Roadmap node type': 节点类型
-'Base roadmap new card': 新建卡片
-'Base roadmap card type main': 主卡片
-'Base roadmap card type sub': 子卡片
-'Base roadmap card type hook': 跳转卡片
-'Base roadmap card type text': 文本卡片
-'Base roadmap card title': 卡片标题
-'Roadmap node lead text': 引导文本
-'Roadmap hook node hint': 为该跳转节点选择目标路线图，不支持编辑正文内容。
-'Roadmap hook linked': 已链接路线图
-'Roadmap hook target': 目标路线图
-'Roadmap hook select placeholder': 选择路线图
-'Roadmap branch': 分支
-'Roadmap main node dashed target forbidden': 主节点不能作为虚线终点。
-'Roadmap sub node solid target forbidden': 子节点只能作为主节点的实线终点；其他来源请使用虚线，或从主节点连线。
-'Roadmap connection not allowed': 该目标节点类型不允许此连接。
-'Roadmap priority low': 低
-'Roadmap priority medium': 中
-'Roadmap priority high': 高
-'Roadmap new milestone': 新里程碑
-'Roadmap new release': 新发布
-'Roadmap new decision': 新决策
-'Roadmap new task': 新任务
-'Roadmap add node': 节点
-'Roadmap add adjacent blocked': 该方向没有可用的相邻泳道
-'Roadmap new node': 新节点
-'Roadmap node editor': 节点编辑
-'Roadmap node content': 节点内容
-'Roadmap node content empty': 此节点暂无内容。
-'Roadmap drawer resources': 资源
-'Roadmap drawer content': 内容
-'Roadmap drawer problems': 题目
-'Roadmap drawer problems empty': 该节点暂无练习题。
-'Roadmap drawer problem tap reveal answer': 点击显示答案
-'Roadmap drawer problem reveal back': 点击显示背面
-'Roadmap drawer practice problems': 练习题
-'Roadmap drawer start node practice': 开始单节点刷题
-'Roadmap drawer start card practice': 开始刷题
-'Roadmap drawer start node practice busy': 正在进入刷题…
-'Roadmap drawer start node practice invalid doc': 当前路线图无效，无法开始刷题。
-'Roadmap markdown preview failed': Markdown 渲染失败。
-'Knowledge Base': 知识库
-'Document Structure': 文档结构
-'Base detail content placeholder': 从文档结构中选择节点以查看内容。
-'Base detail tree empty': 该知识库暂无节点。
-'Base detail node empty': 该节点暂无内容。
-'Base detail card empty': 该卡片暂无内容。
-'Base detail filter dialog hint': 匹配的节点与卡片会显示在文档结构中，不匹配的树枝会被隐藏。
-'Base detail content filter dialog hint': 仅过滤当前内容区的树，不匹配的树枝会被隐藏。
-'Base detail tree search placeholder': 过滤当前树…
-'Base detail tree search aria': 过滤内容树
-'Start develop session for node:': 是否进入节点开发会话？
-'Start learning session for node:': 是否开始节点学习？
-'Switch to node:': 是否切换为该节点？
-'Node has no content': 该节点暂无内容
-'Child nodes: {0}': 子节点：{0} 个
-'Cards: {0}': 卡片：{0} 张
-'Problems: {0}': 题目：{0} 道
-
-'MCP Dashboard': 'MCP 仪表盘'
-'Manage System Tools': '管理 System Tools'
-'MCP dashboard description': 'MCP 现在是工具的顶层对象：这里同时显示出站 MCP、System Tools MCP，以及外部接入的入站 MCP。点击任意 MCP 可查看其下工具与唯一工具 ID。'
-'No MCP.': '暂无 MCP。'
-'Type / Source': '类型 / 来源'
-'Tools': '工具'
-'Last used': '上次使用'
-'Never used': '从未使用'
-'Authentication Time': '认证时间'
-'Expiration Time': '过期时间'
-'Actions / Expiry': '操作 / 过期设置'
-'Pending connection': '待连接'
-'View tools': '查看工具'
-'Expired': '已过期'
-'Specific time': '指定时间'
-'1 hour': '1 小时'
-'1 day': '1 天'
-'7 days': '7 天'
-'30 days': '30 天'
-'1 year': '1 年'
-'system_tools': 'System Tools'
-'ejunztools': 'Ejunz Tools'
-'outbound': '出站'
-'inbound': '入站'
-'plugin': '插件'
-'outbound endpoint': '出站端点'
-'external': '外部'
-'plugin MCP': '插件 MCP'
-'assignable': '可分配'
-'not assignable': '不可分配'
-'Search MCP': '搜索 MCP'
-'Deleting an outbound MCP invalidates its token immediately.': '删除出站 MCP 会立即使其 Token 失效。'
-'Please select at least one MCP to delete.': '请至少选择一个要删除的 MCP。'
-'Confirm deleting {0} selected MCP endpoint(s)? Their tokens will be invalidated immediately.': '确认删除已选的 {0} 个 MCP 端点吗？它们的 Token 将立即失效。'
-'Selected MCP endpoint(s) have been deleted.': '已删除所选 MCP 端点。'
-'Only outbound MCP endpoints can be deleted from this page.': '只有出站 MCP 端点可以从此页面删除。'
-'You are not allowed to delete this MCP.': '你无权删除此 MCP。'
-'Remove Selected': '删除所选'
-'Expiry': '过期设置'
-'Show card tags': '显示卡片标签'
-'Show card tags hint': '在树状显示中展示卡片的标签'
-'Show problem tags': '显示题目标签'
-'Show problem tags hint': '在树状显示中的题目旁展示题目标签'
-'Card tags': '卡片标签'
-'Card tags filter': '按卡片标签过滤'
-'Card tags filter placeholder': '用逗号分隔的标签名'
-'Type and press Enter to add tag': '输入后按回车添加标签'
-'Remove tag': '移除标签'
-'Add tag...': '添加标签...'
-'No tags available': '暂无可用标签'
-'No tags': '无标签'
-'Please select a card first': '请先选择一张卡片'
-'Available tags': '可用标签'
-'Problem tags': '题目标签'
-'Slug': '路径标识'
-'Only lowercase letters (a-z), digits (0-9), dots, underscores, and hyphens. Used in the URL.': '仅限小写字母 (a-z)、数字 (0-9)、点号、下划线和连字符，用于 URL。'
-'{0} is available': '{0} 可用'
-'Your new repository will be created as {0}.': '你的知识库将被创建为 {0}。'
-'Slug is not available': '路径标识不可用'
-'Slug is required': '请输入路径标识'
-'{0} already exists in this domain': '{0} 已存在'
-'Slug can only contain lowercase letters (a-z), digits (0-9), dots (.), underscores (_), and hyphens (-)': '路径标识只能包含小写字母 (a-z)、数字 (0-9)、点号 (.)、下划线 (_) 和连字符 (-)'
-'Slug must be 80 characters or less': '路径标识不能超过 80 个字符'
-'Slug cannot start with a dot, underscore, or hyphen': '路径标识不能以点号、下划线或连字符开头'
-'Slug cannot end with a dot, underscore, or hyphen': '路径标识不能以点号、下划线或连字符结尾'
-'Slug cannot contain consecutive dots, underscores, or hyphens': '路径标识不能包含连续的点号、下划线或连字符'
-'Slug cannot be entirely numeric to avoid conflict with numeric IDs': '路径标识不能为纯数字，以免与数字 ID 冲突'
-'Unable to validate slug': '无法校验 slug'
-'Checking availability…': '正在检查可用性…'

@@ -1,5 +1,11 @@
 
 
+
+
+
+  {0}
+  Fix the issues above and try again.
+  Operations failed:
 __id: en
 __interface: 1
 __langname: English
@@ -8,16 +14,28 @@ __langname: English
 ' for use by Agent etc.': for use by Agent etc.
 '-- Please Select Agent --': -- Please Select Agent --
 '(No content)': (No content)
+'{0} already exists in this domain': '{0} already exists in this domain'
 '{0} days ago': '{0} days ago'
+'{0} filter rules': '{0} filter rule(s)'
+'{0} is available': '{0} is available'
 '{0} more cards to go': Need {0} more cards
 '{0} more times to go': Need {0} more practices
 '{0} parts': '{0} parts'
 '{0} units': '{0} units'
+'1 day': '1 day'
+'1 hour': '1 hour'
+'1 year': '1 year'
+'30 days': '30 days'
+'7 days': '7 days'
 'Access Point Type': Access Point Type
 'Accuracy': Accuracy
+'Actions / Expiry': 'Actions / Expiry'
 'Actions': Actions
 'Add failed.': Add failed.
+'Add new tag group...': 'Add new tag group…'
 'Add Root Doc': Add Root Doc
+'Add sub-tag...': 'Add sub-tag…'
+'Add tag...': 'Add tag...'
 'Add to top of order': Add to top of order
 'Added to tool list.': Added to tool list.
 'Added': Added
@@ -27,23 +45,15 @@ __langname: English
 'Agent configuration saved successfully': Agent configuration saved successfully
 'Agent Configuration': Agent Configuration
 'Agent Knowledge Base': Agent Knowledge Base
-'Configure Agent Knowledge Base': Configure Agent Knowledge Base
-'No knowledge base is mounted for this agent yet.': No knowledge base is mounted for this agent yet.
-'Optionally mount one domain knowledge base (outline / cards) for this agent.': Optionally mount one domain knowledge base (outline / cards) for this agent.
-'Save knowledge base mount': Save knowledge base mount
-'Failed to save knowledge base mount': Failed to save knowledge base mount.
-'Knowledge base': Knowledge base
-'No knowledge bases in this domain yet.': No knowledge bases in this domain yet.
-'Core library': Core library
-'Core': Core
-'At least one enabled library must be marked as core.': At least one enabled library must be marked as core.
-'Back to Agent': Back to Agent
 'Ahead of remote by {0} commit(s)': Ahead of remote by {0} commit(s)
 'AI chat failed': AI chat failed
 'AI executed operations': AI executed operations
+'AI grade': 'AI grade'
 'AI returned incomplete problem data': AI returned incomplete problem data
 'AI returned invalid format': AI returned invalid format, please retry
 'AI': AI
+'All Bases': 'All Bases'
+'An Edge client is requesting to register to the current domain.': An Edge client is requesting to register to the current domain.
 'Analysis (optional)': Analysis (optional)
 'Analysis': Analysis
 'Answer index invalid': Answer index invalid
@@ -56,42 +66,76 @@ __langname: English
 'ASR (Speech Recognition) Configuration': ASR (Speech Recognition) Configuration
 'ASR configuration saved successfully': ASR configuration saved successfully
 'ASR Configuration': ASR Configuration
+'Assignable MCP services in this domain': Assignable MCP services in this domain
+'assignable': 'Assignable'
+'At least one enabled library must be marked as core.': At least one enabled library must be marked as core.
 'At least two options required for create_problem': At least two options required for create_problem
 'At least two options required': At least two options required
 'Attempts': Attempts
+'Authentication Time': 'Authentication Time'
+'Authorize and register': Authorize and register
+'Authorize Edge registration': Authorize Edge registration
+'Available MCP services': Available MCP services
+'Available tags': 'Available tags'
+'Back to Agent': Back to Agent
 'Back to Details': Back to Details
 'Back to Learn': Back to Learn
+'Back to list': Back to list
 'Back to List': Back to List
 'Back to Tools List': Back to Tools List
+'Base bid already exists: {0}': 'Base bid already exists: {0}'
+'Base detail card empty': This card has no content yet.
+'Base detail content filter dialog hint': Filter the current content tree only. Non-matching paths are hidden.
+'Base detail content placeholder': Select a node from Document Structure to view its content.
+'Base detail filter dialog hint': Matching nodes and cards are shown in Document Structure; non-matching paths are hidden.
+'Base detail node empty': This node has no content yet.
+'Base detail tree empty': No nodes in this knowledge base yet.
+'Base detail tree search aria': Filter content tree
+'Base detail tree search placeholder': Filter current tree…
+'Base editor problems tab': Problems
+'Base roadmap card title': Card title
+'Base roadmap card type hook': Hook card
+'Base roadmap card type main': Main card
+'Base roadmap card type sub': Sub card
+'Base roadmap card type text': Text card
+'Base roadmap new card': New card
 'Base URL': Base URL
 'Basic Info': Basic Info
 'Batch save failed': Batch save failed
 'Behind remote by {0} commit(s)': Behind remote by {0} commit(s)
+'Blank': 'Blank {0}'
 'Block': Block
-'Branch': Branch
 'branch': branch
+'Branch': Branch
 'Breadth learning mode': Breadth (rotate across sections)
 'Cancel': Cancel
-'Edit': Edit
-'Remove': Remove
 'Cannot create: node does not exist': 'Cannot create: node does not exist'
 'Cannot delete: invalid node ID': 'Cannot delete: invalid node ID'
 'Cannot import: node does not exist': 'Cannot import: node does not exist'
 'Cannot move node into its own descendant': 'Cannot move node into its own descendant'
 'Card already in target node': 'Card already in target node'
 'Card data not found, cannot generate problem': 'Card data not found, cannot generate problem'
+'Card problems': Card problems
 'Card Results': Card Results
+'Card tags filter placeholder': 'Comma-separated tag names'
+'Card tags filter': 'Filter by card tag'
+'Card tags': 'Card tags'
 'Card': Card
 'cardId is required': 'cardId is required'
+'Cards: {0}': 'Cards: {0}'
 'Check-in Days': Check-in Days
 'Check-in remaining': Remaining today
 'Checked in': Checked in
+'Child nodes: {0}': 'Child nodes: {0}'
+'Choose a roadmap and branch, then save to continue learning.': Choose a roadmap and branch, then save to continue learning.
+'Choose which roadmap and branch to use for Learn.': Choose which roadmap and branch to use for Learn.
 'Clear Agent': Clear Agent
 'Clear Logs': Clear Logs
 'Click a section on the left to add to the top of the order.': Click the + button next to a section to add it to the top of the order.
 'Click a section to add it to the top of the order list.': Click the + button next to a section to add it to the top of the order list.
 'Click the "Create Client" button above to create a new client': Click the "Create Client" button above to create a new client
 'Click to expand questions': Click to expand questions
+'Click to select': 'Click to select'
 'Client Connection Logs': Client Connection Logs
 'Client ID': Client ID
 'Client Information': Client Information
@@ -100,14 +144,19 @@ __langname: English
 'Clients can connect via the following WebSocket URL (Token must be generated first)': Clients can connect via the following WebSocket URL (Token must be generated first)
 'Clipboard unavailable': Clipboard unavailable
 'Close and retry': Close and retry
+'Collapse panel': Collapse panel
 'Collapse': Collapse
 'Collecting data...': Collecting data...
+'Column': 'Column {0}'
 'Commit Message': Commit Message
 'commits': commits
 'Completed cards': Completed cards
 'Completed sections': Completed
 'Completed today': Completed today
 'Configuration': Configuration
+'Configure Agent Knowledge Base': Configure Agent Knowledge Base
+'Confirm deleting {0} selected MCP endpoint(s)? Their tokens will be invalidated immediately.': 'Confirm deleting {0} selected MCP endpoint(s)? Their tokens will be invalidated immediately.'
+'Confirm deleting {0} selected roadmap(s)?': Confirm deleting {0} selected roadmap(s)?
 'Confirm': Confirm
 'Congratulations! You have completed all practice questions correctly.': Congratulations! You have completed all practice questions correctly.
 'Connect to the WebSocket URL above using the generated Token': Connect to the WebSocket URL above using the generated Token
@@ -120,6 +169,7 @@ __langname: English
 'Content contribution': Content contribution
 'Content copied to clipboard': Content copied to clipboard
 'Content generated by AI (qwen)': Content generated by AI (qwen)
+'Content': Content
 'Continue Learning': Continue Learning
 'Contributions on {0} in {1}': Contributions on {0} in {1}
 'Contributions on {0}': Contributions on {0}
@@ -129,21 +179,30 @@ __langname: English
 'Copy failed': Copy failed
 'Copy link': Copy link
 'Copy': Copy
+'Core library': Core library
+'Core': Core
 'Correct answer (mark)': Correct answer
 'Correct answer': Correct answer
 'Correct Answer': Correct Answer
 'Correct needed': Correct needed
 'Correct': Correct
-'Create one': Create one
+'Cover all': 'Cover all'
+'Create a roadmap document for this domain.': Create a roadmap document for this domain.
+'Create a roadmap to get started.': Create a roadmap to get started.
 'Create Client': Create Client
+'Create one': Create one
 'Create remote branch': Create remote branch
+'Create Roadmap': Create Roadmap
 'Create': Create
+'Created at: {0}': 'Created at: {0}'
 'Created Clients': Created Clients
 'Created Time': Created Time
 'Cumulative': Cumulative
 'Current base (Learn)': Current base (Learn)
 'Current base structure': Current base structure
+'Current knowledge base (Learn)': Current knowledge base (Learn)
 'Current Progress': Current Progress
+'Current roadmap (Learn)': Current roadmap (Learn)
 'Current': Current
 'Currently Selected Agent': Currently Selected Agent
 'Cut': Cut
@@ -153,35 +212,119 @@ __langname: English
 'Default message': Default message
 'Delete Client': Delete Client
 'Delete problem': Delete problem
+'Delete Roadmap': Delete Roadmap
+'Delete row': Delete this row
 'Delete Server': Delete Server
 'Delete Token': Delete Token
+'Deleting an outbound MCP invalidates its token immediately.': 'Deleting an outbound MCP invalidates its token immediately.'
 'Description (Optional)': Description (Optional)
+'Develop add row': Add entry
+'Develop check-in blocked': Check in after all daily goals in the pool are met
+'Develop check-in done': Checked in today
+'Develop check-in failed': Check-in failed
+'Develop check-in goals not met': Not all daily goals are completed yet
+'Develop check-in need goals set': Set at least one daily goal greater than zero
+'Develop check-in need pool': Add pool entries under Edit first
+'Develop check-in': Daily check-in
+'Develop continue': Continue develop
+'Develop domain contribution wall caption': Saves counted toward daily goals in this domain (UTC). Darker cells mean more edits; dots may also mark check-ins or editor sessions with no saves yet.
+'Develop domain contribution wall': Develop contribution (this domain)
+'Develop edit pool hint roadmap': Pick roadmaps and branches, set daily goals. Use ↑↓ to set order, then save. Start develop follows this order into the roadmap editor.
+'Develop edit pool hint': Pick bases, set daily goals, and use ↑↓ to set order before saving. Start develop follows this order.
+'Develop edit pool': Edit develop pool
+'Develop editor all pool goals met': All develop pool entries have met their goals today.
+'Develop editor end session': End session
+'Develop editor goals complete': Daily goals for this pool entry are met.
+'Develop editor pool progress': Develop pool (today)
+'Develop editor settle': Settle session
+'Develop editor switch modal hint': Open the editor for another pool entry; progress is for the current UTC day.
+'Develop editor switch modal title': Bases still below today’s goals
+'Develop editor switch other base': Continue on another base
+'Develop goal cards': Card goal
+'Develop goal nodes': Node goal
+'Develop goal problems': Problem goal
+'Develop goal unset': —
+'Develop mode knowledge base': Knowledge base
+'Develop mode roadmap': Roadmap
+'Develop move down': Move down
+'Develop move up': Move up
+'Develop no bases': No knowledge bases in this domain yet. Create a base first.
+'Develop no pool hint': No entries yet. Tap Edit to add bases and daily goals.
+'Develop no roadmaps': No roadmaps in this domain yet. Create a roadmap first.
+'Develop pool order hint': Order shown here is the run order; adjust with ↑↓ in Edit, then save.
+'Develop pool skip done hint': Bases that already met today’s goals are skipped by Start develop.
+'Develop pool': Develop pool
+'Develop progress overview': Goals & today’s progress
+'Develop queue current': Current
+'Develop queue sidebar hint': Click a row to open that base in a develop session (save pending edits first).
+'Develop queue tab': Queue
+'Develop row today goals met': Today’s goals done
+'Develop run clear': End queue
+'Develop run next': Next base
+'Develop run queue empty today': No develop tasks left for today.
+'Develop run queue': Develop queue
+'Develop save failed': Save failed
+'Develop save pool': Save pool
+'Develop session closed reload hint': This develop session has ended or is no longer editable. Reloading…
+'Develop session contribution': This session (saved edits)
+'Develop session deadline hint': "This editor session auto-closes at (local time):"
+'Develop session elapsed label': "Elapsed:"
+'Develop session started label': "Started (local time):"
+'Develop session': Session
+'Develop settle already': This develop session has already been settled.
+'Develop settle failed': Could not settle this session.
+'Develop settle outline session': Outline single-node editor sessions cannot be settled like the daily develop run; close the tab or view history after the UTC day rolls over.
+'Develop settle pool incomplete': Not every develop pool entry has met today’s goals yet.
+'Develop sidebar completed today': Completed today
+'Develop sidebar no completed': No base has completed all of today’s goals yet.
+'Develop sidebar no pending': Nothing pending in the pool for today.
+'Develop sidebar pending today': Pending today
+'Develop start base not in pool': This base is not in your develop pool.
+'Develop start failed': Could not start develop session. Please try again.
+'Develop start goals done today': This base already met today’s goals and is out of the develop run queue.
+'Develop start no pending': All today’s develop tasks are done; resume an open session if needed.
+'Develop start': Start develop
+'Develop today cards': Cards
+'Develop today nodes': Nodes
+'Develop today problems': Problems
+'Develop today progress': Today (UTC, increments on save)
+'Develop unknown base': Base not found
+'Develop unknown roadmap': Roadmap not found
+'Develop utc day': UTC date
+'Develop wall base fallback title': 'Base {0}'
+'Develop wall checked in': Checked in today’s develop goals for this domain.
+'Develop wall checkin only saves': Check-in only — no save counts recorded for this day.
+'Develop wall no sessions': No develop sessions for this day.
+'Develop wall session base line': '{0}: {1} record(s)'
+'Develop wall session no saves': No editor saves in this session on this day.
+'Develop wall sessions': Develop sessions this day (UTC)
+'Develop': Develop
 'Device': Device
 'Disconnected': Disconnected
 'Doc': Doc
+'Document Structure': Document Structure
 'Done': Done
-'Download': Download
 'Download Audio': Download Audio
 'Download Recording': Download Recording
+'Download': Download
 'Drag items to reorder': Drag items to reorder
 'Drop here to delete': Drop here to delete
+'Duration': 'Duration'
+'Edge authorization succeeded': Edge authorization succeeded
 'Edge Connection Status': Edge Connection Status
 'Edge page': Edge page
 'Edge Type': Edge Type
-'Edge authorization succeeded': Edge authorization succeeded
-'Authorize Edge registration': Authorize Edge registration
-'The Edge client has received its connection token and will reconnect automatically to complete registration.': The Edge client has received its connection token and will reconnect automatically to complete registration.
-'You can close this page.': You can close this page.
-'An Edge client is requesting to register to the current domain.': An Edge client is requesting to register to the current domain.
-'Expires At': Expires At
-'Authorize and register': Authorize and register
-edge_authorize: Edge Authorization
 'Edit Client': Edit Client
+'Edit graph': Edit graph
+'Edit': Edit
 'Edited': Edited
+'ejunztools': 'Ejunz Tools'
 'Enable Server VAD': Enable Server VAD
 'Endpoint': Endpoint
 'Enter custom commit message (optional)': Enter custom commit message (optional)
+'Enter Edit Mode': 'Enter Edit Mode'
 'Enter new title': Enter new title
+'Enter roadmap title': Enter roadmap title
 'Enter single card mode?': Enter single card mode?
 'Enter single node mode?': Enter single node mode?
 'Enter title for new': Enter title for new
@@ -189,9 +332,15 @@ edge_authorize: Edge Authorization
 'Error': Error
 'Existing problems': Existing problems
 'Exit multi-select': Exit multi-select
+'Exit': 'Exit'
 'Expand': Expand
+'Expiration Time': 'Expiration Time'
+'Expired': 'Expired'
+'Expires At': Expires At
+'Expiry': 'Expiry'
 'Export complete': Export complete
 'Export failed': Export failed
+'external': 'external'
 'Failed to clear Agent configuration: {0}': 'Failed to clear Agent configuration: {0}'
 'Failed to delete API key': Failed to delete API key
 'Failed to delete conversation': 'Failed to delete conversation'
@@ -206,18 +355,22 @@ edge_authorize: Edge Authorization
 'Failed to push to GitHub': 'Failed to push to GitHub'
 'Failed to save Agent configuration: {0}': 'Failed to save Agent configuration: {0}'
 'Failed to save ASR configuration: {0}': 'Failed to save ASR configuration: {0}'
+'Failed to save knowledge base mount': Failed to save knowledge base mount.
 'Failed to save learn session mode': Failed to save session mode
+'Failed to save learn sub mode': Failed to save learn sub mode
 'Failed to save TTS configuration: {0}': 'Failed to save TTS configuration: {0}'
 'Failed to set learning point': Failed to set learning point
+'False': 'False'
 'File Mode': File Mode
 'File view': File view
+'Filter rules': Filter rules
 'Final message will be': Final message will be
+'Flip hide hint': Hide hint
+'Flip hint label': Hint
 'Flip mark done': Mark as done
 'Flip show back': Show back
 'Flip show front': Show front
 'Flip show hint': Show hint
-'Flip hide hint': Hide hint
-'Flip hint label': Hint
 'Folder description': Folder description
 'Folder/Directory': Folder/Directory
 'Free Scroll': Free Scroll
@@ -234,65 +387,23 @@ edge_authorize: Edge Authorization
 'Image preview failed': Image preview failed
 'Image upload failed': Image upload failed
 'Import hint': Paste content below, use ## Title and --- to separate cards
+'inbound': 'Inbound'
 'Incorrect': Incorrect
 'Input Parameters': Input Parameters
+'Input roadmap title': Input roadmap title
 'Input Schema': Input Schema
+'Insert {0} selected into AI terminal': Insert {0} selected into AI terminal
 'Insert here': Insert here
 'Insert into AI terminal': Insert into AI terminal
 'Insert problem into AI terminal': Insert practice problem into AI terminal
-'Practice problem pid not on open card': That practice problem id is not on this card
-'Lesson problem tag label': Problem tag
-'Problem tag none': (No tag · default grouping)
-'Lesson problem tag save failed': Failed to save problem tag
-'Lesson problem tag save missing node': 'Cannot save tag: missing node id on card'
-'Lesson problem tag save no card': 'Cannot save tag: card not found on this page'
-'Lesson problem tag new placeholder': Type a new tag name
-'Lesson problem tag apply new': Add
-'Lesson problem tag new hint': 'Registers the tag on this knowledge base (max 64 characters) and adds it to this problem; you can also append registered tags from the dropdown above.'
-'Lesson problem tag register ok': Registered and added to this problem.
-'Lesson problem tag register failed': Failed to register tag
-'Lesson problem tag panel title': Problem tag
-'Lesson problem tag panel open': Tags
-'Lesson problem tag panel empty': No tag on this problem
-'Lesson problem tag panel current': Current tag
-'Lesson problem tag panel readonly hint': You do not have permission to edit tags for this problem.
-'Lesson problem tag panel choose registered': Choose a registered tag
-'Lesson problem tag panel new': Custom new tag
-'Lesson problem tag panel clear': Clear tag
-'Lesson problem tag panel append registered': Add an existing tag
-'Lesson problem tag panel add registered placeholder': Select a tag to add…
-'Lesson problem tag chip remove': Remove
-'Lesson problem notes panel title': Notes
-'Lesson problem notes count badge': '{0} notes'
-'Lesson problem notes empty list': No notes yet.
-'Lesson problem notes add': Add a note
-'Lesson problem notes placeholder': Write your note…
-'Lesson problem notes submit': Post note
-'Lesson problem notes submitting': Posting…
-'Lesson problem notes saved': Note posted.
-'Lesson problem notes load failed': Failed to load notes.
-'Lesson problem notes save failed': Failed to post note.
-'Lesson problem notes updated': Note updated.
-'Lesson problem notes edited at': Edited {0}
-'Lesson problem notes edit': Edit
-'Lesson problem notes save edit': Save
-'Lesson problem notes cancel edit': Cancel
-'Lesson problem notes delete': Delete
-'Lesson problem notes deleting': Deleting…
-'Lesson problem notes delete confirm': Delete this note? This cannot be undone.
-'Lesson problem notes deleted': Note deleted.
-'Lesson problem notes delete failed': Failed to delete note.
-'Problem editor notes title': Notes
-'Problem editor notes empty': No notes yet.
-'Problem editor notes add': Add
-'Problem editor notes delete': Remove
-'Problem editor notes remove row': Remove this row
-'Problem editor notes pending short': pending
-'Loading...': Loading…
-'Insert {0} selected into AI terminal': Insert {0} selected into AI terminal
+'Insert row after': Insert row below
+'Insert row before': Insert row above
+'Invalid lesson navigate': Invalid card navigation
 'Join Domain': Join Domain
 'Jump to {0}': Jump to {0}
 'Know it': Know it
+'Knowledge base': Knowledge base
+'Knowledge Base': Knowledge Base
 'Language Type': Language Type
 'Language': Language
 'Last check-in': Last check-in
@@ -300,119 +411,177 @@ edge_authorize: Edge Authorization
 'Last Connected Time': Last Connected Time
 'Last Connected': Last Connected
 'Last Disconnected Time': Last Disconnected Time
-'Learn session mode': Session order (next daily run)
-'Learn session preferences': Session preferences
+'Last used': 'Last used'
+'Learn DAG reset done': Learning path was refreshed from the base.
+'Learn DAG reset failed': Could not refresh learning path from the base.
+'Learn domain learn wall caption': Daily practice from stats and card completions (UTC). Darker cells mean more activity; dots may mark check-ins or open sessions. Day detail lists learn sessions; each line links to that session’s history.
+'Learn domain learn wall': Learn activity (this domain)
+'Learn lesson start missing redirect': 'Could not start learning — the server did not return a valid redirect URL.'
+'Learn mixed schedule new first': New first
+'Learn mixed schedule one one': 1+1 (alternate new/review)
+'Learn mixed schedule review first': Review first
+'Learn mixed schedule shuffle': Shuffle
+'Learn mixed schedule': Order (new + review)
 'Learn mode knowledge base': Knowledge base
 'Learn mode roadmap': Roadmap
-'Current knowledge base (Learn)': Current knowledge base (Learn)
-'Current roadmap (Learn)': Current roadmap (Learn)
-'Pending selection': Pending selection
-'Select learn base': Select knowledge base
-'Select learn roadmap': Select roadmap
-'Select learn roadmap and branch': Select roadmap and branch
-'Select a knowledge base before learning': Select a knowledge base before learning
-'Select a roadmap before learning': Select a roadmap before learning
-'Choose a roadmap and branch, then save to continue learning.': Choose a roadmap and branch, then save to continue learning.
-'Choose which roadmap and branch to use for Learn.': Choose which roadmap and branch to use for Learn.
-'No knowledge base in this domain.': No knowledge base in this domain.
-'No roadmap in this domain.': No roadmap in this domain.
-'This roadmap branch has no practice nodes': This roadmap branch has no practice nodes
-'Learn session card filter': Card filter (next daily run)
-'Learn session card filter all': All cards (including cards without problems)
-'Learn session card filter with problems': Only cards that have problems
-'Learn session card filter without problems': Only cards without problems
-'Learn session problem tag filter': Problem tag filter (problems inside cards)
-'Learn session problem tag filter off': Don't filter problems by tag
-'Learn session problem tag filter include': Only problems tagged with selections
-'Learn session problem tag filter exclude': Exclude selected problem tags
-'Learn session problem tag filter tags label': Tagged problems (multiple)
-'Learn session problem tag filter max hint': Up to {0} tags
-'Learn session problem tag filter no tags in base': No registered tags found for this base. Tags can still be persisted if synced from elsewhere.
-'No cards match session problem tag filter': No cards remain after filtering problems by tags.
-'{0} filter rules': '{0} filter rule(s)'
-'Filter rules': Filter rules
-'Learn requires cards with problems': No learnable problems found. Each queued card must contain at least one problem.
-'Learn ratio section label': Sub mode · new/review ratio (next daily run)
-'Learn ratio section hint': Main mode (deep/breadth/random) only affects ordering of **new-segment** cards in the daily queue. Daily goal counts **new** cards in mixed and new-only modes; in **review-only** mode the same number is how many **review** cards to draw. Each mixed daily session length = new slice (goal cap, cycle new pool if short) plus (new count × N) **old-segment** review pulls (cycle old pool if short; if there is no old segment, append none). New-only and review-only modes skip the other arm.
-'Learn today ratio summary': '{0} review card(s) per new card'
-'Learn today ratio summary new only': 'New only (no review in this run)'
-'Learn today ratio summary review only': 'Review only — count follows daily goal'
-'New vs review ratio label new only': 'New only (1 : 0)'
-'New vs review ratio label review only': 'Review only (0 : 1, count = daily goal)'
-'Learn path card loop count': '×{0}'
-'Learn path card loop count title': Times this card was completed on the learning path (each full attempt counts; review queue prefers lower counts)
-'Learn sub mode': Card mix (next daily run)
-'Learn sub mode new only': New only (cards at/after learning-start section slot)
-'Learn sub mode review only': Review only (cards before learning-start section slot)
-'Learn sub mode mixed': New + review
-'Learn new review ratio': Ratio (new vs old = section slot vs learning start only; review slots ≈ new-segment count × N)
-'Learn new review order label': New vs review sequence (next daily run)
-'Learn new review order hint': After counts are chosen, controls whether **review** runs before, after, or shuffled with **new** in the frozen queue. Same UTC day keeps the same shuffle order.
 'Learn new review order aria': New versus review order in the daily queue
+'Learn new review order hint': After counts are chosen, controls whether **review** runs before, after, or shuffled with **new** in the frozen queue. Same UTC day keeps the same shuffle order.
+'Learn new review order label': New vs review sequence (next daily run)
 'Learn new review order new first': New first, then review (default)
 'Learn new review order old first': Review first, then new
 'Learn new review order shuffle': Shuffle new and review
-'Learn mixed schedule': Order (new + review)
-'Learn mixed schedule review first': Review first
-'Learn mixed schedule new first': New first
-'Learn mixed schedule shuffle': Shuffle
-'Learn mixed schedule one one': 1+1 (alternate new/review)
-'Learn sub mode hint': Same as Learn ratio section hint.
-'Learn today modes config': 'Main: {0} · Sub: {1}'
-'Learn today card kind new': New card
-'Learn today card kind review': Review card
-'Learn today queue empty': 'No cards are queued for today. Check session card filters and problem-tag settings in preferences, or whether the queue is already finished.'
-'Learn lesson start missing redirect': 'Could not start learning — the server did not return a valid redirect URL.'
-'Lesson session new old counts': '{0} new · {1} review'
-'Lesson path card practise count': 'Passed {0} time(s)'
-'Lesson path card practise count title': Times this card was fully passed at the current section slot (each full pass in this lesson counts once; same counter as on the learning path)
-'Lesson problem queue': Question queue
-'Lesson progress session cards': Session progress (cards)
-'Lesson progress total problems': Total progress (questions)
-'Lesson progress current card problems': Current card (questions)
-'Lesson practice progress unit': questions
-'Lesson practice sidebar completed': Completed questions
-'Lesson practice sidebar pending': Pending questions
-'No completed problems yet': No completed questions yet
+'Learn new review ratio': Ratio (new vs old = section slot vs learning start only; review slots ≈ new-segment count × N)
+'Learn path card loop count title': Times this card was completed on the learning path (each full attempt counts; review queue prefers lower counts)
+'Learn path card loop count': '×{0}'
+'Learn progress reset done': Learning progress was cleared.
+'Learn progress reset failed': Could not reset learning progress.
 'Learn queue card tag new': New
 'Learn queue card tag old': Old
-'Failed to save learn sub mode': Failed to save learn sub mode
-'New vs review ratio label': 'New : review = 1 : {0}'
+'Learn ratio section hint': Main mode (deep/breadth/random) only affects ordering of **new-segment** cards in the daily queue. Daily goal counts **new** cards in mixed and new-only modes; in **review-only** mode the same number is how many **review** cards to draw. Each mixed daily session length = new slice (goal cap, cycle new pool if short) plus (new count × N) **old-segment** review pulls (cycle old pool if short; if there is no old segment, append none). New-only and review-only modes skip the other arm.
+'Learn ratio section label': Sub mode · new/review ratio (next daily run)
+'Learn requires cards with problems': No learnable problems found. Each queued card must contain at least one problem.
+'Learn session card filter all': All cards (including cards without problems)
+'Learn session card filter with problems': Only cards that have problems
+'Learn session card filter without problems': Only cards without problems
+'Learn session card filter': Card filter (next daily run)
+'Learn session mode': Session order (next daily run)
+'Learn session preferences': Session preferences
+'Learn session problem tag filter exclude': Exclude selected problem tags
+'Learn session problem tag filter include': Only problems tagged with selections
+'Learn session problem tag filter max hint': Up to {0} tags
+'Learn session problem tag filter no tags in base': No registered tags found for this base. Tags can still be persisted if synced from elsewhere.
+'Learn session problem tag filter off': Don't filter problems by tag
+'Learn session problem tag filter tags label': Tagged problems (multiple)
+'Learn session problem tag filter': Problem tag filter (problems inside cards)
 'Learn session': Learn session
 'Learn Settings': Learn Settings
+'Learn sub mode hint': Same as Learn ratio section hint.
+'Learn sub mode mixed': New + review
+'Learn sub mode new only': New only (cards at/after learning-start section slot)
+'Learn sub mode review only': Review only (cards before learning-start section slot)
+'Learn sub mode': Card mix (next daily run)
+'Learn tab learn wall': Learn wall
+'Learn today card kind new': New card
+'Learn today card kind review': Review card
+'Learn today modes config': 'Main: {0} · Sub: {1}'
+'Learn today queue empty': 'No cards are queued for today. Check session card filters and problem-tag settings in preferences, or whether the queue is already finished.'
+'Learn today ratio summary new only': 'New only (no review in this run)'
+'Learn today ratio summary review only': 'Review only — count follows daily goal'
+'Learn today ratio summary': '{0} review card(s) per new card'
+'Learn wall checked in': Checked in today’s learn activity for this domain.
+'Learn wall checkin only saves': Check-in only — no counted practice for this day.
+'Learn wall no sessions': No sessions for this day.
+'Learn wall session record count': '{0} record(s)'
+'Learn wall sessions': Sessions this day (UTC)
 'Learning consumption': Learning consumption
 'Learning Path': Learning Path
+'Leave Edit Mode': 'Leave Edit Mode'
+'Lesson browse card hint': 'This card has no practice problems. Read it, then pick how well you know it.'
+'Lesson card navigation failed': Could not switch card
+'Lesson card queue navigation': Card queue navigation
+'Lesson navigate unsupported': Card navigation is only for daily or single-node lessons
 'Lesson Passed': Lesson Passed
+'Lesson path card practise count title': Times this card was fully passed at the current section slot (each full pass in this lesson counts once; same counter as on the learning path)
+'Lesson path card practise count': 'Passed {0} time(s)'
+'Lesson practice progress unit': questions
+'Lesson practice redo': Redo
+'Lesson practice sidebar completed': Completed questions
+'Lesson practice sidebar pending': Pending questions
+'Lesson problem notes add': Add a note
+'Lesson problem notes cancel edit': Cancel
+'Lesson problem notes count badge': '{0} notes'
+'Lesson problem notes delete confirm': Delete this note? This cannot be undone.
+'Lesson problem notes delete failed': Failed to delete note.
+'Lesson problem notes delete': Delete
+'Lesson problem notes deleted': Note deleted.
+'Lesson problem notes deleting': Deleting…
+'Lesson problem notes edit': Edit
+'Lesson problem notes edited at': Edited {0}
+'Lesson problem notes empty list': No notes yet.
+'Lesson problem notes load failed': Failed to load notes.
+'Lesson problem notes panel title': Notes
+'Lesson problem notes placeholder': Write your note…
+'Lesson problem notes save edit': Save
+'Lesson problem notes save failed': Failed to post note.
+'Lesson problem notes saved': Note posted.
+'Lesson problem notes submit': Post note
+'Lesson problem notes submitting': Posting…
+'Lesson problem notes updated': Note updated.
+'Lesson problem queue': Question queue
+'Lesson problem tag apply new': Add
+'Lesson problem tag chip remove': Remove
+'Lesson problem tag label': Problem tag
+'Lesson problem tag new hint': 'Registers the tag on this knowledge base (max 64 characters) and adds it to this problem; you can also append registered tags from the dropdown above.'
+'Lesson problem tag new placeholder': Type a new tag name
+'Lesson problem tag panel add registered placeholder': Select a tag to add…
+'Lesson problem tag panel append registered': Add an existing tag
+'Lesson problem tag panel assign': Assign tags
+'Lesson problem tag panel choose registered': Choose a registered tag
+'Lesson problem tag panel clear': Clear tag
+'Lesson problem tag panel current': Current tag
+'Lesson problem tag panel empty': No tag on this problem
+'Lesson problem tag panel new': Custom new tag
+'Lesson problem tag panel open': Tags
+'Lesson problem tag panel readonly hint': You do not have permission to edit tags for this problem.
+'Lesson problem tag panel title': Problem tag
+'Lesson problem tag register failed': Failed to register tag
+'Lesson problem tag register ok': Registered and added to this problem.
+'Lesson problem tag save failed': Failed to save problem tag
+'Lesson problem tag save missing node': 'Cannot save tag: missing node id on card'
+'Lesson problem tag save no card': 'Cannot save tag: card not found on this page'
+'Lesson progress current card problems': Current card (questions)
+'Lesson progress session cards': Session progress (cards)
+'Lesson progress total problems': Total progress (questions)
+'Lesson redo question': Retry this question
+'Lesson session new old counts': '{0} new · {1} review'
+'Lesson session not found': 'No practice session found. Start one from a knowledge base.'
+'Lesson skip card hint': 'No pass recorded. Skipping the last card ends the daily run; in single-node mode it opens the section summary.'
+'Lesson skip problem': Next question
 'Link copied to clipboard': Link copied to clipboard
 'Loading PDF library...': Loading PDF library...
+'Loading...': Loading…
 'Local branch not found': Local branch not found
 'Local Branch': Local Branch
 'Local Repository': Local Repository
 'Lock Scroll': Lock Scroll
 'Locked': Locked
 'Login expired, please log in again.': Login expired, please log in again.
+'Manage Roadmap': Manage Roadmap
+'Manage System Tools': 'Manage System Tools'
+'Manage tags': Manage tags
 'Manuscript Mode': Manuscript Mode
 'Max consecutive': Max consecutive
+'MCP dashboard description': 'MCP is now a top-level tool object. This page shows outbound MCP, System Tools MCP, and externally connected inbound MCP. Click any MCP to view its tools and unique tool IDs.'
+'MCP Dashboard': 'MCP Dashboard'
 'MCP Tools Management': MCP Tools Management
 'MCP Tools': MCP Tools
 'Model': Model
 'Multi-select': Multi-select
 'Name cannot be empty': Name cannot be empty
+'Name': 'Name'
+'Never expire': 'Never expire'
+'Never used': 'Never used'
 'New card': New card
 'New Content Block': New Content Block
 'New Folder': New Folder
 'New node': New node
+'New vs review ratio label new only': 'New only (1 : 0)'
+'New vs review ratio label review only': 'Review only (0 : 1, count = daily goal)'
+'New vs review ratio label': 'New : review = 1 : {0}'
 'New': New
 'Next Card': Next Card
 'Next': Next
 'No audio available': No audio available
+'No available MCP services': No available MCP services
 'No cards available in this section.': No cards available in this section.
+'No cards match session problem tag filter': No cards remain after filtering problems by tags.
 'No changes to save': No changes to save
 'No chat history yet': No chat history yet
 'No child nodes or cards': No child nodes or cards
 'No clients created yet': No clients created yet
 'No commit message': No commit message
 'No completed cards': No completed cards
+'No completed problems yet': No completed questions yet
 'No completed sections': No completed sections
 'No content or practice questions available.': No content or practice questions available.
 'No content to copy': No content to copy
@@ -420,8 +589,12 @@ edge_authorize: Edge Authorization
 'No courses available.': No courses available.
 'No description': No description
 'No impression': No impression
+'No knowledge base in this domain.': No knowledge base in this domain.
+'No knowledge base is mounted for this agent yet.': No knowledge base is mounted for this agent yet.
+'No knowledge bases in this domain yet.': No knowledge bases in this domain yet.
 'No local git repository': No local git repository
 'No MCP tools yet. When MCP server connects and registers, they will appear here.': No MCP tools yet. When MCP server connects and registers, they will appear here.
+'No MCP.': 'No MCP.'
 'No messages in this conversation': No messages in this conversation
 'No nodes available.': No nodes available.
 'No pending changes': No pending changes
@@ -432,9 +605,13 @@ edge_authorize: Edge Authorization
 'No recent nodes.': No recent nodes.
 'No recording available': No recording available
 'No remote repository configured': No remote repository configured
+'No roadmap in this domain.': No roadmap in this domain.
 'No sections available.': No sections available.
 'No system tools.': No system tools.
+'No tags available': 'No tags available'
+'No tags': 'No tags'
 'No tools available': No tools available
+'No tools exposed': No tools exposed
 'No tools yet. Tools list will be automatically synced after server connection.': No tools yet. Tools list will be automatically synced after server connection.
 'No valid content (use ## Title and --- to separate cards)': No valid content (use ## Title and --- to separate cards)
 'Node already in delete list': Node already in delete list
@@ -442,154 +619,203 @@ edge_authorize: Edge Authorization
 'Node does not exist': Node does not exist
 'Node moved successfully': Node moved successfully
 'Node': Node
+'not assignable': 'Not assignable'
 'Not enabled': Not enabled
+'Not familiar': 'Not familiar'
+'Only lowercase letters (a-z), digits (0-9), dots, underscores, and hyphens. Used in the URL.': 'Only lowercase letters (a-z), digits (0-9), dots, underscores, and hyphens. Used in the URL.'
+'Only outbound MCP endpoints can be deleted from this page.': 'Only outbound MCP endpoints can be deleted from this page.'
 'Open practice for card: {0}': 'Open practice for card: {0}'
 'Open practice for node: {0}': 'Open practice for node: {0}'
 'Operation failed': Operation failed
 'Operations': Operations
 'Option': Option
+'Optional human-readable identifier, for example: P1001': 'Optional human-readable identifier, for example: P1001'
+'Optional human-readable roadmap identifier, for example: R1001': 'Optional human-readable roadmap identifier, for example: R1001'
+'Optional short description shown in list views.': Optional short description shown in list views.
+'Optionally mount one domain knowledge base (outline / cards) for this agent.': Optionally mount one domain knowledge base (outline / cards) for this agent.
+'outbound endpoint': 'outbound endpoint'
+'outbound': 'Outbound'
+'Outline card problems button': 'Problem ({0})'
+'Outline card problems card label': 'Card: {0}'
+'Outline card problems empty': No problems on this card.
+'Outline card problems untitled item': 'Problem {0}'
+'Outline editor popup blocked': The browser blocked the new tab. Allow popups for this site and try again.
+'Outline editor start failed': Could not start an editor session. Try again.
+'Outline editor start invalid base': Invalid knowledge base for this outline.
+'Outline editor start invalid node': That node is not part of this base.
+'Outline editor start needs node': A node id is required to start an editor session from the outline.
+'Outline editor start session': Start editor session…
+'Outline explorer filter apply': Apply
+'Outline explorer filter aria': Narrow outline by server-side keywords
+'Outline explorer filter cancel': Cancel
+'Outline explorer filter card placeholder': Card title…
+'Outline explorer filter clear': Clear
+'Outline explorer filter dialog title': Server filter
+'Outline explorer filter label': Server filter
+'Outline explorer filter node placeholder': Node title…
+'Outline explorer filter open': Filter
+'Outline explorer filter problem placeholder': Problem text…
+'Outline learn invalid card': Invalid card id; cannot start learning.
+'Outline learn single card': Learn this card only
+'Outline learn single node': Learn this node subtree
+'Outline learn start failed': Could not start learning. Try again.
+'Outline search aria': Search outline
+'Outline search kind card': Card
+'Outline search kind node': Node
+'Outline search no results': No matches
+'Outline search placeholder': Search nodes and cards…
+'Pair': Pair
 'Path': Path
 'PDF export failed': PDF export failed
 'PDF export successful': PDF export successful
 'Peek': Peek
+'Pending connection': 'Pending connection'
 'Pending delete': Pending delete
 'Pending sections': To do
+'Pending selection': Pending selection
 'Play Audio': Play Audio
 'Play Recording': Play Recording
 'Please create a base first.': Please create a base first.
-'Please create a base with at least one section.': Please create a base with at least one section.
 'Please create a base with at least one section first.': Please create a base with at least one section first.
-'Please create a roadmap with at least one practice node.': Please create a roadmap with at least one practice node.
-'Please create a roadmap with at least one practice node first.': Please create a roadmap with at least one practice node first.
+'Please create a base with at least one section.': Please create a base with at least one section.
 'Please create a base with course structure (course -> section -> unit -> lesson)': Please create a base with course structure (course -> section -> unit -> lesson)
+'Please create a roadmap with at least one practice node first.': Please create a roadmap with at least one practice node first.
+'Please create a roadmap with at least one practice node.': Please create a roadmap with at least one practice node.
 'Please generate token on': Please generate token on
 'Please join the domain to view': Please join the domain to view
 'Please login to view': Please login to view
 'Please paste or enter content to import': Please paste or enter content to import
+'Please select a card first': 'Please select a card first'
 'Please select a card on the left first': Please select a card on the left first
 'Please select a conversation from the left sidebar to view chat details': Please select a conversation from the left sidebar to view chat details
+'Please select at least one MCP to delete.': 'Please select at least one MCP to delete.'
+'Please select at least one roadmap to delete.': Please select at least one roadmap to delete.
 'Please select items to delete first': Please select items to delete first
 'Please select the correct answer': Please select the correct answer
 'Please select': Please select
+'plugin MCP': 'plugin MCP'
+'Plugin node definition': Plugin node definition
+'Plugin nodes are folders. Add markdown cards under folders for skill, command, and MCP definitions.': Plugin nodes are folders. Add markdown cards under folders for skill, command, and MCP definitions.
+'plugin': 'Plugin'
+'Points': 'points'
 'Practice Alone': Practice Alone
+'Practice problem pid not on open card': That practice problem id is not on this card
 'Practice Questions': Practice Questions
 'Practice Results': Practice Results
 'Practice': Practice
 'Preview image': Preview image
-'Previous': Previous
-'Lesson skip problem': Next question
-'Lesson card queue navigation': Card queue navigation
 'Previous card': Previous card
-'Skip card': Skip card
-'Lesson skip card hint': 'No pass recorded. Skipping the last card ends the daily run; in single-node mode it opens the section summary.'
-'Lesson card navigation failed': Could not switch card
-'Invalid lesson navigate': Invalid card navigation
-'Lesson navigate unsupported': Card navigation is only for daily or single-node lessons
-'Lesson practice redo': Redo
-'Problem generated, please review': Problem generated, please review
-'Problem kind single': Single choice
-'Problem kind multi': Multiple choice
-'Problem kind true false': True / false
-'Problem kind flip': Flip card
-'Problem kind fill blank': Fill in the blank
-'Problem kind matching': Matching pairs
-'Problem kind super flip': Super flip table
-'Problem kind ai eval': AI evaluation
-'Problem kind chain': Chain
-'Problem chain stem optional': Description (optional)
-'Problem chain row count': Rows
-'Problem chain editor hint': Each row can be flip (masked in lesson, tap to reveal) or text (always visible).
+'Previous': Previous
+'Problem ai eval add point': Add evaluation point
+'Problem ai eval add sub point': Add sub-point
+'Problem ai eval alias input placeholder': Phrase learners might type
+'Problem ai eval answer aliases label': Acceptable synonyms
+'Problem ai eval earned total': Earned total
+'Problem ai eval evaluating': Evaluating with AI...
+'Problem ai eval failed': AI evaluation failed. Please try again.
+'Problem ai eval hard zero empty slot': This sub-point answer is empty; forced 0.
+'Problem ai eval hard zero missing content': This answer box does not match the rubric or any synonym; forced 0.
+'Problem ai eval hard zero wrong order': Evaluation point "{0}" is out of parent rubric order (sub-point order within the group is not enforced); wrong order forces 0 for the whole point group.
+'Problem ai eval invalid point reasons': AI did not return valid point-level reasons. Please retry.
+'Problem ai eval invalid point scores': AI did not return valid point-level scores. Please retry.
+'Problem ai eval max attempts': Max attempts
+'Problem ai eval need points': Need at least one evaluation point with sub-points (`points`)
+'Problem ai eval parent score hint': Parent score is not included in the lesson total; max score is the sum of sub-points (use 0 if you prefer)
+'Problem ai eval pass score': Pass score
+'Problem ai eval point earned': Point score
+'Problem ai eval point reason': AI scoring reason
+'Problem ai eval point standard content': Point standard content
+'Problem ai eval point title placeholder': Point title (shown in lesson)
+'Problem ai eval points': Evaluation points
+'Problem ai eval slot placeholder': Answer for this sub-point
+'Problem ai eval stem placeholder': Enter the prompt for AI evaluation
+'Problem ai eval sub point content placeholder': Sub-point rubric (for AI)
+'Problem ai eval sub point title placeholder': Sub-point title (shown)
+'Problem ai eval sub points': Sub evaluation points
+'Problem ai eval total score': Total score
+'Problem answer false': False
+'Problem answer true': True
 'Problem chain cell': Cell content
-'Problem chain row type flip': Flip
-'Problem chain row type text': Text
-'Problem chain row type unset': Select type
-'Problem chain row type before content': Select type above first
-'Insert row before': Insert row above
-'Insert row after': Insert row below
-'Delete row': Delete this row
+'Problem chain cover all': Cover all
+'Problem chain editor hint': Each row can be flip (masked in lesson, tap to reveal) or text (always visible).
 'Problem chain masked': Tap to reveal
 'Problem chain not familiar': Not familiar
 'Problem chain reveal all': Reveal all
-'Problem chain cover all': Cover all
-'Problem ai eval stem placeholder': Enter the prompt for AI evaluation
-'Problem ai eval points': Evaluation points
-'Problem ai eval point title placeholder': Point title (shown in lesson)
-'Problem ai eval add point': Add evaluation point
-'Problem ai eval sub points': Sub evaluation points
-'Problem ai eval add sub point': Add sub-point
-'Problem ai eval sub point title placeholder': Sub-point title (shown)
-'Problem ai eval sub point content placeholder': Sub-point rubric (for AI)
-'Problem ai eval need points': Need at least one evaluation point with sub-points (`points`)
-'Problem ai eval alias input placeholder': Phrase learners might type
-'Problem ai eval slot placeholder': Answer for this sub-point
-'Problem ai eval answer aliases label': Acceptable synonyms
-'Problem ai eval parent score hint': Parent score is not included in the lesson total; max score is the sum of sub-points (use 0 if you prefer)
-'Problem ai eval total score': Total score
-'Problem ai eval point earned': Point score
-'Problem ai eval point standard content': Point standard content
-'Problem ai eval point reason': AI scoring reason
-'Problem ai eval earned total': Earned total
-'Problem ai eval pass score': Pass score
-'Problem ai eval max attempts': Max attempts
-'Problem ai eval evaluating': Evaluating with AI...
-'Problem ai eval failed': AI evaluation failed. Please try again.
-'Problem ai eval invalid point scores': AI did not return valid point-level scores. Please retry.
-'Problem ai eval invalid point reasons': AI did not return valid point-level reasons. Please retry.
-'Problem ai eval hard zero missing content': This answer box does not match the rubric or any synonym; forced 0.
-'Problem ai eval hard zero empty slot': This sub-point answer is empty; forced 0.
-'Problem ai eval hard zero wrong order': Evaluation point "{0}" is out of parent rubric order (sub-point order within the group is not enforced); wrong order forces 0 for the whole point group.
-'Problem reorder up': Move up
-'Problem reorder down': Move down
-'Problem reorder hint': Use ↑ / ↓ beside the red delete button to reorder; Save to persist.
-'Problem insert above': Insert blank problem above
-'Problem insert below': Insert blank problem below
-'Problem matching stem optional': Introduction (optional)
-'Problem matching pair count': Number of rows
-'Problem matching column count': Columns (≥2)
-'Problem matching column label': 'Col {0}'
-'Problem matching row label': 'Row {0}'
-'Problem matching cell': Cell text
-'Problem matching pairs hint': Stored by column, top-to-bottom; same row index across columns forms one correct pairing. Each column is its own shuffled dropdown on the lesson—the learner selects the original row index in each column’s pool. Two columns ⇒ two independently shuffled pools.
-'Problem matching left': Column 1 cell
-'Problem matching right': Last column cell
-'Problem matching choose': Choose a match…
-'Problem matching pairs too few': Matching requires at least 2 rows
-'Problem matching columns too few': Matching requires at least 2 columns
-'Problem super flip editor hint': Headers stay visible in the lesson; rows below are the body. Leaving a cell empty shows a blank tile with no flip. Column-major cells, same as matching.
-'Problem super flip column header label': 'Column {0} header'
-'Problem super flip header placeholder': Header label
-'Problem super flip masked': Tap to reveal
-'Problem super flip reveal all': Reveal all
-'Problem super flip cover all': Cover all
-'Problem super flip not familiar': Not familiar
-'Problem super flip row count': Row count (≥1)
-'Problem super flip column count': Column count (≥1)
-'Problem super flip columns invalid': Super flip requires a valid columns array (≥1 column)
-'Problem super flip columns too few': Super flip needs at least 1 column
-'Problem super flip rows too few': Super flip needs at least 1 row
-'Problem field type': Question type
-'Problem tag': Tag
-'Problem tag default': Default
-'Problem tag new placeholder': New tag
-'Problem tag add': Add
-'Problem tag empty': Enter a tag name first
-'Problem tag editor read only hint': Tags can be edited in lesson practice only (read-only here).
-'Problem title': Problem title
-'Problem option slots': Option slots
-'Problem multi all correct': All correct selections required to pass
+'Problem chain row count': Rows
+'Problem chain row type before content': Select type above first
+'Problem chain row type flip': Flip
+'Problem chain row type text': Text
+'Problem chain row type unset': Select type
+'Problem chain stem optional': Description (optional)
+'Problem editor notes add': Add
+'Problem editor notes delete': Remove
+'Problem editor notes empty': No notes yet.
+'Problem editor notes pending short': pending
+'Problem editor notes remove row': Remove this row
+'Problem editor notes title': Notes
 'Problem face A label': Side A (shown first)
-'Problem face B label': Side B (after flip)
 'Problem face A placeholder': Front text
+'Problem face B label': Side B (after flip)
 'Problem face B placeholder': Back text
-'Problem flip hint label': Hint (visible to learners)
-'Problem flip hint placeholder': Short optional cue; learners use the Hint button in the lesson to reveal it.
-'Problem answer true': True
-'Problem answer false': False
-'Problem fill blank stem hint': Use three underscores (___) in the question for each blank. If you omit them, one blank appears after the question text.
+'Problem field type': Question type
 'Problem fill blank answers label': Correct answers (one per blank, left to right)
 'Problem fill blank slot label': 'Blank {0}'
-'Pair': Pair
-
+'Problem fill blank stem hint': Use three underscores (___) in the question for each blank. If you omit them, one blank appears after the question text.
+'Problem flip hint label': Hint (visible to learners)
+'Problem flip hint placeholder': Short optional cue; learners use the Hint button in the lesson to reveal it.
+'Problem generated, please review': Problem generated, please review
+'Problem insert above': Insert blank problem above
+'Problem insert below': Insert blank problem below
+'Problem kind ai eval': AI evaluation
+'Problem kind chain': Chain
+'Problem kind fill blank': Fill in the blank
+'Problem kind flip': Flip card
+'Problem kind matching': Matching pairs
+'Problem kind multi': Multiple choice
+'Problem kind single': Single choice
+'Problem kind super flip': Super flip table
+'Problem kind true false': True / false
+'Problem matching cell': Cell text
+'Problem matching choose': Choose a match…
+'Problem matching column count': Columns (≥2)
+'Problem matching column label': 'Col {0}'
+'Problem matching columns too few': Matching requires at least 2 columns
+'Problem matching left': Column 1 cell
+'Problem matching pair count': Number of rows
+'Problem matching pairs hint': Stored by column, top-to-bottom; same row index across columns forms one correct pairing. Each column is its own shuffled dropdown on the lesson—the learner selects the original row index in each column’s pool. Two columns ⇒ two independently shuffled pools.
+'Problem matching pairs too few': Matching requires at least 2 rows
+'Problem matching right': Last column cell
+'Problem matching row label': 'Row {0}'
+'Problem matching stem optional': Introduction (optional)
+'Problem multi all correct': All correct selections required to pass
+'Problem option slots': Option slots
+'Problem reorder down': Move down
+'Problem reorder hint': Use ↑ / ↓ beside the red delete button to reorder; Save to persist.
+'Problem reorder up': Move up
+'Problem super flip column count': Column count (≥1)
+'Problem super flip column header label': 'Column {0} header'
+'Problem super flip columns invalid': Super flip requires a valid columns array (≥1 column)
+'Problem super flip columns too few': Super flip needs at least 1 column
+'Problem super flip cover all': Cover all
+'Problem super flip editor hint': Headers stay visible in the lesson; rows below are the body. Leaving a cell empty shows a blank tile with no flip. Column-major cells, same as matching.
+'Problem super flip header placeholder': Header label
+'Problem super flip masked': Tap to reveal
+'Problem super flip not familiar': Not familiar
+'Problem super flip reveal all': Reveal all
+'Problem super flip row count': Row count (≥1)
+'Problem super flip rows too few': Super flip needs at least 1 row
+'Problem tag add': Add
+'Problem tag default': Default
+'Problem tag editor read only hint': Tags can be edited in lesson practice only (read-only here).
+'Problem tag empty': Enter a tag name first
+'Problem tag new placeholder': New tag
+'Problem tag none': (No tag · default grouping)
+'Problem tag': Tag
+'Problem tags edit': Edit tags
+'Problem tags': 'Problem tags'
+'Problem title': Problem title
+'Problem': 'Problem'
+'Problems: {0}': 'Problems: {0}'
 'Provider (MCP)': Provider (MCP)
 'Provider': Provider
 'Pulling from GitHub...': Pulling from GitHub...
@@ -611,16 +837,181 @@ edge_authorize: Edge Authorization
 'Remote Branch Status': Remote Branch Status
 'Remote Branch': Remote Branch
 'Remote Repository': Remote Repository
+'Remove Selected': 'Remove Selected'
+'Remove tag': 'Remove tag'
+'Remove': Remove
 'Request failed': Request failed
+'Reset learn DAG description': Rebuild the learning path from the latest base and reset section order to match (overwrites saved order).
+'Reset learn DAG': Reset from base
+'Reset learn progress confirm': Clear all learning progress (passed states, path practice counts) for this user in this domain? Section order and starting section stay the same.
+'Reset learn progress description': Clears all passed/card progress and path practice counts for this user in this domain; keeps section order and current section. Abandons active lesson sessions so the next session starts fresh.
+'Reset learn progress': Reset progress
+'Resetting...': Resetting…
+'Resize sidebar': Resize sidebar
+'Resize terminal panel': Resize terminal panel
 'Response Time': Response Time
+'Reveal all': 'Reveal all'
+'Review': 'Review'
+'Roadmap add adjacent blocked': No adjacent lane in this direction
+'Roadmap add node': Add node
+'Roadmap AI applying operations': Applying {0} operation(s)
+'Roadmap AI chat error': 'Error: {0}'
+'Roadmap AI execute error': 'Failed to run operations: {0}'
+'Roadmap AI operations applied': AI operations applied
+'Roadmap AI operations failed': |-
+'Roadmap AI parse error': 'Failed to parse AI operations: {0}'
+'Roadmap AI problem missing nodeId': create_problem requires a valid nodeId
+'Roadmap AI processing': Processing
+'Roadmap AI receiving operations': Receiving operations…
+'Roadmap AI terminal hint': AI ready. Describe nodes, edges, or problems below and press Enter; changes apply to the canvas locally until you Save.
+'Roadmap AI thinking': Thinking…
+'Roadmap AI tutor bar hint': 'Have a question? Type here'
+'Roadmap AI tutor greeting': 'Hello, how can I help you today?'
+'Roadmap AI tutor input placeholder': 'Ask me anything about this roadmap…'
+'Roadmap AI tutor open': Open AI Tutor
+'Roadmap AI tutor question node': 'What should I know about "{0}" in this roadmap?'
+'Roadmap AI tutor question order': 'What order should I follow through this roadmap?'
+'Roadmap AI tutor question overview': 'What is this roadmap "{0}" about?'
+'Roadmap AI tutor question progress': 'How can I track my progress on this roadmap?'
+'Roadmap AI tutor question start': 'Where should I start on this roadmap?'
+'Roadmap AI tutor suggestions lead': 'Some questions you might have about this roadmap:'
+'Roadmap AI tutor': AI Tutor
+'Roadmap AI waiting for operations': Waiting for operation list…
+'Roadmap branch': Branch
+'Roadmap canvas': Canvas
+'Roadmap connection not allowed': This connection is not allowed for the target node type.
+'Roadmap delete edge': Delete edge
+'Roadmap detail empty': This roadmap has no content yet.
+'Roadmap detail filter apply': 'Apply'
+'Roadmap detail filter aria': 'Filter roadmap nodes on canvas'
+'Roadmap detail filter cancel': 'Cancel'
+'Roadmap detail filter clear': 'Clear'
+'Roadmap detail filter content label': 'Node content'
+'Roadmap detail filter content placeholder': 'Markdown body…'
+'Roadmap detail filter dialog hint': 'Non-matching nodes are dimmed on the canvas. Filters sync to the URL.'
+'Roadmap detail filter dialog title': 'Filter roadmap'
+'Roadmap detail filter match count': '{0} matches'
+'Roadmap detail filter node label': 'Node title'
+'Roadmap detail filter node placeholder': 'Node title…'
+'Roadmap detail filter open': 'Filter'
+'Roadmap detail filter problem label': 'Practice problem'
+'Roadmap detail filter problem placeholder': 'Problem text…'
+'Roadmap detail search aria': 'Search roadmap'
+'Roadmap detail search kind node': 'Node'
+'Roadmap detail search kind problem': 'Problem'
+'Roadmap detail search no results': 'No matches'
+'Roadmap detail search placeholder': 'Search nodes and problems…'
+'Roadmap detail search problem untitled': 'Untitled problem'
+'Roadmap detail settings hint': Control how the roadmap canvas is displayed on this page.
+'Roadmap detail settings open': Display settings
+'Roadmap detail settings save failed': Failed to save display settings.
+'Roadmap detail settings saved': Display settings saved.
+'Roadmap detail settings show node card timestamps hint': Display creation and last modification times for nodes and cards in the tree.
+'Roadmap detail settings show node card timestamps': Show node and card timestamps
+'Roadmap detail settings show node number hint': Display sequential numbering on main and sub nodes.
+'Roadmap detail settings show node number': Show node numbers
+'Roadmap detail settings show problem count hint': Show a bubble with the number of practice problems on main and sub nodes.
+'Roadmap detail settings show problem count': Show problem count badge
+'Roadmap detail settings title': Display settings
+'Roadmap drawer content': Content
+'Roadmap drawer practice problems': Practice problems
+'Roadmap drawer problem reveal back': Tap to reveal back
+'Roadmap drawer problem tap reveal answer': Tap to reveal answer
+'Roadmap drawer problems empty': No practice problems on this node yet.
+'Roadmap drawer problems': Problems
+'Roadmap drawer resources': Resources
+'Roadmap drawer start card practice': Start card practice
+'Roadmap drawer start node practice busy': Starting practice…
+'Roadmap drawer start node practice invalid doc': Invalid roadmap for this node.
+'Roadmap drawer start node practice': Start single-node practice
+'Roadmap edge inspector': Edge inspector
+'Roadmap edge label': Dependency note
+'Roadmap edge source': Source
+'Roadmap edge target': Target
+'Roadmap editor settings applied pending': Display settings updated. Use Save to commit.
+'Roadmap editor settings hint': Changes preview on the canvas after Save here and stay pending until you use the top Save button, which stores them on the roadmap document (separate from detail page personal display prefs).
+'Roadmap editor settings title': Display settings
+'Roadmap Editor': Roadmap Editor
+'Roadmap fit canvas': Fit to canvas
+'Roadmap hook linked': Linked roadmap
+'Roadmap hook node hint': Select another roadmap for this hook node. Content editing is disabled.
+'Roadmap hook select placeholder': Select a roadmap
+'Roadmap hook target': Target roadmap
+'Roadmap inspector empty hint': Click a node to edit its markdown content, or click an edge to change line style. Solid horizontal links share the same row; dashed links are free-form. Delete / Backspace removes the selection. Save writes the graph and node content together.
+'Roadmap inspector empty title': Select a node or edge
+'Roadmap lane option': 'Lane {0}'
+'Roadmap lane': Lane
+'Roadmap line dashed': Dashed
+'Roadmap line solid': Solid
+'Roadmap line style': Line style
+'Roadmap load failed': Failed to load roadmap.
+'Roadmap main node dashed target forbidden': Main nodes cannot be the target of dashed edges.
+'Roadmap main node number format hint': Format x (e.g. 1)
+'Roadmap main node number invalid': Main node "{0}" number must be a positive integer.
+'Roadmap main node number missing': Main node "{0}" is missing a number.
+'Roadmap markdown preview failed': Failed to render markdown.
+'Roadmap new decision': New decision
+'Roadmap new milestone': New milestone
+'Roadmap new node': New node
+'Roadmap new release': New release
+'Roadmap new task': New task
+'Roadmap node content empty': This node has no content yet.
+'Roadmap node content': Node content
+'Roadmap node editor': Node editor
+'Roadmap node inspector': Node inspector
+'Roadmap node lead text': Lead text
+'Roadmap node number validation failed': Roadmap node number validation failed. Fix errors before saving.
+'Roadmap node number': Node number
+'Roadmap node type decision': Decision
+'Roadmap node type hook': Hook
+'Roadmap node type main': Main
+'Roadmap node type milestone': Milestone
+'Roadmap node type release': Release
+'Roadmap node type root': Overview
+'Roadmap node type sub': Sub
+'Roadmap node type task': Task
+'Roadmap node type text': Text
+'Roadmap node type': Node type
+'Roadmap owner': Owner
+'Roadmap panel pending': Pending
+'Roadmap pending created edges': New edges
+'Roadmap pending created nodes': New nodes
+'Roadmap pending deleted edges': Deleted edges
+'Roadmap pending deleted nodes': Deleted nodes
+'Roadmap pending display settings': Display settings
+'Roadmap pending empty': No uncommitted changes
+'Roadmap pending updated edges': Updated edges
+'Roadmap pending updated nodes': Updated nodes
+'Roadmap pending updated problems': Problem changes
+'Roadmap pending viewport changed': Viewport changed
+'Roadmap practice problems node type forbidden': Only main and sub nodes support practice problems
+'Roadmap priority high': High
+'Roadmap priority low': Low
+'Roadmap priority medium': Medium
+'Roadmap priority': Priority
+'Roadmap rid already exists: {0}': 'Roadmap rid already exists: {0}'
+'Roadmap save failed': Failed to save roadmap.
+'Roadmap save operation': Save roadmap
+'Roadmap saved': Roadmap saved.
+'Roadmap status blocked': Blocked
+'Roadmap status done': Done
+'Roadmap status in progress': In progress
+'Roadmap status planned': Planned
+'Roadmap sub node number format hint': Format x.y (e.g. 1.1; first part is main node number)
+'Roadmap sub node number invalid': Sub node "{0}" number must be in x.y format.
+'Roadmap sub node number missing': Sub node "{0}" is missing a number.
+'Roadmap sub node number prefix invalid': Sub node "{0}" number prefix must match a main node number.
+'Roadmap sub node solid target forbidden': Sub nodes can only be solid targets of main nodes. Use a dashed line or connect from a main node.
 'Root node cannot be deleted': 'Root node cannot be deleted'
 'Save Agent Configuration': Save Agent Configuration
 'Save all changes': Save all changes
 'Save ASR Configuration': Save ASR Configuration
 'Save changes': Save changes
 'Save completed, but {0} error(s) occurred': Save completed, but {0} error(s) occurred
-'Save failed': Save failed
 'Save failed not logged in': Not signed in. Save failed.
+'Save failed': Save failed
+'Save knowledge base mount': Save knowledge base mount
+'Save not logged in refresh then login': You are not signed in or your session expired. Refresh the page, sign in again, then retry saving.
 'Save sort failed': Save sort failed
 'Save successful, {0} changes': 'Save successful, {0} changes'
 'Save TTS Configuration': Save TTS Configuration
@@ -630,50 +1021,84 @@ edge_authorize: Edge Authorization
 'Saving progress...': Saving progress...
 'Saving...': Saving...
 'Saving': Saving
-'Sections': Sections
+'Score': 'Score'
+'Search MCP': 'Search MCP'
+'Search roadmaps': Search roadmaps
+'Search': 'Search'
 'Section Order': Section order
-'Reset learn DAG': Reset from base
-'Reset learn DAG description': Rebuild the learning path from the latest base and reset section order to match (overwrites saved order).
-'Learn DAG reset done': Learning path was refreshed from the base.
-'Learn DAG reset failed': Could not refresh learning path from the base.
-'Reset learn progress': Reset progress
-'Reset learn progress description': Clears all passed/card progress and path practice counts for this user in this domain; keeps section order and current section. Abandons active lesson sessions so the next session starts fresh.
-'Reset learn progress confirm': Clear all learning progress (passed states, path practice counts) for this user in this domain? Section order and starting section stay the same.
-'Learn progress reset done': Learning progress was cleared.
-'Learn progress reset failed': Could not reset learning progress.
-'Resetting...': Resetting…
+'Sections': Sections
 'Select a conversation to view details': Select a conversation to view details
+'Select a knowledge base before learning': Select a knowledge base before learning
+'Select a roadmap before learning': Select a roadmap before learning
 'Select a section from the sidebar': Select a section from the sidebar
 'Select Agent': Select Agent
+'Select learn base': Select knowledge base
+'Select learn roadmap and branch': Select roadmap and branch
+'Select learn roadmap': Select roadmap
 'Select the branch to use for learning': Select the branch to use for learning
 'Select the type of access point to generate a token': Select the type of access point to generate a token
+'Select': 'Select'
+'Selected MCP endpoint(s) have been deleted.': 'Selected MCP endpoint(s) have been deleted.'
+'Selected roadmaps have been deleted.': Selected roadmaps have been deleted.
+'Selected': 'Selected'
+'Separate as new base create hint': Copy this node and its entire subtree (child nodes, cards, and files) into a new knowledge base. The original base is unchanged. The title defaults to the node name; you can edit it before confirming.
+'Separate as new base failed': Failed to separate as new base.
+'Separate as new base invalid doc': Cannot separate as new base — invalid document ID.
+'Separate as new base save node first': Save the node before separating it as a new base.
+'Separate as new base save pending first': Save all pending changes in the editor before separating as a new base.
+'Separate as new base success': New base created; subtree copied.
+'Separate as new base title required': Please enter a base title.
+'Separate as new base': Separate as new base
 'Server ID': Server ID
 'Server Information': Server Information
 'Server': Server
 'Session type': Session type
 'Show Answer': Show Answer
+'Show card tags hint': 'Show card tag chips in the tree view'
+'Show card tags': 'Show card tags'
+'Show live collaboration connection status at top right': Show live collaboration connection status at top right.
+'Show problem tags hint': 'Show problem tag chips under problems in the tree'
+'Show problem tags': 'Show problem tags'
+'Show WS connection indicator': Show WS connection indicator
 'Single choice generated and saved': Single choice generated and saved
 'Single-card session': Single-card session
 'Single-node session': Single-node session
+'Skip card': Skip card
+'Slug can only contain lowercase letters (a-z), digits (0-9), dots (.), underscores (_), and hyphens (-)': 'Slug can only contain lowercase letters (a-z), digits (0-9), dots (.), underscores (_), and hyphens (-)'
+'Slug cannot contain consecutive dots, underscores, or hyphens': 'Slug cannot contain consecutive dots, underscores, or hyphens'
+'Slug cannot end with a dot, underscore, or hyphen': 'Slug cannot end with a dot, underscore, or hyphen'
+'Slug cannot start with a dot, underscore, or hyphen': 'Slug cannot start with a dot, underscore, or hyphen'
+'Slug is not available': 'Slug is not available'
+'Slug is required': 'Slug is required'
+'Slug must be 80 characters or less': 'Slug must be 80 characters or less'
+'Slug': 'Slug'
+'Sorry, there are no roadmaps yet.': Sorry, there are no roadmaps yet.
 'Sort order updated, click Save to persist': Sort order updated, click Save to persist
 'Sort': Sort
 'Source card': Source card
 'Source': Source
+'Specific time': 'Specific time'
+'Start learning session for node:': 'Start learning session for node:'
 'Start Learning': Start Learning
 'Status': Status
 'Stem cannot be empty': Stem cannot be empty
 'Stem is required': Stem is required
 'Stem': Stem
 'Submit answer': Submit answer
+'Submit': 'Submit'
 'Successfully pulled from GitHub': Successfully pulled from GitHub
 'Successfully pushed to GitHub': Successfully pushed to GitHub
 'System MCP tools (not from Edge). Click "Add" to add to current domain ': System MCP tools (not from Edge). Click "Add" to add to current domain
 'System tool (not Edge)': system (system tool, not Edge)
+'system_tools': 'System Tools'
 'Table of contents': Table of contents
 'Table of Contents': Table of Contents
 'Tap below to resume': Tap below to resume
+'Terminal input': Terminal input
+'The Edge client has received its connection token and will reconnect automatically to complete registration.': The Edge client has received its connection token and will reconnect automatically to complete registration.
 'Thinking...': Thinking...
 'This branch is behind remote by {0} commit(s). Please use Pull to sync.': This branch is behind remote by {0} commit(s). Please use Pull to sync.
+'This roadmap branch has no practice nodes': This roadmap branch has no practice nodes
 'This section requires completion of the following sections first': This section requires completion of the following sections first
 'This tool has no input parameters defined.': This tool has no input parameters defined.
 'Time Spent': Time Spent
@@ -694,20 +1119,27 @@ edge_authorize: Edge Authorization
 'Tool Name': Tool Name
 'Tool uninstalled.': Tool uninstalled.
 'Tool': Tool
+'ToolDoc ID': ToolDoc ID
 'Tools Count': Tools Count
 'Tools List': Tools List
+'Tools': 'Tools'
 'Total check-in days': Total check-in days
 'Total progress': Total progress
 'Total Time': Total Time
 'Tree view': Tree view
+'True': 'True'
 'TTS (Text-to-Speech) Configuration': TTS (Text-to-Speech) Configuration
 'TTS configuration saved successfully': TTS configuration saved successfully
 'TTS Configuration': TTS Configuration
+'Type / Source': 'Type / Source'
+'Type and press Enter to add tag': 'Type and press Enter to add tag'
 'Unable to add this item to AI context': Unable to add this item to AI context
+'Unable to validate slug': 'Unable to validate slug'
 'Uncommitted changes': Uncommitted changes
 'Uninstall failed.': Uninstall failed.
 'Uninstall': Uninstall
 'Uninstalling...': Uninstalling...
+'Unique tool ID': Unique tool ID
 'Unknown error': Unknown error
 'Unnamed Course': Unnamed Course
 'Unnamed Lesson': Unnamed Lesson
@@ -717,23 +1149,35 @@ edge_authorize: Edge Authorization
 'Unnamed': Unnamed
 'Unsupported file type. Please upload an image (png, jpg, jpeg, gif).': Unsupported file type. Please upload an image (png, jpg, jpeg, gif).
 'Up to date with remote': Up to date with remote
+'Update Roadmap': Update Roadmap
 'Update Time': Update Time
+'Update': 'Update'
+'Updated at: {0}': 'Updated at: {0}'
 'Upload image': Upload image
 'Uploading...': Uploading...
 'Usage Steps': Usage Steps
+'Use ToolDoc IDs in plugin MCP cards': Use ToolDoc IDs in plugin MCP cards
 'View Connection Logs': View Connection Logs
 'View Details': View Details
 'View Parameters': View Parameters
 'View pending changes': View pending changes
 'View result': View result
 'View Section': View Section
+'View tools': 'View tools'
 'Voice': Voice
 'WebSocket Endpoint': WebSocket Endpoint
 'WebSocket Token Management': WebSocket Token Management
 'WebSocket URL': WebSocket URL
 'Working': Working
+'You are not allowed to delete this MCP.': 'You are not allowed to delete this MCP.'
+'You can close this page.': You can close this page.
+'You have permission to create roadmaps for this domain.': You have permission to create roadmaps for this domain.
+'Your answer': 'Your answer'
 'Your Answer': Your Answer
 'your custom message': your custom message
+'Your new repository will be created as {0}.': 'Your new repository will be created as {0}.'
+"Split by ', '. Or pick categories from the sidebar.": "Split by ', '. Or pick categories from the sidebar."
+"Split by ', '.": "Split by ', '."
 "This domain today": This domain today
 "Today's contribution": Today's contribution
 "Today's domain activity": "Today's activity (this domain)"
@@ -742,50 +1186,43 @@ edge_authorize: Edge Authorization
 # Base editor
 # Client chat translations
 # Client management translations
+agent_chat_empty_sessions: No sessions yet. Click "New Chat" to start.
 agent_detail: Agent Detail
 agent_domain: Agent
 agent_edit: Edit Agent
+AI editor state reverted: Restored editor to the state before this AI reply.
 All Domains Learn: All Domains Learn
+All Roadmaps: All Roadmaps
 Average Rating: Average Rating
 Back to: Back to
 Base has no nodes: Base has no nodes
 Base Node: Base Node
 Base type: Base type
 base_create: Create Base
-Create Base: Create Base
-Create a knowledge base document for this domain.: Create a knowledge base document for this domain.
-Input base title: Input base title
-BID: BID
-'Optional human-readable identifier, for example: P1001': 'Optional human-readable identifier, for example: P1001'
-"Split by ', '. Or pick categories from the sidebar.": "Split by ', '. Or pick categories from the sidebar."
-"Split by ', '.": "Split by ', '."
-Click to add: Click to add
-'Base bid already exists: {0}': 'Base bid already exists: {0}'
-Standard knowledge base: Standard knowledge base
 base_data: Base Data
 base_delete: Delete Base
 base_detail: Base Detail
 base_domain: Base
-Show tags: Show tags
-Views: Views
-Updated: Updated
 base_edge: Base Edge
 base_edit: Edit Base
 base_editor: Base Editor
 base_list: Base List
-SID: SID
 base_node: Base Node
 base_outline: Base
 base_save: Save Base
 base_study: Study Base
 Belongs to card: Belongs to card
+BID: BID
 block_create: Create Block
 block_detail: Block Detail
 block_edit: Edit Block
 Can be Extended For: Extension
+Cancel scheduled task: Cancel scheduled task
+Cancel this scheduled task?: Cancel this scheduled task?
 cards: cards
 Cards: Cards
 Chars: Chars
+Click to add: Click to add
 client_create: Create Client
 client_detail: Client Detail
 client_domain: Client
@@ -793,13 +1230,20 @@ client_edit: Edit Client
 client_logs: Connection Logs
 Close: Close
 Continue: Continue
-'Lesson redo question': Retry this question
 Contribution Wall: Contribution Wall
 Contributions in the past year: Contributions in the past year
 Contributions: Contributions
+Create a knowledge base document for this domain.: Create a knowledge base document for this domain.
+Create Base: Create Base
 Created at: Created at
-'Created at: {0}': 'Created at: {0}'
-'Updated at: {0}': 'Updated at: {0}'
+Date: Date
+develop_session_history_back: Back to Develop
+develop_session_history_detail_title: Save records (by batch)
+develop_session_history_hint_abandoned: This develop session was abandoned. Save records from that run are listed below.
+develop_session_history_hint_finished: This develop session has been settled. Save records from that run are listed below.
+develop_session_history_hint_timed_out: This develop session timed out (new UTC day). Save records from that run are listed below.
+develop_session_history_title: Develop session (history)
+develop: Develop
 discussion_create: Create Discussion
 discussion_detail: Discussion Detail
 discussion_edit: Discussion Edit
@@ -821,7 +1265,11 @@ domain_main: Main
 domain_permission: Domain Permission
 domain_role: Domain Role
 domain_user: Domain User
+edge_authorize: Edge Authorization
 edge_domain: Edge
+edges: edges
+Edit scheduled task: Edit scheduled task
+Folder: Folder
 fs_upload: File Upload
 home_account: Account Settings
 home_domain_account: Profile @ Domain
@@ -837,149 +1285,14 @@ homework_edit: Homework Edit
 homework_main: Homework
 homework_scoreboard: Scoreboard
 Independent Node: Independent Node
+Input base title: Input base title
 Joined at: Joined at
 Joined Domains: Joined Domains
-Learn: Learn
-'Learn tab learn wall': Learn wall
-'Learn domain learn wall': Learn activity (this domain)
-'Learn domain learn wall caption': Daily practice from stats and card completions (UTC). Darker cells mean more activity; dots may mark check-ins or open sessions. Day detail lists learn sessions; each line links to that session’s history.
-'Learn wall checked in': Checked in today’s learn activity for this domain.
-'Learn wall checkin only saves': Check-in only — no counted practice for this day.
-'Learn wall sessions': Sessions this day (UTC)
-'Learn wall no sessions': No sessions for this day.
-'Learn wall session record count': '{0} record(s)'
-Learn wall result untitled card: Unnamed card
-Learn wall result score: 'Score: {0}'
 Learn wall result problems_done: '{0} problems'
+Learn wall result score: 'Score: {0}'
 Learn wall result time_sec: 'Time {0}s'
-develop: Develop
-'Develop': Develop
-'Develop mode knowledge base': Knowledge base
-'Develop mode roadmap': Roadmap
-'Develop edit pool hint roadmap': Pick roadmaps and branches, set daily goals. Use ↑↓ to set order, then save. Start develop follows this order into the roadmap editor.
-'Develop no roadmaps': No roadmaps in this domain yet. Create a roadmap first.
-'Develop unknown roadmap': Roadmap not found
-'Develop add row': Add entry
-'Develop edit pool hint': Pick bases, set daily goals, and use ↑↓ to set order before saving. Start develop follows this order.
-'Develop edit pool': Edit develop pool
-'Develop goal unset': —
-'Develop no pool hint': No entries yet. Tap Edit to add bases and daily goals.
-'Develop progress overview': Goals & today’s progress
-'Develop sidebar completed today': Completed today
-'Develop sidebar pending today': Pending today
-'Develop sidebar no completed': No base has completed all of today’s goals yet.
-'Develop sidebar no pending': Nothing pending in the pool for today.
-'Develop goal cards': Card goal
-'Develop goal nodes': Node goal
-'Develop goal problems': Problem goal
-'Develop no bases': No knowledge bases in this domain yet. Create a base first.
-'Develop check-in blocked': Check in after all daily goals in the pool are met
-'Develop check-in done': Checked in today
-'Develop check-in failed': Check-in failed
-'Develop check-in goals not met': Not all daily goals are completed yet
-'Develop check-in need goals set': Set at least one daily goal greater than zero
-'Develop check-in need pool': Add pool entries under Edit first
-'Develop check-in': Daily check-in
-'Develop pool': Develop pool
-'Develop save failed': Save failed
-'Develop save pool': Save pool
-'Develop start': Start develop
-'Develop continue': Continue develop
-'Develop session closed reload hint': This develop session has ended or is no longer editable. Reloading…
-'Save not logged in refresh then login': You are not signed in or your session expired. Refresh the page, sign in again, then retry saving.
-'Develop start failed': Could not start develop session. Please try again.
-'Develop pool order hint': Order shown here is the run order; adjust with ↑↓ in Edit, then save.
-'Develop pool skip done hint': Bases that already met today’s goals are skipped by Start develop.
-'Develop row today goals met': Today’s goals done
-'Develop run queue empty today': No develop tasks left for today.
-'Develop start goals done today': This base already met today’s goals and is out of the develop run queue.
-'Develop start base not in pool': This base is not in your develop pool.
-'Outline editor start session': Start editor session…
-'Outline editor start failed': Could not start an editor session. Try again.
-'Outline editor start invalid base': Invalid knowledge base for this outline.
-'Outline editor start needs node': A node id is required to start an editor session from the outline.
-'Outline editor start invalid node': That node is not part of this base.
-'Outline editor popup blocked': The browser blocked the new tab. Allow popups for this site and try again.
-'Outline learn single card': Learn this card only
-'Outline learn single node': Learn this node subtree
-'Separate as new base': Separate as new base
-'Separate as new base create hint': Copy this node and its entire subtree (child nodes, cards, and files) into a new knowledge base. The original base is unchanged. The title defaults to the node name; you can edit it before confirming.
-'Separate as new base title required': Please enter a base title.
-'Separate as new base save node first': Save the node before separating it as a new base.
-'Separate as new base invalid doc': Cannot separate as new base — invalid document ID.
-'Separate as new base save pending first': Save all pending changes in the editor before separating as a new base.
-'Separate as new base failed': Failed to separate as new base.
-'Separate as new base success': New base created; subtree copied.
-'Outline learn start failed': Could not start learning. Try again.
-'Outline learn invalid card': Invalid card id; cannot start learning.
-'Outline card problems button': 'Problem ({0})'
-'Outline card problems empty': No problems on this card.
-'Outline card problems card label': 'Card: {0}'
-'Outline card problems untitled item': 'Problem {0}'
-'Outline search placeholder': Search nodes and cards…
-'Outline search aria': Search outline
-'Outline search no results': No matches
-'Outline search kind node': Node
-'Outline search kind card': Card
-'Outline explorer filter label': Server filter
-'Outline explorer filter open': Filter
-'Outline explorer filter dialog title': Server filter
-'Outline explorer filter cancel': Cancel
-'Outline explorer filter node placeholder': Node title…
-'Outline explorer filter card placeholder': Card title…
-'Outline explorer filter problem placeholder': Problem text…
-'Outline explorer filter apply': Apply
-'Outline explorer filter clear': Clear
-'Outline explorer filter aria': Narrow outline by server-side keywords
-'Develop start no pending': All today’s develop tasks are done; resume an open session if needed.
-'Develop move up': Move up
-'Develop move down': Move down
-'Develop run queue': Develop queue
-'Develop queue tab': Queue
-'Develop queue sidebar hint': Click a row to open that base in a develop session (save pending edits first).
-'Develop queue current': Current
-'Base editor problems tab': Problems
-'Develop run next': Next base
-'Develop run clear': End queue
-'Develop today cards': Cards
-'Develop today nodes': Nodes
-'Develop today problems': Problems
-'Develop today progress': Today (UTC, increments on save)
-'Develop unknown base': Base not found
-'Develop utc day': UTC date
-'Develop editor pool progress': Develop pool (today)
-'Develop editor goals complete': Daily goals for this pool entry are met.
-'Develop editor switch other base': Continue on another base
-'Develop editor all pool goals met': All develop pool entries have met their goals today.
-'Develop editor switch modal title': Bases still below today’s goals
-'Develop editor switch modal hint': Open the editor for another pool entry; progress is for the current UTC day.
-'Develop session contribution': This session (saved edits)
-'Develop editor end session': End session
-'Develop session deadline hint': "This editor session auto-closes at (local time):"
-'Develop session started label': "Started (local time):"
-'Develop session elapsed label': "Elapsed:"
-'Develop editor settle': Settle session
-'Develop settle failed': Could not settle this session.
-'Develop settle pool incomplete': Not every develop pool entry has met today’s goals yet.
-'Develop settle already': This develop session has already been settled.
-'Develop settle outline session': Outline single-node editor sessions cannot be settled like the daily develop run; close the tab or view history after the UTC day rolls over.
-develop_session_history_title: Develop session (history)
-develop_session_history_back: Back to Develop
-develop_session_history_hint_finished: This develop session has been settled. Save records from that run are listed below.
-develop_session_history_hint_timed_out: This develop session timed out (new UTC day). Save records from that run are listed below.
-develop_session_history_hint_abandoned: This develop session was abandoned. Save records from that run are listed below.
-develop_session_history_detail_title: Save records (by batch)
-session_develop_list_title: Develop sessions (live)
-'Develop domain contribution wall': Develop contribution (this domain)
-'Develop domain contribution wall caption': Saves counted toward daily goals in this domain (UTC). Darker cells mean more edits; dots may also mark check-ins or editor sessions with no saves yet.
-'Develop wall checked in': Checked in today’s develop goals for this domain.
-'Develop wall sessions': Develop sessions this day (UTC)
-'Develop wall no sessions': No develop sessions for this day.
-'Develop wall session base line': '{0}: {1} record(s)'
-'Develop wall session no saves': No editor saves in this session on this day.
-'Develop wall base fallback title': 'Base {0}'
-'Develop session': Session
-'Develop wall checkin only saves': Check-in only — no save counts recorded for this day.
+Learn wall result untitled card: Unnamed card
+Learn: Learn
 Less: Less
 lesson_history_col_attempts: Attempts
 lesson_history_col_correct: Correct answer
@@ -1020,18 +1333,7 @@ node_edit: Edit Node
 node_logs: Node Logs
 nodes: nodes
 Nodes: Nodes
-'Assignable MCP services in this domain': Assignable MCP services in this domain
-'Available MCP services': Available MCP services
-'Card problems': Card problems
-Folder: Folder
-'No available MCP services': No available MCP services
-'No tools exposed': No tools exposed
 Not available: Not available
-'Plugin node definition': Plugin node definition
-'Plugin nodes are folders. Add markdown cards under folders for skill, command, and MCP definitions.': Plugin nodes are folders. Add markdown cards under folders for skill, command, and MCP definitions.
-'ToolDoc ID': ToolDoc ID
-'Unique tool ID': Unique tool ID
-'Use ToolDoc IDs in plugin MCP cards': Use ToolDoc IDs in plugin MCP cards
 Offline: Offline
 Online: Online
 page.problem_detail.sidebar.show_category: Click to Show
@@ -1059,14 +1361,6 @@ record_col_session_question_idx: "Q # (e.g. 3/6)"
 record_col_session_type: Session type
 record_col_session: Session
 record_col_short: Records
-record_field_node: Node
-record_field_session: Session
-record_link_record_list: Answer records
-record_link_session_list: Learn sessions
-record_main_empty_filter: No records match the filter.
-record_main_empty: No card answer records in this time window.
-record_main_list_title: Card answer records (live)
-record_main: Record
 record_develop_changes_empty: No change details.
 record_develop_changes_summary_hint: Counts by operation type (older saves may not list each change).
 record_develop_changes_title: Changes in this save
@@ -1086,6 +1380,21 @@ record_develop_op_edge_delete: Deleted edge
 record_develop_op_node_create: New node
 record_develop_op_node_delete: Deleted node
 record_develop_op_node_update: Updated node
+record_field_node: Node
+record_field_session: Session
+record_link_record_list: Answer records
+record_link_session_list: Learn sessions
+record_main_empty_filter: No records match the filter.
+record_main_empty: No card answer records in this time window.
+record_main_list_title: Card answer records (live)
+record_main: Record
+record_mcp_args: Arguments
+record_mcp_duration: Duration
+record_mcp_failed: Failed
+record_mcp_result: Result
+record_mcp_status: Status
+record_mcp_succeeded: Succeeded
+record_mcp_tool_title: MCP tool call
 record_no_problems: No problem rows yet.
 record_open_detail: Open
 record_page_title: Record
@@ -1099,72 +1408,63 @@ repo_create: Create Repo
 repo_detail: Repo Detail
 repo_doc: Repo Doc
 repo_edit: Edit Repo
-Role: Role
 Revert AI operations: Revert
 Reverted: Reverted
-AI editor state reverted: Restored editor to the state before this AI reply.
-session_chat_domain: Agent sessions
-session_chat_detail: Agent session
-session_chat_live: Agent chat
-session_chat_none: No chat sessions yet.
-session_chat_none_filter: No chat sessions match the filter.
-session_chat_back_list: Back to sessions
-session_chat_back_detail: Back to detail
-session_chat_no_records: No records in this session.
-session_chat_id_label: Session ID
-session_chat_enter: Open chat
-session_chat_title_placeholder: Session title
-session_chat_delete_confirm: Delete this chat session?
-session_chat_delete: Delete session
-agent_chat_empty_sessions: No sessions yet. Click "New Chat" to start.
+roadmap_main: Roadmaps
+Roadmap: Roadmap
+Role: Role
 scene_create: Create Scene
 scene_detail: Scene Detail
 scene_domain: Scene
+Schedule updated and enabled: Schedule updated and enabled
+Schedule updated and paused: Schedule updated and paused
 session_active_minutes: List users active within the last N minutes
+session_chat_back_detail: Back to detail
+session_chat_back_list: Back to sessions
+session_chat_delete_confirm: Delete this chat session?
+session_chat_delete: Delete session
+session_chat_detail: Agent session
+session_chat_domain: Agent sessions
+session_chat_enter: Open chat
+session_chat_id_label: Session ID
+session_chat_live: Agent chat
+session_chat_no_records: No records in this session.
+session_chat_none_filter: No chat sessions match the filter.
+session_chat_none: No chat sessions yet.
+session_chat_title_placeholder: Session title
 session_col_branch: Branch
 session_col_card_progress: Card progress
 session_col_position: Card / node
 session_col_progress: Progress
-session_col_records: Records
-session_col_session_kind: Type
 session_col_record_type: Session type
+session_col_records: Records
 session_col_route: Route
+session_col_session_kind: Type
 session_col_started_at: Started at
+session_develop_list_title: Develop sessions (live)
 session_domain: Learn live
 session_filter_any: Any
 session_filter_kind: Session category
 session_filter_record_type: Session type
 session_filter_status: Status
+session_kind_agent: Agent
+session_kind_develop: Develop
+session_kind_learn: Learn
 session_last_activity: Last activity
 session_learn_empty_filter: No sessions match the filter.
 session_learn_empty: No recent learn activity in this domain.
 session_learn_list_title: Learn sessions (live)
-session_kind_develop: Develop
-session_kind_agent: Agent
-session_kind_learn: Learn
 session_main: Session
+session_record_type_agent: Chat
 session_record_type_daily: Daily practice
-session_record_type_other: Other
-session_record_type_single_card: Single-card practice
-session_record_type_single_node: Single-node practice
-session_record_type_develop: Develop editor
 session_record_type_develop_daily: Daily develop
 session_record_type_develop_outline: Outline single-node editing
-session_record_type_agent: Chat
-session_record_type_schedule: Scheduled task
-Edit scheduled task: Edit scheduled task
-Cancel scheduled task: Cancel scheduled task
-Cancel this scheduled task?: Cancel this scheduled task?
-Schedule updated and paused: Schedule updated and paused
-Schedule updated and enabled: Schedule updated and enabled
+session_record_type_develop: Develop editor
 session_record_type_mcp: Edge / MCP
-record_mcp_tool_title: MCP tool call
-record_mcp_status: Status
-record_mcp_succeeded: Succeeded
-record_mcp_failed: Failed
-record_mcp_duration: Duration
-record_mcp_args: Arguments
-record_mcp_result: Result
+session_record_type_other: Other
+session_record_type_schedule: Scheduled task
+session_record_type_single_card: Single-card practice
+session_record_type_single_node: Single-node practice
 session_status_abandoned: Abandoned
 session_status_active: Active
 session_status_detached: Offline
@@ -1183,6 +1483,10 @@ setting_server: Server Settings
 setting_session: Session Settings
 setting_smtp: SMTP Settings
 setting_usage: Usage Preference
+Show tags: Show tags
+SID: SID
+Standard knowledge base: Standard knowledge base
+Stats: Stats
 timeago_locale: en_US
 tool_domain: Tool
 tool_market: Tool Market
@@ -1191,6 +1495,8 @@ Type: Type
 Uncompleted: Not completed
 Unnamed Card: Unnamed Card
 Unnamed Node: Unnamed Node
+Untitled: Untitled
+Updated: Updated
 user_detail: User Detail
 user_login: Login
 user_logout: Logout
@@ -1199,289 +1505,7 @@ user_register: Register
 user_sudo: Entering Sudo Mode
 View all: View all
 View Card: View Card
+Views: Views
 wiki_about: About
 wiki_help: Help
 workflow_domain: Workflow
-roadmap_main: Roadmaps
-All Roadmaps: All Roadmaps
-Roadmap: Roadmap
-'Roadmap Editor': Roadmap Editor
-'Create Roadmap': Create Roadmap
-'Edit graph': Edit graph
-'Manage Roadmap': Manage Roadmap
-'Update Roadmap': Update Roadmap
-'Delete Roadmap': Delete Roadmap
-'Back to list': Back to list
-'Search roadmaps': Search roadmaps
-'Create a roadmap document for this domain.': Create a roadmap document for this domain.
-'Create a roadmap to get started.': Create a roadmap to get started.
-'Sorry, there are no roadmaps yet.': Sorry, there are no roadmaps yet.
-'You have permission to create roadmaps for this domain.': You have permission to create roadmaps for this domain.
-'Enter roadmap title': Enter roadmap title
-'Input roadmap title': Input roadmap title
-'Optional human-readable roadmap identifier, for example: R1001': 'Optional human-readable roadmap identifier, for example: R1001'
-'Optional short description shown in list views.': Optional short description shown in list views.
-'Please select at least one roadmap to delete.': Please select at least one roadmap to delete.
-'Confirm deleting {0} selected roadmap(s)?': Confirm deleting {0} selected roadmap(s)?
-'Selected roadmaps have been deleted.': Selected roadmaps have been deleted.
-'Roadmap rid already exists: {0}': 'Roadmap rid already exists: {0}'
-Untitled: Untitled
-edges: edges
-Stats: Stats
-'Roadmap load failed': Failed to load roadmap.
-'Roadmap save operation': Save roadmap
-'Roadmap saved': Roadmap saved.
-'Roadmap save failed': Failed to save roadmap.
-'Roadmap fit canvas': Fit to canvas
-'Roadmap delete edge': Delete edge
-'Roadmap node inspector': Node inspector
-'Roadmap lane': Lane
-'Roadmap lane option': 'Lane {0}'
-'Roadmap priority': Priority
-'Roadmap owner': Owner
-Date: Date
-'Roadmap edge inspector': Edge inspector
-'Roadmap canvas': Canvas
-'Roadmap panel pending': Pending
-'Roadmap pending empty': No uncommitted changes
-'Roadmap pending created nodes': New nodes
-'Roadmap pending updated nodes': Updated nodes
-'Roadmap pending deleted nodes': Deleted nodes
-'Roadmap pending created edges': New edges
-'Roadmap pending updated edges': Updated edges
-'Roadmap pending deleted edges': Deleted edges
-'Roadmap pending viewport changed': Viewport changed
-'Roadmap pending updated problems': Problem changes
-'Roadmap AI terminal hint': AI ready. Describe nodes, edges, or problems below and press Enter; changes apply to the canvas locally until you Save.
-'Roadmap AI thinking': Thinking…
-'Roadmap AI receiving operations': Receiving operations…
-'Roadmap AI waiting for operations': Waiting for operation list…
-'Roadmap AI processing': Processing
-'Roadmap AI applying operations': Applying {0} operation(s)
-'Roadmap AI operations applied': AI operations applied
-'Roadmap AI operations failed': |-
-  Operations failed:
-  {0}
-
-  Fix the issues above and try again.
-'Roadmap AI chat error': 'Error: {0}'
-'Roadmap AI parse error': 'Failed to parse AI operations: {0}'
-'Roadmap AI execute error': 'Failed to run operations: {0}'
-'Roadmap AI problem missing nodeId': create_problem requires a valid nodeId
-'Roadmap practice problems node type forbidden': Only main and sub nodes support practice problems
-'Roadmap AI tutor': AI Tutor
-'Roadmap AI tutor open': Open AI Tutor
-'Roadmap AI tutor bar hint': 'Have a question? Type here'
-'Roadmap AI tutor greeting': 'Hello, how can I help you today?'
-'Roadmap AI tutor suggestions lead': 'Some questions you might have about this roadmap:'
-'Roadmap AI tutor input placeholder': 'Ask me anything about this roadmap…'
-'Roadmap AI tutor question node': 'What should I know about "{0}" in this roadmap?'
-'Roadmap AI tutor question overview': 'What is this roadmap "{0}" about?'
-'Roadmap AI tutor question order': 'What order should I follow through this roadmap?'
-'Roadmap AI tutor question start': 'Where should I start on this roadmap?'
-'Roadmap AI tutor question progress': 'How can I track my progress on this roadmap?'
-'Roadmap detail search placeholder': 'Search nodes and problems…'
-'Roadmap detail search aria': 'Search roadmap'
-'Roadmap detail search no results': 'No matches'
-'Roadmap detail search kind node': 'Node'
-'Roadmap detail search kind problem': 'Problem'
-'Roadmap detail search problem untitled': 'Untitled problem'
-'Roadmap detail filter open': 'Filter'
-'Roadmap detail filter aria': 'Filter roadmap nodes on canvas'
-'Roadmap detail filter dialog title': 'Filter roadmap'
-'Roadmap detail filter dialog hint': 'Non-matching nodes are dimmed on the canvas. Filters sync to the URL.'
-'Roadmap detail filter node label': 'Node title'
-'Roadmap detail filter node placeholder': 'Node title…'
-'Roadmap detail filter content label': 'Node content'
-'Roadmap detail filter content placeholder': 'Markdown body…'
-'Roadmap detail filter problem label': 'Practice problem'
-'Roadmap detail filter problem placeholder': 'Problem text…'
-'Roadmap detail filter apply': 'Apply'
-'Roadmap detail filter clear': 'Clear'
-'Roadmap detail filter cancel': 'Cancel'
-'Roadmap detail filter match count': '{0} matches'
-'Roadmap detail settings open': Display settings
-'Roadmap detail settings title': Display settings
-'Roadmap editor settings title': Display settings
-'Roadmap editor settings hint': Changes preview on the canvas after Save here and stay pending until you use the top Save button, which stores them on the roadmap document (separate from detail page personal display prefs).
-'Roadmap editor settings applied pending': Display settings updated. Use Save to commit.
-'Roadmap pending display settings': Display settings
-'Roadmap detail settings hint': Control how the roadmap canvas is displayed on this page.
-'Roadmap detail settings show problem count': Show problem count badge
-'Roadmap detail settings show problem count hint': Show a bubble with the number of practice problems on main and sub nodes.
-'Roadmap detail settings show node number': Show node numbers
-'Roadmap detail settings show node number hint': Display sequential numbering on main and sub nodes.
-'Roadmap detail settings show node card timestamps': Show node and card timestamps
-'Roadmap detail settings show node card timestamps hint': Display creation and last modification times for nodes and cards in the tree.
-'Roadmap node number': Node number
-'Roadmap main node number format hint': Format x (e.g. 1)
-'Roadmap sub node number format hint': Format x.y (e.g. 1.1; first part is main node number)
-'Roadmap main node number missing': Main node "{0}" is missing a number.
-'Roadmap main node number invalid': Main node "{0}" number must be a positive integer.
-'Roadmap sub node number invalid': Sub node "{0}" number must be in x.y format.
-'Roadmap sub node number missing': Sub node "{0}" is missing a number.
-'Roadmap sub node number prefix invalid': Sub node "{0}" number prefix must match a main node number.
-'Roadmap node number validation failed': Roadmap node number validation failed. Fix errors before saving.
-'Show WS connection indicator': Show WS connection indicator
-'Show live collaboration connection status at top right': Show live collaboration connection status at top right.
-'Roadmap detail settings saved': Display settings saved.
-'Roadmap detail settings save failed': Failed to save display settings.
-'Resize sidebar': Resize sidebar
-'Resize terminal panel': Resize terminal panel
-'Terminal input': Terminal input
-'Collapse panel': Collapse panel
-'Roadmap edge label': Dependency note
-'Roadmap line style': Line style
-'Roadmap line solid': Solid
-'Roadmap line dashed': Dashed
-'Roadmap edge source': Source
-'Roadmap edge target': Target
-'Roadmap inspector empty title': Select a node or edge
-'Roadmap inspector empty hint': Click a node to edit its markdown content, or click an edge to change line style. Solid horizontal links share the same row; dashed links are free-form. Delete / Backspace removes the selection. Save writes the graph and node content together.
-'Roadmap detail empty': This roadmap has no content yet.
-'Roadmap status in progress': In progress
-'Roadmap status done': Done
-'Roadmap status blocked': Blocked
-'Roadmap status planned': Planned
-'Roadmap node type root': Overview
-'Roadmap node type milestone': Milestone
-'Roadmap node type decision': Decision
-'Roadmap node type release': Release
-'Roadmap node type task': Task
-'Roadmap node type main': Main
-'Roadmap node type sub': Sub
-'Roadmap node type hook': Hook
-'Roadmap node type text': Text
-'Roadmap node type': Node type
-'Base roadmap new card': New card
-'Base roadmap card type main': Main card
-'Base roadmap card type sub': Sub card
-'Base roadmap card type hook': Hook card
-'Base roadmap card type text': Text card
-'Base roadmap card title': Card title
-'Roadmap node lead text': Lead text
-'Roadmap hook node hint': Select another roadmap for this hook node. Content editing is disabled.
-'Roadmap hook linked': Linked roadmap
-'Roadmap hook target': Target roadmap
-'Roadmap hook select placeholder': Select a roadmap
-'Roadmap branch': Branch
-'Roadmap main node dashed target forbidden': Main nodes cannot be the target of dashed edges.
-'Roadmap sub node solid target forbidden': Sub nodes can only be solid targets of main nodes. Use a dashed line or connect from a main node.
-'Roadmap connection not allowed': This connection is not allowed for the target node type.
-'Roadmap priority low': Low
-'Roadmap priority medium': Medium
-'Roadmap priority high': High
-'Roadmap new milestone': New milestone
-'Roadmap new release': New release
-'Roadmap new decision': New decision
-'Roadmap new task': New task
-'Roadmap add node': Add node
-'Roadmap add adjacent blocked': No adjacent lane in this direction
-'Roadmap new node': New node
-'Roadmap node editor': Node editor
-'Roadmap node content': Node content
-'Roadmap node content empty': This node has no content yet.
-'Roadmap drawer resources': Resources
-'Roadmap drawer content': Content
-'Roadmap drawer problems': Problems
-'Roadmap drawer problems empty': No practice problems on this node yet.
-'Roadmap drawer problem tap reveal answer': Tap to reveal answer
-'Roadmap drawer problem reveal back': Tap to reveal back
-'Roadmap drawer practice problems': Practice problems
-'Roadmap drawer start node practice': Start single-node practice
-'Roadmap drawer start card practice': Start card practice
-'Roadmap drawer start node practice busy': Starting practice…
-'Roadmap drawer start node practice invalid doc': Invalid roadmap for this node.
-'Roadmap markdown preview failed': Failed to render markdown.
-'Knowledge Base': Knowledge Base
-'Document Structure': Document Structure
-'Content': Content
-'Base detail content placeholder': Select a node from Document Structure to view its content.
-'Base detail tree empty': No nodes in this knowledge base yet.
-'Base detail node empty': This node has no content yet.
-'Base detail card empty': This card has no content yet.
-'Base detail filter dialog hint': Matching nodes and cards are shown in Document Structure; non-matching paths are hidden.
-'Base detail content filter dialog hint': Filter the current content tree only. Non-matching paths are hidden.
-'Base detail tree search placeholder': Filter current tree…
-'Base detail tree search aria': Filter content tree
-
-'MCP Dashboard': 'MCP Dashboard'
-'Manage System Tools': 'Manage System Tools'
-'MCP dashboard description': 'MCP is now a top-level tool object. This page shows outbound MCP, System Tools MCP, and externally connected inbound MCP. Click any MCP to view its tools and unique tool IDs.'
-'No MCP.': 'No MCP.'
-'Type / Source': 'Type / Source'
-'Tools': 'Tools'
-'Last used': 'Last used'
-'Never used': 'Never used'
-'Authentication Time': 'Authentication Time'
-'Expiration Time': 'Expiration Time'
-'Actions / Expiry': 'Actions / Expiry'
-'Pending connection': 'Pending connection'
-'View tools': 'View tools'
-'Expired': 'Expired'
-'Duration': 'Duration'
-'Specific time': 'Specific time'
-'1 hour': '1 hour'
-'1 day': '1 day'
-'7 days': '7 days'
-'30 days': '30 days'
-'1 year': '1 year'
-'Never expire': 'Never expire'
-'system_tools': 'System Tools'
-'ejunztools': 'Ejunz Tools'
-'outbound': 'Outbound'
-'inbound': 'Inbound'
-'plugin': 'Plugin'
-'outbound endpoint': 'outbound endpoint'
-'external': 'external'
-'plugin MCP': 'plugin MCP'
-'assignable': 'Assignable'
-'not assignable': 'Not assignable'
-'Name': 'Name'
-'Update': 'Update'
-'Search MCP': 'Search MCP'
-'Deleting an outbound MCP invalidates its token immediately.': 'Deleting an outbound MCP invalidates its token immediately.'
-'Please select at least one MCP to delete.': 'Please select at least one MCP to delete.'
-'Confirm deleting {0} selected MCP endpoint(s)? Their tokens will be invalidated immediately.': 'Confirm deleting {0} selected MCP endpoint(s)? Their tokens will be invalidated immediately.'
-'Selected MCP endpoint(s) have been deleted.': 'Selected MCP endpoint(s) have been deleted.'
-'Only outbound MCP endpoints can be deleted from this page.': 'Only outbound MCP endpoints can be deleted from this page.'
-'You are not allowed to delete this MCP.': 'You are not allowed to delete this MCP.'
-'Enter Edit Mode': 'Enter Edit Mode'
-'Leave Edit Mode': 'Leave Edit Mode'
-'Remove Selected': 'Remove Selected'
-'Expiry': 'Expiry'
-'Show card tags': 'Show card tags'
-'Show card tags hint': 'Show card tag chips in the tree view'
-'Show problem tags': 'Show problem tags'
-'Show problem tags hint': 'Show problem tag chips under problems in the tree'
-'Card tags': 'Card tags'
-'Card tags filter': 'Filter by card tag'
-'Card tags filter placeholder': 'Comma-separated tag names'
-'Type and press Enter to add tag': 'Type and press Enter to add tag'
-'Remove tag': 'Remove tag'
-'Add tag...': 'Add tag...'
-'No tags available': 'No tags available'
-'Lesson problem tag panel assign': Assign tags
-'Manage tags': Manage tags
-'Problem tags edit': Edit tags
-'Add new tag group...': 'Add new tag group…'
-'Click to select': 'Click to select'
-'Selected': 'Selected'
-'Add sub-tag...': 'Add sub-tag…'
-'No tags': 'No tags'
-'Please select a card first': 'Please select a card first'
-'Available tags': 'Available tags'
-'Problem tags': 'Problem tags'
-'Slug': 'Slug'
-'Only lowercase letters (a-z), digits (0-9), dots, underscores, and hyphens. Used in the URL.': 'Only lowercase letters (a-z), digits (0-9), dots, underscores, and hyphens. Used in the URL.'
-'{0} is available': '{0} is available'
-'Your new repository will be created as {0}.': 'Your new repository will be created as {0}.'
-'Slug is not available': 'Slug is not available'
-'Slug is required': 'Slug is required'
-'{0} already exists in this domain': '{0} already exists in this domain'
-'Slug can only contain lowercase letters (a-z), digits (0-9), dots (.), underscores (_), and hyphens (-)': 'Slug can only contain lowercase letters (a-z), digits (0-9), dots (.), underscores (_), and hyphens (-)'
-'Slug must be 80 characters or less': 'Slug must be 80 characters or less'
-'Slug cannot start with a dot, underscore, or hyphen': 'Slug cannot start with a dot, underscore, or hyphen'
-'Slug cannot end with a dot, underscore, or hyphen': 'Slug cannot end with a dot, underscore, or hyphen'
-'Slug cannot contain consecutive dots, underscores, or hyphens': 'Slug cannot contain consecutive dots, underscores, or hyphens'
-'Unable to validate slug': 'Unable to validate slug'

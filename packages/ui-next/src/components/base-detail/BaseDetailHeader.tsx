@@ -19,9 +19,12 @@ interface Props {
   aiTutorActive?: boolean;
   onEditClick?: () => void;
   editActive?: boolean;
+  onStartLearningClick?: () => void;
+  learnBusy?: boolean;
+  learnDisabled?: boolean;
 }
 
-export function BaseDetailHeader({ title, description, domainId, docId, treeOpen, onToggleTree, onShare, onOpenSettings, onOpenDisplaySettings, metadata, onSearchClick, searchActive, onAiTutorClick, aiTutorActive, onEditClick, editActive }: Props) {
+export function BaseDetailHeader({ title, description, domainId, docId, treeOpen, onToggleTree, onShare, onOpenSettings, onOpenDisplaySettings, metadata, onSearchClick, searchActive, onAiTutorClick, aiTutorActive, onEditClick, editActive, onStartLearningClick, learnBusy, learnDisabled }: Props) {
   const buildUrl = useBuildUrl();
   const [copied, setCopied] = useState(false);
   const listUrl = buildUrl('base_domain', { domainId });
@@ -38,6 +41,17 @@ export function BaseDetailHeader({ title, description, domainId, docId, treeOpen
       <div className="bd-header__topline">
         <a className="bd-header__back" href={listUrl}>← {i18n('All Bases')}</a>
         <div className="bd-header__actions">
+          {onStartLearningClick ? (
+            <button
+              type="button"
+              className="bd-header__action bd-header__action--primary"
+              onClick={onStartLearningClick}
+              disabled={learnBusy || learnDisabled}
+              aria-busy={learnBusy || undefined}
+            >
+              ▶ <span>{learnBusy ? i18n('Loading...') : i18n('Start Learning')}</span>
+            </button>
+          ) : null}
           <button type="button" className="bd-header__action" onClick={onToggleTree} aria-expanded={treeOpen}>☷ <span>{i18n('Document Structure')}</span></button>
           {onSearchClick ? (
             <button type="button" className={`bd-header__action${searchActive ? ' is-active' : ''}`} onClick={onSearchClick} aria-label={i18n('Semantic Search')}>⌕ <span>{i18n('Search')}</span></button>

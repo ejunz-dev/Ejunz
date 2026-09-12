@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePageData } from '../../context/page-data';
+import { useNavigate } from '../../context/router';
 import Notification from '../notification';
 import { i18n } from '../../i18n';
 import { useNavigationActions } from '../navigation/context';
@@ -13,7 +14,7 @@ import { BaseDetailSemanticSearch, type EmbeddingStatusView, type SemanticSearch
 import { BaseDetailStatusIndicator } from './BaseDetailStatusIndicator';
 import { BaseDetailFloatingToolbar } from './BaseDetailFloatingToolbar';
 import { BaseDetailWSStatusIndicator } from './BaseDetailWSStatusIndicator';
-import { requestJson, updateBaseCard } from './base-detail-api';
+import { requestJson, startNodeLesson, updateBaseCard } from './base-detail-api';
 import { BaseDetailExplorer } from './BaseDetailExplorer';
 import { BaseDetailHeader } from './BaseDetailHeader';
 import { BaseDetailNodeContent } from './BaseDetailNodeContent';
@@ -25,11 +26,13 @@ import {
   findCardHostNodeId,
   collectSubtreeNodeIds,
   getRootNodeIds,
+  nodeDisplayLabel,
   stringId,
 } from './tree';
 import {
   countBaseDetailMatches,
   countBaseDetailStats,
+  cardMatchesSelection,
   emptyBaseDetailFilter,
   filterTags,
   readBaseDetailFilterFromLocation,
@@ -187,6 +190,9 @@ export default function BaseDetailApp() {
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<BaseDetailFilter>(() => readBaseDetailFilterFromLocation());
   const [pendingNodeId, setPendingNodeId] = useState<string | null>(null);
+  const [learnBusy, setLearnBusy] = useState(false);
+  const [learnConfirm, setLearnConfirm] = useState<{ nodeId: string; label: string; summary: string; cardIds: string[] } | null>(null);
+  const navigate = useNavigate();
   const refreshBase = useCallback(async (): Promise<boolean> => {
     const version = ++refreshVersionRef.current;
     try {
@@ -208,6 +214,101 @@ export default function BaseDetailApp() {
     }
   }, [domainId, docId, selectedCard, uiPrefsDirty]);
   refreshBaseRef.current = refreshBase;
+
+  /** Filter summary recorded with a practice session, so the page can be reopened as it was. */
+  const learnFilterSummary = useMemo(() => [
+    filters.filterNode.trim() ? `${i18n('Node')}: ${filters.filterNode.trim()}` : '',
+    filters.filterCard.trim() ? `${i18n('Card')}: ${filters.filterCard.trim()}` : '',
+    filters.filterProblem.trim() ? `${i18n('Problem')}: ${filters.filterProblem.trim()}` : '',
+    filters.filterCardTag.trim() ? `${i18n('Card tags')}: ${filters.filterCardTag.trim()}` : '',
+    filters.filterProblemTag.trim() ? `${i18n('Problem tags')}: ${filters.filterProblemTag.trim()}` : '',
+    search.trim() ? `${i18n('Search')}: ${search.trim()}` : '',
+  ].filter(Boolean).join(' · '), [filters, search]);
+
+  // Practice scope follows exactly what the detail page shows: the selected
+  // node's subtree restricted to the cards that pass the active search and filters.
+  const learnTarget = useMemo(() => {
+    const rootNodeId = selectedNodeId ?? getRootNodeIds(nodes, edges)[0] ?? '';
+    if (!rootNodeId) return null;
+    const nodeById = new Map(nodes.map((node) => [node.id, node]));
+    const scopeNodeIds = [rootNodeId, ...collectSubtreeNodeIds(rootNodeId, nodes, edges)];
+    const cardIds: string[] = [];
+    const seenCardIds = new Set<string>();
+    let childNodeCount = 0;
+    let problemCount = 0;
+    for (const scopeNodeId of scopeNodeIds) {
+      const node = nodeById.get(scopeNodeId);
+      if (!node) continue;
+      if (scopeNodeId !== rootNodeId) childNodeCount += 1;
+      for (const card of nodeCardsMap[scopeNodeId] || []) {
+        if (!cardMatchesSelection(card, node, search, filters)) continue;
+        const problems = card.problems || [];
+        if (!problems.length) continue;
+        const cardId = stringId(card.docId);
+        if (!cardId || seenCardIds.has(cardId)) continue;
+        seenCardIds.add(cardId);
+        cardIds.push(cardId);
+        problemCount += problems.length;
+      }
+    }
+    const summary = [
+      childNodeCount > 0 ? i18n('Child nodes: {0}', childNodeCount) : '',
+      cardIds.length > 0 ? i18n('Cards: {0}', cardIds.length) : '',
+      problemCount > 0 ? i18n('Problems: {0}', problemCount) : '',
+    ].filter(Boolean).join('，');
+    return { nodeId: rootNodeId, label: nodeDisplayLabel(nodeById.get(rootNodeId)), summary, cardIds };
+  }, [selectedNodeId, nodes, edges, nodeCardsMap, search, filters]);
+
+  const requestLearnStart = useCallback(() => {
+    if (!learnTarget || learnBusy) return;
+    setLearnConfirm(learnTarget);
+  }, [learnTarget, learnBusy]);
+
+  const confirmLearnStart = useCallback(async () => {
+    const target = learnConfirm;
+    setLearnConfirm(null);
+    if (!target) return;
+    const baseDocNum = Number(docId);
+    if (!Number.isFinite(baseDocNum) || baseDocNum <= 0) {
+      Notification.error(i18n('Outline editor start invalid base'));
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    params.set('nodeId', target.nodeId);
+    const detailSourceUrl = `${window.location.pathname}${params.toString() ? `?${params}` : ''}`;
+    setLearnBusy(true);
+    try {
+      const redirect = await startNodeLesson({
+        domainId,
+        nodeId: target.nodeId,
+        baseDocId: baseDocNum,
+        detailFilteredCardIds: target.cardIds,
+        detailSourceUrl,
+        detailFilterSummary: learnFilterSummary,
+      });
+      // Study opens in its own tab so the detail page keeps its node, filters and scroll.
+      // `noopener`/`noreferrer` in the feature list make window.open() return null even
+      // on success, so the opener link is cleared explicitly instead.
+      const opened = window.open(redirect, '_blank');
+      if (opened) {
+        opened.opener = null;
+        return;
+      }
+      // Popup blocked: keep the learner in this tab rather than dropping the click.
+      Notification.error(i18n('Outline editor popup blocked'));
+      await navigate(redirect);
+      const lessonUrl = new URL(redirect, window.location.origin);
+      if (window.location.pathname !== lessonUrl.pathname || window.location.search !== lessonUrl.search) {
+        window.location.assign(redirect);
+      }
+    } catch (error: any) {
+      const raw = typeof error?.message === 'string' ? error.message.trim() : String(error ?? '');
+      const cleaned = raw.replace(/^[A-Za-z]+Error:\s*/i, '').trim();
+      Notification.error((cleaned && i18n(cleaned)) || i18n('Outline learn start failed'));
+    } finally {
+      setLearnBusy(false);
+    }
+  }, [learnConfirm, docId, domainId, learnFilterSummary, navigate]);
 
   useEffect(() => {
     setBase(data.base);
@@ -450,7 +551,7 @@ export default function BaseDetailApp() {
 
   return (
     <div className="bd-page">
-      <BaseDetailHeader title={rootNode && selectedNodeId !== getRootNodeIds(nodes, edges)[0] ? rootNode.text || i18n('Unnamed Node') : title} description={rootNode && selectedNodeId !== getRootNodeIds(nodes, edges)[0] ? title : base.content} domainId={domainId} docId={docId} treeOpen={treeOpen} onToggleTree={() => setTreeOpen((open) => !open)} onShare={() => undefined} onOpenSettings={() => setSettingsOpen(true)} onSearchClick={() => setSemanticSearchOpen(true)} searchActive={semanticSearchOpen} onAiTutorClick={() => setAiTutorOpen(true)} aiTutorActive={aiTutorOpen} />
+      <BaseDetailHeader title={rootNode && selectedNodeId !== getRootNodeIds(nodes, edges)[0] ? rootNode.text || i18n('Unnamed Node') : title} description={rootNode && selectedNodeId !== getRootNodeIds(nodes, edges)[0] ? title : base.content} domainId={domainId} docId={docId} treeOpen={treeOpen} onToggleTree={() => setTreeOpen((open) => !open)} onShare={() => undefined} onOpenSettings={() => setSettingsOpen(true)} onSearchClick={() => setSemanticSearchOpen(true)} searchActive={semanticSearchOpen} onAiTutorClick={() => setAiTutorOpen(true)} aiTutorActive={aiTutorOpen} onStartLearningClick={requestLearnStart} learnBusy={learnBusy} learnDisabled={!learnTarget || learnTarget.cardIds.length === 0} />
       <BaseDetailExplorer value={search} onChange={setSearch} filters={filters} matchedCount={matchedCount} onApplyFilters={setFilters} onClearFilters={() => setFilters(emptyBaseDetailFilter())} availableCardTags={availableCardTags} availableProblemTags={availableProblemTags} />
       <div className="bd-page__stats"><strong>{currentStats.nodes}</strong> {i18n('nodes')} <span>·</span> <strong>{currentStats.cards}</strong> {i18n('cards')} <span>·</span> <strong>{currentStats.problems}</strong> {i18n('problems')}</div>
       <main className="bd-page__main">
@@ -519,6 +620,13 @@ export default function BaseDetailApp() {
           nodeLabel={nodes.find((node) => node.id === pendingNodeId)?.text?.trim() || i18n('Unnamed Node')}
           onConfirm={confirmNodeSwitch}
           onCancel={cancelNodeSwitch}
+        />
+      ) : null}
+      {learnConfirm ? (
+        <BaseDetailConfirmDialog
+          nodeLabel={[`${i18n('Start learning session for node:')} ${learnConfirm.label}`, learnConfirm.summary].filter(Boolean).join('\n')}
+          onConfirm={confirmLearnStart}
+          onCancel={() => setLearnConfirm(null)}
         />
       ) : null}
     </div>
