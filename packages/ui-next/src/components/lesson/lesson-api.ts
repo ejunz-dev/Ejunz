@@ -1,7 +1,6 @@
-import { requestJson } from '../base-detail/base-detail-api';
+import { requestJson, updateBaseCard } from '../base-detail/base-detail-api';
 import type { LessonAnswerRecord, LessonPassResponse, LessonSnapshot } from './types';
 
-/** Read the snapshot out of a page payload or a `spaNext` response. */
 export function readLessonSnapshot(raw: unknown): LessonSnapshot | null {
   if (!raw || typeof raw !== 'object') return null;
   const value = raw as Record<string, any>;
@@ -12,10 +11,6 @@ export function readLessonSnapshot(raw: unknown): LessonSnapshot | null {
   return candidate as LessonSnapshot;
 }
 
-/**
- * Session snapshot for the current URL (`GET /learn/lesson?format=json`).
- * Returns null when the session has no card left to practise.
- */
 export async function fetchLessonSnapshot(
   domainId: string,
   sessionId?: string,
@@ -38,14 +33,9 @@ export interface PassLessonCardOptions {
   isTodayMode?: boolean;
   isSingleNodeMode?: boolean;
   nodeId?: string;
-  /** Cards without problems: mark a browse-only pass (used for review bookkeeping). */
   noImpression?: boolean;
 }
 
-/**
- * Submit the answers of one card and advance the session cursor.
- * `spaNext` asks the server for the next card inline instead of a redirect.
- */
 export async function passLessonCard(options: PassLessonCardOptions): Promise<LessonPassResponse> {
   return requestJson<LessonPassResponse>('/learn/lesson/pass', {
     domainId: options.domainId,
@@ -64,7 +54,6 @@ export async function passLessonCard(options: PassLessonCardOptions): Promise<Le
   });
 }
 
-/** Move the queue cursor without recording a pass (`prev` or `skip`). */
 export async function navigateLessonCard(options: {
   domainId: string;
   sessionId?: string;
@@ -85,4 +74,29 @@ export async function navigateLessonCard(options: {
       spaNext: options.isSingleNodeMode || options.isTodayMode ? true : undefined,
     },
   });
+}
+
+export async function registerProblemTag(domainId: string, baseDocId: number, tag: string): Promise<string[]> {
+  const response = await requestJson<{ problemTags?: string[] }>(
+    `/base/${baseDocId}/problem-tag-register`,
+    { domainId, acceptJson: true, body: { tag } },
+  );
+  return Array.isArray(response?.problemTags) ? response.problemTags.map(String) : [];
+}
+
+export async function deleteProblemTag(domainId: string, baseDocId: number, tag: string): Promise<string[]> {
+  const response = await requestJson<{ problemTags?: string[] }>('/base/problem-tag', {
+    domainId,
+    acceptJson: true,
+    body: { docId: baseDocId, action: 'delete', tag },
+  });
+  return Array.isArray(response?.problemTags) ? response.problemTags.map(String) : [];
+}
+
+export async function saveCardProblems(
+  domainId: string,
+  cardId: string,
+  problems: unknown[],
+): Promise<void> {
+  await updateBaseCard(domainId, cardId, { problems: problems as never });
 }

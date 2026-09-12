@@ -27,7 +27,6 @@ import { i18n } from '../../i18n';
 import { renderMarkdown } from '../base-detail/markdown';
 import { requestJson } from '../base-detail/base-detail-api';
 
-/** What one answered problem contributes to `POST /learn/lesson/pass`. */
 export interface LessonGrading {
   selected: number;
   correct: boolean;
@@ -37,11 +36,16 @@ export interface LessonGrading {
 interface Props {
   problem: Problem;
   domainId: string;
-  /** Answering is locked once the answer was submitted. */
   locked: boolean;
+  preview?: LessonGrading | null;
   onGraded: (grading: LessonGrading) => void;
-  /** Only AI-graded problems can be left unanswered when grading is unavailable. */
   onSkip: () => void;
+}
+
+function bitmaskToIndices(mask: number): number[] {
+  const out: number[] = [];
+  for (let bit = 0; bit < 16; bit += 1) if (mask & (1 << bit)) out.push(bit);
+  return out;
 }
 
 function Markdown({ text, inline = false, className }: { text: string; inline?: boolean; className?: string }) {
@@ -58,7 +62,6 @@ function seedFrom(text: string): number {
   return hash >>> 0;
 }
 
-/** Deterministic display order so option positions never leak the answer. */
 function shuffledIndices(count: number, seed: number): number[] {
   const out = Array.from({ length: count }, (_, index) => index);
   let state = seed || 1;
@@ -90,7 +93,6 @@ function superFlipAllFilledCellsRevealed(columns: string[][], revealed: boolean[
   )));
 }
 
-/** Feedback panel shared by every problem type. */
 function AnswerFeedback({
   correct,
   correctAnswer,
@@ -121,15 +123,15 @@ function AnswerFeedback({
   );
 }
 
-export function LessonProblem({ problem, domainId, locked, onGraded, onSkip }: Props) {
+export function LessonProblem({ problem, domainId, locked, preview = null, onGraded, onSkip }: Props) {
   const kind = problemKind(problem);
   const pid = String(problem.pid || '');
-  const [submitted, setSubmitted] = useState(false);
-  const [singleChoice, setSingleChoice] = useState<number | null>(null);
-  const [multiChoice, setMultiChoice] = useState<number[]>([]);
-  const [trueFalseChoice, setTrueFalseChoice] = useState<0 | 1 | null>(null);
-  const [flipStage, setFlipStage] = useState<'a' | 'b'>('a');
-  const [fillDraft, setFillDraft] = useState<string[]>([]);
+  const [submitted, setSubmitted] = useState(Boolean(preview));
+  const [singleChoice, setSingleChoice] = useState<number | null>(preview && kind === 'single' ? preview.selected : null);
+  const [multiChoice, setMultiChoice] = useState<number[]>(preview && kind === 'multi' ? bitmaskToIndices(preview.selected) : []);
+  const [trueFalseChoice, setTrueFalseChoice] = useState<0 | 1 | null>(preview && kind === 'true_false' ? (preview.selected === 1 ? 1 : 0) : null);
+  const [flipStage, setFlipStage] = useState<'a' | 'b'>(preview && kind === 'flip' ? 'b' : 'a');
+  const [fillDraft, setFillDraft] = useState<string[]>(preview?.fillAnswers ?? []);
   const [matchingPicks, setMatchingPicks] = useState<number[][]>([]);
   const [superFlipRevealed, setSuperFlipRevealed] = useState<boolean[][]>([]);
   const [chainRevealed, setChainRevealed] = useState<boolean[]>([]);
@@ -138,7 +140,7 @@ export function LessonProblem({ problem, domainId, locked, onGraded, onSkip }: P
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiResult, setAiResult] = useState<{ score: number; feedback: string } | null>(null);
   const [correctAnswerText, setCorrectAnswerText] = useState('');
-  const [grading, setGrading] = useState<LessonGrading | null>(null);
+  const [grading, setGrading] = useState<LessonGrading | null>(preview);
 
   const submit = useCallback((result: LessonGrading, correctAnswer = '') => {
     setCorrectAnswerText(correctAnswer);
@@ -418,7 +420,6 @@ export function LessonProblem({ problem, domainId, locked, onGraded, onSkip }: P
                   value={value}
                   disabled={locked || submitted}
                   onChange={(event) => {
-                    // Read the value during dispatch: `currentTarget` is null once React runs the updater.
                     const typed = event.currentTarget.value;
                     setFillDraft((prev) => {
                       const next = [...prev];
@@ -621,7 +622,6 @@ export function LessonProblem({ problem, domainId, locked, onGraded, onSkip }: P
                   value={aiDraft[leaf.subPointId] ?? ''}
                   disabled={locked || submitted || aiBusy}
                   onChange={(event) => {
-                    // Read the value during dispatch: `currentTarget` is null once React runs the updater.
                     const typed = event.currentTarget.value;
                     setAiDraft((prev) => ({ ...prev, [leaf.subPointId]: typed }));
                   }}

@@ -17,7 +17,6 @@ async function parseResponse(response: Response): Promise<any> {
   }
 }
 
-/** A failure payload carries the message either flat or under `error`. */
 function failureMessage(payload: any, status: number): string {
   const error = payload?.error;
   const nested = error && typeof error === 'object' ? error.message : error;
@@ -30,8 +29,6 @@ export async function requestJson<T = any>(
 ): Promise<T> {
   const headers: Record<string, string> = {};
   if (options.body !== undefined) headers['Content-Type'] = 'application/json';
-  // Handlers that render HTML answer a JSON request with their page payload, so
-  // failures arrive as `{ error }` instead of a rendered error page.
   if (options.acceptJson) headers.Accept = 'application/json';
   const response = await fetch(domainApiPath(path, options.domainId), {
     method: options.method || (options.body === undefined ? 'GET' : 'POST'),
@@ -49,19 +46,12 @@ export async function requestJson<T = any>(
 export interface StartNodeLessonOptions {
   domainId: string;
   nodeId: string;
-  /** Numeric base doc id (`BaseDoc.docId`). */
   baseDocId: number;
-  /** Card docIds currently visible in the detail page; the session is scoped to them. */
   detailFilteredCardIds: string[];
   detailSourceUrl: string;
   detailFilterSummary: string;
 }
 
-/**
- * Queue a single-node practice session and return the lesson URL to open.
- * Sends `source: 'base_detail'` so the server records the detail page filters
- * the session came from.
- */
 export async function startNodeLesson(options: StartNodeLessonOptions): Promise<string> {
   const response = await requestJson<{ redirect?: string }>('/learn/lesson/start', {
     domainId: options.domainId,

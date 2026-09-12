@@ -1,6 +1,5 @@
 import type { Problem } from 'ejun/src/interface';
 
-/** Card as the lesson snapshot delivers it (full doc, problems already filtered). */
 export interface LessonCard {
   docId: string;
   title?: string;
@@ -18,7 +17,6 @@ export interface LessonNode {
   text?: string;
 }
 
-/** One queued card of the session (server keeps the cursor). */
 export interface LessonFlatCard {
   nodeId?: string;
   cardId: string;
@@ -26,10 +24,6 @@ export interface LessonFlatCard {
   cardTitle?: string;
 }
 
-/**
- * Lesson payload for the current card: page args on first paint and again on
- * every `spaNext` response from `/learn/lesson/pass`.
- */
 export interface LessonSnapshot {
   card: LessonCard;
   node?: LessonNode;
@@ -43,6 +37,7 @@ export interface LessonSnapshot {
   isAllDomainsMode?: boolean;
   hasProblems?: boolean;
   flatCards?: LessonFlatCard[];
+  flatQueueCards?: LessonCard[];
   currentCardIndex?: number;
   rootNodeId?: string;
   rootNodeTitle?: string;
@@ -59,9 +54,10 @@ export interface LessonSnapshot {
   lessonTodayModesConfigLine?: string;
   lessonTodayCardKindLabel?: string;
   lessonSessionQueueNewOldLabel?: string;
+  lessonProblemTagOptions?: string[];
+  lessonCanEditProblemTags?: boolean;
 }
 
-/** One answered problem, exactly as `POST /learn/lesson/pass` expects it. */
 export interface LessonAnswerRecord {
   problemId: string;
   cardId: string;

@@ -215,7 +215,6 @@ export default function BaseDetailApp() {
   }, [domainId, docId, selectedCard, uiPrefsDirty]);
   refreshBaseRef.current = refreshBase;
 
-  /** Filter summary recorded with a practice session, so the page can be reopened as it was. */
   const learnFilterSummary = useMemo(() => [
     filters.filterNode.trim() ? `${i18n('Node')}: ${filters.filterNode.trim()}` : '',
     filters.filterCard.trim() ? `${i18n('Card')}: ${filters.filterCard.trim()}` : '',
@@ -225,8 +224,6 @@ export default function BaseDetailApp() {
     search.trim() ? `${i18n('Search')}: ${search.trim()}` : '',
   ].filter(Boolean).join(' · '), [filters, search]);
 
-  // Practice scope follows exactly what the detail page shows: the selected
-  // node's subtree restricted to the cards that pass the active search and filters.
   const learnTarget = useMemo(() => {
     const rootNodeId = selectedNodeId ?? getRootNodeIds(nodes, edges)[0] ?? '';
     if (!rootNodeId) return null;
@@ -286,15 +283,11 @@ export default function BaseDetailApp() {
         detailSourceUrl,
         detailFilterSummary: learnFilterSummary,
       });
-      // Study opens in its own tab so the detail page keeps its node, filters and scroll.
-      // `noopener`/`noreferrer` in the feature list make window.open() return null even
-      // on success, so the opener link is cleared explicitly instead.
       const opened = window.open(redirect, '_blank');
       if (opened) {
         opened.opener = null;
         return;
       }
-      // Popup blocked: keep the learner in this tab rather than dropping the click.
       Notification.error(i18n('Outline editor popup blocked'));
       await navigate(redirect);
       const lessonUrl = new URL(redirect, window.location.origin);
