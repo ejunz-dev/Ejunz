@@ -104,8 +104,6 @@ export interface EventMap {
     'mcp/change': (domainId: string, mid: number) => VoidReturn;
     'mcp/status/update': (domainId: string, mid: number, status: string) => VoidReturn;
     'mcp/work/update': (domainId: string, mid: number, delta: 1 | -1) => VoidReturn;
-    'agent_schedule/change': (doc: any) => VoidReturn;
-    'agent_schedule_run/change': (doc: any) => VoidReturn;
 }
 
 export function apply(ctx: Context) {

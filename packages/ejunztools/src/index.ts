@@ -1,15 +1,12 @@
 import type { Context } from 'ejun/src/context';
 import ToolService from './registry';
 import type { ToolDeclaration } from './registry';
+import type { ToolArgs, ToolContext } from './types';
 import {
     BUILTIN_TOOLS_CATALOG,
-    SCHEDULE_TOOLS_CATALOG,
     isBuiltinMutatingTool,
-    isScheduleMutatingTool,
-    type ScheduleToolDef,
     type ToolDef,
 } from './catalog';
-import type { ToolArgs, ToolContext } from './types';
 import * as baseCreate from './base/create';
 import * as baseDelete from './base/delete';
 import * as baseGet from './base/get';
@@ -58,14 +55,6 @@ import * as problemGetMany from './base/problem/get-many';
 import * as problemList from './base/problem/list';
 import * as problemUpdate from './base/problem/update';
 import * as problemUpdateMany from './base/problem/update-many';
-import * as scheduleCreate from './schedule/create';
-import * as scheduleDelete from './schedule/delete';
-import * as scheduleGet from './schedule/get';
-import * as scheduleHistory from './schedule/history';
-import * as scheduleList from './schedule/list';
-import * as schedulePause from './schedule/pause';
-import * as scheduleResume from './schedule/resume';
-import * as scheduleUpdate from './schedule/update';
 
 const IMPLEMENTATIONS: Record<string, (context: ToolContext, args: ToolArgs) => Promise<unknown>> = {
     base_create: baseCreate.execute,
@@ -118,17 +107,6 @@ const IMPLEMENTATIONS: Record<string, (context: ToolContext, args: ToolArgs) => 
     node_file_create_many: fileCreateMany.execute,
 };
 
-const SCHEDULE_IMPLEMENTATIONS: Record<string, (args: ToolArgs, context: ToolContext) => Promise<unknown>> = {
-    schedule_create: scheduleCreate.execute,
-    schedule_get: scheduleGet.execute,
-    schedule_list: scheduleList.execute,
-    schedule_update: scheduleUpdate.execute,
-    schedule_delete: scheduleDelete.execute,
-    schedule_pause: schedulePause.execute,
-    schedule_resume: scheduleResume.execute,
-    schedule_history: scheduleHistory.execute,
-};
-
 const EXPLICIT_BASE_TOOLS = new Set(['base_get', 'base_update', 'base_delete']);
 
 const OPTIONAL_BASE_TOOLS = new Set(['embedding_status', 'embedding_reindex']);
@@ -155,23 +133,10 @@ function declaration(definition: ToolDef): ToolDeclaration {
     };
 }
 
-function scheduleDeclaration(definition: ScheduleToolDef): ToolDeclaration {
-    const run = SCHEDULE_IMPLEMENTATIONS[definition.name];
-    if (!run) throw new Error(`no implementation for declared schedule tool ${definition.name}`);
-    return {
-        name: definition.name,
-        description: definition.description,
-        inputSchema: definition.inputSchema,
-        mutating: isScheduleMutatingTool(definition.name),
-        execute: (context, args) => run(args || {}, context),
-    };
-}
-
 export async function apply(ctx: Context): Promise<void> {
     await ctx.plugin(ToolService);
     const services = ctx as any;
     const tools = (typeof services.get === 'function' ? services.get('tools') : services.tools) as ToolService | undefined;
     if (!tools) throw new Error('ejunztools: the tool registry did not start');
     tools.register({ source: 'base', tools: BUILTIN_TOOLS_CATALOG.map(declaration) });
-    tools.register({ source: 'schedule', tools: SCHEDULE_TOOLS_CATALOG.map(scheduleDeclaration) });
 }

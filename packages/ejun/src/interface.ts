@@ -1197,8 +1197,6 @@ declare module './service/db' {
         'event': EventDoc;
         'opcount': OpCountDoc;
         'schedule': Schedule;
-        'agent_schedule': import('./model/agent_schedule').AgentScheduleDoc;
-        'agent_schedule_run': import('./model/agent_schedule').AgentScheduleRunDoc;
         'node': import('./model/node').NodeDoc;
         'node.device': import('./model/node').NodeDeviceDoc;
         'client.widget': import('./model/client').ClientWidgetDoc;
@@ -1233,7 +1231,6 @@ export interface Model {
     system: typeof import('./model/system').default,
     task: typeof import('./model/task').default,
     schedule: typeof import('./model/schedule').default;
-    agent_schedule: typeof import('./model/agent_schedule').default;
     oplog: typeof import('./model/oplog'),
     token: typeof import('./model/token').default,
     user: typeof import('./model/user').default,

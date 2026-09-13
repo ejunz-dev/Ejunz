@@ -264,9 +264,7 @@ async function executeToolViaServer(config: any, task: any, executionTool: any, 
         toolName: executionTool?.name || modelToolName,
         args: executionTool?.type === 'plugin_mcp' && executionTool?.mcpId
             ? { ...(args || {}), __mcpId: executionTool.mcpId }
-            : (modelToolName === 'schedule_create' && task.agentId && !(args || {}).agentId
-                ? { ...(args || {}), __agentId: task.agentId }
-                : (args || {})),
+            : (args || {}),
         baseDocId: task.context?.baseDocId,
         owner: task.context?.owner || task.uid,
         toolType: executionTool?.type,

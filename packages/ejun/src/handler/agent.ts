@@ -154,10 +154,7 @@ async function callToolWithFallback(
         try {
             const ctx = (global as any).app || (global as any).Ejunz;
             if (ctx) {
-                const callArgs = toolName === 'schedule_create' && agentId && !(args || {}).agentId
-                    ? { ...(args || {}), __agentId: agentId }
-                    : args;
-                return await callToolViaWorker(ctx, toolName, callArgs, domainId, agentId, uid, taskRecordId, 0, {
+                return await callToolViaWorker(ctx, toolName, args, domainId, agentId, uid, taskRecordId, 0, {
                     baseDocId: mcpOpts?.baseDocId,
                     owner: uid,
                     toolType: executionTool?.type,
@@ -174,9 +171,7 @@ async function callToolWithFallback(
     const mcpClient = new McpClient();
     const directArgs = executionTool?.type === 'plugin_mcp'
         ? { ...(args || {}), __mcpId: executionTool?.mcpId }
-        : (toolName === 'schedule_create' && agentId && !(args || {}).agentId
-            ? { ...(args || {}), __agentId: agentId }
-            : args);
+        : args;
     return await mcpClient.callTool(
         toolName,
         directArgs,
@@ -204,9 +199,7 @@ async function callAssignedTool(
     if (executionTool.type === 'plugin_mcp' && !executionTool.mcpId) throw makeToolUnavailableError(toolName, 'MCP_NOT_FOUND');
     const callArgs = executionTool?.type === 'plugin_mcp'
         ? { ...(args || {}), __mcpId: executionTool?.mcpId }
-        : (toolName === 'schedule_create' && currentAgentId && !(args || {}).agentId
-            ? { ...(args || {}), __agentId: currentAgentId }
-            : args);
+        : args;
     return await mcpClient.callTool(
         toolName,
         callArgs,
