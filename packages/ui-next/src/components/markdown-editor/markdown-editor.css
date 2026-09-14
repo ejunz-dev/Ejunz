@@ -1,0 +1,23 @@
+.uix-markdown-editor__wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.uix-markdown-editor__drop {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--web-primary);
+  border-radius: 5px;
+  background: var(--web-info-bg);
+  color: var(--web-primary);
+  font-size: .85rem;
+  font-weight: 600;
+  pointer-events: none;
+}

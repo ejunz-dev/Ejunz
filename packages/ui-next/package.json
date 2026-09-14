@@ -15,6 +15,7 @@
     "api.ts",
     "css.d.ts",
     "src/",
+    "locales/",
     "index.html",
     "public/",
     "tsconfig.json",
