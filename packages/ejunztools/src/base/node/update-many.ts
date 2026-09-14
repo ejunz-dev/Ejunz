@@ -1,6 +1,6 @@
 import { BaseModel } from 'ejun/src/model/base';
 import { MAX_NODES_PER_CALL } from '../../catalog';
-import { asText } from '../shared';
+import { asText, nodeUrl } from '../shared';
 import type { BaseNode } from 'ejun/src/interface';
 import type { ToolArgs, ToolContext } from '../../types';
 
@@ -56,6 +56,7 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
             nodeId: entry.nodeId,
             changed: entry.fields,
             ...entry.update,
+            url: nodeUrl(ctx, ctx.baseDocId, entry.nodeId),
         })),
         reads: 1,
         writes: 1,

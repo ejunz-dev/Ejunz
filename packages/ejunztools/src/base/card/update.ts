@@ -1,5 +1,5 @@
 import { CardModel } from 'ejun/src/model/base';
-import { requireCard } from '../shared';
+import { cardUrl, requireCard } from '../shared';
 import type { ToolContext, ToolArgs } from '../../types';
 
 export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown> {
@@ -9,5 +9,5 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
     if (typeof args.content === 'string') updates.content = args.content;
     if (!Object.keys(updates).length) throw new Error('Nothing to update (title or content required)');
     await CardModel.update(ctx.domainId, card.docId, updates);
-    return { ok: true, cardId: String(card.docId) };
+    return { ok: true, cardId: String(card.docId), url: cardUrl(ctx, ctx.baseDocId, String(card.docId)) };
 }

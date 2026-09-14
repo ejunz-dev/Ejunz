@@ -1,7 +1,7 @@
 import { CardModel } from 'ejun/src/model/base';
 import type { CardDoc } from 'ejun/src/interface';
 import { MAX_CARDS_PER_CALL } from '../../catalog';
-import { asText, cardsById } from '../shared';
+import { asText, cardUrl, cardsById } from '../shared';
 import type { ToolArgs, ToolContext } from '../../types';
 
 interface PlannedUpdate {
@@ -45,13 +45,13 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
         if (!byId.has(entry.cardId)) throw new Error(`Card not found: ${entry.cardId}`);
     }
 
-    const updated: { index: number; cardId: string; changed: string[] }[] = [];
+    const updated: { index: number; cardId: string; changed: string[]; url: string }[] = [];
     const refused: { index: number; cardId: string; error: string }[] = [];
     for (const entry of planned) {
         const card = byId.get(entry.cardId) as CardDoc;
         try {
             await CardModel.update(ctx.domainId, card.docId, entry.update);
-            updated.push({ index: entry.index, cardId: entry.cardId, changed: entry.fields });
+            updated.push({ index: entry.index, cardId: entry.cardId, changed: entry.fields, url: cardUrl(ctx, ctx.baseDocId, entry.cardId) });
         } catch (error) {
             refused.push({ index: entry.index, cardId: entry.cardId, error: (error as Error).message });
         }

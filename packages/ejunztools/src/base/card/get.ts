@@ -1,4 +1,4 @@
-import { requireCard } from '../shared';
+import { cardUrl, requireCard } from '../shared';
 import type { ToolContext, ToolArgs } from '../../types';
 
 export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown> {
@@ -8,5 +8,6 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
         cardId: String(card.docId),
         title: card.title || '',
         content: card.content || '',
+        url: cardUrl(ctx, ctx.baseDocId, String(card.docId)),
     };
 }

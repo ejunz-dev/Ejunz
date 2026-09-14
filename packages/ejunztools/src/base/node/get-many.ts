@@ -1,6 +1,6 @@
 import { CardModel, BaseModel } from 'ejun/src/model/base';
 import { MAX_NODES_PER_CALL } from '../../catalog';
-import { idList } from '../shared';
+import { idList, nodeUrl } from '../shared';
 import type { ToolArgs, ToolContext } from '../../types';
 
 export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown> {
@@ -37,6 +37,7 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
             index,
             nodeId,
             title: node.text || '',
+            url: nodeUrl(ctx, ctx.baseDocId, nodeId),
             childNodes: nodes
                 .filter((child) => childIds.has(child.id))
                 .map((child) => ({ nodeId: child.id, title: child.text || '' })),

@@ -1,7 +1,7 @@
 import type { CardDoc, Problem } from 'ejun/src/interface';
 import { migrateRawProblem } from 'ejun/src/model/problem';
 import { MAX_PROBLEMS_PER_CALL } from '../../catalog';
-import { asText, buildProblemRaw, newProblemPid, parseProblemPayload, requireCard, saveCardProblems } from '../shared';
+import { asText, buildProblemRaw, newProblemPid, parseProblemPayload, problemUrl, requireCard, saveCardProblems } from '../shared';
 import type { ToolArgs, ToolContext } from '../../types';
 
 interface PlannedEntry {
@@ -44,7 +44,7 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
     const cards: CardDoc[] = [];
     for (const entry of planned) cards.push(await requireCard(ctx, entry.cardId));
 
-    const added: { index: number; cardId: string; added: string[]; total: number }[] = [];
+    const added: { index: number; cardId: string; added: string[]; total: number; urls: string[] }[] = [];
     const refused: { index: number; cardId: string; error: string }[] = [];
     for (const [position, entry] of planned.entries()) {
         const card = cards[position];
@@ -55,6 +55,7 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
                 cardId: entry.cardId,
                 added: entry.problems.map((problem) => problem.pid),
                 total: (card.problems || []).length + entry.problems.length,
+                urls: entry.problems.map((problem) => problemUrl(ctx, ctx.baseDocId, entry.cardId, String(problem.pid))),
             });
         } catch (error) {
             refused.push({ index: entry.index, cardId: entry.cardId, error: (error as Error).message });

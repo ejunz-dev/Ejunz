@@ -2,7 +2,7 @@ import * as document from 'ejun/src/model/document';
 import { CardModel, BaseModel } from 'ejun/src/model/base';
 import storage from 'ejun/src/model/storage';
 import { MAX_FILE_CREATES_PER_CALL, MAX_FILE_DOWNLOADS_IN_FLIGHT } from '../../catalog';
-import { asText, fileStoragePath, fileTypeOf } from '../shared';
+import { asText, cardUrl, fileDownloadUrl, fileStoragePath, fileTypeOf } from '../shared';
 import type { ToolArgs, ToolContext } from '../../types';
 
 interface PlannedFile {
@@ -21,6 +21,8 @@ interface StoredFile {
     fileName: string;
     fileType: string;
     fileSize: number;
+    url: string;
+    downloadUrl: string;
 }
 
 interface RefusedFile {
@@ -74,7 +76,17 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
                     ctx.domainId, ctx.baseDocId, file.nodeId, ctx.owner, file.title, '',
                     undefined, undefined, undefined, 'file', fileType, file.fileName, meta.size || 0,
                 );
-                return { ok: true, index: file.index, cardId: String(cardId), nodeId: file.nodeId, fileName: file.fileName, fileType, fileSize: meta.size || 0 };
+                return {
+                    ok: true,
+                    index: file.index,
+                    cardId: String(cardId),
+                    nodeId: file.nodeId,
+                    fileName: file.fileName,
+                    fileType,
+                    fileSize: meta.size || 0,
+                    url: cardUrl(ctx, ctx.baseDocId, String(cardId)),
+                    downloadUrl: fileDownloadUrl(ctx, ctx.baseDocId, file.nodeId, file.fileName),
+                };
             } catch (error) {
 
                 try {

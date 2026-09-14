@@ -33,7 +33,7 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
     });
     return {
         ok: true,
-        ...fileCardDetail(card, ctx.baseDocId),
+        ...fileCardDetail(ctx, card),
         ...content,
         reads: { cards: 1, files: 1 },
     };

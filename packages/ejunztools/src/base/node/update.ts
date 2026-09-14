@@ -1,4 +1,5 @@
 import { BaseModel } from 'ejun/src/model/base';
+import { nodeUrl } from '../shared';
 import type { ToolContext, ToolArgs } from '../../types';
 
 export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown> {
@@ -18,5 +19,6 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
         ok: true,
         nodeId,
         ...(updates.parentId ? { parentId: updates.parentId } : {}),
+        url: nodeUrl(ctx, ctx.baseDocId, nodeId),
     };
 }

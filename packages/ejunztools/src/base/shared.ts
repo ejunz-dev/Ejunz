@@ -56,6 +56,36 @@ export function fileStoragePath(ctx: ToolContext, nodeId: string, fileName: stri
     return `base/${ctx.domainId}/${ctx.baseDocId.toString()}/node/${nodeId}/${fileName}`;
 }
 
+function basePath(ctx: ToolContext, baseId: number | string): string {
+    return `/d/${encodeURIComponent(ctx.domainId)}/base/${encodeURIComponent(String(baseId))}`;
+}
+
+function siteLink(ctx: ToolContext, path: string): string {
+    const site = String(ctx.setting?.get('server.url') || '').trim();
+    if (!site || site === '/') return path;
+    return `${site.replace(/\/+$/, '')}${path}`;
+}
+
+export function baseUrl(ctx: ToolContext, baseId: number | string): string {
+    return siteLink(ctx, basePath(ctx, baseId));
+}
+
+export function nodeUrl(ctx: ToolContext, baseId: number | string, nodeId: string): string {
+    return `${baseUrl(ctx, baseId)}?nodeId=${encodeURIComponent(nodeId)}`;
+}
+
+export function cardUrl(ctx: ToolContext, baseId: number | string, cardId: string): string {
+    return `${baseUrl(ctx, baseId)}?cardId=${encodeURIComponent(cardId)}`;
+}
+
+export function fileDownloadUrl(ctx: ToolContext, baseId: number | string, nodeId: string, fileName: string): string {
+    return siteLink(ctx, `${basePath(ctx, baseId)}/node/${encodeURIComponent(nodeId)}/file/${encodeURIComponent(fileName)}`);
+}
+
+export function problemUrl(ctx: ToolContext, baseId: number | string, cardId: string, pid: string): string {
+    return `${baseUrl(ctx, baseId)}?cardId=${encodeURIComponent(cardId)}&problemId=${encodeURIComponent(pid)}`;
+}
+
 export function fileTypeOf(fileName: string): string {
     const ext = fileName.split('.').pop()?.toLowerCase() || '';
     const imageExt = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico']);
@@ -70,7 +100,7 @@ export function fileTypeOf(fileName: string): string {
     return 'other';
 }
 
-export function fileCardSummary(card: CardDoc) {
+export function fileCardSummary(ctx: ToolContext, card: CardDoc) {
     return {
         cardId: String(card.docId),
         title: card.title,
@@ -78,14 +108,15 @@ export function fileCardSummary(card: CardDoc) {
         fileType: card.fileType || '',
         fileSize: card.fileSize || 0,
         nodeId: card.nodeId,
+        url: cardUrl(ctx, ctx.baseDocId, String(card.docId)),
+        downloadUrl: card.fileName ? fileDownloadUrl(ctx, ctx.baseDocId, card.nodeId, card.fileName) : '',
     };
 }
 
-export function fileCardDetail(card: CardDoc, baseDocId: number) {
+export function fileCardDetail(ctx: ToolContext, card: CardDoc) {
     return {
-        ...fileCardSummary(card),
+        ...fileCardSummary(ctx, card),
         content: card.content,
-        downloadUrl: `/base/${baseDocId}/node/${card.nodeId}/file/${encodeURIComponent(card.fileName || '')}`,
     };
 }
 
@@ -131,9 +162,16 @@ function problemPreview(problem: Problem): string {
     return trimmed.length > 120 ? `${trimmed.slice(0, 117)}…` : trimmed;
 }
 
-export function summarizeProblem(problem: Problem) {
+export function summarizeProblem(ctx: ToolContext, card: CardDoc, problem: Problem) {
     const type = (problem as Problem & { type?: string }).type || 'single';
-    return { pid: problem.pid, type, title: problem.title || '', preview: problemPreview(problem), tags: Array.isArray(problem.tags) ? problem.tags : [] };
+    return {
+        pid: problem.pid,
+        type,
+        title: problem.title || '',
+        preview: problemPreview(problem),
+        tags: Array.isArray(problem.tags) ? problem.tags : [],
+        url: problemUrl(ctx, ctx.baseDocId, String(card.docId), String(problem.pid)),
+    };
 }
 
 export async function saveCardProblems(domainId: string, card: CardDoc, problems: Problem[]): Promise<void> {

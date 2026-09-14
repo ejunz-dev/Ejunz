@@ -1,4 +1,5 @@
 import { CardModel, BaseModel } from 'ejun/src/model/base';
+import { nodeUrl } from '../shared';
 import type { ToolContext, ToolArgs } from '../../types';
 
 export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown> {
@@ -30,6 +31,7 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
         node: {
             nodeId: node.id,
             title: node.text || '',
+            url: nodeUrl(ctx, ctx.baseDocId, node.id),
         },
         childNodes: (base.nodes || [])
             .filter((child) => childIds.has(child.id))

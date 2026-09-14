@@ -19,7 +19,7 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
             missing.push({ index, cardId, error: `Not a file-card: ${cardId}` });
             continue;
         }
-        files.push({ index, ...fileCardDetail(card, ctx.baseDocId) });
+        files.push({ index, ...fileCardDetail(ctx, card) });
     }
 
     return {

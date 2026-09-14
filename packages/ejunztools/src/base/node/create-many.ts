@@ -1,7 +1,7 @@
 import type { BaseEdge, BaseNode } from 'ejun/src/interface';
 import { BaseModel } from 'ejun/src/model/base';
 import { MAX_NODES_PER_CALL } from '../../catalog';
-import { asText, buildParentMap, findRootNodeId, pathLabelFor } from '../shared';
+import { asText, buildParentMap, findRootNodeId, nodeUrl, pathLabelFor } from '../shared';
 import type { ToolArgs, ToolContext } from '../../types';
 
 interface PlannedNode {
@@ -96,6 +96,7 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
             parentId: entry.parentId,
             level: entry.level,
             path: pathLabelFor(entry.nodeId, parentMap, nodeById),
+            url: nodeUrl(ctx, ctx.baseDocId, entry.nodeId),
         })),
         writes: 1,
     };

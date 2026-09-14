@@ -1,4 +1,4 @@
-import { findProblemIndex, requireCard } from '../shared';
+import { findProblemIndex, problemUrl, requireCard } from '../shared';
 import type { ToolContext, ToolArgs } from '../../types';
 
 export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown> {
@@ -8,5 +8,5 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
     const problems = card.problems || [];
     const index = findProblemIndex(problems, pid);
     if (index < 0) throw new Error(`Problem not found: ${pid}`);
-    return { cardId: String(card.docId), problem: problems[index] };
+    return { cardId: String(card.docId), problem: problems[index], url: problemUrl(ctx, ctx.baseDocId, String(card.docId), pid) };
 }

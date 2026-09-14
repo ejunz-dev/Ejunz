@@ -1,7 +1,7 @@
 import { CardModel, BaseModel } from 'ejun/src/model/base';
 import storage from 'ejun/src/model/storage';
 import * as document from 'ejun/src/model/document';
-import { fileStoragePath, fileTypeOf } from '../shared';
+import { cardUrl, fileDownloadUrl, fileStoragePath, fileTypeOf } from '../shared';
 import type { ToolContext, ToolArgs } from '../../types';
 
 export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown> {
@@ -23,5 +23,14 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
     const fileType = fileTypeOf(fileName);
     const title = String(args.title || '').trim() || fileName;
     const cardDocId = await CardModel.create(ctx.domainId, ctx.baseDocId, nodeId, ctx.owner, title, '', undefined, undefined, undefined, 'file', fileType, fileName, meta.size || 0);
-    return { ok: true, cardId: String(cardDocId), nodeId, fileName, fileType, fileSize: meta.size };
+    return {
+        ok: true,
+        cardId: String(cardDocId),
+        nodeId,
+        fileName,
+        fileType,
+        fileSize: meta.size,
+        url: cardUrl(ctx, ctx.baseDocId, String(cardDocId)),
+        downloadUrl: fileDownloadUrl(ctx, ctx.baseDocId, nodeId, fileName),
+    };
 }

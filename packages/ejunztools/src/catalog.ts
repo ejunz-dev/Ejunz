@@ -25,7 +25,7 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
     {
         name: 'base_create',
         expose: 'base_create',
-        description: 'Create a new Ejunz Base in the current domain. The new Base is returned by id and is not automatically selected for this session.',
+        description: 'Create a new Ejunz Base in the current domain. The new Base is returned by id with the URL its detail page is served at, and is not automatically selected for this session.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -51,7 +51,7 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
     {
         name: 'base_search',
         expose: 'base_search',
-        description: 'Search Ejunz Bases in the current domain by title, content, slug, or tags.',
+        description: 'Search Ejunz Bases in the current domain by title, content, slug, or tags. Each result carries the URL its detail page is served at.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -65,7 +65,7 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
     {
         name: 'base_get',
         expose: 'base_get',
-        description: 'Read an Ejunz Base by baseId, including metadata, content, nodes, edges, and a tree-shaped outline of node/card ids and titles.',
+        description: 'Read an Ejunz Base by baseId, including metadata, content, nodes, edges, a tree-shaped outline of node/card ids and titles, and the URL its detail page is served at.',
         inputSchema: {
             type: 'object',
             properties: { baseId: { type: 'integer', description: 'Existing Base id.' } },
@@ -76,7 +76,7 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
     {
         name: 'base_update',
         expose: 'base_update',
-        description: 'Update an Ejunz Base by baseId: title, content, slug, or tags.',
+        description: 'Update an Ejunz Base by baseId: title, content, slug, or tags. Returns the updated Base and the URL its detail page is served at.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -105,7 +105,8 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
         name: 'node_create',
         expose: 'base_node_create',
         description: 'Create a new node (section/topic). '
-            + 'Pass parentId to nest it under an existing node; omit parentId to create it under the bound base root node.',
+            + 'Pass parentId to nest it under an existing node; omit parentId to create it under the bound base root node. '
+            + 'Returns the new node id and the URL that opens the Base at that node.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -119,7 +120,7 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
     {
         name: 'node_update',
         expose: 'base_node_update',
-        description: 'Rename and/or move a node. Pass parentId to move it under an existing node; omit parentId to keep its current parent.',
+        description: 'Rename and/or move a node. Pass parentId to move it under an existing node; omit parentId to keep its current parent. Returns the URL that opens the Base at the node.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -134,7 +135,7 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
     {
         name: 'node_get',
         expose: 'base_node_get',
-        description: 'Read a node and its direct child nodes plus cards attached to it. Returns ids and titles for child nodes, and ids, titles, and content for cards without recursively expanding nested nodes.',
+        description: 'Read a node and its direct child nodes plus cards attached to it. Returns ids and titles for child nodes, and ids, titles, and content for cards without recursively expanding nested nodes. Also returns the URL that opens the Base at this node.',
         inputSchema: {
             type: 'object',
             properties: { nodeId: { type: 'string', description: 'Existing node id.' } },
@@ -156,7 +157,7 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
     {
         name: 'card_create',
         expose: 'base_card_create',
-        description: 'Create a new card (content block) under a node. Use an existing nodeId.',
+        description: 'Create a new card (content block) under a node. Use an existing nodeId. Returns the card id and the URL that opens the Base at this card.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -171,7 +172,7 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
     {
         name: 'card_update',
         expose: 'base_card_update',
-        description: 'Update a card\'s title and/or markdown content by cardId. Use cardId.',
+        description: 'Update a card\'s title and/or markdown content by cardId. Use cardId. Returns the URL that opens the Base at this card.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -186,7 +187,7 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
     {
         name: 'card_get',
         expose: 'base_card_get',
-        description: 'Read a card by cardId and return its title and markdown content.',
+        description: 'Read a card by cardId and return its title and markdown content. Also returns the URL that opens the Base at this card.',
         inputSchema: {
             type: 'object',
             properties: { cardId: { type: 'string', description: 'Card docId (hex).' } },
@@ -211,7 +212,8 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
         description: 'Semantic (vector) search across node titles and card content. '
             + 'Searches by meaning rather than keyword — use this to find content conceptually related to your query. '
             + 'Results include a similarity `score` (0–1) and the matched text snippet. '
-            + 'Use `kind` to restrict to "node" (headings only) or "card" (content only); omit for both.',
+            + 'Use `kind` to restrict to "node" (headings only) or "card" (content only); omit for both. '
+            + 'Each result carries the URL that opens the Base at the matched node or card.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -227,7 +229,7 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
         name: 'problem_list',
         expose: 'base_problem_list',
         description: 'Problem = a practice exercise attached to a card (quiz, flip card, matching table, etc.). '
-            + 'Lists every problem on one card: pid, type, title, and a short content preview. Use cardId.',
+            + 'Lists every problem on one card: pid, type, title, a short content preview and the URL that opens the Base at each problem. Use cardId.',
         inputSchema: {
             type: 'object',
             properties: { cardId: { type: 'string', description: 'Card docId (hex).' } },
@@ -238,7 +240,7 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
     {
         name: 'problem_get',
         expose: 'base_problem_get',
-        description: 'Read one practice problem in full by cardId + pid. Use pid from problem_list.',
+        description: 'Read one practice problem in full by cardId + pid. Use pid from problem_list. Returns the URL that opens the Base at that problem.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -258,7 +260,8 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
             + 'single/multi: options[] + answer (index or index array). true_false: stem + answer 0|1. '
             + 'flip: faceA, faceB, optional hint. fill_blank: stem with ___ + answers[]. '
             + 'matching: columns[][] (≥2 cols, ≥2 rows) or legacy left/right. '
-            + 'super_flip: headers[] + columns[][] (allows 1×1). chain: rows[] of {rowType:"flip"|"text", content:string}. ai_eval: stem + points[].',
+            + 'super_flip: headers[] + columns[][] (allows 1×1). chain: rows[] of {rowType:"flip"|"text", content:string}. ai_eval: stem + points[]. '
+            + 'Returns the new pid and the URL that opens the Base at the new problem.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -276,7 +279,7 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
         name: 'problem_update',
         expose: 'base_problem_update',
         description: 'Update an existing problem by pid. Pass `problem` with fields to change (merged with the stored row, then normalized). '
-            + 'Include `type` only when changing the problem kind.',
+            + 'Include `type` only when changing the problem kind. Returns the URL that opens the Base at that problem.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -380,7 +383,7 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
     {
         name: 'node_fileCard_list',
         expose: 'base_node_fileCard_list',
-        description: 'List file-cards under a node. File-cards are cards with cardType="file" that represent uploaded files. Returns card id, title, fileName, fileType, fileSize for each.',
+        description: 'List file-cards under a node. File-cards are cards with cardType="file" that represent uploaded files. Returns card id, title, fileName, fileType, fileSize, the URL that opens the Base at each card and the URL its file is served at.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -393,7 +396,7 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
     {
         name: 'node_fileCard_get',
         expose: 'base_node_fileCard_get',
-        description: 'Get file-card metadata by cardId. Returns title, fileName, fileType, fileSize, nodeId, the card text as `content`, and the URL its file is served at. The file body itself is read by `base_node_fileCard_content_get`.',
+        description: 'Get file-card metadata by cardId. Returns title, fileName, fileType, fileSize, nodeId, the card text as `content`, the URL that opens the Base at this card, and the URL its file is served at. The file body itself is read by `base_node_fileCard_content_get`.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -439,7 +442,7 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
     {
         name: 'node_fileCard_create',
         expose: 'base_node_fileCard_create',
-        description: 'Upload a file from a URL and create a file-card under a node. Downloads the file from the given URL, stores it on the node, and creates a file-card (cardType="file") referencing it.',
+        description: 'Upload a file from a URL and create a file-card under a node. Downloads the file from the given URL, stores it on the node, and creates a file-card (cardType="file") referencing it. Returns the new card id with the URL that opens the Base at it and the URL its file is served at.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -493,7 +496,8 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
             + 'tree in one call; an entry with neither parent attaches to the call\'s `parentId`, or to the Base\'s root node. The Base is read once, '
             + 'every node and edge is built in memory, and one update writes them all, so the call is atomic: either every node arrives or nothing '
             + 'changes. Refused for a missing text, a duplicate or dangling reference, or too many entries, and it writes nothing in that case. '
-            + 'Use it instead of calling `base_node_create` once per node. One call creates at most ' + MAX_NODES_PER_CALL + ' nodes.',
+            + 'Use it instead of calling `base_node_create` once per node. One call creates at most ' + MAX_NODES_PER_CALL + ' nodes. '
+            + 'Every entry carries the URL that opens the Base at that node.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -527,7 +531,8 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
             + 'payloads `base_problem_create` takes, stored with the card as it is created. The Base is read once and every card is checked before the '
             + 'first insert, so a refused call inserts nothing. Each card is its own document and therefore one insert that carries its own problems, so '
             + 'no card is ever half-created; a failure the database itself reports part way through is named in `refusedCards` and `ok` is false. Use it '
-            + 'instead of calling `base_card_create` once per card. One call creates at most ' + MAX_CARDS_PER_CALL + ' cards.',
+            + 'instead of calling `base_card_create` once per card. One call creates at most ' + MAX_CARDS_PER_CALL + ' cards. '
+            + 'Every created card carries the URL that opens the Base at it.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -565,7 +570,8 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
             + '`base_problem_create` takes. All the problems of one card land in one write of that card, so many problems cost one read and one write '
             + 'instead of one of each per problem, and a card never holds a partial set of what an entry sent it. Every problem is validated and every '
             + 'card is read before the first write, so a refused call changes nothing; a card the database itself refuses is named in `refusedEntries` '
-            + 'and `ok` is false. Use it instead of calling `base_problem_create` once per problem. One call adds at most ' + MAX_PROBLEMS_PER_CALL + ' problems.',
+            + 'and `ok` is false. Use it instead of calling `base_problem_create` once per problem. One call adds at most ' + MAX_PROBLEMS_PER_CALL + ' problems, '
+            + 'and every added problem carries the URL that opens the Base at it.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -642,8 +648,8 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
         expose: 'base_problem_get_many',
         description: 'Read several practice problems in a single call, each reported exactly as `base_problem_get` reports one. The cards holding them '
             + 'come from one read, so the call costs one read however many problems it names, instead of one read per problem. A read changes nothing, '
-            + 'so a card or a problem this Base does not hold is listed in `missing` with its reason and `ok` is false. Use it instead of calling '
-            + '`base_problem_get` once per problem.',
+            + 'so a card or a problem this Base does not hold is listed in `missing` with its reason and `ok` is false. Each found problem carries the URL '
+            + 'that opens the Base at it. Use it instead of calling `base_problem_get` once per problem.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -675,7 +681,7 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
             + 'each per node, and the call is atomic: either every entry lands or the document is unchanged. An entry the move rules refuse (an absent '
             + 'node or parent, a move under itself or under one of its descendants) refuses the whole call and writes nothing. Renaming the root node '
             + 'renames the Base, as `base_node_update` does. Use it instead of calling `base_node_update` once per node. One call updates at most '
-            + MAX_NODES_PER_CALL + ' nodes.',
+            + MAX_NODES_PER_CALL + ' nodes, and every entry carries the URL that opens the Base at that node.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -707,7 +713,7 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
             + 'at least one field. A card is its own document, so each card that changes is one write, and the call saves the reading and the checks: '
             + 'the cards are read once and an id that names no card of this Base refuses the whole call, so a refused call writes nothing. A failure the '
             + 'database itself reports is named in `refusedCards` and `ok` is false. Use it instead of calling `base_card_update` once per card. One '
-            + 'call updates at most ' + MAX_CARDS_PER_CALL + ' cards.',
+            + 'call updates at most ' + MAX_CARDS_PER_CALL + ' cards, and every updated card carries the URL that opens the Base at it.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -739,7 +745,8 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
             + 'fields to change, as `base_problem_update` takes them. A card holds its problems, so every problem that changes on one card is written '
             + 'once: n problems over k cards cost one read and k writes instead of one of each per problem. Every payload is read and every named '
             + 'problem is checked before the first write, so a refused call changes nothing; a card the database itself refuses is named in '
-            + '`refusedEntries`. Use it instead of calling `base_problem_update` once per problem. One call updates at most ' + MAX_PROBLEMS_PER_CALL + ' problems.',
+            + '`refusedEntries`. Use it instead of calling `base_problem_update` once per problem. One call updates at most ' + MAX_PROBLEMS_PER_CALL + ' problems, '
+            + 'and every updated problem carries the URL that opens the Base at it.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -852,7 +859,7 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
             + '`files` is an array of `{ nodeId, fileName, fileUrl, title? }`. The Base is read once to check every node and the whole list is validated '
             + 'before the first download, so a refused call stores nothing. The downloads run a few at a time, and every entry is reported on its own: a '
             + 'download or a card the server refuses is named in `refusedFiles` and `ok` is false, while the files that arrived stay. One call stores at '
-            + 'most ' + MAX_FILE_CREATES_PER_CALL + ' files.',
+            + 'most ' + MAX_FILE_CREATES_PER_CALL + ' files, and every stored file carries the URL that opens the Base at its card and the URL its file is served at.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -902,8 +909,8 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
     {
         name: 'node_fileCard_get_many',
         expose: 'base_node_fileCard_get_many',
-        description: 'Read several file-cards in a single call, each reported as `base_node_fileCard_get` reports one: its name, type, size, node, content and '
-            + 'the URL its file is served at. The cards come from one read, so the call costs one read however many it names. A read changes nothing, so a '
+        description: 'Read several file-cards in a single call, each reported as `base_node_fileCard_get` reports one: its name, type, size, node, content, '
+            + 'the URL that opens the Base at its card and the URL its file is served at. The cards come from one read, so the call costs one read however many it names. A read changes nothing, so a '
             + 'card this Base does not hold, or one that is not a file-card, is listed in `missing` with its reason and `ok` is false. One call reads at '
             + 'most ' + MAX_CARDS_PER_CALL + ' cards.',
         inputSchema: {

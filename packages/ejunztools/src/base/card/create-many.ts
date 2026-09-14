@@ -2,7 +2,7 @@ import type { Problem } from 'ejun/src/interface';
 import { BaseModel, CardModel } from 'ejun/src/model/base';
 import { migrateRawProblem } from 'ejun/src/model/problem';
 import { MAX_CARDS_PER_CALL } from '../../catalog';
-import { asText, buildProblemRaw, newProblemPid, parseProblemPayload } from '../shared';
+import { asText, buildProblemRaw, cardUrl, newProblemPid, parseProblemPayload } from '../shared';
 import type { ToolArgs, ToolContext } from '../../types';
 
 interface PlannedCard {
@@ -69,7 +69,7 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
         positions.set(nodeId, existing.reduce((max, card) => Math.max(max, card.order ?? -1), -1) + 1);
     }
 
-    const created: { index: number; cardId: string; nodeId: string; title: string; order: number; problems: string[] }[] = [];
+    const created: { index: number; cardId: string; nodeId: string; title: string; order: number; problems: string[]; url: string }[] = [];
     const refused: { index: number; nodeId: string; title: string; error: string }[] = [];
     for (const card of planned) {
         const order = positions.get(card.nodeId) as number;
@@ -80,7 +80,15 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
                 undefined, card.problems.length ? card.problems : undefined, order,
                 undefined, undefined, undefined, undefined, card.tags,
             );
-            created.push({ index: card.index, cardId: String(cardId), nodeId: card.nodeId, title: card.title, order, problems: card.problems.map((problem) => problem.pid) });
+            created.push({
+                index: card.index,
+                cardId: String(cardId),
+                nodeId: card.nodeId,
+                title: card.title,
+                order,
+                problems: card.problems.map((problem) => problem.pid),
+                url: cardUrl(ctx, ctx.baseDocId, String(cardId)),
+            });
         } catch (error) {
             refused.push({ index: card.index, nodeId: card.nodeId, title: card.title, error: (error as Error).message });
         }

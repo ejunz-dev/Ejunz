@@ -1,6 +1,6 @@
 import { BaseModel } from 'ejun/src/model/base';
 import * as document from 'ejun/src/model/document';
-import { buildParentMap, pathLabelFor } from './shared';
+import { buildParentMap, cardUrl, nodeUrl, pathLabelFor } from './shared';
 import type { ToolContext, ToolArgs } from '../types';
 
 export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown> {
@@ -33,6 +33,9 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
             semanticScore: Math.round((result.semanticScore ?? result.score) * 10000) / 10000,
             keywordScore: Math.round((result.keywordScore || 0) * 10000) / 10000,
             matchedTerms: Array.isArray(result.matchedTerms) ? result.matchedTerms : [],
+            url: result.kind === 'card' && result.cardDocId
+                ? cardUrl(ctx, ctx.baseDocId, String(result.cardDocId))
+                : nodeUrl(ctx, ctx.baseDocId, result.nodeId),
         })),
     };
 }

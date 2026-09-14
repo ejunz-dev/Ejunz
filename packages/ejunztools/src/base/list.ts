@@ -1,13 +1,7 @@
 import * as document from 'ejun/src/model/document';
 import { BaseModel, loadCardStatsByBaseDocId } from 'ejun/src/model/base';
+import { baseUrl } from './shared';
 import type { ToolContext, ToolArgs } from '../types';
-
-function baseUrl(ctx: ToolContext, baseId: number): string {
-    const path = `/d/${encodeURIComponent(ctx.domainId)}/base/${encodeURIComponent(String(baseId))}`;
-    const site = String(ctx.setting?.get('server.url') || '').trim();
-    if (!site || site === '/') return path;
-    return `${site.replace(/\/+$/, '')}${path}`;
-}
 
 export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown> {
     const limit = Math.max(1, Math.min(50, Number(args.limit) || 15));

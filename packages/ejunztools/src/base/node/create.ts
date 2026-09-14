@@ -1,5 +1,5 @@
 import { BaseModel } from 'ejun/src/model/base';
-import { findRootNodeId } from '../shared';
+import { findRootNodeId, nodeUrl } from '../shared';
 import type { ToolContext, ToolArgs } from '../../types';
 
 export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown> {
@@ -10,5 +10,5 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
     const parentId = args.parentId ? String(args.parentId).trim() : findRootNodeId(base.nodes || [], base.edges || []);
     if (parentId && !(base.nodes || []).some((node) => node.id === parentId)) throw new Error(`Parent node not found: ${parentId}`);
     const result = await BaseModel.addNode(ctx.domainId, ctx.baseDocId, { text } as any, parentId, parentId);
-    return { ok: true, nodeId: result.nodeId, edgeId: result.edgeId, parentId: parentId ?? null };
+    return { ok: true, nodeId: result.nodeId, edgeId: result.edgeId, parentId: parentId ?? null, url: nodeUrl(ctx, ctx.baseDocId, result.nodeId) };
 }

@@ -11,5 +11,5 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
     if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
     if (!(base.nodes || []).some((node) => node.id === nodeId)) throw new Error(`Node not found: ${nodeId}`);
     const cards = await CardModel.getByNodeId(ctx.domainId, ctx.baseDocId, nodeId);
-    return cards.filter((card) => (card as CardDoc).cardType === 'file').map((card) => fileCardSummary(card));
+    return cards.filter((card) => (card as CardDoc).cardType === 'file').map((card) => fileCardSummary(ctx, card));
 }

@@ -1,5 +1,6 @@
 import * as document from 'ejun/src/model/document';
 import { BaseModel } from 'ejun/src/model/base';
+import { baseUrl } from './shared';
 import type { ToolContext, ToolArgs } from '../types';
 
 export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown> {
@@ -14,5 +15,10 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
     if (Array.isArray(args.tag)) updates.tag = args.tag.filter((value: unknown): value is string => typeof value === 'string').map((value) => value.trim()).filter(Boolean);
     if (Object.keys(updates).length === 0) throw new Error('Nothing to update');
     await BaseModel.update(ctx.domainId, ctx.baseDocId, updates as Parameters<typeof BaseModel.update>[2], document.TYPE_BASE);
-    return { ok: true, baseId: ctx.baseDocId, base: await BaseModel.get(ctx.domainId, ctx.baseDocId, document.TYPE_BASE) };
+    return {
+        ok: true,
+        baseId: ctx.baseDocId,
+        base: await BaseModel.get(ctx.domainId, ctx.baseDocId, document.TYPE_BASE),
+        url: baseUrl(ctx, ctx.baseDocId),
+    };
 }

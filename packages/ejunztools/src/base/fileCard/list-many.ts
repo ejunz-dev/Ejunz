@@ -16,7 +16,7 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
 
     const nodes = present.map((nodeId, index) => {
         const files = (cardsByNode.get(nodeId) || []).filter((card) => (card as CardDoc).cardType === 'file');
-        return { index, nodeId, files: files.map((card) => fileCardSummary(card)) };
+        return { index, nodeId, files: files.map((card) => fileCardSummary(ctx, card)) };
     });
 
     return {

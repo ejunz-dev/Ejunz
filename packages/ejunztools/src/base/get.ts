@@ -1,5 +1,6 @@
 import * as document from 'ejun/src/model/document';
 import { CardModel, BaseModel } from 'ejun/src/model/base';
+import { baseUrl } from './shared';
 import type { ToolContext, ToolArgs } from '../types';
 
 interface OutlineEntry {
@@ -79,5 +80,5 @@ export async function execute(ctx: ToolContext, _args: ToolArgs): Promise<unknow
         if (entry) outline.push(entry);
     }
 
-    return { ok: true, base, outline };
+    return { ok: true, base, outline, url: baseUrl(ctx, ctx.baseDocId) };
 }

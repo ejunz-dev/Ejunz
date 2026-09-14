@@ -1,5 +1,5 @@
 import { MAX_PROBLEMS_PER_CALL } from '../../catalog';
-import { asText, cardsById, findProblemIndex } from '../shared';
+import { asText, cardsById, findProblemIndex, problemUrl } from '../shared';
 import type { ToolArgs, ToolContext } from '../../types';
 
 interface PlannedEntry {
@@ -39,7 +39,13 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
             missing.push({ index: entry.index, cardId: entry.cardId, pid: entry.pid, error: `Problem not found: ${entry.pid}` });
             continue;
         }
-        found.push({ index: entry.index, cardId: String(card.docId), pid: entry.pid, problem: problems[position] });
+        found.push({
+            index: entry.index,
+            cardId: String(card.docId),
+            pid: entry.pid,
+            problem: problems[position],
+            url: problemUrl(ctx, ctx.baseDocId, String(card.docId), entry.pid),
+        });
     }
 
     return {

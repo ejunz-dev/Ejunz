@@ -1,5 +1,6 @@
 import * as document from 'ejun/src/model/document';
 import { BaseModel } from 'ejun/src/model/base';
+import { baseUrl } from './shared';
 import type { ToolContext, ToolArgs } from '../types';
 
 export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown> {
@@ -12,5 +13,5 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
         : undefined;
     const created = await BaseModel.create(ctx.domainId, ctx.owner, title, content, undefined, undefined, undefined, undefined, true, tag, document.TYPE_BASE, undefined, slug === undefined ? undefined : { slug });
     const base = await BaseModel.get(ctx.domainId, created.docId, document.TYPE_BASE);
-    return { ok: true, baseId: created.docId, base };
+    return { ok: true, baseId: created.docId, base, url: baseUrl(ctx, created.docId) };
 }

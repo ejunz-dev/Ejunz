@@ -1,5 +1,5 @@
 import { MAX_CARDS_PER_CALL } from '../../catalog';
-import { cardsById, idList } from '../shared';
+import { cardUrl, cardsById, idList } from '../shared';
 import type { ToolArgs, ToolContext } from '../../types';
 
 export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown> {
@@ -19,6 +19,7 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
             cardId: String(card.docId),
             title: card.title || '',
             content: card.content || '',
+            url: cardUrl(ctx, ctx.baseDocId, String(card.docId)),
         });
     }
 
