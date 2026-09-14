@@ -37,7 +37,7 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
     {
         name: 'base_list',
         expose: 'base_list',
-        description: 'List all Ejunz Bases in the current domain.',
+        description: 'List all Ejunz Bases in the current domain, each with its node, card, and problem count and a link to open it.',
         inputSchema: {
             type: 'object',
             properties: {},
