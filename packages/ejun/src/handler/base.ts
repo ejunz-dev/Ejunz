@@ -5779,7 +5779,7 @@ async function cleanupBaseCards(
     baseDocId: number,
 ): Promise<void> {
     try {
-        await document.deleteMulti(domainId, TYPE_CARD as any, { baseDocId } as any);
+        await CardModel.deleteByBase(domainId, baseDocId);
     } catch (err) {
         console.error(
             `cleanupBaseCards failed for baseDocId=${baseDocId}:`,
@@ -5867,6 +5867,13 @@ class BaseGithubPullHandler extends Handler {
                 edges,
                 content,
             });
+            enqueueEmbeddingIndex({
+                domainId,
+                baseDocId: Number(base.docId),
+                mode: 'full_rebuild',
+                owner: this.user._id,
+                reason: 'git_pull',
+            }).catch((err: any) => console.error('Embedding queue error after git pull:', err));
             
             this.response.body = { ok: true };
         } catch (err: any) {
@@ -6990,6 +6997,13 @@ export async function baseGitPull(input: BaseGitInput) {
             edges,
             content,
         });
+        enqueueEmbeddingIndex({
+            domainId: input.domainId,
+            baseDocId: Number(base.docId),
+            mode: 'full_rebuild',
+            owner: input.owner,
+            reason: 'git_pull',
+        }).catch((err: any) => console.error('Embedding queue error after git pull:', err));
         return { ok: true, githubRepo, message: 'Pulled remote content and imported into base' };
     } catch (err: any) {
         throw new Error(err?.message || String(err));

@@ -480,6 +480,30 @@ function notifyEmbeddingStatus(domainId: string, baseDocId: number) {
     }
 }
 
+export async function clearEmbeddingState(domainId: string, baseDocId?: number): Promise<void> {
+    await ready();
+    const filter: { domainId: string; baseDocId?: number } = { domainId };
+    if (baseDocId != null) filter.baseDocId = baseDocId;
+    const states = await stateColl().find(filter).project({ coalesceKey: 1 }).toArray();
+    const coalesceKeys = states.map((state) => state.coalesceKey).filter(Boolean);
+    await Promise.all([
+        coalesceKeys.length
+            ? task.deleteMany({
+                type: EMBEDDING_TASK_TYPE,
+                subType: EMBEDDING_INDEX_SUBTYPE,
+                coalesceKey: { $in: coalesceKeys },
+            })
+            : Promise.resolve(),
+        task.deleteMany({
+            type: EMBEDDING_TASK_TYPE,
+            subType: EMBEDDING_INDEX_SUBTYPE,
+            ...filter,
+        }),
+        stateColl().deleteMany(filter),
+    ]);
+    if (baseDocId != null) notifyEmbeddingStatus(domainId, baseDocId);
+}
+
 export async function acquireEmbeddingLease(
     payload: Pick<EmbeddingIndexTaskPayload, 'domainId' | 'baseDocId' | 'generation' | 'attempt'>,
     owner = workerInstanceId,

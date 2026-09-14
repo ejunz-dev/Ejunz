@@ -5,8 +5,11 @@ import type { Context } from '../context';
 import storage from './storage';
 import type { BaseDoc, BaseNode, BaseEdge, CardDoc, BaseHistoryEntry, PluginDoc } from '../interface';
 import db from '../service/db';
+import bus from '../service/bus';
 import { Collection, type Db } from 'mongodb';
 import { ValidationError } from '../error';
+import { rm } from 'fs/promises';
+import { join } from 'path';
 
 export const TYPE_CARD: 71 = 71;
 
@@ -182,6 +185,44 @@ export async function saveBaseDetailUiPrefs(
         },
         { upsert: true },
     );
+}
+
+function isSafePathSegment(value: string): boolean {
+    return !!value && !value.includes('..') && !value.includes('/') && !value.includes('\\');
+}
+
+async function purgeBaseLocalData(domainId: string, docId: number): Promise<void> {
+    try {
+        const files = await storage.list(`base/${domainId}/${docId}`);
+        if (files.length) await storage.del(files.map((file) => file.path), 0);
+    } catch { /* storage prefix may not exist */ }
+    try {
+        await Promise.all([
+            db.db.collection('base.userEditorUi').deleteMany({ domainId, baseDocId: docId }),
+            db.db.collection('base.userDetailUi').deleteMany({ domainId, baseDocId: docId }),
+        ]);
+    } catch { /* prefs collections are optional */ }
+    if (isSafePathSegment(domainId)) {
+        try {
+            await rm(join('/data/git/ejunz', domainId, 'base', String(docId)), { recursive: true, force: true });
+        } catch { /* git worktree may not exist */ }
+    }
+}
+
+function cardFileStoragePaths(domainId: string, card: CardDoc): string[] {
+    const paths: string[] = [];
+    const baseDocId = String(card.baseDocId || '');
+    if (!baseDocId) return paths;
+    if ((card as CardDoc).cardType === 'file' && (card as CardDoc).fileName) {
+        paths.push(`base/${domainId}/${baseDocId}/node/${card.nodeId}/${(card as CardDoc).fileName}`);
+    }
+    const files = (card as CardDoc & { files?: { name?: string }[] }).files;
+    if (files?.length) {
+        for (const file of files) {
+            if (file?.name) paths.push(`base/${domainId}/${baseDocId}/card/${card.docId.toString()}/${file.name}`);
+        }
+    }
+    return paths;
 }
 
 export class BaseModel {
@@ -688,16 +729,6 @@ export class BaseModel {
             }
         }
 
-        for (const nodeId of missing) {
-            try {
-                const cards = await CardModel.getByNodeId(actualDomainId, docId, nodeId);
-                for (const card of cards) {
-                    await CardModel.delete(actualDomainId, card.docId);
-                }
-            } catch (err) {
-            }
-        }
-
         const nodesToDelete = new Set<string>();
 
         const collectChildNodes = (id: string) => {
@@ -734,7 +765,6 @@ export class BaseModel {
 
         for (const nodeIdToDelete of nodesToDelete) {
             try {
-
                 const nodeToDel = nodes.find(n => n.id === nodeIdToDelete);
                 if (nodeToDel?.files?.length) {
                     const nodeStoragePaths = nodeToDel.files.map(
@@ -742,26 +772,22 @@ export class BaseModel {
                     );
                     await storage.del(nodeStoragePaths, 0);
                 }
+            } catch (err) {
+            }
+        }
 
-                const cards = await CardModel.getByNodeId(actualDomainId, docId, nodeIdToDelete);
-                for (const card of cards) {
-
-                    if ((card as CardDoc).cardType === 'file' && (card as CardDoc).fileName) {
-                        const filePath = `base/${actualDomainId}/${docId.toString()}/node/${nodeIdToDelete}/${(card as CardDoc).fileName}`;
-                        try { await storage.del([filePath], 0); } catch { }
-                    }
-
-                    if ((card as any).files?.length) {
-                        const cardStoragePaths = (card as any).files.map(
-                            (f: any) => `base/${actualDomainId}/${docId.toString()}/card/${card.docId.toString()}/${f.name}`
-                        );
-                        await storage.del(cardStoragePaths, 0);
-                    }
-                    await CardModel.delete(actualDomainId, card.docId);
+        const cardIds: ObjectId[] = [];
+        const nodeIdsForCards = [...new Set([...nodesToDelete, ...missing])];
+        if (nodeIdsForCards.length) {
+            try {
+                const byNode = await CardModel.getByNodeIds(actualDomainId, docId, nodeIdsForCards);
+                for (const list of byNode.values()) {
+                    for (const card of list) cardIds.push(card.docId);
                 }
             } catch (err) {
             }
         }
+        if (cardIds.length) await CardModel.deleteMany(actualDomainId, cardIds);
 
         const deleteNodeRecursive = (id: string) => {
             const nodeToDelete = nodes.find(n => n.id === id);
@@ -817,6 +843,9 @@ export class BaseModel {
             edges,
             updateAt: new Date(),
         });
+        if (nodeIdsForCards.length) {
+            await bus.parallel('base/node-delete', actualDomainId, docId, nodeIdsForCards);
+        }
         return { removed: named, missing };
     }
 
@@ -949,7 +978,15 @@ export class BaseModel {
     }
 
     static async delete(domainId: string, docId: number, mapDocType: MindMapDocType = document.TYPE_BASE): Promise<void> {
-        await document.deleteOne(domainId, mapDocType, docId);
+        const actualDomainId = typeof domainId === 'string' ? domainId : String(domainId);
+        await CardModel.deleteByBase(actualDomainId, docId);
+        await purgeBaseLocalData(actualDomainId, docId);
+        await document.deleteOne(actualDomainId, mapDocType, docId);
+        await bus.parallel('base/delete', actualDomainId, docId);
+    }
+
+    static async purgeLocalData(domainId: string, docId: number): Promise<void> {
+        await purgeBaseLocalData(domainId, docId);
     }
 
     static async incrementViews(domainId: string, docId: number, mapDocType: MindMapDocType = document.TYPE_BASE): Promise<void> {
@@ -980,7 +1017,14 @@ export class BaseModel {
 }
 
 export function apply(ctx: Context) {
-    (ctx as any).on('ready', async () => {
+    ctx.on('domain/delete', async (domainId: string) => {
+        await Promise.all([
+            db.db.collection('base.userEditorUi').deleteMany({ domainId }),
+            db.db.collection('base.userDetailUi').deleteMany({ domainId }),
+        ]).catch(() => undefined);
+        if (isSafePathSegment(domainId)) {
+            await rm(join('/data/git/ejunz', domainId), { recursive: true, force: true }).catch(() => undefined);
+        }
     });
 }
 
@@ -1139,7 +1183,49 @@ export class CardModel {
     }
 
     static async delete(domainId: string, docId: ObjectId): Promise<void> {
-        await document.deleteOne(domainId, TYPE_CARD, docId);
+        await this.deleteMany(domainId, [docId]);
+    }
+
+    static async deleteByBase(domainId: string, baseDocId: number | ObjectId): Promise<string[]> {
+        const cards = await document.getMulti(domainId, TYPE_CARD, { baseDocId })
+            .project({ docId: 1 })
+            .toArray() as Pick<CardDoc, 'docId'>[];
+        return this.deleteMany(domainId, cards.map((card) => card.docId));
+    }
+
+    static async deleteMany(domainId: string, docIds: ObjectId[]): Promise<string[]> {
+        const unique: ObjectId[] = [];
+        const seen = new Set<string>();
+        for (const docId of docIds) {
+            const id = String(docId);
+            if (!id || seen.has(id)) continue;
+            seen.add(id);
+            unique.push(docId);
+        }
+        if (!unique.length) return [];
+        const cards = await document.getMulti(domainId, TYPE_CARD, { docId: { $in: unique } }).toArray() as CardDoc[];
+        const paths: string[] = [];
+        const byBase = new Map<number, string[]>();
+        const removed: string[] = [];
+        for (const card of cards) {
+            paths.push(...cardFileStoragePaths(domainId, card));
+            const id = card.docId.toString();
+            removed.push(id);
+            const baseDocId = Number(card.baseDocId);
+            if (!Number.isFinite(baseDocId) || baseDocId <= 0) continue;
+            const list = byBase.get(baseDocId) || [];
+            list.push(id);
+            byBase.set(baseDocId, list);
+        }
+        if (paths.length) {
+            try { await storage.del(paths, 0); } catch { /* files may already be gone */ }
+        }
+        await document.deleteMulti(domainId, TYPE_CARD, { docId: { $in: unique } } as never);
+        await document.deleteMultiStatus(domainId, TYPE_CARD, { docId: { $in: unique } } as never);
+        for (const [baseDocId, cardDocIds] of byBase) {
+            await bus.parallel('base/card-delete', domainId, baseDocId, cardDocIds);
+        }
+        return removed;
     }
 
     static async incrementViews(domainId: string, docId: ObjectId): Promise<void> {

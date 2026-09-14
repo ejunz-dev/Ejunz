@@ -180,12 +180,13 @@ async function cleanFiles() {
 
 export async function apply(ctx: Context) {
     ctx.on('domain/delete', async (domainId) => {
-        const [problemFiles, contestFiles, trainingFiles] = await Promise.all([
+        const [problemFiles, contestFiles, trainingFiles, baseFiles] = await Promise.all([
             StorageModel.list(`problem/${domainId}`),
             StorageModel.list(`contest/${domainId}`),
             StorageModel.list(`training/${domainId}`),
+            StorageModel.list(`base/${domainId}`),
         ]);
-        await StorageModel.del(problemFiles.concat(contestFiles).concat(trainingFiles).map((i) => i.path));
+        await StorageModel.del(problemFiles.concat(contestFiles, trainingFiles, baseFiles).map((i) => i.path));
     });
     await ctx.inject(['worker'], (c) => {
         c.worker.addHandler('storage.prune', cleanFiles);

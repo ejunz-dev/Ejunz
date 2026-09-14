@@ -59,6 +59,9 @@ export interface EventMap {
     'monitor/collect': (info: any) => VoidReturn;
     'api/update': () => void;
     'base/update': (docId: number, sourceUid?: number | null, sourceUname?: string, actionKey?: string, actionDetail?: any) => VoidReturn;
+    'base/delete': (domainId: string, baseDocId: number) => VoidReturn;
+    'base/node-delete': (domainId: string, baseDocId: number, nodeIds: string[]) => VoidReturn;
+    'base/card-delete': (domainId: string, baseDocId: number, cardDocIds: string[]) => VoidReturn;
     'task/daily': () => void;
     'task/daily/finish': (pref: Record<string, number>) => void;
 

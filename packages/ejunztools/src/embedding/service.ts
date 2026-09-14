@@ -7,6 +7,7 @@ import type { CardDoc } from 'ejun/src/interface';
 import db from 'ejun/src/service/db';
 import {
     buildEmbeddingIndexTaskFromDb,
+    clearEmbeddingState,
     setEmbeddingProgress,
     type EmbeddingIndexMode,
     type EmbeddingIndexTaskPayload,
@@ -131,6 +132,36 @@ export class EmbeddingService extends Service {
             (() => { try { return !!(ctx as any).embedding; } catch { return false; } })(),
             !!(global as any).app,
         );
+        ctx.on('base/delete', async (domainId: string, baseDocId: number) => {
+            try {
+                await this.deleteBaseEmbeddings(domainId, baseDocId);
+                await clearEmbeddingState(domainId, baseDocId);
+            } catch (err) {
+                logger.error('Failed to clear embeddings after base/delete: %o', err);
+            }
+        });
+        ctx.on('base/node-delete', async (domainId: string, baseDocId: number, nodeIds: string[]) => {
+            try {
+                await this.deleteNodeEmbeddings(domainId, baseDocId, nodeIds);
+            } catch (err) {
+                logger.error('Failed to clear embeddings after base/node-delete: %o', err);
+            }
+        });
+        ctx.on('base/card-delete', async (domainId: string, baseDocId: number, cardDocIds: string[]) => {
+            try {
+                await this.deleteCardEmbeddings(domainId, baseDocId, cardDocIds);
+            } catch (err) {
+                logger.error('Failed to clear embeddings after base/card-delete: %o', err);
+            }
+        });
+        ctx.on('domain/delete', async (domainId: string) => {
+            try {
+                await this.deleteDomainEmbeddings(domainId);
+                await clearEmbeddingState(domainId);
+            } catch (err) {
+                logger.error('Failed to clear embeddings after domain/delete: %o', err);
+            }
+        });
     }
     chunkText(text: string, maxLen = CHUNK_MAX_CHARS, overlap = CHUNK_OVERLAP_CHARS): string[] {
         text = text.trim();
@@ -489,6 +520,20 @@ export class EmbeddingService extends Service {
         await this.collection().deleteMany({
             domainId, baseDocId, kind: 'card', cardDocId: { $in: ids },
         });
+    }
+
+    async deleteBaseEmbeddings(domainId: string, baseDocId: number): Promise<void> {
+        if (!domainId || !Number.isFinite(baseDocId) || baseDocId <= 0) return;
+        await this.ensureEmbeddingIndexes();
+        await this.collection().deleteMany({ domainId, baseDocId });
+        logger.debug('Cleared embeddings for %s/%s', domainId, baseDocId);
+    }
+
+    async deleteDomainEmbeddings(domainId: string): Promise<void> {
+        if (!domainId) return;
+        await this.ensureEmbeddingIndexes();
+        await this.collection().deleteMany({ domainId });
+        logger.debug('Cleared embeddings for domain %s', domainId);
     }
 
     async processIndexTask(raw: EmbeddingIndexTaskPayload | Record<string, unknown>): Promise<{

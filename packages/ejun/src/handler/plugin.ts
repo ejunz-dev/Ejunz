@@ -2,7 +2,7 @@ import { Filter } from 'mongodb';
 import type { Context } from '../context';
 import { BadRequestError, ForbiddenError, NotFoundError, ValidationError } from '../error';
 import type { BaseDoc, BaseNode, CardDoc, DomainDoc, PluginDoc } from '../interface';
-import { BaseModel, CardModel, TYPE_CARD, type MindMapDocType } from '../model/base';
+import { BaseModel, CardModel, type MindMapDocType } from '../model/base';
 import { PERM, PRIV } from '../model/builtin';
 import * as document from '../model/document';
 import DomainModel from '../model/domain';
@@ -30,7 +30,8 @@ async function buildPluginView(domainId: string, plugin: PluginDoc) {
 }
 
 async function cleanupDeletedPluginArtifacts(domainId: string, pluginDocId: number) {
-    await document.deleteMulti(domainId, document.TYPE_CARD, { baseDocId: pluginDocId } as any);
+    await CardModel.deleteByBase(domainId, pluginDocId);
+    await BaseModel.purgeLocalData(domainId, pluginDocId);
     await document.coll.updateMany({
         domainId,
         docType: document.TYPE_AGENT,

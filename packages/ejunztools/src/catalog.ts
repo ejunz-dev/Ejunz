@@ -93,7 +93,7 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
     {
         name: 'base_delete',
         expose: 'base_delete',
-        description: 'Delete an Ejunz Base by baseId.',
+        description: 'Delete an Ejunz Base by baseId, including its cards, problems, stored files, and vector index.',
         inputSchema: {
             type: 'object',
             properties: { baseId: { type: 'integer', description: 'Existing Base id.' } },

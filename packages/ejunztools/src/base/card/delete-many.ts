@@ -1,4 +1,4 @@
-import * as document from 'ejun/src/model/document';
+import { CardModel } from 'ejun/src/model/base';
 import { MAX_CARDS_PER_CALL } from '../../catalog';
 import { cardsById, idList, toObjectId } from '../shared';
 import type { ToolArgs, ToolContext } from '../../types';
@@ -11,8 +11,7 @@ export async function execute(ctx: ToolContext, args: ToolArgs): Promise<unknown
         if (!byId.has(cardId)) throw new Error(`Card not found: ${cardId}`);
     }
 
-    await document.deleteMulti(ctx.domainId, document.TYPE_CARD, { docId: { $in: objectIds } } as never);
-    await document.deleteMultiStatus(ctx.domainId, document.TYPE_CARD, { docId: { $in: objectIds } } as never);
+    await CardModel.deleteMany(ctx.domainId, objectIds);
 
     return {
         ok: true,
