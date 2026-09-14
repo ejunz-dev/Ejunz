@@ -1,3 +1,4 @@
+/// <reference path="./napi-canvas.d.ts" />
 import type { Context } from 'ejun/src/context';
 import ToolService from './registry';
 import type { ToolDeclaration } from './registry';
@@ -24,14 +25,15 @@ import * as cardGet from './base/card/get';
 import * as cardGetMany from './base/card/get-many';
 import * as cardUpdate from './base/card/update';
 import * as cardUpdateMany from './base/card/update-many';
-import * as fileCreate from './base/file/create';
-import * as fileCreateMany from './base/file/create-many';
-import * as fileDelete from './base/file/delete';
-import * as fileDeleteMany from './base/file/delete-many';
-import * as fileGet from './base/file/get';
-import * as fileGetMany from './base/file/get-many';
-import * as fileList from './base/file/list';
-import * as fileListMany from './base/file/list-many';
+import * as fileCreate from './base/fileCard/create';
+import * as fileCreateMany from './base/fileCard/create-many';
+import * as fileDelete from './base/fileCard/delete';
+import * as fileDeleteMany from './base/fileCard/delete-many';
+import * as fileGet from './base/fileCard/get';
+import * as fileGetMany from './base/fileCard/get-many';
+import * as fileContentGet from './base/fileCard/content-get';
+import * as fileList from './base/fileCard/list';
+import * as fileListMany from './base/fileCard/list-many';
 import * as gitCommit from './base/git/commit';
 import * as gitConfigGet from './base/git/config-get';
 import * as gitConfigSet from './base/git/config-set';
@@ -97,14 +99,15 @@ const IMPLEMENTATIONS: Record<string, (context: ToolContext, args: ToolArgs) => 
     git_pull: gitPull.execute,
     git_config_get: gitConfigGet.execute,
     git_config_set: gitConfigSet.execute,
-    node_file_list: fileList.execute,
-    node_file_list_many: fileListMany.execute,
-    node_file_get: fileGet.execute,
-    node_file_get_many: fileGetMany.execute,
-    node_file_delete: fileDelete.execute,
-    node_file_delete_many: fileDeleteMany.execute,
-    node_file_create: fileCreate.execute,
-    node_file_create_many: fileCreateMany.execute,
+    node_fileCard_list: fileList.execute,
+    node_fileCard_list_many: fileListMany.execute,
+    node_fileCard_get: fileGet.execute,
+    node_fileCard_get_many: fileGetMany.execute,
+    node_fileCard_content_get: fileContentGet.execute,
+    node_fileCard_delete: fileDelete.execute,
+    node_fileCard_delete_many: fileDeleteMany.execute,
+    node_fileCard_create: fileCreate.execute,
+    node_fileCard_create_many: fileCreateMany.execute,
 };
 
 const EXPLICIT_BASE_TOOLS = new Set(['base_get', 'base_update', 'base_delete']);

@@ -103,8 +103,8 @@ function buildBaseUpdateSummary(actionKey: unknown, actionDetail: unknown): stri
     case 'problem_create': return i18n('Problem created');
     case 'problem_update': return i18n('Problem updated');
     case 'problem_delete': return i18n('Problem deleted');
-    case 'node_file_create': return i18n('File added');
-    case 'node_file_delete': return i18n('File deleted');
+    case 'node_fileCard_create': return i18n('File added');
+    case 'node_fileCard_delete': return i18n('File deleted');
     case 'git_pull': return i18n('Base pulled');
     case 'git_commit': return detail.message ? i18n('Committed: {0}', detail.message) : i18n('Committed');
     case 'migrate_node': return i18n('Node migrated to new base');

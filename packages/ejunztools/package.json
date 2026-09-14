@@ -6,7 +6,8 @@
     "repository": "https://github.com/ejunz-dev/Ejunz",
     "dependencies": {
         "ejun": "workspace:^",
-        "mongodb": "^6.20.0"
+        "mongodb": "^6.20.0",
+        "unpdf": "^1.8.1"
     },
     "license": "AGPL-3.0-or-later",
     "sideEffects": false

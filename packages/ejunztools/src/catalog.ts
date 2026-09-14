@@ -14,6 +14,10 @@ export interface SessionToolDef {
 export const MAX_NODES_PER_CALL = 500;
 export const MAX_FILE_CREATES_PER_CALL = 50;
 export const MAX_FILE_DOWNLOADS_IN_FLIGHT = 5;
+export const MAX_FILE_CONTENT_CHARS = 20000;
+export const MAX_FILE_CONTENT_CHARS_LIMIT = 200000;
+export const MAX_FILE_CONTENT_BYTES = 64 * 1024 * 1024;
+export const MAX_FILE_CONTENT_PAGES = 10000;
 export const MAX_CARDS_PER_CALL = 500;
 export const MAX_PROBLEMS_PER_CALL = 500;
 
@@ -374,8 +378,8 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
         },
     },
     {
-        name: 'node_file_list',
-        expose: 'base_node_file_list',
+        name: 'node_fileCard_list',
+        expose: 'base_node_fileCard_list',
         description: 'List file-cards under a node. File-cards are cards with cardType="file" that represent uploaded files. Returns card id, title, fileName, fileType, fileSize for each.',
         inputSchema: {
             type: 'object',
@@ -387,9 +391,9 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
         },
     },
     {
-        name: 'node_file_get',
-        expose: 'base_node_file_get',
-        description: 'Get file-card metadata by cardId. Returns title, fileName, fileType, fileSize, nodeId, and download URL.',
+        name: 'node_fileCard_get',
+        expose: 'base_node_fileCard_get',
+        description: 'Get file-card metadata by cardId. Returns title, fileName, fileType, fileSize, nodeId, the card text as `content`, and the URL its file is served at. The file body itself is read by `base_node_fileCard_content_get`.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -400,8 +404,28 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
         },
     },
     {
-        name: 'node_file_delete',
-        expose: 'base_node_file_delete',
+        name: 'node_fileCard_content_get',
+        expose: 'base_node_fileCard_content_get',
+        description: 'Read the content of one file-card as text. The stored file is read from the path `base_node_fileCard_create` wrote it to, and the '
+            + 'card\'s `fileType` picks the reader: `pdf` is the type implemented today and every other type is refused by name. A PDF is parsed inside '
+            + 'this process, with no external command. Returns the fields of `base_node_fileCard_get` plus `text`, `textLength`, `truncated`, `pageCount`, '
+            + '`totalPages` and `extractor`. `text` stops at `maxChars` characters and `truncated` reports that, pages are separated by form feeds, and '
+            + '`firstPage` / `lastPage` read one range of a long document.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                cardId: { type: 'string', description: 'File-card docId (hex).' },
+                firstPage: { type: 'integer', minimum: 1, maximum: MAX_FILE_CONTENT_PAGES, description: 'First page to read (PDF only; default the first page).' },
+                lastPage: { type: 'integer', minimum: 1, maximum: MAX_FILE_CONTENT_PAGES, description: 'Last page to read (PDF only; default the last page).' },
+                maxChars: { type: 'integer', minimum: 1, maximum: MAX_FILE_CONTENT_CHARS_LIMIT, description: 'Cap on the returned text (default ' + MAX_FILE_CONTENT_CHARS + ').' },
+            },
+            required: ['cardId'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'node_fileCard_delete',
+        expose: 'base_node_fileCard_delete',
         description: 'Delete a file-card and its underlying file. Both the card record and the physical file in storage are removed.',
         inputSchema: {
             type: 'object',
@@ -413,8 +437,8 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
         },
     },
     {
-        name: 'node_file_create',
-        expose: 'base_node_file_create',
+        name: 'node_fileCard_create',
+        expose: 'base_node_fileCard_create',
         description: 'Upload a file from a URL and create a file-card under a node. Downloads the file from the given URL, stores it on the node, and creates a file-card (cardType="file") referencing it.',
         inputSchema: {
             type: 'object',
@@ -822,9 +846,9 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
         },
     },
     {
-        name: 'node_file_create_many',
-        expose: 'base_node_file_create_many',
-        description: 'Store several files on nodes of one Base in a single call, each becoming a file-card, as `base_node_file_create` makes one. '
+        name: 'node_fileCard_create_many',
+        expose: 'base_node_fileCard_create_many',
+        description: 'Store several files on nodes of one Base in a single call, each becoming a file-card, as `base_node_fileCard_create` makes one. '
             + '`files` is an array of `{ nodeId, fileName, fileUrl, title? }`. The Base is read once to check every node and the whole list is validated '
             + 'before the first download, so a refused call stores nothing. The downloads run a few at a time, and every entry is reported on its own: a '
             + 'download or a card the server refuses is named in `refusedFiles` and `ok` is false, while the files that arrived stay. One call stores at '
@@ -855,9 +879,9 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
         },
     },
     {
-        name: 'node_file_list_many',
-        expose: 'base_node_file_list_many',
-        description: 'List the files of several nodes in a single call, each node reported as `base_node_file_list` reports it. The Base document is read '
+        name: 'node_fileCard_list_many',
+        expose: 'base_node_fileCard_list_many',
+        description: 'List the files of several nodes in a single call, each node reported as `base_node_fileCard_list` reports it. The Base document is read '
             + 'once and the cards of every named node come from one further read, so the call costs two reads however many nodes it names. A read changes '
             + 'nothing, so a node this Base does not hold is listed in `missingNodeIds` and `ok` is false. One call lists at most ' + MAX_NODES_PER_CALL + ' nodes.',
         inputSchema: {
@@ -876,9 +900,9 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
         },
     },
     {
-        name: 'node_file_get_many',
-        expose: 'base_node_file_get_many',
-        description: 'Read several file-cards in a single call, each reported as `base_node_file_get` reports one: its name, type, size, node, content and '
+        name: 'node_fileCard_get_many',
+        expose: 'base_node_fileCard_get_many',
+        description: 'Read several file-cards in a single call, each reported as `base_node_fileCard_get` reports one: its name, type, size, node, content and '
             + 'the URL its file is served at. The cards come from one read, so the call costs one read however many it names. A read changes nothing, so a '
             + 'card this Base does not hold, or one that is not a file-card, is listed in `missing` with its reason and `ok` is false. One call reads at '
             + 'most ' + MAX_CARDS_PER_CALL + ' cards.',
@@ -898,11 +922,11 @@ export const BUILTIN_TOOLS_CATALOG: ToolDef[] = [
         },
     },
     {
-        name: 'node_file_delete_many',
-        expose: 'base_node_file_delete_many',
+        name: 'node_fileCard_delete_many',
+        expose: 'base_node_fileCard_delete_many',
         description: 'Delete several file-cards of one Base in a single call, with the file each one holds. Each card is removed as '
-            + '`base_node_file_delete` removes one: the stored body first, then the card. The cards are read once, and a card this Base does not hold, or '
-            + 'one that is not a file-card, refuses the whole call before anything is removed. Use it instead of calling `base_node_file_delete` once per '
+            + '`base_node_fileCard_delete` removes one: the stored body first, then the card. The cards are read once, and a card this Base does not hold, or '
+            + 'one that is not a file-card, refuses the whole call before anything is removed. Use it instead of calling `base_node_fileCard_delete` once per '
             + 'card. One call removes at most ' + MAX_CARDS_PER_CALL + ' cards.',
         inputSchema: {
             type: 'object',
@@ -948,10 +972,10 @@ const BUILTIN_MUTATING_TOOLS = new Set([
     'node_create_many', 'card_create_many', 'problem_create_many',
     'node_update_many', 'card_update_many', 'problem_update_many',
     'node_delete_many', 'card_delete_many', 'problem_delete_many',
-    'node_file_create_many', 'node_file_delete_many',
+    'node_fileCard_create_many', 'node_fileCard_delete_many',
     'node_create', 'node_update', 'node_delete',
     'card_create', 'card_update', 'card_delete',
-    'node_file_create', 'node_file_delete',
+    'node_fileCard_create', 'node_fileCard_delete',
     'problem_create', 'problem_update', 'problem_delete',
     'embedding_reindex',
     'git_pull', 'git_config_set',
