@@ -1,13 +1,9 @@
 import { createPortal } from 'react-dom';
 
 export interface UploadDialogState {
-  /** Current file, shown as `[i/n] name`. */
   fileLabel: string;
-  /** Percent of the whole batch, 0-100. */
   filePercent: number;
-  /** Phase of the current file, already translated. */
   uploadLabel: string;
-  /** Percent of the current file, 0-100. */
   uploadPercent: number;
 }
 
@@ -15,11 +11,6 @@ export interface UploadProgressDialogProps extends UploadDialogState {
   title: string;
 }
 
-/**
- * Modal progress bars for a running upload: batch progress on top, current file
- * below. Uploads cannot be paused, so the dialog carries no actions.
- * @param props Dialog title, labels, and percentages.
- */
 export default function UploadProgressDialog({
   title, fileLabel, filePercent, uploadLabel, uploadPercent,
 }: UploadProgressDialogProps) {

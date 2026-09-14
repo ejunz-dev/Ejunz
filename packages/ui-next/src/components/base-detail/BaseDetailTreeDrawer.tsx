@@ -2,8 +2,8 @@ import { createPortal } from 'react-dom';
 import { i18n } from '../../i18n';
 import { getRootNodeIds } from './tree';
 import { BaseDetailTree } from './BaseDetailTree';
-import { useDrawerPresence, useDrawerSwipe } from './drawer-hooks';
-import type { BaseDetailDisplaySettings } from './display-settings';
+import { useDrawerPresence, useDrawerResize, useDrawerSwipe } from './drawer-hooks';
+import { treeDrawerWidthRange, type BaseDetailDisplaySettings } from './display-settings';
 import type { BaseDetailCard, BaseDetailEdge, BaseDetailNode } from './types';
 
 interface Props {
@@ -22,17 +22,28 @@ interface Props {
   filters?: import('./detail-filter').BaseDetailFilter;
   displaySettings?: BaseDetailDisplaySettings;
   drawerWidth?: number;
+  onResize?: (width: number) => void;
 }
 
-export function BaseDetailTreeDrawer({ open, nodes, edges, nodeCardsMap, expandedNodes, selectedNodeId, selectedCardId, onToggle, onSelectNode, onSelectCard, onClose, filter = '', filters, displaySettings, drawerWidth }: Props) {
+export function BaseDetailTreeDrawer({ open, nodes, edges, nodeCardsMap, expandedNodes, selectedNodeId, selectedCardId, onToggle, onSelectNode, onSelectCard, onClose, filter = '', filters, displaySettings, drawerWidth, onResize }: Props) {
   const { present, closing } = useDrawerPresence(open);
   const swipe = useDrawerSwipe('left', onClose);
+  const width = drawerWidth ?? 420;
+  const drawerWidthStyle = `min(${width}px, calc(100vw - 1rem))`;
+  const resize = useDrawerResize({
+    side: 'left',
+    width,
+    min: treeDrawerWidthRange.min,
+    max: treeDrawerWidthRange.max,
+    onWidth: onResize ?? (() => {}),
+  });
   if (!present) return null;
   const roots = getRootNodeIds(nodes, edges);
   return createPortal(
     <>
       <button type="button" className={`bd-backdrop bd-tree-backdrop${closing ? ' is-closing' : ''}`} onClick={onClose} aria-label={i18n('Close')} />
-      <aside className={`bd-drawer bd-drawer--tree bd-tree-drawer${closing ? ' is-closing' : ''}`} style={{ ...(drawerWidth ? { width: `min(${drawerWidth}px, calc(100vw - 1rem))` } : {}), ...swipe.style }} onPointerDown={swipe.onPointerDown} onPointerMove={swipe.onPointerMove} onPointerUp={swipe.onPointerUp} onPointerCancel={swipe.onPointerCancel} role="dialog" aria-modal="true" aria-label={i18n('Document Structure')}>
+      {onResize ? <div className="bd-drawer__resize bd-drawer__resize--tree" style={{ left: drawerWidthStyle }} data-dragging={resize.dragging || undefined} role="separator" aria-orientation="vertical" aria-label={i18n('Resize')} {...resize.handleProps} /> : null}
+      <aside className={`bd-drawer bd-drawer--tree bd-tree-drawer${closing ? ' is-closing' : ''}`} style={{ width: drawerWidthStyle, ...swipe.style }} data-resizing={resize.dragging || undefined} onPointerDown={swipe.onPointerDown} onPointerMove={swipe.onPointerMove} onPointerUp={swipe.onPointerUp} onPointerCancel={swipe.onPointerCancel} role="dialog" aria-modal="true" aria-label={i18n('Document Structure')}>
         <header className="bd-drawer__header">
           <div><strong>{i18n('Document Structure')}</strong><span className="bd-drawer__count">{nodes.length + Object.values(nodeCardsMap).reduce((sum, cards) => sum + cards.length, 0)}</span></div>
           <button type="button" className="bd-drawer__close" onClick={onClose} aria-label={i18n('Close')}>×</button>

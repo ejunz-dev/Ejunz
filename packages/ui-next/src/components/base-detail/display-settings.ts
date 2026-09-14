@@ -21,6 +21,9 @@ export type BaseDetailDisplaySettings = {
   wsIndicatorOpen: boolean;
 };
 
+export const cardDrawerWidthRange = { min: 320, max: 900 } as const;
+export const treeDrawerWidthRange = { min: 240, max: 640 } as const;
+
 export const defaultBaseDetailDisplaySettings = (): BaseDetailDisplaySettings => ({
   showProblemCount: false,
   showNodeNumber: false,

@@ -19,6 +19,52 @@ export function useDrawerPresence(open: boolean, duration = 240) {
   return { present, closing };
 }
 
+export interface DrawerResizeHandlers {
+  onPointerDown: (event: PointerEvent<HTMLElement>) => void;
+  onPointerMove: (event: PointerEvent<HTMLElement>) => void;
+  onPointerUp: (event: PointerEvent<HTMLElement>) => void;
+  onPointerCancel: (event: PointerEvent<HTMLElement>) => void;
+}
+
+export function useDrawerResize(options: {
+  side: 'left' | 'right';
+  width: number;
+  min: number;
+  max: number;
+  onWidth: (width: number) => void;
+}): { dragging: boolean; handleProps: DrawerResizeHandlers } {
+  const { max, min, onWidth, side, width } = options;
+  const startRef = useRef<{ x: number; width: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const onPointerDown = useCallback((event: PointerEvent<HTMLElement>) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    startRef.current = { x: event.clientX, width };
+    setDragging(true);
+  }, [width]);
+
+  const onPointerMove = useCallback((event: PointerEvent<HTMLElement>) => {
+    const start = startRef.current;
+    if (start === null || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    const delta = side === 'right' ? start.x - event.clientX : event.clientX - start.x;
+    onWidth(Math.min(max, Math.max(min, Math.round(start.width + delta))));
+  }, [max, min, onWidth, side]);
+
+  const endDrag = useCallback((event: PointerEvent<HTMLElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    startRef.current = null;
+    setDragging(false);
+  }, []);
+
+  return {
+    dragging,
+    handleProps: { onPointerDown, onPointerMove, onPointerUp: endDrag, onPointerCancel: endDrag },
+  };
+}
+
 export function useDrawerSwipe(side: 'left' | 'right', onClose: () => void) {
   const [offset, setOffset] = useState(0);
   const offsetRef = useRef(0);

@@ -8,7 +8,6 @@ const COMPRESS_THRESHOLD_BYTES = 1024 * 1024;
 const COMPRESS_MAX_EDGE = 2000;
 const COMPRESS_QUALITY = 0.8;
 
-/** True for the image formats the upload UI accepts. */
 export function isUploadableImage(file: File): boolean {
   return IMAGE_TYPE.test(file.type);
 }
@@ -21,24 +20,11 @@ function imageStem(file: File): string {
   return file.name.replace(/\.[^./\\]*$/, '') || 'image';
 }
 
-/**
- * Storage name used when the caller passes no `filename`.
- * Images get a collision-resistant stem, other files keep their original name.
- * @param file File about to be uploaded.
- * @returns Name the server stores the file under.
- */
 export function defaultUploadFilename(file: File): string {
   if (!isUploadableImage(file)) return file.name;
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}.${fileExtension(file)}`;
 }
 
-/**
- * Re-encodes an image above 1 MB so the longest edge fits 2000 px.
- * Returns the original file when the image is small, animated, undecodable,
- * or when re-encoding does not shrink it.
- * @param file File to compress.
- * @returns Compressed JPEG, or `file` unchanged.
- */
 export async function compressImage(file: File): Promise<File> {
   if (!file.type.startsWith('image/') || ANIMATED_IMAGE_TYPE.test(file.type)) return file;
   if (file.size <= COMPRESS_THRESHOLD_BYTES) return file;
@@ -63,41 +49,29 @@ export async function compressImage(file: File): Promise<File> {
   }
 }
 
-/** Stage of the file the upload is currently working on. */
 export type UploadPhase = 'compressing' | 'uploading' | 'processing';
 
 export interface UploadProgress {
-  /** 1-based index of the file being processed. */
   fileIndex: number;
   fileCount: number;
-  /** Name the file is stored under on the server. */
   filename: string;
   phase: UploadPhase;
-  /** Bytes sent for the current file; 0 while it is still being prepared. */
   loaded: number;
   total: number;
-  /** Percent of the current file, 0-100. */
   percent: number;
 }
 
 export interface UploadedFile {
-  /** File the caller passed in, before compression. */
   file: File;
-  /** Name the file is stored under on the server. */
   filename: string;
-  /** Parsed JSON response body; `undefined` when the response was not JSON. */
   response: unknown;
 }
 
 export interface UploadOptions {
-  /** Extra `type` form field read by per-feature upload endpoints. */
   type?: string;
-  /** Server-side storage name; defaults to {@link defaultUploadFilename}. */
   filename?: (file: File) => string;
-  /** Re-encode images above 1 MB before upload; defaults to true. */
   compress?: boolean;
   onProgress?: (progress: UploadProgress) => void;
-  /** Awaited after each file lands, with the file already stored on the server. */
   onFileUploaded?: (uploaded: UploadedFile) => void | Promise<void>;
 }
 
@@ -141,7 +115,6 @@ function postForm(endpoint: string, form: FormData, onSent: (loaded: number, tot
       if (event.lengthComputable) onSent(event.loaded, event.total);
     });
     xhr.addEventListener('load', () => {
-      // The session may have expired mid-upload; the server answers with the login page.
       if ((xhr.responseURL || '').includes('/login')) {
         reject(new Error(i18n('Not logged in')));
         return;
@@ -158,15 +131,6 @@ function postForm(endpoint: string, form: FormData, onSent: (loaded: number, tot
   });
 }
 
-/**
- * Uploads files one at a time to an endpoint that accepts the `upload_file`
- * operation, compressing oversized images first. Stops at the first failure and
- * rejects with the server-reported message.
- * @param endpoint Upload URL, e.g. the `home_files` route path.
- * @param files Files to store.
- * @param options Naming, progress, and completion hooks.
- * @returns One entry per stored file, in upload order.
- */
 export async function uploadFiles(endpoint: string, files: File[], options: UploadOptions = {}): Promise<UploadedFile[]> {
   const {
     type, filename, compress = true, onProgress, onFileUploaded,

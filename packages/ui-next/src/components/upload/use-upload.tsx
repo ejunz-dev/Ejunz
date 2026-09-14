@@ -11,29 +11,17 @@ import {
 const DEFAULT_ENDPOINT = 'home_files';
 
 export interface UseUploadFilesOptions {
-  /**
-   * Route name resolved through the route map, or an explicit path/URL, or a
-   * getter returning either. Defaults to the `home_files` route.
-   */
   endpoint?: string | (() => string);
-  /** Extra `type` form field read by per-feature upload endpoints. */
   type?: string;
-  /** Reject anything that is not an accepted image; defaults to false. */
   imagesOnly?: boolean;
-  /** Re-encode images above 1 MB before upload; defaults to true. */
   compress?: boolean;
-  /** Server-side storage name; defaults to a collision-resistant name per file. */
   filename?: (file: File) => string;
-  /** Awaited after each file lands, with the file already stored on the server. */
   onFileUploaded?: (uploaded: UploadedFile) => void | Promise<void>;
-  /** Show success and failure notifications; defaults to true. */
   notify?: boolean;
 }
 
 export interface UseUploadFilesResult {
-  /** Uploads the given files and reports what was stored; failures are notified, not thrown. */
   upload: (files: File[] | FileList) => Promise<UploadedFile[]>;
-  /** Progress dialog for the running upload; render it while `uploading` is true. */
   dialog: ReactElement | null;
   uploading: boolean;
 }
@@ -50,12 +38,6 @@ function dialogState(progress: UploadProgress): UploadDialogState {
   };
 }
 
-/**
- * Uploads files through the shared progress dialog: filters the selection,
- * compresses oversized images, reports success and failure with notifications,
- * and returns whatever was stored so callers can build links themselves.
- * @param options Endpoint, filtering, naming, and notification behavior.
- */
 export function useUploadFiles(options: UseUploadFilesOptions = {}): UseUploadFilesResult {
   const {
     endpoint = DEFAULT_ENDPOINT, type, imagesOnly = false,
@@ -117,7 +99,6 @@ export function useUploadFiles(options: UseUploadFilesOptions = {}): UseUploadFi
       if (notify) Notification.success(i18n('File uploaded successfully.'));
       return uploaded;
     } catch (error) {
-      // Files stored before the failure stay usable; only the rest is lost.
       if (notify) {
         Notification.error(i18n('File upload failed: {0}', error instanceof Error ? error.message : String(error)));
       }

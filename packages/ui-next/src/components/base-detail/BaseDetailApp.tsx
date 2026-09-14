@@ -555,7 +555,7 @@ export default function BaseDetailApp() {
           {selectedNodeId ? <BaseDetailNodeContent rootNodeId={selectedNodeId} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} onToggle={toggleNode} selectedNodeId={selectedNodeId} selectedCardId={selectedCard?.docId || null} selectedProblemId={selectedProblemId} onSelectCard={(card) => selectCard(card, false)} onSelectNode={selectNodeFromContent} onSelectProblem={(card, pid) => { selectCard(card, false); selectProblem(pid); }} filter={search} filters={filters} displaySettings={displaySettings} /> : <div className="bd-empty">{i18n('Base detail tree empty')}</div>}
         </section>
       </main>
-      <BaseDetailTreeDrawer open={treeOpen} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} selectedNodeId={selectedNodeId} selectedCardId={selectedCard?.docId || null} onToggle={toggleNode} onSelectNode={(id) => { selectNode(id); setTreeOpen(false); }} onSelectCard={(card) => { selectCard(card); setTreeOpen(false); }} onClose={() => setTreeOpen(false)} filter={search} filters={filters} displaySettings={displaySettings} drawerWidth={displaySettings.treeDrawerWidth} />
+      <BaseDetailTreeDrawer open={treeOpen} nodes={nodes} edges={edges} nodeCardsMap={nodeCardsMap} expandedNodes={expandedNodes} selectedNodeId={selectedNodeId} selectedCardId={selectedCard?.docId || null} onToggle={toggleNode} onSelectNode={(id) => { selectNode(id); setTreeOpen(false); }} onSelectCard={(card) => { selectCard(card); setTreeOpen(false); }} onClose={() => setTreeOpen(false)} filter={search} filters={filters} displaySettings={displaySettings} drawerWidth={displaySettings.treeDrawerWidth} onResize={(treeDrawerWidth) => { setDisplaySettings((current) => ({ ...current, treeDrawerWidth })); setUiPrefsDirty(true); }} />
       <BaseDetailCardDrawer
         card={selectedCard}
         onClose={() => { setSelectedCard(null); setSelectedProblemId(null); updateUrl({ cardId: null, problemId: null }); }}
@@ -567,6 +567,7 @@ export default function BaseDetailApp() {
         baseDocId={docId}
         domainId={domainId}
         drawerWidth={displaySettings.cardDrawerWidth}
+        onResize={(cardDrawerWidth) => { setDisplaySettings((current) => ({ ...current, cardDrawerWidth })); setUiPrefsDirty(true); }}
       />
       {editCard ? <BaseDetailCardEditDialog card={editCard} availableTags={availableCardTags} onSave={saveCard} onClose={() => setEditCard(null)} /> : null}
       {editProblem && editingProblemCard && editingProblem ? (

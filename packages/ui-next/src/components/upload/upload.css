@@ -1,4 +1,3 @@
-/* Upload progress dialog and bars, shared by every ui-next upload surface. */
 .uix-upload-backdrop {
   position: fixed;
   z-index: 1500;

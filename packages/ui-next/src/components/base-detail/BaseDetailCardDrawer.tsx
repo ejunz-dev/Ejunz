@@ -5,7 +5,8 @@ import 'viewerjs/dist/viewer.css';
 import { i18n } from '../../i18n';
 import { renderMarkdown } from './markdown';
 import { BaseDetailProblemList } from './BaseDetailProblemList';
-import { useDrawerPresence, useDrawerSwipe } from './drawer-hooks';
+import { useDrawerPresence, useDrawerResize, useDrawerSwipe } from './drawer-hooks';
+import { cardDrawerWidthRange } from './display-settings';
 import { cardDisplayLabel } from './tree';
 import type { BaseDetailCard } from './types';
 import './base-detail.css';
@@ -21,6 +22,7 @@ interface Props {
   baseDocId?: string;
   domainId?: string;
   drawerWidth?: number;
+  onResize?: (width: number) => void;
 }
 
 function fileUrl(card: BaseDetailCard, baseDocId?: string, domainId?: string): string {
@@ -29,9 +31,18 @@ function fileUrl(card: BaseDetailCard, baseDocId?: string, domainId?: string): s
   return `${prefix}/base/${encodeURIComponent(baseDocId)}/node/${encodeURIComponent(card.nodeId)}/file/${encodeURIComponent(card.fileName)}?noDisposition=1`;
 }
 
-export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, onEditCard, onEditProblem, editorBusy, selectedProblemId, baseDocId, domainId, drawerWidth }: Props) {
+export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, onEditCard, onEditProblem, editorBusy, selectedProblemId, baseDocId, domainId, drawerWidth, onResize }: Props) {
   const { present, closing } = useDrawerPresence(Boolean(card));
   const swipe = useDrawerSwipe('right', onClose);
+  const width = drawerWidth ?? 620;
+  const drawerWidthStyle = `min(${width}px, calc(100vw - 1rem))`;
+  const resize = useDrawerResize({
+    side: 'right',
+    width,
+    min: cardDrawerWidthRange.min,
+    max: cardDrawerWidthRange.max,
+    onWidth: onResize ?? (() => {}),
+  });
   const [renderedCard, setRenderedCard] = useState(card);
   const [tab, setTab] = useState<'content' | 'problems'>('content');
   const [loadingMedia, setLoadingMedia] = useState(true);
@@ -129,11 +140,13 @@ export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, onEditCar
 
   if (!present || !displayCard) return null;
   const url = fileUrl(displayCard, baseDocId, domainId);
+  const fileKind = `${displayCard.fileType || ''}`.toLowerCase();
   const hasEmbeddedMedia = /<(?:img|iframe|video|object|embed)\b/i.test(contentHtml);
   return createPortal(
     <>
       <button type="button" className={`bd-backdrop bd-card-backdrop${closing ? ' is-closing' : ''}`} onClick={onClose} aria-label={i18n('Close')} />
-      <aside ref={drawerRef} className={`bd-drawer bd-card-drawer${closing ? ' is-closing' : ''}`} style={{ ...(drawerWidth ? { width: `min(${drawerWidth}px, calc(100vw - 1rem))` } : {}), ...swipe.style }} onPointerDown={swipe.onPointerDown} onPointerMove={swipe.onPointerMove} onPointerUp={swipe.onPointerUp} onPointerCancel={swipe.onPointerCancel} tabIndex={-1} role="dialog" aria-modal="true" aria-label={cardDisplayLabel(displayCard)}>
+      {onResize ? <div className="bd-drawer__resize bd-drawer__resize--card" style={{ right: drawerWidthStyle }} data-dragging={resize.dragging || undefined} role="separator" aria-orientation="vertical" aria-label={i18n('Resize')} {...resize.handleProps} /> : null}
+      <aside ref={drawerRef} className={`bd-drawer bd-card-drawer${closing ? ' is-closing' : ''}`} style={{ width: drawerWidthStyle, ...swipe.style }} data-resizing={resize.dragging || undefined} onPointerDown={swipe.onPointerDown} onPointerMove={swipe.onPointerMove} onPointerUp={swipe.onPointerUp} onPointerCancel={swipe.onPointerCancel} tabIndex={-1} role="dialog" aria-modal="true" aria-label={cardDisplayLabel(displayCard)}>
         <header className="bd-drawer__header">
           <div className="bd-drawer__tabs" role="tablist">
             <button type="button" role="tab" aria-selected={tab === 'content'} className={tab === 'content' ? 'is-active' : ''} onClick={() => setTab('content')}>{i18n('Content')}</button>
@@ -152,7 +165,12 @@ export function BaseDetailCardDrawer({ card, onClose, onSelectProblem, onEditCar
             {displayCard.cardType === 'file' && url ? (
               <div className="bd-drawer__file">
                 {loadingMedia ? <span className="bd-media-loader" role="status" aria-label={i18n('Loading...')} /> : null}
-                {displayCard.fileType === 'image' ? <img src={url} alt={displayCard.fileName || ''} onLoad={() => setLoadingMedia(false)} onError={() => setLoadingMedia(false)} /> : displayCard.fileType === 'video' ? <video controls src={url} onLoadedData={() => setLoadingMedia(false)} onError={() => setLoadingMedia(false)} /> : displayCard.fileType === 'audio' ? <audio controls src={url} onCanPlay={() => setLoadingMedia(false)} onError={() => setLoadingMedia(false)} /> : <a href={url} target="_blank" rel="noreferrer" onClick={() => setLoadingMedia(false)}>{i18n('Open')} {displayCard.fileName}</a>}
+                {fileKind === 'image' ? <img src={url} alt={displayCard.fileName || ''} onLoad={() => setLoadingMedia(false)} onError={() => setLoadingMedia(false)} /> : fileKind === 'video' ? <video controls src={url} onLoadedData={() => setLoadingMedia(false)} onError={() => setLoadingMedia(false)} /> : fileKind === 'audio' ? <audio controls src={url} onCanPlay={() => setLoadingMedia(false)} onError={() => setLoadingMedia(false)} /> : fileKind === 'pdf' ? <>
+                  <object className="bd-drawer__pdf" data={url} type="application/pdf" aria-label={displayCard.fileName || ''}>
+                    <embed className="bd-drawer__pdf" src={url} type="application/pdf" />
+                  </object>
+                  <a className="bd-drawer__pdf-link" href={url} target="_blank" rel="noreferrer">{i18n('Open')} {displayCard.fileName}</a>
+                </> : <a href={url} target="_blank" rel="noreferrer" onClick={() => setLoadingMedia(false)}>{i18n('Open')} {displayCard.fileName}</a>}
               </div>
             ) : displayCard.content ? (
               <div className="bd-markdown--media-aware">
