@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react';
 import type { ExposeParam, UploadImgEvent } from 'md-editor-rt';
 import 'md-editor-rt/lib/style.css';
+import { useUserContext } from '../../context/page-data';
+import { useBuildUrl } from '../../hooks/use-build-url';
 import { i18n } from '../../i18n';
-import Notification from '../notification';
-import { isUploadableImage, useUserFileUpload } from './upload';
+import { useUploadFiles } from '../upload';
 import './markdown-editor.css';
 
 interface Props {
@@ -30,7 +31,9 @@ export function MarkdownEditor({ value, onChange, theme = 'light', className = '
   const wrapperRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<ExposeParam | null>(null);
   const dragDepthRef = useRef(0);
-  const uploadFiles = useUserFileUpload();
+  const buildUrl = useBuildUrl();
+  const { _id: userId } = useUserContext();
+  const { upload: uploadFiles, dialog: uploadDialog } = useUploadFiles({ imagesOnly: true });
 
   useEffect(() => {
     let cancelled = false;
@@ -43,23 +46,9 @@ export function MarkdownEditor({ value, onChange, theme = 'light', className = '
   }, []);
 
   const upload = useCallback(async (files: File[]): Promise<string[]> => {
-    const images = files.filter(isUploadableImage);
-    if (!images.length) {
-      Notification.warn(i18n('Unsupported file type. Please upload an image (png, jpg, jpeg, gif).'));
-      return [];
-    }
-    const notice = await Notification.info(i18n('Uploading...'));
-    try {
-      const urls = await uploadFiles(images);
-      Notification.hide(notice);
-      Notification.success(i18n('File uploaded successfully.'));
-      return urls;
-    } catch {
-      Notification.hide(notice);
-      Notification.error(i18n('Image upload failed'));
-      return [];
-    }
-  }, [uploadFiles]);
+    const stored = await uploadFiles(files);
+    return stored.map(({ filename }) => buildUrl('fs_download', { uid: String(userId), filename }));
+  }, [buildUrl, uploadFiles, userId]);
 
   const handleUploadImg = useCallback<UploadImgEvent>((files, callback) => {
     void upload(files).then(callback);
@@ -123,6 +112,7 @@ export function MarkdownEditor({ value, onChange, theme = 'light', className = '
           onChange={(event) => onChange(event.target.value)}
           placeholder="Markdown"
         />
+        {uploadDialog}
       </div>
     );
   }
@@ -146,6 +136,7 @@ export function MarkdownEditor({ value, onChange, theme = 'light', className = '
         onUploadImg={handleUploadImg}
       />
       {dropping ? <div className="uix-markdown-editor__drop">{i18n('Upload image')}</div> : null}
+      {uploadDialog}
     </div>
   );
 }

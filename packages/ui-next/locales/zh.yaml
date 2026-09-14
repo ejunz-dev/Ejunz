@@ -1,1 +1,11 @@
 'File uploaded successfully.': 文件上传成功
+'Uploading files...': '正在上传文件…'
+'Uploading... ({0}%)': '上传中… ({0}%)'
+'Compressing image...': '正在压缩图片…'
+'Processing...': '处理中…'
+'File upload failed: {0}': '文件上传失败：{0}'
+'No file selected.': '未选择文件'
+'Unsupported file type. Please upload an image (png, jpg, jpeg, gif).': '不支持的文件类型，请上传图片（png、jpg、jpeg、gif）'
+'Network error': '网络错误'
+'Upload aborted': '上传已中断'
+'Not logged in': '未登录'

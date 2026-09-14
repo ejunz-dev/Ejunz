@@ -1,1 +1,11 @@
 'File uploaded successfully.': File uploaded successfully.
+'Uploading files...': 'Uploading files...'
+'Uploading... ({0}%)': 'Uploading... ({0}%)'
+'Compressing image...': 'Compressing image...'
+'Processing...': 'Processing...'
+'File upload failed: {0}': 'File upload failed: {0}'
+'No file selected.': 'No file selected.'
+'Unsupported file type. Please upload an image (png, jpg, jpeg, gif).': 'Unsupported file type. Please upload an image (png, jpg, jpeg, gif).'
+'Network error': 'Network error'
+'Upload aborted': 'Upload aborted'
+'Not logged in': 'Not logged in'

@@ -11,6 +11,11 @@ export { Notification } from './components/notification';
 export { Navigation } from './components/navigation';
 export { Footer } from './components/footer';
 export * from './components/base-detail';
+export {
+  UploadProgressDialog, useUploadFiles, compressImage, defaultUploadFilename, isUploadableImage, uploadFiles,
+  type UploadDialogState, type UploadProgressDialogProps, type UploadedFile, type UploadOptions, type UploadPhase,
+  type UploadProgress, type UseUploadFilesOptions, type UseUploadFilesResult,
+} from './components/upload';
 
 // Context
 export { type PageData, usePageData, useUiContext, useUserContext } from './context/page-data';

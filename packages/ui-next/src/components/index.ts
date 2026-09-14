@@ -11,3 +11,8 @@ export * from './homepage';
 export { MarkdownEditor } from './markdown-editor';
 export { default as Sock } from './socket';
 export * from './base-detail';
+export {
+  UploadProgressDialog, useUploadFiles, compressImage, defaultUploadFilename, isUploadableImage, uploadFiles,
+  type UploadDialogState, type UploadProgressDialogProps, type UploadedFile, type UploadOptions, type UploadPhase,
+  type UploadProgress, type UseUploadFilesOptions, type UseUploadFilesResult,
+} from './upload';
