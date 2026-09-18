@@ -1,6 +1,7 @@
 /// <reference path="./napi-canvas.d.ts" />
 import type { Context } from 'ejun/src/context';
 import ToolService from './registry';
+import { createToolPublication } from './publication';
 import type { ToolDeclaration } from './registry';
 import type { ToolArgs, ToolContext } from './types';
 import {
@@ -141,5 +142,5 @@ export async function apply(ctx: Context): Promise<void> {
     const services = ctx as any;
     const tools = (typeof services.get === 'function' ? services.get('tools') : services.tools) as ToolService | undefined;
     if (!tools) throw new Error('ejunztools: the tool registry did not start');
-    tools.register({ source: 'base', tools: BUILTIN_TOOLS_CATALOG.map(declaration) });
+    createToolPublication(ctx, 'base', { tools: BUILTIN_TOOLS_CATALOG.map(declaration) });
 }
