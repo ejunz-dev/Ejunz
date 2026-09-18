@@ -43,9 +43,10 @@ export async function apply(ctx: Context) {
         ctx.loader.reloadPlugin(require.resolve('../service/worker'), 'worker'),
         ctx.loader.reloadPlugin(require.resolve('../service/server'), 'server'),
         ctx.loader.reloadPlugin(require.resolve('../service/mqtt'), 'mqtt'),
+        ctx.loader.reloadPlugin(require.resolve('../service/tools'), 'tools'),
     ]);
     ctx = await new Promise((resolve) => {
-        ctx.inject(['server'], (c) => {
+        ctx.inject(['server', 'tools'], (c) => {
             resolve(c);
         });
     });
@@ -56,9 +57,8 @@ export async function apply(ctx: Context) {
     await builtinModel(ctx);
     await model(pending, fail, ctx);
     await ctx.plugin(require('../service/monitor'));
-    await ctx.plugin(require('../service/embedding').default);
     ctx = await new Promise((resolve) => {
-        ctx.inject(['worker', 'setting', 'embedding'], (c) => {
+        ctx.inject(['worker', 'setting', 'tools'], (c) => {
             resolve(c);
         });
     });
@@ -72,24 +72,24 @@ export async function apply(ctx: Context) {
     if (process.env.NODE_APP_INSTANCE === '0') {
         const staticDir = path.join(os.homedir(), '.ejunz/static');
         await fs.emptyDir(staticDir);
-        // Use ordered copy to allow resource override
+
         for (const f of Object.values(global.addons)) {
             const dir = path.join(f, 'public');
-            // eslint-disable-next-line no-await-in-loop
+
             if (await fs.pathExists(dir)) await fs.copy(dir, staticDir);
         }
-        // await new Promise((resolve, reject) => {
-        //     ctx.inject(['migration'], async (c) => {
-        //         c.migration.registerChannel('ejunz', require('../upgrade').coreScripts);
-        //         try {
-        //             await c.migration.doUpgrade();
-        //             resolve(null);
-        //         } catch (e) {
-        //             logger.error('Upgrade failed: %O', e);
-        //             reject(e);
-        //         }
-        //     });
-        // });
+
+
+
+
+
+
+
+
+
+
+
+
     }
     ctx.inject(['server'], async ({ server }) => {
         await server.listen();

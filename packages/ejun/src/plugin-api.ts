@@ -1,4 +1,4 @@
-/* eslint-disable perfectionist/sort-exports */
+
 import pwsh from './lib/hash.ejunz';
 import db from './service/db';
 
@@ -48,4 +48,21 @@ export * from '@ejunz/framework/decorators';
 export * from '@ejunz/framework/validator';
 export * as StorageService from './service/storage';
 export { EventMap } from './service/bus';
+export { default as ToolService } from './service/registry';
+export { createProvider } from './service/provider';
+export { schemaToJsonSchema } from './lib/tool-schema';
+export * from './lib/tool-limits';
+export type { Provider, ProviderScope } from './service/provider';
+export type {
+    RegisteredTool, ToolAccess, ToolBindBase, ToolDeclaration, ToolDefinition, ToolExecute,
+    ToolInstructionsContext, ToolRegisterOptions, ToolSource,
+} from './service/registry';
+export type {
+    SystemToolExecutionContext,
+    ToolArgs,
+    ToolBaseSelectPayload,
+    ToolCalledPayload,
+    ToolContext,
+    ToolSpec,
+} from './lib/tool-types';
 export { db, pwsh };

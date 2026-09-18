@@ -1,4 +1,3 @@
-/* eslint-disable ts/no-unsafe-declaration-merging */
 import http from 'http';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -29,16 +28,16 @@ export { WebSocket, WebSocketServer } from 'ws';
 
 export const kHandler = Symbol.for('ejunz.handler');
 
-// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/encodeURIComponent
+
 export function encodeRFC5987ValueChars(str: string) {
     return (
         encodeURIComponent(str)
-            // Note that although RFC3986 reserves "!", RFC5987 does not,
-            // so we do not need to escape it
+
+
             .replace(/['()]/g, escape) // i.e., %27 %28 %29
             .replace(/\*/g, '%2A')
-            // The following are not required for percent-encoding per RFC5987,
-            // so we can allow for a little better readability over the wire: |`^
+
+
             .replace(/%(?:7C|60|5E)/g, unescape)
     );
 }
@@ -78,10 +77,10 @@ export interface EjunzResponse {
     type: string;
     status: number;
     template?: string;
-    /**
-     * If set, and pjax content was request from client,
-     *  The template will be used for rendering.
-     */
+
+
+
+
     pjax?: string | (readonly [string, Record<string, any>])[];
     redirect?: string;
     disposition?: string;
@@ -121,7 +120,7 @@ export type Renderer = (BinaryRenderer | TextRenderer) & {
 };
 
 const logger = new Logger('server');
-/** @deprecated */
+
 export const koa = new Koa<Koa.DefaultState, KoaContext>({
     keys: [Math.random().toString(16).substring(2)],
 });
@@ -148,7 +147,7 @@ export interface UserModel {
     _id: number;
 }
 
-export interface HandlerCommon<C> { } // eslint-disable-line ts/no-unused-vars
+export interface HandlerCommon<C> { }
 export class HandlerCommon<C> {
     static [kHandler]: string | boolean = 'HandlerCommon';
     session: Record<string, any>;
@@ -183,7 +182,7 @@ export class HandlerCommon<C> {
         const query: any = Object.create(null);
         for (const kwargs of kwargsList) {
             for (const key in kwargs) {
-                args[key] = kwargs[key].toString().replace(/\//g, '%2F');
+                args[key] = kwargs[key].toString().replace(/
             }
             for (const key in kwargs.query || {}) {
                 query[key] = kwargs.query[key].toString();
@@ -380,7 +379,7 @@ export class WebService<C extends CordisContext = CordisContext> extends Service
 
     constructor(ctx: C, public config: ReturnType<typeof WebService.Config>) {
         super(ctx, 'server');
-        ctx.mixin('server', ['Route', 'Connection', 'withHandlerClass']);
+        ctx.mixin('server', ['Route', 'Connection', 'withHandlerClass', 'Tool']);
         this.server.keys = this.config.keys;
         this.server.proxy = this.config.proxy;
         const corsAllowHeaders = 'x-requested-with, accept, origin, content-type, upgrade-insecure-requests, x-ejunz-inject';
@@ -795,6 +794,14 @@ ${c.response.status} ${endTime - startTime}ms ${c.response.length}`);
         });
     }
 
+    public Tool(name: string, execute: unknown, ...args: unknown[]) {
+        const tools = this.ctx.get('tools') as {
+            Tool(name: string, execute: unknown, ...args: unknown[]): unknown;
+        } | undefined;
+        if (!tools) throw new Error('Tool service is unavailable.');
+        return tools.Tool(name, execute, ...args);
+    }
+
     public withHandlerClass<T extends string>(
         name: T, callback: (HandlerClass: T extends `${string}ConnectionHandler` ? typeof ConnectionHandler<C> : typeof Handler<C>) => any,
     ) {
@@ -908,5 +915,6 @@ declare module 'cordis' {
         Route: WebService<this>['Route'];
         Connection: WebService<this>['Connection'];
         withHandlerClass: WebService<this>['withHandlerClass'];
+        Tool: WebService<this>['Tool'];
     }
 }

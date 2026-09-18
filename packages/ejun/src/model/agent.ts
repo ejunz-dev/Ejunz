@@ -56,7 +56,7 @@ function appendUniversalAssistantRules(systemMessage: string): string {
         + 'Do not default to English when the user writes in Chinese, Japanese, or other non-English languages.';
     const toolUrlRule =
         '\n\n**Tool result URLs (critical)**: When a tool returns links (relative paths or absolute URLs), and you include them in your reply to the user, copy them **exactly** from the tool output—same characters, same scheme and host (if present), same path and query. '
-        + 'Do not prepend `https://`, do not substitute the chat page host or any other domain you imagine, and do not invent or "normalize" a base URL. '
+        + 'Do not prepend `https
         + 'If the tool gives a path starting with `/d/`, keep it exactly that way unless the tool output already includes a full URL.';
     let out = systemMessage || '';
     if (!out.includes('do not use emoji')) out += emojiRule;
@@ -83,7 +83,7 @@ function normalizeChatHistory(history?: string | any[]): any[] {
 }
 
 export async function getAgentExecutionTools(domainId: string, adoc: AgentDoc): Promise<any[]> {
-    // The plugin tool surface is deleted: an agent carries no plugin tools.
+
     void domainId;
     void adoc;
     return [];
@@ -294,7 +294,7 @@ export class AgentModel {
             nReply: 0,
             updateAt: new Date(),
             views: 0,
-            ...meta, 
+            ...meta,
         };
 
         await document.add(
@@ -312,11 +312,11 @@ export class AgentModel {
     }
 
     static async add(
-        domainId: string, 
-        owner: number, 
-        title: string, 
-        content: string, 
-        ip?: string, 
+        domainId: string,
+        owner: number,
+        title: string,
+        content: string,
+        ip?: string,
     ): Promise<string> {
         const docId = await AgentModel.generateNextDocId(domainId);
         return AgentModel.addWithId(domainId, docId, owner, title, content, ip);
@@ -324,19 +324,19 @@ export class AgentModel {
 
     static async getByAid(domainId: string, aid: string): Promise<AgentDoc | null> {
         const query = /^\d+$/.test(aid) ? { docId: Number(aid) } : { aid };
-    
-    
+
+
         const doc = await document.getMulti(domainId, document.TYPE_AGENT, query)
-            .project<AgentDoc>(buildProjection(AgentModel.PROJECTION_DETAIL)) 
+            .project<AgentDoc>(buildProjection(AgentModel.PROJECTION_DETAIL))
             .limit(1)
             .next();
-    
+
         if (!doc) {
             console.warn(`[AgentModel.getByAid] No document found for query=`, query);
         } else {
             console.log(`[AgentModel.getByAid] Retrieved document:`, JSON.stringify(doc, null, 2));
         }
-    
+
         return doc || null;
     }
 
@@ -348,10 +348,10 @@ export class AgentModel {
         );
         return doc || null;
     }
-    
+
 
     static async get(
-        domainId: string, 
+        domainId: string,
         aid: string | number,
         projection: Projection<AgentDoc> = AgentModel.PROJECTION_PUBLIC
     ): Promise<AgentDoc | null> {
@@ -369,7 +369,7 @@ export class AgentModel {
     }
 
     static async listFiles(
-        domainId: string, 
+        domainId: string,
         query: Filter<AgentDoc>,
         page: number, pageSize: number,
         projection = AgentModel.PROJECTION_LIST, uid?: number,
@@ -428,33 +428,33 @@ export class AgentModel {
         return [rdocs, Math.ceil(count / pageSize), count];
     }
     static async getList(
-        domainId: string, 
+        domainId: string,
         docIds: number[],
-        projection = AgentModel.PROJECTION_PUBLIC, 
+        projection = AgentModel.PROJECTION_PUBLIC,
         indexByDocIdOnly = false,
     ): Promise<Record<number | string, AgentDoc>> {
         if (!docIds?.length) {
             return {};
         }
-    
+
         const r: Record<number, AgentDoc> = {};
         const l: Record<string, AgentDoc> = {};
-    
+
         const q: any = { docId: { $in: docIds } };
-    
+
         let agents = await document.getMulti(domainId, document.TYPE_AGENT, q)
             .project<AgentDoc>(buildProjection(projection))
             .toArray();
-    
+
         for (const agent of agents) {
             r[agent.docId] = agent;
             if (agent.aid) l[agent.aid] = agent;
         }
-    
+
         return indexByDocIdOnly ? r : Object.assign(r, l);
     }
 
-    
+
     static async edit(domainId: string, aid: string, updates: Partial<AgentDoc>): Promise<AgentDoc> {
         const agent = await document.getMulti(domainId, document.TYPE_AGENT, { aid }).next();
         if (!agent) throw new Error(`Document with aid=${aid} not found`);
@@ -621,7 +621,6 @@ export class McpClient {
         toolType?: string,
         baseDocId?: number,
         toolCallerUid?: number,
-        embeddingOverride?: any,
     ): Promise<any> {
         try {
             ClientLogger.info('[tool] callTool: name=%s toolType=%s', name, toolType ?? 'undefined');
@@ -629,36 +628,6 @@ export class McpClient {
             if (!ctx) {
                 throw new Error('Context not available');
             }
-
-            let embedding = embeddingOverride;
-            let ctxEmbedding = false;
-            let ctxEmbeddingError = '';
-            if (!embedding) {
-                try {
-                    embedding = (ctx as any).embedding;
-                    ctxEmbedding = !!embedding;
-                } catch (err: any) {
-                    ctxEmbeddingError = err?.message || String(err);
-                }
-            }
-            ClientLogger.info('[diag] callTool context: name=%s toolType=%s domainId=%s baseDocId=%s owner=%s hasEmbeddingOverride=%s hasCtxEmbedding=%s ctxEmbeddingError=%s pid=%d NODE_APP_INSTANCE=%s',
-                name,
-                toolType ?? '',
-                domainId || '',
-                baseDocId || '',
-                toolCallerUid || '',
-                !!embeddingOverride,
-                ctxEmbedding,
-                ctxEmbeddingError,
-                process.pid,
-                process.env.NODE_APP_INSTANCE || '',
-            );
-            const systemToolContext = {
-                domainId,
-                baseDocId,
-                owner: toolCallerUid,
-                embedding,
-            };
 
             // Check if it's a repo internal MCP tool (format: repo_{rpid}_{operation}...)
 
@@ -675,10 +644,10 @@ export class McpClient {
                     const cleanArgs = { ...args };
                     delete (cleanArgs as any).__agentId;
                     delete (cleanArgs as any).__agentName;
-                    
-                    const result = await ctx.serial('mcp/tool/call/repo', { 
-                        name, 
-                        args: cleanArgs, 
+
+                    const result = await ctx.serial('mcp/tool/call/repo', {
+                        name,
+                        args: cleanArgs,
                         domainId,
                         agentId,
                         agentName,

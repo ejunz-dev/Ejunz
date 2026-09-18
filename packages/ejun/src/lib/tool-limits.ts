@@ -1,0 +1,9 @@
+export const MAX_NODES_PER_CALL = 500;
+export const MAX_FILE_CREATES_PER_CALL = 50;
+export const MAX_FILE_DOWNLOADS_IN_FLIGHT = 5;
+export const MAX_FILE_CONTENT_CHARS = 20000;
+export const MAX_FILE_CONTENT_CHARS_LIMIT = 200000;
+export const MAX_FILE_CONTENT_BYTES = 64 * 1024 * 1024;
+export const MAX_FILE_CONTENT_PAGES = 10000;
+export const MAX_CARDS_PER_CALL = 500;
+export const MAX_PROBLEMS_PER_CALL = 500;

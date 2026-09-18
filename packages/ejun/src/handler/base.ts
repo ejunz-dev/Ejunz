@@ -66,11 +66,14 @@ import {
 } from '../model/problem';
 import LearnProblemNoteModel from '../model/learnProblemNote';
 import { collectRoadmapBatchSaveNumberErrors } from '../model/base';
-import { enqueueEmbeddingIndex, SEMANTIC_SEARCH_TOOL, buildEmbeddingStatusView } from '../service/embeddingWorker';
-import { callToolViaWorker } from './worker';
-/**
- * Input of the Base git endpoints, which the git tools in `@ejunz/ejunztools` call.
- */
+
+function notifyBaseContentChange(input: Record<string, unknown>) {
+    const app = (global as any).app;
+    return app?.parallel?.('base/content-change', input) ?? Promise.resolve();
+}
+
+
+
 export interface BaseGitInput {
     domainId: string;
     baseDocId: number;
@@ -165,7 +168,7 @@ async function applyLearnProblemNotesBatchBlocks(
     }
 }
 
-/** Machine token in {@link BadRequestError} params for API clients (see `request.ajax` in ui-default). */
+
 const DEVELOP_SESSION_CLOSED_CODE = 'DEVELOP_SESSION_CLOSED';
 
 export async function assertDevelopSessionAllowsEdits(
@@ -208,10 +211,10 @@ const exec = promisify(execCb);
 const execFile = promisify(execFileCb);
 const logger = new Logger('base');
 
-/**
- * Base editor sends the full local `problems[]` snapshot; tags are maintained in Lesson and can be newer in DB.
- * For each incoming problem with matching `pid`, keep stored `tags` (or absence of tags) instead of stale UI copies.
- */
+
+
+
+
 function mergeIncomingProblemsPreserveStoredTags(incoming: Problem[], stored?: Problem[] | null): Problem[] {
     if (!Array.isArray(stored) || stored.length === 0) return incoming;
     const byPid = new Map<string, Problem>();
@@ -225,8 +228,8 @@ function mergeIncomingProblemsPreserveStoredTags(incoming: Problem[], stored?: P
         if (!pid || !byPid.has(pid)) return inc;
         const st = byPid.get(pid)!;
         const merged: Problem = { ...inc };
-        // Only restore stored tags when the incoming problem has NO tags
-        // (editor didn't touch them). If the incoming has tags, respect the editor.
+
+
         if (!Object.prototype.hasOwnProperty.call(inc, 'tags') || inc.tags === undefined || inc.tags === null) {
             if (Object.prototype.hasOwnProperty.call(st, 'tags')) {
                 if (Array.isArray(st.tags) && st.tags.length >= 0) {
@@ -272,23 +275,23 @@ function buildGithubRemoteUrl(githubRepo: string, token: string): string {
     const repo = (githubRepo || '').trim();
     if (!repo) return '';
     if (repo.startsWith('git@')) return repo;
-    const isGitHubHttps = /^https?:\/\/.*github\.com\//.test(repo);
+    const isGitHubHttps = /^https?:\/\/.*github\.com
     if (isGitHubHttps) {
         let repoPathMatch = repo.match(/^https?:\/\/[^@]+@github\.com\/(.+)$/);
         if (!repoPathMatch) repoPathMatch = repo.match(/^https?:\/\/github\.com\/(.+)$/);
         if (repoPathMatch?.[1]) {
             const pathPart = repoPathMatch[1];
             if (!token) return `https://github.com/${pathPart}`;
-            return `https://${token}@github.com/${pathPart}`;
+            return `https
         }
-        const stripped = repo.replace(/^https?:\/\/[^@]+@github\.com\//, 'https://github.com/');
+        const stripped = repo.replace(/^https?:\/\/[^@]+@github\.com
         if (!token) return stripped;
-        return stripped.replace(/^https:\/\/github\.com\//, `https://${token}@github.com/`);
+        return stripped.replace(/^https:\/\/github\.com
     }
     if (!repo.includes('://') && !repo.includes('@')) {
         const repoPath = repo.replace(/\.git$/, '');
         if (!token) return `https://github.com/${repoPath}.git`;
-        return `https://${token}@github.com/${repoPath}.git`;
+        return `https
     }
     return repo;
 }
@@ -331,12 +334,12 @@ async function resolveBaseDocFromGithubRequest(
 async function resolveBaseByDocIdOrBid(domainId: string, docIdOrBid: string): Promise<BaseDoc | null> {
     const key = String(docIdOrBid || '').trim();
     if (!key) return null;
-    // 1) Try docId (numeric)
+
     if (/^\d+$/.test(key)) {
         const byDocId = await BaseModel.get(domainId, Number(key));
         if (byDocId) return byDocId;
     }
-    // 2) Try slug (path identifier)
+
     return BaseModel.getBySlug(domainId, key);
 }
 
@@ -605,9 +608,9 @@ async function buildTodayContributionAllDomains(uid: number): Promise<{
     return { nodes, cards, problems, nodeChars, cardChars, problemChars };
 }
 
-/**
- * Base Detail Handler
- */
+
+
+
 class BaseDetailHandler extends Handler {
     base?: BaseDoc;
 
@@ -617,17 +620,17 @@ class BaseDetailHandler extends Handler {
         if (path.endsWith('.css.map') || path.endsWith('.js.map') || path.endsWith('.map')) {
             throw new NotFoundError('Static resource');
         }
-        
+
         if (docId) {
             this.base = await resolveBaseByDocIdOrBid(domainId, docId);
         } else {
             this.base = await BaseModel.getByDomain(domainId);
         }
-        
+
         if (!this.base) {
             throw new NotFoundError('Base not found');
         }
-        
+
         await BaseModel.incrementViews(domainId, this.base.docId);
     }
 
@@ -635,10 +638,10 @@ class BaseDetailHandler extends Handler {
     async get(domainId: string, docId?: string) {
         this.response.template = 'base_detail.html';
 
-        // Get git status
+
         let gitStatus: any = null;
         const githubRepo = (this.base?.githubRepo || '') as string;
-        
+
         if (githubRepo && githubRepo.trim()) {
             try {
                 const REPO_URL = await resolveGithubRemoteUrlForRepo(
@@ -661,8 +664,8 @@ class BaseDetailHandler extends Handler {
                 gitStatus = null;
             }
         }
-        
-        
+
+
         const nodes = this.base!.nodes || [];
         const edges = this.base!.edges || [];
 
@@ -809,7 +812,7 @@ class BaseStudyHandler extends Handler {
             >;
         }> = [];
 
-        
+
         const collectNodeProblems = async (node: BaseNode): Promise<
             Array<
                 Problem & {
@@ -826,18 +829,18 @@ class BaseStudyHandler extends Handler {
                     cardUrl: string;
                 }
             > = [];
-            
+
             try {
                 const cards = await CardModel.getByNodeId(domainId, this.base!.docId, node.id);
-                
+
                 if (cards && cards.length > 0) {
                     const docId = this.base!.docId;
-                    
+
                     for (const card of cards) {
                         if (card.problems && card.problems.length > 0) {
-                            
+
                             const cardUrl = `/d/${domainId}/base/${docId}/node/${node.id}/cards?cardId=${card.docId}`;
-                            
+
                             for (const problem of card.problems) {
                                 allProblems.push({
                                     ...problem,
@@ -852,24 +855,24 @@ class BaseStudyHandler extends Handler {
             } catch (err) {
                 console.error(`Failed to get cards for node ${node.id}:`, err);
             }
-            
+
             return allProblems;
         };
 
         if (rootNodes.length > 0) {
             const rootNode = rootNodes[0];
-            
-            
+
+
             const rootProblems = await collectNodeProblems(rootNode);
             units.push({
                 node: rootNode,
                 problemCount: rootProblems.length,
                 problems: rootProblems,
             });
-            
-            
+
+
             const childEdges = edges.filter(e => e.source === rootNode.id);
-            
+
             for (const edge of childEdges) {
                 const childNode = nodes.find(n => n.id === edge.target);
                 if (childNode) {
@@ -1031,7 +1034,7 @@ export class BaseEditorHandler extends Handler {
             baseEditorUiPrefs,
             editorRootNodeId,
             editorFocusNodeId,
-            
+
             ...(opts.responsePageName ? { page_name: opts.responsePageName } : {}),
         };
     }
@@ -1211,25 +1214,25 @@ class BaseCreateHandler extends Handler {
                 createdBase = await BaseModel.getByDomain(actualDomainId);
             }
         }
-        
+
         if (!createdBase) {
             throw new Error(`Failed to create base: record not found after creation (docId: ${docId.toString()}, domainId: ${actualDomainId})`);
         }
 
-        
+
         try {
             // await ensureBaseGitRepo(actualDomainId, docId);
             ''
-            
+
             try {
                 await createAndPushToGitHubOrgForBase(this, actualDomainId, docId, title, this.user);
             } catch (err) {
                 console.error('Failed to create remote GitHub repo:', err);
-                
+
             }
         } catch (err) {
             console.error('Failed to create git repo:', err);
-            
+
         }
 
         this.response.body = { docId, slug: finalSlug };
@@ -1266,7 +1269,7 @@ class BaseEditHandler extends Handler {
     async _prepare(domainId: string, docId: string) {
         this.base = await resolveBaseByDocIdOrBid(domainId, docId);
         if (!this.base) throw new NotFoundError('Base not found');
-        
+
         if (!this.user.own(this.base)) {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         }
@@ -1332,11 +1335,11 @@ class BaseEditHandler extends Handler {
 
     @param('docId', Types.String)
     async postDelete(domainId: string, docId: string) {
-        
+
         if (!this.user.own(this.base)) {
             this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
         }
-        
+
         await BaseModel.delete(domainId, this.base!.docId);
         this.response.body = { success: true };
         this.response.redirect = this.url('base_list');
@@ -1378,23 +1381,23 @@ export class BaseNodeHandler extends Handler {
         nodeId?: string,
     ) {
         const base = await this.resolveBase(domainId);
-        
+
         if (operation === 'delete' && nodeId) {
             return this.postDelete(domainId, nodeId);
         }
-        
+
         const body: any = this.request?.body || {};
         const finalText = text !== undefined ? text : body.text;
-        
+
         if (nodeId && operation === 'update') {
             return this.postUpdate(domainId, nodeId, finalText, undefined, undefined, undefined, x, y, undefined);
         }
-        
+
         if (finalText !== undefined || operation === 'add') {
             const finalTextValue = finalText !== undefined ? finalText : '';
             return this.postAdd(domainId, finalTextValue, x, y, parentId, siblingId);
         }
-        
+
         throw new BadRequestError('Missing required parameters');
     }
 
@@ -1412,40 +1415,40 @@ export class BaseNodeHandler extends Handler {
         siblingId?: string
     ) {
         const startTime = Date.now();
-        
+
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        
-        
+
+
         const actualDomainId = this.args.domainId || domainId || 'system';
         const base = await this.resolveBase(actualDomainId);
         const docId = base.docId;
-        
+
         if (!this.user.own(base)) {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         }
-        
+
         let newNodeId: string | undefined;
         let edgeId: string | undefined;
         let edgeSourceId: string | undefined;
         let edgeTargetId: string | undefined;
         let dedupKey: string | undefined;
-        
+
         try {
             const body: any = this.request?.body || {};
             const finalParentId = parentId !== undefined ? parentId : body.parentId;
             const finalSiblingId = siblingId !== undefined ? siblingId : body.siblingId;
-            
+
             dedupKey = `${actualDomainId}:${docId.toString()}:${text}:${finalParentId || ''}`;
             const lastRequestTimeRaw = nodeCreationDedupCache.get(dedupKey);
             const lastRequestTime = lastRequestTimeRaw ? Math.abs(lastRequestTimeRaw) : undefined;
             const timeSinceLastRequest = lastRequestTime ? startTime - lastRequestTime : Infinity;
-            
+
             if (lastRequestTime && timeSinceLastRequest < DEDUP_WINDOW_MS) {
                 throw new BadRequestError('Duplicate request detected. Please wait a moment and try again.');
             }
-            
+
             nodeCreationDedupCache.set(dedupKey, -startTime);
-            
+
             for (const [key, timestamp] of nodeCreationDedupCache.entries()) {
                 const absTimestamp = Math.abs(timestamp);
                 if (startTime - absTimestamp > DEDUP_WINDOW_MS * 2) {
@@ -1453,33 +1456,33 @@ export class BaseNodeHandler extends Handler {
                 }
             }
 
-            
+
             const nodes = base.nodes || [];
             const edges = base.edges || [];
-            
-            
-            
+
+
+
             if (finalParentId) {
-                const recentDuplicateNode = nodes.find(n => 
-                    n.text === text.trim() && 
+                const recentDuplicateNode = nodes.find(n =>
+                    n.text === text.trim() &&
                     n.parentId === finalParentId &&
-                    n.id && 
+                    n.id &&
                     n.id.startsWith('node_')
                 );
-                
+
                 if (recentDuplicateNode) {
-                    
+
                     const nodeIdMatch = recentDuplicateNode.id.match(/^node_(\d+)_/);
                     if (nodeIdMatch) {
                         const nodeCreatedTime = parseInt(nodeIdMatch[1], 10);
                         const timeSinceNodeCreation = startTime - nodeCreatedTime;
-                        
+
                         if (timeSinceNodeCreation < DEDUP_WINDOW_MS && timeSinceNodeCreation >= 0) {
-                            
-                            
+
+
                             const edgesForDedup = edges;
-                            
-                            this.response.body = { 
+
+                            this.response.body = {
                                 nodeId: recentDuplicateNode.id,
                                 edgeId: edgesForDedup.find(e => e.target === recentDuplicateNode.id && e.source === finalParentId)?.id,
                                 edgeSource: finalParentId,
@@ -1509,10 +1512,10 @@ export class BaseNodeHandler extends Handler {
             };
             if (body.type != null) (node as any).type = body.type;
 
-            
+
             if (finalSiblingId && !finalParentId) {
                 if (!effectiveParentId) {
-                    
+
                     const result = await BaseModel.addNode(
                         actualDomainId,
                         docId,
@@ -1522,14 +1525,14 @@ export class BaseNodeHandler extends Handler {
                     );
                     this.response.body = { nodeId: result.nodeId };
                     if ((text || '').trim()) {
-                        enqueueEmbeddingIndex({
+                        notifyBaseContentChange({
                             domainId: actualDomainId,
                             baseDocId: docId,
                             mode: 'incremental',
                             nodeIds: [result.nodeId],
                             owner: this.user._id,
                             reason: 'node_add',
-                        }).catch((err: any) => console.error('Embedding queue error after node add:', err));
+                        }).catch((err: any) => console.error('ContentChange queue error after node add:', err));
                     }
                     return;
                 }
@@ -1537,7 +1540,7 @@ export class BaseNodeHandler extends Handler {
             } else if (finalParentId) {
                 edgeSourceId = finalParentId;
             } else {
-                
+
                 const result = await BaseModel.addNode(
                     actualDomainId,
                     docId,
@@ -1547,14 +1550,14 @@ export class BaseNodeHandler extends Handler {
                 );
                 this.response.body = { nodeId: result.nodeId };
                 if ((text || '').trim()) {
-                    enqueueEmbeddingIndex({
+                    notifyBaseContentChange({
                         domainId: actualDomainId,
                         baseDocId: docId,
                         mode: 'incremental',
                         nodeIds: [result.nodeId],
                         owner: this.user._id,
                         reason: 'node_add',
-                    }).catch((err: any) => console.error('Embedding queue error after node add:', err));
+                    }).catch((err: any) => console.error('ContentChange queue error after node add:', err));
                 }
                 return;
             }
@@ -1566,32 +1569,32 @@ export class BaseNodeHandler extends Handler {
                 effectiveParentId,
                 edgeSourceId,
             );
-            
+
             newNodeId = result.nodeId;
             edgeId = result.edgeId;
             edgeTargetId = newNodeId;
 
             nodeCreationDedupCache.delete(dedupKey);
-            
-            this.response.body = { 
+
+            this.response.body = {
                 nodeId: newNodeId,
                 edgeId: edgeId,
                 edgeSource: edgeSourceId,
                 edgeTarget: edgeTargetId,
             };
             if (newNodeId && (text || '').trim()) {
-                enqueueEmbeddingIndex({
+                notifyBaseContentChange({
                     domainId: actualDomainId,
                     baseDocId: docId,
                     mode: 'incremental',
                     nodeIds: [newNodeId],
                     owner: this.user._id,
                     reason: 'node_add',
-                }).catch((err: any) => console.error('Embedding queue error after node add:', err));
+                }).catch((err: any) => console.error('ContentChange queue error after node add:', err));
             }
         } catch (error: any) {
             if (newNodeId) {
-                this.response.body = { 
+                this.response.body = {
                     nodeId: newNodeId,
                     edgeId: edgeId,
                     edgeSource: edgeSourceId,
@@ -1628,10 +1631,10 @@ export class BaseNodeHandler extends Handler {
         expanded?: boolean
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        
+
         const base = await this.resolveBase(domainId);
         const docId = base.docId;
-        
+
         if (!this.user.own(base)) {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         }
@@ -1646,7 +1649,7 @@ export class BaseNodeHandler extends Handler {
         if (x !== undefined) updates.x = x;
         if (y !== undefined) updates.y = y;
         if (expanded !== undefined) updates.expanded = expanded;
-        
+
         const body: any = this.request?.body || {};
         if (body.order !== undefined) {
             updates.order = body.order;
@@ -1659,14 +1662,14 @@ export class BaseNodeHandler extends Handler {
 
         await BaseModel.updateNode(domainId, docId, nodeId, updates);
         if (updates.text !== undefined) {
-            enqueueEmbeddingIndex({
+            notifyBaseContentChange({
                 domainId,
                 baseDocId: docId,
                 mode: 'incremental',
                 nodeIds: [nodeId],
                 owner: this.user._id,
                 reason: 'node_update',
-            }).catch((err: any) => console.error('Embedding queue error after node update:', err));
+            }).catch((err: any) => console.error('ContentChange queue error after node update:', err));
         }
         this.response.body = { success: true };
     }
@@ -1674,24 +1677,24 @@ export class BaseNodeHandler extends Handler {
     @param('nodeId', Types.String)
     async postDelete(domainId: string, nodeId: string) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        
+
         const base = await this.resolveBase(domainId);
         const docId = base.docId;
-        
+
         if (!this.user.own(base)) {
             this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
         }
 
-        
+
         await BaseModel.deleteNode(domainId, docId, nodeId);
-        enqueueEmbeddingIndex({
+        notifyBaseContentChange({
             domainId,
             baseDocId: docId,
             mode: 'incremental',
             deletedNodeIds: [nodeId],
             owner: this.user._id,
             reason: 'node_delete',
-        }).catch((err: any) => console.error('Embedding queue error after node delete:', err));
+        }).catch((err: any) => console.error('ContentChange queue error after node delete:', err));
         this.response.body = { success: true };
     }
 }
@@ -1776,15 +1779,15 @@ export class BaseSaveHandler extends Handler {
     protected async getBase(domainId: string): Promise<BaseDoc | null> {
         return BaseModel.getByDomain(domainId);
     }
-    
+
     protected getDefaultTitle(): string {
         return this.domain.name || '知识库';
     }
-    
+
     protected getDefaultRootText(): string {
         return this.domain.name;
     }
-    
+
     protected async createBase(domainId: string): Promise<BaseDoc> {
         const data = this.request.body || {};
         const { nodes = [], edges = [] } = data;
@@ -1834,7 +1837,7 @@ export class BaseSaveHandler extends Handler {
         if (!base) throw new NotFoundError('Failed to create document');
         return base;
     }
-    
+
     protected shouldSyncToGit(): boolean {
         return true;
     }
@@ -1887,7 +1890,7 @@ export class BaseSaveHandler extends Handler {
         let { nodes, edges, layout, viewport, theme, operationDescription } = data;
 
         const isExpandOnlySave = operationDescription === '自动保存展开状态' || operationDescription === '自动保存 outline 展开状态';
-        
+
         if (isExpandOnlySave && nodes && Array.isArray(nodes)) {
             const currentData = { nodes: base.nodes || [], edges: base.edges || [] };
 
@@ -1905,12 +1908,12 @@ export class BaseSaveHandler extends Handler {
                 }
                 return existingNode;
             });
-            
+
             await BaseModel.updateFull(domainId, docId, {
                 nodes: updatedNodes,
                 edges: currentData.edges,
             }, mdt);
-            
+
             this.ctx.broadcast('base/update', docId, this.user._id, this.user.uname, 'expand_save');
 
             this.response.body = { success: true, hasNonPositionChanges: false };
@@ -1922,7 +1925,7 @@ export class BaseSaveHandler extends Handler {
         if (nodes && Array.isArray(nodes)) {
             nodes = nodes.filter((node: BaseNode) => {
                 if (!node.id) return false;
-                
+
                 if (node.id.startsWith('temp-node-')) {
                     console.warn(`Rejected temporary node from save: ${node.id}`);
                     return false;
@@ -1930,11 +1933,11 @@ export class BaseSaveHandler extends Handler {
                 return true;
             });
         }
-        
+
         if (edges && Array.isArray(edges)) {
             edges = edges.filter((edge: BaseEdge) => {
                 if (!edge.id && !edge.source && !edge.target) return false;
-                
+
                 if (edge.id && edge.id.startsWith('temp-edge-')) {
                     console.warn(`Rejected temporary edge from save: ${edge.id}`);
                     return false;
@@ -1950,7 +1953,7 @@ export class BaseSaveHandler extends Handler {
                 return true;
             });
         }
-        
+
         const currentData = { nodes: base.nodes || [], edges: base.edges || [] };
 
         const oldNodesById = new Map(currentData.nodes.map((n) => [n.id, n]));
@@ -1980,8 +1983,8 @@ export class BaseSaveHandler extends Handler {
             viewport,
             theme,
         }, mdt);
-        
-        
+
+
         if (hasNonPositionChanges && this.shouldSyncToGit()) {
             try {
                 const updatedBase = await BaseModel.get(domainId, docId, mdt);
@@ -1991,14 +1994,14 @@ export class BaseSaveHandler extends Handler {
                 }
             } catch (err) {
                 console.error('Failed to sync to git after save:', err);
-                
+
             }
         }
-        
+
         this.ctx.broadcast('base/update', docId, this.user._id, this.user.uname, 'full_save');
         (this.ctx.emit as any)('base/git/status/update', docId);
 
-        // Async incremental embedding: only node text add/change/delete.
+        // Async incremental contentChange: only node text add/change/delete.
         const newNodesById = new Map(stampedNodes.map((n: BaseNode) => [n.id, n]));
         const changedNodeIds: string[] = [];
         const deletedNodeIds: string[] = [];
@@ -2012,7 +2015,7 @@ export class BaseSaveHandler extends Handler {
             if (!oldNodesById.has(id)) changedNodeIds.push(id);
         }
         if (changedNodeIds.length || deletedNodeIds.length) {
-            enqueueEmbeddingIndex({
+            notifyBaseContentChange({
                 domainId,
                 baseDocId: docId,
                 mode: 'incremental',
@@ -2021,7 +2024,7 @@ export class BaseSaveHandler extends Handler {
                 owner: this.user._id,
                 reason: 'base_save',
             }).catch((err: any) => {
-                console.error('Embedding queue error after base save:', err);
+                console.error('ContentChange queue error after base save:', err);
             });
         }
 
@@ -2036,23 +2039,23 @@ export class BaseSaveHandler extends Handler {
     ): boolean {
         if (!newNodes && !newEdges) return false;
 
-        
+
         if (newNodes && newNodes.length !== oldBase.nodes.length) {
             return true;
         }
 
-        
+
         if (newEdges && newEdges.length !== oldBase.edges.length) {
             return true;
         }
 
-        
+
         if (newNodes) {
             for (const newNode of newNodes) {
                 const oldNode = oldBase.nodes.find(n => n.id === newNode.id);
-                if (!oldNode) return true; 
+                if (!oldNode) return true;
 
-                
+
                 if (
                     oldNode.text !== newNode.text ||
                     oldNode.color !== newNode.color ||
@@ -2067,7 +2070,7 @@ export class BaseSaveHandler extends Handler {
             }
         }
 
-        
+
         if (newEdges) {
             const oldEdgeSet = new Set(oldBase.edges.map(e => `${e.source}-${e.target}`));
             const newEdgeSet = new Set(newEdges.map(e => `${e.source}-${e.target}`));
@@ -2261,9 +2264,9 @@ class BaseDomainHandler extends Handler {
             node.level === 0 || !baseEdges.some(edge => edge.target === node.id)
         );
         const rootNode = rootNodes[0] || baseNodes[0];
-        
+
         if (!rootNode) {
-            
+
             this.response.template = 'base_domain.html';
             this.response.body = {
                 base: {
@@ -2282,8 +2285,8 @@ class BaseDomainHandler extends Handler {
             };
             return;
         }
-        
-        
+
+
         const firstLevelNodeIds = new Set(
             baseEdges
                 .filter(edge => edge.source === rootNode.id)
@@ -2295,34 +2298,34 @@ class BaseDomainHandler extends Handler {
         const firstLevelEdges = baseEdges.filter(edge =>
             firstLevelNodeIds.has(edge.source) && firstLevelNodeIds.has(edge.target)
         );
-        
-        
+
+
         let filteredNodes = firstLevelNodes;
         if (q && q.trim()) {
             const searchTerm = q.toLowerCase().trim();
-            filteredNodes = firstLevelNodes.filter(node => 
+            filteredNodes = firstLevelNodes.filter(node =>
                 node.text.toLowerCase().includes(searchTerm) ||
                 node.id.toLowerCase().includes(searchTerm)
             );
         }
-        
-        
+
+
         const limit = 20;
         const skip = (page - 1) * limit;
         const total = filteredNodes.length;
         const totalPages = Math.ceil(total / limit);
         const nodesRaw = all ? filteredNodes : filteredNodes.slice(skip, skip + limit);
-        
-        
+
+
         const nodes = nodesRaw.map((node: any) => ({
             ...node,
             nodeId: node.id,
             title: node.text,
             domainPosition: node.position || { x: 0, y: 0 },
         }));
-        
+
         const totalViews = base.views || 0;
-        
+
         if (pjax) {
             const html = await this.renderHTML('partials/base_list.html', {
                 page, totalPages, total, nodes, qs: q ? q.trim() : '', domainId,
@@ -2333,7 +2336,7 @@ class BaseDomainHandler extends Handler {
             };
         } else {
             this.response.template = 'base_domain.html';
-            this.response.body = { 
+            this.response.body = {
                 base: {
                     ...base,
                     docId: base.docId.toString(),
@@ -2353,11 +2356,11 @@ class BaseDomainHandler extends Handler {
 }
 
 export class BaseDataHandler extends Handler {
-    
+
     protected async getBase(domainId: string): Promise<BaseDoc | null> {
         return BaseModel.getByDomain(domainId);
     }
-    
+
     protected async createBase(domainId: string): Promise<BaseDoc> {
         const { docId } = await BaseModel.create(
             domainId,
@@ -2371,11 +2374,11 @@ export class BaseDataHandler extends Handler {
         if (!base) throw new Error('Failed to create base');
         return base;
     }
-    
+
     protected getDefaultRootText(): string {
         return this.domain.name;
     }
-    
+
     protected getCardFilter(base: BaseDoc): Record<string, unknown> {
         return { baseDocId: base.docId };
     }
@@ -2393,7 +2396,7 @@ export class BaseDataHandler extends Handler {
 
         let nodes: BaseNode[] = base?.nodes || [];
         let edges: BaseEdge[] = base?.edges || [];
-        
+
         if (nodes.length === 0) {
             const rootNode: Omit<BaseNode, 'id'> = {
                 text: this.getDefaultRootText(),
@@ -2404,19 +2407,19 @@ export class BaseDataHandler extends Handler {
                 base!.docId,
                 rootNode,
             );
-            
+
             base = await BaseModel.get(domainId, base!.docId);
             if (base) {
                 nodes = base.nodes || [];
                 edges = base.edges || [];
             }
         }
-        
+
         const dataCardFilter = this.getCardFilter(base);
         const allCards = await document.getMulti(domainId, TYPE_CARD, dataCardFilter)
             .sort({ order: 1, cid: 1 })
             .toArray() as CardDoc[];
-        
+
         let nodeCardsMap: Record<string, CardDoc[]> = {};
         for (const card of allCards) {
             if (card.nodeId) {
@@ -2915,7 +2918,7 @@ async function createAndPushToGitHubOrgForBase(
 
     try {
         const remoteUrl = await createGitHubRepoForBase(orgName, repoName, baseTitle, GH_TOKEN, false);
-        
+
         if (!remoteUrl) {
             throw new Error('Failed to get remote repository URL');
         }
@@ -2925,13 +2928,13 @@ async function createAndPushToGitHubOrgForBase(
             REPO_URL = remoteUrl;
         } else if (remoteUrl.startsWith('https://')) {
             if (!remoteUrl.includes('@github.com')) {
-                REPO_URL = remoteUrl.replace('https://github.com/', `https://${GH_TOKEN}@github.com/`);
+                REPO_URL = remoteUrl.replace('https://github.com/', `https
             }
         }
 
         let repoUrlForStorage = remoteUrl;
         if (remoteUrl.startsWith('https://') && remoteUrl.includes('@github.com')) {
-            repoUrlForStorage = remoteUrl.replace(/^https:\/\/[^@]+@github\.com\//, 'https://github.com/');
+            repoUrlForStorage = remoteUrl.replace(/^https:\/\/[^@]+@github\.com
         }
 
         let base = await BaseModel.get(domainId, docId);
@@ -2939,7 +2942,7 @@ async function createAndPushToGitHubOrgForBase(
             await new Promise(resolve => setTimeout(resolve, 100));
             base = await BaseModel.get(domainId, docId);
         }
-        
+
         if (base) {
             await document.set(domainId, document.TYPE_BASE, base.docId, {
                 githubRepo: repoUrlForStorage,
@@ -2982,33 +2985,33 @@ async function gitInitAndPushBase(
 ) {
     const branch = 'main';
     const repoGitPath = await ensureBaseGitRepo(domainId, docId, remoteUrlWithAuth);
-    
-    
+
+
     const gitEnv: Record<string, string> = {
         ...process.env,
         GIT_TERMINAL_PROMPT: '0',
         GIT_ASKPASS: 'echo',
     };
-    
+
     const execOptions: any = { cwd: repoGitPath, env: gitEnv };
-    
+
     const botName = system.get('ejunzrepo.github_bot_name') || 'ejunz-bot';
     const botEmail = system.get('ejunzrepo.github_bot_email') || 'bot@ejunz.local';
     await exec(`git config user.name "${botName}"`, execOptions);
     await exec(`git config user.email "${botEmail}"`, execOptions);
-    
+
     await exec(`git config credential.helper store`, execOptions);
-    await exec(`git config credential.https://github.com.helper store`, execOptions);
-    
+    await exec(`git config credential.https
+
     try {
         const { stdout: currentRemote } = await exec('git remote get-url origin', execOptions);
         const currentUrl = (typeof currentRemote === 'string' ? currentRemote : currentRemote.toString()).trim();
-        
-        const currentTokenMatch = currentUrl.match(/^https?:\/\/([^@]+)@github\.com\//);
-        const targetTokenMatch = remoteUrlWithAuth.match(/^https?:\/\/([^@]+)@github\.com\//);
+
+        const currentTokenMatch = currentUrl.match(/^https?:\/\/([^@]+)@github\.com
+        const targetTokenMatch = remoteUrlWithAuth.match(/^https?:\/\/([^@]+)@github\.com
         const currentToken = currentTokenMatch ? currentTokenMatch[1] : '';
         const targetToken = targetTokenMatch ? targetTokenMatch[1] : '';
-        
+
         if (currentToken !== targetToken || currentUrl !== remoteUrlWithAuth) {
             await exec(`git remote set-url origin "${remoteUrlWithAuth}"`, execOptions);
             try {
@@ -3021,9 +3024,9 @@ async function gitInitAndPushBase(
     } catch {
         await exec(`git remote add origin "${remoteUrlWithAuth}"`, execOptions);
     }
-    
+
     let isNewRepo = false;
-    
+
     try {
         try {
             await exec('git rev-parse HEAD', execOptions);
@@ -3031,7 +3034,7 @@ async function gitInitAndPushBase(
         } catch {
             isNewRepo = true;
         }
-        
+
         if (isNewRepo) {
             try {
                 const tmpCloneDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ejunz-base-clone-'));
@@ -3051,7 +3054,7 @@ async function gitInitAndPushBase(
                 await exec('git fetch origin', execOptions);
             } catch {}
         }
-        
+
         try {
             await exec(`git checkout ${branch}`, execOptions);
         } catch {
@@ -3061,18 +3064,18 @@ async function gitInitAndPushBase(
                 await exec(`git checkout -b ${branch}`, execOptions);
             }
         }
-        
+
         if (!isNewRepo) {
             try {
                 await exec(`git pull origin ${branch}`, execOptions);
             } catch {
             }
         }
-        
+
         await exportBaseToFile(base, repoGitPath, domainId);
-        
+
         await exec('git add -A', execOptions);
-        
+
         try {
             const { stdout } = await exec('git status --porcelain', execOptions);
             const stdoutStr = typeof stdout === 'string' ? stdout : stdout.toString();
@@ -3087,7 +3090,7 @@ async function gitInitAndPushBase(
             } catch {
             }
         }
-        
+
         if (isNewRepo) {
             await exec(`git push -u origin ${branch}`, execOptions);
         } else {
@@ -3138,10 +3141,10 @@ class BaseGithubPushHandler extends Handler {
         } catch (err: any) {
             console.warn('Commit before push failed (may be no changes):', err?.message || err);
         }
-        
-        
+
+
         const commitMessage = `${domainId}/${this.user._id}/${this.user.uname || 'unknown'}: Update base`;
-        
+
         try {
             await gitInitAndPushBase(domainId, base.docId, base, REPO_URL, commitMessage);
             this.response.body = { ok: true };
@@ -3189,31 +3192,31 @@ export class BaseCardHandler extends Handler {
         content: string = '',
         operation?: string
     ) {
-        
-        
+
+
         if (operation) {
             return;
         }
-        
+
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        
-        
+
+
         const body: any = this.request?.body || {};
         const finalNodeId: string | undefined = body.nodeId || nodeId;
         const finalTitle: string | undefined = body.title || title;
         const finalContent: string = body.content !== undefined ? body.content : content || '';
 
-        
+
         if (!finalNodeId || !finalTitle) {
             throw new ValidationError('nodeId and title are required for creating a card');
         }
-        
+
         const base = await this.getBase(domainId);
-        
+
         if (!this.user.own(base)) {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         }
-        
+
         const cardDocId = await CardModel.create(
             domainId,
             base.docId,
@@ -3224,18 +3227,18 @@ export class BaseCardHandler extends Handler {
             this.request.ip,
             body?.problems,
         );
-        
+
         this.response.body = { cardId: cardDocId.toString() };
-        enqueueEmbeddingIndex({
+        notifyBaseContentChange({
             domainId,
             baseDocId: Number(base.docId),
             mode: 'incremental',
             cardDocIds: [cardDocId.toString()],
             owner: this.user._id,
             reason: 'card_create',
-        }).catch((err: any) => console.error('Embedding queue error after card create:', err));
+        }).catch((err: any) => console.error('ContentChange queue error after card create:', err));
     }
-    
+
     @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
     @param('nodeId', Types.String)
@@ -3244,11 +3247,11 @@ export class BaseCardHandler extends Handler {
             ?? (bid ? await BaseModel.getBybid(domainId, bid) : null)
             ?? await this.getBase(domainId);
         if (!base) throw new NotFoundError('Base not found');
-        
+
         const cards = await CardModel.getByNodeId(domainId, base.docId, nodeId);
         this.response.body = { cards };
     }
-    
+
     @route('cardId', Types.String)
     @param('nodeId', Types.String, true)
     @param('title', Types.String, true)
@@ -3386,14 +3389,14 @@ export class BaseCardHandler extends Handler {
             await CardModel.delete(domainId, targetCard.docId);
             this.ctx.broadcast('base/update', base.docId, this.user._id, this.user.uname, 'delete_card');
             this.response.body = { success: true };
-            enqueueEmbeddingIndex({
+            notifyBaseContentChange({
                 domainId,
                 baseDocId: Number(base.docId),
                 mode: 'incremental',
                 deletedCardDocIds: [targetCard.docId.toString()],
                 owner: this.user._id,
                 reason: 'card_delete',
-            }).catch((err: any) => console.error('Embedding queue error after card delete:', err));
+            }).catch((err: any) => console.error('ContentChange queue error after card delete:', err));
             return;
         }
 
@@ -3418,14 +3421,14 @@ export class BaseCardHandler extends Handler {
             || updates.problems !== undefined
             || updates.nodeId !== undefined
         ) {
-            enqueueEmbeddingIndex({
+            notifyBaseContentChange({
                 domainId,
                 baseDocId: Number(base.docId),
                 mode: 'incremental',
                 cardDocIds: [targetCard.docId.toString()],
                 owner: this.user._id,
                 reason: 'card_update',
-            }).catch((err: any) => console.error('Embedding queue error after card update:', err));
+            }).catch((err: any) => console.error('ContentChange queue error after card update:', err));
         }
         const changed: string[] = [];
         if (updates.title !== undefined) changed.push('title');
@@ -3456,30 +3459,30 @@ class BaseCardListHandler extends Handler {
 
         const nodes = base.nodes || [];
         const edges = base.edges || [];
-        
-        
+
+
         const node = nodes.find(n => n.id === nodeId);
         if (!node) {
             throw new NotFoundError('Node not found in this base');
         }
-        
-        
+
+
         const cards = await CardModel.getByNodeId(domainId, base.docId, nodeId);
-        
-        
+
+
         const nodePath: Array<{ id: string; text: string }> = [];
-        
-        
+
+
         const nodeMap = new Map<string, BaseNode>();
         nodes.forEach(n => nodeMap.set(n.id, n));
-        
-        
+
+
         const parentMap = new Map<string, string>();
         edges.forEach(edge => {
             parentMap.set(edge.target, edge.source);
         });
-        
-        
+
+
         let currentNodeId: string | undefined = nodeId;
         const pathNodes: Array<{ id: string; text: string }> = [];
         while (currentNodeId) {
@@ -3489,11 +3492,11 @@ class BaseCardListHandler extends Handler {
             }
             currentNodeId = parentMap.get(currentNodeId);
         }
-        
-        
+
+
         const reversedPathNodes = pathNodes.slice().reverse();
-        
-        
+
+
         let selectedCard = null;
         if (cardId) {
             selectedCard = cards.find(c => c.docId.toString() === cardId.toString());
@@ -3501,9 +3504,9 @@ class BaseCardListHandler extends Handler {
         if (!selectedCard && cards.length > 0) {
             selectedCard = cards[0];
         }
-        
+
         const extraTitleContent = `${reversedPathNodes.map(p => p.text).join(' / ')} - ${base.title}`;
-        
+
         this.response.template = 'base_card_list.html';
         this.response.body = {
             base,
@@ -3941,18 +3944,18 @@ class BaseCardEditHandler extends Handler {
     @param('nodeId', Types.String)
     @param('cardId', Types.ObjectId, true)
     async get(domainId: string, docId: number, bid: number, nodeId: string, cardId?: ObjectId) {
-        const base = docId 
+        const base = docId
             ? await BaseModel.get(domainId, docId)
             : await BaseModel.getBybid(domainId, bid);
         if (!base) throw new NotFoundError('Base not found');
-        
+
         let card = null;
         if (cardId) {
             card = await CardModel.get(domainId, cardId);
             if (!card) throw new NotFoundError('Card not found');
             if (card.nodeId !== nodeId) throw new NotFoundError('Card does not belong to this node');
         }
-        
+
         this.response.template = 'base_card_edit.html';
         const returnUrl = resolveReturnUrlFromReferer(this.request);
         if (returnUrl) this.UiContext.returnUrl = returnUrl;
@@ -3963,12 +3966,12 @@ class BaseCardEditHandler extends Handler {
         };
         this.UiContext.extraTitleContent = `${card?.title || '卡片'} - ${base.title}`;
     }
-    
-    
+
+
     @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
     @param('nodeId', Types.String)
-    
+
     @post('title', Types.String)
     @post('content', Types.String, true)
     @post('tags', Types.Content, true, null, (v: unknown) => {
@@ -4006,11 +4009,11 @@ class BaseCardEditHandler extends Handler {
             if (content !== undefined) updates.content = content;
             if (tags !== undefined) updates.tags = tags;
             await CardModel.update(domainId, cardId, updates);
-            
+
             if (docId) {
             this.response.redirect = this.url('base_card_list', {
-                docId: docId.toString(), 
-                nodeId 
+                docId: docId.toString(),
+                nodeId
                 }) + `?cardId=${cardId.toString()}`;
         } else {
                 this.response.redirect = this.url('base_card_list', {
@@ -4020,8 +4023,8 @@ class BaseCardEditHandler extends Handler {
             }
             return;
         }
-        
-            
+
+
             if (!title) {
                 throw new ValidationError('title is required');
             }
@@ -4037,25 +4040,25 @@ class BaseCardEditHandler extends Handler {
                 undefined,
                 undefined,
             );
-        
+
         if (docId) {
             this.response.redirect = this.url('base_card_list', {
-                docId: docId.toString(), 
-                nodeId 
+                docId: docId.toString(),
+                nodeId
             }) + `?cardId=${newCardId.toString()}`;
         } else {
             this.response.redirect = this.url('base_card_list', {
                 docId: base.docId.toString(),
-                nodeId 
+                nodeId
             }) + `?cardId=${newCardId.toString()}`;
         }
     }
-    
+
     @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
     @param('nodeId', Types.String)
     @route('cardId', Types.ObjectId, true)
-    
+
     @post('title', Types.String, true)
     @post('content', Types.String, true)
     @post('operation', Types.String, true)
@@ -4070,46 +4073,46 @@ class BaseCardEditHandler extends Handler {
         operation?: string
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        
-        const base = docId 
+
+        const base = docId
             ? await BaseModel.get(domainId, docId)
             : await BaseModel.getBybid(domainId, bid);
         if (!base) throw new NotFoundError('Base not found');
-        
+
         if (!this.user.own(base)) {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         }
-        
+
         if (cardId) {
-            
+
             if (operation === 'delete') {
                 const card = await CardModel.get(domainId, cardId);
                 if (!card) throw new NotFoundError('Card not found');
                 await CardModel.delete(domainId, cardId);
             this.response.redirect = this.url('base_card_list', {
-                docId: docId.toString(), 
-                nodeId 
+                docId: docId.toString(),
+                nodeId
             });
                 return;
             }
-            
+
             const updates: any = {};
             if (title !== undefined) updates.title = title;
             if (content !== undefined) updates.content = content;
             await CardModel.update(domainId, cardId, updates);
-            
-            
+
+
             const returnUrl = String(this.request.body?.returnUrl || '').trim();
             if (returnUrl.startsWith('/') && !returnUrl.startsWith('//')) {
-                
-                const returnUrlObj = new URL(returnUrl, `http://${this.request.headers.host || 'localhost'}`);
+
+                const returnUrlObj = new URL(returnUrl, `http
                 returnUrlObj.searchParams.set('fromEdit', 'true');
                 returnUrlObj.searchParams.set('cardId', cardId.toString());
                 this.response.redirect = returnUrlObj.pathname + returnUrlObj.search;
             } else {
             if (docId) {
                 this.response.redirect = this.url('base_card_list', {
-                    docId: docId.toString(), 
+                    docId: docId.toString(),
                         nodeId
                 }) + `?cardId=${cardId.toString()}`;
             } else {
@@ -4131,27 +4134,27 @@ class BaseCardDetailHandler extends Handler {
     @param('nodeId', Types.String)
     @param('cardId', Types.ObjectId)
     async get(domainId: string, docId: number, bid: number, nodeId: string, cardId: ObjectId) {
-        const base = docId 
+        const base = docId
             ? await BaseModel.get(domainId, docId)
             : await BaseModel.getBybid(domainId, bid);
         if (!base) throw new NotFoundError('Base not found');
-        
+
         const nodes = base.nodes || [];
-        
-        
+
+
         const node = nodes.find(n => n.id === nodeId);
         if (!node) {
             throw new NotFoundError('Node not found in this base');
         }
-        
+
         const card = await CardModel.get(domainId, cardId);
         if (!card) throw new NotFoundError('Card not found');
         if (card.nodeId !== nodeId) throw new NotFoundError('Card does not belong to this node');
-        
-        
+
+
         const cards = await CardModel.getByNodeId(domainId, base.docId, nodeId);
         const currentIndex = cards.findIndex(c => c.docId.toString() === cardId.toString());
-        
+
         this.response.template = 'base_card_detail.html';
         this.response.body = {
             base,
@@ -4161,7 +4164,7 @@ class BaseCardDetailHandler extends Handler {
             nodeId,
         };
     }
-    
+
     @route('cardId', Types.ObjectId)
     @param('nodeId', Types.String, true)
     @param('title', Types.String, true)
@@ -4178,39 +4181,39 @@ class BaseCardDetailHandler extends Handler {
         operation?: string
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        
-        
+
+
         if (operation === 'delete') {
             const card = await CardModel.get(domainId, cardId);
             if (!card) throw new NotFoundError('Card not found');
-            
+
             const base = await BaseModel.get(domainId, Number(card.baseDocId));
             if (!base) throw new NotFoundError('Base not found');
             if (!this.user.own(base)) {
                 this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
             }
-            
+
             await CardModel.delete(domainId, cardId);
             this.response.body = { success: true };
             return;
         }
-        
-        
+
+
         const card = await CardModel.get(domainId, cardId);
         if (!card) throw new NotFoundError('Card not found');
-        
+
         const base = await BaseModel.get(domainId, Number(card.baseDocId));
         if (!base) throw new NotFoundError('Base not found');
         if (!this.user.own(base)) {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         }
-        
+
         const updates: any = {};
         if (title !== undefined) updates.title = title;
         if (content !== undefined) updates.content = content;
         if (order !== undefined) updates.order = order;
-        if (nodeId !== undefined) updates.nodeId = nodeId; 
-        
+        if (nodeId !== undefined) updates.nodeId = nodeId;
+
         await CardModel.update(domainId, cardId, updates);
         this.response.body = { success: true };
     }
@@ -4532,19 +4535,19 @@ export class BaseBatchSaveHandler extends Handler {
         const errors: string[] = [];
         const nodeIdMap = new Map<string, string>();
         const cardIdMap = new Map<string, string>();
-        
+
         const remainingNodeCreates = [...nodeCreates];
         const processedNodeCreates = new Set<string>();
-        
+
         while (remainingNodeCreates.length > 0) {
             const beforeCount = remainingNodeCreates.length;
             const currentRound: typeof nodeCreates = [];
-            
+
             for (const nodeCreate of remainingNodeCreates) {
                 if (processedNodeCreates.has(nodeCreate.tempId)) {
                     continue;
                 }
-                
+
                 let realParentId = nodeCreate.parentId;
                 if (nodeCreate.parentId && nodeCreate.parentId.startsWith('temp-node-')) {
                     realParentId = nodeIdMap.get(nodeCreate.parentId);
@@ -4552,24 +4555,24 @@ export class BaseBatchSaveHandler extends Handler {
                         continue;
                     }
                 }
-                
+
                 currentRound.push(nodeCreate);
                 processedNodeCreates.add(nodeCreate.tempId);
             }
-            
+
             if (currentRound.length === 0) {
-                
+
                 break;
             }
-            
-            
+
+
             for (const nodeCreate of currentRound) {
                 try {
                     let realParentId = nodeCreate.parentId;
                     if (nodeCreate.parentId && nodeCreate.parentId.startsWith('temp-node-')) {
                         realParentId = nodeIdMap.get(nodeCreate.parentId);
                     }
-                    
+
                     if (realParentId && !realParentId.startsWith('temp-node-')) {
                         const currentBase = await BaseModel.get(actualDomainId, docId, mdt);
                         if (currentBase) {
@@ -4581,7 +4584,7 @@ export class BaseBatchSaveHandler extends Handler {
                             realParentId = undefined;
                         }
                     }
-                    
+
                     const nodePayload = await this.sanitizeNodeCreatePayload(nodeCreate, realParentId, {
                         domainId: actualDomainId,
                         docId,
@@ -4629,12 +4632,12 @@ export class BaseBatchSaveHandler extends Handler {
             remainingNodeCreates.splice(0, remainingNodeCreates.length,
                 ...remainingNodeCreates.filter(nc => !processedNodeCreates.has(nc.tempId))
             );
-            
+
             if (remainingNodeCreates.length === beforeCount) {
                 break;
             }
         }
-        
+
         for (const nodeUpdate of nodeUpdates) {
             try {
                 const updates = await this.sanitizeNodeUpdatePayload(nodeUpdate, {
@@ -4649,23 +4652,23 @@ export class BaseBatchSaveHandler extends Handler {
                 errors.push(`更新节点失败: ${error.message || '未知错误'}`);
             }
         }
-        
-        
+
+
         for (const edgeId of edgeDeletes) {
             try {
                 await BaseModel.deleteEdge(actualDomainId, docId, edgeId, mdt);
             } catch (error: any) {
-                
+
             }
         }
 
-        // Embedding deltas (resolved IDs collected after creates / before deletes).
-        const embeddingNodeIds: string[] = [];
-        const embeddingDeletedNodeIds: string[] = nodeDeletes.map((id: string) => String(id));
-        const embeddingCardDocIds: string[] = [];
-        const embeddingDeletedCardDocIds: string[] = cardDeletes.map((id: string) => String(id));
+        // ContentChange deltas (resolved IDs collected after creates / before deletes).
+        const contentChangeNodeIds: string[] = [];
+        const contentChangeDeletedNodeIds: string[] = nodeDeletes.map((id: string) => String(id));
+        const contentChangeCardDocIds: string[] = [];
+        const contentChangeDeletedCardDocIds: string[] = cardDeletes.map((id: string) => String(id));
         for (const nodeUpdate of nodeUpdates) {
-            if (nodeUpdate.text !== undefined) embeddingNodeIds.push(String(nodeUpdate.nodeId));
+            if (nodeUpdate.text !== undefined) contentChangeNodeIds.push(String(nodeUpdate.nodeId));
         }
 
         for (const nodeId of nodeDeletes) {
@@ -4675,16 +4678,16 @@ export class BaseBatchSaveHandler extends Handler {
                 errors.push(`删除节点失败: ${error.message || '未知错误'}`);
             }
         }
-        
+
         for (const edgeCreate of edgeCreates) {
             try {
-                const sourceId = edgeCreate.source.startsWith('temp-node-') 
+                const sourceId = edgeCreate.source.startsWith('temp-node-')
                     ? nodeIdMap.get(edgeCreate.source) || edgeCreate.source
                     : edgeCreate.source;
                 const targetId = edgeCreate.target.startsWith('temp-node-')
                     ? nodeIdMap.get(edgeCreate.target) || edgeCreate.target
                     : edgeCreate.target;
-                
+
                 if (sourceId && targetId && !sourceId.startsWith('temp-node-') && !targetId.startsWith('temp-node-')) {
                     await BaseModel.addEdge(actualDomainId, docId, {
                         source: sourceId,
@@ -4714,15 +4717,15 @@ export class BaseBatchSaveHandler extends Handler {
                 errors.push(`更新边失败: ${error.message || '未知错误'}`);
             }
         }
-        
-        
+
+
         for (const cardCreate of cardCreates) {
             try {
-                
+
                 const realNodeId = cardCreate.nodeId.startsWith('temp-node-')
                     ? nodeIdMap.get(cardCreate.nodeId) || cardCreate.nodeId
                     : cardCreate.nodeId;
-                
+
                 if (realNodeId && !realNodeId.startsWith('temp-node-')) {
                     const response = await CardModel.create(
                         actualDomainId,
@@ -4740,18 +4743,18 @@ export class BaseBatchSaveHandler extends Handler {
                         cardCreate.fileSize,
                         cardCreate.tags,
                     );
-                    
+
                     if (cardCreate.tempId) {
                         cardIdMap.set(cardCreate.tempId, response.toString());
                     }
-                    embeddingCardDocIds.push(response.toString());
+                    contentChangeCardDocIds.push(response.toString());
                 }
             } catch (error: any) {
                 errors.push(`创建卡片失败: ${error.message || '未知错误'}`);
             }
         }
-        
-        
+
+
         for (const cardUpdate of cardUpdates) {
             try {
                 const updates: Partial<Pick<CardDoc, 'title' | 'content' | 'cardFace' | 'order' | 'nodeId' | 'problems' | 'cardType' | 'fileType' | 'fileName' | 'fileSize' | 'tags'>> = {};
@@ -4794,7 +4797,7 @@ export class BaseBatchSaveHandler extends Handler {
                 errors.push(`更新卡片失败: ${error.message || '未知错误'}`);
             }
         }
-        
+
         for (const cardId of cardDeletes) {
             try {
                 await CardModel.delete(actualDomainId, new ObjectId(cardId));
@@ -4802,7 +4805,7 @@ export class BaseBatchSaveHandler extends Handler {
                 errors.push(`删除卡片失败: ${error.message || '未知错误'}`);
             }
         }
-        
+
         let batchSuccess = errors.length === 0;
         if (batchSuccess) {
             try {
@@ -4916,28 +4919,28 @@ export class BaseBatchSaveHandler extends Handler {
         this.ctx.broadcast('base/update', docId, this.user._id, this.user.uname, 'batch_update', summary);
 
         if (batchSuccess) {
-            for (const realId of nodeIdMap.values()) embeddingNodeIds.push(realId);
+            for (const realId of nodeIdMap.values()) contentChangeNodeIds.push(realId);
             for (const cardUpdate of cardUpdates) {
                 const touchesContent = cardUpdate.title !== undefined
                     || cardUpdate.content !== undefined
                     || cardUpdate.problems !== undefined
                     || cardUpdate.nodeId !== undefined;
                 if (touchesContent && cardUpdate.cardId) {
-                    embeddingCardDocIds.push(String(cardUpdate.cardId));
+                    contentChangeCardDocIds.push(String(cardUpdate.cardId));
                 }
             }
-            enqueueEmbeddingIndex({
+            notifyBaseContentChange({
                 domainId: actualDomainId,
                 baseDocId: docId,
                 mode: 'incremental',
-                nodeIds: embeddingNodeIds,
-                deletedNodeIds: embeddingDeletedNodeIds,
-                cardDocIds: embeddingCardDocIds,
-                deletedCardDocIds: embeddingDeletedCardDocIds,
+                nodeIds: contentChangeNodeIds,
+                deletedNodeIds: contentChangeDeletedNodeIds,
+                cardDocIds: contentChangeCardDocIds,
+                deletedCardDocIds: contentChangeDeletedCardDocIds,
                 owner: this.user._id,
                 reason: 'batch_save',
             }).catch((err: any) => {
-                console.error('Embedding queue error after batch save:', err);
+                console.error('ContentChange queue error after batch save:', err);
             });
         }
 
@@ -4975,34 +4978,34 @@ async function syncBaseToGit(domainId: string, docId: number): Promise<void> {
     }
 
     const repoGitPath = getBaseGitPath(domainId, docId);
-    
+
     try {
         await exec('git rev-parse --git-dir', { cwd: repoGitPath });
     } catch {
         // Git repo not initialized, skip sync
         return;
     }
-    
+
     try {
         await exec(`git checkout ${branch}`, { cwd: repoGitPath });
     } catch {
         // Branch doesn't exist, skip sync
         return;
     }
-    
+
     // Export to temp directory first
     const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ejunz-base-sync-'));
     try {
         await exportBaseToFile(base, tmpDir, domainId);
-        
+
         // Copy files to git repository and remove extra files
         const copyDirAndCleanup = async (src: string, dest: string) => {
             await fs.promises.mkdir(dest, { recursive: true });
-            
+
             // Get all entries from source
             const srcEntries = await fs.promises.readdir(src, { withFileTypes: true });
             const srcNames = new Set(srcEntries.map(e => e.name).filter(name => name !== '.git'));
-            
+
             // Get all entries from destination (excluding .git)
             let destEntries: fs.Dirent[] = [];
             try {
@@ -5012,7 +5015,7 @@ async function syncBaseToGit(domainId: string, docId: number): Promise<void> {
                 if (err.code !== 'ENOENT') throw err;
             }
             const destNames = new Set(destEntries.map(e => e.name).filter(name => name !== '.git'));
-            
+
             // Remove files/directories in dest that don't exist in src
             for (const destName of destNames) {
                 if (!srcNames.has(destName)) {
@@ -5031,7 +5034,7 @@ async function syncBaseToGit(domainId: string, docId: number): Promise<void> {
                     }
                 }
             }
-            
+
             // Copy files and directories from src to dest
             for (const entry of srcEntries) {
                 const srcPath = path.join(src, entry.name);
@@ -5082,7 +5085,7 @@ async function getBaseGitStatus(
     return null; // git disabled
     const repoGitPath = getBaseGitPath(domainId, docId);
     await ensureGitSafeDirectory(repoGitPath);
-    
+
     const defaultStatus = {
         hasLocalRepo: false,
         hasLocalBranch: false,
@@ -5099,14 +5102,14 @@ async function getBaseGitStatus(
             deleted: [],
         },
     };
-    
+
     try {
         try {
             await exec('git rev-parse --git-dir', { cwd: repoGitPath });
         } catch {
             return defaultStatus;
         }
-        
+
         // Sync latest base data to git repository before checking status
         // First checkout to the correct branch
         try {
@@ -5128,32 +5131,32 @@ async function getBaseGitStatus(
         } catch (err) {
             console.error('Failed to checkout branch:', err);
         }
-        
+
         const status: any = {
             ...defaultStatus,
             hasLocalRepo: true,
         };
-        
+
         try {
             const { stdout: currentBranch } = await exec('git rev-parse --abbrev-ref HEAD', { cwd: repoGitPath });
             status.currentBranch = currentBranch.trim();
         } catch {}
-        
+
         try {
             await exec(`git rev-parse --verify ${branch}`, { cwd: repoGitPath });
             status.hasLocalBranch = true;
-            
+
             try {
                 const { stdout: localCount } = await exec(`git rev-list --count ${branch}`, { cwd: repoGitPath });
                 status.localCommits = parseInt(localCount.trim()) || 0;
             } catch {}
-            
+
             try {
                 const { stdout: lastCommit } = await exec(`git rev-parse ${branch}`, { cwd: repoGitPath });
                 const fullCommit = lastCommit.trim();
                 status.lastCommit = fullCommit;
                 status.lastCommitShort = fullCommit.substring(0, 8);
-                
+
                 // Get commit message
                 try {
                     const { stdout: commitMessage } = await exec(`git log -1 --pretty=format:'%s' ${branch}`, { cwd: repoGitPath });
@@ -5172,7 +5175,7 @@ async function getBaseGitStatus(
                         }
                     } catch {}
                 }
-                
+
                 // Get commit time
                 try {
                     const { stdout: commitTime } = await exec(`git log -1 --pretty=format:"%ci" ${branch}`, { cwd: repoGitPath });
@@ -5182,14 +5185,14 @@ async function getBaseGitStatus(
         } catch {
             status.hasLocalBranch = false;
         }
-        
-        
+
+
         try {
             const { stdout: statusOutput } = await exec('git status --porcelain', { cwd: repoGitPath });
             const changes = statusOutput.trim();
             status.uncommittedChanges = changes.length > 0;
-            
-            
+
+
             if (changes) {
                 const lines = changes.split('\n').filter(l => l.trim());
                 for (const line of lines) {
@@ -5207,8 +5210,8 @@ async function getBaseGitStatus(
         } catch {
             status.uncommittedChanges = false;
         }
-        
-        
+
+
         try {
             const { stdout: existingRemote } = await exec('git remote get-url origin', { cwd: repoGitPath });
             if (existingRemote && existingRemote.trim()) {
@@ -5227,8 +5230,8 @@ async function getBaseGitStatus(
                 } catch {}
             }
         }
-        
-        
+
+
         if (status.hasRemote) {
             try {
                 try {
@@ -5236,16 +5239,16 @@ async function getBaseGitStatus(
                 } catch {
                     await exec(`git fetch origin ${branch}`, { cwd: repoGitPath });
                 }
-                
+
                 try {
                     await exec(`git rev-parse --verify origin/${branch}`, { cwd: repoGitPath });
                     status.hasRemoteBranch = true;
-                    
+
                     try {
                         const { stdout: remoteCount } = await exec(`git rev-list --count origin/${branch}`, { cwd: repoGitPath });
                         status.remoteCommits = parseInt(remoteCount.trim()) || 0;
                     } catch {}
-                    
+
                     if (status.hasLocalBranch) {
                         try {
                             const { stdout: aheadOutput } = await exec(`git rev-list --left-right --count origin/${branch}...${branch}`, { cwd: repoGitPath });
@@ -5261,7 +5264,7 @@ async function getBaseGitStatus(
                 }
             } catch {}
         }
-        
+
         return status;
     } catch (err: any) {
         console.error('getBaseGitStatus error:', err);
@@ -5281,31 +5284,31 @@ async function commitBaseChanges(
     userName: string
 ): Promise<void> {
     const repoGitPath = await ensureBaseGitRepo(domainId, docId);
-    
+
     const botName = system.get('ejunzrepo.github_bot_name') || 'ejunz-bot';
     const botEmail = system.get('ejunzrepo.github_bot_email') || 'bot@ejunz.local';
     await execFile('git', ['config', 'user.name', String(botName)], { cwd: repoGitPath });
     await execFile('git', ['config', 'user.email', String(botEmail)], { cwd: repoGitPath });
-    
+
     const branch = 'main';
     try {
         await execFile('git', ['checkout', branch], { cwd: repoGitPath });
     } catch {
         await execFile('git', ['checkout', '-b', branch], { cwd: repoGitPath });
     }
-    
+
     const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ejunz-base-commit-'));
     try {
         await exportBaseToFile(base, tmpDir, domainId);
-        
-        
+
+
         const copyDirAndCleanup = async (src: string, dest: string) => {
             await fs.promises.mkdir(dest, { recursive: true });
-            
+
             // Get all entries from source
             const srcEntries = await fs.promises.readdir(src, { withFileTypes: true });
             const srcNames = new Set(srcEntries.map(e => e.name).filter(name => name !== '.git'));
-            
+
             // Get all entries from destination (excluding .git)
             let destEntries: fs.Dirent[] = [];
             try {
@@ -5315,7 +5318,7 @@ async function commitBaseChanges(
                 if (err.code !== 'ENOENT') throw err;
             }
             const destNames = new Set(destEntries.map(e => e.name).filter(name => name !== '.git'));
-            
+
             // Remove files/directories in dest that don't exist in src
             for (const destName of destNames) {
                 if (!srcNames.has(destName)) {
@@ -5334,7 +5337,7 @@ async function commitBaseChanges(
                     }
                 }
             }
-            
+
             // Copy files and directories from src to dest
             for (const entry of srcEntries) {
                 const srcPath = path.join(src, entry.name);
@@ -5347,12 +5350,12 @@ async function commitBaseChanges(
             }
         };
         await copyDirAndCleanup(tmpDir, repoGitPath);
-        
+
         // After mirroring the export tree into the repo, stage everything. Parsing
         // `git status --porcelain` paths (quotes, \nnn octal, renames) is fragile;
         // `git add -A` matches the working tree reliably for full-tree sync.
         await execFile('git', ['add', '-A'], { cwd: repoGitPath });
-        
+
         try {
             const { stdout } = await execFile('git', ['status', '--porcelain'], { cwd: repoGitPath });
             if (stdout.trim()) {
@@ -5456,7 +5459,7 @@ class BaseCommitHandler extends Handler {
                 this.user.uname || 'unknown'
             );
 
-            
+
             this.ctx.broadcast('base/update', base.docId, this.user._id, this.user.uname, 'git_commit', { message: customMessage?.trim() || '' });
             (this.ctx.emit as any)('base/git/status/update', base.docId, base.slug);
 
@@ -5618,13 +5621,13 @@ async function importBaseFromFileStructure(
             processedCardIds,
         );
     }
-    
+
     // Read README.md as base content (but we don't update it here, just for reference)
     const readmePath = path.join(localDir, 'README.md');
     try {
         await fs.promises.readFile(readmePath, 'utf-8');
     } catch {}
-    
+
     // Synthetic root (not exported as a folder); label is not in the repo, so preserve from DB on pull.
     const rootNodeId = `root_${baseDocId.toString().substring(0, 8)}`;
     const rootLabel = (syntheticRootText || '').trim() || 'Root';
@@ -5637,9 +5640,9 @@ async function importBaseFromFileStructure(
         style: { display: 'none' },
     });
     nodeIdMap.set(localDir, rootNodeId);
-    
+
     let nodeCounter = 0;
-    
+
     // Recursively import nodes from directory structure (ordered md + subdirs interleaved)
     async function importNode(parentNodeId: string, dirPath: string, dirName: string, level: number = 0): Promise<void> {
         const dirParsed = parseExportOrderedSegment(dirName);
@@ -5819,16 +5822,16 @@ class BaseGithubPullHandler extends Handler {
         const REPO_URL = buildGithubRemoteUrl(githubRepo, ghTok);
 
         const effectiveBranch = 'main';
-        
+
         const repoGitPath = await ensureBaseGitRepo(domainId, base.docId, REPO_URL);
-        
+
         try {
             try {
                 await exec(`git checkout ${effectiveBranch}`, { cwd: repoGitPath });
             } catch {
                 await exec(`git checkout -b ${effectiveBranch}`, { cwd: repoGitPath });
             }
-            
+
             try {
                 await exec(`git remote set-url origin ${REPO_URL}`, { cwd: repoGitPath });
             } catch {
@@ -5836,45 +5839,45 @@ class BaseGithubPullHandler extends Handler {
                     await exec(`git remote add origin ${REPO_URL}`, { cwd: repoGitPath });
                 } catch {}
             }
-            
+
             await exec('git fetch origin', { cwd: repoGitPath });
             await exec(`git reset --hard origin/${effectiveBranch}`, { cwd: repoGitPath });
-            
-            
+
+
             await cleanupBaseCards(domainId, base.docId);
 
-            
+
             const { nodes, edges } = await importBaseFromFileStructure(
                 domainId,
                 base.docId,
                 repoGitPath,
                 getSyntheticRootTextForFileImport(base),
             );
-            
+
             // Replace the single main tree.
             base.nodes = nodes;
             base.edges = edges;
-            
+
             // Read README.md for content
             const readmePath = path.join(repoGitPath, 'README.md');
             let content = base.content || '';
             try {
                 content = await fs.promises.readFile(readmePath, 'utf-8');
             } catch {}
-            
+
             await BaseModel.updateFull(domainId, base.docId, {
                 nodes,
                 edges,
                 content,
             });
-            enqueueEmbeddingIndex({
+            notifyBaseContentChange({
                 domainId,
                 baseDocId: Number(base.docId),
                 mode: 'full_rebuild',
                 owner: this.user._id,
                 reason: 'git_pull',
-            }).catch((err: any) => console.error('Embedding queue error after git pull:', err));
-            
+            }).catch((err: any) => console.error('ContentChange queue error after git pull:', err));
+
             this.response.body = { ok: true };
         } catch (err: any) {
             console.error('Pull failed:', err?.message || err);
@@ -5981,7 +5984,7 @@ export class BaseConnectionHandler extends ConnectionHandler {
     @param('docId', Types.String, true)
     @param('bid', Types.String, true)
     async prepare(domainId: string, docId?: string, bid?: string) {
-        
+
         const finalDomainId = domainId || (this.request.query?.domainId as string) || (this.args as any).domainId;
         const qDocId = this.request.query?.docId as string;
         const qBid = this.request.query?.bid as string;
@@ -6042,7 +6045,7 @@ export class BaseConnectionHandler extends ConnectionHandler {
 
         await this.sendInitialData(finalDomainId, base);
 
-        
+
         const dispose1 = (this.ctx.on as any)('base/update', async (...args: any[]) => {
             const [updateDocId, sourceUid, sourceUname, actionKey, actionDetail] = args;
             if (updateDocId && updateDocId.toString() === this.docId!.toString()) {
@@ -6051,7 +6054,7 @@ export class BaseConnectionHandler extends ConnectionHandler {
         });
         this.subscriptions.push({ dispose: dispose1 });
 
-        
+
         const dispose2 = (this.ctx.on as any)('base/git/status/update', async (...args: any[]) => {
             const [updateDocId, updatebid] = args;
             if (updateDocId && updateDocId.toString() === this.docId!.toString()) {
@@ -6073,14 +6076,6 @@ export class BaseConnectionHandler extends ConnectionHandler {
         const bid = Number(doc.baseDocId);
         if (!Number.isFinite(bid) || bid <= 0 || bid !== Number(this.docId)) return;
         await this.sendUpdate(this.wsDomainId);
-    }
-
-    @subscribe('base/embedding/status/update')
-    async onEmbeddingStatusUpdate(domainId: string, baseDocId: number) {
-        if (!this.wsDomainId || this.docId == null) return;
-        if (domainId !== this.wsDomainId) return;
-        if (Number(baseDocId) !== Number(this.docId)) return;
-        await this.sendEmbeddingStatus(domainId);
     }
 
     async message(msg: any) {
@@ -6112,10 +6107,10 @@ export class BaseConnectionHandler extends ConnectionHandler {
             }
 
             const markdownModule = require('@ejunz/ui-default/backendlib/markdown');
-            const html = inline 
+            const html = inline
                 ? markdownModule.renderInline(text)
                 : markdownModule.render(text);
-            
+
             this.send({
                 type: 'markdown_response',
                 requestId,
@@ -6141,10 +6136,10 @@ export class BaseConnectionHandler extends ConnectionHandler {
 
             let fullUrl = url;
             if (url.startsWith('/')) {
-                const protocol = (this.request.headers['x-forwarded-proto'] as string) || 
+                const protocol = (this.request.headers['x-forwarded-proto'] as string) ||
                                  ((this.request.headers['x-forwarded-ssl'] === 'on') ? 'https' : 'http');
                 const host = this.request.host || this.request.headers.host || 'localhost';
-                fullUrl = `${protocol}://${host}${url}`;
+                fullUrl = `${protocol}
             }
 
             const https = require('https');
@@ -6152,7 +6147,7 @@ export class BaseConnectionHandler extends ConnectionHandler {
             const urlModule = require('url');
             const parsedUrl = urlModule.parse(fullUrl);
             const client = parsedUrl.protocol === 'https:' ? https : http;
-            
+
             const imageData = await new Promise<Buffer>((resolve, reject) => {
                 client.get(fullUrl, (res: any) => {
                     if (res.statusCode !== 200) {
@@ -6165,14 +6160,14 @@ export class BaseConnectionHandler extends ConnectionHandler {
                     res.on('error', reject);
                 }).on('error', reject);
             });
-            
+
             const base64 = imageData.toString('base64');
-            const contentType = imageData.length > 0 && imageData[0] === 0x89 && imageData[1] === 0x50 
-                ? 'image/png' 
-                : (imageData.length > 0 && imageData[0] === 0xFF && imageData[1] === 0xD8 
-                    ? 'image/jpeg' 
+            const contentType = imageData.length > 0 && imageData[0] === 0x89 && imageData[1] === 0x50
+                ? 'image/png'
+                : (imageData.length > 0 && imageData[0] === 0xFF && imageData[1] === 0xD8
+                    ? 'image/jpeg'
                     : 'image/png');
-            
+
             this.send({
                 type: 'image_response',
                 requestId,
@@ -6239,12 +6234,10 @@ export class BaseConnectionHandler extends ConnectionHandler {
             ]);
 
             const viewerCount = baseViewerCounts.get(base.docId)?.size ?? 0;
-            const embeddingStatus = await buildEmbeddingStatusView(domainId, base.docId).catch(() => null);
             this.send({
                 type: 'init',
                 gitStatus,
                 viewerCount,
-                embeddingStatus,
                 todayContribution: contrib.todayContribution,
                 todayContributionAllDomains: todayAllDomains,
                 contributions: contrib.contributions,
@@ -6307,19 +6300,6 @@ export class BaseConnectionHandler extends ConnectionHandler {
         }
     }
 
-    private async sendEmbeddingStatus(domainId: string) {
-        try {
-            if (this.docId == null) return;
-            const embeddingStatus = await buildEmbeddingStatusView(domainId, this.docId);
-            this.send({
-                type: 'embedding_status',
-                embeddingStatus,
-            });
-        } catch (err) {
-            logger.error('Failed to send embedding status:', err);
-        }
-    }
-
 }
 
 class BaseDomainEditHandler extends Handler {
@@ -6338,11 +6318,11 @@ class BaseDomainEditHandler extends Handler {
             node.level === 0 || !baseEdges.some(edge => edge.target === node.id)
         );
         const rootNode = rootNodes[0] || baseNodes[0];
-        
+
         if (!rootNode) {
-            
+
             this.response.template = 'base_domain_edit.html';
-            this.response.body = { 
+            this.response.body = {
                 base: {
                     ...base,
                     docId: base.docId.toString(),
@@ -6354,8 +6334,8 @@ class BaseDomainEditHandler extends Handler {
             };
             return;
         }
-        
-        
+
+
         const firstLevelNodeIds = new Set(
             baseEdges
                 .filter(edge => edge.source === rootNode.id)
@@ -6363,31 +6343,31 @@ class BaseDomainEditHandler extends Handler {
         );
 
         let firstLevelNodes = baseNodes.filter(node => firstLevelNodeIds.has(node.id));
-        
-        
+
+
         if (q && q.trim()) {
             const searchTerm = q.toLowerCase().trim();
-            firstLevelNodes = firstLevelNodes.filter(node => 
+            firstLevelNodes = firstLevelNodes.filter(node =>
                 node.text.toLowerCase().includes(searchTerm) ||
                 node.id.toLowerCase().includes(searchTerm)
             );
         }
-        
-        
+
+
         const firstLevelEdges = baseEdges.filter(edge =>
             firstLevelNodeIds.has(edge.source) && firstLevelNodeIds.has(edge.target)
         );
-        
-        
+
+
         const nodes = firstLevelNodes.map((node: any) => ({
             ...node,
             nodeId: node.id,
             title: node.text,
             domainPosition: node.position || { x: 0, y: 0 },
         }));
-        
+
         this.response.template = 'base_domain_edit.html';
-        this.response.body = { 
+        this.response.body = {
             base: {
                 ...base,
                 docId: base.docId.toString(),
@@ -6997,13 +6977,13 @@ export async function baseGitPull(input: BaseGitInput) {
             edges,
             content,
         });
-        enqueueEmbeddingIndex({
+        notifyBaseContentChange({
             domainId: input.domainId,
             baseDocId: Number(base.docId),
             mode: 'full_rebuild',
             owner: input.owner,
             reason: 'git_pull',
-        }).catch((err: any) => console.error('Embedding queue error after git pull:', err));
+        }).catch((err: any) => console.error('ContentChange queue error after git pull:', err));
         return { ok: true, githubRepo, message: 'Pulled remote content and imported into base' };
     } catch (err: any) {
         throw new Error(err?.message || String(err));
@@ -7029,42 +7009,6 @@ export async function baseGitConfigSet(
         githubRepo: repoUrlForStorage || null,
     });
     return { ok: true, githubRepo: repoUrlForStorage || null };
-}
-
-/**
- * Base Semantic Search Handler
- *
- * Accepts a plain-text query, embeds it, and returns semantically similar
- * node texts from the base's single graph.
- */
-export class BaseSemanticSearchHandler extends Handler {
-    @post('docId', Types.PositiveInt)
-    @post('query', Types.String)
-    @post('limit', Types.PositiveInt, true)
-    async post(domainId: string, docId: number, query?: string, limit?: number) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        if (!query || !query.trim()) throw new BadRequestError('Query is required');
-
-        const base = await BaseModel.get(domainId, docId);
-        if (!base) throw new NotFoundError('Base not found');
-
-        const maxResults = Math.min(limit || 10, 50);
-
-        try {
-            const result = await callToolViaWorker(this.ctx, SEMANTIC_SEARCH_TOOL, {
-                query: query.trim(),
-                limit: maxResults,
-            }, domainId, undefined, this.user._id, undefined, 0, {
-                baseDocId: docId,
-                owner: this.user._id,
-                toolType: 'system',
-            });
-            this.response.body = { results: result?.results || [] };
-        } catch (err) {
-            this.ctx.logger.error('Semantic search worker error: %o', err);
-            throw err;
-        }
-    }
 }
 
 /** Check slug availability (format + uniqueness). Returns `{ available, suggestion?, error? }` — GitHub-style. */
@@ -7123,7 +7067,6 @@ export async function apply(ctx: Context) {
     ctx.Route('base_github_push', '/base/github/push', BaseGithubPushHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_github_config', '/base/github/config', BaseGithubConfigHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_github_pull', '/base/github/pull', BaseGithubPullHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_semantic_search', '/base/semantic-search', BaseSemanticSearchHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_slug_check', '/base/slug-check', BaseSlugCheckHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_detail', '/base/:docId', BaseDetailHandler);
     ctx.Route('base_study', '/base/:docId/study', BaseStudyHandler);

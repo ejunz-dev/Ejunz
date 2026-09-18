@@ -1,6 +1,6 @@
 {
     "name": "ejun",
-    "version": "0.7.0",
+    "version": "0.8.0",
     "bin": "bin/ejun.js",
     "main": "src/plugin-api",
     "module": "src/plugin-api",
@@ -19,12 +19,10 @@
         "@babel/code-frame": "^7.27.1",
         "@cordisjs/plugin-timer": "1.1.1",
         "@ejunz/common": "workspace:^",
-        "@ejunz/ejunztools": "workspace:^",
         "@ejunz/framework": "workspace:^",
         "@ejunz/utils": "workspace:^",
         "@simplewebauthn/server": "13.2.2",
         "@undefined-moe/require-resolve-hook": "^1.1.0",
-        "@xenova/transformers": "^2.17.2",
         "@zip.js/zip.js": "^2.8.8",
         "adm-zip": "0.5.16",
         "aedes": "^0.51.3",
@@ -57,6 +55,7 @@
         "tar": "6.2.1",
         "thirty-two": "^1.0.2",
         "ua-parser-js": "1.0.41",
+        "unpdf": "^1.8.1",
         "ws": "^8.18.3"
     },
     "devDependencies": {

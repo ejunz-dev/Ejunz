@@ -59,6 +59,17 @@ export interface EventMap {
     'monitor/collect': (info: any) => VoidReturn;
     'api/update': () => void;
     'base/update': (docId: number, sourceUid?: number | null, sourceUname?: string, actionKey?: string, actionDetail?: any) => VoidReturn;
+    'base/content-change': (payload: {
+        domainId: string;
+        baseDocId: number;
+        nodeIds?: string[];
+        deletedNodeIds?: string[];
+        cardDocIds?: string[];
+        deletedCardDocIds?: string[];
+        mode?: 'incremental' | 'full_rebuild';
+        owner?: number;
+        reason?: string;
+    }) => VoidReturn;
     'base/delete': (domainId: string, baseDocId: number) => VoidReturn;
     'base/node-delete': (domainId: string, baseDocId: number, nodeIds: string[]) => VoidReturn;
     'base/card-delete': (domainId: string, baseDocId: number, cardDocIds: string[]) => VoidReturn;
@@ -91,19 +102,18 @@ export interface EventMap {
 
     'oplog/log': (type: string, handler: Handler<Context> | ConnectionHandler<Context>, args: any, data: any) => VoidReturn;
 
-    // Edge bridge events (single WebSocket for MCP + MQTT)
+
     'edge/ws/inbound': (token: string, envelope: EdgeBridgeEnvelope) => VoidReturn;
 
-    // Workflow events
+
     'workflow/trigger': (domainId: string, workflowId: number, triggerData?: Record<string, any>) => VoidReturn;
     'workflow/timer': (domainId: string, workflowId: number, nodeId: number, triggerData?: Record<string, any>) => VoidReturn;
     'edge/ws/outbound': (token: string, envelope: EdgeBridgeEnvelope) => VoidReturn;
 
-    // Learn events
+
     'learn_result/add': (domainId: string) => VoidReturn;
     'session/change': (doc: SessionDoc) => VoidReturn;
     'record/change': (doc: SessionRecordDoc) => VoidReturn;
-    'base/embedding/status/update': (domainId: string, baseDocId: number) => VoidReturn;
     'mcp/change': (domainId: string, mid: number) => VoidReturn;
     'mcp/status/update': (domainId: string, mid: number, status: string) => VoidReturn;
     'mcp/work/update': (domainId: string, mid: number, delta: 1 | -1) => VoidReturn;
