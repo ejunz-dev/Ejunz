@@ -56,7 +56,7 @@ function appendUniversalAssistantRules(systemMessage: string): string {
         + 'Do not default to English when the user writes in Chinese, Japanese, or other non-English languages.';
     const toolUrlRule =
         '\n\n**Tool result URLs (critical)**: When a tool returns links (relative paths or absolute URLs), and you include them in your reply to the user, copy them **exactly** from the tool output—same characters, same scheme and host (if present), same path and query. '
-        + 'Do not prepend `https
+        + 'Do not prepend `https://`, do not substitute the chat page host or any other domain you imagine, and do not invent or "normalize" a base URL. '
         + 'If the tool gives a path starting with `/d/`, keep it exactly that way unless the tool output already includes a full URL.';
     let out = systemMessage || '';
     if (!out.includes('do not use emoji')) out += emojiRule;

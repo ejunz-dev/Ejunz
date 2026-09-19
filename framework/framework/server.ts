@@ -182,7 +182,7 @@ export class HandlerCommon<C> {
         const query: any = Object.create(null);
         for (const kwargs of kwargsList) {
             for (const key in kwargs) {
-                args[key] = kwargs[key].toString().replace(/
+                args[key] = kwargs[key].toString().replace(/\//g, '%2F');
             }
             for (const key in kwargs.query || {}) {
                 query[key] = kwargs.query[key].toString();

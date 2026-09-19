@@ -1193,7 +1193,7 @@ export class AgentDetailHandler extends Handler {
                 || false;
             const protocol = isSecure ? 'https' : 'http';
             const host = this.request.host || this.request.headers.host || 'localhost';
-            apiUrl = `${protocol}
+            apiUrl = `${protocol}://${host}/api/agent`;
         }
         const rawBaseBindings = normalizeAgentBaseBindings(adoc) || [];
         const enabledBaseLibrariesForDisplay: Array<{ docId: number; title: string; slug: string }> = [];

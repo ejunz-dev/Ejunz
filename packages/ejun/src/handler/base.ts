@@ -275,23 +275,23 @@ function buildGithubRemoteUrl(githubRepo: string, token: string): string {
     const repo = (githubRepo || '').trim();
     if (!repo) return '';
     if (repo.startsWith('git@')) return repo;
-    const isGitHubHttps = /^https?:\/\/.*github\.com
+    const isGitHubHttps = /^https?:\/\/.*github\.com\//.test(repo);
     if (isGitHubHttps) {
         let repoPathMatch = repo.match(/^https?:\/\/[^@]+@github\.com\/(.+)$/);
         if (!repoPathMatch) repoPathMatch = repo.match(/^https?:\/\/github\.com\/(.+)$/);
         if (repoPathMatch?.[1]) {
             const pathPart = repoPathMatch[1];
             if (!token) return `https://github.com/${pathPart}`;
-            return `https
+            return `https://${token}@github.com/${pathPart}`;
         }
-        const stripped = repo.replace(/^https?:\/\/[^@]+@github\.com
+        const stripped = repo.replace(/^https?:\/\/[^@]+@github\.com\//, 'https://github.com/');
         if (!token) return stripped;
-        return stripped.replace(/^https:\/\/github\.com
+        return stripped.replace(/^https:\/\/github\.com\//, `https://${token}@github.com/`);
     }
     if (!repo.includes('://') && !repo.includes('@')) {
         const repoPath = repo.replace(/\.git$/, '');
         if (!token) return `https://github.com/${repoPath}.git`;
-        return `https
+        return `https://${token}@github.com/${repoPath}.git`;
     }
     return repo;
 }
@@ -2928,13 +2928,13 @@ async function createAndPushToGitHubOrgForBase(
             REPO_URL = remoteUrl;
         } else if (remoteUrl.startsWith('https://')) {
             if (!remoteUrl.includes('@github.com')) {
-                REPO_URL = remoteUrl.replace('https://github.com/', `https
+                REPO_URL = remoteUrl.replace('https://github.com/', `https://${GH_TOKEN}@github.com/`);
             }
         }
 
         let repoUrlForStorage = remoteUrl;
         if (remoteUrl.startsWith('https://') && remoteUrl.includes('@github.com')) {
-            repoUrlForStorage = remoteUrl.replace(/^https:\/\/[^@]+@github\.com
+            repoUrlForStorage = remoteUrl.replace(/^https:\/\/[^@]+@github\.com\//, 'https://github.com/');
         }
 
         let base = await BaseModel.get(domainId, docId);
@@ -3001,14 +3001,14 @@ async function gitInitAndPushBase(
     await exec(`git config user.email "${botEmail}"`, execOptions);
 
     await exec(`git config credential.helper store`, execOptions);
-    await exec(`git config credential.https
+    await exec(`git config credential.https://github.com.helper store`, execOptions);
 
     try {
         const { stdout: currentRemote } = await exec('git remote get-url origin', execOptions);
         const currentUrl = (typeof currentRemote === 'string' ? currentRemote : currentRemote.toString()).trim();
 
-        const currentTokenMatch = currentUrl.match(/^https?:\/\/([^@]+)@github\.com
-        const targetTokenMatch = remoteUrlWithAuth.match(/^https?:\/\/([^@]+)@github\.com
+        const currentTokenMatch = currentUrl.match(/^https?:\/\/([^@]+)@github\.com\//);
+        const targetTokenMatch = remoteUrlWithAuth.match(/^https?:\/\/([^@]+)@github\.com\//);
         const currentToken = currentTokenMatch ? currentTokenMatch[1] : '';
         const targetToken = targetTokenMatch ? targetTokenMatch[1] : '';
 
@@ -4105,7 +4105,7 @@ class BaseCardEditHandler extends Handler {
             const returnUrl = String(this.request.body?.returnUrl || '').trim();
             if (returnUrl.startsWith('/') && !returnUrl.startsWith('//')) {
 
-                const returnUrlObj = new URL(returnUrl, `http
+                const returnUrlObj = new URL(returnUrl, `http://${this.request.headers.host || 'localhost'}`);
                 returnUrlObj.searchParams.set('fromEdit', 'true');
                 returnUrlObj.searchParams.set('cardId', cardId.toString());
                 this.response.redirect = returnUrlObj.pathname + returnUrlObj.search;
@@ -6139,7 +6139,7 @@ export class BaseConnectionHandler extends ConnectionHandler {
                 const protocol = (this.request.headers['x-forwarded-proto'] as string) ||
                                  ((this.request.headers['x-forwarded-ssl'] === 'on') ? 'https' : 'http');
                 const host = this.request.host || this.request.headers.host || 'localhost';
-                fullUrl = `${protocol}
+                fullUrl = `${protocol}://${host}${url}`;
             }
 
             const https = require('https');
