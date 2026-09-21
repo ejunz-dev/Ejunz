@@ -4,12 +4,7 @@
     "workspaces": [
         "packages/*",
         "framework/*",
-        "plugins/agent",
-        "plugins/agent/ejunz-agent/vendor/*",
-        "plugins/agent/ejunz-agent/packages/*/*",
-        "plugins/agent/ejunz-agent/native/landlock-run",
-        "plugins/agent/ejunz-agent/native/landlock-run/packages/*",
-        "plugins/agent/ejunz-agent/apps/*",
+        "plugins/*",
         "modules/*"
     ],
     "main": "package.json",
@@ -65,7 +60,7 @@
         "webpack": "^5.102.1",
         "wtfnode": "^0.10.1"
     },
-    "packageManager": "yarn@4.10.3",
+    "packageManager": "yarn@4.9.1",
     "dependencies": {
         "react-activity-calendar": "^3.0.5",
         "react-github-calendar": "^5.0.4"
