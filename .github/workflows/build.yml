@@ -21,6 +21,11 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: 20.17.0
+    - name: Set up Yarn
+      run: |
+        corepack enable
+        corepack install --global yarn@4.9.1
+        yarn --version
     - name: Get yarn cache directory path
       id: yarn-cache-dir-path
       run: echo "::set-output name=dir::$(yarn config get cacheFolder)"
@@ -42,13 +47,16 @@ jobs:
  
     - name: Config And Install
       run: |
-        [[ ! -z "${{secrets.EJUNZ}}" ]] && echo "npmAuthToken: ${{secrets.EJUNZ}}" >> .yarnrc.yml
+        if [[ -n "$EJUNZ_TOKEN" ]]; then
+          printf '\nnpmAuthToken: %s\n' "$EJUNZ_TOKEN" >> .yarnrc.yml
+        fi
         git config --global user.name jacka10086
         git config --global user.email 496806255@qq.com
         yarn
         yarn dedupe
         
       env:
+        EJUNZ_TOKEN: ${{ secrets.EJUNZ }}
         LICENSE_KEY: ${{ secrets.MAXMIND_KEY }}
 
     - name: Verify .yarnrc.yml
