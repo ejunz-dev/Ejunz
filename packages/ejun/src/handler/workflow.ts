@@ -433,7 +433,7 @@ export class WorkflowNodeHandler extends Handler<Context> {
             throw new ValidationError('nodeType');
         }
 
-        const validNodeTypes = ['timer', 'button', 'device_control', 'agent_message', 'object_action', 'agent_action', 'condition', 'delay', 'start', 'end', 'receiver'];
+        const validNodeTypes = ['timer', 'button', 'device_control', 'object_action', 'condition', 'delay', 'start', 'end'];
         if (!validNodeTypes.includes(nodeType)) {
             throw new ValidationError(`Invalid nodeType: ${nodeType}`);
         }
@@ -443,7 +443,7 @@ export class WorkflowNodeHandler extends Handler<Context> {
             workflowId: widNum,
             workflowDocId: workflow.docId,
             name,
-            nodeType: nodeType as 'timer' | 'button' | 'device_control' | 'agent_message' | 'object_action' | 'agent_action' | 'condition' | 'delay' | 'start' | 'end' | 'receiver',
+            nodeType: nodeType as 'timer' | 'button' | 'device_control' | 'object_action' | 'condition' | 'delay' | 'start' | 'end',
             type: type || 'action',
             position: position || { x: 0, y: 0 },
             config: config || {},
@@ -764,30 +764,11 @@ export class WorkflowNodeTypesHandler extends Handler<Context> {
                     },
                 },
                 {
-                    nodeType: 'agent_action',
-                    name: 'Agent 执行器',
-                    description: '使用 Agent 生成内容（选择 Agent 并配置提示词）',
-                    configSchema: {
-                        agentId: { type: 'string', description: 'Agent ID' },
-                        prompt: { type: 'string', description: '提示词（支持 ${variable} 变量）' },
-                        returnType: { type: 'string', enum: ['text', 'tts'], description: '返回类型：text（文字）或 tts（语音）', default: 'text' },
-                        clientId: { type: 'number', description: 'Client ID（接收消息的客户端，可选）' },
-                    },
-                },
-                {
                     nodeType: 'delay',
                     name: '延迟',
                     description: '延迟执行',
                     configSchema: {
                         delayMs: { type: 'number', description: '延迟时间（毫秒）' },
-                    },
-                },
-                {
-                    nodeType: 'receiver',
-                    name: '接收器',
-                    description: '接收 Agent 执行器的内容并发送 TTS 给指定 Client',
-                    configSchema: {
-                        clientId: { type: 'number', description: 'Client ID（接收 TTS 的客户端）' },
                     },
                 },
             ],
@@ -827,16 +808,6 @@ export class WorkflowDevicesListHandler extends Handler<Context> {
         }
         const devices = await NodeDeviceModel.getByNode(node._id);
         this.response.body = { devices: devices.map(d => ({ deviceId: d.deviceId, name: d.name, type: d.type })) };
-    }
-}
-
-// 获取Agent列表（用于Agent操作选择）
-export class WorkflowAgentsListHandler extends Handler<Context> {
-    async get() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        const Agent = global.Ejunz.model.agent;
-        const [agents] = await Agent.list(this.domain._id, {}, 1, 100);
-        this.response.body = { agents: agents.map(a => ({ aid: a.aid || a.docId, name: a.title || `Agent ${a.aid || a.docId}` })) };
     }
 }
 
@@ -889,7 +860,6 @@ export async function apply(ctx: Context) {
     ctx.Route('workflow_node_types', '/workflow/node-types', WorkflowNodeTypesHandler);
     ctx.Route('workflow_nodes_list', '/workflow/nodes', WorkflowNodesListHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('workflow_devices_list', '/workflow/devices', WorkflowDevicesListHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('workflow_agents_list', '/workflow/agents', WorkflowAgentsListHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('workflow_clients_list', '/workflow/clients', WorkflowClientsListHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('workflow_domain', '/workflow', WorkflowDomainHandler);
     ctx.Route('workflow_create', '/workflow/create', WorkflowEditHandler, PRIV.PRIV_USER_PROFILE);

@@ -848,50 +848,6 @@ function WorkflowEditor({ workflowId, initialNodes }: { workflowId: number; init
           </label>
         </div>
       `);
-    } else if (nodeType.nodeType === 'agent_action') {
-      // Agent执行器节点：选择Agent和配置提示词
-      const agentsResponse = await request.get('/workflow/agents');
-      const agentsList = agentsResponse.agents || [];
-      
-      $container.append(`
-        <div style="margin-bottom: 15px;">
-          <label>
-            选择Agent:
-            <select name="agentId" class="textbox" style="width: 100%;" required>
-              <option value="">请选择Agent</option>
-              ${agentsList.map((a: any) => `<option value="${a.aid}" ${currentConfig.agentId === a.aid ? 'selected' : ''}>${a.name}</option>`).join('')}
-            </select>
-          </label>
-        </div>
-        <div style="margin-bottom: 15px;">
-          <label>
-            提示词（支持 \${variable} 变量）:
-            <textarea name="prompt" class="textbox" rows="4" style="width: 100%;" placeholder="输入提示词..." required>${currentConfig.prompt || ''}</textarea>
-          </label>
-          <div style="font-size: 12px; color: #666; margin-top: 4px;">
-            提示：Agent将根据此提示词生成内容，生成的内容会自动传递给后续的接收器节点。
-          </div>
-        </div>
-      `);
-    } else if (nodeType.nodeType === 'receiver') {
-      // 接收器节点：选择Client
-      const clientsResponse = await request.get('/workflow/clients');
-      const clientsList = clientsResponse.clients || [];
-      
-      $container.append(`
-        <div style="margin-bottom: 15px;">
-          <label>
-            选择Client:
-            <select name="clientId" class="textbox" style="width: 100%;" required>
-              <option value="">请选择Client</option>
-              ${clientsList.map((c: any) => `<option value="${c.clientId}" ${currentConfig.clientId === c.clientId ? 'selected' : ''}>${c.name} (ID: ${c.clientId})</option>`).join('')}
-            </select>
-          </label>
-          <div style="font-size: 12px; color: #666; margin-top: 4px;">
-            提示：选择要接收消息的Client，消息将通过TTS发送给该Client。
-          </div>
-        </div>
-      `);
     } else {
       for (const [key, field] of Object.entries(schema)) {
         const fieldConfig = field as any;
@@ -1007,7 +963,7 @@ function WorkflowEditor({ workflowId, initialNodes }: { workflowId: number; init
               }
             });
             
-            // 处理特殊逻辑：对于 timer 节点的 time 字段和 receiver 节点的 clientId 字段
+            // 处理 timer 节点的 time 字段
             for (const [inputName, value] of Object.entries(fieldValues)) {
               if (inputName === 'time' && originalNode.nodeType === 'timer') {
                 const interval = fieldValues.interval || 'day';
@@ -1017,14 +973,6 @@ function WorkflowEditor({ workflowId, initialNodes }: { workflowId: number; init
                   // 不设置 time，让后端从当前时间开始每60秒执行
                   continue;
                 }
-              }
-              // 对于 receiver 节点的 clientId，转换为数字
-              if (inputName === 'clientId' && originalNode.nodeType === 'receiver') {
-                const clientIdNum = parseInt(String(value), 10);
-                if (!isNaN(clientIdNum)) {
-                  config[inputName] = clientIdNum;
-                }
-                continue;
               }
               if (value !== '' && value !== null && value !== undefined) {
                 config[inputName] = value;

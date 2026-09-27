@@ -26,6 +26,11 @@ export async function apply(ctx: Context) {
         logger.info('Starting setup');
         await require('./setup').load(ctx);
     }
+    // The workspace Agent now owns these routes; keep the separate checkout on disk without loading its duplicate API and UI.
+    const migratedAgentAddon = path.resolve(__dirname, '../../../../plugins/agent');
+    for (const [name, addonPath] of Object.entries(global.addons)) {
+        if (path.resolve(addonPath) === migratedAgentAddon) delete global.addons[name];
+    }
     const pending = global.addons;
     const fail = [];
     await locale(pending, fail);
@@ -65,6 +70,7 @@ export async function apply(ctx: Context) {
     const loadDir = async (dir: string) => Promise.all((await fs.readdir(dir)).filter((i) => i.endsWith('.ts'))
         .map((h) => ctx.loader.reloadPlugin(path.resolve(dir, h), '')));
     await loadDir(path.resolve(__dirname, '..', 'handler'));
+    await ctx.loader.reloadPlugin(require.resolve('../service/runtime'), 'agentRuntime');
     await ctx.plugin(require('../service/migration').default);
     await addon(pending, fail, ctx);
     await loadDir(path.resolve(__dirname, '..', 'script'));

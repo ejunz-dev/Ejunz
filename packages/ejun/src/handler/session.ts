@@ -61,7 +61,7 @@ async function buildSessionListRow(
     let resumeUrl: string;
     // learn rows with _id: link to learn_lesson?session=… (history for timed_out / finished / abandoned)
     if (isAgentSessionRow(doc) && doc.agentSessionKind) {
-        resumeUrl = self.url('session_chat_detail', { domainId: doc.domainId, sid: doc._id });
+        resumeUrl = self.url('agent_domain', { domainId: doc.domainId });
     } else if (isLearnSessionRow(doc) && doc._id) {
         const base = self.url('learn_lesson', { domainId: doc.domainId });
         const sep = base.includes('?') ? '&' : '?';

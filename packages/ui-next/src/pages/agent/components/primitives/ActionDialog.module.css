@@ -1,0 +1,112 @@
+.overlay {
+    position: fixed;
+    z-index: 100;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+}
+
+.mask {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    background: rgb(0 0 0 / 48%);
+}
+
+.dialog {
+    position: relative;
+    z-index: 1;
+    width: min(420px, 100%);
+    padding: 20px;
+    border: 1px solid var(--dsw-alias-border-l2);
+    border-radius: 14px;
+    background: var(--dsw-alias-bg-layer-2);
+    color: var(--dsw-alias-label-primary);
+    box-shadow: var(--dsw-shadow-lv3);
+}
+
+.dialog h3 {
+    margin: 0;
+    font-size: 16px;
+    line-height: 22px;
+}
+
+.description {
+    margin: 10px 0 0;
+    color: var(--dsw-alias-label-secondary);
+    font-size: 13px;
+    line-height: 20px;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 16px;
+    color: var(--dsw-alias-label-secondary);
+    font-size: 12px;
+}
+
+.field input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border: 1px solid var(--dsw-alias-border-l2);
+    border-radius: 8px;
+    outline: none;
+    background: var(--dsw-alias-bg-layer-1);
+    color: var(--dsw-alias-label-primary);
+    font: inherit;
+    font-size: 14px;
+}
+
+.field input:focus {
+    border-color: var(--dsw-alias-state-business-primary);
+}
+
+.error {
+    margin: 10px 0 0;
+    color: var(--dsw-alias-state-error-primary);
+    font-size: 12px;
+    line-height: 18px;
+}
+
+.footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 20px;
+}
+
+.cancel,
+.confirm,
+.danger {
+    padding: 7px 14px;
+    border: 1px solid var(--dsw-alias-border-l2);
+    border-radius: 8px;
+    background: var(--dsw-alias-button-elevated-fill);
+    color: var(--dsw-alias-label-primary);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.confirm {
+    border-color: var(--dsw-alias-button-info-fill);
+    background: var(--dsw-alias-button-info-fill);
+    color: #fff;
+}
+
+.danger {
+    border-color: var(--dsw-alias-state-error-primary);
+    background: var(--dsw-alias-state-error-primary);
+    color: #fff;
+}
+
+.cancel:disabled,
+.confirm:disabled,
+.danger:disabled {
+    opacity: .5;
+    cursor: default;
+}

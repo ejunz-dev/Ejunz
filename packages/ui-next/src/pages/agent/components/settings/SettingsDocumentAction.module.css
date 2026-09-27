@@ -1,0 +1,33 @@
+.action {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.button {
+    min-height: 28px;
+    padding: 0 10px;
+    border: 1px solid var(--dsw-alias-border-l2);
+    border-radius: 14px;
+    background: transparent;
+    color: var(--dsw-alias-label-secondary);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+    background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.button:disabled {
+    opacity: .45;
+    cursor: default;
+}
+
+.error {
+    max-width: 220px;
+    color: var(--dsw-alias-state-error-primary);
+    font-size: 12px;
+    line-height: 18px;
+}

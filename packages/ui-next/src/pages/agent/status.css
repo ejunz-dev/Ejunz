@@ -1,0 +1,126 @@
+/* Runtime status page: one row per agent runtime this server knows about. */
+
+.eja-status {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 24px;
+}
+
+.eja-status__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.eja-status__title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--dsw-alias-label-primary);
+}
+
+.eja-status__desc {
+    margin: 6px 0 0;
+    max-width: 720px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--dsw-alias-label-secondary);
+}
+
+.eja-status__muted {
+    margin: 0;
+    font-size: 13px;
+    color: var(--dsw-alias-label-tertiary);
+}
+
+.eja-status__list {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.eja-status__row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 0;
+    border-top: 1px solid var(--dsw-alias-border-l2);
+}
+
+.eja-status__row:first-child {
+    border-top: 0;
+    padding-top: 0;
+}
+
+.eja-status__main {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.eja-status__line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.eja-status__name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--dsw-alias-label-primary);
+}
+
+.eja-status__kind {
+    font-size: 12px;
+    color: var(--dsw-alias-label-caption);
+}
+
+.eja-status__tag--ok,
+.eja-status__tag--warn,
+.eja-status__tag--off {
+    /* The shared chip paints a fixed light surface; a state chip follows the
+       theme's layer colour instead. */
+    background: var(--dsw-alias-bg-layer-2);
+}
+
+.eja-status__tag--ok {
+    color: var(--dsw-alias-state-success-primary);
+}
+
+.eja-status__tag--warn {
+    color: var(--dsw-alias-state-warn-primary);
+}
+
+.eja-status__tag--off {
+    color: var(--dsw-alias-label-tertiary);
+}
+
+.eja-status__facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--dsw-alias-label-secondary);
+}
+
+.eja-status__path {
+    overflow: hidden;
+    font-family: var(--ds-font-family-code);
+    font-size: 12px;
+    color: var(--dsw-alias-label-caption);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.eja-status__actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}

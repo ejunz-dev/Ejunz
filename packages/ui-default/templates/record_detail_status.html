@@ -29,13 +29,6 @@
   {% elif rdoc.recordKind == 'agent' %}
   <div class="section__header">
     <h1 class="section__title">{{ _('Agent Task Record') }}</h1>
-    <div class="section__tools">
-      {% if adoc %}
-      <a href="{{ url('agent_chat', domainId=rdoc.domainId, aid=adoc.aid, query={'recordId': rdoc._id.toString()}) }}" class="button">
-        <span class="icon icon-comment"></span> {{ _('Continue Chat') }}
-      </a>
-      {% endif %}
-    </div>
   </div>
   <div class="section__body typo">
     {% if rdoc.agentError %}

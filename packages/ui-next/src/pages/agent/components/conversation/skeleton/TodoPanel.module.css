@@ -1,0 +1,111 @@
+.root {
+    box-sizing: border-box;
+    flex: none;
+    overflow: hidden;
+    margin: 0 auto;
+    width: calc(100% - var(--ea-composer-side-clearance) - var(--ea-composer-side-clearance) - 32px);
+    max-width: calc(var(--ea-composer-card-max-width) - 32px);
+    border: 1px solid var(--dsw-alias-border-l1);
+    border-radius: 12px;
+    background: var(--dsw-specific-tip);
+}
+
+.body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 6px 12px;
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.lead,
+.chevron {
+    display: grid;
+    flex: none;
+    place-items: center;
+    color: var(--dsw-alias-label-tertiary);
+}
+
+.title {
+    flex: none;
+    color: var(--dsw-alias-label-primary);
+    font-size: 13px;
+    line-height: 24px;
+    font-weight: 500;
+}
+
+.progress {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--dsw-alias-label-tertiary);
+    font-size: 13px;
+    line-height: 20px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 180px;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+}
+
+.item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    color: var(--dsw-alias-label-secondary);
+    font-size: 13px;
+    line-height: 20px;
+}
+
+.glyph {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+}
+
+.glyphCompleted {
+    color: var(--dsw-alias-state-success-primary);
+}
+
+.glyphPending {
+    color: var(--dsw-alias-label-caption);
+}
+
+.glyphProgress {
+    color: var(--dsw-alias-state-business-primary);
+    animation: todo-progress-spin 1s linear infinite;
+}
+
+@keyframes todo-progress-spin {
+    to { transform: rotate(360deg); }
+}
+
+.content {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

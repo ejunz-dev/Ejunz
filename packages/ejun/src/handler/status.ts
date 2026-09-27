@@ -58,7 +58,7 @@ function aggregateWorkerStats(workers) {
     }
     return Array.from(groups.values()).map((rows) => {
         rows.sort((a, b) => new Date(b.updateAt).getTime() - new Date(a.updateAt).getTime());
-        const primary = rows.find((row) => row.workerKind === 'agent_task') || rows[0];
+        const primary = rows[0];
         const onlineRows = rows.filter((row) => row.isOnline);
         const activeTasks = rows.flatMap((row) => row.activeTasks || []);
         const workerKinds = Array.from(new Set(rows.map((row) => row.workerKind).filter(Boolean)));

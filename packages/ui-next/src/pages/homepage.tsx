@@ -127,25 +127,6 @@ function renderSection(name: string, payload: unknown, udict: Udict, domain: { b
       </Card>
     );
   }
-  if (name === 'agent') {
-    const items = Array.isArray(payload) ? payload : [];
-    if (!items.length) return null;
-    return (
-      <Card title={i18n('Agent')}>
-        <List>
-          {items.map((item: any) => (
-            <ListItem
-              key={item.aid}
-              to="agent_detail"
-              params={{ aid: item.aid }}
-              title={item.title || i18n('Untitled')}
-              meta={formatTime(item.updateAt)}
-            />
-          ))}
-        </List>
-      </Card>
-    );
-  }
   if (name === 'checkin' && payload) {
     const data = payload as any;
     const body = (

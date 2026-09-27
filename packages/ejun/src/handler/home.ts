@@ -21,7 +21,6 @@ import * as discussion from '../model/discussion';
 import domain from '../model/domain';
 import message from '../model/message';
 import { BaseModel } from '../model/base';
-import AgentModel from '../model/agent';
 import WorkflowModel from '../model/workflow';
 import EdgeModel from '../../../../plugins/edge/model/edge';
 import ToolModel from '../../../../plugins/edge/model/tool';
@@ -65,12 +64,6 @@ export class HomeHandler extends Handler {
 
     getDiscussionNodes(domainId: string) {
         return discussion.getNodes(domainId);
-    }
-
-    async getAgent(domainId: string, limit = 10) {
-        const [agents] = await AgentModel.list(domainId, {}, 1, limit);
-        this.collectUser(agents.map((agent) => agent.owner));
-        return agents;
     }
 
     async getBase(domainId: string, limit = 10) {

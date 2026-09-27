@@ -107,7 +107,7 @@ async function buildRecordMainListRow(
     if (sessionIdHex) {
         sessionDisplayId = sessionIdHex.length > 8 ? `…${sessionIdHex.slice(-8)}` : sessionIdHex;
         if (sess && isAgentSessionRow(sess) && sess.agentSessionKind) {
-            sessionResumeUrl = buildUrl('session_chat_detail', { domainId: rd.domainId, sid: sess._id });
+            sessionResumeUrl = buildUrl('agent_domain', { domainId: rd.domainId });
         } else if (sess && isDevelopSessionRow(sess)) {
             const baseDocId = Number(sess.baseDocId ?? rd.baseDocId);
             let docSeg = '';

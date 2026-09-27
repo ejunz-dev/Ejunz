@@ -7,8 +7,6 @@ import {
 import { Task } from '../interface';
 import { Logger } from '../logger';
 import * as builtin from '../model/builtin';
-import { STATUS } from '../model/builtin';
-import RecordModel, { AgentRecordMessage } from '../model/record';
 import * as setting from '../model/setting';
 import task, { Consumer } from '../model/task';
 import {
@@ -21,33 +19,11 @@ import {
 
 const logger = new Logger('worker');
 
-type AgentStreamSnapshot = {
-    recordId: string;
-    domainId: string;
-    bubbleId?: string;
-    content?: string;
-    isNew?: boolean;
-    updatedAt: number;
-};
-
-const agentStreamSnapshots = new Map<string, AgentStreamSnapshot>();
-
-export function getAgentStreamSnapshot(domainId: string, recordId: string): AgentStreamSnapshot | undefined {
-    const snapshot = agentStreamSnapshots.get(`${domainId}:${recordId}`);
-    if (!snapshot) return undefined;
-    // Streaming snapshots are only a live-subscription catch-up aid; avoid replaying stale completed content forever.
-    if (Date.now() - snapshot.updatedAt > 5 * 60 * 1000) {
-        agentStreamSnapshots.delete(`${domainId}:${recordId}`);
-        return undefined;
-    }
-    return snapshot;
-}
-
 const WORKER_PROTOCOL = 'ejunz-worker-v1';
-const DEFAULT_TASK_TYPES = ['agent_task', 'tool_call', 'mcp_tool_call'];
+const DEFAULT_TASK_TYPES = ['tool_call', 'mcp_tool_call'];
 const ALLOWED_TASK_TYPES = DEFAULT_TASK_TYPES;
 
-type EjunzWorkerTaskType = 'agent_task' | 'tool_call' | 'mcp_tool_call';
+type EjunzWorkerTaskType = 'tool_call' | 'mcp_tool_call';
 
 type WorkerMeta = {
     workerId: string;
@@ -57,28 +33,12 @@ type WorkerMeta = {
     workerVersion: string;
 };
 
-function toObjectId(value: unknown): ObjectId | null {
-    if (value instanceof ObjectId) return value;
-    if (typeof value === 'string' && ObjectId.isValid(value)) return new ObjectId(value);
-    return null;
-}
-
-function normalizeDate(value: unknown): Date {
-    if (value instanceof Date) return value;
-    if (typeof value === 'string' || typeof value === 'number') {
-        const d = new Date(value);
-        if (!Number.isNaN(d.getTime())) return d;
-    }
-    return new Date();
-}
-
 function taskWithoutId(t: Task): Omit<Task, '_id'> & { type: string } {
     const { _id, ...rest } = t as any;
     return rest;
 }
 
 function taskTypeFromDbTask(t: Task): EjunzWorkerTaskType | null {
-    if (t.type === 'task') return 'agent_task';
     if (t.type === 'tool_call') return 'tool_call';
     if (t.type === 'mcp' && (t as any).subType === 'tool_call') return 'mcp_tool_call';
     return null;
@@ -86,7 +46,6 @@ function taskTypeFromDbTask(t: Task): EjunzWorkerTaskType | null {
 
 function buildTaskQuery(taskTypes: string[], minPriority?: number) {
     const clauses: any[] = [];
-    if (taskTypes.includes('agent_task')) clauses.push({ type: 'task' });
     if (taskTypes.includes('tool_call')) clauses.push({ type: 'tool_call' });
     if (taskTypes.includes('mcp_tool_call')) clauses.push({ type: 'mcp', subType: 'tool_call' });
     const query: any = clauses.length === 1 ? { ...clauses[0] } : { $or: clauses.length ? clauses : [{ type: '__never__' }] };
@@ -154,208 +113,6 @@ abstract class EjunzTaskCallbackContext {
 
     then(onfulfilled?: (value: any) => void, onrejected?: (reason: any) => void) {
         return this.finishPromise.then(onfulfilled, onrejected);
-    }
-}
-
-class AgentTaskCallbackContext extends EjunzTaskCallbackContext {
-    private get domainId() {
-        return (this.dbTask as any).domainId as string;
-    }
-
-    private get recordId() {
-        return toObjectId((this.dbTask as any).recordId);
-    }
-
-    private withWorkerMeta(message: Partial<AgentRecordMessage>): AgentRecordMessage {
-        const meta = this.workerMeta();
-        return {
-            role: message.role || 'assistant',
-            content: message.content || '',
-            timestamp: normalizeDate(message.timestamp),
-            ...message,
-            ...meta,
-        } as AgentRecordMessage;
-    }
-
-    async start() {
-        const rid = this.recordId;
-        if (!rid) return;
-        await RecordModel.updateAgentTask(this.domainId, rid, {
-            status: STATUS.STATUS_TASK_FETCHED,
-            ...this.workerMeta(),
-        });
-        await RecordModel.updateAgentTask(this.domainId, rid, {
-            status: STATUS.STATUS_TASK_PROCESSING,
-            ...this.workerMeta(),
-        });
-    }
-
-    async accepted() {
-        const rid = this.recordId;
-        if (!rid) return;
-        await RecordModel.updateAgentTask(this.domainId, rid, {
-            status: STATUS.STATUS_TASK_PROCESSING,
-            ...this.workerMeta(),
-        });
-    }
-
-    appendMessage(message: Partial<AgentRecordMessage>) {
-        return this.enqueue(async () => {
-            const rid = this.recordId;
-            if (!rid) return;
-            await RecordModel.updateAgentTask(this.domainId, rid, {
-                agentMessages: [this.withWorkerMeta(message)],
-                ...this.workerMeta(),
-            });
-        });
-    }
-
-    patchMessage(selector: { bubbleId?: string }, set: Record<string, any>) {
-        return this.enqueue(async () => {
-            const rid = this.recordId;
-            if (!rid || !selector?.bubbleId) return;
-            const rdoc = await RecordModel.get(this.domainId, rid);
-            const messages = rdoc?.agentMessages || [];
-            let index = -1;
-            for (let i = messages.length - 1; i >= 0; i--) {
-                if (messages[i].bubbleId === selector.bubbleId) {
-                    index = i;
-                    break;
-                }
-            }
-            if (index < 0) return;
-            const $set: any = {};
-            const allowed = new Set([
-                'content', 'timestamp', 'bubbleState', 'contentHash', 'toolName',
-                'toolResult', 'tool_call_id', 'tool_calls', 'bubbleId',
-            ]);
-            for (const [key, value] of Object.entries(set || {})) {
-                if (!allowed.has(key)) continue;
-                $set[`agentMessages.${index}.${key}`] = key === 'timestamp' ? normalizeDate(value) : value;
-            }
-            const meta = this.workerMeta();
-            $set[`agentMessages.${index}.workerId`] = meta.workerId;
-            $set[`agentMessages.${index}.workerName`] = meta.workerName;
-            $set[`agentMessages.${index}.workerLabel`] = meta.workerLabel;
-            $set[`agentMessages.${index}.workerKind`] = meta.workerKind;
-            $set[`agentMessages.${index}.workerVersion`] = meta.workerVersion;
-            await RecordModel.rawAgentUpdate(this.domainId, rid, $set);
-        });
-    }
-
-    stream(body: any) {
-        const rid = this.recordId;
-        if (!rid) return;
-        const recordId = rid.toString();
-        const streamData = {
-            recordId,
-            domainId: this.domainId,
-            ...body,
-        };
-        agentStreamSnapshots.set(`${this.domainId}:${recordId}`, {
-            ...streamData,
-            updatedAt: Date.now(),
-        });
-        bus.broadcast('bubble/stream' as any, streamData);
-    }
-
-    status(body: any) {
-        return this.enqueue(async () => {
-            const rid = this.recordId;
-            if (!rid) return;
-            await RecordModel.updateAgentTask(this.domainId, rid, {
-                status: Number.isFinite(body?.status) ? Number(body.status) : undefined,
-                score: Number.isFinite(body?.score) ? Number(body.score) : undefined,
-                time: Number.isFinite(body?.time) ? Number(body.time) : undefined,
-                agentToolCallCount: Number.isFinite(body?.agentToolCallCount) ? Number(body.agentToolCallCount) : undefined,
-                ...this.workerMeta(),
-            });
-        });
-    }
-
-    toolResult(body: any) {
-        return this.enqueue(async () => {
-            const rid = this.recordId;
-            if (!rid) return;
-            const message = this.withWorkerMeta({
-                role: 'tool',
-                content: body?.content ?? JSON.stringify(body?.result ?? body?.error ?? null),
-                toolName: body?.toolName,
-                toolResult: body?.result,
-                tool_call_id: body?.tool_call_id,
-                timestamp: normalizeDate(body?.timestamp),
-            });
-            await RecordModel.updateAgentTask(this.domainId, rid, {
-                agentToolCallCount: Number.isFinite(body?.agentToolCallCount) ? Number(body.agentToolCallCount) : undefined,
-                agentMessages: [message],
-                ...this.workerMeta(),
-            });
-        });
-    }
-
-    async complete(body: any = {}) {
-        await this.enqueue(async () => {
-            const rid = this.recordId;
-            if (!rid) return;
-            await RecordModel.updateAgentTask(this.domainId, rid, {
-                status: STATUS.STATUS_TASK_PENDING,
-                time: Number.isFinite(body?.time) ? Number(body.time) : undefined,
-                agentToolCallCount: Number.isFinite(body?.agentToolCallCount) ? Number(body.agentToolCallCount) : undefined,
-                ...this.workerMeta(),
-            });
-            await RecordModel.updateAgentTask(this.domainId, rid, {
-                status: Number.isFinite(body?.status) ? Number(body.status) : STATUS.STATUS_TASK_DELIVERED,
-                score: Number.isFinite(body?.score) ? Number(body.score) : 100,
-                ...this.workerMeta(),
-            });
-            agentStreamSnapshots.delete(`${this.domainId}:${rid.toString()}`);
-            (bus.broadcast as any)('task/agent-completed', {
-                recordId: rid.toString(),
-                domainId: this.domainId,
-                taskId: this.taskId,
-            });
-        });
-        this.finish(null);
-    }
-
-    async error(body: any = {}) {
-        await this.enqueue(async () => {
-            const rid = this.recordId;
-            if (!rid) return;
-            const err = body?.error || body;
-            agentStreamSnapshots.delete(`${this.domainId}:${rid.toString()}`);
-            await RecordModel.updateAgentTask(this.domainId, rid, {
-                status: Number.isFinite(body?.status) ? Number(body.status) : STATUS.STATUS_TASK_ERROR_SYSTEM,
-                score: Number.isFinite(body?.score) ? Number(body.score) : 0,
-                time: Number.isFinite(body?.time) ? Number(body.time) : undefined,
-                agentError: {
-                    message: err?.message || String(err || 'Worker task failed'),
-                    code: err?.code || 'WORKER_ERROR',
-                    stack: err?.stack,
-                },
-                ...this.workerMeta(),
-            });
-        });
-        this.finish(null);
-    }
-
-    async reset() {
-        if (this.completed) return;
-        await this.enqueue(async () => {
-            const rid = this.recordId;
-            if (rid) {
-                await RecordModel.updateAgentTask(this.domainId, rid, {
-                    status: STATUS.STATUS_TASK_WAITING,
-                    agentError: {
-                        message: 'Worker disconnected before completing this task; the task was requeued.',
-                        code: 'WORKER_DISCONNECTED',
-                    },
-                    ...this.workerMeta(),
-                });
-            }
-            await task.add(taskWithoutId(this.dbTask));
-        });
-        this.finish(null);
     }
 }
 
@@ -515,7 +272,6 @@ export class EjunzWorkerConnectionHandler extends ConnectionHandler {
     }
 
     private createCallbackContext(t: Task, taskType: EjunzWorkerTaskType) {
-        if (taskType === 'agent_task') return new AgentTaskCallbackContext(this.ctx, t, taskType, this.workerMeta.bind(this));
         if (taskType === 'tool_call') return new ToolCallTaskCallbackContext(this.ctx, t, taskType, this.workerMeta.bind(this));
         return new McpToolCallCallbackContext(this.ctx, t, taskType, this.workerMeta.bind(this));
     }
@@ -548,7 +304,7 @@ export class EjunzWorkerConnectionHandler extends ConnectionHandler {
             return;
         }
         if (!msg || typeof msg !== 'object') return;
-        if (!['status', 'agent.stream'].includes(msg.key)) logger.info('Worker message: %s task=%s', msg.key, msg.taskId || '');
+        if (msg.key !== 'status') logger.info('Worker message: %s task=%s', msg.key, msg.taskId || '');
 
         if (msg.key === 'config') {
             if (msg.protocol && msg.protocol !== WORKER_PROTOCOL) {
@@ -622,11 +378,6 @@ export class EjunzWorkerConnectionHandler extends ConnectionHandler {
         }
 
         if (msg.key === 'task.accepted') await cb.accepted(msg);
-        else if (msg.key === 'agent.status' && cb instanceof AgentTaskCallbackContext) await cb.status(msg);
-        else if (msg.key === 'agent.stream' && cb instanceof AgentTaskCallbackContext) cb.stream(msg);
-        else if (msg.key === 'agent.message.append' && cb instanceof AgentTaskCallbackContext) await cb.appendMessage(msg.message || msg);
-        else if (msg.key === 'agent.message.patch' && cb instanceof AgentTaskCallbackContext) await cb.patchMessage(msg.selector || { bubbleId: msg.bubbleId }, msg.set || msg.message || {});
-        else if (msg.key === 'agent.tool_result' && cb instanceof AgentTaskCallbackContext) await cb.toolResult(msg);
         else if (msg.key === 'task.complete') await cb.complete(msg);
         else if (msg.key === 'task.error') await cb.error(msg);
         else if (msg.key === 'tool_call.complete') await cb.complete(msg);

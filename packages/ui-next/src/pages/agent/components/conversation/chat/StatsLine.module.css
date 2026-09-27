@@ -1,0 +1,18 @@
+.root {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 4px 16px 0;
+    color: var(--dsw-alias-label-tertiary);
+    font-size: 12px;
+    line-height: 20px;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sep {
+    margin: 0 10px;
+    color: var(--dsw-alias-label-tertiary);
+}

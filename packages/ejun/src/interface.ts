@@ -1225,6 +1225,7 @@ export interface Model {
     domain: typeof import('./model/domain').default,
     develop: typeof import('./model/develop').default,
     agent: typeof import('./model/agent').default,
+    agentSession: typeof import('./model/agent').AgentSessionModel,
     message: typeof import('./model/message').default,
     opcount: typeof import('./model/opcount'),
     setting: typeof import('./model/setting'),

@@ -31,7 +31,41 @@ export { default as DomainModel } from './model/domain';
 export { default as StorageModel } from './model/storage';
 export { default as TaskModel } from './model/task';
 export { default as AgentModel } from './model/agent';
+export { AgentSessionModel } from './model/agent';
+export { AgentRuntimeModel } from './model/agent';
+export { AgentLinkModel } from './model/agent';
+export { AgentStorageModel } from './model/agent';
+export { createInProcessLink, createSocketLink } from './service/runtime';
+export { parseRuntimeFrame } from './service/runtime';
+export type {
+    AgentFrame,
+    InProcessRuntime,
+    RuntimeLink,
+    RuntimeReply,
+    SocketPeer,
+} from './service/runtime';
+export type {
+    RuntimeInboundFrame,
+    RuntimeOutboundFrame,
+    RuntimeStream,
+} from './service/runtime';
+export type {
+    AgentCredentialDoc,
+    AgentDisplayPrefs,
+    AgentDomainSettings,
+    AgentEventDoc,
+    AgentSessionDoc,
+    AgentSessionSummary,
+    AgentSessionType,
+    AgentWorkspaceDoc,
+} from './model/agent';
+export type { AgentRuntimeDoc, AgentRuntimeKind, AgentRuntimeSummary } from './model/agent';
+export type { AgentLinkStatus, AgentLinkSummary } from './model/agent';
+export type { AgentStorageDescriptor, AgentStorageSnapshot } from './model/agent';
+export { agentDataAdapter, MongoAgentDataAdapter } from './service/runtime';
+export type { AgentDataAdapter, AgentScope } from './service/runtime';
 export { default as ClientModel, ClientWidgetModel, ClientGsiFieldModel } from '../../../plugins/edge/model/client';
+export { PRIV } from './model/builtin';
 export * from './model/builtin';
 export { Collections } from './service/db';
 export { ConnectionHandler, Handler, requireSudo } from './service/server';
