@@ -4,9 +4,8 @@
  * scope, so concurrent runs do not interact and disposal leaves no global residue. The prompt
  * contribution is ordinary reconstructed request state.
  *
- * Capture commits only after the authoritative `tools/result` succeeds; Code Mode capture also
- * waits for the enclosing `run_code` result. The terminal result marker and monotonic tool
- * guard prevent later calls from reopening a completed structured run.
+ * Capture commits only after the authoritative `tools/result` succeeds. The terminal result
+ * marker and monotonic tool guard prevent later calls from reopening a completed structured run.
  * @module @ejunz/subagent-in-process-driver/structured
  */
 
@@ -52,13 +51,10 @@ export function attachStructuredRuntime(childCtx: Context, schema: ObjectJsonSch
    * authoritative `tools/result` notification. The execution object's identity
    * uniquely identifies a trip through the pipeline: adapter call ids may
    * repeat across steps, but another execution can never reach this WeakMap
-   * entry. This is distinct from the opaque `ToolExecutionToken` used to
-   * correlate nested transports. The final notification always deletes its own
+   * entry. The final notification always deletes its own
    * stage, whether the result succeeded or failed.
    */
   const staged = new WeakMap<ToolExecution, { value: unknown }>()
-  /** Successful nested capture waiting for its enclosing transport to commit. */
-  let pending: { parent: ToolExecution['token']; value: unknown } | undefined
   let captured: { value: unknown } | undefined
 
   const schemaEntry: ToolSchema = {
@@ -106,7 +102,7 @@ export function attachStructuredRuntime(childCtx: Context, schema: ObjectJsonSch
   // waterfall and compose monotonically (deny or abstain, never allow), so a
   // later prepended listener cannot resurrect dispatch. Calls that precede
   // capture in the same response remain untouched.
-  childCtx.tools.guard(exec => captured === undefined && pending === undefined
+  childCtx.tools.guard(exec => captured === undefined
     ? undefined
     : `structured output already recorded: the run is complete, so \`${exec.name}\` is not executed`)
 
@@ -114,28 +110,11 @@ export function attachStructuredRuntime(childCtx: Context, schema: ObjectJsonSch
   // complete pipeline and outer error normalization. This notification cannot
   // transform the outcome, so there is no wrapper outside the commit verdict.
   childCtx.on('tools/result', function (this: unknown, exec, result) {
-    if (exec.name === STRUCTURED_OUTPUT_TOOL) {
-      const entry = staged.get(exec)
-      if (entry === undefined) return
-      staged.delete(exec)
-      if (result.isError) return
-      if (exec.parent === undefined) {
-        /* v8 ignore else -- sequential agent-loop dispatch lets the guard block every later supported call */
-        if (captured === undefined) captured = { value: entry.value }
-      } else {
-        /* v8 ignore else -- Code Mode serializes sub-dispatches, so the guard blocks every later supported call */
-        if (captured === undefined && pending === undefined) {
-          pending = { parent: exec.parent, value: entry.value }
-        }
-      }
-      return
-    }
-    if (pending?.parent !== exec.token) return
-    const entry = pending
-    pending = undefined
-    if (result.isError) return
-    /* v8 ignore else -- Code Mode serializes outer executions, so the guard blocks every later supported call */
-    if (captured === undefined) captured = { value: entry.value }
+    if (exec.name !== STRUCTURED_OUTPUT_TOOL) return
+    const entry = staged.get(exec)
+    if (entry === undefined) return
+    staged.delete(exec)
+    if (!result.isError && captured === undefined) captured = { value: entry.value }
   })
 
   return { captured: () => captured }

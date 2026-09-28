@@ -11,11 +11,10 @@ import type { Context } from '@ejunz/cordis'
 import type {
   RpcResult, SessionId, SubagentAddress,
 } from '@ejunz/api-remotes/client'
-import type { HostObservable, SessionMaybeProvideInfo } from '@ejunz/client-ui-slots'
 import type { AgentContext } from '../agents/scope.ts'
 import type { SessionSearchResultItem } from '../sessions/manager.ts'
 import type {
-  SessionBinding, SessionListState, SessionProvideDescriptor,
+  SessionBinding, SessionListState,
 } from '../sessions/service.ts'
 import type { SessionFace } from './session.ts'
 import type { ObservableSnapshot } from './store.ts'
@@ -24,10 +23,8 @@ export type { AgentContext } from '../agents/scope.ts'
 
 /** The sessions-service face injected as `ctx.sessions`. */
 export interface ISessions {
-  /** The useSessions standard feed (list rows + current selection; read face — writes stay inside the domain). */
+  /** Session-list snapshot (rows + current selection; writes stay inside the domain). */
   readonly list: ObservableSnapshot<SessionListState>
-  /** Atomic current-session provide projection (the renderer host's `sessions.provideInfo` feed). */
-  readonly currentProvideInfo: HostObservable<SessionMaybeProvideInfo>
   /**
    * The `session.search` result bound the wire schema fixes, exposed to
    * presentation as injected data. Not per-connection state: every transport
@@ -95,13 +92,6 @@ export interface ISessions {
    * @throws when the fork fails, or when a requested child-title rename fails after creation.
    */
   fork(opts: { sessionId: SessionId; atSeq?: number; increaseTitle?: boolean }): Promise<SessionId>
-  /**
-   * Register a per-session standard-props provider (hooks become `use<Name>`
-   * selector hooks on the render side; props spread verbatim).
-   * @param descriptor - static member roster plus per-session resolver.
-   * @returns disposer removing the provider.
-   */
-  provide(descriptor: SessionProvideDescriptor): () => void
   /**
    * Resolve an Agent-scoped context view (use-and-discard).
    * @param id - session id.

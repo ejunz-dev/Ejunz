@@ -6,7 +6,6 @@
 
 import type { SessionsApi } from './sessions.ts'
 import type { HostApi } from './host.ts'
-import type { WorkspaceApi } from './workspace.ts'
 import type { AgentPresetsApi } from './agent-presets.ts'
 import type { SkillsApi } from './skills.ts'
 import type { GoalsApi } from './goals.ts'
@@ -41,13 +40,6 @@ export interface RpcMethodMap {
   'subagent.prompt': SubagentsApi['prompt']
   'subagent.interrupt': SubagentsApi['interrupt']
   'host.describe': HostApi['describe']
-  'workspace.list': WorkspaceApi['list']
-  'workspace.create': WorkspaceApi['create']
-  'workspace.rename': WorkspaceApi['rename']
-  'workspace.delete': WorkspaceApi['delete']
-  'workspace.insertBefore': WorkspaceApi['insertBefore']
-  'workspace.insertSessionBefore': WorkspaceApi['insertSessionBefore']
-  'workspace.archiveSession': WorkspaceApi['archiveSession']
   'skill.list': SkillsApi['list']
   'agentPreset.list': AgentPresetsApi['list']
   'agentPreset.select': AgentPresetsApi['select']

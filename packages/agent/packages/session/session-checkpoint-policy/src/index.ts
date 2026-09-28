@@ -53,7 +53,7 @@ function abortedBeforeDispatchResult(): ToolExecutionResult {
  * Install semantic checkpoint listeners. Loop-built model calls checkpoint the
  * logged request before adapter dispatch; top-level tool calls checkpoint their
  * recorded call before the tool body; the next request boundary checkpoints
- * the preceding response/result batch. Nested tool dispatches reuse the durable outer call.
+ * the preceding response/result batch.
  *
  * Checkpoint failures are fail-closed at the model and tool side-effect
  * boundaries: the downstream adapter or tool body is not invoked.
@@ -68,7 +68,7 @@ export function apply(ctx: Context): void {
   })
 
   ctx.on('tools/execute', async (exec, next): Promise<ToolExecutionResult> => {
-    if (exec.agent === undefined || exec.parent !== undefined) return next()
+    if (exec.agent === undefined) return next()
     await ctx.sessions.flush(exec.agent.session)
     if (exec.signal.aborted) return abortedBeforeDispatchResult()
     return next()

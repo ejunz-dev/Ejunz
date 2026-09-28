@@ -43,7 +43,7 @@ export interface SessionOptions {
    * into its list row so the session surfaces without waiting for a host
    * frame. Acceptance is the flip point because it proves the user message
    * is in the host log; a rejected first prompt keeps the session blank
-   * (hidden, still reusable by connectWorkspace).
+   * (hidden until a prompt is accepted).
    */
   onEngaged?(session: Session): void
   /**
@@ -113,8 +113,8 @@ export class Session implements SessionFace {
    * subsystem page, docs/subsystems/session-projection.md): finished whole
    * values computed on the host, seeded by the tail page's
    * projections block and updated by `session/projection` frames under the
-   * one higher-seq-wins rule. Keys are read via `projections.faceOf(key)`
-   * (the useProjection resolution face); the conversation snapshot never
+   * one higher-seq-wins rule. Keys are read via `projections.faceOf(key)`;
+   * the conversation snapshot never
    * carries projection values, and no client-side domain folding exists.
    * Manager-owned when constructed through SessionManager (frames route and
    * the store outlives instantiation, the title-snapshot precedent); a bare
@@ -248,9 +248,8 @@ export class Session implements SessionFace {
     // turn/start — is fact, not optimism; standalone command and projection
     // events never flip it), while a rejected first prompt must keep the
     // session blank — the client-side blank mirror only ever lowers, so
-    // flipping early on a failure would surface the session forever and
-    // strip its connectWorkspace reuse eligibility against the host's
-    // authority.
+    // flipping early on a failure would surface a session without a durable
+    // conversation.
     if (this.blankBit) {
       this.blankBit = false
       this.options.onEngaged?.(this)
@@ -333,7 +332,7 @@ export class Session implements SessionFace {
    * Rename: contract session.rename 1:1. On success settle the 'title'
    * projection cell from the response's `{title, seq}` under the store's
    * higher-seq-wins rule (the push frame arriving later is a no-op replay),
-   * so the list row and any useProjection('title') reader update without
+   * so the list row and projection readers update without
    * waiting for the mux frame.
    * @param title - raw title text (the host normalizes acceptance).
    * @returns the rename result (normalized accepted title + title event seq).

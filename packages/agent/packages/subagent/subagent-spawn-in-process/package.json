@@ -43,7 +43,6 @@
   "devDependencies": {
     "@ejunz/agent": "workspace:^",
     "@ejunz/agent-loop": "workspace:^",
-    "@ejunz/bash-local": "workspace:^",
     "@ejunz/cordis": "workspace:^",
     "@ejunz/cordis-plugin-loader": "workspace:^",
     "@ejunz/invariants": "workspace:^",

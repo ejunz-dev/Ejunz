@@ -4,7 +4,7 @@
  * terminates and joins live trees; Node's synchronous exit phase force-stops
  * any trees the service still owns. It has no config: every disposition and
  * limit arrives on the spec, so the deployment-varying choices stay with the
- * caller's config (the bash executor's, the LSP host's, …).
+ * caller's config (the LSP host's or an out-of-process subagent's, …).
  * @module @ejunz/subprocess-local
  */
 

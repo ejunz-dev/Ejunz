@@ -1,6 +1,6 @@
 {
   "name": "@ejunz/client-runtime",
-  "description": "Client core services: SlotRegistry, SessionRuntime (scope tree + object layer)",
+  "description": "Client core services: SessionRuntime (scope tree + object layer)",
   "version": "0.1.2-rc.5",
   "publishConfig": {
     "access": "public"
@@ -45,7 +45,6 @@
     "@ejunz/agent": "workspace:^",
     "@ejunz/attachment": "workspace:^",
     "@ejunz/client-connection": "workspace:^",
-    "@ejunz/client-ui-slots": "workspace:^",
     "@ejunz/commands": "workspace:^",
     "@ejunz/host-apiproxy": "workspace:^",
     "@ejunz/llm": "workspace:^",
@@ -71,8 +70,7 @@
     "@ejunz/invariants": "workspace:^",
     "@ejunz/timeout": "workspace:^",
     "@ejunz/typert-protocol": "workspace:^",
-    "@ejunz/typert-registry": "workspace:^",
-    "@types/react": "~18.3.1"
+    "@ejunz/typert-registry": "workspace:^"
   },
   "files": [
     "lib/index.js",

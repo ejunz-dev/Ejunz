@@ -1,7 +1,7 @@
 /**
- * Caller identity, workspace authorization, and visible lineage projection.
+ * Caller identity, same-working-directory authorization, and visible lineage projection.
  *
- * @module @ejunz/tool-session-query/workspace-access
+ * @module @ejunz/tool-session-query/cwd-access
  */
 
 import type { Context } from '@ejunz/cordis'
@@ -238,8 +238,8 @@ function titleText(view: TitleView): string {
     : `${view.text} (title unavailable: ${view.unavailableCode})`
 }
 
-/** Workspace-scoped caller authorization, title access, and lineage projection. */
-export const workspaceAccess = {
+/** Cwd-scoped caller authorization, title access, and lineage projection. */
+export const cwdAccess = {
   callerOf,
   targetId,
   authorizeTarget,

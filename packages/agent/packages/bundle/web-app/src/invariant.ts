@@ -14,8 +14,8 @@ export const name = 'web-app-invariant'
 export const inject = ['invariants']
 
 /**
- * No runtime invariant: every contribution (frontend-static child plugin,
- * prompt section, bashEnv registration) is registry-disposed with the fiber,
+ * No runtime invariant: every contribution (trusted-host configuration,
+ * prompt section, and runtime configuration) is registry-disposed with the fiber,
  * and each owning registry's package carries that relation's invariant; the
  * package holds no mutable state of its own to audit.
  */

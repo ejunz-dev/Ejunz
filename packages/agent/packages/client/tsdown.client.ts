@@ -50,8 +50,8 @@ const SKIP_WORKSPACE_BUILD: UserConfig = { entry: '' }
 
 /**
  * Documented TEMPORARY exemption, not a platform module (hence not in
- * platform.ts): the snapshot-store engine (createSnapshotStore/defineStore/
- * shallowEqual) lives in runtime pending its promotion-time rehoming, and
+ * platform.ts): the snapshot-store engine (createSnapshotStore/shallowEqual)
+ * lives in runtime pending its promotion-time rehoming, and
  * client bundles that still use it ride this single exemption. At runtime the
  * lazy CJS table answers the require natively: runtime is an immediately-tier
  * row, its factory is registered before any dependent bundle materializes.

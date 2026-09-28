@@ -18,7 +18,7 @@ import type { ToolRunContext } from '@ejunz/tools'
 import { toolInput } from './input.ts'
 import { presentation } from './presentation.ts'
 import { serviceBoundary } from './service-boundary.ts'
-import { workspaceAccess } from './workspace-access.ts'
+import { cwdAccess } from './cwd-access.ts'
 
 type SessionSearchArgs = Parameters<typeof toolInput.buildSessionFilters>[0]
 
@@ -57,11 +57,11 @@ async function executeSessionSearch(
   exec: ToolRunContext,
   maxResults: number,
 ): Promise<string> {
-  const caller = workspaceAccess.callerOf(exec)
+  const caller = cwdAccess.callerOf(exec)
   const cwd = caller.header.cwd
   if (cwd === undefined) {
     throw new EjunzAgentError(
-      'cross-session search is unavailable because the caller session has no workspace',
+      'cross-session search is unavailable because the caller session has no directory metadata',
       'SESSION_QUERY_TOOL_UNAUTHORIZED',
     )
   }
@@ -79,7 +79,7 @@ async function executeSessionSearch(
   if (requestedParentIds !== undefined || args.include_root_sessions === true) {
     const authorizedParentIds = requestedParentIds === undefined
       ? new Set<SessionId>()
-      : await workspaceAccess.authorizeSessionIds(ctx, caller, requestedParentIds, exec.signal)
+      : await cwdAccess.authorizeSessionIds(ctx, caller, requestedParentIds, exec.signal)
     const parentValues: Array<SessionId | null> = requestedParentIds
       ?.filter(id => authorizedParentIds.has(id)) ?? []
     if (args.include_root_sessions === true) parentValues.push(null)
@@ -97,14 +97,14 @@ async function executeSessionSearch(
         eventFilters,
         ...cursor === undefined ? {} : { cursor },
       }, { signal: exec.signal })),
-    hit => hit.header.id !== caller.id && workspaceAccess.recordAuthorized(hit, caller),
+    hit => hit.header.id !== caller.id && cwdAccess.recordAuthorized(hit, caller),
   )
 
   const parentIds = collected.items
     .map(hit => hit.header.parentSession)
     .filter((id): id is SessionId => id !== undefined)
-  const authorizedParents = await workspaceAccess.authorizeSessionIds(ctx, caller, parentIds, exec.signal)
-  const titles = await workspaceAccess.readTitles(
+  const authorizedParents = await cwdAccess.authorizeSessionIds(ctx, caller, parentIds, exec.signal)
+  const titles = await cwdAccess.readTitles(
     ctx,
     caller,
     collected.items.map(hit => hit.header.id),
@@ -119,9 +119,9 @@ async function executeEventSearch(
   exec: ToolRunContext,
   maxResults: number,
 ): Promise<string> {
-  const caller = workspaceAccess.callerOf(exec)
-  const sessionId = workspaceAccess.targetId(args, caller)
-  await workspaceAccess.authorizeTarget(ctx, caller, sessionId, exec.signal)
+  const caller = cwdAccess.callerOf(exec)
+  const sessionId = cwdAccess.targetId(args, caller)
+  await cwdAccess.authorizeTarget(ctx, caller, sessionId, exec.signal)
   const query = toolInput.normalizeQuery(args.query)
   const range = toolInput.sequenceRange(args.seq_from, args.seq_to)
   if (sessionId === caller.id) {
@@ -134,7 +134,7 @@ async function executeEventSearch(
     }
     range.to = Math.min(range.to ?? Number.MAX_SAFE_INTEGER, stepStart.seq - 1)
   }
-  const title = await workspaceAccess.readTitle(ctx, caller, sessionId, exec.signal)
+  const title = await cwdAccess.readTitle(ctx, caller, sessionId, exec.signal)
   if (range.from !== undefined && range.to !== undefined && range.from > range.to) {
     return presentation.formatEventSearch(sessionId, title, { items: [], capped: false })
   }
@@ -157,7 +157,7 @@ async function executeEventSearch(
           filters,
           ...cursor === undefined ? {} : { cursor },
         }, { signal: exec.signal }))
-      workspaceAccess.assertObservedTargetAuthorized(caller, sessionId, page.session)
+      cwdAccess.assertObservedTargetAuthorized(caller, sessionId, page.session)
       return page
     },
     () => true,
@@ -170,30 +170,30 @@ async function executeSessionTrace(
   args: SessionTargetArgs,
   exec: ToolRunContext,
 ): Promise<string> {
-  const caller = workspaceAccess.callerOf(exec)
-  const sessionId = workspaceAccess.targetId(args, caller)
-  await workspaceAccess.authorizeTarget(ctx, caller, sessionId, exec.signal)
+  const caller = cwdAccess.callerOf(exec)
+  const sessionId = cwdAccess.targetId(args, caller)
+  await cwdAccess.authorizeTarget(ctx, caller, sessionId, exec.signal)
   const trace = await serviceBoundary.call(ctx, exec.signal, 'session lineage trace', () =>
     ctx.sessionQuery.traceSession(sessionId, exec.signal))
-  workspaceAccess.assertObservedTargetAuthorized(caller, sessionId, trace.target.header)
+  cwdAccess.assertObservedTargetAuthorized(caller, sessionId, trace.target.header)
 
   const ancestors: SessionRecord[] = []
   let ancestorBoundary = false
   for (const ancestor of trace.ancestors) {
-    if (!workspaceAccess.recordAuthorized(ancestor, caller)) {
+    if (!cwdAccess.recordAuthorized(ancestor, caller)) {
       ancestorBoundary = true
       break
     }
     ancestors.push(ancestor)
   }
   if (ancestors.length === trace.ancestors.length && !trace.complete) ancestorBoundary = true
-  const descendants = workspaceAccess.authorizeDescendants(trace.descendants, caller)
+  const descendants = cwdAccess.authorizeDescendants(trace.descendants, caller)
   const visibleIds = [
     trace.target.header.id,
     ...ancestors.map(record => record.header.id),
-    ...workspaceAccess.descendantIds(descendants),
+    ...cwdAccess.descendantIds(descendants),
   ]
-  const titles = await workspaceAccess.readTitles(ctx, caller, visibleIds, exec.signal)
+  const titles = await cwdAccess.readTitles(ctx, caller, visibleIds, exec.signal)
   return presentation.formatSessionTrace(trace, ancestors, ancestorBoundary, descendants, titles)
 }
 
@@ -203,13 +203,13 @@ async function executeEventTrace(
   exec: ToolRunContext,
 ): Promise<string> {
   toolInput.assertNonNegativeSafeInteger('seq', args.seq)
-  const caller = workspaceAccess.callerOf(exec)
-  const sessionId = workspaceAccess.targetId(args, caller)
-  await workspaceAccess.authorizeTarget(ctx, caller, sessionId, exec.signal)
+  const caller = cwdAccess.callerOf(exec)
+  const sessionId = cwdAccess.targetId(args, caller)
+  await cwdAccess.authorizeTarget(ctx, caller, sessionId, exec.signal)
   const trace = await serviceBoundary.call(ctx, exec.signal, 'event trace', () =>
     ctx.sessionQuery.traceEvent({ sessionId, seq: args.seq }, exec.signal))
-  workspaceAccess.assertObservedTargetAuthorized(caller, sessionId, trace.session)
-  const title = await workspaceAccess.readTitle(ctx, caller, sessionId, exec.signal)
+  cwdAccess.assertObservedTargetAuthorized(caller, sessionId, trace.session)
+  const title = await cwdAccess.readTitle(ctx, caller, sessionId, exec.signal)
   return presentation.formatEventTrace(sessionId, title, trace)
 }
 
@@ -221,9 +221,9 @@ async function executeEventRead(
   toolInput.assertNonNegativeSafeInteger('seq', args.seq)
   if (args.before !== undefined) toolInput.assertNonNegativeSafeInteger('before', args.before)
   if (args.after !== undefined) toolInput.assertNonNegativeSafeInteger('after', args.after)
-  const caller = workspaceAccess.callerOf(exec)
-  const sessionId = workspaceAccess.targetId(args, caller)
-  await workspaceAccess.authorizeTarget(ctx, caller, sessionId, exec.signal)
+  const caller = cwdAccess.callerOf(exec)
+  const sessionId = cwdAccess.targetId(args, caller)
+  await cwdAccess.authorizeTarget(ctx, caller, sessionId, exec.signal)
   const window = await serviceBoundary.call(ctx, exec.signal, 'event read', () =>
     ctx.sessionQuery.readEvent({
       sessionId,
@@ -231,8 +231,8 @@ async function executeEventRead(
       ...args.before === undefined ? {} : { before: args.before },
       ...args.after === undefined ? {} : { after: args.after },
     }, exec.signal))
-  workspaceAccess.assertObservedTargetAuthorized(caller, sessionId, window.session)
-  const title = await workspaceAccess.readTitle(ctx, caller, sessionId, exec.signal)
+  cwdAccess.assertObservedTargetAuthorized(caller, sessionId, window.session)
+  const title = await cwdAccess.readTitle(ctx, caller, sessionId, exec.signal)
   return presentation.formatEventRead(sessionId, title, window)
 }
 

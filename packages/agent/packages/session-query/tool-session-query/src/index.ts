@@ -1,5 +1,5 @@
 /**
- * Model-facing, workspace-authorized session-history search and read tools.
+ * Model-facing, caller-scoped session-history search and read tools.
  *
  * @module @ejunz/tool-session-query
  */
@@ -51,7 +51,7 @@ const TEXT_OUTPUT = {
 
 const PROMPT_TEXT =
   'Use session_search to find relevant work from prior sessions, or session_event_search to search earlier '
-  + 'events in one session. Search results are cursor-free and workspace-scoped. Follow a useful hit with '
+  + 'events in one session. Search results are cursor-free and limited to sessions available to the caller. Follow a useful hit with '
   + 'session_trace, session_event_trace, or session_event_read when you need lineage, relationships, or exact data.'
 
 /** Register all five tools and their shared model guidance. */
@@ -65,7 +65,7 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.tools.register(defineTool({
     name: 'session_search',
-    description: 'Search prior sessions in the caller workspace and return the strongest matching event from each session.',
+    description: 'Search prior sessions available to the caller and return the strongest matching event from each session.',
     parameters: toolInput.sessionSearchParameters,
     output: TEXT_OUTPUT,
     timeoutMs: resolved.searchTimeoutMs,

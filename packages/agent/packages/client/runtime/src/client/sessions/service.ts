@@ -16,14 +16,11 @@
  */
 import type { Context, Fiber } from '@ejunz/cordis'
 import type {
-  IApiClient, RpcError, RpcResult, SessionId, SubagentAddress, JobView, WorkspaceId,
+  IApiClient, RpcError, RpcResult, SessionId, SubagentAddress, JobView,
 } from '@ejunz/api-remotes/client'
 // Value import from the inline-safe wire layer (not the connection plugin):
 // plugin-to-plugin value imports are a bundle purity error.
 import { SESSION_SEARCH_RESULT_LIMIT } from '@ejunz/host-apiproxy/api'
-import type {
-  HostObservable, SessionMaybeProvideInfo, SessionProvideInfo,
-} from '@ejunz/client-ui-slots'
 import type { SessionProjectionMap } from '@ejunz/session-projection/types'
 import type { SnapshotStore } from '../contract/store.ts'
 import { createSnapshotStore } from '../contract/store.ts'
@@ -35,7 +32,6 @@ import { SessionManager } from './manager.ts'
 import type { SessionRemotes } from './remotes.ts'
 import type { SessionListPhase, SessionSearchResultItem, SubagentCatalogSnapshot } from './manager.ts'
 import type { PendingInteractionStatus } from './pending.ts'
-import { SessionProvideChannel } from './provide.ts'
 import type { Session } from './session.ts'
 
 /** Session list row projected from the host list RPC plus live stream increments. */
@@ -60,12 +56,7 @@ export interface SessionSummary {
   pendingInteraction?: PendingInteractionStatus
   /** Finished while not selected and not yet opened — the sidebar's green "done" reminder. Absent = false. */
   completed?: boolean
-  /**
-   * Empty-log bit (host summary derivation mirror). New Session reuses a blank
-   * one targeting the same workspace. Filtering stays with the consumer: the
-   * store carries every row, while the Workspace browser shows only the
-   * selected blank entry.
-   */
+  /** Empty-log bit (host summary derivation mirror); consumers own list visibility. */
   blank: boolean
   updatedAt: number
   /** Current host-computed projection values retained by the object layer. */
@@ -73,9 +64,8 @@ export interface SessionSummary {
 }
 
 /**
- * Session list store shape. `current` rides the same snapshot (arbitrated:
- * the single useSessions standard hook reads list and selection together —
- * sidebar highlighting and SessionProvider share one fact source).
+ * Session list store shape. `current` rides the same snapshot so consumers
+ * read list and selection from one fact source.
  */
 export interface SessionListState {
   /** Host-list order; addressed breadcrumb-only rows are excluded. */
@@ -135,7 +125,7 @@ export class SessionForkError extends Error {
   }
 }
 
-/** Session assembly handle for SessionProvider/inject factories (identity-stable per session). */
+/** Identity-stable session assembly handle for scoped feature consumers. */
 export interface SessionBinding {
   readonly sessionId: SessionId
   /** The outward session face only — feature code never sees the concrete class. */
@@ -149,16 +139,12 @@ export interface SessionBinding {
 export { scopeOf } from '../agents/scope.ts'
 
 /**
- * Workspace display title of a session cwd: the path's last non-empty
- * segment (both separators accepted; trailing separators ignored), or ''
- * for separator-only paths — callers own their fallback (session id, raw
- * cwd, default-directory copy). The repo-wide single basename derivation —
- * every surface naming a workspace (picker rows, toggle labels, list titles)
- * calls this instead of re-splitting paths.
- * @param cwd - workspace directory path.
+ * Directory display title: the path's last non-empty segment (both separators
+ * accepted; trailing separators ignored), or '' for separator-only paths.
+ * @param cwd - session working directory.
  * @returns basename title, or '' when no non-empty segment exists.
  */
-export function workspaceTitleOf(cwd: string): string {
+function directoryTitleOf(cwd: string): string {
   return cwd.replace(/[/\\]+$/, '').split(/[/\\]/).pop() ?? ''
 }
 
@@ -169,7 +155,7 @@ export function workspaceTitleOf(cwd: string): string {
 function displayTitleOf(title: string | undefined, cwd: string | undefined, id: SessionId): string {
   if (title !== undefined) return title
   if (cwd !== undefined && cwd !== '') {
-    const base = workspaceTitleOf(cwd)
+    const base = directoryTitleOf(cwd)
     if (base !== '') return base
   }
   return id
@@ -199,30 +185,6 @@ interface ScopeRecord {
   binding: SessionBinding
   /** The concrete Session for runtime-internal entry points (staging open()); the binding carries only the outward face. */
   session: Session
-  /** Render-layer standard-props bundle (identity-stable per scope; the renderer's per-info caches key off it). */
-  provideInfo: SessionProvideInfo
-}
-
-/** One plugin's per-session standard-props contribution (see {@link SessionRuntime.provide}). */
-export interface SessionProvideContribution {
-  /** Bare observable sources, keyed by hook base name ('input' → useInput). */
-  hooks?: Record<string, HostObservable<unknown>>
-  /** Stable plain members (action callbacks etc.), spread into standard props verbatim. */
-  props?: Record<string, unknown>
-}
-
-/**
- * Static declaration plus per-session resolver for one standard-kit
- * contribution. The declared names let the renderer construct the same hook
- * and prop surface while no session is current.
- */
-export interface SessionProvideDescriptor {
-  /** Hook base names (`input` becomes `useInput`). */
-  hooks?: readonly string[]
-  /** Plain standard-prop names. */
-  props?: readonly string[]
-  /** Resolve every declared member for one definite session. */
-  resolve(binding: SessionBinding): SessionProvideContribution
 }
 
 /** Root sessions service: list store, current selection, object-layer manager, scope tree, bindings, and breadcrumb routes. */
@@ -234,18 +196,10 @@ export class SessionRuntime implements ISessions {
    * reports the same number.
    */
   readonly searchResultLimit = SESSION_SEARCH_RESULT_LIMIT
-  /** List snapshot store (list RPC + host stream increments; re-pulled on reconnect) — the useSessions standard feed, current included. */
+  /** List snapshot store (list RPC + host stream increments; re-pulled on reconnect). */
   readonly list: SnapshotStore<SessionListState>
   /** The object-layer instance cluster and frame dispatch entry. */
   private readonly manager: SessionManager
-  /**
-   * Atomic current-session provide projection: selection changes and
-   * provider-roster changes publish through this one source (the renderer
-   * host's `sessions.provide` feed), so a roster change under a stable
-   * current id republishes the bundle instead of stranding mounted entries.
-   */
-  readonly currentProvideInfo: HostObservable<SessionMaybeProvideInfo>
-
   /**
    * Persisted selection cell (the durable half of `list.current`). Private on
    * purpose: reads go through the list snapshot; writes through {@link
@@ -257,8 +211,6 @@ export class SessionRuntime implements ISessions {
   private readonly selection: SnapshotStore<SessionSelection>
 
   private readonly scopes = new Map<SessionId, ScopeRecord>()
-  /** The provide channel (roster, materialization rules, current projection) — shared with the test runtime's double. */
-  private readonly provideChannel: SessionProvideChannel
   /**
    * The staged session id — follows `list.current` exactly, holding its last
    * defined value across masked gaps (a transiently absent selection blanks
@@ -312,20 +264,7 @@ export class SessionRuntime implements ISessions {
     // dedicated code path. Safe to run synchronously inside the store notify:
     // the follower writes no list state — session.open()'s synchronous prefix
     // touches only session-side state and its own microtask-batched notifier.
-    // The current-provide projection follows the same current writes.
-    this.list.subscribe(() => {
-      this.followCurrent()
-      this.provideChannel.publishCurrent()
-    })
-    this.provideChannel = new SessionProvideChannel({
-      rebuildBundles: () => {
-        for (const record of this.scopes.values()) {
-          record.provideInfo = this.provideChannel.materializeInfo(record.binding)
-        }
-      },
-      resolveCurrent: () => this.maybeProvideInfo(this.list.getSnapshot().current),
-    })
-    this.currentProvideInfo = this.provideChannel.currentProvideInfo
+    this.list.subscribe(() => { this.followCurrent() })
     let registryRebuildQueued = false
     const scheduleRegistryRebuild = (): void => {
       if (registryRebuildQueued) return
@@ -346,23 +285,6 @@ export class SessionRuntime implements ISessions {
       }, 'sessions: conversation registry rebuild')
     }
     rootCtx.reflect.provide('sessions', this, undefined)
-  }
-
-  /**
-   * Register a per-session standard-props provider: every session-scope slot
-   * component receives the contributed members as standard props (`hooks`
-   * sources become `use<Name>` selector hooks on the render side; `props`
-   * spread verbatim). Contributions materialize lazily with the session's
-   * scope record and die with it. Registration order is resolution order;
-   * duplicate member names fail loud at materialization.
-   * @param descriptor - static member roster plus per-session resolver.
-   * @returns disposer removing the provider (already-materialized bundles keep their members until their scope drops).
-   */
-  provide(descriptor: SessionProvideDescriptor): () => void {
-    // Scopes may already exist (boot order: the list lands and resolves
-    // scopes before later plugins register) — the channel rebuilds their
-    // bundles through the host hooks so every provider lands by first render.
-    return this.provideChannel.provide(descriptor)
   }
 
   /**
@@ -413,8 +335,7 @@ export class SessionRuntime implements ISessions {
   }
 
   /**
-   * Clear the current selection so the layout shows the no-session empty
-   * state (new-session affordance and the workspace preselection flow).
+   * Clear the current selection so the caller can begin a new session.
    * Wipes the persisted selection too — a reload stays on empty until the
    * user opens or starts a session. The staged scope keeps its frozen view
    * per the masked-gap contract until the next open() moves the stage.
@@ -478,11 +399,11 @@ export class SessionRuntime implements ISessions {
    * draft hand-off) may address the scope synchronously, without waiting a
    * notifier flush. The synchronous projection below makes this structural
    * rather than an accident of microtask ordering.
-   * @param opts - target workspace or directory and an optional preallocated id.
+   * @param opts - optional working directory and caller-preallocated id.
    * @returns the new session id.
    * @throws {SessionCreateError} with the requested id.
    */
-  async create(opts: { workspaceId?: WorkspaceId; cwd?: string; sessionId?: SessionId } = {}): Promise<SessionId> {
+  async create(opts: { cwd?: string; sessionId?: SessionId } = {}): Promise<SessionId> {
     const result = await this.manager.create(opts)
     if (!result.ok) throw new SessionCreateError(result.error, opts.sessionId)
     this.projectList()
@@ -578,25 +499,6 @@ export class SessionRuntime implements ISessions {
   }
 
   /**
-   * Resolve one session's render-layer standard-props bundle (ctx never
-   * enters the render layer; the renderer subscribes to
-   * {@link SessionRuntime.currentProvideInfo}). Pure resolution — render-safe:
-   * no staging, no window side effects (StrictMode double-invokes and
-   * concurrent discarded passes must stay free).
-   */
-  private provideInfo(id: string): SessionProvideInfo | undefined {
-    return this.resolve(id as SessionId)?.provideInfo
-  }
-
-  /**
-   * Resolve the current-session-optional standard kit. Unknown or absent ids
-   * return the static no-session projection rather than removing hook props.
-   */
-  private maybeProvideInfo(id: string | undefined): SessionMaybeProvideInfo {
-    return (id === undefined ? undefined : this.provideInfo(id)) ?? this.provideChannel.maybeInfo
-  }
-
-  /**
    * Move the stage to the list's current session: sweep teardowns deferred
    * behind the previous occupant and pull the new occupant's history window.
    * Staging IS the open signal — the window opens ⟺ the session is on stage
@@ -643,8 +545,6 @@ export class SessionRuntime implements ISessions {
       ctx,
       binding,
       session,
-      // Sources are bare observables; React binds selector hooks at its own boundary.
-      provideInfo: this.provideChannel.materializeInfo(binding),
     }
     this.scopes.set(id, record)
     return record
@@ -749,9 +649,9 @@ export class SessionRuntime implements ISessions {
 
   /**
    * One teardown for the whole per-session axis: the scope
-   * fiber (cascading every actx-registered effect: input shell, slash
-   * controller, popup, plugin stores, listeners), the session-keyed slot
-   * stores, and the Session instance itself — the host session log is the
+   * fiber (cascading every actx-registered effect: input state, slash
+   * controller, popup, plugin stores, listeners), and the Session instance
+   * itself — the host session log is the
    * durable truth, a reopen lazily rebuilds and backfills via open().
    */
   private dropScope(id: SessionId, record: ScopeRecord): void {
@@ -759,9 +659,6 @@ export class SessionRuntime implements ISessions {
     // Release the Session's dispatch point with the scope it belongs to (a
     // surviving instance — the live Intent — rebinds when resolve re-mints).
     record.session.unbindScope()
-    // Optional lookup: slots and sessions are sibling services with no
-    // declared dependency; a slots-less boot (object-layer tests) skips.
-    this.rootCtx.get('slots')?.pruneStoreScope(id)
     this.manager.drop(id)
   }
 

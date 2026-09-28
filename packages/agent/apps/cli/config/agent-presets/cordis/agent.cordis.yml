@@ -1,5 +1,5 @@
 # The `cordis` preset id is retained for existing sessions, but has no
-# shell, filesystem, code-execution, or runtime-mutation capability.
+# filesystem, code-execution, or runtime-mutation capability.
 - id: persona
   name: '@ejunz/persona'
   config:

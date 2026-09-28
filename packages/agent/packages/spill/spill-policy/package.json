@@ -45,7 +45,6 @@
   },
   "devDependencies": {
     "@ejunz/agent": "workspace:^",
-    "@ejunz/code-runtime-worker-thread": "workspace:^",
     "@ejunz/cordis": "workspace:^",
     "@ejunz/invariants": "workspace:^",
     "@ejunz/llm": "workspace:^",

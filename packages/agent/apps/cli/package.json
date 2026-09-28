@@ -46,7 +46,6 @@
     "@ejunz/session-reference": "workspace:^",
     "@ejunz/skill": "workspace:^",
     "@ejunz/time-context": "workspace:^",
-    "@ejunz/tmux-context": "workspace:^",
     "@ejunz/token-meter": "workspace:^",
     "@ejunz/tool-ask-user": "workspace:^",
     "@ejunz/tool-goal": "workspace:^",

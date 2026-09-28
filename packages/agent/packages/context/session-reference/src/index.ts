@@ -101,9 +101,9 @@ export class SessionReferenceResolver extends Service {
   }
 
   /**
-   * List reference candidates, ranked by working-directory affinity.
-   * @param agent - target agent; self is excluded and its cwd drives ranking.
-   * @param query - optional case-insensitive session-id/cwd/title substring.
+   * List reference candidates in session-store order.
+   * @param agent - target agent; its own session is excluded.
+   * @param query - optional case-insensitive session-id/title substring.
    * @param limit - optional positive result cap.
    * @param signal - optional cancellation boundary for host autocomplete teardown.
    * @returns candidates labeled by latest title or, when absent, session id.
@@ -118,42 +118,29 @@ export class SessionReferenceResolver extends Service {
       throw new SessionReferenceError('candidate limit must be a positive safe integer', 'SESSION_REFERENCE_INVALID_REFERENCE')
     }
     const needle = query.toLocaleLowerCase()
-    const targetCwd = agent.session.header.cwd
     assertNotCancelled(signal)
     const records = (await settleWithCancellation(this.ctx.sessionQuery.listSessions(signal), signal))
       .filter(record => record.header.id !== agent.id)
-      .map((record, index) => ({ record, index }))
-    const inspected = needle === ''
-      ? records
-        .sort((a, b) => candidateRank(a.record.header.cwd, targetCwd) - candidateRank(b.record.header.cwd, targetCwd)
-          || a.index - b.index)
-        .slice(0, limit)
-      : records
+    const inspected = needle === '' ? records.slice(0, limit) : records
     const observations = await settleWithCancellation(
-      this.ctx.sessionQuery.readTitleSnapshots(inspected.map(({ record }) => record.header.id), signal),
+      this.ctx.sessionQuery.readTitleSnapshots(inspected.map(record => record.header.id), signal),
       signal,
     )
-    return inspected.map(({ record, index }, observationIndex) => {
+    return inspected.map((record, observationIndex) => {
       const observation = observations[observationIndex] as SessionTitleObservationResult
       return {
         record,
-        index,
         label: observation.status === 'fulfilled'
           ? observation.value.title?.title ?? record.header.id
           : record.header.id,
       }
-    }).filter(({ record, label }) => {
-      if (needle === '') return true
-      return record.header.id.toLocaleLowerCase().includes(needle)
-        || record.header.cwd?.toLocaleLowerCase().includes(needle) === true
-        || label.toLocaleLowerCase().includes(needle)
-    }).sort((a, b) => candidateRank(a.record.header.cwd, targetCwd) - candidateRank(b.record.header.cwd, targetCwd)
-      || a.index - b.index)
+    }).filter(({ record, label }) => needle === ''
+      || record.header.id.toLocaleLowerCase().includes(needle)
+      || label.toLocaleLowerCase().includes(needle))
       .slice(0, limit)
       .map(({ record, label }) => ({
         sessionId: record.header.id,
         label,
-        ...record.header.cwd === undefined ? {} : { cwd: record.header.cwd },
         createdAt: record.header.createdAt,
       }))
   }
@@ -265,12 +252,6 @@ function normalizeReferences(
 
 function renderPrompt(data: readonly ReferencedSessionData[]): string {
   return `${PROMPT_PREFIX}${stringifyTagSafeJson(data)}${PROMPT_SUFFIX}`
-}
-
-function candidateRank(candidateCwd: string | undefined, targetCwd: string | undefined): number {
-  if (candidateCwd !== undefined && targetCwd !== undefined && candidateCwd === targetCwd) return 0
-  if (candidateCwd === undefined) return 1
-  return 2
 }
 
 function assertNotCancelled(signal: AbortSignal | undefined): void {

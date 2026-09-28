@@ -1,6 +1,4 @@
-/* NEW SESSION hero (figma Input_Bottom 75:8208): logo + title, workspace chip
-   above the shared InputBar card. The input itself is InputBar — only stack
-   geometry and the chip live here. */
+/* NEW SESSION hero: logo and title above the shared InputBar card. */
 
 .root {
   --ea-chat-content-width: 748px;
@@ -19,7 +17,7 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  /* figma 75:8208: 12 between title block / workspace / card. */
+  /* Keep consistent spacing between the title and composer. */
   gap: 12px;
   width: 100%;
   max-width: var(--ea-composer-card-max-width);
@@ -88,9 +86,7 @@
   }
 }
 
-/* Workspace row sits 12px above the input card (figma y80 → y112). The blue
-   glow lives with the owner (ConversationRoot .heroGlow) so it can center on
-   the input card. */
+/* The blue glow centers on the input card. */
 .body {
   position: relative;
   display: flex;
@@ -114,62 +110,6 @@
   aspect-ratio: 1051 / 468;
   transform: translate(-50%, 50%);
   pointer-events: none;
-}
-
-/* Must beat `.body > :not(.glow)` specificity so the open Menu (and its
-   right-hand submenu) paints above the InputBar card. */
-.body > .workspaceRow {
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  /* figma 75:8208 workspace row: px 8 above the card. */
-  padding-left: 8px;
-}
-
-/* Folder + label + chevron — transparent at rest; fill only on hover / open. */
-.workspace {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  max-width: min(100%, 360px);
-  min-height: 28px;
-  padding: 0 8px;
-  border: none;
-  border-radius: 16px;
-  background: transparent;
-  color: var(--dsw-alias-label-primary);
-  font-size: 13px;
-  line-height: 20px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.workspace:not(:disabled):hover,
-.workspace[aria-expanded='true'] {
-  background: var(--dsw-alias-interactive-bg-hover);
-}
-
-/* Locked form (bound guidance state): a static echo — no hover feedback, no
-   pointer affordance; label keeps full contrast. */
-.workspace:disabled {
-  cursor: default;
-}
-
-.folder {
-  flex: none;
-  color: var(--dsw-alias-label-primary);
-}
-
-.workspaceLabel {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chevron {
-  flex: none;
-  color: var(--dsw-alias-label-caption);
 }
 
 /* Dialog field: 44 tall on the modal's 332 content column, r22, hairline

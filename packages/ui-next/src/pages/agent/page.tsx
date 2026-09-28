@@ -6,7 +6,6 @@ import { ChatView } from './components/conversation/chat/ChatView';
 import { TrajectoryView } from './components/conversation/trajectory/TrajectoryView';
 import { ConversationRoot } from './components/conversation/skeleton/ConversationRoot';
 import { DetailsPanel } from './components/conversation/skeleton/DetailsPanel';
-import { DirectoryPickerDialog } from './components/conversation/skeleton/DirectoryPickerDialog';
 import { InputBar } from './components/conversation/skeleton/InputBar';
 import { TodoPanel } from './components/conversation/skeleton/TodoPanel';
 import { QueueDock } from './components/conversation/queue/QueueDock';
@@ -17,7 +16,7 @@ import { AgentHeader, type AgentWebSocketStatus } from './components/structure/A
 import { AgentDisplaySettingsDialog, defaultAgentDisplaySettings, readAgentDisplaySettings, type AgentDisplaySettings } from './components/structure/AgentDisplaySettingsDialog';
 import { SessionSettingsPanel } from './components/structure/SessionSettingsPanel';
 import { SessionDrawer } from './components/structure/SessionDrawer';
-import { WorkspaceSessionTree } from './components/structure/WorkspaceSessionTree';
+import { SessionTree } from './components/structure/SessionTree';
 import type { HostOption } from './components/structure/HostPicker';
 import { ActionDialog } from './components/primitives/ActionDialog';
 import { GeneralSection } from './components/settings/GeneralSection';
@@ -38,7 +37,7 @@ import { domainPrefix, useAgentRpc } from './runtime/rpc';
 import { useAgentTheme } from './runtime/theme';
 import { applyEvent, asObject, assistantStreamKey, eventFailureMessage, eventMessage, eventsToMessages, fileInjectionsAfterUser, flattenToolTree, foldToolTree, latestHistoryError, queueItems, settleRunningMessages } from './runtime/conversation';
 import type { HistoryEntry } from './runtime/conversation';
-import type { BaseView, HostFrame, MuxFrame, SessionSummary, WorkspaceView } from './runtime/session';
+import type { BaseView, HostFrame, MuxFrame, SessionSummary } from './runtime/session';
 import { useDraftAttachments } from './components/attachment/useDraftAttachments';
 import { FILE_INJECTION_PLUGIN, FILE_INJECTION_SECTION, fileInjectionText, type DraftAttachment, type UploadedFileMeta } from './runtime/uploads';
 import { Notification, useBuildUrl, useUiContext, useUserContext } from '@ejunz/ui-next';
@@ -56,10 +55,8 @@ const SESSION_DRAWER_MIN = 320;
 
 type DialogState =
     | { kind: 'rename-session'; id: string; value: string }
-    | { kind: 'rename-workspace'; id: string; value: string }
-    | { kind: 'delete-workspace'; id: string; title: string }
     | { kind: 'delete-session'; id: string; title: string }
-    | { kind: 'delete-selected'; workspaceIds: string[]; sessionIds: string[] };
+    | { kind: 'delete-selected'; sessionIds: string[] };
 
 interface HistoryCacheEntry {
     history: HistoryEntry[];
@@ -335,21 +332,10 @@ export default function AgentPage() {
         window.location.href = buildUrl('user_login', {}, { redirect });
     }, [buildUrl, guest]);
     const [sessions, setSessions] = useState<SessionSummary[]>([]);
-    const [workspaces, setWorkspaces] = useState<WorkspaceView[]>([]);
     const [bases, setBases] = useState<BaseView[]>([]);
-    const [draftWorkspaceId, setDraftWorkspaceId] = useState<string | undefined>();
     const [draftBaseId, setDraftBaseId] = useState<number | undefined>();
     const [draftModelSelection, setDraftModelSelection] = useState<{ provider: string; model: string } | undefined>();
     const [modelCatalog, setModelCatalog] = useState<{ groups: SessionModels['groups'] } | null>(null);
-    const [collapsedWorkspaces, setCollapsedWorkspaces] = useState<Record<string, boolean>>(() => {
-        try {
-            const stored = JSON.parse(window.localStorage.getItem('eja.workspace.collapsed') ?? '{}') as unknown;
-            return stored && typeof stored === 'object' ? stored as Record<string, boolean> : {};
-        } catch {
-            return {};
-        }
-    });
-    const [archivedSessionIds, setArchivedSessionIds] = useState<Set<string>>(() => new Set());
     const [models, setModels] = useState<SessionModels | null>(null);
     const [modelMenuOpen, setModelMenuOpen] = useState(false);
     const [detailsOpen, setDetailsOpen] = useState(false);
@@ -395,8 +381,6 @@ export default function AgentPage() {
     const [agentPresetOptions, setAgentPresetOptions] = useState<AgentPresetOption[]>([]);
     const [agentPresetChoice, setAgentPresetChoice] = useState('');
     const [agentPresetError, setAgentPresetError] = useState<string | null>(null);
-    const [directoryPickerOpen, setDirectoryPickerOpen] = useState(false);
-    const [directoryCreating, setDirectoryCreating] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [settingsSection, setSettingsSection] = useState<string | null>(null);
     const [displaySettingsOpen, setDisplaySettingsOpen] = useState(false);
@@ -405,7 +389,6 @@ export default function AgentPage() {
     const [editMode, setEditMode] = useState(false);
     const [sessionTitleDrafts, setSessionTitleDrafts] = useState<Record<string, string>>({});
     const [sessionTitleSaving, setSessionTitleSaving] = useState(false);
-    const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(() => new Set());
     const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(() => new Set());
     const currentRef = useRef<string | null>(null);
     const sessionsRef = useRef(sessions);
@@ -442,16 +425,6 @@ export default function AgentPage() {
             // the session itself names; the poll retries, and a switch or a new
             // session reports the same failure through its own call.
             setHosts([]);
-        }
-    }, [rpc]);
-
-    const loadWorkspaces = useCallback(async () => {
-        try {
-            const value = await rpc('workspace.list', {}) as { items?: WorkspaceView[]; archivedSessionIds?: string[] };
-            setWorkspaces(Array.isArray(value.items) ? value.items : []);
-            setArchivedSessionIds(new Set(Array.isArray(value.archivedSessionIds) ? value.archivedSessionIds : []));
-        } catch (error) {
-            setLoadError(error instanceof Error ? error.message : String(error));
         }
     }, [rpc]);
 
@@ -872,18 +845,17 @@ export default function AgentPage() {
         void Promise.all([
             loadSessions(),
             loadHosts(),
-            loadWorkspaces(),
             loadBases(),
             loadDisplaySettings(),
             loadAgentPresets(),
             loadModelCatalog(),
         ]).finally(() => setBooting(false));
-    }, [guest, loadAgentPresets, loadBases, loadDisplaySettings, loadHosts, loadModelCatalog, loadSessions, loadWorkspaces]);
+    }, [guest, loadAgentPresets, loadBases, loadDisplaySettings, loadHosts, loadModelCatalog, loadSessions]);
     useEffect(() => {
         if (guest) return undefined;
-        const timer = window.setInterval(() => { void loadSessions(); void loadHosts(); void loadWorkspaces(); void loadBases(); }, POLL_MS);
+        const timer = window.setInterval(() => { void loadSessions(); void loadHosts(); void loadBases(); }, POLL_MS);
         return () => window.clearInterval(timer);
-    }, [guest, loadBases, loadHosts, loadSessions, loadWorkspaces]);
+    }, [guest, loadBases, loadHosts, loadSessions]);
     useEffect(() => {
         if (guest) return;
         sessions.forEach((session) => {
@@ -966,7 +938,6 @@ export default function AgentPage() {
     const historyLoadingLabel = historyLoadingRangeEnd === null
         ? '加载中…'
         : `加载中… ${Math.max(0, historyLoadingRangeEnd - HISTORY_INITIAL_MESSAGES)}-${historyLoadingRangeEnd}`;
-    const selectedWorkspaceId = draftWorkspaceId ?? workspaces.find((workspace) => currentSession?.sessionId !== undefined && workspace.sessionIds.includes(currentSession.sessionId))?.workspaceId;
     const selectedBaseId = current
         ? (currentSession?.baseDocId === undefined || currentSession.baseDocId === null || currentSession.baseDocId === '' ? undefined : Number(currentSession.baseDocId))
         : draftBaseId;
@@ -981,20 +952,18 @@ export default function AgentPage() {
             routable: draftModelSelection !== undefined,
             groups: modelCatalog.groups,
         } : null);
-    const startSession = useCallback(async (firstMessage = '', presetOverride?: string, workspaceId?: string, baseId?: number, titleOverride?: string, modelOverride?: { provider: string; model: string }) => {
+    const startSession = useCallback(async (firstMessage = '', presetOverride?: string, baseId?: number, titleOverride?: string, modelOverride?: { provider: string; model: string }) => {
         let sessionPublished = false;
         setCreatingSession(true);
         setNewSessionConfigOpen(false);
         setDetailsOpen(true);
         try {
-            const selectedWorkspaceId = workspaceId ?? draftWorkspaceId;
             const selectedBaseId = baseId ?? draftBaseId;
             const selectedModel = modelOverride ?? draftModelSelection;
             // The host is part of what a session is created with: it serves this
             // session until another one is chosen for it.
             const selectedHostId = draftHostId ?? '';
             const value = await rpc('session.create', {
-                ...(selectedWorkspaceId ? { workspaceId: selectedWorkspaceId } : {}),
                 ...(selectedBaseId === undefined ? {} : { baseDocId: selectedBaseId }),
                 ...(selectedHostId === '' ? {} : { runtimeId: selectedHostId }),
             }) as { sessionId?: string; agentPreset?: string; runtimeId?: string };
@@ -1014,11 +983,6 @@ export default function AgentPage() {
             if (selectedModel) {
                 await rpc('session.selectModel', { sessionId: value.sessionId, ...selectedModel });
             }
-            if (selectedWorkspaceId) {
-                setWorkspaces((items) => items.map((workspace) => workspace.workspaceId === selectedWorkspaceId
-                    ? { ...workspace, sessionIds: [...(workspace.sessionIds ?? []).filter((sessionId) => sessionId !== value.sessionId), value.sessionId!] }
-                    : workspace));
-            }
             const text = firstMessage.trim();
             const files = readyFiles(attachments);
             const hasContent = Boolean(text || files.length);
@@ -1026,7 +990,6 @@ export default function AgentPage() {
             setSessions((items) => items.some((session) => session.sessionId === value.sessionId)
                 ? items
                 : [{ sessionId: value.sessionId!, createdAt: optimisticCreatedAt, updatedAt: optimisticCreatedAt, running: false, blank: !hasContent, agentPreset, ...(actualHostId === '' ? {} : { runtimeId: actualHostId }), ...(title ? { projections: { values: { title } } } : {}), ...(selectedBaseId === undefined ? {} : { baseDocId: String(selectedBaseId) }), ...(selectedModel === undefined ? {} : { model: selectedModel }) }, ...items]);
-            setDraftWorkspaceId(undefined);
             setDraftBaseId(undefined);
             setDraftHostId('');
             setCurrent(value.sessionId);
@@ -1049,7 +1012,6 @@ export default function AgentPage() {
                 clearAttachments();
             }
             void loadSessions();
-            void loadWorkspaces();
             setLoadError(null);
         } catch (error) {
             setCreatingSession(false);
@@ -1062,16 +1024,16 @@ export default function AgentPage() {
             setCreatingSession(false);
             setSending(false);
         }
-    }, [agentPresetChoice, attachments, draftBaseId, draftModelSelection, draftWorkspaceId, loadSessions, rpc]);
+    }, [agentPresetChoice, attachments, draftBaseId, draftModelSelection, loadSessions, rpc]);
 
     const confirmNewSession = useCallback(async (title: string) => {
         const selectedModel = draftModelSelection ?? (composerModels?.current?.provider && composerModels.current.model
             ? { provider: composerModels.current.provider, model: composerModels.current.model }
             : undefined);
-        await startSession(input, agentPresetChoice, draftWorkspaceId, draftBaseId, title, selectedModel);
-    }, [agentPresetChoice, composerModels, draftBaseId, draftModelSelection, draftWorkspaceId, input, startSession]);
+        await startSession(input, agentPresetChoice, draftBaseId, title, selectedModel);
+    }, [agentPresetChoice, composerModels, draftBaseId, draftModelSelection, input, startSession]);
 
-    const prepareNewSession = useCallback(async (workspaceId?: string, baseId?: number) => {
+    const prepareNewSession = useCallback(async (baseId?: number) => {
         const loadId = ++newSessionLoadRef.current;
         setCurrent(null);
         setDetailsOpen(false);
@@ -1081,7 +1043,6 @@ export default function AgentPage() {
         setModelCatalog(null);
         setInput('');
         clearAttachments();
-        setDraftWorkspaceId(workspaceId);
         setDraftBaseId(baseId);
         // The host the dialog opens on: the last one chosen, else the server's
         // own fallback, so the choice is stated rather than left to chance.
@@ -1122,36 +1083,21 @@ export default function AgentPage() {
         }
     }, [current, rpc]);
 
-    const saveSessionContext = useCallback(async (baseId: number | undefined, workspaceId: string | undefined) => {
+    const saveBaseSetting = useCallback(async (baseId: number | undefined) => {
         if (!current) {
             setDraftBaseId(baseId);
-            setDraftWorkspaceId(workspaceId);
             await Notification.success('上下文已保存');
             return;
         }
-        const value = await rpc('session.context.save', {
-            sessionId: current,
-            baseDocId: baseId ?? null,
-            workspaceId: workspaceId ?? null,
-        }) as { baseDocId?: number | string | null; workspaceId?: string | null };
+        const value = await rpc('session.context.save', { sessionId: current, baseDocId: baseId ?? null }) as { baseDocId?: number | string | null };
         const persistedBaseDocId = value.baseDocId === null || value.baseDocId === undefined ? undefined : String(value.baseDocId);
         setSessions((items) => items.map((session) => session.sessionId === current
             ? { ...session, ...(persistedBaseDocId === undefined ? { baseDocId: undefined } : { baseDocId: persistedBaseDocId }) }
             : session));
         setDraftBaseId(undefined);
-        setDraftWorkspaceId(undefined);
         void loadSessions();
-        void loadWorkspaces();
         await Notification.success('上下文已保存');
-    }, [current, loadSessions, loadWorkspaces, rpc]);
-
-    const saveBaseSetting = useCallback(async (value: number | undefined) => {
-        await saveSessionContext(value, selectedWorkspaceId);
-    }, [saveSessionContext, selectedWorkspaceId]);
-
-    const saveWorkspaceSetting = useCallback(async (value: string | undefined) => {
-        await saveSessionContext(selectedBaseId, value);
-    }, [saveSessionContext, selectedBaseId]);
+    }, [current, loadSessions, rpc]);
 
     const saveDisplaySettings = useCallback(async (next: AgentDisplaySettings) => {
         const requestId = ++displaySettingsRequestRef.current;
@@ -1336,7 +1282,6 @@ export default function AgentPage() {
 
     const startSessionTitleEdit = useCallback(() => {
         setSessionTitleDrafts(Object.fromEntries(sessions.map((session) => [session.sessionId, sessionTitle(session)])));
-        setSelectedNodeIds(new Set());
         setSelectedCardIds(new Set());
         setEditMode(true);
         setLoadError(null);
@@ -1360,8 +1305,7 @@ export default function AgentPage() {
         if (changes.length === 0) {
             setEditMode(false);
             setSessionTitleDrafts({});
-            setSelectedNodeIds(new Set());
-            setSelectedCardIds(new Set());
+                setSelectedCardIds(new Set());
             return;
         }
         setSessionTitleSaving(true);
@@ -1378,8 +1322,7 @@ export default function AgentPage() {
             }));
             setEditMode(false);
             setSessionTitleDrafts({});
-            setSelectedNodeIds(new Set());
-            setSelectedCardIds(new Set());
+                setSelectedCardIds(new Set());
             setLoadError(null);
             await Notification.success('会话名称已保存');
         } catch (error) {
@@ -1403,75 +1346,6 @@ export default function AgentPage() {
         }
     }, [current, loadSessions, rpc]);
 
-    const moveWorkspace = useCallback(async (workspaceId: string, beforeWorkspaceId?: string) => {
-        try {
-            await rpc('workspace.insertBefore', { workspaceId, ...(beforeWorkspaceId === undefined ? {} : { beforeWorkspaceId }) });
-            await loadWorkspaces();
-        } catch (error) {
-            setLoadError(error instanceof Error ? error.message : String(error));
-        }
-    }, [loadWorkspaces, rpc]);
-
-    const moveSession = useCallback(async (workspaceId: string, sessionId: string, beforeSessionId?: string) => {
-        try {
-            await rpc('workspace.insertSessionBefore', { workspaceId, sessionId, ...(beforeSessionId === undefined ? {} : { beforeSessionId }) });
-            await loadWorkspaces();
-        } catch (error) {
-            setLoadError(error instanceof Error ? error.message : String(error));
-        }
-    }, [loadWorkspaces, rpc]);
-
-    const createWorkspace = useCallback(async (path: string) => {
-        setDirectoryCreating(true);
-        try {
-            const value = await rpc('workspace.create', { path }) as { created?: boolean };
-            await loadWorkspaces();
-            setDirectoryPickerOpen(false);
-            setLoadError(null);
-            await Notification.success(value.created === false ? '工作区已存在' : '工作区创建成功');
-        } catch (error) {
-            setLoadError(error instanceof Error ? error.message : String(error));
-        } finally {
-            setDirectoryCreating(false);
-        }
-    }, [loadWorkspaces, rpc]);
-
-    const renameWorkspace = useCallback((workspaceId: string, title: string) => {
-        setDialogError(null);
-        setDialog({ kind: 'rename-workspace', id: workspaceId, value: title });
-    }, []);
-
-    const deleteWorkspace = useCallback((workspaceId: string, title: string) => {
-        setDialogError(null);
-        setDialog({ kind: 'delete-workspace', id: workspaceId, title });
-    }, []);
-
-    const archiveSession = useCallback(async (sessionId: string) => {
-        try {
-            const value = await rpc('workspace.archiveSession', { sessionId }) as { archivedSessionIds?: string[] };
-            const archived = new Set(value.archivedSessionIds ?? [sessionId]);
-            archived.forEach((id) => {
-                historyCacheRef.current.delete(id);
-                historyPreviewAttemptedRef.current.delete(id);
-                historyPreviewRef.current.delete(id);
-                modelsCacheRef.current.delete(id);
-            });
-            setArchivedSessionIds((previous) => new Set([...previous, ...archived]));
-            setSessions((items) => items.filter((session) => !archived.has(session.sessionId)));
-            if (current && archived.has(current)) {
-                setCurrent(null);
-                setDetailsOpen(false);
-                setSelectedTool(null);
-                setMessages([]);
-            } else {
-                void loadSessions();
-            }
-            setLoadError(null);
-        } catch (error) {
-            setLoadError(error instanceof Error ? error.message : String(error));
-        }
-    }, [current, loadSessions, rpc]);
-
     const hardDeleteSession = useCallback((sessionId: string) => {
         const session = sessions.find((item) => item.sessionId === sessionId);
         setDialogError(null);
@@ -1485,11 +1359,6 @@ export default function AgentPage() {
         historyPreviewRef.current.delete(sessionId);
         modelsCacheRef.current.delete(sessionId);
         setSessions((items) => items.filter((item) => item.sessionId !== sessionId));
-        setArchivedSessionIds((items) => {
-            const next = new Set(items);
-            next.delete(sessionId);
-            return next;
-        });
         if (current === sessionId) {
             setCurrent(null);
             setDetailsOpen(false);
@@ -1500,9 +1369,8 @@ export default function AgentPage() {
             setPendingApproval(null);
             setPendingQuestion(null);
         }
-        await loadWorkspaces();
         await Notification.success('会话已删除');
-    }, [current, loadWorkspaces, rpc]);
+    }, [current, rpc]);
 
     const performHardDeleteMany = useCallback(async (sessionIds: readonly string[]) => {
         if (sessionIds.length === 0) return;
@@ -1515,11 +1383,6 @@ export default function AgentPage() {
         });
         const deleted = new Set(sessionIds);
         setSessions((items) => items.filter((session) => !deleted.has(session.sessionId)));
-        setArchivedSessionIds((items) => {
-            const next = new Set(items);
-            sessionIds.forEach((sessionId) => next.delete(sessionId));
-            return next;
-        });
         if (current && deleted.has(current)) {
             setCurrent(null);
             setDetailsOpen(false);
@@ -1530,8 +1393,7 @@ export default function AgentPage() {
             setPendingApproval(null);
             setPendingQuestion(null);
         }
-        await loadWorkspaces();
-    }, [current, loadWorkspaces, rpc]);
+    }, [current, rpc]);
 
     const submitDialog = useCallback(async () => {
         if (!dialog || (('value' in dialog) && !dialog.value.trim())) return;
@@ -1542,24 +1404,12 @@ export default function AgentPage() {
             if (active.kind === 'rename-session') {
                 const value = await rpc('session.rename', { sessionId: active.id, title: active.value.trim() }) as { title?: string };
                 if (value.title) setSessions((items) => items.map((session) => session.sessionId === active.id ? { ...session, projections: { values: { ...(session.projections?.values ?? {}), title: value.title } } } : session));
-            } else if (active.kind === 'rename-workspace') {
-                await rpc('workspace.rename', { workspaceId: active.id, title: active.value.trim() });
-                await loadWorkspaces();
-            } else if (active.kind === 'delete-workspace') {
-                await rpc('workspace.delete', { workspaceId: active.id });
-                await loadWorkspaces();
-                await loadSessions();
-                await Notification.success('工作区及其会话已删除');
             } else if (active.kind === 'delete-selected') {
                 await performHardDeleteMany(active.sessionIds);
-                for (const workspaceId of active.workspaceIds) await rpc('workspace.delete', { workspaceId });
-                await loadWorkspaces();
-                setSelectedNodeIds(new Set());
                 setSelectedCardIds(new Set());
                 setSessionTitleDrafts({});
                 setEditMode(false);
-                const selectedCount = active.sessionIds.length + active.workspaceIds.length;
-                await Notification.success(`已删除 ${selectedCount} 项`);
+                await Notification.success(`已删除 ${active.sessionIds.length} 项`);
             } else {
                 await performHardDelete(active.id);
             }
@@ -1569,7 +1419,7 @@ export default function AgentPage() {
         } finally {
             setDialogBusy(false);
         }
-    }, [dialog, loadWorkspaces, performHardDelete, performHardDeleteMany, rpc]);
+    }, [dialog, performHardDelete, performHardDeleteMany, rpc]);
 
     const updateQueue = useCallback(async (itemId: string, action: { kind: 'remove' | 'steer' | 'edit'; text?: string }) => {
         if (!current) return;
@@ -1585,27 +1435,6 @@ export default function AgentPage() {
 
     const searchMatchSet = useMemo(() => searchMatches === null ? null : new Set(searchMatches.map((item) => item.sessionId)), [searchMatches]);
     const searchSnippetMap = useMemo(() => searchMatches === null ? new Map<string, string>() : new Map(searchMatches.map((item) => [item.sessionId, item.snippet])), [searchMatches]);
-    const toggleWorkspace = useCallback((workspaceId: string) => {
-        setCollapsedWorkspaces((value) => {
-            const next = { ...value, [workspaceId]: !value[workspaceId] };
-            window.localStorage.setItem('eja.workspace.collapsed', JSON.stringify(next));
-            return next;
-        });
-    }, []);
-    const toggleNodeSelection = useCallback((nodeId: string, cardIds: string[]) => {
-        const selected = !selectedNodeIds.has(nodeId);
-        setSelectedNodeIds((currentIds) => {
-            const next = new Set(currentIds);
-            if (selected) next.add(nodeId);
-            else next.delete(nodeId);
-            return next;
-        });
-        setSelectedCardIds((currentCards) => {
-            const cards = new Set(currentCards);
-            cardIds.forEach((cardId) => selected ? cards.add(cardId) : cards.delete(cardId));
-            return cards;
-        });
-    }, [selectedNodeIds]);
     const toggleCardSelection = useCallback((cardId: string) => {
         setSelectedCardIds((currentIds) => {
             const next = new Set(currentIds);
@@ -1615,12 +1444,11 @@ export default function AgentPage() {
         });
     }, []);
     const requestDeleteSelected = useCallback(() => {
-        if (selectedNodeIds.size === 0 && selectedCardIds.size === 0) return;
+        if (selectedCardIds.size === 0) return;
         setDialogError(null);
-        setDialog({ kind: 'delete-selected', workspaceIds: [...selectedNodeIds], sessionIds: [...selectedCardIds] });
-    }, [selectedCardIds, selectedNodeIds]);
+        setDialog({ kind: 'delete-selected', sessionIds: [...selectedCardIds] });
+    }, [selectedCardIds]);
     const selectSession = useCallback((sessionId: string) => {
-        setDraftWorkspaceId(undefined);
         setDetailsOpen(true);
         setSelectedTool(null);
         if (current !== sessionId) {
@@ -1636,7 +1464,6 @@ export default function AgentPage() {
     return (
         <div className="eja-app" data-ds-dark-theme={dark || undefined}>
             <DeepSeekOnboarding rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} />
-            <DirectoryPickerDialog open={directoryPickerOpen} busy={directoryCreating} rpc={rpc} onClose={() => setDirectoryPickerOpen(false)} onPick={(path) => { void createWorkspace(path); }} />
             {newSessionConfigOpen && <InputConfigDialog
                 hosts={hosts}
                 selectedHostId={draftHostId}
@@ -1644,10 +1471,6 @@ export default function AgentPage() {
                 bases={bases}
                 selectedBaseId={draftBaseId}
                 onPickBase={(baseId) => setDraftBaseId(baseId)}
-                workspaces={workspaces}
-                selectedWorkspaceId={draftWorkspaceId}
-                onPickWorkspace={(workspaceId) => setDraftWorkspaceId(workspaceId)}
-                onCreateWorkspace={() => setDirectoryPickerOpen(true)}
                 models={newSessionConfigLoading ? null : composerModels}
                 selectModel={(provider, model) => { setDraftModelSelection({ provider, model }); }}
                 agentPresetOptions={agentPresetOptions}
@@ -1696,13 +1519,13 @@ export default function AgentPage() {
             />}
             {dialog && <ActionDialog
                 open
-                title={dialog.kind === 'rename-session' ? '重命名会话' : dialog.kind === 'rename-workspace' ? '重命名工作区' : dialog.kind === 'delete-selected' ? '删除所选项目？' : dialog.kind === 'delete-workspace' ? '删除工作区？' : '永久删除会话？'}
-                description={dialog.kind === 'delete-selected' ? `将删除 ${dialog.workspaceIds.length} 个工作区和 ${dialog.sessionIds.length} 个会话，无法恢复。` : dialog.kind === 'delete-workspace' ? `删除“${dialog.title}”后，该工作区及其下的会话、历史消息和工具调用都会删除，无法恢复。` : dialog.kind === 'delete-session' ? `删除“${dialog.title}”后，历史消息、工具调用和工作区关系都会删除，无法恢复。` : undefined}
-                inputLabel={dialog.kind === 'rename-session' || dialog.kind === 'rename-workspace' ? '名称' : undefined}
+                title={dialog.kind === 'rename-session' ? '重命名会话' : dialog.kind === 'delete-selected' ? '删除所选会话？' : '永久删除会话？'}
+                description={dialog.kind === 'delete-selected' ? `将永久删除 ${dialog.sessionIds.length} 个会话及其历史消息、工具调用，无法恢复。` : dialog.kind === 'delete-session' ? `永久删除“${dialog.title}”及其历史消息、工具调用，无法恢复。` : undefined}
+                inputLabel={dialog.kind === 'rename-session' ? '名称' : undefined}
                 inputValue={'value' in dialog ? dialog.value : ''}
                 inputPlaceholder="请输入名称"
-                confirmLabel={dialog.kind === 'rename-session' || dialog.kind === 'rename-workspace' ? '保存' : '删除'}
-                danger={dialog.kind === 'delete-selected' || dialog.kind === 'delete-session' || dialog.kind === 'delete-workspace'}
+                confirmLabel={dialog.kind === 'rename-session' ? '保存' : '删除'}
+                danger={dialog.kind === 'delete-selected' || dialog.kind === 'delete-session'}
                 busy={dialogBusy}
                 error={dialogError}
                 onInputChange={(value) => setDialog((previous) => previous && 'value' in previous ? { ...previous, value } : previous)}
@@ -1721,8 +1544,7 @@ export default function AgentPage() {
                         if (editMode) {
                             setEditMode(false);
                             setSessionTitleDrafts({});
-                            setSelectedNodeIds(new Set());
-                            setSelectedCardIds(new Set());
+                                                setSelectedCardIds(new Set());
                             return;
                         }
                         startSessionTitleEdit();
@@ -1731,47 +1553,32 @@ export default function AgentPage() {
                 />
                 <div className="eja-pageBody">
                     <main className="eja-mainSurface">
-                        <WorkspaceSessionTree
-                                sessions={sessions}
-                                workspaces={workspaces}
-                                bases={bases}
-                                current={current}
-                                pendingQuestionSessionIds={pendingQuestionSessionIds}
-                                sessionErrors={sessionErrorMap}
-                                sessionActivityPreviews={sessionActivityPreviewMap}
-                                modelGroups={modelCatalog?.groups}
-                                displaySettings={displaySettings}
-                                query={query}
-                                searchMatches={searchMatchSet}
-                                searchSnippets={searchSnippetMap}
-                                searchHasMore={searchHasMore}
-                                archivedSessionIds={archivedSessionIds}
-                                collapsedWorkspaces={collapsedWorkspaces}
-                                editMode={editMode}
-                                selectedNodeIds={selectedNodeIds}
-                                selectedCardIds={selectedCardIds}
-                                sessionTitleDrafts={sessionTitleDrafts}
-                                onToggleNodeSelection={toggleNodeSelection}
-                                onToggleCardSelection={toggleCardSelection}
-                                onSessionTitleChange={updateSessionTitleDraft}
-                                onSaveSessionTitles={saveSessionTitleEdits}
-                                sessionTitleSaving={sessionTitleSaving}
-                                onQuery={setQuery}
-                                onSelect={selectSession}
-                                onRenameSession={(sessionId, title) => { if (sessionId === current) { setTitleDraft(title); setRenaming(true); } else { setDialogError(null); setDialog({ kind: 'rename-session', id: sessionId, value: title }); } }}
-                                onForkSession={(sessionId) => { void forkSession(sessionId); }}
-                                onArchiveSession={(sessionId) => { void archiveSession(sessionId); }}
-                                onHardDeleteSession={(sessionId) => { void hardDeleteSession(sessionId); }}
-                                onRenameWorkspace={(workspaceId, title) => { void renameWorkspace(workspaceId, title); }}
-                                onDeleteWorkspace={(workspaceId, title) => { void deleteWorkspace(workspaceId, title); }}
-                                onCreateWorkspace={() => { setDirectoryPickerOpen(true); }}
-                                onMoveWorkspace={(workspaceId, beforeWorkspaceId) => { void moveWorkspace(workspaceId, beforeWorkspaceId); }}
-                                onMoveSession={(workspaceId, sessionId, beforeSessionId) => { void moveSession(workspaceId, sessionId, beforeSessionId); }}
-                                onToggleWorkspace={toggleWorkspace}
-                                onStartSession={(workspaceId) => { void prepareNewSession(workspaceId); }}
-                                onDeleteSelected={requestDeleteSelected}
-                                onExitEdit={() => { setEditMode(false); setSessionTitleDrafts({}); setSelectedNodeIds(new Set()); setSelectedCardIds(new Set()); }}
-                            />
+                        <SessionTree
+                            sessions={sessions}
+                            bases={bases}
+                            current={current}
+                            pendingQuestionSessionIds={pendingQuestionSessionIds}
+                            sessionErrors={sessionErrorMap}
+                            sessionActivityPreviews={sessionActivityPreviewMap}
+                            modelGroups={modelCatalog?.groups}
+                            displaySettings={displaySettings}
+                            query={query}
+                            searchMatches={searchMatchSet}
+                            searchSnippets={searchSnippetMap}
+                            searchHasMore={searchHasMore}
+                            editMode={editMode}
+                            selectedCardIds={selectedCardIds}
+                            sessionTitleDrafts={sessionTitleDrafts}
+                            onToggleCardSelection={toggleCardSelection}
+                            onSessionTitleChange={updateSessionTitleDraft}
+                            onSaveSessionTitles={saveSessionTitleEdits}
+                            sessionTitleSaving={sessionTitleSaving}
+                            onQuery={setQuery}
+                            onSelect={selectSession}
+                            onStartSession={() => { void prepareNewSession(); }}
+                            onDeleteSelected={requestDeleteSelected}
+                            onExitEdit={() => { setEditMode(false); setSessionTitleDrafts({}); setSelectedCardIds(new Set()); }}
+                        />
                     </main>
                 </div>
                 {detailsOpen && (currentSession || creatingSession) && <SessionDrawer
@@ -1793,14 +1600,10 @@ export default function AgentPage() {
                                     onModel={saveSessionModel}
                                     bases={bases}
                                     selectedBaseId={selectedBaseId}
-                                    workspaces={workspaces}
-                                    selectedWorkspaceId={selectedWorkspaceId}
                                     hosts={hosts}
                                     selectedHostId={currentSession.runtimeId ?? fallbackHostId}
                                     onBase={saveBaseSetting}
-                                    onWorkspace={saveWorkspaceSetting}
                                     onHost={switchHost}
-                                    onCreateWorkspace={() => setDirectoryPickerOpen(true)}
                                 />
                                 : currentSession.blank
                                     ? <div className="eja-sessionEmpty"><span>这个会话还没有消息。</span><button type="button" onClick={() => { void prepareNewSession(); }}>生成新会话</button></div>

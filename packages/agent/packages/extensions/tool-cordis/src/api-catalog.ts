@@ -73,7 +73,7 @@ export interface InheritedApiEntry {
 
 /** One named type declaration referenced by a Service or Event signature. */
 export interface TypeApiEntry {
-  /** The exported type/interface name, e.g. `ShellRunResult`. */
+  /** The exported type/interface name, e.g. `ToolExecutionResult`. */
   name: string
   /** The full declaration text, comments stripped. */
   declaration: string
@@ -109,6 +109,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: 'readonly config: ResolvedConfig',
         description: 'Validated configuration owned by the agent-loop service.',
         parameters: [],
+      },
+      {
+        signature: 'release(sessionId: string): Promise<void>',
+        description: 'Drop one live agent so the next resume loads the stored log.\n\nA host that served a session keeps that agent in memory after the session moves away. Coming back and appending from that cursor collides with the events the other host already stored. Idle or not, a log that has grown past this process is not a writer anymore.',
+        parameters: [{ name: 'sessionId', description: 'the session whose in-memory agent should be torn down.' }],
       },
       {
         signature: 'create(id: SessionId, options: AgentOptions = {}, meta: Pick<SessionHeader, \'cwd\'> = {}): Agent',
@@ -379,66 +384,6 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
-    key: 'clientModules',
-    summary: 'The web plugin table service: incremental `ea.client` scan + wire composition + bundle route + index tap.',
-    description: 'The web plugin table service: incremental `ea.client` scan + wire composition + bundle route + index tap. Construction runs the activation scan synchronously — a malformed declaration or missing bundle among the already-loaded entries aggregates into one loud throw (FAILED fiber; the boot activation audit reports it).',
-    methods: [
-      {
-        signature: 'graph(): WebBootGraph',
-        description: 'Current composed entry graph (stable object between changes).',
-        parameters: [],
-        returns: 'the graph served as `window.__EA_BOOT__`.',
-      },
-      {
-        signature: 'clientPath(id: string): string | undefined',
-        description: 'Absolute path of an entry\'s client bundle.',
-        parameters: [{ name: 'id', description: 'entry id (package name).' }],
-        returns: 'the path, or undefined for an unknown id.',
-      },
-      {
-        signature: 'rebuilt(id: string): string | undefined',
-        description: 'Re-hash one bundle (the HMR watch\'s registration hook — the only entry point through which bundle content changes reach the graph).',
-        parameters: [{ name: 'id', description: 'entry id (package name).' }],
-        returns: 'the new rev, or undefined for an unknown id.',
-      },
-      {
-        signature: 'onRebuilt(listener: (id: string, rev: string) => void): () => void',
-        description: 'Subscribe to bundle rebuilds; fires only when the re-hash changed the rev.',
-        parameters: [{ name: 'listener', description: 'receives the entry id and its new bundle rev.' }],
-        returns: 'the unsubscriber.',
-      },
-      {
-        signature: 'onGraphChanged(listener: () => void): () => void',
-        description: 'Fires after any flush that recomposed the graph (row added/removed, or a rebuilt rev change). Pull model: listeners re-read graph.',
-        parameters: [{ name: 'listener', description: 'notified with no payload.' }],
-        returns: 'the unsubscriber.',
-      },
-    ],
-  },
-  {
-    key: 'codeRuntime',
-    summary: 'Registers one `ctx.codeRuntime` implementation.',
-    description: 'Registers one `ctx.codeRuntime` implementation. Program, budget, abort, and substrate failures resolve in CodeRunResult; only Service Definition contract misuse rejects. Implementations bridge structured-cloneable bindings, materialize each declared namespace rejection class, treat programs as hostile peers, isolate runs from one another, and terminate and await in-flight runs during disposal.',
-    methods: [
-      {
-        signature: 'abstract readonly language: string',
-        description: 'The source language run expects `program` to be written in, as a lowercase identifier. Informational, not gating — a consumer that generates language-specific presentation (typed SDK stubs, usage instructions) switches on it and fails loud on a language it cannot present. Well-known values: `\'typescript\'` and `\'python\'`, those `ea-tools` presents; only `\'typescript\'` has a published backend.',
-        parameters: [],
-      },
-      {
-        signature: 'abstract readonly isolation: string',
-        description: 'The execution substrate, as a lowercase identifier. Informational, not gating — a descriptor so deployments and diagnostics can tell backends apart, not a security claim. Well-known values: `\'worker-thread\'`, `\'process\'`, `\'container\'`.',
-        parameters: [],
-      },
-      {
-        signature: 'abstract run(request: CodeRunRequest): Promise<CodeRunResult>',
-        description: 'Execute one program against the request\'s bindings and capture what it emitted. See the class doc for the resolution contract (error is a result field; rejection means Service Definition contract misuse only).',
-        parameters: [{ name: 'request', description: 'the program, its bindings, and the abort signal; the request carries everything the runtime acts on, with no hidden defaults.' }],
-        returns: 'the run\'s outcome: completion value (when transferable), the ordered log capture, and the failure (if any).',
-      },
-    ],
-  },
-  {
     key: 'commands',
     summary: 'Human-command registry.',
     description: 'Human-command registry. Plain-context definitions are global; definitions registered through a command-injected child of an agent context shadow globals for that agent.',
@@ -522,19 +467,6 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: 'abstract unset(ref: CredentialRef): Promise<void>',
         description: 'Remove one reference from the provider-managed writable source; removing an absent reference is a no-op. Rejects while a read-only source shadows the reference, like set.',
         parameters: [{ name: 'ref', description: 'the reference to remove.' }],
-      },
-    ],
-  },
-  {
-    key: 'directoryPicker',
-    summary: 'Abstract directory-picking service.',
-    description: 'Abstract directory-picking service. Subclass, implement `capability()`, and load the subclass as a plugin — it registers as `ctx.directoryPicker` (one implementation per context; loading a second throws, cordis\' standard duplicate-service behavior). The capability object must be stable for the service lifetime: consumers may capture it across calls.',
-    methods: [
-      {
-        signature: 'abstract capability(): DirectoryPickerCapability',
-        description: 'The backend\'s interaction capability.',
-        parameters: [],
-        returns: 'the discriminated capability consumers switch on.',
       },
     ],
   },
@@ -710,6 +642,25 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'hostProvider',
+    summary: 'The client a deployment attaches to reach its host: it declares the tools to install, and it executes the calls it declared.',
+    description: 'The client a deployment attaches to reach its host: it declares the tools to install, and it executes the calls it declared.',
+    methods: [
+      {
+        signature: 'catalog(signal: AbortSignal, context?: HostCallContext): Promise<HostCatalog>',
+        description: 'Declare the tools this client installs.',
+        parameters: [{ name: 'signal', description: 'aborts the round trip.' }, { name: 'context', description: 'session the catalog is read for; omitted reads the set every session shares, which leaves out the tools a single domain publishes.' }],
+        returns: 'the declared tools and the host\'s guidance.',
+      },
+      {
+        signature: 'call(name: string, args: HostArguments, context: HostCallContext, signal: AbortSignal): Promise<JsonValue>',
+        description: 'Execute one declared tool.',
+        parameters: [{ name: 'name', description: 'tool name from the declared catalog.' }, { name: 'args', description: 'tool arguments.' }, { name: 'context', description: 'session the call belongs to.' }, { name: 'signal', description: 'aborts the call.' }],
+        returns: 'the tool result.',
+      },
+    ],
+  },
+  {
     key: 'invariants',
     summary: 'Package-owned invariant registry with global and regex-based selection.',
     description: 'Package-owned invariant registry with global and regex-based selection.',
@@ -788,6 +739,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     summary: 'The abstract `llm` service: an adapter registry plus a streaming model-call API, interceptable via the `llm/stream` waterfall.',
     description: 'The abstract `llm` service: an adapter registry plus a streaming model-call API, interceptable via the `llm/stream` waterfall.',
     methods: [
+      {
+        signature: 'registerProviderResolver(resolver: LlmProviderResolver): () => void',
+        description: 'Register a domain-aware provider resolver owned by the current service fiber.',
+        parameters: [{ name: 'resolver', description: 'provider lookup implementation.' }],
+        returns: 'disposer for the resolver registration.',
+      },
+      {
+        signature: 'async canResolveProvider(provider: string, signal?: AbortSignal): Promise<boolean>',
+        description: 'Check whether an adapter can be resolved for a provider.',
+        parameters: [{ name: 'provider', description: 'provider id to resolve.' }, { name: 'signal', description: 'optional cancellation for provider discovery.' }],
+        returns: 'whether a matching adapter exists.',
+      },
       {
         signature: 'registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle',
         description: 'Register an adapter for the given provider routes. Throws `LlmError` with code `DUPLICATE_ADAPTER` if any provider already has an adapter (all-or-nothing). Disposed with the fiber.',
@@ -909,7 +872,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   {
     key: 'permissionPresets',
     summary: 'Owns the deployment\'s permission presets and their write path.',
-    description: 'Owns the deployment\'s permission presets and their write path. Requires a confining `ctx.shell` executor and `ctx.approval`; unmatched knob values are reported as CUSTOM_PRESET, not an error.',
+    description: 'Owns the deployment\'s permission presets and their write path. Requires `ctx.approval`; unmatched policy values are reported as CUSTOM_PRESET, not an error.',
     methods: [
       {
         signature: 'current(events: readonly SessionEvent[]): string',
@@ -939,7 +902,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'set(session: Session, name: string): void',
-        description: 'Record a changed preset, then update each changed knob through its own setter. Selecting the effective preset again appends nothing.',
+        description: 'Record a changed preset, then update the approval policy through its canonical setter. Selecting the effective preset again appends nothing.',
         parameters: [{ name: 'session', description: 'the session the switch belongs to.' }, { name: 'name', description: 'the preset to switch to; unknown names throw.' }],
       },
     ],
@@ -960,6 +923,32 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Select whether plan mode should be active. Between turns the method appends the change immediately because no in-turn pre-step will run until another prompt starts a turn. The open-turn fold is the idle signal: agent status stays `running` through post-turn checkpointing, when no further in-turn pre-step runs. During an open turn the selection remains pending until the next accepted in-turn pre-step. Repeated selection of the current or already-pending state is a no-op.',
         parameters: [{ name: 'agent', description: 'The agent to switch.' }, { name: 'active', description: 'Whether plan mode should be active.' }],
         returns: 'what happened: `committed` (logged now), `queued` (awaiting the next accepted in-turn pre-step), `cancelled` (an opposite pending selection was cleared; the logged state already matches), or `noop` (already in that state).',
+      },
+    ],
+  },
+  {
+    key: 'provider',
+    summary: 'Holds the attached host client, so a plugin reads it as a service.',
+    description: 'Holds the attached host client, so a plugin reads it as a service.',
+    methods: [
+      {
+        signature: 'attach(client: HostToolClient): void',
+        description: 'Attach the client this deployment authorizes.',
+        parameters: [{ name: 'client', description: 'client that declares the host\'s tools and executes them.' }],
+      },
+      {
+        signature: 'async catalog(signal: AbortSignal, context?: HostCallContext): Promise<HostCatalog>',
+        description: 'Read the tools the attached client declares.',
+        parameters: [{ name: 'signal', description: 'aborts the round trip.' }, { name: 'context', description: 'session the catalog is read for; omitted reads the set every session shares, which leaves out the tools a single domain publishes.' }],
+        returns: 'the declared tools and the host\'s guidance.',
+        throws: ['when no client is attached.'],
+      },
+      {
+        signature: 'async call(name: string, args: HostArguments, context: HostCallContext, signal: AbortSignal): Promise<JsonValue>',
+        description: 'Execute one declared tool.',
+        parameters: [{ name: 'name', description: 'tool name from the declared catalog.' }, { name: 'args', description: 'tool arguments.' }, { name: 'context', description: 'session the call belongs to.' }, { name: 'signal', description: 'aborts the call.' }],
+        returns: 'the tool result.',
+        throws: ['when no client is attached.'],
       },
     ],
   },
@@ -1370,6 +1359,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'one descriptor per registered namespace, in registration order.',
       },
       {
+        signature: 'describeDocument(document: Record<string, unknown>, options?: SettingsDescribeOptions): SettingsDescriptor[]',
+        description: 'Describe registered settings against a supplied document without mutating service state.',
+        parameters: [{ name: 'document', description: 'settings document values by namespace.' }, { name: 'options', description: 'optional secret-redaction policy.' }],
+        returns: 'one resolved descriptor per registration.',
+      },
+      {
         signature: 'get(ns: SettingsNamespace): unknown',
         description: 'Read one registered namespace\'s resolved value.',
         parameters: [{ name: 'ns', description: 'the namespace to read.' }],
@@ -1392,32 +1387,6 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
     ],
   },
-  {
-    key: 'shell',
-    summary: 'Abstract bash execution service.',
-    description: 'Abstract bash execution service. Subclass, implement the abstract methods, and load the subclass as a plugin — it registers as `ctx.shell` (one implementation per context; loading a second throws, which is cordis\' standard duplicate-service behavior).\n\nImplementations must honor these semantics:\n\n- run rejects only for infrastructure failures. Nonzero exits, timeout kills, and abort kills resolve with a ShellRunResult.\n- start returns immediately; no timeout applies to background processes. `done` settles at process close and never rejects; spawn failures settle as `killed` with the error on stderr.\n- ShellProcess.readOutput is incremental: consecutive reads never repeat output. Lossy reads report truncation and available spill files.\n- A still-running background process is stopped and awaited when its owning composition tears down. With the subprocess seam that boundary is `ctx.subprocess` disposal, so a background process survives an executor-only reload.',
-    methods: [
-      {
-        signature: 'abstract resolve(request: ShellExecRequest): ShellExecSpec',
-        description: 'Apply implementation-owned defaults and caps to a request before execution.',
-        parameters: [{ name: 'request', description: 'the caller\'s request; omitted fields get this implementation\'s defaults, capped fields are clamped.' }],
-        returns: 'the fully-specified spec to hand to {@link run}/{@link start}.',
-      },
-      {
-        signature: 'abstract run(spec: ShellExecSpec): Promise<ShellRunResult>',
-        description: 'Run a command in the foreground; resolves when it finishes.',
-        parameters: [{ name: 'spec', description: 'a resolved spec from {@link resolve}, never a raw request.' }],
-        returns: 'the outcome; nonzero exits, timeout kills, and abort kills resolve with a descriptive result rather than reject.',
-      },
-      {
-        signature: 'abstract start(spec: ShellExecSpec): ShellProcess',
-        description: 'Start a background process and return its handle immediately.',
-        parameters: [{ name: 'spec', description: 'a resolved spec from {@link resolve}, never a raw request.' }],
-        returns: 'the live process handle (reads, kill, quiescence promise).',
-      },
-    ],
-  },
-
   {
     key: 'skills',
     summary: 'Layered registry of skill providers, the host+per-scope shape the tools registry established.',
@@ -1619,11 +1588,6 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'spec', description: 'argv, directory, stdio dispositions, grace, cancellation, and environment.' }],
         returns: 'the live process handle (streams/readers, signalling, outcome promise).',
       },
-      {
-        description: 'Allocate a real terminal and start one owned process session. This is the only non-pipe process primitive: implementations own terminal byte I/O, foreground groups, signals, and complete session-tree cleanup.',
-        parameters: [{ name: 'spec', description: 'fully specified argv, cwd, environment, dimensions, grace, and allocation cancellation.' }],
-        returns: 'the live terminal handle after allocation succeeds.',
-      },
     ],
   },
   {
@@ -1669,7 +1633,6 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
     ],
   },
-
   {
     key: 'timer',
     summary: 'Disposable timer helpers mixed into Cordis contexts.',
@@ -1763,20 +1726,14 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'Tool registry and execution pipeline. Scoped registrations shadow globals; one visibility resolver feeds presentation, lookup, and dispatch.',
     methods: [
       {
-        signature: 'presentAs(mode: ToolPresentationMode): () => void',
-        description: 'Present the calling scope\'s tools in `mode` instead of the deployment default. Nearest scope on the chain wins, so a preset\'s standing declaration covers every agent joined under it.\n\nScoped only, and one declaration per scope: this is how an agent preset composes Code Mode agents beside native ones in the same process, and a process-global override would be the `mode` config field instead.',
-        parameters: [{ name: 'mode', description: 'the presentation the covered agents\' models see.' }],
-        returns: 'the exact disposer that restores the deployment default.',
-      },
-      {
         signature: 'register(definition: ToolDefinition): () => void',
-        description: 'Register globally or in the calling agent scope. Scoped tools shadow globals; duplicates within one layer and the reserved `run_code` name fail.',
+        description: 'Register globally or in the calling agent scope. Scoped tools shadow globals; duplicates within one layer fail.',
         parameters: [{ name: 'definition', description: 'tool schema, execution, and optional finalization/presentation callbacks.' }],
         returns: 'the exact disposer that unregisters the tool.',
       },
       {
         signature: 'restrict(filter: ToolRestriction): () => void',
-        description: 'Restrict global tools for the calling agent scope. Empty filters, unknown names, scope-local names, and reserved transport names fail. Restrictions intersect; scoped registrations remain visible.',
+        description: 'Restrict global tools for the calling agent scope. Empty filters, unknown names and scope-local names fail. Restrictions intersect; scoped registrations remain visible.',
         parameters: [{ name: 'filter', description: 'global-tool mask: `allow` (keep only) and/or `deny` (remove).' }],
         returns: 'the exact disposer that lifts this restriction.',
       },
@@ -1928,6 +1885,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'webRuntime',
+    summary: 'Authorities the embedded API transport may accept.',
+    description: 'Authorities the embedded API transport may accept.',
+    methods: [
+      {
+        signature: 'trustedHosts: string[]',
+        description: 'Explicit Host authorities; an empty list keeps the transport loopback-only.',
+        parameters: [],
+      },
+    ],
+  },
+  {
     key: 'webServer',
     summary: 'The browser HTTP carrier service.',
     description: 'The browser HTTP carrier service. Activation listens immediately. Route registration order does not affect requests because configured named routes must be distinct, and the fallback handler answers anything not yet claimed during startup with 404 until its owner registers. A listen failure rejects initialization, and the boot process reports the failed fiber.',
@@ -1977,59 +1946,58 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
     ],
   },
-  {
-    key: 'workspaceRegistry',
-    summary: 'Durable workspace registry.',
-    description: 'Durable workspace registry. Startup waits for `sessionPersistence`, builds one canonical-cwd header index, and completes the one-time history bootstrap before the service becomes active. The persistence dependency is mandatory so an unavailable peer can never be mistaken for an empty history and commit the initialized marker.',
-    methods: [
-      {
-        signature: 'async create(path: string, title?: string): Promise<Workspace>',
-        description: 'Create or reuse a workspace for an existing directory. The path is canonicalized through `fs.realpath`; a nonexistent path rejects with the original error and a non-directory rejects. Repeated calls for the same canonical path return the existing entity without changing its title. A newly created workspace is prepended to the durable registry order. Different canonical paths may share a display title.',
-        parameters: [{ name: 'path', description: 'Existing directory to own, in any path spelling.' }, { name: 'title', description: 'Display title used only when a new record is created.' }],
-        returns: 'the existing or newly durable workspace.',
-      },
-      {
-        signature: 'get(id: WorkspaceId): Workspace | undefined',
-        description: 'Look up a workspace by id.',
-        parameters: [{ name: 'id', description: 'Workspace id.' }],
-        returns: 'the workspace, or `undefined` when unknown.',
-      },
-      {
-        signature: 'list(): Workspace[]',
-        description: 'Synchronous workspace projection in durable registry order. Every entity\'s `sessionIds` getter is already filtered by the startup/live canonical-cwd header index; this method performs no persistence reads.',
-        parameters: [],
-        returns: 'a fresh ordered array of workspace entities.',
-      },
-      {
-        signature: 'delete(id: WorkspaceId): Promise<boolean>',
-        description: 'Delete one workspace registration while retaining its directory and every session log. The durable order is updated before the table deletion; a failed table write restores the prior order and keeps the entity published. Unknown ids are an idempotent no-op for domain callers.',
-        parameters: [{ name: 'id', description: 'Workspace registration to remove.' }],
-        returns: '`true` when a record was deleted, `false` when it was unknown.',
-      },
-      {
-        signature: 'insertBefore(id: WorkspaceId, beforeId?: WorkspaceId): Promise<readonly WorkspaceId[]>',
-        description: 'Move one workspace within the durable display order, DOM-insertBefore-like. With an anchor it lands before that workspace; without one it appends.',
-        parameters: [{ name: 'id', description: 'Workspace to move.' }, { name: 'beforeId', description: 'Workspace anchor; omitted appends.' }],
-        returns: 'the complete committed workspace order.',
-      },
-      {
-        signature: 'archiveSession(sessionId: SessionId): Promise<void>',
-        description: 'Archive one session durably. The session must exist (live or in session persistence); its workspace accounting — or lack of one — is irrelevant. An already archived id resolves without writing.',
-        parameters: [{ name: 'sessionId', description: 'The session to archive.' }],
-        returns: 'resolution after durability.',
-      },
-      {
-        signature: 'async resolveByPath(path: string): Promise<Workspace | undefined>',
-        description: 'Resolve by canonical directory path without creating or mutating a workspace. A missing path rejects during `realpath`; an existing unowned directory returns `undefined`.',
-        parameters: [{ name: 'path', description: 'Existing directory path in any spelling.' }],
-        returns: 'the workspace owning the canonical path, when one exists.',
-      },
-    ],
-  },
 ]
 
 /** Every ejunzAgent event, sorted by name. */
 export const EVENT_API: readonly EventApiEntry[] = [
+  {
+    name: '@ejunz/cordis/dynamic-package',
+    mode: 'emit',
+    signature: '\'@ejunz/cordis/dynamic-package\'(pkg: DynamicCordisPackage): void',
+    summary: 'One exact Plugin/Package activation is now live in the Host.',
+    description: 'One exact Plugin/Package activation is now live in the Host.',
+    parameters: [{ name: 'pkg', description: 'stable plugin, immutable package, run identity, and label.' }],
+  },
+  {
+    name: '@ejunz/cordis/dynamic-retract',
+    mode: 'emit',
+    signature: '\'@ejunz/cordis/dynamic-retract\'(retracted: DynamicCordisRetracted): void',
+    summary: 'One exact activation was withdrawn.',
+    description: 'One exact activation was withdrawn.',
+    parameters: [{ name: 'retracted', description: 'plugin, package, and run identity.' }],
+  },
+  {
+    name: '@ejunz/cordis/inspect-query',
+    mode: 'emit',
+    signature: '\'@ejunz/cordis/inspect-query\'(request: CordisInspectQueryRequest): void',
+    summary: 'Request a live read-only query from the Client inspect registry.',
+    description: 'Request a live read-only query from the Client inspect registry.',
+    parameters: [{ name: 'request', description: 'correlation, Session, provider, method, and JSON input.' }],
+  },
+  {
+    name: '@ejunz/cordis/inspect-query-resolved',
+    mode: 'emit',
+    signature: '\'@ejunz/cordis/inspect-query-resolved\'(resolved: CordisInspectQueryResolved): void',
+    summary: 'Notify every Client that an inspect query has settled or been cancelled.',
+    description: 'Notify every Client that an inspect query has settled or been cancelled.',
+    parameters: [{ name: 'resolved', description: 'exact query identity that is no longer answerable.' }],
+  },
+  {
+    name: '@ejunz/cordis/request-run',
+    mode: 'emit',
+    signature: '\'@ejunz/cordis/request-run\'(request: DynamicCordisRunRequest): void',
+    summary: 'A Client-bearing activation needs a browser page, and may require a user decision.',
+    description: 'A Client-bearing activation needs a browser page, and may require a user decision.',
+    parameters: [{ name: 'request', description: 'correlation identity, owner, target version, mode, and approval requirement.' }],
+  },
+  {
+    name: '@ejunz/cordis/request-run-resolved',
+    mode: 'emit',
+    signature: '\'@ejunz/cordis/request-run-resolved\'(resolved: DynamicCordisRequestResolved): void',
+    summary: 'A pending Client activation request left the answerable state.',
+    description: 'A pending Client activation request left the answerable state.',
+    parameters: [{ name: 'resolved', description: 'request identity and outcome.' }],
+  },
   {
     name: 'agent-loop/config-start-failed',
     mode: 'emit',
@@ -2157,54 +2125,6 @@ export const EVENT_API: readonly EventApiEntry[] = [
     summary: 'A command was registered or unregistered.',
     description: 'A command was registered or unregistered. This is an unfiltered registry notification because a global or scoped change may affect any UI view. Observer failures are contained and cannot veto the registry mutation.',
     parameters: [],
-  },
-  {
-    name: '@ejunz/cordis/dynamic-package',
-    mode: 'emit',
-    signature: '\'@ejunz/cordis/dynamic-package\'(pkg: DynamicCordisPackage): void',
-    summary: 'One exact Plugin/Package activation is now live in the Host.',
-    description: 'One exact Plugin/Package activation is now live in the Host.',
-    parameters: [{ name: 'pkg', description: 'stable plugin, immutable package, run identity, and label.' }],
-  },
-  {
-    name: '@ejunz/cordis/dynamic-retract',
-    mode: 'emit',
-    signature: '\'@ejunz/cordis/dynamic-retract\'(retracted: DynamicCordisRetracted): void',
-    summary: 'One exact activation was withdrawn.',
-    description: 'One exact activation was withdrawn.',
-    parameters: [{ name: 'retracted', description: 'plugin, package, and run identity.' }],
-  },
-  {
-    name: '@ejunz/cordis/inspect-query',
-    mode: 'emit',
-    signature: '\'@ejunz/cordis/inspect-query\'(request: CordisInspectQueryRequest): void',
-    summary: 'Request a live read-only query from the Client inspect registry.',
-    description: 'Request a live read-only query from the Client inspect registry.',
-    parameters: [{ name: 'request', description: 'correlation, Session, provider, method, and JSON input.' }],
-  },
-  {
-    name: '@ejunz/cordis/inspect-query-resolved',
-    mode: 'emit',
-    signature: '\'@ejunz/cordis/inspect-query-resolved\'(resolved: CordisInspectQueryResolved): void',
-    summary: 'Notify every Client that an inspect query has settled or been cancelled.',
-    description: 'Notify every Client that an inspect query has settled or been cancelled.',
-    parameters: [{ name: 'resolved', description: 'exact query identity that is no longer answerable.' }],
-  },
-  {
-    name: '@ejunz/cordis/request-run',
-    mode: 'emit',
-    signature: '\'@ejunz/cordis/request-run\'(request: DynamicCordisRunRequest): void',
-    summary: 'A Client-bearing activation needs a browser page, and may require a user decision.',
-    description: 'A Client-bearing activation needs a browser page, and may require a user decision.',
-    parameters: [{ name: 'request', description: 'correlation identity, owner, target version, mode, and approval requirement.' }],
-  },
-  {
-    name: '@ejunz/cordis/request-run-resolved',
-    mode: 'emit',
-    signature: '\'@ejunz/cordis/request-run-resolved\'(resolved: DynamicCordisRequestResolved): void',
-    summary: 'A pending Client activation request left the answerable state.',
-    description: 'A pending Client activation request left the answerable state.',
-    parameters: [{ name: 'resolved', description: 'request identity and outcome.' }],
   },
   {
     name: 'credentials/updated',
@@ -2389,14 +2309,6 @@ export const EVENT_API: readonly EventApiEntry[] = [
     summary: 'A tool was registered or unregistered, or a scoped restriction changed (the available tool set changed — possibly for one scope only).',
     description: 'A tool was registered or unregistered, or a scoped restriction changed (the available tool set changed — possibly for one scope only). An UNFILTERED registry-subject notification, deliberately not scope-filtered dispatch: a global change concerns every agent\'s next assembly, so a scoped listener subscribing here sees every change, not just its own scope\'s.',
     parameters: [],
-  },
-  {
-    name: 'tools/code-dispatch-log',
-    mode: 'waterfall',
-    signature: '\'tools/code-dispatch-log\'(this: Scoped<ToolRuntime>, dispatch: CodeDispatchLog, next: () => Promise<ContentBlock[]>): Promise<ContentBlock[]>',
-    summary: 'Allow a listener to replace content in the DURABLE LOG COPY of one `run_code` sub-dispatch outcome before the bridge appends its `tool/code-dispatch` event.',
-    description: 'Allow a listener to replace content in the DURABLE LOG COPY of one `run_code` sub-dispatch outcome before the bridge appends its `tool/code-dispatch` event. `next()` keeps the content unchanged; a listener may return replacement blocks (e.g. the spill policy\'s preview + locator for an oversized text result). Only the logged copy is affected — the program already received the complete value, and the model sees neither. A throwing listener is contained: the bridge falls back to logging the original settled content. Scope-filtered dispatch (`@ejunz/scope`): agent-scoped listeners receive only that agent\'s dispatches.',
-    parameters: [{ name: 'dispatch', description: 'the parent execution, sub-call identity, and the settled content to log.' }],
   },
   {
     name: 'tools/execute',
@@ -2591,20 +2503,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export class BackendRegistry {\n    register(name: string, backend: StorageBackend): () => void;\n    get(name: string): StorageBackend;\n    names(): string[];\n}',
   },
   {
-    name: 'BashEnvContributor',
-    declaration: 'export interface BashEnvContributor {\n    name: string;\n    variables: Readonly<Record<EaEnvironmentKey, BashEnvVariable>>;\n    resolve(execution: ToolExecution): Readonly<Partial<Record<EaEnvironmentKey, string>>>;\n}',
-  },
-  {
-    name: 'BashEnvVariable',
-    declaration: 'export interface BashEnvVariable {\n    description: string;\n}',
-  },
-  {
-    name: 'BashEnvVariableInfo',
-    declaration: 'export interface BashEnvVariableInfo extends BashEnvVariable {\n    contributor: string;\n    key: EaEnvironmentKey;\n}',
-  },
-  {
     name: 'Branded',
     declaration: 'export type Branded<B extends string> = string & {\n    readonly [BRAND]: B;\n};',
+  },
+  {
+    name: 'CallId',
+    declaration: 'export type CallId = Branded<\'CallId\'>;',
   },
   {
     name: 'CancelOptions',
@@ -2613,42 +2517,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ClientResponse',
     declaration: 'export interface ClientResponse {\n    type: \'client-response\';\n    rpcId: RpcId;\n    result: RpcResult<unknown>;\n}',
-  },
-  {
-    name: 'CodeBindingErrorClass',
-    declaration: 'export interface CodeBindingErrorClass {\n    name: string;\n    memberNameProperty: string;\n}',
-  },
-  {
-    name: 'CodeBindingFunction',
-    declaration: 'export type CodeBindingFunction = (args: unknown) => Promise<CodeJsonValue>;',
-  },
-  {
-    name: 'CodeBindingNamespace',
-    declaration: 'export interface CodeBindingNamespace {\n    global: string;\n    functions: Record<string, CodeBindingFunction>;\n    errorClass?: CodeBindingErrorClass;\n}',
-  },
-  {
-    name: 'CodeDispatchLog',
-    declaration: 'export interface CodeDispatchLog {\n    readonly exec: ToolExecution;\n    readonly agent?: Agent;\n    readonly subCallId: CallId;\n    readonly name: string;\n    readonly isError: boolean;\n    readonly content: ContentBlock[];\n}',
-  },
-  {
-    name: 'CodeJsonValue',
-    declaration: 'export type CodeJsonValue = null | boolean | number | string | CodeJsonValue[] | {\n    [key: string]: CodeJsonValue;\n};',
-  },
-  {
-    name: 'CodeRunFailure',
-    declaration: 'export interface CodeRunFailure {\n    kind: \'exception\' | \'timeout\' | \'abort\' | \'worker-exit\' | \'invalid-output\' | \'output-limit\';\n    message: string;\n}',
-  },
-  {
-    name: 'CodeRunRequest',
-    declaration: 'export interface CodeRunRequest {\n    program: string;\n    bindings: CodeBindingNamespace[];\n    signal?: AbortSignal;\n}',
-  },
-  {
-    name: 'CodeRunResult',
-    declaration: 'export interface CodeRunResult {\n    value?: CodeJsonValue;\n    logs: string[];\n    error?: CodeRunFailure;\n}',
-  },
-  {
-    name: 'CollectedOutput',
-    declaration: 'export interface CollectedOutput {\n    text: string;\n    truncated: boolean;\n    spillPath?: string;\n}',
   },
   {
     name: 'CommandDefinition',
@@ -2795,22 +2663,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface DiffResultView {\n    card: \'diff\';\n    title?: string;\n    diffs: FileDiff[];\n}',
   },
   {
-    name: 'DirectoryPickerBrowseCapability',
-    declaration: 'export interface DirectoryPickerBrowseCapability {\n    kind: \'browse\';\n    list(path?: string, signal?: AbortSignal): Promise<DirectoryListing>;\n    createDirectory(path: string, name: string): Promise<string>;\n}',
-  },
-  {
-    name: 'DirectoryPickerCapabilities',
-    declaration: 'export interface DirectoryPickerCapabilities {\n    native: DirectoryPickerNativeCapability;\n    browse: DirectoryPickerBrowseCapability;\n}',
-  },
-  {
-    name: 'DirectoryPickerCapability',
-    declaration: 'export type DirectoryPickerCapability = DirectoryPickerCapabilities[keyof DirectoryPickerCapabilities];',
-  },
-  {
-    name: 'DirectoryPickerNativeCapability',
-    declaration: 'export interface DirectoryPickerNativeCapability {\n    kind: \'native\';\n    pick(signal: AbortSignal): Promise<string | null>;\n}',
-  },
-  {
     name: 'DirectoryRegistrationHandle',
     declaration: 'export interface DirectoryRegistrationHandle {\n    (): void;\n    replace(entries: readonly LlmConfigurableProvider[]): void;\n}',
   },
@@ -2861,14 +2713,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'DownloadsApi',
     declaration: 'export interface DownloadsApi {\n    sessionLog(request: {\n        sessionId: SessionId;\n        includeDescendants?: boolean;\n    }, signal: AbortSignal): Promise<Response>;\n}',
-  },
-  {
-    name: 'EaEnvironment',
-    declaration: 'export type EaEnvironment = Readonly<Record<EaEnvironmentKey, string>>;',
-  },
-  {
-    name: 'EaEnvironmentKey',
-    declaration: 'export type EaEnvironmentKey = `${typeof EA_ENV_PREFIX}${string}`;',
   },
   {
     name: 'DynamicCordisPackage',
@@ -2993,6 +2837,26 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GoalView',
     declaration: 'export interface GoalView extends GoalSnapshot {\n    readonly roundsStarted: number;\n    readonly createdAt: number;\n    readonly updatedAt: number;\n    readonly activation: GoalActivation;\n}',
+  },
+  {
+    name: 'HostArguments',
+    declaration: 'export type HostArguments = Record<string, JsonValue>;',
+  },
+  {
+    name: 'HostCallContext',
+    declaration: 'export interface HostCallContext {\n    readonly sessionId: string;\n}',
+  },
+  {
+    name: 'HostCatalog',
+    declaration: 'export interface HostCatalog {\n    readonly tools: readonly HostToolSpec[];\n    readonly guidance?: string;\n}',
+  },
+  {
+    name: 'HostToolClient',
+    declaration: 'export interface HostToolClient {\n    catalog(signal: AbortSignal, context?: HostCallContext): Promise<HostCatalog>;\n    call(name: string, args: HostArguments, context: HostCallContext, signal: AbortSignal): Promise<JsonValue>;\n}',
+  },
+  {
+    name: 'HostToolSpec',
+    declaration: 'export interface HostToolSpec {\n    readonly name: string;\n    readonly description: string;\n    readonly inputSchema: Record<string, unknown>;\n}',
   },
   {
     name: 'ImageAttachmentLimits',
@@ -3171,6 +3035,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface LlmProviderInfo {\n    id: string;\n    name: string;\n}',
   },
   {
+    name: 'LlmProviderResolver',
+    declaration: 'export interface LlmProviderResolver {\n    resolve(provider: string, signal?: AbortSignal): Promise<LlmAdapter | undefined>;\n}',
+  },
+  {
     name: 'LlmReasoningEffortInfo',
     declaration: 'export interface LlmReasoningEffortInfo {\n    id: ReasoningEffortId;\n    name: string;\n    description?: string;\n}',
   },
@@ -3180,7 +3048,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'LlmRuntime',
-    declaration: 'export class LlmRuntime extends Service {\n    constructor(ctx: Context);\n    registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle;\n    listProviders(): LlmProviderInfo[];\n    registerConfigurableProviders(entries: readonly LlmConfigurableProvider[]): DirectoryRegistrationHandle;\n    listConfigurableProviders(): LlmConfigurableProvider[];\n    registerModelDiscovery(settingsNs: string, discover: (request: LlmModelDiscoveryRequest) => Promise<readonly LlmDiscoveredModel[]>): () => void;\n    async discoverModels(settingsNs: string, request: LlmModelDiscoveryRequest): Promise<LlmDiscoveredModel[]>;\n    providerRetryPolicy(provider: string): ResolvedRetryPolicy;\n    async listModels(provider: string): Promise<LlmModelInfo[]>;\n    async resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<LlmResolvedModelInfo>;\n    async resolveCallConfig(config: LlmCallConfig, signal?: AbortSignal): Promise<LlmCallConfig>;\n    async prepareCall(config: LlmCallConfig, signal?: AbortSignal): Promise<PreparedLlmCall>;\n    stream(options: GenerateOptions): AsyncIterable<StreamChunk>;\n}',
+    declaration: 'export class LlmRuntime extends Service {\n    constructor(ctx: Context);\n    registerProviderResolver(resolver: LlmProviderResolver): () => void;\n    async canResolveProvider(provider: string, signal?: AbortSignal): Promise<boolean>;\n    registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle;\n    listProviders(): LlmProviderInfo[];\n    registerConfigurableProviders(entries: readonly LlmConfigurableProvider[]): DirectoryRegistrationHandle;\n    listConfigurableProviders(): LlmConfigurableProvider[];\n    registerModelDiscovery(settingsNs: string, discover: (request: LlmModelDiscoveryRequest) => Promise<readonly LlmDiscoveredModel[]>): () => void;\n    async discoverModels(settingsNs: string, request: LlmModelDiscoveryRequest): Promise<LlmDiscoveredModel[]>;\n    providerRetryPolicy(provider: string): ResolvedRetryPolicy;\n    async listModels(provider: string): Promise<LlmModelInfo[]>;\n    async resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<LlmResolvedModelInfo>;\n    async resolveCallConfig(config: LlmCallConfig, signal?: AbortSignal): Promise<LlmCallConfig>;\n    async prepareCall(config: LlmCallConfig, signal?: AbortSignal): Promise<PreparedLlmCall>;\n    stream(options: GenerateOptions): AsyncIterable<StreamChunk>;\n}',
   },
   {
     name: 'LspHover',
@@ -3500,7 +3368,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'RpcErrorDetailsMap',
-    declaration: 'export interface RpcErrorDetailsMap {\n    \'bad-request\': {\n        issues: ZodIssue[];\n    };\n    \'cancelled\': {};\n    \'session-not-found\': {\n        sessionId: SessionId;\n    };\n    \'model-unavailable\': {\n        provider: string;\n        model: string;\n    };\n    \'session-conflict\': {\n        sessionId: SessionId;\n        requestedCwd: string;\n        existingCwd?: string;\n    };\n    \'invalid-time-zone\': {\n        value: string;\n    };\n    \'workspace-attach-failed\': {\n        sessionId: SessionId;\n        workspaceId: string;\n    };\n    \'workspace-not-found\': {\n        workspaceId: string;\n    };\n    \'workspace-invalid-path\': {\n        path: string;\n    };\n    \'workspace-name-conflict\': {\n        name: string;\n    };\n    \'workspace-move-invalid\': {\n        workspaceId: string;\n        sessionId: SessionId;\n        beforeSessionId?: SessionId;\n    };\n    \'directory-unreadable\': {\n        path: string;\n    };\n    \'directory-exists\': {\n        path: string;\n    };\n    \'directory-create-failed\': {\n        path: string;\n    };\n    \'directory-picker-unavailable\': {\n        capability: string;\n    };\n    \'agent-preset-read-only\': {\n        agentPreset: string;\n        reason: string;\n    };\n    \'agent-preset-locked\': {\n        sessionId: SessionId;\n        agentPreset: string;\n    };\n    \'agent-preset-conflict\': {\n        sessionId: SessionId;\n        requestedPreset: string;\n        existingPreset?: string;\n    };\n    \'agent-preset-not-found\': {\n        agentPreset: string;\n      /* …truncated — full shape in source */',
+    declaration: 'export interface RpcErrorDetailsMap {\n    \'bad-request\': {\n        issues: ZodIssue[];\n    };\n    \'cancelled\': {};\n    \'session-not-found\': {\n        sessionId: SessionId;\n    };\n    \'model-unavailable\': {\n        provider: string;\n        model: string;\n    };\n    \'session-conflict\': {\n        sessionId: SessionId;\n        requestedCwd: string;\n        existingCwd?: string;\n    };\n    \'invalid-time-zone\': {\n        value: string;\n    };\n    \'agent-preset-read-only\': {\n        agentPreset: string;\n        reason: string;\n    };\n    \'agent-preset-locked\': {\n        sessionId: SessionId;\n        agentPreset: string;\n    };\n    \'agent-preset-conflict\': {\n        sessionId: SessionId;\n        requestedPreset: string;\n        existingPreset?: string;\n    };\n    \'agent-preset-not-found\': {\n        agentPreset: string;\n        available: string[];\n    };\n    \'agent-preset-invalid\': {\n        agentPreset: string;\n        reason: string;\n    };\n    \'agent-busy\': {\n        reason: string;\n    };\n    \'attachment-error\': {\n        reason: string;\n    };\n    \'queue-item-not-found\': {\n        itemId: MessageId;\n    };\n    \'steer-unavailable\': {\n        itemId: MessageId;\n    };\n    \'command-error\': {};\n    \'unknown-command\': {};\n    \'settings-rejected\': {\n        ns: string;\n    };\n    \'settings-not-exposed\': {\n        ns: string;\n    };\n    \'settings-conflict\': {\n        ns: string;\n        expected: number;\n        actual: number;\n    };\n    \'credential-rejected\': {\n        ref: string;\n /* …truncated — full shape in source */',
   },
   {
     name: 'RpcId',
@@ -3692,7 +3560,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionReferenceCandidate',
-    declaration: 'export interface SessionReferenceCandidate {\n    sessionId: SessionId;\n    label: string;\n    cwd?: string;\n    createdAt: number;\n}',
+    declaration: 'export interface SessionReferenceCandidate {\n    sessionId: SessionId;\n    label: string;\n    createdAt: number;\n}',
   },
   {
     name: 'SessionReferenceInput',
@@ -3821,30 +3689,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SettingsUpdateSource',
     declaration: 'export type SettingsUpdateSource = \'update\' | \'provider\';',
-  },
-  {
-    name: 'ShellExecRequest',
-    declaration: 'export interface ShellExecRequest {\n    command: string;\n    workdir?: string | undefined;\n    timeoutMs?: number | undefined;\n    stdoutMaxBytes?: number | undefined;\n    signal?: AbortSignal | undefined;\n    stdin?: string | undefined;\n    env?: Record<string, string> | undefined;\n    eaEnv?: EaEnvironment | undefined;\n}',
-  },
-  {
-    name: 'ShellExecSpec',
-    declaration: 'export interface ShellExecSpec {\n    command: string;\n    workdir: string;\n    timeoutMs: number;\n    stdoutMaxBytes: number;\n    signal?: AbortSignal | undefined;\n    stdin?: string | undefined;\n    env?: Record<string, string> | undefined;\n    eaEnv?: EaEnvironment | undefined;\n}',
-  },
-  {
-    name: 'ShellProcess',
-    declaration: 'export interface ShellProcess {\n    status: ShellProcessStatus;\n    exitCode: number | null;\n    signal: NodeJS.Signals | null;\n    readonly done: Promise<void>;\n    readOutput(): ShellProcessRead;\n    kill(): boolean;\n}',
-  },
-  {
-    name: 'ShellProcessRead',
-    declaration: 'export interface ShellProcessRead {\n    delta: string;\n    lossy: boolean;\n    stdoutSpillPath?: string;\n    stderrSpillPath?: string;\n}',
-  },
-  {
-    name: 'ShellProcessStatus',
-    declaration: 'export type ShellProcessStatus = \'running\' | \'completed\' | \'killed\';',
-  },
-  {
-    name: 'ShellRunResult',
-    declaration: 'export interface ShellRunResult {\n    exitCode: number | null;\n    signal: NodeJS.Signals | null;\n    timedOut: boolean;\n    aborted: boolean;\n    timeoutMs: number;\n    stdout: CollectedOutput;\n    stderr: CollectedOutput;\n}',
   },
   {
     name: 'SkillCandidate',
@@ -4112,7 +3956,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ToolExecution',
-    declaration: 'export interface ToolExecution extends ToolExecutionInput {\n    readonly rootCallId: CallId;\n    readonly token: ToolExecutionToken;\n}',
+    declaration: 'export interface ToolExecution extends ToolExecutionInput {\n    readonly token: ToolExecutionToken;\n}',
   },
   {
     name: 'ToolExecutionFailure',
@@ -4120,7 +3964,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ToolExecutionInput',
-    declaration: 'export interface ToolExecutionInput {\n    readonly callId: CallId;\n    readonly rootCallId?: CallId;\n    readonly name: string;\n    readonly arguments: unknown;\n    readonly agent?: Agent;\n    readonly parent?: ToolExecutionToken;\n    readonly signal: AbortSignal;\n}',
+    declaration: 'export interface ToolExecutionInput {\n    readonly callId: CallId;\n    readonly name: string;\n    readonly arguments: unknown;\n    readonly agent?: Agent;\n    readonly signal: AbortSignal;\n}',
   },
   {
     name: 'ToolExecutionMode',
@@ -4155,10 +3999,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ToolOutputDefinition {\n    readonly schema: JsonSchemaNode;\n    render(args: unknown, value: JsonValue): ContentBlock[];\n    presentationMeta?(args: unknown, value: JsonValue): JsonValue;\n}',
   },
   {
-    name: 'ToolPresentationMode',
-    declaration: 'export type ToolPresentationMode = \'native\' | \'code\' | \'both\';',
-  },
-  {
     name: 'ToolProviderResult',
     declaration: 'export interface ToolProviderResult {\n    readonly schemas: readonly ToolSchema[];\n    readonly knownNames?: readonly string[];\n}',
   },
@@ -4188,7 +4028,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ToolRuntime',
-    declaration: 'export class ToolRuntime extends Service {\n    static inject;\n    static Config: z<Config>;\n    readonly [TOOL_RUNTIME_SCHEDULER]: ToolRuntimeScheduler;\n    constructor(ctx: Context, config: Config = {});\n    presentAs(mode: ToolPresentationMode): () => void;\n    register(definition: ToolDefinition): () => void;\n    restrict(filter: ToolRestriction): () => void;\n    guard(guard: ToolGuard): () => void;\n    get(name: string, scope?: ScopeKey): ToolDefinition | undefined;\n    schemas(scope?: ScopeKey): ToolSchema[];\n    executionMode(exec: ToolExecutionInput): ToolExecutionMode;\n    async execute(exec: ToolExecutionInput): Promise<ToolExecutionResult>;\n}',
+    declaration: 'export class ToolRuntime extends Service {\n    static inject;\n    static Config: z<Config>;\n    readonly [TOOL_RUNTIME_SCHEDULER]: ToolRuntimeScheduler;\n    constructor(ctx: Context);\n    register(definition: ToolDefinition): () => void;\n    restrict(filter: ToolRestriction): () => void;\n    guard(guard: ToolGuard): () => void;\n    get(name: string, scope?: ScopeKey): ToolDefinition | undefined;\n    schemas(scope?: ScopeKey): ToolSchema[];\n    executionMode(exec: ToolExecutionInput): ToolExecutionMode;\n    async execute(exec: ToolExecutionInput): Promise<ToolExecutionResult>;\n}',
   },
   {
     name: 'ToolRuntimeScheduler',
@@ -4277,14 +4117,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'UserQuestionProvider',
     declaration: 'export interface UserQuestionProvider {\n    ask(request: AskUserQuestionRequest): Promise<AskUserQuestionAnswer>;\n}',
-  },
-  {
-    name: 'WebBootEntry',
-    declaration: 'export interface WebBootEntry {\n    id: string;\n    url: string;\n    rev: string;\n    inject?: string[];\n    immediately?: boolean;\n}',
-  },
-  {
-    name: 'WebBootGraph',
-    declaration: 'export interface WebBootGraph {\n    rev: string;\n    entries: WebBootEntry[];\n}',
   },
   {
     name: 'WebFetchBody',

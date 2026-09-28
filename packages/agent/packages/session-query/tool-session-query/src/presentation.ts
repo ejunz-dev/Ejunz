@@ -18,11 +18,11 @@ import type {
   SessionId,
 } from '@ejunz/session'
 import type { GenericCallView } from '@ejunz/tools'
-import { workspaceAccess } from './workspace-access.ts'
+import { cwdAccess } from './cwd-access.ts'
 
-type TitleView = Awaited<ReturnType<typeof workspaceAccess.readTitle>>
-type CompleteTitleMap = Awaited<ReturnType<typeof workspaceAccess.readTitles>>
-type AuthorizedDescendants = ReturnType<typeof workspaceAccess.authorizeDescendants>
+type TitleView = Awaited<ReturnType<typeof cwdAccess.readTitle>>
+type CompleteTitleMap = Awaited<ReturnType<typeof cwdAccess.readTitles>>
+type AuthorizedDescendants = ReturnType<typeof cwdAccess.authorizeDescendants>
 
 interface SearchCollection<T> {
   readonly items: T[]
@@ -57,14 +57,14 @@ function formatSessionSearch(
       ? 'root'
       : authorizedParents.has(hit.header.parentSession)
         ? hit.header.parentSession
-        : '[outside workspace]'
+        : '[outside caller scope]'
     const availability = [
       hit.live ? 'live' : undefined,
       hit.persisted ? 'persisted' : undefined,
     ].filter((value): value is string => value !== undefined).join(', ') || 'unavailable'
     lines.push(
       '',
-      `${index + 1}. Session ${hit.header.id} — ${workspaceAccess.titleText(titles.get(hit.header.id))}`,
+      `${index + 1}. Session ${hit.header.id} — ${cwdAccess.titleText(titles.get(hit.header.id))}`,
       `   Created: ${formatTime(hit.header.createdAt)}`,
       `   Parent: ${parent}`,
       `   Availability: ${availability}`,
@@ -87,7 +87,7 @@ function formatEventSearch(
   title: TitleView,
   collected: SearchCollection<SessionEventSearchHit>,
 ): string {
-  const lines = [`Session ${sessionId} — ${workspaceAccess.titleText(title)}`]
+  const lines = [`Session ${sessionId} — ${cwdAccess.titleText(title)}`]
   if (collected.items.length === 0) {
     lines.push('', 'No prior event matches found.')
     return lines.join('\n')
@@ -113,7 +113,7 @@ function formatSessionTrace(
   titles: CompleteTitleMap,
 ): string {
   const lines = [
-    `Session ${trace.target.header.id} — ${workspaceAccess.titleText(titles.get(trace.target.header.id))}`,
+    `Session ${trace.target.header.id} — ${cwdAccess.titleText(titles.get(trace.target.header.id))}`,
     `Created: ${formatTime(trace.target.header.createdAt)}`,
     `Availability: ${availabilityText(trace.target)}`,
     '',
@@ -121,9 +121,9 @@ function formatSessionTrace(
   ]
   if (ancestors.length === 0 && !ancestorBoundary) lines.push('- none (target is a root session)')
   for (const record of ancestors) {
-    lines.push(`- ${record.header.id} — ${workspaceAccess.titleText(titles.get(record.header.id))} | ${formatTime(record.header.createdAt)} | ${availabilityText(record)}`)
+    lines.push(`- ${record.header.id} — ${cwdAccess.titleText(titles.get(record.header.id))} | ${formatTime(record.header.createdAt)} | ${availabilityText(record)}`)
   }
-  if (ancestorBoundary) lines.push('- [outside workspace boundary]')
+  if (ancestorBoundary) lines.push('- [outside caller scope boundary]')
   lines.push('', 'Descendants:')
   if (descendants.length === 0) lines.push('- none')
   else renderDescendants(lines, descendants, titles)
@@ -135,14 +135,14 @@ function renderDescendants(
   nodes: AuthorizedDescendants,
   titles: CompleteTitleMap,
 ): void {
-  for (const { node, depth } of workspaceAccess.visitDescendants(nodes)) {
+  for (const { node, depth } of cwdAccess.visitDescendants(nodes)) {
     const indent = '  '.repeat(depth)
     if (node === null) {
-      lines.push(`${indent}- [outside workspace subtree]`)
+      lines.push(`${indent}- [outside caller scope subtree]`)
       continue
     }
     const id = node.record.header.id
-    lines.push(`${indent}- ${id} — ${workspaceAccess.titleText(titles.get(id))} | ${formatTime(node.record.header.createdAt)} | ${availabilityText(node.record)}`)
+    lines.push(`${indent}- ${id} — ${cwdAccess.titleText(titles.get(id))} | ${formatTime(node.record.header.createdAt)} | ${availabilityText(node.record)}`)
   }
 }
 
@@ -152,7 +152,7 @@ function formatEventTrace(
   trace: SessionEventTraceObservation,
 ): string {
   return [
-    `Session ${sessionId} — ${workspaceAccess.titleText(title)}`,
+    `Session ${sessionId} — ${cwdAccess.titleText(title)}`,
     `Target: seq ${trace.target.seq} | ${trace.target.type} | ${trace.target.surface} | ${formatTime(trace.target.time)}`,
     `Replaced by: ${trace.replacedBy ?? 'none'}`,
     `Replacement chain: ${seqList(trace.replacementChain)}`,
@@ -170,7 +170,7 @@ function formatEventRead(
   const before = window.events.filter(event => event.seq < window.target.seq)
   const after = window.events.filter(event => event.seq > window.target.seq)
   const lines = [
-    `Session ${sessionId} — ${workspaceAccess.titleText(title)}`,
+    `Session ${sessionId} — ${cwdAccess.titleText(title)}`,
     `Target event seq ${window.target.seq}:`,
     '```json',
     JSON.stringify(window.target, null, 2),

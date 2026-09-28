@@ -91,7 +91,7 @@ const SAFE_SESSION_QUERY_FAILURES = {
 
 function unauthorizedTarget(): EjunzAgentError {
   return new EjunzAgentError(
-    'session target is outside the caller workspace',
+    'session target is outside the caller scope',
     'SESSION_QUERY_TOOL_UNAUTHORIZED',
   )
 }

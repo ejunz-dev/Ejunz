@@ -1,7 +1,7 @@
 /**
  * The outward session face. Feature packages never see the concrete Session
- * class: components read conversation state through `useSession` (the
- * ObservableSnapshot half), and orchestration code calls the behavior verbs
+ * class: consumers read conversation state through the ObservableSnapshot half,
+ * and orchestration code calls the behavior verbs
  * below — nothing else. Widening this interface is the explicit act of
  * widening what features may do to a session (and what every test fixture
  * must stub); runtime-internal entry points (history staging, wire-frame
@@ -15,7 +15,7 @@ import type { RemoteResult } from '@ejunz/typert-protocol'
 import type { ConversationSnapshot } from '../sessions/conversation.ts'
 import type { ObservableSnapshot } from './store.ts'
 
-/** Key-addressed projection read face (the useProjection resolution path; see ProjectionValueStore). */
+/** Key-addressed projection read face (see ProjectionValueStore). */
 export interface ProjectionsFace {
   /**
    * The identity-stable bare observable for one projection key (absence is
@@ -30,7 +30,7 @@ export interface ProjectionsFace {
 export interface ISession {
   /** The session's host identity (agent id — same axis). */
   readonly sessionId: SessionId
-  /** Host-computed projection values by key (the useProjection seat). */
+  /** Host-computed projection values by key. */
   readonly projections: ProjectionsFace
   /**
    * Send a prompt into the session.
@@ -82,8 +82,7 @@ export interface ISession {
 }
 
 /**
- * The full outward face: behavior verbs plus the conversation read side
- * (the `useSession` hook source). This is the type carried by
- * `SessionBinding.session` and the provide channel.
+ * The full outward face: behavior verbs plus the conversation read side.
+ * This is the type carried by `SessionBinding.session`.
  */
 export type SessionFace = ISession & ObservableSnapshot<ConversationSnapshot>

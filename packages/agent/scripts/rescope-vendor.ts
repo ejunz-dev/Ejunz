@@ -77,40 +77,16 @@ interface GenericSkip {
 }
 
 const GENERIC_SKIPS: readonly GenericSkip[] = [
-  // `vendorPackages` lists vendor/ directory names, joined with 'vendor' below it.
-  { file: 'packages/examples/acp-demo/tests/built-bin.e2e.ts', upstream: ['cordis', 'cosmokit', 'schemastery'] },
   // `Symbol.for('schemastery')` and the `vendor:` metadata field are upstream identifiers.
   { file: 'vendor/schemastery/src/index.ts', upstream: ['schemastery'] },
-  // `cordis` is also an agent-preset id — the directory name under
-  // apps/cli/config/agent-presets/ — so in these files the bare name is
-  // product data, not a package reference. Renaming it changed which preset
-  // the creator flow stages and which id the roster reports.
-  { file: 'packages/client/ui-agent-preset/src/client/AgentPresetSection.tsx', upstream: ['cordis'] },
-  { file: 'packages/client/ui-agent-preset/src/client/index.ts', upstream: ['cordis'] },
-  { file: 'packages/client/ui-agent-preset/tests/apply.client.spec.ts', upstream: ['cordis'] },
-  { file: 'packages/client/ui-agent-preset/tests/locales.client.spec.ts', upstream: ['cordis'] },
-  { file: 'packages/client/ui-agent-preset/tests/section.client.spec.tsx', upstream: ['cordis'] },
-  { file: 'apps/cli/tests/web-agent-presets.e2e.ts', upstream: ['cordis'] },
-  { file: 'apps/web/tests/agent-preset-authoring.e2e.ts', upstream: ['cordis'] },
-  { file: 'packages/preset/agent-presets/tests/session.spec.ts', upstream: ['cordis'] },
+  // `cordis` is the stable preset id here, not a package name.
   // The preset's own composition: its header comment and its system prompt name
   // the preset a model mounts, so the scoped name would send the model after an
   // id no roster reports.
   { file: 'apps/cli/config/agent-presets/cordis/agent.cordis.yml', upstream: ['cordis'] },
-  // The preset-roster loop names the `cordis` preset id, not a package.
-  { file: 'apps/cli/tests/windows-shell.spec.ts', upstream: ['cordis'] },
   // GROUP_ORDER holds `packages/<group>/` directory names, not package names.
   { file: 'scripts/gen-module-graph.ts', upstream: ['cordis'] },
   { file: 'scripts/gen-doc-graphs.ts', upstream: ['cordis'] },
-  // `cordis` is also the locale-namespace key registered in LocaleNamespaceMap
-  // and consumed through `NS`, `PropsLocale<'cordis'>`, and `t('cordis')` —
-  // copy keys, not package references.
-  { file: 'packages/extensions/ui-cordis/src/client/locales.ts', upstream: ['cordis'] },
-  { file: 'packages/extensions/ui-cordis/src/client/CordisActionRow.tsx', upstream: ['cordis'] },
-  { file: 'packages/extensions/ui-cordis/src/client/CordisDefineRow.tsx', upstream: ['cordis'] },
-  { file: 'packages/extensions/ui-cordis/src/client/CordisPanel.tsx', upstream: ['cordis'] },
-  { file: 'packages/extensions/ui-cordis/src/client/CordisRunRow.tsx', upstream: ['cordis'] },
-  { file: 'packages/client/ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.tsx', upstream: ['cordis'] },
 ]
 
 /** A string that must appear exactly `count` times once the rescope has run. */
@@ -133,12 +109,9 @@ const POSTCONDITIONS: readonly PostCondition[] = [
   // The vendored README owns this required entry; reject its deletion or duplication.
   { file: 'vendor/README.md', text: '17. **`@ejunz` rescope**', count: 1 },
   { file: 'knip.json', text: '@cordisjs', count: 0 },
-  // The preset ids in this table are product data, not package names.
-  { file: 'packages/client/ui-agent-preset/tests/locales.client.spec.ts', text: '[\'cordis\', \'presetCordisName\'', count: 1 },
   // The preset id the shipped composition documents to its own model.
   { file: 'apps/cli/config/agent-presets/cordis/agent.cordis.yml', text: 'The `cordis` agent preset', count: 1 },
   { file: 'apps/cli/config/agent-presets/cordis/agent.cordis.yml', text: 'corrupting the `cordis` preset', count: 1 },
-  { file: 'packages/examples/acp-demo/tests/built-bin.e2e.ts', text: '\'cordis\', \'loader\', \'include\', \'timer\', \'hmr\', \'logger-console\',', count: 1 },
 ]
 
 /**
@@ -243,14 +216,6 @@ const EXACT_EDITS: readonly ExactEdit[] = [
     expect: 1,
   },
   {
-    // The root contract claimed vendored packages keep their upstream names.
-    id: 'root-agents-vendored-name-contract',
-    file: 'AGENTS.md',
-    find: 'vendored packages keep upstream names and are `private: true`. `cordis` is a peerDependency (+ dev) of every ejunzAgent package.',
-    replace: 'vendored packages are rescoped ([mapping](docs/rescope.md)) and `private: true`. `@ejunz/cordis` is a peerDependency (+ dev) of every ejunzAgent package.',
-    expect: 1,
-  },
-  {
     // The client purity gate reads `@ejunz/` as "another plugin package".
     // The rescope moves the vendored framework and its libraries into that
     // namespace, where the gate would reject the library imports client
@@ -275,52 +240,6 @@ const VENDORED_LIBRARY = /^@ejunz\\/(cosmokit|schemastery)(\\/|$)/
     find: '        if (INLINE_SAFE.test(source) || GENERATED_REMOTE.test(source)) return null // wire contribution: inline is the point',
     replace: `        if (VENDORED_LIBRARY.test(source)) return null // vendored library: inline, no shared identity
         if (INLINE_SAFE.test(source) || GENERATED_REMOTE.test(source)) return null // wire contribution: inline is the point`,
-    expect: 1,
-  },
-  {
-    // The step-1 file tree told the reader to keep the upstream name, one
-    // paragraph above the invariant that says to rescope it.
-    id: 'vendoring-cookbook-tree-comment',
-    file: 'docs/cookbook/adding-a-vendored-package.md',
-    find: '  package.json     # from upstream; set "private": true, keep name/exports/type',
-    replace: '  package.json     # from upstream; set "private": true, rescope the name, keep exports/type',
-    expect: 1,
-  },
-  {
-    id: 'vendoring-cookbook-tree-comment-zh',
-    file: 'docs/cookbook/adding-a-vendored-package.zh.md',
-    find: '  package.json     # from upstream; set "private": true, keep name/exports/type',
-    replace: '  package.json     # from upstream; set "private": true, rescope the name, keep exports/type',
-    expect: 1,
-  },
-  {
-    // The checklist told the next vendoring to keep upstream's name.
-    id: 'vendoring-cookbook-name-invariant',
-    file: 'docs/cookbook/adding-a-vendored-package.md',
-    find: "keep upstream's `name`/`version`/`exports`/`type`",
-    replace: "rescope the `name` ([mapping](../rescope.md)) while keeping upstream's `version`/`exports`/`type`",
-    expect: 1,
-  },
-  {
-    id: 'vendoring-cookbook-name-invariant-zh',
-    file: 'docs/cookbook/adding-a-vendored-package.zh.md',
-    find: '保留上游的 `name`/`version`/`exports`/`type`',
-    replace: '改写 `name` 的 scope（[映射](../rescope.md)），保留上游的 `version`/`exports`/`type`',
-    expect: 1,
-  },
-  {
-    // The real package references in files whose other `cordis` strings are preset ids.
-    id: 'agent-preset-spec-framework-import',
-    file: 'packages/client/ui-agent-preset/tests/apply.client.spec.ts',
-    find: "import { Context } from 'cordis'",
-    replace: "import { Context } from '@ejunz/cordis'",
-    expect: 1,
-  },
-  {
-    id: 'web-agent-presets-e2e-framework-import',
-    file: 'apps/cli/tests/web-agent-presets.e2e.ts',
-    find: "import { Context } from 'cordis'",
-    replace: "import { Context } from '@ejunz/cordis'",
     expect: 1,
   },
   // The manifest table's name column plus the new upstream-name column, one edit per row.

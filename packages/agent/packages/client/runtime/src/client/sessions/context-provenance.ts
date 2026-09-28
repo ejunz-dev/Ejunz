@@ -77,7 +77,7 @@ export function contextProvenance(source: unknown): ContextProvenanceView {
     // session's material; its references name the sessions they were read from.
     case 'session-reference':
       return { role: 'recall', label: joined(collect(record, 'references', 'label')) ?? kind }
-    // Workspace instructions name the files they were reconciled from, which
+    // Directory instructions name the files they were reconciled from, which
     // identifies the producer far better than the plugin id would.
     case 'agent-instructions':
       return { role: 'inject', label: joined(collect(record, 'changes', 'path')) ?? kind }

@@ -1,6 +1,6 @@
 /**
- * Enforced JSON Schema subset shared by tool outputs, generated Code Mode
- * types, subagents, and workflows. The subset accepts any JSON root, an
+ * Enforced JSON Schema subset shared by tool outputs, subagents, and
+ * workflows. The subset accepts any JSON root, an
  * annotation-only schema for unconstrained JSON, one scalar `type`, object
  * `properties`/`required`/boolean `additionalProperties`, array `items`,
  * type-correct scalar `enum`/`const`, and exact-one `oneOf`.

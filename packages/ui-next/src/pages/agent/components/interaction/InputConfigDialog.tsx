@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { DraftAttachment } from '../../runtime/uploads';
-import type { BaseView, WorkspaceView } from '../../runtime/session';
+import type { BaseView } from '../../runtime/session';
 import type { HostOption } from '../structure/HostPicker';
 import type { SessionModels } from '../types';
 import { InputBar } from '../conversation/skeleton/InputBar';
@@ -13,10 +13,6 @@ interface InputConfigDialogProps {
     bases: readonly BaseView[];
     selectedBaseId?: number;
     onPickBase: (baseId: number | undefined) => void;
-    workspaces: readonly WorkspaceView[];
-    selectedWorkspaceId?: string;
-    onPickWorkspace: (workspaceId: string | undefined) => void;
-    onCreateWorkspace: () => void;
     models: SessionModels | null;
     selectModel: (provider: string, model: string) => void;
     agentPresetOptions: readonly AgentPresetOption[];
@@ -44,8 +40,7 @@ function buttonClass(selected: boolean): string {
 
 export function InputConfigDialog({
     hosts, selectedHostId, onPickHost,
-    bases, selectedBaseId, onPickBase, workspaces, selectedWorkspaceId, onPickWorkspace,
-    onCreateWorkspace, models, selectModel, agentPresetOptions, agentPresetChoice, onSelectAgentPreset, agentPresetError,
+    bases, selectedBaseId, onPickBase, models, selectModel, agentPresetOptions, agentPresetChoice, onSelectAgentPreset, agentPresetError,
     input, setInput, attachments, onAddFiles, onRemoveAttachment, modelMenuOpen, setModelMenuOpen,
     notice, onCancel, sending, loading, onConfirm, onClose,
 }: InputConfigDialogProps) {
@@ -93,14 +88,6 @@ export function InputConfigDialog({
                     <div className="bd-edit-tags">
                         <button type="button" className={buttonClass(selectedBaseId === undefined)} disabled={sending} onClick={() => onPickBase(undefined)}>不使用</button>
                         {bases.map((base) => <button type="button" className={buttonClass(selectedBaseId === base.docId)} disabled={sending} key={base.docId} onClick={() => onPickBase(base.docId)}>{base.title}</button>)}
-                    </div>
-                </div>
-                <div className="bd-edit-field">
-                    <h3>工作区</h3>
-                    <div className="bd-edit-tags">
-                        <button type="button" className={buttonClass(selectedWorkspaceId === undefined)} disabled={sending} onClick={() => onPickWorkspace(undefined)}>未分组</button>
-                        {workspaces.map((workspace) => <button type="button" className={buttonClass(selectedWorkspaceId === workspace.workspaceId)} disabled={sending} key={workspace.workspaceId} onClick={() => onPickWorkspace(workspace.workspaceId)}>{workspace.title}</button>)}
-                        <button type="button" className="bd-edit-tag" disabled={sending} onClick={onCreateWorkspace}>新建工作区</button>
                     </div>
                 </div>
                 <div className="bd-edit-field">

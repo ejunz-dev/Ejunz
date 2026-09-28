@@ -34,7 +34,7 @@ import { deriveEventMessage, foldSurface } from '@ejunz/session/surface'
 import type {
   ApiProxy, ClientRequest, ClientResponse, HistoryEntry, HostFrame, MuxFrame, RpcReceipt,
   ModelProviderGroup, ModelSelection, RpcRequest, RpcResponse, RpcResult, ServerRequest, ServerResponse, SessionSummary,
-  ToolCallView, ToolEventView, ToolResultView, WorkspaceId, WorkspaceView,
+  ToolCallView, ToolEventView, ToolResultView,
 } from './api.ts'
 import type { RequestPayload, ResponseValue, RpcMethodMap } from '@ejunz/host-apiproxy/api'
 import { AbstractApiClient, RpcId, SESSION_SEARCH_RESULT_LIMIT } from './api.ts'
@@ -105,10 +105,10 @@ function sgr(code: number, body: string): string {
  * `--dsw-*` tokens, a bold run, column-aligned table rows that must scroll
  * rather than fold, more than DEFAULT_TERMINAL_MAX_LINES (16) lines so the
  * height cap collapses the middle. The exit status is authored separately in
- * TERMINAL_EXIT_STATUS and deliberately absent from this text: the real bash
- * presenter CONSUMES its `[exit code: N]` marker out of the body, because a
- * terminal card shows the exit as its own pill and leaving the marker in would
- * render it twice (the shell execution tool renderer).
+ * TERMINAL_EXIT_STATUS and deliberately absent from this text: the terminal
+ * presenter consumes its `[exit code: N]` marker out of the body, because the
+ * card shows the exit as its own pill and leaving the marker in would render it
+ * twice.
  */
 const TERMINAL_OUTPUT_FIXTURE = [
   sgr(1, 'Running 4 checks'),
@@ -117,7 +117,7 @@ const TERMINAL_OUTPUT_FIXTURE = [
   `${sgr(32, '\u2713')} duplication                                        2.10s`,
   `${sgr(31, '\u2717')} unit                                               8.41s`,
   '',
-  sgr(90, 'packages/client/ui-primitives/tests/terminal-block.client.spec.tsx'),
+  sgr(90, 'packages/client/connection/tests/fixture-api.test.ts'),
   `  ${sgr(31, 'FAIL')} caps output at the configured line budget`,
   '    expected 16 lines, received 24',
   '',
@@ -152,7 +152,7 @@ const TERMINAL_EXIT_STATUS: Record<string, { exitCode: number } | { signal: stri
  */
 const SEARCH_MATCHES_FIXTURE: { path: string; matches: { lineNumber: number; line: string }[] }[] = [
   {
-    path: 'packages/client/ui-primitives/src/SearchBlock.tsx',
+    path: 'packages/core/tools/src/presentation.ts',
     matches: [
       { lineNumber: 16, line: 'export const DEFAULT_SEARCH_MAX_LINES = 16' },
       { lineNumber: 138, line: 'export function SearchBlock(props: SearchBlockProps) {' },
@@ -160,19 +160,18 @@ const SEARCH_MATCHES_FIXTURE: { path: string; matches: { lineNumber: number; lin
     ],
   },
   {
-    path: 'packages/client/ui-tool/src/client/tool/models/search-card-model.ts',
+    path: 'packages/client/runtime/src/client/sessions/conversation.ts',
     matches: [
       { lineNumber: 45, line: 'export const CHAT_SEARCH_MAX_LINES = 8' },
       { lineNumber: 130, line: 'export function searchCardModel(block: ToolCallBlock): SearchCardModel | null {' },
     ],
   },
   {
-    path: 'packages/client/ui-tool/src/client/tool/toolviews/search-row.tsx',
+    path: 'packages/client/runtime/src/client/sessions/conversation.ts',
     matches: [
       { lineNumber: 34, line: 'export function SearchRow({ toolName, block, inspect, t }: SearchRowProps) {' },
       { lineNumber: 36, line: '  const search = searchCardModel(block)' },
       { lineNumber: 56, line: '      search={search}' },
-      { lineNumber: 78, line: "      yield ctx.slots.register({ name: 'tool.call.toolview', key: 'grep', locale: NS }, SearchRow)" },
     ],
   },
 ]
@@ -198,11 +197,11 @@ const SEARCH_MATCHES_TEXT = [
  * truncated with a larger `total` so the path card shows its capped indicator.
  */
 const SEARCH_PATHS_FIXTURE = [
-  'packages/client/ui-primitives/src/SearchBlock.tsx',
-  'packages/client/ui-primitives/src/SearchBlock.module.css',
-  'packages/client/ui-tool/src/client/tool/models/search-card-model.ts',
-  'packages/client/ui-tool/src/client/tool/toolviews/search-row.tsx',
-  'packages/client/ui-tool/tests/search-card.client.spec.tsx',
+  'packages/core/tools/src/presentation.ts',
+  'packages/core/tools/src/presentation.ts',
+  'packages/client/runtime/src/client/sessions/conversation.ts',
+  'packages/client/runtime/src/client/sessions/conversation.ts',
+  'packages/client/connection/tests/fixture-api.test.ts',
 ]
 
 /**
@@ -239,7 +238,7 @@ const READ_SAMPLE_SOURCE = [
   'const marker = "fixture read sample"',
 ]
 const READ_SAMPLE_LINES = READ_SAMPLE_SOURCE.map((text, index) => ({ number: READ_SAMPLE_FIRST_LINE + index, text }))
-const READ_SAMPLE_PATH = 'packages/client/ui-primitives/src/ReadBlock.tsx'
+const READ_SAMPLE_PATH = 'packages/client/runtime/src/client/sessions/conversation.ts'
 const READ_SAMPLE_TOTAL = 180
 const READ_SAMPLE_TEXT = READ_SAMPLE_SOURCE.map((text, index) => `${READ_SAMPLE_FIRST_LINE + index}: ${text}`).join('\n')
 
@@ -446,49 +445,6 @@ function buildAlphaLog(): SessionEvent[] {
   // header, the first hunk, a `⋯` gap, then the second (the same-file
   // second-hunk arm turns 62/63 cannot reach).
   toolTurn(64, 'edit', '{"file_path":"src/config.ts","old_string":"const timeout = 30","new_string":"const timeout = 60"}', '已编辑')
-  // Turn 65: one run_code turn with three logged sub-dispatches — the Code
-  // Mode acceptance surface (parent code row + nested native-identical rows,
-  // including an isError sub-call and a bash sub-call that must hit the same
-  // keyed registration a top-level bash row uses).
-  {
-    const turn = 65
-    const callId = `fx-call-${turn}`
-    const program = 'const listing = await tools.bash({ command: "ls notes", description: "List notes" })\n'
-      + 'const demo = await tools.read({ file_path: "notes/demo.txt" })\n'
-      + 'await tools.read({ file_path: "notes/missing.txt" }).catch(() => "tolerated")\n'
-      + 'return { listing, demo }'
-    const args = JSON.stringify({ code: program, description: 'Read the notes files and summarize' })
-    push({ type: 'turn/start', data: { turn } })
-    push({ type: 'user/message', surfaceOp: 'append', data: userMessage(text(`问题 ${turn}：run_code 样本。`)) })
-    push({ type: 'step/start', data: { turn, step: 0 } })
-    push({
-      type: 'assistant/message', surfaceOp: 'append',
-      data: { turn, step: 0, message: assistantMessage([{ type: 'tool-call', id: callId, name: 'run_code', arguments: args } as ContentBlock]) },
-    })
-    push({ type: 'tool/call', data: { turn, step: 0, callId, name: 'run_code', arguments: args } })
-    const dispatchPair = (n: number, name: string, dispatchArgs: Record<string, unknown>, resultText: string, isError = false): void => {
-      push({
-        type: 'tool/code-dispatch-start',
-        data: { rootCallId: callId, parentCallId: callId, subCallId: `${callId}:code:${n}`, name, arguments: dispatchArgs },
-      })
-      push({
-        type: 'tool/code-dispatch',
-        data: {
-          rootCallId: callId, parentCallId: callId, subCallId: `${callId}:code:${n}`, name,
-          arguments: dispatchArgs, isError, content: [{ type: 'text', text: resultText }],
-        },
-      })
-    }
-    dispatchPair(1, 'bash', { command: 'ls notes', description: 'List notes' }, 'demo.txt\nnew-demo.txt')
-    dispatchPair(2, 'read', { file_path: 'notes/demo.txt' }, 'hello fixture\n')
-    dispatchPair(3, 'read', { file_path: 'notes/missing.txt' }, 'Error: ENOENT: notes/missing.txt not found', true)
-    push({
-      type: 'tool/result', surfaceOp: 'append',
-      data: { turn, step: 0, message: toolResultMessage(callId, text('{"listing":"demo.txt\\nnew-demo.txt","demo":"hello fixture\\n"}'), false) },
-    })
-    push({ type: 'step/end', data: { turn, step: 0 } })
-    push({ type: 'turn/end', data: { turn, reason: { kind: 'completed' } } })
-  }
   // Turn 74: todo_write sample — the TodoRow toolview in the flow plus the
   // todo/write snapshot event feeding the TodoPanel plan strip. Two items are
   // in_progress: this fixture chooses the parallel policy, so both surfaces
@@ -527,12 +483,8 @@ function buildAlphaLog(): SessionEvent[] {
   // line numbers starting above 1 and a "showing N of M" note (the window is
   // shorter than READ_SAMPLE_TOTAL), with a `ts` language hint the shiki path
   // highlights. Named `read`, so it exercises the keyed ReadRow registration.
-  // The render-site fallback ROW SHAPE (a read call on the generic flattened
-  // path) is covered by the turn 65 run_code read sub-dispatches, which
-  // session.ts folds with resultView: null; the fallback-row + read-CARD
-  // combination is pinned by the web_fetch case in read-card.spec.tsx, not by
-  // this fixture. The read render intent is result-side only, so its pending
-  // call stays a generic `kind: 'read'` card; presentResult carries the
+  // The read render intent is result-side only, so its pending call stays a
+  // generic `kind: 'read'` card; presentResult carries the
   // structured window.
   toolTurn(69, 'read', `{"file_path":${JSON.stringify(READ_SAMPLE_PATH)},"offset":${READ_SAMPLE_FIRST_LINE}}`, READ_SAMPLE_TEXT)
 
@@ -708,7 +660,7 @@ function presentResult(name: string, argsRaw: string, resultText: string): ToolR
   switch (call.card) {
     case 'terminal':
       // The sample's own exit status, authored beside it: re-parsing the
-      // trailing marker here would duplicate the shell result's exit-status parser,
+      // trailing marker here would duplicate the terminal result parser,
       // which this client-side fixture cannot import.
       return { card: 'terminal', output: resultText, ...(TERMINAL_EXIT_STATUS[resultText] ?? { exitCode: 0 }) }
     case 'diff':
@@ -1428,16 +1380,12 @@ interface ReasoningChunkStormState {
 
 /** Deterministic fixture branches used by keyless Web assembly tests. */
 export interface FixtureOptions {
-  /** Start with no real Workspace or Session. */
+  /** Start with no real Session. */
   empty?: boolean
   /** Reject every prompt before appending its user event. */
   rejectPrompt?: boolean
-  /** Publish the Session but fail its Workspace account write. */
-  failWorkspaceAttach?: boolean
   /** Publish and frame the Session, then throw instead of returning create. */
   dropSessionCreateResponse?: boolean
-  /** Order of the two successful create frames. */
-  createFrameOrder?: 'session-first' | 'workspace-first'
 }
 
 /** Inbox pump shared by both stream generators (FrameQueue pattern: ONE abort listener hung
@@ -1547,22 +1495,6 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
   let nextSession = 1
   let nextRpc = 1
   let attachedSessions = options.empty ? 0 : 1
-  // Workspace entities mirroring the host registry: the fixture sessions all
-  // live under one workspace, whose account carries them in attach order.
-  const wid = (raw: string): WorkspaceId => raw as WorkspaceId
-  const fixtureEpoch = new Date(Date.now() - 300_000).toISOString()
-  const workspaces: WorkspaceView[] = options.empty ? [] : [{
-    workspaceId: wid('fx-ws-fixture'),
-    path: '/tmp/fixture',
-    title: 'fixture',
-    sessionIds: [sid('fx-alpha'), sid('fx-beta'), sid('fx-gamma')],
-    createdAt: fixtureEpoch,
-    updatedAt: fixtureEpoch,
-  }]
-  let nextWorkspace = 1
-  // Registry-global archive set mirroring the host: archived sessions keep
-  // their workspace accounting slot and only grouping surfaces hide them.
-  const archivedSessionIds: SessionId[] = []
 
   const mint = (): ReturnType<typeof RpcId> => RpcId(`fx-rpc-${nextRpc++}`)
   /** Resident pending approval (stable rpcId: every mux open replays the same id while unanswered, matching host replay semantics). */
@@ -2189,33 +2121,8 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         })
       },
       create: async (request) => {
-        const workspace = request.payload.workspaceId === undefined
-          ? undefined
-          : workspaces.find(w => w.workspaceId === request.payload.workspaceId)
-        if (request.payload.workspaceId !== undefined && workspace === undefined) {
-          return err(request, {
-            code: 'workspace-not-found',
-            message: `no workspace ${request.payload.workspaceId}`,
-            details: { workspaceId: request.payload.workspaceId },
-          })
-        }
-        const cwd = workspace?.path ?? request.payload.cwd ?? '/tmp/fixture'
+        const cwd = request.payload.cwd ?? '/tmp/fixture'
         const requestedId = request.payload.sessionId
-        const attachWorkspace = (sessionId: SessionId): void => {
-          /* v8 ignore next -- callers enter only when a target Workspace exists. */
-          if (workspace === undefined || workspace.sessionIds.includes(sessionId)) return
-          workspace.sessionIds = [sessionId, ...workspace.sessionIds]
-          workspace.updatedAt = new Date().toISOString()
-          emitHost({ type: 'host/workspace-changed', workspace: { ...workspace } })
-        }
-        const attachFailure = (
-          sessionId: SessionId,
-          workspaceId: WorkspaceId,
-        ): Promise<RpcResponse<{ sessionId: SessionId }>> => err(request, {
-          code: 'workspace-attach-failed' as const,
-          message: `fixture rejected Workspace attachment for ${sessionId}`,
-          details: { sessionId, workspaceId },
-        })
         if (requestedId !== undefined) {
           const existing = summaryOf(requestedId)
           if (existing !== undefined) {
@@ -2226,10 +2133,6 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
                 details: { sessionId: requestedId, requestedCwd: cwd, ...existing.cwd === undefined ? {} : { existingCwd: existing.cwd } },
               })
             }
-            if (workspace !== undefined && !workspace.sessionIds.includes(requestedId)) {
-              if (options.failWorkspaceAttach) return attachFailure(requestedId, workspace.workspaceId)
-              attachWorkspace(requestedId)
-            }
             return ok(request, { sessionId: requestedId })
           }
         }
@@ -2239,21 +2142,7 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         sessions.push(created)
         modelSelections.set(created.sessionId, { provider: 'deepseek-official', model: 'deepseek-v4-flash' })
         attachedSessions += 1
-        const emitSession = (): void => {
-          // Mirrors the host: the frame fires at creation, so blank is constantly true.
-          emitHost({ type: 'host/session-added', sessionId: created.sessionId, blank: true, cwd })
-        }
-        if (workspace !== undefined && options.failWorkspaceAttach) {
-          emitSession()
-          return attachFailure(created.sessionId, workspace.workspaceId)
-        }
-        if (workspace !== undefined && options.createFrameOrder === 'workspace-first') {
-          attachWorkspace(created.sessionId)
-          emitSession()
-        } else {
-          emitSession()
-          if (workspace !== undefined) attachWorkspace(created.sessionId)
-        }
+        emitHost({ type: 'host/session-added', sessionId: created.sessionId, blank: true, cwd })
         if (options.dropSessionCreateResponse) throw new Error('fixture: dropped session.create response after publication')
         return ok(request, { sessionId: created.sessionId })
       },
@@ -2320,12 +2209,6 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
           parentSessionId: sessionId,
           ...source.cwd === undefined ? {} : { cwd: source.cwd },
         })
-        const workspace = workspaces.find(w => w.sessionIds.includes(sessionId))
-        if (workspace !== undefined) {
-          workspace.sessionIds = [child.sessionId, ...workspace.sessionIds]
-          workspace.updatedAt = new Date().toISOString()
-          emitHost({ type: 'host/workspace-changed', workspace: { ...workspace } })
-        }
         return ok(request, { sessionId: child.sessionId })
       },
       history: async (request) => {
@@ -2516,138 +2399,6 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
       describe: request => ok(request, {
         version: '0.0.0-fixture', cwd: '/tmp/fixture', attachedSessions,
       }),
-    },
-    workspace: {
-      list: request => ok(request, {
-        items: workspaces.map(w => ({ ...w })),
-        archivedSessionIds: [...archivedSessionIds],
-      }),
-      create: (request) => {
-        const { path } = request.payload
-        const existing = workspaces.find(w => w.path === path)
-        if (existing !== undefined) return ok(request, { workspace: { ...existing }, created: false })
-        const now = new Date().toISOString()
-        const created: WorkspaceView = {
-          workspaceId: wid(`fx-ws-${nextWorkspace++}`),
-          path,
-          title: path.split('/').filter(Boolean).at(-1) ?? path,
-          sessionIds: [],
-          createdAt: now,
-          updatedAt: now,
-        }
-        workspaces.unshift(created)
-        emitHost({ type: 'host/workspace-changed', workspace: { ...created } })
-        return ok(request, { workspace: { ...created }, created: true })
-      },
-      rename: (request) => {
-        const { workspaceId, title } = request.payload
-        const workspace = workspaces.find(w => w.workspaceId === workspaceId)
-        if (workspace === undefined) {
-          return err(request, {
-            code: 'workspace-not-found',
-            message: `no workspace ${workspaceId}`,
-            details: { workspaceId },
-          })
-        }
-        const trimmed = title.trim()
-        if (trimmed !== workspace.title) {
-          if (workspaces.some(w => w.workspaceId !== workspaceId && w.title === trimmed)) {
-            return err(request, {
-              code: 'workspace-name-conflict',
-              message: `workspace name '${trimmed}' is already in use`,
-              details: { name: trimmed },
-            })
-          }
-          workspace.title = trimmed
-          workspace.updatedAt = new Date().toISOString()
-          emitHost({ type: 'host/workspace-changed', workspace: { ...workspace } })
-        }
-        return ok(request, { workspace: { ...workspace } })
-      },
-      delete: (request) => {
-        const { workspaceId } = request.payload
-        const index = workspaces.findIndex(workspace => workspace.workspaceId === workspaceId)
-        if (index === -1) {
-          return err(request, {
-            code: 'workspace-not-found',
-            message: `no workspace ${workspaceId}`,
-            details: { workspaceId },
-          })
-        }
-        workspaces.splice(index, 1)
-        emitHost({ type: 'host/workspace-removed', workspaceId })
-        return ok(request, { deleted: true as const })
-      },
-      insertBefore: (request) => {
-        const { workspaceId, beforeWorkspaceId } = request.payload
-        const source = workspaces.findIndex(workspace => workspace.workspaceId === workspaceId)
-        const anchor = beforeWorkspaceId === undefined
-          ? workspaces.length
-          : workspaces.findIndex(workspace => workspace.workspaceId === beforeWorkspaceId)
-        const missing = source === -1 ? workspaceId : anchor === -1 ? beforeWorkspaceId : undefined
-        if (missing !== undefined) {
-          return err(request, {
-            code: 'workspace-not-found',
-            message: `no workspace ${missing}`,
-            details: { workspaceId: missing },
-          })
-        }
-        if (beforeWorkspaceId !== workspaceId) {
-          const previousOrder = workspaces.map(candidate => candidate.workspaceId)
-          const [workspace] = workspaces.splice(source, 1)
-          /* v8 ignore next -- source was resolved from the same array immediately above. */
-          if (workspace === undefined) throw new Error(`fixture lost workspace ${workspaceId}`)
-          const at = beforeWorkspaceId === undefined
-            ? workspaces.length
-            : workspaces.findIndex(candidate => candidate.workspaceId === beforeWorkspaceId)
-          workspaces.splice(at, 0, workspace)
-          if (workspaces.some((candidate, index) => candidate.workspaceId !== previousOrder[index])) {
-            emitHost({
-              type: 'host/workspace-order-changed',
-              workspaceIds: workspaces.map(candidate => candidate.workspaceId),
-            })
-          }
-        }
-        return ok(request, { workspaceIds: workspaces.map(candidate => candidate.workspaceId) })
-      },
-      insertSessionBefore: (request) => {
-        const { workspaceId, sessionId, beforeSessionId } = request.payload
-        const workspace = workspaces.find(w => w.workspaceId === workspaceId)
-        if (workspace === undefined) {
-          return err(request, {
-            code: 'workspace-not-found',
-            message: `no workspace ${workspaceId}`,
-            details: { workspaceId },
-          })
-        }
-        if (!workspace.sessionIds.includes(sessionId)
-          || (beforeSessionId !== undefined && !workspace.sessionIds.includes(beforeSessionId))) {
-          return err(request, {
-            code: 'workspace-move-invalid',
-            message: `session or anchor is not accounted by workspace ${workspaceId}`,
-            details: { workspaceId, sessionId, ...beforeSessionId === undefined ? {} : { beforeSessionId } },
-          })
-        }
-        const without = workspace.sessionIds.filter(id => id !== sessionId)
-        const at = beforeSessionId === undefined ? without.length : without.indexOf(beforeSessionId)
-        const sessionIds = [...without.slice(0, at), sessionId, ...without.slice(at)]
-        if (!sessionIds.every((id, index) => id === workspace.sessionIds[index])) {
-          workspace.sessionIds = sessionIds
-          workspace.updatedAt = new Date().toISOString()
-          emitHost({ type: 'host/workspace-changed', workspace: { ...workspace } })
-        }
-        return ok(request, { workspace: { ...workspace } })
-      },
-      archiveSession: (request) => {
-        const missing = requireSession(request)
-        if (missing !== undefined) return missing
-        const { sessionId } = request.payload
-        if (!archivedSessionIds.includes(sessionId)) {
-          archivedSessionIds.push(sessionId)
-          emitHost({ type: 'host/archived-sessions-changed', archivedSessionIds: [...archivedSessionIds] })
-        }
-        return ok(request, { archivedSessionIds: [...archivedSessionIds] })
-      },
     },
     agentPresets: {
       // Both trusts appear, because a surface must present a locally authored
@@ -3044,13 +2795,6 @@ export class FixtureApiClient extends AbstractApiClient {
       case 'subagent.prompt': return this.api.subagents.prompt(request, signal)
       case 'subagent.interrupt': return this.api.subagents.interrupt(request)
       case 'host.describe': return this.api.host.describe(request)
-      case 'workspace.list': return this.api.workspace.list(request)
-      case 'workspace.create': return this.api.workspace.create(request)
-      case 'workspace.rename': return this.api.workspace.rename(request)
-      case 'workspace.delete': return this.api.workspace.delete(request)
-      case 'workspace.insertBefore': return this.api.workspace.insertBefore(request)
-      case 'workspace.insertSessionBefore': return this.api.workspace.insertSessionBefore(request)
-      case 'workspace.archiveSession': return this.api.workspace.archiveSession(request)
       case 'skill.list': return this.api.skills.list(request)
       case 'agentPreset.list': return this.api.agentPresets.list(request)
       case 'agentPreset.select': return this.api.agentPresets.select(request)
@@ -3126,8 +2870,6 @@ function fixtureOptionsFromLocation(): FixtureOptions {
   return {
     empty: query.get('fixture') === 'empty',
     rejectPrompt: query.get('fixturePrompt') === 'reject',
-    failWorkspaceAttach: query.get('fixtureAttach') === 'fail',
     dropSessionCreateResponse: query.get('fixtureSessionCreate') === 'drop-response',
-    createFrameOrder: query.get('fixtureFrames') === 'workspace-first' ? 'workspace-first' : 'session-first',
   }
 }

@@ -57,12 +57,12 @@ export interface Config {
 /**
  * The API gateway service: implements the ApiProxy contract over the composed
  * host context and provides it as `ctx.apiProxy`. The Host cwd is the default
- * project directory.
+ * working directory for new sessions.
  */
 export class ApiProxyService extends Service implements ApiProxy {
   static inject = [
     'agentDefaultModel', 'agents', 'attachments', 'commands', 'llm', 'sessions', 'subagents', 'sessionQuery',
-    'tools', 'userQuestions', 'workspaceRegistry',
+    'tools', 'userQuestions',
   ]
 
   static Config: z<Config> = z.object({
@@ -74,7 +74,6 @@ export class ApiProxyService extends Service implements ApiProxy {
 
   readonly sessions: ApiProxy['sessions']
   readonly subagents: ApiProxy['subagents']
-  readonly workspace: ApiProxy['workspace']
   readonly host: ApiProxy['host']
   readonly goals: ApiProxy['goals']
   readonly skills: ApiProxy['skills']
@@ -102,7 +101,6 @@ export class ApiProxyService extends Service implements ApiProxy {
     })
     this.sessions = api.sessions
     this.subagents = api.subagents
-    this.workspace = api.workspace
     this.host = api.host
     this.goals = api.goals
     this.skills = api.skills

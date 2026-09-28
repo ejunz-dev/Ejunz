@@ -743,12 +743,7 @@ function sandboxContext(ctx: Context, reportFailure: (error: Error) => void): Co
     return guardedService(service, name, reportFailure)
   }
   const get = (name: string): unknown => readService(name, false)
-  // The browser half builds the same façade over its own Context
-  // (`@ejunz/cordis-client-runner`, whose CTX_VERBS names this one its
-  // twin), and the sameness is the point: a package author meets ONE contract on
-  // both halves. Folding them together is not available — the two halves compile
-  // in separate programs where `Context` merges different service keys — so the
-  // duplication is declared here instead of hidden behind a config exception.
+  // Expose the guarded host service façade through lazy property forwarding.
   /* jscpd:ignore-start */
   return new Proxy({}, {
     get(_target, prop) {

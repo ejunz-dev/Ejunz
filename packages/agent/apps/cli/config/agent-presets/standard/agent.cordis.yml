@@ -20,12 +20,12 @@
 # ── identity ────────────────────────────────────────────────────────────────
 
 # The preset's own persona, shadowing the deployment default for this agent.
-# `{{model}}` and `{{cwd}}` resolve from the agent's own route and workspace.
+# The model identity is resolved from the agent's own route.
 - id: persona
   name: '@ejunz/persona'
   config:
     text: >-
-      You are a coding agent powered by the {{model}} model. Your working directory is {{cwd}}.
+      You are a coding agent powered by the {{model}} model.
 
 # Host command execution and filesystem access are intentionally absent from
 # this preset; domain users receive no tools for either capability.

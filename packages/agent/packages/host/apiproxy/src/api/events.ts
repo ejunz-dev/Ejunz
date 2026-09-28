@@ -15,7 +15,6 @@ import type { JsonValue, SessionEvent, SessionId } from '@ejunz/session/types'
 import type { ToolCallView, ToolResultView } from '@ejunz/tools/presentation'
 import type { RpcError, RpcId, RpcRequest } from './rpc.ts'
 import type { JobView } from './jobs.ts'
-import type { WorkspaceView } from './workspace.ts'
 
 // Client-side consumers take the render-intent vocabulary from the contract;
 // ea-tools remains its owner.
@@ -109,20 +108,12 @@ export type MuxFrame =
 
 /**
  * Host stream frames. session-added carries the lineage anchor, product
- * origin, project cwd, and blank bit (the list-summary fields a client cannot
+ * origin, session cwd, and blank bit (the list-summary fields a client cannot
  * wait for a refresh to learn); the frame fires at session/created, so blank is
  * constantly true — clients flip it on the session's first
  * `host/session-status(running:true)` (a blank session never runs), and a
  * reconnecting client takes `session.list`'s summary.blank as authoritative.
- * agent-error is the only outlet for live failures with no turn position;
- * workspace-changed pushes the full new snapshot after every durable
- * workspace mutation (create/attach/order change — the client upserts, while
- * `workspace.list` provides the reconnect baseline); workspace-removed is the
- * committed registration-deletion increment and never implies directory or
- * session-log deletion; workspace-order-changed pushes the complete durable
- * registry order after a reorder; archived-sessions-changed pushes the full registry
- * archive set after every durable change (same full-snapshot posture as
- * workspace-changed — `workspace.list` re-baselines it on reconnect).
+ * agent-error is the only outlet for live failures with no turn position.
  */
 export type HostFrame =
   | {
@@ -137,10 +128,6 @@ export type HostFrame =
   | { type: 'host/session-removed'; sessionId: SessionId }
   | { type: 'host/session-status'; sessionId: SessionId; running: boolean }
   | { type: 'host/agent-error'; sessionId: SessionId; message: string }
-  | { type: 'host/workspace-changed'; workspace: WorkspaceView }
-  | { type: 'host/workspace-removed'; workspaceId: WorkspaceView['workspaceId'] }
-  | { type: 'host/workspace-order-changed'; workspaceIds: WorkspaceView['workspaceId'][] }
-  | { type: 'host/archived-sessions-changed'; archivedSessionIds: SessionId[] }
   /**
    * One allowlisted host cordis event forwarded verbatim. The allowlist is
    * owned by `@ejunz/api-remotes` (`API_REMOTE_FORWARDED_EVENTS`),

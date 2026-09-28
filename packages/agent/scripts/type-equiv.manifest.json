@@ -737,11 +737,6 @@
     },
     {
       "doc": "docs/subsystems/tools.md",
-      "symbol": "CodeDispatchLog",
-      "source": "packages/core/tools/src/index.ts"
-    },
-    {
-      "doc": "docs/subsystems/tools.md",
       "symbol": "ToolRunContext",
       "source": "packages/core/tools/src/index.ts"
     },
@@ -891,36 +886,6 @@
       "source": "packages/attachment/attachment/src/types.ts"
     },
     {
-      "doc": "docs/subsystems/shell.md",
-      "symbol": "ShellExecRequest",
-      "source": "packages/shell/shell/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/shell.md",
-      "symbol": "ShellExecSpec",
-      "source": "packages/shell/shell/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/shell.md",
-      "symbol": "ShellRunResult",
-      "source": "packages/shell/shell/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/shell.md",
-      "symbol": "ShellSandboxInfo",
-      "source": "packages/shell/shell/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/shell.md",
-      "symbol": "ShellProcess",
-      "source": "packages/shell/shell/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/shell.md",
-      "symbol": "ShellProcessRead",
-      "source": "packages/shell/shell/src/types.ts"
-    },
-    {
       "doc": "docs/subsystems/jobs.md",
       "symbol": "JobKindMap",
       "source": "packages/jobs/jobs/src/types.ts"
@@ -949,41 +914,6 @@
       "doc": "docs/subsystems/jobs.md",
       "symbol": "JobRead",
       "source": "packages/jobs/jobs/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/code-runtime.md",
-      "symbol": "CodeJsonValue",
-      "source": "packages/code-runtime/code-runtime/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/code-runtime.md",
-      "symbol": "CodeRunRequest",
-      "source": "packages/code-runtime/code-runtime/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/code-runtime.md",
-      "symbol": "CodeRunResult",
-      "source": "packages/code-runtime/code-runtime/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/code-runtime.md",
-      "symbol": "CodeBindingNamespace",
-      "source": "packages/code-runtime/code-runtime/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/code-runtime.md",
-      "symbol": "CodeBindingErrorClass",
-      "source": "packages/code-runtime/code-runtime/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/code-runtime.md",
-      "symbol": "CodeBindingFunction",
-      "source": "packages/code-runtime/code-runtime/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/code-runtime.md",
-      "symbol": "CodeRunFailure",
-      "source": "packages/code-runtime/code-runtime/src/types.ts"
     },
     {
       "doc": "docs/subsystems/filesystem.md",
@@ -1609,16 +1539,6 @@
       "doc": "docs/subsystems/storage.md",
       "symbol": "DomainChanged",
       "source": "packages/storage/storage-domain/src/events.ts"
-    },
-    {
-      "doc": "docs/subsystems/workspace.md",
-      "symbol": "WorkspaceId",
-      "source": "packages/workspace/workspace/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/workspace.md",
-      "symbol": "Workspace",
-      "source": "packages/workspace/workspace/src/types.ts"
     },
     {
       "doc": "docs/subsystems/client-modules.md",

@@ -108,10 +108,9 @@
 
     # Full-text session search is opt-in. `openAt: never` keeps
     # ctx.sessionQuery mounted — exact reads, titles, and lineage traces
-    # (session export, subagent-fork Workspace inheritance) stay available —
-    # while search calls fail with SESSION_QUERY_SEARCH_DISABLED and SQLite is
-    # never opened; the Web sidebar search matches titles and workspace names
-    # only. Deployments enabling content search override `openAt` to
+    # (including subagent forks) stay available — while search calls fail with
+    # SESSION_QUERY_SEARCH_DISABLED and SQLite is never opened. Deployments
+    # enabling content search override `openAt` to
     # `first-search` or `startup` in a later patch layer (profile
     # cordis.patch.yml or a --patch overlay), typically with a durable `path`.
     - id: session-query-sqlite

@@ -5,7 +5,7 @@
  * `@ejunz/tools`' `ToolExecution` satisfies this shape, so the policy
  * reads `exec` straight through without importing `ea-tools` or `ea-agent`.
  * Only the session HEADER id is read — the same identity every other subsystem
- * keys off (see `the shell execution tool`'s owner derivation).
+ * keys off (see the owning tool execution's session reference).
  *
  * @module @ejunz/spill-policy/types
  */

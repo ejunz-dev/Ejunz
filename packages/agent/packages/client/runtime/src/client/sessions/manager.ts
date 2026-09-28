@@ -1,10 +1,10 @@
 // SessionManager: the instance cluster Map<SessionId, Session> (lazy-built, resident) + the frame
 // dispatch entry + list state, constructed and held by SessionRuntime (one per client runtime).
-// List data never enters zustand; React connects via subscribe/getListSnapshot.
+// List data never enters zustand; consumers observe it through subscribe/getListSnapshot.
 
 import type {
   IApiClient, HostFrame, MuxFrame, RpcError, RpcRequest, RpcResult, SessionId,
-  SessionSummary, SubagentAddress, SubagentCatalog, JobView, WorkspaceId,
+  SessionSummary, SubagentAddress, SubagentCatalog, JobView,
 } from '@ejunz/api-remotes/client'
 // Value import from the inline-safe wire layer (not the connection plugin):
 // plugin-to-plugin value imports are a bundle purity error.
@@ -15,8 +15,8 @@ import type { SessionListEntry, TitledSessionSummary } from './lineage.ts'
 import { flattenLineage } from './lineage.ts'
 import type { PendingInteractionStatus } from './pending.ts'
 // Type-only merge edge: the title domain's client-namespace outlet declares
-// the 'title' projection key this manager projects into list rows (and any
-// useProjection('title') consumer reads). Zero value imports by construction.
+// the 'title' projection key this manager projects into list rows and exposes to
+// client consumers. Zero value imports by construction.
 import type {} from '@ejunz/session-title/client'
 import { Notifier } from './notifier.ts'
 import { ProjectionValueStore } from './projection-store.ts'
@@ -39,7 +39,7 @@ export interface SessionSearchResultItem {
   snippet: string
 }
 
-/** Immutable session-list snapshot for useSessionList. */
+/** Immutable snapshot of the session list. */
 export interface SessionListSnapshot {
   items: readonly SessionListEntry[]
   /** Selected Session id (validated against items; masked to undefined while its session is off the list). */
@@ -530,37 +530,23 @@ export class SessionManager {
    * Contract session.create; on success merge into summaries immediately (no
    * wait for the next refresh). A created session is blank by definition
    * (entity birth precedes the first message).
-   * @param opts - target workspace or working directory, plus an optional caller-owned id.
+   * @param opts - optional working directory and caller-owned id.
    * @returns the create result.
    */
   async create(
-    opts: { workspaceId?: WorkspaceId; cwd?: string; sessionId?: SessionId } = {},
+    opts: { cwd?: string; sessionId?: SessionId } = {},
   ): Promise<RpcResult<{ sessionId: SessionId }>> {
     try {
-      const shared = opts.sessionId === undefined ? {} : { sessionId: opts.sessionId }
-      const payload = opts.workspaceId !== undefined
-        ? { workspaceId: opts.workspaceId, ...shared }
-        : { ...(opts.cwd === undefined ? {} : { cwd: opts.cwd }), ...shared }
-      const { result } = await this.api.sessions.create(payload)
+      const { result } = await this.api.sessions.create({
+        ...(opts.cwd === undefined ? {} : { cwd: opts.cwd }),
+        ...(opts.sessionId === undefined ? {} : { sessionId: opts.sessionId }),
+      })
       if (result.ok) {
         this.recordMutation({ kind: 'upsert', summary: {
           sessionId: result.value.sessionId, updatedAt: Date.now(), running: false, blank: true,
           ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
           ...(result.value.agentPreset !== undefined ? { agentPreset: result.value.agentPreset } : {}),
         } })
-      } else {
-        const publishedSessionId = workspaceAttachSessionId(result.error)
-        // Publication precedes attachment. The error's id is a real Session,
-        // so expose it immediately as Ungrouped while the caller keeps the
-        // prompt buffer and decides whether to retry attachment.
-        if (publishedSessionId !== undefined) {
-          this.recordMutation({ kind: 'upsert', summary: {
-            sessionId: publishedSessionId,
-            updatedAt: Date.now(),
-            running: false,
-            blank: true,
-          } })
-        }
       }
       return result
     } catch (error) {
@@ -572,8 +558,7 @@ export class SessionManager {
    * Contract session.fork; on success merge the child into summaries
    * immediately (same synchronous-addressability guarantee as create). The
    * child carries the source's history, so it is never blank; lineage rides
-   * parentSessionId so the list nests it under its source. A child published
-   * before Workspace attachment fails is also reconciled into the list.
+   * parentSessionId so the list nests it under its source.
    * @param opts - source session and the optional seq anchoring the cut.
    * @returns the fork result (the child session id).
    */
@@ -586,12 +571,9 @@ export class SessionManager {
         sessionId: opts.sessionId,
         ...opts.atSeq === undefined ? {} : { atSeq: opts.atSeq },
       })
-      const childId = result.ok
-        ? result.value.sessionId
-        : workspaceAttachSessionId(result.error)
-      if (childId !== undefined) {
+      if (result.ok) {
         this.recordMutation({ kind: 'upsert', summary: {
-          sessionId: childId, updatedAt: Date.now(), running: false, blank: false,
+          sessionId: result.value.sessionId, updatedAt: Date.now(), running: false, blank: false,
           parentSessionId: opts.sessionId,
           ...(source?.cwd !== undefined ? { cwd: source.cwd } : {}),
         } })
@@ -632,10 +614,10 @@ export class SessionManager {
     this.notifier.markDirty()
   }
 
-  // ---- Subscription API (for useSessionList) ----
+  // ---- Snapshot subscription API ----
 
   /**
-   * uSES subscription entry for useSessionList.
+   * Subscribe to session-list changes.
    * @param listener - change callback.
    * @returns the unsubscribe function.
    */
@@ -1122,10 +1104,4 @@ function applyMutation(summaries: readonly SessionSummary[], mutation: SessionLi
         ? { ...summary, blank: false }
         : summary)
   }
-}
-
-/** Temporary source-plane bridge while the Host contract and client project build independently. */
-function workspaceAttachSessionId(error: RpcError): SessionId | undefined {
-  const candidate = error as unknown as { code: string; details: { sessionId?: SessionId } }
-  return candidate.code === 'workspace-attach-failed' ? candidate.details.sessionId : undefined
 }

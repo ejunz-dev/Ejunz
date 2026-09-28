@@ -1,8 +1,8 @@
 /**
  * Default executor-less, UI-less agent spine. It bundles the common services,
  * background-job registry and controls, optional persisted goals, concrete loop, local skill and
- * agent-instructions providers, and model-facing shell/skill consumers;
- * deployments still choose the LLM adapter, bash executor, and presentation.
+ * agent-instructions providers, and model-facing skill/job consumers;
+ * deployments still choose the LLM adapter and entry-point-specific services.
  * The plugin intentionally exposes named exports only because Loader default
  * unwrapping would discard its `Config` schema (see docs/postmortem/0001).
  * @module @ejunz/agent-spine-demo
@@ -15,7 +15,7 @@ import LlmRuntime from '@ejunz/llm'
 import SessionStore from '@ejunz/session'
 import SessionTitleService, { type Config as SessionTitleConfig } from '@ejunz/session-title'
 import SystemPrompt, { type Config as SystemPromptConfig } from '@ejunz/system-prompt'
-import ToolRuntime, { type Config as ToolsConfig } from '@ejunz/tools'
+import ToolRuntime from '@ejunz/tools'
 import SkillRegistry, { type Config as SkillRegistryConfig } from '@ejunz/skill'
 import * as SkillFileSystem from '@ejunz/skill-filesystem'
 import AgentRegistry from '@ejunz/agent'
@@ -70,22 +70,18 @@ export interface GoalConfig {
  * bridge, simply omits it), `includeEjunzAgentIdentity`, `includeRuntimeContext`,
  * `persona`, and `toolOrder` to the system-prompt plugin (the fixed opener,
  * dynamic-context policy, deployment persona, and explicit model-facing tool
- * order), the `tools` object to the tool registry (its presentation `mode`),
- * `eaHome` to bash environment and local skill discovery, `sessionTitle` to
+ * order), `eaHome` to local skill discovery, `sessionTitle` to
  * the fallback title service, `skills` to the
  * skill registry/local provider/tool consumer, `workspaceContext` to the
  * agent-instructions loader, `jobs` to the process-local job provider, and
  * `toolJobs` to its model-facing tool plugin.
- * Provider adapters own their `retryPolicy`; this bundle always mounts its
- * executor.
+ * Provider adapters own their `retryPolicy`; this bundle mounts the shared
+ * agent loop and service spine.
  * `goals` opts into and configures the persisted goal domain plus its model tool
  * and same-session driver; `invariants` configures global and package-filtered
  * relational checks. Owner schemas supply defaults for optional input;
  * workspace context instead requires an explicit byte budget or `false` because
- * it changes model-visible input. Producer opt-in stays producer-local:
- * `removedBashTool` configures bash only; independently composed producers keep their
- * own config. Set `removedBashTool: false` when another plugin owns the model-facing
- * `bash` name.
+ * it changes model-visible input.
  */
 export interface Config {
   /** The agent-loop `agents` list (see ea-agent-loop's `Config`). */
@@ -100,8 +96,6 @@ export interface Config {
   persona?: SystemPromptConfig['persona']
   /** The explicit model-facing tool order (see ea-system-prompt's `Config`). */
   toolOrder?: SystemPromptConfig['toolOrder']
-  /** The tool registry's config — its presentation `mode` (see ea-tools' `Config`). */
-  tools?: ToolsConfig
   /** EjunzAgent home directory used by local skill discovery. */
   eaHome?: string
   /** Deterministic fallback and accepted-title limits; omission uses the bundle's example policy. */
@@ -114,7 +108,6 @@ export interface Config {
    * single model-tool plugins use `Config | false` to disable that one consumer.
    */
   skills?: SkillConfig
-  /** Model-facing bash tool config, or false when another plugin owns `bash`. */
   /** Process-local background-job admission config. */
   jobs?: JobsConfig
   /** Generic background-job controls; set false to keep the job service without model-facing job tools. */
@@ -154,7 +147,6 @@ export const Config = z.intersect([
   AgentLoop.Config,
   SystemPrompt.Config,
   z.object({
-    tools: ToolRuntime.Config,
     eaHome: z.string(),
     sessionTitle: SessionTitleConfigSchema,
     skills: SkillConfigSchema,
@@ -163,7 +155,7 @@ export const Config = z.intersect([
     toolJobs: z.union([z.const(false), ToolJobsConfigSchema]),
     invariants: InvariantRegistry.Config,
     goals: z.union([z.const(false), GoalConfigSchema]),
-  }) as unknown as z<Pick<Config, 'tools' | 'eaHome' | 'sessionTitle' | 'skills' | 'workspaceContext' | 'jobs' | 'toolJobs' | 'invariants' | 'goals'>>,
+  }) as unknown as z<Pick<Config, 'eaHome' | 'sessionTitle' | 'skills' | 'workspaceContext' | 'jobs' | 'toolJobs' | 'invariants' | 'goals'>>,
 ]) as unknown as z<Config>
 
 /**
@@ -178,7 +170,6 @@ export function pickSpineConfig(config: Omit<Config, 'agents'>): Omit<Config, 'a
     ...config.includeRuntimeContext !== undefined ? { includeRuntimeContext: config.includeRuntimeContext } : {},
     ...config.persona !== undefined ? { persona: config.persona } : {},
     ...config.toolOrder !== undefined ? { toolOrder: config.toolOrder } : {},
-    ...config.tools !== undefined ? { tools: config.tools } : {},
     ...config.eaHome !== undefined ? { eaHome: config.eaHome } : {},
     ...config.sessionTitle !== undefined ? { sessionTitle: config.sessionTitle } : {},
     workspaceContext: config.workspaceContext,
@@ -219,7 +210,7 @@ export function apply(ctx: Context, config: Config): void {
     persona: config.persona ?? '',
     ...config.toolOrder !== undefined ? { toolOrder: config.toolOrder } : {},
   })
-  ctx.plugin(ToolRuntime, config.tools ?? {})
+  ctx.plugin(ToolRuntime)
   const skillsEnabled = config.skills?.enabled ?? true
   if (skillsEnabled) {
     ctx.plugin(SkillRegistry, config.skills?.registry ?? {})

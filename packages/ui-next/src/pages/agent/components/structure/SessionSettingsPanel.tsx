@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { BaseView, WorkspaceView } from '../../runtime/session';
+import type { BaseView } from '../../runtime/session';
 import type { SessionModels } from '../types';
 import type { HostOption } from './HostPicker';
 
@@ -10,28 +10,22 @@ interface SessionSettingsPanelProps {
     models: SessionModels | null;
     bases: readonly BaseView[];
     selectedBaseId?: number;
-    workspaces: readonly WorkspaceView[];
-    selectedWorkspaceId?: string;
     hosts?: readonly HostOption[];
     selectedHostId?: string;
     onModel: (provider: string, model: string) => Promise<void>;
     onBase: (value: number | undefined) => Promise<void>;
-    onWorkspace: (value: string | undefined) => Promise<void>;
     onHost: (runtimeId: string) => Promise<void>;
-    onCreateWorkspace: () => void;
 }
 
 export function SessionSettingsPanel({
-    section, models, bases, selectedBaseId, workspaces, selectedWorkspaceId,
-    hosts = [], selectedHostId = '', onModel, onBase, onWorkspace, onHost, onCreateWorkspace,
+    section, models, bases, selectedBaseId,
+    hosts = [], selectedHostId = '', onModel, onBase, onHost,
 }: SessionSettingsPanelProps) {
     const [saving, setSaving] = useState<string | null>(null);
     const [modelSelection, setModelSelection] = useState(models?.current);
     const [baseSelection, setBaseSelection] = useState(selectedBaseId);
-    const [workspaceSelection, setWorkspaceSelection] = useState(selectedWorkspaceId);
     const [hostSelection, setHostSelection] = useState(selectedHostId);
     useEffect(() => setBaseSelection(selectedBaseId), [selectedBaseId]);
-    useEffect(() => setWorkspaceSelection(selectedWorkspaceId), [selectedWorkspaceId]);
     useEffect(() => setModelSelection(models?.current), [models]);
     useEffect(() => setHostSelection(selectedHostId), [selectedHostId]);
     const [error, setError] = useState('');
@@ -71,14 +65,6 @@ export function SessionSettingsPanel({
                 <div className="bd-edit-tags">
                     <button type="button" className={`bd-edit-tag${baseSelection === undefined ? ' is-selected' : ''}`} disabled={saving !== null} onClick={() => { setBaseSelection(undefined); void apply('base:none', () => onBase(undefined)); }}>不使用</button>
                     {bases.map((base) => <button type="button" className={`bd-edit-tag${baseSelection === base.docId ? ' is-selected' : ''}`} disabled={saving !== null} key={base.docId} onClick={() => { setBaseSelection(base.docId); void apply(`base:${base.docId}`, () => onBase(base.docId)); }}>{base.title}</button>)}
-                </div>
-            </div>
-            <div className="bd-edit-field">
-                <h2>工作区</h2>
-                <div className="bd-edit-tags">
-                    <button type="button" className={`bd-edit-tag${workspaceSelection === undefined ? ' is-selected' : ''}`} disabled={saving !== null} onClick={() => { setWorkspaceSelection(undefined); void apply('workspace:none', () => onWorkspace(undefined)); }}>未分组</button>
-                    {workspaces.map((workspace) => <button type="button" className={`bd-edit-tag${workspaceSelection === workspace.workspaceId ? ' is-selected' : ''}`} disabled={saving !== null} key={workspace.workspaceId} onClick={() => { setWorkspaceSelection(workspace.workspaceId); void apply(`workspace:${workspace.workspaceId}`, () => onWorkspace(workspace.workspaceId)); }}>{workspace.title}</button>)}
-                    <button type="button" className="bd-edit-tag" disabled={saving !== null} onClick={onCreateWorkspace}>新建工作区</button>
                 </div>
             </div>
         </>}

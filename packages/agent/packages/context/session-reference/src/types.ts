@@ -43,8 +43,6 @@ export interface SessionReferenceCandidate {
   sessionId: SessionId
   /** Latest log-backed title, falling back to the opaque session id. */
   label: string
-  /** Source session working directory, when recorded. */
-  cwd?: string
   /** Source session creation time in Unix epoch milliseconds. */
   createdAt: number
 }

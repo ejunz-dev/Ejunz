@@ -3,7 +3,7 @@
 /**
  * Where a preset's composition came from. A `system` preset ships with the
  * deployment; a `user` preset was authored locally, by a person or by an
- * agent, and therefore carries the same trust as shell access.
+ * agent, and therefore carries the same trust as modifying the live composition.
  */
 export type PresetTrust = 'system' | 'user'
 

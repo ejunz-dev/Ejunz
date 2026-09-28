@@ -63,7 +63,6 @@
   "devDependencies": {
     "@ejunz/agent": "workspace:^",
     "@ejunz/agent-loop": "workspace:^",
-    "@ejunz/code-runtime": "workspace:^",
     "@ejunz/commands": "workspace:^",
     "@ejunz/cordis": "workspace:^",
     "@ejunz/invariants": "workspace:^",

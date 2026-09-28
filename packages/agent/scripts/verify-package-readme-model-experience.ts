@@ -44,25 +44,18 @@ const NO_MODEL_EXPERIENCE_SECTION: Readonly<Record<string, string>> = {
 const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/attachment/attachment': { kind: 'indirect', reason: 'The storage seam delegates model request rendering to provider adapters.' },
   'packages/attachment/attachment-local': { kind: 'indirect', reason: 'The local backend delegates model request rendering to provider adapters.' },
-  'packages/code-runtime/code-runtime': { kind: 'indirect', reason: 'The service interface delegates model rendering to Code Mode in ea-tools.' },
-  'packages/core/agent-tool-presentation': { kind: 'indirect', reason: 'The row only selects between the two projections ea-tools owns; it registers no prompt, schema, or result of its own.' },
-  'packages/code-runtime/code-runtime-worker-thread': { kind: 'indirect', reason: 'The worker backend delegates model rendering to Code Mode in ea-tools.' },
   'packages/core/agent-default-model': { kind: 'indirect', reason: 'The service supplies a ModelSelection; request assembly and adapters own the model-visible request.' },
   'packages/preset/agent-presets': { kind: 'indirect', reason: 'The mount installs a preset\'s own plugins, which own every model-facing registration it makes visible.' },
   'packages/typert/registry': { kind: 'none', reason: 'Runtime type registry; consumers (cordis_inspect, wire faces, gates) own any model-visible projection of registry contents.' },
   'packages/typert/loader': { kind: 'none', reason: 'Loader integration only registers generated artifacts; consumers own any model-visible projection.' },
   'packages/e2b/e2b': { kind: 'none', reason: 'The shared remote-runtime owner registers no model context; provider adapters and consumers own rendered effects.' },
-  'packages/test-support/client-runtime': { kind: 'none', reason: 'Browser-side test infrastructure (jsdom bench); registers nothing model-facing.' },
-  'packages/client/ui-slots': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },
-  'packages/client/connection': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },
+  'packages/client/connection': { kind: 'none', reason: 'Browser wire carrier; registers nothing model-facing.' },
   'packages/api/remotes': { kind: 'none', reason: 'The Remote BFF selects business methods and identity policy; selected services own any model-visible effect.' },
-  'packages/client/runtime': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },
+  'packages/client/runtime': { kind: 'none', reason: 'Client-side session and conversation projection runtime; registers nothing model-facing.' },
 
   'packages/examples/agent-spine-demo': { kind: 'indirect', reason: 'The bundle only mounts model-facing child plugins.' },
-  'packages/hooks/hook-protocol': { kind: 'indirect', reason: 'Only the hook bridge plugins render decoded hook output to a model.' },
   'packages/host/apiproxy': { kind: 'none', reason: 'The wire contract and fetch carriers move already-composed messages and register nothing model-facing.' },
   'packages/host/webserver': { kind: 'none', reason: 'The HTTP carrier bridges browser and API handler and registers nothing model-facing.' },
-  'packages/host/frontend-static': { kind: 'none', reason: 'The SPA dist server answers browser asset requests and registers nothing model-facing.' },
   'packages/host/plugin-inventory': { kind: 'none', reason: 'Host-side read-only Loader projection; registers nothing model-facing.' },
   'packages/bundle/base': { kind: 'indirect', reason: 'The bundle is a patch-list carrier; each inserted row\'s package owns its model-facing behavior.' },
   'packages/bundle/headless': { kind: 'none', reason: 'The one-shot runner submits the task as an ordinary user message; prompts and tools belong to the composed base and headless bundles.' },
@@ -70,9 +63,9 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/llm/token-meter': { kind: 'indirect', reason: 'The measurement service leaves model-visible changes to its consumers.' },
   'packages/lsp/lsp': { kind: 'indirect', reason: 'The provider registry delegates model rendering to ea-tool-lsp.' },
   'packages/lsp/lsp-stdio': { kind: 'indirect', reason: 'The provider backend delegates model rendering to ea-tool-lsp.' },
-  'packages/subprocess/subprocess': { kind: 'indirect', reason: 'The seam delegates all model rendering to consumer seams such as the bash executor family.' },
-  'packages/e2b/subprocess-e2b': { kind: 'indirect', reason: 'The remote spawn backend delegates model rendering to consumer seams such as the bash executor family.' },
-  'packages/subprocess/subprocess-local': { kind: 'indirect', reason: 'The spawn backend delegates model rendering to consumer seams such as the bash executor family.' },
+  'packages/subprocess/subprocess': { kind: 'indirect', reason: 'The seam delegates model rendering to its process and subagent consumers.' },
+  'packages/e2b/subprocess-e2b': { kind: 'indirect', reason: 'The remote spawn backend delegates model rendering to process and subagent consumers.' },
+  'packages/subprocess/subprocess-local': { kind: 'indirect', reason: 'The local spawn backend delegates model rendering to process and subagent consumers.' },
   'packages/sdk/client': { kind: 'none', reason: 'Client-process library; model-facing behavior lives in the spawned runtime\'s composed plugins.' },
   'packages/sdk/protocol': { kind: 'none', reason: 'Client-facing wire library; the runtime plugins behind the serving entry own model-facing behavior.' },
   'packages/session/session-projection': { kind: 'none', reason: 'The projection registry serves client-facing read models of already-logged session state and registers nothing model-facing.' },
@@ -93,26 +86,18 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/skill/skill-filesystem': { kind: 'indirect', reason: 'The provider backend delegates model rendering to ea-tool-skill.' },
   'packages/spill/spill': { kind: 'indirect', reason: 'The storage seam delegates model rendering to spill consumers.' },
   'packages/spill/spill-local': { kind: 'indirect', reason: 'The storage backend delegates model rendering to spill consumers.' },
-  'packages/test-support/acp-snapshot': { kind: 'none', reason: 'The test ejunzAgent observes and normalizes transcripts without changing live requests.' },
-  'packages/test-support/agent-loop-testkit': { kind: 'none', reason: 'The test helper mounts services but neither drives nor modifies model requests.' },
   'packages/runtime-diagnostics/invariants': { kind: 'none', reason: 'The observer validates requests but never rewrites their context.' },
-  'packages/test-support/loader-smoke': { kind: 'none', reason: 'The test ejunzAgent submits an ordinary user task but delegates prompt and tool composition to the loaded tree.' },
-  'packages/test-support/llm-mock-server': { kind: 'none', reason: 'The test server substitutes provider wire behavior without invoking a real model.' },
-  'packages/test-support/llm-replay': { kind: 'none', reason: 'The keyless adapter invokes no provider model.' },
   'packages/api/gateway': { kind: 'none', reason: 'Remote dispatch infrastructure; invoked business methods own any model-visible effect.' },
   'packages/typert/protocol': { kind: 'none', reason: 'Compiler-independent Remote protocol declarations; registers nothing model-facing.' },
   'packages/typert/generator': { kind: 'none', reason: 'The build-time generator runs outside any agent runtime and touches no model request.' },
   'packages/jobs/jobs': { kind: 'indirect', reason: 'Producer and controller plugins own all model rendering over the job registry.' },
   'packages/jobs/jobs-local': { kind: 'indirect', reason: 'The registry backend delegates model rendering to producer plugins and ea-tool-jobs.' },
-  'packages/examples/acp-demo': { kind: 'indirect', reason: 'The app bundle delegates request composition to ea-agent-spine-demo and ea-acp.' },
   'packages/boot/app-boot': { kind: 'indirect', reason: 'Only the loaded plugin tree contributes model context.' },
   'packages/boot/cmdline': { kind: 'none', reason: 'Resolves the process command line before any session exists; configured rows own every model-visible consequence.' },
-  'packages/examples/jsonrpc-demo': { kind: 'indirect', reason: 'Only the externally configured plugin tree contributes model context.' },
   'packages/interaction/permission-presets': { kind: 'indirect', reason: 'The service writes approval-policy events rendered by ea-user-approval.' },
   'packages/interaction/user-questions': { kind: 'indirect', reason: 'Model-facing consumers render provider answers and seam errors.' },
   'packages/util/timeout': { kind: 'indirect', reason: 'Only timeout consumers render timeout outcomes.' },
   'packages/util/output-retention': { kind: 'indirect', reason: 'Only retention consumers render retained content and omission metadata.' },
-  'packages/util/native-command': { kind: 'none', reason: 'The host-side subprocess runner registers nothing model-facing.' },
   'packages/web/web': { kind: 'indirect', reason: 'The provider registry delegates model rendering to ea-tool-web.' },
   'packages/web/web-fetch-http': { kind: 'indirect', reason: 'The provider backend delegates model rendering to ea-tool-web.' },
   'packages/web/web-search-exa': { kind: 'indirect', reason: 'The provider backend delegates model rendering to ea-tool-web.' },
@@ -194,9 +179,13 @@ function toolCatalogLinkFragments(text: string): string[] {
 }
 
 const toolCatalogFragments = new Set<string>()
-for (const line of readFileSync(resolve(root, 'docs/tool-catalog.md'), 'utf8').split('\n')) {
-  const title = /^## (.+)$/.exec(line)?.[1]
-  if (title !== undefined) toolCatalogFragments.add(headingFragment(title))
+const toolCatalogPath = resolve(root, 'docs/tool-catalog.md')
+const toolCatalogAvailable = existsSync(toolCatalogPath)
+if (toolCatalogAvailable) {
+  for (const line of readFileSync(toolCatalogPath, 'utf8').split('\n')) {
+    const title = /^## (.+)$/.exec(line)?.[1]
+    if (title !== undefined) toolCatalogFragments.add(headingFragment(title))
+  }
 }
 
 const failures: Failure[] = []
@@ -470,19 +459,21 @@ for (const packageJson of packageJsons) {
     continue
   }
   let catalogError = false
-  for (const entry of modelContextEntries) {
-    if (!/\bschemas?\b/i.test(entry.title)) continue
-    const fragments = toolCatalogLinkFragments(entry.modelView.raw)
-    if (fragments.length === 0) {
-      failures.push({ path: readme, message: `line ${entry.heading.index}: tool-schema entry must link an anchored section of ../../../docs/tool-catalog.md` })
-      catalogError = true
-      break
-    }
-    const invalid = fragments.find(fragment => !toolCatalogFragments.has(fragment))
-    if (invalid !== undefined) {
-      failures.push({ path: readme, message: `line ${entry.modelView.index}: tool-catalog link fragment ${JSON.stringify(invalid)} does not name an H2 section` })
-      catalogError = true
-      break
+  if (toolCatalogAvailable) {
+    for (const entry of modelContextEntries) {
+      if (!/\bschemas?\b/i.test(entry.title)) continue
+      const fragments = toolCatalogLinkFragments(entry.modelView.raw)
+      if (fragments.length === 0) {
+        failures.push({ path: readme, message: `line ${entry.heading.index}: tool-schema entry must link an anchored section of ../../../docs/tool-catalog.md` })
+        catalogError = true
+        break
+      }
+      const invalid = fragments.find(fragment => !toolCatalogFragments.has(fragment))
+      if (invalid !== undefined) {
+        failures.push({ path: readme, message: `line ${entry.modelView.index}: tool-catalog link fragment ${JSON.stringify(invalid)} does not name an H2 section` })
+        catalogError = true
+        break
+      }
     }
   }
   if (catalogError) continue

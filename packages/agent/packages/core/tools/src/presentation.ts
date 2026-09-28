@@ -93,8 +93,8 @@ export interface TerminalCallView {
   /**
    * Working directory the command runs in, shown as the terminal header. An
    * ABSOLUTE path is used as-is; a RELATIVE path is resolved by the UI bridge
-   * against the session workspace (the pure presenter can't see the session cwd).
-   * Omit entirely to let the bridge use the session workspace.
+   * against the session's working directory (the pure presenter cannot see its cwd).
+   * Omit entirely to let the bridge use that directory.
    */
   cwd?: string
 }

@@ -21,11 +21,6 @@ import { SessionQueryError, type SessionSearchCursor } from '@ejunz/session-quer
 import { SubagentError } from '@ejunz/subagent'
 import type { SubagentListEntry as CatalogSubagentListEntry } from '@ejunz/subagent'
 import { isUserInvocable } from '@ejunz/skill'
-import type { Workspace, WorkspaceRecord } from '@ejunz/workspace'
-import {
-  workspaceDomainState, workspaceRecord, WorkspaceId as brandWorkspaceId,
-  WorkspaceMoveInvalidError, WorkspaceOrderInvalidError, WorkspaceUnknownSessionError,
-} from '@ejunz/workspace'
 // Type-only: brings the `ctx.tools` Context merge into this program (viewFor reads presenters).
 import {
   InvalidPresetIdError, PresetExistsError, PresetMountError,
@@ -40,7 +35,6 @@ import type {
   ModelCatalogFailure, ModelProviderGroup,
   ModelReasoning, MuxFrame, PromptContentPart, QuestionResponsePayload, SessionListMetadata, SessionProjectionsBlock, SessionSearchItem,
   QueuedInboxItem, SessionSummary, SettingsNamespaceView, SubagentAddress, JobView, ToolEventView,
-  WorkspaceId, WorkspaceView,
 } from './api/index.ts'
 import {
   DEFAULT_SESSION_LOG_COMPRESSION_LEVEL,
@@ -115,7 +109,7 @@ const DEFAULT_MAX_MESSAGES = 50
 
 /**
  * Non-model settings namespaces intentionally served to the Web client. The
- * plugin-owned entries (`agent-loop`, `bash`, `web-search-deepseek`) are the
+ * plugin-owned entries (`agent-loop`, `web-search-deepseek`) are the
  * host-plane sections the plugin configuration page edits; a namespace absent
  * here answers `settings-not-exposed` even when its owner registered it, so
  * adding a section to that page is a decision made here rather than by the
@@ -124,7 +118,7 @@ const DEFAULT_MAX_MESSAGES = 50
  * is deferred work.
  */
 const WEB_SETTINGS_NAMESPACES = [
-  'agent-loop', 'shell', 'locale', 'permission', 'ui-conversation', 'ui-theme', 'web-search-deepseek',
+  'agent-loop', 'locale', 'permission', 'ui-conversation', 'ui-theme', 'web-search-deepseek',
 ] as const
 
 /** Provider work budget: at most 100 calls and 2,000 inspected hits. */
@@ -1066,51 +1060,9 @@ class SessionCwdConflict extends Error {
   }
 }
 
-/** An explicit Host naming operation would duplicate another Workspace title. */
-class WorkspaceNameConflictError extends Error {
-  constructor(readonly workspaceName: string) {
-    super(`workspace name '${workspaceName}' is already in use`)
-    this.name = 'WorkspaceNameConflictError'
-  }
-}
-
-/** Shared workspace-not-found error response of the workspace.* mutation rows. */
-function workspaceNotFound<T>(request: RpcRequest<unknown>, workspaceId: string): RpcResponse<T> {
-  return err(request, {
-    code: 'workspace-not-found',
-    message: `workspace "${workspaceId}" not found`,
-    details: { workspaceId },
-  })
-}
-
-/** Wire projection of one workspace entity (the workspace.* value row). */
-function workspaceView(workspace: Workspace): WorkspaceView {
-  return {
-    workspaceId: workspace.id,
-    path: workspace.path,
-    title: workspace.title,
-    sessionIds: [...workspace.sessionIds],
-    createdAt: workspace.createdAt,
-    updatedAt: workspace.updatedAt,
-  }
-}
-
-/** Wire projection of the durable record carried by `domain/changed`. */
-function changedWorkspaceView(workspaceId: string, value: unknown): WorkspaceView {
-  const record: WorkspaceRecord = workspaceRecord.parse(value)
-  return {
-    workspaceId: workspaceId as WorkspaceId,
-    path: record.path,
-    title: record.title,
-    sessionIds: [...record.sessionIds],
-    createdAt: record.createdAt,
-    updatedAt: record.updatedAt,
-  }
-}
-
 /**
  * Implement ApiProxy over a composed host context.
- * @param ctx - a context with the Host spine and Workspace registry mounted.
+ * @param ctx - a context with the Host spine mounted.
  * @param defaults - host routing and project-directory defaults.
  * @returns the ApiProxy implementation.
  */
@@ -1149,8 +1101,6 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
    */
   const sessionDisposers = new Map<SessionId, () => Promise<void>>()
   const sessionAdoptionChains = new Map<SessionId, Promise<void>>()
-  /** Serializes path ownership and explicit title checks with Workspace mutations. */
-  let workspaceCreationChain = Promise.resolve()
   const pendingQuestions = new Map<RpcId, PendingQuestion>()
   const pendingApprovals = new Map<RpcId, PendingApproval>()
   const muxQueues = new Set<FrameQueue<RpcRequest<MuxFrame>>>()
@@ -1594,20 +1544,6 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
     return { id: inspected.meta.id, header: inspected.meta, events: inspected.events }
   }
 
-  /** Resolve the Workspace inherited by a fork without making ordinary loose lineage grouped. */
-  async function forkWorkspace(source: Pick<Session, 'id' | 'header'>): Promise<Workspace | undefined> {
-    const workspaces = ctx.workspaceRegistry.list()
-    const direct = workspaces.find(workspace => workspace.sessionIds.includes(source.id))
-    if (direct !== undefined || source.header.origin !== 'subagent') return direct
-
-    const lineage = await ctx.sessionQuery.traceSession(source.id)
-    for (const ancestor of lineage.ancestors) {
-      const workspace = workspaces.find(candidate => candidate.sessionIds.includes(ancestor.header.id))
-      if (workspace !== undefined) return workspace
-    }
-    return undefined
-  }
-
   /**
    * Resolve which session one transcript read is served from, without
    * acquiring an Agent owner. This is the read's only asynchronous step
@@ -1852,17 +1788,6 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
       presetId,
       selectedModel,
     ))
-  }
-
-  /** Resolve or create one path while holding the Host's workspace-create chain. */
-  function ensureWorkspace(path: string): Promise<{ workspace: Workspace; created: boolean }> {
-    const operation = workspaceCreationChain.then(async () => {
-      const existing = await ctx.workspaceRegistry.resolveByPath(path)
-      if (existing !== undefined) return { workspace: existing, created: false }
-      return { workspace: await ctx.workspaceRegistry.create(path), created: true }
-    })
-    workspaceCreationChain = operation.then(() => undefined, () => undefined)
-    return operation
   }
 
   /**
@@ -2275,18 +2200,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
 
       async create(request) {
         const sessionId = request.payload.sessionId ?? `session-${randomUUID()}` as SessionId
-        let workspace: Workspace | undefined
-        if (request.payload.workspaceId !== undefined) {
-          workspace = ctx.workspaceRegistry.get(brandWorkspaceId(request.payload.workspaceId))
-          if (workspace === undefined) {
-            return err(request, {
-              code: 'workspace-not-found',
-              message: `workspace "${request.payload.workspaceId}" not found`,
-              details: { workspaceId: request.payload.workspaceId },
-            })
-          }
-        }
-        const cwd = workspace?.path ?? request.payload.cwd ?? defaults.cwd
+        const cwd = request.payload.cwd ?? defaults.cwd
         const requestedPreset = request.payload.agentPreset
         const selectedModel = request.payload.provider !== undefined && request.payload.model !== undefined
           ? { provider: request.payload.provider, model: request.payload.model }
@@ -2326,17 +2240,6 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
             message: `failed to create session "${sessionId}": ${String(error)}`,
             details: {},
           })
-        }
-        if (workspace !== undefined) {
-          try {
-            await workspace.attachSession(sessionId)
-          } catch (error: unknown) {
-            return err(request, {
-              code: 'workspace-attach-failed',
-              message: `session "${sessionId}" was created but could not attach to workspace "${workspace.id}": ${String(error)}`,
-              details: { sessionId, workspaceId: workspace.id },
-            })
-          }
         }
         // Echo the composition the session RUNS so a client can label it
         // without waiting for the next list refresh — the create is the commit
@@ -2518,16 +2421,6 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         // right after the boundary turn.
         let cut = boundary.seq + 1
         while (cut < events.length && events[cut]?.type !== 'turn/start') cut++
-        let workspace: Workspace | undefined
-        try {
-          workspace = await forkWorkspace(source)
-        } catch (error: unknown) {
-          return err(request, {
-            code: 'internal',
-            message: `failed to resolve fork workspace for session "${sessionId}": ${String(error)}`,
-            details: {},
-          })
-        }
         const childId = `session-${randomUUID()}` as SessionId
         // The child inherits the parent's composition for the same reason a
         // resumed session keeps its own: the seeded history was produced under
@@ -2556,20 +2449,6 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
             message: `failed to fork session "${sessionId}": ${String(error)}`,
             details: {},
           })
-        }
-        // An ordinary source keeps its direct Workspace. A subagent source is
-        // not listed there, so its ordinary fork joins the nearest owning
-        // ancestor instead. The child is already published if attach fails.
-        if (workspace !== undefined) {
-          try {
-            await workspace.attachSession(childId)
-          } catch (error: unknown) {
-            return err(request, {
-              code: 'workspace-attach-failed',
-              message: `session "${childId}" was forked but could not attach to workspace "${workspace.id}": ${String(error)}`,
-              details: { sessionId: childId, workspaceId: workspace.id },
-            })
-          }
         }
         return ok(request, { sessionId: childId })
       },
@@ -2946,126 +2825,6 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
       },
     },
 
-    workspace: {
-      list(request) {
-        return Promise.resolve(ok(request, {
-          items: ctx.workspaceRegistry.list().map(workspaceView),
-          archivedSessionIds: [...ctx.workspaceRegistry.archivedSessionIds],
-        }))
-      },
-
-      async create(request) {
-        const { path } = request.payload
-        try {
-          const { workspace, created } = await ensureWorkspace(path)
-          return ok(request, { workspace: workspaceView(workspace), created })
-        } catch (error: unknown) {
-          // The registry rejects a path that does not resolve to an existing
-          // directory (realpath ENOENT / not-a-directory) — the business
-          // error of the typed-path flow, surfaced as a validation failure.
-          return err(request, {
-            code: 'workspace-invalid-path',
-            message: `cannot create a workspace at "${path}": ${error instanceof Error ? error.message : String(error)}`,
-            details: { path },
-          })
-        }
-      },
-
-      async rename(request) {
-        const { payload } = request
-        const workspace = ctx.workspaceRegistry.get(brandWorkspaceId(payload.workspaceId))
-        if (workspace === undefined) return workspaceNotFound(request, payload.workspaceId)
-        const title = payload.title.trim()
-        // Uniqueness AND the same-title no-op both ride the create chain so
-        // they observe the state left by earlier queued renames — checked
-        // up front, a queued A→A could report success while an earlier A→B
-        // still lands afterwards.
-        const operation = workspaceCreationChain.then(async () => {
-          if (title === workspace.title) return
-          if (ctx.workspaceRegistry.list().some(other => other.id !== workspace.id && other.title === title)) {
-            throw new WorkspaceNameConflictError(title)
-          }
-          await workspace.setTitle(title)
-        })
-        workspaceCreationChain = operation.then(() => undefined, () => undefined)
-        try {
-          await operation
-        } catch (error: unknown) {
-          if (error instanceof WorkspaceNameConflictError) {
-            return err(request, {
-              code: 'workspace-name-conflict',
-              message: error.message,
-              details: { name: error.workspaceName },
-            })
-          }
-          throw error
-        }
-        return ok(request, { workspace: workspaceView(workspace) })
-      },
-
-      async delete(request) {
-        const { workspaceId } = request.payload
-        const operation = workspaceCreationChain.then(() =>
-          ctx.workspaceRegistry.delete(brandWorkspaceId(workspaceId)))
-        workspaceCreationChain = operation.then(() => undefined, () => undefined)
-        if (!await operation) return workspaceNotFound(request, workspaceId)
-        return ok(request, { deleted: true as const })
-      },
-
-      async insertBefore(request) {
-        const { workspaceId, beforeWorkspaceId } = request.payload
-        try {
-          const workspaceIds = await ctx.workspaceRegistry.insertBefore(
-            brandWorkspaceId(workspaceId),
-            beforeWorkspaceId === undefined ? undefined : brandWorkspaceId(beforeWorkspaceId),
-          )
-          return ok(request, { workspaceIds: [...workspaceIds] })
-        } catch (error: unknown) {
-          if (!(error instanceof WorkspaceOrderInvalidError)) throw error
-          return workspaceNotFound(request, error.workspaceId)
-        }
-      },
-
-      async insertSessionBefore(request) {
-        const { payload } = request
-        const workspace = ctx.workspaceRegistry.get(brandWorkspaceId(payload.workspaceId))
-        if (workspace === undefined) return workspaceNotFound(request, payload.workspaceId)
-        try {
-          await workspace.insertSessionBefore(payload.sessionId, payload.beforeSessionId)
-        } catch (error: unknown) {
-          // Only the entity's unaccounted-id rejection is the business code;
-          // storage/durability failures propagate as internal errors.
-          if (!(error instanceof WorkspaceMoveInvalidError)) throw error
-          return err(request, {
-            code: 'workspace-move-invalid',
-            message: error.message,
-            details: {
-              workspaceId: payload.workspaceId,
-              sessionId: payload.sessionId,
-              ...payload.beforeSessionId === undefined ? {} : { beforeSessionId: payload.beforeSessionId },
-            },
-          })
-        }
-        return ok(request, { workspace: workspaceView(workspace) })
-      },
-
-      async archiveSession(request) {
-        const { sessionId } = request.payload
-        try {
-          await ctx.workspaceRegistry.archiveSession(sessionId)
-        } catch (error: unknown) {
-          // Only the registry's unknown-session rejection is the business
-          // code; storage/durability failures propagate as internal errors.
-          if (!(error instanceof WorkspaceUnknownSessionError)) throw error
-          return err(request, {
-            code: 'session-not-found',
-            message: error.message,
-            details: { sessionId },
-          })
-        }
-        return ok(request, { archivedSessionIds: [...ctx.workspaceRegistry.archivedSessionIds] })
-      },
-    },
 
     host: {
       describe(request) {
@@ -3555,15 +3314,6 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
 
       host(_request, signal) {
         const queue = new FrameQueue<RpcRequest<HostFrame>>()
-        const committedWorkspaces = ctx.workspaceRegistry.list()
-        const committedWorkspaceIds = new Set(
-          committedWorkspaces.map(workspace => String(workspace.id)),
-        )
-        let committedWorkspaceOrder = committedWorkspaces.map(workspace => workspace.id)
-        // Frame-dedup baseline, same posture as committedWorkspaceIds: the
-        // stream opens against the current set; workspace.list re-baselines
-        // reconnecting clients, so only later changes need frames.
-        let archivedSessionIds = ctx.workspaceRegistry.archivedSessionIds
         const disposers = [
           ctx.on('session/created', (session: Session) => {
             queue.push(frame({
@@ -3572,7 +3322,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
               // Derived at frame time like summarize(); a just-created session
               // has run no turn yet, so this is constantly true in practice.
               blank: sessionBlank(session),
-              // Including cwd lets the client group the new session without refreshing the list.
+              // Including cwd lets the client display the session path without refreshing the list.
               ...sessionListFields(session.header, session.events),
             }))
           }),
@@ -3584,57 +3334,6 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           }),
           ctx.on('agent/error', ({ agent, error }: { agent: Agent; error: unknown }) => {
             queue.push(frame({ type: 'host/agent-error', sessionId: agent.id, message: errorChain(error) }))
-          }),
-          ctx.on('domain/changed', (change) => {
-            if (change.domain !== 'workspace') return
-            if (change.table === '') {
-              if (change.operation !== 'put') return
-              const state = workspaceDomainState.parse(change.value)
-              const orderChanged = state.workspaceIds.length === committedWorkspaceOrder.length
-                && state.workspaceIds.every(workspaceId => committedWorkspaceIds.has(String(workspaceId)))
-                && state.workspaceIds.some((workspaceId, index) => workspaceId !== committedWorkspaceOrder[index])
-              for (const workspaceId of state.workspaceIds) {
-                if (committedWorkspaceIds.has(workspaceId)) continue
-                const workspace = ctx.workspaceRegistry.get(workspaceId)
-                if (workspace === undefined) {
-                  throw new Error(`committed workspace registry references missing workspace "${workspaceId}"`)
-                }
-                committedWorkspaceIds.add(workspaceId)
-                queue.push(frame({ type: 'host/workspace-changed', workspace: workspaceView(workspace) }))
-              }
-              committedWorkspaceOrder = [...state.workspaceIds]
-              if (orderChanged) {
-                queue.push(frame({
-                  type: 'host/workspace-order-changed',
-                  workspaceIds: [...state.workspaceIds],
-                }))
-              }
-              if (state.archivedSessionIds.length !== archivedSessionIds.length
-                || state.archivedSessionIds.some((id, index) => id !== archivedSessionIds[index])) {
-                archivedSessionIds = state.archivedSessionIds
-                queue.push(frame({
-                  type: 'host/archived-sessions-changed',
-                  archivedSessionIds: [...state.archivedSessionIds],
-                }))
-              }
-              return
-            }
-            if (change.table !== 'workspaces') return
-            if (change.operation === 'deleted') {
-              if (!committedWorkspaceIds.delete(change.key)) return
-              queue.push(frame({
-                type: 'host/workspace-removed',
-                workspaceId: change.key as WorkspaceId,
-              }))
-              return
-            }
-            if (!committedWorkspaceIds.has(change.key)) return
-            // Existing-entity table writes are complete attach/touch commits.
-            // A new entity's first put waits for the global registry write above.
-            queue.push(frame({
-              type: 'host/workspace-changed',
-              workspace: changedWorkspaceView(change.key, change.value),
-            }))
           }),
           // Allowlisted host events ride one verbatim wrapper frame each. The
           // allowlist is api-remotes', and `ctx.remote.$on` is the consumer

@@ -1,4 +1,4 @@
-/** Browser runtime services for slots, sessions, workspaces, and connection-stream delivery. */
+/** Browser runtime services for sessions and connection-stream delivery. */
 import type { Context } from '@ejunz/cordis'
 import type { ConnectionHandle, SessionId } from '@ejunz/api-remotes/client'
 // Type-only: the ctx.remote merge. Deliberately the gateway's Client half rather
@@ -6,19 +6,12 @@ import type { ConnectionHandle, SessionId } from '@ejunz/api-remotes/client'
 // project sits in the Host build graph.
 import type {} from '@ejunz/api-remotes/client'
 import type { TypertContext } from '@ejunz/typert-protocol'
-import type { MaybeSnapshotSelectorHook, SnapshotSelectorHook } from '@ejunz/client-ui-slots'
-import { SlotRegistry } from './slots.ts'
 import { SessionRuntime } from './sessions/service.ts'
-import type { SessionListState } from './sessions/service.ts'
-import { WorkspaceRuntime } from './workspaces/service.ts'
-import type { ConversationSnapshot } from './sessions/conversation.ts'
-import type { UseProjection } from './sessions/projection-store.ts'
 import { ConversationEventRegistry } from './conversation/event-registry.ts'
 import { ConversationViewRegistry } from './conversation/view-registry.ts'
 
 export { isAppendSurfaceEvent, isReplacementSurfaceEvent } from '@ejunz/session/surface'
 
-export { SlotRegistry } from './slots.ts'
 export { ConversationEventRegistry } from './conversation/event-registry.ts'
 export { ConversationViewRegistry } from './conversation/view-registry.ts'
 export { ConversationNodeAssembler } from './sessions/conversation-assembler.ts'
@@ -35,17 +28,11 @@ export type {
   ConversationViewSnapshotStore, StepLocation, TurnLocation,
 } from './contract/conversation.ts'
 export type { ConversationRuntime } from './sessions/conversation-assembler.ts'
-export type { RootOwnerProps } from './slots.ts'
-export { SessionCreateError, SessionRuntime, scopeOf, workspaceTitleOf } from './sessions/service.ts'
+export { SessionCreateError, SessionRuntime, scopeOf } from './sessions/service.ts'
 export { indexSubagentDescendants } from './sessions/subagent-lineage.ts'
 export type { SubagentDescendantSummary } from './sessions/subagent-lineage.ts'
-// The provide channel is shared with the client test runtime (one
-// materialization/projection implementation; no test-side mirror to drift).
-export { SessionProvideChannel } from './sessions/provide.ts'
-export type { SessionProvideChannelHost } from './sessions/provide.ts'
 export { createScope } from './agents/scope.ts'
 export type { AgentScopeHandle } from './agents/scope.ts'
-export { WorkspaceCreateError, WorkspaceRuntime } from './workspaces/service.ts'
 // Contract only: the scope implementation and its Host transport belong to
 // ea-client-ui-settings (see that package's settings-scope.ts).
 export type {
@@ -54,22 +41,13 @@ export type {
 export type { Session } from './sessions/session.ts'
 export type { ISession, ProjectionsFace, SessionFace } from './contract/session.ts'
 export type { AgentContext, ISessions } from './contract/sessions.ts'
-export type { IWorkspaces } from './contract/workspaces.ts'
 export type {
-  SessionBinding, SessionListState, SessionProvideContribution, SessionProvideDescriptor, SessionSummary,
+  SessionBinding, SessionListState, SessionSummary,
 } from './sessions/service.ts'
 export type { SessionListPhase, SessionSearchResultItem, SubagentCatalogSnapshot } from './sessions/manager.ts'
 export type { SubagentAddress, JobView } from '@ejunz/client-connection/client'
-export type { WorkspaceListPhase } from './workspaces/manager.ts'
-export type { WorkspaceListState } from './workspaces/service.ts'
-export type {
-  DirectoryEntry, DirectoryListing, WorkspaceId, WorkspaceView,
-} from '@ejunz/client-connection/client'
-// Runtime owns the snapshot store; web-react only binds it to React.
-export { createSnapshotStore, defineStore, shallowEqual } from './contract/store.ts'
-export type {
-  EngineStoreHandle, EngineStoreInstance, ObservableSnapshot, SnapshotStore,
-} from './contract/store.ts'
+export { createSnapshotStore, shallowEqual } from './contract/store.ts'
+export type { ObservableSnapshot, SnapshotStore } from './contract/store.ts'
 export type {
   AssistantBlock, AssistantMessageNode, AssistantProvenanceView, AssistantRequestConfig,
   AssistantTiming, ChatLocationNodeIndex, ChatNodeStore, ChatSnapshot,
@@ -103,7 +81,7 @@ export type {
 // page, docs/subsystems/session-projection.md): host-computed
 // whole values per key; domains ship projection support with zero client code.
 export type {
-  ProjectionsBaseline, ProjectionValueStore, SessionProjectionMap, UseProjection,
+  ProjectionsBaseline, ProjectionValueStore, SessionProjectionMap,
 } from './sessions/projection-store.ts'
 export type { SessionId } from '@ejunz/client-connection/client'
 
@@ -117,46 +95,8 @@ declare module '@ejunz/typert-protocol' {
   }
 }
 
-/** The conversation-snapshot selector hook supplied to session-scoped UI entries. */
-export type UseConversationSession = SnapshotSelectorHook<ConversationSnapshot>
-
-declare module '@ejunz/client-ui-slots' {
-  /**
-   * Session standard kit, real members (ui-slots declares the empty seat;
-   * the runtime — where the subjects live — merges the concrete types):
-   * every session-scope slot component receives these from the framework.
-   */
-  interface SessionStandardProps {
-    useSession: SnapshotSelectorHook<ConversationSnapshot>
-    /** The framework-resolved session id (owners never pass it). */
-    sessionId: SessionId
-    /** The fifth framework hook seat: key-addressed projection reader (undefined = capability absent). */
-    useProjection: UseProjection
-  }
-  /** Standard kit for slots that remain mounted while current session changes. */
-  interface SessionMaybeStandardProps {
-    useSession: MaybeSnapshotSelectorHook<ConversationSnapshot>
-    /** Current session id; absent in the no-session state. */
-    sessionId: SessionId | undefined
-    /** Key-addressed projection reader; every key reads absent while no session is current. */
-    useProjection: UseProjection
-  }
-  /** Props injected into every global slot component. */
-  interface GlobalStandardProps {
-    useSessions: SnapshotSelectorHook<SessionListState>
-    /** Selector hook over real Workspaces and their independent baseline lifecycle. */
-    useWorkspaces: SnapshotSelectorHook<import('./workspaces/service.ts').WorkspaceListState>
-  }
-}
-
 declare module '@ejunz/cordis' {
   interface Events {
-    /**
-     * A slot's definition or registration set changed.
-     * @mode emit
-     * @param key - the mutated SlotMap key.
-     */
-    'slots/changed'(key: string): void
     /**
      * A connection generation was (re-)established. Wire-derived caches must
      * treat their state as stale and repull (commands directory; the queue
@@ -166,15 +106,12 @@ declare module '@ejunz/cordis' {
     'connection/reset'(): void
   }
   interface Context {
-    slots: import('./slots.ts').SlotRegistry
     /** Event-to-business-Context Definition registry. */
     conversationEvents: import('./conversation/event-registry.ts').ConversationEventRegistry
     /** Per-target Conversation snapshot builder registry. */
     conversationViews: import('./conversation/view-registry.ts').ConversationViewRegistry
     /** The outward face only; the concrete service stays inside the runtime. */
     sessions: import('./contract/sessions.ts').ISessions
-    /** The outward face only; the concrete service stays inside the runtime. */
-    workspaces: import('./contract/workspaces.ts').IWorkspaces
   }
 }
 
@@ -185,7 +122,6 @@ export const inject = ['connection', 'typert', 'remote', 'remote.commands']
  * @param ctx - Client Cordis context.
  */
 export function apply(ctx: Context): void {
-  ctx.plugin(SlotRegistry)
   const conversation = {
     events: new ConversationEventRegistry(ctx),
     views: new ConversationViewRegistry(ctx),
@@ -195,18 +131,12 @@ export function apply(ctx: Context): void {
   ctx.typert.contexts.registerClient('agent', {
     identity: candidate => sessions.scopeOf(candidate),
   })
-  const workspaces = new WorkspaceRuntime(ctx, connection.api, sessions)
-  ctx.effect(
-    () => workspaces.startInitialSelection(),
-    'runtime: initial Workspace selection',
-  )
   const loop = connection.start({
     onMuxEnvelope: (envelope) => {
       sessions.handleMuxEnvelope(envelope)
     },
     onHostEnvelope: (envelope) => {
       sessions.handleHostEnvelope(envelope)
-      workspaces.handleHostEnvelope(envelope)
       // Forwarded-event bridge: the session layer ignores registry frames (no
       // session routing). This plugin owns the frame sink, so it hands the
       // decoded frame straight to the Remote service, which fans it out to
@@ -216,7 +146,6 @@ export function apply(ctx: Context): void {
     },
     onConnected: () => {
       sessions.handleConnected()
-      workspaces.handleConnected()
       ctx.emit('connection/reset')
     },
     onStateChange: (state) => {

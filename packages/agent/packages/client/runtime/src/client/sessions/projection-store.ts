@@ -6,38 +6,20 @@
  * page's projections block and updated by `session/projection` push frames,
  * under the single rule **higher seq wins**. No client-side domain folding
  * exists: a domain ships projection support with zero client code. Per-key
- * bare observable faces feed `useProjection` (web-react binds them).
+ * observable faces expose the host-computed values to client consumers.
  */
 import type { SessionProjectionMap } from '@ejunz/session-projection/types'
 import type { ObservableSnapshot } from '../contract/store.ts'
 import { Notifier } from './notifier.ts'
 
 // The single projection type table, typed end to end (host unit, wire block,
-// client store, React hook) — the Service Definition package's pure-type outlet
+// client store) — the Service Definition package's pure-type outlet
 // (`/types`, zero imports), never the package root: the root's ea-agent →
 // ea-session chain would drag the host `Context.sessions` merge into the
 // client program (one program must not hold both sides). No second
 // client-side "views" table (rejected in the Alternatives of
 // .agents/notes/proposed/architecture/2026-07-27-session-projection-and-command-log.md).
 export type { SessionProjectionMap } from '@ejunz/session-projection/types'
-
-/**
- * The fifth framework hook seat (see the session-projection subsystem page,
- * docs/subsystems/session-projection.md): key-addressed
- * projection reader delivered through the standard kit. `undefined` uniformly
- * means capability absent — host unit unmounted, or no baseline/frame has
- * carried the key yet. The selector overload mirrors useSession (per-key uSES
- * binding; reference stability holds because a key's value reference changes
- * only when a frame or baseline lands).
- */
-export type UseProjection = {
-  <K extends Extract<keyof SessionProjectionMap, string>>(key: K): SessionProjectionMap[K] | undefined
-  <K extends Extract<keyof SessionProjectionMap, string>, S>(
-    key: K,
-    selector: (value: SessionProjectionMap[K] | undefined) => S,
-    eq?: (a: S, b: S) => boolean,
-  ): S
-}
 
 /**
  * Tail-page projections baseline — structurally identical to the wire's
@@ -70,8 +52,8 @@ interface Channel {
  * both paths a lower-or-equal seq loses — a replayed frame cannot regress a
  * value, a stale baseline cannot overwrite a newer frame. A key the store has
  * never seen reads `undefined` (capability absent). Faces are identity-stable
- * per key (create-on-demand, cached) so the React side binds each exactly
- * once; the store-level channel (`subscribeAny`) serves coarse consumers (the
+ * per key (create-on-demand, cached) so consumers bind each exactly once;
+ * the store-level channel (`subscribeAny`) serves coarse consumers (the
  * manager's list projection reads the `title` key).
  */
 export class ProjectionValueStore {
@@ -82,7 +64,7 @@ export class ProjectionValueStore {
   private readonly anyNotifier = new Notifier(() => {})
 
   /**
-   * Key-addressed bare observable face (the useProjection resolution path).
+   * Key-addressed bare observable face for one projection value.
    * Always defined — absence is an `undefined` snapshot, never a missing
    * face, so a component may subscribe before the key ever carries a value.
    * @param key - projection key.
@@ -93,8 +75,8 @@ export class ProjectionValueStore {
   }
 
   /**
-   * Current whole value for a key (erased framework read; typed reads go
-   * through `useProjection`'s map lookup).
+   * Current whole value for a key (erased framework read; typed reads use
+   * the projection key map).
    * @param key - projection key.
    * @returns the value, or undefined while the key is absent.
    */
@@ -147,8 +129,8 @@ export class ProjectionValueStore {
    * @param baseline - the response's projections block.
    */
   seed(baseline: ProjectionsBaseline): void {
-    // Erased walk: the framework crosses the open key space; per-key typing
-    // is re-established at the consumer (useProjection's map lookup).
+    // Erased walk: the store crosses the open key space; per-key typing
+    // is re-established by typed consumers.
     const values = baseline.values as Record<string, unknown>
     for (const key of Object.keys(values)) this.apply(key, values[key], baseline.asOfSeq)
     for (const [key, row] of this.rows) {

@@ -1,6 +1,4 @@
-# The `code` preset id is retained for existing sessions; Code Mode is removed.
-#
-# Its model-written TypeScript runner was removed with the host code runtime.
+# Keep this legacy id so persisted sessions that select it still resolve.
 #
 # This file is an AGENT-PLANE composition. It is mounted under one agent's
 # scope context, so every tool and prompt section it registers belongs to that
@@ -19,12 +17,12 @@
 # ── identity ────────────────────────────────────────────────────────────────
 
 # The preset's own persona, shadowing the deployment default for this agent.
-# `{{model}}` and `{{cwd}}` resolve from the agent's own route and workspace.
+# The model identity is resolved from the agent's own route.
 - id: persona
   name: '@ejunz/persona'
   config:
     text: >-
-      You are a coding agent powered by the {{model}} model. Your working directory is {{cwd}}.
+      You are a coding agent powered by the {{model}} model.
 
 # Host command execution and filesystem access are intentionally absent from
 # this preset; domain users receive no tools for either capability.
@@ -140,5 +138,3 @@
   config:
     fetch: false
     searchTimeoutMs: 60000
-
-# Code Mode is omitted because it runs model-written TypeScript programs.

@@ -199,8 +199,6 @@ export interface ToolResultNode {
   callView: ToolCallView | null
   /** Host-computed render intent from this tool/result's wire view; null = same default. */
   resultView: ToolResultView | null
-  /** Child calls owned by this call, in dispatch order. */
-  subCalls: readonly ToolCallBlock[]
 }
 
 /**
@@ -302,8 +300,6 @@ export interface RunningToolCall {
   time: number
   /** Host-computed render intent riding the tool/call frame; null = generic JSON card. */
   callView: ToolCallView | null
-  /** Child calls owned by this call, in dispatch order. */
-  subCalls: readonly ToolCallBlock[]
 }
 
 /** One running or settled call, recursively owning its child calls. */

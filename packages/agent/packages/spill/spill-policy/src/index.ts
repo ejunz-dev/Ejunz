@@ -10,26 +10,16 @@
  * `@ejunz/output-retention` (`TextRetainer`), storage is `ctx.spillStore`.
  * The policy only decides WHEN to spill and composes the notice.
  *
- * A second arm applies the SAME cap to the durable log: the
- * `tools/code-dispatch-log` waterfall bounds the `tool/code-dispatch` event's
- * copy of an oversized `run_code` sub-call result (the program's value is
- * untouched; UIs and replay read the full text through the spill artifact).
- *
  * ## Deliberately narrow
  *
  * - Omitted `maxInlineBytes` ⇒ the plugin registers nothing (a true no-op).
  * - Plain-text results only: a result carrying any non-text block is left
  *   untouched (the policy knows only the final formatted text, not tool
  *   internals).
- * - Nested composite calls skip the MODEL-facing arm; their durable log copy
- *   is bounded by the dispatch-log arm instead.
  * - Accepted value replacements pass through for registry revalidation and
  *   rendering; this presentation policy cannot also replace content in the
  *   same mutually exclusive decision.
- * - `read` is skipped by the model-facing arm to avoid a
- *   `read → spill → read again` loop; the dispatch-log arm bounds `read`
- *   sub-calls too (a log copy is not model context, and `read` is precisely
- *   the tool that produces huge logs).
+ * - `read` is skipped to avoid a `read → spill → read again` loop.
  * - Best-effort: no session owner, no `ctx.spillStore` backend, or a save
  *   failure ⇒ log and return the original result. A spill failure must NEVER
  *   turn a successful tool call into an `isError` or hide the inline result.
@@ -194,7 +184,7 @@ export function apply(ctx: Context, config: Config): void {
     const decision = await next()
     // Skip `read` to avoid a read → spill → read again loop.
     if (decision.kind !== 'accept' || Object.hasOwn(decision, 'value')
-      || exec.parent !== undefined || exec.name === 'read') return decision
+      || exec.name === 'read') return decision
 
     const content = decision.content ?? result.content
     const text = flattenPlainText(content)
@@ -208,25 +198,4 @@ export function apply(ctx: Context, config: Config): void {
     return { kind: 'accept', content: replaced, ...decision.additionalContexts ? { additionalContexts: decision.additionalContexts } : {} }
   }, { prepend: true })
 
-  // The durable-log arm: bound the `tool/code-dispatch` event's copy of an
-  // oversized sub-call result the same way the model-facing arm bounds an
-  // outer result. The program's returned value is untouched (it already
-  // crossed the worker boundary whole); only the session log's copy shrinks
-  // to preview + locator, so replay and UIs read the full text through the
-  // spill artifact exactly as they do for spilled native results.
-  ctx.on('tools/code-dispatch-log', async (dispatch, next): Promise<ContentBlock[]> => {
-    const content = await next()
-    // `read` sub-calls spill too: the log copy is not model context, so the
-    // read → spill → read-again loop the post-execute arm avoids cannot
-    // happen here, and read is precisely the tool that produces huge logs.
-    const text = flattenPlainText(content)
-    if (text === undefined) return content
-    const totalBytes = Buffer.byteLength(text, 'utf8')
-    if (totalBytes <= maxInlineBytes) return content
-
-    const replacedText = await spillReplacement(
-      text, totalBytes, ownerSessionId(dispatch.exec), dispatch.name, dispatch.subCallId, 'dispatch')
-    if (replacedText === undefined) return content
-    return [{ type: 'text', text: replacedText }]
-  }, { prepend: true })
 }

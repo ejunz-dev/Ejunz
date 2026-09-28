@@ -1,5 +1,5 @@
-# The `minimal` preset id is retained for existing sessions, but has no
-# shell, filesystem, or host-system tools.
+# The `minimal` preset id is retained for existing sessions; its tool set
+# omits host filesystem and operating-system access.
 
 - id: persona
   name: '@ejunz/persona'

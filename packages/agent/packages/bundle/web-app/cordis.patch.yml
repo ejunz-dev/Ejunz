@@ -1,5 +1,5 @@
-# Embedded Host API composition. This bundle exposes no browser client, UI,
-# filesystem picker, file opener, shell tool, or code runner.
+# Embedded Host API composition. This bundle exposes server routes without a
+# browser UI or desktop interaction surface.
 
 - id: web-search-deepseek
   disabled: true
@@ -30,9 +30,6 @@
       config:
         backend: ejunz
 
-    - id: workspace
-      name: '@ejunz/workspace'
-
     - id: session-projection-cache
       name: '@ejunz/session-projection-cache'
       config:
@@ -41,9 +38,6 @@
 
     - id: session-stats
       name: '@ejunz/session-stats'
-
-    - id: directory-picker
-      name: '@ejunz/host-directory-picker-browse'
 
     - id: plugin-inventory
       name: '@ejunz/host-plugin-inventory'

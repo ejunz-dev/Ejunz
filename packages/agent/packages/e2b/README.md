@@ -9,6 +9,6 @@ An experimental provider-composition POC that places one filesystem/process/remo
 | [`fs-e2b`](fs-e2b/README.md) (`@ejunz/fs-e2b`) | `ctx.fs` | Implement the filesystem seam over E2B Filesystem APIs |
 | [`subprocess-e2b`](subprocess-e2b/README.md) (`@ejunz/subprocess-e2b`) | `ctx.subprocess` | Implement executable lookup, managed process groups and stdio, and remote spill files over E2B Commands and Filesystem APIs |
 
-The existing [`bash-local`](../shell/bash-local/README.md) and [`lsp-stdio`](../lsp/lsp-stdio/README.md) need no E2B-specific forks. They delegate execution-world operations to `ctx.fs` and `ctx.subprocess`, so mounting the two E2B adapters places their mutable work in the same remote sandbox.
+The [`lsp-stdio`](../lsp/lsp-stdio/README.md) adapter needs no E2B-specific fork: it delegates execution-world operations to `ctx.fs` and `ctx.subprocess`, so mounting the two E2B adapters places its mutable work in the same remote sandbox.
 
 This boundary does not move the ejunzAgent process, Cordis objects, model calls, agent/session state, session persistence, skills, higher-level protocol state, or E2B SDK buffers. The portable execution-world decision owns both the generic composition and this POC boundary.

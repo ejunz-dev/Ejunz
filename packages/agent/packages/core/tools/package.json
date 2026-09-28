@@ -22,10 +22,6 @@
       "types": "./lib/types/invariant.d.ts",
       "default": "./lib/invariant.js"
     },
-    "./types": {
-      "types": "./lib/types/types.d.ts",
-      "default": "./lib/types/types.js"
-    },
     "./presentation": {
       "types": "./lib/types/presentation.d.ts",
       "default": "./lib/types/presentation.js"
@@ -42,7 +38,6 @@
   "license": "AGPL-3.0-only",
   "peerDependencies": {
     "@ejunz/agent": "workspace:^",
-    "@ejunz/code-runtime": "workspace:^",
     "@ejunz/cordis": "workspace:^",
     "@ejunz/invariants": "workspace:^",
     "@ejunz/llm": "workspace:^",
@@ -56,7 +51,6 @@
   },
   "devDependencies": {
     "@ejunz/agent": "workspace:^",
-    "@ejunz/code-runtime": "workspace:^",
     "@ejunz/cordis": "workspace:^",
     "@ejunz/invariants": "workspace:^",
     "@ejunz/llm": "workspace:^",

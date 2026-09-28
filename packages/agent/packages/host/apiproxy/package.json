@@ -53,10 +53,8 @@
     "@ejunz/commands": "workspace:^",
     "@ejunz/credentials": "workspace:^",
     "@ejunz/goal": "workspace:^",
-    "@ejunz/host-directory-picker": "workspace:^",
     "@ejunz/jobs": "workspace:^",
     "@ejunz/llm": "workspace:^",
-    "@ejunz/native-command": "workspace:^",
     "@ejunz/schemastery": "workspace:^",
     "@ejunz/session": "workspace:^",
     "@ejunz/session-persistence": "workspace:^",
@@ -71,7 +69,6 @@
     "@ejunz/tools": "workspace:^",
     "@ejunz/user-approval": "workspace:^",
     "@ejunz/user-questions": "workspace:^",
-    "@ejunz/workspace": "workspace:^",
     "fflate": "^0.8.2",
     "zod": "^4.4.3"
   },
@@ -86,8 +83,6 @@
     "@ejunz/cordis": "workspace:^",
     "@ejunz/cordis-host-runner": "workspace:^",
     "@ejunz/invariants": "workspace:^",
-    "@ejunz/storage": "workspace:^",
-    "@ejunz/storage-domain": "workspace:^",
     "@ejunz/typert-protocol": "workspace:^",
     "@ejunz/typert-registry": "workspace:^"
   }

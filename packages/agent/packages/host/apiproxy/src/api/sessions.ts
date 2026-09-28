@@ -13,7 +13,6 @@ import type { SessionEvent, SessionId } from '@ejunz/session/types'
 import type { SessionProjectionMap } from '@ejunz/session-projection/types'
 import type { RpcId, RpcRequest, RpcResponse } from './rpc.ts'
 import type { ToolEventView } from './events.ts'
-import type { WorkspaceId } from './workspace.ts'
 
 declare module '@ejunz/session-projection/types' {
   interface SessionProjectionMap {
@@ -188,8 +187,8 @@ export interface SessionSummary {
    * Derived conversation-not-started bit: true while no turn has run.
    * Standalone plugin events — command lifecycle
    * records, plan/mode, titles, goals — do not open a turn and therefore do
-   * not clear it. Clients hide blank Sessions from lists and reuse them for
-   * New Session on the same workspace. A cold Session is true only when a
+   * not clear it. Clients may hide blank Sessions until their first prompt. A
+   * cold Session is true only when a
    * small-artifact read verifies that no `turn/start` exists; unavailable
    * or oversized artifacts conservatively report false.
    */
@@ -244,12 +243,10 @@ export interface SessionsApi {
   ): Promise<RpcResponse<{ items: SessionSearchItem[]; hasMore: boolean }>>
 
   /**
-   * Creates a real session and its idle agent. At most one of `workspaceId` /
-   * `cwd` is accepted; an omitted project uses the Host cwd. A caller may
-   * preallocate `sessionId`: retries with the same id and cwd return the same
-   * session, while a different cwd fails with `session-conflict`. Workspace
-   * creation attaches the session after publication; an attach failure
-   * returns `workspace-attach-failed` with the published session id.
+   * Creates a real session and its idle agent. An omitted `cwd` uses the Host
+   * default. A caller may preallocate `sessionId`: retries with the same id and
+   * cwd return the same session, while a different cwd fails with
+   * `session-conflict`.
    *
    * `agentPreset` names the composition the new session's agent is built
    * from; omitted, the effective default applies — the user's stored choice
@@ -259,7 +256,6 @@ export interface SessionsApi {
    * cannot be mounted fails with `agent-preset-invalid`.
    */
   create(request: RpcRequest<{
-    workspaceId?: WorkspaceId
     cwd?: string
     sessionId?: SessionId
     agentPreset?: string
@@ -337,9 +333,7 @@ export interface SessionsApi {
    * an earlier turn. The child inherits the source cwd, latest logged model
    * target and `parentSessionId` lineage; the seed prefix carries the source
    * title. Reading the source uses attached state or persistence inspection
-   * without acquiring an Agent. Workspace attachment follows the source
-   * directly, or the nearest workspace-owning ancestor when the source is a
-   * subagent.
+   * without acquiring an Agent.
    */
   fork(request: RpcRequest<{ sessionId: SessionId; atSeq?: number }>):
   Promise<RpcResponse<{ sessionId: SessionId }>>

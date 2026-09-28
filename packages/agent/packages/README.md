@@ -1,7 +1,7 @@
 # Packages
 
 
-npm scope: `@ejunz/*`; Cordis `Service` subclasses and function plugins contribute through `ctx.effect()`, `ctx.on()`, or `ctx.waterfall()`. Rules: [package](AGENTS.md), [root](../AGENTS.md#conventions).
+npm scope: `@ejunz/*`; Cordis `Service` subclasses and function plugins contribute through `ctx.effect()`, `ctx.on()`, or `ctx.waterfall()`. Package conventions: [AGENTS.md](AGENTS.md).
 
 ## Hierarchy
 
@@ -18,15 +18,14 @@ Groups hold `packages/<group>/<pkg>/`; names stay `@ejunz/<pkg>`. **Group README
 | [`identity/`](identity/README.md) | Shared anonymous identity | Product — stable API |
 | [`llm/`](llm/README.md) | LLM capability family: the abstract service + provider adapters | Product — stable API |
 | [`e2b/`](e2b/README.md) | E2B providers | POC |
+| [`examples/`](examples/README.md) | Runnable Agent bundle compositions | Support — illustrative APIs |
 | [`ejunz/`](ejunz/README.md) | Ejunz host integration: the tool set a host declares, installed per Agent session | Product — stable API |
 | [`subprocess/`](subprocess/README.md) | Subprocess capability family: Service Definition + local process-tree provider | Product — stable API |
-| [`shell/`](shell/README.md) | Shared shell execution seam and local executor used by host integrations | Product — stable API |
-| [`code-runtime/`](code-runtime/README.md) | Code-execution capability family: Service Definition + worker-thread provider + Code Mode Consumer | Product — stable API |
 | [`fs/`](fs/README.md) | Filesystem capability family: Service Definition and local/remote providers | Product — stable API |
 | [`lsp/`](lsp/README.md) | LSP capability family: seam, generic stdio provider, and the `lsp` tool | Product — stable API |
 | [`skill/`](skill/README.md) | Skill capability family: the provider registry, local provider, and model-facing catalog/loader | Product — stable API |
 | [`compaction/`](compaction/README.md) | Compaction capability family: Service Definition + basic provider + command Consumer | Product — stable API |
-| [`context/`](context/README.md) | Model-visible request context, including workspace instructions and time context | Product — stable API |
+| [`context/`](context/README.md) | Model-visible request context, including working-directory instructions and time context | Product — stable API |
 | [`subagent/`](subagent/README.md) | Subagent capability family: the provider-registry contract and the model-facing delegation tool | Product — stable API |
 | [`jobs/`](jobs/README.md) | Generic background-job runtime and model-facing `job_*` control tools | Product — stable API |
 | [`workflow/`](workflow/README.md) | Workflow seam, worker-thread engine, and model-facing `workflow`/`ralph` tools | Product — stable API |
@@ -39,28 +38,25 @@ Groups hold `packages/<group>/<pkg>/`; names stay `@ejunz/<pkg>`. **Group README
 | [`guard/`](guard/README.md) | Loop-hygiene guards: advisory repeat-call reminders + the `tools/execute` deadline enforcer | Product — stable API |
 | [`bundle/`](bundle/README.md) | Installable `ea --profile` patch layers | Product — stable API |
 | [`extensions/`](extensions/README.md) | Agent runtime self-modification: live plugin/service inspection and model-written plugin mount/unmount (design) | Product — stable API |
-| [`hooks/`](hooks/README.md) | Hook bridges + the shared Claude Code / Codex wire-protocol library | Product — stable API |
 | [`session/`](session/README.md) | Durable session data plane: persistence seam + JSONL/SQLite backends, projection seam, log-backed titles, session reporting | Product — stable API |
 | [`session-query/`](session-query/README.md) | Session retrieval family: logical corpus, bounded reads, lineage, event relationships, semantic filtering, and SQLite full-text search | Product — stable API |
 | [`settings/`](settings/README.md) | User-settings seam + file-backed provider | Product — stable API |
 | [`credentials/`](credentials/README.md) | Credential-reference seam + env-over-`.env` provider | Product — stable API |
 | [`storage/`](storage/README.md) | Non-session storage hub + backends + domain form | Product — stable API |
-| [`workspace/`](workspace/README.md) | Workspace entity | Product — stable API |
 | [`sdk/`](sdk/README.md) | Out-of-process runtime SDK: JSON-RPC protocol, TypeScript client, and server plugin | Product — stable API |
 | [`acp/`](acp/README.md) | Automation-only Agent Client Protocol server | Product — stable API |
 | [`interaction/`](interaction/README.md) | Human-collaboration plane: approval/interaction seams, permission preset, commands, ask-user tool | Product — stable API |
 | [`boot/`](boot/README.md) | Shared app-bin boot glue | Product — stable API |
 | [`host/`](host/README.md) | Web-GUI host half: API gateway + HTTP route server | Product — stable API |
-| [`client/`](client/README.md) | Web-GUI browser half: shell, wire, object services, slots, `ui-*` plugins | Product — stable API |
-| [`test-support/`](test-support/README.md) | Support infrastructure (testkits, invariants, replay, Loader smokes) | Support — lower compatibility expectations |
+| [`client/`](client/README.md) | Browser-side connection and session runtime | Product — stable API |
 | [`util/`](util/README.md) | Low-level zero-dependency utilities shared across groups (`Branded<B>`, EjunzAgent home/path helpers, timeout, retention) | Support — small, stable, ejunzAgent-dep-free |
 
-New packages join existing groups; new groups update their README and this table. Filesystem and command execution remain infrastructure capabilities for host integrations, subprocess consumers, and E2B; this package map does not imply that model-facing file or terminal tools are shipped.
+New packages join existing groups; new groups update their README and this table. Filesystem and subprocess capabilities remain infrastructure for host integrations and E2B; this package map does not imply that model-facing file or terminal tools are shipped.
 
 ## Dependencies
 
-The dependency graph is generated: [docs/module-graph.md](../docs/module-graph.md) (`yarn run gen-module-graph`, freshness-gated in CI).
+Inter-package dependencies are declared in package manifests using the `workspace:` protocol.
 
-**Extension plugins depend on Service Definitions, never concrete providers.** `ea-agent-loop` is swappable; UI, hook, and tool plugins use `ea-agent`. Composition bundles, including `ea-agent-spine-demo`, may depend on spine plugins. Capabilities separate Service Definition / Service Provider / Consumer roles when they evolve independently; see capability seams.
+**Extension plugins depend on Service Definitions, never concrete providers.** `ea-agent-loop` is swappable; provider and tool plugins use `ea-agent`. Composition bundles, including `ea-agent-spine-demo`, may depend on spine plugins. Capabilities separate Service Definition / Service Provider / Consumer roles when they evolve independently; see capability seams.
 
-Package READMEs cover purpose, APIs, extension points, and [Model Experience](../docs/cookbook/adding-a-package.md#4-write-the-package-readme) unless on the model-agnostic [omission allowlist](../scripts/verify-package-readme-model-experience.ts). They also carry `## Known Limitations and Deferred Work` or use its [allowlist](../scripts/verify-package-readme-limitations.ts).
+Package READMEs document each package's purpose, APIs, extension points, model effects, and any known limitations for its current consumers.

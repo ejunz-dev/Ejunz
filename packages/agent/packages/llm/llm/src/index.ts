@@ -311,7 +311,11 @@ export class LlmRuntime extends Service {
     super(ctx, 'llm')
   }
 
-  /** Register a domain-aware provider resolver owned by the current service fiber. */
+  /**
+   * Register a domain-aware provider resolver owned by the current service fiber.
+   * @param resolver - provider lookup implementation.
+   * @returns disposer for the resolver registration.
+   */
   registerProviderResolver(resolver: LlmProviderResolver): () => void {
     const dispose = this.ctx.effect(function* (this: LlmRuntime) {
       this.resolvers.add(resolver)
@@ -346,6 +350,12 @@ export class LlmRuntime extends Service {
     throw new LlmError(`no adapter registered for provider "${provider}"`, 'NO_ADAPTER')
   }
 
+  /**
+   * Check whether an adapter can be resolved for a provider.
+   * @param provider - provider id to resolve.
+   * @param signal - optional cancellation for provider discovery.
+   * @returns whether a matching adapter exists.
+   */
   async canResolveProvider(provider: string, signal?: AbortSignal): Promise<boolean> {
     try {
       await this.resolveRegistration(provider, signal)

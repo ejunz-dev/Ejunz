@@ -42,7 +42,7 @@ Every tool the host declares, under the name it declares.
 
 #### What the model sees
 
-One tool per entry of the host's catalog for this session's domain, under the host's own names, descriptions, and parameter schemas — the set recorded in the [`@ejunz/tool-host` catalog section](../../../docs/tool-catalog.md#ejunztool-host). A domain that publishes extra tools offers them only to its own sessions, and a call resolves the domain and owner from the Agent session id it carries.
+One tool per entry of the host-provided catalog for this session's domain, under the host's own names, descriptions, and parameter schemas. A domain that publishes extra tools offers them only to its own sessions, and a call resolves the domain and owner from the Agent session id it carries.
 
 #### Token effect
 

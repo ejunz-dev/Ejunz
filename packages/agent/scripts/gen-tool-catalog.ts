@@ -6,7 +6,7 @@
  * `.agents/notes/implemented/process/2026-07-02-tool-schema-catalog.md`.
  */
 
-import { globSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, globSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 import { Context } from '@ejunz/cordis'
 import type { ToolSchema } from '@ejunz/llm'
@@ -18,9 +18,7 @@ import SessionProjectionRegistry from '@ejunz/session-projection'
 import SqliteSessionQueryEngine from '@ejunz/session-query-sqlite'
 import GoalService from '@ejunz/goal'
 import SystemPrompt from '@ejunz/system-prompt'
-import ToolRuntime, { type Config as ToolsConfig } from '@ejunz/tools'
-import { AttachmentStore } from '@ejunz/attachment'
-import type { ImageAttachmentLimits, ImageAttachmentRef, SaveImageAttachment, StoredImageAttachment } from '@ejunz/attachment'
+import ToolRuntime from '@ejunz/tools'
 import UserQuestionService from '@ejunz/user-questions'
 import PlanModeController from '@ejunz/plan-mode'
 import WebRuntime from '@ejunz/web'
@@ -52,29 +50,6 @@ import VmWorkflowEngine from '@ejunz/workflow-worker-thread'
 import * as ToolRalph from '@ejunz/tool-ralph'
 import * as ToolWorkflow from '@ejunz/tool-workflow'
 import { githubSlug } from './verify-md-links.ts'
-
-/** Attachment seam marker that makes the attachments-conditional `read_image` schema harvestable. */
-class CatalogAttachmentStore extends AttachmentStore {
-  readonly imageLimits: ImageAttachmentLimits = Object.freeze({
-    maxImageBytes: 1,
-    maxImagesPerMessage: 1,
-    maxMessageImageBytes: 1,
-    maxImagePixels: 1,
-    mediaTypes: Object.freeze(['image/png'] as const),
-  })
-
-  override validateImage(_input: SaveImageAttachment): Promise<void> {
-    return Promise.reject(new Error('gen-tool-catalog: attachment validation is unreachable during schema harvest'))
-  }
-
-  override saveImage(_input: SaveImageAttachment): Promise<ImageAttachmentRef> {
-    return Promise.reject(new Error('gen-tool-catalog: attachment writes are unreachable during schema harvest'))
-  }
-
-  override readImage(_ref: ImageAttachmentRef): Promise<StoredImageAttachment> {
-    return Promise.reject(new Error('gen-tool-catalog: attachment reads are unreachable during schema harvest'))
-  }
-}
 
 const root = resolve(import.meta.dirname, '..')
 const OUT = 'docs/tool-catalog.md'
@@ -154,13 +129,6 @@ export interface ToolPackage {
    */
   registersPerAgent?: boolean
   /**
-   * Config for the caller's `ToolRuntime` mount. The registry itself ships a
-   * model-facing tool (`run_code`, registered under a non-native `mode`), so
-   * ITS catalog entry boots the registry in the mode that exposes it;
-   * every other entry uses the default (native) registry.
-   */
-  toolsConfig?: ToolsConfig
-  /**
    * A deployment note rendered after the package's tools, for a fact that
    * booting the package alone cannot show. The registered tool NAME can be a
    * load-time config (`tool-subagent`'s `toolName`), so one package may appear
@@ -188,20 +156,6 @@ const TOOL_PACKAGES: ToolPackage[] = [
     },
     note:
       'ask_user_question pauses the tool call until the active UI provider returns a human answer.',
-  },
-  {
-    pkg: '@ejunz/tools',
-    dir: 'tools',
-    source: 'packages/core/tools/src/code-mode.ts',
-    requires: ['ctx.tools', 'ctx.codeRuntime (execution time)', 'ctx.systemPrompt'],
-    writes: ['tool/call', 'one tool/code-dispatch-start + tool/code-dispatch pair per bridged sub-call', 'tool/result'],
-    // The registry's OWN tool: run_code exists only under a non-native mode
-    // (the registry registers it in its constructor; the code runtime is read
-    // at assembly/execution time, so the schema harvest needs none mounted).
-    toolsConfig: { mode: 'code' },
-    async mount() {},
-    note:
-      'Owned by the tool registry as a reserved transport outside filterable capability layers under `mode: code` / `mode: both` (see the Code Mode Agent Note). Under `code` it is the registry\'s only wire contribution; the other visible capabilities are declared in a generated SDK section in the loaded runtime\'s language, and a program calls them through bindings scheduled under the native concurrency contract (submission-ordered starts and policy; concurrency-safe bodies overlap up to `maxParallelSubCalls`) that re-enter the complete guarded tool pipeline and link each nested execution to this outer result.',
   },
   {
     pkg: '@ejunz/plan-mode',
@@ -550,7 +504,7 @@ export async function collectToolCatalog(packages: ToolPackage[] = TOOL_PACKAGES
     // fiber) — the repo's "dispose must reach quiescence" rule.
     try {
       await ctx.plugin(SystemPrompt)
-      await ctx.plugin(ToolRuntime, entry.toolsConfig ?? {})
+      await ctx.plugin(ToolRuntime)
       await entry.mount(ctx)
       const schemas = ctx.tools.schemas(entry.scope?.(ctx)).sort((a, b) => a.name.localeCompare(b.name))
       if (entry.registersPerAgent !== true) assertToolsHarvested(entry, schemas.length)
@@ -641,6 +595,10 @@ export function render(catalog: ToolCatalog): string {
  * is stale. Guarded behind an entry-point check so importing this module for
  * tests neither regenerates the committed file nor calls process.exit. */
 async function main(): Promise<void> {
+  if (!existsSync(resolve(root, 'docs'))) {
+    console.log('gen-tool-catalog: docs/ is not included in this checkout; skipping documentation output.')
+    return
+  }
   const content = render(await collectToolCatalog())
   if (process.argv.includes('--check')) {
     let committed: string | null = null

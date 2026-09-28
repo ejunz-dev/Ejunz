@@ -17,7 +17,6 @@ interface ProjectedItem extends ReferencedConversationItem {
 export interface ReferencedSessionData {
   sessionId: string
   label: string
-  cwd: string | null
   capturedThroughSeq: number | null
   conversation: ReferencedConversationItem[]
 }
@@ -78,7 +77,6 @@ export function retainReferencedSession(
   const data = (): ReferencedSessionData => ({
     sessionId: snapshot.session.id,
     label,
-    cwd: snapshot.session.cwd ?? null,
     capturedThroughSeq: snapshot.capturedThroughSeq,
     conversation: retained.map(({ role, text }) => ({ role, text })),
   })

@@ -17,15 +17,6 @@ export interface SessionSummary {
     projections?: { values?: Record<string, unknown> };
 }
 
-export interface WorkspaceView {
-    workspaceId: string;
-    title: string;
-    path: string;
-    sessionIds: string[];
-    createdAt?: string;
-    updatedAt?: string;
-}
-
 export interface BaseView {
     docId: number;
     title: string;

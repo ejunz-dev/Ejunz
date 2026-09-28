@@ -17,7 +17,7 @@
  * a missing regeneration.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import {
   projectCordisCatalog,
@@ -57,19 +57,16 @@ export const SERVICE_PAGE: Record<string, string> = {
   apiProxy: 'typert.md',
   approval: 'approval.md',
   attachments: 'attachment.md',
-  shell: 'shell.md',
-  clientModules: 'client-modules.md',
-  codeRuntime: 'code-runtime.md',
   commands: 'commands.md',
   compaction: 'compaction.md',
   cordisInspect: 'extensions.md',
   credentials: 'credentials.md',
-  directoryPicker: 'workspace.md',
   dynamicCordisRunner: 'extensions.md',
   e2b: 'subprocess.md',
   fs: 'filesystem.md',
   goals: 'goal.md',
   webServer: 'web-server.md',
+  webRuntime: 'web-server.md',
   invariants: 'invariants.md',
   llm: 'llm-streaming.md',
   lsp: 'lsp.md',
@@ -92,6 +89,8 @@ export const SERVICE_PAGE: Record<string, string> = {
   subprocess: 'subprocess.md',
   systemPrompt: 'system-prompt.md',
   jobs: 'jobs.md',
+  hostProvider: 'tools.md',
+  provider: 'tools.md',
   sessionTelemetry: 'session-telemetry.md',
   tokenMeter: 'token-meter.md',
   toolResultPruner: 'compaction.md',
@@ -101,7 +100,6 @@ export const SERVICE_PAGE: Record<string, string> = {
   userQuestions: 'user-questions.md',
   web: 'web.md',
   workflowEngine: 'workflow.md',
-  workspaceRegistry: 'workspace.md',
 }
 
 /**
@@ -118,9 +116,8 @@ export const SERVICE_PAGE: Record<string, string> = {
  * close. An OPTIONAL key (`key?: X`) is a value the launcher or boot code
  * installs before the tree mounts, which the analyzer skips by rule because no
  * plugin provides it and `inject` cannot reach it. A client-face key belongs to
- * the browser Context, which this host-face program never sees; the browser
- * surface has its own generated catalog (`scripts/gen-client-catalog.ts`, served
- * to a model as `cordis_runtime_inspect what:"client"`).
+ * the browser Context, which this host-face program never sees; it is outside
+ * this host API catalog.
  */
 export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
   agent: 'not a service: the DX accessor field on Agent.ctx (root accessor defaulting to undefined) — docs/subsystems/core.md owns the Agent handle',
@@ -131,24 +128,11 @@ export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
   eaHomePath: 'not a service: boot-provided root accessor function (typeof eaHomePath | undefined) for Loader !!js config expressions — packages/boot/app-boot/README.md owns the boot contract',
   launchEnvironment: 'not a service: launcher-provided root accessor value (LaunchEnvironmentSnapshot | undefined) — packages/util/launch-environment/README.md owns this launcher contract',
   connection: 'interface-typed (HostConnectionHandle); implementing class HostConnectionService is declared in rpc-host.ts — packages/client/connection/README.md owns the API',
-  appShell: 'client-side interface-typed browser service — packages/client/web/README.md owns the API',
-  settingsScope: 'client-side settings-namespace transport service; the browser UI consumer has been removed',
-  chatFileMentions: 'client-side slot-contract accessor (ChatFileMentions); the browser UI consumer has been removed',
-  commandUi: 'client-side interface-typed browser service — packages/client/ui-commands/README.md owns the API',
-  conversation: 'client-side interface-typed browser service; the browser UI consumer has been removed',
+  hostTools: 'optional installer value supplied by a host composition, not a Cordis Service.',
+  llmDomainRuntime: 'optional provider resolver supplied by a domain composition, not a Cordis Service.',
   conversationEvents: 'client-side interface-typed registry — packages/client/runtime/README.md owns the API',
   conversationViews: 'client-side interface-typed registry — packages/client/runtime/README.md owns the API',
-  layout: 'client-side interface-typed browser service; the browser UI consumer has been removed',
-  locale: 'client-side interface-typed browser service; the browser UI consumer has been removed',
-  modelDirectories: 'client-side interface-typed browser service — packages/client/ui-model-selection/README.md owns the API',
-  modules: 'client-side interface-typed browser service — packages/client/modules/README.md owns the API',
   remote: 'client-side interface-typed gateway accessor (ClientRemote) — packages/api/gateway/README.md owns the API',
-  sessionLogDownload: 'client-side browser download controller — packages/session-query/session-log-export/README.md owns the API',
-  inputTriggers: 'client-side interface-typed browser service; the browser UI consumer has been removed',
-  timer: 'client-side dynamic-package timer service — packages/extensions/cordis-client-runner/README.md owns the API',
-  slots: 'client-side interface-typed browser service — packages/client/runtime/README.md owns the API',
-  theme: 'client-side interface-typed browser service; the browser UI consumer has been removed',
-  workspaces: 'client-side interface-typed browser service — packages/client/runtime/README.md owns the API',
 }
 
 /**
@@ -164,7 +148,7 @@ export const EVENT_SCOPE_PAGE: Record<string, string> = {
   'agent-preset': 'core.md',
   'approval': 'approval.md',
   'commands': 'commands.md',
-  '@ejunz/cordis': 'extensions.md',
+  '@ejunz': 'extensions.md',
   'credentials': 'credentials.md',
   'domain': 'storage.md',
   'fs': 'filesystem.md',
@@ -191,15 +175,7 @@ export const EVENT_SCOPE_PAGE: Record<string, string> = {
  * exemption cannot mask another declaration in that scope.
  */
 export const EVENT_WALK_EXEMPTIONS: Record<string, string> = {
-  'command/executed': 'client-face local command acknowledgment — packages/client/ui-commands/README.md owns the API',
   'connection/reset': 'client-face transport signal — packages/client/runtime/README.md owns the API',
-  'locale/change': 'client-face locale switch signal; the browser UI consumer has been removed',
-  'slash/input-begin-command': 'client-face slash-input protocol; the browser UI consumer has been removed',
-  'slash/input-consume-token': 'client-face slash-input protocol; the browser UI consumer has been removed',
-  'slash/input-insert-reference': 'client-face slash-input protocol; the browser UI consumer has been removed',
-  'slash/input-insert-text': 'client-face slash-input protocol; the browser UI consumer has been removed',
-  'slots/changed': 'client-face slot invalidation signal — packages/client/runtime/README.md owns the API',
-  'theme/change': 'client-face theme switch signal; the browser UI consumer has been removed',
 }
 
 /**
@@ -236,6 +212,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   LlmConfigurableProvider: 'llm-streaming.md',
   LlmModelDiscoveryRequest: 'llm-streaming.md',
   LlmDiscoveredModel: 'llm-streaming.md',
+  LlmProviderResolver: 'llm-streaming.md',
   ResolvedRetryPolicy: 'llm-streaming.md',
   Message: 'llm-streaming.md',
   MessageSource: 'llm-streaming.md',
@@ -278,18 +255,12 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   ImageAttachmentRef: 'attachment.md',
   SaveImageAttachment: 'attachment.md',
   StoredImageAttachment: 'attachment.md',
-  ShellExecRequest: 'shell.md',
-  ShellExecSpec: 'shell.md',
-  ShellProcess: 'shell.md',
-  ShellRunResult: 'shell.md',
   EaEnvironment: 'subprocess.md',
   SubprocessHandle: 'subprocess.md',
   SubprocessOutcome: 'subprocess.md',
   SubprocessOutputRead: 'subprocess.md',
   SubprocessOutputReader: 'subprocess.md',
   SubprocessSpawnSpec: 'subprocess.md',
-  CodeRunRequest: 'code-runtime.md',
-  CodeRunResult: 'code-runtime.md',
   CompactionResult: 'compaction.md',
   CompactionTrigger: 'compaction.md',
   PruneResult: 'compaction.md',
@@ -401,7 +372,10 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   JobStart: 'jobs.md',
   JobsChangedListener: 'jobs.md',
   TokenMeasurement: 'token-meter.md',
-  CodeDispatchLog: 'tools.md',
+  HostArguments: 'tools.md',
+  HostCallContext: 'tools.md',
+  HostCatalog: 'tools.md',
+  HostToolClient: 'tools.md',
   PostToolDecision: 'tools.md',
   PreToolDecision: 'tools.md',
   ToolDefinition: 'tools.md',
@@ -412,7 +386,6 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   ToolExecutionResult: 'tools.md',
   ToolExecutionToken: 'tools.md',
   ToolGuard: 'tools.md',
-  ToolPresentationMode: 'tools.md',
   ToolRuntime: 'tools.md',
   ToolRestriction: 'tools.md',
   ToolSchema: 'tools.md',
@@ -446,8 +419,6 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   DomainSpec: 'storage.md',
   DomainChanged: 'storage.md',
   DomainFacility: 'storage.md',
-  Workspace: 'workspace.md',
-  WorkspaceId: 'workspace.md',
   WebBootGraph: 'client-modules.md',
   SessionTelemetryRecord: 'session-telemetry.md',
   WorkflowRunInfo: 'workflow.md',
@@ -457,7 +428,6 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   ProjectionChangeListener: 'session-projection.md',
   ProjectionSnapshot: 'session-projection.md',
   ProjectionCheckpoint: 'session-projection.md',
-  DirectoryPickerCapability: 'workspace.md',
   TypertContribution: 'invariants.md',
   TypertFace: 'invariants.md',
   TypertPackageFilter: 'invariants.md',
@@ -783,11 +753,13 @@ export function computeOutputs(): [string, string][] {
   })
   if (problems.length > 0) throw new Error(`gen-cordis-catalog: ${problems.length} partition violation(s):\n${problems.map(p => `  ${p}`).join('\n')}`)
 
-  const pages = [...new Set([...Object.values(SERVICE_PAGE), ...Object.values(EVENT_SCOPE_PAGE)])].sort()
+  const subsystemDocsPresent = existsSync(resolve(root, SUBSYSTEMS_DIR))
   const outputs: [string, string][] = [
-    [OUT_INHERITED, renderInheritedPage(CORDIS_CATALOG_POLICY)],
     [OUT_RUNTIME_API, projector.renderRuntimeApi(model)],
+    ...(subsystemDocsPresent ? [[OUT_INHERITED, renderInheritedPage(CORDIS_CATALOG_POLICY)] as [string, string]] : []),
   ]
+  if (!subsystemDocsPresent) return outputs
+  const pages = [...new Set([...Object.values(SERVICE_PAGE), ...Object.values(EVENT_SCOPE_PAGE)])].sort()
   for (const page of pages) {
     const region = renderPageRegion(
       page,
@@ -870,7 +842,7 @@ export function maybeRecordPair(pageRel: string, before: Map<string, Buffer>, sc
 export function main(): void {
   const outputs: [string, string][] = [
     ...computeOutputs(),
-    ...renderCordisCoreApiPages(),
+    ...(existsSync(resolve(root, SUBSYSTEMS_DIR)) ? renderCordisCoreApiPages() : []),
   ]
   if (process.argv.includes('--check')) {
     const stale: string[] = []

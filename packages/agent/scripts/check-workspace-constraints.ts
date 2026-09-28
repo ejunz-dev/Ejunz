@@ -12,7 +12,7 @@ import { collectProjectReferenceFaceViolations } from './project-reference-faces
 
 const root = resolve(import.meta.dirname, '..')
 // vendor/* is single-level; packages/<group>/<pkg> nests one level deeper
-// (the group dirs — core/llm/shell/… — are pure containers with no manifest).
+// (the group dirs — core/llm/context/… — are pure containers with no manifest).
 const workspaceGlobs = [
   { dir: 'vendor', depth: 1 },
   { dir: 'packages', depth: 2 },
@@ -144,7 +144,7 @@ function expectedEaPackageFiles(manifest: PackageManifest): readonly string[] {
     // Keyed on the artifact path, not the subpath name: apiproxy's ./client is
     // a browser-safe source channel, not a bundle.
     ...exportDefault(manifest, './client') === './lib/client.js' ? ['lib/client.js'] : [],
-    // runtime's shell-held loader subpath ships as its own bundle beside the client half.
+    // Runtime's loader subpath ships as its own bundle beside the client half.
     ...exportDefault(manifest, './loader') === './lib/loader.js' ? ['lib/loader.js'] : [],
     // web-react's store subpath ships its own bundle (single-entry builds; no shared chunk).
     ...exportDefault(manifest, './store') === './lib/store/index.js' ? ['lib/store/index.js'] : [],

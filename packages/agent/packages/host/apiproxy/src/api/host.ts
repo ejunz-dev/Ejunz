@@ -1,7 +1,5 @@
 import type { RpcRequest, RpcResponse } from './rpc.ts'
 
-export type { DirectoryEntry, DirectoryListing } from '@ejunz/host-directory-picker'
-
 /** Host-level information shared with the browser surface. */
 export interface HostApi {
   /**

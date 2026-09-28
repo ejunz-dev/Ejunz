@@ -1,15 +1,14 @@
 import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { BaseDetailTree, defaultBaseDetailDisplaySettings, type BaseDetailCard, type BaseDetailEdge, type BaseDetailNode } from '@ejunz/ui-next';
+import { BaseDetailTree, defaultBaseDetailDisplaySettings, type BaseDetailCard, type BaseDetailNode } from '@ejunz/ui-next';
 import { StateDot, type StateDotState } from '../primitives/StateDot';
 import { MarkdownText } from '../primitives/markdown/MarkdownText';
-import type { SessionSummary, BaseView, WorkspaceView } from '../../runtime/session';
+import type { SessionSummary, BaseView } from '../../runtime/session';
 import type { SessionModels } from '../types';
 import type { AgentDisplaySettings } from './AgentDisplaySettingsDialog';
-import { deriveGroups, sessionTitle } from '../sidebar/tree';
+import { filterSessions } from './session-tree-utils';
 
-interface WorkspaceSessionTreeProps {
+interface SessionTreeProps {
     sessions: SessionSummary[];
-    workspaces: WorkspaceView[];
     bases: BaseView[];
     current: string | null;
     pendingQuestionSessionIds: ReadonlySet<string>;
@@ -21,32 +20,26 @@ interface WorkspaceSessionTreeProps {
     searchMatches: ReadonlySet<string> | null;
     searchSnippets: ReadonlyMap<string, string>;
     searchHasMore: boolean;
-    archivedSessionIds: ReadonlySet<string>;
-    collapsedWorkspaces: Record<string, boolean>;
     editMode: boolean;
-    selectedNodeIds: ReadonlySet<string>;
     selectedCardIds: ReadonlySet<string>;
     sessionTitleDrafts: Readonly<Record<string, string>>;
-    onToggleNodeSelection: (nodeId: string, cardIds: string[]) => void;
     onToggleCardSelection: (cardId: string) => void;
     onSessionTitleChange: (sessionId: string, title: string) => void;
     onSaveSessionTitles: () => void | Promise<void>;
     sessionTitleSaving: boolean;
     onQuery: (value: string) => void;
     onSelect: (sessionId: string) => void;
-    onRenameSession: (sessionId: string, title: string) => void;
-    onForkSession: (sessionId: string) => void;
-    onArchiveSession: (sessionId: string) => void;
-    onHardDeleteSession: (sessionId: string) => void;
-    onRenameWorkspace: (workspaceId: string, title: string) => void;
-    onDeleteWorkspace: (workspaceId: string, title: string) => void;
-    onCreateWorkspace: () => void;
-    onMoveWorkspace: (workspaceId: string, beforeWorkspaceId?: string) => void;
-    onMoveSession: (workspaceId: string, sessionId: string, beforeSessionId?: string) => void;
-    onToggleWorkspace: (workspaceId: string) => void;
-    onStartSession: (workspaceId?: string) => void;
+    onStartSession: () => void;
     onDeleteSelected: () => void;
     onExitEdit: () => void;
+}
+
+const SESSION_GROUP_ID = 'agent-sessions';
+
+function sessionTitle(session: SessionSummary): string {
+    const title = session.projections?.values?.title;
+    if (typeof title === 'string' && title.trim()) return title;
+    return session.blank ? '新会话' : `会话 ${session.sessionId.slice(8, 16)}`;
 }
 
 function sessionBaseLabel(session: SessionSummary, bases: readonly BaseView[]): string {
@@ -137,13 +130,39 @@ const SessionCardTitle = memo(function SessionCardTitle({ session, error, waitin
     </button>;
 });
 
-export function WorkspaceSessionTree({
-    sessions, workspaces, bases, current, pendingQuestionSessionIds, sessionErrors, sessionActivityPreviews, modelGroups, displaySettings, query, searchMatches, searchSnippets, searchHasMore, archivedSessionIds, collapsedWorkspaces,
-    editMode, selectedNodeIds, selectedCardIds, sessionTitleDrafts, onToggleNodeSelection, onToggleCardSelection, onSessionTitleChange, onSaveSessionTitles, sessionTitleSaving,
-    onQuery, onSelect, onCreateWorkspace, onToggleWorkspace, onStartSession, onDeleteSelected, onExitEdit,
-}: WorkspaceSessionTreeProps) {
+export function SessionTree({
+    sessions, bases, current, pendingQuestionSessionIds, sessionErrors, sessionActivityPreviews, modelGroups, displaySettings, query, searchMatches, searchSnippets, searchHasMore,
+    editMode, selectedCardIds, sessionTitleDrafts, onToggleCardSelection, onSessionTitleChange, onSaveSessionTitles, sessionTitleSaving,
+    onQuery, onSelect, onStartSession, onDeleteSelected, onExitEdit,
+}: SessionTreeProps) {
     const toolsRef = useRef<HTMLDivElement>(null);
     const [toolbarTop, setToolbarTop] = useState<number | null>(null);
+    const visibleSessions = useMemo(() => filterSessions(sessions, current, query, searchMatches), [current, query, searchMatches, sessions]);
+    const nodes = useMemo<BaseDetailNode[]>(() => visibleSessions.length > 0 ? [{
+        id: SESSION_GROUP_ID,
+        text: '会话',
+        type: 'session_group',
+        order: 0,
+        expanded: true,
+    }] : [], [visibleSessions.length]);
+    const nodeCardsMap = useMemo<Record<string, BaseDetailCard[]>>(() => ({
+        [SESSION_GROUP_ID]: visibleSessions.map((session, index) => {
+            const tags: string[] = [];
+            if (displaySettings.showModel) tags.push(`模型: ${sessionModelLabel(session, modelGroups)}`);
+            if (displaySettings.showBase) tags.push(`知识库: ${sessionBaseLabel(session, bases)}`);
+            return {
+                docId: session.sessionId,
+                title: sessionTitle(session),
+                content: searchSnippets.get(session.sessionId) || session.cwd || '',
+                cardType: 'session',
+                nodeId: SESSION_GROUP_ID,
+                order: index,
+                ...(session.createdAt === undefined ? {} : { createdAt: new Date(session.createdAt) }),
+                updateAt: new Date(session.updatedAt),
+                tags,
+            };
+        }),
+    }), [bases, displaySettings, modelGroups, searchSnippets, visibleSessions]);
     useLayoutEffect(() => {
         if (!editMode) {
             setToolbarTop(null);
@@ -157,42 +176,6 @@ export function WorkspaceSessionTree({
         window.addEventListener('resize', update);
         return () => window.removeEventListener('resize', update);
     }, [editMode]);
-    const groups = useMemo(() => deriveGroups(workspaces, sessions, current, query, searchMatches, archivedSessionIds), [archivedSessionIds, current, query, searchMatches, sessions, workspaces]);
-    const nodes = useMemo<BaseDetailNode[]>(() => groups.map(({ workspace }, index) => ({
-        id: workspace.workspaceId,
-        text: workspace.title,
-        type: 'workspace',
-        order: index,
-        expanded: collapsedWorkspaces[workspace.workspaceId] !== true,
-        ...(workspace.createdAt === undefined ? {} : { createdAt: workspace.createdAt }),
-        ...(workspace.updatedAt === undefined ? {} : { updateAt: workspace.updatedAt }),
-    })), [collapsedWorkspaces, groups]);
-    const edges = useMemo<BaseDetailEdge[]>(() => [], []);
-    const nodeCardsMap = useMemo<Record<string, BaseDetailCard[]>>(
-        () => Object.fromEntries(groups.map(({ workspace, sessions: groupSessions }) => [
-            workspace.workspaceId,
-            groupSessions.map((session, index) => {
-                const tags: string[] = [];
-                if (displaySettings.showModel) tags.push(`模型: ${sessionModelLabel(session, modelGroups)}`);
-                if (displaySettings.showBase) tags.push(`知识库: ${sessionBaseLabel(session, bases)}`);
-                if (displaySettings.showWorkspace) tags.push(`工作区: ${workspace.title}`);
-                return {
-                    docId: session.sessionId,
-                    title: sessionTitle(session),
-                    content: searchSnippets.get(session.sessionId) || session.cwd || '',
-                    cardType: 'session',
-                    nodeId: workspace.workspaceId,
-                    order: index,
-                    ...(session.createdAt === undefined ? {} : { createdAt: new Date(session.createdAt) }),
-                    updateAt: new Date(session.updatedAt),
-                    tags,
-                };
-            }),
-        ])),
-        [bases, displaySettings, groups, modelGroups, searchSnippets],
-    );
-    const expandedNodes = useMemo(() => new Set(nodes.filter((node) => node.expanded !== false).map((node) => String(node.id))), [nodes]);
-    const selectedNodeId = useMemo(() => groups.find(({ sessions: groupSessions }) => groupSessions.some((session) => session.sessionId === current))?.workspace.workspaceId || null, [current, groups]);
     const treeDisplaySettings = useMemo(() => ({
         ...defaultBaseDetailDisplaySettings(),
         showProblemCount: false,
@@ -200,12 +183,12 @@ export function WorkspaceSessionTree({
         showNodeCardTimestamps: displaySettings.showTimestamps,
         showProblemTree: false,
         showProblemTags: false,
-        showCardTags: displaySettings.showModel || displaySettings.showBase || displaySettings.showWorkspace,
+        showCardTags: displaySettings.showModel || displaySettings.showBase,
     }), [displaySettings]);
     const renderCardTitle = useMemo(() => {
         if (!displaySettings.showStatus && !editMode) return undefined;
         return (card: BaseDetailCard) => {
-            const session = sessions.find((item) => item.sessionId === card.docId);
+            const session = visibleSessions.find((item) => item.sessionId === card.docId);
             if (!session) return <span className="bd-tree__label">{String(card.title ?? '')}</span>;
             const activity = sessionActivityPreviews.get(session.sessionId);
             return <SessionCardTitle
@@ -221,41 +204,37 @@ export function WorkspaceSessionTree({
                 onSelect={onSelect}
             />;
         };
-    }, [displaySettings.showStatus, editMode, onSelect, onSessionTitleChange, pendingQuestionSessionIds, sessionErrors, sessionActivityPreviews, sessionTitleDrafts, sessions]);
-
-    return <section className="eja-agentStructure" aria-label="工作区和会话">
+    }, [displaySettings.showStatus, editMode, onSelect, onSessionTitleChange, pendingQuestionSessionIds, sessionErrors, sessionActivityPreviews, sessionTitleDrafts, visibleSessions]);
+    return <section className="eja-agentStructure" aria-label="会话">
         <div ref={toolsRef} className="eja-agentStructure__tools">
             <input value={query} placeholder="搜索会话" aria-label="搜索会话" onChange={(event) => onQuery(event.target.value)} />
-            <button type="button" onClick={() => onStartSession()}>新会话</button>
-            <button type="button" onClick={onCreateWorkspace}>新建工作区</button>
+            <button type="button" onClick={onStartSession}>新会话</button>
         </div>
         {editMode && <div className="eja-selectionToolbar" style={toolbarTop === null ? undefined : { top: `${toolbarTop}px` }} role="toolbar" aria-label="编辑操作">
-            <span>已选 {selectedNodeIds.size + selectedCardIds.size} 项</span>
+            <span>已选 {selectedCardIds.size} 项</span>
             <button type="button" className="eja-selectionToolbarSave" disabled={sessionTitleSaving} onClick={() => { void onSaveSessionTitles(); }}>{sessionTitleSaving ? '保存中…' : '保存'}</button>
-            <button type="button" className="eja-selectionToolbarDelete" disabled={sessionTitleSaving || (selectedNodeIds.size === 0 && selectedCardIds.size === 0)} onClick={onDeleteSelected}>删除</button>
+            <button type="button" className="eja-selectionToolbarDelete" disabled={sessionTitleSaving || selectedCardIds.size === 0} onClick={onDeleteSelected}>删除</button>
             <button type="button" className="eja-selectionToolbarExit" disabled={sessionTitleSaving} onClick={onExitEdit}>退出编辑</button>
         </div>}
         <div className="bd-content bd-content--tree eja-agentStructure__tree">
             <BaseDetailTree
                 rootNodeIds={nodes.map((node) => String(node.id))}
                 nodes={nodes}
-                edges={edges}
+                edges={[]}
                 nodeCardsMap={nodeCardsMap}
-                expandedNodes={expandedNodes}
-                onToggle={onToggleWorkspace}
-                selectedNodeId={selectedNodeId}
+                expandedNodes={new Set(nodes.map((node) => String(node.id)))}
+                onToggle={() => {}}
+                selectedNodeId={null}
                 selectedCardId={current}
-                onSelectNode={onToggleWorkspace}
+                onSelectNode={() => {}}
                 onSelectCard={(card) => onSelect(card.docId)}
                 filter=""
                 displaySettings={treeDisplaySettings}
                 renderCardTitle={renderCardTitle}
                 editMode={editMode}
-                selectedNodeIds={selectedNodeIds}
                 selectedCardIds={selectedCardIds}
-                onToggleNodeSelection={(nodeId) => onToggleNodeSelection(nodeId, groups.find(({ workspace }) => workspace.workspaceId === nodeId)?.sessions.map((session) => session.sessionId) || [])}
                 onToggleCardSelection={onToggleCardSelection}
-                emptyMessage="暂无工作区或会话"
+                emptyMessage="暂无会话"
             />
         </div>
         {searchHasMore && <p className="bd-muted eja-agentStructure__hint">仅显示部分搜索结果，请缩小搜索范围。</p>}

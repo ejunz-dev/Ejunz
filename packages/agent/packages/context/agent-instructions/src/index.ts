@@ -97,8 +97,8 @@ export function apply(ctx: Context, config: Config): void {
   // Emit listeners are not awaited, so each projection must compose against the
   // inbox produced by earlier file results for the same agent.
   const projectionTails = new WeakMap<Agent, Promise<void>>()
-  // Execution ancestry and the enclosing durable step are the two commit
-  // boundaries before an asynchronous projection may mutate the agent inbox.
+  // The enclosing durable step is the commit boundary before an asynchronous
+  // projection may mutate the agent inbox.
   const openSteps = new WeakMap<Session, boolean>()
   const stepTouches = new WeakMap<Session, ProjectionTouch[]>()
 
@@ -353,14 +353,6 @@ export function apply(ctx: Context, config: Config): void {
     if (!result.isError && exec.agent !== undefined && !exec.signal.aborted) {
       const ownPath = filePathFromExecution(exec)
       if (ownPath !== undefined) touches.push({ agent: exec.agent, path: ownPath })
-    }
-    if (exec.parent !== undefined) {
-      if (touches.length > 0) {
-        const parentTouches = executionTouches.get(exec.parent)
-        if (parentTouches === undefined) executionTouches.set(exec.parent, touches)
-        else parentTouches.push(...touches)
-      }
-      return
     }
     for (const touch of touches) projectTouch(touch)
   })

@@ -16,7 +16,6 @@ import type {
 } from './sessions.ts'
 import type { ToolEventView } from './events.ts'
 import type { AttachmentIdType, ImageAttachmentLimits, ImageAttachmentRef } from '@ejunz/attachment'
-import type { WorkspaceId } from './workspace.ts'
 import {
   SESSION_SEARCH_RESULT_LIMIT,
   SESSION_SEARCH_SNIPPET_MAX_CODE_POINTS,
@@ -28,14 +27,6 @@ export const sessionIdSchema = z.string().min(1) as unknown as z.ZodType<Session
 
 /** MessageId: one brand cast after non-empty string validation. */
 export const messageIdSchema = z.string().min(1) as unknown as z.ZodType<MessageId>
-
-/**
- * WorkspaceId: the workspace domain's one brand cast. Hosted here rather
- * than in workspace.schema because session.create references it while
- * workspace.schema references sessionIdSchema — schema modules must stay a
- * DAG (both casts used at module top level; a cycle is a load-time TDZ).
- */
-export const workspaceIdSchema = z.string().min(1) as unknown as z.ZodType<WorkspaceId>
 
 /** SessionEvent passthrough: strict envelope, wide data (the client fold handles unknown types via its documented default). */
 export const sessionEventSchema = z.object({
@@ -98,18 +89,14 @@ export const sessionSearchValueSchema = z.object({
   hasMore: z.boolean(),
 }) satisfies z.ZodType<Wire<ResponseValue<'session.search'>>>
 
-/** session.create request payload (at most one of workspaceId / cwd). */
+/** session.create request payload. */
 export const sessionCreateRequestSchema = z.object({
-  workspaceId: workspaceIdSchema.optional(),
   cwd: z.string().optional(),
   sessionId: sessionIdSchema.optional(),
   agentPreset: z.string().optional(),
   provider: z.string().optional(),
   model: z.string().optional(),
-}).refine(
-  payload => payload.workspaceId === undefined || payload.cwd === undefined,
-  { message: 'session.create accepts workspaceId or cwd, not both' },
-) satisfies z.ZodType<Wire<RequestPayload<'session.create'>>>
+}) satisfies z.ZodType<Wire<RequestPayload<'session.create'>>>
 
 /** session.create response value. */
 export const sessionCreateValueSchema = z.object({

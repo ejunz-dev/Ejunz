@@ -67,30 +67,43 @@ const GROUP_ORDER = [
   'core',
   'typert',
   'goal',
-  'process',
-  'bash',
+  'subprocess',
   'e2b',
   'fs',
   'skill',
-  'compact',
+  'compaction',
   'subagent',
-  'tasks',
+  'jobs',
   'workflow',
   'web',
   'spill',
   'todo',
   'plan',
-  'cordis',
-  'hooks',
-  'session-persistence',
+  'session',
   'session-query',
-  'session-title',
-  'telemetry',
   'storage',
-  'workspace',
-  'support',
+  'credentials',
+  'settings',
+  'identity',
+  'api',
+  'boot',
+  'bundle',
+  'client',
+  'context',
+  'examples',
+  'extensions',
+  'feedback',
+  'guard',
+  'host',
+  'interaction',
+  'lsp',
+  'mcp',
+  'preset',
+  'runtime-diagnostics',
+  'schedule',
+  'sdk',
   'acp',
-  'ui',
+  'ejunz',
 ]
 
 const SERVICE_ROLES: ServiceRole[] = [
@@ -165,7 +178,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     title: 'Durable session persistence seam',
     mode: 'seam',
     implementations: ['session-persistence-jsonl', 'session-persistence-sqlite'],
-    consumers: ['agent-loop', 'hooks-claude-code', 'hooks-codex', 'session-query', 'session-query-sqlite', 'message-feedback'],
+    consumers: ['agent-loop', 'session-query', 'session-query-sqlite', 'message-feedback'],
     note: 'Backends persist the same SessionEvent vocabulary; apps choose a backend at composition time.',
   },
   {
@@ -209,7 +222,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     pkg: 'storage-domain',
     title: 'Domain data facility',
     mode: 'core',
-    consumers: ['workspace', 'message-feedback'],
+    consumers: ['message-feedback'],
     note: 'Waits for every configured backend, then publishes the domain form as one lifecycle-bound service for typed durable state.',
   },
   {
@@ -220,21 +233,13 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Owns local per-assistant-message feedback, lifecycle and target validation, per-item compare-and-set, and the Host unary Remote contract without entering Session history or telemetry.',
   },
   {
-    key: 'workspaceRegistry',
-    pkg: 'workspace',
-    title: 'Workspace entity registry',
-    mode: 'core',
-    consumers: ['apiproxy'],
-    note: 'Owns WorkspaceId-branded records over the domain facility; stable sessionIds accounts drive Host RPC and GUI projections.',
-  },
-  {
     key: 'sessionQuery',
     pkg: 'session-query',
     title: 'Session reads, traces, filters, and search',
     mode: 'seam',
     implementations: ['session-query-sqlite'],
     consumers: ['session-reference', 'tool-session-query'],
-    note: 'The interface supplies exact reads, filters, and traces; its concrete backend adds full-text reconciliation, ranking, snippets, and cursor generations, while the model consumer owns workspace authority and cursor-free rendering.',
+    note: 'The interface supplies exact reads, filters, and traces; its concrete backend adds full-text reconciliation, ranking, snippets, and cursor generations, while the model consumer owns caller-session authorization and cursor-free rendering.',
   },
   {
     key: 'sessionReferenceResolver',
@@ -265,7 +270,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     title: 'Tool registry and guarded execution pipeline',
     mode: 'core',
     consumers: ['agent-loop', 'tool-ask-user', 'tool-cordis', 'tool-skill', 'tool-subagent', 'tool-todo', 'tool-web'],
-    note: 'Registers capabilities, owns Code Mode transport, and routes calls through pre-policy, monotonic guards, around dispatch, post-policy, and final-result observation.',
+    note: 'Registers capabilities and routes calls through pre-policy, monotonic guards, around dispatch, post-policy, and final-result observation.',
   },
   {
     key: 'userQuestions',
@@ -366,20 +371,9 @@ const SERVICE_ROLES: ServiceRole[] = [
     title: 'Subprocess seam',
     mode: 'seam',
     implementations: ['subprocess-local', 'subprocess-e2b'],
-    consumers: ['bash-local', 'lsp-stdio', 'subagent-acp', 'subagent-codex', 'subagent-claude-code'],
-    note: 'Local shell executors, the LSP host, and out-of-process ACP, Codex, and Claude Code subagent backends spawn through ctx.subprocess; the service owns process coordinates, tree/session lifetime, stdio dispositions, and kill escalation.',
+    consumers: ['lsp-stdio', 'subagent-acp', 'subagent-codex', 'subagent-claude-code'],
+    note: 'The LSP host and out-of-process ACP, Codex, and Claude Code subagent backends spawn through ctx.subprocess; the service owns process coordinates, tree/session lifetime, stdio dispositions, and kill escalation.',
   },
-  {
-    key: 'shell',
-    pkg: 'shell',
-    title: 'Bash executor seam',
-    mode: 'seam',
-    implementations: ['bash-local'],
-    consumers: ['hooks-claude-code', 'hooks-codex'],
-    note: 'The Claude Code and Codex hook bridges consume this seam; alternative local executors can replace bash-local without changing those consumers.',
-  },
-
-
   {
     key: 'approval',
     pkg: 'approval',
@@ -396,15 +390,6 @@ const SERVICE_ROLES: ServiceRole[] = [
     mode: 'core',
     implementations: [],
     note: 'User-facing approval preset table; a switch writes the selected `permission/preset` intent and updates `approval/policy`.',
-  },
-  {
-    key: 'codeRuntime',
-    pkg: 'code-runtime',
-    title: 'Code-execution seam',
-    mode: 'seam',
-    implementations: ['code-runtime-worker'],
-    consumers: ['tools'],
-    note: 'Runs one model-written program against host-provided async bindings; backends differ by substrate and language (the tool registry consumes it for Code Mode).',
   },
   {
     key: 'fs',
@@ -460,15 +445,6 @@ const SERVICE_ROLES: ServiceRole[] = [
     implementations: ['spill-local'],
     consumers: ['spill-policy'],
     note: 'The backend saves oversized tool text and returns a model-facing locator plus retrieval hint; spill-policy is the tools/post-execute consumer that decides when to spill.',
-  },
-  {
-    key: 'directoryPicker',
-    pkg: 'directory-picker',
-    title: 'Workspace-directory picking seam',
-    mode: 'seam',
-    implementations: ['directory-picker-native', 'directory-picker-browse'],
-    consumers: ['apiproxy'],
-    note: 'Discriminated interaction capability: the native backend opens one OS chooser on the host display, the browse backend serves listing/creation primitives for the in-app browser; dual-face backends fill ui-workspace directory-flow slots from their browser halves (no wire advertisement).',
   },
   {
     key: 'webServer',
@@ -756,8 +732,8 @@ const EVENT_API_METHODS = new Set(['on', 'once', 'emit', 'parallel', 'serial', '
  * documents why: one program cannot hold both faces' Context merges), so a
  * Client package enters only when a host file imports it. Client-face
  * listeners on client-face events are therefore under-reported —
-   * `connection/reset` omits `ui-skill`/`ui-agent-preset`. Closing it needs a
-   * second Client program whose relations merge into these, not a wider seed.
+ * Closing this gap needs a second Client program whose relations merge into
+ * these, not a wider seed.
  */
 export class EventRelationCollector {
   private readonly relations = new Map<string, EventRelation>()
@@ -1291,7 +1267,7 @@ function renderToolPipeline(): string {
     `  around["${mermaidCode('tools/execute')} waterfall<br/>timeout, retry, metrics (around dispatch)"]`,
     '  toolBody["Registered tool execute() body"]',
     `  fsGate["${mermaidCode('fs/write-intent')} or ${mermaidCode('fs/edit-intent')}<br/>Filesystem mutations only"]`,
-    `  owned["Tool-owned session events<br/>${mermaidCode('todo/write')}, ${mermaidCode('fs/observed')}, ${mermaidCode('hook/invoked')}, ${mermaidCode('hook/result')}, ${mermaidCode('tool/code-dispatch')}"]`,
+    `  owned["Tool-owned session events<br/>${mermaidCode('todo/write')}, ${mermaidCode('fs/observed')}, ${mermaidCode('hook/invoked')}, ${mermaidCode('hook/result')}"]`,
     `  post["${mermaidCode('tools/post-execute')} waterfall<br/>accept, block, replace, add context"]`,
     '  normalized["Registry outer normalization<br/>pipeline/result snapshot throws become isError"]',
     '  finalize["ToolDefinition.finalizeContent<br/>last content-only invariant"]',
@@ -1331,7 +1307,7 @@ function renderToolPipeline(): string {
     '  allResults --> context',
     '```',
     '',
-    'Filesystem read-before-edit checks stay below filesystem operations on `fs/*` events. Generic pre/post waterfalls host hooks and approval policy; `ctx.approval` resolves asks before monotonic guards, and owner policy that must not be reordered remains a registered guard. Around-dispatch concerns such as timeouts wrap `tools/execute`. The registry losslessly snapshots the candidate result and normalizes a snapshot failure before the visible definition\'s snapshotted `finalizeContent` callback enforces its synchronous content-only invariant. `tools/result` then observes the immutable, lossless-JSON outcome. This lets hooks span tool families without coupling the tools to one policy service. Code Mode sends both the reserved `run_code` transport and its serialized sub-calls through the pipeline; sub-calls carry the parent token, log `tool/code-dispatch`, return denials as binding rejections, and omit `additionalContexts` to preserve call/result adjacency.',
+    'Filesystem read-before-edit checks stay below filesystem operations on `fs/*` events. Generic pre/post waterfalls host hooks and approval policy; `ctx.approval` resolves asks before monotonic guards, and owner policy that must not be reordered remains a registered guard. Around-dispatch concerns such as timeouts wrap `tools/execute`. The registry losslessly snapshots the candidate result and normalizes a snapshot failure before the visible definition\'s snapshotted `finalizeContent` callback enforces its synchronous content-only invariant. `tools/result` then observes the immutable, lossless-JSON outcome. This lets hooks span tool families without coupling the tools to one policy service.',
     '',
     ...maintenanceFooter(maintenance),
   ].join('\n')

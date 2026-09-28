@@ -6,7 +6,7 @@
  * surface-union member must resolve to one. `--check` verifies the artifact.
  */
 
-import { globSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, globSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve, sep } from 'node:path'
 import ts from 'typescript'
 import { parseJsDoc, pointer, rawJsDoc, reportViolations } from './jsdoc.ts'
@@ -431,7 +431,9 @@ interface GeneratedArtifact {
 function main(): void {
   const events = annotateSurface(collectLogEvents(), collectSurfaceEventTypes())
   const artifacts: GeneratedArtifact[] = [
-    { out: OUT, content: render(events, collectEventEnvelopeTypes()) },
+    ...(existsSync(resolve(root, 'docs'))
+      ? [{ out: OUT, content: render(events, collectEventEnvelopeTypes()) }]
+      : []),
     { out: OUT_RUNTIME_TYPES, content: renderKnownEventTypes(events) },
   ]
   if (process.argv.includes('--check')) {

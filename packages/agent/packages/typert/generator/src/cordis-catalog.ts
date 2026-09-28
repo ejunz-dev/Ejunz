@@ -746,7 +746,7 @@ function renderRuntimeApi(
     '',
     '/** One named type declaration referenced by a Service or Event signature. */',
     'export interface TypeApiEntry {',
-    '  /** The exported type/interface name, e.g. `ShellRunResult`. */',
+    '  /** The exported type/interface name, e.g. `ToolExecutionResult`. */',
     '  name: string',
     '  /** The full declaration text, comments stripped. */',
     '  declaration: string',

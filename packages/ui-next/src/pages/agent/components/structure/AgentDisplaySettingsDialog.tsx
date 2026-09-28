@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 export interface AgentDisplaySettings {
     showModel: boolean;
     showBase: boolean;
-    showWorkspace: boolean;
     showTimestamps: boolean;
     showStatus: boolean;
 }
@@ -11,7 +10,6 @@ export interface AgentDisplaySettings {
 export const defaultAgentDisplaySettings: AgentDisplaySettings = {
     showModel: true,
     showBase: true,
-    showWorkspace: true,
     showTimestamps: true,
     showStatus: true,
 };
@@ -22,7 +20,6 @@ export function readAgentDisplaySettings(raw: unknown): AgentDisplaySettings {
     return {
         showModel: value.showModel !== false,
         showBase: value.showBase !== false,
-        showWorkspace: value.showWorkspace !== false,
         showTimestamps: value.showTimestamps !== false,
         showStatus: value.showStatus as boolean,
     };
@@ -39,7 +36,6 @@ interface AgentDisplaySettingsDialogProps {
 const rows: Array<{ key: keyof AgentDisplaySettings; label: string; description: string }> = [
     { key: 'showModel', label: '显示模型', description: '在当前会话卡片的标签区域显示使用的模型。' },
     { key: 'showBase', label: '显示知识库', description: '在会话卡片的标签区域显示使用的知识库。' },
-    { key: 'showWorkspace', label: '显示工作区', description: '在会话卡片的标签区域显示所属工作区。' },
     { key: 'showTimestamps', label: '显示创建时间和修改时间', description: '使用 Base Detail 同款格式显示卡片创建时间和相对修改时间。' },
     { key: 'showStatus', label: '显示实时状态', description: '在每个会话卡片标题前显示当前运行状态。' },
 ];

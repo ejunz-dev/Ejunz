@@ -59,7 +59,6 @@
     "@ejunz/agent": "workspace:^",
     "@ejunz/agent-instructions": "workspace:^",
     "@ejunz/agent-loop": "workspace:^",
-    "@ejunz/bash-local": "workspace:^",
     "@ejunz/cordis": "workspace:^",
     "@ejunz/cordis-plugin-timer": "workspace:^",
     "@ejunz/fs-local": "workspace:^",

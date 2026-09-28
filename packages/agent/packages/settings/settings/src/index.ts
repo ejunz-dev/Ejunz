@@ -511,6 +511,12 @@ export abstract class SettingsProvider extends Service {
     })
   }
 
+  /**
+   * Describe registered settings against a supplied document without mutating service state.
+   * @param document - settings document values by namespace.
+   * @param options - optional secret-redaction policy.
+   * @returns one resolved descriptor per registration.
+   */
   describeDocument(document: Record<string, unknown>, options?: SettingsDescribeOptions): SettingsDescriptor[] {
     return [...this.registrations.values()].map((registration) => {
       const raw = document[String(registration.ns)]
