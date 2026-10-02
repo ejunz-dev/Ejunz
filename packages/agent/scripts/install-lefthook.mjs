@@ -13,7 +13,8 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import lefthookPackage from 'lefthook/package.json' with { type: 'json' }
 
 const MINIMUM_GIT = [2, 26, 0]
@@ -27,19 +28,30 @@ const INSTALL_LOCK_INITIALIZATION_TIMEOUT_MS = 1_000
 const INSTALL_LOCK_POLL_MS = 50
 const ALLOW_HOOKS_PATH_OVERRIDE = 'EA_LEFTHOOK_ALLOW_HOOKS_PATH_OVERRIDE'
 const REPOSITORY_EXTENSION_PATTERN = '^extensions\\.'
-const PAIRING_MERGE_DRIVER_CONFIG = [
-  ['merge.ea-translation-pairing.name', 'EjunzAgent bilingual pairing records'],
-  [
-    'merge.ea-translation-pairing.driver',
-    'scripts/merge-translation-pairing-driver.sh %O %A %B %P',
-  ],
-]
-const PAIRING_MERGE_DRIVER_PROBE = [
-  '--import',
-  'tsx/esm',
-  'scripts/merge-translation-pairing.ts',
-  '--probe',
-]
+const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
+
+function packageScriptPath(root, name) {
+  return relative(root, join(packageRoot, 'scripts', name)).split(sep).join('/')
+}
+
+function pairingMergeDriverConfig(root) {
+  return [
+    ['merge.ea-translation-pairing.name', 'EjunzAgent bilingual pairing records'],
+    [
+      'merge.ea-translation-pairing.driver',
+      `${packageScriptPath(root, 'merge-translation-pairing-driver.sh')} %O %A %B %P`,
+    ],
+  ]
+}
+
+function pairingMergeDriverProbe(root) {
+  return [
+    '--import',
+    'tsx/esm',
+    packageScriptPath(root, 'merge-translation-pairing.ts'),
+    '--probe',
+  ]
+}
 
 function errorCode(error) {
   return typeof error === 'object' && error !== null && 'code' in error
@@ -611,7 +623,7 @@ function refuseScopedHooksPath(entry) {
 function installPairingMergeDriver(root, worktreeConfigPath) {
   const added = []
   try {
-    for (const [key, expected] of PAIRING_MERGE_DRIVER_CONFIG) {
+    for (const [key, expected] of pairingMergeDriverConfig(root)) {
       const entries = includedFileConfigEntries(root, worktreeConfigPath, key)
       const includedEntry = entries.find(entry => !originIsFile(entry.origin, root, worktreeConfigPath))
       if (includedEntry !== undefined) {
@@ -685,13 +697,16 @@ function installPairingMergeDriver(root, worktreeConfigPath) {
 }
 
 function probePairingMergeDriver(root) {
-  capture(process.execPath, PAIRING_MERGE_DRIVER_PROBE, { cwd: root })
+  capture(process.execPath, pairingMergeDriverProbe(root), { cwd: root })
 }
 
 async function main() {
   if (process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true') return
   if (typeof lefthookPackage.bin?.lefthook !== 'string') return
-  const probe = spawnSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' })
+  const probe = spawnSync('git', ['rev-parse', '--show-toplevel'], {
+    cwd: packageRoot,
+    encoding: 'utf8',
+  })
   if (probe.status !== 0) return
   const root = stripGitLineTerminator(probe.stdout)
   const isWindows = process.platform === 'win32'
