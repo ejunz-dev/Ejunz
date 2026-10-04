@@ -3,7 +3,6 @@ import { createRequire } from 'node:module';
 import { hostname } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { credentialRef } from '@ejunz/credentials';
 import type { Context } from '../context';
 import { Service } from '../context';
 import { Logger } from '../logger';
@@ -45,6 +44,15 @@ const { WebSocket } = require('ws');
 const logger = new Logger('agent');
 const agentRoot = path.resolve(__dirname, '../../../agent');
 const agentEmbedEntry = path.join(agentRoot, 'apps/cli/src/embed.ts');
+const CREDENTIAL_REF_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** Validate a credential-reference without importing the embedded Agent workspace. */
+function credentialRef(value: string): string {
+    if (!CREDENTIAL_REF_PATTERN.test(value)) {
+        throw new TypeError(`credential ref "${value}" must match ${String(CREDENTIAL_REF_PATTERN)}`);
+    }
+    return value;
+}
 
 
 let agentRuntime: InProcessRuntime | null = null;
