@@ -1428,7 +1428,7 @@ async function importAgentEmbed(): Promise<{ embedAgentRuntime(options: { bridge
             import(specifier: string, parent: string): Promise<unknown>;
         };
     };
-    const scoped = register({ namespace: 'ejunz-agent', tsconfig: path.join(agentRoot, 'tsconfig.json') });
+    const scoped = register({ namespace: 'ejunz-agent', tsconfig: path.join(agentRoot, 'tsconfig.base.json') });
     return await scoped.import(agentEmbedEntry, pathToFileURL(__filename).href) as Awaited<ReturnType<typeof importAgentEmbed>>;
 }
 
