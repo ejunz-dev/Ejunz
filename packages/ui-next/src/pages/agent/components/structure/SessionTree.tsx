@@ -29,7 +29,6 @@ interface SessionTreeProps {
     onToggleNodeSelection: (nodeIds: readonly string[], cardIds: readonly string[], ancestorIds: readonly string[]) => void;
     onCreateNode: () => void;
     onRenameNode: (nodeId: string) => void;
-    onDeleteNode: (nodeId: string) => void;
     onSessionTitleChange: (sessionId: string, title: string) => void;
     onSaveSessionTitles: () => void | Promise<void>;
     sessionTitleSaving: boolean;
@@ -138,7 +137,7 @@ const SessionCardTitle = memo(function SessionCardTitle({ session, error, waitin
 
 export function SessionTree({
     sessions, nodes: agentNodes, bases, current, pendingQuestionSessionIds, sessionErrors, sessionActivityPreviews, modelGroups, displaySettings, query, searchMatches, searchSnippets, searchHasMore,
-    editMode, selectedCardIds, selectedNodeIds, sessionTitleDrafts, onToggleCardSelection, onToggleNodeSelection, onCreateNode, onRenameNode, onDeleteNode, onSessionTitleChange, onSaveSessionTitles, sessionTitleSaving,
+    editMode, selectedCardIds, selectedNodeIds, sessionTitleDrafts, onToggleCardSelection, onToggleNodeSelection, onCreateNode, onRenameNode, onSessionTitleChange, onSaveSessionTitles, sessionTitleSaving,
     onQuery, onSelect, onStartSession, onDeleteSelected, onExitEdit,
 }: SessionTreeProps) {
     const toolsRef = useRef<HTMLDivElement>(null);
@@ -251,9 +250,8 @@ export function SessionTree({
             <span>会话 {selectedCardIds.size} · 文件夹 {selectedNodeIds.size}</span>
             <button type="button" onClick={onCreateNode}>新建文件夹</button>
             <button type="button" disabled={sessionTitleSaving || !canEditNode} onClick={() => { if (selectedNodeId) onRenameNode(selectedNodeId); }}>重命名文件夹</button>
-            <button type="button" className="eja-selectionToolbarDelete" disabled={sessionTitleSaving || !canEditNode} onClick={() => { if (selectedNodeId) onDeleteNode(selectedNodeId); }}>删除文件夹</button>
             <button type="button" className="eja-selectionToolbarSave" disabled={sessionTitleSaving} onClick={() => { void onSaveSessionTitles(); }}>{sessionTitleSaving ? '保存中…' : '保存会话名'}</button>
-            <button type="button" className="eja-selectionToolbarDelete" disabled={sessionTitleSaving || selectedCardIds.size === 0} onClick={onDeleteSelected}>删除会话</button>
+            <button type="button" className="eja-selectionToolbarDelete" disabled={sessionTitleSaving || (selectedCardIds.size === 0 && selectedNodeIds.size === 0)} onClick={onDeleteSelected}>删除</button>
             <button type="button" className="eja-selectionToolbarExit" disabled={sessionTitleSaving} onClick={onExitEdit}>退出编辑</button>
         </div>}
         <div className="bd-content bd-content--tree eja-agentStructure__tree">

@@ -56,10 +56,9 @@ const SESSION_DRAWER_MIN = 320;
 type DialogState =
     | { kind: 'rename-session'; id: string; value: string }
     | { kind: 'delete-session'; id: string; title: string }
-    | { kind: 'delete-selected'; sessionIds: string[] }
+    | { kind: 'delete-selected'; sessionIds: string[]; nodeIds: string[] }
     | { kind: 'create-node'; value: string }
-    | { kind: 'rename-node'; id: string; value: string }
-    | { kind: 'delete-node'; id: string; title: string };
+    | { kind: 'rename-node'; id: string; value: string };
 
 interface HistoryCacheEntry {
     history: HistoryEntry[];
@@ -1430,17 +1429,16 @@ export default function AgentPage() {
                 if (!value.node) throw new Error('文件夹重命名失败');
                 setNodes((items) => items.map((node) => node.nodeId === active.id ? value.node! : node));
                 await Notification.success('文件夹已重命名');
-            } else if (active.kind === 'delete-node') {
-                await rpc('node.delete', { nodeId: active.id });
-                setNodes((items) => items.filter((node) => node.nodeId !== active.id));
-                setSelectedNodeIds(new Set());
-                await Notification.success('文件夹已删除');
             } else if (active.kind === 'delete-selected') {
-                await performHardDeleteMany(active.sessionIds);
+                if (active.sessionIds.length > 0) await performHardDeleteMany(active.sessionIds);
+                await Promise.all(active.nodeIds.map((nodeId) => rpc('node.delete', { nodeId })));
+                setNodes((items) => items.filter((node) => !active.nodeIds.includes(node.nodeId)));
                 setSelectedCardIds(new Set());
+                setSelectedNodeIds(new Set());
                 setSessionTitleDrafts({});
                 setEditMode(false);
-                await Notification.success(`已删除 ${active.sessionIds.length} 项`);
+                const deletedCount = active.sessionIds.length + active.nodeIds.length;
+                await Notification.success(`已删除 ${deletedCount} 项`);
             } else {
                 await performHardDelete(active.id);
             }
@@ -1499,17 +1497,13 @@ export default function AgentPage() {
         setDialogError(null);
         setDialog({ kind: 'rename-node', id: nodeId, value: node.text });
     }, [nodes]);
-    const requestDeleteNode = useCallback((nodeId: string) => {
-        const node = nodes.find((item) => item.nodeId === nodeId);
-        if (!node) return;
-        setDialogError(null);
-        setDialog({ kind: 'delete-node', id: nodeId, title: node.text });
-    }, [nodes]);
     const requestDeleteSelected = useCallback(() => {
-        if (selectedCardIds.size === 0) return;
+        const sessionIds = [...selectedCardIds];
+        const nodeIds = nodes.filter((node) => selectedNodeIds.has(node.nodeId)).map((node) => node.nodeId);
+        if (sessionIds.length === 0 && nodeIds.length === 0) return;
         setDialogError(null);
-        setDialog({ kind: 'delete-selected', sessionIds: [...selectedCardIds] });
-    }, [selectedCardIds]);
+        setDialog({ kind: 'delete-selected', sessionIds, nodeIds });
+    }, [nodes, selectedCardIds, selectedNodeIds]);
     const selectSession = useCallback((sessionId: string) => {
         setDetailsOpen(true);
         setSelectedTool(null);
@@ -1581,13 +1575,16 @@ export default function AgentPage() {
             />}
             {dialog && <ActionDialog
                 open
-                title={dialog.kind === 'rename-session' ? '重命名会话' : dialog.kind === 'create-node' ? '新建文件夹' : dialog.kind === 'rename-node' ? '重命名文件夹' : dialog.kind === 'delete-node' ? '删除文件夹？' : dialog.kind === 'delete-selected' ? '删除所选会话？' : '永久删除会话？'}
-                description={dialog.kind === 'delete-node' ? '仅删除这个文件夹节点，不会删除会话或工作目录。' : dialog.kind === 'delete-selected' ? `将永久删除 ${dialog.sessionIds.length} 个会话及其历史消息、工具调用，无法恢复。` : dialog.kind === 'delete-session' ? `永久删除“${dialog.title}”及其历史消息、工具调用，无法恢复。` : undefined}
+                title={dialog.kind === 'rename-session' ? '重命名会话' : dialog.kind === 'create-node' ? '新建文件夹' : dialog.kind === 'rename-node' ? '重命名文件夹' : dialog.kind === 'delete-selected' ? '删除所选项目？' : '永久删除会话？'}
+                description={dialog.kind === 'delete-selected' ? [
+                    dialog.nodeIds.length > 0 ? `删除 ${dialog.nodeIds.length} 个文件夹节点（不会删除工作目录）` : '',
+                    dialog.sessionIds.length > 0 ? `永久删除 ${dialog.sessionIds.length} 个会话及其历史消息、工具调用，无法恢复` : '',
+                ].filter(Boolean).join('；') + '。' : dialog.kind === 'delete-session' ? `永久删除“${dialog.title}”及其历史消息、工具调用，无法恢复。` : undefined}
                 inputLabel={dialog.kind === 'create-node' ? '文件夹名称' : dialog.kind === 'rename-session' || dialog.kind === 'rename-node' ? '名称' : undefined}
                 inputValue={'value' in dialog ? dialog.value : ''}
                 inputPlaceholder="请输入名称"
                 confirmLabel={dialog.kind === 'create-node' ? '创建' : dialog.kind === 'rename-session' || dialog.kind === 'rename-node' ? '保存' : '删除'}
-                danger={dialog.kind === 'delete-selected' || dialog.kind === 'delete-session' || dialog.kind === 'delete-node'}
+                danger={dialog.kind === 'delete-selected' || dialog.kind === 'delete-session'}
                 busy={dialogBusy}
                 error={dialogError}
                 onInputChange={(value) => setDialog((previous) => previous && 'value' in previous ? { ...previous, value } : previous)}
@@ -1638,7 +1635,6 @@ export default function AgentPage() {
                             onToggleNodeSelection={toggleNodeSelection}
                             onCreateNode={requestCreateNode}
                             onRenameNode={requestRenameNode}
-                            onDeleteNode={requestDeleteNode}
                             onSessionTitleChange={updateSessionTitleDraft}
                             onSaveSessionTitles={saveSessionTitleEdits}
                             sessionTitleSaving={sessionTitleSaving}
