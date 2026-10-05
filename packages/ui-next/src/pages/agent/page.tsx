@@ -1474,14 +1474,21 @@ export default function AgentPage() {
             return next;
         });
     }, []);
-    const toggleNodeSelection = useCallback((nodeId: string) => {
+    const toggleNodeSelection = useCallback((nodeIds: readonly string[], cardIds: readonly string[], ancestorIds: readonly string[]) => {
+        const deselect = nodeIds.every((nodeId) => selectedNodeIds.has(nodeId))
+            && cardIds.every((cardId) => selectedCardIds.has(cardId));
         setSelectedNodeIds((currentIds) => {
             const next = new Set(currentIds);
-            if (next.has(nodeId)) next.delete(nodeId);
-            else next.add(nodeId);
+            nodeIds.forEach((nodeId) => { if (deselect) next.delete(nodeId); else next.add(nodeId); });
+            if (deselect) ancestorIds.forEach((nodeId) => next.delete(nodeId));
             return next;
         });
-    }, []);
+        setSelectedCardIds((currentIds) => {
+            const next = new Set(currentIds);
+            cardIds.forEach((cardId) => { if (deselect) next.delete(cardId); else next.add(cardId); });
+            return next;
+        });
+    }, [selectedCardIds, selectedNodeIds]);
     const requestCreateNode = useCallback(() => {
         setDialogError(null);
         setDialog({ kind: 'create-node', value: '' });
