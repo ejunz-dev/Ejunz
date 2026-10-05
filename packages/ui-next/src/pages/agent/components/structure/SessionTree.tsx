@@ -1,15 +1,20 @@
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { BaseDetailTree, defaultBaseDetailDisplaySettings, type BaseDetailCard, type BaseDetailNode } from '@ejunz/ui-next';
+import { BaseDetailTree, BaseDetailTreeDrawer, defaultBaseDetailDisplaySettings, type BaseDetailCard, type BaseDetailNode } from '@ejunz/ui-next';
 import { StateDot, type StateDotState } from '../primitives/StateDot';
 import { MarkdownText } from '../primitives/markdown/MarkdownText';
 import type { AgentNode, SessionSummary, BaseView } from '../../runtime/session';
 import type { SessionModels } from '../types';
 import type { AgentDisplaySettings } from './AgentDisplaySettingsDialog';
 import { filterSessions } from './session-tree-utils';
+import '../../../../components/base-detail/base-detail.css';
 
 interface SessionTreeProps {
     sessions: SessionSummary[];
     nodes: AgentNode[];
+    treeOpen: boolean;
+    activeNodeId: string | null;
+    onSelectNode: (nodeId: string) => void;
+    onCloseTree: () => void;
     bases: BaseView[];
     current: string | null;
     pendingQuestionSessionIds: ReadonlySet<string>;
@@ -136,17 +141,26 @@ const SessionCardTitle = memo(function SessionCardTitle({ session, error, waitin
 });
 
 export function SessionTree({
-    sessions, nodes: agentNodes, bases, current, pendingQuestionSessionIds, sessionErrors, sessionActivityPreviews, modelGroups, displaySettings, query, searchMatches, searchSnippets, searchHasMore,
+    sessions, nodes: agentNodes, treeOpen, activeNodeId, onSelectNode, onCloseTree, bases, current, pendingQuestionSessionIds, sessionErrors, sessionActivityPreviews, modelGroups, displaySettings, query, searchMatches, searchSnippets, searchHasMore,
     editMode, selectedCardIds, selectedNodeIds, sessionTitleDrafts, onToggleCardSelection, onToggleNodeSelection, onCreateNode, onRenameNode, onSessionTitleChange, onSaveSessionTitles, sessionTitleSaving,
     onQuery, onSelect, onStartSession, onDeleteSelected, onExitEdit,
 }: SessionTreeProps) {
     const toolsRef = useRef<HTMLDivElement>(null);
     const [toolbarTop, setToolbarTop] = useState<number | null>(null);
+    const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => new Set([SESSION_GROUP_ID]));
     const visibleSessions = useMemo(() => filterSessions(sessions, current, query, searchMatches), [current, query, searchMatches, sessions]);
+    const visibleSelectedNodeId = activeNodeId ?? (visibleSessions.length > 0 ? SESSION_GROUP_ID : null);
+    const toggleNodeExpansion = useCallback((nodeId: string) => {
+        setExpandedNodes((current) => {
+            const next = new Set(current);
+            if (next.has(nodeId)) next.delete(nodeId); else next.add(nodeId);
+            return next;
+        });
+    }, []);
     const nodes = useMemo<BaseDetailNode[]>(() => [
-        { id: SESSION_GROUP_ID, text: '会话', type: 'session_group', order: 0, expanded: true },
+        ...(visibleSessions.length > 0 ? [{ id: SESSION_GROUP_ID, text: '会话', type: 'session_group', order: 0, expanded: true }] : []),
         ...agentNodes.map((node) => ({ id: node.nodeId, text: node.text, type: 'session_group', order: node.order, expanded: true })),
-    ], [agentNodes]);
+    ], [agentNodes, visibleSessions.length]);
     const edges = useMemo((): { source: string; target: string }[] => [], []);
     const rootNodeIds = useMemo(() => [
         ...(visibleSessions.length > 0 ? [SESSION_GROUP_ID] : []),
@@ -260,12 +274,12 @@ export function SessionTree({
                 nodes={nodes}
                 edges={edges}
                 nodeCardsMap={nodeCardsMap}
-                expandedNodes={new Set(nodes.map((node) => String(node.id)))}
-                onToggle={() => {}}
-                selectedNodeId={null}
+                expandedNodes={expandedNodes}
+                onToggle={toggleNodeExpansion}
+                selectedNodeId={visibleSelectedNodeId}
                 selectedCardId={current}
-                onSelectNode={() => {}}
-                onSelectCard={(card) => onSelect(card.docId)}
+                onSelectNode={onSelectNode}
+                onSelectCard={(card) => { onSelectNode(SESSION_GROUP_ID); onSelect(card.docId); }}
                 filter=""
                 displaySettings={treeDisplaySettings}
                 renderCardTitle={renderCardTitle}
@@ -277,6 +291,21 @@ export function SessionTree({
                 emptyMessage="暂无会话"
             />
         </div>
+        <BaseDetailTreeDrawer
+            open={treeOpen}
+            nodes={nodes}
+            edges={edges}
+            nodeCardsMap={nodeCardsMap}
+            expandedNodes={expandedNodes}
+            selectedNodeId={visibleSelectedNodeId}
+            selectedCardId={current}
+            onToggle={toggleNodeExpansion}
+            onSelectNode={(nodeId) => { onSelectNode(nodeId); onCloseTree(); }}
+            onSelectCard={(card) => { onSelectNode(SESSION_GROUP_ID); onSelect(card.docId); onCloseTree(); }}
+            onClose={onCloseTree}
+            filter={query}
+            displaySettings={treeDisplaySettings}
+        />
         {searchHasMore && <p className="bd-muted eja-agentStructure__hint">仅显示部分搜索结果，请缩小搜索范围。</p>}
     </section>;
 }

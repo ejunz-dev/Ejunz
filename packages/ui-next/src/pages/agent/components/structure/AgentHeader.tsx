@@ -9,6 +9,8 @@ interface AgentHeaderProps {
     webSocketStatus: AgentWebSocketStatus;
     onOpenSettings: () => void;
     onOpenDisplaySettings: () => void;
+    treeOpen: boolean;
+    onToggleTree: () => void;
     onEditClick: () => void;
     editActive: boolean;
 }
@@ -25,14 +27,14 @@ function webSocketLabel(status: AgentWebSocketStatus): string {
     return 'WS 连接中';
 }
 
-export function AgentHeader({ domainId, domainName, webSocketStatus, onOpenSettings, onOpenDisplaySettings, onEditClick, editActive }: AgentHeaderProps) {
+export function AgentHeader({ domainId, domainName, webSocketStatus, onOpenSettings, onOpenDisplaySettings, treeOpen, onToggleTree, onEditClick, editActive }: AgentHeaderProps) {
     return <BaseDetailHeader
         title="Ejunz agent"
         description={domainName}
         domainId={domainId}
         docId="ejunz-agent"
-        treeOpen
-        onToggleTree={() => undefined}
+        treeOpen={treeOpen}
+        onToggleTree={onToggleTree}
         onShare={() => undefined}
         onOpenSettings={onOpenSettings}
         onOpenDisplaySettings={onOpenDisplaySettings}

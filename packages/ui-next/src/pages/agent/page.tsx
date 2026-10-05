@@ -335,6 +335,8 @@ export default function AgentPage() {
     }, [buildUrl, guest]);
     const [sessions, setSessions] = useState<SessionSummary[]>([]);
     const [nodes, setNodes] = useState<AgentNode[]>([]);
+    const [treeOpen, setTreeOpen] = useState(false);
+    const [activeTreeNodeId, setActiveTreeNodeId] = useState<string | null>(null);
     const [bases, setBases] = useState<BaseView[]>([]);
     const [draftBaseId, setDraftBaseId] = useState<number | undefined>();
     const [draftModelSelection, setDraftModelSelection] = useState<{ provider: string; model: string } | undefined>();
@@ -1423,6 +1425,7 @@ export default function AgentPage() {
                 const value = await rpc('node.create', { text: active.value.trim() }) as { node?: AgentNode };
                 if (!value.node) throw new Error('文件夹创建失败');
                 setNodes((items) => [...items, value.node!]);
+                setActiveTreeNodeId(value.node.nodeId);
                 await Notification.success('文件夹已创建');
             } else if (active.kind === 'rename-node') {
                 const value = await rpc('node.rename', { nodeId: active.id, text: active.value.trim() }) as { node?: AgentNode };
@@ -1433,6 +1436,7 @@ export default function AgentPage() {
                 if (active.sessionIds.length > 0) await performHardDeleteMany(active.sessionIds);
                 await Promise.all(active.nodeIds.map((nodeId) => rpc('node.delete', { nodeId })));
                 setNodes((items) => items.filter((node) => !active.nodeIds.includes(node.nodeId)));
+                setActiveTreeNodeId((nodeId) => nodeId && active.nodeIds.includes(nodeId) ? null : nodeId);
                 setSelectedCardIds(new Set());
                 setSelectedNodeIds(new Set());
                 setSessionTitleDrafts({});
@@ -1598,6 +1602,8 @@ export default function AgentPage() {
                     webSocketStatus={webSocketStatus}
                     onOpenSettings={() => setSettingsOpen(true)}
                     onOpenDisplaySettings={() => setDisplaySettingsOpen(true)}
+                    treeOpen={treeOpen}
+                    onToggleTree={() => setTreeOpen((open) => !open)}
                     onEditClick={() => {
                         if (sessionTitleSaving) return;
                         if (editMode) {
@@ -1616,6 +1622,10 @@ export default function AgentPage() {
                         <SessionTree
                             sessions={sessions}
                             nodes={nodes}
+                            treeOpen={treeOpen}
+                            activeNodeId={activeTreeNodeId}
+                            onSelectNode={setActiveTreeNodeId}
+                            onCloseTree={() => setTreeOpen(false)}
                             bases={bases}
                             current={current}
                             pendingQuestionSessionIds={pendingQuestionSessionIds}
