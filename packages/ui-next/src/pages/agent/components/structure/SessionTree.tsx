@@ -148,8 +148,11 @@ export function SessionTree({
         { id: SESSION_GROUP_ID, text: '会话', type: 'session_group', order: 0, expanded: true },
         ...agentNodes.map((node) => ({ id: node.nodeId, text: node.text, type: 'session_group', order: node.order, expanded: true })),
     ], [agentNodes]);
-    const edges = useMemo(() => agentNodes.map((node) => ({ source: SESSION_GROUP_ID, target: node.nodeId })), [agentNodes]);
-    const rootNodeIds = useMemo(() => visibleSessions.length > 0 || agentNodes.length > 0 ? [SESSION_GROUP_ID] : [], [agentNodes.length, visibleSessions.length]);
+    const edges = useMemo((): { source: string; target: string }[] => [], []);
+    const rootNodeIds = useMemo(() => [
+        ...(visibleSessions.length > 0 ? [SESSION_GROUP_ID] : []),
+        ...agentNodes.map((node) => node.nodeId),
+    ], [agentNodes, visibleSessions.length]);
     const topSelectedNodeIds = agentNodes
         .filter((node) => selectedNodeIds.has(node.nodeId)
             && !edges.some((edge) => edge.target === node.nodeId && selectedNodeIds.has(edge.source)))
