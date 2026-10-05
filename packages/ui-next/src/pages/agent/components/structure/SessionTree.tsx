@@ -259,10 +259,10 @@ export function SessionTree({
         <div ref={toolsRef} className="eja-agentStructure__tools">
             <input value={query} placeholder="搜索会话" aria-label="搜索会话" onChange={(event) => onQuery(event.target.value)} />
             <button type="button" onClick={onStartSession}>新会话</button>
+            <button type="button" onClick={onCreateNode}>新节点</button>
         </div>
         {editMode && <div className="eja-selectionToolbar" style={toolbarTop === null ? undefined : { top: `${toolbarTop}px` }} role="toolbar" aria-label="编辑操作">
             <span>会话 {selectedCardIds.size} · 文件夹 {selectedNodeIds.size}</span>
-            <button type="button" onClick={onCreateNode}>新建文件夹</button>
             <button type="button" disabled={sessionTitleSaving || !canEditNode} onClick={() => { if (selectedNodeId) onRenameNode(selectedNodeId); }}>重命名文件夹</button>
             <button type="button" className="eja-selectionToolbarSave" disabled={sessionTitleSaving} onClick={() => { void onSaveSessionTitles(); }}>{sessionTitleSaving ? '保存中…' : '保存会话名'}</button>
             <button type="button" className="eja-selectionToolbarDelete" disabled={sessionTitleSaving || (selectedCardIds.size === 0 && selectedNodeIds.size === 0)} onClick={onDeleteSelected}>删除</button>

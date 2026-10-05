@@ -1423,10 +1423,10 @@ export default function AgentPage() {
                 if (value.title) setSessions((items) => items.map((session) => session.sessionId === active.id ? { ...session, projections: { values: { ...(session.projections?.values ?? {}), title: value.title } } } : session));
             } else if (active.kind === 'create-node') {
                 const value = await rpc('node.create', { text: active.value.trim() }) as { node?: AgentNode };
-                if (!value.node) throw new Error('文件夹创建失败');
+                if (!value.node) throw new Error('节点创建失败');
                 setNodes((items) => [...items, value.node!]);
                 setActiveTreeNodeId(value.node.nodeId);
-                await Notification.success('文件夹已创建');
+                await Notification.success('节点已创建');
             } else if (active.kind === 'rename-node') {
                 const value = await rpc('node.rename', { nodeId: active.id, text: active.value.trim() }) as { node?: AgentNode };
                 if (!value.node) throw new Error('文件夹重命名失败');
@@ -1579,12 +1579,12 @@ export default function AgentPage() {
             />}
             {dialog && <ActionDialog
                 open
-                title={dialog.kind === 'rename-session' ? '重命名会话' : dialog.kind === 'create-node' ? '新建文件夹' : dialog.kind === 'rename-node' ? '重命名文件夹' : dialog.kind === 'delete-selected' ? '删除所选项目？' : '永久删除会话？'}
+                title={dialog.kind === 'rename-session' ? '重命名会话' : dialog.kind === 'create-node' ? '新建节点' : dialog.kind === 'rename-node' ? '重命名节点' : dialog.kind === 'delete-selected' ? '删除所选项目？' : '永久删除会话？'}
                 description={dialog.kind === 'delete-selected' ? [
                     dialog.nodeIds.length > 0 ? `删除 ${dialog.nodeIds.length} 个文件夹节点（不会删除工作目录）` : '',
                     dialog.sessionIds.length > 0 ? `永久删除 ${dialog.sessionIds.length} 个会话及其历史消息、工具调用，无法恢复` : '',
                 ].filter(Boolean).join('；') + '。' : dialog.kind === 'delete-session' ? `永久删除“${dialog.title}”及其历史消息、工具调用，无法恢复。` : undefined}
-                inputLabel={dialog.kind === 'create-node' ? '文件夹名称' : dialog.kind === 'rename-session' || dialog.kind === 'rename-node' ? '名称' : undefined}
+                inputLabel={dialog.kind === 'create-node' ? '节点名称' : dialog.kind === 'rename-session' || dialog.kind === 'rename-node' ? '名称' : undefined}
                 inputValue={'value' in dialog ? dialog.value : ''}
                 inputPlaceholder="请输入名称"
                 confirmLabel={dialog.kind === 'create-node' ? '创建' : dialog.kind === 'rename-session' || dialog.kind === 'rename-node' ? '保存' : '删除'}
