@@ -450,6 +450,9 @@ async function sessionCreate(envelope: RpcEnvelope, scope: { domainId: string; u
     const workspaceId = typeof payload.workspaceId === 'string' ? payload.workspaceId : undefined;
     const workspace = workspaceId ? await agentDataAdapter.getWorkspace(scope, workspaceId) : null;
     if (workspaceId && !workspace) return rpcError(envelope.rpcId, 'workspace not found');
+    const nodeId = typeof payload.nodeId === 'string' && payload.nodeId.trim() ? payload.nodeId.trim() : undefined;
+    const node = nodeId ? await agentDataAdapter.getNode(scope, nodeId) : null;
+    if (nodeId && !node) return rpcError(envelope.rpcId, 'node not found');
     // The host is chosen with the session and recorded here, so every later call
     // for this session reaches the host that owns it.
     const requestedHost = typeof payload.runtimeId === 'string' ? payload.runtimeId.trim() : '';
@@ -457,6 +460,7 @@ async function sessionCreate(envelope: RpcEnvelope, scope: { domainId: string; u
     const sessionId = `session-${domainKey(scope.domainId)}-${randomUUID()}`;
     delete payload.domainId;
     delete payload.workspaceId;
+    delete payload.nodeId;
     delete payload.baseDocId;
     delete payload.creatorUserId;
     delete payload.type;
@@ -478,6 +482,7 @@ async function sessionCreate(envelope: RpcEnvelope, scope: { domainId: string; u
         type: metadata.type ?? 'generic',
         runtimeId: link.runtimeId,
         ...(selectedBaseDocId === undefined ? {} : { baseDocId: selectedBaseDocId }),
+        ...(nodeId === undefined ? {} : { nodeId }),
         ...(typeof payload.cwd === 'string' ? { cwd: payload.cwd } : {}),
         ...(typeof payload.agentPreset === 'string' && payload.agentPreset.length > 0
             ? { agentPreset: payload.agentPreset }
@@ -528,7 +533,7 @@ async function sessionCreate(envelope: RpcEnvelope, scope: { domainId: string; u
         if (!injected.body.result?.ok) logger.warn('[agent-base] context injection failed session=%s domain=%s baseId=%d error=%s', sessionId, scope.domainId, selectedBase.docId, injected.body.error?.message || 'unknown error');
     }
     if (workspace) await agentDataAdapter.reorderWorkspaceSessions(scope, workspace.workspaceId, [...workspace.sessionIds, summary.sessionId]);
-    return rpcOk(envelope.rpcId, { sessionId: summary.sessionId, ...(summary.agentPreset ? { agentPreset: summary.agentPreset } : {}) });
+    return rpcOk(envelope.rpcId, { sessionId: summary.sessionId, ...(summary.agentPreset ? { agentPreset: summary.agentPreset } : {}), ...(nodeId ? { nodeId } : {}) });
 }
 
 async function sessionContextSave(envelope: RpcEnvelope, scope: { domainId: string; userId: number }): Promise<RpcBody> {
@@ -2516,6 +2521,7 @@ export interface AgentDataAdapter {
     search(scope: AgentScope, query: string): Promise<{ sessionId: string; snippet: string }[]>;
     listWorkspaces(scope: AgentScope): Promise<AgentWorkspaceDoc[]>;
     listNodes(scope: AgentScope): Promise<AgentNodeDoc[]>;
+    getNode(scope: AgentScope, nodeId: string): Promise<AgentNodeDoc | null>;
     createNode(scope: AgentScope, text: string): Promise<AgentNodeDoc>;
     updateNode(scope: AgentScope, nodeId: string, text: string): Promise<AgentNodeDoc | null>;
     deleteNode(scope: AgentScope, nodeId: string): Promise<void>;
@@ -2649,6 +2655,10 @@ export class MongoAgentDataAdapter implements AgentDataAdapter {
 
     async listNodes(scope: AgentScope): Promise<AgentNodeDoc[]> {
         return await AgentModel.listNodes(scope.domainId, scope.userId);
+    }
+
+    async getNode(scope: AgentScope, nodeId: string): Promise<AgentNodeDoc | null> {
+        return await AgentModel.getNode(scope.domainId, scope.userId, nodeId);
     }
 
     async createNode(scope: AgentScope, text: string): Promise<AgentNodeDoc> {

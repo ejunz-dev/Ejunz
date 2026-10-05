@@ -17,6 +17,7 @@ export interface SessionSummary {
     creatorUserId?: number;
     type?: 'generic' | 'base_detail';
     baseDocId?: string;
+    nodeId?: string;
     cwd?: string;
     agentPreset?: string;
     /** The host that serves this session, as the session's record names it. */

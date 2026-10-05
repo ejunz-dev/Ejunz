@@ -149,7 +149,19 @@ export function SessionTree({
     const [toolbarTop, setToolbarTop] = useState<number | null>(null);
     const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => new Set([SESSION_GROUP_ID]));
     const visibleSessions = useMemo(() => filterSessions(sessions, current, query, searchMatches), [current, query, searchMatches, sessions]);
-    const visibleSelectedNodeId = activeNodeId ?? (visibleSessions.length > 0 ? SESSION_GROUP_ID : null);
+    const sessionsByNode = useMemo(() => {
+        const validNodeIds = new Set(agentNodes.map((node) => node.nodeId));
+        const groups = new Map<string, SessionSummary[]>();
+        visibleSessions.forEach((session) => {
+            const nodeId = session.nodeId && validNodeIds.has(session.nodeId) ? session.nodeId : SESSION_GROUP_ID;
+            const group = groups.get(nodeId) || [];
+            group.push(session);
+            groups.set(nodeId, group);
+        });
+        return groups;
+    }, [agentNodes, visibleSessions]);
+    const ungroupedSessions = sessionsByNode.get(SESSION_GROUP_ID) || [];
+    const visibleSelectedNodeId = activeNodeId ?? (ungroupedSessions.length > 0 ? SESSION_GROUP_ID : null);
     const toggleNodeExpansion = useCallback((nodeId: string) => {
         setExpandedNodes((current) => {
             const next = new Set(current);
@@ -158,22 +170,23 @@ export function SessionTree({
         });
     }, []);
     const nodes = useMemo<BaseDetailNode[]>(() => [
-        ...(visibleSessions.length > 0 ? [{ id: SESSION_GROUP_ID, text: '会话', type: 'session_group', order: 0, expanded: true }] : []),
+        ...(ungroupedSessions.length > 0 ? [{ id: SESSION_GROUP_ID, text: '未分组', type: 'session_group', order: 0, expanded: true }] : []),
         ...agentNodes.map((node) => ({ id: node.nodeId, text: node.text, type: 'session_group', order: node.order, expanded: true })),
-    ], [agentNodes, visibleSessions.length]);
+    ], [agentNodes, ungroupedSessions.length]);
     const edges = useMemo((): { source: string; target: string }[] => [], []);
     const rootNodeIds = useMemo(() => [
-        ...(visibleSessions.length > 0 ? [SESSION_GROUP_ID] : []),
+        ...(ungroupedSessions.length > 0 ? [SESSION_GROUP_ID] : []),
         ...agentNodes.map((node) => node.nodeId),
-    ], [agentNodes, visibleSessions.length]);
+    ], [agentNodes, ungroupedSessions.length]);
     const topSelectedNodeIds = agentNodes
         .filter((node) => selectedNodeIds.has(node.nodeId)
             && !edges.some((edge) => edge.target === node.nodeId && selectedNodeIds.has(edge.source)))
         .map((node) => node.nodeId);
     const selectedNodeId = selectedNodeIds.has(SESSION_GROUP_ID) ? undefined : topSelectedNodeIds.length === 1 ? topSelectedNodeIds[0] : undefined;
     const canEditNode = selectedNodeId !== undefined;
-    const nodeCardsMap = useMemo<Record<string, BaseDetailCard[]>>(() => ({
-        [SESSION_GROUP_ID]: visibleSessions.map((session, index) => {
+    const nodeCardsMap = useMemo<Record<string, BaseDetailCard[]>>(() => {
+        const cards: Record<string, BaseDetailCard[]> = { [SESSION_GROUP_ID]: [] };
+        const toCard = (session: SessionSummary, nodeId: string, order: number): BaseDetailCard => {
             const tags: string[] = [];
             if (displaySettings.showModel) tags.push(`模型: ${sessionModelLabel(session, modelGroups)}`);
             if (displaySettings.showBase) tags.push(`知识库: ${sessionBaseLabel(session, bases)}`);
@@ -182,15 +195,25 @@ export function SessionTree({
                 title: sessionTitle(session),
                 content: searchSnippets.get(session.sessionId) || session.cwd || '',
                 cardType: 'session',
-                nodeId: SESSION_GROUP_ID,
-                order: index,
+                nodeId,
+                order,
                 ...(session.createdAt === undefined ? {} : { createdAt: new Date(session.createdAt) }),
                 updateAt: new Date(session.updatedAt),
                 tags,
             };
-        }),
-        ...Object.fromEntries(agentNodes.map((node) => [node.nodeId, []])),
-    }), [agentNodes, bases, displaySettings, modelGroups, searchSnippets, visibleSessions]);
+        };
+        cards[SESSION_GROUP_ID] = ungroupedSessions.map((session, index) => toCard(session, SESSION_GROUP_ID, index));
+        agentNodes.forEach((node) => {
+            cards[node.nodeId] = (sessionsByNode.get(node.nodeId) || []).map((session, index) => toCard(session, node.nodeId, index));
+        });
+        return cards;
+    }, [agentNodes, bases, displaySettings, modelGroups, searchSnippets, sessionsByNode, ungroupedSessions]);
+    const selectSessionCard = useCallback((card: BaseDetailCard) => {
+        const session = visibleSessions.find((item) => item.sessionId === String(card.docId));
+        const nodeId = session?.nodeId && agentNodes.some((node) => node.nodeId === session.nodeId) ? session.nodeId : SESSION_GROUP_ID;
+        onSelectNode(nodeId);
+        onSelect(String(card.docId));
+    }, [agentNodes, onSelect, onSelectNode, visibleSessions]);
     const toggleNodeSelection = useCallback((rootNodeId: string) => {
         const branchNodeIds: string[] = [];
         const pending = [rootNodeId];
@@ -279,7 +302,7 @@ export function SessionTree({
                 selectedNodeId={visibleSelectedNodeId}
                 selectedCardId={current}
                 onSelectNode={onSelectNode}
-                onSelectCard={(card) => { onSelectNode(SESSION_GROUP_ID); onSelect(card.docId); }}
+                onSelectCard={selectSessionCard}
                 filter=""
                 displaySettings={treeDisplaySettings}
                 renderCardTitle={renderCardTitle}
@@ -301,7 +324,7 @@ export function SessionTree({
             selectedCardId={current}
             onToggle={toggleNodeExpansion}
             onSelectNode={(nodeId) => { onSelectNode(nodeId); onCloseTree(); }}
-            onSelectCard={(card) => { onSelectNode(SESSION_GROUP_ID); onSelect(card.docId); onCloseTree(); }}
+            onSelectCard={(card) => { selectSessionCard(card); onCloseTree(); }}
             onClose={onCloseTree}
             filter={query}
             displaySettings={treeDisplaySettings}

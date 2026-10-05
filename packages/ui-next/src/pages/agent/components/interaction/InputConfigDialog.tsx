@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { DraftAttachment } from '../../runtime/uploads';
-import type { BaseView } from '../../runtime/session';
+import type { AgentNode, BaseView } from '../../runtime/session';
 import type { HostOption } from '../structure/HostPicker';
 import type { SessionModels } from '../types';
 import { InputBar } from '../conversation/skeleton/InputBar';
@@ -13,6 +13,9 @@ interface InputConfigDialogProps {
     bases: readonly BaseView[];
     selectedBaseId?: number;
     onPickBase: (baseId: number | undefined) => void;
+    nodes: readonly AgentNode[];
+    selectedNodeId?: string;
+    onPickNode: (nodeId: string | undefined) => void;
     models: SessionModels | null;
     selectModel: (provider: string, model: string) => void;
     agentPresetOptions: readonly AgentPresetOption[];
@@ -40,7 +43,7 @@ function buttonClass(selected: boolean): string {
 
 export function InputConfigDialog({
     hosts, selectedHostId, onPickHost,
-    bases, selectedBaseId, onPickBase, models, selectModel, agentPresetOptions, agentPresetChoice, onSelectAgentPreset, agentPresetError,
+    bases, selectedBaseId, onPickBase, nodes, selectedNodeId, onPickNode, models, selectModel, agentPresetOptions, agentPresetChoice, onSelectAgentPreset, agentPresetError,
     input, setInput, attachments, onAddFiles, onRemoveAttachment, modelMenuOpen, setModelMenuOpen,
     notice, onCancel, sending, loading, onConfirm, onClose,
 }: InputConfigDialogProps) {
@@ -88,6 +91,13 @@ export function InputConfigDialog({
                     <div className="bd-edit-tags">
                         <button type="button" className={buttonClass(selectedBaseId === undefined)} disabled={sending} onClick={() => onPickBase(undefined)}>不使用</button>
                         {bases.map((base) => <button type="button" className={buttonClass(selectedBaseId === base.docId)} disabled={sending} key={base.docId} onClick={() => onPickBase(base.docId)}>{base.title}</button>)}
+                    </div>
+                </div>
+                <div className="bd-edit-field">
+                    <h3>节点</h3>
+                    <div className="bd-edit-tags">
+                        <button type="button" className={buttonClass(selectedNodeId === undefined)} disabled={sending} onClick={() => onPickNode(undefined)}>未分组</button>
+                        {nodes.map((node) => <button type="button" className={buttonClass(selectedNodeId === node.nodeId)} disabled={sending} key={node.nodeId} onClick={() => onPickNode(node.nodeId)}>{node.text}</button>)}
                     </div>
                 </div>
                 <div className="bd-edit-field">

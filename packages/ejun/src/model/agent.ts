@@ -547,6 +547,7 @@ export interface AgentSessionSummary {
     creatorUserId?: number;
     type?: AgentSessionType;
     baseDocId?: string;
+    nodeId?: string;
     cwd?: string;
     agentPreset?: string;
     /** The host that serves this session; absent until one was chosen. */
@@ -724,6 +725,7 @@ function sessionToSummary(doc: AgentSessionDoc): AgentSessionSummary {
         creatorUserId: doc.creatorUserId ?? doc.userId,
         type: doc.type ?? 'generic',
         ...(doc.baseDocId === undefined ? {} : { baseDocId: doc.baseDocId }),
+        ...(doc.nodeId === undefined ? {} : { nodeId: doc.nodeId }),
         ...(doc.cwd === undefined ? {} : { cwd: doc.cwd }),
         ...(doc.agentPreset === undefined ? {} : { agentPreset: doc.agentPreset }),
         ...(doc.runtimeId === undefined ? {} : { runtimeId: doc.runtimeId }),
@@ -960,13 +962,20 @@ export class AgentSessionModel {
         return await nodes.find({ domainId, userId }).sort({ order: 1, createdAt: 1 }).toArray() as AgentNodeDoc[];
     }
 
+    static async getNode(domainId: string, userId: number, nodeId: string): Promise<AgentNodeDoc | null> {
+        return await nodes.findOne({ domainId, userId, nodeId }) as AgentNodeDoc | null;
+    }
+
     static async updateNode(domainId: string, userId: number, nodeId: string, text: string): Promise<AgentNodeDoc | null> {
         await nodes.updateOne({ domainId, userId, nodeId }, { $set: { text: text.trim(), updatedAt: new Date() } });
         return await nodes.findOne({ domainId, userId, nodeId }) as AgentNodeDoc | null;
     }
 
     static async deleteNode(domainId: string, userId: number, nodeId: string): Promise<void> {
-        await nodes.deleteOne({ domainId, userId, nodeId });
+        await Promise.all([
+            sessions.updateMany({ domainId, userId, nodeId }, { $unset: { nodeId: 1 }, $set: { updatedAt: Date.now() } }),
+            nodes.deleteOne({ domainId, userId, nodeId }),
+        ]);
     }
 
     static async getDisplayPrefs(domainId: string, userId: number): Promise<AgentDisplayPrefs> {

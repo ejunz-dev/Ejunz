@@ -339,6 +339,7 @@ export default function AgentPage() {
     const [activeTreeNodeId, setActiveTreeNodeId] = useState<string | null>(null);
     const [bases, setBases] = useState<BaseView[]>([]);
     const [draftBaseId, setDraftBaseId] = useState<number | undefined>();
+    const [draftNodeId, setDraftNodeId] = useState<string | undefined>();
     const [draftModelSelection, setDraftModelSelection] = useState<{ provider: string; model: string } | undefined>();
     const [modelCatalog, setModelCatalog] = useState<{ groups: SessionModels['groups'] } | null>(null);
     const [models, setModels] = useState<SessionModels | null>(null);
@@ -975,16 +976,19 @@ export default function AgentPage() {
         setDetailsOpen(true);
         try {
             const selectedBaseId = baseId ?? draftBaseId;
+            const selectedNodeId = draftNodeId;
             const selectedModel = modelOverride ?? draftModelSelection;
             // The host is part of what a session is created with: it serves this
             // session until another one is chosen for it.
             const selectedHostId = draftHostId ?? '';
             const value = await rpc('session.create', {
                 ...(selectedBaseId === undefined ? {} : { baseDocId: selectedBaseId }),
+                ...(selectedNodeId === undefined ? {} : { nodeId: selectedNodeId }),
                 ...(selectedHostId === '' ? {} : { runtimeId: selectedHostId }),
-            }) as { sessionId?: string; agentPreset?: string; runtimeId?: string };
+            }) as { sessionId?: string; agentPreset?: string; runtimeId?: string; nodeId?: string };
             if (!value.sessionId) throw new Error('会话创建未返回会话 ID');
             const actualHostId = value.runtimeId ?? selectedHostId;
+            const actualNodeId = value.nodeId ?? selectedNodeId;
             const requestedPreset = presetOverride ?? agentPresetChoice;
             let agentPreset = value.agentPreset;
             if (requestedPreset && requestedPreset !== agentPreset) {
@@ -1005,9 +1009,11 @@ export default function AgentPage() {
             const optimisticCreatedAt = Date.now();
             setSessions((items) => items.some((session) => session.sessionId === value.sessionId)
                 ? items
-                : [{ sessionId: value.sessionId!, createdAt: optimisticCreatedAt, updatedAt: optimisticCreatedAt, running: false, blank: !hasContent, agentPreset, ...(actualHostId === '' ? {} : { runtimeId: actualHostId }), ...(title ? { projections: { values: { title } } } : {}), ...(selectedBaseId === undefined ? {} : { baseDocId: String(selectedBaseId) }), ...(selectedModel === undefined ? {} : { model: selectedModel }) }, ...items]);
+                : [{ sessionId: value.sessionId!, createdAt: optimisticCreatedAt, updatedAt: optimisticCreatedAt, running: false, blank: !hasContent, agentPreset, ...(actualHostId === '' ? {} : { runtimeId: actualHostId }), ...(title ? { projections: { values: { title } } } : {}), ...(selectedBaseId === undefined ? {} : { baseDocId: String(selectedBaseId) }), ...(actualNodeId === undefined ? {} : { nodeId: actualNodeId }), ...(selectedModel === undefined ? {} : { model: selectedModel }) }, ...items]);
             setDraftBaseId(undefined);
+            setDraftNodeId(undefined);
             setDraftHostId('');
+            setActiveTreeNodeId(actualNodeId ?? null);
             setCurrent(value.sessionId);
             sessionPublished = true;
             setCreatingSession(false);
@@ -1040,7 +1046,7 @@ export default function AgentPage() {
             setCreatingSession(false);
             setSending(false);
         }
-    }, [agentPresetChoice, attachments, draftBaseId, draftModelSelection, loadSessions, rpc]);
+    }, [agentPresetChoice, attachments, draftBaseId, draftModelSelection, draftNodeId, loadSessions, rpc]);
 
     const confirmNewSession = useCallback(async (title: string) => {
         const selectedModel = draftModelSelection ?? (composerModels?.current?.provider && composerModels.current.model
@@ -1060,6 +1066,7 @@ export default function AgentPage() {
         setInput('');
         clearAttachments();
         setDraftBaseId(baseId);
+        setDraftNodeId(nodes.some((node) => node.nodeId === activeTreeNodeId) ? activeTreeNodeId ?? undefined : undefined);
         // The host the dialog opens on: the last one chosen, else the server's
         // own fallback, so the choice is stated rather than left to chance.
         setDraftHostId((previous) => (previous !== '' && hosts.some((host) => host.runtimeId === previous && host.online !== false)
@@ -1070,7 +1077,7 @@ export default function AgentPage() {
         setDraftModelSelection(undefined);
         await loadModelCatalog();
         if (newSessionLoadRef.current === loadId) setNewSessionConfigLoading(false);
-    }, [fallbackHostId, hosts, loadModelCatalog]);
+    }, [activeTreeNodeId, fallbackHostId, hosts, loadModelCatalog, nodes]);
 
     /**
      * Move the open session to another host.
@@ -1531,6 +1538,9 @@ export default function AgentPage() {
                 bases={bases}
                 selectedBaseId={draftBaseId}
                 onPickBase={(baseId) => setDraftBaseId(baseId)}
+                nodes={nodes}
+                selectedNodeId={draftNodeId}
+                onPickNode={setDraftNodeId}
                 models={newSessionConfigLoading ? null : composerModels}
                 selectModel={(provider, model) => { setDraftModelSelection({ provider, model }); }}
                 agentPresetOptions={agentPresetOptions}
