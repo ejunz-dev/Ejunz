@@ -64,11 +64,13 @@
   right: calc(50% + 390px + 1rem);
   z-index: 20;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: .65rem;
+  gap: .5rem;
+  max-width: min(96vw, 760px);
   padding: .5rem .65rem .5rem .8rem;
   border: 1px solid var(--bd-line);
-  border-radius: 999px;
+  border-radius: 16px;
   background: var(--bd-surface);
   color: var(--bd-muted);
   box-shadow: 0 8px 24px rgba(16, 28, 37, .16);
@@ -76,14 +78,19 @@
 }
 
 .eja-selectionToolbar button {
-  border: 1px solid var(--web-negative);
+  border: 1px solid var(--bd-line);
   border-radius: 999px;
   padding: .3rem .7rem;
   background: transparent;
-  color: var(--web-negative);
+  color: var(--bd-ink);
   cursor: pointer;
   font: inherit;
   font-size: .75rem;
+}
+
+.eja-selectionToolbar .eja-selectionToolbarDelete {
+  border-color: var(--web-negative);
+  color: var(--web-negative);
 }
 
 .eja-selectionToolbar .eja-selectionToolbarExit {

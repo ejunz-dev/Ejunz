@@ -37,7 +37,7 @@ import { domainPrefix, useAgentRpc } from './runtime/rpc';
 import { useAgentTheme } from './runtime/theme';
 import { applyEvent, asObject, assistantStreamKey, eventFailureMessage, eventMessage, eventsToMessages, fileInjectionsAfterUser, flattenToolTree, foldToolTree, latestHistoryError, queueItems, settleRunningMessages } from './runtime/conversation';
 import type { HistoryEntry } from './runtime/conversation';
-import type { BaseView, HostFrame, MuxFrame, SessionSummary } from './runtime/session';
+import type { AgentNode, BaseView, HostFrame, MuxFrame, SessionSummary } from './runtime/session';
 import { useDraftAttachments } from './components/attachment/useDraftAttachments';
 import { FILE_INJECTION_PLUGIN, FILE_INJECTION_SECTION, fileInjectionText, type DraftAttachment, type UploadedFileMeta } from './runtime/uploads';
 import { Notification, useBuildUrl, useUiContext, useUserContext } from '@ejunz/ui-next';
@@ -56,7 +56,10 @@ const SESSION_DRAWER_MIN = 320;
 type DialogState =
     | { kind: 'rename-session'; id: string; value: string }
     | { kind: 'delete-session'; id: string; title: string }
-    | { kind: 'delete-selected'; sessionIds: string[] };
+    | { kind: 'delete-selected'; sessionIds: string[] }
+    | { kind: 'create-node'; value: string }
+    | { kind: 'rename-node'; id: string; value: string }
+    | { kind: 'delete-node'; id: string; title: string };
 
 interface HistoryCacheEntry {
     history: HistoryEntry[];
@@ -332,6 +335,7 @@ export default function AgentPage() {
         window.location.href = buildUrl('user_login', {}, { redirect });
     }, [buildUrl, guest]);
     const [sessions, setSessions] = useState<SessionSummary[]>([]);
+    const [nodes, setNodes] = useState<AgentNode[]>([]);
     const [bases, setBases] = useState<BaseView[]>([]);
     const [draftBaseId, setDraftBaseId] = useState<number | undefined>();
     const [draftModelSelection, setDraftModelSelection] = useState<{ provider: string; model: string } | undefined>();
@@ -390,6 +394,7 @@ export default function AgentPage() {
     const [sessionTitleDrafts, setSessionTitleDrafts] = useState<Record<string, string>>({});
     const [sessionTitleSaving, setSessionTitleSaving] = useState(false);
     const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(() => new Set());
+    const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(() => new Set());
     const currentRef = useRef<string | null>(null);
     const sessionsRef = useRef(sessions);
     const hostsRef = useRef(hosts);
@@ -411,6 +416,15 @@ export default function AgentPage() {
                     : next;
             });
             setLoadError(null);
+        } catch (error) {
+            setLoadError(error instanceof Error ? error.message : String(error));
+        }
+    }, [rpc]);
+
+    const loadNodes = useCallback(async () => {
+        try {
+            const value = await rpc('node.list', {}) as { items?: AgentNode[] };
+            setNodes(Array.isArray(value.items) ? value.items : []);
         } catch (error) {
             setLoadError(error instanceof Error ? error.message : String(error));
         }
@@ -844,18 +858,19 @@ export default function AgentPage() {
         if (guest) return;
         void Promise.all([
             loadSessions(),
+            loadNodes(),
             loadHosts(),
             loadBases(),
             loadDisplaySettings(),
             loadAgentPresets(),
             loadModelCatalog(),
         ]).finally(() => setBooting(false));
-    }, [guest, loadAgentPresets, loadBases, loadDisplaySettings, loadHosts, loadModelCatalog, loadSessions]);
+    }, [guest, loadAgentPresets, loadBases, loadDisplaySettings, loadHosts, loadModelCatalog, loadNodes, loadSessions]);
     useEffect(() => {
         if (guest) return undefined;
-        const timer = window.setInterval(() => { void loadSessions(); void loadHosts(); void loadBases(); }, POLL_MS);
+        const timer = window.setInterval(() => { void loadSessions(); void loadNodes(); void loadHosts(); void loadBases(); }, POLL_MS);
         return () => window.clearInterval(timer);
-    }, [guest, loadBases, loadHosts, loadSessions]);
+    }, [guest, loadBases, loadHosts, loadNodes, loadSessions]);
     useEffect(() => {
         if (guest) return;
         sessions.forEach((session) => {
@@ -1283,6 +1298,7 @@ export default function AgentPage() {
     const startSessionTitleEdit = useCallback(() => {
         setSessionTitleDrafts(Object.fromEntries(sessions.map((session) => [session.sessionId, sessionTitle(session)])));
         setSelectedCardIds(new Set());
+        setSelectedNodeIds(new Set());
         setEditMode(true);
         setLoadError(null);
     }, [sessions]);
@@ -1404,6 +1420,21 @@ export default function AgentPage() {
             if (active.kind === 'rename-session') {
                 const value = await rpc('session.rename', { sessionId: active.id, title: active.value.trim() }) as { title?: string };
                 if (value.title) setSessions((items) => items.map((session) => session.sessionId === active.id ? { ...session, projections: { values: { ...(session.projections?.values ?? {}), title: value.title } } } : session));
+            } else if (active.kind === 'create-node') {
+                const value = await rpc('node.create', { text: active.value.trim() }) as { node?: AgentNode };
+                if (!value.node) throw new Error('文件夹创建失败');
+                setNodes((items) => [...items, value.node!]);
+                await Notification.success('文件夹已创建');
+            } else if (active.kind === 'rename-node') {
+                const value = await rpc('node.rename', { nodeId: active.id, text: active.value.trim() }) as { node?: AgentNode };
+                if (!value.node) throw new Error('文件夹重命名失败');
+                setNodes((items) => items.map((node) => node.nodeId === active.id ? value.node! : node));
+                await Notification.success('文件夹已重命名');
+            } else if (active.kind === 'delete-node') {
+                await rpc('node.delete', { nodeId: active.id });
+                setNodes((items) => items.filter((node) => node.nodeId !== active.id));
+                setSelectedNodeIds(new Set());
+                await Notification.success('文件夹已删除');
             } else if (active.kind === 'delete-selected') {
                 await performHardDeleteMany(active.sessionIds);
                 setSelectedCardIds(new Set());
@@ -1443,6 +1474,30 @@ export default function AgentPage() {
             return next;
         });
     }, []);
+    const toggleNodeSelection = useCallback((nodeId: string) => {
+        setSelectedNodeIds((currentIds) => {
+            const next = new Set(currentIds);
+            if (next.has(nodeId)) next.delete(nodeId);
+            else next.add(nodeId);
+            return next;
+        });
+    }, []);
+    const requestCreateNode = useCallback(() => {
+        setDialogError(null);
+        setDialog({ kind: 'create-node', value: '' });
+    }, []);
+    const requestRenameNode = useCallback((nodeId: string) => {
+        const node = nodes.find((item) => item.nodeId === nodeId);
+        if (!node) return;
+        setDialogError(null);
+        setDialog({ kind: 'rename-node', id: nodeId, value: node.text });
+    }, [nodes]);
+    const requestDeleteNode = useCallback((nodeId: string) => {
+        const node = nodes.find((item) => item.nodeId === nodeId);
+        if (!node) return;
+        setDialogError(null);
+        setDialog({ kind: 'delete-node', id: nodeId, title: node.text });
+    }, [nodes]);
     const requestDeleteSelected = useCallback(() => {
         if (selectedCardIds.size === 0) return;
         setDialogError(null);
@@ -1519,13 +1574,13 @@ export default function AgentPage() {
             />}
             {dialog && <ActionDialog
                 open
-                title={dialog.kind === 'rename-session' ? '重命名会话' : dialog.kind === 'delete-selected' ? '删除所选会话？' : '永久删除会话？'}
-                description={dialog.kind === 'delete-selected' ? `将永久删除 ${dialog.sessionIds.length} 个会话及其历史消息、工具调用，无法恢复。` : dialog.kind === 'delete-session' ? `永久删除“${dialog.title}”及其历史消息、工具调用，无法恢复。` : undefined}
-                inputLabel={dialog.kind === 'rename-session' ? '名称' : undefined}
+                title={dialog.kind === 'rename-session' ? '重命名会话' : dialog.kind === 'create-node' ? '新建文件夹' : dialog.kind === 'rename-node' ? '重命名文件夹' : dialog.kind === 'delete-node' ? '删除文件夹？' : dialog.kind === 'delete-selected' ? '删除所选会话？' : '永久删除会话？'}
+                description={dialog.kind === 'delete-node' ? '仅删除这个文件夹节点，不会删除会话或工作目录。' : dialog.kind === 'delete-selected' ? `将永久删除 ${dialog.sessionIds.length} 个会话及其历史消息、工具调用，无法恢复。` : dialog.kind === 'delete-session' ? `永久删除“${dialog.title}”及其历史消息、工具调用，无法恢复。` : undefined}
+                inputLabel={dialog.kind === 'create-node' ? '文件夹名称' : dialog.kind === 'rename-session' || dialog.kind === 'rename-node' ? '名称' : undefined}
                 inputValue={'value' in dialog ? dialog.value : ''}
                 inputPlaceholder="请输入名称"
-                confirmLabel={dialog.kind === 'rename-session' ? '保存' : '删除'}
-                danger={dialog.kind === 'delete-selected' || dialog.kind === 'delete-session'}
+                confirmLabel={dialog.kind === 'create-node' ? '创建' : dialog.kind === 'rename-session' || dialog.kind === 'rename-node' ? '保存' : '删除'}
+                danger={dialog.kind === 'delete-selected' || dialog.kind === 'delete-session' || dialog.kind === 'delete-node'}
                 busy={dialogBusy}
                 error={dialogError}
                 onInputChange={(value) => setDialog((previous) => previous && 'value' in previous ? { ...previous, value } : previous)}
@@ -1544,7 +1599,8 @@ export default function AgentPage() {
                         if (editMode) {
                             setEditMode(false);
                             setSessionTitleDrafts({});
-                                                setSelectedCardIds(new Set());
+                            setSelectedCardIds(new Set());
+                            setSelectedNodeIds(new Set());
                             return;
                         }
                         startSessionTitleEdit();
@@ -1555,6 +1611,7 @@ export default function AgentPage() {
                     <main className="eja-mainSurface">
                         <SessionTree
                             sessions={sessions}
+                            nodes={nodes}
                             bases={bases}
                             current={current}
                             pendingQuestionSessionIds={pendingQuestionSessionIds}
@@ -1568,8 +1625,13 @@ export default function AgentPage() {
                             searchHasMore={searchHasMore}
                             editMode={editMode}
                             selectedCardIds={selectedCardIds}
+                            selectedNodeIds={selectedNodeIds}
                             sessionTitleDrafts={sessionTitleDrafts}
                             onToggleCardSelection={toggleCardSelection}
+                            onToggleNodeSelection={toggleNodeSelection}
+                            onCreateNode={requestCreateNode}
+                            onRenameNode={requestRenameNode}
+                            onDeleteNode={requestDeleteNode}
                             onSessionTitleChange={updateSessionTitleDraft}
                             onSaveSessionTitles={saveSessionTitleEdits}
                             sessionTitleSaving={sessionTitleSaving}
@@ -1577,7 +1639,7 @@ export default function AgentPage() {
                             onSelect={selectSession}
                             onStartSession={() => { void prepareNewSession(); }}
                             onDeleteSelected={requestDeleteSelected}
-                            onExitEdit={() => { setEditMode(false); setSessionTitleDrafts({}); setSelectedCardIds(new Set()); }}
+                            onExitEdit={() => { setEditMode(false); setSessionTitleDrafts({}); setSelectedCardIds(new Set()); setSelectedNodeIds(new Set()); }}
                         />
                     </main>
                 </div>

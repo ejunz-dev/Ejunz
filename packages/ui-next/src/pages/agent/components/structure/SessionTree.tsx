@@ -2,13 +2,14 @@ import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { BaseDetailTree, defaultBaseDetailDisplaySettings, type BaseDetailCard, type BaseDetailNode } from '@ejunz/ui-next';
 import { StateDot, type StateDotState } from '../primitives/StateDot';
 import { MarkdownText } from '../primitives/markdown/MarkdownText';
-import type { SessionSummary, BaseView } from '../../runtime/session';
+import type { AgentNode, SessionSummary, BaseView } from '../../runtime/session';
 import type { SessionModels } from '../types';
 import type { AgentDisplaySettings } from './AgentDisplaySettingsDialog';
 import { filterSessions } from './session-tree-utils';
 
 interface SessionTreeProps {
     sessions: SessionSummary[];
+    nodes: AgentNode[];
     bases: BaseView[];
     current: string | null;
     pendingQuestionSessionIds: ReadonlySet<string>;
@@ -22,8 +23,13 @@ interface SessionTreeProps {
     searchHasMore: boolean;
     editMode: boolean;
     selectedCardIds: ReadonlySet<string>;
+    selectedNodeIds: ReadonlySet<string>;
     sessionTitleDrafts: Readonly<Record<string, string>>;
     onToggleCardSelection: (cardId: string) => void;
+    onToggleNodeSelection: (nodeId: string) => void;
+    onCreateNode: () => void;
+    onRenameNode: (nodeId: string) => void;
+    onDeleteNode: (nodeId: string) => void;
     onSessionTitleChange: (sessionId: string, title: string) => void;
     onSaveSessionTitles: () => void | Promise<void>;
     sessionTitleSaving: boolean;
@@ -131,20 +137,23 @@ const SessionCardTitle = memo(function SessionCardTitle({ session, error, waitin
 });
 
 export function SessionTree({
-    sessions, bases, current, pendingQuestionSessionIds, sessionErrors, sessionActivityPreviews, modelGroups, displaySettings, query, searchMatches, searchSnippets, searchHasMore,
-    editMode, selectedCardIds, sessionTitleDrafts, onToggleCardSelection, onSessionTitleChange, onSaveSessionTitles, sessionTitleSaving,
+    sessions, nodes: agentNodes, bases, current, pendingQuestionSessionIds, sessionErrors, sessionActivityPreviews, modelGroups, displaySettings, query, searchMatches, searchSnippets, searchHasMore,
+    editMode, selectedCardIds, selectedNodeIds, sessionTitleDrafts, onToggleCardSelection, onToggleNodeSelection, onCreateNode, onRenameNode, onDeleteNode, onSessionTitleChange, onSaveSessionTitles, sessionTitleSaving,
     onQuery, onSelect, onStartSession, onDeleteSelected, onExitEdit,
 }: SessionTreeProps) {
     const toolsRef = useRef<HTMLDivElement>(null);
     const [toolbarTop, setToolbarTop] = useState<number | null>(null);
     const visibleSessions = useMemo(() => filterSessions(sessions, current, query, searchMatches), [current, query, searchMatches, sessions]);
-    const nodes = useMemo<BaseDetailNode[]>(() => visibleSessions.length > 0 ? [{
-        id: SESSION_GROUP_ID,
-        text: '会话',
-        type: 'session_group',
-        order: 0,
-        expanded: true,
-    }] : [], [visibleSessions.length]);
+    const selectedNodeId = selectedNodeIds.size === 1 ? [...selectedNodeIds][0] : undefined;
+    const canEditNode = selectedNodeId !== undefined && agentNodes.some((node) => node.nodeId === selectedNodeId);
+    const nodes = useMemo<BaseDetailNode[]>(() => [
+        { id: SESSION_GROUP_ID, text: '会话', type: 'session_group', order: 0, expanded: true },
+        ...agentNodes.map((node) => ({ id: node.nodeId, text: node.text, type: 'session_group', order: node.order, expanded: true })),
+    ], [agentNodes]);
+    const rootNodeIds = useMemo(() => [
+        ...(visibleSessions.length > 0 ? [SESSION_GROUP_ID] : []),
+        ...agentNodes.map((node) => node.nodeId),
+    ], [agentNodes, visibleSessions.length]);
     const nodeCardsMap = useMemo<Record<string, BaseDetailCard[]>>(() => ({
         [SESSION_GROUP_ID]: visibleSessions.map((session, index) => {
             const tags: string[] = [];
@@ -162,7 +171,8 @@ export function SessionTree({
                 tags,
             };
         }),
-    }), [bases, displaySettings, modelGroups, searchSnippets, visibleSessions]);
+        ...Object.fromEntries(agentNodes.map((node) => [node.nodeId, []])),
+    }), [agentNodes, bases, displaySettings, modelGroups, searchSnippets, visibleSessions]);
     useLayoutEffect(() => {
         if (!editMode) {
             setToolbarTop(null);
@@ -211,14 +221,17 @@ export function SessionTree({
             <button type="button" onClick={onStartSession}>新会话</button>
         </div>
         {editMode && <div className="eja-selectionToolbar" style={toolbarTop === null ? undefined : { top: `${toolbarTop}px` }} role="toolbar" aria-label="编辑操作">
-            <span>已选 {selectedCardIds.size} 项</span>
-            <button type="button" className="eja-selectionToolbarSave" disabled={sessionTitleSaving} onClick={() => { void onSaveSessionTitles(); }}>{sessionTitleSaving ? '保存中…' : '保存'}</button>
-            <button type="button" className="eja-selectionToolbarDelete" disabled={sessionTitleSaving || selectedCardIds.size === 0} onClick={onDeleteSelected}>删除</button>
+            <span>会话 {selectedCardIds.size} · 文件夹 {selectedNodeIds.size}</span>
+            <button type="button" onClick={onCreateNode}>新建文件夹</button>
+            <button type="button" disabled={sessionTitleSaving || !canEditNode} onClick={() => { if (selectedNodeId) onRenameNode(selectedNodeId); }}>重命名文件夹</button>
+            <button type="button" className="eja-selectionToolbarDelete" disabled={sessionTitleSaving || !canEditNode} onClick={() => { if (selectedNodeId) onDeleteNode(selectedNodeId); }}>删除文件夹</button>
+            <button type="button" className="eja-selectionToolbarSave" disabled={sessionTitleSaving} onClick={() => { void onSaveSessionTitles(); }}>{sessionTitleSaving ? '保存中…' : '保存会话名'}</button>
+            <button type="button" className="eja-selectionToolbarDelete" disabled={sessionTitleSaving || selectedCardIds.size === 0} onClick={onDeleteSelected}>删除会话</button>
             <button type="button" className="eja-selectionToolbarExit" disabled={sessionTitleSaving} onClick={onExitEdit}>退出编辑</button>
         </div>}
         <div className="bd-content bd-content--tree eja-agentStructure__tree">
             <BaseDetailTree
-                rootNodeIds={nodes.map((node) => String(node.id))}
+                rootNodeIds={rootNodeIds}
                 nodes={nodes}
                 edges={[]}
                 nodeCardsMap={nodeCardsMap}
@@ -232,7 +245,9 @@ export function SessionTree({
                 displaySettings={treeDisplaySettings}
                 renderCardTitle={renderCardTitle}
                 editMode={editMode}
+                selectedNodeIds={selectedNodeIds}
                 selectedCardIds={selectedCardIds}
+                onToggleNodeSelection={onToggleNodeSelection}
                 onToggleCardSelection={onToggleCardSelection}
                 emptyMessage="暂无会话"
             />

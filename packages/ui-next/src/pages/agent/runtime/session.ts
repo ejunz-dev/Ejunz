@@ -1,5 +1,13 @@
 import type { SessionEvent } from './conversation';
 
+export interface AgentNode {
+    nodeId: string;
+    text: string;
+    order: number;
+    createdAt: string;
+    updatedAt: string;
+}
+
 export interface SessionSummary {
     sessionId: string;
     createdAt?: number;

@@ -10,7 +10,7 @@ import SystemModel from '../model/system';
 import { createProvider } from './provider';
 import { httpServer } from '@ejunz/framework';
 import { AgentSessionModel as AgentModel, AgentRuntimeModel, AgentLinkModel, AgentStorageModel } from '../model/agent';
-import { type AgentDisplayPrefs, type AgentDomainSettings, type AgentSessionSummary, type AgentSessionType, type AgentWorkspaceDoc } from '../model/agent';
+import { type AgentDisplayPrefs, type AgentDomainSettings, type AgentNodeDoc, type AgentSessionSummary, type AgentSessionType, type AgentWorkspaceDoc } from '../model/agent';
 import { type AgentRuntimeSummary } from '../model/agent';
 
 interface EjunContext {
@@ -965,6 +965,42 @@ class AgentRunService extends Service implements AgentRunApi {
         if (!session) return undefined;
         return { running: session.running === true };
     }
+}
+
+function nodeView(node: AgentNodeDoc) {
+    return {
+        nodeId: node.nodeId,
+        text: node.text,
+        order: node.order,
+        createdAt: node.createdAt.toISOString(),
+        updatedAt: node.updatedAt.toISOString(),
+    };
+}
+
+async function nodeRpc(envelope: RpcEnvelope, scope: { domainId: string; userId: number }): Promise<RpcBody> {
+    const payload = envelope.payload ?? {};
+    const method = String(envelope.method || '');
+    if (method === 'node.list') {
+        return rpcOk(envelope.rpcId, { items: (await agentDataAdapter.listNodes(scope)).map(nodeView) });
+    }
+    if (method === 'node.create') {
+        const text = String(payload.text || '').trim();
+        if (!text) return rpcError(envelope.rpcId, 'node name is required');
+        return rpcOk(envelope.rpcId, { node: nodeView(await agentDataAdapter.createNode(scope, text)) });
+    }
+    const nodeId = String(payload.nodeId || '');
+    if (!nodeId) return rpcError(envelope.rpcId, 'nodeId is required');
+    if (method === 'node.rename') {
+        const text = String(payload.text || '').trim();
+        if (!text) return rpcError(envelope.rpcId, 'node name is required');
+        const node = await agentDataAdapter.updateNode(scope, nodeId, text);
+        return node ? rpcOk(envelope.rpcId, { node: nodeView(node) }) : rpcError(envelope.rpcId, 'node not found');
+    }
+    if (method === 'node.delete') {
+        await agentDataAdapter.deleteNode(scope, nodeId);
+        return rpcOk(envelope.rpcId, { deleted: true });
+    }
+    return rpcError(envelope.rpcId, `unsupported node method: ${method}`);
 }
 
 async function workspaceRpc(envelope: RpcEnvelope, scope: { domainId: string; userId: number }): Promise<RpcBody> {
@@ -2479,6 +2515,10 @@ export interface AgentDataAdapter {
     listEventsTailAny(sessionId: string, beforeSeq?: number, limit?: number): Promise<{ events: Record<string, unknown>[]; hasMore: boolean }>;
     search(scope: AgentScope, query: string): Promise<{ sessionId: string; snippet: string }[]>;
     listWorkspaces(scope: AgentScope): Promise<AgentWorkspaceDoc[]>;
+    listNodes(scope: AgentScope): Promise<AgentNodeDoc[]>;
+    createNode(scope: AgentScope, text: string): Promise<AgentNodeDoc>;
+    updateNode(scope: AgentScope, nodeId: string, text: string): Promise<AgentNodeDoc | null>;
+    deleteNode(scope: AgentScope, nodeId: string): Promise<void>;
     getWorkspace(scope: AgentScope, workspaceId: string): Promise<AgentWorkspaceDoc | null>;
     getWorkspaceByPath(scope: AgentScope, path: string): Promise<AgentWorkspaceDoc | null>;
     getDisplayPrefs(scope: AgentScope): Promise<AgentDisplayPrefs>;
@@ -2605,6 +2645,22 @@ export class MongoAgentDataAdapter implements AgentDataAdapter {
 
     async listWorkspaces(scope: AgentScope): Promise<AgentWorkspaceDoc[]> {
         return await AgentModel.listWorkspaces(scope.domainId, scope.userId);
+    }
+
+    async listNodes(scope: AgentScope): Promise<AgentNodeDoc[]> {
+        return await AgentModel.listNodes(scope.domainId, scope.userId);
+    }
+
+    async createNode(scope: AgentScope, text: string): Promise<AgentNodeDoc> {
+        return await AgentModel.createNode(scope.domainId, scope.userId, text);
+    }
+
+    async updateNode(scope: AgentScope, nodeId: string, text: string): Promise<AgentNodeDoc | null> {
+        return await AgentModel.updateNode(scope.domainId, scope.userId, nodeId, text);
+    }
+
+    async deleteNode(scope: AgentScope, nodeId: string): Promise<void> {
+        await AgentModel.deleteNode(scope.domainId, scope.userId, nodeId);
     }
 
     async getWorkspace(scope: AgentScope, workspaceId: string): Promise<AgentWorkspaceDoc | null> {
@@ -2768,7 +2824,7 @@ export const agentRuntimeHandlerContext = {
     modelReady: () => modelReady,
     requireBridgeToken, baseSessionScope, toolRegistry,
     scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, upstreamValue,
-    workspaceRpc, domainSettingsRpc, domainCredentialsRpc, baseTutorEnsure, baseTutorList,
+    nodeRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, baseTutorEnsure, baseTutorList,
     baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems,
     runtimeRelabel, runtimeRemove, sessionCreate, sessionHistory, sessionMessageCount,
     sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink,

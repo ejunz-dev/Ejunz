@@ -586,6 +586,17 @@ export interface AgentWorkspaceDoc {
     updatedAt: Date;
 }
 
+export interface AgentNodeDoc {
+    _id: ObjectId;
+    domainId: string;
+    userId: number;
+    nodeId: string;
+    text: string;
+    order: number;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
 export interface AgentDisplayPrefs {
     showPermission: boolean;
     showModel: boolean;
@@ -645,6 +656,7 @@ function normalizeAgentDisplayPrefs(raw: unknown): AgentDisplayPrefs {
 const sessions = agentCollection('agent.session');
 const events = agentCollection('agent.session_event');
 const workspaces = agentCollection('agent.workspace');
+const nodes = agentCollection('agent.node');
 const uiPrefs = agentCollection('agent.ui_prefs');
 const domains = agentCollection('domain');
 const credentials = agentCollection('agent.credential');
@@ -730,6 +742,8 @@ export class AgentSessionModel {
             events.createIndex({ domainId: 1, userId: 1, sessionId: 1, 'event.type': 1 }, { background: true, name: 'agent_event_session_type' }),
             workspaces.createIndex({ domainId: 1, userId: 1, workspaceId: 1 }, { unique: true, background: true, name: 'agent_workspace_domain_user_id_unique' }),
             workspaces.createIndex({ domainId: 1, userId: 1, order: 1 }, { background: true, name: 'agent_workspace_domain_user_order' }),
+            nodes.createIndex({ domainId: 1, userId: 1, nodeId: 1 }, { unique: true, background: true, name: 'agent_node_domain_user_id_unique' }),
+            nodes.createIndex({ domainId: 1, userId: 1, order: 1 }, { background: true, name: 'agent_node_domain_user_order' }),
             uiPrefs.createIndex({ domainId: 1, userId: 1 }, { unique: true, background: true, name: 'agent_ui_prefs_domain_user_unique' }),
             credentials.createIndex({ domainId: 1, ref: 1 }, { unique: true, background: true, name: 'agent_credential_domain_ref_unique' }),
         ]);
@@ -925,6 +939,36 @@ export class AgentSessionModel {
         return await workspaces.findOne({ domainId, userId, path }) as AgentWorkspaceDoc | null;
     }
 
+    static async createNode(domainId: string, userId: number, text: string): Promise<AgentNodeDoc> {
+        const now = new Date();
+        const current = await nodes.countDocuments({ domainId, userId });
+        const node: AgentNodeDoc = {
+            _id: new ObjectId(),
+            domainId,
+            userId,
+            nodeId: new ObjectId().toHexString(),
+            text: text.trim(),
+            order: current,
+            createdAt: now,
+            updatedAt: now,
+        };
+        await nodes.insertOne(node);
+        return node;
+    }
+
+    static async listNodes(domainId: string, userId: number): Promise<AgentNodeDoc[]> {
+        return await nodes.find({ domainId, userId }).sort({ order: 1, createdAt: 1 }).toArray() as AgentNodeDoc[];
+    }
+
+    static async updateNode(domainId: string, userId: number, nodeId: string, text: string): Promise<AgentNodeDoc | null> {
+        await nodes.updateOne({ domainId, userId, nodeId }, { $set: { text: text.trim(), updatedAt: new Date() } });
+        return await nodes.findOne({ domainId, userId, nodeId }) as AgentNodeDoc | null;
+    }
+
+    static async deleteNode(domainId: string, userId: number, nodeId: string): Promise<void> {
+        await nodes.deleteOne({ domainId, userId, nodeId });
+    }
+
     static async getDisplayPrefs(domainId: string, userId: number): Promise<AgentDisplayPrefs> {
         const doc = await uiPrefs.findOne({ domainId, userId }) as AgentUiPrefsDoc | null;
         return normalizeAgentDisplayPrefs(doc?.display);
@@ -1081,6 +1125,7 @@ export class AgentSessionModel {
             sessions.deleteMany({ domainId }),
             events.deleteMany({ domainId }),
             workspaces.deleteMany({ domainId }),
+            nodes.deleteMany({ domainId }),
             uiPrefs.deleteMany({ domainId }),
             credentials.deleteMany({ domainId }),
         ]);
