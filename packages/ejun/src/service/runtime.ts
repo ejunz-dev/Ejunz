@@ -441,11 +441,11 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
             return rpcError(envelope.rpcId, 'session not found');
         }
     }
-    let selectedAgent: Awaited<ReturnType<typeof AgentDefinitionModel.get>> | null = null;
+    let selectedAgentRoot: AgentNodeDoc | undefined;
     if (typeof scope.agentId === 'number') {
-        selectedAgent = await AgentDefinitionModel.get(scope.domainId, scope.agentId, AgentDefinitionModel.PROJECTION_LIST);
+        const selectedAgent = await AgentDefinitionModel.get(scope.domainId, scope.agentId, AgentDefinitionModel.PROJECTION_LIST);
         if (!selectedAgent) return rpcError(envelope.rpcId, 'Agent not found in current domain');
-        await AgentModel.ensureAgentRoot(scope.domainId, scope.userId, scope.agentId, selectedAgent.title);
+        selectedAgentRoot = await AgentModel.ensureAgentRoot(scope.domainId, scope.userId, scope.agentId, selectedAgent.title);
     }
     const selectedBaseDocId = metadata.baseDocId ?? baseDocIdOf(payload.baseDocId);
     let selectedBase: { docId: number; title?: string } | undefined;
@@ -459,7 +459,7 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
     const workspace = workspaceId ? await agentDataAdapter.getWorkspace(scope, workspaceId) : null;
     if (workspaceId && !workspace) return rpcError(envelope.rpcId, 'workspace not found');
     const requestedNodeId = typeof payload.nodeId === 'string' && payload.nodeId.trim() ? payload.nodeId.trim() : undefined;
-    const nodeId = requestedNodeId ?? (typeof scope.agentId === 'number' ? AgentModel.agentRootNodeId(scope.agentId) : undefined);
+    const nodeId = requestedNodeId ?? selectedAgentRoot?.nodeId;
     const node = nodeId ? await agentDataAdapter.getNode(scope, nodeId) : null;
     if (nodeId && !node) return rpcError(envelope.rpcId, 'node not found in this Agent');
     // The host is chosen with the session and recorded here, so every later call

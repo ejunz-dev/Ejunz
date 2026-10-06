@@ -38,7 +38,7 @@ import { useAgentTheme } from './runtime/theme';
 import { usePageData } from '../../context/page-data';
 import { applyEvent, asObject, assistantStreamKey, eventFailureMessage, eventMessage, eventsToMessages, fileInjectionsAfterUser, flattenToolTree, foldToolTree, latestHistoryError, queueItems, settleRunningMessages } from './runtime/conversation';
 import type { HistoryEntry } from './runtime/conversation';
-import { agentRootNodeId, type AgentNode, type BaseView, type HostFrame, type MuxFrame, type SessionSummary } from './runtime/session';
+import type { AgentNode, BaseView, HostFrame, MuxFrame, SessionSummary } from './runtime/session';
 import { useDraftAttachments } from './components/attachment/useDraftAttachments';
 import { FILE_INJECTION_PLUGIN, FILE_INJECTION_SECTION, fileInjectionText, type DraftAttachment, type UploadedFileMeta } from './runtime/uploads';
 import { Notification, useBuildUrl, useUiContext, useUserContext } from '@ejunz/ui-next';
@@ -346,7 +346,7 @@ export default function AgentPage() {
     const agentId = pageArgs.agentId === null || !Number.isSafeInteger(parsedAgentId) || parsedAgentId <= 0 ? null : parsedAgentId;
     const pageAgent = pageArgs.agent && typeof pageArgs.agent === 'object' ? pageArgs.agent as { title?: unknown } : undefined;
     const agentTitle = typeof pageAgent?.title === 'string' && pageAgent.title.trim() ? pageAgent.title : 'Ejunz agent';
-    const rootNodeId = agentId === null ? null : agentRootNodeId(agentId);
+    const pageRootNodeId = typeof pageArgs.rootNodeId === 'string' ? pageArgs.rootNodeId : null;
     const { domainId, domain } = useUiContext();
     const domainName = typeof domain?.name === 'string' && domain.name.trim() ? domain.name : String(domainId || 'system');
     const user = useUserContext();
@@ -360,8 +360,9 @@ export default function AgentPage() {
     }, [buildUrl, guest]);
     const [sessions, setSessions] = useState<SessionSummary[]>([]);
     const [nodes, setNodes] = useState<AgentNode[]>([]);
+    const rootNodeId = nodes.find((node) => node.isRoot)?.nodeId ?? pageRootNodeId;
     const [treeOpen, setTreeOpen] = useState(false);
-    const [activeTreeNodeId, setActiveTreeNodeId] = useState<string | null>(() => readAgentSelection().nodeId ?? rootNodeId);
+    const [activeTreeNodeId, setActiveTreeNodeId] = useState<string | null>(() => readAgentSelection().nodeId ?? pageRootNodeId);
     const [bases, setBases] = useState<BaseView[]>([]);
     const [draftBaseId, setDraftBaseId] = useState<number | undefined>();
     const [draftNodeId, setDraftNodeId] = useState<string | undefined>();

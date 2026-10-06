@@ -761,6 +761,7 @@ export class AgentSessionModel {
             sessions.createIndex({ domainId: 1, userId: 1, type: 1, baseDocId: 1, updatedAt: -1 }, { background: true, name: 'agent_session_base_detail_lookup' }),
             sessions.createIndex({ domainId: 1, userId: 1, agentId: 1, type: 1, baseDocId: 1, updatedAt: -1 }, { background: true, name: 'agent_session_agent_base_detail_lookup' }),
             nodes.createIndex({ domainId: 1, userId: 1, agentId: 1, order: 1 }, { background: true, name: 'agent_node_agent_order' }),
+            nodes.createIndex({ domainId: 1, userId: 1, agentId: 1 }, { unique: true, partialFilterExpression: { isRoot: true }, background: true, name: 'agent_node_agent_root_unique' }),
             events.createIndex({ domainId: 1, userId: 1, sessionId: 1, seq: 1 }, { unique: true, background: true, name: 'agent_event_session_seq_unique' }),
             events.createIndex({ domainId: 1, userId: 1, sessionId: 1, 'event.type': 1 }, { background: true, name: 'agent_event_session_type' }),
             workspaces.createIndex({ domainId: 1, userId: 1, workspaceId: 1 }, { unique: true, background: true, name: 'agent_workspace_domain_user_id_unique' }),
@@ -968,28 +969,40 @@ export class AgentSessionModel {
         return await workspaces.findOne({ domainId, userId, path }) as AgentWorkspaceDoc | null;
     }
 
-    static agentRootNodeId(agentId: number): string {
-        return `agent-root-${agentId}`;
-    }
-
     static async ensureAgentRoot(domainId: string, userId: number, agentId: number, title: string): Promise<AgentNodeDoc> {
-        const nodeId = AgentSessionModel.agentRootNodeId(agentId);
-        const filter = agentNodeFilter(domainId, userId, agentId, nodeId);
-        const existing = await nodes.findOne(agentNodeFilter(domainId, userId, undefined, nodeId)) as AgentNodeDoc | null;
-        if (existing && (existing.agentId !== agentId || existing.isRoot !== true)) {
-            throw new Error(`Agent root node id collision for ${nodeId}`);
-        }
+        const filter = { domainId, userId, agentId, isRoot: true };
         const now = new Date();
-        await nodes.updateOne(
-            filter,
-            {
-                $set: { agentId, isRoot: true, text: title, order: -1, updatedAt: now },
+        const existing = await nodes.findOne(filter) as AgentNodeDoc | null;
+        if (existing) {
+            await nodes.updateOne(filter, {
+                $set: { text: title, order: -1, updatedAt: now },
                 $unset: { parentId: 1 },
-                $setOnInsert: { _id: new ObjectId(), domainId, userId, nodeId, createdAt: now },
-            },
-            { upsert: true },
-        );
-        return await nodes.findOne(filter) as AgentNodeDoc;
+            });
+            return await nodes.findOne(filter) as AgentNodeDoc;
+        }
+
+        const nodeId = `agent-root-${new ObjectId().toHexString()}`;
+        const root: AgentNodeDoc = {
+            _id: new ObjectId(),
+            domainId,
+            userId,
+            agentId,
+            nodeId,
+            isRoot: true,
+            text: title,
+            order: -1,
+            createdAt: now,
+            updatedAt: now,
+        };
+        try {
+            await nodes.insertOne(root);
+            return root;
+        } catch (error) {
+            const raced = await nodes.findOne(filter) as AgentNodeDoc | null;
+            if (!raced) throw error;
+            await nodes.updateOne(filter, { $set: { text: title, order: -1, updatedAt: new Date() } });
+            return await nodes.findOne(filter) as AgentNodeDoc;
+        }
     }
 
     static async syncAgentRootTitle(domainId: string, agentId: number, title: string): Promise<void> {
@@ -1009,9 +1022,12 @@ export class AgentSessionModel {
     static async createNode(domainId: string, userId: number, text: string, agentId?: number | null, parentId?: string): Promise<AgentNodeDoc> {
         const now = new Date();
         const scope = agentNodeFilter(domainId, userId, agentId);
-        const actualParentId = agentId === null || agentId === undefined
-            ? parentId
-            : parentId || AgentSessionModel.agentRootNodeId(agentId);
+        let actualParentId = parentId;
+        if (typeof agentId === 'number') {
+            const root = await nodes.findOne({ domainId, userId, agentId, isRoot: true }) as AgentNodeDoc | null;
+            if (!root) throw new Error('Agent root node is missing');
+            actualParentId = actualParentId || root.nodeId;
+        }
         if (actualParentId && !await AgentSessionModel.getNode(domainId, userId, actualParentId, agentId)) {
             throw new Error('Parent node not found in this Agent');
         }
@@ -1054,7 +1070,10 @@ export class AgentSessionModel {
         const node = await nodes.findOne(filter) as AgentNodeDoc | null;
         if (!node) return;
         if (node.isRoot) throw new Error('Agent root node cannot be deleted');
-        const parentId = node.parentId || (typeof agentId === 'number' ? AgentSessionModel.agentRootNodeId(agentId) : undefined);
+        const root = typeof agentId === 'number'
+            ? await nodes.findOne({ domainId, userId, agentId, isRoot: true }) as AgentNodeDoc | null
+            : null;
+        const parentId = node.parentId || root?.nodeId;
         const childrenFilter = agentNodeFilter(domainId, userId, agentId);
         const sessionTargetFilter = sessionFilter(domainId, userId, undefined, agentId);
         const sessionUpdate = parentId

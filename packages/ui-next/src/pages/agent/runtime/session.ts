@@ -11,10 +11,6 @@ export interface AgentNode {
     updatedAt: string;
 }
 
-export function agentRootNodeId(agentId: number): string {
-    return `agent-root-${agentId}`;
-}
-
 export interface SessionSummary {
     sessionId: string;
     createdAt?: number;

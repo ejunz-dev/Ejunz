@@ -250,10 +250,11 @@ export class EjunzAgentWorkspacePageHandler extends Handler<Context> {
             this.response.body = 'Agent not found';
             return;
         }
-        await AgentSessionModel.ensureAgentRoot(scope.domainId, scope.userId, agentId, agent.title);
+        const rootNode = await AgentSessionModel.ensureAgentRoot(scope.domainId, scope.userId, agentId, agent.title);
         this.response.template = 'agent_workspace';
         this.response.body = {
             agentId,
+            rootNodeId: rootNode.nodeId,
             agent: agentDefinitionView(agent as unknown as Record<string, unknown>),
         };
     }
