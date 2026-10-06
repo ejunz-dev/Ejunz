@@ -63,18 +63,13 @@ export class AgentModel {
     }
 
     static async generateNextAid(domainId: string): Promise<string> {
-        const lastAgent = await document.getMulti(domainId, document.TYPE_AGENT, {})
-            .sort({ aid: -1 })
-            .limit(1)
-            .project({ aid: 1 })
+        const agents = await document.getMulti(domainId, document.TYPE_AGENT, {})
+            .project<{ aid?: string }>({ aid: 1 })
             .toArray();
-
-        if (!lastAgent.length || !lastAgent[0]?.aid) {
-            return "A1";
-        }
-
-        const lastAid = String(lastAgent[0].aid);
-        const lastAidNumber = parseInt(lastAid.match(/\d+/)?.[0] || "0", 10);
+        const lastAidNumber = agents.reduce((last, agent) => {
+            const number = Number(String(agent.aid || '').match(/\d+/)?.[0] || 0);
+            return Number.isSafeInteger(number) ? Math.max(last, number) : last;
+        }, 0);
 
         return `A${lastAidNumber + 1}`;
     }

@@ -1,6 +1,7 @@
 import type { Context } from '../context';
 import { ConnectionHandler, Handler } from '@ejunz/framework';
-import { PRIV } from '../model/builtin';
+import { PERM, PRIV } from '../model/builtin';
+import AgentDefinitionModel from '../model/agent';
 import type { RuntimeLink } from '../service/runtime';
 import type { AgentStorageDescriptor } from '../model/agent';
 import type { RuntimeHelloFrame, RuntimeInboundFrame, RuntimeLinkPollFrame, RuntimeStream } from '../service/runtime';
@@ -16,6 +17,16 @@ interface RpcEnvelope {
 const { requireBridgeToken, baseSessionScope, toolRegistry, scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, nodeRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, baseTutorEnsure, baseTutorList, baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems, runtimeRelabel, runtimeRemove, sessionCreate, sessionHistory, sessionMessageCount, sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink, logger, RUNTIME_HELLO_TIMEOUT_MS, addLink, rememberRuntime, reportRuntime, agentDataAdapter, AgentStorageModel, AgentLinkModel, createProvider, SystemModel, randomUUID, WebSocket, parseRuntimeFrame, createSocketLink, followLinks, runtimeLinks, runtimeFacts, bridgeRuntimeId, mergeDomainProviders, mergeDomainModels, cloneSettingsSections } = service;
 const dataOk = (value: unknown): Record<string, unknown> => ({ ok: true, value });
 const dataError = (message: string): Record<string, unknown> => ({ ok: false, error: { message } });
+
+function agentDefinitionView(agent: Record<string, unknown>) {
+    return {
+        docId: Number(agent.docId),
+        aid: String(agent.aid || ''),
+        title: String(agent.title || ''),
+        content: String(agent.content || ''),
+        updateAt: agent.updateAt instanceof Date ? agent.updateAt.toISOString() : String(agent.updateAt || ''),
+    };
+}
 
 export class EjunzAgentDataHandler extends Handler<Context> {
     noCheckPermView = true;
@@ -209,6 +220,13 @@ export class EjunzAgentDataHandler extends Handler<Context> {
 export class EjunzAgentPageHandler extends Handler<Context> {
     async get() {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.response.template = 'agent_list';
+    }
+}
+
+export class EjunzAgentChatPageHandler extends Handler<Context> {
+    async get() {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
         this.response.template = 'agent';
     }
 }
@@ -254,6 +272,61 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
 
     private async dispatch(envelope: RpcEnvelope, scope: { domainId: string; userId: number }): Promise<void> {
         const method = String(envelope.method || '');
+        if (method === 'agent.list') {
+            const agents = await AgentDefinitionModel.getMulti(scope.domainId).toArray();
+            this.response.type = 'application/json';
+            this.response.body = JSON.stringify(rpcOk(envelope.rpcId, {
+                items: agents.map((agent) => agentDefinitionView(agent as unknown as Record<string, unknown>)),
+            }));
+            return;
+        }
+        if (method === 'agent.create') {
+            const title = typeof envelope.payload?.title === 'string' ? envelope.payload.title.trim() : '';
+            const content = typeof envelope.payload?.content === 'string' ? envelope.payload.content : '';
+            if (!title || title.length > 256 || content.length > 100000) {
+                this.response.type = 'application/json';
+                this.response.body = JSON.stringify(rpcError(envelope.rpcId, '名称必填且不超过 256 个字符，内容不能超过 100000 个字符'));
+                return;
+            }
+            const aid = await AgentDefinitionModel.add(scope.domainId, scope.userId, title, content, this.request.ip);
+            const agent = await AgentDefinitionModel.get(scope.domainId, aid, AgentDefinitionModel.PROJECTION_LIST);
+            this.response.type = 'application/json';
+            this.response.body = JSON.stringify(rpcOk(envelope.rpcId, {
+                agent: agent ? agentDefinitionView(agent as unknown as Record<string, unknown>) : null,
+            }));
+            return;
+        }
+        if (method === 'agent.update' || method === 'agent.delete') {
+            const aid = typeof envelope.payload?.aid === 'string' ? envelope.payload.aid.trim() : '';
+            const agent = aid ? await AgentDefinitionModel.getByAid(scope.domainId, aid) : null;
+            if (!agent) {
+                this.response.type = 'application/json';
+                this.response.body = JSON.stringify(rpcError(envelope.rpcId, 'Agent 不存在'));
+                return;
+            }
+            if (!this.user.own(agent)) {
+                this.checkPerm(method === 'agent.delete' ? PERM.PERM_DELETE_DISCUSSION : PERM.PERM_EDIT_DISCUSSION);
+            }
+            if (method === 'agent.delete') {
+                await AgentDefinitionModel.del(scope.domainId, aid);
+                this.response.type = 'application/json';
+                this.response.body = JSON.stringify(rpcOk(envelope.rpcId, { deleted: true }));
+                return;
+            }
+            const title = typeof envelope.payload?.title === 'string' ? envelope.payload.title.trim() : '';
+            const content = typeof envelope.payload?.content === 'string' ? envelope.payload.content : '';
+            if (!title || title.length > 256 || content.length > 100000) {
+                this.response.type = 'application/json';
+                this.response.body = JSON.stringify(rpcError(envelope.rpcId, '名称必填且不超过 256 个字符，内容不能超过 100000 个字符'));
+                return;
+            }
+            const updated = await AgentDefinitionModel.edit(scope.domainId, aid, { title, content });
+            this.response.type = 'application/json';
+            this.response.body = JSON.stringify(rpcOk(envelope.rpcId, {
+                agent: agentDefinitionView(updated as unknown as Record<string, unknown>),
+            }));
+            return;
+        }
         if (method === 'settings.describe' || method === 'settings.update' || method === 'settings.replace' || method === 'settings.mutate') {
             this.response.type = 'application/json';
             this.response.body = JSON.stringify(await domainSettingsRpc(envelope, scope));
@@ -856,6 +929,7 @@ export class EjunzAgentRuntimeConnectionHandler extends ConnectionHandler<Contex
 
 export async function apply(ctx: Context): Promise<void> {
     ctx.Route('agent_domain', '/agent', EjunzAgentPageHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('agent_chat', '/agent/chat', EjunzAgentChatPageHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('ejunz_agent_status', '/agent/status', EjunzAgentStatusPageHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('ejunz_agent_link', '/agent-link/:code', EjunzAgentLinkPageHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('ejunz_agent_data', '/api/ejunz-agent/data/*method', EjunzAgentDataHandler);
