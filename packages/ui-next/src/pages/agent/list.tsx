@@ -37,6 +37,11 @@ export default function AgentListPage() {
     const [agents, setAgents] = useState<AgentDefinition[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [creating, setCreating] = useState(false);
+    const [createOpen, setCreateOpen] = useState(false);
+    const [createTitle, setCreateTitle] = useState('');
+    const [createContent, setCreateContent] = useState('');
+    const [createError, setCreateError] = useState<string | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [editingDocId, setEditingDocId] = useState<number | null>(null);
     const [title, setTitle] = useState('');
@@ -50,6 +55,15 @@ export default function AgentListPage() {
         const redirect = `${window.location.pathname}${window.location.search}`;
         window.location.href = buildUrl('user_login', {}, { redirect });
     }, [buildUrl, guest]);
+
+    useEffect(() => {
+        if (!createOpen) return undefined;
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape' && !creating) setCreateOpen(false);
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [createOpen, creating]);
 
     const loadAgents = useCallback(async () => {
         setLoading(true);
@@ -69,10 +83,10 @@ export default function AgentListPage() {
     }, [guest, loadAgents]);
 
     const startCreate = useCallback(() => {
-        setEditingDocId(null);
-        setTitle('');
-        setContent('');
-        setLoadError(null);
+        setCreateTitle('');
+        setCreateContent('');
+        setCreateError(null);
+        setCreateOpen(true);
     }, []);
 
     const startEdit = useCallback((agent: AgentDefinition) => {
@@ -85,25 +99,42 @@ export default function AgentListPage() {
     const saveAgent = useCallback(async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         const normalizedTitle = title.trim();
-        if (!normalizedTitle || saving) return;
+        if (editingDocId === null || !normalizedTitle || saving) return;
         setSaving(true);
         try {
-            const value = editingDocId
-                ? await rpc('agent.update', { docId: editingDocId, title: normalizedTitle, content }) as { agent?: AgentDefinition }
-                : await rpc('agent.create', { title: normalizedTitle, content }) as { agent?: AgentDefinition };
+            const value = await rpc('agent.update', { docId: editingDocId, title: normalizedTitle, content }) as { agent?: AgentDefinition };
             if (!value.agent) throw new Error('Agent 保存失败');
-            setAgents((items) => editingDocId
-                ? items.map((agent) => agent.docId === editingDocId ? value.agent! : agent)
-                : [value.agent!, ...items]);
+            setAgents((items) => items.map((agent) => agent.docId === editingDocId ? value.agent! : agent));
             startEdit(value.agent);
             setLoadError(null);
-            await Notification.success(editingDocId ? 'Agent 已保存' : 'Agent 已创建');
+            await Notification.success('Agent 已保存');
         } catch (error) {
             setLoadError(error instanceof Error ? error.message : String(error));
         } finally {
             setSaving(false);
         }
     }, [content, editingDocId, rpc, saving, startEdit, title]);
+
+    const createAgent = useCallback(async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        const normalizedTitle = createTitle.trim();
+        if (!normalizedTitle || creating) return;
+        setCreating(true);
+        setCreateError(null);
+        try {
+            const value = await rpc('agent.create', { title: normalizedTitle, content: createContent }) as { agent?: AgentDefinition };
+            if (!value.agent) throw new Error('Agent 创建失败');
+            setAgents((items) => [value.agent!, ...items]);
+            setCreateOpen(false);
+            setCreateTitle('');
+            setCreateContent('');
+            await Notification.success('Agent 已创建');
+        } catch (error) {
+            setCreateError(error instanceof Error ? error.message : String(error));
+        } finally {
+            setCreating(false);
+        }
+    }, [createContent, createTitle, creating, rpc]);
 
     const confirmDelete = useCallback(async () => {
         if (!deleting || deleteBusy) return;
@@ -112,7 +143,12 @@ export default function AgentListPage() {
         try {
             await rpc('agent.delete', { docId: deleting.docId });
             setAgents((items) => items.filter((agent) => agent.docId !== deleting.docId));
-            if (editingDocId === deleting.docId) startCreate();
+            if (editingDocId === deleting.docId) {
+                setEditingDocId(null);
+                setTitle('');
+                setContent('');
+                setLoadError(null);
+            }
             setDeleting(null);
             await Notification.success('Agent 已删除');
         } catch (error) {
@@ -120,7 +156,7 @@ export default function AgentListPage() {
         } finally {
             setDeleteBusy(false);
         }
-    }, [deleteBusy, deleting, editingDocId, rpc, startCreate]);
+    }, [deleteBusy, deleting, editingDocId, rpc]);
 
     if (guest) return null;
 
@@ -140,7 +176,7 @@ export default function AgentListPage() {
 
                 {loadError && !editingDocId ? <p className="eja-agentCatalog__notice" role="alert">{loadError}</p> : null}
 
-                <div className="eja-agentCatalog__layout" aria-busy={loading || saving}>
+                <div className="eja-agentCatalog__layout" data-editing={editingDocId !== null || undefined} aria-busy={loading || saving || creating}>
                     <section className="eja-agentCatalog__list" aria-label="Agent 列表">
                         <div className="eja-agentCatalog__listHeader">
                             <h2>配置</h2>
@@ -173,13 +209,12 @@ export default function AgentListPage() {
                         </ul>
                     </section>
 
-                    <section className="eja-agentCatalog__editor" aria-label={editingDocId ? '编辑 Agent' : '新建 Agent'}>
+                    {editingDocId !== null && <section className="eja-agentCatalog__editor" aria-label="编辑 Agent">
                         <div className="eja-agentCatalog__editorHeading">
                             <div>
-                                <h2>{editingDocId ? '编辑 Agent' : '新建 Agent'}</h2>
-                                <p>{editingDocId ? `配置编号 ${editingDocId}` : '定义名称和 Agent 的行为说明。'}</p>
+                                <h2>编辑 Agent</h2>
+                                <p>配置编号 {editingDocId}</p>
                             </div>
-                            {editingDocId ? <button type="button" className="eja-agentCatalog__textButton" onClick={startCreate}>新建</button> : null}
                         </div>
                         <form className="eja-agentCatalog__form" onSubmit={(event) => { void saveAgent(event); }}>
                             <label className="eja-agentCatalog__field">
@@ -193,13 +228,41 @@ export default function AgentListPage() {
                             </label>
                             {loadError ? <p className="eja-agentCatalog__notice" role="alert">{loadError}</p> : null}
                             <div className="eja-agentCatalog__formActions">
-                                <button type="submit" className="eja-agentCatalog__primary" disabled={saving || !title.trim()}>{saving ? '保存中…' : editingDocId ? '保存更改' : '创建 Agent'}</button>
-                                {editingDocId ? <button type="button" className="eja-agentCatalog__secondary" onClick={startCreate} disabled={saving}>取消编辑</button> : null}
+                                <button type="submit" className="eja-agentCatalog__primary" disabled={saving || !title.trim()}>{saving ? '保存中…' : '保存更改'}</button>
+                                <button type="button" className="eja-agentCatalog__secondary" onClick={() => setEditingDocId(null)} disabled={saving}>关闭编辑</button>
                             </div>
                         </form>
-                    </section>
+                    </section>}
                 </div>
             </main>
+            {createOpen && <div className="eja-agentCreateModal" role="presentation">
+                <button type="button" className="eja-agentCreateModal__mask" aria-label="关闭新建 Agent 对话框" disabled={creating} onClick={() => setCreateOpen(false)} />
+                <section className="eja-agentCreateModal__dialog" role="dialog" aria-modal="true" aria-labelledby="eja-agentCreateModal-title">
+                    <header className="eja-agentCreateModal__header">
+                        <div>
+                            <h2 id="eja-agentCreateModal-title">新建 Agent</h2>
+                            <p>填写名称和行为说明，创建后即可打开独立工作区。</p>
+                        </div>
+                        <button type="button" aria-label="关闭" disabled={creating} onClick={() => setCreateOpen(false)}>×</button>
+                    </header>
+                    <form className="eja-agentCatalog__form" onSubmit={(event) => { void createAgent(event); }}>
+                        <label className="eja-agentCatalog__field">
+                            <span>名称</span>
+                            <input autoFocus autoComplete="off" maxLength={256} value={createTitle} onChange={(event) => setCreateTitle(event.target.value)} placeholder="例如：研究助理" required />
+                        </label>
+                        <label className="eja-agentCatalog__field">
+                            <span>行为说明</span>
+                            <textarea value={createContent} onChange={(event) => setCreateContent(event.target.value)} maxLength={100000} rows={10} placeholder="描述这个 Agent 的职责、目标和工作方式。" />
+                            <small>最多 100000 个字符</small>
+                        </label>
+                        {createError ? <p className="eja-agentCatalog__notice" role="alert">{createError}</p> : null}
+                        <div className="eja-agentCatalog__formActions">
+                            <button type="button" className="eja-agentCatalog__secondary" disabled={creating} onClick={() => setCreateOpen(false)}>取消</button>
+                            <button type="submit" className="eja-agentCatalog__primary" disabled={creating || !createTitle.trim()}>{creating ? '创建中…' : '创建 Agent'}</button>
+                        </div>
+                    </form>
+                </section>
+            </div>}
             <ActionDialog
                 open={deleting !== null}
                 title="删除 Agent？"

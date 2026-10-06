@@ -102,6 +102,10 @@
   align-items: start;
 }
 
+.eja-agentCatalog__layout:not([data-editing]) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .eja-agentCatalog__list,
 .eja-agentCatalog__editor {
   min-width: 0;
@@ -312,6 +316,95 @@
   flex-wrap: wrap;
   gap: .65rem;
   padding-top: .1rem;
+}
+
+.eja-agentCreateModal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.eja-agentCreateModal__mask {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: var(--dsw-alias-bg-mask-3);
+  cursor: default;
+}
+
+.eja-agentCreateModal__dialog {
+  position: relative;
+  width: min(600px, 100%);
+  max-height: min(90vh, 760px);
+  overflow: auto;
+  padding: 1.25rem 1.35rem;
+  border: 1px solid var(--bd-line);
+  border-radius: 9px;
+  background: var(--bd-surface);
+  color: var(--bd-ink);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, .28);
+}
+
+.eja-agentCreateModal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--bd-line);
+}
+
+.eja-agentCreateModal__header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: -.02em;
+}
+
+.eja-agentCreateModal__header p {
+  margin: .4rem 0 0;
+  color: var(--bd-muted);
+  font-size: .8rem;
+  line-height: 1.5;
+}
+
+.eja-agentCreateModal__header > button {
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--bd-line);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--bd-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.eja-agentCreateModal__header > button:hover:not(:disabled) {
+  border-color: var(--bd-accent);
+  color: var(--bd-accent);
+}
+
+.eja-agentCreateModal__header > button:disabled {
+  cursor: default;
+  opacity: .55;
+}
+
+.eja-agentCreateModal .eja-agentCatalog__form {
+  padding-top: 1.05rem;
+}
+
+.eja-agentCreateModal .eja-agentCatalog__field textarea {
+  min-height: 210px;
+}
+
+.eja-agentCreateModal .eja-agentCatalog__formActions {
+  justify-content: flex-end;
 }
 
 .eja-agentCatalog__state,
