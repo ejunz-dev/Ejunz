@@ -193,6 +193,26 @@
   -webkit-line-clamp: 2;
 }
 
+.eja-agentCatalog__itemActions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: .6rem;
+  margin-top: -.15rem;
+}
+
+.eja-agentCatalog__itemActions a {
+  padding: .25rem .3rem;
+  color: var(--bd-accent);
+  font-size: .75rem;
+  text-decoration: none;
+}
+
+.eja-agentCatalog__itemActions a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .eja-agentCatalog__delete {
   flex: none;
   margin-top: -.15rem;

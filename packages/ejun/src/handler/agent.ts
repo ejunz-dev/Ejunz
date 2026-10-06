@@ -1,8 +1,8 @@
 import type { Context } from '../context';
 import { ConnectionHandler, Handler } from '@ejunz/framework';
 import { PERM, PRIV } from '../model/builtin';
-import AgentDefinitionModel from '../model/agent';
-import type { RuntimeLink } from '../service/runtime';
+import AgentDefinitionModel, { AgentSessionModel } from '../model/agent';
+import type { AgentScope, RuntimeLink } from '../service/runtime';
 import type { AgentStorageDescriptor } from '../model/agent';
 import type { RuntimeHelloFrame, RuntimeInboundFrame, RuntimeLinkPollFrame, RuntimeStream } from '../service/runtime';
 import { agentRuntimeHandlerContext as service } from '../service/runtime';
@@ -13,6 +13,7 @@ interface RpcEnvelope {
     method?: string;
     payload?: Record<string, unknown>;
     domainId?: string;
+    agentId?: number | null;
 }
 const { requireBridgeToken, baseSessionScope, toolRegistry, scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, nodeRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, baseTutorEnsure, baseTutorList, baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems, runtimeRelabel, runtimeRemove, sessionCreate, sessionHistory, sessionMessageCount, sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink, logger, RUNTIME_HELLO_TIMEOUT_MS, addLink, rememberRuntime, reportRuntime, agentDataAdapter, AgentStorageModel, AgentLinkModel, createProvider, SystemModel, randomUUID, WebSocket, parseRuntimeFrame, createSocketLink, followLinks, runtimeLinks, runtimeFacts, bridgeRuntimeId, mergeDomainProviders, mergeDomainModels, cloneSettingsSections } = service;
 const dataOk = (value: unknown): Record<string, unknown> => ({ ok: true, value });
@@ -228,6 +229,33 @@ export class EjunzAgentChatPageHandler extends Handler<Context> {
     async get() {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         this.response.template = 'agent';
+        this.response.body = { agentId: null };
+    }
+}
+
+export class EjunzAgentWorkspacePageHandler extends Handler<Context> {
+    async get() {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        await service.modelReady();
+        const scope = scopeOf(this);
+        const agentId = Number(this.args?.docId);
+        if (!Number.isSafeInteger(agentId) || agentId <= 0) {
+            this.response.status = 404;
+            this.response.body = 'Agent not found';
+            return;
+        }
+        const agent = await AgentDefinitionModel.get(scope.domainId, agentId, AgentDefinitionModel.PROJECTION_LIST);
+        if (!agent) {
+            this.response.status = 404;
+            this.response.body = 'Agent not found';
+            return;
+        }
+        await AgentSessionModel.ensureAgentRoot(scope.domainId, scope.userId, agentId, agent.title);
+        this.response.template = 'agent_workspace';
+        this.response.body = {
+            agentId,
+            agent: agentDefinitionView(agent as unknown as Record<string, unknown>),
+        };
     }
 }
 
@@ -257,7 +285,18 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
         const method = Array.isArray(rawMethod) ? rawMethod.join('/') : String(rawMethod || envelope.method || '');
         if (!/^[A-Za-z][A-Za-z0-9._$/-]*$/.test(method)) throw new Error('bad method');
         envelope.method = method;
-        const scope = scopeOf(this, envelope.domainId);
+        const scope: AgentScope = scopeOf(this, envelope.domainId);
+        if (Object.prototype.hasOwnProperty.call(envelope, 'agentId')) {
+            if (envelope.agentId === null) scope.agentId = null;
+            else if (typeof envelope.agentId === 'number' && Number.isSafeInteger(envelope.agentId) && envelope.agentId > 0
+                && await AgentDefinitionModel.get(scope.domainId, envelope.agentId, AgentDefinitionModel.PROJECTION_LIST)) {
+                scope.agentId = envelope.agentId;
+            } else {
+                this.response.type = 'application/json';
+                this.response.body = JSON.stringify(rpcError(envelope.rpcId, 'Agent 不存在或 ID 无效'));
+                return;
+            }
+        }
         try {
             await this.dispatch(envelope, scope);
         } catch (error) {
@@ -270,7 +309,7 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
         }
     }
 
-    private async dispatch(envelope: RpcEnvelope, scope: { domainId: string; userId: number }): Promise<void> {
+    private async dispatch(envelope: RpcEnvelope, scope: AgentScope): Promise<void> {
         const method = String(envelope.method || '');
         if (method === 'agent.list') {
             const agents = await AgentDefinitionModel.getMulti(scope.domainId).toArray();
@@ -290,6 +329,7 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             }
             const aid = await AgentDefinitionModel.add(scope.domainId, scope.userId, title, content, this.request.ip);
             const agent = await AgentDefinitionModel.get(scope.domainId, aid, AgentDefinitionModel.PROJECTION_LIST);
+            if (agent) await AgentSessionModel.ensureAgentRoot(scope.domainId, scope.userId, agent.docId, agent.title);
             this.response.type = 'application/json';
             this.response.body = JSON.stringify(rpcOk(envelope.rpcId, {
                 agent: agent ? agentDefinitionView(agent as unknown as Record<string, unknown>) : null,
@@ -297,8 +337,10 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             return;
         }
         if (method === 'agent.update' || method === 'agent.delete') {
-            const aid = typeof envelope.payload?.aid === 'string' ? envelope.payload.aid.trim() : '';
-            const agent = aid ? await AgentDefinitionModel.getByAid(scope.domainId, aid) : null;
+            const agentId = Number(envelope.payload?.docId);
+            const agent = Number.isSafeInteger(agentId) && agentId > 0
+                ? await AgentDefinitionModel.get(scope.domainId, agentId, AgentDefinitionModel.PROJECTION_LIST)
+                : null;
             if (!agent) {
                 this.response.type = 'application/json';
                 this.response.body = JSON.stringify(rpcError(envelope.rpcId, 'Agent 不存在'));
@@ -308,7 +350,8 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
                 this.checkPerm(method === 'agent.delete' ? PERM.PERM_DELETE_DISCUSSION : PERM.PERM_EDIT_DISCUSSION);
             }
             if (method === 'agent.delete') {
-                await AgentDefinitionModel.del(scope.domainId, aid);
+                await AgentSessionModel.detachAgent(scope.domainId, agentId);
+                await AgentDefinitionModel.del(scope.domainId, agentId);
                 this.response.type = 'application/json';
                 this.response.body = JSON.stringify(rpcOk(envelope.rpcId, { deleted: true }));
                 return;
@@ -320,7 +363,8 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
                 this.response.body = JSON.stringify(rpcError(envelope.rpcId, '名称必填且不超过 256 个字符，内容不能超过 100000 个字符'));
                 return;
             }
-            const updated = await AgentDefinitionModel.edit(scope.domainId, aid, { title, content });
+            const updated = await AgentDefinitionModel.edit(scope.domainId, agentId, { title, content });
+            await AgentSessionModel.syncAgentRootTitle(scope.domainId, agentId, title);
             this.response.type = 'application/json';
             this.response.body = JSON.stringify(rpcOk(envelope.rpcId, {
                 agent: agentDefinitionView(updated as unknown as Record<string, unknown>),
@@ -554,6 +598,7 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
                     blank: false,
                     creatorUserId: scope.userId,
                     type: parent.type ?? 'generic',
+                    ...(parent.agentId === undefined ? {} : { agentId: parent.agentId }),
                     ...(parent.baseDocId === undefined ? {} : { baseDocId: parent.baseDocId }),
                     ...(parent.cwd === undefined ? {} : { cwd: parent.cwd }),
                     ...(parent.agentPreset === undefined ? {} : { agentPreset: parent.agentPreset }),
@@ -576,7 +621,16 @@ export class EjunzAgentResponseHandler extends Handler<Context> {
         const result = body.result as Record<string, unknown> | undefined;
         const value = result?.value as Record<string, unknown> | undefined;
         const sessionId = typeof value?.sessionId === 'string' ? value.sessionId : undefined;
-        const scope = scopeOf(this, body.domainId);
+        const scope: AgentScope = scopeOf(this, body.domainId);
+        if (Object.prototype.hasOwnProperty.call(body, 'agentId')) {
+            if (body.agentId === null) scope.agentId = null;
+            else if (typeof body.agentId === 'number' && Number.isSafeInteger(body.agentId) && body.agentId > 0
+                && await AgentDefinitionModel.get(scope.domainId, body.agentId, AgentDefinitionModel.PROJECTION_LIST)) {
+                scope.agentId = body.agentId;
+            } else {
+                throw new Error('Agent not found');
+            }
+        }
         if (sessionId && !await agentDataAdapter.getSession(scope, sessionId)) throw new Error('session not found');
         // An answer belongs to the turn that asked for it, so it goes back to
         // the host that turn runs on.
@@ -590,7 +644,9 @@ export class EjunzAgentResponseHandler extends Handler<Context> {
             this.response.body = JSON.stringify({ error: { message: error.message } });
             return;
         }
-        const reply = await target.call('/api/respond', body);
+        const forwarded = { ...body };
+        delete forwarded.agentId;
+        const reply = await target.call('/api/respond', forwarded);
         this.response.status = reply.status;
         this.response.type = reply.contentType;
         this.response.body = reply.text;
@@ -616,6 +672,7 @@ export class EjunzAgentEventsConnectionHandler extends ConnectionHandler<Context
     private sendChain: Promise<void> = Promise.resolve();
     private domainId = '';
     private userId = 0;
+    private agentId: number | null | undefined;
 
     async prepare() {
         const stream = String(this.args?.stream || '');
@@ -627,6 +684,18 @@ export class EjunzAgentEventsConnectionHandler extends ConnectionHandler<Context
         const scope = scopeOf(this, this.request.query?.domainId);
         this.domainId = scope.domainId;
         this.userId = scope.userId;
+        const rawQueryAgentId = this.request.query?.agentId;
+        const rawAgentId = Array.isArray(rawQueryAgentId) ? rawQueryAgentId[0] : rawQueryAgentId;
+        if (rawAgentId === 'unassigned') this.agentId = null;
+        else if (rawAgentId !== undefined && rawAgentId !== null && rawAgentId !== '') {
+            const agentId = Number(rawAgentId);
+            if (!Number.isSafeInteger(agentId) || agentId <= 0
+                || !await AgentDefinitionModel.get(scope.domainId, agentId, AgentDefinitionModel.PROJECTION_LIST)) {
+                this.close(4000, 'Agent not found');
+                return;
+            }
+            this.agentId = agentId;
+        }
         const runtimeStream: RuntimeStream = stream === 'events.mux' ? 'mux' : 'host';
         const frames = new AbortController();
         this.frames = frames;
@@ -677,20 +746,20 @@ export class EjunzAgentEventsConnectionHandler extends ConnectionHandler<Context
                     const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId : undefined;
                     const session = sessionId === undefined
                         ? undefined
-                        : await agentDataAdapter.getSession({ domainId: this.domainId, userId: this.userId }, sessionId);
+                        : await agentDataAdapter.getSession({ domainId: this.domainId, userId: this.userId, ...(this.agentId === undefined ? {} : { agentId: this.agentId }) }, sessionId);
                     if (sessionId !== undefined && !session) return;
                     const type = String(payload?.type || '');
                     if (type === 'session/projection' && sessionId !== undefined) {
-                        const current = await agentDataAdapter.getSession({ domainId: this.domainId, userId: this.userId }, sessionId);
+                        const current = await agentDataAdapter.getSession({ domainId: this.domainId, userId: this.userId, ...(this.agentId === undefined ? {} : { agentId: this.agentId }) }, sessionId);
                         const key = String(payload?.key || '');
-                        await agentDataAdapter.updateSession({ domainId: this.domainId, userId: this.userId }, sessionId, {
+                        await agentDataAdapter.updateSession({ domainId: this.domainId, userId: this.userId, ...(this.agentId === undefined ? {} : { agentId: this.agentId }) }, sessionId, {
                             projections: { values: { ...(current?.projections?.values ?? {}), [key]: payload?.value } },
                             updatedAt: Date.now(),
                         });
                     } else if (type === 'host/session-status' && sessionId !== undefined) {
-                        await agentDataAdapter.updateSession({ domainId: this.domainId, userId: this.userId }, sessionId, { running: payload?.running === true });
+                        await agentDataAdapter.updateSession({ domainId: this.domainId, userId: this.userId, ...(this.agentId === undefined ? {} : { agentId: this.agentId }) }, sessionId, { running: payload?.running === true });
                     } else if (type === 'host/session-removed' && sessionId !== undefined) {
-                        await agentDataAdapter.updateSession({ domainId: this.domainId, userId: this.userId }, sessionId, { archived: true });
+                        await agentDataAdapter.updateSession({ domainId: this.domainId, userId: this.userId, ...(this.agentId === undefined ? {} : { agentId: this.agentId }) }, sessionId, { archived: true });
                     }
                 try { this.conn.send(JSON.stringify(serverRequestFrame(frame))); } catch { }
             }).catch((error) => logger.warn('Agent event persistence failed: %o', error)));
@@ -932,6 +1001,7 @@ export async function apply(ctx: Context): Promise<void> {
     ctx.Route('agent_chat', '/agent/chat', EjunzAgentChatPageHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('ejunz_agent_status', '/agent/status', EjunzAgentStatusPageHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('ejunz_agent_link', '/agent-link/:code', EjunzAgentLinkPageHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('agent_workspace', '/agent/:docId', EjunzAgentWorkspacePageHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('ejunz_agent_data', '/api/ejunz-agent/data/*method', EjunzAgentDataHandler);
     ctx.Route('ejunz_agent_rpc', '/api/ejunz-agent/rpc/*method', EjunzAgentRpcHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('ejunz_agent_response', '/api/ejunz-agent/respond', EjunzAgentResponseHandler, PRIV.PRIV_USER_PROFILE);

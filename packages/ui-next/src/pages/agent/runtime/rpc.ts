@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { useUiContext } from '@ejunz/ui-next';
+import { usePageData } from '../../../context/page-data';
 
 /** Domain URL prefix: the `system` domain is served at the site root. */
 export function domainPrefix(domainId: string): string {
@@ -16,8 +17,11 @@ export function domainPrefix(domainId: string): string {
  */
 export function useAgentRpc(): (method: string, payload: unknown, signal?: AbortSignal) => Promise<unknown> {
     const { domainId } = useUiContext();
+    const { args } = usePageData();
     const currentDomainId = String(domainId || 'system');
     const prefix = domainPrefix(currentDomainId);
+    const hasAgentId = Object.prototype.hasOwnProperty.call(args, 'agentId');
+    const agentId = !hasAgentId ? undefined : args.agentId === null ? null : Number.isSafeInteger(Number(args.agentId)) && Number(args.agentId) > 0 ? Number(args.agentId) : null;
     return useCallback(async (method: string, payload: unknown, signal?: AbortSignal) => {
         const res = await fetch(`${prefix}/api/ejunz-agent/rpc/${method}`, {
             method: 'POST',
@@ -30,6 +34,7 @@ export function useAgentRpc(): (method: string, payload: unknown, signal?: Abort
                 method,
                 payload,
                 domainId: currentDomainId,
+                ...(hasAgentId ? { agentId } : {}),
             }),
         });
         if (res.redirected) {
@@ -46,5 +51,5 @@ export function useAgentRpc(): (method: string, payload: unknown, signal?: Abort
         const failure = data.result?.error ?? data.error;
         const message = failure?.message || `RPC ${method} failed`;
         throw new Error(failure?.code ? `${failure.code}: ${message}` : message);
-    }, [currentDomainId, prefix]);
+    }, [agentId, currentDomainId, hasAgentId, prefix]);
 }

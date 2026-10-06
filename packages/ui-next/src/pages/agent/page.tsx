@@ -35,9 +35,10 @@ import { SettingsRoot } from './components/settings/SettingsRoot';
 import type { ChatMessage, PendingApproval, PendingQuestion, QueueItem, SessionModels } from './components/types';
 import { domainPrefix, useAgentRpc } from './runtime/rpc';
 import { useAgentTheme } from './runtime/theme';
+import { usePageData } from '../../context/page-data';
 import { applyEvent, asObject, assistantStreamKey, eventFailureMessage, eventMessage, eventsToMessages, fileInjectionsAfterUser, flattenToolTree, foldToolTree, latestHistoryError, queueItems, settleRunningMessages } from './runtime/conversation';
 import type { HistoryEntry } from './runtime/conversation';
-import type { AgentNode, BaseView, HostFrame, MuxFrame, SessionSummary } from './runtime/session';
+import { agentRootNodeId, type AgentNode, type BaseView, type HostFrame, type MuxFrame, type SessionSummary } from './runtime/session';
 import { useDraftAttachments } from './components/attachment/useDraftAttachments';
 import { FILE_INJECTION_PLUGIN, FILE_INJECTION_SECTION, fileInjectionText, type DraftAttachment, type UploadedFileMeta } from './runtime/uploads';
 import { Notification, useBuildUrl, useUiContext, useUserContext } from '@ejunz/ui-next';
@@ -52,6 +53,22 @@ const HISTORY_PREVIEW_MESSAGES = 1;
 const HISTORY_PREVIEW_CONCURRENCY = 4;
 const SESSION_DRAWER_DEFAULT = 420;
 const SESSION_DRAWER_MIN = 320;
+
+function readAgentSelection(): { nodeId: string | null; cardId: string | null } {
+    if (typeof window === 'undefined') return { nodeId: null, cardId: null };
+    const params = new URLSearchParams(window.location.search);
+    return { nodeId: params.get('nodeId'), cardId: params.get('cardId') };
+}
+
+function updateAgentSelectionUrl(patch: { nodeId?: string | null; cardId?: string | null }): void {
+    const params = new URLSearchParams(window.location.search);
+    for (const [key, value] of Object.entries(patch)) {
+        if (value) params.set(key, value);
+        else params.delete(key);
+    }
+    const next = `${window.location.pathname}${params.toString() ? `?${params}` : ''}${window.location.hash}`;
+    window.history.replaceState(window.history.state, '', next);
+}
 
 type DialogState =
     | { kind: 'rename-session'; id: string; value: string }
@@ -260,7 +277,7 @@ function latestActivityPreview(entries: readonly HistoryEntry[]): SessionActivit
     return latest ?? null;
 }
 
-function useAgentEvents(onMux: (frame: MuxFrame) => void, onHost: (frame: HostFrame) => void, enabled: boolean, domainId: string): AgentWebSocketStatus {
+function useAgentEvents(onMux: (frame: MuxFrame) => void, onHost: (frame: HostFrame) => void, enabled: boolean, domainId: string, agentId: number | null): AgentWebSocketStatus {
     const [status, setStatus] = useState<AgentWebSocketStatus>('connecting');
     useEffect(() => {
         if (!enabled) {
@@ -285,7 +302,9 @@ function useAgentEvents(onMux: (frame: MuxFrame) => void, onHost: (frame: HostFr
         function open(stream: 'events.mux' | 'events.host', onFrame: (frame: MuxFrame | HostFrame) => void) {
             if (disposed) return;
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const socket = new WebSocket(`${protocol}//${window.location.host}${domainPrefix(domainId)}/api/ejunz-agent/events/${stream}?domainId=${encodeURIComponent(domainId)}`);
+            const params = new URLSearchParams({ domainId });
+            params.set('agentId', agentId === null ? 'unassigned' : String(agentId));
+            const socket = new WebSocket(`${protocol}//${window.location.host}${domainPrefix(domainId)}/api/ejunz-agent/events/${stream}?${params}`);
             sockets.push(socket);
             socket.onopen = () => {
                 if (disposed) return;
@@ -316,12 +335,18 @@ function useAgentEvents(onMux: (frame: MuxFrame) => void, onHost: (frame: HostFr
                 else if (socket.readyState === WebSocket.CONNECTING) socket.onopen = () => socket.close();
             });
         };
-    }, [domainId, enabled, onHost, onMux]);
+    }, [agentId, domainId, enabled, onHost, onMux]);
     return status;
 }
 
 export default function AgentPage() {
     const rpc = useAgentRpc();
+    const { args: pageArgs } = usePageData();
+    const parsedAgentId = Number(pageArgs.agentId);
+    const agentId = pageArgs.agentId === null || !Number.isSafeInteger(parsedAgentId) || parsedAgentId <= 0 ? null : parsedAgentId;
+    const pageAgent = pageArgs.agent && typeof pageArgs.agent === 'object' ? pageArgs.agent as { title?: unknown } : undefined;
+    const agentTitle = typeof pageAgent?.title === 'string' && pageAgent.title.trim() ? pageAgent.title : 'Ejunz agent';
+    const rootNodeId = agentId === null ? null : agentRootNodeId(agentId);
     const { domainId, domain } = useUiContext();
     const domainName = typeof domain?.name === 'string' && domain.name.trim() ? domain.name : String(domainId || 'system');
     const user = useUserContext();
@@ -336,7 +361,7 @@ export default function AgentPage() {
     const [sessions, setSessions] = useState<SessionSummary[]>([]);
     const [nodes, setNodes] = useState<AgentNode[]>([]);
     const [treeOpen, setTreeOpen] = useState(false);
-    const [activeTreeNodeId, setActiveTreeNodeId] = useState<string | null>(null);
+    const [activeTreeNodeId, setActiveTreeNodeId] = useState<string | null>(() => readAgentSelection().nodeId ?? rootNodeId);
     const [bases, setBases] = useState<BaseView[]>([]);
     const [draftBaseId, setDraftBaseId] = useState<number | undefined>();
     const [draftNodeId, setDraftNodeId] = useState<string | undefined>();
@@ -353,7 +378,7 @@ export default function AgentPage() {
     const [sessionDrawerWidth, setSessionDrawerWidth] = useState(SESSION_DRAWER_DEFAULT);
     const [renaming, setRenaming] = useState(false);
     const [titleDraft, setTitleDraft] = useState('');
-    const [current, setCurrent] = useState<string | null>(null);
+    const [current, setCurrent] = useState<string | null>(() => readAgentSelection().cardId);
     const [view, setView] = useState<'chat' | 'trajectory' | 'model' | 'context' | 'host'>('chat');
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -836,7 +861,8 @@ export default function AgentPage() {
             if (currentRef.current === frame.sessionId) {
                 setCurrent(null);
                 setDetailsOpen(false);
-                }
+                updateAgentSelectionUrl({ cardId: null });
+            }
             return;
         }
         setSessions((prev) => {
@@ -873,6 +899,25 @@ export default function AgentPage() {
         const timer = window.setInterval(() => { void loadSessions(); void loadNodes(); void loadHosts(); void loadBases(); }, POLL_MS);
         return () => window.clearInterval(timer);
     }, [guest, loadBases, loadHosts, loadNodes, loadSessions]);
+    useEffect(() => {
+        if (booting) return;
+        const selectedSession = current ? sessions.find((session) => session.sessionId === current) : undefined;
+        const cardId = selectedSession?.sessionId ?? null;
+        const sessionNodeId = selectedSession?.nodeId && nodes.some((node) => node.nodeId === selectedSession.nodeId)
+            ? selectedSession.nodeId
+            : rootNodeId;
+        const selectedNodeId = sessionNodeId
+            ?? (activeTreeNodeId && nodes.some((node) => node.nodeId === activeTreeNodeId) ? activeTreeNodeId : null);
+        if (current && !selectedSession) {
+            setCurrent(null);
+            setDetailsOpen(false);
+        }
+        if (selectedNodeId !== activeTreeNodeId) setActiveTreeNodeId(selectedNodeId);
+        const urlSelection = readAgentSelection();
+        if (urlSelection.nodeId !== selectedNodeId || urlSelection.cardId !== cardId) {
+            updateAgentSelectionUrl({ nodeId: selectedNodeId, cardId });
+        }
+    }, [activeTreeNodeId, booting, current, nodes, rootNodeId, sessions]);
     useEffect(() => {
         if (guest) return;
         sessions.forEach((session) => {
@@ -920,7 +965,7 @@ export default function AgentPage() {
     useEffect(() => {
         setPendingQuestion(current ? pendingQuestions[current] ?? null : null);
     }, [current, pendingQuestions]);
-    const webSocketStatus = useAgentEvents(onMux, onHost, !booting && !guest, String(domainId || 'system'));
+    const webSocketStatus = useAgentEvents(onMux, onHost, !booting && !guest, String(domainId || 'system'), agentId);
     useEffect(() => {
         const search = query.trim().replaceAll('\0', '').slice(0, 500);
         if (!search) { setSearchMatches(null); setSearchHasMore(false); return undefined; }
@@ -976,7 +1021,7 @@ export default function AgentPage() {
         setDetailsOpen(true);
         try {
             const selectedBaseId = baseId ?? draftBaseId;
-            const selectedNodeId = draftNodeId;
+            const selectedNodeId = draftNodeId ?? rootNodeId ?? undefined;
             const selectedModel = modelOverride ?? draftModelSelection;
             // The host is part of what a session is created with: it serves this
             // session until another one is chosen for it.
@@ -1009,12 +1054,13 @@ export default function AgentPage() {
             const optimisticCreatedAt = Date.now();
             setSessions((items) => items.some((session) => session.sessionId === value.sessionId)
                 ? items
-                : [{ sessionId: value.sessionId!, createdAt: optimisticCreatedAt, updatedAt: optimisticCreatedAt, running: false, blank: !hasContent, agentPreset, ...(actualHostId === '' ? {} : { runtimeId: actualHostId }), ...(title ? { projections: { values: { title } } } : {}), ...(selectedBaseId === undefined ? {} : { baseDocId: String(selectedBaseId) }), ...(actualNodeId === undefined ? {} : { nodeId: actualNodeId }), ...(selectedModel === undefined ? {} : { model: selectedModel }) }, ...items]);
+                : [{ sessionId: value.sessionId!, createdAt: optimisticCreatedAt, updatedAt: optimisticCreatedAt, running: false, blank: !hasContent, ...(agentId === null ? {} : { agentId }), agentPreset, ...(actualHostId === '' ? {} : { runtimeId: actualHostId }), ...(title ? { projections: { values: { title } } } : {}), ...(selectedBaseId === undefined ? {} : { baseDocId: String(selectedBaseId) }), ...(actualNodeId === undefined ? {} : { nodeId: actualNodeId }), ...(selectedModel === undefined ? {} : { model: selectedModel }) }, ...items]);
             setDraftBaseId(undefined);
             setDraftNodeId(undefined);
             setDraftHostId('');
             setActiveTreeNodeId(actualNodeId ?? null);
             setCurrent(value.sessionId);
+            updateAgentSelectionUrl({ nodeId: actualNodeId ?? null, cardId: value.sessionId });
             sessionPublished = true;
             setCreatingSession(false);
             setNewSessionConfigOpen(false);
@@ -1046,7 +1092,7 @@ export default function AgentPage() {
             setCreatingSession(false);
             setSending(false);
         }
-    }, [agentPresetChoice, attachments, draftBaseId, draftModelSelection, draftNodeId, loadSessions, rpc]);
+    }, [agentId, agentPresetChoice, attachments, draftBaseId, draftModelSelection, draftNodeId, loadSessions, rootNodeId, rpc]);
 
     const confirmNewSession = useCallback(async (title: string) => {
         const selectedModel = draftModelSelection ?? (composerModels?.current?.provider && composerModels.current.model
@@ -1060,13 +1106,16 @@ export default function AgentPage() {
         setCurrent(null);
         setDetailsOpen(false);
         setSelectedTool(null);
+        const selectedNodeId = nodes.some((node) => node.nodeId === activeTreeNodeId) ? activeTreeNodeId : rootNodeId;
+        setActiveTreeNodeId(selectedNodeId);
+        updateAgentSelectionUrl({ nodeId: selectedNodeId, cardId: null });
         setNewSessionConfigOpen(true);
         setNewSessionConfigLoading(true);
         setModelCatalog(null);
         setInput('');
         clearAttachments();
         setDraftBaseId(baseId);
-        setDraftNodeId(nodes.some((node) => node.nodeId === activeTreeNodeId) ? activeTreeNodeId ?? undefined : undefined);
+        setDraftNodeId(selectedNodeId ?? undefined);
         // The host the dialog opens on: the last one chosen, else the server's
         // own fallback, so the choice is stated rather than left to chance.
         setDraftHostId((previous) => (previous !== '' && hosts.some((host) => host.runtimeId === previous && host.online !== false)
@@ -1077,7 +1126,7 @@ export default function AgentPage() {
         setDraftModelSelection(undefined);
         await loadModelCatalog();
         if (newSessionLoadRef.current === loadId) setNewSessionConfigLoading(false);
-    }, [activeTreeNodeId, fallbackHostId, hosts, loadModelCatalog, nodes]);
+    }, [activeTreeNodeId, fallbackHostId, hosts, loadModelCatalog, nodes, rootNodeId]);
 
     /**
      * Move the open session to another host.
@@ -1226,7 +1275,7 @@ export default function AgentPage() {
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ type: 'client-response', rpcId, result: { ok: true, value } }),
+            body: JSON.stringify({ type: 'client-response', rpcId, result: { ok: true, value }, agentId }),
         });
         if (response.redirected) {
             window.location.href = response.url;
@@ -1385,6 +1434,7 @@ export default function AgentPage() {
         setSessions((items) => items.filter((item) => item.sessionId !== sessionId));
         if (current === sessionId) {
             setCurrent(null);
+            updateAgentSelectionUrl({ cardId: null });
             setDetailsOpen(false);
             setSelectedTool(null);
             setMessages([]);
@@ -1409,6 +1459,7 @@ export default function AgentPage() {
         setSessions((items) => items.filter((session) => !deleted.has(session.sessionId)));
         if (current && deleted.has(current)) {
             setCurrent(null);
+            updateAgentSelectionUrl({ cardId: null });
             setDetailsOpen(false);
             setSelectedTool(null);
             setMessages([]);
@@ -1429,10 +1480,12 @@ export default function AgentPage() {
                 const value = await rpc('session.rename', { sessionId: active.id, title: active.value.trim() }) as { title?: string };
                 if (value.title) setSessions((items) => items.map((session) => session.sessionId === active.id ? { ...session, projections: { values: { ...(session.projections?.values ?? {}), title: value.title } } } : session));
             } else if (active.kind === 'create-node') {
-                const value = await rpc('node.create', { text: active.value.trim() }) as { node?: AgentNode };
+                const parentId = activeTreeNodeId ?? rootNodeId ?? undefined;
+                const value = await rpc('node.create', { text: active.value.trim(), ...(parentId === undefined ? {} : { parentId }) }) as { node?: AgentNode };
                 if (!value.node) throw new Error('节点创建失败');
                 setNodes((items) => [...items, value.node!]);
                 setActiveTreeNodeId(value.node.nodeId);
+                updateAgentSelectionUrl({ nodeId: value.node.nodeId, cardId: null });
                 await Notification.success('节点已创建');
             } else if (active.kind === 'rename-node') {
                 const value = await rpc('node.rename', { nodeId: active.id, text: active.value.trim() }) as { node?: AgentNode };
@@ -1441,9 +1494,19 @@ export default function AgentPage() {
                 await Notification.success('文件夹已重命名');
             } else if (active.kind === 'delete-selected') {
                 if (active.sessionIds.length > 0) await performHardDeleteMany(active.sessionIds);
+                const removedNodes = nodes.filter((node) => active.nodeIds.includes(node.nodeId));
                 await Promise.all(active.nodeIds.map((nodeId) => rpc('node.delete', { nodeId })));
-                setNodes((items) => items.filter((node) => !active.nodeIds.includes(node.nodeId)));
-                setActiveTreeNodeId((nodeId) => nodeId && active.nodeIds.includes(nodeId) ? null : nodeId);
+                const removedNodeIds = new Set(active.nodeIds);
+                const nextActiveNodeId = activeTreeNodeId && removedNodeIds.has(activeTreeNodeId)
+                    ? removedNodes.find((node) => node.nodeId === activeTreeNodeId)?.parentId ?? rootNodeId
+                    : activeTreeNodeId;
+                setSessions((items) => items.map((session) => {
+                    const removedNode = removedNodes.find((node) => node.nodeId === session.nodeId);
+                    return removedNode ? { ...session, nodeId: removedNode.parentId ?? rootNodeId ?? undefined } : session;
+                }));
+                setNodes((items) => items.filter((node) => !removedNodeIds.has(node.nodeId)));
+                setActiveTreeNodeId(nextActiveNodeId);
+                updateAgentSelectionUrl({ nodeId: nextActiveNodeId, cardId: current && active.sessionIds.includes(current) ? null : current });
                 setSelectedCardIds(new Set());
                 setSelectedNodeIds(new Set());
                 setSessionTitleDrafts({});
@@ -1459,7 +1522,7 @@ export default function AgentPage() {
         } finally {
             setDialogBusy(false);
         }
-    }, [dialog, performHardDelete, performHardDeleteMany, rpc]);
+    }, [activeTreeNodeId, current, dialog, nodes, performHardDelete, performHardDeleteMany, rootNodeId, rpc]);
 
     const updateQueue = useCallback(async (itemId: string, action: { kind: 'remove' | 'steer' | 'edit'; text?: string }) => {
         if (!current) return;
@@ -1504,7 +1567,7 @@ export default function AgentPage() {
     }, []);
     const requestRenameNode = useCallback((nodeId: string) => {
         const node = nodes.find((item) => item.nodeId === nodeId);
-        if (!node) return;
+        if (!node || node.isRoot) return;
         setDialogError(null);
         setDialog({ kind: 'rename-node', id: nodeId, value: node.text });
     }, [nodes]);
@@ -1515,14 +1578,27 @@ export default function AgentPage() {
         setDialogError(null);
         setDialog({ kind: 'delete-selected', sessionIds, nodeIds });
     }, [nodes, selectedCardIds, selectedNodeIds]);
+    const selectTreeNode = useCallback((nodeId: string) => {
+        setActiveTreeNodeId(nodeId);
+        setCurrent(null);
+        setDetailsOpen(false);
+        setSelectedTool(null);
+        updateAgentSelectionUrl({ nodeId, cardId: null });
+    }, []);
     const selectSession = useCallback((sessionId: string) => {
+        const session = sessions.find((item) => item.sessionId === sessionId);
+        const selectedNodeId = session?.nodeId && nodes.some((node) => node.nodeId === session.nodeId)
+            ? session.nodeId
+            : rootNodeId;
+        if (selectedNodeId) setActiveTreeNodeId(selectedNodeId);
         setDetailsOpen(true);
         setSelectedTool(null);
         if (current !== sessionId) {
             setHistoryLoading(!historyCacheRef.current.has(sessionId));
             setCurrent(sessionId);
         }
-    }, [current]);
+        updateAgentSelectionUrl({ ...(selectedNodeId ? { nodeId: selectedNodeId } : {}), cardId: sessionId });
+    }, [current, nodes, rootNodeId, sessions]);
     if (guest) return null;
     if (booting) {
         return <div className="eja-app" data-ds-dark-theme={dark || undefined}><div className="eja-boot"><div className="eja-bootCard"><EjunzLogo size={40} className="eja-heroLogo" /><div className="eja-bootSpinner" /><div className="eja-bootHint">正在连接 Ejunz Agent…</div></div></div></div>;
@@ -1609,6 +1685,7 @@ export default function AgentPage() {
                 <AgentHeader
                     domainId={String(domainId || 'system')}
                     domainName={domainName}
+                    title={agentTitle}
                     webSocketStatus={webSocketStatus}
                     onOpenSettings={() => setSettingsOpen(true)}
                     onOpenDisplaySettings={() => setDisplaySettingsOpen(true)}
@@ -1634,7 +1711,7 @@ export default function AgentPage() {
                             nodes={nodes}
                             treeOpen={treeOpen}
                             activeNodeId={activeTreeNodeId}
-                            onSelectNode={setActiveTreeNodeId}
+                            onSelectNode={selectTreeNode}
                             onCloseTree={() => setTreeOpen(false)}
                             bases={bases}
                             current={current}
@@ -1673,7 +1750,7 @@ export default function AgentPage() {
                             view={view}
                             onViewChange={setView}
                             onResize={(delta) => setSessionDrawerWidth((width) => Math.max(SESSION_DRAWER_MIN, width + delta))}
-                            onClose={() => { setDetailsOpen(false); setSelectedTool(null); setCurrent(null); }}
+                            onClose={() => { setDetailsOpen(false); setSelectedTool(null); setCurrent(null); updateAgentSelectionUrl({ cardId: null }); }}
                             overlay={selectedTool && currentSession && <DetailsPanel title={sessionTitle(currentSession)} cwd={currentSession.cwd} agentPreset={currentSession.agentPreset} running={running} models={models} tool={selectedTool} onClose={() => setSelectedTool(null)} />}
                         >
                             {creatingSession || !currentSession

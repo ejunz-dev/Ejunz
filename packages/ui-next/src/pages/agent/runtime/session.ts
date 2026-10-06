@@ -2,10 +2,17 @@ import type { SessionEvent } from './conversation';
 
 export interface AgentNode {
     nodeId: string;
+    agentId?: number;
+    parentId?: string;
+    isRoot?: boolean;
     text: string;
     order: number;
     createdAt: string;
     updatedAt: string;
+}
+
+export function agentRootNodeId(agentId: number): string {
+    return `agent-root-${agentId}`;
 }
 
 export interface SessionSummary {
@@ -16,6 +23,7 @@ export interface SessionSummary {
     blank: boolean;
     creatorUserId?: number;
     type?: 'generic' | 'base_detail';
+    agentId?: number;
     baseDocId?: string;
     nodeId?: string;
     cwd?: string;

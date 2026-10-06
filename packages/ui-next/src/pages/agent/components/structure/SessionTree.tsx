@@ -1,4 +1,4 @@
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { BaseDetailTree, BaseDetailTreeDrawer, defaultBaseDetailDisplaySettings, type BaseDetailCard, type BaseDetailNode } from '@ejunz/ui-next';
 import { BaseDetailConfirmDialog } from '../../../../components/base-detail/BaseDetailConfirmDialog';
 import { StateDot, type StateDotState } from '../primitives/StateDot';
@@ -151,19 +151,25 @@ export function SessionTree({
     const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => new Set([SESSION_GROUP_ID]));
     const [pendingNodeId, setPendingNodeId] = useState<string | null>(null);
     const visibleSessions = useMemo(() => filterSessions(sessions, current, query, searchMatches), [current, query, searchMatches, sessions]);
+    const agentRootNode = useMemo(() => agentNodes.find((node) => node.isRoot), [agentNodes]);
+    const fallbackNodeId = agentRootNode?.nodeId ?? SESSION_GROUP_ID;
     const sessionsByNode = useMemo(() => {
         const validNodeIds = new Set(agentNodes.map((node) => node.nodeId));
         const groups = new Map<string, SessionSummary[]>();
         visibleSessions.forEach((session) => {
-            const nodeId = session.nodeId && validNodeIds.has(session.nodeId) ? session.nodeId : SESSION_GROUP_ID;
+            const nodeId = session.nodeId && validNodeIds.has(session.nodeId) ? session.nodeId : fallbackNodeId;
             const group = groups.get(nodeId) || [];
             group.push(session);
             groups.set(nodeId, group);
         });
         return groups;
-    }, [agentNodes, visibleSessions]);
+    }, [agentNodes, fallbackNodeId, visibleSessions]);
     const ungroupedSessions = sessionsByNode.get(SESSION_GROUP_ID) || [];
-    const visibleSelectedNodeId = activeNodeId ?? (ungroupedSessions.length > 0 ? SESSION_GROUP_ID : null);
+    const visibleSelectedNodeId = activeNodeId ?? (ungroupedSessions.length > 0 ? SESSION_GROUP_ID : agentRootNode?.nodeId ?? null);
+    useEffect(() => {
+        if (!agentRootNode) return;
+        setExpandedNodes((current) => current.has(agentRootNode.nodeId) ? current : new Set([...current, agentRootNode.nodeId]));
+    }, [agentRootNode]);
     const toggleNodeExpansion = useCallback((nodeId: string) => {
         setExpandedNodes((current) => {
             const next = new Set(current);
@@ -172,14 +178,17 @@ export function SessionTree({
         });
     }, []);
     const nodes = useMemo<BaseDetailNode[]>(() => [
-        ...(ungroupedSessions.length > 0 ? [{ id: SESSION_GROUP_ID, text: '未分组', type: 'session_group', order: 0, expanded: true }] : []),
+        ...(!agentRootNode && ungroupedSessions.length > 0 ? [{ id: SESSION_GROUP_ID, text: '未分组', type: 'session_group', order: 0, expanded: true }] : []),
         ...agentNodes.map((node) => ({ id: node.nodeId, text: node.text, type: 'session_group', order: node.order, expanded: true })),
-    ], [agentNodes, ungroupedSessions.length]);
-    const edges = useMemo((): { source: string; target: string }[] => [], []);
-    const rootNodeIds = useMemo(() => [
-        ...(ungroupedSessions.length > 0 ? [SESSION_GROUP_ID] : []),
-        ...agentNodes.map((node) => node.nodeId),
-    ], [agentNodes, ungroupedSessions.length]);
+    ], [agentNodes, agentRootNode, ungroupedSessions.length]);
+    const edges = useMemo(() => agentNodes.flatMap((node) => node.parentId ? [{ source: node.parentId, target: node.nodeId }] : []), [agentNodes]);
+    const rootNodeIds = useMemo(() => {
+        if (agentRootNode) return [agentRootNode.nodeId];
+        return [
+            ...(ungroupedSessions.length > 0 ? [SESSION_GROUP_ID] : []),
+            ...agentNodes.filter((node) => !node.parentId).map((node) => node.nodeId),
+        ];
+    }, [agentNodes, agentRootNode, ungroupedSessions.length]);
     const renderedRootNodeIds = activeNodeId && rootNodeIds.includes(activeNodeId) ? [activeNodeId] : rootNodeIds;
     const requestNodeSwitch = useCallback((nodeId: string) => {
         if (nodeId !== visibleSelectedNodeId) setPendingNodeId(nodeId);
@@ -193,11 +202,11 @@ export function SessionTree({
         ? '未分组'
         : agentNodes.find((node) => node.nodeId === pendingNodeId)?.text || '';
     const topSelectedNodeIds = agentNodes
-        .filter((node) => selectedNodeIds.has(node.nodeId)
+        .filter((node) => !node.isRoot && selectedNodeIds.has(node.nodeId)
             && !edges.some((edge) => edge.target === node.nodeId && selectedNodeIds.has(edge.source)))
         .map((node) => node.nodeId);
     const selectedNodeId = selectedNodeIds.has(SESSION_GROUP_ID) ? undefined : topSelectedNodeIds.length === 1 ? topSelectedNodeIds[0] : undefined;
-    const canEditNode = selectedNodeId !== undefined;
+    const canEditNode = selectedNodeId !== undefined && selectedNodeId !== agentRootNode?.nodeId;
     const nodeCardsMap = useMemo<Record<string, BaseDetailCard[]>>(() => {
         const cards: Record<string, BaseDetailCard[]> = { [SESSION_GROUP_ID]: [] };
         const toCard = (session: SessionSummary, nodeId: string, order: number): BaseDetailCard => {
@@ -224,11 +233,12 @@ export function SessionTree({
     }, [agentNodes, bases, displaySettings, modelGroups, searchSnippets, sessionsByNode, ungroupedSessions]);
     const selectSessionCard = useCallback((card: BaseDetailCard, switchNode = false) => {
         const session = visibleSessions.find((item) => item.sessionId === String(card.docId));
-        const nodeId = session?.nodeId && agentNodes.some((node) => node.nodeId === session.nodeId) ? session.nodeId : SESSION_GROUP_ID;
+        const nodeId = session?.nodeId && agentNodes.some((node) => node.nodeId === session.nodeId) ? session.nodeId : fallbackNodeId;
         if (switchNode) onSelectNode(nodeId);
         onSelect(String(card.docId));
-    }, [agentNodes, onSelect, onSelectNode, visibleSessions]);
+    }, [agentNodes, fallbackNodeId, onSelect, onSelectNode, visibleSessions]);
     const toggleNodeSelection = useCallback((rootNodeId: string) => {
+        if (agentRootNode?.nodeId === rootNodeId) return;
         const branchNodeIds: string[] = [];
         const pending = [rootNodeId];
         const visited = new Set<string>();
@@ -249,7 +259,7 @@ export function SessionTree({
             ancestorId = parent;
         }
         onToggleNodeSelection(branchNodeIds, branchCardIds, ancestorIds);
-    }, [edges, nodeCardsMap, onToggleNodeSelection]);
+    }, [agentRootNode, edges, nodeCardsMap, onToggleNodeSelection]);
     useLayoutEffect(() => {
         if (!editMode) {
             setToolbarTop(null);

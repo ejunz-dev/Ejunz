@@ -7,6 +7,7 @@ import type { Context } from '../context';
 import { Service } from '../context';
 import { Logger } from '../logger';
 import SystemModel from '../model/system';
+import AgentDefinitionModel from '../model/agent';
 import { createProvider } from './provider';
 import { httpServer } from '@ejunz/framework';
 import { AgentSessionModel as AgentModel, AgentRuntimeModel, AgentLinkModel, AgentStorageModel } from '../model/agent';
@@ -79,7 +80,7 @@ let runtimeHeartbeat: ReturnType<typeof setInterval> | null = null;
  * host that is still writing the turn is not fenced out from under itself.
  */
 const liveHostMoves = new Map<string, {
-    scope: { domainId: string; userId: number };
+    scope: AgentScope;
     /** Host that owns the turn when the tool is called. */
     previousRuntimeId: string;
     runtimeId: string;
@@ -192,7 +193,7 @@ class HostUnreachableError extends Error {}
  * @returns the link that serves it.
  * @throws HostUnreachableError when the session's host is not connected.
  */
-async function linkForSession(scope: { domainId: string; userId: number }, sessionId: string): Promise<RuntimeLink> {
+async function linkForSession(scope: AgentScope, sessionId: string): Promise<RuntimeLink> {
     const named = (await agentDataAdapter.getSession(scope, sessionId))?.runtimeId ?? '';
     if (named === '') return await requireLink();
     const link = runtimeLinks.get(named);
@@ -417,7 +418,7 @@ async function injectHostSwitchNotice(
     }
 }
 
-async function sessionCreate(envelope: RpcEnvelope, scope: { domainId: string; userId: number }, metadata: { type?: AgentSessionType; baseDocId?: string } = {}): Promise<RpcBody> {
+async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata: { type?: AgentSessionType; baseDocId?: string } = {}): Promise<RpcBody> {
     const payload = { ...(envelope.payload ?? {}) };
     const domainSettings = await agentDataAdapter.getDomainSettings(scope.domainId);
     const domainDefault = domainSettings.sections['agent-default-model'];
@@ -435,9 +436,16 @@ async function sessionCreate(envelope: RpcEnvelope, scope: { domainId: string; u
     const requestedSessionId = typeof payload.sessionId === 'string' ? payload.sessionId : undefined;
     if (requestedSessionId) {
         const existing = await agentDataAdapter.getSessionAny(requestedSessionId);
-        if (existing && (existing.domainId !== scope.domainId || existing.userId !== scope.userId)) {
+        const agentMismatch = existing && scope.agentId !== undefined && (existing.agentId ?? null) !== scope.agentId;
+        if (existing && (existing.domainId !== scope.domainId || existing.userId !== scope.userId || agentMismatch)) {
             return rpcError(envelope.rpcId, 'session not found');
         }
+    }
+    let selectedAgent: Awaited<ReturnType<typeof AgentDefinitionModel.get>> | null = null;
+    if (typeof scope.agentId === 'number') {
+        selectedAgent = await AgentDefinitionModel.get(scope.domainId, scope.agentId, AgentDefinitionModel.PROJECTION_LIST);
+        if (!selectedAgent) return rpcError(envelope.rpcId, 'Agent not found in current domain');
+        await AgentModel.ensureAgentRoot(scope.domainId, scope.userId, scope.agentId, selectedAgent.title);
     }
     const selectedBaseDocId = metadata.baseDocId ?? baseDocIdOf(payload.baseDocId);
     let selectedBase: { docId: number; title?: string } | undefined;
@@ -450,15 +458,17 @@ async function sessionCreate(envelope: RpcEnvelope, scope: { domainId: string; u
     const workspaceId = typeof payload.workspaceId === 'string' ? payload.workspaceId : undefined;
     const workspace = workspaceId ? await agentDataAdapter.getWorkspace(scope, workspaceId) : null;
     if (workspaceId && !workspace) return rpcError(envelope.rpcId, 'workspace not found');
-    const nodeId = typeof payload.nodeId === 'string' && payload.nodeId.trim() ? payload.nodeId.trim() : undefined;
+    const requestedNodeId = typeof payload.nodeId === 'string' && payload.nodeId.trim() ? payload.nodeId.trim() : undefined;
+    const nodeId = requestedNodeId ?? (typeof scope.agentId === 'number' ? AgentModel.agentRootNodeId(scope.agentId) : undefined);
     const node = nodeId ? await agentDataAdapter.getNode(scope, nodeId) : null;
-    if (nodeId && !node) return rpcError(envelope.rpcId, 'node not found');
+    if (nodeId && !node) return rpcError(envelope.rpcId, 'node not found in this Agent');
     // The host is chosen with the session and recorded here, so every later call
     // for this session reaches the host that owns it.
     const requestedHost = typeof payload.runtimeId === 'string' ? payload.runtimeId.trim() : '';
     const link = linkForCreate(requestedHost);
     const sessionId = `session-${domainKey(scope.domainId)}-${randomUUID()}`;
     delete payload.domainId;
+    delete payload.agentId;
     delete payload.workspaceId;
     delete payload.nodeId;
     delete payload.baseDocId;
@@ -480,8 +490,9 @@ async function sessionCreate(envelope: RpcEnvelope, scope: { domainId: string; u
         blank: true,
         creatorUserId: scope.userId,
         type: metadata.type ?? 'generic',
+        ...(typeof scope.agentId === 'number' ? { agentId: scope.agentId } : {}),
         runtimeId: link.runtimeId,
-        ...(selectedBaseDocId === undefined ? {} : { baseDocId: selectedBaseDocId }),
+        ...(selectedBaseDocId == null ? {} : { baseDocId: selectedBaseDocId }),
         ...(nodeId === undefined ? {} : { nodeId }),
         ...(typeof payload.cwd === 'string' ? { cwd: payload.cwd } : {}),
         ...(typeof payload.agentPreset === 'string' && payload.agentPreset.length > 0
@@ -536,7 +547,7 @@ async function sessionCreate(envelope: RpcEnvelope, scope: { domainId: string; u
     return rpcOk(envelope.rpcId, { sessionId: summary.sessionId, ...(summary.agentPreset ? { agentPreset: summary.agentPreset } : {}), ...(nodeId ? { nodeId } : {}) });
 }
 
-async function sessionContextSave(envelope: RpcEnvelope, scope: { domainId: string; userId: number }): Promise<RpcBody> {
+async function sessionContextSave(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const payload = envelope.payload ?? {};
     const sessionId = typeof payload.sessionId === 'string' ? payload.sessionId : '';
     const session = sessionId ? await agentDataAdapter.getSession(scope, sessionId) : null;
@@ -579,7 +590,7 @@ async function sessionContextSave(envelope: RpcEnvelope, scope: { domainId: stri
         if (!injected.body.result?.ok) return rpcError(envelope.rpcId, injected.body.error?.message || '知识库上下文保存失败');
     }
 
-    await agentDataAdapter.updateSessionContext(scope, sessionId, selectedBaseDocId, selectedWorkspace?.path);
+    await agentDataAdapter.updateSessionContext(scope, sessionId, selectedBaseDocId ?? undefined, selectedWorkspace?.path);
     if (currentWorkspace && currentWorkspace.workspaceId !== selectedWorkspace?.workspaceId) {
         await agentDataAdapter.reorderWorkspaceSessions(scope, currentWorkspace.workspaceId, currentWorkspace.sessionIds.filter((id) => id !== sessionId));
     }
@@ -593,7 +604,7 @@ async function sessionContextSave(envelope: RpcEnvelope, scope: { domainId: stri
     });
 }
 
-async function sessionHistory(envelope: RpcEnvelope, scope: { domainId: string; userId: number }): Promise<RpcBody> {
+async function sessionHistory(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const payload = envelope.payload ?? {};
     const sessionId = typeof payload.sessionId === 'string' ? payload.sessionId : '';
     if (!sessionId || !await agentDataAdapter.getSession(scope, sessionId)) return rpcError(envelope.rpcId, 'session not found');
@@ -602,7 +613,7 @@ async function sessionHistory(envelope: RpcEnvelope, scope: { domainId: string; 
     return rpcOk(envelope.rpcId, upstreamValue(upstream.body));
 }
 
-async function sessionMessageCount(envelope: RpcEnvelope, scope: { domainId: string; userId: number }): Promise<RpcBody> {
+async function sessionMessageCount(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const sessionId = typeof envelope.payload?.sessionId === 'string' ? envelope.payload.sessionId : '';
     if (!sessionId || !await agentDataAdapter.getSession(scope, sessionId)) return rpcError(envelope.rpcId, 'session not found');
     return rpcOk(envelope.rpcId, { totalMessages: await agentDataAdapter.countMessages(scope, sessionId) });
@@ -613,7 +624,7 @@ function baseDocIdOf(value: unknown): string | null {
     return Number.isSafeInteger(numeric) && numeric > 0 ? String(numeric) : null;
 }
 
-async function baseTutorSession(scope: { domainId: string; userId: number }, baseDocId: string, sessionId?: string) {
+async function baseTutorSession(scope: AgentScope, baseDocId: string, sessionId?: string) {
     if (sessionId) {
         const session = await agentDataAdapter.getSession(scope, sessionId);
         return session?.type === 'base_detail' && session.baseDocId === baseDocId && !session.archived ? session : null;
@@ -621,13 +632,13 @@ async function baseTutorSession(scope: { domainId: string; userId: number }, bas
     return await agentDataAdapter.getSessionByContext(scope, 'base_detail', baseDocId);
 }
 
-async function baseTutorList(envelope: RpcEnvelope, scope: { domainId: string; userId: number }): Promise<RpcBody> {
+async function baseTutorList(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const baseDocId = baseDocIdOf(envelope.payload?.baseDocId);
     if (!baseDocId) return rpcError(envelope.rpcId, 'base document is required');
     return rpcOk(envelope.rpcId, { items: await agentDataAdapter.listSessionsByContext(scope, 'base_detail', baseDocId) });
 }
 
-async function baseTutorCreate(envelope: RpcEnvelope, scope: { domainId: string; userId: number }): Promise<RpcBody> {
+async function baseTutorCreate(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const baseDocId = baseDocIdOf(envelope.payload?.baseDocId);
     if (!baseDocId) return rpcError(envelope.rpcId, 'base document is required');
     const created = await sessionCreate({ ...envelope, payload: {} }, scope, { type: 'base_detail', baseDocId });
@@ -639,7 +650,7 @@ async function baseTutorCreate(envelope: RpcEnvelope, scope: { domainId: string;
     return rpcOk(envelope.rpcId, { sessionId: session.sessionId, type: session.type ?? 'base_detail', baseDocId });
 }
 
-async function baseTutorEnsure(envelope: RpcEnvelope, scope: { domainId: string; userId: number }): Promise<RpcBody> {
+async function baseTutorEnsure(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const baseDocId = baseDocIdOf(envelope.payload?.baseDocId);
     if (!baseDocId) return rpcError(envelope.rpcId, 'base document is required');
     const requestedSessionId = typeof envelope.payload?.sessionId === 'string' ? envelope.payload.sessionId : undefined;
@@ -649,7 +660,7 @@ async function baseTutorEnsure(envelope: RpcEnvelope, scope: { domainId: string;
     return await baseTutorCreate(envelope, scope);
 }
 
-async function baseTutorHistory(envelope: RpcEnvelope, scope: { domainId: string; userId: number }): Promise<RpcBody> {
+async function baseTutorHistory(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const baseDocId = baseDocIdOf(envelope.payload?.baseDocId);
     if (!baseDocId) return rpcError(envelope.rpcId, 'base document is required');
     const requestedSessionId = typeof envelope.payload?.sessionId === 'string' ? envelope.payload.sessionId : undefined;
@@ -667,7 +678,7 @@ async function baseTutorHistory(envelope: RpcEnvelope, scope: { domainId: string
     }, scope);
 }
 
-async function baseTutorPrompt(envelope: RpcEnvelope, scope: { domainId: string; userId: number }): Promise<RpcBody> {
+async function baseTutorPrompt(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const baseDocId = baseDocIdOf(envelope.payload?.baseDocId);
     const message = String(envelope.payload?.message || '').trim();
     if (!baseDocId || !message) return rpcError(envelope.rpcId, 'base document and message are required');
@@ -975,6 +986,9 @@ class AgentRunService extends Service implements AgentRunApi {
 function nodeView(node: AgentNodeDoc) {
     return {
         nodeId: node.nodeId,
+        ...(node.agentId === undefined ? {} : { agentId: node.agentId }),
+        ...(node.parentId === undefined ? {} : { parentId: node.parentId }),
+        ...(node.isRoot === undefined ? {} : { isRoot: node.isRoot }),
         text: node.text,
         order: node.order,
         createdAt: node.createdAt.toISOString(),
@@ -982,33 +996,51 @@ function nodeView(node: AgentNodeDoc) {
     };
 }
 
-async function nodeRpc(envelope: RpcEnvelope, scope: { domainId: string; userId: number }): Promise<RpcBody> {
+async function nodeRpc(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const payload = envelope.payload ?? {};
     const method = String(envelope.method || '');
+    if (typeof scope.agentId === 'number') {
+        const agent = await AgentDefinitionModel.get(scope.domainId, scope.agentId, AgentDefinitionModel.PROJECTION_LIST);
+        if (!agent) return rpcError(envelope.rpcId, 'Agent not found in current domain');
+        await AgentModel.ensureAgentRoot(scope.domainId, scope.userId, scope.agentId, agent.title);
+    }
     if (method === 'node.list') {
         return rpcOk(envelope.rpcId, { items: (await agentDataAdapter.listNodes(scope)).map(nodeView) });
     }
     if (method === 'node.create') {
         const text = String(payload.text || '').trim();
         if (!text) return rpcError(envelope.rpcId, 'node name is required');
-        return rpcOk(envelope.rpcId, { node: nodeView(await agentDataAdapter.createNode(scope, text)) });
+        const parentId = typeof payload.parentId === 'string' && payload.parentId.length > 0 ? payload.parentId : undefined;
+        try {
+            return rpcOk(envelope.rpcId, { node: nodeView(await agentDataAdapter.createNode(scope, text, parentId)) });
+        } catch (error) {
+            return rpcError(envelope.rpcId, error instanceof Error ? error.message : String(error));
+        }
     }
     const nodeId = String(payload.nodeId || '');
     if (!nodeId) return rpcError(envelope.rpcId, 'nodeId is required');
     if (method === 'node.rename') {
         const text = String(payload.text || '').trim();
         if (!text) return rpcError(envelope.rpcId, 'node name is required');
-        const node = await agentDataAdapter.updateNode(scope, nodeId, text);
-        return node ? rpcOk(envelope.rpcId, { node: nodeView(node) }) : rpcError(envelope.rpcId, 'node not found');
+        try {
+            const node = await agentDataAdapter.updateNode(scope, nodeId, text);
+            return node ? rpcOk(envelope.rpcId, { node: nodeView(node) }) : rpcError(envelope.rpcId, 'node not found');
+        } catch (error) {
+            return rpcError(envelope.rpcId, error instanceof Error ? error.message : String(error));
+        }
     }
     if (method === 'node.delete') {
-        await agentDataAdapter.deleteNode(scope, nodeId);
-        return rpcOk(envelope.rpcId, { deleted: true });
+        try {
+            await agentDataAdapter.deleteNode(scope, nodeId);
+            return rpcOk(envelope.rpcId, { deleted: true });
+        } catch (error) {
+            return rpcError(envelope.rpcId, error instanceof Error ? error.message : String(error));
+        }
     }
     return rpcError(envelope.rpcId, `unsupported node method: ${method}`);
 }
 
-async function workspaceRpc(envelope: RpcEnvelope, scope: { domainId: string; userId: number }): Promise<RpcBody> {
+async function workspaceRpc(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const payload = envelope.payload ?? {};
     const method = String(envelope.method || '');
     if (method === 'workspace.list') {
@@ -1374,7 +1406,7 @@ function mergeDomainModels(body: RpcBody, sections: Record<string, Record<string
     return withRpcValue(body, { ...result, groups, routable });
 }
 
-async function domainSettingsRpc(envelope: RpcEnvelope, scope: { domainId: string; userId: number }): Promise<RpcBody> {
+async function domainSettingsRpc(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const method = String(envelope.method || '');
     const current = await agentDataAdapter.getDomainSettings(scope.domainId);
     const upstream = await callUpstream('settings.project', { sections: current.sections });
@@ -1412,7 +1444,7 @@ async function domainSettingsRpc(envelope: RpcEnvelope, scope: { domainId: strin
     return rpcOk(envelope.rpcId, result ? { ...(result as Record<string, unknown>), revision: saved.revision } : { ns, revision: saved.revision });
 }
 
-async function domainCredentialsRpc(envelope: RpcEnvelope, scope: { domainId: string; userId: number }): Promise<RpcBody> {
+async function domainCredentialsRpc(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const payload = envelope.payload ?? {};
     const method = String(envelope.method || '');
     if (method === 'credentials.describe') {
@@ -1614,7 +1646,7 @@ async function linkStatus(envelope: RpcEnvelope): Promise<RpcBody> {
  * @param scope - the approving operator, recorded with the binding.
  * @returns the RPC body: the approval, or why it was refused.
  */
-async function linkApprove(envelope: RpcEnvelope, scope: { domainId: string; userId: number }): Promise<RpcBody> {
+async function linkApprove(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const code = String(envelope.payload?.code || '').trim().toUpperCase();
     if (!code) return rpcError(envelope.rpcId, 'code is required');
     const approved = await AgentLinkModel.approve(code, scope.userId);
@@ -1648,7 +1680,7 @@ const RUNTIME_LABEL_MAX = 64;
 async function fencePreviousHostWriter(
     sessionId: string,
     previousRuntimeId: string | undefined,
-    scope: { domainId: string; userId: number },
+    scope: AgentScope,
 ): Promise<void> {
     if (previousRuntimeId === undefined || previousRuntimeId === '') return;
     const previous = runtimeLinks.get(previousRuntimeId);
@@ -1731,7 +1763,7 @@ async function waitUntilTurnClosed(sessionId: string, superseded: () => boolean)
  * @param input - session, target host, the host the turn started on, generation, and owning scope.
  */
 async function applyLiveHostMove(input: {
-    scope: { domainId: string; userId: number };
+    scope: AgentScope;
     sessionId: string;
     previousRuntimeId: string;
     runtimeId: string;
@@ -1885,7 +1917,7 @@ async function startLiveHostMove(input: {
  */
 async function sessionSetHost(
     envelope: RpcEnvelope,
-    scope: { domainId: string; userId: number },
+    scope: AgentScope,
     options?: { cancelPrevious?: boolean },
 ): Promise<RpcBody> {
     const sessionId = String(envelope.payload?.sessionId || '');
@@ -2499,6 +2531,8 @@ export function createSocketLink(runtimeId: string, peer: SocketPeer): RuntimeLi
 export interface AgentScope {
     domainId: string;
     userId: number;
+    /** Numeric TYPE_AGENT document ID; null scopes the legacy unassigned workspace. */
+    agentId?: number | null;
 }
 
 export interface AgentDataAdapter {
@@ -2522,7 +2556,7 @@ export interface AgentDataAdapter {
     listWorkspaces(scope: AgentScope): Promise<AgentWorkspaceDoc[]>;
     listNodes(scope: AgentScope): Promise<AgentNodeDoc[]>;
     getNode(scope: AgentScope, nodeId: string): Promise<AgentNodeDoc | null>;
-    createNode(scope: AgentScope, text: string): Promise<AgentNodeDoc>;
+    createNode(scope: AgentScope, text: string, parentId?: string): Promise<AgentNodeDoc>;
     updateNode(scope: AgentScope, nodeId: string, text: string): Promise<AgentNodeDoc | null>;
     deleteNode(scope: AgentScope, nodeId: string): Promise<void>;
     getWorkspace(scope: AgentScope, workspaceId: string): Promise<AgentWorkspaceDoc | null>;
@@ -2572,19 +2606,19 @@ export class MongoAgentDataAdapter implements AgentDataAdapter {
     }
 
     async listSessions(scope: AgentScope): Promise<AgentSessionSummary[]> {
-        return await AgentModel.listSessions(scope.domainId, scope.userId);
+        return await AgentModel.listSessions(scope.domainId, scope.userId, scope.agentId);
     }
 
     async getSession(scope: AgentScope, sessionId: string) {
-        return await AgentModel.getSession(scope.domainId, scope.userId, sessionId);
+        return await AgentModel.getSession(scope.domainId, scope.userId, sessionId, scope.agentId);
     }
 
     async getSessionByContext(scope: AgentScope, type: 'generic' | 'base_detail', baseDocId: string) {
-        return await AgentModel.getSessionByContext(scope.domainId, scope.userId, type, baseDocId);
+        return await AgentModel.getSessionByContext(scope.domainId, scope.userId, type, baseDocId, scope.agentId);
     }
 
     async listSessionsByContext(scope: AgentScope, type: 'generic' | 'base_detail', baseDocId: string) {
-        return await AgentModel.listSessionsByContext(scope.domainId, scope.userId, type, baseDocId);
+        return await AgentModel.listSessionsByContext(scope.domainId, scope.userId, type, baseDocId, scope.agentId);
     }
 
     async upsertSession(scope: AgentScope, summary: AgentSessionSummary, archived?: boolean): Promise<void> {
@@ -2592,11 +2626,11 @@ export class MongoAgentDataAdapter implements AgentDataAdapter {
     }
 
     async updateSession(scope: AgentScope, sessionId: string, patch: Parameters<typeof AgentModel.updateSession>[3]): Promise<void> {
-        await AgentModel.updateSession(scope.domainId, scope.userId, sessionId, patch);
+        await AgentModel.updateSession(scope.domainId, scope.userId, sessionId, patch, scope.agentId);
     }
 
     async updateSessionContext(scope: AgentScope, sessionId: string, baseDocId?: string, cwd?: string): Promise<void> {
-        await AgentModel.updateSessionContext(scope.domainId, scope.userId, sessionId, baseDocId, cwd);
+        await AgentModel.updateSessionContext(scope.domainId, scope.userId, sessionId, baseDocId, cwd, scope.agentId);
     }
 
     async appendEvent(scope: AgentScope, sessionId: string, event: Record<string, unknown>): Promise<void> {
@@ -2604,15 +2638,15 @@ export class MongoAgentDataAdapter implements AgentDataAdapter {
     }
 
     async countEvents(scope: AgentScope, sessionId: string): Promise<number> {
-        return await AgentModel.countEvents(scope.domainId, scope.userId, sessionId);
+        return await AgentModel.countEvents(scope.domainId, scope.userId, sessionId, scope.agentId);
     }
 
     async countMessages(scope: AgentScope, sessionId: string): Promise<number> {
-        return await AgentModel.countMessages(scope.domainId, scope.userId, sessionId);
+        return await AgentModel.countMessages(scope.domainId, scope.userId, sessionId, scope.agentId);
     }
 
     async listEvents(scope: AgentScope, sessionId: string, beforeSeq?: number, limit = 50) {
-        return await AgentModel.listEvents(scope.domainId, scope.userId, sessionId, beforeSeq, limit);
+        return await AgentModel.listEvents(scope.domainId, scope.userId, sessionId, beforeSeq, limit, scope.agentId);
     }
 
     async listEventsTailAny(sessionId: string, beforeSeq?: number, limit = 100) {
@@ -2620,7 +2654,7 @@ export class MongoAgentDataAdapter implements AgentDataAdapter {
     }
 
     async search(scope: AgentScope, query: string): Promise<{ sessionId: string; snippet: string }[]> {
-        return await AgentModel.search(scope.domainId, scope.userId, query);
+        return await AgentModel.search(scope.domainId, scope.userId, query, scope.agentId);
     }
 
     async getSessionAny(sessionId: string) {
@@ -2654,23 +2688,23 @@ export class MongoAgentDataAdapter implements AgentDataAdapter {
     }
 
     async listNodes(scope: AgentScope): Promise<AgentNodeDoc[]> {
-        return await AgentModel.listNodes(scope.domainId, scope.userId);
+        return await AgentModel.listNodes(scope.domainId, scope.userId, scope.agentId);
     }
 
     async getNode(scope: AgentScope, nodeId: string): Promise<AgentNodeDoc | null> {
-        return await AgentModel.getNode(scope.domainId, scope.userId, nodeId);
+        return await AgentModel.getNode(scope.domainId, scope.userId, nodeId, scope.agentId);
     }
 
-    async createNode(scope: AgentScope, text: string): Promise<AgentNodeDoc> {
-        return await AgentModel.createNode(scope.domainId, scope.userId, text);
+    async createNode(scope: AgentScope, text: string, parentId?: string): Promise<AgentNodeDoc> {
+        return await AgentModel.createNode(scope.domainId, scope.userId, text, scope.agentId, parentId);
     }
 
     async updateNode(scope: AgentScope, nodeId: string, text: string): Promise<AgentNodeDoc | null> {
-        return await AgentModel.updateNode(scope.domainId, scope.userId, nodeId, text);
+        return await AgentModel.updateNode(scope.domainId, scope.userId, nodeId, text, scope.agentId);
     }
 
     async deleteNode(scope: AgentScope, nodeId: string): Promise<void> {
-        await AgentModel.deleteNode(scope.domainId, scope.userId, nodeId);
+        await AgentModel.deleteNode(scope.domainId, scope.userId, nodeId, scope.agentId);
     }
 
     async getWorkspace(scope: AgentScope, workspaceId: string): Promise<AgentWorkspaceDoc | null> {
@@ -2708,11 +2742,11 @@ export class MongoAgentDataAdapter implements AgentDataAdapter {
     }
 
     async deleteSession(scope: AgentScope, sessionId: string): Promise<void> {
-        await AgentModel.deleteSession(scope.domainId, scope.userId, sessionId);
+        await AgentModel.deleteSession(scope.domainId, scope.userId, sessionId, scope.agentId);
     }
 
     async deleteSessions(scope: AgentScope, sessionIds: readonly string[]): Promise<void> {
-        await AgentModel.deleteSessions(scope.domainId, scope.userId, sessionIds);
+        await AgentModel.deleteSessions(scope.domainId, scope.userId, sessionIds, scope.agentId);
     }
 
     async updateWorkspace(scope: AgentScope, workspaceId: string, patch: Partial<AgentWorkspaceDoc>): Promise<AgentWorkspaceDoc | null> {
@@ -2732,7 +2766,7 @@ export class MongoAgentDataAdapter implements AgentDataAdapter {
     }
 
     async archivedSessionIds(scope: AgentScope): Promise<string[]> {
-        return await AgentModel.archivedSessionIds(scope.domainId, scope.userId);
+        return await AgentModel.archivedSessionIds(scope.domainId, scope.userId, scope.agentId);
     }
 
     async getDomainSettings(domainId: string) {

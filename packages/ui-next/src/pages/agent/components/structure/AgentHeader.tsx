@@ -6,6 +6,7 @@ export type AgentWebSocketStatus = 'connecting' | 'connected' | 'disconnected';
 interface AgentHeaderProps {
     domainId: string;
     domainName: string;
+    title?: string;
     webSocketStatus: AgentWebSocketStatus;
     onOpenSettings: () => void;
     onOpenDisplaySettings: () => void;
@@ -27,9 +28,9 @@ function webSocketLabel(status: AgentWebSocketStatus): string {
     return 'WS 连接中';
 }
 
-export function AgentHeader({ domainId, domainName, webSocketStatus, onOpenSettings, onOpenDisplaySettings, treeOpen, onToggleTree, onEditClick, editActive }: AgentHeaderProps) {
+export function AgentHeader({ domainId, domainName, title = 'Ejunz agent', webSocketStatus, onOpenSettings, onOpenDisplaySettings, treeOpen, onToggleTree, onEditClick, editActive }: AgentHeaderProps) {
     return <BaseDetailHeader
-        title="Ejunz agent"
+        title={title}
         description={domainName}
         domainId={domainId}
         docId="ejunz-agent"
