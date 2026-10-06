@@ -1,5 +1,6 @@
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { BaseDetailTree, BaseDetailTreeDrawer, defaultBaseDetailDisplaySettings, type BaseDetailCard, type BaseDetailNode } from '@ejunz/ui-next';
+import { BaseDetailConfirmDialog } from '../../../../components/base-detail/BaseDetailConfirmDialog';
 import { StateDot, type StateDotState } from '../primitives/StateDot';
 import { MarkdownText } from '../primitives/markdown/MarkdownText';
 import type { AgentNode, SessionSummary, BaseView } from '../../runtime/session';
@@ -148,6 +149,7 @@ export function SessionTree({
     const toolsRef = useRef<HTMLDivElement>(null);
     const [toolbarTop, setToolbarTop] = useState<number | null>(null);
     const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => new Set([SESSION_GROUP_ID]));
+    const [pendingNodeId, setPendingNodeId] = useState<string | null>(null);
     const visibleSessions = useMemo(() => filterSessions(sessions, current, query, searchMatches), [current, query, searchMatches, sessions]);
     const sessionsByNode = useMemo(() => {
         const validNodeIds = new Set(agentNodes.map((node) => node.nodeId));
@@ -178,6 +180,18 @@ export function SessionTree({
         ...(ungroupedSessions.length > 0 ? [SESSION_GROUP_ID] : []),
         ...agentNodes.map((node) => node.nodeId),
     ], [agentNodes, ungroupedSessions.length]);
+    const renderedRootNodeIds = activeNodeId && rootNodeIds.includes(activeNodeId) ? [activeNodeId] : rootNodeIds;
+    const requestNodeSwitch = useCallback((nodeId: string) => {
+        if (nodeId !== visibleSelectedNodeId) setPendingNodeId(nodeId);
+    }, [visibleSelectedNodeId]);
+    const confirmNodeSwitch = useCallback(() => {
+        if (pendingNodeId) onSelectNode(pendingNodeId);
+        setPendingNodeId(null);
+    }, [onSelectNode, pendingNodeId]);
+    const cancelNodeSwitch = useCallback(() => setPendingNodeId(null), []);
+    const pendingNodeLabel = pendingNodeId === SESSION_GROUP_ID
+        ? '未分组'
+        : agentNodes.find((node) => node.nodeId === pendingNodeId)?.text || '';
     const topSelectedNodeIds = agentNodes
         .filter((node) => selectedNodeIds.has(node.nodeId)
             && !edges.some((edge) => edge.target === node.nodeId && selectedNodeIds.has(edge.source)))
@@ -208,10 +222,10 @@ export function SessionTree({
         });
         return cards;
     }, [agentNodes, bases, displaySettings, modelGroups, searchSnippets, sessionsByNode, ungroupedSessions]);
-    const selectSessionCard = useCallback((card: BaseDetailCard) => {
+    const selectSessionCard = useCallback((card: BaseDetailCard, switchNode = false) => {
         const session = visibleSessions.find((item) => item.sessionId === String(card.docId));
         const nodeId = session?.nodeId && agentNodes.some((node) => node.nodeId === session.nodeId) ? session.nodeId : SESSION_GROUP_ID;
-        onSelectNode(nodeId);
+        if (switchNode) onSelectNode(nodeId);
         onSelect(String(card.docId));
     }, [agentNodes, onSelect, onSelectNode, visibleSessions]);
     const toggleNodeSelection = useCallback((rootNodeId: string) => {
@@ -293,7 +307,7 @@ export function SessionTree({
         </div>}
         <div className="bd-content bd-content--tree eja-agentStructure__tree">
             <BaseDetailTree
-                rootNodeIds={rootNodeIds}
+                rootNodeIds={renderedRootNodeIds}
                 nodes={nodes}
                 edges={edges}
                 nodeCardsMap={nodeCardsMap}
@@ -301,7 +315,7 @@ export function SessionTree({
                 onToggle={toggleNodeExpansion}
                 selectedNodeId={visibleSelectedNodeId}
                 selectedCardId={current}
-                onSelectNode={onSelectNode}
+                onSelectNode={requestNodeSwitch}
                 onSelectCard={selectSessionCard}
                 filter=""
                 displaySettings={treeDisplaySettings}
@@ -324,11 +338,16 @@ export function SessionTree({
             selectedCardId={current}
             onToggle={toggleNodeExpansion}
             onSelectNode={(nodeId) => { onSelectNode(nodeId); onCloseTree(); }}
-            onSelectCard={(card) => { selectSessionCard(card); onCloseTree(); }}
+            onSelectCard={(card) => { selectSessionCard(card, true); onCloseTree(); }}
             onClose={onCloseTree}
             filter={query}
             displaySettings={treeDisplaySettings}
         />
+        {pendingNodeId ? <BaseDetailConfirmDialog
+            nodeLabel={`切换到“${pendingNodeLabel}”？`}
+            onConfirm={confirmNodeSwitch}
+            onCancel={cancelNodeSwitch}
+        /> : null}
         {searchHasMore && <p className="bd-muted eja-agentStructure__hint">仅显示部分搜索结果，请缩小搜索范围。</p>}
     </section>;
 }
