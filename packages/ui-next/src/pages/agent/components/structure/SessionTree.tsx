@@ -108,7 +108,7 @@ const SessionCardTitle = memo(function SessionCardTitle({ session, error, waitin
 }) {
     const title = sessionTitle(session);
     const state = sessionState(session, waitingForAnswer, error);
-    const stateLabel = error ? '运行失败' : waitingForAnswer ? '等待回答' : session.running ? '运行中' : '已完成';
+    const stateLabel = session.isDraftCard ? '待开始' : error ? '运行失败' : waitingForAnswer ? '等待回答' : session.running ? '运行中' : '已完成';
     const activity = error ? `Error · ${flatLine(error)}` : activityPreview;
     if (editMode) {
         return <>

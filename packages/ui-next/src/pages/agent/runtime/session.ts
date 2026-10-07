@@ -28,6 +28,7 @@ export interface SessionSummary {
     runtimeId?: string;
     model?: { provider: string; model: string };
     projections?: { values?: Record<string, unknown> };
+    isDraftCard?: boolean;
 }
 
 export interface BaseView {

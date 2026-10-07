@@ -91,6 +91,25 @@ function sessionTitle(session: SessionSummary): string {
     return `会话 ${session.sessionId.slice(8, 16)}`;
 }
 
+function readDraftSessionCards(storageKey: string): SessionSummary[] {
+    if (typeof window === 'undefined') return [];
+    try {
+        const value = JSON.parse(window.localStorage.getItem(storageKey) || '[]');
+        return Array.isArray(value) ? value.filter((item): item is SessionSummary => item && typeof item === 'object'
+            && item.isDraftCard === true && typeof item.sessionId === 'string' && item.sessionId.startsWith('draft:')
+            && typeof item.updatedAt === 'number' && typeof item.blank === 'boolean') : [];
+    } catch {
+        return [];
+    }
+}
+
+function newDraftCardId(): string {
+    const id = typeof window !== 'undefined' && typeof window.crypto?.randomUUID === 'function'
+        ? window.crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    return `draft:${id}`;
+}
+
 type AgentRpc = (method: string, payload: unknown, signal?: AbortSignal) => Promise<unknown>;
 
 function readyFiles(attachments: DraftAttachment[]): UploadedFileMeta[] {
@@ -352,13 +371,14 @@ export default function AgentPage() {
     const user = useUserContext();
     const buildUrl = useBuildUrl();
     const guest = !user || user._id == null || user._id === 0 || user._id === '0';
+    const draftCardsStorageKey = `ejunz-agent-draft-cards:${String(domainId || 'system')}:${String(user?._id ?? 'guest')}:${agentId ?? 'default'}`;
     const { dark, applyTheme } = useAgentTheme();
     useEffect(() => {
         if (!guest) return;
         const redirect = `${window.location.pathname}${window.location.search}`;
         window.location.href = buildUrl('user_login', {}, { redirect });
     }, [buildUrl, guest]);
-    const [sessions, setSessions] = useState<SessionSummary[]>([]);
+    const [sessions, setSessions] = useState<SessionSummary[]>(() => readDraftSessionCards(draftCardsStorageKey));
     const [nodes, setNodes] = useState<AgentNode[]>([]);
     const rootNodeId = nodes.find((node) => node.isRoot)?.nodeId ?? pageRootNodeId;
     const [treeOpen, setTreeOpen] = useState(false);
@@ -438,10 +458,10 @@ export default function AgentPage() {
             const value = await rpc('session.list', {}) as { items?: SessionSummary[] };
             const next = Array.isArray(value.items) ? value.items : [];
             setSessions((previous) => {
-                const currentBlank = previous.find((session) => session.sessionId === currentRef.current && session.blank);
-                return currentBlank && !next.some((session) => session.sessionId === currentBlank.sessionId)
-                    ? [currentBlank, ...next]
-                    : next;
+                const serverIds = new Set(next.map((session) => session.sessionId));
+                const drafts = previous.filter((session) => session.isDraftCard && !serverIds.has(session.sessionId));
+                const currentBlank = previous.find((session) => session.sessionId === currentRef.current && session.blank && !session.isDraftCard);
+                return [...drafts, ...(currentBlank && !serverIds.has(currentBlank.sessionId) ? [currentBlank] : []), ...next];
             });
             setLoadError(null);
         } catch (error) {
@@ -920,9 +940,17 @@ export default function AgentPage() {
         }
     }, [activeTreeNodeId, booting, current, nodes, rootNodeId, sessions]);
     useEffect(() => {
+        if (booting || guest) return;
+        try {
+            window.localStorage.setItem(draftCardsStorageKey, JSON.stringify(sessions.filter((session) => session.isDraftCard)));
+        } catch {
+            // Draft cards stay available in this page when browser storage is unavailable.
+        }
+    }, [booting, draftCardsStorageKey, guest, sessions]);
+    useEffect(() => {
         if (guest) return;
         sessions.forEach((session) => {
-            if (!session.blank && session.sessionId !== current) void preloadHistoryPreview(session.sessionId);
+            if (!session.blank && !session.isDraftCard && session.sessionId !== current) void preloadHistoryPreview(session.sessionId);
         });
     }, [current, guest, preloadHistoryPreview, sessions]);
     useEffect(() => {
@@ -944,6 +972,12 @@ export default function AgentPage() {
         setView('chat');
         setModelMenuOpen(false);
         if (!current) {
+            setHistoryLoading(false);
+            return;
+        }
+        const selectedSession = sessionsRef.current.find((session) => session.sessionId === current);
+        if (selectedSession?.isDraftCard) {
+            setMessages([]);
             setHistoryLoading(false);
             return;
         }
@@ -1008,20 +1042,24 @@ export default function AgentPage() {
     const fallbackHostId = hosts.find((host) => host.fallback === true)?.runtimeId ?? '';
     const currentSessionError = current ? sessionErrors[current] : undefined;
     const runningTurnStart = useMemo(() => runningTurnStartTime(history), [history]);
-    const composerModels = current
-        ? models
-        : (modelCatalog ? {
-            current: draftModelSelection ?? { provider: '', model: '' },
-            routable: draftModelSelection !== undefined,
+    const composerModels = currentSession?.isDraftCard
+        ? (modelCatalog ? {
+            current: currentSession.model ?? { provider: '', model: '' },
+            routable: currentSession.model !== undefined,
             groups: modelCatalog.groups,
-        } : null);
-    const startSession = useCallback(async (firstMessage = '', presetOverride?: string, baseId?: number, titleOverride?: string, modelOverride?: { provider: string; model: string }, openDrawer = true) => {
+        } : null)
+        : current
+            ? models
+            : (modelCatalog ? {
+                current: draftModelSelection ?? { provider: '', model: '' },
+                routable: draftModelSelection !== undefined,
+                groups: modelCatalog.groups,
+            } : null);
+    const startSession = useCallback(async (firstMessage = '', presetOverride?: string, baseId?: number, titleOverride?: string, modelOverride?: { provider: string; model: string }) => {
         let sessionPublished = false;
-        let creatingNoticeId: number | undefined;
         setCreatingSession(true);
         setNewSessionConfigOpen(false);
-        setDetailsOpen(openDrawer);
-        if (!openDrawer) creatingNoticeId = await Notification.show({ message: '正在创建会话…', type: 'info', duration: 0 });
+        setDetailsOpen(true);
         try {
             const selectedBaseId = baseId ?? draftBaseId;
             const selectedNodeId = draftNodeId ?? rootNodeId ?? undefined;
@@ -1071,7 +1109,7 @@ export default function AgentPage() {
                 : session));
             setCreatingSession(false);
             setNewSessionConfigOpen(false);
-            setDetailsOpen(openDrawer);
+            setDetailsOpen(true);
             setMessages([]);
             if (hasContent) {
                 setSending(true);
@@ -1088,11 +1126,6 @@ export default function AgentPage() {
             }
             void loadSessions();
             setLoadError(null);
-            if (creatingNoticeId !== undefined) {
-                Notification.hide(creatingNoticeId);
-                creatingNoticeId = undefined;
-                void Notification.success('会话已创建');
-            }
         } catch (error) {
             setCreatingSession(false);
             if (!sessionPublished) {
@@ -1101,20 +1134,59 @@ export default function AgentPage() {
             }
             const message = error instanceof Error ? error.message : String(error);
             setLoadError(message);
-            if (creatingNoticeId !== undefined) Notification.hide(creatingNoticeId);
-            if (!openDrawer) void Notification.error(sessionPublished ? `会话已创建，但部分设置失败：${message}` : `会话创建失败：${message}`);
         } finally {
             setCreatingSession(false);
             setSending(false);
         }
     }, [agentId, agentPresetChoice, attachments, draftBaseId, draftModelSelection, draftNodeId, loadSessions, rootNodeId, rpc]);
 
-    const confirmNewSession = useCallback(async (title: string, sendMessage = true, openDrawer = true) => {
+    const confirmNewSession = useCallback(async (title: string) => {
         const selectedModel = draftModelSelection ?? (composerModels?.current?.provider && composerModels.current.model
             ? { provider: composerModels.current.provider, model: composerModels.current.model }
             : undefined);
-        await startSession(sendMessage ? input : '', agentPresetChoice, draftBaseId, title, selectedModel, openDrawer);
+        await startSession(input, agentPresetChoice, draftBaseId, title, selectedModel);
     }, [agentPresetChoice, composerModels, draftBaseId, draftModelSelection, input, startSession]);
+
+    const createDraftCard = useCallback((title: string) => {
+        const nodeId = draftNodeId ?? rootNodeId ?? undefined;
+        const runtimeId = draftHostId || undefined;
+        const selectedModel = draftModelSelection ?? (composerModels?.current?.provider && composerModels.current.model
+            ? { provider: composerModels.current.provider, model: composerModels.current.model }
+            : undefined);
+        const createdAt = Date.now();
+        const sessionId = newDraftCardId();
+        const card: SessionSummary = {
+            sessionId,
+            createdAt,
+            updatedAt: createdAt,
+            running: false,
+            blank: true,
+            isDraftCard: true,
+            agentId: agentId ?? undefined,
+            agentPreset: agentPresetChoice || undefined,
+            ...(draftBaseId === undefined ? {} : { baseDocId: String(draftBaseId) }),
+            ...(nodeId === undefined ? {} : { nodeId }),
+            ...(runtimeId === undefined ? {} : { runtimeId }),
+            ...(selectedModel === undefined ? {} : { model: selectedModel }),
+            projections: { values: { title: title.trim() || '新会话' } },
+        };
+        setSessions((items) => [card, ...items]);
+        setActiveTreeNodeId(nodeId ?? null);
+        setCurrent(sessionId);
+        setDetailsOpen(false);
+        setNewSessionConfigOpen(false);
+        setDraftBaseId(undefined);
+        setDraftNodeId(undefined);
+        setDraftHostId('');
+        setDraftModelSelection(undefined);
+        setInput('');
+        setMessages([]);
+        setHistory([]);
+        clearAttachments();
+        updateAgentSelectionUrl({ nodeId: nodeId ?? null, cardId: sessionId });
+        setLoadError(null);
+        void Notification.success('占位卡片已创建');
+    }, [agentId, agentPresetChoice, clearAttachments, composerModels, draftBaseId, draftHostId, draftModelSelection, draftNodeId, rootNodeId]);
 
     const prepareNewSession = useCallback(async (baseId?: number) => {
         const loadId = ++newSessionLoadRef.current;
@@ -1154,6 +1226,11 @@ export default function AgentPage() {
     const switchHost = useCallback(async (runtimeId: string) => {
         if (!current) return;
         const sessionId = current;
+        if (sessionsRef.current.some((session) => session.sessionId === sessionId && session.isDraftCard)) {
+            setSessions((items) => items.map((session) => session.sessionId === sessionId ? { ...session, runtimeId } : session));
+            await Notification.success('主机已保存');
+            return;
+        }
         try {
             await rpc('session.setHost', { sessionId, runtimeId });
             setSessions((items) => items.map((session) => session.sessionId === sessionId ? { ...session, runtimeId } : session));
@@ -1173,6 +1250,13 @@ export default function AgentPage() {
     const saveBaseSetting = useCallback(async (baseId: number | undefined) => {
         if (!current) {
             setDraftBaseId(baseId);
+            await Notification.success('上下文已保存');
+            return;
+        }
+        if (sessionsRef.current.some((session) => session.sessionId === current && session.isDraftCard)) {
+            setSessions((items) => items.map((session) => session.sessionId === current
+                ? { ...session, ...(baseId === undefined ? { baseDocId: undefined } : { baseDocId: String(baseId) }) }
+                : session));
             await Notification.success('上下文已保存');
             return;
         }
@@ -1218,6 +1302,10 @@ export default function AgentPage() {
         setAgentPresetChoice(id);
         setAgentPresetError(null);
         if (!current || !currentSession?.blank) return;
+        if (currentSession.isDraftCard) {
+            setSessions((items) => items.map((session) => session.sessionId === current ? { ...session, agentPreset: id } : session));
+            return;
+        }
         try {
             const value = await rpc('agentPreset.select', { sessionId: current, agentPreset: id }) as { agentPreset?: string };
             const applied = value.agentPreset ?? id;
@@ -1237,6 +1325,7 @@ export default function AgentPage() {
             return;
         }
         if ((!text && !files.length) || !current || sending) return;
+        const selectedSession = sessionsRef.current.find((session) => session.sessionId === current);
         setSessionErrors((previous) => {
             if (previous[current] === undefined) return previous;
             const next = { ...previous };
@@ -1246,23 +1335,59 @@ export default function AgentPage() {
         setSending(true);
         setInput('');
         try {
-            await injectDraftFiles(rpc, current, files);
+            let sessionId = current;
+            if (selectedSession?.isDraftCard) {
+                const created = await rpc('session.create', {
+                    ...(selectedSession.baseDocId === undefined ? {} : { baseDocId: Number(selectedSession.baseDocId) }),
+                    ...(selectedSession.nodeId === undefined ? {} : { nodeId: selectedSession.nodeId }),
+                    ...(selectedSession.runtimeId === undefined ? {} : { runtimeId: selectedSession.runtimeId }),
+                }) as { sessionId?: string; agentPreset?: string; runtimeId?: string; nodeId?: string };
+                if (!created.sessionId) throw new Error('会话创建未返回会话 ID');
+                sessionId = created.sessionId;
+                let realSession: SessionSummary = {
+                    ...selectedSession,
+                    sessionId,
+                    isDraftCard: false,
+                    blank: true,
+                    updatedAt: Date.now(),
+                    ...(created.agentPreset === undefined ? {} : { agentPreset: created.agentPreset }),
+                    ...(created.runtimeId === undefined ? {} : { runtimeId: created.runtimeId }),
+                    ...(created.nodeId === undefined ? {} : { nodeId: created.nodeId }),
+                };
+                setSessions((items) => items.map((session) => session.sessionId === current ? realSession : session));
+                currentRef.current = sessionId;
+                setCurrent(sessionId);
+                updateAgentSelectionUrl({ cardId: sessionId });
+                if (selectedSession.agentPreset && selectedSession.agentPreset !== created.agentPreset) {
+                    const preset = await rpc('agentPreset.select', { sessionId, agentPreset: selectedSession.agentPreset }) as { agentPreset?: string };
+                    realSession = { ...realSession, agentPreset: preset.agentPreset ?? selectedSession.agentPreset };
+                }
+                const title = sessionTitle(selectedSession);
+                if (title !== '新会话') await rpc('session.rename', { sessionId, title });
+                if (selectedSession.model) {
+                    await rpc('session.selectModel', { sessionId, ...selectedSession.model });
+                }
+                setSessions((items) => items.map((session) => session.sessionId === sessionId ? realSession : session));
+            }
+            await injectDraftFiles(rpc, sessionId, files);
             await rpc('session.prompt', {
-                sessionId: current,
+                sessionId,
                 mode: effective,
                 content: promptParts(text, files.length),
                 clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             });
             clearAttachments();
-            setSessions((items) => items.map((session) => session.sessionId === current ? { ...session, blank: false, updatedAt: Date.now() } : session));
+            setSessions((items) => items.map((session) => session.sessionId === sessionId ? { ...session, blank: false, updatedAt: Date.now() } : session));
             setLoadError(null);
         } catch (error) {
             setInput(text);
-            setLoadError(error instanceof Error ? error.message : String(error));
+            const message = error instanceof Error ? error.message : String(error);
+            setLoadError(message);
+            void Notification.error(message);
         } finally {
             setSending(false);
         }
-    }, [attachments, busyEnter, current, input, rpc, running, sending]);
+    }, [attachments, busyEnter, clearAttachments, current, input, rpc, running, sending]);
 
     const cancel = useCallback(async () => {
         if (!current || !running) return;
@@ -1324,6 +1449,11 @@ export default function AgentPage() {
             setModelMenuOpen(false);
             return;
         }
+        if (sessionsRef.current.some((session) => session.sessionId === sessionId && session.isDraftCard)) {
+            setSessions((items) => items.map((session) => session.sessionId === sessionId ? { ...session, model: { provider, model } } : session));
+            setModelMenuOpen(false);
+            return;
+        }
         try {
             await rpc('session.selectModel', { sessionId, provider, model });
             setModels((value) => {
@@ -1343,7 +1473,13 @@ export default function AgentPage() {
     const saveSessionModel = useCallback(async (provider: string, model: string) => {
         const sessionId = current;
         if (!sessionId) throw new Error('当前没有会话');
-        await rpc('session.selectModel', { sessionId: sessionId, provider, model });
+        if (sessionsRef.current.some((session) => session.sessionId === sessionId && session.isDraftCard)) {
+            setSessions((items) => items.map((session) => session.sessionId === sessionId ? { ...session, model: { provider, model } } : session));
+            setModelMenuOpen(false);
+            await Notification.success('模型已保存');
+            return;
+        }
+        await rpc('session.selectModel', { sessionId, provider, model });
         setModels((value) => {
             if (!value) return value;
             const next = { ...value, current: { ...value.current, provider, model } };
@@ -1357,6 +1493,11 @@ export default function AgentPage() {
 
     const renameSession = useCallback(async (sessionId = current ?? '', requestedTitle = titleDraft) => {
         if (!sessionId || !requestedTitle.trim()) return;
+        if (sessionsRef.current.some((session) => session.sessionId === sessionId && session.isDraftCard)) {
+            setSessions((items) => items.map((session) => session.sessionId === sessionId ? { ...session, projections: { values: { ...(session.projections?.values ?? {}), title: requestedTitle.trim() } } } : session));
+            setRenaming(false);
+            return;
+        }
         try {
             const value = await rpc('session.rename', { sessionId, title: requestedTitle.trim() }) as { title?: string };
             if (value.title) setSessions((items) => items.map((session) => session.sessionId === sessionId ? { ...session, projections: { values: { ...(session.projections?.values ?? {}), title: value.title } } } : session));
@@ -1398,12 +1539,12 @@ export default function AgentPage() {
         }
         setSessionTitleSaving(true);
         try {
-            const results = await Promise.all(changes.map(async (change) => {
+            const persistedChanges = changes.filter((change) => !sessionsRef.current.some((session) => session.sessionId === change.sessionId && session.isDraftCard));
+            await Promise.all(persistedChanges.map(async (change) => {
                 const value = await rpc('session.rename', { sessionId: change.sessionId, title: change.title }) as { title?: string };
                 if (value.title !== change.title) throw new Error('会话名称保存失败');
-                return { ...change, title: value.title };
             }));
-            const titles = new Map(results.map((change) => [change.sessionId, change.title]));
+            const titles = new Map(changes.map((change) => [change.sessionId, change.title]));
             setSessions((items) => items.map((session) => {
                 const title = titles.get(session.sessionId);
                 return title === undefined ? session : { ...session, projections: { values: { ...(session.projections?.values ?? {}), title } } };
@@ -1422,7 +1563,7 @@ export default function AgentPage() {
     }, [loadSessions, rpc, sessionTitleDrafts, sessionTitleSaving, sessions]);
 
     const forkSession = useCallback(async (sessionId = current ?? '') => {
-        if (!sessionId) return;
+        if (!sessionId || sessionsRef.current.some((session) => session.sessionId === sessionId && session.isDraftCard)) return;
         try {
             const value = await rpc('session.fork', { sessionId }) as { sessionId?: string };
             if (value.sessionId) {
@@ -1441,7 +1582,8 @@ export default function AgentPage() {
     }, [sessions]);
 
     const performHardDelete = useCallback(async (sessionId: string) => {
-        await rpc('session.delete', { sessionId });
+        const draftCard = sessionsRef.current.some((session) => session.sessionId === sessionId && session.isDraftCard);
+        if (!draftCard) await rpc('session.delete', { sessionId });
         historyCacheRef.current.delete(sessionId);
         historyPreviewAttemptedRef.current.delete(sessionId);
         historyPreviewRef.current.delete(sessionId);
@@ -1458,12 +1600,13 @@ export default function AgentPage() {
             setPendingApproval(null);
             setPendingQuestion(null);
         }
-        await Notification.success('会话已删除');
+        await Notification.success(draftCard ? '占位卡片已删除' : '会话已删除');
     }, [current, rpc]);
 
     const performHardDeleteMany = useCallback(async (sessionIds: readonly string[]) => {
         if (sessionIds.length === 0) return;
-        await rpc('session.deleteMany', { sessionIds });
+        const persistedSessionIds = sessionIds.filter((sessionId) => !sessionsRef.current.some((session) => session.sessionId === sessionId && session.isDraftCard));
+        if (persistedSessionIds.length > 0) await rpc('session.deleteMany', { sessionIds: persistedSessionIds });
         sessionIds.forEach((sessionId) => {
             historyCacheRef.current.delete(sessionId);
             historyPreviewAttemptedRef.current.delete(sessionId);
@@ -1492,7 +1635,9 @@ export default function AgentPage() {
         setDialogError(null);
         try {
             if (active.kind === 'rename-session') {
-                const value = await rpc('session.rename', { sessionId: active.id, title: active.value.trim() }) as { title?: string };
+                const title = active.value.trim();
+                const draftCard = sessionsRef.current.some((session) => session.sessionId === active.id && session.isDraftCard);
+                const value = draftCard ? { title } : await rpc('session.rename', { sessionId: active.id, title }) as { title?: string };
                 if (value.title) setSessions((items) => items.map((session) => session.sessionId === active.id ? { ...session, projections: { values: { ...(session.projections?.values ?? {}), title: value.title } } } : session));
             } else if (active.kind === 'create-node') {
                 const parentId = activeTreeNodeId ?? rootNodeId ?? undefined;
@@ -1650,7 +1795,7 @@ export default function AgentPage() {
                 sending={sending || newSessionConfigLoading}
                 loading={newSessionConfigLoading}
                 onConfirm={(name) => { void confirmNewSession(name); }}
-                onCreateOnly={(name) => { void confirmNewSession(name, false, false); }}
+                onCreateOnly={createDraftCard}
                 onClose={() => { newSessionLoadRef.current += 1; setNewSessionConfigLoading(false); setNewSessionConfigOpen(false); }}
             />}
             <AgentDisplaySettingsDialog
@@ -1675,7 +1820,7 @@ export default function AgentPage() {
                 </div> },
                     { id: 'models', label: '模型', render: () => <ModelsSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} /> },
                     { id: 'agent-presets', label: 'Agent 预设', render: () => <AgentPresetSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} onCreatorDraft={startCreatorDraft} /> },
-                    { id: 'tools', label: '工具', render: () => <ToolsSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} sessionId={current ?? undefined} refreshKey={currentSession?.agentPreset} /> },
+                    { id: 'tools', label: '工具', render: () => <ToolsSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} sessionId={currentSession?.isDraftCard ? undefined : current ?? undefined} refreshKey={currentSession?.agentPreset} /> },
                     { id: 'plugins', label: '插件', render: () => <PluginsSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} /> },
                 ]}
             />}
@@ -1774,7 +1919,7 @@ export default function AgentPage() {
                                 : view === 'model' || view === 'context' || view === 'host'
                                 ? <SessionSettingsPanel
                                     section={view}
-                                    models={models}
+                                    models={currentSession.isDraftCard ? composerModels : models}
                                     onModel={saveSessionModel}
                                     bases={bases}
                                     selectedBaseId={selectedBaseId}
@@ -1783,7 +1928,7 @@ export default function AgentPage() {
                                     onBase={saveBaseSetting}
                                     onHost={switchHost}
                                 />
-                                : currentSession.blank
+                                : currentSession.blank && !currentSession.isDraftCard
                                     ? <div className="eja-sessionEmpty"><span>这个会话还没有消息。</span><button type="button" onClick={() => { void prepareNewSession(); }}>生成新会话</button></div>
                                 : <ConversationRoot
                                     blank={false}
