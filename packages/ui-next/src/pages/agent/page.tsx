@@ -1017,13 +1017,19 @@ export default function AgentPage() {
         } : null);
     const startSession = useCallback(async (firstMessage = '', presetOverride?: string, baseId?: number, titleOverride?: string, modelOverride?: { provider: string; model: string }, openDrawer = true) => {
         let sessionPublished = false;
+        let creatingNoticeId: number | undefined;
         setCreatingSession(true);
         setNewSessionConfigOpen(false);
         setDetailsOpen(openDrawer);
+        if (!openDrawer) creatingNoticeId = await Notification.show({ message: '正在创建会话…', type: 'info', duration: 0 });
         try {
             const selectedBaseId = baseId ?? draftBaseId;
             const selectedNodeId = draftNodeId ?? rootNodeId ?? undefined;
             const selectedModel = modelOverride ?? draftModelSelection;
+            const title = titleOverride?.trim();
+            const text = firstMessage.trim();
+            const files = readyFiles(attachments);
+            const hasContent = Boolean(text || files.length);
             // The host is part of what a session is created with: it serves this
             // session until another one is chosen for it.
             const selectedHostId = draftHostId ?? '';
@@ -1035,27 +1041,10 @@ export default function AgentPage() {
             if (!value.sessionId) throw new Error('会话创建未返回会话 ID');
             const actualHostId = value.runtimeId ?? selectedHostId;
             const actualNodeId = value.nodeId ?? selectedNodeId;
-            const requestedPreset = presetOverride ?? agentPresetChoice;
-            let agentPreset = value.agentPreset;
-            if (requestedPreset && requestedPreset !== agentPreset) {
-                const selected = await rpc('agentPreset.select', { sessionId: value.sessionId, agentPreset: requestedPreset }) as { agentPreset?: string };
-                agentPreset = selected.agentPreset ?? requestedPreset;
-            }
-            const title = titleOverride?.trim();
-            if (title) {
-                const renamed = await rpc('session.rename', { sessionId: value.sessionId, title }) as { title?: string };
-                if (renamed.title !== title) throw new Error('会话名称保存失败');
-            }
-            if (selectedModel) {
-                await rpc('session.selectModel', { sessionId: value.sessionId, ...selectedModel });
-            }
-            const text = firstMessage.trim();
-            const files = readyFiles(attachments);
-            const hasContent = Boolean(text || files.length);
             const optimisticCreatedAt = Date.now();
             setSessions((items) => items.some((session) => session.sessionId === value.sessionId)
                 ? items
-                : [{ sessionId: value.sessionId!, createdAt: optimisticCreatedAt, updatedAt: optimisticCreatedAt, running: false, blank: !hasContent, ...(agentId === null ? {} : { agentId }), agentPreset, ...(actualHostId === '' ? {} : { runtimeId: actualHostId }), ...(title ? { projections: { values: { title } } } : {}), ...(selectedBaseId === undefined ? {} : { baseDocId: String(selectedBaseId) }), ...(actualNodeId === undefined ? {} : { nodeId: actualNodeId }), ...(selectedModel === undefined ? {} : { model: selectedModel }) }, ...items]);
+                : [{ sessionId: value.sessionId!, createdAt: optimisticCreatedAt, updatedAt: optimisticCreatedAt, running: false, blank: !hasContent, ...(agentId === null ? {} : { agentId }), agentPreset: value.agentPreset, ...(actualHostId === '' ? {} : { runtimeId: actualHostId }), ...(title ? { projections: { values: { title } } } : {}), ...(selectedBaseId === undefined ? {} : { baseDocId: String(selectedBaseId) }), ...(actualNodeId === undefined ? {} : { nodeId: actualNodeId }), ...(selectedModel === undefined ? {} : { model: selectedModel }) }, ...items]);
             setDraftBaseId(undefined);
             setDraftNodeId(undefined);
             setDraftHostId('');
@@ -1063,6 +1052,23 @@ export default function AgentPage() {
             setCurrent(value.sessionId);
             updateAgentSelectionUrl({ nodeId: actualNodeId ?? null, cardId: value.sessionId });
             sessionPublished = true;
+
+            const requestedPreset = presetOverride ?? agentPresetChoice;
+            let agentPreset = value.agentPreset;
+            if (requestedPreset && requestedPreset !== agentPreset) {
+                const selected = await rpc('agentPreset.select', { sessionId: value.sessionId, agentPreset: requestedPreset }) as { agentPreset?: string };
+                agentPreset = selected.agentPreset ?? requestedPreset;
+            }
+            if (title) {
+                const renamed = await rpc('session.rename', { sessionId: value.sessionId, title }) as { title?: string };
+                if (renamed.title !== title) throw new Error('会话名称保存失败');
+            }
+            if (selectedModel) {
+                await rpc('session.selectModel', { sessionId: value.sessionId, ...selectedModel });
+            }
+            setSessions((items) => items.map((session) => session.sessionId === value.sessionId
+                ? { ...session, agentPreset, ...(selectedModel === undefined ? {} : { model: selectedModel }) }
+                : session));
             setCreatingSession(false);
             setNewSessionConfigOpen(false);
             setDetailsOpen(openDrawer);
@@ -1082,13 +1088,21 @@ export default function AgentPage() {
             }
             void loadSessions();
             setLoadError(null);
+            if (creatingNoticeId !== undefined) {
+                Notification.hide(creatingNoticeId);
+                creatingNoticeId = undefined;
+                void Notification.success('会话已创建');
+            }
         } catch (error) {
             setCreatingSession(false);
             if (!sessionPublished) {
                 setDetailsOpen(false);
                 setNewSessionConfigOpen(true);
             }
-            setLoadError(error instanceof Error ? error.message : String(error));
+            const message = error instanceof Error ? error.message : String(error);
+            setLoadError(message);
+            if (creatingNoticeId !== undefined) Notification.hide(creatingNoticeId);
+            if (!openDrawer) void Notification.error(sessionPublished ? `会话已创建，但部分设置失败：${message}` : `会话创建失败：${message}`);
         } finally {
             setCreatingSession(false);
             setSending(false);
