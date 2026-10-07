@@ -34,6 +34,7 @@ interface InputConfigDialogProps {
     sending: boolean;
     loading: boolean;
     onConfirm: (name: string) => void;
+    onCreateOnly: (name: string) => void;
     onClose: () => void;
 }
 
@@ -45,7 +46,7 @@ export function InputConfigDialog({
     hosts, selectedHostId, onPickHost,
     bases, selectedBaseId, onPickBase, nodes, selectedNodeId, onPickNode, models, selectModel, agentPresetOptions, agentPresetChoice, onSelectAgentPreset, agentPresetError,
     input, setInput, attachments, onAddFiles, onRemoveAttachment, modelMenuOpen, setModelMenuOpen,
-    notice, onCancel, sending, loading, onConfirm, onClose,
+    notice, onCancel, sending, loading, onConfirm, onCreateOnly, onClose,
 }: InputConfigDialogProps) {
     const [sessionName, setSessionName] = useState('新会话');
     const [nameEditing, setNameEditing] = useState(false);
@@ -109,6 +110,10 @@ export function InputConfigDialog({
                 </div>
             </div>
             <div className="eja-inputConfigHero">
+                <div className="eja-inputConfigCreateRow">
+                    <button type="button" className="eja-inputConfigCreate" disabled={sending} onClick={() => onCreateOnly(sessionName.trim() || '新会话')}>只创建会话</button>
+                    <span>参数会留在这张卡片上，可以稍后再对话。</span>
+                </div>
                 <InputBar
                     hero
                     input={input}
@@ -126,7 +131,7 @@ export function InputConfigDialog({
                     setModelMenuOpen={setModelMenuOpen}
                     selectModel={selectModel}
                     notice={notice}
-                    placeholder="输入第一条消息"
+                    placeholder="输入第一条消息，或只创建会话"
                 />
             </div>
             </>}

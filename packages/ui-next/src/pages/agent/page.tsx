@@ -1095,11 +1095,11 @@ export default function AgentPage() {
         }
     }, [agentId, agentPresetChoice, attachments, draftBaseId, draftModelSelection, draftNodeId, loadSessions, rootNodeId, rpc]);
 
-    const confirmNewSession = useCallback(async (title: string) => {
+    const confirmNewSession = useCallback(async (title: string, sendMessage = true) => {
         const selectedModel = draftModelSelection ?? (composerModels?.current?.provider && composerModels.current.model
             ? { provider: composerModels.current.provider, model: composerModels.current.model }
             : undefined);
-        await startSession(input, agentPresetChoice, draftBaseId, title, selectedModel);
+        await startSession(sendMessage ? input : '', agentPresetChoice, draftBaseId, title, selectedModel);
     }, [agentPresetChoice, composerModels, draftBaseId, draftModelSelection, input, startSession]);
 
     const prepareNewSession = useCallback(async (baseId?: number) => {
@@ -1636,6 +1636,7 @@ export default function AgentPage() {
                 sending={sending || newSessionConfigLoading}
                 loading={newSessionConfigLoading}
                 onConfirm={(name) => { void confirmNewSession(name); }}
+                onCreateOnly={(name) => { void confirmNewSession(name, false); }}
                 onClose={() => { newSessionLoadRef.current += 1; setNewSessionConfigLoading(false); setNewSessionConfigOpen(false); }}
             />}
             <AgentDisplaySettingsDialog

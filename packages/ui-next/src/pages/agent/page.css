@@ -227,6 +227,37 @@
   background: var(--bd-surface);
 }
 
+.eja-inputConfigCreateRow {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  margin: 0 0 .75rem;
+  color: var(--bd-muted);
+  font-size: .85rem;
+}
+
+.eja-inputConfigCreate {
+  flex: none;
+  padding: .4rem .75rem;
+  border: 1px solid var(--bd-line);
+  border-radius: 8px;
+  background: var(--bd-surface);
+  color: var(--bd-text);
+  cursor: pointer;
+  font: inherit;
+}
+
+.eja-inputConfigCreate:hover,
+.eja-inputConfigCreate:focus-visible {
+  border-color: var(--bd-accent);
+  color: var(--bd-accent);
+}
+
+.eja-inputConfigCreate:disabled {
+  cursor: default;
+  opacity: .6;
+}
+
 .eja-inputConfigHero > * {
   width: 100%;
 }

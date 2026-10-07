@@ -944,6 +944,22 @@ export class AgentSessionModel {
         return { events: rows.slice(0, limit).reverse().map((row) => row.event), hasMore };
     }
 
+    static async listMessageEvents(domainId: string, userId: number, sessionId: string, beforeSeq?: number, limit = 50, agentId?: number | null): Promise<{ events: Record<string, unknown>[]; hasMore: boolean }> {
+        const owner = await AgentSessionModel.getSession(domainId, userId, sessionId, agentId);
+        if (!owner) return { events: [], hasMore: false };
+        const capped = Math.min(Math.max(limit, 1), 500);
+        const filter = {
+            domainId,
+            userId,
+            sessionId,
+            'event.type': { $in: ['user/message', 'assistant/message'] },
+            ...(beforeSeq === undefined ? {} : { seq: { $lt: beforeSeq } }),
+        };
+        const rows = await events.find(filter).sort({ seq: -1 }).limit(capped + 1).toArray() as AgentEventDoc[];
+        const hasMore = rows.length > capped;
+        return { events: rows.slice(0, capped).reverse().map((row) => row.event), hasMore };
+    }
+
     static async upsertWorkspace(domainId: string, userId: number, workspace: Omit<AgentWorkspaceDoc, '_id' | 'createdAt' | 'updatedAt'>): Promise<AgentWorkspaceDoc> {
         const now = new Date();
         await workspaces.updateOne(
@@ -1056,12 +1072,34 @@ export class AgentSessionModel {
         return await nodes.findOne(agentNodeFilter(domainId, userId, agentId, nodeId)) as AgentNodeDoc | null;
     }
 
-    static async updateNode(domainId: string, userId: number, nodeId: string, text: string, agentId?: number | null): Promise<AgentNodeDoc | null> {
+    static async updateNode(domainId: string, userId: number, nodeId: string, text: string, agentId?: number | null, parentId?: string): Promise<AgentNodeDoc | null> {
         const filter = agentNodeFilter(domainId, userId, agentId, nodeId);
         const node = await nodes.findOne(filter) as AgentNodeDoc | null;
         if (!node) return null;
-        if (node.isRoot) throw new Error('Agent root node cannot be renamed');
-        await nodes.updateOne(filter, { $set: { text: text.trim(), updatedAt: new Date() } });
+        const nextText = text.trim();
+        if (!nextText) throw new Error('text is required');
+        if (node.isRoot) throw new Error(parentId === undefined ? 'Agent root node cannot be renamed' : 'Agent root node cannot be moved');
+        const patch: Record<string, unknown> = { updatedAt: new Date() };
+        if (nextText !== node.text) patch.text = nextText;
+        if (parentId !== undefined) {
+            const nextParentId = parentId.trim();
+            if (!nextParentId) throw new Error('parentId is required when provided');
+            if (nextParentId === nodeId) throw new Error('A node cannot be moved under itself');
+            const parent = await AgentSessionModel.getNode(domainId, userId, nextParentId, agentId);
+            if (!parent) throw new Error('Parent node not found in this Agent');
+            const scoped = await AgentSessionModel.listNodes(domainId, userId, agentId);
+            const parentOf = new Map(scoped.map((item) => [item.nodeId, item.parentId]));
+            const seen = new Set<string>();
+            let cursor: string | undefined = nextParentId;
+            while (cursor) {
+                if (cursor === nodeId) throw new Error('A node cannot be moved under one of its descendants');
+                if (seen.has(cursor)) break;
+                seen.add(cursor);
+                cursor = parentOf.get(cursor);
+            }
+            if (nextParentId !== node.parentId) patch.parentId = nextParentId;
+        }
+        if (Object.keys(patch).length > 1) await nodes.updateOne(filter, { $set: patch });
         return await nodes.findOne(filter) as AgentNodeDoc | null;
     }
 
