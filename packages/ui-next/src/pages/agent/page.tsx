@@ -22,6 +22,7 @@ import { ActionDialog } from './components/primitives/ActionDialog';
 import { GeneralSection } from './components/settings/GeneralSection';
 import { EnterBehaviorRow, LanguageRow } from './components/settings/SettingsRows';
 import { PluginsSection } from './components/settings/PluginsSection';
+import { AgentPluginsSection } from './components/settings/AgentPluginsSection';
 import { ModelsSection } from './components/settings/ModelsSection';
 import { getPath } from './components/settings/modelsStore';
 import { AgentPresetLabel } from './components/settings/AgentPresetLabel';
@@ -1955,6 +1956,20 @@ export default function AgentPage() {
                     { id: 'agent-presets', label: 'Agent 预设', render: () => <AgentPresetSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} onCreatorDraft={startCreatorDraft} /> },
                     { id: 'tools', label: '工具', render: () => <ToolsSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} sessionId={currentSession?.isDraftCard ? undefined : current ?? undefined} refreshKey={currentSession?.agentPreset} /> },
                     { id: 'plugins', label: '插件', render: () => <PluginsSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} /> },
+                    { id: 'agent-plugins', label: 'Agent 插件', render: () => <AgentPluginsSection
+                        rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>}
+                        onPluginChange={(pluginId, enabled) => {
+                            if (pluginId !== 'base') return;
+                            void loadBases();
+                            if (enabled) return;
+                            setDraftBaseId(undefined);
+                            if (current && currentSession?.baseDocId) {
+                                void saveBaseSetting(undefined).catch((error) => {
+                                    setLoadError(error instanceof Error ? error.message : String(error));
+                                });
+                            }
+                        }}
+                    /> },
                 ]}
             />}
             {dialog && <ActionDialog
@@ -2055,7 +2070,7 @@ export default function AgentPage() {
                                     models={currentSession.isDraftCard ? composerModels : models}
                                     onModel={saveSessionModel}
                                     bases={bases}
-                                    selectedBaseId={selectedBaseId}
+                                    selectedBaseId={bases.some((base) => base.docId === selectedBaseId) ? selectedBaseId : undefined}
                                     hosts={hosts}
                                     selectedHostId={currentSession.runtimeId ?? fallbackHostId}
                                     onBase={saveBaseSetting}

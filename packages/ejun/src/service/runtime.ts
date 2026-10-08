@@ -13,6 +13,7 @@ import { httpServer } from '@ejunz/framework';
 import { AgentSessionModel as AgentModel, AgentRuntimeModel, AgentLinkModel, AgentStorageModel } from '../model/agent';
 import { type AgentDisplayPrefs, type AgentDomainSettings, type AgentNodeDoc, type AgentSessionSummary, type AgentSessionType, type AgentWorkspaceDoc } from '../model/agent';
 import { type AgentRuntimeSummary } from '../model/agent';
+import { listAgentContextPlugins } from './agent-context-plugins';
 
 interface EjunContext {
     server?: { config?: { port?: number; host?: string } };
@@ -448,6 +449,9 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
         selectedAgentRoot = await AgentModel.ensureAgentRoot(scope.domainId, scope.userId, scope.agentId, selectedAgent.title);
     }
     const selectedBaseDocId = metadata.baseDocId ?? baseDocIdOf(payload.baseDocId);
+    if (selectedBaseDocId && metadata.type !== 'base_detail' && !await isAgentContextPluginEnabled(scope.domainId, 'base')) {
+        return rpcError(envelope.rpcId, 'Ejunz Base Agent plugin is disabled');
+    }
     let selectedBase: { docId: number; title?: string } | undefined;
     if (selectedBaseDocId) {
         const baseModel = (global as any).Ejunz?.model?.base;
@@ -554,13 +558,16 @@ async function sessionContextSave(envelope: RpcEnvelope, scope: AgentScope): Pro
     if (!session) return rpcError(envelope.rpcId, 'session not found');
 
     const hasBase = Object.prototype.hasOwnProperty.call(payload, 'baseDocId');
-    const existingBaseDocId = baseDocIdOf(session.baseDocId);
+    const existingBaseDocId = baseDocIdOf(session.baseDocId) ?? undefined;
     const selectedBaseDocId = hasBase ? baseDocIdOf(payload.baseDocId) ?? undefined : existingBaseDocId;
     if (hasBase && payload.baseDocId !== null && payload.baseDocId !== undefined && selectedBaseDocId === undefined) {
         return rpcError(envelope.rpcId, 'invalid baseDocId');
     }
     let selectedBase: { docId: number; title?: string } | undefined;
     if (selectedBaseDocId !== undefined) {
+        if (session.type !== 'base_detail' && !await isAgentContextPluginEnabled(scope.domainId, 'base')) {
+            return rpcError(envelope.rpcId, 'Ejunz Base Agent plugin is disabled');
+        }
         const baseModel = (global as any).Ejunz?.model?.base;
         const base = baseModel ? await baseModel.get(scope.domainId, Number(selectedBaseDocId)) : null;
         if (!base) return rpcError(envelope.rpcId, 'Base not found in current domain');
@@ -588,6 +595,16 @@ async function sessionContextSave(envelope: RpcEnvelope, scope: AgentScope): Pro
             }],
         }, await linkForSession(scope, sessionId));
         if (!injected.body.result?.ok) return rpcError(envelope.rpcId, injected.body.error?.message || '知识库上下文保存失败');
+    } else if (existingBaseDocId !== undefined && selectedBaseDocId === undefined) {
+        const injected = await callUpstream('session.inject', {
+            sessionId,
+            plugin: 'ejunz-base-selector',
+            sections: [{
+                name: 'ejunz-base-selector',
+                text: '当前会话已关闭 Ejunz Base 上下文。请勿再使用 Base 工具处理知识库内容。',
+            }],
+        }, await linkForSession(scope, sessionId));
+        if (!injected.body.result?.ok) return rpcError(envelope.rpcId, injected.body.error?.message || '知识库上下文关闭失败');
     }
 
     await agentDataAdapter.updateSessionContext(scope, sessionId, selectedBaseDocId ?? undefined, selectedWorkspace?.path);
@@ -1115,6 +1132,10 @@ async function baseSessionScope(sessionId: string, optional = false) {
         throw new Error('Base session not found');
     }
     if (session.archived) throw new Error('Base session not found');
+    if (!await isAgentContextPluginEnabled(session.domainId, 'base')) {
+        if (optional) return { session, scope: undefined };
+        throw new Error('Ejunz Base Agent plugin is disabled');
+    }
     const baseModel = (global as any).Ejunz?.model?.base;
     if (!baseModel) {
         if (optional) return { session, scope: undefined };
@@ -1175,6 +1196,9 @@ async function onBaseSelect(payload: {
     baseDocId: number;
     baseName?: string;
 }): Promise<void> {
+    if (!await isAgentContextPluginEnabled(payload.domainId, 'base')) {
+        throw new Error('Ejunz Base Agent plugin is disabled');
+    }
     const scope = { domainId: payload.domainId, userId: payload.owner };
     const injected = await callUpstream('session.inject', {
         sessionId: payload.sessionId,
@@ -1404,6 +1428,55 @@ function mergeDomainModels(body: RpcBody, sections: Record<string, Record<string
         ? true
         : result.routable;
     return withRpcValue(body, { ...result, groups, routable });
+}
+
+function agentContextPluginEnabled(settings: AgentDomainSettings, pluginId: string): boolean {
+    const plugin = listAgentContextPlugins().find((item) => item.pluginId === pluginId);
+    if (!plugin) return false;
+    const enabled = settings.sections['agent-plugins']?.enabled;
+    const override = enabled && typeof enabled === 'object' && !Array.isArray(enabled)
+        ? (enabled as Record<string, unknown>)[pluginId]
+        : undefined;
+    return typeof override === 'boolean' ? override : plugin.defaultEnabled !== false;
+}
+
+async function agentContextPluginsList(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
+    const settings = await agentDataAdapter.getDomainSettings(scope.domainId);
+    return rpcOk(envelope.rpcId, {
+        plugins: listAgentContextPlugins().map((plugin) => ({
+            ...plugin,
+            enabled: agentContextPluginEnabled(settings, plugin.pluginId),
+        })),
+    });
+}
+
+async function agentContextPluginSet(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
+    const payload = envelope.payload ?? {};
+    const pluginId = typeof payload.pluginId === 'string' ? payload.pluginId : '';
+    const plugin = listAgentContextPlugins().find((item) => item.pluginId === pluginId);
+    if (!plugin) return rpcError(envelope.rpcId, 'Agent plugin not found');
+    if (typeof payload.enabled !== 'boolean') return rpcError(envelope.rpcId, 'enabled must be a boolean');
+
+    const current = await agentDataAdapter.getDomainSettings(scope.domainId);
+    const sections = cloneSettingsSections(current.sections);
+    const section = sections['agent-plugins'] ?? {};
+    const enabled = section.enabled && typeof section.enabled === 'object' && !Array.isArray(section.enabled)
+        ? { ...(section.enabled as Record<string, unknown>) }
+        : {};
+    if (payload.enabled === (plugin.defaultEnabled !== false)) delete enabled[pluginId];
+    else enabled[pluginId] = payload.enabled;
+    if (Object.keys(enabled).length) section.enabled = enabled;
+    else delete section.enabled;
+    if (Object.keys(section).length) sections['agent-plugins'] = section;
+    else delete sections['agent-plugins'];
+
+    const saved = await agentDataAdapter.updateDomainSettings(scope.domainId, sections, current.revision);
+    if (!saved) return rpcError(envelope.rpcId, 'settings revision conflict');
+    return rpcOk(envelope.rpcId, { pluginId, enabled: payload.enabled });
+}
+
+export async function isAgentContextPluginEnabled(domainId: string, pluginId: string): Promise<boolean> {
+    return agentContextPluginEnabled(await agentDataAdapter.getDomainSettings(domainId), pluginId);
 }
 
 async function domainSettingsRpc(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
@@ -2868,7 +2941,8 @@ export const agentRuntimeHandlerContext = {
     modelReady: () => modelReady,
     requireBridgeToken, baseSessionScope, toolRegistry,
     scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, upstreamValue,
-    nodeRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, baseTutorEnsure, baseTutorList,
+    nodeRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, agentContextPluginsList,
+    agentContextPluginSet, isAgentContextPluginEnabled, baseTutorEnsure, baseTutorList,
     baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems,
     runtimeRelabel, runtimeRemove, sessionCreate, sessionHistory, sessionMessageCount,
     sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink,
