@@ -157,20 +157,6 @@
   color: var(--dsw-alias-label-caption);
 }
 
-/* Machine pending dot (adjudicating / submitting). */
-.pending {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--dsw-alias-state-business-primary);
-  animation: input-pending 1s ease-in-out infinite alternate;
-}
-
-@keyframes input-pending {
-  from { opacity: 0.35; }
-  to { opacity: 1; }
-}
-
 .input {
   position: absolute;
   inset: 0;

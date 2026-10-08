@@ -384,7 +384,6 @@ export function InputBar({ input, setInput, send, cancel, running, sending, atta
                 />
                 <div className={css.trailing}>
                     {showModelPicker && models && <ModelPicker models={models} open={modelMenuOpen} onToggle={() => setModelMenuOpen(!modelMenuOpen)} onSelect={selectModel} />}
-                    {sending && <span className={css.pending} aria-label="发送中" />}
                     <button type="button" className={css.primary} aria-label={running ? '停止' : '发送'} disabled={running ? false : empty || sending || uploading} onMouseDown={keepFocus} onClick={onPrimary}>{running ? <IconStopFill16 size={16} /> : <IconSendOutline14 size={16} />}</button>
                 </div>
             </div>
