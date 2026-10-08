@@ -83,7 +83,7 @@ const SessionActivityRow = memo(function SessionActivityRow({ activity, index, e
     const separator = activity.indexOf(' · ');
     const title = separator < 0 ? activity : activity.slice(0, separator);
     const output = separator < 0 ? '' : activity.slice(separator + 3);
-    const isUserActivity = title === 'User';
+    const isUserActivity = sendStatus !== undefined;
     const titleClass = title === 'Inject' ? 'eja-sessionCardActivityTitle--inject'
         : title === 'Think' ? 'eja-sessionCardActivityTitle--think'
             : title === 'Tool' ? 'eja-sessionCardActivityTitle--tool'
