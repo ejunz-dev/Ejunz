@@ -13,7 +13,7 @@ import { TurnStatusRow } from './TurnStatusRow';
 
 export function ChatMessageView({ message, onOpenFile, onOpenDetails }: { message: ChatMessage; onOpenFile?: (path: string) => void; onOpenDetails?: (message: ChatMessage) => void }) {
     if (message.role === 'user') {
-        return <div className={`${css.userRow} eja-message-user`}><div className={`${css.userStack} eja-userStack`}><div className={`${css.bubble} eja-bubble`}><PlainText text={message.text} /></div></div><MessageActions text={message.text} time={message.time} clock="start" /></div>;
+        return <div className={`${css.userRow} eja-message-user`}><div className={`${css.userStack} eja-userStack`}><div className={css.userLine}><div className={`${css.bubble} eja-bubble`}><PlainText text={message.text} /></div>{message.sendStatus && <span className={`${css.sendStatus} ${message.sendStatus === 'sending' ? css.sendStatusSending : css.sendStatusSent}`} role="status" aria-label={message.sendStatus === 'sending' ? '发送中' : '已发送'} title={message.sendStatus === 'sending' ? '发送中' : '已发送'}>{message.sendStatus === 'sending' ? <span className={css.sendSpinner} /> : '✓'}</span>}</div></div><MessageActions text={message.text} time={message.time} clock="start" /></div>;
     }
     if (message.role === 'assistant') {
         const segments = message.segments ?? [{ kind: 'text' as const, text: message.text }];

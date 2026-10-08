@@ -16,6 +16,48 @@
   min-width: 0;
   max-width: min(525px, 82%);
 }
+
+.userLine {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.sendStatus {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.sendStatusSending {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.sendStatusSent {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.sendSpinner {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid currentcolor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: user-send-spin 700ms linear infinite;
+}
+
+@keyframes user-send-spin {
+  to { transform: rotate(360deg); }
+}
+
 .bubble {
   /* 525px cap inside the 736 column; percentage keeps narrow windows sane. */
   max-width: 100%;
@@ -264,6 +306,10 @@
   .retryRow[data-active] .retryText {
     background: none;
     color: inherit;
+    animation: none;
+  }
+
+  .sendSpinner {
     animation: none;
   }
 }

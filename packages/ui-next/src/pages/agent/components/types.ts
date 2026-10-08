@@ -38,6 +38,9 @@ export interface ChatMessage {
     compactionSummary?: string;
     shadowedItemCount?: number;
     shadowedTokenCount?: number;
+    sendStatus?: 'sending' | 'sent';
+    pendingEcho?: boolean;
+    pendingSessionId?: string;
 }
 
 export interface SessionModels {

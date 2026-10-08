@@ -121,6 +121,29 @@ function promptParts(text: string, fileCount: number): Array<{ type: 'text'; tex
     return value ? [{ type: 'text' as const, text: value }] : [];
 }
 
+function optimisticUserMessage(text: string, fileCount: number, sessionId: string): ChatMessage {
+    return {
+        key: `user-local-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        role: 'user',
+        text: text || `已上传 ${fileCount} 个文件`,
+        eventType: 'user/message',
+        time: Date.now(),
+        sendStatus: 'sending',
+        pendingEcho: true,
+        pendingSessionId: sessionId,
+    };
+}
+
+function preservePendingUserMessages(parsed: ChatMessage[], previous: ChatMessage[], sessionId: string): ChatMessage[] {
+    const next = parsed.slice();
+    previous.filter((message) => message.role === 'user' && message.pendingSessionId === sessionId && message.sendStatus).forEach((message) => {
+        const index = next.findIndex((item) => item.role === 'user' && item.text === message.text);
+        if (index < 0) next.push(message);
+        else next[index] = { ...next[index], key: message.key, sendStatus: message.sendStatus, pendingEcho: message.pendingEcho, pendingSessionId: sessionId };
+    });
+    return next;
+}
+
 async function injectDraftFiles(rpc: AgentRpc, sessionId: string, files: UploadedFileMeta[]): Promise<void> {
     if (files.length === 0) return;
     await rpc('session.inject', {
@@ -756,7 +779,7 @@ export default function AgentPage() {
             const parsed = eventsToMessages(nextHistory);
             const preview = latestActivityPreview(nextHistory);
             if (preview) setSessionActivityPreviews((previous) => mergeActivityPreview(previous, sessionId, preview));
-            setMessages(parsed);
+            setMessages((previous) => preservePendingUserMessages(parsed, previous, sessionId));
             historyFirstSeq.current = firstHistorySeq(nextHistory);
             setHistoryHasMore(hasMore);
             if (projections) setSessions((prev) => prev.map((session) => session.sessionId === sessionId ? { ...session, projections } : session));
@@ -1059,6 +1082,7 @@ export default function AgentPage() {
     const running = currentSession?.running === true;
     const fallbackHostId = hosts.find((host) => host.fallback === true)?.runtimeId ?? '';
     const currentSessionError = current ? sessionErrors[current] : undefined;
+    const pendingSendVisible = current !== null && messages.some((message) => message.role === 'user' && message.pendingSessionId === current && message.sendStatus !== undefined);
     const runningTurnStart = useMemo(() => runningTurnStartTime(history), [history]);
     const composerModels = currentSession?.isDraftCard
         ? (modelCatalog ? {
@@ -1075,6 +1099,7 @@ export default function AgentPage() {
             } : null);
     const startSession = useCallback(async (firstMessage = '', presetOverride?: string, baseId?: number, titleOverride?: string, modelOverride?: { provider: string; model: string }) => {
         let sessionPublished = false;
+        let optimisticKey: string | undefined;
         setCreatingSession(true);
         setNewSessionConfigOpen(false);
         setDetailsOpen(true);
@@ -1086,6 +1111,13 @@ export default function AgentPage() {
             const text = firstMessage.trim();
             const files = readyFiles(attachments);
             const hasContent = Boolean(text || files.length);
+            if (hasContent) {
+                const optimistic = optimisticUserMessage(text, files.length, '');
+                optimisticKey = optimistic.key;
+                setMessages((items) => [...items, optimistic]);
+                setSending(true);
+                setInput('');
+            }
             // The host is part of what a session is created with: it serves this
             // session until another one is chosen for it.
             const selectedHostId = draftHostId ?? '';
@@ -1095,6 +1127,7 @@ export default function AgentPage() {
                 ...(selectedHostId === '' ? {} : { runtimeId: selectedHostId }),
             }) as { sessionId?: string; agentPreset?: string; runtimeId?: string; nodeId?: string };
             if (!value.sessionId) throw new Error('会话创建未返回会话 ID');
+            if (optimisticKey) setMessages((items) => items.map((message) => message.key === optimisticKey ? { ...message, pendingSessionId: value.sessionId } : message));
             const actualHostId = value.runtimeId ?? selectedHostId;
             const actualNodeId = value.nodeId ?? selectedNodeId;
             const optimisticCreatedAt = Date.now();
@@ -1105,9 +1138,11 @@ export default function AgentPage() {
             setDraftNodeId(undefined);
             setDraftHostId('');
             setActiveTreeNodeId(actualNodeId ?? null);
+            currentRef.current = value.sessionId;
             setCurrent(value.sessionId);
             updateAgentSelectionUrl({ nodeId: actualNodeId ?? null, cardId: value.sessionId });
             sessionPublished = true;
+            setCreatingSession(false);
 
             const requestedPreset = presetOverride ?? agentPresetChoice;
             let agentPreset = value.agentPreset;
@@ -1128,10 +1163,8 @@ export default function AgentPage() {
             setCreatingSession(false);
             setNewSessionConfigOpen(false);
             setDetailsOpen(true);
-            setMessages([]);
+            if (!hasContent) setMessages([]);
             if (hasContent) {
-                setSending(true);
-                setInput('');
                 setSessions((items) => items.map((session) => session.sessionId === value.sessionId ? { ...session, blank: false, updatedAt: Date.now() } : session));
                 await injectDraftFiles(rpc, String(value.sessionId), files);
                 await rpc('session.prompt', {
@@ -1140,12 +1173,17 @@ export default function AgentPage() {
                     content: promptParts(text, files.length),
                     clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
                 });
+                if (optimisticKey) setMessages((items) => items.map((message) => message.key === optimisticKey ? { ...message, sendStatus: 'sent' } : message));
                 clearAttachments();
             }
             void loadSessions();
             setLoadError(null);
         } catch (error) {
             setCreatingSession(false);
+            if (optimisticKey) {
+                setMessages((items) => items.filter((message) => message.key !== optimisticKey || !message.pendingEcho));
+                setInput(firstMessage.trim());
+            }
             if (!sessionPublished) {
                 setDetailsOpen(false);
                 setNewSessionConfigOpen(true);
@@ -1352,6 +1390,8 @@ export default function AgentPage() {
         });
         setSending(true);
         setInput('');
+        const optimistic = optimisticUserMessage(text, files.length, current);
+        setMessages((items) => [...items, optimistic]);
         try {
             let sessionId = current;
             if (selectedSession?.isDraftCard) {
@@ -1362,6 +1402,7 @@ export default function AgentPage() {
                 }) as { sessionId?: string; agentPreset?: string; runtimeId?: string; nodeId?: string };
                 if (!created.sessionId) throw new Error('会话创建未返回会话 ID');
                 sessionId = created.sessionId;
+                setMessages((items) => items.map((message) => message.key === optimistic.key ? { ...message, pendingSessionId: sessionId } : message));
                 materializedDraftCardsRef.current.set(current, sessionId);
                 try {
                     window.localStorage.setItem(draftCardsStorageKey, JSON.stringify(sessionsRef.current.filter((session) => session.isDraftCard && session.sessionId !== current)));
@@ -1405,10 +1446,12 @@ export default function AgentPage() {
                 content: promptParts(text, files.length),
                 clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             });
+            setMessages((items) => items.map((message) => message.key === optimistic.key ? { ...message, sendStatus: 'sent' } : message));
             clearAttachments();
             setSessions((items) => items.map((session) => session.sessionId === sessionId ? { ...session, blank: false, updatedAt: Date.now() } : session));
             setLoadError(null);
         } catch (error) {
+            setMessages((items) => items.filter((message) => message.key !== optimistic.key || !message.pendingEcho));
             setInput(text);
             const message = error instanceof Error ? error.message : String(error);
             setLoadError(message);
@@ -1940,7 +1983,7 @@ export default function AgentPage() {
                     </main>
                 </div>
                 {detailsOpen && (currentSession || creatingSession) && <SessionDrawer
-                            loading={creatingSession || historyLoading}
+                            loading={creatingSession || (historyLoading && !pendingSendVisible)}
                             loadingLabel={creatingSession ? '正在创建会话…' : historyLoadingLabel}
                             drawerWidth={sessionDrawerWidth}
                             view={view}

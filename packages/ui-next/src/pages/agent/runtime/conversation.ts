@@ -160,6 +160,7 @@ export function eventMessage(event: SessionEvent): ChatMessage | null {
             role: context ? 'context' : event.type === 'user/message' ? 'user' : 'assistant',
             text,
             ...(event.type === 'assistant/message' ? { segments } : {}),
+            ...(event.type === 'user/message' && !context ? { sendStatus: 'sent' as const } : {}),
             ...(provenance ? { contextRole: provenance.role, contextLabel: provenance.label, contextSummary: source.form === 'notice' && typeof source.summary === 'string' ? source.summary : undefined, contextSource: source, contextForm: typeof source.form === 'string' ? source.form : undefined } : {}),
             ...(injectedFiles.length ? { contextFiles: injectedFiles } : {}),
             eventType: event.type,
@@ -273,6 +274,15 @@ export function applyEvent(messages: ChatMessage[], event: SessionEvent, origin?
             return settled.filter((message) => message.key !== streamKey);
         }
         return settled;
+    }
+    if (event.type === 'user/message' && next.role === 'user') {
+        const pendingIndex = settled.findIndex((message) => message.role === 'user' && message.pendingEcho && message.text === next.text);
+        if (pendingIndex >= 0) {
+            const copy = settled.slice();
+            const pending = copy[pendingIndex];
+            copy[pendingIndex] = { ...next, key: pending.key, sendStatus: 'sent', pendingEcho: false, pendingSessionId: pending.pendingSessionId };
+            return copy;
+        }
     }
     if (event.type === 'assistant/chunk') {
         const index = settled.findIndex((message) => message.key === next.key);
