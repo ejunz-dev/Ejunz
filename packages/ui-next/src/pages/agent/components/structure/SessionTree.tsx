@@ -83,17 +83,19 @@ const SessionActivityRow = memo(function SessionActivityRow({ activity, index, e
     const separator = activity.indexOf(' · ');
     const title = separator < 0 ? activity : activity.slice(0, separator);
     const output = separator < 0 ? '' : activity.slice(separator + 3);
+    const isUserActivity = title === 'User';
     const titleClass = title === 'Inject' ? 'eja-sessionCardActivityTitle--inject'
         : title === 'Think' ? 'eja-sessionCardActivityTitle--think'
             : title === 'Tool' ? 'eja-sessionCardActivityTitle--tool'
                 : title === 'Error' ? 'eja-sessionCardActivityTitle--error'
-                    : title === 'User' ? 'eja-sessionCardActivityTitle--user' : 'eja-sessionCardActivityTitle--agent';
+                    : isUserActivity ? 'eja-sessionCardActivityTitle--user' : 'eja-sessionCardActivityTitle--agent';
     const statusLabel = sendStatus === 'sending' ? '发送中' : sendStatus === 'sent' ? '发送成功' : '发送失败';
+    const statusIcon = sendStatus && <span className={`eja-sessionCardActivitySendState eja-sessionCardActivitySendState--${sendStatus}`} role="status" aria-label={statusLabel} title={statusLabel}>{sendStatus === 'sending' ? <span className="eja-sessionCardActivitySendSpinner" /> : sendStatus === 'sent' ? '✓' : '!'}</span>;
     return <div className="eja-sessionCardActivity" data-active={active || undefined} title={activity}>
-        <span className="eja-sessionCardActivityIndex">#{index}</span>
+        <span className="eja-sessionCardActivityIndex">{isUserActivity ? statusIcon : `#${index}`}</span>
         <span className={`eja-sessionCardActivityTitle ${titleClass}`}>{title}</span>
         {output && <div className={error ? 'eja-sessionCardActivityOutput eja-sessionCardActivityError' : 'eja-sessionCardActivityOutput'} data-active={active || undefined}><MarkdownText text={output} /></div>}
-        {sendStatus && <span className={`eja-sessionCardActivitySendState eja-sessionCardActivitySendState--${sendStatus}`} role="status" aria-label={statusLabel} title={statusLabel}>{sendStatus === 'sending' ? <span className="eja-sessionCardActivitySendSpinner" /> : sendStatus === 'sent' ? '✓' : '!'}</span>}
+        {!isUserActivity && sendStatus && statusIcon}
     </div>;
 });
 

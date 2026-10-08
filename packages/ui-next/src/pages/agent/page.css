@@ -599,8 +599,11 @@
 }
 
 .eja-sessionCardActivityIndex {
+  display: inline-flex;
   flex: none;
   min-width: 1.1rem;
+  align-items: center;
+  justify-content: flex-end;
   color: var(--dsw-alias-label-caption);
   font-variant-numeric: tabular-nums;
   text-align: right;
@@ -636,7 +639,7 @@
 }
 
 .eja-sessionCardActivitySendState {
-  display: grid;
+  display: inline-grid;
   flex: none;
   width: 12px;
   height: 12px;
