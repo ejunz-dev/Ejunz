@@ -1101,9 +1101,9 @@ export default function AgentPage() {
                 routable: draftModelSelection !== undefined,
                 groups: modelCatalog.groups,
             } : null);
-    const startSession = useCallback(async (firstMessage = '', presetOverride?: string, baseId?: number, titleOverride?: string, modelOverride?: { provider: string; model: string }, sessionIdOverride?: string) => {
+    const startSession = useCallback(async (firstMessage: string, presetOverride: string | undefined, baseId: number | undefined, titleOverride: string, modelOverride: { provider: string; model: string } | undefined, placeholder: SessionSummary) => {
         let sessionPublished = false;
-        const requestedSessionId = sessionIdOverride ?? draftSessionId ?? newCardSessionId();
+        const requestedSessionId = placeholder.sessionId;
         let optimisticKey: string | undefined;
         setCreatingSession(true);
         setNewSessionConfigOpen(false);
@@ -1126,23 +1126,6 @@ export default function AgentPage() {
             // The host is part of what a session is created with: it serves this
             // session until another one is chosen for it.
             const selectedHostId = draftHostId ?? '';
-            const optimisticCreatedAt = Date.now();
-            const optimisticSession: SessionSummary = {
-                sessionId: requestedSessionId,
-                createdAt: optimisticCreatedAt,
-                updatedAt: optimisticCreatedAt,
-                running: false,
-                blank: !hasContent,
-                isDraftCard: true,
-                ...(agentId === null ? {} : { agentId }),
-                agentPreset: presetOverride ?? agentPresetChoice,
-                ...(selectedBaseId === undefined ? {} : { baseDocId: String(selectedBaseId) }),
-                ...(selectedNodeId === undefined ? {} : { nodeId: selectedNodeId }),
-                ...(selectedHostId === '' ? {} : { runtimeId: selectedHostId }),
-                ...(selectedModel === undefined ? {} : { model: selectedModel }),
-                projections: { values: { title: title || '新会话' } },
-            };
-            setSessions((items) => [optimisticSession, ...items.filter((session) => session.sessionId !== requestedSessionId)]);
             const value = await rpc('session.create', {
                 sessionId: requestedSessionId,
                 ...(selectedBaseId === undefined ? {} : { baseDocId: selectedBaseId }),
@@ -1227,27 +1210,22 @@ export default function AgentPage() {
             setCreatingSession(false);
             setSending(false);
         }
-    }, [agentId, agentPresetChoice, attachments, draftBaseId, draftModelSelection, draftNodeId, draftSessionId, loadSessions, rootNodeId, rpc]);
+    }, [agentId, agentPresetChoice, attachments, draftBaseId, draftModelSelection, draftNodeId, loadSessions, rootNodeId, rpc]);
 
-    const confirmNewSession = useCallback(async (title: string) => {
-        const selectedModel = draftModelSelection ?? (composerModels?.current?.provider && composerModels.current.model
-            ? { provider: composerModels.current.provider, model: composerModels.current.model }
-            : undefined);
-        await startSession(input, agentPresetChoice, draftBaseId, title, selectedModel, draftSessionId ?? newCardSessionId());
-    }, [agentPresetChoice, composerModels, draftBaseId, draftModelSelection, draftSessionId, input, startSession]);
-
-    const createDraftCard = useCallback((title: string) => {
+    const createPlaceholderCard = useCallback((title: string) => {
         const nodeId = draftNodeId ?? rootNodeId ?? undefined;
         const runtimeId = draftHostId || undefined;
         const selectedModel = draftModelSelection ?? (composerModels?.current?.provider && composerModels.current.model
             ? { provider: composerModels.current.provider, model: composerModels.current.model }
             : undefined);
-        const createdAt = Date.now();
         const sessionId = draftSessionId ?? newCardSessionId();
+        const existing = sessionsRef.current.find((session) => session.sessionId === sessionId);
+        const createdAt = existing?.createdAt ?? Date.now();
         const card: SessionSummary = {
+            ...existing,
             sessionId,
             createdAt,
-            updatedAt: createdAt,
+            updatedAt: Date.now(),
             running: false,
             blank: true,
             isDraftCard: true,
@@ -1257,11 +1235,23 @@ export default function AgentPage() {
             ...(nodeId === undefined ? {} : { nodeId }),
             ...(runtimeId === undefined ? {} : { runtimeId }),
             ...(selectedModel === undefined ? {} : { model: selectedModel }),
-            projections: { values: { title: title.trim() || '新会话' } },
+            projections: { values: { ...(existing?.projections?.values ?? {}), title: title.trim() || '新会话' } },
         };
+        setDraftSessionId(sessionId);
         setSessions((items) => [card, ...items.filter((item) => item.sessionId !== sessionId)]);
         setActiveTreeNodeId(nodeId ?? null);
-        setCurrent(sessionId);
+        setLoadError(null);
+        return card;
+    }, [agentId, agentPresetChoice, composerModels, draftBaseId, draftHostId, draftModelSelection, draftNodeId, draftSessionId, rootNodeId]);
+
+    const confirmNewSession = useCallback(async (title: string) => {
+        const card = createPlaceholderCard(title);
+        await startSession(input, agentPresetChoice, draftBaseId, title, card.model, card);
+    }, [agentPresetChoice, createPlaceholderCard, draftBaseId, input, startSession]);
+
+    const createDraftCard = useCallback((title: string) => {
+        const card = createPlaceholderCard(title);
+        setCurrent(card.sessionId);
         setDetailsOpen(false);
         setNewSessionConfigOpen(false);
         setDraftSessionId(null);
@@ -1273,14 +1263,13 @@ export default function AgentPage() {
         setMessages([]);
         setHistory([]);
         clearAttachments();
-        updateAgentSelectionUrl({ nodeId: nodeId ?? null, cardId: sessionId });
-        setLoadError(null);
+        updateAgentSelectionUrl({ nodeId: card.nodeId ?? null, cardId: card.sessionId });
         void Notification.success('占位卡片已创建');
-    }, [agentId, agentPresetChoice, clearAttachments, composerModels, draftBaseId, draftHostId, draftModelSelection, draftNodeId, draftSessionId, rootNodeId]);
+    }, [clearAttachments, createPlaceholderCard]);
 
     const prepareNewSession = useCallback(async (baseId?: number) => {
         const loadId = ++newSessionLoadRef.current;
-        setDraftSessionId(newCardSessionId());
+        setDraftSessionId(null);
         setCurrent(null);
         setDetailsOpen(false);
         setSelectedTool(null);
