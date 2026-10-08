@@ -459,18 +459,27 @@ export default function AgentPage() {
             const value = await rpc('session.list', {}) as { items?: SessionSummary[] };
             const next = Array.isArray(value.items) ? value.items : [];
             setSessions((previous) => {
+                const materializedIds = materializedDraftCardsRef.current;
+                const materializedSessionIds = new Set(materializedIds.values());
                 const serverIds = new Set(next.map((session) => session.sessionId));
-                const drafts = previous.flatMap((session) => {
-                    if (!session.isDraftCard) return [];
-                    const materializedId = materializedDraftCardsRef.current.get(session.sessionId);
-                    if (materializedId) {
-                        return serverIds.has(materializedId) ? [] : [{ ...session, sessionId: materializedId, isDraftCard: false }];
-                    }
-                    return serverIds.has(session.sessionId) ? [] : [session];
+                const drafts = previous.filter((session) => session.isDraftCard
+                    && !materializedIds.has(session.sessionId)
+                    && !serverIds.has(session.sessionId));
+                const materializedSessions = [...materializedSessionIds].flatMap((sessionId) => {
+                    const existing = previous.find((session) => session.sessionId === sessionId)
+                        ?? previous.find((session) => session.isDraftCard && materializedIds.get(session.sessionId) === sessionId);
+                    if (serverIds.has(sessionId)) return [];
+                    return existing ? [{ ...existing, sessionId, isDraftCard: false, blank: false }] : [];
                 });
-                const representedIds = new Set([...drafts, ...next].map((session) => session.sessionId));
+                const materializedNext = next.map((session) => {
+                    if (!materializedSessionIds.has(session.sessionId)) return session;
+                    const existing = previous.find((item) => item.sessionId === session.sessionId)
+                        ?? previous.find((item) => item.isDraftCard && materializedIds.get(item.sessionId) === session.sessionId);
+                    return { ...(existing ?? {}), ...session, isDraftCard: false, blank: false };
+                });
+                const representedIds = new Set([...drafts, ...materializedSessions, ...materializedNext].map((session) => session.sessionId));
                 const currentBlank = previous.find((session) => session.sessionId === currentRef.current && session.blank && !session.isDraftCard);
-                return [...drafts, ...(currentBlank && !representedIds.has(currentBlank.sessionId) ? [currentBlank] : []), ...next];
+                return [...drafts, ...materializedSessions, ...(currentBlank && !representedIds.has(currentBlank.sessionId) ? [currentBlank] : []), ...materializedNext];
             });
             setLoadError(null);
         } catch (error) {
@@ -1363,13 +1372,18 @@ export default function AgentPage() {
                     ...selectedSession,
                     sessionId,
                     isDraftCard: false,
-                    blank: true,
+                    blank: false,
                     updatedAt: Date.now(),
                     ...(created.agentPreset === undefined ? {} : { agentPreset: created.agentPreset }),
                     ...(created.runtimeId === undefined ? {} : { runtimeId: created.runtimeId }),
                     ...(created.nodeId === undefined ? {} : { nodeId: created.nodeId }),
                 };
-                setSessions((items) => items.map((session) => session.sessionId === current ? realSession : session));
+                setSessions((items) => {
+                    const index = items.findIndex((session) => session.sessionId === current);
+                    const next = items.filter((session) => session.sessionId !== current && session.sessionId !== sessionId);
+                    next.splice(index < 0 ? 0 : Math.min(index, next.length), 0, realSession);
+                    return next;
+                });
                 currentRef.current = sessionId;
                 setCurrent(sessionId);
                 updateAgentSelectionUrl({ cardId: sessionId });
