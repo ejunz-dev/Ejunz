@@ -444,6 +444,7 @@ export default function AgentPage() {
     const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(() => new Set());
     const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(() => new Set());
     const currentRef = useRef<string | null>(null);
+    const materializedDraftCardsRef = useRef(new Map<string, string>());
     const sessionsRef = useRef(sessions);
     const hostsRef = useRef(hosts);
     const modelsCacheRef = useRef(new Map<string, SessionModels>());
@@ -459,9 +460,17 @@ export default function AgentPage() {
             const next = Array.isArray(value.items) ? value.items : [];
             setSessions((previous) => {
                 const serverIds = new Set(next.map((session) => session.sessionId));
-                const drafts = previous.filter((session) => session.isDraftCard && !serverIds.has(session.sessionId));
+                const drafts = previous.flatMap((session) => {
+                    if (!session.isDraftCard) return [];
+                    const materializedId = materializedDraftCardsRef.current.get(session.sessionId);
+                    if (materializedId) {
+                        return serverIds.has(materializedId) ? [] : [{ ...session, sessionId: materializedId, isDraftCard: false }];
+                    }
+                    return serverIds.has(session.sessionId) ? [] : [session];
+                });
+                const representedIds = new Set([...drafts, ...next].map((session) => session.sessionId));
                 const currentBlank = previous.find((session) => session.sessionId === currentRef.current && session.blank && !session.isDraftCard);
-                return [...drafts, ...(currentBlank && !serverIds.has(currentBlank.sessionId) ? [currentBlank] : []), ...next];
+                return [...drafts, ...(currentBlank && !representedIds.has(currentBlank.sessionId) ? [currentBlank] : []), ...next];
             });
             setLoadError(null);
         } catch (error) {
@@ -1344,6 +1353,12 @@ export default function AgentPage() {
                 }) as { sessionId?: string; agentPreset?: string; runtimeId?: string; nodeId?: string };
                 if (!created.sessionId) throw new Error('会话创建未返回会话 ID');
                 sessionId = created.sessionId;
+                materializedDraftCardsRef.current.set(current, sessionId);
+                try {
+                    window.localStorage.setItem(draftCardsStorageKey, JSON.stringify(sessionsRef.current.filter((session) => session.isDraftCard && session.sessionId !== current)));
+                } catch {
+                    // The in-memory card still transitions to its session when storage is unavailable.
+                }
                 let realSession: SessionSummary = {
                     ...selectedSession,
                     sessionId,
@@ -1387,7 +1402,7 @@ export default function AgentPage() {
         } finally {
             setSending(false);
         }
-    }, [attachments, busyEnter, clearAttachments, current, input, rpc, running, sending]);
+    }, [attachments, busyEnter, clearAttachments, current, draftCardsStorageKey, input, rpc, running, sending]);
 
     const cancel = useCallback(async () => {
         if (!current || !running) return;
@@ -1584,6 +1599,9 @@ export default function AgentPage() {
     const performHardDelete = useCallback(async (sessionId: string) => {
         const draftCard = sessionsRef.current.some((session) => session.sessionId === sessionId && session.isDraftCard);
         if (!draftCard) await rpc('session.delete', { sessionId });
+        for (const [draftId, materializedId] of materializedDraftCardsRef.current) {
+            if (draftId === sessionId || materializedId === sessionId) materializedDraftCardsRef.current.delete(draftId);
+        }
         historyCacheRef.current.delete(sessionId);
         historyPreviewAttemptedRef.current.delete(sessionId);
         historyPreviewRef.current.delete(sessionId);
@@ -1608,6 +1626,9 @@ export default function AgentPage() {
         const persistedSessionIds = sessionIds.filter((sessionId) => !sessionsRef.current.some((session) => session.sessionId === sessionId && session.isDraftCard));
         if (persistedSessionIds.length > 0) await rpc('session.deleteMany', { sessionIds: persistedSessionIds });
         sessionIds.forEach((sessionId) => {
+            for (const [draftId, materializedId] of materializedDraftCardsRef.current) {
+                if (draftId === sessionId || materializedId === sessionId) materializedDraftCardsRef.current.delete(draftId);
+            }
             historyCacheRef.current.delete(sessionId);
             historyPreviewAttemptedRef.current.delete(sessionId);
             historyPreviewRef.current.delete(sessionId);
