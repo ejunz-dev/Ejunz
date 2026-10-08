@@ -976,7 +976,7 @@ export default function AgentPage() {
                 ...next[index],
                 ...(frame.type === 'host/session-status' ? { running: frame.running === true } : {}),
                 ...(frame.type === 'host/session-added' ? {
-                    blank: frame.blank === true,
+                    blank: next[index].blank === false ? false : frame.blank === true,
                     cwd: frame.cwd,
                     agentPreset: frame.agentPreset,
                 } : {}),
@@ -1456,6 +1456,9 @@ export default function AgentPage() {
         });
         setSending(true);
         setInput('');
+        if (selectedSession?.blank) {
+            setSessions((items) => items.map((session) => session.sessionId === current ? { ...session, blank: false, updatedAt: Date.now() } : session));
+        }
         const optimistic = optimisticUserMessage(text, files.length, current);
         setMessages((items) => [...items, optimistic]);
         setSessionActivityPreviews((previous) => mergeUserActivityPreview(previous, current, optimistic.key, optimistic.text, 'sending', activityUserName));
