@@ -243,9 +243,9 @@ function assistantStage(message: ChatMessage): 'Think' | 'Agent' {
     return message.eventType === 'assistant/chunk' && message.segments?.at(-1)?.kind === 'reasoning' ? 'Think' : 'Agent';
 }
 
-function activityPreview(message: ChatMessage): string {
+function activityPreview(message: ChatMessage, userName = 'User'): string {
     if (message.role === 'context') return `Inject · ${flatLine(message.text)}`;
-    if (message.role === 'user') return `User · ${flatLine(message.text)}`;
+    if (message.role === 'user') return `${userName} · ${flatLine(message.text)}`;
     if (message.role === 'assistant') return `${assistantStage(message)} · ${latestLine(assistantText(message))}`;
     if (message.role === 'retry') return `Think · ${flatLine(message.text)}`;
     if (message.role === 'compaction') return `上下文整理 · ${flatLine(message.compactionSummary || '已更新')}`;
@@ -293,7 +293,7 @@ function mergeActivityPreview(previous: Record<string, SessionActivityPreview>, 
     return prior && prior.seq > next.seq && prior.key !== next.key ? previous : { ...previous, [sessionId]: next };
 }
 
-function mergeUserActivityPreview(previous: Record<string, SessionActivityPreview>, sessionId: string, key: string, text: string, sendStatus: 'sending' | 'sent' | 'failed'): Record<string, SessionActivityPreview> {
+function mergeUserActivityPreview(previous: Record<string, SessionActivityPreview>, sessionId: string, key: string, text: string, sendStatus: 'sending' | 'sent' | 'failed', userName: string): Record<string, SessionActivityPreview> {
     const prior = previous[sessionId];
     if (sendStatus !== 'sending' && prior && prior.key !== key) return previous;
     const same = prior?.key === key ? prior : undefined;
@@ -301,13 +301,13 @@ function mergeUserActivityPreview(previous: Record<string, SessionActivityPrevie
         seq: same ? same.seq : (prior?.seq ?? 0) + 0.5,
         index: same ? same.index : (prior?.index ?? 0) + 1,
         key,
-        text: `User · ${flatLine(text)}`,
+        text: `${userName} · ${flatLine(text)}`,
         content: text,
         sendStatus,
     });
 }
 
-function latestActivityPreview(entries: readonly HistoryEntry[]): SessionActivityPreview | null {
+function latestActivityPreview(entries: readonly HistoryEntry[], userName = 'User'): SessionActivityPreview | null {
     let latest: SessionActivityPreview | undefined;
     let previewIndex = 0;
     const ordered = [...entries].sort((left, right) => left.event.seq - right.event.seq);
@@ -324,7 +324,7 @@ function latestActivityPreview(entries: readonly HistoryEntry[]): SessionActivit
         const key = activityKey(entry.event, message);
         if (message.role === 'user') {
             previewIndex += 1;
-            latest = { seq: entry.event.seq, index: previewIndex, key, text: activityPreview(message), content: message.text, sendStatus: 'sent' };
+            latest = { seq: entry.event.seq, index: previewIndex, key, text: activityPreview(message, userName), content: message.text, sendStatus: 'sent' };
             continue;
         }
         if (entry.event.type === 'assistant/chunk' && latest?.key === key) {
@@ -415,6 +415,9 @@ export default function AgentPage() {
     const user = useUserContext();
     const buildUrl = useBuildUrl();
     const guest = !user || user._id == null || user._id === 0 || user._id === '0';
+    const activityUserName = typeof user?.uname === 'string' && user.uname.trim()
+        ? user.uname.trim()
+        : user?._id == null ? 'User' : `#${user._id}`;
     const draftCardsStorageKey = `ejunz-agent-draft-cards:${String(domainId || 'system')}:${String(user?._id ?? 'guest')}:${agentId ?? 'default'}`;
     const { dark, applyTheme } = useAgentTheme();
     useEffect(() => {
@@ -489,12 +492,14 @@ export default function AgentPage() {
     const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(() => new Set());
     const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(() => new Set());
     const currentRef = useRef<string | null>(null);
+    const activityUserNameRef = useRef(activityUserName);
     const sessionsRef = useRef(sessions);
     const hostsRef = useRef(hosts);
     const modelsCacheRef = useRef(new Map<string, SessionModels>());
     const displaySettingsRequestRef = useRef(0);
     sessionsRef.current = sessions;
     hostsRef.current = hosts;
+    activityUserNameRef.current = activityUserName;
 
     useEffect(() => { currentRef.current = current; }, [current]);
 
@@ -684,7 +689,7 @@ export default function AgentPage() {
                     maxMessages: HISTORY_PREVIEW_MESSAGES,
                 }) as { events?: HistoryEntry[] };
                 const entries = Array.isArray(value.events) ? value.events : [];
-                const preview = latestActivityPreview(entries);
+                const preview = latestActivityPreview(entries, activityUserName);
                 if (preview) setSessionActivityPreviews((previous) => mergeActivityPreview(previous, sessionId, preview));
                 const historyError = latestHistoryError(entries);
                 if (historyError !== null) setSessionErrors((previous) => previous[sessionId] === historyError ? previous : { ...previous, [sessionId]: historyError });
@@ -699,7 +704,7 @@ export default function AgentPage() {
             if (historyPreviewRef.current.get(sessionId) === promise) historyPreviewRef.current.delete(sessionId);
         });
         return promise;
-    }, [acquireHistoryPreview, current, releaseHistoryPreview, rpc]);
+    }, [acquireHistoryPreview, activityUserName, current, releaseHistoryPreview, rpc]);
     const loadHistory = useCallback(async (sessionId: string, beforeSeq?: number) => {
         const initialLoad = beforeSeq === undefined;
         const loadId = ++historyLoadRef.current;
@@ -716,7 +721,7 @@ export default function AgentPage() {
             const entries = Array.isArray(value.events) ? value.events : [];
             const parsed = eventsToMessages(entries);
             if (beforeSeq === undefined) {
-                const preview = latestActivityPreview(entries);
+                const preview = latestActivityPreview(entries, activityUserName);
                 if (preview) setSessionActivityPreviews((previous) => mergeActivityPreview(previous, sessionId, preview));
             }
             const firstSeq = firstHistorySeq(entries);
@@ -748,7 +753,7 @@ export default function AgentPage() {
         } finally {
             if (initialLoad && isCurrentLoad()) setHistoryLoading(false);
         }
-    }, [rpc]);
+    }, [activityUserName, rpc]);
 
     const loadInitialHistory = useCallback(async (sessionId: string) => {
         const loadId = ++historyLoadRef.current;
@@ -801,7 +806,7 @@ export default function AgentPage() {
             historyCacheRef.current.set(sessionId, { history: nextHistory, hasMore, totalMessages: resolvedTotalMessages });
             setHistory(nextHistory);
             const parsed = eventsToMessages(nextHistory);
-            const preview = latestActivityPreview(nextHistory);
+            const preview = latestActivityPreview(nextHistory, activityUserName);
             if (preview) setSessionActivityPreviews((previous) => mergeActivityPreview(previous, sessionId, preview));
             setMessages((previous) => preservePendingUserMessages(parsed, previous, sessionId));
             historyFirstSeq.current = firstHistorySeq(nextHistory);
@@ -815,7 +820,7 @@ export default function AgentPage() {
         } finally {
             if (isCurrentLoad()) setHistoryLoading(false);
         }
-    }, [rpc]);
+    }, [activityUserName, rpc]);
 
     const loadHistoryTotal = useCallback(async (sessionId: string) => {
         const requestId = ++historyTotalRequestRef.current;
@@ -884,7 +889,7 @@ export default function AgentPage() {
                             seq: event.seq,
                             index,
                             key: confirmedPendingUser && prior ? prior.key : streamKey,
-                            text: activityPreview(activityMessage),
+                            text: activityPreview(activityMessage, activityUserNameRef.current),
                             content: activityMessage.text,
                             sendStatus: 'sent' as const,
                         }
@@ -892,7 +897,7 @@ export default function AgentPage() {
                             ? appendAssistantActivity(prior, activityMessage, streamKey, event.seq)
                             : activityMessage.role === 'assistant'
                                 ? assistantActivity(activityMessage, streamKey, event.seq, index)
-                                : { seq: event.seq, index, key: streamKey, text: activityPreview(activityMessage) };
+                                : { seq: event.seq, index, key: streamKey, text: activityPreview(activityMessage, activityUserNameRef.current) };
                     if (prior?.key === next.key && prior.text === next.text && prior.sendStatus === next.sendStatus) return previous;
                     return mergeActivityPreview(previous, frame.sessionId!, next);
                 });
@@ -1154,7 +1159,7 @@ export default function AgentPage() {
                 optimisticKey = optimistic.key;
                 optimisticMessage = optimistic;
                 setMessages((items) => [...items, optimistic]);
-                setSessionActivityPreviews((previous) => mergeUserActivityPreview(previous, requestedSessionId, optimistic.key, optimistic.text, 'sending'));
+                setSessionActivityPreviews((previous) => mergeUserActivityPreview(previous, requestedSessionId, optimistic.key, optimistic.text, 'sending', activityUserName));
                 setSending(true);
                 setInput('');
             }
@@ -1224,7 +1229,7 @@ export default function AgentPage() {
                     clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
                 });
                 if (optimisticKey) setMessages((items) => items.map((message) => message.key === optimisticKey ? { ...message, sendStatus: 'sent' } : message));
-                if (optimisticMessage) setSessionActivityPreviews((previous) => mergeUserActivityPreview(previous, requestedSessionId, optimisticMessage!.key, optimisticMessage!.text, 'sent'));
+                if (optimisticMessage) setSessionActivityPreviews((previous) => mergeUserActivityPreview(previous, requestedSessionId, optimisticMessage!.key, optimisticMessage!.text, 'sent', activityUserName));
                 clearAttachments();
             }
             void loadSessions();
@@ -1235,7 +1240,7 @@ export default function AgentPage() {
                 setMessages((items) => items.filter((message) => message.key !== optimisticKey || !message.pendingEcho));
                 setInput(firstMessage.trim());
             }
-            if (optimisticMessage) setSessionActivityPreviews((previous) => mergeUserActivityPreview(previous, requestedSessionId, optimisticMessage!.key, optimisticMessage!.text, 'failed'));
+            if (optimisticMessage) setSessionActivityPreviews((previous) => mergeUserActivityPreview(previous, requestedSessionId, optimisticMessage!.key, optimisticMessage!.text, 'failed', activityUserName));
             if (!sessionPublished) {
                 setSessions((items) => items.filter((session) => session.sessionId !== requestedSessionId));
                 setDetailsOpen(false);
@@ -1247,7 +1252,7 @@ export default function AgentPage() {
             setCreatingSession(false);
             setSending(false);
         }
-    }, [agentId, agentPresetChoice, attachments, draftBaseId, draftModelSelection, draftNodeId, loadSessions, rootNodeId, rpc]);
+    }, [activityUserName, agentId, agentPresetChoice, attachments, draftBaseId, draftModelSelection, draftNodeId, loadSessions, rootNodeId, rpc]);
 
     const createPlaceholderCard = useCallback((title: string) => {
         const nodeId = draftNodeId ?? rootNodeId ?? undefined;
@@ -1453,7 +1458,7 @@ export default function AgentPage() {
         setInput('');
         const optimistic = optimisticUserMessage(text, files.length, current);
         setMessages((items) => [...items, optimistic]);
-        setSessionActivityPreviews((previous) => mergeUserActivityPreview(previous, current, optimistic.key, optimistic.text, 'sending'));
+        setSessionActivityPreviews((previous) => mergeUserActivityPreview(previous, current, optimistic.key, optimistic.text, 'sending', activityUserName));
         try {
             let sessionId = current;
             if (selectedSession?.isDraftCard) {
@@ -1498,13 +1503,13 @@ export default function AgentPage() {
                 clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             });
             setMessages((items) => items.map((message) => message.key === optimistic.key ? { ...message, sendStatus: 'sent' } : message));
-            setSessionActivityPreviews((previous) => mergeUserActivityPreview(previous, sessionId, optimistic.key, optimistic.text, 'sent'));
+            setSessionActivityPreviews((previous) => mergeUserActivityPreview(previous, sessionId, optimistic.key, optimistic.text, 'sent', activityUserName));
             clearAttachments();
             setSessions((items) => items.map((session) => session.sessionId === sessionId ? { ...session, blank: false, updatedAt: Date.now() } : session));
             setLoadError(null);
         } catch (error) {
             setMessages((items) => items.filter((message) => message.key !== optimistic.key || !message.pendingEcho));
-            setSessionActivityPreviews((previous) => mergeUserActivityPreview(previous, current, optimistic.key, optimistic.text, 'failed'));
+            setSessionActivityPreviews((previous) => mergeUserActivityPreview(previous, current, optimistic.key, optimistic.text, 'failed', activityUserName));
             setInput(text);
             const message = error instanceof Error ? error.message : String(error);
             setLoadError(message);
@@ -1512,7 +1517,7 @@ export default function AgentPage() {
         } finally {
             setSending(false);
         }
-    }, [attachments, busyEnter, clearAttachments, current, draftCardsStorageKey, input, rpc, running, sending]);
+    }, [activityUserName, attachments, busyEnter, clearAttachments, current, draftCardsStorageKey, input, rpc, running, sending]);
 
     const cancel = useCallback(async () => {
         if (!current || !running) return;
