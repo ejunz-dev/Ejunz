@@ -615,6 +615,10 @@
   color: var(--dsw-static-deepseek-500);
 }
 
+.eja-sessionCardActivityTitle--user {
+  color: var(--dsw-alias-label-secondary);
+}
+
 .eja-sessionCardActivityTitle--inject {
   color: var(--dsw-static-green-500);
 }
@@ -629,6 +633,41 @@
 
 .eja-sessionCardActivityTitle--error {
   color: var(--dsw-static-red-500);
+}
+
+.eja-sessionCardActivitySendState {
+  display: grid;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  place-items: center;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.eja-sessionCardActivitySendState--sending {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.eja-sessionCardActivitySendState--sent {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.eja-sessionCardActivitySendState--failed {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.eja-sessionCardActivitySendSpinner {
+  width: 9px;
+  height: 9px;
+  border: 1px solid currentcolor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: eja-session-card-send-spin 700ms linear infinite;
+}
+
+@keyframes eja-session-card-send-spin {
+  to { transform: rotate(360deg); }
 }
 
 .eja-sessionCardActivityOutput {
@@ -661,7 +700,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .eja-sessionCardActivityOutput[data-active]::after {
+  .eja-sessionCardActivityOutput[data-active]::after,
+  .eja-sessionCardActivitySendSpinner {
     animation: none;
   }
 }

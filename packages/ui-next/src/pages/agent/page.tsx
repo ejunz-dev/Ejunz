@@ -245,11 +245,11 @@ function assistantStage(message: ChatMessage): 'Think' | 'Agent' {
 
 function activityPreview(message: ChatMessage): string {
     if (message.role === 'context') return `Inject · ${flatLine(message.text)}`;
+    if (message.role === 'user') return `User · ${flatLine(message.text)}`;
     if (message.role === 'assistant') return `${assistantStage(message)} · ${latestLine(assistantText(message))}`;
     if (message.role === 'retry') return `Think · ${flatLine(message.text)}`;
     if (message.role === 'compaction') return `上下文整理 · ${flatLine(message.compactionSummary || '已更新')}`;
     if (message.role === 'system') return `${message.eventType === 'turn/error' ? 'Error' : 'Agent'} · ${flatLine(message.text)}`;
-    if (message.role === 'user') return `Agent · ${flatLine(message.text)}`;
     const model = toolRowModel(message);
     if (model.errorSummary) return `Tool · ${model.errorSummary}`;
     if (message.eventType === 'tool/result' && model.output) return `Tool · ${firstLine(model.output)}`;
@@ -285,11 +285,26 @@ interface SessionActivityPreview {
     key: string;
     text: string;
     content?: string;
+    sendStatus?: 'sending' | 'sent' | 'failed';
 }
 
 function mergeActivityPreview(previous: Record<string, SessionActivityPreview>, sessionId: string, next: SessionActivityPreview): Record<string, SessionActivityPreview> {
     const prior = previous[sessionId];
-    return prior && prior.seq > next.seq ? previous : { ...previous, [sessionId]: next };
+    return prior && prior.seq > next.seq && prior.key !== next.key ? previous : { ...previous, [sessionId]: next };
+}
+
+function mergeUserActivityPreview(previous: Record<string, SessionActivityPreview>, sessionId: string, key: string, text: string, sendStatus: 'sending' | 'sent' | 'failed'): Record<string, SessionActivityPreview> {
+    const prior = previous[sessionId];
+    if (sendStatus !== 'sending' && prior && prior.key !== key) return previous;
+    const same = prior?.key === key ? prior : undefined;
+    return mergeActivityPreview(previous, sessionId, {
+        seq: same ? same.seq : (prior?.seq ?? 0) + 0.5,
+        index: same ? same.index : (prior?.index ?? 0) + 1,
+        key,
+        text: `User · ${flatLine(text)}`,
+        content: text,
+        sendStatus,
+    });
 }
 
 function latestActivityPreview(entries: readonly HistoryEntry[]): SessionActivityPreview | null {
@@ -305,8 +320,13 @@ function latestActivityPreview(entries: readonly HistoryEntry[]): SessionActivit
             continue;
         }
         const message = eventMessage(entry.event);
-        if (!message?.text || message.role === 'user') continue;
+        if (!message?.text) continue;
         const key = activityKey(entry.event, message);
+        if (message.role === 'user') {
+            previewIndex += 1;
+            latest = { seq: entry.event.seq, index: previewIndex, key, text: activityPreview(message), content: message.text, sendStatus: 'sent' };
+            continue;
+        }
         if (entry.event.type === 'assistant/chunk' && latest?.key === key) {
             latest = appendAssistantActivity(latest, message, key, entry.event.seq);
             continue;
@@ -851,17 +871,29 @@ export default function AgentPage() {
         if (frame.type === 'session/event' && frame.sessionId && frame.event) {
             const event = frame.event;
             const activityMessage = eventMessage(event);
-            if (activityMessage?.text && activityMessage.role !== 'user') {
+            if (activityMessage?.text) {
                 const streamKey = activityKey(event, activityMessage);
                 setSessionActivityPreviews((previous) => {
                     const prior = previous[frame.sessionId!];
-                    const index = prior?.key === streamKey ? prior.index : (prior?.index ?? 0) + 1;
-                    const next = event.type === 'assistant/chunk' && prior?.key === streamKey
-                        ? appendAssistantActivity(prior, activityMessage, streamKey, event.seq)
-                        : activityMessage.role === 'assistant'
-                            ? assistantActivity(activityMessage, streamKey, event.seq, index)
-                            : { seq: event.seq, index, key: streamKey, text: activityPreview(activityMessage) };
-                    if (prior?.key === next.key && prior.text === next.text) return previous;
+                    const confirmedPendingUser = activityMessage.role === 'user'
+                        && prior?.sendStatus !== undefined
+                        && prior.content === activityMessage.text;
+                    const index = confirmedPendingUser && prior ? prior.index : prior?.key === streamKey ? prior.index : (prior?.index ?? 0) + 1;
+                    const next = activityMessage.role === 'user'
+                        ? {
+                            seq: event.seq,
+                            index,
+                            key: confirmedPendingUser && prior ? prior.key : streamKey,
+                            text: activityPreview(activityMessage),
+                            content: activityMessage.text,
+                            sendStatus: 'sent' as const,
+                        }
+                        : event.type === 'assistant/chunk' && prior?.key === streamKey
+                            ? appendAssistantActivity(prior, activityMessage, streamKey, event.seq)
+                            : activityMessage.role === 'assistant'
+                                ? assistantActivity(activityMessage, streamKey, event.seq, index)
+                                : { seq: event.seq, index, key: streamKey, text: activityPreview(activityMessage) };
+                    if (prior?.key === next.key && prior.text === next.text && prior.sendStatus === next.sendStatus) return previous;
                     return mergeActivityPreview(previous, frame.sessionId!, next);
                 });
             } else if (event.type === 'turn/start') {
@@ -1067,7 +1099,7 @@ export default function AgentPage() {
     }, [query, rpc]);
     const pendingQuestionSessionIds = useMemo(() => new Set(Object.keys(pendingQuestions)), [pendingQuestions]);
     const sessionErrorMap = useMemo(() => new Map(Object.entries(sessionErrors)), [sessionErrors]);
-    const sessionActivityPreviewMap = useMemo(() => new Map(Object.entries(sessionActivityPreviews).map(([sessionId, preview]) => [sessionId, { index: preview.index, text: preview.text }])), [sessionActivityPreviews]);
+    const sessionActivityPreviewMap = useMemo(() => new Map(Object.entries(sessionActivityPreviews).map(([sessionId, preview]) => [sessionId, { index: preview.index, text: preview.text, sendStatus: preview.sendStatus }])), [sessionActivityPreviews]);
     const currentSession = useMemo(() => {
         const found = sessions.find((session) => session.sessionId === current);
         if (found) return found;
@@ -1105,6 +1137,7 @@ export default function AgentPage() {
         let sessionPublished = false;
         const requestedSessionId = placeholder.sessionId;
         let optimisticKey: string | undefined;
+        let optimisticMessage: ChatMessage | undefined;
         setCreatingSession(true);
         setNewSessionConfigOpen(false);
         setDetailsOpen(true);
@@ -1117,9 +1150,11 @@ export default function AgentPage() {
             const files = readyFiles(attachments);
             const hasContent = Boolean(text || files.length);
             if (hasContent) {
-                const optimistic = optimisticUserMessage(text, files.length, '');
+                const optimistic = optimisticUserMessage(text, files.length, requestedSessionId);
                 optimisticKey = optimistic.key;
+                optimisticMessage = optimistic;
                 setMessages((items) => [...items, optimistic]);
+                setSessionActivityPreviews((previous) => mergeUserActivityPreview(previous, requestedSessionId, optimistic.key, optimistic.text, 'sending'));
                 setSending(true);
                 setInput('');
             }
@@ -1189,6 +1224,7 @@ export default function AgentPage() {
                     clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
                 });
                 if (optimisticKey) setMessages((items) => items.map((message) => message.key === optimisticKey ? { ...message, sendStatus: 'sent' } : message));
+                if (optimisticMessage) setSessionActivityPreviews((previous) => mergeUserActivityPreview(previous, requestedSessionId, optimisticMessage!.key, optimisticMessage!.text, 'sent'));
                 clearAttachments();
             }
             void loadSessions();
@@ -1199,6 +1235,7 @@ export default function AgentPage() {
                 setMessages((items) => items.filter((message) => message.key !== optimisticKey || !message.pendingEcho));
                 setInput(firstMessage.trim());
             }
+            if (optimisticMessage) setSessionActivityPreviews((previous) => mergeUserActivityPreview(previous, requestedSessionId, optimisticMessage!.key, optimisticMessage!.text, 'failed'));
             if (!sessionPublished) {
                 setSessions((items) => items.filter((session) => session.sessionId !== requestedSessionId));
                 setDetailsOpen(false);
@@ -1416,6 +1453,7 @@ export default function AgentPage() {
         setInput('');
         const optimistic = optimisticUserMessage(text, files.length, current);
         setMessages((items) => [...items, optimistic]);
+        setSessionActivityPreviews((previous) => mergeUserActivityPreview(previous, current, optimistic.key, optimistic.text, 'sending'));
         try {
             let sessionId = current;
             if (selectedSession?.isDraftCard) {
@@ -1460,11 +1498,13 @@ export default function AgentPage() {
                 clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             });
             setMessages((items) => items.map((message) => message.key === optimistic.key ? { ...message, sendStatus: 'sent' } : message));
+            setSessionActivityPreviews((previous) => mergeUserActivityPreview(previous, sessionId, optimistic.key, optimistic.text, 'sent'));
             clearAttachments();
             setSessions((items) => items.map((session) => session.sessionId === sessionId ? { ...session, blank: false, updatedAt: Date.now() } : session));
             setLoadError(null);
         } catch (error) {
             setMessages((items) => items.filter((message) => message.key !== optimistic.key || !message.pendingEcho));
+            setSessionActivityPreviews((previous) => mergeUserActivityPreview(previous, current, optimistic.key, optimistic.text, 'failed'));
             setInput(text);
             const message = error instanceof Error ? error.message : String(error);
             setLoadError(message);

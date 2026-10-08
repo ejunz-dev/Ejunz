@@ -20,7 +20,7 @@ interface SessionTreeProps {
     current: string | null;
     pendingQuestionSessionIds: ReadonlySet<string>;
     sessionErrors: ReadonlyMap<string, string>;
-    sessionActivityPreviews: ReadonlyMap<string, { index: number; text: string }>;
+    sessionActivityPreviews: ReadonlyMap<string, { index: number; text: string; sendStatus?: 'sending' | 'sent' | 'failed' }>;
     modelGroups?: SessionModels['groups'];
     displaySettings: AgentDisplaySettings;
     query: string;
@@ -78,7 +78,7 @@ function flatLine(value: string): string {
     return value.replace(/\s*\n\s*/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-const SessionActivityRow = memo(function SessionActivityRow({ activity, index, error, active }: { activity?: string; index: number; error: boolean; active: boolean }) {
+const SessionActivityRow = memo(function SessionActivityRow({ activity, index, error, active, sendStatus }: { activity?: string; index: number; error: boolean; active: boolean; sendStatus?: 'sending' | 'sent' | 'failed' }) {
     if (!activity) return <div className="eja-sessionCardActivity eja-sessionCardActivityEmpty" aria-hidden="true" />;
     const separator = activity.indexOf(' · ');
     const title = separator < 0 ? activity : activity.slice(0, separator);
@@ -86,20 +86,24 @@ const SessionActivityRow = memo(function SessionActivityRow({ activity, index, e
     const titleClass = title === 'Inject' ? 'eja-sessionCardActivityTitle--inject'
         : title === 'Think' ? 'eja-sessionCardActivityTitle--think'
             : title === 'Tool' ? 'eja-sessionCardActivityTitle--tool'
-                : title === 'Error' ? 'eja-sessionCardActivityTitle--error' : 'eja-sessionCardActivityTitle--agent';
+                : title === 'Error' ? 'eja-sessionCardActivityTitle--error'
+                    : title === 'User' ? 'eja-sessionCardActivityTitle--user' : 'eja-sessionCardActivityTitle--agent';
+    const statusLabel = sendStatus === 'sending' ? '发送中' : sendStatus === 'sent' ? '发送成功' : '发送失败';
     return <div className="eja-sessionCardActivity" data-active={active || undefined} title={activity}>
         <span className="eja-sessionCardActivityIndex">#{index}</span>
         <span className={`eja-sessionCardActivityTitle ${titleClass}`}>{title}</span>
         {output && <div className={error ? 'eja-sessionCardActivityOutput eja-sessionCardActivityError' : 'eja-sessionCardActivityOutput'} data-active={active || undefined}><MarkdownText text={output} /></div>}
+        {sendStatus && <span className={`eja-sessionCardActivitySendState eja-sessionCardActivitySendState--${sendStatus}`} role="status" aria-label={statusLabel} title={statusLabel}>{sendStatus === 'sending' ? <span className="eja-sessionCardActivitySendSpinner" /> : sendStatus === 'sent' ? '✓' : '!'}</span>}
     </div>;
 });
 
-const SessionCardTitle = memo(function SessionCardTitle({ session, error, waitingForAnswer, activityPreview, activityIndex, showStatus, editMode, draftTitle, onTitleChange, onSelect }: {
+const SessionCardTitle = memo(function SessionCardTitle({ session, error, waitingForAnswer, activityPreview, activityIndex, activityStatus, showStatus, editMode, draftTitle, onTitleChange, onSelect }: {
     session: SessionSummary;
     error?: string;
     waitingForAnswer: boolean;
     activityPreview?: string;
     activityIndex?: number;
+    activityStatus?: 'sending' | 'sent' | 'failed';
     showStatus: boolean;
     editMode: boolean;
     draftTitle?: string;
@@ -122,7 +126,7 @@ const SessionCardTitle = memo(function SessionCardTitle({ session, error, waitin
                     onClick={(event) => event.stopPropagation()}
                     onPointerDown={(event) => event.stopPropagation()}
                 />
-                <SessionActivityRow activity={activity} index={activityIndex ?? 1} error={Boolean(error)} active={state === 'ongoing'} />
+                <SessionActivityRow activity={activity} index={activityIndex ?? 1} error={Boolean(error)} active={state === 'ongoing'} sendStatus={error ? undefined : activityStatus} />
             </span>
         </>;
     }
@@ -136,7 +140,7 @@ const SessionCardTitle = memo(function SessionCardTitle({ session, error, waitin
         <StateDot state={state} size={10} className="eja-sessionStateDot" />
         <span className="eja-sessionCardTitleText">
             <span className="bd-tree__label">{title}</span>
-            <SessionActivityRow activity={activity} index={activityIndex ?? 1} error={Boolean(error)} active={state === 'ongoing'} />
+            <SessionActivityRow activity={activity} index={activityIndex ?? 1} error={Boolean(error)} active={state === 'ongoing'} sendStatus={error ? undefined : activityStatus} />
         </span>
     </button>;
 });
@@ -294,6 +298,7 @@ export function SessionTree({
                 waitingForAnswer={pendingQuestionSessionIds.has(session.sessionId)}
                 activityPreview={activity?.text}
                 activityIndex={activity?.index}
+                activityStatus={activity?.sendStatus}
                 showStatus={displaySettings.showStatus}
                 editMode={editMode}
                 draftTitle={sessionTitleDrafts[session.sessionId]}
