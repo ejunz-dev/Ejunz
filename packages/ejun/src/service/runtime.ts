@@ -433,7 +433,7 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
         payload.provider = 'deepseek-official';
         payload.model = deepseekSettings.model;
     }
-    const requestedSessionId = typeof payload.sessionId === 'string' ? payload.sessionId : undefined;
+    const requestedSessionId = typeof payload.sessionId === 'string' && payload.sessionId.length > 0 ? payload.sessionId : undefined;
     if (requestedSessionId) {
         const existing = await agentDataAdapter.getSessionAny(requestedSessionId);
         const agentMismatch = existing && scope.agentId !== undefined && (existing.agentId ?? null) !== scope.agentId;
@@ -466,7 +466,7 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
     // for this session reaches the host that owns it.
     const requestedHost = typeof payload.runtimeId === 'string' ? payload.runtimeId.trim() : '';
     const link = linkForCreate(requestedHost);
-    const sessionId = `session-${domainKey(scope.domainId)}-${randomUUID()}`;
+    const sessionId = requestedSessionId ?? `session-${domainKey(scope.domainId)}-${randomUUID()}`;
     delete payload.domainId;
     delete payload.agentId;
     delete payload.workspaceId;

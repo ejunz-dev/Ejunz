@@ -96,18 +96,19 @@ function readDraftSessionCards(storageKey: string): SessionSummary[] {
     try {
         const value = JSON.parse(window.localStorage.getItem(storageKey) || '[]');
         return Array.isArray(value) ? value.filter((item): item is SessionSummary => item && typeof item === 'object'
-            && item.isDraftCard === true && typeof item.sessionId === 'string' && item.sessionId.startsWith('draft:')
+            && item.isDraftCard === true && typeof item.sessionId === 'string'
+            && (item.sessionId.startsWith('session-') || item.sessionId.startsWith('draft:'))
             && typeof item.updatedAt === 'number' && typeof item.blank === 'boolean') : [];
     } catch {
         return [];
     }
 }
 
-function newDraftCardId(): string {
+function newCardSessionId(): string {
     const id = typeof window !== 'undefined' && typeof window.crypto?.randomUUID === 'function'
         ? window.crypto.randomUUID()
         : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-    return `draft:${id}`;
+    return `session-${id}`;
 }
 
 type AgentRpc = (method: string, payload: unknown, signal?: AbortSignal) => Promise<unknown>;
@@ -467,7 +468,6 @@ export default function AgentPage() {
     const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(() => new Set());
     const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(() => new Set());
     const currentRef = useRef<string | null>(null);
-    const materializedDraftCardsRef = useRef(new Map<string, string>());
     const sessionsRef = useRef(sessions);
     const hostsRef = useRef(hosts);
     const modelsCacheRef = useRef(new Map<string, SessionModels>());
@@ -482,27 +482,30 @@ export default function AgentPage() {
             const value = await rpc('session.list', {}) as { items?: SessionSummary[] };
             const next = Array.isArray(value.items) ? value.items : [];
             setSessions((previous) => {
-                const materializedIds = materializedDraftCardsRef.current;
-                const materializedSessionIds = new Set(materializedIds.values());
                 const serverIds = new Set(next.map((session) => session.sessionId));
-                const drafts = previous.filter((session) => session.isDraftCard
-                    && !materializedIds.has(session.sessionId)
-                    && !serverIds.has(session.sessionId));
-                const materializedSessions = [...materializedSessionIds].flatMap((sessionId) => {
-                    const existing = previous.find((session) => session.sessionId === sessionId)
-                        ?? previous.find((session) => session.isDraftCard && materializedIds.get(session.sessionId) === sessionId);
-                    if (serverIds.has(sessionId)) return [];
-                    return existing ? [{ ...existing, sessionId, isDraftCard: false, blank: false }] : [];
+                const drafts = previous.filter((session) => session.isDraftCard && !serverIds.has(session.sessionId));
+                const currentSession = previous.find((session) => session.sessionId === currentRef.current);
+                const keptCurrent = currentSession && !serverIds.has(currentSession.sessionId) && !drafts.some((session) => session.sessionId === currentSession.sessionId)
+                    ? [currentSession]
+                    : [];
+                const merged = next.map((session) => {
+                    const existing = previous.find((item) => item.sessionId === session.sessionId);
+                    if (!existing) return session;
+                    const previousValues = existing.projections?.values ?? {};
+                    const serverValues = session.projections?.values ?? {};
+                    const previousTitle = previousValues.title;
+                    const serverTitle = serverValues.title;
+                    const title = typeof serverTitle === 'string' && serverTitle.trim()
+                        ? serverTitle
+                        : typeof previousTitle === 'string' && previousTitle.trim() ? previousTitle : undefined;
+                    return {
+                        ...existing,
+                        ...session,
+                        ...(existing.isDraftCard ? { isDraftCard: false, blank: false } : {}),
+                        ...(title === undefined ? {} : { projections: { values: { ...previousValues, ...serverValues, title } } }),
+                    };
                 });
-                const materializedNext = next.map((session) => {
-                    if (!materializedSessionIds.has(session.sessionId)) return session;
-                    const existing = previous.find((item) => item.sessionId === session.sessionId)
-                        ?? previous.find((item) => item.isDraftCard && materializedIds.get(item.sessionId) === session.sessionId);
-                    return { ...(existing ?? {}), ...session, isDraftCard: false, blank: false };
-                });
-                const representedIds = new Set([...drafts, ...materializedSessions, ...materializedNext].map((session) => session.sessionId));
-                const currentBlank = previous.find((session) => session.sessionId === currentRef.current && session.blank && !session.isDraftCard);
-                return [...drafts, ...materializedSessions, ...(currentBlank && !representedIds.has(currentBlank.sessionId) ? [currentBlank] : []), ...materializedNext];
+                return [...drafts, ...keptCurrent, ...merged];
             });
             setLoadError(null);
         } catch (error) {
@@ -1210,7 +1213,7 @@ export default function AgentPage() {
             ? { provider: composerModels.current.provider, model: composerModels.current.model }
             : undefined);
         const createdAt = Date.now();
-        const sessionId = newDraftCardId();
+        const sessionId = newCardSessionId();
         const card: SessionSummary = {
             sessionId,
             createdAt,
@@ -1396,14 +1399,12 @@ export default function AgentPage() {
             let sessionId = current;
             if (selectedSession?.isDraftCard) {
                 const created = await rpc('session.create', {
+                    sessionId: current,
                     ...(selectedSession.baseDocId === undefined ? {} : { baseDocId: Number(selectedSession.baseDocId) }),
                     ...(selectedSession.nodeId === undefined ? {} : { nodeId: selectedSession.nodeId }),
                     ...(selectedSession.runtimeId === undefined ? {} : { runtimeId: selectedSession.runtimeId }),
                 }) as { sessionId?: string; agentPreset?: string; runtimeId?: string; nodeId?: string };
-                if (!created.sessionId) throw new Error('会话创建未返回会话 ID');
-                sessionId = created.sessionId;
-                setMessages((items) => items.map((message) => message.key === optimistic.key ? { ...message, pendingSessionId: sessionId } : message));
-                materializedDraftCardsRef.current.set(current, sessionId);
+                if (created.sessionId !== current) throw new Error('会话创建未复用占位卡片 ID');
                 try {
                     window.localStorage.setItem(draftCardsStorageKey, JSON.stringify(sessionsRef.current.filter((session) => session.isDraftCard && session.sessionId !== current)));
                 } catch {
@@ -1411,7 +1412,6 @@ export default function AgentPage() {
                 }
                 let realSession: SessionSummary = {
                     ...selectedSession,
-                    sessionId,
                     isDraftCard: false,
                     blank: false,
                     updatedAt: Date.now(),
@@ -1419,15 +1419,7 @@ export default function AgentPage() {
                     ...(created.runtimeId === undefined ? {} : { runtimeId: created.runtimeId }),
                     ...(created.nodeId === undefined ? {} : { nodeId: created.nodeId }),
                 };
-                setSessions((items) => {
-                    const index = items.findIndex((session) => session.sessionId === current);
-                    const next = items.filter((session) => session.sessionId !== current && session.sessionId !== sessionId);
-                    next.splice(index < 0 ? 0 : Math.min(index, next.length), 0, realSession);
-                    return next;
-                });
-                currentRef.current = sessionId;
-                setCurrent(sessionId);
-                updateAgentSelectionUrl({ cardId: sessionId });
+                setSessions((items) => items.map((session) => session.sessionId === current ? realSession : session));
                 if (selectedSession.agentPreset && selectedSession.agentPreset !== created.agentPreset) {
                     const preset = await rpc('agentPreset.select', { sessionId, agentPreset: selectedSession.agentPreset }) as { agentPreset?: string };
                     realSession = { ...realSession, agentPreset: preset.agentPreset ?? selectedSession.agentPreset };
@@ -1656,9 +1648,6 @@ export default function AgentPage() {
     const performHardDelete = useCallback(async (sessionId: string) => {
         const draftCard = sessionsRef.current.some((session) => session.sessionId === sessionId && session.isDraftCard);
         if (!draftCard) await rpc('session.delete', { sessionId });
-        for (const [draftId, materializedId] of materializedDraftCardsRef.current) {
-            if (draftId === sessionId || materializedId === sessionId) materializedDraftCardsRef.current.delete(draftId);
-        }
         historyCacheRef.current.delete(sessionId);
         historyPreviewAttemptedRef.current.delete(sessionId);
         historyPreviewRef.current.delete(sessionId);
@@ -1683,9 +1672,6 @@ export default function AgentPage() {
         const persistedSessionIds = sessionIds.filter((sessionId) => !sessionsRef.current.some((session) => session.sessionId === sessionId && session.isDraftCard));
         if (persistedSessionIds.length > 0) await rpc('session.deleteMany', { sessionIds: persistedSessionIds });
         sessionIds.forEach((sessionId) => {
-            for (const [draftId, materializedId] of materializedDraftCardsRef.current) {
-                if (draftId === sessionId || materializedId === sessionId) materializedDraftCardsRef.current.delete(draftId);
-            }
             historyCacheRef.current.delete(sessionId);
             historyPreviewAttemptedRef.current.delete(sessionId);
             historyPreviewRef.current.delete(sessionId);
