@@ -502,7 +502,7 @@ export default function AgentPage() {
                     return {
                         ...existing,
                         ...session,
-                        ...(existing.isDraftCard ? { isDraftCard: false, blank: false } : {}),
+                        ...(existing.isDraftCard ? { isDraftCard: false, blank: false } : existing.blank === false ? { blank: false } : {}),
                         ...(title === undefined ? {} : { projections: { values: { ...previousValues, ...serverValues, title } } }),
                     };
                 });
