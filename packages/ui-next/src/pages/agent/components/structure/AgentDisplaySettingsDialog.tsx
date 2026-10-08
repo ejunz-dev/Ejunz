@@ -1,4 +1,16 @@
 import { useEffect, useState } from 'react';
+import { defineSlot } from '../../../../registry';
+
+interface BaseDisplaySettingSlotProps {
+    value: boolean;
+    disabled: boolean;
+    onChange: (value: boolean) => void;
+}
+
+const BaseDisplaySettingSlot = defineSlot<BaseDisplaySettingSlotProps>(
+    'component:agent-display-setting-base',
+    () => null,
+);
 
 export interface AgentDisplaySettings {
     showModel: boolean;
@@ -35,7 +47,6 @@ interface AgentDisplaySettingsDialogProps {
 
 const rows: Array<{ key: keyof AgentDisplaySettings; label: string; description: string }> = [
     { key: 'showModel', label: '显示模型', description: '在当前会话卡片的标签区域显示使用的模型。' },
-    { key: 'showBase', label: '显示知识库', description: '在会话卡片的标签区域显示使用的知识库。' },
     { key: 'showTimestamps', label: '显示创建时间和修改时间', description: '使用 Base Detail 同款格式显示卡片创建时间和相对修改时间。' },
     { key: 'showStatus', label: '显示实时状态', description: '在每个会话卡片标题前显示当前运行状态。' },
 ];
@@ -88,6 +99,11 @@ export function AgentDisplaySettingsDialog({ open, settings, saving = false, onC
                             />
                         </label>
                     ))}
+                    <BaseDisplaySettingSlot
+                        value={draft.showBase}
+                        disabled={saving}
+                        onChange={(showBase) => setDraft((current) => ({ ...current, showBase }))}
+                    />
                 </div>
                 <footer className="bd-settings-dialog__footer">
                     <button type="button" className="bd-settings-button" onClick={onClose} disabled={saving}>取消</button>

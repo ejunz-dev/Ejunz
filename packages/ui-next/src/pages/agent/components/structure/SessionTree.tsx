@@ -6,6 +6,7 @@ import { MarkdownText } from '../primitives/markdown/MarkdownText';
 import type { AgentNode, SessionSummary, BaseView } from '../../runtime/session';
 import type { SessionModels } from '../types';
 import type { AgentDisplaySettings } from './AgentDisplaySettingsDialog';
+import { getAgentPluginSessionCardTags, hasAgentPluginSessionCardTags } from '../../runtime/agent-plugin-slots';
 import { filterSessions } from './session-tree-utils';
 import '../../../../components/base-detail/base-detail.css';
 
@@ -22,6 +23,7 @@ interface SessionTreeProps {
     sessionErrors: ReadonlyMap<string, string>;
     sessionActivityPreviews: ReadonlyMap<string, { index: number; text: string; sendStatus?: 'sending' | 'sent' | 'failed' }>;
     modelGroups?: SessionModels['groups'];
+    activeAgentPluginIds: ReadonlySet<string>;
     displaySettings: AgentDisplaySettings;
     query: string;
     searchMatches: ReadonlySet<string> | null;
@@ -51,13 +53,6 @@ function sessionTitle(session: SessionSummary): string {
     const title = session.projections?.values?.title;
     if (typeof title === 'string' && title.trim()) return title;
     return session.blank ? '新会话' : `会话 ${session.sessionId.slice(8, 16)}`;
-}
-
-function sessionBaseLabel(session: SessionSummary, bases: readonly BaseView[]): string {
-    const rawId = session.baseDocId;
-    const baseId = rawId === undefined || rawId === null || rawId === '' ? NaN : Number(rawId);
-    const base = Number.isSafeInteger(baseId) ? bases.find((item) => item.docId === baseId) : undefined;
-    return base?.title || (Number.isSafeInteger(baseId) ? `Base #${baseId}` : '未选择');
 }
 
 function sessionModelLabel(session: SessionSummary, modelGroups?: SessionModels['groups']): string {
@@ -148,7 +143,7 @@ const SessionCardTitle = memo(function SessionCardTitle({ session, error, waitin
 });
 
 export function SessionTree({
-    sessions, nodes: agentNodes, treeOpen, activeNodeId, onSelectNode, onCloseTree, bases, current, pendingQuestionSessionIds, sessionErrors, sessionActivityPreviews, modelGroups, displaySettings, query, searchMatches, searchSnippets, searchHasMore,
+    sessions, nodes: agentNodes, treeOpen, activeNodeId, onSelectNode, onCloseTree, bases, current, pendingQuestionSessionIds, sessionErrors, sessionActivityPreviews, modelGroups, activeAgentPluginIds, displaySettings, query, searchMatches, searchSnippets, searchHasMore,
     editMode, selectedCardIds, selectedNodeIds, sessionTitleDrafts, onToggleCardSelection, onToggleNodeSelection, onCreateNode, onRenameNode, onSessionTitleChange, onSaveSessionTitles, sessionTitleSaving,
     onQuery, onSelect, onStartSession, onDeleteSelected, onExitEdit,
 }: SessionTreeProps) {
@@ -218,7 +213,7 @@ export function SessionTree({
         const toCard = (session: SessionSummary, nodeId: string, order: number): BaseDetailCard => {
             const tags: string[] = [];
             if (displaySettings.showModel) tags.push(`模型: ${sessionModelLabel(session, modelGroups)}`);
-            if (displaySettings.showBase) tags.push(`知识库: ${sessionBaseLabel(session, bases)}`);
+            tags.push(...getAgentPluginSessionCardTags(session, bases, displaySettings.showBase));
             return {
                 docId: session.sessionId,
                 title: sessionTitle(session),
@@ -236,7 +231,7 @@ export function SessionTree({
             cards[node.nodeId] = (sessionsByNode.get(node.nodeId) || []).map((session, index) => toCard(session, node.nodeId, index));
         });
         return cards;
-    }, [agentNodes, bases, displaySettings, modelGroups, searchSnippets, sessionsByNode, ungroupedSessions]);
+    }, [agentNodes, activeAgentPluginIds, bases, displaySettings, modelGroups, searchSnippets, sessionsByNode, ungroupedSessions]);
     const selectSessionCard = useCallback((card: BaseDetailCard, switchNode = false) => {
         const session = visibleSessions.find((item) => item.sessionId === String(card.docId));
         const nodeId = session?.nodeId && agentNodes.some((node) => node.nodeId === session.nodeId) ? session.nodeId : fallbackNodeId;
@@ -286,8 +281,8 @@ export function SessionTree({
         showNodeCardTimestamps: displaySettings.showTimestamps,
         showProblemTree: false,
         showProblemTags: false,
-        showCardTags: displaySettings.showModel || displaySettings.showBase,
-    }), [displaySettings]);
+        showCardTags: displaySettings.showModel || (displaySettings.showBase && hasAgentPluginSessionCardTags()),
+    }), [activeAgentPluginIds, displaySettings]);
     const renderCardTitle = useMemo(() => {
         if (!displaySettings.showStatus && !editMode) return undefined;
         return (card: BaseDetailCard) => {

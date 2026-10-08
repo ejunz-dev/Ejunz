@@ -16,6 +16,7 @@ import { AgentHeader, type AgentWebSocketStatus } from './components/structure/A
 import { AgentDisplaySettingsDialog, defaultAgentDisplaySettings, readAgentDisplaySettings, type AgentDisplaySettings } from './components/structure/AgentDisplaySettingsDialog';
 import { SessionSettingsPanel } from './components/structure/SessionSettingsPanel';
 import { SessionDrawer } from './components/structure/SessionDrawer';
+import './components/structure/BaseContextPlugin';
 import { SessionTree } from './components/structure/SessionTree';
 import type { HostOption } from './components/structure/HostPicker';
 import { ActionDialog } from './components/primitives/ActionDialog';
@@ -35,6 +36,7 @@ import { SettingsDocumentAction } from './components/settings/SettingsDocumentAc
 import { SettingsRoot } from './components/settings/SettingsRoot';
 import type { ChatMessage, PendingApproval, PendingQuestion, QueueItem, SessionModels } from './components/types';
 import { domainPrefix, useAgentRpc } from './runtime/rpc';
+import { notifyAgentPluginDisabled, setEnabledAgentPluginSlots } from './runtime/agent-plugin-slots';
 import { useAgentTheme } from './runtime/theme';
 import { usePageData } from '../../context/page-data';
 import { applyEvent, asObject, assistantStreamKey, eventFailureMessage, eventMessage, eventsToMessages, fileInjectionsAfterUser, flattenToolTree, foldToolTree, latestHistoryError, queueItems, settleRunningMessages } from './runtime/conversation';
@@ -432,6 +434,7 @@ export default function AgentPage() {
     const [treeOpen, setTreeOpen] = useState(false);
     const [activeTreeNodeId, setActiveTreeNodeId] = useState<string | null>(() => readAgentSelection().nodeId ?? pageRootNodeId);
     const [bases, setBases] = useState<BaseView[]>([]);
+    const [enabledAgentPluginIds, setEnabledAgentPluginIds] = useState<Set<string>>(new Set());
     const [draftBaseId, setDraftBaseId] = useState<number | undefined>();
     const [draftSessionId, setDraftSessionId] = useState<string | null>(null);
     const [draftNodeId, setDraftNodeId] = useState<string | undefined>();
@@ -568,6 +571,19 @@ export default function AgentPage() {
             setLoadError(null);
         } catch (error) {
             setLoadError(error instanceof Error ? error.message : String(error));
+        }
+    }, [rpc]);
+
+    const loadAgentContextPlugins = useCallback(async () => {
+        try {
+            const value = await rpc('agentPlugins.list', {}) as { plugins?: Array<{ pluginId: string; enabled: boolean }> };
+            const enabled = new Set((value.plugins ?? []).filter((plugin) => plugin.enabled).map((plugin) => plugin.pluginId));
+            setEnabledAgentPluginIds(enabled);
+            setEnabledAgentPluginSlots(enabled);
+        } catch {
+            const disabled = new Set<string>();
+            setEnabledAgentPluginIds(disabled);
+            setEnabledAgentPluginSlots(disabled);
         }
     }, [rpc]);
 
@@ -993,16 +1009,17 @@ export default function AgentPage() {
             loadNodes(),
             loadHosts(),
             loadBases(),
+            loadAgentContextPlugins(),
             loadDisplaySettings(),
             loadAgentPresets(),
             loadModelCatalog(),
         ]).finally(() => setBooting(false));
-    }, [guest, loadAgentPresets, loadBases, loadDisplaySettings, loadHosts, loadModelCatalog, loadNodes, loadSessions]);
+    }, [guest, loadAgentContextPlugins, loadAgentPresets, loadBases, loadDisplaySettings, loadHosts, loadModelCatalog, loadNodes, loadSessions]);
     useEffect(() => {
         if (guest) return undefined;
-        const timer = window.setInterval(() => { void loadSessions(); void loadNodes(); void loadHosts(); void loadBases(); }, POLL_MS);
+        const timer = window.setInterval(() => { void loadSessions(); void loadNodes(); void loadHosts(); void loadBases(); void loadAgentContextPlugins(); }, POLL_MS);
         return () => window.clearInterval(timer);
-    }, [guest, loadBases, loadHosts, loadNodes, loadSessions]);
+    }, [guest, loadAgentContextPlugins, loadBases, loadHosts, loadNodes, loadSessions]);
     useEffect(() => {
         if (booting) return;
         const selectedSession = current ? sessions.find((session) => session.sessionId === current) : undefined;
@@ -1907,7 +1924,7 @@ export default function AgentPage() {
                 onPickHost={setDraftHostId}
                 bases={bases}
                 selectedBaseId={draftBaseId}
-                onPickBase={(baseId) => setDraftBaseId(baseId)}
+                onPickBase={setDraftBaseId}
                 nodes={nodes}
                 selectedNodeId={draftNodeId}
                 onPickNode={setDraftNodeId}
@@ -1959,15 +1976,24 @@ export default function AgentPage() {
                     { id: 'agent-plugins', label: 'Agent 插件', render: () => <AgentPluginsSection
                         rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>}
                         onPluginChange={(pluginId, enabled) => {
-                            if (pluginId !== 'base') return;
+                            const nextIds = new Set(enabledAgentPluginIds);
+                            if (enabled) nextIds.add(pluginId);
+                            else nextIds.delete(pluginId);
+                            setEnabledAgentPluginIds(nextIds);
+                            setEnabledAgentPluginSlots(nextIds);
                             void loadBases();
-                            if (enabled) return;
-                            setDraftBaseId(undefined);
-                            if (current && currentSession?.baseDocId) {
-                                void saveBaseSetting(undefined).catch((error) => {
-                                    setLoadError(error instanceof Error ? error.message : String(error));
-                                });
-                            }
+                            if (!enabled) notifyAgentPluginDisabled(pluginId, {
+                                currentSession,
+                                clearDraftContext: () => setDraftBaseId(undefined),
+                                clearCurrentContext: async () => {
+                                    if (!current) return;
+                                    try {
+                                        await saveBaseSetting(undefined);
+                                    } catch (error) {
+                                        setLoadError(error instanceof Error ? error.message : String(error));
+                                    }
+                                },
+                            });
                         }}
                     /> },
                 ]}
@@ -2028,6 +2054,7 @@ export default function AgentPage() {
                             sessionErrors={sessionErrorMap}
                             sessionActivityPreviews={sessionActivityPreviewMap}
                             modelGroups={modelCatalog?.groups}
+                            activeAgentPluginIds={enabledAgentPluginIds}
                             displaySettings={displaySettings}
                             query={query}
                             searchMatches={searchMatchSet}

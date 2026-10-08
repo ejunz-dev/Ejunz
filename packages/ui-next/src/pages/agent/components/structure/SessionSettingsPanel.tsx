@@ -1,9 +1,22 @@
 import { useEffect, useState } from 'react';
+import { defineSlot } from '../../../../registry';
 import type { BaseView } from '../../runtime/session';
 import type { SessionModels } from '../types';
 import type { HostOption } from './HostPicker';
 
 type SessionSettingsSection = 'model' | 'context' | 'host';
+
+interface AgentSessionContextSlotProps {
+    bases: readonly BaseView[];
+    selectedBaseId?: number;
+    disabled: boolean;
+    onSelectBase: (baseId: number | undefined) => void;
+}
+
+const AgentSessionContextSlot = defineSlot<AgentSessionContextSlotProps>(
+    'component:agent-session-context',
+    () => null,
+);
 
 interface SessionSettingsPanelProps {
     section: SessionSettingsSection;
@@ -23,9 +36,7 @@ export function SessionSettingsPanel({
 }: SessionSettingsPanelProps) {
     const [saving, setSaving] = useState<string | null>(null);
     const [modelSelection, setModelSelection] = useState(models?.current);
-    const [baseSelection, setBaseSelection] = useState(selectedBaseId);
     const [hostSelection, setHostSelection] = useState(selectedHostId);
-    useEffect(() => setBaseSelection(selectedBaseId), [selectedBaseId]);
     useEffect(() => setModelSelection(models?.current), [models]);
     useEffect(() => setHostSelection(selectedHostId), [selectedHostId]);
     const [error, setError] = useState('');
@@ -59,14 +70,11 @@ export function SessionSettingsPanel({
                 {onlineHosts.map((host) => <button type="button" className={`bd-edit-tag${hostSelection === host.runtimeId ? ' is-selected' : ''}`} disabled={saving !== null} key={host.runtimeId} title={host.runtimeId} onClick={() => void apply(host.runtimeId, () => { setHostSelection(host.runtimeId); return onHost(host.runtimeId); })}>{host.label}</button>)}
                 {onlineHosts.length === 0 && <span className="bd-muted">没有在线的 host</span>}
             </div>
-        </div> : <>
-            <div className="bd-edit-field">
-                <h2>知识库</h2>
-                <div className="bd-edit-tags">
-                    <button type="button" className={`bd-edit-tag${baseSelection === undefined ? ' is-selected' : ''}`} disabled={saving !== null} onClick={() => { setBaseSelection(undefined); void apply('base:none', () => onBase(undefined)); }}>不使用</button>
-                    {bases.map((base) => <button type="button" className={`bd-edit-tag${baseSelection === base.docId ? ' is-selected' : ''}`} disabled={saving !== null} key={base.docId} onClick={() => { setBaseSelection(base.docId); void apply(`base:${base.docId}`, () => onBase(base.docId)); }}>{base.title}</button>)}
-                </div>
-            </div>
-        </>}
+        </div> : <AgentSessionContextSlot
+            bases={bases}
+            selectedBaseId={selectedBaseId}
+            disabled={saving !== null}
+            onSelectBase={(value) => { void apply(`context:${value ?? 'none'}`, () => onBase(value)); }}
+        />}
     </section>;
 }

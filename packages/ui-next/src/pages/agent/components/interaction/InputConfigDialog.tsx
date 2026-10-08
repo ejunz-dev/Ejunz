@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { DraftAttachment } from '../../runtime/uploads';
 import type { AgentNode, BaseView } from '../../runtime/session';
+import { defineSlot } from '../../../../registry';
 import type { HostOption } from '../structure/HostPicker';
 import type { SessionModels } from '../types';
 import { InputBar } from '../conversation/skeleton/InputBar';
@@ -37,6 +38,18 @@ interface InputConfigDialogProps {
     onCreateOnly: (name: string) => void;
     onClose: () => void;
 }
+
+interface NewSessionContextSlotProps {
+    bases: readonly BaseView[];
+    selectedBaseId?: number;
+    disabled: boolean;
+    onSelectBase: (baseId: number | undefined) => void;
+}
+
+const NewSessionContextSlot = defineSlot<NewSessionContextSlotProps>(
+    'component:agent-new-session-context',
+    () => null,
+);
 
 function buttonClass(selected: boolean): string {
     return `bd-edit-tag${selected ? ' is-selected' : ''}`;
@@ -87,13 +100,12 @@ export function InputConfigDialog({
                         </div>
                     )) : <div className="eja-sessionSettingsLoading" role="status"><span className="eja-sessionSettingsLoadingSpinner" aria-hidden="true" />模型加载中…</div>}
                 </div>
-                <div className="bd-edit-field">
-                    <h3>知识库</h3>
-                    <div className="bd-edit-tags">
-                        <button type="button" className={buttonClass(selectedBaseId === undefined)} disabled={sending} onClick={() => onPickBase(undefined)}>不使用</button>
-                        {bases.map((base) => <button type="button" className={buttonClass(selectedBaseId === base.docId)} disabled={sending} key={base.docId} onClick={() => onPickBase(base.docId)}>{base.title}</button>)}
-                    </div>
-                </div>
+                <NewSessionContextSlot
+                    bases={bases}
+                    selectedBaseId={selectedBaseId}
+                    disabled={sending}
+                    onSelectBase={onPickBase}
+                />
                 <div className="bd-edit-field">
                     <h3>节点</h3>
                     <div className="bd-edit-tags">

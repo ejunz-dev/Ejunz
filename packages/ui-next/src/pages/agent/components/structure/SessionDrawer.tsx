@@ -1,7 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { CSSProperties, PointerEvent, ReactNode } from 'react';
+import { defineSlot } from '../../../../registry';
+import { store } from '../../../../registry/store';
 
 type SessionDrawerView = 'chat' | 'trajectory' | 'model' | 'context' | 'host';
+
+interface ContextTabSlotProps {
+    view: SessionDrawerView;
+    onViewChange: (view: SessionDrawerView) => void;
+}
+
+const ContextTabSlot = defineSlot<ContextTabSlotProps>('component:agent-context-tab', () => null);
 
 interface SessionDrawerProps {
     loading: boolean;
@@ -49,10 +58,18 @@ function ResizeHandle({ onResize }: { onResize: (delta: number) => void }) {
 }
 
 export function SessionDrawer({ loading, loadingLabel = '加载中…', drawerWidth, view, onViewChange, onResize, onClose, children, overlay }: SessionDrawerProps) {
+    const contextTabRegistered = useSyncExternalStore(
+        (listener) => store.subscribe('component:agent-context-tab', listener),
+        () => store.getInterceptors('component:agent-context-tab').length > 0,
+        () => false,
+    );
     const [closing, setClosing] = useState(false);
     const closingRef = useRef(false);
     const closeTimerRef = useRef<number | null>(null);
     const swipeRef = useRef<SwipeState | null>(null);
+    useEffect(() => {
+        if (!contextTabRegistered && view === 'context') onViewChange('chat');
+    }, [contextTabRegistered, onViewChange, view]);
     useEffect(() => () => {
         if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
     }, []);
@@ -102,7 +119,7 @@ export function SessionDrawer({ loading, loadingLabel = '加载中…', drawerWi
                     <button type="button" role="tab" className={view === 'chat' ? 'is-active' : ''} aria-selected={view === 'chat'} onClick={() => onViewChange('chat')}>对话</button>
                     <button type="button" role="tab" className={view === 'trajectory' ? 'is-active' : ''} aria-selected={view === 'trajectory'} onClick={() => onViewChange('trajectory')}>轨迹</button>
                     <button type="button" role="tab" className={view === 'model' ? 'is-active' : ''} aria-selected={view === 'model'} onClick={() => onViewChange('model')}>模型</button>
-                    <button type="button" role="tab" className={view === 'context' ? 'is-active' : ''} aria-selected={view === 'context'} onClick={() => onViewChange('context')}>上下文</button>
+                    <ContextTabSlot view={view} onViewChange={onViewChange} />
                     <button type="button" role="tab" className={view === 'host' ? 'is-active' : ''} aria-selected={view === 'host'} onClick={() => onViewChange('host')}>主机</button>
                 </div>
                 <div className="bd-drawer__header-actions">
