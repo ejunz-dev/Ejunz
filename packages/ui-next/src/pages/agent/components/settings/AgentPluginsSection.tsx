@@ -11,10 +11,11 @@ interface AgentPlugin {
 
 interface AgentPluginsSectionProps {
     rpc: SettingsRpc;
+    sessionId?: string;
     onPluginChange?: (pluginId: string, enabled: boolean) => void;
 }
 
-export function AgentPluginsSection({ rpc, onPluginChange }: AgentPluginsSectionProps) {
+export function AgentPluginsSection({ rpc, sessionId, onPluginChange }: AgentPluginsSectionProps) {
     const [plugins, setPlugins] = useState<AgentPlugin[]>([]);
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState<string | null>(null);
@@ -41,9 +42,14 @@ export function AgentPluginsSection({ rpc, onPluginChange }: AgentPluginsSection
         setBusy(plugin.pluginId);
         setError('');
         try {
-            await rpc('agentPlugins.set', { pluginId: plugin.pluginId, enabled });
+            const result = await rpc<{ contextInjected?: boolean }>('agentPlugins.set', {
+                pluginId: plugin.pluginId,
+                enabled,
+                ...(sessionId ? { sessionId } : {}),
+            });
             setPlugins((items) => items.map((item) => item.pluginId === plugin.pluginId ? { ...item, enabled } : item));
             onPluginChange?.(plugin.pluginId, enabled);
+            if (sessionId && result.contextInjected === false) setError('插件状态已保存，但未能将变更写入当前聊天。');
         } catch (cause) {
             setError(cause instanceof Error ? cause.message : 'Agent 插件设置失败');
         } finally {

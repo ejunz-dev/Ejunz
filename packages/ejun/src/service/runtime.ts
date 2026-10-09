@@ -1472,7 +1472,31 @@ async function agentContextPluginSet(envelope: RpcEnvelope, scope: AgentScope): 
 
     const saved = await agentDataAdapter.updateDomainSettings(scope.domainId, sections, current.revision);
     if (!saved) return rpcError(envelope.rpcId, 'settings revision conflict');
-    return rpcOk(envelope.rpcId, { pluginId, enabled: payload.enabled });
+
+    let contextInjected: boolean | undefined;
+    const sessionId = typeof payload.sessionId === 'string' ? payload.sessionId.trim() : '';
+    if (sessionId && await agentDataAdapter.getSession(scope, sessionId)) {
+        try {
+            const injected = await callUpstream('session.inject', {
+                sessionId,
+                plugin: 'ejunz-agent-plugin-lifecycle',
+                sections: [{
+                    name: `agent-plugin:${pluginId}`,
+                    text: payload.enabled
+                        ? `「${plugin.displayName}」插件已在当前 domain 启用。你可以使用该插件提供的能力。`
+                        : `「${plugin.displayName}」插件已在当前 domain 关闭。请勿再使用该插件提供的能力。`,
+                }],
+            }, await linkForSession(scope, sessionId));
+            contextInjected = injected.body.result?.ok === true;
+            if (!contextInjected) {
+                logger.warn('[agent-plugins] lifecycle context injection failed session=%s plugin=%s error=%s', sessionId, pluginId, injected.body.error?.message || 'unknown error');
+            }
+        } catch (error) {
+            contextInjected = false;
+            logger.warn('[agent-plugins] lifecycle context injection failed session=%s plugin=%s error=%s', sessionId, pluginId, error instanceof Error ? error.message : String(error));
+        }
+    }
+    return rpcOk(envelope.rpcId, { pluginId, enabled: payload.enabled, ...(contextInjected === undefined ? {} : { contextInjected }) });
 }
 
 export async function isAgentContextPluginEnabled(domainId: string, pluginId: string): Promise<boolean> {

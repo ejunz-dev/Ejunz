@@ -1976,6 +1976,7 @@ export default function AgentPage() {
                     { id: 'plugins', label: '插件', render: () => <PluginsSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} /> },
                     { id: 'agent-plugins', label: 'Agent 插件', render: () => <AgentPluginsSection
                         rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>}
+                        sessionId={currentSession?.isDraftCard ? undefined : current ?? undefined}
                         onPluginChange={(pluginId, enabled) => {
                             const nextIds = new Set(enabledAgentPluginIds);
                             if (enabled) nextIds.add(pluginId);

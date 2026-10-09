@@ -107,6 +107,7 @@ export function messageContent(data: unknown): unknown {
 export function contextProvenance(source: JsonObject): { role: 'inject' | 'recall'; label?: string } {
     const kind = typeof source.kind === 'string' ? source.kind : 'context';
     if (kind === 'plugin' && source.plugin === FILE_INJECTION_PLUGIN) return { role: 'inject', label: '文件注入' };
+    if (kind === 'plugin' && source.plugin === 'ejunz-agent-plugin-lifecycle') return { role: 'inject', label: 'Agent 插件状态' };
     if (kind === 'plugin' && typeof source.plugin === 'string') return { role: 'inject', label: source.plugin };
     if (kind === 'skill-invocation' && typeof source.name === 'string') return { role: 'inject', label: source.name };
     if (kind === 'session-reference' && Array.isArray(source.references)) {
@@ -156,7 +157,7 @@ export function eventMessage(event: SessionEvent): ChatMessage | null {
         const provenance = context ? contextProvenance(source) : undefined;
         const injectedFiles = context ? fileInjectionFiles(source) : [];
         return {
-            key: context ? `context-${String(source.plugin ?? source.kind ?? 'unknown')}` : event.type === 'user/message' ? `user-${event.seq}` : assistantKey(event),
+            key: context ? `context-${String(source.plugin ?? source.kind ?? 'unknown')}-${event.seq}` : event.type === 'user/message' ? `user-${event.seq}` : assistantKey(event),
             role: context ? 'context' : event.type === 'user/message' ? 'user' : 'assistant',
             text,
             ...(event.type === 'assistant/message' ? { segments } : {}),
