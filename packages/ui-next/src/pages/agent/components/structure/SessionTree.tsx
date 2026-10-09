@@ -74,22 +74,22 @@ function flatLine(value: string): string {
 }
 
 const SessionActivityRow = memo(function SessionActivityRow({ activity, index, error, active, sendStatus }: { activity?: string; index: number; error: boolean; active: boolean; sendStatus?: 'sending' | 'sent' | 'failed' }) {
-    if (!activity) return <div className="eja-sessionCardActivity eja-sessionCardActivityEmpty" aria-hidden="true" />;
+    if (!activity) return <div className="eza-sessionCardActivity eza-sessionCardActivityEmpty" aria-hidden="true" />;
     const separator = activity.indexOf(' · ');
     const title = separator < 0 ? activity : activity.slice(0, separator);
     const output = separator < 0 ? '' : activity.slice(separator + 3);
     const isUserActivity = sendStatus !== undefined;
-    const titleClass = title === 'Inject' ? 'eja-sessionCardActivityTitle--inject'
-        : title === 'Think' ? 'eja-sessionCardActivityTitle--think'
-            : title === 'Tool' ? 'eja-sessionCardActivityTitle--tool'
-                : title === 'Error' ? 'eja-sessionCardActivityTitle--error'
-                    : isUserActivity ? 'eja-sessionCardActivityTitle--user' : 'eja-sessionCardActivityTitle--agent';
+    const titleClass = title === 'Inject' ? 'eza-sessionCardActivityTitle--inject'
+        : title === 'Think' ? 'eza-sessionCardActivityTitle--think'
+            : title === 'Tool' ? 'eza-sessionCardActivityTitle--tool'
+                : title === 'Error' ? 'eza-sessionCardActivityTitle--error'
+                    : isUserActivity ? 'eza-sessionCardActivityTitle--user' : 'eza-sessionCardActivityTitle--agent';
     const statusLabel = sendStatus === 'sending' ? '发送中' : sendStatus === 'sent' ? '发送成功' : '发送失败';
-    const statusIcon = sendStatus && <span className={`eja-sessionCardActivitySendState eja-sessionCardActivitySendState--${sendStatus}`} role="status" aria-label={statusLabel} title={statusLabel}>{sendStatus === 'sending' ? <span className="eja-sessionCardActivitySendSpinner" /> : sendStatus === 'sent' ? '✓' : '!'}</span>;
-    return <div className="eja-sessionCardActivity" data-active={active || undefined} title={activity}>
-        <span className="eja-sessionCardActivityIndex">{isUserActivity ? statusIcon : `#${index}`}</span>
-        <span className={`eja-sessionCardActivityTitle ${titleClass}`}>{title}</span>
-        {output && <div className={error ? 'eja-sessionCardActivityOutput eja-sessionCardActivityError' : 'eja-sessionCardActivityOutput'} data-active={active || undefined}><MarkdownText text={output} /></div>}
+    const statusIcon = sendStatus && <span className={`eza-sessionCardActivitySendState eza-sessionCardActivitySendState--${sendStatus}`} role="status" aria-label={statusLabel} title={statusLabel}>{sendStatus === 'sending' ? <span className="eza-sessionCardActivitySendSpinner" /> : sendStatus === 'sent' ? '✓' : '!'}</span>;
+    return <div className="eza-sessionCardActivity" data-active={active || undefined} title={activity}>
+        <span className="eza-sessionCardActivityIndex">{isUserActivity ? statusIcon : `#${index}`}</span>
+        <span className={`eza-sessionCardActivityTitle ${titleClass}`}>{title}</span>
+        {output && <div className={error ? 'eza-sessionCardActivityOutput eza-sessionCardActivityError' : 'eza-sessionCardActivityOutput'} data-active={active || undefined}><MarkdownText text={output} /></div>}
         {!isUserActivity && sendStatus && statusIcon}
     </div>;
 });
@@ -113,10 +113,10 @@ const SessionCardTitle = memo(function SessionCardTitle({ session, error, waitin
     const activity = error ? `Error · ${flatLine(error)}` : activityPreview;
     if (editMode) {
         return <>
-            {showStatus && <StateDot state={state} size={10} className="eja-sessionStateDot" />}
-            <span className="eja-sessionCardTitleText">
+            {showStatus && <StateDot state={state} size={10} className="eza-sessionStateDot" />}
+            <span className="eza-sessionCardTitleText">
                 <input
-                    className="eja-sessionTitleEditor"
+                    className="eza-sessionTitleEditor"
                     aria-label="会话名称"
                     value={draftTitle ?? title}
                     onChange={(event) => onTitleChange(session.sessionId, event.target.value)}
@@ -129,13 +129,13 @@ const SessionCardTitle = memo(function SessionCardTitle({ session, error, waitin
     }
     return <button
         type="button"
-        className="eja-sessionCardTitle"
+        className="eza-sessionCardTitle"
         title={error ? `${stateLabel}：${error}` : `${stateLabel}：${title}`}
         aria-label={error ? `${stateLabel}：${title}：${error}` : `${stateLabel}：${title}`}
         onClick={() => onSelect(session.sessionId)}
     >
-        <StateDot state={state} size={10} className="eja-sessionStateDot" />
-        <span className="eja-sessionCardTitleText">
+        <StateDot state={state} size={10} className="eza-sessionStateDot" />
+        <span className="eza-sessionCardTitleText">
             <span className="bd-tree__label">{title}</span>
             <SessionActivityRow activity={activity} index={activityIndex ?? 1} error={Boolean(error)} active={state === 'ongoing'} sendStatus={error ? undefined : activityStatus} />
         </span>
@@ -304,20 +304,20 @@ export function SessionTree({
             />;
         };
     }, [displaySettings.showStatus, editMode, onSelect, onSessionTitleChange, pendingQuestionSessionIds, sessionErrors, sessionActivityPreviews, sessionTitleDrafts, visibleSessions]);
-    return <section className="eja-agentStructure" aria-label="会话">
-        <div ref={toolsRef} className="eja-agentStructure__tools">
+    return <section className="eza-agentStructure" aria-label="会话">
+        <div ref={toolsRef} className="eza-agentStructure__tools">
             <input value={query} placeholder="搜索会话" aria-label="搜索会话" onChange={(event) => onQuery(event.target.value)} />
             <button type="button" onClick={onStartSession}>新会话</button>
             <button type="button" onClick={onCreateNode}>新节点</button>
         </div>
-        {editMode && <div className="eja-selectionToolbar" style={toolbarTop === null ? undefined : { top: `${toolbarTop}px` }} role="toolbar" aria-label="编辑操作">
+        {editMode && <div className="eza-selectionToolbar" style={toolbarTop === null ? undefined : { top: `${toolbarTop}px` }} role="toolbar" aria-label="编辑操作">
             <span>会话 {selectedCardIds.size} · 文件夹 {selectedNodeIds.size}</span>
             <button type="button" disabled={sessionTitleSaving || !canEditNode} onClick={() => { if (selectedNodeId) onRenameNode(selectedNodeId); }}>重命名文件夹</button>
-            <button type="button" className="eja-selectionToolbarSave" disabled={sessionTitleSaving} onClick={() => { void onSaveSessionTitles(); }}>{sessionTitleSaving ? '保存中…' : '保存会话名'}</button>
-            <button type="button" className="eja-selectionToolbarDelete" disabled={sessionTitleSaving || (selectedCardIds.size === 0 && selectedNodeIds.size === 0)} onClick={onDeleteSelected}>删除</button>
-            <button type="button" className="eja-selectionToolbarExit" disabled={sessionTitleSaving} onClick={onExitEdit}>退出编辑</button>
+            <button type="button" className="eza-selectionToolbarSave" disabled={sessionTitleSaving} onClick={() => { void onSaveSessionTitles(); }}>{sessionTitleSaving ? '保存中…' : '保存会话名'}</button>
+            <button type="button" className="eza-selectionToolbarDelete" disabled={sessionTitleSaving || (selectedCardIds.size === 0 && selectedNodeIds.size === 0)} onClick={onDeleteSelected}>删除</button>
+            <button type="button" className="eza-selectionToolbarExit" disabled={sessionTitleSaving} onClick={onExitEdit}>退出编辑</button>
         </div>}
-        <div className="bd-content bd-content--tree eja-agentStructure__tree">
+        <div className="bd-content bd-content--tree eza-agentStructure__tree">
             <BaseDetailTree
                 rootNodeIds={renderedRootNodeIds}
                 nodes={nodes}
@@ -360,6 +360,6 @@ export function SessionTree({
             onConfirm={confirmNodeSwitch}
             onCancel={cancelNodeSwitch}
         /> : null}
-        {searchHasMore && <p className="bd-muted eja-agentStructure__hint">仅显示部分搜索结果，请缩小搜索范围。</p>}
+        {searchHasMore && <p className="bd-muted eza-agentStructure__hint">仅显示部分搜索结果，请缩小搜索范围。</p>}
     </section>;
 }

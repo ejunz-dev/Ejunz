@@ -14,7 +14,7 @@ export function StateDot({ state, size = 10, className }: {
     const classes = [className].filter(Boolean).join(' ');
     if (state === 'ongoing') {
         return <svg
-            className={`eja-stateDotMatrix${classes ? ` ${classes}` : ''}`}
+            className={`eza-stateDotMatrix${classes ? ` ${classes}` : ''}`}
             data-state="ongoing"
             width={size}
             height={size}
@@ -24,17 +24,17 @@ export function StateDot({ state, size = 10, className }: {
         >
             {MATRIX_CELLS.map(([x, y], index) => <rect
                 key={`${x}-${y}`}
-                className="eja-stateDotCell"
+                className="eza-stateDotCell"
                 x={x}
                 y={y}
                 width="2"
                 height="2"
-                style={{ '--eja-state-dot-delay': `${(index - MATRIX_CELLS.length) * 125}ms` } as CSSProperties}
+                style={{ '--eza-state-dot-delay': `${(index - MATRIX_CELLS.length) * 125}ms` } as CSSProperties}
             />)}
         </svg>;
     }
     return <span
-        className={`eja-stateDot${classes ? ` ${classes}` : ''}`}
+        className={`eza-stateDot${classes ? ` ${classes}` : ''}`}
         data-state={state}
         style={{ width: size, height: size }}
         aria-hidden="true"

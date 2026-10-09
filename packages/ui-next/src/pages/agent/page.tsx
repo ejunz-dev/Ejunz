@@ -1924,11 +1924,11 @@ export default function AgentPage() {
     }, [current, nodes, rootNodeId, sessions]);
     if (guest) return null;
     if (booting) {
-        return <div className="eja-app" data-ds-dark-theme={dark || undefined}><div className="eja-boot"><div className="eja-bootCard"><EjunzLogo size={40} className="eja-heroLogo" /><div className="eja-bootSpinner" /><div className="eja-bootHint">正在连接 Ejunz Agent…</div></div></div></div>;
+        return <div className="eza-app" data-ds-dark-theme={dark || undefined}><div className="eza-boot"><div className="eza-bootCard"><EjunzLogo size={40} className="eza-heroLogo" /><div className="eza-bootSpinner" /><div className="eza-bootHint">正在连接 Ejunz Agent…</div></div></div></div>;
     }
 
     return (
-        <div className="eja-app" data-ds-dark-theme={dark || undefined}>
+        <div className="eza-app" data-ds-dark-theme={dark || undefined}>
             <DeepSeekOnboarding rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} />
             {newSessionConfigOpen && <InputConfigDialog
                 hosts={hosts}
@@ -1976,7 +1976,7 @@ export default function AgentPage() {
                 onSelect={setSettingsSection}
                 headerAction={<SettingsDocumentAction rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} />}
                 sections={[
-                    { id: 'general', label: '通用设置', render: () => <div className="eja-settingsColumn">
+                    { id: 'general', label: '通用设置', render: () => <div className="eza-settingsColumn">
                     <AgentPresetRow rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} />
                     <LanguageRow rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} />
                     <GeneralSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} onThemeChange={applyTheme} />
@@ -2031,7 +2031,7 @@ export default function AgentPage() {
                 onClose={() => { if (!dialogBusy) setDialog(null); }}
                 onConfirm={() => { void submitDialog(); }}
             />}
-            <div className="eja-pageShell bd-page">
+            <div className="eza-pageShell bd-page">
                 <AgentHeader
                     domainId={String(domainId || 'system')}
                     domainName={domainName}
@@ -2054,8 +2054,8 @@ export default function AgentPage() {
                     }}
                     editActive={editMode}
                 />
-                <div className="eja-pageBody">
-                    <main className="eja-mainSurface">
+                <div className="eza-pageBody">
+                    <main className="eza-mainSurface">
                         <SessionTree
                             sessions={sessions}
                             nodes={nodes}
@@ -2119,25 +2119,25 @@ export default function AgentPage() {
                                     onHost={switchHost}
                                 />
                                 : currentSession.blank && !currentSession.isDraftCard
-                                    ? <div className="eja-sessionEmpty"><span>这个会话还没有消息。</span><button type="button" onClick={() => { void prepareNewSession(); }}>生成新会话</button></div>
+                                    ? <div className="eza-sessionEmpty"><span>这个会话还没有消息。</span><button type="button" onClick={() => { void prepareNewSession(); }}>生成新会话</button></div>
                                 : <ConversationRoot
                                     blank={false}
                                     title={sessionTitle(currentSession)}
                                     renaming={renaming}
-                                    titleEditor={<input className="eja-titleEditor" autoFocus value={titleDraft} onChange={(event) => setTitleDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setRenaming(false); if (event.key === 'Enter') void renameSession(); }} />}
+                                    titleEditor={<input className="eza-titleEditor" autoFocus value={titleDraft} onChange={(event) => setTitleDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setRenaming(false); if (event.key === 'Enter') void renameSession(); }} />}
                                     actions={<AgentPresetLabel preset={currentSession.agentPreset} options={agentPresetOptions} />}
                                     view={view === 'trajectory' ? 'trajectory' : 'chat'}
                                     onViewChange={setView}
                                     hideHeader
                                     chat={<ChatView messages={messages} running={running} runningTurnStartTime={runningTurnStart} historyHasMore={historyHasMore} loadingOlder={loadingOlder} loadedMessages={loadedHistoryMessages} totalMessages={historyTotalMessages} historyPageSize={HISTORY_PAGE_SIZE} onLoadOlder={() => void loadOlder()} onOpenFile={openFile} onOpenDetails={(tool) => { setSelectedTool(tool); }} />}
                                     trajectory={<TrajectoryView messages={messages} history={history} session={currentSession} historyHasMore={historyHasMore} loadingOlder={loadingOlder} onLoadOlder={loadOlder} />}
-                                    composer={<div className="eja-composerLayer">
+                                    composer={<div className="eza-composerLayer">
                                         <InputBar input={input} setInput={setInput} send={send} cancel={cancel} running={running} sending={sending} attachments={attachments} onAddFiles={addAttachments} onRemoveAttachment={removeAttachment} models={composerModels} showModelPicker={false} projections={currentSession.projections?.values} modelMenuOpen={modelMenuOpen} setModelMenuOpen={setModelMenuOpen} selectModel={selectModel} notice={currentSessionError ?? loadError} placeholder="输入消息，Shift+Enter 换行">
                                             <TodoPanel value={currentSession.projections?.values?.todos} />
                                             {pendingQuestion && <QuestionPanel question={pendingQuestion} onAnswer={answerQuestion} />}
                                             {queue.length > 0 && <QueueDock items={queue} running={running} onAction={updateQueue} />}
                                         </InputBar>
-                                        {pendingApproval && <div className="eja-approvalOverlay"><ApprovalPanel approval={pendingApproval} onAnswer={answerApproval} /></div>}
+                                        {pendingApproval && <div className="eza-approvalOverlay"><ApprovalPanel approval={pendingApproval} onAnswer={answerApproval} /></div>}
                                     </div>}
                                 />}
                         </SessionDrawer>}

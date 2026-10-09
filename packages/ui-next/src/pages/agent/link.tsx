@@ -71,12 +71,12 @@ export default function AgentLinkPage() {
     const approvable = link !== null && !approved && !link.expired;
 
     return (
-        <div className="eja-app" data-ds-dark-theme={dark || undefined}>
-            <div className="eja-status">
-                <header className="eja-status__head">
+        <div className="eza-app" data-ds-dark-theme={dark || undefined}>
+            <div className="eza-status">
+                <header className="eza-status__head">
                     <div>
-                        <h1 className="eja-status__title">绑定 Agent 运行时</h1>
-                        <p className="eja-status__desc">
+                        <h1 className="eza-status__title">绑定 Agent 运行时</h1>
+                        <p className="eza-status__desc">
                             一个 Agent 运行时请求在这台服务器上运行。授权后它会拿到凭据，并出现在运行状态列表里。
                         </p>
                     </div>
@@ -86,16 +86,16 @@ export default function AgentLinkPage() {
 
                 {link ? (
                     <Card title={link.label}>
-                        <ul className="eja-status__list">
-                            <li className="eja-status__row">
-                                <div className="eja-status__main">
-                                    <div className="eja-status__facts">
+                        <ul className="eza-status__list">
+                            <li className="eza-status__row">
+                                <div className="eza-status__main">
+                                    <div className="eza-status__facts">
                                         <span>来源 {link.host}:{link.pid}</span>
                                         <span>绑定码 {link.code}</span>
                                         <span>{approved ? '已授权' : link.expired ? '已过期' : expiryText(link.expiresAt)}</span>
                                     </div>
                                 </div>
-                                <div className="eja-status__actions">
+                                <div className="eza-status__actions">
                                     {approvable ? (
                                         <Button variant="primary" onClick={() => { void approve(); }} disabled={busy}>授权</Button>
                                     ) : (

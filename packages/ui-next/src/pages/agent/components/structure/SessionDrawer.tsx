@@ -54,7 +54,7 @@ function ResizeHandle({ onResize }: { onResize: (delta: number) => void }) {
         event.currentTarget.releasePointerCapture(event.pointerId);
         setDragging(false);
     };
-    return <div className="eja-sessionDrawerResize" data-dragging={dragging || undefined} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} />;
+    return <div className="eza-sessionDrawerResize" data-dragging={dragging || undefined} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} />;
 }
 
 export function SessionDrawer({ loading, loadingLabel = '加载中…', drawerWidth, view, onViewChange, onResize, onClose, children, overlay }: SessionDrawerProps) {
@@ -111,8 +111,8 @@ export function SessionDrawer({ loading, loadingLabel = '加载中…', drawerWi
         swipeRef.current = null;
     };
     return <>
-        <button type="button" className="bd-backdrop bd-card-backdrop eja-sessionDrawerBackdrop" data-closing={closing || undefined} onClick={requestClose} aria-label="关闭会话历史" />
-        <aside className="bd-drawer bd-card-drawer eja-sessionDrawer" data-closing={closing || undefined} style={{ '--eja-session-drawer-width': `${drawerWidth}px` } as CSSProperties} role="dialog" aria-modal="true" aria-label="会话历史" onWheel={(event) => event.stopPropagation()} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd} onPointerCancel={handlePointerCancel}>
+        <button type="button" className="bd-backdrop bd-card-backdrop eza-sessionDrawerBackdrop" data-closing={closing || undefined} onClick={requestClose} aria-label="关闭会话历史" />
+        <aside className="bd-drawer bd-card-drawer eza-sessionDrawer" data-closing={closing || undefined} style={{ '--eza-session-drawer-width': `${drawerWidth}px` } as CSSProperties} role="dialog" aria-modal="true" aria-label="会话历史" onWheel={(event) => event.stopPropagation()} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd} onPointerCancel={handlePointerCancel}>
             <ResizeHandle onResize={onResize} />
             <header className="bd-drawer__header">
                 <div className="bd-drawer__tabs" role="tablist">
@@ -126,8 +126,8 @@ export function SessionDrawer({ loading, loadingLabel = '加载中…', drawerWi
                     <button type="button" className="bd-drawer__close" onClick={requestClose} aria-label="关闭">×</button>
                 </div>
             </header>
-            <div className="bd-drawer__body eja-sessionDrawerBody">
-                {loading ? <div className="eja-sessionDrawerLoading" role="status" aria-label="加载会话历史"><span />{loadingLabel}</div> : children}
+            <div className="bd-drawer__body eza-sessionDrawerBody">
+                {loading ? <div className="eza-sessionDrawerLoading" role="status" aria-label="加载会话历史"><span />{loadingLabel}</div> : children}
             </div>
             {overlay}
         </aside>

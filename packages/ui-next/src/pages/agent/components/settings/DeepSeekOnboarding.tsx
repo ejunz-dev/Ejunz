@@ -116,8 +116,8 @@ export function DeepSeekOnboarding({ rpc }: DeepSeekOnboardingProps) {
     };
 
     return <div className={css.overlay} role="presentation">
-        <div className={css.dialog} role="dialog" aria-modal="true" aria-labelledby="eja-deepseek-title">
-            <h2 className={css.title} id="eja-deepseek-title">添加一个 API Key 开始使用</h2>
+        <div className={css.dialog} role="dialog" aria-modal="true" aria-labelledby="eza-deepseek-title">
+            <h2 className={css.title} id="eza-deepseek-title">添加一个 API Key 开始使用</h2>
             <div className={css.body}>
                 <p className={css.description}>配置 DeepSeek 官方模型，即可开始使用。</p>
                 <label className={css.field}><span>API Key</span><input className={css.input} type="password" autoComplete="off" autoFocus value={key} placeholder="输入 API Key" disabled={busy} onChange={(event) => { setKey(event.target.value); setError(null); }} /></label>

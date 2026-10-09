@@ -75,9 +75,9 @@ export function AgentDisplaySettingsDialog({ open, settings, saving = false, onC
     if (!open) return null;
     return (
         <div className="bd-settings-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
-            <section className="bd-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="eja-display-settings-title">
+            <section className="bd-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="eza-display-settings-title">
                 <header className="bd-settings-dialog__header">
-                    <h2 id="eja-display-settings-title">◌ 显示设置</h2>
+                    <h2 id="eza-display-settings-title">◌ 显示设置</h2>
                     <button type="button" className="bd-settings-dialog__close" onClick={onClose} disabled={saving} aria-label="关闭">×</button>
                 </header>
                 <p className="bd-settings-dialog__hint">选择要显示在会话卡片中的信息。</p>

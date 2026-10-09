@@ -7,7 +7,7 @@ import { useUserContext } from '@ejunz/ui-next';
  * The account carries the choice, so a page starts from it. Making it real
  * takes three markers: `body[data-ds-dark-theme]` switches this plugin's design
  * tokens, `html.theme--dark` is the marker the shell's own components read, and
- * each page's `.eja-app` root carries the attribute its styles key on. A page
+ * each page's `.eza-app` root carries the attribute its styles key on. A page
  * that switches the theme in place updates the document markers for every page,
  * which is why they live here rather than in one page.
  * @returns the current darkness and the setter a settings surface calls.

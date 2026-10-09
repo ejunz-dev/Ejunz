@@ -41,7 +41,7 @@ export function AgentHeader({ domainId, domainName, title = 'Ejunz agent', webSo
         onOpenDisplaySettings={onOpenDisplaySettings}
         onEditClick={onEditClick}
         editActive={editActive}
-        metadata={<span className="eja-webSocketStatus" role="status" aria-live="polite">
+        metadata={<span className="eza-webSocketStatus" role="status" aria-live="polite">
             <StateDot state={webSocketDotState(webSocketStatus)} size={10} />
             <span>{webSocketLabel(webSocketStatus)}</span>
         </span>}

@@ -32,8 +32,8 @@ export function ActionDialog({ open, title, description, inputLabel, inputValue 
     if (!open) return null;
     return <div className={css.overlay} role="presentation">
         <button type="button" className={css.mask} aria-label={cancelLabel} onClick={() => { if (!busy) onClose(); }} />
-        <div className={css.dialog} role="dialog" aria-modal="true" aria-labelledby="eja-action-dialog-title">
-            <h3 id="eja-action-dialog-title">{title}</h3>
+        <div className={css.dialog} role="dialog" aria-modal="true" aria-labelledby="eza-action-dialog-title">
+            <h3 id="eza-action-dialog-title">{title}</h3>
             {description ? <p className={css.description}>{description}</p> : null}
             {inputLabel ? <label className={css.field}><span>{inputLabel}</span><input autoFocus value={inputValue} placeholder={inputPlaceholder} disabled={busy} onChange={(event) => onInputChange?.(event.target.value)} /></label> : null}
             {error ? <p className={css.error} role="alert">{error}</p> : null}

@@ -53,34 +53,34 @@ export function HostPicker({ hosts, value, onPick, disabled, hint }: {
     }, [open]);
 
     const selectable = hosts.filter((host) => host.online !== false);
-    return <div className="eja-hostBar" ref={rootRef}>
+    return <div className="eza-hostBar" ref={rootRef}>
         <button
             type="button"
-            className="eja-hostBar__button"
+            className="eza-hostBar__button"
             aria-haspopup="listbox"
             aria-expanded={open}
             disabled={disabled === true}
             onClick={() => setOpen((previous) => !previous)}
         >
-            <span className="eja-hostBar__caption">主机</span>
-            <span className="eja-hostBar__value">{value === '' ? '未选择' : label}</span>
-            {value !== '' && chosen?.online === false && <span className="eja-hostBar__offline">不在线</span>}
-            <span className="eja-hostBar__caret" aria-hidden="true">▾</span>
+            <span className="eza-hostBar__caption">主机</span>
+            <span className="eza-hostBar__value">{value === '' ? '未选择' : label}</span>
+            {value !== '' && chosen?.online === false && <span className="eza-hostBar__offline">不在线</span>}
+            <span className="eza-hostBar__caret" aria-hidden="true">▾</span>
         </button>
-        {hint !== undefined && hint !== '' && <span className="eja-hostBar__hint">{hint}</span>}
-        {open && <div className="eja-hostBar__menu" role="listbox" aria-label="选择 host">
-            {selectable.length === 0 && <p className="eja-hostBar__empty">没有在线的 host</p>}
+        {hint !== undefined && hint !== '' && <span className="eza-hostBar__hint">{hint}</span>}
+        {open && <div className="eza-hostBar__menu" role="listbox" aria-label="选择 host">
+            {selectable.length === 0 && <p className="eza-hostBar__empty">没有在线的 host</p>}
             {selectable.map((host) => <button
                 key={host.runtimeId}
                 type="button"
                 role="option"
                 aria-selected={host.runtimeId === value}
-                className="eja-hostBar__option"
+                className="eza-hostBar__option"
                 data-active={host.runtimeId === value || undefined}
                 onClick={() => { setOpen(false); onPick(host.runtimeId); }}
             >
-                <span className="eja-hostBar__optionLabel">{host.label}</span>
-                <span className="eja-hostBar__optionCode">{host.runtimeId}</span>
+                <span className="eza-hostBar__optionLabel">{host.label}</span>
+                <span className="eza-hostBar__optionCode">{host.runtimeId}</span>
             </button>)}
         </div>}
     </div>;

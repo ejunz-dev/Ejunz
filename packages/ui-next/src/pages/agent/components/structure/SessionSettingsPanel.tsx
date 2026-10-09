@@ -54,12 +54,12 @@ export function SessionSettingsPanel({
     };
     const onlineHosts = hosts.filter((host) => host.online !== false);
     const label = section === 'model' ? '模型' : section === 'host' ? '主机' : '上下文';
-    return <section className="eja-sessionSettingsPanel" aria-label={label}>
+    return <section className="eza-sessionSettingsPanel" aria-label={label}>
         {error && <div className="bd-edit-dialog__error" role="alert">{error}</div>}
         {section === 'model' ? <div className="bd-edit-field">
             <h2>模型</h2>
-            {models ? models.groups.map((group) => <div className="eja-sessionSettingsGroup" key={group.id}>
-                <span className="eja-sessionSettingsGroupName">{group.name}</span>
+            {models ? models.groups.map((group) => <div className="eza-sessionSettingsGroup" key={group.id}>
+                <span className="eza-sessionSettingsGroupName">{group.name}</span>
                 <div className="bd-edit-tags">
                     {group.models.map((item) => <button type="button" className={`bd-edit-tag${modelSelection?.provider === group.id && modelSelection.model === item.id ? ' is-selected' : ''}`} disabled={saving !== null} key={`${group.id}:${item.id}`} onClick={() => void apply(`${group.id}:${item.id}`, () => { setModelSelection({ provider: group.id, model: item.id }); return onModel(group.id, item.id); })} title={item.description || item.name}>{item.name}</button>)}
                 </div>

@@ -161,47 +161,47 @@ export default function AgentListPage() {
     if (guest) return null;
 
     return (
-        <div className="eja-app" data-ds-dark-theme={dark || undefined}>
-            <main className="eja-agentCatalog">
-                <header className="eja-agentCatalog__header">
+        <div className="eza-app" data-ds-dark-theme={dark || undefined}>
+            <main className="eza-agentCatalog">
+                <header className="eza-agentCatalog__header">
                     <div>
                         <h1>Agents</h1>
                         <p>管理 {domainName} 中可用的 Agent 配置。</p>
                     </div>
-                    <nav className="eja-agentCatalog__headerActions" aria-label="Agent 页面操作">
-                        <a className="eja-agentCatalog__link" href={`${domainPrefix(String(domainId || 'system'))}/agent/chat`}>打开聊天工作台</a>
-                        <button type="button" className="eja-agentCatalog__primary" onClick={startCreate}>新建 Agent</button>
+                    <nav className="eza-agentCatalog__headerActions" aria-label="Agent 页面操作">
+                        <a className="eza-agentCatalog__link" href={`${domainPrefix(String(domainId || 'system'))}/agent/chat`}>打开聊天工作台</a>
+                        <button type="button" className="eza-agentCatalog__primary" onClick={startCreate}>新建 Agent</button>
                     </nav>
                 </header>
 
-                {loadError && !editingDocId ? <p className="eja-agentCatalog__notice" role="alert">{loadError}</p> : null}
+                {loadError && !editingDocId ? <p className="eza-agentCatalog__notice" role="alert">{loadError}</p> : null}
 
-                <div className="eja-agentCatalog__layout" data-editing={editingDocId !== null || undefined} aria-busy={loading || saving || creating}>
-                    <section className="eja-agentCatalog__list" aria-label="Agent 列表">
-                        <div className="eja-agentCatalog__listHeader">
+                <div className="eza-agentCatalog__layout" data-editing={editingDocId !== null || undefined} aria-busy={loading || saving || creating}>
+                    <section className="eza-agentCatalog__list" aria-label="Agent 列表">
+                        <div className="eza-agentCatalog__listHeader">
                             <h2>配置</h2>
                             <span>{loading ? '加载中…' : `${agents.length} 个`}</span>
                         </div>
-                        {loading ? <p className="eja-agentCatalog__state">正在读取 Agent…</p> : null}
+                        {loading ? <p className="eza-agentCatalog__state">正在读取 Agent…</p> : null}
                         {!loading && agents.length === 0 ? (
-                            <div className="eja-agentCatalog__empty">
+                            <div className="eza-agentCatalog__empty">
                                 <strong>还没有 Agent</strong>
                                 <p>创建一个配置，保存它的名称和行为说明。</p>
                                 <button type="button" onClick={startCreate}>创建第一个 Agent</button>
                             </div>
                         ) : null}
-                        <ul className="eja-agentCatalog__items">
+                        <ul className="eza-agentCatalog__items">
                             {agents.map((agent) => (
                                 <li key={agent.docId}>
-                                    <article className="eja-agentCatalog__item" data-selected={editingDocId === agent.docId || undefined}>
-                                        <button type="button" className="eja-agentCatalog__itemMain" onClick={() => startEdit(agent)} aria-current={editingDocId === agent.docId ? 'true' : undefined}>
-                                            <span className="eja-agentCatalog__itemTitle">{agent.title || '未命名 Agent'}</span>
-                                            <span className="eja-agentCatalog__itemMeta">#{agent.docId} <span aria-hidden="true">·</span> {formatDate(agent.updateAt) || '尚未更新'}</span>
-                                            <span className="eja-agentCatalog__itemSummary">{summary(agent.content) || '尚未添加行为说明。'}</span>
+                                    <article className="eza-agentCatalog__item" data-selected={editingDocId === agent.docId || undefined}>
+                                        <button type="button" className="eza-agentCatalog__itemMain" onClick={() => startEdit(agent)} aria-current={editingDocId === agent.docId ? 'true' : undefined}>
+                                            <span className="eza-agentCatalog__itemTitle">{agent.title || '未命名 Agent'}</span>
+                                            <span className="eza-agentCatalog__itemMeta">#{agent.docId} <span aria-hidden="true">·</span> {formatDate(agent.updateAt) || '尚未更新'}</span>
+                                            <span className="eza-agentCatalog__itemSummary">{summary(agent.content) || '尚未添加行为说明。'}</span>
                                         </button>
-                                        <div className="eja-agentCatalog__itemActions">
+                                        <div className="eza-agentCatalog__itemActions">
                                             <a href={`${domainPrefix(String(domainId || 'system'))}/agent/${agent.docId}`}>打开工作区</a>
-                                            <button type="button" className="eja-agentCatalog__delete" onClick={() => { setDeleting(agent); setDeleteError(null); }}>删除</button>
+                                            <button type="button" className="eza-agentCatalog__delete" onClick={() => { setDeleting(agent); setDeleteError(null); }}>删除</button>
                                         </div>
                                     </article>
                                 </li>
@@ -209,56 +209,56 @@ export default function AgentListPage() {
                         </ul>
                     </section>
 
-                    {editingDocId !== null && <section className="eja-agentCatalog__editor" aria-label="编辑 Agent">
-                        <div className="eja-agentCatalog__editorHeading">
+                    {editingDocId !== null && <section className="eza-agentCatalog__editor" aria-label="编辑 Agent">
+                        <div className="eza-agentCatalog__editorHeading">
                             <div>
                                 <h2>编辑 Agent</h2>
                                 <p>配置编号 {editingDocId}</p>
                             </div>
                         </div>
-                        <form className="eja-agentCatalog__form" onSubmit={(event) => { void saveAgent(event); }}>
-                            <label className="eja-agentCatalog__field">
+                        <form className="eza-agentCatalog__form" onSubmit={(event) => { void saveAgent(event); }}>
+                            <label className="eza-agentCatalog__field">
                                 <span>名称</span>
                                 <input autoComplete="off" maxLength={256} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：研究助理" required />
                             </label>
-                            <label className="eja-agentCatalog__field">
+                            <label className="eza-agentCatalog__field">
                                 <span>行为说明</span>
                                 <textarea value={content} onChange={(event) => setContent(event.target.value)} maxLength={100000} rows={15} placeholder="描述这个 Agent 的职责、目标和工作方式。" />
                                 <small>最多 100000 个字符</small>
                             </label>
-                            {loadError ? <p className="eja-agentCatalog__notice" role="alert">{loadError}</p> : null}
-                            <div className="eja-agentCatalog__formActions">
-                                <button type="submit" className="eja-agentCatalog__primary" disabled={saving || !title.trim()}>{saving ? '保存中…' : '保存更改'}</button>
-                                <button type="button" className="eja-agentCatalog__secondary" onClick={() => setEditingDocId(null)} disabled={saving}>关闭编辑</button>
+                            {loadError ? <p className="eza-agentCatalog__notice" role="alert">{loadError}</p> : null}
+                            <div className="eza-agentCatalog__formActions">
+                                <button type="submit" className="eza-agentCatalog__primary" disabled={saving || !title.trim()}>{saving ? '保存中…' : '保存更改'}</button>
+                                <button type="button" className="eza-agentCatalog__secondary" onClick={() => setEditingDocId(null)} disabled={saving}>关闭编辑</button>
                             </div>
                         </form>
                     </section>}
                 </div>
             </main>
-            {createOpen && <div className="eja-agentCreateModal" role="presentation">
-                <button type="button" className="eja-agentCreateModal__mask" aria-label="关闭新建 Agent 对话框" disabled={creating} onClick={() => setCreateOpen(false)} />
-                <section className="eja-agentCreateModal__dialog" role="dialog" aria-modal="true" aria-labelledby="eja-agentCreateModal-title">
-                    <header className="eja-agentCreateModal__header">
+            {createOpen && <div className="eza-agentCreateModal" role="presentation">
+                <button type="button" className="eza-agentCreateModal__mask" aria-label="关闭新建 Agent 对话框" disabled={creating} onClick={() => setCreateOpen(false)} />
+                <section className="eza-agentCreateModal__dialog" role="dialog" aria-modal="true" aria-labelledby="eza-agentCreateModal-title">
+                    <header className="eza-agentCreateModal__header">
                         <div>
-                            <h2 id="eja-agentCreateModal-title">新建 Agent</h2>
+                            <h2 id="eza-agentCreateModal-title">新建 Agent</h2>
                             <p>填写名称和行为说明，创建后即可打开独立工作区。</p>
                         </div>
                         <button type="button" aria-label="关闭" disabled={creating} onClick={() => setCreateOpen(false)}>×</button>
                     </header>
-                    <form className="eja-agentCatalog__form" onSubmit={(event) => { void createAgent(event); }}>
-                        <label className="eja-agentCatalog__field">
+                    <form className="eza-agentCatalog__form" onSubmit={(event) => { void createAgent(event); }}>
+                        <label className="eza-agentCatalog__field">
                             <span>名称</span>
                             <input autoFocus autoComplete="off" maxLength={256} value={createTitle} onChange={(event) => setCreateTitle(event.target.value)} placeholder="例如：研究助理" required />
                         </label>
-                        <label className="eja-agentCatalog__field">
+                        <label className="eza-agentCatalog__field">
                             <span>行为说明</span>
                             <textarea value={createContent} onChange={(event) => setCreateContent(event.target.value)} maxLength={100000} rows={10} placeholder="描述这个 Agent 的职责、目标和工作方式。" />
                             <small>最多 100000 个字符</small>
                         </label>
-                        {createError ? <p className="eja-agentCatalog__notice" role="alert">{createError}</p> : null}
-                        <div className="eja-agentCatalog__formActions">
-                            <button type="button" className="eja-agentCatalog__secondary" disabled={creating} onClick={() => setCreateOpen(false)}>取消</button>
-                            <button type="submit" className="eja-agentCatalog__primary" disabled={creating || !createTitle.trim()}>{creating ? '创建中…' : '创建 Agent'}</button>
+                        {createError ? <p className="eza-agentCatalog__notice" role="alert">{createError}</p> : null}
+                        <div className="eza-agentCatalog__formActions">
+                            <button type="button" className="eza-agentCatalog__secondary" disabled={creating} onClick={() => setCreateOpen(false)}>取消</button>
+                            <button type="submit" className="eza-agentCatalog__primary" disabled={creating || !createTitle.trim()}>{creating ? '创建中…' : '创建 Agent'}</button>
                         </div>
                     </form>
                 </section>

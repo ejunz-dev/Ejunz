@@ -77,15 +77,15 @@ export function InputConfigDialog({
     }, [onClose, sending]);
 
     return <div className="bd-edit-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !sending) onClose(); }}>
-        <section className="bd-edit-dialog eja-inputConfigDialog" role="dialog" aria-modal="true" aria-labelledby="eja-input-config-title" onMouseDown={(event) => event.stopPropagation()}>
+        <section className="bd-edit-dialog eza-inputConfigDialog" role="dialog" aria-modal="true" aria-labelledby="eza-input-config-title" onMouseDown={(event) => event.stopPropagation()}>
             <header className="bd-edit-dialog__header">
-                <div className="eja-inputConfigTitle">
-                    {nameEditing ? <input className="eja-titleEditor" autoFocus value={sessionName} disabled={sending} onChange={(event) => setSessionName(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === 'Enter') setNameEditing(false); }} /> : <h2 id="eja-input-config-title">{sessionName}</h2>}
-                    <button type="button" className="eja-inputConfigTitleEdit" disabled={sending} onClick={() => setNameEditing((value) => !value)} aria-label={nameEditing ? '完成编辑会话名称' : '编辑会话名称'}>{nameEditing ? '✓' : '✎'}</button>
+                <div className="eza-inputConfigTitle">
+                    {nameEditing ? <input className="eza-titleEditor" autoFocus value={sessionName} disabled={sending} onChange={(event) => setSessionName(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === 'Enter') setNameEditing(false); }} /> : <h2 id="eza-input-config-title">{sessionName}</h2>}
+                    <button type="button" className="eza-inputConfigTitleEdit" disabled={sending} onClick={() => setNameEditing((value) => !value)} aria-label={nameEditing ? '完成编辑会话名称' : '编辑会话名称'}>{nameEditing ? '✓' : '✎'}</button>
                 </div>
                 <button type="button" className="bd-drawer__close" onClick={onClose} disabled={sending} aria-label="关闭">×</button>
             </header>
-            {loading ? <div className="eja-inputConfigLoading" role="status"><span className="eja-sessionSettingsLoadingSpinner" aria-hidden="true" />正在加载最新配置…</div> : <>
+            {loading ? <div className="eza-inputConfigLoading" role="status"><span className="eza-sessionSettingsLoadingSpinner" aria-hidden="true" />正在加载最新配置…</div> : <>
             <div className="bd-edit-dialog__body">
                 <div className="bd-edit-field">
                     <h3>主机</h3>
@@ -99,18 +99,18 @@ export function InputConfigDialog({
                 <div className="bd-edit-field">
                     <h3>模型</h3>
                     {models ? models.groups.map((group) => (
-                        <div className="eja-sessionSettingsGroup" key={group.id}>
-                            <span className="eja-sessionSettingsGroupName">{group.name}</span>
+                        <div className="eza-sessionSettingsGroup" key={group.id}>
+                            <span className="eza-sessionSettingsGroupName">{group.name}</span>
                             <div className="bd-edit-tags">
                                 {group.models.map((item) => <button type="button" className={buttonClass(models.current.provider === group.id && models.current.model === item.id)} disabled={sending} key={`${group.id}:${item.id}`} title={item.description || item.name} onClick={() => selectModel(group.id, item.id)}>{item.name}</button>)}
                             </div>
                         </div>
-                    )) : <div className="eja-sessionSettingsLoading" role="status"><span className="eja-sessionSettingsLoadingSpinner" aria-hidden="true" />模型加载中…</div>}
+                    )) : <div className="eza-sessionSettingsLoading" role="status"><span className="eza-sessionSettingsLoadingSpinner" aria-hidden="true" />模型加载中…</div>}
                 </div>
                 <div className="bd-edit-field">
                     <h3>插件</h3>
                     <div className="bd-edit-tags">
-                        {agentPlugins.map((plugin) => <span className="eja-inputConfigPluginTag" key={plugin.pluginId} title={plugin.description}>{plugin.displayName}</span>)}
+                        {agentPlugins.map((plugin) => <span className="eza-inputConfigPluginTag" key={plugin.pluginId} title={plugin.description}>{plugin.displayName}</span>)}
                         {agentPlugins.length === 0 && <span className="bd-muted">当前没有启用的 Agent 插件</span>}
                     </div>
                 </div>
@@ -135,9 +135,9 @@ export function InputConfigDialog({
                     {agentPresetError ? <p className="bd-edit-dialog__error" role="alert">{agentPresetError}</p> : null}
                 </div>
             </div>
-            <div className="eja-inputConfigHero">
-                <div className="eja-inputConfigCreateRow">
-                    <button type="button" className="eja-inputConfigCreate" disabled={sending} onClick={() => onCreateOnly(sessionName.trim() || '新会话')}>只创建会话</button>
+            <div className="eza-inputConfigHero">
+                <div className="eza-inputConfigCreateRow">
+                    <button type="button" className="eza-inputConfigCreate" disabled={sending} onClick={() => onCreateOnly(sessionName.trim() || '新会话')}>只创建会话</button>
                     <span>参数会留在这张卡片上，可以稍后再对话。</span>
                 </div>
                 <InputBar

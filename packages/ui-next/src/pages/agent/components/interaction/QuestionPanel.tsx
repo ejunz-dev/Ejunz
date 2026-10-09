@@ -17,16 +17,16 @@ export function QuestionPanel({ question, onAnswer }: QuestionPanelProps) {
             setBusy(false);
         }
     };
-    return <div className="eja-questionPanel">
-        <div className="eja-questionTitle">需要你的回答</div>
-        {question.questions.map((item) => <fieldset key={item.id} className="eja-questionItem">
+    return <div className="eza-questionPanel">
+        <div className="eza-questionTitle">需要你的回答</div>
+        {question.questions.map((item) => <fieldset key={item.id} className="eza-questionItem">
             <legend>{item.header || item.question || item.id}</legend>
             {(item.options ?? []).map((option) => {
                 const label = option.label ?? '';
                 const checked = selected[item.id]?.includes(label) === true;
-                return <label key={label} className="eja-questionOption"><input type={item.multiSelect ? 'checkbox' : 'radio'} name={item.id} checked={checked} onChange={() => setSelected((value) => ({ ...value, [item.id]: item.multiSelect ? checked ? (value[item.id] ?? []).filter((entry) => entry !== label) : [...value[item.id] ?? [], label] : [label] }))} /><span>{label}</span>{option.description && <small>{option.description}</small>}</label>;
+                return <label key={label} className="eza-questionOption"><input type={item.multiSelect ? 'checkbox' : 'radio'} name={item.id} checked={checked} onChange={() => setSelected((value) => ({ ...value, [item.id]: item.multiSelect ? checked ? (value[item.id] ?? []).filter((entry) => entry !== label) : [...value[item.id] ?? [], label] : [label] }))} /><span>{label}</span>{option.description && <small>{option.description}</small>}</label>;
             })}
         </fieldset>)}
-        <button type="button" className="eja-questionSubmit" disabled={busy} onClick={() => void answer()}>提交回答</button>
+        <button type="button" className="eza-questionSubmit" disabled={busy} onClick={() => void answer()}>提交回答</button>
     </div>;
 }
