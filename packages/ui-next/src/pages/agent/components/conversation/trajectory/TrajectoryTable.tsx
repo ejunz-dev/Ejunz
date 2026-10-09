@@ -646,11 +646,16 @@ function collapsePluginRecords(
     if (emitted.has(pluginId)) return []
     emitted.add(pluginId)
     const group = grouped.get(pluginId) ?? [record]
-    const count = group.length
+    const injections = group.filter(item => item.cell.kind === 'context').length
+    const toolCalls = group.filter(item => item.cell.kind === 'tool' || item.cell.kind === 'subtool').length
+    const summary = [
+      injections > 0 ? `${injections} ${injections === 1 ? 'injection' : 'injections'}` : '',
+      toolCalls > 0 ? `${toolCalls} ${toolCalls === 1 ? 'tool call' : 'tool calls'}` : '',
+    ].filter(Boolean).join(' · ')
     return [{
       ...record,
       turnEnd: group.at(-1)?.turnEnd ?? record.turnEnd,
-      collapsedSummary: `${count} plugin ${count === 1 ? 'injection' : 'injections'}`,
+      collapsedSummary: summary,
       collapsedSummaryKind: 'plugin' as const,
     }]
   })

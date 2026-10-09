@@ -70,6 +70,9 @@ function groupTitle(kind: TrajectoryCellKind, step: number): string {
 }
 
 function pluginGroupId(message: ChatMessage, kind: TrajectoryCellKind): string | undefined {
+  if (kind === 'tool' || kind === 'subtool') {
+    return message.toolName?.startsWith('base_') ? 'base' : undefined
+  }
   if (kind !== 'context') return undefined
   const value = message.contextSource
   if (!value || typeof value !== 'object') return undefined
