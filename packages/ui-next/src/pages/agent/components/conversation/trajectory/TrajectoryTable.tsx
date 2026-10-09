@@ -644,7 +644,9 @@ function collapsePluginRecords(
     } else {
       const injections = segment.filter(record => record.cell.kind === 'context').length
       const toolCalls = segment.filter(record => record.cell.kind === 'tool' || record.cell.kind === 'subtool').length
+      const pluginName = segmentPluginId === 'base' ? 'Ejunz Base' : segmentPluginId ?? 'Plugin'
       const summary = [
+        pluginName,
         injections > 0 ? `${injections} ${injections === 1 ? 'injection' : 'injections'}` : '',
         toolCalls > 0 ? `${toolCalls} ${toolCalls === 1 ? 'tool call' : 'tool calls'}` : '',
       ].filter(Boolean).join(' · ')
