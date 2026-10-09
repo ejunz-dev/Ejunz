@@ -1,6 +1,7 @@
+import type { Context } from 'cordis';
 import { after } from '../../../../registry';
 import type { BaseView, SessionSummary } from '../../runtime/session';
-import { registerAgentPluginSlots } from '../../runtime/agent-plugin-slots';
+import type { AgentPluginUiRegistration } from '../../runtime/agent-plugin-slots';
 
 interface ContextChoicesProps {
     bases: readonly BaseView[];
@@ -55,15 +56,17 @@ function BaseDisplaySetting({ value, disabled, onChange }: BaseDisplaySettingPro
     </label>;
 }
 
-registerAgentPluginSlots('base', {
-    installSlots() {
-        const disposers = [
-            after<ContextChoicesProps>('component:agent-new-session-context', BaseChoices, { id: 'agent-base-new-session-context' }),
-            after<ContextChoicesProps>('component:agent-session-context', BaseChoices, { id: 'agent-base-session-context' }),
-            after<ContextTabProps>('component:agent-context-tab', BaseContextTab, { id: 'agent-base-context-tab' }),
-            after<BaseDisplaySettingProps>('component:agent-display-setting-base', BaseDisplaySetting, { id: 'agent-base-display-setting' }),
-        ];
-        return () => { disposers.forEach((dispose) => dispose()); };
+const baseContextPlugin: AgentPluginUiRegistration = {
+    apply(ctx: Context) {
+        ctx.effect(() => {
+            const disposers = [
+                after<ContextChoicesProps>('component:agent-new-session-context', BaseChoices, { id: 'agent-base-new-session-context' }),
+                after<ContextChoicesProps>('component:agent-session-context', BaseChoices, { id: 'agent-base-session-context' }),
+                after<ContextTabProps>('component:agent-context-tab', BaseContextTab, { id: 'agent-base-context-tab' }),
+                after<BaseDisplaySettingProps>('component:agent-display-setting-base', BaseDisplaySetting, { id: 'agent-base-display-setting' }),
+            ];
+            return () => { disposers.forEach((dispose) => dispose()); };
+        }, 'Base context UI slots');
     },
     onDisabled({ currentSession, clearDraftContext, clearCurrentContext }) {
         clearDraftContext();
@@ -73,4 +76,6 @@ registerAgentPluginSlots('base', {
     sessionCardTags(session, bases, showBase) {
         return showBase ? [`知识库: ${baseLabel(session, bases)}`] : [];
     },
-});
+};
+
+export default baseContextPlugin;

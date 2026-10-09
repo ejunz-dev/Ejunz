@@ -16,7 +16,6 @@ import { AgentHeader, type AgentWebSocketStatus } from './components/structure/A
 import { AgentDisplaySettingsDialog, defaultAgentDisplaySettings, readAgentDisplaySettings, type AgentDisplaySettings } from './components/structure/AgentDisplaySettingsDialog';
 import { SessionSettingsPanel } from './components/structure/SessionSettingsPanel';
 import { SessionDrawer } from './components/structure/SessionDrawer';
-import './components/structure/BaseContextPlugin';
 import { SessionTree } from './components/structure/SessionTree';
 import type { HostOption } from './components/structure/HostPicker';
 import { ActionDialog } from './components/primitives/ActionDialog';
@@ -36,7 +35,7 @@ import { SettingsDocumentAction } from './components/settings/SettingsDocumentAc
 import { SettingsRoot } from './components/settings/SettingsRoot';
 import type { ChatMessage, PendingApproval, PendingQuestion, QueueItem, SessionModels } from './components/types';
 import { domainPrefix, useAgentRpc } from './runtime/rpc';
-import { notifyAgentPluginDisabled, setEnabledAgentPluginSlots } from './runtime/agent-plugin-slots';
+import { notifyAgentPluginDisabled, registerAgentPluginUiLoader, setEnabledAgentPluginSlots } from './runtime/agent-plugin-slots';
 import { useAgentTheme } from './runtime/theme';
 import { usePageData } from '../../context/page-data';
 import { applyEvent, asObject, assistantStreamKey, eventFailureMessage, eventMessage, eventsToMessages, fileInjectionsAfterUser, flattenToolTree, foldToolTree, latestHistoryError, queueItems, settleRunningMessages } from './runtime/conversation';
@@ -55,6 +54,8 @@ const HISTORY_INITIAL_MESSAGES = 8;
 const HISTORY_PREVIEW_MESSAGES = 1;
 const HISTORY_PREVIEW_CONCURRENCY = 4;
 const SESSION_DRAWER_DEFAULT = 420;
+
+registerAgentPluginUiLoader('base', () => import('./components/structure/BaseContextPlugin'));
 const SESSION_DRAWER_MIN = 320;
 
 function readAgentSelection(): { nodeId: string | null; cardId: string | null } {
@@ -579,11 +580,11 @@ export default function AgentPage() {
             const value = await rpc('agentPlugins.list', {}) as { plugins?: Array<{ pluginId: string; enabled: boolean }> };
             const enabled = new Set((value.plugins ?? []).filter((plugin) => plugin.enabled).map((plugin) => plugin.pluginId));
             setEnabledAgentPluginIds(enabled);
-            setEnabledAgentPluginSlots(enabled);
+            void setEnabledAgentPluginSlots(enabled);
         } catch {
             const disabled = new Set<string>();
             setEnabledAgentPluginIds(disabled);
-            setEnabledAgentPluginSlots(disabled);
+            void setEnabledAgentPluginSlots(disabled);
         }
     }, [rpc]);
 
@@ -1980,9 +1981,9 @@ export default function AgentPage() {
                             if (enabled) nextIds.add(pluginId);
                             else nextIds.delete(pluginId);
                             setEnabledAgentPluginIds(nextIds);
-                            setEnabledAgentPluginSlots(nextIds);
+                            void setEnabledAgentPluginSlots(nextIds);
                             void loadBases();
-                            if (!enabled) notifyAgentPluginDisabled(pluginId, {
+                            if (!enabled) void notifyAgentPluginDisabled(pluginId, {
                                 currentSession,
                                 clearDraftContext: () => setDraftBaseId(undefined),
                                 clearCurrentContext: async () => {

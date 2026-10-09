@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@simplewebauthn/browser": "^13.2.2",
+    "cordis": "4.0.0-beta.5",
     "cssfilter": "^0.0.11",
     "esbuild": "0.25.2",
     "is-relative-url": "^4.1.0",
