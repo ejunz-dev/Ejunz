@@ -32,11 +32,9 @@ export function formatTimelineOffset(milliseconds: number): string {
   return formatDurationMillis(milliseconds)
 }
 
-function laneFor(cell: TrajectoryCellProps): number {
-  if (cell.kind === 'tool' || cell.kind === 'subtool') return 2
-  if (cell.kind === 'message' || cell.kind === 'compacted') return 1
-  const source = cell.messageSource
-  if (cell.kind === 'context' && source !== null && typeof source === 'object' && (source as { kind?: unknown }).kind === 'plugin') return 3
+function laneFor(kind: TrajectoryCellKind): number {
+  if (kind === 'tool' || kind === 'subtool') return 2
+  if (kind === 'message' || kind === 'compacted') return 1
   return 0
 }
 
@@ -84,7 +82,7 @@ export function deriveTrajectoryTimeline(
       isError: cell.isError === true,
       kind: cell.kind,
       label: cell.text,
-      lane: laneFor(cell),
+      lane: laneFor(cell.kind),
     })))
   }
 
@@ -115,7 +113,7 @@ function deriveTimedTimeline(
             isError: cell.isError === true,
             kind: cell.kind,
             label: cell.text,
-            lane: laneFor(cell),
+            lane: laneFor(cell.kind),
           }]
       }),
     )

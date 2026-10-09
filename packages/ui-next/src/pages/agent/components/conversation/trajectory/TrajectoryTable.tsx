@@ -137,7 +137,7 @@ interface TableRecord {
   cell: TrajectoryCellProps
   turnEnd: boolean
   collapsedSummary?: string
-  collapsedSummaryKind?: 'turn' | 'assistant' | 'host'
+  collapsedSummaryKind?: 'turn' | 'assistant' | 'host' | 'plugin'
 }
 
 interface VirtualRowStructure {
@@ -359,6 +359,8 @@ export interface TrajectoryTableProps {
   turns: readonly TrajectoryTurnModel[]
   collapsedHosts: ReadonlySet<number>
   onToggleHost: (startIndex: number) => void
+  collapsedPlugins: ReadonlySet<string>
+  onTogglePlugin: (pluginId: string) => void
   streamingCells?: readonly TrajectoryCellProps[]
   timelineFocusIndexes?: ReadonlySet<number> | null
   searchMatchIndexes?: ReadonlySet<number> | null
@@ -622,6 +624,36 @@ function collapseHostRecords(
   }
   flushSegment()
   return result
+}
+
+function collapsePluginRecords(
+  records: readonly TableRecord[],
+  collapsedPlugins: ReadonlySet<string>,
+): TableRecord[] {
+  if (collapsedPlugins.size === 0) return [...records]
+  const grouped = new Map<string, TableRecord[]>()
+  for (const record of records) {
+    const pluginId = record.cell.pluginGroupId
+    if (pluginId === undefined || !collapsedPlugins.has(pluginId)) continue
+    const group = grouped.get(pluginId) ?? []
+    group.push(record)
+    grouped.set(pluginId, group)
+  }
+  const emitted = new Set<string>()
+  return records.flatMap((record) => {
+    const pluginId = record.cell.pluginGroupId
+    if (pluginId === undefined || !collapsedPlugins.has(pluginId)) return [record]
+    if (emitted.has(pluginId)) return []
+    emitted.add(pluginId)
+    const group = grouped.get(pluginId) ?? [record]
+    const count = group.length
+    return [{
+      ...record,
+      turnEnd: group.at(-1)?.turnEnd ?? record.turnEnd,
+      collapsedSummary: `${count} plugin ${count === 1 ? 'injection' : 'injections'}`,
+      collapsedSummaryKind: 'plugin' as const,
+    }]
+  })
 }
 
 function assistantToolCalls(
@@ -1714,6 +1746,8 @@ export function TrajectoryTable({
   turns,
   collapsedHosts,
   onToggleHost,
+  collapsedPlugins,
+  onTogglePlugin,
   streamingCells = [],
   timelineFocusIndexes = null,
   searchMatchIndexes = null,
@@ -1780,16 +1814,19 @@ export function TrajectoryTable({
   )
   const records = useMemo(() => {
     if (searchMatchIndexes !== null) return filterRecords(allRecords, searchMatchIndexes)
-    const hostRecords = collapsedHosts.size === 0
+    const pluginRecords = collapsedPlugins.size === 0
       ? allRecords
-      : collapseHostRecords(allRecords, collapsedHosts)
+      : collapsePluginRecords(allRecords, collapsedPlugins)
+    const hostRecords = collapsedHosts.size === 0
+      ? pluginRecords
+      : collapseHostRecords(pluginRecords, collapsedHosts)
     const turnRecords = collapsedTurns.size === 0
       ? hostRecords
       : collapseTurnRecords(hostRecords, collapsedTurns)
     return collapsedAssistants.size === 0
       ? turnRecords
       : collapseAssistantRecords(turnRecords, collapsedAssistants)
-  }, [allRecords, collapsedAssistants, collapsedHosts, collapsedTurns, searchMatchIndexes])
+  }, [allRecords, collapsedAssistants, collapsedHosts, collapsedPlugins, collapsedTurns, searchMatchIndexes])
   const projectedVirtualRows = useMemo(
     () => groupTrajectoryVirtualRows(records),
     [records],
@@ -2330,8 +2367,10 @@ export function TrajectoryTable({
                       aria-rowindex={position + 1 + historyRowOffset}
                       aria-label={isCollapsedSummary
                         ? record.collapsedSummaryKind === 'host'
-                          ? `Collapsed Host segment ${record.cell.host ?? ''}, ${record.collapsedSummary}`
-                          : `Collapsed ${record.collapsedSummaryKind} summary, ${record.collapsedSummary}`
+                          ? `Collapsed Hosts segment ${record.cell.host ?? ''}, ${record.collapsedSummary}`
+                          : record.collapsedSummaryKind === 'plugin'
+                            ? `Collapsed plugin injections, ${record.collapsedSummary}`
+                            : `Collapsed ${record.collapsedSummaryKind} summary, ${record.collapsedSummary}`
                         : isRequestOnly
                           ? `Request ${request ?? ''}, compaction`
                           : `${request === undefined ? '' : `Request ${request}, `}${KIND_LABEL[record.cell.kind]}, ${listDisplayText || 'no content'}`}
@@ -2363,6 +2402,8 @@ export function TrajectoryTable({
                               onToggleTurn(record.turn)
                             } else if (record.collapsedSummaryKind === 'host') {
                               onToggleHost(record.cell.index)
+                            } else if (record.collapsedSummaryKind === 'plugin' && record.cell.pluginGroupId !== undefined) {
+                              onTogglePlugin(record.cell.pluginGroupId)
                             } else onToggleAssistant(trajectoryRecordId(record.cell))
                           }
                           : () => { selectRecord(record.cell.index) }}
@@ -2399,6 +2440,8 @@ export function TrajectoryTable({
                             onToggleTurn(record.turn)
                           } else if (record.collapsedSummaryKind === 'host') {
                             onToggleHost(record.cell.index)
+                          } else if (record.collapsedSummaryKind === 'plugin' && record.cell.pluginGroupId !== undefined) {
+                            onTogglePlugin(record.cell.pluginGroupId)
                           } else onToggleAssistant(trajectoryRecordId(record.cell))
                           return
                         }

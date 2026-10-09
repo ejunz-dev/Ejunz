@@ -44,6 +44,7 @@ export interface TrajectoryCellProps extends HTMLAttributes<HTMLDivElement> {
   host?: string
   hostTransition?: boolean
   messageSource?: unknown
+  pluginGroupId?: string
   requestOnly?: boolean
   inputDetail?: string
   promptDetail?: ConversationPromptSnapshot

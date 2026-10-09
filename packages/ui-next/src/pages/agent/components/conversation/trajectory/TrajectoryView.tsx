@@ -32,7 +32,10 @@ const labels: Record<string, string> = {
   'toolbar.expandTurns': 'Expand turns',
   'toolbar.collapseTurns': 'Collapse turns',
   'toolbar.calls': 'Calls',
-  'toolbar.host': 'Host',
+  'toolbar.plugins': 'Plugins',
+  'toolbar.collapsePlugins': 'Collapse plugin injections',
+  'toolbar.expandPlugins': 'Expand plugin injections',
+  'toolbar.hosts': 'Hosts',
   'toolbar.expandHosts': 'Expand host segments',
   'toolbar.collapseHosts': 'Collapse host segments',
   'toolbar.expandCalls': 'Expand calls',
@@ -59,6 +62,7 @@ export function TrajectoryView({
   const [collapsedTurns, setCollapsedTurns] = useState<ReadonlySet<number>>(new Set())
   const [collapsedAssistants, setCollapsedAssistants] = useState<ReadonlySet<string>>(new Set())
   const [collapsedHosts, setCollapsedHosts] = useState<ReadonlySet<number>>(new Set())
+  const [collapsedPlugins, setCollapsedPlugins] = useState<ReadonlySet<string>>(new Set())
   const [selectedTimelineIndex, setSelectedTimelineIndex] = useState<number | null>(null)
   const [timelineRange, setTimelineRange] = useState<TrajectoryTimeRange | null>(null)
   const searchIndex = useMemo(() => {
@@ -107,9 +111,14 @@ export function TrajectoryView({
     flush()
     return starts
   }, [turns])
+  const collapsiblePlugins = useMemo(() => [...new Set(turns
+    .flatMap(turn => turn.groups.flatMap(group => group.cells))
+    .map(cell => cell.pluginGroupId)
+    .filter((id): id is string => id !== undefined))], [turns])
   const allTurnsCollapsed = collapsibleTurns.length > 0 && collapsibleTurns.every(turn => collapsedTurns.has(turn))
   const allAssistantsCollapsed = collapsibleAssistants.length > 0 && collapsibleAssistants.every(id => collapsedAssistants.has(id))
   const allHostsCollapsed = collapsibleHostStarts.length > 0 && collapsibleHostStarts.every(id => collapsedHosts.has(id))
+  const allPluginsCollapsed = collapsiblePlugins.length > 0 && collapsiblePlugins.every(id => collapsedPlugins.has(id))
   const toggleTurn = (turn: number) => setCollapsedTurns(current => {
     const next = new Set(current)
     if (next.has(turn)) next.delete(turn)
@@ -128,9 +137,16 @@ export function TrajectoryView({
     else next.add(id)
     return next
   })
+  const togglePlugin = (id: string) => setCollapsedPlugins(current => {
+    const next = new Set(current)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  })
   const toggleAllTurns = () => setCollapsedTurns(allTurnsCollapsed ? new Set() : new Set(collapsibleTurns))
   const toggleAllAssistants = () => setCollapsedAssistants(allAssistantsCollapsed ? new Set() : new Set(collapsibleAssistants))
   const toggleAllHosts = () => setCollapsedHosts(allHostsCollapsed ? new Set() : new Set(collapsibleHostStarts))
+  const toggleAllPlugins = () => setCollapsedPlugins(allPluginsCollapsed ? new Set() : new Set(collapsiblePlugins))
   return <div className={css.root} data-conversation-composer-overlay data-session-id={session?.sessionId}>
     <TrajectoryToolbar
       actualDuration={actualDuration}
@@ -141,6 +157,8 @@ export function TrajectoryView({
       onToggleAllTurns={toggleAllTurns}
       allAssistantsCollapsed={allAssistantsCollapsed}
       onToggleAllAssistants={toggleAllAssistants}
+      allPluginsCollapsed={allPluginsCollapsed}
+      onToggleAllPlugins={toggleAllPlugins}
       searchQuery={searchQuery}
       onSearchQueryChange={setSearchQuery}
       allHostsCollapsed={allHostsCollapsed}
@@ -164,6 +182,8 @@ export function TrajectoryView({
         turns={turns}
         collapsedHosts={collapsedHosts}
         onToggleHost={toggleHost}
+        collapsedPlugins={collapsedPlugins}
+        onTogglePlugin={togglePlugin}
         timelineFocusIndexes={timelineFocusIndexes}
         searchMatchIndexes={searchMatchIndexes}
         onSelectedIndexChange={setSelectedTimelineIndex}

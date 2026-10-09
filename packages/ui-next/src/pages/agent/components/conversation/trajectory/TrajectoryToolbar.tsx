@@ -11,6 +11,8 @@ export interface TrajectoryToolbarProps {
   onToggleAllTurns: () => void
   allAssistantsCollapsed: boolean
   onToggleAllAssistants: () => void
+  allPluginsCollapsed: boolean
+  onToggleAllPlugins: () => void
   searchQuery: string
   onSearchQueryChange: (query: string) => void
   allHostsCollapsed: boolean
@@ -27,6 +29,8 @@ export function TrajectoryToolbar({
   onToggleAllTurns,
   allAssistantsCollapsed,
   onToggleAllAssistants,
+  allPluginsCollapsed,
+  onToggleAllPlugins,
   searchQuery,
   onSearchQueryChange,
   allHostsCollapsed,
@@ -98,6 +102,19 @@ export function TrajectoryToolbar({
           <button
             type="button"
             className={css.action}
+            aria-label={allPluginsCollapsed ? t('toolbar.expandPlugins') : t('toolbar.collapsePlugins')}
+            aria-pressed={allPluginsCollapsed}
+            title={allPluginsCollapsed ? t('toolbar.expandPlugins') : t('toolbar.collapsePlugins')}
+            onClick={onToggleAllPlugins}
+          >
+            <span className={css.actionIcon} aria-hidden="true">
+              {allPluginsCollapsed ? '⊞' : '⊟'}
+            </span>
+            {t('toolbar.plugins')}
+          </button>
+          <button
+            type="button"
+            className={css.action}
             aria-label={allHostsCollapsed ? t('toolbar.expandHosts') : t('toolbar.collapseHosts')}
             aria-pressed={allHostsCollapsed}
             title={allHostsCollapsed ? t('toolbar.expandHosts') : t('toolbar.collapseHosts')}
@@ -106,7 +123,7 @@ export function TrajectoryToolbar({
             <span className={css.actionIcon} aria-hidden="true">
               {allHostsCollapsed ? '⊞' : '⊟'}
             </span>
-            {t('toolbar.host')}
+            {t('toolbar.hosts')}
           </button>
         </div>
         <div className={css.search}>

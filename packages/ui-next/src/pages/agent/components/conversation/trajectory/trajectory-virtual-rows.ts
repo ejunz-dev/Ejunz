@@ -8,7 +8,7 @@ const TERMINAL_BOUNDARY_HEIGHT = 9
 
 export interface VirtualizableTrajectoryRecord {
   cell: TrajectoryCellProps
-  collapsedSummaryKind?: 'turn' | 'assistant' | 'host'
+  collapsedSummaryKind?: 'turn' | 'assistant' | 'host' | 'plugin'
 }
 
 export interface TrajectoryVirtualRowEntry<T extends VirtualizableTrajectoryRecord> {

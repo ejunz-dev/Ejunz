@@ -184,7 +184,6 @@ function LaneLabels() {
       <span>Input</span>
       <span>Model</span>
       <span>Tools</span>
-      <span>Plugins</span>
     </div>
   )
 }

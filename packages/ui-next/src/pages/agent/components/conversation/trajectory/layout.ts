@@ -69,6 +69,20 @@ function groupTitle(kind: TrajectoryCellKind, step: number): string {
     : 'Message'
 }
 
+function pluginGroupId(message: ChatMessage, kind: TrajectoryCellKind): string | undefined {
+  if (kind !== 'context') return undefined
+  const value = message.contextSource
+  if (!value || typeof value !== 'object') return undefined
+  const source = value as Record<string, unknown>
+  if (source.kind !== 'plugin' || typeof source.plugin !== 'string') return undefined
+  if (source.plugin === 'ejunz-base-selector') return 'base'
+  if (source.plugin !== 'ejunz-agent-plugin-lifecycle') return source.plugin
+  const sections = Array.isArray(source.sections) ? source.sections : []
+  const name = sections.map(section => section && typeof section === 'object' ? (section as Record<string, unknown>).name : undefined)
+    .find((item): item is string => typeof item === 'string' && item.startsWith('agent-plugin:'))
+  return name?.slice('agent-plugin:'.length)
+}
+
 function rowCell(message: ChatMessage, index: number, kind: TrajectoryCellKind, duration: number | null, step: number, hostTransition: boolean): TrajectoryCellProps {
   const inputDetail = kind === 'tool' || kind === 'subtool' ? message.toolInput : undefined
   const outputDetail = kind === 'tool' || kind === 'subtool'
@@ -77,6 +91,7 @@ function rowCell(message: ChatMessage, index: number, kind: TrajectoryCellKind, 
   const thinkingDetail = kind === 'message'
     ? message.segments?.filter(segment => segment.kind === 'reasoning').map(segment => segment.text).join('\n\n')
     : undefined
+  const pluginId = pluginGroupId(message, kind)
   const markdown = kind === 'message' || kind === 'user' || kind === 'context' ? message.text : undefined
   return {
     index,
@@ -89,6 +104,7 @@ function rowCell(message: ChatMessage, index: number, kind: TrajectoryCellKind, 
     ...(message.host === undefined ? {} : { host: message.host }),
     ...(hostTransition ? { hostTransition: true } : {}),
     ...(kind === 'context' ? { messageSource: message.contextSource } : {}),
+    ...(pluginId === undefined ? {} : { pluginGroupId: pluginId }),
     ...(inputDetail === undefined ? {} : { inputDetail }),
     ...(outputDetail === undefined ? {} : { outputDetail }),
     ...((kind === 'tool' || kind === 'subtool') && outputDetail !== undefined
