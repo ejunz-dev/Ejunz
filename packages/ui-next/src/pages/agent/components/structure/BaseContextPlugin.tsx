@@ -43,7 +43,7 @@ function BaseChoices({ bases, selectedBaseId, disabled, onSelectBase }: ContextC
 }
 
 function BaseContextTab({ view, onViewChange }: ContextTabProps) {
-    return <button type="button" role="tab" className={view === 'context' ? 'is-active' : ''} aria-selected={view === 'context'} onClick={() => onViewChange('context')}>上下文</button>;
+    return <button type="button" role="tab" className={view === 'context' ? 'is-active' : ''} aria-selected={view === 'context'} onClick={() => onViewChange('context')}>插件</button>;
 }
 
 function BaseDisplaySetting({ value, disabled, onChange }: BaseDisplaySettingProps) {

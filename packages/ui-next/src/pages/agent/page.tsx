@@ -74,6 +74,13 @@ function updateAgentSelectionUrl(patch: { nodeId?: string | null; cardId?: strin
     window.history.replaceState(window.history.state, '', next);
 }
 
+interface AgentContextPluginOption {
+    pluginId: string;
+    displayName: string;
+    description: string;
+    enabled: boolean;
+}
+
 type DialogState =
     | { kind: 'rename-session'; id: string; value: string }
     | { kind: 'delete-session'; id: string; title: string }
@@ -435,6 +442,7 @@ export default function AgentPage() {
     const [treeOpen, setTreeOpen] = useState(false);
     const [activeTreeNodeId, setActiveTreeNodeId] = useState<string | null>(() => readAgentSelection().nodeId ?? pageRootNodeId);
     const [bases, setBases] = useState<BaseView[]>([]);
+    const [agentContextPlugins, setAgentContextPlugins] = useState<AgentContextPluginOption[]>([]);
     const [enabledAgentPluginIds, setEnabledAgentPluginIds] = useState<Set<string>>(new Set());
     const [draftBaseId, setDraftBaseId] = useState<number | undefined>();
     const [draftSessionId, setDraftSessionId] = useState<string | null>(null);
@@ -577,12 +585,15 @@ export default function AgentPage() {
 
     const loadAgentContextPlugins = useCallback(async () => {
         try {
-            const value = await rpc('agentPlugins.list', {}) as { plugins?: Array<{ pluginId: string; enabled: boolean }> };
-            const enabled = new Set((value.plugins ?? []).filter((plugin) => plugin.enabled).map((plugin) => plugin.pluginId));
+            const value = await rpc('agentPlugins.list', {}) as { plugins?: AgentContextPluginOption[] };
+            const plugins = value.plugins ?? [];
+            const enabled = new Set(plugins.filter((plugin) => plugin.enabled).map((plugin) => plugin.pluginId));
+            setAgentContextPlugins(plugins);
             setEnabledAgentPluginIds(enabled);
             void setEnabledAgentPluginSlots(enabled);
         } catch {
             const disabled = new Set<string>();
+            setAgentContextPlugins([]);
             setEnabledAgentPluginIds(disabled);
             void setEnabledAgentPluginSlots(disabled);
         }
@@ -1921,6 +1932,7 @@ export default function AgentPage() {
             <DeepSeekOnboarding rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} />
             {newSessionConfigOpen && <InputConfigDialog
                 hosts={hosts}
+                agentPlugins={agentContextPlugins.filter((plugin) => plugin.enabled)}
                 selectedHostId={draftHostId}
                 onPickHost={setDraftHostId}
                 bases={bases}
@@ -1982,6 +1994,7 @@ export default function AgentPage() {
                             if (enabled) nextIds.add(pluginId);
                             else nextIds.delete(pluginId);
                             setEnabledAgentPluginIds(nextIds);
+                            setAgentContextPlugins((items) => items.map((plugin) => plugin.pluginId === pluginId ? { ...plugin, enabled } : plugin));
                             void setEnabledAgentPluginSlots(nextIds);
                             void loadBases();
                             if (!enabled) void notifyAgentPluginDisabled(pluginId, {

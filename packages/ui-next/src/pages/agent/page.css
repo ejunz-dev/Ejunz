@@ -455,6 +455,17 @@
   font-weight: 600;
 }
 
+.eja-inputConfigPluginTag {
+  display: inline-flex;
+  align-items: center;
+  padding: .25rem .5rem;
+  border: 1px solid var(--bd-line);
+  border-radius: 4px;
+  background: var(--bd-accent-soft);
+  color: var(--bd-accent);
+  font-size: .7rem;
+}
+
 .eja-inputConfigDialog {
   position: relative;
 }

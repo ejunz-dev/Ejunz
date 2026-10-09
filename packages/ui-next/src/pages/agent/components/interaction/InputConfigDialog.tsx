@@ -7,8 +7,15 @@ import type { SessionModels } from '../types';
 import { InputBar } from '../conversation/skeleton/InputBar';
 import { AgentPresetSeat, type AgentPresetOption } from '../settings/AgentPresetSeat';
 
+interface NewSessionPluginOption {
+    pluginId: string;
+    displayName: string;
+    description: string;
+}
+
 interface InputConfigDialogProps {
     hosts: readonly HostOption[];
+    agentPlugins: readonly NewSessionPluginOption[];
     selectedHostId: string;
     onPickHost: (runtimeId: string) => void;
     bases: readonly BaseView[];
@@ -56,7 +63,7 @@ function buttonClass(selected: boolean): string {
 }
 
 export function InputConfigDialog({
-    hosts, selectedHostId, onPickHost,
+    hosts, agentPlugins, selectedHostId, onPickHost,
     bases, selectedBaseId, onPickBase, nodes, selectedNodeId, onPickNode, models, selectModel, agentPresetOptions, agentPresetChoice, onSelectAgentPreset, agentPresetError,
     input, setInput, attachments, onAddFiles, onRemoveAttachment, modelMenuOpen, setModelMenuOpen,
     notice, onCancel, sending, loading, onConfirm, onCreateOnly, onClose,
@@ -99,6 +106,13 @@ export function InputConfigDialog({
                             </div>
                         </div>
                     )) : <div className="eja-sessionSettingsLoading" role="status"><span className="eja-sessionSettingsLoadingSpinner" aria-hidden="true" />模型加载中…</div>}
+                </div>
+                <div className="bd-edit-field">
+                    <h3>插件</h3>
+                    <div className="bd-edit-tags">
+                        {agentPlugins.map((plugin) => <span className="eja-inputConfigPluginTag" key={plugin.pluginId} title={plugin.description}>{plugin.displayName}</span>)}
+                        {agentPlugins.length === 0 && <span className="bd-muted">当前没有启用的 Agent 插件</span>}
+                    </div>
                 </div>
                 <NewSessionContextSlot
                     bases={bases}
