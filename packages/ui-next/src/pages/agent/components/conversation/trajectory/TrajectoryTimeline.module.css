@@ -14,7 +14,7 @@
 .plot {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr);
-  height: 50px;
+  height: 64px;
   overflow: hidden;
   background: var(--dsw-alias-bg-layer-2);
 }
@@ -48,6 +48,10 @@
 
 .labels span:nth-child(3) {
   top: 35px;
+}
+
+.labels span:nth-child(4) {
+  top: 49px;
 }
 
 .track {
