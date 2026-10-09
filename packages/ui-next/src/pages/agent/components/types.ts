@@ -32,7 +32,7 @@ export interface ChatMessage {
     contextSource?: unknown;
     contextForm?: string;
     contextFiles?: UploadedFileMeta[];
-    pluginGroup?: boolean;
+    agentPluginStatus?: Pick<AgentPluginView, 'pluginId' | 'displayName' | 'enabled'>;
     retry?: number;
     retryDelayMs?: number;
     retryState?: 'scheduled' | 'started' | 'cancelled';
@@ -50,6 +50,7 @@ export interface AgentPluginView {
     description: string;
     enabled: boolean;
     toolPrefixes?: readonly string[];
+    contextSources?: readonly string[];
 }
 
 export interface SessionModels {

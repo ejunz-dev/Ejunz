@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatSegment, QueueItem } from '../components/types';
+import type { AgentPluginView, ChatMessage, ChatSegment, QueueItem } from '../components/types';
 import { FILE_INJECTION_PLUGIN, FILE_INJECTION_SECTION, parseFileInjection, type UploadedFileMeta } from './uploads';
 
 export type JsonObject = Record<string, unknown>;
@@ -391,49 +391,40 @@ export function fileInjectionsAfterUser(messages: ChatMessage[]): ChatMessage[] 
     return result;
 }
 
-function agentPluginContextGroup(message: ChatMessage): { id: string; label: string } | undefined {
-    if (message.role !== 'context') return undefined;
-    const source = asObject(message.contextSource);
-    if (source.kind !== 'plugin') return undefined;
-    if (source.plugin === 'ejunz-base-selector') return { id: 'base', label: 'Ejunz Base 插件' };
-    if (source.plugin !== 'ejunz-agent-plugin-lifecycle') return undefined;
-    const sections = Array.isArray(source.sections) ? source.sections.map(asObject) : [];
-    const pluginId = sections.map((section) => section.name)
-        .find((name): name is string => typeof name === 'string' && name.startsWith('agent-plugin:'))
-        ?.slice('agent-plugin:'.length);
-    return pluginId ? { id: pluginId, label: pluginId === 'base' ? 'Ejunz Base 插件' : `${pluginId} 插件` } : undefined;
-}
-
-/** Nest plugin-owned context injections under their Agent plugin in the chat. */
-export function groupAgentPluginContextMessages(messages: readonly ChatMessage[]): ChatMessage[] {
-    const grouped: ChatMessage[] = [];
-    const groupIndexes = new Map<string, number>();
+export function orderAgentPluginMessages(messages: readonly ChatMessage[], plugins: readonly AgentPluginView[]): ChatMessage[] {
+    const statusMessages: ChatMessage[] = plugins.map((plugin) => ({
+        key: `agent-plugin-status-${plugin.pluginId}`,
+        role: 'context',
+        text: `${plugin.displayName} 插件${plugin.enabled ? '已启用' : '已关闭'}。`,
+        eventType: 'agent-plugin/status',
+        time: 0,
+        contextRole: 'inject',
+        contextLabel: '插件状态',
+        agentPluginStatus: {
+            pluginId: plugin.pluginId,
+            displayName: plugin.displayName,
+            enabled: plugin.enabled,
+        },
+    }));
+    const pluginInjections: ChatMessage[] = [];
+    const regularMessages: ChatMessage[] = [];
     for (const message of messages) {
-        const group = agentPluginContextGroup(message);
-        if (!group) {
-            grouped.push(message);
-            continue;
+        if (message.role === 'context') {
+            const source = asObject(message.contextSource);
+            const sections = Array.isArray(source.sections) ? source.sections.map(asObject) : [];
+            const isPluginStatus = source.kind === 'plugin' && sections.some((section) =>
+                typeof section.name === 'string' && section.name.startsWith('agent-plugin:'),
+            );
+            if (isPluginStatus) continue;
+            if (source.kind === 'plugin' && typeof source.plugin === 'string'
+                && plugins.some((plugin) => plugin.contextSources?.includes(source.plugin as string))) {
+                pluginInjections.push(message);
+                continue;
+            }
         }
-        const existingIndex = groupIndexes.get(group.id);
-        if (existingIndex !== undefined) {
-            const parent = grouped[existingIndex];
-            grouped[existingIndex] = { ...parent, children: [...(parent.children ?? []), message] };
-            continue;
-        }
-        groupIndexes.set(group.id, grouped.length);
-        grouped.push({
-            key: `agent-plugin-group-${group.id}`,
-            role: 'context',
-            text: group.label,
-            eventType: 'agent-plugin/group',
-            time: message.time,
-            contextRole: 'inject',
-            contextLabel: group.label,
-            pluginGroup: true,
-            children: [message],
-        });
+        regularMessages.push(message);
     }
-    return grouped;
+    return [...statusMessages, ...pluginInjections, ...regularMessages];
 }
 
 export function eventsToMessages(entries: HistoryEntry[]): ChatMessage[] {

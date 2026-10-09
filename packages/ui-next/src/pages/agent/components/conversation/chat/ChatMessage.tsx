@@ -11,17 +11,20 @@ import { MessageActions } from './MessageActions';
 import { ToolRow } from './ToolRow';
 import { TurnStatusRow } from './TurnStatusRow';
 
+function pluginForContextMessage(message: ChatMessage, plugins: readonly AgentPluginView[]): AgentPluginView | undefined {
+    if (message.role !== 'context' || !message.contextSource || typeof message.contextSource !== 'object') return undefined;
+    const source = message.contextSource as Record<string, unknown>;
+    if (source.kind !== 'plugin' || typeof source.plugin !== 'string') return undefined;
+    return plugins.find((plugin) => plugin.contextSources?.includes(source.plugin as string));
+}
+
 export function ChatMessageView({ message, plugins, onOpenFile, onOpenDetails }: { message: ChatMessage; plugins: readonly AgentPluginView[]; onOpenFile?: (path: string) => void; onOpenDetails?: (message: ChatMessage) => void }) {
-    if (message.pluginGroup) {
-        return <div className={css.pluginGroup}>
-            <div className={css.pluginGroupHeader}>
-                <span className={css.pluginGroupIcon} aria-hidden="true">◈</span>
-                <span className={css.pluginGroupTitle}>{message.contextLabel}</span>
-                <span className={css.pluginGroupBadge}>插件</span>
-            </div>
-            <div className={css.pluginGroupChildren}>
-                {message.children?.map((child) => <ChatMessageView key={child.key} message={child} plugins={plugins} onOpenFile={onOpenFile} onOpenDetails={onOpenDetails} />)}
-            </div>
+    if (message.agentPluginStatus) {
+        const { displayName, enabled } = message.agentPluginStatus;
+        return <div className={css.pluginStatusRow} role="status">
+            <span className={css.pluginStatusIcon} aria-hidden="true">◈</span>
+            <span className={css.pluginStatusName}>{displayName}</span>
+            <span className={enabled ? css.pluginStatusEnabled : css.pluginStatusDisabled}>{enabled ? '插件生效' : '插件已关闭'}</span>
         </div>;
     }
     if (message.role === 'user') {
@@ -44,7 +47,11 @@ export function ChatMessageView({ message, plugins, onOpenFile, onOpenDetails }:
     }
     if (message.role === 'context') {
         if (message.contextFiles && message.contextFiles.length > 0) return <FileInjectionRow files={message.contextFiles} />;
-        return <ContextInjectionRow label={message.contextRole === 'recall' ? '上下文召回' : '上下文注入'} source={message.contextLabel} summary={message.contextSummary} text={message.text} contextSource={message.contextSource} contextForm={message.contextForm} />;
+        const plugin = pluginForContextMessage(message, plugins);
+        const label = message.contextRole === 'recall'
+            ? '上下文召回'
+            : plugin ? `${plugin.displayName} · 上下文注入` : '上下文注入';
+        return <ContextInjectionRow label={label} source={message.contextLabel} summary={message.contextSummary} text={message.text} contextSource={message.contextSource} contextForm={message.contextForm} />;
     }
     if (message.eventType === 'turn/error' || message.eventType === 'turn/max-tokens') return <TurnStatusRow message={message} />;
     return <div className="eza-systemMessage">{message.text}</div>;

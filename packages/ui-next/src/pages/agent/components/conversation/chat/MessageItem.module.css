@@ -74,40 +74,30 @@
   padding: 2px 0;
 }
 
-.pluginGroup {
-  padding: 5px 0;
-  border-left: 2px solid var(--dsw-alias-state-business-primary);
-}
-
-.pluginGroupHeader {
+.pluginStatusRow {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 8px;
-  color: var(--dsw-alias-label-primary);
+  padding: 2px 0;
+  color: var(--dsw-alias-label-secondary);
   font: var(--dsw-font-xs-13);
 }
 
-.pluginGroupIcon {
+.pluginStatusIcon {
   color: var(--dsw-alias-state-business-primary);
 }
 
-.pluginGroupTitle {
+.pluginStatusName {
+  color: var(--dsw-alias-label-primary);
   font-weight: 600;
 }
 
-.pluginGroupBadge {
-  color: var(--dsw-alias-label-caption);
-  font-size: 10px;
+.pluginStatusEnabled {
+  color: var(--dsw-alias-state-success-primary);
 }
 
-.pluginGroupChildren {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  margin: 4px 0 0 15px;
-  padding-left: 9px;
-  border-left: 1px solid var(--dsw-alias-border-l1);
+.pluginStatusDisabled {
+  color: var(--dsw-alias-label-caption);
 }
 
 /* Compaction marker: one dim 24px row with a context icon at rest and a

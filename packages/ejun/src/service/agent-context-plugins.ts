@@ -4,6 +4,8 @@ export interface AgentContextPluginDescriptor {
     description: string;
     /** Tool-name prefixes owned by this plugin, used to label its tool calls in chat. */
     toolPrefixes?: readonly string[];
+    /** Context-source plugin IDs owned by this plugin, used to label context injections in chat. */
+    contextSources?: readonly string[];
     /** Whether this plugin is available before the domain overrides it. Defaults to enabled. */
     defaultEnabled?: boolean;
 }
@@ -23,10 +25,17 @@ export function registerAgentContextPlugin(descriptor: AgentContextPluginDescrip
     if (descriptor.toolPrefixes?.some((prefix) => typeof prefix !== 'string' || prefix.length === 0)) {
         throw new Error('Agent context plugin toolPrefixes must be non-empty strings.');
     }
+    if (descriptor.contextSources?.some((source) => typeof source !== 'string' || source.length === 0)) {
+        throw new Error('Agent context plugin contextSources must be non-empty strings.');
+    }
     if (registry.plugins.has(descriptor.pluginId)) {
         throw new Error(`Agent context plugin "${descriptor.pluginId}" is already registered.`);
     }
-    const value = { ...descriptor, ...(descriptor.toolPrefixes === undefined ? {} : { toolPrefixes: [...descriptor.toolPrefixes] }) };
+    const value = {
+        ...descriptor,
+        ...(descriptor.toolPrefixes === undefined ? {} : { toolPrefixes: [...descriptor.toolPrefixes] }),
+        ...(descriptor.contextSources === undefined ? {} : { contextSources: [...descriptor.contextSources] }),
+    };
     registry.plugins.set(value.pluginId, value);
     return () => {
         if (registry.plugins.get(value.pluginId) === value) registry.plugins.delete(value.pluginId);
@@ -37,5 +46,6 @@ export function listAgentContextPlugins(): AgentContextPluginDescriptor[] {
     return [...registry.plugins.values()].map((plugin) => ({
         ...plugin,
         ...(plugin.toolPrefixes === undefined ? {} : { toolPrefixes: [...plugin.toolPrefixes] }),
+        ...(plugin.contextSources === undefined ? {} : { contextSources: [...plugin.contextSources] }),
     }));
 }
