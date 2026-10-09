@@ -111,10 +111,20 @@ export function TrajectoryView({
     flush()
     return starts
   }, [turns])
-  const collapsiblePlugins = useMemo(() => [...new Set(turns
-    .flatMap(turn => turn.groups.flatMap(group => group.cells))
-    .map(cell => cell.pluginGroupId)
-    .filter((id): id is string => id !== undefined))], [turns])
+  const collapsiblePlugins = useMemo(() => {
+    const starts: string[] = []
+    let previousPluginId: string | undefined
+    for (const cell of turns.flatMap(turn => turn.groups.flatMap(group => group.cells))) {
+      const pluginId = cell.pluginGroupId
+      if (pluginId === undefined) {
+        previousPluginId = undefined
+        continue
+      }
+      if (pluginId !== previousPluginId) starts.push(trajectoryRecordId(cell))
+      previousPluginId = pluginId
+    }
+    return starts
+  }, [turns])
   const allTurnsCollapsed = collapsibleTurns.length > 0 && collapsibleTurns.every(turn => collapsedTurns.has(turn))
   const allAssistantsCollapsed = collapsibleAssistants.length > 0 && collapsibleAssistants.every(id => collapsedAssistants.has(id))
   const allHostsCollapsed = collapsibleHostStarts.length > 0 && collapsibleHostStarts.every(id => collapsedHosts.has(id))

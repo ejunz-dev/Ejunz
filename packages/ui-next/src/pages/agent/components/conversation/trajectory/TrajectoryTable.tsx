@@ -631,34 +631,46 @@ function collapsePluginRecords(
   collapsedPlugins: ReadonlySet<string>,
 ): TableRecord[] {
   if (collapsedPlugins.size === 0) return [...records]
-  const grouped = new Map<string, TableRecord[]>()
+  const result: TableRecord[] = []
+  let segment: TableRecord[] = []
+  let segmentPluginId: string | undefined
+  const flushSegment = () => {
+    if (segment.length === 0) return
+    const start = segment[0]
+    if (start === undefined) return
+    const startKey = trajectoryRecordId(start.cell)
+    if (!collapsedPlugins.has(startKey)) {
+      result.push(...segment)
+    } else {
+      const injections = segment.filter(record => record.cell.kind === 'context').length
+      const toolCalls = segment.filter(record => record.cell.kind === 'tool' || record.cell.kind === 'subtool').length
+      const summary = [
+        injections > 0 ? `${injections} ${injections === 1 ? 'injection' : 'injections'}` : '',
+        toolCalls > 0 ? `${toolCalls} ${toolCalls === 1 ? 'tool call' : 'tool calls'}` : '',
+      ].filter(Boolean).join(' · ')
+      result.push({
+        ...start,
+        turnEnd: segment.at(-1)?.turnEnd ?? start.turnEnd,
+        collapsedSummary: summary,
+        collapsedSummaryKind: 'plugin',
+      })
+    }
+    segment = []
+    segmentPluginId = undefined
+  }
   for (const record of records) {
     const pluginId = record.cell.pluginGroupId
-    if (pluginId === undefined || !collapsedPlugins.has(pluginId)) continue
-    const group = grouped.get(pluginId) ?? []
-    group.push(record)
-    grouped.set(pluginId, group)
+    if (pluginId === undefined) {
+      flushSegment()
+      result.push(record)
+      continue
+    }
+    if (segment.length > 0 && pluginId !== segmentPluginId) flushSegment()
+    if (segment.length === 0) segmentPluginId = pluginId
+    segment.push(record)
   }
-  const emitted = new Set<string>()
-  return records.flatMap((record) => {
-    const pluginId = record.cell.pluginGroupId
-    if (pluginId === undefined || !collapsedPlugins.has(pluginId)) return [record]
-    if (emitted.has(pluginId)) return []
-    emitted.add(pluginId)
-    const group = grouped.get(pluginId) ?? [record]
-    const injections = group.filter(item => item.cell.kind === 'context').length
-    const toolCalls = group.filter(item => item.cell.kind === 'tool' || item.cell.kind === 'subtool').length
-    const summary = [
-      injections > 0 ? `${injections} ${injections === 1 ? 'injection' : 'injections'}` : '',
-      toolCalls > 0 ? `${toolCalls} ${toolCalls === 1 ? 'tool call' : 'tool calls'}` : '',
-    ].filter(Boolean).join(' · ')
-    return [{
-      ...record,
-      turnEnd: group.at(-1)?.turnEnd ?? record.turnEnd,
-      collapsedSummary: summary,
-      collapsedSummaryKind: 'plugin' as const,
-    }]
-  })
+  flushSegment()
+  return result
 }
 
 function assistantToolCalls(
@@ -2407,8 +2419,8 @@ export function TrajectoryTable({
                               onToggleTurn(record.turn)
                             } else if (record.collapsedSummaryKind === 'host') {
                               onToggleHost(record.cell.index)
-                            } else if (record.collapsedSummaryKind === 'plugin' && record.cell.pluginGroupId !== undefined) {
-                              onTogglePlugin(record.cell.pluginGroupId)
+                            } else if (record.collapsedSummaryKind === 'plugin') {
+                              onTogglePlugin(trajectoryRecordId(record.cell))
                             } else onToggleAssistant(trajectoryRecordId(record.cell))
                           }
                           : () => { selectRecord(record.cell.index) }}
@@ -2445,8 +2457,8 @@ export function TrajectoryTable({
                             onToggleTurn(record.turn)
                           } else if (record.collapsedSummaryKind === 'host') {
                             onToggleHost(record.cell.index)
-                          } else if (record.collapsedSummaryKind === 'plugin' && record.cell.pluginGroupId !== undefined) {
-                            onTogglePlugin(record.cell.pluginGroupId)
+                          } else if (record.collapsedSummaryKind === 'plugin') {
+                            onTogglePlugin(trajectoryRecordId(record.cell))
                           } else onToggleAssistant(trajectoryRecordId(record.cell))
                           return
                         }
