@@ -32,6 +32,7 @@ export interface ChatMessage {
     contextSource?: unknown;
     contextForm?: string;
     contextFiles?: UploadedFileMeta[];
+    pluginGroup?: boolean;
     retry?: number;
     retryDelayMs?: number;
     retryState?: 'scheduled' | 'started' | 'cancelled';

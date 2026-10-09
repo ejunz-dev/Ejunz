@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { IconChevronDownOutline14 } from '../../../icons';
+import { groupAgentPluginContextMessages } from '../../../runtime/conversation';
 import type { ChatMessage } from '../../types';
 import { ChatMessageView } from './ChatMessage';
 import css from './ChatView.module.css';
@@ -173,13 +174,14 @@ export function ChatView({ messages, running, runningTurnStartTime, historyHasMo
         anchorRef.current = anchorOf(local, scrollPortOf(local));
         onLoadOlder();
     };
+    const visibleMessages = useMemo(() => groupAgentPluginContextMessages(messages), [messages]);
 
     return <div className={css.root}>
         <div ref={localRef} className={css.scroll}>
             <div className={css.column} data-chat-flow="">
                 {historyHasMore && <div className={css.older}><button type="button" disabled={loadingOlder} onClick={loadOlder}>{loadingOlder ? `加载中…（${olderRange}）` : `加载历史消息（${olderRange}）`}</button></div>}
-                {messages.length
-                    ? messages.map((message) => <div key={message.key} className={css.flowItem} data-chat-anchor-key={message.key} data-chat-flow-key={message.key} data-chat-flow-kind={message.role}><ChatMessageView message={message} onOpenFile={onOpenFile} onOpenDetails={onOpenDetails} /></div>)
+                {visibleMessages.length
+                    ? visibleMessages.map((message) => <div key={message.key} className={css.flowItem} data-chat-anchor-key={message.key} data-chat-flow-key={message.key} data-chat-flow-kind={message.role}><ChatMessageView message={message} onOpenFile={onOpenFile} onOpenDetails={onOpenDetails} /></div>)
                     : <div className={css.hint}>发送消息开始对话</div>}
                 {running && <TurnStatus startTime={runningTurnStartTime} />}
             </div>

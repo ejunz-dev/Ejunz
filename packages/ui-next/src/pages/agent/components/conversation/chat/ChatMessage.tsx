@@ -12,6 +12,18 @@ import { ToolRow } from './ToolRow';
 import { TurnStatusRow } from './TurnStatusRow';
 
 export function ChatMessageView({ message, onOpenFile, onOpenDetails }: { message: ChatMessage; onOpenFile?: (path: string) => void; onOpenDetails?: (message: ChatMessage) => void }) {
+    if (message.pluginGroup) {
+        return <div className={css.pluginGroup}>
+            <div className={css.pluginGroupHeader}>
+                <span className={css.pluginGroupIcon} aria-hidden="true">◈</span>
+                <span className={css.pluginGroupTitle}>{message.contextLabel}</span>
+                <span className={css.pluginGroupBadge}>插件</span>
+            </div>
+            <div className={css.pluginGroupChildren}>
+                {message.children?.map((child) => <ChatMessageView key={child.key} message={child} onOpenFile={onOpenFile} onOpenDetails={onOpenDetails} />)}
+            </div>
+        </div>;
+    }
     if (message.role === 'user') {
         return <div className={`${css.userRow} eja-message-user`}><div className={`${css.userStack} eja-userStack`}><div className={css.userLine}><div className={`${css.bubble} eja-bubble`}><PlainText text={message.text} /></div>{message.sendStatus && <span className={`${css.sendStatus} ${message.sendStatus === 'sending' ? css.sendStatusSending : css.sendStatusSent}`} role="status" aria-label={message.sendStatus === 'sending' ? '发送中' : '已发送'} title={message.sendStatus === 'sending' ? '发送中' : '已发送'}>{message.sendStatus === 'sending' ? <span className={css.sendSpinner} /> : '✓'}</span>}</div></div><MessageActions text={message.text} time={message.time} clock="start" /></div>;
     }

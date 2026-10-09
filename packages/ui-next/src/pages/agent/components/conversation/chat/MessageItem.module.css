@@ -74,6 +74,42 @@
   padding: 2px 0;
 }
 
+.pluginGroup {
+  padding: 5px 0;
+  border-left: 2px solid var(--dsw-alias-state-business-primary);
+}
+
+.pluginGroupHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xs-13);
+}
+
+.pluginGroupIcon {
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.pluginGroupTitle {
+  font-weight: 600;
+}
+
+.pluginGroupBadge {
+  color: var(--dsw-alias-label-caption);
+  font-size: 10px;
+}
+
+.pluginGroupChildren {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 4px 0 0 15px;
+  padding-left: 9px;
+  border-left: 1px solid var(--dsw-alias-border-l1);
+}
+
 /* Compaction marker: one dim 24px row with a context icon at rest and a
    hover/focus disclosure for the summary body. Dimmed title (not
    label-primary) — the row is a boundary notice, not conversation content. */
