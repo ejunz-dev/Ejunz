@@ -15,6 +15,7 @@ export function ToolRow({ message, onOpenFile, onOpenDetails }: { message: ChatM
     const [expanded, setExpanded] = useState(false);
     const name = message.toolName ?? 'tool';
     const model = toolRowModel(message);
+    const title = name.startsWith('base_') ? `${model.title} · Ejunz Base · ${name}` : model.title;
     const icon = model.variant === 'bash'
         ? <IconApiOutline14 size={14} />
         : model.variant === 'read'
@@ -35,7 +36,7 @@ export function ToolRow({ message, onOpenFile, onOpenDetails }: { message: ChatM
             titleClassName={css.title}
             chevronClassName={css.chevron}
             icon={leadingFor(model.state, icon)}
-            title={model.title}
+            title={title}
             open={expanded}
             expandable={expandable}
             expandOnRowClick
