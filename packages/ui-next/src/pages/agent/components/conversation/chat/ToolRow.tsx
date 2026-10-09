@@ -17,6 +17,9 @@ export function ToolRow({ message, plugins, onOpenFile, onOpenDetails }: { messa
     const model = toolRowModel(message);
     const plugin = plugins.find((item) => item.toolPrefixes?.some((prefix) => prefix.length > 0 && name.startsWith(prefix)));
     const title = plugin ? `${model.title} · ${plugin.displayName} · ${name}` : model.title;
+    const summary = plugin && model.summary.startsWith(`${name} · `)
+        ? model.summary.slice(name.length + 3)
+        : model.summary;
     const icon = model.variant === 'bash'
         ? <IconApiOutline14 size={14} />
         : model.variant === 'read'
@@ -42,7 +45,7 @@ export function ToolRow({ message, plugins, onOpenFile, onOpenDetails }: { messa
             expandable={expandable}
             expandOnRowClick
             onToggle={() => setExpanded((value) => !value)}
-            collapsedContent={<><span className={css.sep} aria-hidden />{model.filePath && onOpenFile && model.errorSummary === undefined ? <button type="button" className={css.fileLink} onClick={(event) => { event.stopPropagation(); onOpenFile(model.filePath!); }}>{model.summary}</button> : <span className={`${css.summary}${model.errorSummary !== undefined ? ` ${css.errorSummary}` : ''}`}>{model.summary}</span>}</>}
+            collapsedContent={<><span className={css.sep} aria-hidden />{model.filePath && onOpenFile && model.errorSummary === undefined ? <button type="button" className={css.fileLink} onClick={(event) => { event.stopPropagation(); onOpenFile(model.filePath!); }}>{summary}</button> : <span className={`${css.summary}${model.errorSummary !== undefined ? ` ${css.errorSummary}` : ''}`}>{summary}</span>}</>}
         >
             <div className={css.bodyWrap}><ToolViewCard variant={model.variant} input={model.input} output={model.output} meta={model.meta} error={model.state === 'error'} /><button type="button" className={css.inspectButton} onClick={(event) => { event.stopPropagation(); onOpenDetails?.(message); }}>查看详情</button>{message.children?.length ? <div className="eza-toolChildren">{message.children.map((child) => <ToolRow key={child.key} message={child} plugins={plugins} onOpenFile={onOpenFile} onOpenDetails={onOpenDetails} />)}</div> : null}</div>
         </DisclosureRow>
