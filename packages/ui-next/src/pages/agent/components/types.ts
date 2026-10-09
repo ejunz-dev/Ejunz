@@ -44,6 +44,14 @@ export interface ChatMessage {
     pendingSessionId?: string;
 }
 
+export interface AgentPluginView {
+    pluginId: string;
+    displayName: string;
+    description: string;
+    enabled: boolean;
+    toolPrefixes?: readonly string[];
+}
+
 export interface SessionModels {
     current: { provider: string; model: string; reasoningEffort?: string };
     routable: boolean;

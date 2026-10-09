@@ -58,6 +58,7 @@ export function apply(ctx: Context) {
         pluginId: 'base',
         displayName: 'Ejunz Base',
         description: '选择一个 Ejunz Base 作为会话上下文，并使用 Base 工具处理其中的内容。',
+        toolPrefixes: ['base_'],
         defaultEnabled: true,
     });
     ctx.effect(() => unregister);

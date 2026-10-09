@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../../types';
+import type { AgentPluginView, ChatMessage } from '../../types';
 import { MarkdownText, PlainText } from '../../primitives/markdown/MarkdownText';
 import { ReasoningBlock } from './ReasoningBlock';
 import { RetryRow } from './RetryRow';
@@ -11,7 +11,7 @@ import { MessageActions } from './MessageActions';
 import { ToolRow } from './ToolRow';
 import { TurnStatusRow } from './TurnStatusRow';
 
-export function ChatMessageView({ message, onOpenFile, onOpenDetails }: { message: ChatMessage; onOpenFile?: (path: string) => void; onOpenDetails?: (message: ChatMessage) => void }) {
+export function ChatMessageView({ message, plugins, onOpenFile, onOpenDetails }: { message: ChatMessage; plugins: readonly AgentPluginView[]; onOpenFile?: (path: string) => void; onOpenDetails?: (message: ChatMessage) => void }) {
     if (message.pluginGroup) {
         return <div className={css.pluginGroup}>
             <div className={css.pluginGroupHeader}>
@@ -20,7 +20,7 @@ export function ChatMessageView({ message, onOpenFile, onOpenDetails }: { messag
                 <span className={css.pluginGroupBadge}>插件</span>
             </div>
             <div className={css.pluginGroupChildren}>
-                {message.children?.map((child) => <ChatMessageView key={child.key} message={child} onOpenFile={onOpenFile} onOpenDetails={onOpenDetails} />)}
+                {message.children?.map((child) => <ChatMessageView key={child.key} message={child} plugins={plugins} onOpenFile={onOpenFile} onOpenDetails={onOpenDetails} />)}
             </div>
         </div>;
     }
@@ -34,7 +34,7 @@ export function ChatMessageView({ message, onOpenFile, onOpenDetails }: { messag
             : <MarkdownText key={index} text={segment.text} />)}</div>{!message.running && <MessageActions text={message.text} time={message.time} clock="end" />}</div>;
     }
     if (message.role === 'tool') {
-        return <ToolRow message={message} onOpenFile={onOpenFile} onOpenDetails={onOpenDetails} />;
+        return <ToolRow message={message} plugins={plugins} onOpenFile={onOpenFile} onOpenDetails={onOpenDetails} />;
     }
     if (message.role === 'retry') {
         return <RetryRow message={message} />;

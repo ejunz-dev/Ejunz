@@ -33,7 +33,7 @@ import { ToolsSection } from './components/settings/ToolsSection';
 import { DeepSeekOnboarding } from './components/settings/DeepSeekOnboarding';
 import { SettingsDocumentAction } from './components/settings/SettingsDocumentAction';
 import { SettingsRoot } from './components/settings/SettingsRoot';
-import type { ChatMessage, PendingApproval, PendingQuestion, QueueItem, SessionModels } from './components/types';
+import type { AgentPluginView, ChatMessage, PendingApproval, PendingQuestion, QueueItem, SessionModels } from './components/types';
 import { domainPrefix, useAgentRpc } from './runtime/rpc';
 import { notifyAgentPluginDisabled, registerAgentPluginUiLoader, setEnabledAgentPluginSlots } from './runtime/agent-plugin-slots';
 import { useAgentTheme } from './runtime/theme';
@@ -72,13 +72,6 @@ function updateAgentSelectionUrl(patch: { nodeId?: string | null; cardId?: strin
     }
     const next = `${window.location.pathname}${params.toString() ? `?${params}` : ''}${window.location.hash}`;
     window.history.replaceState(window.history.state, '', next);
-}
-
-interface AgentContextPluginOption {
-    pluginId: string;
-    displayName: string;
-    description: string;
-    enabled: boolean;
 }
 
 type DialogState =
@@ -442,7 +435,7 @@ export default function AgentPage() {
     const [treeOpen, setTreeOpen] = useState(false);
     const [activeTreeNodeId, setActiveTreeNodeId] = useState<string | null>(() => readAgentSelection().nodeId ?? pageRootNodeId);
     const [bases, setBases] = useState<BaseView[]>([]);
-    const [agentContextPlugins, setAgentContextPlugins] = useState<AgentContextPluginOption[]>([]);
+    const [agentContextPlugins, setAgentContextPlugins] = useState<AgentPluginView[]>([]);
     const [enabledAgentPluginIds, setEnabledAgentPluginIds] = useState<Set<string>>(new Set());
     const [draftBaseId, setDraftBaseId] = useState<number | undefined>();
     const [draftSessionId, setDraftSessionId] = useState<string | null>(null);
@@ -585,7 +578,7 @@ export default function AgentPage() {
 
     const loadAgentContextPlugins = useCallback(async () => {
         try {
-            const value = await rpc('agentPlugins.list', {}) as { plugins?: AgentContextPluginOption[] };
+            const value = await rpc('agentPlugins.list', {}) as { plugins?: AgentPluginView[] };
             const plugins = value.plugins ?? [];
             const enabled = new Set(plugins.filter((plugin) => plugin.enabled).map((plugin) => plugin.pluginId));
             setAgentContextPlugins(plugins);
@@ -2129,7 +2122,7 @@ export default function AgentPage() {
                                     view={view === 'trajectory' ? 'trajectory' : 'chat'}
                                     onViewChange={setView}
                                     hideHeader
-                                    chat={<ChatView messages={messages} running={running} runningTurnStartTime={runningTurnStart} historyHasMore={historyHasMore} loadingOlder={loadingOlder} loadedMessages={loadedHistoryMessages} totalMessages={historyTotalMessages} historyPageSize={HISTORY_PAGE_SIZE} onLoadOlder={() => void loadOlder()} onOpenFile={openFile} onOpenDetails={(tool) => { setSelectedTool(tool); }} />}
+                                    chat={<ChatView messages={messages} plugins={agentContextPlugins} running={running} runningTurnStartTime={runningTurnStart} historyHasMore={historyHasMore} loadingOlder={loadingOlder} loadedMessages={loadedHistoryMessages} totalMessages={historyTotalMessages} historyPageSize={HISTORY_PAGE_SIZE} onLoadOlder={() => void loadOlder()} onOpenFile={openFile} onOpenDetails={(tool) => { setSelectedTool(tool); }} />}
                                     trajectory={<TrajectoryView messages={messages} history={history} session={currentSession} historyHasMore={historyHasMore} loadingOlder={loadingOlder} onLoadOlder={loadOlder} />}
                                     composer={<div className="eza-composerLayer">
                                         <InputBar input={input} setInput={setInput} send={send} cancel={cancel} running={running} sending={sending} attachments={attachments} onAddFiles={addAttachments} onRemoveAttachment={removeAttachment} models={composerModels} showModelPicker={false} projections={currentSession.projections?.values} modelMenuOpen={modelMenuOpen} setModelMenuOpen={setModelMenuOpen} selectModel={selectModel} notice={currentSessionError ?? loadError} placeholder="输入消息，Shift+Enter 换行">
