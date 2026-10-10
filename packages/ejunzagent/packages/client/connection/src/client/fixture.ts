@@ -2356,7 +2356,7 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         }
         const log = logOf(sessionId)
         if ('snapshot' in request.payload) {
-          const previous = [...log].reverse().find(event => event.type === 'session/addons' || event.type === 'session/plugins')
+          const previous = [...log].reverse().find(event => event.type === 'session/addons' && 'snapshot' in event.data)
           if (previous) {
             return ok(request, { accepted: true as const, seq: previous.seq })
           }

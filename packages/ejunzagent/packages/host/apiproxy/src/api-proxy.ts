@@ -2549,7 +2549,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         try {
           if ('snapshot' in request.payload) {
             const previous = [...found.agent.session.events].reverse().find(event =>
-              event.type === 'session/addons' || event.type === 'session/plugins',
+              event.type === 'session/addons' && 'snapshot' in event.data,
             )
             if (previous) {
               return ok(request, { accepted: true as const, seq: previous.seq })

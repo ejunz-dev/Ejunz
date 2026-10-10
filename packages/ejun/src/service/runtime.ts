@@ -290,6 +290,13 @@ async function callUpstream(method: string, payload: Record<string, unknown>, ta
             payload,
         });
         upstreamTransportUnavailable = false;
+        if (method === 'session.prompt' && reply.body.result?.ok && typeof payload.sessionId === 'string') {
+            try {
+                await ensureInitialAddonSnapshot(payload.sessionId, target);
+            } catch (error) {
+                logger.warn('[addons] initial snapshot failed session=%s error=%s', payload.sessionId, error instanceof Error ? error.message : String(error));
+            }
+        }
         return reply;
     } catch (error) {
         if (!upstreamTransportUnavailable) {
@@ -535,20 +542,6 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
     };
     await agentDataAdapter.upsertSession(scope, summary);
     await selectHostModel(sessionId, link, summary.model);
-    try {
-        const recorded = await callUpstream('session.addons', {
-            sessionId,
-            snapshot: listAgentAddons().map((addon) => ({
-                addonId: addon.addonId,
-                enabled: agentAddonEnabled(domainSettings, addon.addonId),
-            })),
-        }, link);
-        if (!recorded.body.result?.ok) {
-            logger.warn('[addons] initial addon snapshot failed session=%s error=%s', sessionId, recorded.body.error?.message || 'unknown error');
-        }
-    } catch (error) {
-        logger.warn('[addons] initial addon snapshot failed session=%s error=%s', sessionId, error instanceof Error ? error.message : String(error));
-    }
     await injectHostContext(sessionId, link);
     if (selectedBase) {
         const injected = await callUpstream('session.inject', {
@@ -1460,6 +1453,68 @@ function agentAddonEnabled(settings: AgentDomainSettings, addonId: string): bool
         ? currentOverrides[addonId]
         : legacyOverrides[addonId];
     return typeof override === 'boolean' ? override : addon.defaultEnabled !== false;
+}
+
+const recordedAddonSnapshots = new Set<string>();
+const pendingAddonSnapshots = new Map<string, Promise<void>>();
+
+function rememberAddonSnapshot(sessionId: string): void {
+    recordedAddonSnapshots.add(sessionId);
+    if (recordedAddonSnapshots.size > 1024) {
+        const oldest = recordedAddonSnapshots.values().next().value;
+        if (oldest !== undefined) recordedAddonSnapshots.delete(oldest);
+    }
+}
+
+async function ensureInitialAddonSnapshot(sessionId: string, target?: RuntimeLink): Promise<void> {
+    if (recordedAddonSnapshots.has(sessionId)) return;
+    const pending = pendingAddonSnapshots.get(sessionId);
+    if (pending) return await pending;
+    const write = (async () => {
+        const session = await AgentModel.getSessionAny(sessionId);
+        if (!session) return;
+        const events = await AgentModel.listAddonEvents(session.domainId, session.userId, sessionId);
+        const recordedAddonIds = new Set<string>();
+        for (const entry of events) {
+            const data = entry.data && typeof entry.data === 'object' ? entry.data as Record<string, unknown> : {};
+            if (entry.type === 'session/addons' && Array.isArray(data.snapshot)) {
+                for (const value of data.snapshot) {
+                    if (value && typeof value === 'object' && typeof (value as Record<string, unknown>).addonId === 'string') {
+                        recordedAddonIds.add((value as Record<string, unknown>).addonId as string);
+                    }
+                }
+                continue;
+            }
+            const addonId = entry.type === 'session/addons' ? data.addonId
+                : entry.type === 'session/plugins' ? data.pluginId : undefined;
+            if (typeof addonId === 'string') recordedAddonIds.add(addonId);
+        }
+        const addons = listAgentAddons().filter((addon) => !recordedAddonIds.has(addon.addonId));
+        if (addons.length === 0) {
+            rememberAddonSnapshot(sessionId);
+            return;
+        }
+        const settings = await agentDataAdapter.getDomainSettings(session.domainId);
+        const link = target ?? await linkForSession({ domainId: session.domainId, userId: session.userId }, sessionId);
+        const recorded = await callUpstream('session.addons', {
+            sessionId,
+            snapshot: addons.map((addon) => ({
+                addonId: addon.addonId,
+                enabled: agentAddonEnabled(settings, addon.addonId),
+            })),
+        }, link);
+        if (!recorded.body.result?.ok) {
+            logger.warn('[addons] initial snapshot failed session=%s error=%s', sessionId, recorded.body.error?.message || 'unknown error');
+            return;
+        }
+        rememberAddonSnapshot(sessionId);
+    })();
+    pendingAddonSnapshots.set(sessionId, write);
+    try {
+        await write;
+    } finally {
+        if (pendingAddonSnapshots.get(sessionId) === write) pendingAddonSnapshots.delete(sessionId);
+    }
 }
 
 async function agentAddonsList(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
