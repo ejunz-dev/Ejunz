@@ -10,10 +10,11 @@ interface AddonTool {
 interface AddonMountRowProps {
     label: string;
     description: string;
+    enabled: boolean;
     tools: readonly AddonTool[];
 }
 
-export function AddonMountRow({ label, description, tools }: AddonMountRowProps) {
+export function AddonMountRow({ label, description, enabled, tools }: AddonMountRowProps) {
     const [open, setOpen] = useState(false);
     return <DisclosureRow
         className={css.root}
@@ -25,11 +26,11 @@ export function AddonMountRow({ label, description, tools }: AddonMountRowProps)
         expandable
         expandOnRowClick
         onToggle={() => setOpen((value) => !value)}
-        collapsedContent={<><span className={css.separator} aria-hidden /><span className={css.count}>{tools.length} 个工具</span></>}
+        collapsedContent={<><span className={css.separator} aria-hidden /><span className={css.count}>{enabled ? `${tools.length} 个工具` : '已卸载'}</span></>}
     >
         <div className={css.body}>
             {description && <p className={css.description}>{description}</p>}
-            {tools.length > 0 ? <ul className={css.tools}>
+            {!enabled ? <p className={css.empty}>该 Addon 已从当前会话卸载。</p> : tools.length > 0 ? <ul className={css.tools}>
                 {tools.map((tool) => <li className={css.tool} key={tool.name}>
                     <code className={css.name}>{tool.name}</code>
                     <p className={css.toolDescription}>{tool.description}</p>

@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { IconChevronDownOutline14 } from '../../../icons';
-import { orderAgentAddonMessages } from '../../../runtime/conversation';
 import type { AgentAddonView, ChatMessage } from '../../types';
 import { ChatMessageView } from './ChatMessage';
 import css from './ChatView.module.css';
@@ -175,7 +174,7 @@ export function ChatView({ messages, addons, running, runningTurnStartTime, hist
         anchorRef.current = anchorOf(local, scrollPortOf(local));
         onLoadOlder();
     };
-    const visibleMessages = useMemo(() => orderAgentAddonMessages(messages, addons), [messages, addons]);
+    const visibleMessages = messages;
 
     return <div className={css.root}>
         <div ref={localRef} className={css.scroll}>

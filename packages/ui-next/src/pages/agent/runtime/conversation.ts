@@ -1,4 +1,4 @@
-import type { AgentAddonView, ChatMessage, ChatSegment, QueueItem } from '../components/types';
+import type { ChatMessage, ChatSegment, QueueItem } from '../components/types';
 import { FILE_INJECTION_PLUGIN, FILE_INJECTION_SECTION, parseFileInjection, type UploadedFileMeta } from './uploads';
 
 export type JsonObject = Record<string, unknown>;
@@ -407,29 +407,6 @@ export function fileInjectionsAfterUser(messages: ChatMessage[]): ChatMessage[] 
         if (injected !== undefined) result.push(...injected);
     });
     return result;
-}
-
-export function orderAgentAddonMessages(messages: readonly ChatMessage[], addons: readonly AgentAddonView[]): ChatMessage[] {
-    const addonMounts = new Map<string, ChatMessage>();
-    const pluginInjections: ChatMessage[] = [];
-    const regularMessages: ChatMessage[] = [];
-    for (const message of messages) {
-        if (message.role === 'addon' && message.addonMount) {
-            addonMounts.set(message.addonMount.addonId, message);
-            continue;
-        }
-        if (message.role === 'context') {
-            const source = asObject(message.contextSource);
-            if (source.kind === 'plugin' && typeof source.plugin === 'string'
-                && addons.some((addon) => addon.contextSources?.includes(source.plugin as string))) {
-                pluginInjections.push(message);
-                continue;
-            }
-        }
-        regularMessages.push(message);
-    }
-    const addonMountMessages = [...addonMounts.values()].filter((message) => message.addonMount?.enabled);
-    return [...addonMountMessages, ...pluginInjections, ...regularMessages];
 }
 
 export function eventsToMessages(entries: HistoryEntry[]): ChatMessage[] {

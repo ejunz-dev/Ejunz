@@ -39,12 +39,13 @@ function addonForContextMessage(message: ChatMessage, addons: readonly AgentAddo
 
 export function ChatMessageView({ message, addons, onOpenFile, onOpenDetails }: { message: ChatMessage; addons: readonly AgentAddonView[]; onOpenFile?: (path: string) => void; onOpenDetails?: (message: ChatMessage) => void }) {
     if (message.role === 'addon' && message.addonMount) {
-        const { addonId } = message.addonMount;
+        const { addonId, enabled } = message.addonMount;
         const addon = addons.find((item) => item.addonId === addonId);
         const displayName = addon?.displayName ?? addonId;
         return <AddonMountRow
-            label={`插件挂载 · ${displayName}`}
+            label={`插件${enabled ? '挂载' : '卸载'} · ${displayName}`}
             description={addon?.description ?? message.text}
+            enabled={enabled}
             tools={addon?.tools ?? []}
         />;
     }
