@@ -2345,7 +2345,7 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         return ok(request, { accepted: true as const })
       },
       addons: (request) => {
-        const { sessionId, addonId, enabled } = request.payload
+        const { sessionId } = request.payload
         const summary = summaryOf(sessionId)
         if (summary === undefined) {
           return err(request, {
@@ -2355,10 +2355,28 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
           })
         }
         const log = logOf(sessionId)
-        const previous = [...log].reverse().find(event =>
-          event.type === 'session/addons' && event.data.addonId === addonId,
-        )
-        if (previous?.type === 'session/addons' && previous.data.enabled === enabled) {
+        if ('snapshot' in request.payload) {
+          const previous = [...log].reverse().find(event => event.type === 'session/addons' || event.type === 'session/plugins')
+          if (previous) {
+            return ok(request, { accepted: true as const, seq: previous.seq })
+          }
+          summary.updatedAt = Date.now()
+          const seq = log.length
+          append(sessionId, { type: 'session/addons', data: { snapshot: request.payload.snapshot } })
+          return ok(request, { accepted: true as const, seq })
+        }
+        const { addonId, enabled } = request.payload
+        const previous = [...log].reverse().find(event => event.type === 'session/addons' && (
+          'addonId' in event.data
+            ? event.data.addonId === addonId
+            : event.data.snapshot.some(state => state.addonId === addonId)
+        ))
+        const previousEnabled = previous?.type === 'session/addons'
+          ? 'addonId' in previous.data
+            ? previous.data.enabled
+            : previous.data.snapshot.find(state => state.addonId === addonId)?.enabled
+          : undefined
+        if (previous && previousEnabled === enabled) {
           return ok(request, { accepted: true as const, seq: previous.seq })
         }
         summary.updatedAt = Date.now()

@@ -40,6 +40,8 @@ describe('FixtureApiClient API additions', () => {
 
   it('records addon mounts separately from context messages', async () => {
     const client = new FixtureApiClient()
+    const before = await client.sessions.history({ sessionId: alpha, maxMessages: 100 })
+    if (!before.result.ok) throw new Error(before.result.error.message)
     const payload = { sessionId: alpha, addonId: 'base', enabled: false }
     const recorded = await client.sessions.addons(payload)
     const repeated = await client.sessions.addons(payload)
@@ -51,10 +53,8 @@ describe('FixtureApiClient API additions', () => {
     const addonEvents = history.result.value.events.filter(entry => entry.event.type === 'session/addons')
     expect(addonEvents).toHaveLength(1)
     expect(addonEvents[0]?.event).toMatchObject({ type: 'session/addons', data: { addonId: 'base', enabled: false } })
-    expect(history.result.value.events.some(entry =>
-      entry.event.type === 'user/message'
-      && entry.event.data.source.kind === 'plugin'
-      && entry.event.data.source.plugin === 'ejunz-agent-plugin-lifecycle')).toBe(false)
+    expect(history.result.value.events.filter(entry => entry.event.type === 'user/message'))
+      .toHaveLength(before.result.value.events.filter(entry => entry.event.type === 'user/message').length)
 
     const missing = await client.sessions.addons({
       sessionId: 'unknown-fixture-session' as SessionId,
@@ -64,6 +64,45 @@ describe('FixtureApiClient API additions', () => {
     expect(missing.result.ok).toBe(false)
     if (missing.result.ok) throw new Error('fixture accepted an addon event for a missing session')
     expect(missing.result.error.code).toBe('session-not-found')
+  })
+
+  it('records initial addon state in one log-only snapshot', async () => {
+    const client = new FixtureApiClient()
+    const before = await client.sessions.history({ sessionId: alpha, maxMessages: 100 })
+    if (!before.result.ok) throw new Error(before.result.error.message)
+    const snapshot = [
+      { addonId: 'agent', enabled: true },
+      { addonId: 'base', enabled: false },
+    ]
+    const recorded = await client.sessions.addons({ sessionId: alpha, snapshot })
+    const repeated = await client.sessions.addons({ sessionId: alpha, snapshot })
+    const history = await client.sessions.history({ sessionId: alpha, maxMessages: 100 })
+
+    expect(recorded.result.ok).toBe(true)
+    expect(repeated.result).toEqual(recorded.result)
+    if (!history.result.ok) throw new Error(history.result.error.message)
+    const addonEvents = history.result.value.events.filter(entry => entry.event.type === 'session/addons')
+    expect(addonEvents).toHaveLength(1)
+    expect(addonEvents[0]?.event).toMatchObject({ type: 'session/addons', data: { snapshot } })
+    expect(history.result.value.events.filter(entry => entry.event.type === 'user/message'))
+      .toHaveLength(before.result.value.events.filter(entry => entry.event.type === 'user/message').length)
+  })
+
+  it('lets individual addon changes override an initial snapshot', async () => {
+    const client = new FixtureApiClient()
+    await client.sessions.addons({
+      sessionId: alpha,
+      snapshot: [{ addonId: 'base', enabled: false }, { addonId: 'agent', enabled: true }],
+    })
+    const changed = await client.sessions.addons({ sessionId: alpha, addonId: 'base', enabled: true })
+    const repeated = await client.sessions.addons({ sessionId: alpha, addonId: 'base', enabled: true })
+    const history = await client.sessions.history({ sessionId: alpha, maxMessages: 100 })
+
+    expect(repeated.result).toEqual(changed.result)
+    if (!history.result.ok) throw new Error(history.result.error.message)
+    const addonEvents = history.result.value.events.filter(entry => entry.event.type === 'session/addons')
+    expect(addonEvents).toHaveLength(2)
+    expect(addonEvents.at(-1)?.event).toMatchObject({ type: 'session/addons', data: { addonId: 'base', enabled: true } })
   })
 
   it('projects only the known settings namespace', async () => {

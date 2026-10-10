@@ -535,20 +535,20 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
     };
     await agentDataAdapter.upsertSession(scope, summary);
     await selectHostModel(sessionId, link, summary.model);
-    await Promise.all(listAgentAddons().map(async (addon) => {
-        try {
-            const recorded = await callUpstream('session.addons', {
-                sessionId,
+    try {
+        const recorded = await callUpstream('session.addons', {
+            sessionId,
+            snapshot: listAgentAddons().map((addon) => ({
                 addonId: addon.addonId,
                 enabled: agentAddonEnabled(domainSettings, addon.addonId),
-            }, link);
-            if (!recorded.body.result?.ok) {
-                logger.warn('[addons] initial addon mount failed session=%s addon=%s error=%s', sessionId, addon.addonId, recorded.body.error?.message || 'unknown error');
-            }
-        } catch (error) {
-            logger.warn('[addons] initial addon mount failed session=%s addon=%s error=%s', sessionId, addon.addonId, error instanceof Error ? error.message : String(error));
+            })),
+        }, link);
+        if (!recorded.body.result?.ok) {
+            logger.warn('[addons] initial addon snapshot failed session=%s error=%s', sessionId, recorded.body.error?.message || 'unknown error');
         }
-    }));
+    } catch (error) {
+        logger.warn('[addons] initial addon snapshot failed session=%s error=%s', sessionId, error instanceof Error ? error.message : String(error));
+    }
     await injectHostContext(sessionId, link);
     if (selectedBase) {
         const injected = await callUpstream('session.inject', {

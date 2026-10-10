@@ -319,12 +319,12 @@ export const sessionInjectValueSchema = z.object({
   accepted: z.literal(true),
 }) satisfies z.ZodType<Wire<ResponseValue<'session.inject'>>>
 
-/** session.addons request payload: record an addon mount without adding model context. */
-export const sessionAddonsRequestSchema = z.object({
-  sessionId: sessionIdSchema,
-  addonId: z.string().min(1),
-  enabled: z.boolean(),
-}) satisfies z.ZodType<Wire<RequestPayload<'session.addons'>>>
+/** session.addons request payload: record one change or one initial snapshot without adding model context. */
+const sessionAddonStateSchema = z.object({ addonId: z.string().min(1), enabled: z.boolean() })
+export const sessionAddonsRequestSchema = z.union([
+  z.object({ sessionId: sessionIdSchema, addonId: z.string().min(1), enabled: z.boolean() }),
+  z.object({ sessionId: sessionIdSchema, snapshot: z.array(sessionAddonStateSchema).max(128) }),
+]) satisfies z.ZodType<Wire<RequestPayload<'session.addons'>>>
 
 /** session.addons response value. */
 export const sessionAddonsValueSchema = z.object({

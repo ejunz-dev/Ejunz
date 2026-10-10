@@ -2543,14 +2543,32 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
       },
 
       async addons(request) {
-        const { sessionId, addonId, enabled } = request.payload
+        const { sessionId } = request.payload
         const found = await agentFor(sessionId)
         if ('error' in found) return err(request, found.error)
         try {
-          const previous = [...found.agent.session.events].reverse().find(event =>
-            event.type === 'session/addons' && event.data.addonId === addonId,
-          )
-          if (previous?.type === 'session/addons' && previous.data.enabled === enabled) {
+          if ('snapshot' in request.payload) {
+            const previous = [...found.agent.session.events].reverse().find(event =>
+              event.type === 'session/addons' || event.type === 'session/plugins',
+            )
+            if (previous) {
+              return ok(request, { accepted: true as const, seq: previous.seq })
+            }
+            const event = found.agent.session.append('session/addons', { snapshot: request.payload.snapshot })
+            return ok(request, { accepted: true as const, seq: event.seq })
+          }
+          const { addonId, enabled } = request.payload
+          const previous = [...found.agent.session.events].reverse().find(event => event.type === 'session/addons' && (
+            'addonId' in event.data
+              ? event.data.addonId === addonId
+              : event.data.snapshot.some(state => state.addonId === addonId)
+          ))
+          const previousEnabled = previous?.type === 'session/addons'
+            ? 'addonId' in previous.data
+              ? previous.data.enabled
+              : previous.data.snapshot.find(state => state.addonId === addonId)?.enabled
+            : undefined
+          if (previous && previousEnabled === enabled) {
             return ok(request, { accepted: true as const, seq: previous.seq })
           }
           const event = found.agent.session.append('session/addons', { addonId, enabled })

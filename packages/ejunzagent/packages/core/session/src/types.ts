@@ -296,8 +296,8 @@ export interface SessionEventMap {
   }
   /** Legacy plugin availability record retained for older session logs. */
   'session/plugins': { pluginId: string; enabled: boolean }
-  /** An addon was mounted or unmounted for this session. Log-only; never model context. */
-  'session/addons': { addonId: string; enabled: boolean }
+  /** Session add-on state. A snapshot records initial state together; single entries record later changes. Log-only; never model context. */
+  'session/addons': { addonId: string; enabled: boolean } | { snapshot: { addonId: string; enabled: boolean }[] }
   /** Whole-list snapshot; latest write wins on replay. Log-only UI state; never derived history. */
   'todo/write': { todos: TodoItem[] }
   /**

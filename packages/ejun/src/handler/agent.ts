@@ -23,14 +23,24 @@ const dataError = (message: string): Record<string, unknown> => ({ ok: false, er
 async function mountedAddonsForSession(session: { domainId: string; userId: number; sessionId: string }): Promise<Set<string>> {
     const addonIds = new Set(listAgentAddons().map((addon) => addon.addonId));
     const states = new Map<string, boolean>();
+    const recordState = (addonId: unknown, enabled: unknown) => {
+        if (typeof addonId === 'string' && addonIds.has(addonId) && !states.has(addonId) && typeof enabled === 'boolean') {
+            states.set(addonId, enabled);
+        }
+    };
     for (const entry of await AgentSessionModel.listAddonEvents(session.domainId, session.userId, session.sessionId)) {
         const data = entry.data && typeof entry.data === 'object' ? entry.data as Record<string, unknown> : {};
+        if (entry.type === 'session/addons' && Array.isArray(data.snapshot)) {
+            for (const value of data.snapshot) {
+                const state = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+                recordState(state.addonId, state.enabled);
+            }
+            continue;
+        }
         const addonId = entry.type === 'session/addons'
             ? data.addonId
             : entry.type === 'session/plugins' ? data.pluginId : undefined;
-        if (typeof addonId === 'string' && addonIds.has(addonId) && !states.has(addonId) && typeof data.enabled === 'boolean') {
-            states.set(addonId, data.enabled);
-        }
+        recordState(addonId, data.enabled);
     }
     const domainEnabled = await enabledAgentAddonIds(session.domainId);
     return new Set([...addonIds].filter((addonId) =>

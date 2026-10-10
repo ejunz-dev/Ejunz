@@ -146,6 +146,21 @@ export function assistantKey(event: SessionEvent): string {
     return `assistant-${turn}-${step}-${event.seq}`;
 }
 
+function addonMountMessage(event: SessionEvent, addonId: string, enabled: boolean, key: string): ChatMessage {
+    return {
+        key,
+        role: 'addon',
+        text: addonId,
+        eventType: event.type,
+        time: event.time,
+        addonMount: { addonId, enabled },
+        contextLabel: 'Addon',
+        contextSource: { kind: 'agent-addon', addonId },
+        contextForm: 'snapshot',
+        running: false,
+    };
+}
+
 export function eventMessage(event: SessionEvent): ChatMessage | null {
     const data = asObject(event.data);
     if (event.type === 'session/addons' || event.type === 'session/plugins') {
@@ -153,18 +168,7 @@ export function eventMessage(event: SessionEvent): ChatMessage | null {
             ? typeof data.addonId === 'string' ? data.addonId : ''
             : typeof data.pluginId === 'string' ? data.pluginId : '';
         if (!addonId || typeof data.enabled !== 'boolean') return null;
-        return {
-            key: `session-addon-${event.seq}`,
-            role: 'addon',
-            text: addonId,
-            eventType: event.type,
-            time: event.time,
-            addonMount: { addonId, enabled: data.enabled },
-            contextLabel: 'Addon',
-            contextSource: { kind: 'agent-addon', addonId },
-            contextForm: 'snapshot',
-            running: false,
-        };
+        return addonMountMessage(event, addonId, data.enabled, `session-addon-${event.seq}`);
     }
     if (event.type === 'user/message' || event.type === 'assistant/message') {
         const segments = contentSegments(messageContent(event.data));
@@ -281,11 +285,23 @@ export function settleRunningMessages(messages: ChatMessage[]): ChatMessage[] {
 
 export function applyEvent(messages: ChatMessage[], event: SessionEvent, origin?: Pick<HistoryEntry, 'host' | 'runtimeId'>): ChatMessage[] {
     const settled = event.type === 'turn/end' ? settleRunningMessages(messages) : messages;
-    const rawNext = eventMessage(event);
     const host = origin?.host ?? origin?.runtimeId;
     const hostLabel = host === undefined || origin?.runtimeId === undefined || host === origin.runtimeId
         ? host
         : `${host} (${origin.runtimeId})`;
+    if (event.type === 'session/addons') {
+        const snapshot = asObject(event.data).snapshot;
+        if (Array.isArray(snapshot)) {
+            const mounts = snapshot.flatMap((value): ChatMessage[] => {
+                const state = asObject(value);
+                if (typeof state.addonId !== 'string' || state.enabled !== true) return [];
+                const message = addonMountMessage(event, state.addonId, true, `session-addon-${event.seq}-${state.addonId}`);
+                return [hostLabel === undefined ? message : { ...message, host: hostLabel }];
+            });
+            return [...settled, ...mounts];
+        }
+    }
+    const rawNext = eventMessage(event);
     const next = rawNext === null || hostLabel === undefined ? rawNext : { ...rawNext, host: hostLabel };
     if (next === null) {
         if (event.type === 'assistant/message') {
