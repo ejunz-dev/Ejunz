@@ -7,15 +7,15 @@ import type { SessionModels } from '../types';
 import { InputBar } from '../conversation/skeleton/InputBar';
 import { AgentPresetSeat, type AgentPresetOption } from '../settings/AgentPresetSeat';
 
-interface NewSessionPluginOption {
-    pluginId: string;
+interface NewSessionAddonOption {
+    addonId: string;
     displayName: string;
     description: string;
 }
 
 interface InputConfigDialogProps {
     hosts: readonly HostOption[];
-    agentPlugins: readonly NewSessionPluginOption[];
+    addons: readonly NewSessionAddonOption[];
     selectedHostId: string;
     onPickHost: (runtimeId: string) => void;
     bases: readonly BaseView[];
@@ -63,7 +63,7 @@ function buttonClass(selected: boolean): string {
 }
 
 export function InputConfigDialog({
-    hosts, agentPlugins, selectedHostId, onPickHost,
+    hosts, addons, selectedHostId, onPickHost,
     bases, selectedBaseId, onPickBase, nodes, selectedNodeId, onPickNode, models, selectModel, agentPresetOptions, agentPresetChoice, onSelectAgentPreset, agentPresetError,
     input, setInput, attachments, onAddFiles, onRemoveAttachment, modelMenuOpen, setModelMenuOpen,
     notice, onCancel, sending, loading, onConfirm, onCreateOnly, onClose,
@@ -108,10 +108,10 @@ export function InputConfigDialog({
                     )) : <div className="eza-sessionSettingsLoading" role="status"><span className="eza-sessionSettingsLoadingSpinner" aria-hidden="true" />模型加载中…</div>}
                 </div>
                 <div className="bd-edit-field">
-                    <h3>插件</h3>
+                    <h3>Addons</h3>
                     <div className="bd-edit-tags">
-                        {agentPlugins.map((plugin) => <span className="eza-inputConfigPluginTag" key={plugin.pluginId} title={plugin.description}>{plugin.displayName}</span>)}
-                        {agentPlugins.length === 0 && <span className="bd-muted">当前没有启用的 Agent 插件</span>}
+                        {addons.map((addon) => <span className="eza-inputConfigPluginTag" key={addon.addonId} title={addon.description}>{addon.displayName}</span>)}
+                        {addons.length === 0 && <span className="bd-muted">当前没有可挂载的 Addon</span>}
                     </div>
                 </div>
                 <NewSessionContextSlot

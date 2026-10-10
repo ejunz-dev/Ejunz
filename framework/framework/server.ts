@@ -794,12 +794,12 @@ ${c.response.status} ${endTime - startTime}ms ${c.response.length}`);
         });
     }
 
-    public Tool(name: string, execute: unknown, ...args: unknown[]) {
+    public Tool(addonId: string, name: string, execute: unknown, ...args: unknown[]) {
         const tools = this.ctx.get('tools') as {
-            Tool(name: string, execute: unknown, ...args: unknown[]): unknown;
+            Tool(addonId: string, name: string, execute: unknown, ...args: unknown[]): unknown;
         } | undefined;
         if (!tools) throw new Error('Tool service is unavailable.');
-        return tools.Tool(name, execute, ...args);
+        return tools.Tool(addonId, name, execute, ...args);
     }
 
     public withHandlerClass<T extends string>(

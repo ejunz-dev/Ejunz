@@ -13,7 +13,7 @@ import { httpServer } from '@ejunz/framework';
 import { AgentSessionModel as AgentModel, AgentRuntimeModel, AgentLinkModel, AgentStorageModel } from '../model/agent';
 import { type AgentDisplayPrefs, type AgentDomainSettings, type AgentNodeDoc, type AgentSessionSummary, type AgentSessionType, type AgentWorkspaceDoc } from '../model/agent';
 import { type AgentRuntimeSummary } from '../model/agent';
-import { listAgentContextPlugins } from './agent-context-plugins';
+import { listAgentAddons } from './addons';
 
 interface EjunContext {
     server?: { config?: { port?: number; host?: string } };
@@ -449,7 +449,7 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
         selectedAgentRoot = await AgentModel.ensureAgentRoot(scope.domainId, scope.userId, scope.agentId, selectedAgent.title);
     }
     const selectedBaseDocId = metadata.baseDocId ?? baseDocIdOf(payload.baseDocId);
-    if (selectedBaseDocId && metadata.type !== 'base_detail' && !await isAgentContextPluginEnabled(scope.domainId, 'base')) {
+    if (selectedBaseDocId && metadata.type !== 'base_detail' && !await isAgentAddonEnabled(scope.domainId, 'base')) {
         return rpcError(envelope.rpcId, 'Ejunz Base Agent plugin is disabled');
     }
     let selectedBase: { docId: number; title?: string } | undefined;
@@ -535,6 +535,20 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
     };
     await agentDataAdapter.upsertSession(scope, summary);
     await selectHostModel(sessionId, link, summary.model);
+    for (const addon of listAgentAddons()) {
+        try {
+            const recorded = await callUpstream('session.addons', {
+                sessionId,
+                addonId: addon.addonId,
+                enabled: agentAddonEnabled(domainSettings, addon.addonId),
+            }, link);
+            if (!recorded.body.result?.ok) {
+                logger.warn('[addons] initial addon mount failed session=%s addon=%s error=%s', sessionId, addon.addonId, recorded.body.error?.message || 'unknown error');
+            }
+        } catch (error) {
+            logger.warn('[addons] initial addon mount failed session=%s addon=%s error=%s', sessionId, addon.addonId, error instanceof Error ? error.message : String(error));
+        }
+    }
     await injectHostContext(sessionId, link);
     if (selectedBase) {
         const injected = await callUpstream('session.inject', {
@@ -565,7 +579,7 @@ async function sessionContextSave(envelope: RpcEnvelope, scope: AgentScope): Pro
     }
     let selectedBase: { docId: number; title?: string } | undefined;
     if (selectedBaseDocId !== undefined) {
-        if (session.type !== 'base_detail' && !await isAgentContextPluginEnabled(scope.domainId, 'base')) {
+        if (session.type !== 'base_detail' && !await isAgentAddonEnabled(scope.domainId, 'base')) {
             return rpcError(envelope.rpcId, 'Ejunz Base Agent plugin is disabled');
         }
         const baseModel = (global as any).Ejunz?.model?.base;
@@ -1132,7 +1146,7 @@ async function baseSessionScope(sessionId: string, optional = false) {
         throw new Error('Base session not found');
     }
     if (session.archived) throw new Error('Base session not found');
-    if (!await isAgentContextPluginEnabled(session.domainId, 'base')) {
+    if (!await isAgentAddonEnabled(session.domainId, 'base')) {
         if (optional) return { session, scope: undefined };
         throw new Error('Ejunz Base Agent plugin is disabled');
     }
@@ -1176,8 +1190,9 @@ async function baseSessionScope(sessionId: string, optional = false) {
  * `get` reaches the registry whichever scope the handler runs in.
  */
 function toolRegistry(): {
-    list(source?: string, domainId?: string, access?: { priv?: number; perm?: bigint; scope?: bigint }): { name: string; description: string; inputSchema: Record<string, unknown>; source: string; mutating: boolean }[];
-    instructions(context: { domainId: string; baseDocId: number; sessionId?: string }, source?: string): Promise<string[]>;
+    list(source?: string, domainId?: string, access?: { priv?: number; perm?: bigint; scope?: bigint }, mountedAddons?: ReadonlySet<string>): { name: string; description: string; inputSchema: Record<string, unknown>; addonId: string; source: string; mutating: boolean }[];
+    get(name: string): { addonId: string } | undefined;
+    instructions(context: { domainId: string; baseDocId: number; sessionId?: string }, source?: string, mountedAddons?: ReadonlySet<string>): Promise<string[]>;
 } {
     const ejunzContext = (global as any).app || (global as any).Ejunz;
     const tools = typeof ejunzContext?.get === 'function' ? ejunzContext.get('tools') : ejunzContext?.tools;
@@ -1196,7 +1211,7 @@ async function onBaseSelect(payload: {
     baseDocId: number;
     baseName?: string;
 }): Promise<void> {
-    if (!await isAgentContextPluginEnabled(payload.domainId, 'base')) {
+    if (!await isAgentAddonEnabled(payload.domainId, 'base')) {
         throw new Error('Ejunz Base Agent plugin is disabled');
     }
     const scope = { domainId: payload.domainId, userId: payload.owner };
@@ -1430,78 +1445,110 @@ function mergeDomainModels(body: RpcBody, sections: Record<string, Record<string
     return withRpcValue(body, { ...result, groups, routable });
 }
 
-function agentContextPluginEnabled(settings: AgentDomainSettings, pluginId: string): boolean {
-    const plugin = listAgentContextPlugins().find((item) => item.pluginId === pluginId);
-    if (!plugin) return false;
-    const enabled = settings.sections['agent-plugins']?.enabled;
-    const override = enabled && typeof enabled === 'object' && !Array.isArray(enabled)
-        ? (enabled as Record<string, unknown>)[pluginId]
-        : undefined;
-    return typeof override === 'boolean' ? override : plugin.defaultEnabled !== false;
+function agentAddonEnabled(settings: AgentDomainSettings, addonId: string): boolean {
+    const addon = listAgentAddons().find((item) => item.addonId === addonId);
+    if (!addon) return false;
+    const currentEnabled = settings.sections['agent-addons']?.enabled;
+    const legacyEnabled = settings.sections['agent-plugins']?.enabled;
+    const currentOverrides = currentEnabled && typeof currentEnabled === 'object' && !Array.isArray(currentEnabled)
+        ? currentEnabled as Record<string, unknown>
+        : {};
+    const legacyOverrides = legacyEnabled && typeof legacyEnabled === 'object' && !Array.isArray(legacyEnabled)
+        ? legacyEnabled as Record<string, unknown>
+        : {};
+    const override = Object.prototype.hasOwnProperty.call(currentOverrides, addonId)
+        ? currentOverrides[addonId]
+        : legacyOverrides[addonId];
+    return typeof override === 'boolean' ? override : addon.defaultEnabled !== false;
 }
 
-async function agentContextPluginsList(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
+async function agentAddonsList(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const settings = await agentDataAdapter.getDomainSettings(scope.domainId);
-    return rpcOk(envelope.rpcId, {
-        plugins: listAgentContextPlugins().map((plugin) => ({
-            ...plugin,
-            enabled: agentContextPluginEnabled(settings, plugin.pluginId),
-        })),
-    });
+    const addons = listAgentAddons().map((addon) => ({
+        ...addon,
+        enabled: agentAddonEnabled(settings, addon.addonId),
+    }));
+    const sessionId = typeof envelope.payload?.sessionId === 'string' ? envelope.payload.sessionId.trim() : '';
+    if (sessionId && await agentDataAdapter.getSession(scope, sessionId)) {
+        try {
+            const link = await linkForSession(scope, sessionId);
+            for (const addon of addons) {
+                try {
+                    const recorded = await callUpstream('session.addons', {
+                        sessionId,
+                        addonId: addon.addonId,
+                        enabled: addon.enabled,
+                    }, link);
+                    if (!recorded.body.result?.ok) {
+                        logger.warn('[addons] session mount failed session=%s addon=%s error=%s', sessionId, addon.addonId, recorded.body.error?.message || 'unknown error');
+                    }
+                } catch (error) {
+                    logger.warn('[addons] session mount failed session=%s addon=%s error=%s', sessionId, addon.addonId, error instanceof Error ? error.message : String(error));
+                }
+            }
+        } catch (error) {
+            logger.warn('[addons] session mount failed session=%s error=%s', sessionId, error instanceof Error ? error.message : String(error));
+        }
+    }
+    return rpcOk(envelope.rpcId, { addons });
 }
 
-async function agentContextPluginSet(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
+async function agentAddonSet(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const payload = envelope.payload ?? {};
-    const pluginId = typeof payload.pluginId === 'string' ? payload.pluginId : '';
-    const plugin = listAgentContextPlugins().find((item) => item.pluginId === pluginId);
-    if (!plugin) return rpcError(envelope.rpcId, 'Agent plugin not found');
+    const addonId = typeof payload.addonId === 'string' ? payload.addonId : '';
+    const addon = listAgentAddons().find((item) => item.addonId === addonId);
+    if (!addon) return rpcError(envelope.rpcId, 'Agent add-on not found');
     if (typeof payload.enabled !== 'boolean') return rpcError(envelope.rpcId, 'enabled must be a boolean');
 
     const current = await agentDataAdapter.getDomainSettings(scope.domainId);
     const sections = cloneSettingsSections(current.sections);
-    const section = sections['agent-plugins'] ?? {};
-    const enabled = section.enabled && typeof section.enabled === 'object' && !Array.isArray(section.enabled)
-        ? { ...(section.enabled as Record<string, unknown>) }
+    const legacySection = sections['agent-plugins'] ?? {};
+    const addonSection = sections['agent-addons'] ?? {};
+    const section = { ...legacySection, ...addonSection };
+    const legacyEnabled = legacySection.enabled && typeof legacySection.enabled === 'object' && !Array.isArray(legacySection.enabled)
+        ? legacySection.enabled as Record<string, unknown>
         : {};
-    if (payload.enabled === (plugin.defaultEnabled !== false)) delete enabled[pluginId];
-    else enabled[pluginId] = payload.enabled;
+    const currentEnabled = addonSection.enabled && typeof addonSection.enabled === 'object' && !Array.isArray(addonSection.enabled)
+        ? addonSection.enabled as Record<string, unknown>
+        : {};
+    const enabled = { ...legacyEnabled, ...currentEnabled };
+    if (payload.enabled === (addon.defaultEnabled !== false)) delete enabled[addonId];
+    else enabled[addonId] = payload.enabled;
     if (Object.keys(enabled).length) section.enabled = enabled;
     else delete section.enabled;
-    if (Object.keys(section).length) sections['agent-plugins'] = section;
-    else delete sections['agent-plugins'];
+    if (Object.keys(section).length) sections['agent-addons'] = section;
+    else delete sections['agent-addons'];
+    delete sections['agent-plugins'];
 
     const saved = await agentDataAdapter.updateDomainSettings(scope.domainId, sections, current.revision);
     if (!saved) return rpcError(envelope.rpcId, 'settings revision conflict');
 
-    let contextInjected: boolean | undefined;
+    let eventRecorded: boolean | undefined;
     const sessionId = typeof payload.sessionId === 'string' ? payload.sessionId.trim() : '';
     if (sessionId && await agentDataAdapter.getSession(scope, sessionId)) {
         try {
-            const injected = await callUpstream('session.inject', {
+            const recorded = await callUpstream('session.addons', {
                 sessionId,
-                plugin: 'ejunz-agent-plugin-lifecycle',
-                sections: [{
-                    name: `agent-plugin:${pluginId}`,
-                    text: payload.enabled
-                        ? `「${plugin.displayName}」插件已在当前 domain 启用。你可以使用该插件提供的能力。`
-                        : `「${plugin.displayName}」插件已在当前 domain 关闭。请勿再使用该插件提供的能力。`,
-                }],
+                addonId,
+                enabled: payload.enabled,
             }, await linkForSession(scope, sessionId));
-            contextInjected = injected.body.result?.ok === true;
-            if (!contextInjected) {
-                logger.warn('[agent-plugins] lifecycle context injection failed session=%s plugin=%s error=%s', sessionId, pluginId, injected.body.error?.message || 'unknown error');
+            eventRecorded = recorded.body.result?.ok === true;
+            if (!eventRecorded) {
+                logger.warn('[addons] session mount failed session=%s addon=%s error=%s', sessionId, addonId, recorded.body.error?.message || 'unknown error');
             }
         } catch (error) {
-            contextInjected = false;
-            logger.warn('[agent-plugins] lifecycle context injection failed session=%s plugin=%s error=%s', sessionId, pluginId, error instanceof Error ? error.message : String(error));
+            eventRecorded = false;
+            logger.warn('[addons] session mount failed session=%s addon=%s error=%s', sessionId, addonId, error instanceof Error ? error.message : String(error));
         }
     }
-    return rpcOk(envelope.rpcId, { pluginId, enabled: payload.enabled, ...(contextInjected === undefined ? {} : { contextInjected }) });
+    return rpcOk(envelope.rpcId, { addonId, enabled: payload.enabled, ...(eventRecorded === undefined ? {} : { eventRecorded }) });
 }
 
-export async function isAgentContextPluginEnabled(domainId: string, pluginId: string): Promise<boolean> {
-    return agentContextPluginEnabled(await agentDataAdapter.getDomainSettings(domainId), pluginId);
+export async function isAgentAddonEnabled(domainId: string, addonId: string): Promise<boolean> {
+    return agentAddonEnabled(await agentDataAdapter.getDomainSettings(domainId), addonId);
 }
+
+export const isAgentContextPluginEnabled = isAgentAddonEnabled;
 
 async function domainSettingsRpc(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const method = String(envelope.method || '');
@@ -2965,8 +3012,8 @@ export const agentRuntimeHandlerContext = {
     modelReady: () => modelReady,
     requireBridgeToken, baseSessionScope, toolRegistry,
     scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, upstreamValue,
-    nodeRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, agentContextPluginsList,
-    agentContextPluginSet, isAgentContextPluginEnabled, baseTutorEnsure, baseTutorList,
+    nodeRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList,
+    agentAddonSet, isAgentAddonEnabled, isAgentContextPluginEnabled, baseTutorEnsure, baseTutorList,
     baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems,
     runtimeRelabel, runtimeRemove, sessionCreate, sessionHistory, sessionMessageCount,
     sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink,

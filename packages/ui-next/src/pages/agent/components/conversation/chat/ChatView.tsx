@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { IconChevronDownOutline14 } from '../../../icons';
-import { orderAgentPluginMessages } from '../../../runtime/conversation';
-import type { AgentPluginView, ChatMessage } from '../../types';
+import { orderAgentAddonMessages } from '../../../runtime/conversation';
+import type { AgentAddonView, ChatMessage } from '../../types';
 import { ChatMessageView } from './ChatMessage';
 import css from './ChatView.module.css';
 
 interface ChatViewProps {
     messages: ChatMessage[];
-    plugins: readonly AgentPluginView[];
+    addons: readonly AgentAddonView[];
     running: boolean;
     runningTurnStartTime: number | null;
     historyHasMore: boolean;
@@ -80,7 +80,7 @@ function TurnStatus({ startTime }: { startTime: number | null }) {
     </div>;
 }
 
-export function ChatView({ messages, plugins, running, runningTurnStartTime, historyHasMore, loadingOlder, loadedMessages, totalMessages, historyPageSize, onLoadOlder, onOpenFile, onOpenDetails }: ChatViewProps) {
+export function ChatView({ messages, addons, running, runningTurnStartTime, historyHasMore, loadingOlder, loadedMessages, totalMessages, historyPageSize, onLoadOlder, onOpenFile, onOpenDetails }: ChatViewProps) {
     const olderRange = olderHistoryRange(loadedMessages, totalMessages, historyPageSize);
     const localRef = useRef<HTMLDivElement>(null);
     const anchorRef = useRef<ScrollAnchor | null>(null);
@@ -175,14 +175,14 @@ export function ChatView({ messages, plugins, running, runningTurnStartTime, his
         anchorRef.current = anchorOf(local, scrollPortOf(local));
         onLoadOlder();
     };
-    const visibleMessages = useMemo(() => orderAgentPluginMessages(messages, plugins), [messages, plugins]);
+    const visibleMessages = useMemo(() => orderAgentAddonMessages(messages, addons), [messages, addons]);
 
     return <div className={css.root}>
         <div ref={localRef} className={css.scroll}>
             <div className={css.column} data-chat-flow="">
                 {historyHasMore && <div className={css.older}><button type="button" disabled={loadingOlder} onClick={loadOlder}>{loadingOlder ? `加载中…（${olderRange}）` : `加载历史消息（${olderRange}）`}</button></div>}
-                {visibleMessages.map((message) => <div key={message.key} className={css.flowItem} data-chat-anchor-key={message.key} data-chat-flow-key={message.key} data-chat-flow-kind={message.role}><ChatMessageView message={message} plugins={plugins} onOpenFile={onOpenFile} onOpenDetails={onOpenDetails} /></div>)}
-                {messages.length === 0 && <div className={css.hint}>发送消息开始对话</div>}
+                {visibleMessages.map((message) => <div key={message.key} className={css.flowItem} data-chat-anchor-key={message.key} data-chat-flow-key={message.key} data-chat-flow-kind={message.role}><ChatMessageView message={message} addons={addons} onOpenFile={onOpenFile} onOpenDetails={onOpenDetails} /></div>)}
+                {!messages.some((message) => message.role === 'user' || message.role === 'assistant') && <div className={css.hint}>发送消息开始对话</div>}
                 {running && <TurnStatus startTime={runningTurnStartTime} />}
             </div>
             {!atBottom && <div className={css.toBottomSlot}>

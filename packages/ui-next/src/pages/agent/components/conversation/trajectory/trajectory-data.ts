@@ -25,6 +25,7 @@ export function flattenMessages(messages: readonly ChatMessage[]): ChatMessage[]
 }
 
 export function trajectoryKind(message: ChatMessage): TrajectoryCellKind {
+    if (message.role === 'addon') return 'system';
     if (message.role === 'assistant') return 'message';
     if (message.role === 'compaction') return 'compacted';
     if (message.role === 'tool') return message.parentCallId ? 'subtool' : 'tool';

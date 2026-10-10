@@ -35,7 +35,7 @@ export { AgentSessionModel } from './model/agent';
 export { AgentRuntimeModel } from './model/agent';
 export { AgentLinkModel } from './model/agent';
 export { AgentStorageModel } from './model/agent';
-export { createInProcessLink, createSocketLink, isAgentContextPluginEnabled } from './service/runtime';
+export { createInProcessLink, createSocketLink, isAgentAddonEnabled, isAgentContextPluginEnabled } from './service/runtime';
 export { parseRuntimeFrame } from './service/runtime';
 export type {
     AgentFrame,
@@ -83,6 +83,8 @@ export * from '@ejunz/framework/validator';
 export * as StorageService from './service/storage';
 export { EventMap } from './service/bus';
 export { default as ToolService } from './service/registry';
+export { registerAgentAddon, listAgentAddons } from './service/addons';
+export type { AgentAddonDescriptor } from './service/addons';
 export { registerAgentContextPlugin } from './service/agent-context-plugins';
 export type { AgentContextPluginDescriptor } from './service/agent-context-plugins';
 export { createProvider } from './service/provider';

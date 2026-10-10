@@ -1,4 +1,4 @@
-export type MessageRole = 'user' | 'assistant' | 'tool' | 'context' | 'retry' | 'compaction' | 'system';
+export type MessageRole = 'user' | 'assistant' | 'tool' | 'context' | 'addon' | 'retry' | 'compaction' | 'system';
 
 export interface ChatSegment {
     kind: 'text' | 'reasoning';
@@ -32,7 +32,7 @@ export interface ChatMessage {
     contextSource?: unknown;
     contextForm?: string;
     contextFiles?: UploadedFileMeta[];
-    agentPluginStatus?: Pick<AgentPluginView, 'pluginId' | 'displayName' | 'enabled'>;
+    addonMount?: { addonId: string; enabled: boolean };
     retry?: number;
     retryDelayMs?: number;
     retryState?: 'scheduled' | 'started' | 'cancelled';
@@ -44,8 +44,8 @@ export interface ChatMessage {
     pendingSessionId?: string;
 }
 
-export interface AgentPluginView {
-    pluginId: string;
+export interface AgentAddonView {
+    addonId: string;
     displayName: string;
     description: string;
     enabled: boolean;

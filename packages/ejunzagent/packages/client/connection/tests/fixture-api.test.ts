@@ -38,6 +38,34 @@ describe('FixtureApiClient API additions', () => {
     expect(missing.result.error.code).toBe('session-not-found')
   })
 
+  it('records addon mounts separately from context messages', async () => {
+    const client = new FixtureApiClient()
+    const payload = { sessionId: alpha, addonId: 'base', enabled: false }
+    const recorded = await client.sessions.addons(payload)
+    const repeated = await client.sessions.addons(payload)
+    const history = await client.sessions.history({ sessionId: alpha, maxMessages: 100 })
+
+    expect(recorded.result.ok).toBe(true)
+    expect(repeated.result).toEqual(recorded.result)
+    if (!history.result.ok) throw new Error(history.result.error.message)
+    const addonEvents = history.result.value.events.filter(entry => entry.event.type === 'session/addons')
+    expect(addonEvents).toHaveLength(1)
+    expect(addonEvents[0]?.event).toMatchObject({ type: 'session/addons', data: { addonId: 'base', enabled: false } })
+    expect(history.result.value.events.some(entry =>
+      entry.event.type === 'user/message'
+      && entry.event.data.source.kind === 'plugin'
+      && entry.event.data.source.plugin === 'ejunz-agent-plugin-lifecycle')).toBe(false)
+
+    const missing = await client.sessions.addons({
+      sessionId: 'unknown-fixture-session' as SessionId,
+      addonId: 'base',
+      enabled: true,
+    })
+    expect(missing.result.ok).toBe(false)
+    if (missing.result.ok) throw new Error('fixture accepted an addon event for a missing session')
+    expect(missing.result.error.code).toBe('session-not-found')
+  })
+
   it('projects only the known settings namespace', async () => {
     const client = new FixtureApiClient()
     const empty = await client.settings.project({ sections: {} })

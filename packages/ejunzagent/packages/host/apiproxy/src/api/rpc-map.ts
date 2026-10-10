@@ -32,6 +32,7 @@ export interface RpcMethodMap {
   'session.prompt': SessionsApi['prompt']
   'session.command': SessionsApi['command']
   'session.inject': SessionsApi['inject']
+  'session.addons': SessionsApi['addons']
   'session.attachment': SessionsApi['attachment']
   'session.updateQueue': SessionsApi['updateQueue']
   'session.cancel': SessionsApi['cancel']

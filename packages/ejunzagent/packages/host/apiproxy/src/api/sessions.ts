@@ -365,6 +365,9 @@ export interface SessionsApi {
     wakeup?: boolean
   }>): Promise<RpcResponse<{ accepted: true }>>
 
+  /** Records an addon mount or unmount in the session log, separate from context messages. */
+  addons(request: RpcRequest<{ sessionId: SessionId; addonId: string; enabled: boolean }>): Promise<RpcResponse<{ accepted: true; seq: number }>>
+
   /** Reads one durable image after proving that this session's log references its id. */
   attachment(request: RpcRequest<{ sessionId: SessionId; attachmentId: AttachmentIdType }>):
   Promise<RpcResponse<{ attachment: ImageAttachmentRef; data: string }>>

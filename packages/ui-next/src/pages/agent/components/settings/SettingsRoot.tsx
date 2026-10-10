@@ -30,7 +30,7 @@ function navIcon(id: string) {
     if (id === 'agent-presets') return <IconAgentPresetOutline16 className={css.navIcon} size={16} />;
     if (id === 'tools') return <IconCodeOutline16 className={css.navIcon} size={16} />;
     if (id === 'plugins') return <IconPersonalizationOutline16 className={css.navIcon} size={16} />;
-    if (id === 'agent-plugins') return <IconAgentPresetOutline16 className={css.navIcon} size={16} />;
+    if (id === 'agent-addons') return <IconAgentPresetOutline16 className={css.navIcon} size={16} />;
     return <IconSettingsOutline16 className={css.navIcon} size={16} />;
 }
 

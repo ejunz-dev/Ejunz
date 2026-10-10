@@ -325,7 +325,6 @@ export async function updateMany(ctx: ToolContext, args: ToolArgs) {
         nodeCount: planned.length,
         nodes: planned.map((entry) => ({
             index: entry.index,
-            nodeId: entry.nodeId,
             changed: entry.fields,
             ...entry.update,
             url: nodeUrl(ctx, ctx.baseDocId, entry.nodeId),
@@ -349,12 +348,12 @@ export async function removeMany(ctx: ToolContext, args: ToolArgs) {
 
 export function apply(ctx: Context) {
     const opts = { source: 'base' as const, bindBase: 'session' as const };
-    ctx.Tool('base_node_create', create, Create, { ...opts, mutating: true }, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base_node_update', update, Update, { ...opts, mutating: true }, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base_node_get', get, Get, opts, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base_node_delete', remove, Remove, { ...opts, mutating: true }, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base_node_create_many', createMany, CreateMany, { ...opts, mutating: true }, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base_node_get_many', getMany, GetMany, opts, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base_node_update_many', updateMany, UpdateMany, { ...opts, mutating: true }, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base_node_delete_many', removeMany, RemoveMany, { ...opts, mutating: true }, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_create', create, Create, { ...opts, mutating: true }, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_update', update, Update, { ...opts, mutating: true }, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_get', get, Get, opts, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_delete', remove, Remove, { ...opts, mutating: true }, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_create_many', createMany, CreateMany, { ...opts, mutating: true }, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_get_many', getMany, GetMany, opts, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_update_many', updateMany, UpdateMany, { ...opts, mutating: true }, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_delete_many', removeMany, RemoveMany, { ...opts, mutating: true }, PRIV.PRIV_USER_PROFILE);
 }

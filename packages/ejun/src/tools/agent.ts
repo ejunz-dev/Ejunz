@@ -6,6 +6,7 @@ import UserModel from 'ejun/src/model/user';
 import { MAX_CARDS_PER_CALL, MAX_FILE_CONTENT_CHARS, MAX_FILE_CONTENT_CHARS_LIMIT, MAX_NODES_PER_CALL } from '../lib/tool-limits';
 import { asText, idList } from '../lib/tool-shared';
 import { agentRuntimeHandlerContext } from '../service/runtime';
+import { registerAgentAddon } from '../service/addons';
 import type { AgentNodeDoc, AgentSessionSummary } from 'ejun/src/model/agent';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
 import type {} from '../service/registry';
@@ -910,30 +911,38 @@ export async function removeCard(ctx: ToolContext, args: ToolArgs) {
 }
 
 export function apply(ctx: Context) {
+    const unregister = registerAgentAddon({
+        addonId: 'agent',
+        displayName: 'Ejunz Agent',
+        description: 'Create and manage Agent definitions, nodes, and session cards.',
+        toolPrefixes: ['agent_'],
+        defaultEnabled: true,
+    });
+    ctx.effect(() => unregister);
     const read = { source: 'agent', bindBase: 'none' as const };
     const write = { ...read, mutating: true };
-    ctx.Tool('agent_list', list, List, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent_search', search, Search, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent_get', get, Get, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent_create', create, Create, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent_update', update, Update, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent_delete', remove, Remove, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent_node_list', listNodes, NodeList, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent_node_get', getNode, NodeGet, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent_node_create', createNode, NodeCreate, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent_node_update', updateNode, NodeUpdate, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent_node_delete', removeNode, NodeRemove, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent_node_create_many', createNodes, NodeCreateMany, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent_node_get_many', getNodes, NodeGetMany, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent_node_update_many', updateNodes, NodeUpdateMany, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent_node_delete_many', removeNodes, NodeRemoveMany, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent_sessionCard_list', listCards, CardList, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent_sessionCard_get', getCard, CardGet, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent_sessionCard_create', createCard, CardCreate, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent_sessionCard_update', updateCard, CardUpdate, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent_sessionCard_delete', removeCard, CardRemove, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent_sessionCard_create_many', createCards, CardCreateMany, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent_sessionCard_get_many', getCards, CardGetMany, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent_sessionCard_update_many', updateCards, CardUpdateMany, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent_sessionCard_delete_many', removeCards, CardRemoveMany, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_list', list, List, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_search', search, Search, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_get', get, Get, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_create', create, Create, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_update', update, Update, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_delete', remove, Remove, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_node_list', listNodes, NodeList, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_node_get', getNode, NodeGet, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_node_create', createNode, NodeCreate, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_node_update', updateNode, NodeUpdate, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_node_delete', removeNode, NodeRemove, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_node_create_many', createNodes, NodeCreateMany, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_node_get_many', getNodes, NodeGetMany, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_node_update_many', updateNodes, NodeUpdateMany, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_node_delete_many', removeNodes, NodeRemoveMany, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_sessionCard_list', listCards, CardList, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_sessionCard_get', getCard, CardGet, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_sessionCard_create', createCard, CardCreate, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_sessionCard_update', updateCard, CardUpdate, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_sessionCard_delete', removeCard, CardRemove, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_sessionCard_create_many', createCards, CardCreateMany, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_sessionCard_get_many', getCards, CardGetMany, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_sessionCard_update_many', updateCards, CardUpdateMany, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_sessionCard_delete_many', removeCards, CardRemoveMany, write, PRIV.PRIV_USER_PROFILE);
 }

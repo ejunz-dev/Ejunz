@@ -2542,6 +2542,28 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         }
       },
 
+      async addons(request) {
+        const { sessionId, addonId, enabled } = request.payload
+        const found = await agentFor(sessionId)
+        if ('error' in found) return err(request, found.error)
+        try {
+          const previous = [...found.agent.session.events].reverse().find(event =>
+            event.type === 'session/addons' && event.data.addonId === addonId,
+          )
+          if (previous?.type === 'session/addons' && previous.data.enabled === enabled) {
+            return ok(request, { accepted: true as const, seq: previous.seq })
+          }
+          const event = found.agent.session.append('session/addons', { addonId, enabled })
+          return ok(request, { accepted: true as const, seq: event.seq })
+        } catch (error: unknown) {
+          return err(request, {
+            code: 'internal',
+            message: 'addon mount event append failed',
+            details: { reason: String(error) },
+          })
+        }
+      },
+
       async attachment(request) {
         const { sessionId, attachmentId } = request.payload
         let state: SessionReadState

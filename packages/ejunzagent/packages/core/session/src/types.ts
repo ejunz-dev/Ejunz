@@ -294,6 +294,10 @@ export interface SessionEventMap {
     error?: { name: string; code: string }
     meta?: JsonValue
   }
+  /** Legacy plugin availability record retained for older session logs. */
+  'session/plugins': { pluginId: string; enabled: boolean }
+  /** An addon was mounted or unmounted for this session. Log-only; never model context. */
+  'session/addons': { addonId: string; enabled: boolean }
   /** Whole-list snapshot; latest write wins on replay. Log-only UI state; never derived history. */
   'todo/write': { todos: TodoItem[] }
   /**

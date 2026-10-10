@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { IconApiOutline14, IconBrowseOutline16, IconCodeOutline16, IconEditOutline16, IconGlobeOutline14, IconSearchOutline16 } from '../../../icons';
-import type { AgentPluginView, ChatMessage } from '../../types';
+import type { AgentAddonView, ChatMessage } from '../../types';
 import { DisclosureRow } from '../../primitives/DisclosureRow';
 import { StateDot } from '../../primitives/StateDot';
 import { toolRowModel } from '../../tool/tool-call-model';
@@ -11,13 +11,13 @@ function leadingFor(state: 'running' | 'ok' | 'error', icon: ReactNode): ReactNo
     return state === 'error' ? <StateDot state="error" /> : icon;
 }
 
-export function ToolRow({ message, plugins, onOpenFile, onOpenDetails }: { message: ChatMessage; plugins: readonly AgentPluginView[]; onOpenFile?: (path: string) => void; onOpenDetails?: (message: ChatMessage) => void }) {
+export function ToolRow({ message, addons, onOpenFile, onOpenDetails }: { message: ChatMessage; addons: readonly AgentAddonView[]; onOpenFile?: (path: string) => void; onOpenDetails?: (message: ChatMessage) => void }) {
     const [expanded, setExpanded] = useState(false);
     const name = message.toolName ?? 'tool';
     const model = toolRowModel(message);
-    const plugin = plugins.find((item) => item.toolPrefixes?.some((prefix) => prefix.length > 0 && name.startsWith(prefix)));
-    const title = plugin ? `${model.title} · ${plugin.displayName} · ${name}` : model.title;
-    const summary = plugin && model.summary.startsWith(`${name} · `)
+    const addon = addons.find((item) => item.toolPrefixes?.some((prefix) => prefix.length > 0 && name.startsWith(prefix)));
+    const title = addon ? `${model.title} · ${addon.displayName} · ${name}` : model.title;
+    const summary = addon && model.summary.startsWith(`${name} · `)
         ? model.summary.slice(name.length + 3)
         : model.summary;
     const icon = model.variant === 'bash'
@@ -47,7 +47,7 @@ export function ToolRow({ message, plugins, onOpenFile, onOpenDetails }: { messa
             onToggle={() => setExpanded((value) => !value)}
             collapsedContent={<><span className={css.sep} aria-hidden />{model.filePath && onOpenFile && model.errorSummary === undefined ? <button type="button" className={css.fileLink} onClick={(event) => { event.stopPropagation(); onOpenFile(model.filePath!); }}>{summary}</button> : <span className={`${css.summary}${model.errorSummary !== undefined ? ` ${css.errorSummary}` : ''}`}>{summary}</span>}</>}
         >
-            <div className={css.bodyWrap}><ToolViewCard variant={model.variant} input={model.input} output={model.output} meta={model.meta} error={model.state === 'error'} /><button type="button" className={css.inspectButton} onClick={(event) => { event.stopPropagation(); onOpenDetails?.(message); }}>查看详情</button>{message.children?.length ? <div className="eza-toolChildren">{message.children.map((child) => <ToolRow key={child.key} message={child} plugins={plugins} onOpenFile={onOpenFile} onOpenDetails={onOpenDetails} />)}</div> : null}</div>
+            <div className={css.bodyWrap}><ToolViewCard variant={model.variant} input={model.input} output={model.output} meta={model.meta} error={model.state === 'error'} /><button type="button" className={css.inspectButton} onClick={(event) => { event.stopPropagation(); onOpenDetails?.(message); }}>查看详情</button>{message.children?.length ? <div className="eza-toolChildren">{message.children.map((child) => <ToolRow key={child.key} message={child} addons={addons} onOpenFile={onOpenFile} onOpenDetails={onOpenDetails} />)}</div> : null}</div>
         </DisclosureRow>
     </div>;
 }

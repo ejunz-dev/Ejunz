@@ -13,6 +13,7 @@ export interface ProviderScope {
     readonly priv?: number;
     readonly perm?: bigint;
     readonly scope?: bigint;
+    readonly mountedAddons?: ReadonlySet<string>;
 }
 
 export interface Provider {
@@ -44,11 +45,12 @@ export function createProvider(
         ...(scope.priv !== undefined ? { priv: scope.priv } : {}),
         ...(scope.perm !== undefined ? { perm: scope.perm } : {}),
         ...(scope.scope !== undefined ? { scope: scope.scope } : {}),
+        ...(scope.mountedAddons !== undefined ? { mountedAddons: scope.mountedAddons } : {}),
         setting: get('setting'),
     });
     return {
         scope: Object.freeze({ ...scope }),
-        catalog: (source?: string) => registry().catalog(source, undefined, scope.domainId, access()),
+        catalog: (source?: string) => registry().catalog(source, undefined, scope.domainId, access(), scope.mountedAddons),
         async call(name, args, signal) {
             if (signal.aborted) throw signal.reason ?? new Error('provider call aborted');
             const startedAt = Date.now();

@@ -10,6 +10,7 @@ import type { VoidReturn } from 'ejun/src/service/bus';
 const logger = new Logger('tools/registry');
 
 export interface ToolDeclaration {
+    addonId: string;
     name: string;
     description: string;
     inputSchema: Record<string, any>;
@@ -27,6 +28,7 @@ export interface ToolSource {
 }
 
 export interface RegisteredTool extends ToolSpec {
+    addonId: string;
     source: string;
     mutating: boolean;
 }
@@ -196,13 +198,18 @@ export default class ToolService extends Service {
 
 
 
-    Tool(name: string, execute: ToolExecute, ...permPrivChecker: Array<number | bigint | Function | Schema | ToolRegisterOptions>): Disposable;
-    Tool(name: string, definition: ToolDefinition, ...permPrivChecker: Array<number | bigint | Function | Schema | ToolRegisterOptions>): Disposable;
+    Tool(addonId: string, name: string, execute: ToolExecute, ...permPrivChecker: Array<number | bigint | Function | Schema | ToolRegisterOptions>): Disposable;
+    Tool(addonId: string, name: string, definition: ToolDefinition, ...permPrivChecker: Array<number | bigint | Function | Schema | ToolRegisterOptions>): Disposable;
     Tool(
+        addonId: string,
         name: string,
         executeOrDefinition: ToolExecute | ToolDefinition,
         ...permPrivChecker: Array<number | bigint | Function | Schema | ToolRegisterOptions>
     ): Disposable {
+        if (typeof addonId !== 'string' || addonId.trim().length === 0) {
+            throw new Error(`tool ${String(name)} must be registered with an addonId.`);
+        }
+        if (typeof name !== 'string' || name.trim().length === 0) throw new Error('tool name is required.');
         const parsed = parseChecker(permPrivChecker);
         const fromDefinition = typeof executeOrDefinition === 'function' ? undefined : executeOrDefinition;
         const execute = typeof executeOrDefinition === 'function' ? executeOrDefinition : executeOrDefinition.execute;
@@ -212,8 +219,9 @@ export default class ToolService extends Service {
         const inputSchema = options.inputSchema ?? fromDefinition?.inputSchema ?? (schema ? schemaToJsonSchema(schema) : undefined);
         if (!description) throw new Error(`tool ${name} is missing a description.`);
         if (!inputSchema) throw new Error(`tool ${name} is missing an inputSchema.`);
-        const source = options.source ?? fromDefinition?.source ?? this.pluginSource();
+        const source = options.source ?? fromDefinition?.source ?? addonId;
         const stored: StoredTool = {
+            addonId,
             name,
             description,
             inputSchema,
@@ -236,17 +244,13 @@ export default class ToolService extends Service {
         return Boolean(found && toolEnabled(found.tool));
     }
 
-    private pluginSource(): string {
-        const runtime = (this.ctx as any).runtime;
-        const name = typeof runtime?.name === 'string' ? runtime.name : '';
-        if (!name || name === 'unnamed') return 'plugin';
-        return String(name).replace(/^@ejunz\//, '');
-    }
-
     private addTool(source: string, tool: StoredTool, options: ToolRegisterOptions): void {
         const owner = this.owners.get(tool.name);
         if (owner) throw new Error(`tool ${tool.name} is already registered by source ${owner}.`);
         let entry = this.sources.get(source);
+        if (entry && entry.tools.some((registered) => registered.addonId !== tool.addonId)) {
+            throw new Error(`tool source ${source} cannot mix addon owners.`);
+        }
         if (!entry) {
             entry = { source, tools: [] };
             this.sources.set(source, entry);
@@ -273,7 +277,7 @@ export default class ToolService extends Service {
         return { source, tool };
     }
 
-    private visible(source?: string, domainId?: string, access?: ToolAccess): { source: StoredSource; tool: StoredTool }[] {
+    private visible(source?: string, domainId?: string, access?: ToolAccess, mountedAddons?: ReadonlySet<string>): { source: StoredSource; tool: StoredTool }[] {
         const entries = source === undefined
             ? [...this.sources.values()]
             : this.sources.has(source) ? [this.sources.get(source)!] : [];
@@ -282,6 +286,7 @@ export default class ToolService extends Service {
             for (const tool of entry.tools) {
                 if (!toolEnabled(tool)) continue;
                 if (!inDomain(toolDomains(entry, tool), domainId)) continue;
+                if (mountedAddons !== undefined && !mountedAddons.has(tool.addonId)) continue;
                 if (access && !canAccess(tool, access)) continue;
                 rows.push({ source: entry, tool });
             }
@@ -289,13 +294,14 @@ export default class ToolService extends Service {
         return rows;
     }
 
-    private sourcesFor(source?: string, domainId?: string): StoredSource[] {
-        const names = new Set(this.visible(source, domainId).map(row => row.source.source));
+    private sourcesFor(source?: string, domainId?: string, mountedAddons?: ReadonlySet<string>): StoredSource[] {
+        const names = new Set(this.visible(source, domainId, undefined, mountedAddons).map(row => row.source.source));
         return [...this.sources.values()].filter(entry => names.has(entry.source));
     }
 
-    list(source?: string, domainId?: string, access?: ToolAccess): RegisteredTool[] {
-        return this.visible(source, domainId, access).map(({ source: entry, tool }) => ({
+    list(source?: string, domainId?: string, access?: ToolAccess, mountedAddons?: ReadonlySet<string>): RegisteredTool[] {
+        return this.visible(source, domainId, access, mountedAddons).map(({ source: entry, tool }) => ({
+            addonId: tool.addonId,
             name: tool.name,
             description: tool.description,
             inputSchema: tool.inputSchema,
@@ -304,8 +310,8 @@ export default class ToolService extends Service {
         }));
     }
 
-    catalog(source?: string, overrides?: { name: string; description: string }[], domainId?: string, access?: ToolAccess): ToolSpec[] {
-        const tools: ToolSpec[] = this.list(source, domainId, access).map(({ name, description, inputSchema }) => ({ name, description, inputSchema }));
+    catalog(source?: string, overrides?: { name: string; description: string }[], domainId?: string, access?: ToolAccess, mountedAddons?: ReadonlySet<string>): ToolSpec[] {
+        const tools: ToolSpec[] = this.list(source, domainId, access, mountedAddons).map(({ name, description, inputSchema }) => ({ name, description, inputSchema }));
         if (!overrides || !overrides.length) return tools;
         const byName = new Map(overrides.map(entry => [entry.name, entry.description]));
         return tools.map(tool => {
@@ -318,6 +324,7 @@ export default class ToolService extends Service {
         const found = this.lookup(name);
         if (!found) return undefined;
         return {
+            addonId: found.tool.addonId,
             name: found.tool.name,
             description: found.tool.description,
             inputSchema: found.tool.inputSchema,
@@ -330,8 +337,12 @@ export default class ToolService extends Service {
         return this.owners.has(id) || this.sources.has(id);
     }
 
-    async instructions(context: ToolInstructionsContext, source?: string): Promise<string[]> {
-        const entries = this.sourcesFor(source, context.domainId);
+    addonIds(): string[] {
+        return [...new Set([...this.sources.values()].flatMap((source) => source.tools.map((tool) => tool.addonId)))];
+    }
+
+    async instructions(context: ToolInstructionsContext, source?: string, mountedAddons?: ReadonlySet<string>): Promise<string[]> {
+        const entries = this.sourcesFor(source, context.domainId, mountedAddons);
         const lines: string[] = [];
         for (const entry of entries) {
             if (!entry.instructions) continue;
@@ -346,6 +357,9 @@ export default class ToolService extends Service {
         if (!found || !toolEnabled(found.tool) || !inDomain(toolDomains(found.source, found.tool), context.domainId)) {
             throw new Error(`Unknown tool: ${name}`);
         }
+        if (context.mountedAddons !== undefined && !context.mountedAddons.has(found.tool.addonId)) {
+            throw new Error(`Addon "${found.tool.addonId}" is not mounted in this session.`);
+        }
         const access = await resolveAccess(context);
         assertAccess(found.tool, access);
         found.tool.checker?.(context);
@@ -356,6 +370,7 @@ export default class ToolService extends Service {
         if (found.tool.mutating) {
             this.ctx.emit('tool/called', {
                 name,
+                addonId: found.tool.addonId,
                 source: found.source.source,
                 domainId: context.domainId,
                 baseDocId: context.baseDocId,

@@ -1,51 +1,35 @@
+import { listAgentAddons, registerAgentAddon } from './addons';
+
+/** Legacy descriptor shape kept for plugins that have not moved to addonId yet. */
 export interface AgentContextPluginDescriptor {
     pluginId: string;
     displayName: string;
     description: string;
-    /** Tool-name prefixes owned by this plugin, used to label its tool calls in chat. */
     toolPrefixes?: readonly string[];
-    /** Context-source plugin IDs owned by this plugin, used to label context injections in chat. */
     contextSources?: readonly string[];
-    /** Whether this plugin is available before the domain overrides it. Defaults to enabled. */
     defaultEnabled?: boolean;
 }
 
-interface AgentContextPluginRegistry {
-    plugins: Map<string, AgentContextPluginDescriptor>;
-}
-
-const root = globalThis as typeof globalThis & { __ejunzAgentContextPlugins?: AgentContextPluginRegistry };
-const registry = root.__ejunzAgentContextPlugins ||= { plugins: new Map() };
-
-/** Register one plugin that can contribute context to Agent sessions. */
+/** Compatibility adapter; new registrations should use registerAgentAddon. */
 export function registerAgentContextPlugin(descriptor: AgentContextPluginDescriptor): () => void {
-    if (!descriptor?.displayName || !/^[a-z][a-z0-9._-]{0,63}$/.test(descriptor.pluginId)) {
-        throw new Error('Agent context plugin requires a valid pluginId and displayName.');
-    }
-    if (descriptor.toolPrefixes?.some((prefix) => typeof prefix !== 'string' || prefix.length === 0)) {
-        throw new Error('Agent context plugin toolPrefixes must be non-empty strings.');
-    }
-    if (descriptor.contextSources?.some((source) => typeof source !== 'string' || source.length === 0)) {
-        throw new Error('Agent context plugin contextSources must be non-empty strings.');
-    }
-    if (registry.plugins.has(descriptor.pluginId)) {
-        throw new Error(`Agent context plugin "${descriptor.pluginId}" is already registered.`);
-    }
-    const value = {
-        ...descriptor,
-        ...(descriptor.toolPrefixes === undefined ? {} : { toolPrefixes: [...descriptor.toolPrefixes] }),
-        ...(descriptor.contextSources === undefined ? {} : { contextSources: [...descriptor.contextSources] }),
-    };
-    registry.plugins.set(value.pluginId, value);
-    return () => {
-        if (registry.plugins.get(value.pluginId) === value) registry.plugins.delete(value.pluginId);
-    };
+    return registerAgentAddon({
+        addonId: descriptor.pluginId,
+        displayName: descriptor.displayName,
+        description: descriptor.description,
+        ...(descriptor.toolPrefixes === undefined ? {} : { toolPrefixes: descriptor.toolPrefixes }),
+        ...(descriptor.contextSources === undefined ? {} : { contextSources: descriptor.contextSources }),
+        ...(descriptor.defaultEnabled === undefined ? {} : { defaultEnabled: descriptor.defaultEnabled }),
+    });
 }
 
+/** Compatibility view of addon descriptors using the old pluginId property. */
 export function listAgentContextPlugins(): AgentContextPluginDescriptor[] {
-    return [...registry.plugins.values()].map((plugin) => ({
-        ...plugin,
-        ...(plugin.toolPrefixes === undefined ? {} : { toolPrefixes: [...plugin.toolPrefixes] }),
-        ...(plugin.contextSources === undefined ? {} : { contextSources: [...plugin.contextSources] }),
+    return listAgentAddons().map((addon) => ({
+        pluginId: addon.addonId,
+        displayName: addon.displayName,
+        description: addon.description,
+        ...(addon.toolPrefixes === undefined ? {} : { toolPrefixes: addon.toolPrefixes }),
+        ...(addon.contextSources === undefined ? {} : { contextSources: addon.contextSources }),
+        ...(addon.defaultEnabled === undefined ? {} : { defaultEnabled: addon.defaultEnabled }),
     }));
 }

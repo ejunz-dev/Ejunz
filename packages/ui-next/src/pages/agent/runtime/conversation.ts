@@ -1,4 +1,4 @@
-import type { AgentPluginView, ChatMessage, ChatSegment, QueueItem } from '../components/types';
+import type { AgentAddonView, ChatMessage, ChatSegment, QueueItem } from '../components/types';
 import { FILE_INJECTION_PLUGIN, FILE_INJECTION_SECTION, parseFileInjection, type UploadedFileMeta } from './uploads';
 
 export type JsonObject = Record<string, unknown>;
@@ -148,6 +148,24 @@ export function assistantKey(event: SessionEvent): string {
 
 export function eventMessage(event: SessionEvent): ChatMessage | null {
     const data = asObject(event.data);
+    if (event.type === 'session/addons' || event.type === 'session/plugins') {
+        const addonId = event.type === 'session/addons'
+            ? typeof data.addonId === 'string' ? data.addonId : ''
+            : typeof data.pluginId === 'string' ? data.pluginId : '';
+        if (!addonId || typeof data.enabled !== 'boolean') return null;
+        return {
+            key: `session-addon-${event.seq}`,
+            role: 'addon',
+            text: addonId,
+            eventType: event.type,
+            time: event.time,
+            addonMount: { addonId, enabled: data.enabled },
+            contextLabel: 'Addon',
+            contextSource: { kind: 'agent-addon', addonId },
+            contextForm: 'snapshot',
+            running: false,
+        };
+    }
     if (event.type === 'user/message' || event.type === 'assistant/message') {
         const segments = contentSegments(messageContent(event.data));
         const text = segments.map((segment) => segment.text).join('');
@@ -391,40 +409,27 @@ export function fileInjectionsAfterUser(messages: ChatMessage[]): ChatMessage[] 
     return result;
 }
 
-export function orderAgentPluginMessages(messages: readonly ChatMessage[], plugins: readonly AgentPluginView[]): ChatMessage[] {
-    const statusMessages: ChatMessage[] = plugins.map((plugin) => ({
-        key: `agent-plugin-status-${plugin.pluginId}`,
-        role: 'context',
-        text: `${plugin.displayName} 插件${plugin.enabled ? '已启用' : '已关闭'}。`,
-        eventType: 'agent-plugin/status',
-        time: 0,
-        contextRole: 'inject',
-        contextLabel: '插件状态',
-        agentPluginStatus: {
-            pluginId: plugin.pluginId,
-            displayName: plugin.displayName,
-            enabled: plugin.enabled,
-        },
-    }));
+export function orderAgentAddonMessages(messages: readonly ChatMessage[], addons: readonly AgentAddonView[]): ChatMessage[] {
+    const addonMounts = new Map<string, ChatMessage>();
     const pluginInjections: ChatMessage[] = [];
     const regularMessages: ChatMessage[] = [];
     for (const message of messages) {
+        if (message.role === 'addon' && message.addonMount) {
+            addonMounts.set(message.addonMount.addonId, message);
+            continue;
+        }
         if (message.role === 'context') {
             const source = asObject(message.contextSource);
-            const sections = Array.isArray(source.sections) ? source.sections.map(asObject) : [];
-            const isPluginStatus = source.kind === 'plugin' && sections.some((section) =>
-                typeof section.name === 'string' && section.name.startsWith('agent-plugin:'),
-            );
-            if (isPluginStatus) continue;
             if (source.kind === 'plugin' && typeof source.plugin === 'string'
-                && plugins.some((plugin) => plugin.contextSources?.includes(source.plugin as string))) {
+                && addons.some((addon) => addon.contextSources?.includes(source.plugin as string))) {
                 pluginInjections.push(message);
                 continue;
             }
         }
         regularMessages.push(message);
     }
-    return [...statusMessages, ...pluginInjections, ...regularMessages];
+    const addonMountMessages = [...addonMounts.values()].filter((message) => message.addonMount?.enabled);
+    return [...addonMountMessages, ...pluginInjections, ...regularMessages];
 }
 
 export function eventsToMessages(entries: HistoryEntry[]): ChatMessage[] {

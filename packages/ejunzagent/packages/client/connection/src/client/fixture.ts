@@ -2344,6 +2344,28 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         })
         return ok(request, { accepted: true as const })
       },
+      addons: (request) => {
+        const { sessionId, addonId, enabled } = request.payload
+        const summary = summaryOf(sessionId)
+        if (summary === undefined) {
+          return err(request, {
+            code: 'session-not-found',
+            message: `no session ${sessionId}`,
+            details: { sessionId },
+          })
+        }
+        const log = logOf(sessionId)
+        const previous = [...log].reverse().find(event =>
+          event.type === 'session/addons' && event.data.addonId === addonId,
+        )
+        if (previous?.type === 'session/addons' && previous.data.enabled === enabled) {
+          return ok(request, { accepted: true as const, seq: previous.seq })
+        }
+        summary.updatedAt = Date.now()
+        const seq = log.length
+        append(sessionId, { type: 'session/addons', data: { addonId, enabled } })
+        return ok(request, { accepted: true as const, seq })
+      },
       attachment: (request) => {
         const stored = attachments.get(String(request.payload.attachmentId))
         if (stored === undefined) {
@@ -2790,6 +2812,7 @@ export class FixtureApiClient extends AbstractApiClient {
       case 'session.cancel': return this.api.sessions.cancel(request)
       case 'session.command': return this.api.sessions.command(request, signal)
       case 'session.inject': return this.api.sessions.inject(request)
+      case 'session.addons': return this.api.sessions.addons(request)
       case 'subagent.list': return this.api.subagents.list(request)
       case 'subagent.history': return this.api.subagents.history(request)
       case 'subagent.prompt': return this.api.subagents.prompt(request, signal)

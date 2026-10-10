@@ -22,7 +22,7 @@ import { ActionDialog } from './components/primitives/ActionDialog';
 import { GeneralSection } from './components/settings/GeneralSection';
 import { EnterBehaviorRow, LanguageRow } from './components/settings/SettingsRows';
 import { PluginsSection } from './components/settings/PluginsSection';
-import { AgentPluginsSection } from './components/settings/AgentPluginsSection';
+import { AgentAddonsSection } from './components/settings/AgentAddonsSection';
 import { ModelsSection } from './components/settings/ModelsSection';
 import { getPath } from './components/settings/modelsStore';
 import { AgentPresetLabel } from './components/settings/AgentPresetLabel';
@@ -33,7 +33,7 @@ import { ToolsSection } from './components/settings/ToolsSection';
 import { DeepSeekOnboarding } from './components/settings/DeepSeekOnboarding';
 import { SettingsDocumentAction } from './components/settings/SettingsDocumentAction';
 import { SettingsRoot } from './components/settings/SettingsRoot';
-import type { AgentPluginView, ChatMessage, PendingApproval, PendingQuestion, QueueItem, SessionModels } from './components/types';
+import type { AgentAddonView, ChatMessage, PendingApproval, PendingQuestion, QueueItem, SessionModels } from './components/types';
 import { domainPrefix, useAgentRpc } from './runtime/rpc';
 import { notifyAgentPluginDisabled, registerAgentPluginUiLoader, setEnabledAgentPluginSlots } from './runtime/agent-plugin-slots';
 import { useAgentTheme } from './runtime/theme';
@@ -249,6 +249,9 @@ function assistantStage(message: ChatMessage): 'Think' | 'Agent' {
 
 function activityPreview(message: ChatMessage, userName = 'User'): string {
     if (message.role === 'context') return `Inject · ${flatLine(message.text)}`;
+    if (message.role === 'addon' && message.addonMount) {
+        return `插件挂载 · ${message.addonMount.addonId}`;
+    }
     if (message.role === 'user') return `${userName} · ${flatLine(message.text)}`;
     if (message.role === 'assistant') return `${assistantStage(message)} · ${latestLine(assistantText(message))}`;
     if (message.role === 'retry') return `Think · ${flatLine(message.text)}`;
@@ -435,8 +438,8 @@ export default function AgentPage() {
     const [treeOpen, setTreeOpen] = useState(false);
     const [activeTreeNodeId, setActiveTreeNodeId] = useState<string | null>(() => readAgentSelection().nodeId ?? pageRootNodeId);
     const [bases, setBases] = useState<BaseView[]>([]);
-    const [agentContextPlugins, setAgentContextPlugins] = useState<AgentPluginView[]>([]);
-    const [enabledAgentPluginIds, setEnabledAgentPluginIds] = useState<Set<string>>(new Set());
+    const [agentAddons, setAgentAddons] = useState<AgentAddonView[]>([]);
+    const [enabledAgentAddonIds, setEnabledAgentAddonIds] = useState<Set<string>>(new Set());
     const [draftBaseId, setDraftBaseId] = useState<number | undefined>();
     const [draftSessionId, setDraftSessionId] = useState<string | null>(null);
     const [draftNodeId, setDraftNodeId] = useState<string | undefined>();
@@ -576,18 +579,19 @@ export default function AgentPage() {
         }
     }, [rpc]);
 
-    const loadAgentContextPlugins = useCallback(async () => {
+    const loadAgentAddons = useCallback(async () => {
         try {
-            const value = await rpc('agentPlugins.list', {}) as { plugins?: AgentPluginView[] };
-            const plugins = value.plugins ?? [];
-            const enabled = new Set(plugins.filter((plugin) => plugin.enabled).map((plugin) => plugin.pluginId));
-            setAgentContextPlugins(plugins);
-            setEnabledAgentPluginIds(enabled);
+            const sessionId = currentRef.current ?? '';
+            const value = await rpc('agent.addons.list', sessionId ? { sessionId } : {}) as { addons?: AgentAddonView[] };
+            const addons = value.addons ?? [];
+            const enabled = new Set(addons.filter((addon) => addon.enabled).map((addon) => addon.addonId));
+            setAgentAddons(addons);
+            setEnabledAgentAddonIds(enabled);
             void setEnabledAgentPluginSlots(enabled);
         } catch {
             const disabled = new Set<string>();
-            setAgentContextPlugins([]);
-            setEnabledAgentPluginIds(disabled);
+            setAgentAddons([]);
+            setEnabledAgentAddonIds(disabled);
             void setEnabledAgentPluginSlots(disabled);
         }
     }, [rpc]);
@@ -1014,17 +1018,17 @@ export default function AgentPage() {
             loadNodes(),
             loadHosts(),
             loadBases(),
-            loadAgentContextPlugins(),
+            loadAgentAddons(),
             loadDisplaySettings(),
             loadAgentPresets(),
             loadModelCatalog(),
         ]).finally(() => setBooting(false));
-    }, [guest, loadAgentContextPlugins, loadAgentPresets, loadBases, loadDisplaySettings, loadHosts, loadModelCatalog, loadNodes, loadSessions]);
+    }, [guest, loadAgentAddons, loadAgentPresets, loadBases, loadDisplaySettings, loadHosts, loadModelCatalog, loadNodes, loadSessions]);
     useEffect(() => {
         if (guest) return undefined;
-        const timer = window.setInterval(() => { void loadSessions(); void loadNodes(); void loadHosts(); void loadBases(); void loadAgentContextPlugins(); }, POLL_MS);
+        const timer = window.setInterval(() => { void loadSessions(); void loadNodes(); void loadHosts(); void loadBases(); void loadAgentAddons(); }, POLL_MS);
         return () => window.clearInterval(timer);
-    }, [guest, loadAgentContextPlugins, loadBases, loadHosts, loadNodes, loadSessions]);
+    }, [guest, loadAgentAddons, loadBases, loadHosts, loadNodes, loadSessions]);
     useEffect(() => {
         if (booting) return;
         const selectedSession = current ? sessions.find((session) => session.sessionId === current) : undefined;
@@ -1059,6 +1063,7 @@ export default function AgentPage() {
         });
     }, [current, guest, preloadHistoryPreview, sessions]);
     useEffect(() => {
+        if (booting) return;
         ++historyLoadRef.current;
         ++historyTotalRequestRef.current;
         setModels(null);
@@ -1089,8 +1094,12 @@ export default function AgentPage() {
         void loadModels(current);
         const cached = historyCacheRef.current.get(current);
         if (!cached) {
+            setHistoryLoading(true);
             void loadHistoryTotal(current);
-            void loadInitialHistory(current);
+            void (async () => {
+                await loadAgentAddons();
+                await loadInitialHistory(current);
+            })();
             return;
         }
         historyRef.current = cached.history;
@@ -1100,8 +1109,12 @@ export default function AgentPage() {
         setHistoryHasMore(cached.hasMore);
         setHistoryTotalMessages(cached.totalMessages);
         setHistoryProgress(Math.min(HISTORY_PAGE_SIZE, visibleHistoryMessageCount(cached.history)));
-        setHistoryLoading(false);
-    }, [current, loadHistoryTotal, loadInitialHistory, loadModels]);
+        setHistoryLoading(true);
+        void (async () => {
+            await loadAgentAddons();
+            await loadInitialHistory(current);
+        })();
+    }, [booting, current, loadAgentAddons, loadHistoryTotal, loadInitialHistory, loadModels]);
     useEffect(() => {
         setPendingQuestion(current ? pendingQuestions[current] ?? null : null);
     }, [current, pendingQuestions]);
@@ -1925,7 +1938,7 @@ export default function AgentPage() {
             <DeepSeekOnboarding rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} />
             {newSessionConfigOpen && <InputConfigDialog
                 hosts={hosts}
-                agentPlugins={agentContextPlugins.filter((plugin) => plugin.enabled)}
+                addons={agentAddons.filter((addon) => addon.enabled)}
                 selectedHostId={draftHostId}
                 onPickHost={setDraftHostId}
                 bases={bases}
@@ -1979,29 +1992,31 @@ export default function AgentPage() {
                     { id: 'agent-presets', label: 'Agent 预设', render: () => <AgentPresetSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} onCreatorDraft={startCreatorDraft} /> },
                     { id: 'tools', label: '工具', render: () => <ToolsSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} sessionId={currentSession?.isDraftCard ? undefined : current ?? undefined} refreshKey={currentSession?.agentPreset} /> },
                     { id: 'plugins', label: '插件', render: () => <PluginsSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} /> },
-                    { id: 'agent-plugins', label: 'Agent 插件', render: () => <AgentPluginsSection
+                    { id: 'agent-addons', label: 'Agent Addons', render: () => <AgentAddonsSection
                         rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>}
                         sessionId={currentSession?.isDraftCard ? undefined : current ?? undefined}
-                        onPluginChange={(pluginId, enabled) => {
-                            const nextIds = new Set(enabledAgentPluginIds);
-                            if (enabled) nextIds.add(pluginId);
-                            else nextIds.delete(pluginId);
-                            setEnabledAgentPluginIds(nextIds);
-                            setAgentContextPlugins((items) => items.map((plugin) => plugin.pluginId === pluginId ? { ...plugin, enabled } : plugin));
+                        onAddonChange={(addonId, enabled) => {
+                            const nextIds = new Set(enabledAgentAddonIds);
+                            if (enabled) nextIds.add(addonId);
+                            else nextIds.delete(addonId);
+                            setEnabledAgentAddonIds(nextIds);
+                            setAgentAddons((items) => items.map((addon) => addon.addonId === addonId ? { ...addon, enabled } : addon));
                             void setEnabledAgentPluginSlots(nextIds);
-                            void loadBases();
-                            if (!enabled) void notifyAgentPluginDisabled(pluginId, {
-                                currentSession,
-                                clearDraftContext: () => setDraftBaseId(undefined),
-                                clearCurrentContext: async () => {
-                                    if (!current) return;
-                                    try {
-                                        await saveBaseSetting(undefined);
-                                    } catch (error) {
-                                        setLoadError(error instanceof Error ? error.message : String(error));
-                                    }
-                                },
-                            });
+                            if (addonId === 'base') {
+                                void loadBases();
+                                if (!enabled) void notifyAgentPluginDisabled(addonId, {
+                                    currentSession,
+                                    clearDraftContext: () => setDraftBaseId(undefined),
+                                    clearCurrentContext: async () => {
+                                        if (!current) return;
+                                        try {
+                                            await saveBaseSetting(undefined);
+                                        } catch (error) {
+                                            setLoadError(error instanceof Error ? error.message : String(error));
+                                        }
+                                    },
+                                });
+                            }
                         }}
                     /> },
                 ]}
@@ -2062,7 +2077,7 @@ export default function AgentPage() {
                             sessionErrors={sessionErrorMap}
                             sessionActivityPreviews={sessionActivityPreviewMap}
                             modelGroups={modelCatalog?.groups}
-                            activeAgentPluginIds={enabledAgentPluginIds}
+                            activeAgentPluginIds={enabledAgentAddonIds}
                             displaySettings={displaySettings}
                             query={query}
                             searchMatches={searchMatchSet}
@@ -2122,7 +2137,7 @@ export default function AgentPage() {
                                     view={view === 'trajectory' ? 'trajectory' : 'chat'}
                                     onViewChange={setView}
                                     hideHeader
-                                    chat={<ChatView messages={messages} plugins={agentContextPlugins} running={running} runningTurnStartTime={runningTurnStart} historyHasMore={historyHasMore} loadingOlder={loadingOlder} loadedMessages={loadedHistoryMessages} totalMessages={historyTotalMessages} historyPageSize={HISTORY_PAGE_SIZE} onLoadOlder={() => void loadOlder()} onOpenFile={openFile} onOpenDetails={(tool) => { setSelectedTool(tool); }} />}
+                                    chat={<ChatView messages={messages} addons={agentAddons} running={running} runningTurnStartTime={runningTurnStart} historyHasMore={historyHasMore} loadingOlder={loadingOlder} loadedMessages={loadedHistoryMessages} totalMessages={historyTotalMessages} historyPageSize={HISTORY_PAGE_SIZE} onLoadOlder={() => void loadOlder()} onOpenFile={openFile} onOpenDetails={(tool) => { setSelectedTool(tool); }} />}
                                     trajectory={<TrajectoryView messages={messages} history={history} session={currentSession} historyHasMore={historyHasMore} loadingOlder={loadingOlder} onLoadOlder={loadOlder} />}
                                     composer={<div className="eza-composerLayer">
                                         <InputBar input={input} setInput={setInput} send={send} cancel={cancel} running={running} sending={sending} attachments={attachments} onAddFiles={addAttachments} onRemoveAttachment={removeAttachment} models={composerModels} showModelPicker={false} projections={currentSession.projections?.values} modelMenuOpen={modelMenuOpen} setModelMenuOpen={setModelMenuOpen} selectModel={selectModel} notice={currentSessionError ?? loadError} placeholder="输入消息，Shift+Enter 换行">

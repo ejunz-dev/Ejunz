@@ -2,6 +2,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { Context } from '../context';
 import ToolService from './registry';
+import { listAgentAddons } from './addons';
 
 export { default as ToolService } from './registry';
 export { createProvider } from './provider';
@@ -30,4 +31,9 @@ export async function apply(ctx: Context) {
         if (typeof require(file).apply !== 'function') continue;
         await ctx.loader.reloadPlugin(file, '');
     }
+    const tools = ctx.get('tools') as ToolService | undefined;
+    if (!tools) throw new Error('Ejunz tool registry is unavailable.');
+    const declared = new Set(listAgentAddons().map((addon) => addon.addonId));
+    const missing = tools.addonIds().filter((addonId) => !declared.has(addonId));
+    if (missing.length) throw new Error(`Tool registrations reference undeclared add-ons: ${missing.join(', ')}.`);
 }

@@ -22,6 +22,7 @@ import {
   sessionForkValueSchema,
   sessionHistoryValueSchema,
   sessionInjectValueSchema,
+  sessionAddonsValueSchema,
   sessionListValueSchema,
   sessionModelsValueSchema,
   sessionPromptValueSchema,
@@ -87,6 +88,7 @@ export interface IApiClient {
     prompt(payload: RequestPayload<'session.prompt'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'session.prompt'>>>
     command(payload: RequestPayload<'session.command'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'session.command'>>>
     inject(payload: RequestPayload<'session.inject'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'session.inject'>>>
+    addons(payload: RequestPayload<'session.addons'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'session.addons'>>>
     attachment(payload: RequestPayload<'session.attachment'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'session.attachment'>>>
     updateQueue(payload: RequestPayload<'session.updateQueue'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'session.updateQueue'>>>
     cancel(payload: RequestPayload<'session.cancel'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'session.cancel'>>>
@@ -154,6 +156,7 @@ const UNARY_VALUE_SCHEMAS: { [K in keyof RpcMethodMap]: z.ZodType<Wire<ResponseV
   'session.history': sessionHistoryValueSchema,
   'session.command': sessionCommandValueSchema,
   'session.inject': sessionInjectValueSchema,
+  'session.addons': sessionAddonsValueSchema,
   'session.models': sessionModelsValueSchema,
   'session.selectModel': sessionSelectModelValueSchema,
   'session.rename': sessionRenameValueSchema,
@@ -389,6 +392,7 @@ export abstract class AbstractApiClient implements IApiClient {
     prompt: (payload, signal) => this.callUnary('session.prompt', payload, signal),
     command: (payload, signal) => this.callUnary('session.command', payload, signal),
     inject: (payload, signal) => this.callUnary('session.inject', payload, signal),
+    addons: (payload, signal) => this.callUnary('session.addons', payload, signal),
     attachment: (payload, signal) => this.callUnary('session.attachment', payload, signal),
     updateQueue: (payload, signal) => this.callUnary('session.updateQueue', payload, signal),
     cancel: (payload, signal) => this.callUnary('session.cancel', payload, signal),

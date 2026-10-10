@@ -6,6 +6,8 @@ export interface ToolContext {
     priv?: number;
     perm?: bigint;
     scope?: bigint;
+    /** Session add-ons allowed to expose and execute tools for this Agent request. */
+    mountedAddons?: ReadonlySet<string>;
     setting?: { get: (k: string) => unknown };
 }
 
@@ -26,6 +28,7 @@ export interface ToolSpec {
 
 export interface ToolCalledPayload {
     name: string;
+    addonId: string;
     source: string;
     domainId: string;
     baseDocId: number;

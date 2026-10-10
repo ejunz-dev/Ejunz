@@ -6,6 +6,7 @@ import type { AgentScope, RuntimeLink } from '../service/runtime';
 import type { AgentStorageDescriptor } from '../model/agent';
 import type { RuntimeHelloFrame, RuntimeInboundFrame, RuntimeLinkPollFrame, RuntimeStream } from '../service/runtime';
 import { agentRuntimeHandlerContext as service } from '../service/runtime';
+import { listAgentAddons } from '../service/addons';
 
 interface RpcEnvelope {
     type?: string;
@@ -15,9 +16,38 @@ interface RpcEnvelope {
     domainId?: string;
     agentId?: number | null;
 }
-const { requireBridgeToken, baseSessionScope, toolRegistry, scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, nodeRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, agentContextPluginsList, agentContextPluginSet, isAgentContextPluginEnabled, baseTutorEnsure, baseTutorList, baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems, runtimeRelabel, runtimeRemove, sessionCreate, sessionHistory, sessionMessageCount, sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink, logger, RUNTIME_HELLO_TIMEOUT_MS, addLink, rememberRuntime, reportRuntime, agentDataAdapter, AgentStorageModel, AgentLinkModel, createProvider, SystemModel, randomUUID, WebSocket, parseRuntimeFrame, createSocketLink, followLinks, runtimeLinks, runtimeFacts, bridgeRuntimeId, mergeDomainProviders, mergeDomainModels, cloneSettingsSections } = service;
+const { requireBridgeToken, baseSessionScope, toolRegistry, scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, nodeRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList, agentAddonSet, isAgentAddonEnabled, baseTutorEnsure, baseTutorList, baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems, runtimeRelabel, runtimeRemove, sessionCreate, sessionHistory, sessionMessageCount, sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink, logger, RUNTIME_HELLO_TIMEOUT_MS, addLink, rememberRuntime, reportRuntime, agentDataAdapter, AgentStorageModel, AgentLinkModel, createProvider, SystemModel, randomUUID, WebSocket, parseRuntimeFrame, createSocketLink, followLinks, runtimeLinks, runtimeFacts, bridgeRuntimeId, mergeDomainProviders, mergeDomainModels, cloneSettingsSections } = service;
 const dataOk = (value: unknown): Record<string, unknown> => ({ ok: true, value });
 const dataError = (message: string): Record<string, unknown> => ({ ok: false, error: { message } });
+
+async function mountedAddonsForSession(sessionId: string, domainId: string): Promise<Set<string>> {
+    const states = new Map<string, boolean>();
+    const remaining = new Set(listAgentAddons().map((addon) => addon.addonId));
+    let beforeSeq: number | undefined;
+    for (let pageNumber = 0; remaining.size > 0 && pageNumber < 32; pageNumber += 1) {
+        const page = await AgentSessionModel.listEventsAny(sessionId, beforeSeq, 200);
+        if (page.events.length === 0) break;
+        for (const entry of [...page.events].reverse()) {
+            const data = entry.data && typeof entry.data === 'object' ? entry.data as Record<string, unknown> : {};
+            const addonId = entry.type === 'session/addons'
+                ? data.addonId
+                : entry.type === 'session/plugins' ? data.pluginId : undefined;
+            if (typeof addonId === 'string' && remaining.has(addonId) && typeof data.enabled === 'boolean') {
+                states.set(addonId, data.enabled);
+                remaining.delete(addonId);
+            }
+        }
+        if (!page.hasMore) break;
+        const firstSeq = Number(page.events[0]?.seq);
+        if (!Number.isSafeInteger(firstSeq)) break;
+        beforeSeq = firstSeq;
+    }
+    const mounted = new Set<string>();
+    for (const [addonId, enabled] of states) {
+        if (enabled && await isAgentAddonEnabled(domainId, addonId)) mounted.add(addonId);
+    }
+    return mounted;
+}
 
 function agentDefinitionView(agent: Record<string, unknown>) {
     return {
@@ -68,15 +98,14 @@ export class EjunzAgentDataHandler extends Handler<Context> {
                 if (scope) logger.info('[agent-tools] scope session=%s domain=%s baseId=%d owner=%d', sessionId, scope.domain, scope.baseId, scope.owner);
                 this.response.body = JSON.stringify(dataOk(scope ?? null));
             } else if (method === 'tools/catalog') {
-                // The catalog is per session: a caller that names one receives the tools
-                // its domain publishes, and a caller with no session yet (an Agent process
-                // starting up, before any session exists) receives the domain-independent
-                // set, with unscoped guidance.
                 const sessionId = String(body.sessionId || '');
                 const resolved = sessionId ? await baseSessionScope(sessionId, true) : { session: undefined, scope: undefined };
                 const scope = resolved.scope ?? (resolved.session
                     ? { domain: resolved.session.domainId, baseId: 0, owner: resolved.session.userId }
                     : undefined);
+                const mountedAddons = sessionId && resolved.session
+                    ? await mountedAddonsForSession(sessionId, resolved.session.domainId)
+                    : new Set<string>();
                 const tools = toolRegistry();
                 const context = {
                     domainId: scope?.domain || '',
@@ -90,8 +119,8 @@ export class EjunzAgentDataHandler extends Handler<Context> {
                     if (user) access = { priv: user.priv, perm: user.perm, scope: user.scope };
                 }
                 this.response.body = JSON.stringify(dataOk({
-                    tools: tools.list(undefined, scope?.domain, access),
-                    guidance: (await tools.instructions(context)).join('\n\n'),
+                    tools: tools.list(undefined, scope?.domain, access, mountedAddons),
+                    guidance: (await tools.instructions(context, undefined, mountedAddons)).join('\n\n'),
                 }));
             } else if (method === 'tools/call') {
                 const sessionId = String(body.sessionId || '');
@@ -101,8 +130,13 @@ export class EjunzAgentDataHandler extends Handler<Context> {
                 const scope = resolved.scope ?? { domain: resolved.session.domainId, baseId: 0, owner: resolved.session.userId };
                 const args = body.args;
                 if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('args must be an object');
+                const mountedAddons = await mountedAddonsForSession(sessionId, scope.domain);
+                const registration = toolRegistry().get(name);
+                if (!registration || !mountedAddons.has(registration.addonId)) {
+                    throw new Error(`Addon for tool ${name} is not mounted in this session.`);
+                }
                 const startedAt = Date.now();
-                logger.info('[agent-base] call start session=%s name=%s domain=%s baseId=%d owner=%d', sessionId, name, scope.domain, scope.baseId, scope.owner);
+                logger.info('[agent-tools] call start session=%s name=%s addon=%s domain=%s baseId=%d owner=%d', sessionId, name, registration.addonId, scope.domain, scope.baseId, scope.owner);
                 try {
                     const ejunzContext = (global as any).app || (global as any).Ejunz;
                     if (!ejunzContext) throw new Error('Ejunz context is unavailable');
@@ -111,12 +145,13 @@ export class EjunzAgentDataHandler extends Handler<Context> {
                         owner: scope.owner,
                         baseDocId: scope.baseId,
                         sessionId,
+                        mountedAddons,
                     });
                     const result = await provider.call(name, args as Record<string, unknown>, new AbortController().signal);
-                    logger.info('[agent-base] call done session=%s name=%s domain=%s baseId=%d durationMs=%d', sessionId, name, scope.domain, scope.baseId, Date.now() - startedAt);
+                    logger.info('[agent-tools] call done session=%s name=%s addon=%s domain=%s baseId=%d durationMs=%d', sessionId, name, registration.addonId, scope.domain, scope.baseId, Date.now() - startedAt);
                     this.response.body = JSON.stringify(dataOk(result));
                 } catch (error) {
-                    logger.warn('[agent-base] call failed session=%s name=%s domain=%s baseId=%d durationMs=%d error=%s', sessionId, name, scope.domain, scope.baseId, Date.now() - startedAt, error instanceof Error ? error.message : String(error));
+                    logger.warn('[agent-tools] call failed session=%s name=%s addon=%s domain=%s baseId=%d durationMs=%d error=%s', sessionId, name, registration.addonId, scope.domain, scope.baseId, Date.now() - startedAt, error instanceof Error ? error.message : String(error));
                     throw error;
                 }
             } else if (method === 'session/create') {
@@ -372,14 +407,14 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             }));
             return;
         }
-        if (method === 'agentPlugins.list') {
+        if (method === 'agent.addons.list') {
             this.response.type = 'application/json';
-            this.response.body = JSON.stringify(await agentContextPluginsList(envelope, scope));
+            this.response.body = JSON.stringify(await agentAddonsList(envelope, scope));
             return;
         }
-        if (method === 'agentPlugins.set') {
+        if (method === 'agent.addons.set') {
             this.response.type = 'application/json';
-            this.response.body = JSON.stringify(await agentContextPluginSet(envelope, scope));
+            this.response.body = JSON.stringify(await agentAddonSet(envelope, scope));
             return;
         }
         if (method === 'settings.describe' || method === 'settings.update' || method === 'settings.replace' || method === 'settings.mutate') {
@@ -415,7 +450,7 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             return;
         }
         if (method === 'base.list') {
-            if (!await isAgentContextPluginEnabled(scope.domainId, 'base')) {
+            if (!await isAgentAddonEnabled(scope.domainId, 'base')) {
                 this.response.type = 'application/json';
                 this.response.body = JSON.stringify(rpcOk(envelope.rpcId, { items: [] }));
                 return;

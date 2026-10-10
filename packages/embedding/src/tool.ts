@@ -284,8 +284,8 @@ class BaseSemanticSearchHandler extends Handler {
 export function apply(ctx: Context) {
     const session = { source: 'base' as const, bindBase: 'session' as const };
     const optional = { source: 'base' as const, bindBase: 'optional' as const };
-    ctx.Tool('base_semantic_search', search, Search, session, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_semantic_search', search, Search, session, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_semantic_search', '/base/semantic-search', BaseSemanticSearchHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base_embedding_status', status, Status, optional, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base_embedding_reindex', reindex, Reindex, { ...optional, mutating: true }, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_embedding_status', status, Status, optional, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_embedding_reindex', reindex, Reindex, { ...optional, mutating: true }, PRIV.PRIV_USER_PROFILE);
 }

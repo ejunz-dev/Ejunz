@@ -319,6 +319,19 @@ export const sessionInjectValueSchema = z.object({
   accepted: z.literal(true),
 }) satisfies z.ZodType<Wire<ResponseValue<'session.inject'>>>
 
+/** session.addons request payload: record an addon mount without adding model context. */
+export const sessionAddonsRequestSchema = z.object({
+  sessionId: sessionIdSchema,
+  addonId: z.string().min(1),
+  enabled: z.boolean(),
+}) satisfies z.ZodType<Wire<RequestPayload<'session.addons'>>>
+
+/** session.addons response value. */
+export const sessionAddonsValueSchema = z.object({
+  accepted: z.literal(true),
+  seq: z.number().int().nonnegative(),
+}) satisfies z.ZodType<Wire<ResponseValue<'session.addons'>>>
+
 /** Opaque attachment id after string-shape validation. */
 export const attachmentIdSchema = z.string().min(1) as unknown as z.ZodType<AttachmentIdType>
 

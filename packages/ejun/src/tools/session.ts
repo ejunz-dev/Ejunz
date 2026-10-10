@@ -5,7 +5,7 @@ import * as document from 'ejun/src/model/document';
 import { BaseModel } from 'ejun/src/model/base';
 import type { ToolArgs, ToolBaseSelectPayload, ToolContext } from '../lib/tool-types';
 import type { ToolInstructionsContext } from '../service/registry';
-import { registerAgentContextPlugin } from '../service/agent-context-plugins';
+import { registerAgentAddon } from '../service/addons';
 
 export const inject = ['server'];
 
@@ -54,8 +54,8 @@ export async function select(app: Context, ctx: ToolContext, args: ToolArgs) {
 }
 
 export function apply(ctx: Context) {
-    const unregister = registerAgentContextPlugin({
-        pluginId: 'base',
+    const unregister = registerAgentAddon({
+        addonId: 'base',
         displayName: 'Ejunz Base',
         description: '选择一个 Ejunz Base 作为会话上下文，并使用 Base 工具处理其中的内容。',
         toolPrefixes: ['base_'],
@@ -64,6 +64,6 @@ export function apply(ctx: Context) {
     });
     ctx.effect(() => unregister);
     const session = { source: 'session' as const, bindBase: 'none' as const };
-    ctx.Tool('base_context', context, ContextConfig, { ...session, instructions }, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base_select', (toolCtx, args) => select(ctx, toolCtx, args), SelectConfig, { ...session, mutating: true }, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_context', context, ContextConfig, { ...session, instructions }, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_select', (toolCtx, args) => select(ctx, toolCtx, args), SelectConfig, { ...session, mutating: true }, PRIV.PRIV_USER_PROFILE);
 }

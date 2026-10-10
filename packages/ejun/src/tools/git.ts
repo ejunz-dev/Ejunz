@@ -68,10 +68,10 @@ export async function configSet(ctx: ToolContext, args: ToolArgs) {
 
 export function apply(ctx: Context) {
     const opts = { source: 'base' as const, bindBase: 'session' as const };
-    ctx.Tool('base_git_status', status, Status, opts, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base_git_commit', commit, Commit, opts, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base_git_push', push, Push, opts, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base_git_pull', pull, Pull, { ...opts, mutating: true }, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base_git_config_get', configGet, ConfigGet, opts, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base_git_config_set', configSet, ConfigSet, { ...opts, mutating: true }, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_git_status', status, Status, opts, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_git_commit', commit, Commit, opts, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_git_push', push, Push, opts, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_git_pull', pull, Pull, { ...opts, mutating: true }, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_git_config_get', configGet, ConfigGet, opts, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_git_config_set', configSet, ConfigSet, { ...opts, mutating: true }, PRIV.PRIV_USER_PROFILE);
 }
