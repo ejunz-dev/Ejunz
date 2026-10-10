@@ -9,6 +9,7 @@ import { ContextInjectionRow } from './ContextInjectionRow';
 import { FileInjectionRow } from './FileInjectionRow';
 import { MessageActions } from './MessageActions';
 import { ToolRow } from './ToolRow';
+import { AddonMountRow } from './AddonMountRow';
 import { TurnStatusRow } from './TurnStatusRow';
 
 function addonForContextMessage(message: ChatMessage, addons: readonly AgentAddonView[]): AgentAddonView | undefined {
@@ -41,12 +42,10 @@ export function ChatMessageView({ message, addons, onOpenFile, onOpenDetails }: 
         const { addonId } = message.addonMount;
         const addon = addons.find((item) => item.addonId === addonId);
         const displayName = addon?.displayName ?? addonId;
-        const description = addon?.description ?? message.text;
-        return <ContextInjectionRow
+        return <AddonMountRow
             label={`插件挂载 · ${displayName}`}
-            text={description}
-            contextSource={message.contextSource}
-            contextForm={message.contextForm}
+            description={addon?.description ?? message.text}
+            tools={addon?.tools ?? []}
         />;
     }
     if (message.role === 'user') {

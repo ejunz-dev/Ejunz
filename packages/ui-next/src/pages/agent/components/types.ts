@@ -51,6 +51,7 @@ export interface AgentAddonView {
     enabled: boolean;
     toolPrefixes?: readonly string[];
     contextSources?: readonly string[];
+    tools?: { name: string; description: string }[];
 }
 
 export interface SessionModels {

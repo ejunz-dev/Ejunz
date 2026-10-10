@@ -1464,9 +1464,16 @@ function agentAddonEnabled(settings: AgentDomainSettings, addonId: string): bool
 
 async function agentAddonsList(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const settings = await agentDataAdapter.getDomainSettings(scope.domainId);
+    const toolsByAddon = new Map<string, { name: string; description: string }[]>();
+    for (const { addonId, name, description } of toolRegistry().list(undefined, scope.domainId)) {
+        const tools = toolsByAddon.get(addonId) ?? [];
+        tools.push({ name, description });
+        toolsByAddon.set(addonId, tools);
+    }
     const addons = listAgentAddons().map((addon) => ({
         ...addon,
         enabled: agentAddonEnabled(settings, addon.addonId),
+        tools: (toolsByAddon.get(addon.addonId) ?? []).sort((left, right) => left.name.localeCompare(right.name)),
     }));
     const sessionId = typeof envelope.payload?.sessionId === 'string' ? envelope.payload.sessionId.trim() : '';
     if (sessionId && await agentDataAdapter.getSession(scope, sessionId)) {
