@@ -921,6 +921,16 @@ export class AgentSessionModel {
         return { events: rows.slice(0, limit).reverse().map((row) => row.event), hasMore };
     }
 
+    static async listAddonEvents(domainId: string, userId: number, sessionId: string): Promise<Record<string, unknown>[]> {
+        const rows = await events.find({
+            domainId,
+            userId,
+            sessionId,
+            'event.type': { $in: ['session/addons', 'session/plugins'] },
+        }).sort({ seq: -1 }).toArray() as AgentEventDoc[];
+        return rows.map((row) => row.event);
+    }
+
     static async listEventsTailAny(sessionId: string, beforeSeq?: number, limit = 100): Promise<{ events: Record<string, unknown>[]; hasMore: boolean }> {
         return await AgentSessionModel.listEventsAny(sessionId, beforeSeq, limit);
     }

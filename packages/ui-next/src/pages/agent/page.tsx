@@ -52,7 +52,10 @@ const EVENT_RECONNECT_MS = 2000;
 const HISTORY_PAGE_SIZE = 100;
 const HISTORY_INITIAL_MESSAGES = 8;
 const HISTORY_PREVIEW_MESSAGES = 1;
-const HISTORY_PREVIEW_CONCURRENCY = 4;
+const HISTORY_PREVIEW_CONCURRENCY = 2;
+// Sidebar previews are optional; cap tail-history reads so they do not contend with the active session.
+const HISTORY_PREVIEW_MAX_SESSIONS = 6;
+const ADDON_POLL_MS = 60_000;
 const SESSION_DRAWER_DEFAULT = 420;
 
 registerAgentPluginUiLoader('base', () => import('./components/structure/BaseContextPlugin'));
@@ -581,8 +584,7 @@ export default function AgentPage() {
 
     const loadAgentAddons = useCallback(async () => {
         try {
-            const sessionId = currentRef.current ?? '';
-            const value = await rpc('agent.addons.list', sessionId ? { sessionId } : {}) as { addons?: AgentAddonView[] };
+            const value = await rpc('agent.addons.list', {}) as { addons?: AgentAddonView[] };
             const addons = value.addons ?? [];
             const enabled = new Set(addons.filter((addon) => addon.enabled).map((addon) => addon.addonId));
             setAgentAddons(addons);
@@ -687,6 +689,7 @@ export default function AgentPage() {
     const historyCacheRef = useRef(new Map<string, HistoryCacheEntry>());
     const historyPreviewRef = useRef(new Map<string, Promise<void>>());
     const historyPreviewAttemptedRef = useRef(new Set<string>());
+    const historyReadySessionRef = useRef<string | null>(null);
     const historyPreviewActiveRef = useRef(0);
     const historyPreviewWaitersRef = useRef<(() => void)[]>([]);
     const acquireHistoryPreview = useCallback(async () => {
@@ -844,7 +847,10 @@ export default function AgentPage() {
             setMessages([]);
             setLoadError(error instanceof Error ? error.message : String(error));
         } finally {
-            if (isCurrentLoad()) setHistoryLoading(false);
+            if (isCurrentLoad()) {
+                historyReadySessionRef.current = sessionId;
+                setHistoryLoading(false);
+            }
         }
     }, [activityUserName, rpc]);
 
@@ -1026,9 +1032,14 @@ export default function AgentPage() {
     }, [guest, loadAgentAddons, loadAgentPresets, loadBases, loadDisplaySettings, loadHosts, loadModelCatalog, loadNodes, loadSessions]);
     useEffect(() => {
         if (guest) return undefined;
-        const timer = window.setInterval(() => { void loadSessions(); void loadNodes(); void loadHosts(); void loadBases(); void loadAgentAddons(); }, POLL_MS);
+        const timer = window.setInterval(() => { void loadSessions(); void loadNodes(); void loadHosts(); void loadBases(); }, POLL_MS);
         return () => window.clearInterval(timer);
-    }, [guest, loadAgentAddons, loadBases, loadHosts, loadNodes, loadSessions]);
+    }, [guest, loadBases, loadHosts, loadNodes, loadSessions]);
+    useEffect(() => {
+        if (guest) return undefined;
+        const timer = window.setInterval(() => { void loadAgentAddons(); }, ADDON_POLL_MS);
+        return () => window.clearInterval(timer);
+    }, [guest, loadAgentAddons]);
     useEffect(() => {
         if (booting) return;
         const selectedSession = current ? sessions.find((session) => session.sessionId === current) : undefined;
@@ -1057,13 +1068,19 @@ export default function AgentPage() {
         }
     }, [booting, draftCardsStorageKey, guest, sessions]);
     useEffect(() => {
-        if (guest) return;
-        sessions.forEach((session) => {
-            if (!session.blank && !session.isDraftCard && session.sessionId !== current) void preloadHistoryPreview(session.sessionId);
-        });
-    }, [current, guest, preloadHistoryPreview, sessions]);
+        const currentSessionRunning = sessions.find((session) => session.sessionId === current)?.running === true;
+        if (booting || guest || !current || currentSessionRunning || sending || historyLoading || historyReadySessionRef.current !== current) return;
+        let requested = 0;
+        for (const session of sessions) {
+            if (session.blank || session.isDraftCard || session.sessionId === current) continue;
+            void preloadHistoryPreview(session.sessionId);
+            requested += 1;
+            if (requested >= HISTORY_PREVIEW_MAX_SESSIONS) break;
+        }
+    }, [booting, current, guest, historyLoading, preloadHistoryPreview, sending, sessions]);
     useEffect(() => {
         if (booting) return;
+        historyReadySessionRef.current = null;
         ++historyLoadRef.current;
         ++historyTotalRequestRef.current;
         setModels(null);
@@ -1087,6 +1104,7 @@ export default function AgentPage() {
         }
         const selectedSession = sessionsRef.current.find((session) => session.sessionId === current);
         if (selectedSession?.isDraftCard) {
+            historyReadySessionRef.current = current;
             setMessages([]);
             setHistoryLoading(false);
             return;
@@ -1096,10 +1114,7 @@ export default function AgentPage() {
         if (!cached) {
             setHistoryLoading(true);
             void loadHistoryTotal(current);
-            void (async () => {
-                await loadAgentAddons();
-                await loadInitialHistory(current);
-            })();
+            void loadInitialHistory(current);
             return;
         }
         historyRef.current = cached.history;
@@ -1110,11 +1125,8 @@ export default function AgentPage() {
         setHistoryTotalMessages(cached.totalMessages);
         setHistoryProgress(Math.min(HISTORY_PAGE_SIZE, visibleHistoryMessageCount(cached.history)));
         setHistoryLoading(true);
-        void (async () => {
-            await loadAgentAddons();
-            await loadInitialHistory(current);
-        })();
-    }, [booting, current, loadAgentAddons, loadHistoryTotal, loadInitialHistory, loadModels]);
+        void loadInitialHistory(current);
+    }, [booting, current, loadHistoryTotal, loadInitialHistory, loadModels]);
     useEffect(() => {
         setPendingQuestion(current ? pendingQuestions[current] ?? null : null);
     }, [current, pendingQuestions]);

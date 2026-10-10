@@ -16,37 +16,25 @@ interface RpcEnvelope {
     domainId?: string;
     agentId?: number | null;
 }
-const { requireBridgeToken, baseSessionScope, toolRegistry, scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, nodeRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList, agentAddonSet, isAgentAddonEnabled, baseTutorEnsure, baseTutorList, baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems, runtimeRelabel, runtimeRemove, sessionCreate, sessionHistory, sessionMessageCount, sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink, logger, RUNTIME_HELLO_TIMEOUT_MS, addLink, rememberRuntime, reportRuntime, agentDataAdapter, AgentStorageModel, AgentLinkModel, createProvider, SystemModel, randomUUID, WebSocket, parseRuntimeFrame, createSocketLink, followLinks, runtimeLinks, runtimeFacts, bridgeRuntimeId, mergeDomainProviders, mergeDomainModels, cloneSettingsSections } = service;
+const { requireBridgeToken, baseSessionScope, toolRegistry, scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, nodeRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList, agentAddonSet, isAgentAddonEnabled, enabledAgentAddonIds, baseTutorEnsure, baseTutorList, baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems, runtimeRelabel, runtimeRemove, sessionCreate, sessionHistory, sessionMessageCount, sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink, logger, RUNTIME_HELLO_TIMEOUT_MS, addLink, rememberRuntime, reportRuntime, agentDataAdapter, AgentStorageModel, AgentLinkModel, createProvider, SystemModel, randomUUID, WebSocket, parseRuntimeFrame, createSocketLink, followLinks, runtimeLinks, runtimeFacts, bridgeRuntimeId, mergeDomainProviders, mergeDomainModels, cloneSettingsSections } = service;
 const dataOk = (value: unknown): Record<string, unknown> => ({ ok: true, value });
 const dataError = (message: string): Record<string, unknown> => ({ ok: false, error: { message } });
 
-async function mountedAddonsForSession(sessionId: string, domainId: string): Promise<Set<string>> {
+async function mountedAddonsForSession(session: { domainId: string; userId: number; sessionId: string }): Promise<Set<string>> {
+    const addonIds = new Set(listAgentAddons().map((addon) => addon.addonId));
     const states = new Map<string, boolean>();
-    const remaining = new Set(listAgentAddons().map((addon) => addon.addonId));
-    let beforeSeq: number | undefined;
-    for (let pageNumber = 0; remaining.size > 0 && pageNumber < 32; pageNumber += 1) {
-        const page = await AgentSessionModel.listEventsAny(sessionId, beforeSeq, 200);
-        if (page.events.length === 0) break;
-        for (const entry of [...page.events].reverse()) {
-            const data = entry.data && typeof entry.data === 'object' ? entry.data as Record<string, unknown> : {};
-            const addonId = entry.type === 'session/addons'
-                ? data.addonId
-                : entry.type === 'session/plugins' ? data.pluginId : undefined;
-            if (typeof addonId === 'string' && remaining.has(addonId) && typeof data.enabled === 'boolean') {
-                states.set(addonId, data.enabled);
-                remaining.delete(addonId);
-            }
+    for (const entry of await AgentSessionModel.listAddonEvents(session.domainId, session.userId, session.sessionId)) {
+        const data = entry.data && typeof entry.data === 'object' ? entry.data as Record<string, unknown> : {};
+        const addonId = entry.type === 'session/addons'
+            ? data.addonId
+            : entry.type === 'session/plugins' ? data.pluginId : undefined;
+        if (typeof addonId === 'string' && addonIds.has(addonId) && !states.has(addonId) && typeof data.enabled === 'boolean') {
+            states.set(addonId, data.enabled);
         }
-        if (!page.hasMore) break;
-        const firstSeq = Number(page.events[0]?.seq);
-        if (!Number.isSafeInteger(firstSeq)) break;
-        beforeSeq = firstSeq;
     }
-    const mounted = new Set<string>();
-    for (const [addonId, enabled] of states) {
-        if (enabled && await isAgentAddonEnabled(domainId, addonId)) mounted.add(addonId);
-    }
-    return mounted;
+    const domainEnabled = await enabledAgentAddonIds(session.domainId);
+    return new Set([...addonIds].filter((addonId) =>
+        (states.get(addonId) ?? domainEnabled.has(addonId)) && domainEnabled.has(addonId)));
 }
 
 function agentDefinitionView(agent: Record<string, unknown>) {
@@ -104,7 +92,7 @@ export class EjunzAgentDataHandler extends Handler<Context> {
                     ? { domain: resolved.session.domainId, baseId: 0, owner: resolved.session.userId }
                     : undefined);
                 const mountedAddons = sessionId && resolved.session
-                    ? await mountedAddonsForSession(sessionId, resolved.session.domainId)
+                    ? await mountedAddonsForSession(resolved.session)
                     : new Set<string>();
                 const tools = toolRegistry();
                 const context = {
@@ -130,7 +118,7 @@ export class EjunzAgentDataHandler extends Handler<Context> {
                 const scope = resolved.scope ?? { domain: resolved.session.domainId, baseId: 0, owner: resolved.session.userId };
                 const args = body.args;
                 if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('args must be an object');
-                const mountedAddons = await mountedAddonsForSession(sessionId, scope.domain);
+                const mountedAddons = await mountedAddonsForSession(resolved.session);
                 const registration = toolRegistry().get(name);
                 if (!registration || !mountedAddons.has(registration.addonId)) {
                     throw new Error(`Addon for tool ${name} is not mounted in this session.`);

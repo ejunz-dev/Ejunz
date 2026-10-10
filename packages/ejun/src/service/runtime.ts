@@ -535,7 +535,7 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
     };
     await agentDataAdapter.upsertSession(scope, summary);
     await selectHostModel(sessionId, link, summary.model);
-    for (const addon of listAgentAddons()) {
+    await Promise.all(listAgentAddons().map(async (addon) => {
         try {
             const recorded = await callUpstream('session.addons', {
                 sessionId,
@@ -548,7 +548,7 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
         } catch (error) {
             logger.warn('[addons] initial addon mount failed session=%s addon=%s error=%s', sessionId, addon.addonId, error instanceof Error ? error.message : String(error));
         }
-    }
+    }));
     await injectHostContext(sessionId, link);
     if (selectedBase) {
         const injected = await callUpstream('session.inject', {
@@ -1475,28 +1475,6 @@ async function agentAddonsList(envelope: RpcEnvelope, scope: AgentScope): Promis
         enabled: agentAddonEnabled(settings, addon.addonId),
         tools: (toolsByAddon.get(addon.addonId) ?? []).sort((left, right) => left.name.localeCompare(right.name)),
     }));
-    const sessionId = typeof envelope.payload?.sessionId === 'string' ? envelope.payload.sessionId.trim() : '';
-    if (sessionId && await agentDataAdapter.getSession(scope, sessionId)) {
-        try {
-            const link = await linkForSession(scope, sessionId);
-            for (const addon of addons) {
-                try {
-                    const recorded = await callUpstream('session.addons', {
-                        sessionId,
-                        addonId: addon.addonId,
-                        enabled: addon.enabled,
-                    }, link);
-                    if (!recorded.body.result?.ok) {
-                        logger.warn('[addons] session mount failed session=%s addon=%s error=%s', sessionId, addon.addonId, recorded.body.error?.message || 'unknown error');
-                    }
-                } catch (error) {
-                    logger.warn('[addons] session mount failed session=%s addon=%s error=%s', sessionId, addon.addonId, error instanceof Error ? error.message : String(error));
-                }
-            }
-        } catch (error) {
-            logger.warn('[addons] session mount failed session=%s error=%s', sessionId, error instanceof Error ? error.message : String(error));
-        }
-    }
     return rpcOk(envelope.rpcId, { addons });
 }
 
@@ -1553,6 +1531,11 @@ async function agentAddonSet(envelope: RpcEnvelope, scope: AgentScope): Promise<
 
 export async function isAgentAddonEnabled(domainId: string, addonId: string): Promise<boolean> {
     return agentAddonEnabled(await agentDataAdapter.getDomainSettings(domainId), addonId);
+}
+
+async function enabledAgentAddonIds(domainId: string): Promise<Set<string>> {
+    const settings = await agentDataAdapter.getDomainSettings(domainId);
+    return new Set(listAgentAddons().filter((addon) => agentAddonEnabled(settings, addon.addonId)).map((addon) => addon.addonId));
 }
 
 export const isAgentContextPluginEnabled = isAgentAddonEnabled;
@@ -3020,7 +3003,7 @@ export const agentRuntimeHandlerContext = {
     requireBridgeToken, baseSessionScope, toolRegistry,
     scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, upstreamValue,
     nodeRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList,
-    agentAddonSet, isAgentAddonEnabled, isAgentContextPluginEnabled, baseTutorEnsure, baseTutorList,
+    agentAddonSet, isAgentAddonEnabled, enabledAgentAddonIds, isAgentContextPluginEnabled, baseTutorEnsure, baseTutorList,
     baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems,
     runtimeRelabel, runtimeRemove, sessionCreate, sessionHistory, sessionMessageCount,
     sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink,
