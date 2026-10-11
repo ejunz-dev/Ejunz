@@ -146,14 +146,14 @@ export function assistantKey(event: SessionEvent): string {
     return `assistant-${turn}-${step}-${event.seq}`;
 }
 
-function addonMountMessage(event: SessionEvent, addonId: string, enabled: boolean, key: string): ChatMessage {
+function addonMountMessage(event: SessionEvent, addonId: string, enabled: boolean, key: string, snapshot = false): ChatMessage {
     return {
         key,
         role: 'addon',
         text: addonId,
         eventType: event.type,
         time: event.time,
-        addonMount: { addonId, enabled },
+        addonMount: { addonId, enabled, ...(snapshot ? { snapshot: true } : {}) },
         contextLabel: 'Addon',
         contextSource: { kind: 'agent-addon', addonId },
         contextForm: 'snapshot',
@@ -295,7 +295,7 @@ export function applyEvent(messages: ChatMessage[], event: SessionEvent, origin?
             const mounts = snapshot.flatMap((value): ChatMessage[] => {
                 const state = asObject(value);
                 if (typeof state.addonId !== 'string' || state.enabled !== true) return [];
-                const message = addonMountMessage(event, state.addonId, true, `session-addon-${event.seq}-${state.addonId}`);
+                const message = addonMountMessage(event, state.addonId, true, `session-addon-${event.seq}-${state.addonId}`, true);
                 return [hostLabel === undefined ? message : { ...message, host: hostLabel }];
             });
             return [...settled, ...mounts];
@@ -423,6 +423,20 @@ export function fileInjectionsAfterUser(messages: ChatMessage[]): ChatMessage[] 
         if (injected !== undefined) result.push(...injected);
     });
     return result;
+}
+
+export function placeInitialAddonMountsAfterFirstUser(messages: readonly ChatMessage[]): ChatMessage[] {
+    const firstUser = messages.findIndex((message) => message.role === 'user');
+    if (firstUser < 0) return messages.filter((message) => message.role !== 'addon');
+    const initialMounts = new Map<string, ChatMessage>();
+    messages.forEach((message, index) => {
+        if (message.role !== 'addon' || !message.addonMount) return;
+        if (message.addonMount.snapshot || index < firstUser) initialMounts.set(message.addonMount.addonId, message);
+    });
+    const timeline = messages.filter((message, index) =>
+        message.role !== 'addon' || !message.addonMount || (!message.addonMount.snapshot && index >= firstUser));
+    const userIndex = timeline.findIndex((message) => message.role === 'user');
+    return [...timeline.slice(0, userIndex + 1), ...initialMounts.values(), ...timeline.slice(userIndex + 1)];
 }
 
 export function eventsToMessages(entries: HistoryEntry[]): ChatMessage[] {

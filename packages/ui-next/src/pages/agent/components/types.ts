@@ -32,7 +32,7 @@ export interface ChatMessage {
     contextSource?: unknown;
     contextForm?: string;
     contextFiles?: UploadedFileMeta[];
-    addonMount?: { addonId: string; enabled: boolean };
+    addonMount?: { addonId: string; enabled: boolean; snapshot?: boolean };
     retry?: number;
     retryDelayMs?: number;
     retryState?: 'scheduled' | 'started' | 'cancelled';
