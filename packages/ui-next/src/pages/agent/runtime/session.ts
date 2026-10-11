@@ -17,6 +17,7 @@ export interface SessionSummary {
     updatedAt: number;
     running: boolean;
     blank: boolean;
+    started?: boolean;
     creatorUserId?: number;
     type?: 'generic' | 'base_detail';
     agentId?: number;

@@ -434,6 +434,120 @@ async function injectHostSwitchNotice(
     }
 }
 
+async function sessionCardCreate(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
+    const payload = envelope.payload ?? {};
+    const sessionId = typeof payload.sessionId === 'string' ? payload.sessionId.trim() : '';
+    const title = typeof payload.title === 'string' ? payload.title.trim() : '';
+    if (!/^session-[A-Za-z0-9-]{8,160}$/.test(sessionId)) return rpcError(envelope.rpcId, 'invalid session id');
+    if (!title || title.length > 256) return rpcError(envelope.rpcId, 'session title is required and must not exceed 256 characters');
+    if (await agentDataAdapter.getSessionAny(sessionId)) return rpcError(envelope.rpcId, 'session already exists');
+
+    let agentRootNode: AgentNodeDoc | undefined;
+    if (typeof scope.agentId === 'number') {
+        const agent = await AgentDefinitionModel.get(scope.domainId, scope.agentId, AgentDefinitionModel.PROJECTION_LIST);
+        if (!agent) return rpcError(envelope.rpcId, 'Agent not found in current domain');
+        agentRootNode = await AgentModel.ensureAgentRoot(scope.domainId, scope.userId, scope.agentId, agent.title);
+    }
+    const hasNodeId = Object.prototype.hasOwnProperty.call(payload, 'nodeId');
+    const requestedNodeId = typeof payload.nodeId === 'string' && payload.nodeId.trim() ? payload.nodeId.trim() : undefined;
+    const nodeId = requestedNodeId ?? (hasNodeId ? undefined : agentRootNode?.nodeId);
+    if (nodeId && !await agentDataAdapter.getNode(scope, nodeId)) return rpcError(envelope.rpcId, 'node not found in this Agent');
+
+    const selectedBaseDocId = baseDocIdOf(payload.baseDocId);
+    if (selectedBaseDocId && !await isAgentAddonEnabled(scope.domainId, 'base')) {
+        return rpcError(envelope.rpcId, 'Ejunz Base Agent plugin is disabled');
+    }
+    if (selectedBaseDocId) {
+        const baseModel = (global as any).Ejunz?.model?.base;
+        const base = baseModel ? await baseModel.get(scope.domainId, Number(selectedBaseDocId)) : null;
+        if (!base) return rpcError(envelope.rpcId, 'Base not found in current domain');
+    }
+    const provider = typeof payload.provider === 'string' ? payload.provider.trim() : '';
+    const model = typeof payload.model === 'string' ? payload.model.trim() : '';
+    if ((provider === '') !== (model === '')) return rpcError(envelope.rpcId, 'provider and model must be selected together');
+    const agentPreset = typeof payload.agentPreset === 'string' && payload.agentPreset.trim() ? payload.agentPreset.trim() : undefined;
+    const runtimeId = typeof payload.runtimeId === 'string' && payload.runtimeId.trim() ? payload.runtimeId.trim() : undefined;
+    const createdAt = Date.now();
+    const summary: AgentSessionSummary = {
+        sessionId,
+        createdAt,
+        updatedAt: createdAt,
+        running: false,
+        blank: true,
+        started: false,
+        creatorUserId: scope.userId,
+        type: 'generic',
+        ...(typeof scope.agentId === 'number' ? { agentId: scope.agentId } : {}),
+        ...(selectedBaseDocId === null ? {} : { baseDocId: selectedBaseDocId }),
+        ...(nodeId === undefined ? {} : { nodeId }),
+        cwd: agentRoot,
+        ...(agentPreset === undefined ? {} : { agentPreset }),
+        ...(runtimeId === undefined ? {} : { runtimeId }),
+        ...(provider === '' ? {} : { model: { provider, model } }),
+        projections: { values: { title } },
+    };
+    await agentDataAdapter.upsertSession(scope, summary);
+    try {
+        await agentDataAdapter.setSessionHeader(sessionId, {
+            version: 0,
+            id: sessionId,
+            createdAt,
+            cwd: agentRoot,
+            ...(agentPreset === undefined ? {} : { agentPreset }),
+        });
+    } catch (error) {
+        await agentDataAdapter.deleteSession(scope, sessionId);
+        return rpcError(envelope.rpcId, error instanceof Error ? error.message : String(error));
+    }
+    return rpcOk(envelope.rpcId, { session: summary });
+}
+
+async function sessionCardUpdate(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
+    const payload = envelope.payload ?? {};
+    const sessionId = typeof payload.sessionId === 'string' ? payload.sessionId : '';
+    const rawPatch = payload.patch && typeof payload.patch === 'object' && !Array.isArray(payload.patch)
+        ? payload.patch as Record<string, unknown>
+        : {};
+    const existing = sessionId ? await agentDataAdapter.getSession(scope, sessionId) : null;
+    if (!existing || existing.started !== false) return rpcError(envelope.rpcId, 'unstarted session card not found');
+
+    const patch: Partial<AgentSessionSummary> = { updatedAt: Date.now() };
+    if (Object.prototype.hasOwnProperty.call(rawPatch, 'title')) {
+        const title = typeof rawPatch.title === 'string' ? rawPatch.title.trim() : '';
+        if (!title || title.length > 256) return rpcError(envelope.rpcId, 'session title is required and must not exceed 256 characters');
+        patch.projections = { values: { ...(existing.projections?.values ?? {}), title } };
+    }
+    if (Object.prototype.hasOwnProperty.call(rawPatch, 'agentPreset')) {
+        if (typeof rawPatch.agentPreset !== 'string' || !rawPatch.agentPreset.trim()) return rpcError(envelope.rpcId, 'agentPreset is required');
+        patch.agentPreset = rawPatch.agentPreset.trim();
+    }
+    if (Object.prototype.hasOwnProperty.call(rawPatch, 'runtimeId')) {
+        if (typeof rawPatch.runtimeId !== 'string' || !rawPatch.runtimeId.trim()) return rpcError(envelope.rpcId, 'runtimeId is required');
+        patch.runtimeId = rawPatch.runtimeId.trim();
+    }
+    if (Object.prototype.hasOwnProperty.call(rawPatch, 'model')) {
+        const value = rawPatch.model && typeof rawPatch.model === 'object' && !Array.isArray(rawPatch.model)
+            ? rawPatch.model as Record<string, unknown>
+            : {};
+        if (typeof value.provider !== 'string' || !value.provider.trim() || typeof value.model !== 'string' || !value.model.trim()) {
+            return rpcError(envelope.rpcId, 'provider and model are required');
+        }
+        patch.model = { provider: value.provider.trim(), model: value.model.trim() };
+    }
+    if (Object.prototype.hasOwnProperty.call(rawPatch, 'baseDocId')) {
+        const baseDocId = baseDocIdOf(rawPatch.baseDocId);
+        if (baseDocId && !await isAgentAddonEnabled(scope.domainId, 'base')) return rpcError(envelope.rpcId, 'Ejunz Base Agent plugin is disabled');
+        if (baseDocId) {
+            const baseModel = (global as any).Ejunz?.model?.base;
+            const base = baseModel ? await baseModel.get(scope.domainId, Number(baseDocId)) : null;
+            if (!base) return rpcError(envelope.rpcId, 'Base not found in current domain');
+        }
+        await agentDataAdapter.updateSessionContext(scope, sessionId, baseDocId ?? undefined);
+    }
+    await agentDataAdapter.updateSession(scope, sessionId, patch);
+    return rpcOk(envelope.rpcId, { sessionId, ...patch });
+}
+
 async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata: { type?: AgentSessionType; baseDocId?: string } = {}): Promise<RpcBody> {
     const payload = { ...(envelope.payload ?? {}) };
     const domainSettings = await agentDataAdapter.getDomainSettings(scope.domainId);
@@ -450,12 +564,10 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
         payload.model = deepseekSettings.model;
     }
     const requestedSessionId = typeof payload.sessionId === 'string' && payload.sessionId.length > 0 ? payload.sessionId : undefined;
-    if (requestedSessionId) {
-        const existing = await agentDataAdapter.getSessionAny(requestedSessionId);
-        const agentMismatch = existing && scope.agentId !== undefined && (existing.agentId ?? null) !== scope.agentId;
-        if (existing && (existing.domainId !== scope.domainId || existing.userId !== scope.userId || agentMismatch)) {
-            return rpcError(envelope.rpcId, 'session not found');
-        }
+    const existingSession = requestedSessionId ? await agentDataAdapter.getSessionAny(requestedSessionId) : null;
+    const agentMismatch = existingSession && scope.agentId !== undefined && (existingSession.agentId ?? null) !== scope.agentId;
+    if (existingSession && (existingSession.domainId !== scope.domainId || existingSession.userId !== scope.userId || agentMismatch)) {
+        return rpcError(envelope.rpcId, 'session not found');
     }
     let selectedAgentRoot: AgentNodeDoc | undefined;
     if (typeof scope.agentId === 'number') {
@@ -477,8 +589,9 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
     const workspaceId = typeof payload.workspaceId === 'string' ? payload.workspaceId : undefined;
     const workspace = workspaceId ? await agentDataAdapter.getWorkspace(scope, workspaceId) : null;
     if (workspaceId && !workspace) return rpcError(envelope.rpcId, 'workspace not found');
+    const hasRequestedNodeId = Object.prototype.hasOwnProperty.call(payload, 'nodeId');
     const requestedNodeId = typeof payload.nodeId === 'string' && payload.nodeId.trim() ? payload.nodeId.trim() : undefined;
-    const nodeId = requestedNodeId ?? selectedAgentRoot?.nodeId;
+    const nodeId = requestedNodeId ?? (hasRequestedNodeId ? undefined : selectedAgentRoot?.nodeId);
     const node = nodeId ? await agentDataAdapter.getNode(scope, nodeId) : null;
     if (nodeId && !node) return rpcError(envelope.rpcId, 'node not found in this Agent');
     // The host is chosen with the session and recorded here, so every later call
@@ -507,6 +620,7 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
         updatedAt: createdAt,
         running: false,
         blank: true,
+        started: true,
         creatorUserId: scope.userId,
         type: metadata.type ?? 'generic',
         ...(typeof scope.agentId === 'number' ? { agentId: scope.agentId } : {}),
@@ -539,7 +653,12 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
     });
     const upstream = await callUpstream('session.create', payload, link);
     if (!upstream.body.result?.ok) {
-        await agentDataAdapter.deleteSession(scope, sessionId);
+        if (existingSession?.started === false) {
+            await agentDataAdapter.updateSession(scope, sessionId, { started: false, running: false, blank: true });
+            if (existingSession.header) await agentDataAdapter.setSessionHeader(sessionId, existingSession.header);
+        } else {
+            await agentDataAdapter.deleteSession(scope, sessionId);
+        }
         return upstream.body;
     }
     const value = upstreamValue(upstream.body) as Record<string, unknown>;
@@ -3087,7 +3206,7 @@ export const agentRuntimeHandlerContext = {
     nodeRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList,
     agentAddonSet, isAgentAddonEnabled, enabledAgentAddonIds, isAgentContextPluginEnabled, baseTutorEnsure, baseTutorList,
     baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems,
-    runtimeRelabel, runtimeRemove, sessionCreate, sessionHistory, sessionMessageCount,
+    runtimeRelabel, runtimeRemove, sessionCardCreate, sessionCardUpdate, sessionCreate, sessionHistory, sessionMessageCount,
     sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink,
     agentDataAdapter, AgentStorageModel, AgentLinkModel, createProvider,
     logger, WebSocket, randomUUID, parseRuntimeFrame, createSocketLink, addLink, rememberRuntime,

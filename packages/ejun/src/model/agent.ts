@@ -543,6 +543,8 @@ export interface AgentSessionSummary {
     updatedAt: number;
     running: boolean;
     blank: boolean;
+    /** Whether the session has been initialized on a runtime; cards become sessions on first send. */
+    started?: boolean;
     creatorUserId?: number;
     type?: AgentSessionType;
     agentId?: number;
@@ -739,6 +741,7 @@ function sessionToSummary(doc: AgentSessionDoc): AgentSessionSummary {
         updatedAt: doc.updatedAt,
         running: doc.running === true,
         blank: doc.blank === true,
+        started: doc.started !== false,
         creatorUserId: doc.creatorUserId ?? doc.userId,
         type: doc.type ?? 'generic',
         ...(doc.agentId === undefined ? {} : { agentId: doc.agentId }),

@@ -98,18 +98,6 @@ function sessionTitle(session: SessionSummary): string {
     return `会话 ${session.sessionId.slice(8, 16)}`;
 }
 
-function readLocalSessionCards(storageKey: string): SessionSummary[] {
-    if (typeof window === 'undefined') return [];
-    try {
-        const value = JSON.parse(window.localStorage.getItem(storageKey) || '[]');
-        return Array.isArray(value) ? value.filter((item): item is SessionSummary => item && typeof item === 'object'
-            && typeof item.sessionId === 'string' && item.sessionId.startsWith('session-')
-            && typeof item.updatedAt === 'number' && typeof item.blank === 'boolean') : [];
-    } catch {
-        return [];
-    }
-}
-
 function newSessionId(): string {
     const id = typeof window !== 'undefined' && typeof window.crypto?.randomUUID === 'function'
         ? window.crypto.randomUUID()
@@ -118,6 +106,14 @@ function newSessionId(): string {
 }
 
 type AgentRpc = (method: string, payload: unknown, signal?: AbortSignal) => Promise<unknown>;
+
+type SessionCardPatch = {
+    title?: string;
+    agentPreset?: string;
+    runtimeId?: string;
+    model?: { provider: string; model: string };
+    baseDocId?: number | null;
+};
 
 function readyFiles(attachments: DraftAttachment[]): UploadedFileMeta[] {
     return attachments.map((attachment) => attachment.meta).filter((meta): meta is UploadedFileMeta => meta !== undefined);
@@ -433,10 +429,7 @@ export default function AgentPage() {
         const redirect = `${window.location.pathname}${window.location.search}`;
         window.location.href = buildUrl('user_login', {}, { redirect });
     }, [buildUrl, guest]);
-    const localSessionCardsStorageKey = `ejunz-agent-local-cards:${String(domainId || 'system')}:${String(user?._id ?? 'guest')}:${agentId ?? 'default'}`;
-    const initialLocalSessionCards = useMemo(() => readLocalSessionCards(localSessionCardsStorageKey), [localSessionCardsStorageKey]);
-    const localSessionIdsRef = useRef(new Set(initialLocalSessionCards.map((session) => session.sessionId)));
-    const [sessions, setSessions] = useState<SessionSummary[]>(initialLocalSessionCards);
+    const [sessions, setSessions] = useState<SessionSummary[]>([]);
     const [nodes, setNodes] = useState<AgentNode[]>([]);
     const rootNodeId = nodes.find((node) => node.isRoot)?.nodeId ?? pageRootNodeId;
     const [treeOpen, setTreeOpen] = useState(false);
@@ -520,14 +513,9 @@ export default function AgentPage() {
             const value = await rpc('session.list', {}) as { items?: SessionSummary[] };
             const next = Array.isArray(value.items) ? value.items : [];
             const serverIds = new Set(next.map((session) => session.sessionId));
-            for (const sessionId of localSessionIdsRef.current) {
-                if (serverIds.has(sessionId)) localSessionIdsRef.current.delete(sessionId);
-            }
             setSessions((previous) => {
-                const localCards = previous.filter((session) => localSessionIdsRef.current.has(session.sessionId) && !serverIds.has(session.sessionId));
                 const currentSession = previous.find((session) => session.sessionId === currentRef.current);
-                const keptCurrent = currentSession && !serverIds.has(currentSession.sessionId)
-                    && !localSessionIdsRef.current.has(currentSession.sessionId) ? [currentSession] : [];
+                const keptCurrent = currentSession && !serverIds.has(currentSession.sessionId) ? [currentSession] : [];
                 const merged = next.map((session) => {
                     const existing = previous.find((item) => item.sessionId === session.sessionId);
                     if (!existing) return session;
@@ -545,7 +533,7 @@ export default function AgentPage() {
                         ...(title === undefined ? {} : { projections: { values: { ...previousValues, ...serverValues, title } } }),
                     };
                 });
-                return [...localCards, ...keptCurrent, ...merged];
+                return [...keptCurrent, ...merged];
             });
             setLoadError(null);
         } catch (error) {
@@ -1043,12 +1031,6 @@ export default function AgentPage() {
         return () => window.clearInterval(timer);
     }, [guest, loadAgentAddons]);
     useEffect(() => {
-        if (booting || guest) return;
-        try {
-            window.localStorage.setItem(localSessionCardsStorageKey, JSON.stringify(sessions.filter((session) => localSessionIdsRef.current.has(session.sessionId))));
-        } catch { }
-    }, [booting, guest, localSessionCardsStorageKey, sessions]);
-    useEffect(() => {
         if (booting) return;
         const selectedSession = current ? sessions.find((session) => session.sessionId === current) : undefined;
         const cardId = selectedSession?.sessionId ?? null;
@@ -1102,7 +1084,7 @@ export default function AgentPage() {
             setHistoryLoading(false);
             return;
         }
-        if (localSessionIdsRef.current.has(current)) {
+        if (sessionsRef.current.find((session) => session.sessionId === current)?.started === false) {
             historyReadySessionRef.current = current;
             setMessages([]);
             setHistoryLoading(false);
@@ -1172,8 +1154,15 @@ export default function AgentPage() {
     const currentSessionError = current ? sessionErrors[current] : undefined;
     const pendingSendVisible = current !== null && messages.some((message) => message.role === 'user' && message.pendingSessionId === current && message.sendStatus !== undefined);
     const runningTurnStart = useMemo(() => runningTurnStartTime(history), [history]);
-    const isLocalOnlyCurrent = current !== null && localSessionIdsRef.current.has(current);
-    const composerModels = current && !isLocalOnlyCurrent
+    const isUnstartedCurrent = currentSession?.started === false;
+    const previousStartedRef = useRef<boolean | undefined>(undefined);
+    useEffect(() => {
+        const started = currentSession?.started !== false;
+        const previous = previousStartedRef.current;
+        previousStartedRef.current = started;
+        if (previous === false && started && current) void loadModels(current);
+    }, [current, currentSession?.started, loadModels]);
+    const composerModels = current && !isUnstartedCurrent
         ? models
         : (modelCatalog ? {
             current: currentSession?.model ?? draftModelSelection ?? { provider: '', model: '' },
@@ -1190,8 +1179,8 @@ export default function AgentPage() {
         setDetailsOpen(true);
         try {
             const selectedBaseId = existingSession ? baseId : baseId ?? draftBaseId;
-            const selectedNodeId = existingSession ? existingSession.nodeId : draftNodeId ?? rootNodeId ?? undefined;
-            const selectedModel = modelOverride ?? existingSession?.model ?? draftModelSelection;
+            const selectedNodeId = existingSession ? existingSession.nodeId : draftNodeId;
+            const selectedModel = existingSession ? modelOverride ?? existingSession.model : modelOverride ?? draftModelSelection;
             const title = titleOverride?.trim();
             const text = firstMessage.trim();
             const files = readyFiles(attachments);
@@ -1208,11 +1197,14 @@ export default function AgentPage() {
             // The host is part of what a session is created with: it serves this
             // session until another one is chosen for it.
             const selectedHostId = existingSession ? existingSession.runtimeId ?? '' : draftHostId ?? '';
+            const requestedPreset = existingSession ? existingSession.agentPreset : presetOverride ?? agentPresetChoice;
             const value = await rpc('session.create', {
                 sessionId: requestedSessionId,
                 ...(selectedBaseId === undefined ? {} : { baseDocId: selectedBaseId }),
-                ...(selectedNodeId === undefined ? {} : { nodeId: selectedNodeId }),
+                nodeId: selectedNodeId ?? null,
                 ...(selectedHostId === '' ? {} : { runtimeId: selectedHostId }),
+                ...(requestedPreset ? { agentPreset: requestedPreset } : {}),
+                ...(selectedModel === undefined ? {} : { provider: selectedModel.provider, model: selectedModel.model }),
             }) as { sessionId?: string; agentPreset?: string; runtimeId?: string; nodeId?: string };
             if (value.sessionId !== requestedSessionId) throw new Error('会话创建失败');
             if (optimisticKey) setMessages((items) => items.map((message) => message.key === optimisticKey ? { ...message, pendingSessionId: value.sessionId } : message));
@@ -1225,15 +1217,15 @@ export default function AgentPage() {
                 updatedAt: createdAt,
                 running: false,
                 blank: !hasContent,
+                started: true,
                 agentId: agentId ?? undefined,
-                agentPreset: value.agentPreset ?? presetOverride ?? agentPresetChoice,
+                agentPreset: value.agentPreset ?? (existingSession ? existingSession.agentPreset : presetOverride ?? agentPresetChoice),
                 ...(selectedBaseId === undefined ? {} : { baseDocId: String(selectedBaseId) }),
                 ...(actualHostId === '' ? {} : { runtimeId: actualHostId }),
                 ...(actualNodeId === undefined ? {} : { nodeId: actualNodeId }),
                 ...(selectedModel === undefined ? {} : { model: selectedModel }),
                 projections: { values: { title: title || '新会话' } },
             };
-            localSessionIdsRef.current.delete(session.sessionId);
             setSessions((items) => [session, ...items.filter((item) => item.sessionId !== session.sessionId)]);
             setDraftBaseId(undefined);
             setDraftNodeId(undefined);
@@ -1245,7 +1237,6 @@ export default function AgentPage() {
             sessionPublished = true;
             setCreatingSession(false);
 
-            const requestedPreset = presetOverride ?? agentPresetChoice;
             let agentPreset = value.agentPreset;
             if (requestedPreset && requestedPreset !== agentPreset) {
                 const selected = await rpc('agentPreset.select', { sessionId: value.sessionId, agentPreset: requestedPreset }) as { agentPreset?: string };
@@ -1299,6 +1290,20 @@ export default function AgentPage() {
         }
     }, [activityUserName, agentId, agentPresetChoice, attachments, clearAttachments, draftBaseId, draftModelSelection, draftNodeId, loadSessions, rootNodeId, rpc]);
 
+    const updateUnstartedSessionCard = useCallback(async (sessionId: string, patch: SessionCardPatch) => {
+        await rpc('session.card.update', { sessionId, patch });
+        setSessions((items) => items.map((session) => {
+            if (session.sessionId !== sessionId) return session;
+            const next: SessionSummary = { ...session, updatedAt: Date.now() };
+            if (patch.title !== undefined) next.projections = { values: { ...(session.projections?.values ?? {}), title: patch.title } };
+            if (patch.agentPreset !== undefined) next.agentPreset = patch.agentPreset;
+            if (patch.runtimeId !== undefined) next.runtimeId = patch.runtimeId;
+            if (patch.model !== undefined) next.model = patch.model;
+            if (Object.prototype.hasOwnProperty.call(patch, 'baseDocId')) next.baseDocId = patch.baseDocId == null ? undefined : String(patch.baseDocId);
+            return next;
+        }));
+    }, [rpc]);
+
     const selectedDraftModel = draftModelSelection ?? (composerModels?.current?.provider && composerModels.current.model
         ? { provider: composerModels.current.provider, model: composerModels.current.model }
         : undefined);
@@ -1307,41 +1312,46 @@ export default function AgentPage() {
         await startSession(input, agentPresetChoice, draftBaseId, title, selectedDraftModel);
     }, [agentPresetChoice, draftBaseId, input, selectedDraftModel, startSession]);
 
-    const createSessionOnly = useCallback((title: string) => {
+    const createSessionOnly = useCallback(async (title: string) => {
         const sessionId = newSessionId();
-        const nodeId = draftNodeId ?? rootNodeId ?? undefined;
-        const card: SessionSummary = {
-            sessionId,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-            running: false,
-            blank: true,
-            agentId: agentId ?? undefined,
-            agentPreset: agentPresetChoice || undefined,
-            ...(draftBaseId === undefined ? {} : { baseDocId: String(draftBaseId) }),
-            ...(nodeId === undefined ? {} : { nodeId }),
-            ...(draftHostId === '' ? {} : { runtimeId: draftHostId }),
-            ...(selectedDraftModel === undefined ? {} : { model: selectedDraftModel }),
-            projections: { values: { title: title.trim() || '新会话' } },
-        };
-        localSessionIdsRef.current.add(sessionId);
-        setSessions((items) => [card, ...items]);
-        setCurrent(sessionId);
-        currentRef.current = sessionId;
-        setDetailsOpen(false);
-        setNewSessionConfigOpen(false);
-        setDraftBaseId(undefined);
-        setDraftNodeId(undefined);
-        setDraftHostId('');
-        setDraftModelSelection(undefined);
-        setInput('');
-        setMessages([]);
-        setHistory([]);
-        clearAttachments();
-        setActiveTreeNodeId(nodeId ?? null);
-        updateAgentSelectionUrl({ nodeId: nodeId ?? null, cardId: sessionId });
-        void Notification.success('会话卡片已创建');
-    }, [agentId, agentPresetChoice, clearAttachments, draftBaseId, draftHostId, draftNodeId, rootNodeId, selectedDraftModel]);
+        const nodeId = draftNodeId;
+        setNewSessionConfigLoading(true);
+        try {
+            const value = await rpc('session.card.create', {
+                sessionId,
+                title: title.trim() || '新会话',
+                ...(draftBaseId === undefined ? {} : { baseDocId: draftBaseId }),
+                nodeId: nodeId ?? null,
+                ...(draftHostId === '' ? {} : { runtimeId: draftHostId }),
+                ...(agentPresetChoice === '' ? {} : { agentPreset: agentPresetChoice }),
+                ...(selectedDraftModel === undefined ? {} : { provider: selectedDraftModel.provider, model: selectedDraftModel.model }),
+            }) as { session?: SessionSummary };
+            if (!value.session || value.session.sessionId !== sessionId) throw new Error('会话卡片创建失败');
+            const card = value.session;
+            setSessions((items) => [card, ...items.filter((item) => item.sessionId !== card.sessionId)]);
+            setCurrent(card.sessionId);
+            currentRef.current = card.sessionId;
+            setDetailsOpen(false);
+            setNewSessionConfigOpen(false);
+            setDraftBaseId(undefined);
+            setDraftNodeId(undefined);
+            setDraftHostId('');
+            setDraftModelSelection(undefined);
+            setInput('');
+            setMessages([]);
+            setHistory([]);
+            clearAttachments();
+            setActiveTreeNodeId(card.nodeId ?? null);
+            updateAgentSelectionUrl({ nodeId: card.nodeId ?? null, cardId: card.sessionId });
+            void Notification.success('会话卡片已创建');
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            setLoadError(message);
+            void Notification.error(message);
+        } finally {
+            setNewSessionConfigLoading(false);
+        }
+    }, [agentPresetChoice, clearAttachments, draftBaseId, draftHostId, draftNodeId, rpc, selectedDraftModel]);
 
     const prepareNewSession = useCallback(async (baseId?: number) => {
         const loadId = ++newSessionLoadRef.current;
@@ -1380,12 +1390,12 @@ export default function AgentPage() {
     const switchHost = useCallback(async (runtimeId: string) => {
         if (!current) return;
         const sessionId = current;
-        if (localSessionIdsRef.current.has(sessionId)) {
-            setSessions((items) => items.map((session) => session.sessionId === sessionId ? { ...session, runtimeId } : session));
-            await Notification.success('主机已保存');
-            return;
-        }
         try {
+            if (sessionsRef.current.find((session) => session.sessionId === sessionId)?.started === false) {
+                await updateUnstartedSessionCard(sessionId, { runtimeId });
+                await Notification.success('主机已保存');
+                return;
+            }
             await rpc('session.setHost', { sessionId, runtimeId });
             setSessions((items) => items.map((session) => session.sessionId === sessionId ? { ...session, runtimeId } : session));
             setSessionErrors((previous) => {
@@ -1399,7 +1409,7 @@ export default function AgentPage() {
             setSessionErrors((previous) => ({ ...previous, [sessionId]: error instanceof Error ? error.message : String(error) }));
             throw error;
         }
-    }, [current, rpc]);
+    }, [current, rpc, updateUnstartedSessionCard]);
 
     const saveBaseSetting = useCallback(async (baseId: number | undefined) => {
         if (!current) {
@@ -1407,10 +1417,8 @@ export default function AgentPage() {
             await Notification.success('上下文已保存');
             return;
         }
-        if (localSessionIdsRef.current.has(current)) {
-            setSessions((items) => items.map((session) => session.sessionId === current
-                ? { ...session, ...(baseId === undefined ? { baseDocId: undefined } : { baseDocId: String(baseId) }) }
-                : session));
+        if (currentSession?.started === false) {
+            await updateUnstartedSessionCard(current, { baseDocId: baseId ?? null });
             await Notification.success('上下文已保存');
             return;
         }
@@ -1422,7 +1430,7 @@ export default function AgentPage() {
         setDraftBaseId(undefined);
         void loadSessions();
         await Notification.success('上下文已保存');
-    }, [current, loadSessions, rpc]);
+    }, [current, currentSession?.started, loadSessions, rpc, updateUnstartedSessionCard]);
 
     const saveDisplaySettings = useCallback(async (next: AgentDisplaySettings) => {
         const requestId = ++displaySettingsRequestRef.current;
@@ -1456,8 +1464,12 @@ export default function AgentPage() {
         setAgentPresetChoice(id);
         setAgentPresetError(null);
         if (!current || !currentSession?.blank) return;
-        if (localSessionIdsRef.current.has(current)) {
-            setSessions((items) => items.map((session) => session.sessionId === current ? { ...session, agentPreset: id } : session));
+        if (currentSession?.started === false) {
+            try {
+                await updateUnstartedSessionCard(current, { agentPreset: id });
+            } catch (caught) {
+                setAgentPresetError(caught instanceof Error ? caught.message : String(caught));
+            }
             return;
         }
         try {
@@ -1468,7 +1480,7 @@ export default function AgentPage() {
         } catch (caught) {
             setAgentPresetError(caught instanceof Error ? caught.message : String(caught));
         }
-    }, [current, currentSession?.blank, rpc]);
+    }, [current, currentSession?.blank, currentSession?.started, rpc, updateUnstartedSessionCard]);
 
     const send = useCallback(async (mode: 'queue' | 'steer' = 'queue') => {
         const text = input.trim();
@@ -1480,7 +1492,7 @@ export default function AgentPage() {
         }
         if ((!text && !files.length) || !current || sending) return;
         const selectedSession = sessionsRef.current.find((session) => session.sessionId === current);
-        if (selectedSession && localSessionIdsRef.current.has(current)) {
+        if (selectedSession?.started === false) {
             await startSession(
                 text,
                 selectedSession.agentPreset,
@@ -1591,9 +1603,13 @@ export default function AgentPage() {
             setModelMenuOpen(false);
             return;
         }
-        if (localSessionIdsRef.current.has(sessionId)) {
-            setSessions((items) => items.map((session) => session.sessionId === sessionId ? { ...session, model: { provider, model } } : session));
-            setModelMenuOpen(false);
+        if (sessionsRef.current.find((session) => session.sessionId === sessionId)?.started === false) {
+            try {
+                await updateUnstartedSessionCard(sessionId, { model: { provider, model } });
+                setModelMenuOpen(false);
+            } catch (error) {
+                setLoadError(error instanceof Error ? error.message : String(error));
+            }
             return;
         }
         try {
@@ -1610,13 +1626,13 @@ export default function AgentPage() {
         } catch (error) {
             setLoadError(error instanceof Error ? error.message : String(error));
         }
-    }, [current, rpc]);
+    }, [current, rpc, updateUnstartedSessionCard]);
 
     const saveSessionModel = useCallback(async (provider: string, model: string) => {
         const sessionId = current;
         if (!sessionId) throw new Error('当前没有会话');
-        if (localSessionIdsRef.current.has(sessionId)) {
-            setSessions((items) => items.map((session) => session.sessionId === sessionId ? { ...session, model: { provider, model } } : session));
+        if (sessionsRef.current.find((session) => session.sessionId === sessionId)?.started === false) {
+            await updateUnstartedSessionCard(sessionId, { model: { provider, model } });
             setModelMenuOpen(false);
             await Notification.success('模型已保存');
             return;
@@ -1631,13 +1647,18 @@ export default function AgentPage() {
         setModelMenuOpen(false);
         setLoadError(null);
         await Notification.success('模型已保存');
-    }, [current, rpc]);
+    }, [current, rpc, updateUnstartedSessionCard]);
 
     const renameSession = useCallback(async (sessionId = current ?? '', requestedTitle = titleDraft) => {
         if (!sessionId || !requestedTitle.trim()) return;
-        if (localSessionIdsRef.current.has(sessionId)) {
-            setSessions((items) => items.map((session) => session.sessionId === sessionId ? { ...session, projections: { values: { ...(session.projections?.values ?? {}), title: requestedTitle.trim() } } } : session));
-            setRenaming(false);
+        if (sessionsRef.current.find((session) => session.sessionId === sessionId)?.started === false) {
+            try {
+                await updateUnstartedSessionCard(sessionId, { title: requestedTitle.trim() });
+                setRenaming(false);
+                setLoadError(null);
+            } catch (error) {
+                setLoadError(error instanceof Error ? error.message : String(error));
+            }
             return;
         }
         try {
@@ -1648,7 +1669,7 @@ export default function AgentPage() {
         } catch (error) {
             setLoadError(error instanceof Error ? error.message : String(error));
         }
-    }, [current, rpc, titleDraft]);
+    }, [current, rpc, titleDraft, updateUnstartedSessionCard]);
 
     const startSessionTitleEdit = useCallback(() => {
         setSessionTitleDrafts(Object.fromEntries(sessions.map((session) => [session.sessionId, sessionTitle(session)])));
@@ -1681,11 +1702,15 @@ export default function AgentPage() {
         }
         setSessionTitleSaving(true);
         try {
-            const persistedChanges = changes.filter((change) => !localSessionIdsRef.current.has(change.sessionId));
-            await Promise.all(persistedChanges.map(async (change) => {
-                const value = await rpc('session.rename', { sessionId: change.sessionId, title: change.title }) as { title?: string };
-                if (value.title !== change.title) throw new Error('会话名称保存失败');
-            }));
+            const persistedChanges = changes.filter((change) => sessionsRef.current.find((session) => session.sessionId === change.sessionId)?.started !== false);
+            const unstartedChanges = changes.filter((change) => sessionsRef.current.find((session) => session.sessionId === change.sessionId)?.started === false);
+            await Promise.all([
+                ...persistedChanges.map(async (change) => {
+                    const value = await rpc('session.rename', { sessionId: change.sessionId, title: change.title }) as { title?: string };
+                    if (value.title !== change.title) throw new Error('会话名称保存失败');
+                }),
+                ...unstartedChanges.map((change) => updateUnstartedSessionCard(change.sessionId, { title: change.title })),
+            ]);
             const titles = new Map(changes.map((change) => [change.sessionId, change.title]));
             setSessions((items) => items.map((session) => {
                 const title = titles.get(session.sessionId);
@@ -1702,10 +1727,10 @@ export default function AgentPage() {
         } finally {
             setSessionTitleSaving(false);
         }
-    }, [loadSessions, rpc, sessionTitleDrafts, sessionTitleSaving, sessions]);
+    }, [loadSessions, rpc, sessionTitleDrafts, sessionTitleSaving, sessions, updateUnstartedSessionCard]);
 
     const forkSession = useCallback(async (sessionId = current ?? '') => {
-        if (!sessionId || localSessionIdsRef.current.has(sessionId)) return;
+        if (!sessionId || sessionsRef.current.find((session) => session.sessionId === sessionId)?.started === false) return;
         try {
             const value = await rpc('session.fork', { sessionId }) as { sessionId?: string };
             if (value.sessionId) {
@@ -1724,8 +1749,7 @@ export default function AgentPage() {
     }, [sessions]);
 
     const performHardDelete = useCallback(async (sessionId: string) => {
-        const localOnly = localSessionIdsRef.current.delete(sessionId);
-        if (!localOnly) await rpc('session.delete', { sessionId });
+        await rpc('session.delete', { sessionId });
         historyCacheRef.current.delete(sessionId);
         historyPreviewAttemptedRef.current.delete(sessionId);
         historyPreviewRef.current.delete(sessionId);
@@ -1747,10 +1771,8 @@ export default function AgentPage() {
 
     const performHardDeleteMany = useCallback(async (sessionIds: readonly string[]) => {
         if (sessionIds.length === 0) return;
-        const persistedSessionIds = sessionIds.filter((sessionId) => !localSessionIdsRef.current.has(sessionId));
-        if (persistedSessionIds.length > 0) await rpc('session.deleteMany', { sessionIds: persistedSessionIds });
+        await rpc('session.deleteMany', { sessionIds });
         sessionIds.forEach((sessionId) => {
-            localSessionIdsRef.current.delete(sessionId);
             historyCacheRef.current.delete(sessionId);
             historyPreviewAttemptedRef.current.delete(sessionId);
             historyPreviewRef.current.delete(sessionId);
@@ -1779,8 +1801,8 @@ export default function AgentPage() {
         try {
             if (active.kind === 'rename-session') {
                 const title = active.value.trim();
-                const value = localSessionIdsRef.current.has(active.id)
-                    ? { title }
+                const value = sessionsRef.current.find((session) => session.sessionId === active.id)?.started === false
+                    ? await updateUnstartedSessionCard(active.id, { title }).then(() => ({ title }))
                     : await rpc('session.rename', { sessionId: active.id, title }) as { title?: string };
                 if (value.title) setSessions((items) => items.map((session) => session.sessionId === active.id ? { ...session, projections: { values: { ...(session.projections?.values ?? {}), title: value.title } } } : session));
             } else if (active.kind === 'create-node') {
@@ -1826,7 +1848,7 @@ export default function AgentPage() {
         } finally {
             setDialogBusy(false);
         }
-    }, [activeTreeNodeId, current, dialog, nodes, performHardDelete, performHardDeleteMany, rootNodeId, rpc]);
+    }, [activeTreeNodeId, current, dialog, nodes, performHardDelete, performHardDeleteMany, rootNodeId, rpc, updateUnstartedSessionCard]);
 
     const updateQueue = useCallback(async (itemId: string, action: { kind: 'remove' | 'steer' | 'edit'; text?: string }) => {
         if (!current) return;
@@ -1965,11 +1987,11 @@ export default function AgentPage() {
                 </div> },
                     { id: 'models', label: '模型', render: () => <ModelsSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} /> },
                     { id: 'agent-presets', label: 'Agent 预设', render: () => <AgentPresetSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} onCreatorDraft={startCreatorDraft} /> },
-                    { id: 'tools', label: '工具', render: () => <ToolsSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} sessionId={isLocalOnlyCurrent ? undefined : current ?? undefined} refreshKey={currentSession?.agentPreset} /> },
+                    { id: 'tools', label: '工具', render: () => <ToolsSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} sessionId={isUnstartedCurrent ? undefined : current ?? undefined} refreshKey={currentSession?.agentPreset} /> },
                     { id: 'plugins', label: '插件', render: () => <PluginsSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} /> },
                     { id: 'agent-addons', label: 'Agent Addons', render: () => <AgentAddonsSection
                         rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>}
-                        sessionId={isLocalOnlyCurrent ? undefined : current ?? undefined}
+                        sessionId={isUnstartedCurrent ? undefined : current ?? undefined}
                         onAddonChange={(addonId, enabled) => {
                             const nextIds = new Set(enabledAgentAddonIds);
                             if (enabled) nextIds.add(addonId);
@@ -2092,7 +2114,7 @@ export default function AgentPage() {
                                 : view === 'model' || view === 'context' || view === 'host'
                                 ? <SessionSettingsPanel
                                     section={view}
-                                    models={isLocalOnlyCurrent ? composerModels : models}
+                                    models={isUnstartedCurrent ? composerModels : models}
                                     onModel={saveSessionModel}
                                     bases={bases}
                                     selectedBaseId={bases.some((base) => base.docId === selectedBaseId) ? selectedBaseId : undefined}
