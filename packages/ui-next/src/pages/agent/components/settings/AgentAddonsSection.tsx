@@ -49,7 +49,7 @@ export function AgentAddonsSection({ rpc, sessionId, onAddonChange }: AgentAddon
             });
             setAddons((items) => items.map((item) => item.addonId === addon.addonId ? { ...item, enabled } : item));
             onAddonChange?.(addon.addonId, enabled);
-            if (sessionId && result.eventRecorded === false) setError('插件状态已保存，但未能写入当前会话。');
+            if (result.eventRecorded === false) setError('插件设置已保存，但部分会话未能写入挂载事件。');
         } catch (cause) {
             setError(cause instanceof Error ? cause.message : 'Agent Addon设置失败');
         } finally {

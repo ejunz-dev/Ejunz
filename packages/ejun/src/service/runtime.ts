@@ -1558,25 +1558,30 @@ async function agentAddonSet(envelope: RpcEnvelope, scope: AgentScope): Promise<
     const saved = await agentDataAdapter.updateDomainSettings(scope.domainId, sections, current.revision);
     if (!saved) return rpcError(envelope.rpcId, 'settings revision conflict');
 
-    let eventRecorded: boolean | undefined;
-    const sessionId = typeof payload.sessionId === 'string' ? payload.sessionId.trim() : '';
-    if (sessionId && await agentDataAdapter.getSession(scope, sessionId)) {
-        try {
-            const recorded = await callUpstream('session.addons', {
-                sessionId,
-                addonId,
-                enabled: payload.enabled,
-            }, await linkForSession(scope, sessionId));
-            eventRecorded = recorded.body.result?.ok === true;
-            if (!eventRecorded) {
-                logger.warn('[addons] session mount failed session=%s addon=%s error=%s', sessionId, addonId, recorded.body.error?.message || 'unknown error');
+    let eventRecorded = true;
+    const sessions = await agentDataAdapter.listSessions(scope);
+    for (let offset = 0; offset < sessions.length; offset += 8) {
+        const batch = sessions.slice(offset, offset + 8);
+        const results = await Promise.all(batch.map(async (session) => {
+            try {
+                const recorded = await callUpstream('session.addons', {
+                    sessionId: session.sessionId,
+                    addonId,
+                    enabled: payload.enabled,
+                }, await linkForSession(scope, session.sessionId));
+                if (!recorded.body.result?.ok) {
+                    logger.warn('[addons] session mount failed session=%s addon=%s error=%s', session.sessionId, addonId, recorded.body.error?.message || 'unknown error');
+                    return false;
+                }
+                return true;
+            } catch (error) {
+                logger.warn('[addons] session mount failed session=%s addon=%s error=%s', session.sessionId, addonId, error instanceof Error ? error.message : String(error));
+                return false;
             }
-        } catch (error) {
-            eventRecorded = false;
-            logger.warn('[addons] session mount failed session=%s addon=%s error=%s', sessionId, addonId, error instanceof Error ? error.message : String(error));
-        }
+        }));
+        if (results.some((result) => !result)) eventRecorded = false;
     }
-    return rpcOk(envelope.rpcId, { addonId, enabled: payload.enabled, ...(eventRecorded === undefined ? {} : { eventRecorded }) });
+    return rpcOk(envelope.rpcId, { addonId, enabled: payload.enabled, eventRecorded });
 }
 
 export async function isAgentAddonEnabled(domainId: string, addonId: string): Promise<boolean> {
