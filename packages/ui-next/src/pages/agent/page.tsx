@@ -1155,7 +1155,7 @@ export default function AgentPage() {
         let optimisticMessage: ChatMessage | undefined;
         setCreatingSession(true);
         setNewSessionConfigOpen(false);
-        setDetailsOpen(true);
+        if (!createOnly) setDetailsOpen(true);
         try {
             const selectedBaseId = baseId ?? draftBaseId;
             const selectedNodeId = draftNodeId ?? rootNodeId ?? undefined;
@@ -1230,7 +1230,7 @@ export default function AgentPage() {
                 : session));
             setCreatingSession(false);
             setNewSessionConfigOpen(false);
-            setDetailsOpen(true);
+            if (!createOnly) setDetailsOpen(true);
             if (!hasContent) setMessages([]);
             if (createOnly) {
                 setInput('');
