@@ -2490,6 +2490,19 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
             }
             const durable = await durablePromptContent(ctx, content)
             const message: UserMessage = createUserMessage({ content: durable, source })
+            if (request.payload.addonSnapshot?.length) {
+              const recorded = new Set<string>()
+              for (const event of agent.session.events) {
+                if (event.type === 'session/addons') {
+                  if ('addonId' in event.data) recorded.add(event.data.addonId)
+                  else event.data.snapshot.forEach(state => recorded.add(state.addonId))
+                } else if (event.type === 'session/plugins') {
+                  recorded.add(event.data.pluginId)
+                }
+              }
+              const snapshot = request.payload.addonSnapshot.filter(state => !recorded.has(state.addonId))
+              if (snapshot.length) agent.session.append('session/addons', { snapshot })
+            }
             if (mode === 'steer') agent.steer(message)
             else agent.followup(message)
           } catch (error: unknown) {
@@ -2543,21 +2556,10 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
       },
 
       async addons(request) {
-        const { sessionId } = request.payload
+        const { sessionId, addonId, enabled } = request.payload
         const found = await agentFor(sessionId)
         if ('error' in found) return err(request, found.error)
         try {
-          if ('snapshot' in request.payload) {
-            const previous = [...found.agent.session.events].reverse().find(event =>
-              event.type === 'session/addons' && 'snapshot' in event.data,
-            )
-            if (previous) {
-              return ok(request, { accepted: true as const, seq: previous.seq })
-            }
-            const event = found.agent.session.append('session/addons', { snapshot: request.payload.snapshot })
-            return ok(request, { accepted: true as const, seq: event.seq })
-          }
-          const { addonId, enabled } = request.payload
           const previous = [...found.agent.session.events].reverse().find(event => event.type === 'session/addons' && (
             'addonId' in event.data
               ? event.data.addonId === addonId

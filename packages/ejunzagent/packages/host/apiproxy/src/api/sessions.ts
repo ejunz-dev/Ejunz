@@ -350,6 +350,8 @@ export interface SessionsApi {
     mode: 'queue' | 'steer'
     content: PromptContentPart[]
     clientTimeZone?: string
+    /** Host-computed initial add-on state, logged separately before the prompt's turn. */
+    addonSnapshot?: { addonId: string; enabled: boolean }[]
   }>):
   Promise<RpcResponse<{ accepted: true; command?: { kind: 'success'; text?: string } }>>
 
@@ -365,11 +367,8 @@ export interface SessionsApi {
     wakeup?: boolean
   }>): Promise<RpcResponse<{ accepted: true }>>
 
-  /** Records an add-on state change or initial snapshot in the session log, separate from context messages. */
-  addons(request: RpcRequest<
-    | { sessionId: SessionId; addonId: string; enabled: boolean }
-    | { sessionId: SessionId; snapshot: { addonId: string; enabled: boolean }[] }
-  >): Promise<RpcResponse<{ accepted: true; seq: number }>>
+  /** Records an add-on state change in the session log, separate from context messages. */
+  addons(request: RpcRequest<{ sessionId: SessionId; addonId: string; enabled: boolean }>): Promise<RpcResponse<{ accepted: true; seq: number }>>
 
   /** Reads one durable image after proving that this session's log references its id. */
   attachment(request: RpcRequest<{ sessionId: SessionId; attachmentId: AttachmentIdType }>):

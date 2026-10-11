@@ -2249,7 +2249,7 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         return ok(request, { selected })
       },
       prompt: (request) => {
-        const { sessionId: id, mode, content } = request.payload
+        const { sessionId: id, mode, content, addonSnapshot } = request.payload
         const summary = summaryOf(id)
         if (summary === undefined) {
           return err(request, { code: 'session-not-found', message: `no session ${id}`, details: { sessionId: id } })
@@ -2282,6 +2282,19 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
           attachments.set(String(attachment.attachmentId), { attachment, data: block.data })
           return { type: 'image', attachment }
         })
+        if (addonSnapshot?.length) {
+          const recorded = new Set<string>()
+          for (const event of logOf(id)) {
+            if (event.type === 'session/addons') {
+              if ('addonId' in event.data) recorded.add(event.data.addonId)
+              else event.data.snapshot.forEach(state => recorded.add(state.addonId))
+            } else if (event.type === 'session/plugins') {
+              recorded.add(event.data.pluginId)
+            }
+          }
+          const snapshot = addonSnapshot.filter(state => !recorded.has(state.addonId))
+          if (snapshot.length) append(id, { type: 'session/addons', data: { snapshot } })
+        }
         if (mode === 'steer' && replays.has(id)) {
           // Steering: the durable user/message lands inside the current turn; the replay continues.
           append(id, { type: 'user/message', surfaceOp: 'append', data: userMessage(durable) })
@@ -2355,16 +2368,6 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
           })
         }
         const log = logOf(sessionId)
-        if ('snapshot' in request.payload) {
-          const previous = [...log].reverse().find(event => event.type === 'session/addons' && 'snapshot' in event.data)
-          if (previous) {
-            return ok(request, { accepted: true as const, seq: previous.seq })
-          }
-          summary.updatedAt = Date.now()
-          const seq = log.length
-          append(sessionId, { type: 'session/addons', data: { snapshot: request.payload.snapshot } })
-          return ok(request, { accepted: true as const, seq })
-        }
         const { addonId, enabled } = request.payload
         const previous = [...log].reverse().find(event => event.type === 'session/addons' && (
           'addonId' in event.data

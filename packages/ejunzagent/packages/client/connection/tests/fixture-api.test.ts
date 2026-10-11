@@ -66,7 +66,7 @@ describe('FixtureApiClient API additions', () => {
     expect(missing.result.error.code).toBe('session-not-found')
   })
 
-  it('records initial addon state in one log-only snapshot', async () => {
+  it('records initial addon state with the first prompt as one log-only snapshot', async () => {
     const client = new FixtureApiClient()
     const before = await client.sessions.history({ sessionId: alpha, maxMessages: 100 })
     if (!before.result.ok) throw new Error(before.result.error.message)
@@ -74,25 +74,32 @@ describe('FixtureApiClient API additions', () => {
       { addonId: 'agent', enabled: true },
       { addonId: 'base', enabled: false },
     ]
-    const recorded = await client.sessions.addons({ sessionId: alpha, snapshot })
-    const repeated = await client.sessions.addons({ sessionId: alpha, snapshot })
+    const recorded = await client.sessions.prompt({
+      sessionId: alpha,
+      mode: 'queue',
+      content: [{ type: 'text', text: 'first prompt' }],
+      addonSnapshot: snapshot,
+    })
     const history = await client.sessions.history({ sessionId: alpha, maxMessages: 100 })
 
     expect(recorded.result.ok).toBe(true)
-    expect(repeated.result).toEqual(recorded.result)
     if (!history.result.ok) throw new Error(history.result.error.message)
-    const addonEvents = history.result.value.events.filter(entry => entry.event.type === 'session/addons')
+    const events = history.result.value.events
+    const addonEvents = events.filter(entry => entry.event.type === 'session/addons')
+    const userMessages = events.filter(entry => entry.event.type === 'user/message')
     expect(addonEvents).toHaveLength(1)
     expect(addonEvents[0]?.event).toMatchObject({ type: 'session/addons', data: { snapshot } })
-    expect(history.result.value.events.filter(entry => entry.event.type === 'user/message'))
-      .toHaveLength(before.result.value.events.filter(entry => entry.event.type === 'user/message').length)
+    expect(userMessages).toHaveLength(before.result.value.events.filter(entry => entry.event.type === 'user/message').length + 1)
+    expect(addonEvents[0]?.event.seq).toBeLessThan(userMessages.at(-1)?.event.seq ?? 0)
   })
 
   it('lets individual addon changes override an initial snapshot', async () => {
     const client = new FixtureApiClient()
-    await client.sessions.addons({
+    await client.sessions.prompt({
       sessionId: alpha,
-      snapshot: [{ addonId: 'base', enabled: false }, { addonId: 'agent', enabled: true }],
+      mode: 'queue',
+      content: [{ type: 'text', text: 'first prompt' }],
+      addonSnapshot: [{ addonId: 'base', enabled: false }, { addonId: 'agent', enabled: true }],
     })
     const changed = await client.sessions.addons({ sessionId: alpha, addonId: 'base', enabled: true })
     const repeated = await client.sessions.addons({ sessionId: alpha, addonId: 'base', enabled: true })

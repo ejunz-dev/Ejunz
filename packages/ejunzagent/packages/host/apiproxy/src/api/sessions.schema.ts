@@ -274,12 +274,15 @@ export const promptContentPartSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('image'), mediaType: imageMediaTypeSchema, data: z.string(), name: z.string().optional() }),
 ])
 
-/** session.prompt request payload, including optional browser-local request provenance. */
+const sessionAddonStateSchema = z.object({ addonId: z.string().min(1), enabled: z.boolean() })
+
+/** session.prompt request payload, including optional browser-local request provenance and initial add-on state. */
 export const sessionPromptRequestSchema = z.object({
   sessionId: sessionIdSchema,
   mode: z.union([z.literal('queue'), z.literal('steer')]),
   content: z.array(promptContentPartSchema),
   clientTimeZone: z.string().optional(),
+  addonSnapshot: z.array(sessionAddonStateSchema).max(128).optional(),
 }) as unknown as z.ZodType<RequestPayload<'session.prompt'>>
 
 /** session.prompt response value (the command slot appears only when the prompt dispatched a slash command). */
@@ -319,12 +322,12 @@ export const sessionInjectValueSchema = z.object({
   accepted: z.literal(true),
 }) satisfies z.ZodType<Wire<ResponseValue<'session.inject'>>>
 
-/** session.addons request payload: record one change or one initial snapshot without adding model context. */
-const sessionAddonStateSchema = z.object({ addonId: z.string().min(1), enabled: z.boolean() })
-export const sessionAddonsRequestSchema = z.union([
-  z.object({ sessionId: sessionIdSchema, addonId: z.string().min(1), enabled: z.boolean() }),
-  z.object({ sessionId: sessionIdSchema, snapshot: z.array(sessionAddonStateSchema).max(128) }),
-]) satisfies z.ZodType<Wire<RequestPayload<'session.addons'>>>
+/** session.addons request payload: record one add-on state change without adding model context. */
+export const sessionAddonsRequestSchema = z.object({
+  sessionId: sessionIdSchema,
+  addonId: z.string().min(1),
+  enabled: z.boolean(),
+}) satisfies z.ZodType<Wire<RequestPayload<'session.addons'>>>
 
 /** session.addons response value. */
 export const sessionAddonsValueSchema = z.object({

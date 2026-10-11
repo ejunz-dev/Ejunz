@@ -428,13 +428,18 @@ export function fileInjectionsAfterUser(messages: ChatMessage[]): ChatMessage[] 
 export function placeInitialAddonMountsAfterFirstUser(messages: readonly ChatMessage[]): ChatMessage[] {
     const firstUser = messages.findIndex((message) => message.role === 'user');
     if (firstUser < 0) return messages.filter((message) => message.role !== 'addon');
+    const firstModelOutput = messages.findIndex((message, index) =>
+        index > firstUser && (message.role === 'assistant' || message.role === 'tool'));
+    const firstTurnEnd = firstModelOutput < 0 ? messages.length : firstModelOutput;
     const initialMounts = new Map<string, ChatMessage>();
     messages.forEach((message, index) => {
         if (message.role !== 'addon' || !message.addonMount) return;
-        if (message.addonMount.snapshot || index < firstUser) initialMounts.set(message.addonMount.addonId, message);
+        if (message.addonMount.snapshot || index < firstUser || index < firstTurnEnd) {
+            initialMounts.set(message.addonMount.addonId, message);
+        }
     });
     const timeline = messages.filter((message, index) =>
-        message.role !== 'addon' || !message.addonMount || (!message.addonMount.snapshot && index >= firstUser));
+        message.role !== 'addon' || !message.addonMount || !(message.addonMount.snapshot || index < firstUser || index < firstTurnEnd));
     const userIndex = timeline.findIndex((message) => message.role === 'user');
     return [...timeline.slice(0, userIndex + 1), ...initialMounts.values(), ...timeline.slice(userIndex + 1)];
 }
