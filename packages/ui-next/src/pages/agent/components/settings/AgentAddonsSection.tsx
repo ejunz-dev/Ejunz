@@ -42,14 +42,13 @@ export function AgentAddonsSection({ rpc, sessionId, onAddonChange }: AgentAddon
         setBusy(addon.addonId);
         setError('');
         try {
-            const result = await rpc<{ eventRecorded?: boolean }>('agent.addons.set', {
+            await rpc('agent.addons.set', {
                 addonId: addon.addonId,
                 enabled,
                 ...(sessionId ? { sessionId } : {}),
             });
             setAddons((items) => items.map((item) => item.addonId === addon.addonId ? { ...item, enabled } : item));
             onAddonChange?.(addon.addonId, enabled);
-            if (result.eventRecorded === false) setError('插件设置已保存，但部分会话未能写入挂载事件。');
         } catch (cause) {
             setError(cause instanceof Error ? cause.message : 'Agent Addon设置失败');
         } finally {

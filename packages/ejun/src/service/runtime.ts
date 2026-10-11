@@ -1536,35 +1536,31 @@ async function recordAddonStateForSessions(change: AgentAddonStateChange): Promi
         ...(change.agentId === undefined ? {} : { agentId: change.agentId }),
     };
     const sessions = await agentDataAdapter.listSessions(scope);
-    let eventRecorded = true;
     for (let offset = 0; offset < sessions.length; offset += 8) {
         const batch = sessions.slice(offset, offset + 8);
-        const results = await Promise.all(batch.map(async (session) => {
+        await Promise.all(batch.map(async (session) => {
+            const link = session.runtimeId ? runtimeLinks.get(session.runtimeId) : defaultLink();
+            if (!link) return;
             try {
                 const recorded = await callUpstream('session.addons', {
                     sessionId: session.sessionId,
                     addonId: change.addonId,
                     enabled: change.enabled,
-                }, await linkForSession(scope, session.sessionId));
+                }, link);
                 if (!recorded.body.result?.ok) {
                     logger.warn('[addons] session state event failed session=%s addon=%s error=%s', session.sessionId, change.addonId, recorded.body.error?.message || 'unknown error');
-                    return false;
                 }
-                return true;
             } catch (error) {
                 logger.warn('[addons] session state event failed session=%s addon=%s error=%s', session.sessionId, change.addonId, error instanceof Error ? error.message : String(error));
-                return false;
             }
         }));
-        if (results.some((result) => !result)) eventRecorded = false;
     }
-    change.eventRecorded = eventRecorded;
 }
 
 async function agentAddonSet(
     envelope: RpcEnvelope,
     scope: AgentScope,
-    publishState: (change: AgentAddonStateChange) => Promise<unknown>,
+    publishState: (change: AgentAddonStateChange) => void | Promise<unknown>,
 ): Promise<RpcBody> {
     const payload = envelope.payload ?? {};
     const addonId = typeof payload.addonId === 'string' ? payload.addonId : '';
@@ -1601,14 +1597,13 @@ async function agentAddonSet(
         ...(scope.agentId === undefined ? {} : { agentId: scope.agentId }),
         addonId,
         enabled: payload.enabled,
-        eventRecorded: false,
     };
     try {
         await publishState(change);
     } catch (error) {
         logger.warn('[addons] state-change event failed addon=%s domain=%s error=%s', addonId, scope.domainId, error instanceof Error ? error.message : String(error));
     }
-    return rpcOk(envelope.rpcId, { addonId, enabled: payload.enabled, eventRecorded: change.eventRecorded === true });
+    return rpcOk(envelope.rpcId, { addonId, enabled: payload.enabled });
 }
 
 export async function isAgentAddonEnabled(domainId: string, addonId: string): Promise<boolean> {
@@ -2308,7 +2303,11 @@ export async function initializeAgentRuntime(ctx: EjunContext): Promise<() => Pr
     await modelReady;
     await agentDataAdapter.resetRunningSessions();
     await ensureBuiltinBridgeToken();
-    ctx.on?.('agent/addon-state', recordAddonStateForSessions);
+    ctx.on?.('agent/addon-state', (change: AgentAddonStateChange) => {
+        void recordAddonStateForSessions(change).catch((error) => {
+            logger.warn('[addons] state fanout failed domain=%s addon=%s error=%s', change.domainId, change.addonId, error instanceof Error ? error.message : String(error));
+        });
+    });
     ctx.on?.('tool/base-select', onBaseSelect);
     ctx.plugin(AgentRunService);
     agentDisposing = false;

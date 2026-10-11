@@ -415,7 +415,7 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             this.response.body = JSON.stringify(await agentAddonSet(
                 envelope,
                 scope,
-                (change) => this.ctx.parallel('agent/addon-state', change),
+                (change) => this.ctx.broadcast('agent/addon-state', change),
             ));
             return;
         }

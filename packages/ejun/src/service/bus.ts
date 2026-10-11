@@ -38,7 +38,6 @@ export interface AgentAddonStateChange {
     agentId?: number | null;
     addonId: string;
     enabled: boolean;
-    eventRecorded?: boolean;
 }
 
 export interface EventMap {
