@@ -412,7 +412,11 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
         }
         if (method === 'agent.addons.set') {
             this.response.type = 'application/json';
-            this.response.body = JSON.stringify(await agentAddonSet(envelope, scope));
+            this.response.body = JSON.stringify(await agentAddonSet(
+                envelope,
+                scope,
+                (change) => this.ctx.parallel('agent/addon-state', change),
+            ));
             return;
         }
         if (method === 'settings.describe' || method === 'settings.update' || method === 'settings.replace' || method === 'settings.mutate') {

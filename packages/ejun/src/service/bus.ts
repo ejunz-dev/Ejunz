@@ -32,6 +32,15 @@ export interface EdgeBridgeEnvelope {
     meta?: Record<string, any>;
 }
 
+export interface AgentAddonStateChange {
+    domainId: string;
+    userId: number;
+    agentId?: number | null;
+    addonId: string;
+    enabled: boolean;
+    eventRecorded?: boolean;
+}
+
 export interface EventMap {
     'app/listen': () => void;
     'app/started': () => void;
@@ -54,6 +63,7 @@ export interface EventMap {
 
     'system/setting': (args: Record<string, any>) => VoidReturn;
     'system/setting-loaded': () => VoidReturn;
+    'agent/addon-state': (change: AgentAddonStateChange) => VoidReturn;
     'bus/broadcast': (event: keyof EventMap, payload: any, trace?: string) => VoidReturn;
     'monitor/update': (type: 'server' | 'worker', $set: any) => VoidReturn;
     'monitor/collect': (info: any) => VoidReturn;

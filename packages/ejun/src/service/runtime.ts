@@ -14,6 +14,7 @@ import { AgentSessionModel as AgentModel, AgentRuntimeModel, AgentLinkModel, Age
 import { type AgentDisplayPrefs, type AgentDomainSettings, type AgentNodeDoc, type AgentSessionSummary, type AgentSessionType, type AgentWorkspaceDoc } from '../model/agent';
 import { type AgentRuntimeSummary } from '../model/agent';
 import { listAgentAddons } from './addons';
+import type { AgentAddonStateChange } from './bus';
 
 interface EjunContext {
     server?: { config?: { port?: number; host?: string } };
@@ -1528,7 +1529,43 @@ async function agentAddonsList(envelope: RpcEnvelope, scope: AgentScope): Promis
     return rpcOk(envelope.rpcId, { addons });
 }
 
-async function agentAddonSet(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
+async function recordAddonStateForSessions(change: AgentAddonStateChange): Promise<void> {
+    const scope: AgentScope = {
+        domainId: change.domainId,
+        userId: change.userId,
+        ...(change.agentId === undefined ? {} : { agentId: change.agentId }),
+    };
+    const sessions = await agentDataAdapter.listSessions(scope);
+    let eventRecorded = true;
+    for (let offset = 0; offset < sessions.length; offset += 8) {
+        const batch = sessions.slice(offset, offset + 8);
+        const results = await Promise.all(batch.map(async (session) => {
+            try {
+                const recorded = await callUpstream('session.addons', {
+                    sessionId: session.sessionId,
+                    addonId: change.addonId,
+                    enabled: change.enabled,
+                }, await linkForSession(scope, session.sessionId));
+                if (!recorded.body.result?.ok) {
+                    logger.warn('[addons] session state event failed session=%s addon=%s error=%s', session.sessionId, change.addonId, recorded.body.error?.message || 'unknown error');
+                    return false;
+                }
+                return true;
+            } catch (error) {
+                logger.warn('[addons] session state event failed session=%s addon=%s error=%s', session.sessionId, change.addonId, error instanceof Error ? error.message : String(error));
+                return false;
+            }
+        }));
+        if (results.some((result) => !result)) eventRecorded = false;
+    }
+    change.eventRecorded = eventRecorded;
+}
+
+async function agentAddonSet(
+    envelope: RpcEnvelope,
+    scope: AgentScope,
+    publishState: (change: AgentAddonStateChange) => Promise<unknown>,
+): Promise<RpcBody> {
     const payload = envelope.payload ?? {};
     const addonId = typeof payload.addonId === 'string' ? payload.addonId : '';
     const addon = listAgentAddons().find((item) => item.addonId === addonId);
@@ -1558,30 +1595,20 @@ async function agentAddonSet(envelope: RpcEnvelope, scope: AgentScope): Promise<
     const saved = await agentDataAdapter.updateDomainSettings(scope.domainId, sections, current.revision);
     if (!saved) return rpcError(envelope.rpcId, 'settings revision conflict');
 
-    let eventRecorded = true;
-    const sessions = await agentDataAdapter.listSessions(scope);
-    for (let offset = 0; offset < sessions.length; offset += 8) {
-        const batch = sessions.slice(offset, offset + 8);
-        const results = await Promise.all(batch.map(async (session) => {
-            try {
-                const recorded = await callUpstream('session.addons', {
-                    sessionId: session.sessionId,
-                    addonId,
-                    enabled: payload.enabled,
-                }, await linkForSession(scope, session.sessionId));
-                if (!recorded.body.result?.ok) {
-                    logger.warn('[addons] session mount failed session=%s addon=%s error=%s', session.sessionId, addonId, recorded.body.error?.message || 'unknown error');
-                    return false;
-                }
-                return true;
-            } catch (error) {
-                logger.warn('[addons] session mount failed session=%s addon=%s error=%s', session.sessionId, addonId, error instanceof Error ? error.message : String(error));
-                return false;
-            }
-        }));
-        if (results.some((result) => !result)) eventRecorded = false;
+    const change: AgentAddonStateChange = {
+        domainId: scope.domainId,
+        userId: scope.userId,
+        ...(scope.agentId === undefined ? {} : { agentId: scope.agentId }),
+        addonId,
+        enabled: payload.enabled,
+        eventRecorded: false,
+    };
+    try {
+        await publishState(change);
+    } catch (error) {
+        logger.warn('[addons] state-change event failed addon=%s domain=%s error=%s', addonId, scope.domainId, error instanceof Error ? error.message : String(error));
     }
-    return rpcOk(envelope.rpcId, { addonId, enabled: payload.enabled, eventRecorded });
+    return rpcOk(envelope.rpcId, { addonId, enabled: payload.enabled, eventRecorded: change.eventRecorded === true });
 }
 
 export async function isAgentAddonEnabled(domainId: string, addonId: string): Promise<boolean> {
@@ -2281,6 +2308,7 @@ export async function initializeAgentRuntime(ctx: EjunContext): Promise<() => Pr
     await modelReady;
     await agentDataAdapter.resetRunningSessions();
     await ensureBuiltinBridgeToken();
+    ctx.on?.('agent/addon-state', recordAddonStateForSessions);
     ctx.on?.('tool/base-select', onBaseSelect);
     ctx.plugin(AgentRunService);
     agentDisposing = false;
