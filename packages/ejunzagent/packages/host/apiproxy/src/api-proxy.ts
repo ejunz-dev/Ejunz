@@ -2571,10 +2571,12 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
               : previous.data.snapshot.find(state => state.addonId === addonId)?.enabled
             : undefined
           if (previous && previousEnabled === enabled) {
+            await ctx.sessions.flush(found.agent.session)
             await refreshHostTools(found.agent.ctx)
             return ok(request, { accepted: true as const, seq: previous.seq })
           }
           const event = found.agent.session.append('session/addons', { addonId, enabled })
+          await ctx.sessions.flush(found.agent.session)
           await refreshHostTools(found.agent.ctx)
           return ok(request, { accepted: true as const, seq: event.seq })
         } catch (error: unknown) {
